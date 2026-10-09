@@ -1,3 +1,6 @@
 __pycache__/
 .DS_Store
 .claude/
+/docs/build/
+/docs/Manifest.toml
+/docs/src/index.md

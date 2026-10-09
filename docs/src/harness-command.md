@@ -1,8 +1,8 @@
 # The `harness` command
 
 `bin/harness` is the front door to the tooling. It needs Python 3.11 or later and nothing beyond
-the standard library. Put `bin/` on the `PATH`, as [Installation](../README.md#installation)
-shows.
+the standard library. Put `bin/` on the `PATH`, as
+[Installation](https://github.com/michakraus/ResearchHarness#installation) shows.
 
 Every verb keeps one contract. A verb that changes something is dry by default: it prints its
 plan and exits 1 when something would change, 0 when nothing would. `--apply` makes the change.

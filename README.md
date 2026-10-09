@@ -25,7 +25,7 @@ The harness has these features:
 
 ## Installation
 
-These steps install the harness on macOS. [docs/setup-macos.md](docs/setup-macos.md) gives the
+These steps install the harness on macOS. [Setup on macOS](docs/src/setup-macos.md) gives the
 details. First, install the required tools of [Dependencies](#dependencies).
 
 1. Clone the repository. These steps use the checkout `~/Research/Harness`.
@@ -95,7 +95,7 @@ verbs:
 - `harness leaks` searches the repository and its renders for the leak list of the profile.
 - `harness settings` measures, checks and installs the Claude Code settings.
 
-[docs/harness-command.md](docs/harness-command.md) describes every verb, the profile and the
+[The `harness` command](docs/src/harness-command.md) describes every verb, the profile and the
 flags.
 
 ## Dependencies
@@ -105,7 +105,7 @@ or an installed git hook calls it. An optional tool serves one frontend or one j
 column also says what stops without it. The minimum is the floor that the code checks, that CI
 pins, that `[compat]` sets or that a release note names for a feature the code uses; each floor
 names its source. Where no floor exists, the cell gives the version that the harness is tested
-with. [`docs/tools.md`](docs/tools.md) says what each tool does, why the harness needs it, and
+with. [The tools](docs/src/tools.md) says what each tool does, why the harness needs it, and
 where the harness calls it.
 
 ### Required
@@ -150,25 +150,26 @@ The tables leave out the system tools: the POSIX shell utilities, such as `awk`,
 
 ## Documentation
 
-- [docs/setup-macos.md](docs/setup-macos.md): each step of the setup on macOS, and the check
-  that it worked.
-- [docs/setup-linux.md](docs/setup-linux.md): the setup on Linux, which is coming.
-- [docs/daily-use.md](docs/daily-use.md): a change of a source or of the settings, the drift
-  warning, the leak check, the verbs for the whole research tree and the triggering test of the
-  skills.
-- [docs/security.md](docs/security.md): what each security mechanism stops and does not stop,
-  and the limits of the model.
-- [docs/profile.md](docs/profile.md): each key of the profile and each table of the model
-  tables, and the verbs that read them.
-- [docs/harness-command.md](docs/harness-command.md): the contract of every verb, the profile
+The pages of the documentation site are in `docs/src/`, and `docs/make.jl` builds them with
+Documenter. The repository's homepage link opens the site.
+
+- [Setup on macOS](docs/src/setup-macos.md): each step of the setup on macOS, and the check that
+  it worked.
+- [Setup on Linux](docs/src/setup-linux.md): the setup on Linux, which is coming.
+- [Daily use](docs/src/daily-use.md): a change of a source or of the settings, the drift warning,
+  the leak check, the verbs for the whole research tree and the triggering test of the skills.
+- [The security model](docs/src/security.md): what each security mechanism stops and does not
+  stop, and the limits of the model.
+- [Adapting the profile](docs/src/profile.md): each key of the profile and each table of the
+  model tables, and the verbs that read them.
+- [The `harness` command](docs/src/harness-command.md): the contract of every verb, the profile
   and the model tables, the verbs, and the Julia environment.
-- [docs/architecture.md](docs/architecture.md): the three layers and the state in `~/.claude`,
-  the Claude Code layer and its stamp, the neutral vocabulary, the OpenCode and oh-my-pi
-  adapters, and the layout of the repository.
-- [docs/development.md](docs/development.md): the tests, the pre-push hook, the leak checks and
-  CI.
-- [docs/tools.md](docs/tools.md): what each dependency does, why the harness needs it, and
-  where the harness calls it.
+- [Architecture](docs/src/architecture.md): the three layers and the state in `~/.claude`, the
+  Claude Code layer and its stamp, the neutral vocabulary, the OpenCode and oh-my-pi adapters,
+  and the layout of the repository.
+- [Development](docs/src/development.md): the tests, the pre-push hook, the leak checks and CI.
+- [The tools](docs/src/tools.md): what each dependency does, why the harness needs it, and where
+  the harness calls it.
 
 ## License
 

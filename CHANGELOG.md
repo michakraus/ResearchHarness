@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- **The documentation is a Documenter site on GitHub Pages.** The pages move from `docs/` to
+  `docs/src/`, and `docs/make.jl` builds them; its home page is the README, so the README stays
+  the one source of that text. The new workflow `.github/workflows/docs.yml` builds the site on a
+  pull request that changes the README or `docs/`, and Documenter fails the build on a broken
+  local link. A push to `main` deploys the site to `gh-pages`. The README names each page by its
+  title. Three links from a page to the README now go to the README on
+  GitHub, because a link out of `docs/src/` fails the build. A link to a section of another page
+  is an `@ref` to its heading, which the build checks; Documenter's anchors differ from GitHub's,
+  so a URL fragment cannot serve both. `docs/src/development.md` says how to
+  build the site locally. `docs/Manifest.toml` is not tracked.
+
 - **The README's dependency tables say what each tool is used for.** The column `needed by`
   listed the `file:line` of each call, which told a reader where a tool is called but not why.
   The column `used for` now gives one plain sentence per tool, and for an optional tool also what

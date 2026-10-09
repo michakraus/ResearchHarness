@@ -7,7 +7,7 @@ past them can do so.
 
 `harness settings install` writes the sandbox, the permission lists and the hooks from the
 settings template `settings/settings.proposal.json` into `~/.claude/settings.json`.
-[setup-macos.md](setup-macos.md#harness-settings-install---apply) gives the steps.
+[setup-macos.md](@ref harness-settings-install-apply) gives the steps.
 
 ## The mechanisms
 
