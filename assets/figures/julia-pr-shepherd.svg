@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN"
+ "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<!-- Title: julia&#45;pr&#45;shepherd Pages: 1 -->
+<svg width="441pt" height="147pt"
+ viewBox="0.00 0.00 441.00 147.00" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+<g id="graph0" class="graph" transform="scale(1 1) rotate(0) translate(4 143.28)">
+<title>julia&#45;pr&#45;shepherd</title>
+<!-- julia&#45;pr&#45;shepherd -->
+<g id="node1" class="node">
+<title>julia&#45;pr&#45;shepherd</title>
+<path fill="#dbe8f7" stroke="#5a5a5a" d="M262.9,-139.28C262.9,-139.28 159.12,-139.28 159.12,-139.28 153.12,-139.28 147.12,-133.28 147.12,-127.28 147.12,-127.28 147.12,-109.64 147.12,-109.64 147.12,-103.64 153.12,-97.64 159.12,-97.64 159.12,-97.64 262.9,-97.64 262.9,-97.64 268.9,-97.64 274.9,-103.64 274.9,-109.64 274.9,-109.64 274.9,-127.28 274.9,-127.28 274.9,-133.28 268.9,-139.28 262.9,-139.28"/>
+<text xml:space="preserve" text-anchor="start" x="157.92" y="-124.26" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="13.00" fill="#1a1a1a">julia&#45;pr&#45;shepherd</text>
+<text xml:space="preserve" text-anchor="start" x="179.32" y="-113.96" font-family="Helvetica,sans-Serif" font-size="10.00" fill="#1a1a1a">agent on opus</text>
+<text xml:space="preserve" text-anchor="start" x="187.39" y="-103.96" font-family="Helvetica,sans-Serif" font-size="10.00" fill="#1a1a1a">effort: high</text>
+</g>
+<!-- julia&#45;pr&#45;reviewer -->
+<g id="node2" class="node">
+<title>julia&#45;pr&#45;reviewer</title>
+<path fill="#dbe8f7" stroke="#5a5a5a" d="M110.03,-41.64C110.03,-41.64 12,-41.64 12,-41.64 6,-41.64 0,-35.64 0,-29.64 0,-29.64 0,-12 0,-12 0,-6 6,0 12,0 12,0 110.03,0 110.03,0 116.03,0 122.03,-6 122.03,-12 122.03,-12 122.03,-29.64 122.03,-29.64 122.03,-35.64 116.03,-41.64 110.03,-41.64"/>
+<text xml:space="preserve" text-anchor="start" x="10.8" y="-26.62" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="13.00" fill="#1a1a1a">julia&#45;pr&#45;reviewer</text>
+<text xml:space="preserve" text-anchor="start" x="29.32" y="-16.32" font-family="Helvetica,sans-Serif" font-size="10.00" fill="#1a1a1a">agent on opus</text>
+<text xml:space="preserve" text-anchor="start" x="37.39" y="-6.32" font-family="Helvetica,sans-Serif" font-size="10.00" fill="#1a1a1a">effort: high</text>
+</g>
+<!-- julia&#45;pr&#45;shepherd&#45;&gt;julia&#45;pr&#45;reviewer -->
+<g id="edge1" class="edge">
+<title>julia&#45;pr&#45;shepherd&#45;&gt;julia&#45;pr&#45;reviewer</title>
+<path fill="none" stroke="#8c8c8c" stroke-width="1.4" d="M179.2,-97.18C156.93,-82.98 126.95,-63.86 102.75,-48.43"/>
+<polygon fill="#8c8c8c" stroke="#8c8c8c" stroke-width="1.4" points="104.88,-45.64 94.57,-43.21 101.12,-51.54 104.88,-45.64"/>
+<polygon fill="#f2f2f2" stroke="none" points="149.45,-59.64 149.45,-79.64 186.34,-79.64 186.34,-59.64 149.45,-59.64"/>
+<text xml:space="preserve" text-anchor="start" x="153.45" y="-65.64" font-family="Helvetica,sans-Serif" font-size="10.00" fill="#1a1a1a">review</text>
+</g>
+<!-- changelog&#45;scribe -->
+<g id="node3" class="node">
+<title>changelog&#45;scribe</title>
+<path fill="#dbe8f7" stroke="#5a5a5a" d="M265.52,-41.64C265.52,-41.64 156.51,-41.64 156.51,-41.64 150.51,-41.64 144.51,-35.64 144.51,-29.64 144.51,-29.64 144.51,-12 144.51,-12 144.51,-6 150.51,0 156.51,0 156.51,0 265.52,0 265.52,0 271.52,0 277.52,-6 277.52,-12 277.52,-12 277.52,-29.64 277.52,-29.64 277.52,-35.64 271.52,-41.64 265.52,-41.64"/>
+<text xml:space="preserve" text-anchor="start" x="157.19" y="-26.62" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="13.00" fill="#1a1a1a">changelog&#45;scribe</text>
+<text xml:space="preserve" text-anchor="start" x="178.21" y="-16.32" font-family="Helvetica,sans-Serif" font-size="10.00" fill="#1a1a1a">agent on haiku</text>
+<text xml:space="preserve" text-anchor="start" x="155.31" y="-6.32" font-family="Helvetica,sans-Serif" font-size="10.00" fill="#1a1a1a">effort: the session&#39;s effort</text>
+</g>
+<!-- julia&#45;pr&#45;shepherd&#45;&gt;changelog&#45;scribe -->
+<g id="edge2" class="edge">
+<title>julia&#45;pr&#45;shepherd&#45;&gt;changelog&#45;scribe</title>
+<path fill="none" stroke="#8c8c8c" stroke-width="1.4" d="M211.01,-97.18C211.01,-84.62 211.01,-68.23 211.01,-53.94"/>
+<polygon fill="#8c8c8c" stroke="#8c8c8c" stroke-width="1.4" points="214.51,-54.19 211.01,-44.19 207.51,-54.19 214.51,-54.19"/>
+<polygon fill="#f2f2f2" stroke="none" points="211.01,-59.64 211.01,-79.64 257.92,-79.64 257.92,-59.64 211.01,-59.64"/>
+<text xml:space="preserve" text-anchor="start" x="215.01" y="-65.64" font-family="Helvetica,sans-Serif" font-size="10.00" fill="#1a1a1a">the entry</text>
+</g>
+<!-- ci&#45;triage -->
+<g id="node4" class="node">
+<title>ci&#45;triage</title>
+<path fill="#dbe8f7" stroke="#5a5a5a" d="M420.52,-41.64C420.52,-41.64 311.51,-41.64 311.51,-41.64 305.51,-41.64 299.51,-35.64 299.51,-29.64 299.51,-29.64 299.51,-12 299.51,-12 299.51,-6 305.51,0 311.51,0 311.51,0 420.52,0 420.52,0 426.52,0 432.52,-6 432.52,-12 432.52,-12 432.52,-29.64 432.52,-29.64 432.52,-35.64 426.52,-41.64 420.52,-41.64"/>
+<text xml:space="preserve" text-anchor="start" x="340.73" y="-26.62" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="13.00" fill="#1a1a1a">ci&#45;triage</text>
+<text xml:space="preserve" text-anchor="start" x="330.15" y="-16.32" font-family="Helvetica,sans-Serif" font-size="10.00" fill="#1a1a1a">agent on sonnet</text>
+<text xml:space="preserve" text-anchor="start" x="310.31" y="-6.32" font-family="Helvetica,sans-Serif" font-size="10.00" fill="#1a1a1a">effort: the session&#39;s effort</text>
+</g>
+<!-- julia&#45;pr&#45;shepherd&#45;&gt;ci&#45;triage -->
+<g id="edge3" class="edge">
+<title>julia&#45;pr&#45;shepherd&#45;&gt;ci&#45;triage</title>
+<path fill="none" stroke="#8c8c8c" stroke-width="1.4" d="M243.88,-97.18C266.9,-82.98 297.88,-63.86 322.88,-48.43"/>
+<polygon fill="#8c8c8c" stroke="#8c8c8c" stroke-width="1.4" points="324.71,-51.42 331.39,-43.19 321.04,-45.46 324.71,-51.42"/>
+<polygon fill="#f2f2f2" stroke="none" points="302.4,-59.64 302.4,-79.64 337.63,-79.64 337.63,-59.64 302.4,-59.64"/>
+<text xml:space="preserve" text-anchor="start" x="306.4" y="-65.64" font-family="Helvetica,sans-Serif" font-size="10.00" fill="#1a1a1a">red CI</text>
+</g>
+</g>
+</svg>
