@@ -92,3 +92,10 @@ file on GitHub instead. Link to a section of another page with `[text](@ref "Hea
 or with Documenter's anchor for a heading in code: `[text](@ref harness-install-apply)`. The
 build fails on a reference that it cannot resolve. A URL fragment such as `page.md#heading` is
 not checked, and Documenter's anchors keep the case of the heading, unlike GitHub's.
+
+The pages in `docs/src/components/` describe each component: one page for each kind, and one
+level-2 section for each component, whose heading names it in backticks. `lib/harness/docs.py`
+says which files are the components of each page. Its cases in `harness test` fail when a
+component has no heading, when a heading names something that is no component of its page, and
+when a tool of the README's dependency tables has no heading in `tools.md`. So a new agent,
+skill, rule, hook or script needs its section in the same change.

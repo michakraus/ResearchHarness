@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- **The documentation site describes every component.** Ten pages in `docs/src/components/`
+  cover the agents, skills, commands, rules and the core instruction file, guard hooks, git
+  hooks and workflow templates, scripts, adapters, the modules of the `harness` command, and the
+  jobs and configuration files: one section for each component, which says what it does, who
+  calls it, what it reads and changes, and its limits. The new module `lib/harness/docs.py` keeps
+  them complete: its cases in `harness test` fail when a component has no section, when a section
+  names something that is no component, and when a tool of the README's dependency tables has no
+  section in `tools.md`. The README and `docs/src/development.md` link the pages and describe the
+  check.
+
 - **The documentation is a Documenter site on GitHub Pages.** The pages move from `docs/` to
   `docs/src/`, and `docs/make.jl` builds them; its home page is the README, so the README stays
   the one source of that text. The new workflow `.github/workflows/docs.yml` builds the site on a
