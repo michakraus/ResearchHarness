@@ -8,7 +8,9 @@
   pull request that changes the README or `docs/`, and Documenter fails the build on a broken
   local link. A push to `main` deploys the site to `gh-pages`. The README names each page by its
   title. Three links from a page to the README now go to the README on
-  GitHub, because a link out of `docs/src/` fails the build. `docs/src/development.md` says how to
+  GitHub, because a link out of `docs/src/` fails the build. A link to a section of another page
+  is an `@ref` to its heading, which the build checks; Documenter's anchors differ from GitHub's,
+  so a URL fragment cannot serve both. `docs/src/development.md` says how to
   build the site locally. `docs/Manifest.toml` is not tracked.
 
 - **The README's dependency tables say what each tool is used for.** The column `needed by`

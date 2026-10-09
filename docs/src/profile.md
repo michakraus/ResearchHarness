@@ -10,7 +10,7 @@ Two private files adapt the harness to one user and one machine. Neither is in t
 
 `examples/profile.toml` and `examples/models.toml` show every key and every table, each with a
 comment that says what the value is. Copy them and write your values into the copies, as
-[setup-macos.md](setup-macos.md#the-profile-and-the-model-tables) shows. A template of the
+[setup-macos.md](@ref "The profile and the model tables") shows. A template of the
 repository names a profile key as `{key}`, and a verb renders the template with the profile
 before it uses it. A template that names a key that the profile does not have stops the verb,
 and the message names the key.
@@ -72,5 +72,5 @@ An agent or a skill names a tier in its `model:`: `large`, `medium` or `small`. 
 | `[omp]` | the oh-my-pi model of each tier, written to `config.yml` as a role; `medium` is also the default model; all three tiers are required | `install` |
 
 A table that names a tier by an old name, `opus`, `sonnet` or `haiku`, stops `harness install`
-with exit 2 and names the rename. [architecture.md](architecture.md#the-neutral-vocabulary)
+with exit 2 and names the rename. [architecture.md](@ref "The neutral vocabulary")
 shows how each frontend reads a tier.

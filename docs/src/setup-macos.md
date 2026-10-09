@@ -78,7 +78,7 @@ mkdir -p ~/Research/Environment/Agents/instructions
 touch ~/Research/Environment/Agents/instructions/research-tree.md
 ```
 
-[architecture.md](architecture.md#the-three-layers) says how the tree instructions relate to the
+[architecture.md](@ref "The three layers") says how the tree instructions relate to the
 harness and the profile.
 
 ## `harness install --apply`
@@ -116,7 +116,7 @@ for you. For example, the Kaimon entry needs a token file, and `harness install`
 
 `harness install` writes the OpenCode configuration into the OpenCode configuration directory:
 `opencode.jsonc` with its permission block, the plugins, the global instruction file `AGENTS.md`
-and the agents. It also links the skills into `~/.agents/skills/`. [architecture.md](architecture.md#the-opencode-and-oh-my-pi-adapters)
+and the agents. It also links the skills into `~/.agents/skills/`. [architecture.md](@ref "The OpenCode and oh-my-pi adapters")
 describes the adapter.
 
 ### oh-my-pi
@@ -124,7 +124,7 @@ describes the adapter.
 `harness install` writes the oh-my-pi configuration into its agent directory,
 `$PI_CODING_AGENT_DIR`, else `~/.omp/agent/`: `config.yml` with the permission layer and the
 models, the guard extension, `AGENTS.md`, the rules, the agents and `mcp.json`.
-[architecture.md](architecture.md#the-opencode-and-oh-my-pi-adapters) describes the adapter.
+[architecture.md](@ref "The OpenCode and oh-my-pi adapters") describes the adapter.
 
 ## `harness settings install --apply`
 
@@ -162,7 +162,7 @@ cd ~/Research/Harness
 git config core.hooksPath .githooks
 ```
 
-[development.md](development.md#the-pre-push-hook) describes the hook. Do this step when you
+[development.md](@ref "The pre-push hook") describes the hook. Do this step when you
 change the harness and push. A user who only installs the harness can skip it.
 
 ## The check that it worked

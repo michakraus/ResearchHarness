@@ -23,7 +23,7 @@ write(
 
 makedocs(;
     sitename = "ResearchHarness",
-    repo = Remotes.GitHub("michakraus", "ResearchHarness"),
+    repo = Remotes.GitHub("michakraus/ResearchHarness"),
     format = Documenter.HTML(;
         prettyurls = get(ENV, "CI", nothing) == "true",
         edit_link = "main",
