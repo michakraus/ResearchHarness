@@ -1,8 +1,8 @@
 # The tools
 
 This page describes each tool of the dependency tables in the README: what the tool does, what
-the harness uses it for, and why the harness needs it. The sections follow the order of the
-tables. The required tools come first, then the optional tools.
+the harness uses it for, why the harness needs it, and where the harness calls it. The sections
+follow the order of the tables. The required tools come first, then the optional tools.
 
 ## Python
 
@@ -17,6 +17,10 @@ The harness needs Python 3.11 or later because the profile and the model tables 
 `tomllib` is in the standard library from 3.11. A shell script cannot parse TOML or JSON safely,
 and a compiled tool needs a build step on each machine.
 
+Call sites: every verb (`bin/harness:1`); the pre-push gate (`.githooks/pre-push:56`, and
+`.githooks/pre-push:143` for `python3.11`, which the gate skips when it is missing, because CI job
+`python` runs Python 3.11); the guard hooks, which oh-my-pi calls (`adapters/omp/guards.ts:105`).
+
 ## git
 
 git is the version control system. Each repository of the research tree is a git repository.
@@ -29,6 +33,9 @@ pre-push gate clones the pushed commit and tests it.
 The harness needs git because its work is on git repositories: the hooks, the commits and the
 pushes are git's own objects. No other tool reads them.
 
+Call sites: the verbs (`lib/harness/githooks.py:75`, `lib/harness/profile.py:247`); the hook
+`hooks/worktree.py:50`; the pre-push gate (`.githooks/pre-push:21`).
+
 ## gh
 
 gh is the command-line client of GitHub. It calls the GitHub API with the credentials of the
@@ -38,6 +45,8 @@ user.
 
 The harness needs gh because branch protection is a setting on GitHub, which only the API
 changes. gh holds the user's credentials, so the harness stores no token of its own.
+
+Call site: `harness ci-protection` (`lib/harness/protection.py:102`).
 
 ## gitleaks
 
@@ -56,6 +65,8 @@ and `stdin` commands
 first with several allowlists per rule, `[[rules.allowlists]]`, which `.gitleaks.toml` uses
 ([release note](https://github.com/gitleaks/gitleaks/releases/tag/v8.21.0)).
 
+Call sites: the pre-push gate (`.githooks/pre-push:46`); CI job `leaks`, which pins 8.30.1.
+
 ## Julia
 
 Julia is the language of the research code in the tree. The harness's tools for Julia code are
@@ -69,6 +80,12 @@ the Unicode form and the load of a package before a commit, and the test suite b
 
 The harness needs Julia because a tool that reads, runs or rewrites Julia code must parse it as
 Julia does. Only Julia's own parser and loader give that result.
+
+Call sites: `harness install` (`lib/harness/install.py:174`), `harness format`
+(`lib/harness/fmt.py:31`) and `harness ci-protection` (`lib/harness/protection.py:137`); the
+installed git hooks (`githooks/pre-commit:104`, `githooks/pre-push:50`,
+`githooks/pre-commit-wiki:56`); the pre-push gate (`.githooks/pre-push:204`), which skips it when
+it is missing, because CI job `test` runs the Julia tests.
 
 ## ExplicitImports, JSON, JuliaFormatter, JuliaSyntax, TestEnv and YAML
 
@@ -89,6 +106,14 @@ TestEnv to run a package's test files in its test environment. `verify-workflows
 The harness needs these packages because each does a task that Julia's standard library does not
 do. A copy of their code in the harness would be larger and less correct.
 
+Call sites: ExplicitImports, `githooks/explicit-imports.jl:28`; JSON, `scripts/gate.jl:27` and
+`scripts/mutate.jl:88`; JuliaFormatter, `harness format` (`githooks/format-tree.jl:37`) and the
+installed pre-commit hook (`githooks/pre-commit:108`); JuliaSyntax, `scripts/mutate.jl:90` and
+`scripts/mutants.jl:34`; TestEnv, `scripts/run-tests.jl:189` and `scripts/mutate-worker.jl:32`;
+YAML, `harness ci-protection` through `githooks/verify-workflows.jl:43`, and the installed wiki
+hook through `scripts/wiki-lint.jl:104`. `harness install` instantiates all six with
+`Project.toml`.
+
 ## Node.js
 
 Node.js runs JavaScript outside a browser.
@@ -99,6 +124,8 @@ plugins under Node.js and checks their decisions. A missing `node` is a wrong ca
 The harness needs Node.js because these extensions are JavaScript, and their frontends run them
 in a JavaScript runtime. The plugins take the Node.js built-in modules from
 `process.getBuiltinModule`, which Node.js 22.3 and 20.16 added.
+
+Call sites: the hook probe of `harness test` (`hooks/probe.py:616`, `hooks/probe.py:839`).
 
 ## shellcheck
 
@@ -113,6 +140,8 @@ The harness needs shellcheck because the git hooks run in every repository of th
 error in a hook can let a commit through unchecked. The shell does not report most of these
 errors itself.
 
+Call sites: the pre-push gate (`.githooks/pre-push:154`); CI job `lint`.
+
 ## actionlint
 
 actionlint checks GitHub Actions workflow files: the syntax, the expressions and the shell
@@ -122,6 +151,8 @@ CI job `lint` runs actionlint 1.7.12, at a fixed checksum, over `.github/workflo
 
 The harness needs actionlint because GitHub reports an error in a workflow only when the workflow
 runs. actionlint finds the error before the push.
+
+Call site: CI job `lint` (`.github/workflows/test.yml:49`).
 
 ## timeout
 
@@ -133,6 +164,8 @@ The installed pre-commit hook runs `fatou lint` under `timeout -k 5 60`.
 The harness needs `timeout` because `fatou lint` does not always stop: on one large generated
 file it ran for hours. Without `timeout`, the hook runs `fatou lint` with no limit, and a commit
 can wait for a long time.
+
+Call site: the installed pre-commit hook (`githooks/pre-commit:137`).
 
 ## fatou
 
@@ -146,6 +179,9 @@ as advice. `mutate.jl` runs `fatou lint` to reject a mutant that uses an undefin
 The harness needs fatou because it reports an undefined name from the source alone. Julia reports
 such a name only when the code runs.
 
+Call sites: the installed pre-commit hook (`githooks/pre-commit:135`); `scripts/mutate.jl:151`;
+CI job `test` (`.github/workflows/julia.yml:45`).
+
 ## rsync
 
 rsync copies a directory tree, with rules for the files that it leaves out.
@@ -156,6 +192,9 @@ copy too.
 
 The harness needs rsync because the copy must leave out paths by pattern, which a plain `cp`
 cannot do.
+
+Call site: `scripts/run-tests.jl:81`, which the Julia tests in CI call through
+`scripts/run-tests-test.jl`.
 
 ## Claude Code
 
@@ -169,6 +208,8 @@ instructions, commands and hooks. `harness settings` writes its permission setti
 The harness does not need Claude Code to run. Without it, nothing reads the layer in
 `~/.claude/`, and the triggering test of the skills cannot run.
 
+Call site: `harness skill-triggers --apply` (`lib/harness/skill_triggers.py:188`).
+
 ## OpenCode
 
 OpenCode is an open-source coding agent for the terminal. It is one of the three frontends that
@@ -178,6 +219,8 @@ the harness configures.
 block, the agents, the plugins and the global instruction file.
 
 The harness does not need OpenCode to run. Without it, nothing reads that configuration.
+
+Call site: `harness install` (`adapters/opencode/adapter.py:553`).
 
 ## oh-my-pi
 
@@ -189,6 +232,8 @@ the guard extension, the rules, the agents, the models and the MCP entry.
 
 The harness does not need oh-my-pi to run. Without it, nothing reads that configuration.
 
+Call site: `harness install` (`adapters/omp/adapter.py:108`).
+
 ## RTK
 
 RTK (Rust Token Killer) rewrites shell commands so that their output uses fewer tokens: for
@@ -198,6 +243,8 @@ The OpenCode plugin `rtk.ts` asks `rtk hook check` for the rewrite of each shell
 
 The harness does not need RTK. Without it, the plugin passes each command unchanged, and the
 output of a command is longer.
+
+Call site: the OpenCode plugin `adapters/opencode/plugins/rtk.ts:41`.
 
 ## Kaimon
 
@@ -210,6 +257,8 @@ server must restart. The oh-my-pi and OpenCode configurations hold its MCP entry
 The harness does not need Kaimon to run. Without it, the update job stops with an error, and an
 agent has no Julia session and no Kaimon tools.
 
+Call sites: the update job (`scripts/julia-update.jl:123`, `scripts/julia-update.jl:126`).
+
 ## jq
 
 jq reads and transforms JSON on the command line.
@@ -218,6 +267,8 @@ The Claude Code status line script reads the session data from JSON with jq.
 
 The harness needs jq only for the status line. A shell script cannot parse JSON safely. jq is a
 small tool: macOS supplies it, and the Linux distributions package it.
+
+Call site: the status line script (`adapters/claude/statusline-command.sh:6`).
 
 ## juliaup
 
@@ -229,6 +280,8 @@ configuration of juliaup.
 The harness needs juliaup only for the update job. Without it, the job cannot update the Julia
 releases.
 
+Call site: the update job (`scripts/julia-update.jl:105`).
+
 ## iTerm2
 
 iTerm2 is a terminal application for macOS. Its `cc-status` utility shows the state of a Claude
@@ -237,3 +290,5 @@ Code session in the terminal tab.
 The hook `hooks/cc-status` passes each Claude Code hook event to that utility.
 
 The harness does not need iTerm2. Without the utility, the hook does nothing and exits 0.
+
+Call site: `hooks/cc-status:11`.

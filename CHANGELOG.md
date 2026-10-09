@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- **The README's dependency tables say what each tool is used for.** The column `needed by`
+  listed the `file:line` of each call, which told a reader where a tool is called but not why.
+  The column `used for` now gives one plain sentence per tool, and for an optional tool also what
+  stops without it. The 55 call sites move, unchanged, into a *Call sites* paragraph at the end of
+  each section of `docs/tools.md`. The minimum column is unchanged. No code changes.
+
 - **The settings template no longer grants one organisation's documentation host.** Its
   `WebFetch` grant and its sandbox host leave `settings/settings.proposal.json`; a user who needs
   such a host lists it in the profile's `extra_domain`. A comment in `adapters/opencode/plugins/env.ts` no longer names an

@@ -101,46 +101,47 @@ flags.
 ## Dependencies
 
 The harness calls the tools below. A tool is required when a verb, a hook, the pre-push gate, CI
-or an installed git hook calls it. An optional tool serves one frontend or one job; the `needed
-by` column says what stops without it. The minimum is the floor that the code checks, that CI pins,
-that `[compat]` sets or that a release note names for a feature the code uses; each floor names
-its source. Where no floor exists, the cell gives the version that the harness is tested with.
-[`docs/tools.md`](docs/tools.md) says what each tool does and why the harness needs it.
+or an installed git hook calls it. An optional tool serves one frontend or one job; the `used for`
+column also says what stops without it. The minimum is the floor that the code checks, that CI
+pins, that `[compat]` sets or that a release note names for a feature the code uses; each floor
+names its source. Where no floor exists, the cell gives the version that the harness is tested
+with. [`docs/tools.md`](docs/tools.md) says what each tool does, why the harness needs it, and
+where the harness calls it.
 
 ### Required
 
-| tool | minimum | needed by |
+| tool | minimum | used for |
 |:--|:--|:--|
-| Python | ≥ 3.11, the check at `bin/harness:9` | every verb (`bin/harness:1`); the pre-push gate (`.githooks/pre-push:56`, and `.githooks/pre-push:143` for `python3.11`, which the gate skips when it is missing, because CI job `python` runs Python 3.11); the guard hooks, which oh-my-pi calls (`adapters/omp/guards.ts:105`) |
-| git | tested with 2.54.0 | the verbs (`lib/harness/githooks.py:75`, `lib/harness/profile.py:247`); the hook `hooks/worktree.py:50`; the pre-push gate (`.githooks/pre-push:21`) |
-| gh | tested with 2.102.0 | `harness ci-protection` (`lib/harness/protection.py:102`) |
-| gitleaks | ≥ 8.21, the check at `.githooks/pre-push:54` | the pre-push gate (`.githooks/pre-push:46`); CI job `leaks`, which pins 8.30.1 |
-| Julia | ≥ 1.13, `[compat]` at `Project.toml:22` | `harness install` (`lib/harness/install.py:174`), `harness format` (`lib/harness/fmt.py:31`) and `harness ci-protection` (`lib/harness/protection.py:137`); the installed git hooks (`githooks/pre-commit:104`, `githooks/pre-push:50`, `githooks/pre-commit-wiki:56`); the pre-push gate (`.githooks/pre-push:204`), which skips it when it is missing, because CI job `test` runs the Julia tests |
-| ExplicitImports | ≥ 1.15, `[compat]` at `Project.toml:16` | `githooks/explicit-imports.jl:28`; `harness install` instantiates it with the other packages of `Project.toml` |
-| JSON | ≥ 1.10, `[compat]` at `Project.toml:17` | `scripts/gate.jl:27`, `scripts/mutate.jl:88` |
-| JuliaFormatter | ≥ 2.14, `[compat]` at `Project.toml:18` | `harness format` (`githooks/format-tree.jl:37`); the installed pre-commit hook (`githooks/pre-commit:108`) |
-| JuliaSyntax | ≥ 1.0.2, `[compat]` at `Project.toml:19` | `scripts/mutate.jl:90`, `scripts/mutants.jl:34` |
-| TestEnv | ≥ 1.103.7, `[compat]` at `Project.toml:20` | `scripts/run-tests.jl:189`, `scripts/mutate-worker.jl:32` |
-| YAML | ≥ 0.4.17, `[compat]` at `Project.toml:21` | `harness ci-protection`, through `githooks/verify-workflows.jl:43`; the installed wiki hook, through `scripts/wiki-lint.jl:104` |
-| Node.js | ≥ 20.16 (20.x), ≥ 22.3, for `process.getBuiltinModule`, as the API documentation says: <https://nodejs.org/api/process.html#processgetbuiltinmoduleid> | `harness test`, whose hook probe loads the guard extensions (`hooks/probe.py:616`, `hooks/probe.py:839`) |
-| shellcheck | tested with 0.11.0 | the pre-push gate (`.githooks/pre-push:154`), which skips it when it is missing, because CI job `lint` runs it |
-| actionlint | ≥ 1.7.12, the CI pin at `.github/workflows/test.yml:49` | CI job `lint` |
-| timeout | tested with 9.12 | the installed pre-commit hook (`githooks/pre-commit:137`), which runs `fatou lint` without a time limit when `timeout` is missing |
-| fatou | ≥ 0.22.0, the CI pin at `.github/workflows/julia.yml:45` | the installed pre-commit hook (`githooks/pre-commit:135`); `scripts/mutate.jl:151`; CI job `test` |
-| rsync | tested with 3.5.1 | `scripts/run-tests.jl:81`, which the Julia tests in CI call through `scripts/run-tests-test.jl` |
+| Python | ≥ 3.11, the check at `bin/harness:9` | runs the `harness` command, the guard hooks and the pre-push gate |
+| git | tested with 2.54.0 | reads and pushes the repositories of the tree, makes the worktrees of Claude Code, and clones the pushed commit for the pre-push gate |
+| gh | tested with 2.102.0 | protects the default branch of each repository on GitHub, in `harness ci-protection` |
+| gitleaks | ≥ 8.21, the check at `.githooks/pre-push:54` | finds secrets in the commits of a push, in the pre-push gate and in CI |
+| Julia | ≥ 1.13, `[compat]` at `Project.toml:22` | runs the Julia scripts: the formatter, the test runner, the mutation tests, the workflow check and the installed git hooks |
+| ExplicitImports | ≥ 1.15, `[compat]` at `Project.toml:16` | finds the names that a package uses without an explicit import, in the script `explicit-imports.jl` and the package audit |
+| JSON | ≥ 1.10, `[compat]` at `Project.toml:17` | writes the reports of the test gate and the mutation tests |
+| JuliaFormatter | ≥ 2.14, `[compat]` at `Project.toml:18` | formats Julia code, in `harness format` and the installed pre-commit hook |
+| JuliaSyntax | ≥ 1.0.2, `[compat]` at `Project.toml:19` | parses Julia code to make the mutants of a mutation test |
+| TestEnv | ≥ 1.103.7, `[compat]` at `Project.toml:20` | runs the tests of a package in its test environment, for the test runner and the mutation tests |
+| YAML | ≥ 0.4.17, `[compat]` at `Project.toml:21` | reads the CI workflows and the frontmatter of the wiki pages |
+| Node.js | ≥ 20.16 (20.x), ≥ 22.3, for `process.getBuiltinModule`, as the API documentation says: <https://nodejs.org/api/process.html#processgetbuiltinmoduleid> | loads the guard extensions of oh-my-pi and OpenCode in the hook probe of `harness test` |
+| shellcheck | tested with 0.11.0 | checks the shell scripts, in the pre-push gate and in CI |
+| actionlint | ≥ 1.7.12, the CI pin at `.github/workflows/test.yml:49` | checks the GitHub workflow files, in CI |
+| timeout | tested with 9.12 | stops `fatou lint` in the installed pre-commit hook after 60 seconds |
+| fatou | ≥ 0.22.0, the CI pin at `.github/workflows/julia.yml:45` | lints the staged Julia files before a commit, and rejects a mutant that uses an undefined name |
+| rsync | tested with 3.5.1 | copies a package without its `.git` directory, for the test runner and the mutation tests |
 
 ### Optional
 
-| tool | minimum | needed by |
+| tool | minimum | used for |
 |:--|:--|:--|
-| Claude Code | tested with 2.1.295 | `harness skill-triggers --apply` (`lib/harness/skill_triggers.py:188`); without it, the triggering test of the skills cannot run, and nothing reads the layer that `harness install` writes into `~/.claude/` |
-| OpenCode | tested with 2.0.26 | `harness install` writes its configuration (`adapters/opencode/adapter.py:553`); without it, nothing reads that configuration |
-| oh-my-pi | tested with 18.8.6 | `harness install` writes its configuration (`adapters/omp/adapter.py:108`); without it, nothing reads that configuration |
-| RTK | tested with 0.51.0 | the OpenCode plugin `adapters/opencode/plugins/rtk.ts:41`; without it, the plugin passes each command unchanged |
-| Kaimon | tested with 2.10.0, the `version` of its app project | the update job `scripts/julia-update.jl:123` and `scripts/julia-update.jl:126`; without it, the job stops with an error, and the agents have no Julia session |
-| jq | tested with 1.7.1 | the Claude Code status line (`adapters/claude/statusline-command.sh:6`); without it, the status line shows no values |
-| juliaup | tested with 1.18.9 | the update job (`scripts/julia-update.jl:105`); without it, the job cannot update the Julia releases |
-| iTerm2 | tested with 3.7.3, the `CFBundleShortVersionString` of the app | the hook `hooks/cc-status:11`, which calls iTerm2's `cc-status` utility; without it, the hook does nothing and exits 0 |
+| Claude Code | tested with 2.1.295 | reads the layer that `harness install` writes into `~/.claude/`, and runs the triggering test of the skills; without it, neither happens |
+| OpenCode | tested with 2.0.26 | reads the configuration that `harness install` writes into `~/.config/opencode/`; without it, nothing reads that configuration |
+| oh-my-pi | tested with 18.8.6 | reads the configuration that `harness install` writes into `~/.omp/agent/`; without it, nothing reads that configuration |
+| RTK | tested with 0.51.0 | shortens the output of shell commands in OpenCode; without it, the plugin passes each command unchanged |
+| Kaimon | tested with 2.10.0, the `version` of its app project | gives an agent a Julia session and tools for Julia code; without it, the update job stops with an error, and the agents have no Julia session |
+| jq | tested with 1.7.1 | reads the session data for the Claude Code status line; without it, the status line shows no values |
+| juliaup | tested with 1.18.9 | updates the Julia releases, in the update job; without it, the job cannot update them |
+| iTerm2 | tested with 3.7.3, the `CFBundleShortVersionString` of the app | shows the state of a Claude Code session in the terminal tab; without it, the hook `hooks/cc-status` does nothing and exits 0 |
 
 The tables leave out the system tools: the POSIX shell utilities, such as `awk`, `sed`, `grep`,
 `ps`, `kill`, `id` and `mktemp`; the tools that macOS supplies, `launchctl`, `security`,
@@ -166,7 +167,8 @@ The tables leave out the system tools: the POSIX shell utilities, such as `awk`,
   adapters, and the layout of the repository.
 - [docs/development.md](docs/development.md): the tests, the pre-push hook, the leak checks and
   CI.
-- [docs/tools.md](docs/tools.md): what each dependency does, and why the harness needs it.
+- [docs/tools.md](docs/tools.md): what each dependency does, why the harness needs it, and
+  where the harness calls it.
 
 ## License
 
