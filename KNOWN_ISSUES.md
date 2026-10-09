@@ -377,3 +377,46 @@
   directory of its own (`mktempdir`). Found by the critic of part I1.
 - kind: defect
 - found: 2026-10-09
+
+### K40 · The header of `fatou-lsp.jl` names a caller that does not exist.
+
+- location: `scripts/fatou-lsp.jl:3`
+- evidence: the header says the client is "shared by `julia-methods.jl` and
+  `probe-fatou-lsp.jl`"; `scripts/probe-fatou-lsp.jl` is not in the repository. Found while the
+  component pages were written.
+- kind: docs
+- found: 2026-10-09
+
+### K41 · The usage comment of `wiki-lint.jl` says "all four" trees; the code checks five.
+
+- location: `scripts/wiki-lint.jl:6`, `scripts/wiki-lint.jl:110`
+- evidence: `SCOPES` holds five trees: `Knowledge`, `Environment`, `Tasks`, `Bibliography` and
+  `Library`. Found while the component pages were written.
+- kind: docs
+- found: 2026-10-09
+
+### K42 · `julia-callers.jl` cites a notes page that is not in the repository.
+
+- location: `scripts/julia-callers.jl:5`
+- evidence: the header names `Environment/Notes/Helpers-and-MCPs.md` as the claim it checks; a
+  reader of the public repository cannot open it. Found while the component pages were written.
+- kind: docs
+- found: 2026-10-09
+
+### K43 · The description of `which-model` names `haiku`; its `model:` is the tier `small`.
+
+- location: `skills/which-model/SKILL.md:3`
+- evidence: the description says "a typed slash command whose frontmatter names haiku", and the
+  frontmatter holds `model: small`, the neutral tier. Found while the component pages were
+  written.
+- kind: docs
+- found: 2026-10-09
+
+### K44 · `repo-drift.js` says the workflow installer skips `Experiments/`; its README says it does not.
+
+- location: `agent-workflows/repo-drift.js:15`, `agent-workflows/README.md:58`
+- evidence: the README says the installer iterates `Packages/*/` and `Experiments/*/` alike, and
+  calls the script's reason wrong; the script's comment still gives it. Found while the
+  component pages were written.
+- kind: docs
+- found: 2026-10-09
