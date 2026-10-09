@@ -78,16 +78,20 @@ link. On a push to `main`, the workflow also deploys the site to the `gh-pages` 
 ## The documentation site
 
 The pages are in `docs/src/`. The home page is the README: `docs/make.jl` copies it to
-`docs/src/index.md` and changes its links to work between pages. Build the site locally from the
-root of the repository:
+`docs/src/index.md` and changes its links to work between pages. Documenter reads the pages, and
+DocumenterVitepress makes a VitePress site from them. The VitePress configuration and theme are
+in `docs/src/.vitepress/`, and `docs/package.json` names the npm packages of the build. Build the
+site locally from the root of the repository:
 
 ```bash
 julia --project=docs -e 'using Pkg; Pkg.instantiate()'
 julia --project=docs docs/make.jl
 ```
 
-The site is then in `docs/build/`. `docs/build/`, `docs/Manifest.toml` and `docs/src/index.md`
-are not tracked. A link from a page to a file outside `docs/src/` fails the build; link to the
+The build runs `npm` from the package `NodeJS_20_jll`, so you need no Node.js installation. `npm`
+gets VitePress from the npm registry, so the build needs a network connection. The site is then in
+`docs/build/1/`. `docs/build/`, `docs/node_modules/`, `docs/package-lock.json`,
+`docs/Manifest.toml` and `docs/src/index.md` are not tracked. A link from a page to a file outside `docs/src/` fails the build; link to the
 file on GitHub instead. Link to a section of another page with `[text](@ref "Heading text")`,
 or with Documenter's anchor for a heading in code: `[text](@ref harness-install-apply)`. The
 build fails on a reference that it cannot resolve. A URL fragment such as `page.md#heading` is

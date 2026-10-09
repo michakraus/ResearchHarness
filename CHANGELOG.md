@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- **The documentation site is a VitePress site.** `docs/make.jl` renders the pages with
+  DocumenterVitepress (`[compat]` 0.3.7) and deploys them with `DocumenterVitepress.deploydocs`.
+  The site has VitePress's light and dark themes, a search box, and an edit link to `main`; the
+  edit link of the home page opens the README. The VitePress configuration and theme are in
+  `docs/src/.vitepress/`, and `docs/package.json` names the npm packages. The build runs `npm`
+  from `NodeJS_20_jll` and writes the site to `docs/build/1/`; `docs/node_modules/` and
+  `docs/package-lock.json` are not tracked. A local build decides not to deploy, so it prints no
+  warning.
+
 - **The documentation site shows who spawns whom.** The new page *Agents at work*
   (`docs/src/agents-at-work.md`, under *Background*) has four call graphs: the `build-part`
   loop, the `build-reviewed` loop, the `julia-pr-shepherd` chain and every spawn. Each box shows
