@@ -20,10 +20,11 @@ grant or a deny that silently matches nothing.
 
 `leaks` also searches the repository, not the renders, for a name of the research tree: every
 directory below a `repository_roots` entry, read when it runs, and every `org` entry. It matches
-a whole word, as `git grep -w` does. The repository's own `owner/name`, from its `origin` URL, is
-the one allowed occurrence. With `--commits F` it also searches, for both, the paths and the lines
-that each commit of F adds (`git show --format= --text -U0`), so a leak that a later commit
-removes or renames away is still a hit, and the message of each commit (`git show -s --format=%B`,
+a whole word, as `git grep -w` does. The repository's own `owner/name`, from its `origin` URL,
+and the host of its GitHub Pages site, `owner.github.io`, are the allowed occurrences. With
+`--commits F` it also searches, for both, the paths and the lines that each commit of F adds
+(`git show --format= --text -U0`), so a leak that a later commit removes or renames away is still
+a hit, and the message of each commit (`git show -s --format=%B`,
 the subject and the body, trailers too), a hit at `<sha12> message:<n>` with `n` from 1; gitleaks
 reads no message. The author, the committer, a tag message and `git notes` are not searched. The
 pre-push hook passes the commits that a push sends.
@@ -250,8 +251,11 @@ def own_repository(repo=REPO):
 
 
 def name_hits(line, pattern, allowed):
-    """The tree names in `line`, after removing every occurrence of `allowed`."""
-    return pattern.findall(line.replace(allowed, "") if allowed else line)
+    """The tree names in `line`, after removing every occurrence of `allowed`, the repository's own
+    `owner/name`, and of `owner.github.io`, the host of its GitHub Pages site."""
+    if allowed:
+        line = line.replace(allowed, "").replace(allowed.split("/")[0] + ".github.io", "")
+    return pattern.findall(line)
 
 
 def templates():
@@ -391,6 +395,9 @@ NAME_CASES = [
     ("the my-paper repository", ["my-paper"]),
     ("github.com/org/Repo", []),
     ("github.com/org/Other", ["org"]),
+    ("https://org.github.io/Repo/", []),
+    ("https://org.github.io/", []),
+    ("org.github.com", ["org"]),
 ]
 
 

@@ -144,7 +144,9 @@ value repeats the line, or the JSON list element, once for each item. A placehol
 profile does not have exits 2. `get` prints one value, one line for each item of a list.
 
 `leaks` searches every tracked file and its path for each string of the profile's `leak` list, and
-for the name of each directory below a `repository_roots` entry and each `org` entry. It also
+for the name of each directory below a `repository_roots` entry and each `org` entry. The
+repository's own `owner/name` and the host of its GitHub Pages site, `owner.github.io`, are no
+hit. It also
 renders each template with `examples/profile.toml` and searches the result. With `--commits F` it
 also searches the paths, the added lines and the message of each commit that `F` names. The
 pre-push hook calls it so. The verb exits 1 on a hit.
