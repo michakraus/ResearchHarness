@@ -7,6 +7,10 @@
 
 using Documenter
 
+# The figures are drawn first, into docs/src/assets/figures/, from docs/figures/.
+include(joinpath(@__DIR__, "figures", "figures.jl"))
+make_figures()
+
 # The home page is the README, so its text has one source. Its links into docs/src/ become links
 # between pages, and the edit link of the page points at the README.
 readme = read(joinpath(@__DIR__, "..", "README.md"), String)
@@ -35,7 +39,7 @@ makedocs(;
         "Tutorial" => "tutorial.md",
         "Setup" => ["setup-macos.md", "setup-linux.md"],
         "Use" => ["daily-use.md", "profile.md", "harness-command.md"],
-        "Background" => ["security.md", "architecture.md", "tools.md"],
+        "Background" => ["agents-at-work.md", "security.md", "architecture.md", "tools.md"],
         "Components" => [
             "components/agents.md",
             "components/skills.md",
@@ -52,5 +56,8 @@ makedocs(;
     ]
 )
 
-# The harness has no releases, so the site is one version at the root of gh-pages.
-deploydocs(; repo = "github.com/michakraus/ResearchHarness.git", devbranch = "main", versions = nothing)
+# The harness has no releases, so the site is one version at the root of gh-pages. Only the docs
+# workflow deploys; a local build would print a warning that it cannot.
+if get(ENV, "GITHUB_ACTIONS", nothing) == "true"
+    deploydocs(; repo = "github.com/michakraus/ResearchHarness.git", devbranch = "main", versions = nothing)
+end

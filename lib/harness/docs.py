@@ -8,15 +8,34 @@ checks both directions: every component has a heading on its page, and every nam
 in a level-2 heading is a component of that page, so a removed component leaves no stale section.
 It also checks that every tool of the README's dependency tables has a heading in
 `docs/src/tools.md` that names it as a whole word.
+
+The call graphs of `docs/src/agents-at-work.md` are drawn from `docs/figures/calls.toml`, one
+`[[call]]` entry per spawn: `caller`, `callee`, `at` (the `file:line` of the instruction that
+spawns), and optionally `effort`, where the caller sets one other than the callee's own, and
+`label`, the text on the edge. `harness test` checks that every caller and callee is an agent of
+`agents/` or a skill of `skills/`, that `at` is a line of the caller's own source that names the
+callee, and that every source with the tool `agent`, and each skill of SPAWNING_SKILLS, is the
+caller of at least one entry.
 """
 
 import re
 import subprocess
+import tomllib
 
 from . import REPO
+from .frontmatter import parse_file
 
 PAGES = REPO / "docs" / "src" / "components"
 TOOLS = REPO / "docs" / "src" / "tools.md"
+CALLS = REPO / "docs" / "figures" / "calls.toml"
+
+# The keys of a `[[call]]` entry, the ones it must have, and the values of `effort`.
+CALL_KEYS = {"caller", "callee", "at", "effort", "label"}
+CALL_REQUIRED = ("caller", "callee", "at")
+EFFORTS = ("low", "medium", "high", "xhigh", "max")
+# The skills that spawn agents from the main session, which has the tool `agent` without a
+# `tools:` line.
+SPAWNING_SKILLS = ("build-part", "build-reviewed")
 
 def stem(path):
     """The file name without `.md`: the name of an agent, a rule or a command."""
@@ -129,6 +148,64 @@ def tracked():
     return out.splitlines()
 
 
+def call_sources(paths):
+    """{name: source path} of each agent of `agents/` and each skill of `skills/` in `paths`."""
+    found = {stem(p): p for p in paths if matches("agents/*.md", p)}
+    found.update({parent(p): p for p in paths if matches("skills/*/SKILL.md", p)})
+    return found
+
+
+def call_problems(call, sources, meta, lines):
+    """What is wrong with one `[[call]]` entry, one phrase each. `sources` maps a name to its
+    source path, `meta` maps a name to its frontmatter, and `lines(path)` gives a file's lines."""
+    if not isinstance(call, dict):
+        return ["is not a table"]
+    problems = [f"has the unknown key {key!r}" for key in sorted(set(call) - CALL_KEYS)]
+    problems += [f"has no {key!r}" for key in CALL_REQUIRED if key not in call]
+    caller, callee, at = (call.get(key) for key in CALL_REQUIRED)
+    for role, name in (("caller", caller), ("callee", callee)):
+        if role in call and not (isinstance(name, str) and name in sources):
+            problems.append(f"{role} {name!r} is no agent of agents/ and no skill of skills/")
+    if "at" in call and isinstance(caller, str) and caller in sources:
+        place = re.fullmatch(r"(.+):([1-9][0-9]*)", at) if isinstance(at, str) else None
+        if not place or place[1] != sources[caller]:
+            problems.append(f"at {at!r} is no line of the caller's source {sources[caller]}")
+        else:
+            text = lines(place[1])
+            if int(place[2]) > len(text):
+                problems.append(f"at {at!r} is past the end of the file")
+            elif isinstance(callee, str) and callee in sources and not word(callee, text[int(place[2]) - 1]):
+                problems.append(f"the line {at} does not name {callee!r}")
+    if "effort" in call:
+        effort = call["effort"]
+        if effort not in EFFORTS:
+            problems.append(f"effort {effort!r} is none of {', '.join(EFFORTS)}")
+        elif isinstance(callee, str) and meta.get(callee, {}).get("effort") == effort:
+            problems.append(f"effort {effort!r} is the callee's own")
+    if "label" in call and not isinstance(call["label"], str):
+        problems.append("label is not a string")
+    return problems
+
+
+def spawners(meta):
+    """The sources that spawn agents: each with the tool `agent`, and each of SPAWNING_SKILLS."""
+    return sorted({name for name, m in meta.items() if "agent" in m.get("tools", [])} | set(SPAWNING_SKILLS))
+
+
+def call_cases(calls, sources, meta, lines, check):
+    """The cases of `calls`, the entries of calls.toml, through `check(ok, label)`."""
+    for number, call in enumerate(calls, 1):
+        problems = call_problems(call, sources, meta, lines)
+        name = f"{call.get('caller')} -> {call.get('callee')}" if isinstance(call, dict) else repr(call)
+        check(not problems, f"calls.toml entry {number}, {name}" + (": " + "; ".join(problems) if problems else ""))
+    keys = [tuple(repr(c.get(k)) for k in ("caller", "callee", "effort")) for c in calls if isinstance(c, dict)]
+    for key in sorted({k for k in keys if keys.count(k) > 1}):
+        check(False, f"calls.toml has {key[0]} -> {key[1]} at effort {key[2]} more than once")
+    callers = {c.get("caller") for c in calls if isinstance(c, dict) and isinstance(c.get("caller"), str)}
+    for name in spawners(meta):
+        check(name in callers, f"calls.toml has an entry with the caller {name!r}, which spawns")
+
+
 def selftest():
     """The matching rules on fixed inputs, then the pages of this checkout."""
     total = wrong = 0
@@ -171,4 +248,44 @@ def selftest():
     tool_heads = headings(TOOLS.read_text(), 2)
     for tool in readme_tools((REPO / "README.md").read_text()):
         check(any(word(tool, h) for h in tool_heads), f"tools.md has a heading for {tool!r}")
+
+    # The rules of calls.toml on fixed inputs: each wrong entry gives one problem.
+    sources = call_sources(["agents/a.md", "agents/b.md", "skills/s/SKILL.md", "skills/s/edges.md"])
+    meta = {"a": {"tools": ["read"]}, "b": {"tools": ["agent"], "effort": "medium"}, "s": {}}
+    files = {"agents/b.md": ["---", "Spawn `a` here.", "Spawn the s skill."], "skills/s/SKILL.md": ["Spawn `b`."]}
+    good = {"caller": "b", "callee": "a", "at": "agents/b.md:2"}
+    check(sources == {"a": "agents/a.md", "b": "agents/b.md", "s": "skills/s/SKILL.md"}, "call_sources reads agents/*.md and skills/*/SKILL.md only")
+    check(call_problems(good, sources, meta, files.get) == [], "a true entry of calls.toml has no problem")
+    for change, phrase in [
+        ({"callee": "nonexistent"}, "callee 'nonexistent' is no agent"),
+        ({"caller": "nonexistent"}, "caller 'nonexistent' is no agent"),
+        ({"at": "agents/b.md:3"}, "does not name 'a'"),
+        ({"at": "skills/s/SKILL.md:1"}, "no line of the caller's source"),
+        ({"at": "agents/b.md:9"}, "past the end"),
+        ({"at": "agents/b.md"}, "no line of the caller's source"),
+        ({"effort": "huge"}, "effort 'huge' is none of"),
+        ({"model": "large"}, "unknown key 'model'"),
+        ({"label": 1}, "label is not a string"),
+    ]:
+        found = call_problems(good | change, sources, meta, files.get)
+        check(len(found) == 1 and phrase in found[0], f"calls.toml entry with {change} gives {phrase!r}: {found}")
+    check(call_problems({"caller": "s", "callee": "b", "at": "skills/s/SKILL.md:1", "effort": "medium"}, sources, meta, files.get)
+          == ["effort 'medium' is the callee's own"], "an effort that is the callee's own is a problem")
+    check(call_problems({"caller": "b", "callee": "a"}, sources, meta, files.get) == ["has no 'at'"], "an entry without 'at' is a problem")
+    check(spawners(meta) == ["b", *SPAWNING_SKILLS], "spawners: the sources with the tool agent, and SPAWNING_SKILLS")
+    found = []
+    call_cases([good, good, {"caller": "s", "callee": "b", "at": "skills/s/SKILL.md:1"}], sources, meta, files.get,
+               lambda ok, label: found.append((ok, label)))
+    check([label for ok, label in found if not ok] == [
+        "calls.toml has 'b' -> 'a' at effort None more than once",
+        "calls.toml has an entry with the caller 'build-part', which spawns",
+        "calls.toml has an entry with the caller 'build-reviewed', which spawns",
+    ], f"call_cases names a duplicate and each spawner without an entry: {found}")
+
+    # calls.toml of this checkout.
+    sources = call_sources(tracked())
+    meta = {name: parse_file(REPO / path).meta for name, path in sources.items()}
+    calls = tomllib.loads(CALLS.read_text()).get("call", []) if CALLS.is_file() else []
+    check(CALLS.is_file() and bool(calls), "docs/figures/calls.toml exists and has [[call]] entries")
+    call_cases(calls, sources, meta, lambda path: (REPO / path).read_text().splitlines(), check)
     return total, wrong

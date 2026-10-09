@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN"
+ "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<!-- Title: build&#45;reviewed Pages: 1 -->
+<svg width="389pt" height="245pt"
+ viewBox="0.00 0.00 389.00 245.00" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+<g id="graph0" class="graph" transform="scale(1 1) rotate(0) translate(4 240.92)">
+<title>build&#45;reviewed</title>
+<!-- build&#45;reviewed -->
+<g id="node1" class="node">
+<title>build&#45;reviewed</title>
+<path fill="#f7ecc8" stroke="#5a5a5a" d="M237.99,-236.92C237.99,-236.92 128.98,-236.92 128.98,-236.92 122.98,-236.92 116.98,-230.92 116.98,-224.92 116.98,-224.92 116.98,-207.28 116.98,-207.28 116.98,-201.28 122.98,-195.28 128.98,-195.28 128.98,-195.28 237.99,-195.28 237.99,-195.28 243.99,-195.28 249.99,-201.28 249.99,-207.28 249.99,-207.28 249.99,-224.92 249.99,-224.92 249.99,-230.92 243.99,-236.92 237.99,-236.92"/>
+<text xml:space="preserve" text-anchor="start" x="137.97" y="-221.9" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="13.00" fill="#1a1a1a">build&#45;reviewed</text>
+<text xml:space="preserve" text-anchor="start" x="155.97" y="-211.6" font-family="Helvetica,sans-Serif" font-size="10.00" fill="#1a1a1a">skill on opus</text>
+<text xml:space="preserve" text-anchor="start" x="127.78" y="-201.6" font-family="Helvetica,sans-Serif" font-size="10.00" fill="#1a1a1a">effort: the session&#39;s effort</text>
+</g>
+<!-- part&#45;builder -->
+<g id="node2" class="node">
+<title>part&#45;builder</title>
+<path fill="#dbe8f7" stroke="#5a5a5a" d="M106.4,-139.28C106.4,-139.28 36.57,-139.28 36.57,-139.28 30.57,-139.28 24.57,-133.28 24.57,-127.28 24.57,-127.28 24.57,-109.64 24.57,-109.64 24.57,-103.64 30.57,-97.64 36.57,-97.64 36.57,-97.64 106.4,-97.64 106.4,-97.64 112.4,-97.64 118.4,-103.64 118.4,-109.64 118.4,-109.64 118.4,-127.28 118.4,-127.28 118.4,-133.28 112.4,-139.28 106.4,-139.28"/>
+<text xml:space="preserve" text-anchor="start" x="35.37" y="-124.26" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="13.00" fill="#1a1a1a">part&#45;builder</text>
+<text xml:space="preserve" text-anchor="start" x="39.79" y="-113.96" font-family="Helvetica,sans-Serif" font-size="10.00" fill="#1a1a1a">agent on opus</text>
+<text xml:space="preserve" text-anchor="start" x="39.53" y="-103.96" font-family="Helvetica,sans-Serif" font-size="10.00" fill="#1a1a1a">effort: medium</text>
+</g>
+<!-- build&#45;reviewed&#45;&gt;part&#45;builder -->
+<g id="edge1" class="edge">
+<title>build&#45;reviewed&#45;&gt;part&#45;builder</title>
+<path fill="none" stroke="#8c8c8c" stroke-width="1.4" d="M130.39,-194.97C121.26,-190.06 112.34,-184.18 104.9,-177.28 96.83,-169.8 90.16,-159.92 84.95,-150.45"/>
+<polygon fill="#8c8c8c" stroke="#8c8c8c" stroke-width="1.4" points="88.1,-148.93 80.46,-141.58 81.85,-152.09 88.1,-148.93"/>
+<polygon fill="#f2f2f2" stroke="none" points="104.9,-157.28 104.9,-177.28 178.48,-177.28 178.48,-157.28 104.9,-157.28"/>
+<text xml:space="preserve" text-anchor="start" x="108.9" y="-163.28" font-family="Helvetica,sans-Serif" font-size="10.00" fill="#1a1a1a">build, fix, finish</text>
+</g>
+<!-- part&#45;critic -->
+<g id="node3" class="node">
+<title>part&#45;critic</title>
+<path fill="#dbe8f7" stroke="#5a5a5a" d="M214.24,-139.28C214.24,-139.28 152.73,-139.28 152.73,-139.28 146.73,-139.28 140.73,-133.28 140.73,-127.28 140.73,-127.28 140.73,-109.64 140.73,-109.64 140.73,-103.64 146.73,-97.64 152.73,-97.64 152.73,-97.64 214.24,-97.64 214.24,-97.64 220.24,-97.64 226.24,-103.64 226.24,-109.64 226.24,-109.64 226.24,-127.28 226.24,-127.28 226.24,-133.28 220.24,-139.28 214.24,-139.28"/>
+<text xml:space="preserve" text-anchor="start" x="153.5" y="-124.26" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="13.00" fill="#1a1a1a">part&#45;critic</text>
+<text xml:space="preserve" text-anchor="start" x="151.79" y="-113.96" font-family="Helvetica,sans-Serif" font-size="10.00" fill="#1a1a1a">agent on opus</text>
+<text xml:space="preserve" text-anchor="start" x="151.53" y="-103.96" font-family="Helvetica,sans-Serif" font-size="10.00" fill="#1a1a1a">effort: medium</text>
+</g>
+<!-- build&#45;reviewed&#45;&gt;part&#45;critic -->
+<g id="edge2" class="edge">
+<title>build&#45;reviewed&#45;&gt;part&#45;critic</title>
+<path fill="none" stroke="#8c8c8c" stroke-width="1.4" d="M183.48,-194.82C183.48,-182.26 183.48,-165.87 183.48,-151.58"/>
+<polygon fill="#8c8c8c" stroke="#8c8c8c" stroke-width="1.4" points="186.98,-151.83 183.48,-141.83 179.98,-151.83 186.98,-151.83"/>
+<polygon fill="#f2f2f2" stroke="none" points="183.48,-157.28 183.48,-177.28 231.5,-177.28 231.5,-157.28 183.48,-157.28"/>
+<text xml:space="preserve" text-anchor="start" x="187.48" y="-163.28" font-family="Helvetica,sans-Serif" font-size="10.00" fill="#1a1a1a">one critic</text>
+</g>
+<!-- julia&#45;test&#45;runner -->
+<g id="node4" class="node">
+<title>julia&#45;test&#45;runner</title>
+<path fill="#dbe8f7" stroke="#5a5a5a" d="M368.99,-139.28C368.99,-139.28 259.98,-139.28 259.98,-139.28 253.98,-139.28 247.98,-133.28 247.98,-127.28 247.98,-127.28 247.98,-109.64 247.98,-109.64 247.98,-103.64 253.98,-97.64 259.98,-97.64 259.98,-97.64 368.99,-97.64 368.99,-97.64 374.99,-97.64 380.99,-103.64 380.99,-109.64 380.99,-109.64 380.99,-127.28 380.99,-127.28 380.99,-133.28 374.99,-139.28 368.99,-139.28"/>
+<text xml:space="preserve" text-anchor="start" x="265.01" y="-124.26" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="13.00" fill="#1a1a1a">julia&#45;test&#45;runner</text>
+<text xml:space="preserve" text-anchor="start" x="281.68" y="-113.96" font-family="Helvetica,sans-Serif" font-size="10.00" fill="#1a1a1a">agent on haiku</text>
+<text xml:space="preserve" text-anchor="start" x="258.78" y="-103.96" font-family="Helvetica,sans-Serif" font-size="10.00" fill="#1a1a1a">effort: the session&#39;s effort</text>
+</g>
+<!-- build&#45;reviewed&#45;&gt;julia&#45;test&#45;runner -->
+<g id="edge3" class="edge">
+<title>build&#45;reviewed&#45;&gt;julia&#45;test&#45;runner</title>
+<path fill="none" stroke="#8c8c8c" stroke-width="1.4" d="M212.16,-194.78C220.06,-189.14 228.62,-183 236.48,-177.28 250.06,-167.4 264.88,-156.46 277.92,-146.77"/>
+<polygon fill="#8c8c8c" stroke="#8c8c8c" stroke-width="1.4" points="279.86,-149.69 285.8,-140.91 275.69,-144.08 279.86,-149.69"/>
+<polygon fill="#f2f2f2" stroke="none" points="262.32,-157.28 262.32,-177.28 314.8,-177.28 314.8,-157.28 262.32,-157.28"/>
+<text xml:space="preserve" text-anchor="start" x="266.32" y="-163.28" font-family="Helvetica,sans-Serif" font-size="10.00" fill="#1a1a1a">a long run</text>
+</g>
+<!-- julia&#45;branch&#45;verifier -->
+<g id="node5" class="node">
+<title>julia&#45;branch&#45;verifier</title>
+<path fill="#dbe8f7" stroke="#5a5a5a" d="M130.97,-41.64C130.97,-41.64 12,-41.64 12,-41.64 6,-41.64 0,-35.64 0,-29.64 0,-29.64 0,-12 0,-12 0,-6 6,0 12,0 12,0 130.97,0 130.97,0 136.97,0 142.97,-6 142.97,-12 142.97,-12 142.97,-29.64 142.97,-29.64 142.97,-35.64 136.97,-41.64 130.97,-41.64"/>
+<text xml:space="preserve" text-anchor="start" x="10.8" y="-26.62" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="13.00" fill="#1a1a1a">julia&#45;branch&#45;verifier</text>
+<text xml:space="preserve" text-anchor="start" x="39.79" y="-16.32" font-family="Helvetica,sans-Serif" font-size="10.00" fill="#1a1a1a">agent on opus</text>
+<text xml:space="preserve" text-anchor="start" x="47.86" y="-6.32" font-family="Helvetica,sans-Serif" font-size="10.00" fill="#1a1a1a">effort: high</text>
+</g>
+<!-- part&#45;builder&#45;&gt;julia&#45;branch&#45;verifier -->
+<g id="edge4" class="edge">
+<title>part&#45;builder&#45;&gt;julia&#45;branch&#45;verifier</title>
+<path fill="none" stroke="#8c8c8c" stroke-width="1.4" d="M71.48,-97.18C71.48,-84.62 71.48,-68.23 71.48,-53.94"/>
+<polygon fill="#8c8c8c" stroke="#8c8c8c" stroke-width="1.4" points="74.98,-54.19 71.48,-44.19 67.98,-54.19 74.98,-54.19"/>
+<polygon fill="#f2f2f2" stroke="none" points="71.48,-59.64 71.48,-79.64 179,-79.64 179,-59.64 71.48,-59.64"/>
+<text xml:space="preserve" text-anchor="start" x="75.48" y="-65.64" font-family="Helvetica,sans-Serif" font-size="10.00" fill="#1a1a1a">before the pull request</text>
+</g>
+</g>
+</svg>
