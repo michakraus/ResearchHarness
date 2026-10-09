@@ -37,12 +37,11 @@ function frontmatter(path)
     return meta
 end
 
-"""The name, kind, model and effort of the agent or skill `name`."""
+"""The name, kind, model and effort of the agent or skill `name`. `harness test` checks that
+calls.toml names only agents and skills."""
 function node(name, models)
     agent = joinpath(ROOT, "agents", name * ".md")
-    skill = joinpath(ROOT, "skills", name, "SKILL.md")
-    kind, path = isfile(agent) ? ("agent", agent) : isfile(skill) ? ("skill", skill) :
-                 error("calls.toml names $name, which is no agent and no skill")
+    kind, path = isfile(agent) ? ("agent", agent) : ("skill", joinpath(ROOT, "skills", name, "SKILL.md"))
     meta = frontmatter(path)
     model = haskey(meta, "model") ? models[meta["model"]] : "the caller's model"
     effort = get(meta, "effort", "the session's effort")
