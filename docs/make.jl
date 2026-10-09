@@ -67,6 +67,10 @@ makedocs(;
     ]
 )
 
+# GitHub Pages runs Jekyll on gh-pages unless the root holds .nojekyll, and Jekyll drops a file
+# whose name starts with `_`, which a VitePress chunk can have.
+touch(joinpath(@__DIR__, "build", "1", ".nojekyll"))
+
 # The harness has no releases, so the site is one version at the root of gh-pages. Documenter's
 # deploydocs puts it there and removes the files of the last deploy. DocumenterVitepress.deploydocs
 # cannot: it skips the empty base of a root site and deploys only to a subdirectory.

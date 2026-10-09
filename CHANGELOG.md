@@ -6,7 +6,8 @@
   DocumenterVitepress (`[compat]` 0.3.7). Documenter's `deploydocs` still deploys the site to the
   root of `gh-pages` and removes the files of the old site, so the URL stays
   `https://michakraus.github.io/ResearchHarness/`; a page's URL loses its trailing slash, as
-  `/tutorial`. `DocumenterVitepress.deploydocs` deploys only to a subdirectory.
+  `/tutorial`. `DocumenterVitepress.deploydocs` deploys only to a subdirectory. The site holds a
+  `.nojekyll`, so that GitHub Pages also serves a VitePress file whose name starts with `_`.
   The site has VitePress's light and dark themes, a search box, and an edit link to `main`; the
   edit link of the home page opens the README. The VitePress configuration and theme are in
   `docs/src/.vitepress/`, and `docs/package.json` names the npm packages. The build runs `npm`
