@@ -25,12 +25,14 @@ Every repository here lays out its tests in one form. `Harness/scripts/test-layo
 - **A `core` file runs in at most 60 s on this machine, cold, compilation included.** The time is
   the file's in `run-tests.jl <repo> core`, in the order of `runtests.jl`, in one fresh process. A
   slower file goes to `slow`. The layout check does not check this.
-- **`test/<path>.jl` tests `src/<path>.jl`.** A test of several source files is in their deepest
-  common directory. A test of the whole package is under `test/integration/`. `quality/`,
-  `helpers/`, `integration/`, `verification/` and `devices/` mirror no directory of `src/`.
+- **`test/<path>.jl` tests `src/<path>.jl`.** A test file at the top level of `test/` is
+  `test/<name>.jl` for a `src/<name>.jl` of the same name; every other test file is in a
+  directory. A test of several source files is in their deepest common directory. A test of the
+  whole package is under `test/integration/`. `quality/`, `helpers/`, `integration/`,
+  `verification/` and `devices/` mirror no directory of `src/`.
 - **The quality files are under `test/quality/`.** `aqua.jl` is in every package. `jet.jl` is where
-  the package has a hot or kernel path. `doctests.jl` is in `doctests` or in `slow` where the
-  package has doctests.
+  the package has a hot or kernel path. `doctests.jl` is where the package has doctests, and it is
+  in the group `doctests` only.
 - **Every file under `test/` is listed once in `runtests.jl`**, or is a helper under
   `test/helpers/`. A helper is included by the test files that use it, and never listed.
 - **A separate suite is outside the convention**: a top-level directory of `test/` with a
@@ -75,9 +77,8 @@ Every repository here lays out its tests in one form. `Harness/scripts/test-layo
 
 Run one file, a group, or the files a diff reaches, with `run-tests.jl <repository> <path>`,
 `run-tests.jl <repository> core` or `run-tests.jl <repository> affected`. `affected` never runs
-the group `doctests`, so a doctest change runs `run-tests.jl <repository> doctests`, or
-`run-tests.jl <repository> quality/doctests.jl` where the file is in `slow`. `--jobs <n>` before
-the selection runs its files in n worker processes, each file once; with `full`, the files of
-`Pkg.test()`. A `core` run with `--jobs` gives no D6 verdict, because a file's time in a worker is
-not its cold time in the order of `runtests.jl`. The shared
-`pre-commit` hook runs `test-layout.jl --check` on a commit that touches `test/`.
+the group `doctests`, so a doctest change runs `run-tests.jl <repository> doctests`.
+`--jobs <n>` before the selection runs its files in n worker processes, each file once; with
+`full`, the files of `Pkg.test()`. A `core` run with `--jobs` gives no D6 verdict, because a file's
+time in a worker is not its cold time in the order of `runtests.jl`. The shared `pre-commit` hook
+runs `test-layout.jl --check` on a commit that touches `test/`.

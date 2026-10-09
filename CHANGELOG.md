@@ -420,16 +420,20 @@
 - `rules/changelog.md`: the rule "a changelog is never corrected" starts at the release, not
   at the merge. A merged entry in `[Unreleased]` may be corrected until it is true for its release.
 
-- `test-layout.jl` and `run-tests.jl` know a sixth test group, `doctests`. D9 accepts
-  `test/quality/doctests.jl` in `slow` or in `doctests`, and reports it in any other group; a
-  file other than `test/quality/doctests.jl` in `doctests` is a D9 violation. The `GROUPS` line
-  does not change, so empty `ARGS` runs `core` and `slow`, and the group `doctests` runs only
-  when it is named; the CI Doctests job calls `doctest` itself. `run-tests.jl <repo> doctests`
-  runs the group, and `affected`, which selects from `core` alone, never selects it.
-  `rules/julia-tests.md` names the six groups and the command for a doctest change.
-  `test-layout.jl --check` gives the same output as before on the 43 repositories with tests,
-  at their `origin/main`. This is the expand step: the repositories move their doctests line
-  into the new group next, and then D9 requires it.
+- `test-layout.jl` and `run-tests.jl` know a sixth test group, `doctests`. D9 requires
+  `test/quality/doctests.jl` in `doctests`, and reports it in any other group, `slow` included,
+  with the group it is in; a file other than `test/quality/doctests.jl` in `doctests` is a D9
+  violation. The `GROUPS` line does not change, so empty `ARGS` runs `core` and `slow`, and the
+  group `doctests` runs only when it is named; the CI Doctests job calls `doctest` itself.
+  `run-tests.jl <repo> doctests` runs the group, and `affected`, which selects from `core` alone,
+  never selects it. `rules/julia-tests.md` names the six groups and the command for a doctest
+  change.
+- D3 in `test-layout.jl` reports a test file at the top level of `test/` that has no
+  `src/<name>.jl` of the same name, compared with case, listed or not; a repository with no
+  `src/` is exempt, as from the directory rule of D3. `rules/julia-tests.md` states the rule.
+- `test-layout.jl --check` prints nothing on the 43 repositories with tests at their
+  `origin/main`, after each repository moved its doctests line into `doctests` and its
+  top-level test files into the directories of D3.
 - `adapters/claude/statusline-command.sh`: the Claude Code status line, installed as
   `~/.claude/statusline-command.sh`, where the `statusLine` setting runs it. It shows the model,
   the effort, the tokens in and out, and the five-hour and weekly rate limits in green, yellow

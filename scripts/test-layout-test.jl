@@ -21,7 +21,7 @@ if "core" in GROUPS
     @safetestset "Options" include("base/options.jl")
     @safetestset "Whole package" include("integration/solve.jl")
 end
-if "slow" in GROUPS
+if "doctests" in GROUPS
     @safetestset "Doctests" include("quality/doctests.jl")
 end
 if "broken" in GROUPS
@@ -99,13 +99,26 @@ function check(dir)
     return code, filter(!isempty, split(String(take!(out)), '\n'))
 end
 
-"The runtests.jl of the fixture with each `from => to` applied."
-rt(pairs...) = Changes("test/runtests.jl" => replace(RUNTESTS, pairs...))
+"The runtests.jl of the fixture with each `from => to` applied; each `from` must occur in it."
+function rt(pairs...)
+    for p in pairs
+        occursin(first(p), RUNTESTS) || error("not in RUNTESTS: $(repr(first(p)))")
+    end
+    Changes("test/runtests.jl" => replace(RUNTESTS, pairs...))
+end
 
 const DOCTESTS_SLOW = "if \"slow\" in GROUPS\n    @safetestset \"Doctests\" include(\"quality/doctests.jl\")\nend\n"
 const AQUA_LINE = "    @safetestset \"Aqua\" include(\"quality/aqua.jl\")\n"
 const DOCTESTS_GROUP = "if \"doctests\" in GROUPS\n    @safetestset \"Doctests\" include(\"quality/doctests.jl\")\nend\n"
 const OTHER_IN_DOCTESTS = "if \"doctests\" in GROUPS\n    @safetestset \"Other\" include(\"base/other.jl\")\nend\n"
+# test/quality/doctests.jl in the group `core`
+const DOCTESTS_IN_CORE = rt(DOCTESTS_GROUP => "",
+    AQUA_LINE =>
+        AQUA_LINE * "    @safetestset \"Doctests\" include(\"quality/doctests.jl\")\n")
+# test/top.jl, listed in `core`
+const TOP_LISTED = merge(
+    rt(AQUA_LINE => AQUA_LINE * "    @safetestset \"Top\" include(\"top.jl\")\n"),
+    Changes("test/top.jl" => "using Test, Fixture\n@test Fixture.f() == 1\n"))
 
 @testset "a repository in form passes" begin
     code, lines = check(fixture())
@@ -147,7 +160,7 @@ const MUTATIONS = [
         rt("    @safetestset \"Whole package\" include(\"integration/solve.jl\")" => "    @safetestset \"Whole package\" include(\"integration/runtests.jl\")"),
         Changes("test/integration/solve.jl" => nothing,
             "test/integration/runtests.jl" => "using Test, Fixture\n@test Fixture.f() == 1\n")),
-    "D2" => rt("end\nif \"slow\" in GROUPS" => "else\nend\nif \"slow\" in GROUPS"),
+    "D2" => rt("end\nif \"doctests\" in GROUPS" => "else\nend\nif \"doctests\" in GROUPS"),
     "D2" =>
         rt("if \"broken\" in GROUPS" => "if \"core\" in GROUPS\nend\nif \"broken\" in GROUPS"),
     "D2" => rt("using SafeTestsets\n" => "using SafeTestsets\nusing SafeTestsets\n"),
@@ -155,6 +168,8 @@ const MUTATIONS = [
         Changes("test/base/options.jl" => nothing,
             "test/solvers/options.jl" => FILES["test/base/options.jl"]),
         rt("base/options.jl" => "solvers/options.jl")),
+    # a listed file at the top level of test/ with no src/<name>.jl
+    "D3" => TOP_LISTED,
     "D4" => merge(Changes("test/quality/aqua.jl" => nothing), rt(AQUA_LINE => "")),
     "D5" => rt("\"core\", \"slow\"]" => "\"core\"]"),
     "D5" => rt("if \"broken\" in GROUPS" => "if \"extra\" in GROUPS"),
@@ -189,20 +204,20 @@ const MUTATIONS = [
     "D8" =>
         rt("    @safetestset \"Whole package\"" => "    @safetestset \"Helper\" include(\"helpers/data.jl\")\n    @safetestset \"Whole package\""),
     "D8" => Changes("test/base/runtests.jl" => "using Test\n@test true\n"),
-    "D9" => merge(Changes("test/quality/doctests.jl" => nothing), rt(DOCTESTS_SLOW => "")),
-    "D9" => rt(DOCTESTS_SLOW => "",
-        AQUA_LINE =>
-            AQUA_LINE * "    @safetestset \"Doctests\" include(\"quality/doctests.jl\")\n"),
+    "D9" => merge(Changes("test/quality/doctests.jl" => nothing), rt(DOCTESTS_GROUP => "")),
+    "D9" => DOCTESTS_IN_CORE,
+    # test/quality/doctests.jl in the group `slow`
+    "D9" => rt(DOCTESTS_GROUP => DOCTESTS_SLOW),
     "D9" => merge(
         Changes("test/quality/doctests.jl" => nothing,
             "src/Fixture.jl" => "module Fixture\nf() = 1\nend\n",
             "docs/src/index.md" => "```jldoctest\njulia> 1\n1\n```\n"),
-        rt(DOCTESTS_SLOW => "")),
+        rt(DOCTESTS_GROUP => "")),
     # the group `doctests` holds test/quality/doctests.jl and no other file
-    "D9" => merge(rt(DOCTESTS_SLOW => DOCTESTS_SLOW * OTHER_IN_DOCTESTS),
+    "D9" => merge(rt(DOCTESTS_GROUP => DOCTESTS_SLOW * OTHER_IN_DOCTESTS),
         Changes("test/base/other.jl" => "using Test, Fixture\n@test Fixture.f() == 1\n")),
     "D9" => merge(
-        rt(DOCTESTS_SLOW => replace(DOCTESTS_GROUP,
+        rt(DOCTESTS_GROUP => replace(DOCTESTS_GROUP,
             "end\n" => "    @safetestset \"Other\" include(\"base/other.jl\")\nend\n")),
         Changes("test/base/other.jl" => "using Test, Fixture\n@test Fixture.f() == 1\n")),
     "D10" => rt("   # issue #12" => ""),
@@ -243,8 +258,11 @@ end
     Changes("docs/Project.toml" => DOCS_PROJECT),
 # a shared dependency that test/Project.toml does not list
     tp("Weak = \"22222222-2222-2222-2222-222222222222\"\n" => ""),
-# test/quality/doctests.jl in its own group `doctests` (D9)
-    rt(DOCTESTS_SLOW => DOCTESTS_GROUP),
+# a listed file at the top level of test/ that mirrors src/<name>.jl (D3)
+    merge(TOP_LISTED, Changes("src/top.jl" => "t() = 1\n")),
+# a listed file at the top level of test/ in a repository with no src/ (D3)
+    merge(TOP_LISTED,
+    Changes("src/Fixture.jl" => nothing, "src/base/options.jl" => nothing)),
 # a `broken` mark with its issue on its line
     Changes("test/base/old_api.jl" => "using Test, Fixture\n@test Fixture.h() == 1 broken = true   # issue #12\n@test_skip Fixture.h() == 1   # issue #12\n"),
     aqua("\n    piracies = (; broken = true),   # issue #3\n    ambiguities = false"),
@@ -309,8 +327,10 @@ if "core" in GROUPS
     @safetestset "Line searches" include("globalization/linesearch.jl")
 end
 if "slow" in GROUPS
-    @safetestset "Doctests" include("quality/doctests.jl")
     @safetestset "Convergence of the RK methods" include("verification/rk_convergence.jl")
+end
+if "doctests" in GROUPS
+    @safetestset "Doctests" include("quality/doctests.jl")
 end
 if "metal" in GROUPS
     @safetestset "Metal" include("devices/metal.jl")
@@ -463,7 +483,9 @@ const DEVICE_CASES = [
         merge(
             rt(AQUA_LINE =>
                 AQUA_LINE * "    @safetestset \"Devices\" include(\"devices.jl\")\n"),
-            Changes("test/devices.jl" => "using Test, Metal\n@test_skip Metal.functional()\n")),
+            Changes(
+                "test/devices.jl" => "using Test, Metal\n@test_skip Metal.functional()\n",
+                "src/devices.jl" => "d() = 1\n")),
         "[D7] devices.jl:2 $SKIP_NO_ISSUE")
 ]
 
@@ -492,6 +514,39 @@ end
     # the lines name the fixture's directory, which differs between the two
     strip_repo(ls) = sort([replace(l, r"^[^:]*: " => "") for l in ls])
     @test strip_repo(plain) == strip_repo(platform)
+end
+
+@testset "D9 names the group of test/quality/doctests.jl, which is not doctests" begin
+    cases = ("slow" => rt(DOCTESTS_GROUP => DOCTESTS_SLOW), "core" => DOCTESTS_IN_CORE)
+    for (g, change) in cases
+        code, lines = check(fixture(change))
+        @test code == 1
+        @test length(lines) == 1
+        @test endswith(only(lines),
+            ": [D9] test/quality/doctests.jl is in group \"$g\", not \"doctests\"")
+    end
+end
+
+@testset "D3 reports a top-level test file with no src/<name>.jl of that exact name" begin
+    message = ": [D3] top.jl is at the top level of test/ and mirrors no src/top.jl"
+    code, lines = check(fixture(TOP_LISTED))
+    @test code == 1
+    @test length(lines) == 1
+    @test endswith(only(lines), message)
+    # an unlisted top-level file is a D8 violation and a D3 violation
+    code, lines = check(fixture(Changes("test/top.jl" => "using Test\n@test true\n")))
+    @test code == 1
+    @test length(lines) == 2
+    @test any(l -> endswith(l, ": [D8] top.jl is not listed in runtests.jl"), lines)
+    @test any(l -> endswith(l, message), lines)
+    # the name of the source file differs in case only
+    code, lines = check(fixture(merge(
+        rt(AQUA_LINE => AQUA_LINE * "    @safetestset \"Lower\" include(\"fixture.jl\")\n"),
+        Changes("test/fixture.jl" => "using Test, Fixture\n@test Fixture.f() == 1\n"))))
+    @test code == 1
+    @test length(lines) == 1
+    @test endswith(only(lines),
+        ": [D3] fixture.jl is at the top level of test/ and mirrors no src/fixture.jl")
 end
 
 @testset "one violation of rule $rule" for (rule, change) in MUTATIONS
