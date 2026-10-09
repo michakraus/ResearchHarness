@@ -8,6 +8,8 @@
   `https://michakraus.github.io/ResearchHarness/`; a page's URL loses its trailing slash, as
   `/tutorial`. `DocumenterVitepress.deploydocs` deploys only to a subdirectory. The site holds a
   `.nojekyll`, so that GitHub Pages also serves a VitePress file whose name starts with `_`.
+  DocumenterVitepress 0.3.7 drops the alt text of a local image, so `docs/make.jl` adds a method
+  that keeps it: the call graphs of *Agents at work* keep their text description.
   The site has VitePress's light and dark themes, a search box, and an edit link to `main`; the
   edit link of the home page opens the README. The VitePress configuration and theme are in
   `docs/src/.vitepress/`, and `docs/package.json` names the npm packages. The build runs `npm`

@@ -1,6 +1,7 @@
 // .vitepress/theme/index.ts
-// The theme of DocumenterVitepress.generate_template, unchanged: VitePress's default theme, with
-// its light and dark mode, and the components that DocumenterVitepress renders. The build adds
+// The code of the theme of DocumenterVitepress.generate_template, with some of its comments:
+// VitePress's default theme, with its light and dark mode, and the components that
+// DocumenterVitepress renders. The build adds
 // the default style.css, docstrings.css and overrides.css beside this file.
 import { h } from 'vue'
 import DefaultTheme from 'vitepress/theme'

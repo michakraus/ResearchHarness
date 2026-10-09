@@ -91,8 +91,8 @@ julia --project=docs docs/make.jl
 The build runs `npm` from the package `NodeJS_20_jll`, so you need no Node.js installation. `npm`
 gets VitePress from the npm registry, so the build needs a network connection. The site is then in
 `docs/build/1/`. `docs/build/`, `docs/node_modules/`, `docs/package-lock.json`,
-`docs/Manifest.toml` and `docs/src/index.md` are not tracked. A link from a page to a file outside `docs/src/` fails the build; link to the
-file on GitHub instead. Link to a section of another page with `[text](@ref "Heading text")`,
+`docs/Manifest.toml` and `docs/src/index.md` are not tracked. A link from a page to a file
+outside `docs/src/` fails the build; link to the file on GitHub instead. Link to a section of another page with `[text](@ref "Heading text")`,
 or with Documenter's anchor for a heading in code: `[text](@ref harness-install-apply)`. The
 build fails on a reference that it cannot resolve. A URL fragment such as `page.md#heading` is
 not checked, and Documenter's anchors keep the case of the heading, unlike GitHub's.

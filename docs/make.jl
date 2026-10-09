@@ -27,6 +27,26 @@ write(
     replace(readme, "](docs/src/" => "](")
 )
 
+# DocumenterVitepress 0.3.7 writes a local image as `![](path)` and drops its alt text, the only
+# text form of a call graph. This method is more specific than its own, so it replaces it for the
+# pages of this site and keeps the alt text; a video still takes the package's method.
+function DocumenterVitepress.render(
+        io::IO, mime::MIME"text/plain", node::Documenter.MarkdownAST.Node,
+        image::Documenter.LocalImage, page::Documenter.Page, doc::Documenter.Document; kwargs...
+)
+    path = replace(relpath(joinpath(doc.user.build, image.path), dirname(page.build)), "\\" => "/")
+    if DocumenterVitepress.is_video_file(path)
+        return invoke(
+            DocumenterVitepress.render,
+            Tuple{IO, MIME"text/plain", Documenter.MarkdownAST.Node, Documenter.LocalImage, Any, Any},
+            io, mime, node, image, page, doc; kwargs...
+        )
+    end
+    alt = join(Documenter.MDFlatten.mdflatten.(node.children))
+    println(io)
+    println(io, "![", replace(alt, "[" => "\\[", "]" => "\\]"), "](", path, ")")
+end
+
 # Only the docs workflow deploys. A local build decides "no deploy" here, so that Documenter does
 # not look for a CI system and print a warning that it found none.
 on_ci = get(ENV, "GITHUB_ACTIONS", nothing) == "true"
