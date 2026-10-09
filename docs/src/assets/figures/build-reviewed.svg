@@ -9,9 +9,9 @@
 <!-- build&#45;reviewed -->
 <g id="node1" class="node">
 <title>build&#45;reviewed</title>
-<path fill="#f7ecc8" stroke="#5a5a5a" d="M237.99,-236.92C237.99,-236.92 128.98,-236.92 128.98,-236.92 122.98,-236.92 116.98,-230.92 116.98,-224.92 116.98,-224.92 116.98,-207.28 116.98,-207.28 116.98,-201.28 122.98,-195.28 128.98,-195.28 128.98,-195.28 237.99,-195.28 237.99,-195.28 243.99,-195.28 249.99,-201.28 249.99,-207.28 249.99,-207.28 249.99,-224.92 249.99,-224.92 249.99,-230.92 243.99,-236.92 237.99,-236.92"/>
+<path fill="#f7ecc8" stroke="#5a5a5a" d="M242.71,-236.92C242.71,-236.92 124.26,-236.92 124.26,-236.92 118.26,-236.92 112.26,-230.92 112.26,-224.92 112.26,-224.92 112.26,-207.28 112.26,-207.28 112.26,-201.28 118.26,-195.28 124.26,-195.28 124.26,-195.28 242.71,-195.28 242.71,-195.28 248.71,-195.28 254.71,-201.28 254.71,-207.28 254.71,-207.28 254.71,-224.92 254.71,-224.92 254.71,-230.92 248.71,-236.92 242.71,-236.92"/>
 <text xml:space="preserve" text-anchor="start" x="137.97" y="-221.9" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="13.00" fill="#1a1a1a">build&#45;reviewed</text>
-<text xml:space="preserve" text-anchor="start" x="155.97" y="-211.6" font-family="Helvetica,sans-Serif" font-size="10.00" fill="#1a1a1a">skill on opus</text>
+<text xml:space="preserve" text-anchor="start" x="123.06" y="-211.6" font-family="Helvetica,sans-Serif" font-size="10.00" fill="#1a1a1a">skill on the session&#39;s model</text>
 <text xml:space="preserve" text-anchor="start" x="127.78" y="-201.6" font-family="Helvetica,sans-Serif" font-size="10.00" fill="#1a1a1a">effort: the session&#39;s effort</text>
 </g>
 <!-- part&#45;builder -->

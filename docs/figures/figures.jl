@@ -6,7 +6,8 @@
 #
 # The call graphs come from docs/figures/calls.toml: one entry for each spawn. The kind of each
 # node comes from where its source is, its tier and its effort from the source's frontmatter, and
-# its model from the [claude] table of examples/models.toml. `harness test` checks calls.toml.
+# an agent's model from the [claude] table of examples/models.toml. `harness test` checks
+# calls.toml.
 
 using Graphviz_jll
 using TOML
@@ -43,7 +44,9 @@ function node(name, models)
     agent = joinpath(ROOT, "agents", name * ".md")
     kind, path = isfile(agent) ? ("agent", agent) : ("skill", joinpath(ROOT, "skills", name, "SKILL.md"))
     meta = frontmatter(path)
-    model = haskey(meta, "model") ? models[meta["model"]] : "the caller's model"
+    # A skill runs in the session that loads it, on the session's model, whatever its `model:`.
+    model = kind == "skill" ? "the session's model" :
+            haskey(meta, "model") ? models[meta["model"]] : "the caller's model"
     effort = get(meta, "effort", "the session's effort")
     return (; name, kind, model, effort)
 end

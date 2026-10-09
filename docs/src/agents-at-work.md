@@ -17,8 +17,8 @@ Each box shows three facts:
 - **The model.** The source names a tier, `large`, `medium` or `small`, and the `[claude]` table
   of `examples/models.toml` gives the model of each tier: `opus`, `sonnet` and `haiku`. Your own
   `models.toml` changes these models (see [profile.md](profile.md)). A source with no `model:`
-  runs on the model of its caller, and its box says "the caller's model". A skill's `model:` is
-  the model while the skill runs, so a skill box shows it the same way.
+  runs on the model of its caller, and its box says "the caller's model". A skill runs in the
+  session that loads it, on the session's model, so a skill box says "the session's model".
 - **The effort**, from the source's `effort:`. A source with no `effort:` runs at the effort of
   the session, and its box says "the session's effort". Where a caller sets a different effort for
   one spawn, the arrow says so: "at high effort".

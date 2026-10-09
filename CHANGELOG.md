@@ -5,7 +5,8 @@
 - **The documentation site shows who spawns whom.** The new page *Agents at work*
   (`docs/src/agents-at-work.md`, under *Background*) has four call graphs: the `build-part`
   loop, the `build-reviewed` loop, the `julia-pr-shepherd` chain and every spawn. Each box shows
-  the name, the default model of `examples/models.toml` and the effort; an arrow shows where a
+  the name, the model (for an agent the default of `examples/models.toml`, for a skill the
+  session's model) and the effort; an arrow shows where a
   caller sets another effort. The arrows come from one file, `docs/figures/calls.toml`, one entry
   for each spawn with the `file:line` that spawns; new cases of `harness test` check that each
   entry names agents and skills that exist, that its line names the callee, and that every
