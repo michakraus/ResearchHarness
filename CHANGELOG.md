@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- **The documentation site has a tutorial for a new user.** `docs/src/tutorial.md` explains the
+  words that the other pages use, from a session and its context to a skill, a sub-agent and a
+  hook, and then walks through one Claude Code session: the install and its check, the start of
+  a session and the drift warning, tool calls and permission prompts, a guard hook that refuses a
+  shell edit, a skill that loads, a sub-agent that runs the tests, and a correction that lasts.
+  It follows the home page in the navigation, and the README links it first.
+
 - **The documentation site describes every component.** Ten pages in `docs/src/components/`
   cover the agents, skills, commands, rules and the core instruction file, guard hooks, git
   hooks and workflow templates, scripts, adapters, the modules of the `harness` command, and the

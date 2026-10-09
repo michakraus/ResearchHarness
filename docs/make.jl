@@ -32,6 +32,7 @@ makedocs(;
     ),
     pages = [
         "Home" => "index.md",
+        "Tutorial" => "tutorial.md",
         "Setup" => ["setup-macos.md", "setup-linux.md"],
         "Use" => ["daily-use.md", "profile.md", "harness-command.md"],
         "Background" => ["security.md", "architecture.md", "tools.md"],
