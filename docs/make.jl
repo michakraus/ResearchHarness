@@ -1,11 +1,13 @@
-# Build the documentation site with Documenter:
+# Build the documentation site with Documenter and DocumenterVitepress:
 #
 #   julia --project=docs -e 'using Pkg; Pkg.instantiate()'
 #   julia --project=docs docs/make.jl
 #
-# The site is in docs/build/. On a push to main, the docs workflow deploys it to gh-pages.
+# The build runs npm, which fetches VitePress from the npm registry into docs/node_modules/. The
+# site is in docs/build/1/. On a push to main, the docs workflow deploys it to gh-pages.
 
 using Documenter
+using DocumenterVitepress
 
 # The figures are drawn first, into docs/src/assets/figures/, from docs/figures/.
 include(joinpath(@__DIR__, "figures", "figures.jl"))
@@ -25,12 +27,20 @@ write(
     replace(readme, "](docs/src/" => "](")
 )
 
+# Only the docs workflow deploys. A local build decides "no deploy" here, so that Documenter does
+# not look for a CI system and print a warning that it found none.
+on_ci = get(ENV, "GITHUB_ACTIONS", nothing) == "true"
+
 makedocs(;
     sitename = "ResearchHarness",
     repo = Remotes.GitHub("michakraus/ResearchHarness"),
-    format = Documenter.HTML(;
-        prettyurls = get(ENV, "CI", nothing) == "true",
-        edit_link = "main",
+    format = DocumenterVitepress.MarkdownVitepress(;
+        repo = "github.com/michakraus/ResearchHarness",
+        devbranch = "main",
+        devurl = "dev",
+        deploy_decision = on_ci ? nothing : Documenter.DeployDecision(; all_ok = false),
+        # The site has one version, so search engines may index it.
+        noindex_non_stable = false,
         # The harness has no version, and the inventory needs one.
         inventory_version = "main"
     ),
@@ -56,8 +66,12 @@ makedocs(;
     ]
 )
 
-# The harness has no releases, so the site is one version at the root of gh-pages. Only the docs
-# workflow deploys; a local build would print a warning that it cannot.
-if get(ENV, "GITHUB_ACTIONS", nothing) == "true"
-    deploydocs(; repo = "github.com/michakraus/ResearchHarness.git", devbranch = "main", versions = nothing)
+# The harness has no releases, so the site is one version. DocumenterVitepress deploys it to dev/
+# on gh-pages, and the root of gh-pages redirects to dev/.
+if on_ci
+    DocumenterVitepress.deploydocs(;
+        repo = "github.com/michakraus/ResearchHarness.git",
+        target = joinpath(@__DIR__, "build"),
+        devbranch = "main"
+    )
 end

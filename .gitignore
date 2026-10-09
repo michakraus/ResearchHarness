@@ -4,3 +4,5 @@ __pycache__/
 /docs/build/
 /docs/Manifest.toml
 /docs/src/index.md
+/docs/node_modules/
+/docs/package-lock.json
