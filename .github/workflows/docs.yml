@@ -1,13 +1,15 @@
 name: docs
 
 # Builds the documentation site with docs/make.jl. A pull request checks that the site builds,
-# with Documenter's checks of the local links; a push to main also deploys it to gh-pages.
+# with Documenter's checks of the local links; a push to main also deploys it to gh-pages. The
+# build draws the figures from docs/figures/, agents/, skills/ and examples/models.toml, and the
+# job fails when a committed figure differs from the one the build draws.
 on:
   push:
     branches: [main]
-    paths: ['README.md', 'docs/**', '.github/workflows/docs.yml']
+    paths: ['README.md', 'docs/**', 'agents/**', 'skills/**', 'examples/models.toml', '.github/workflows/docs.yml']
   pull_request:
-    paths: ['README.md', 'docs/**', '.github/workflows/docs.yml']
+    paths: ['README.md', 'docs/**', 'agents/**', 'skills/**', 'examples/models.toml', '.github/workflows/docs.yml']
   workflow_dispatch:
 
 permissions:
@@ -34,3 +36,5 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: julia --startup-file=no --project=docs docs/make.jl
+      - name: The committed figures are the ones the build draws
+        run: git diff --exit-code docs/src/assets/figures

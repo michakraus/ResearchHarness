@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+- **The documentation site shows who spawns whom.** The new page *Agents at work*
+  (`docs/src/agents-at-work.md`, under *Background*) has four call graphs: the `build-part`
+  loop, the `build-reviewed` loop, the `julia-pr-shepherd` chain and every spawn. Each box shows
+  the name, the model (for an agent the default of `examples/models.toml`, for a skill the
+  session's model) and the effort; an arrow shows where a
+  caller sets another effort. The arrows come from one file, `docs/figures/calls.toml`, one entry
+  for each spawn with the `file:line` that spawns; new cases of `harness test` check that each
+  entry names agents and skills that exist, that its line names the callee, and that every
+  source with the tool `agent`, `build-part` and `build-reviewed` spawns at least once.
+  `docs/make.jl` draws the figures with Graphviz_jll (pinned to 15.1.0) into
+  `docs/src/assets/figures/`, where they are committed, and the docs workflow fails when the
+  build changes one. It also runs on a change of `agents/`, `skills/` or `examples/models.toml`,
+  and a local build no longer calls `deploydocs`, so it prints no warning.
+
 - **`harness leaks` allows the host of the repository's GitHub Pages site, and the README links
   the site.** Beside the repository's own `owner/name`, the check now removes `owner.github.io`
   from a line before it searches for the names of the research tree, so the URL of the

@@ -1,0 +1,111 @@
+# The call edges of the harness: one [[call]] entry for each spawn of an agent by an agent or a
+# skill. docs/figures/figures.jl draws the figures of docs/src/agents-at-work.md from this file,
+# and `harness test` checks it (lib/harness/docs.py).
+#
+#   caller  the agent or skill that spawns
+#   callee  the agent it spawns
+#   at      the file:line, in the caller's source, of the instruction that spawns; the line names
+#           the callee
+#   effort  only where the caller sets an effort other than the callee's own
+#   label   the text on the edge: when or why the caller spawns
+#
+# The model and the effort of each node come from its source's frontmatter and from
+# examples/models.toml, never from this file. A caller that spawns one callee at two efforts has
+# two entries.
+
+[[call]]
+caller = "build-part"
+callee = "julia-builder"
+at = "skills/build-part/SKILL.md:115"
+label = "build, fix, finish"
+
+[[call]]
+caller = "build-part"
+callee = "julia-critic"
+at = "skills/build-part/SKILL.md:149"
+effort = "high"
+label = "round 1, two critics"
+
+[[call]]
+caller = "build-part"
+callee = "julia-critic"
+at = "skills/build-part/SKILL.md:80"
+label = "verify round"
+
+[[call]]
+caller = "build-part"
+callee = "julia-test-runner"
+at = "skills/build-part/SKILL.md:166"
+label = "full suite"
+
+[[call]]
+caller = "build-part"
+callee = "advisor"
+at = "skills/build-part/SKILL.md:261"
+label = "a question"
+
+[[call]]
+caller = "build-part"
+callee = "arbitrator"
+at = "skills/build-part/SKILL.md:200"
+label = "no convergence"
+
+[[call]]
+caller = "build-reviewed"
+callee = "part-builder"
+at = "skills/build-reviewed/SKILL.md:38"
+label = "build, fix, finish"
+
+[[call]]
+caller = "build-reviewed"
+callee = "part-critic"
+at = "skills/build-reviewed/SKILL.md:61"
+label = "one critic"
+
+[[call]]
+caller = "build-reviewed"
+callee = "julia-test-runner"
+at = "skills/build-reviewed/SKILL.md:56"
+label = "a long run"
+
+[[call]]
+caller = "julia-builder"
+callee = "julia-branch-verifier"
+at = "agents/julia-builder.md:240"
+label = "before the pull request"
+
+[[call]]
+caller = "julia-builder"
+callee = "changelog-scribe"
+at = "agents/julia-builder.md:252"
+label = "a CHANGELOG fix"
+
+[[call]]
+caller = "part-builder"
+callee = "julia-branch-verifier"
+at = "agents/part-builder.md:99"
+label = "before the pull request"
+
+[[call]]
+caller = "julia-pr-shepherd"
+callee = "julia-pr-reviewer"
+at = "agents/julia-pr-shepherd.md:94"
+label = "review"
+
+[[call]]
+caller = "julia-pr-shepherd"
+callee = "changelog-scribe"
+at = "agents/julia-pr-shepherd.md:143"
+label = "the entry"
+
+[[call]]
+caller = "julia-pr-shepherd"
+callee = "ci-triage"
+at = "agents/julia-pr-shepherd.md:210"
+label = "red CI"
+
+[[call]]
+caller = "julia-structure"
+callee = "exhaustive-auditor"
+at = "skills/julia-structure/SKILL.md:3"
+label = "an all/none claim"
