@@ -193,6 +193,10 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
 - a flag added to a `git` call for one input class (`-m` for a merge, `--root` for the root
   commit), with no case of that class: removing the flag survives (E2 verify 2, *Publish the
   harness as ResearchHarness*)
+- a base fixture changed under an older mutation case: the case now breaks two rules, so it no
+  longer isolates the check it names, and only another case still covers that check. After a
+  fixture change, read each mutation case's output for the one line it expects (G4, *Faster test
+  suites for the learning package and the optimiser package*)
 
 ## A step that runs a user's script
 
