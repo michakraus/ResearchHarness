@@ -3,7 +3,10 @@
 ## Unreleased
 
 - **The documentation site is a VitePress site.** `docs/make.jl` renders the pages with
-  DocumenterVitepress (`[compat]` 0.3.7) and deploys them with `DocumenterVitepress.deploydocs`.
+  DocumenterVitepress (`[compat]` 0.3.7). Documenter's `deploydocs` still deploys the site to the
+  root of `gh-pages` and removes the files of the old site, so the URL stays
+  `https://michakraus.github.io/ResearchHarness/`; a page's URL loses its trailing slash, as
+  `/tutorial`. `DocumenterVitepress.deploydocs` deploys only to a subdirectory.
   The site has VitePress's light and dark themes, a search box, and an edit link to `main`; the
   edit link of the home page opens the README. The VitePress configuration and theme are in
   `docs/src/.vitepress/`, and `docs/package.json` names the npm packages. The build runs `npm`

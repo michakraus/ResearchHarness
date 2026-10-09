@@ -37,7 +37,8 @@ makedocs(;
     format = DocumenterVitepress.MarkdownVitepress(;
         repo = "github.com/michakraus/ResearchHarness",
         devbranch = "main",
-        devurl = "dev",
+        # The site is one version at the root of gh-pages, so its base is /ResearchHarness/.
+        devurl = "",
         deploy_decision = on_ci ? nothing : Documenter.DeployDecision(; all_ok = false),
         # The site has one version, so search engines may index it.
         noindex_non_stable = false,
@@ -66,12 +67,14 @@ makedocs(;
     ]
 )
 
-# The harness has no releases, so the site is one version. DocumenterVitepress deploys it to dev/
-# on gh-pages, and the root of gh-pages redirects to dev/.
+# The harness has no releases, so the site is one version at the root of gh-pages. Documenter's
+# deploydocs puts it there and removes the files of the last deploy. DocumenterVitepress.deploydocs
+# cannot: it skips the empty base of a root site and deploys only to a subdirectory.
 if on_ci
-    DocumenterVitepress.deploydocs(;
+    deploydocs(;
         repo = "github.com/michakraus/ResearchHarness.git",
-        target = joinpath(@__DIR__, "build"),
-        devbranch = "main"
+        target = joinpath(@__DIR__, "build", "1"),
+        devbranch = "main",
+        versions = nothing
     )
 end
