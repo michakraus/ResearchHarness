@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- **`harness leaks` allows the host of the repository's GitHub Pages site, and the README links
+  the site.** Beside the repository's own `owner/name`, the check now removes `owner.github.io`
+  from a line before it searches for the names of the research tree, so the URL of the
+  documentation site is no hit. Three new cases show it: the site URL and the bare host pass,
+  and `owner.github.com` is still a hit. The README has a documentation badge under its title,
+  and its *Documentation* section names the site.
+
 - **The documentation site has a tutorial for a new user.** `docs/src/tutorial.md` explains the
   words that the other pages use, from a session and its context to a skill, a sub-agent and a
   hook, and then walks through one Claude Code session: the install and its check, the start of

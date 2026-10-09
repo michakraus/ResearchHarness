@@ -1,5 +1,7 @@
 # ResearchHarness
 
+[![Documentation](https://img.shields.io/badge/docs-dev-blue.svg)](https://michakraus.github.io/ResearchHarness/)
+
 ResearchHarness configures AI coding agents for work on research software in Julia. It configures
 three frontends: Claude Code, OpenCode and oh-my-pi. One set of neutral sources gives each
 frontend its configuration. One command, `harness`, installs the configuration and checks it.
@@ -150,8 +152,8 @@ The tables leave out the system tools: the POSIX shell utilities, such as `awk`,
 
 ## Documentation
 
-The pages of the documentation site are in `docs/src/`, and `docs/make.jl` builds them with
-Documenter. The repository's homepage link opens the site.
+The documentation site is <https://michakraus.github.io/ResearchHarness/>. Its pages are in
+`docs/src/`, and `docs/make.jl` builds them with Documenter.
 
 - [Tutorial: a first session](docs/src/tutorial.md): the words that the other pages use, and
   one session with Claude Code that shows the harness at work. Start here if you are new to
