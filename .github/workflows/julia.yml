@@ -1,0 +1,58 @@
+name: julia
+
+on:
+  push:
+    paths: ['**.jl', 'Project.toml', '.github/workflows/julia.yml']
+  pull_request:
+    paths: ['**.jl', 'Project.toml', '.github/workflows/julia.yml']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: ${{ matrix.file }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        file:
+          - scripts/gate-test.jl
+          - scripts/mutants-test.jl
+          - scripts/run-tests-test.jl
+          - scripts/test-layout-test.jl
+          - githooks/release-notes-test.jl
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: julia-actions/setup-julia@fa02766e078afaaf09b14210362cee14137e6a32 # v3.0.2
+        with:
+          version: '1.13'
+      # The scripts load their packages from RESEARCH_HARNESS_JULIA, as `harness install` sets it up.
+      - name: Instantiate Project.toml at RESEARCH_HARNESS_JULIA
+        run: |
+          env_dir="$RUNNER_TEMP/research-harness-julia"
+          echo "RESEARCH_HARNESS_JULIA=$env_dir" >> "$GITHUB_ENV"
+          mkdir -p "$env_dir"
+          cp Project.toml "$env_dir/"
+          julia --startup-file=no --project="$env_dir" -e 'using Pkg; Pkg.instantiate()'
+      # mutate.jl checks each mutant with `fatou lint`, so its tests need fatou on the PATH.
+      - name: Install fatou
+        env:
+          VERSION: 0.22.0
+          SHA256: 20c698e251271d82b275c80ae39fe086964e9665d53d8e9308cde29ec105f18b
+        run: |
+          curl -sSfL -o fatou.tar.gz \
+            "https://github.com/jolars/fatou/releases/download/v${VERSION}/fatou-x86_64-unknown-linux-gnu.tar.gz"
+          echo "${SHA256}  fatou.tar.gz" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/fatou"
+          tar -xzf fatou.tar.gz -C "$RUNNER_TEMP/fatou" ./fatou
+          rm fatou.tar.gz
+          echo "$RUNNER_TEMP/fatou" >> "$GITHUB_PATH"
+      - name: julia ${{ matrix.file }}
+        run: julia --startup-file=no "$FILE"
+        env:
+          FILE: ${{ matrix.file }}

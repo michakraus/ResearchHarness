@@ -1,0 +1,32 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls *)",
+      "Read(//{home}/notes/**)",
+      "mcp__kaimon__ex"
+    ],
+    "ask": [
+      "Bash(git push *)",
+      "Bash(rm -rf *)",
+      "Edit(//{home}/.claude/agents/**)",
+      "mcp__kaimon__debug_eval",
+      "mcp__terminal__read_terminal",
+      "WebFetch(domain:example.org)"
+    ],
+    "deny": [
+      "Read(//{home}/.ssh/**)",
+      "Read(~/.aws/**)",
+      "Edit(//{home}/.config/**)",
+      "Write(//{home}/.config/**)",
+      "Glob(//tmp/private/**)",
+      "Bash(rm -rf *)",
+      "Bash(say \"hi\" *)",
+      "Bash(echo a\\b)",
+      "mcp__kaimon__manage_extension",
+      "mcp__kaimon__format_code",
+      "mcp__x",
+      "Agent(spawn)",
+      "Skill"
+    ]
+  }
+}

@@ -1,0 +1,22 @@
+# The triggering queries of skills/build-reviewed: `load` should load it, `near` should not.
+
+load = [
+    "build this reviewed part",
+    "take the next reviewed part of Tasks/Unify the logging.md",
+    "run part T, its tier is reviewed",
+    "build the small part X of the settings plan: one builder, one critic",
+    "part I has tier reviewed, build it",
+    "Bau den Teil Q, Tier reviewed",
+    "next the small reviewed part: one builder, one blind critic, at most one fix round",
+    "run the reviewed part of the install plan",
+    "build part K of the harness plan, tier reviewed",
+    "Nimm den nächsten Teil mit Tier reviewed",
+]
+
+near = [
+    { query = "build part D, tier build, with the full builder-critic loop", skill = "build-part" },
+    { query = "run the open parts of the task file", skill = "build-part" },
+    { query = "which tier should part T get?", skill = "plan-parts" },
+    { query = "plan this task as parts, one pull request each", skill = "plan-parts" },
+    { query = "review PR #17 on the solver package", skill = "none" },
+]

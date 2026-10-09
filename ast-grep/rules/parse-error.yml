@@ -1,0 +1,6 @@
+id: parse-error
+language: julia
+severity: info
+message: tree-sitter-julia could not parse this, so a pattern can miss code here
+rule:
+  kind: ERROR

@@ -1,0 +1,24 @@
+{
+  "deny": [
+    "{home}/.ssh/**",
+    "{home}/.aws/**",
+    "{home}/.gnupg/**",
+    "{home}/.netrc",
+    "{home}/.claude.json",
+    "{home}/.claude/backups/**",
+    "{home}/.config/kaimon/config.json",
+    "{home}/.config/kaimon/opencode-token",
+    "{home}/.config/api-keys/**",
+    "{home}/.config/chezmoi/**",
+    "{home}/.config/gh/hosts.yml",
+    "{home}/.claude/.credentials.json",
+    "**/.env",
+    "**/.env.*",
+    "**/secrets/**",
+    "**/*.pem",
+    "**/*.key",
+    "**/id_rsa*",
+    "**/id_ed25519*",
+    "{home}/.local/share/opencode/**"
+  ]
+}

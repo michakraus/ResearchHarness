@@ -1,0 +1,266 @@
+#!/usr/bin/env bash
+#
+# claude-autocommit — commit ~/.claude's plan files and project memories on a timer.
+#
+#   canonical copy   ~/Research/Harness/launchagents/claude-autocommit
+#   installed copy   ~/.local/bin/claude-autocommit        (edit here, then reinstall)
+#   launched by      claude-autocommit.plist, rendered with the profile
+#
+# WHY THE SCOPE IS TWO DIRECTORIES
+#
+# An automatic commit is a sweep, and ~/.claude is the tree where sweeps are most
+# dangerous: several sessions write to it at once. So this stages explicit paths and
+# covers only the two kinds of tracked content that nobody will ever want a
+# hand-written message for — a plan file is one session's by-product with a generated
+# name, and a memory file is one self-describing fact. settings.json, CLAUDE.md,
+# RTK.md, agents/, skills/, hooks/, CHANGELOG.md and plugins/*.json are authored, each
+# carries a changelog round, and this job never touches them.
+#
+# It commits with an explicit pathspec, so anything another session has left *staged*
+# stays staged and uncommitted. That is the whole safety property; do not "simplify" it
+# into a bare `git commit`.
+#
+# BASH 3.2
+#
+# A launchd job need not carry /opt/homebrew/bin on PATH, so this may run under
+# /bin/bash 3.2. No mapfile, no associative arrays, no `set -u` with arrays, and every
+# command substitution whose failure could read as "nothing to do" is checked. See
+# Environment/Notes/Shell-Scripting-Here.md.
+#
+# EXIT CODES
+#
+#   0  committed, or nothing to do, or deferred (another run, a locked index, quiescence)
+#   1  something is wrong and a human should look — never used for "nothing to do"
+
+REPO="${CLAUDE_AUTOCOMMIT_REPO:-$HOME/.claude}"
+QUIESCE_MIN="${CLAUDE_AUTOCOMMIT_QUIESCE_MIN:-5}"
+MAX_DELETIONS="${CLAUDE_AUTOCOMMIT_MAX_DELETIONS:-20}"
+DO_PUSH="${CLAUDE_AUTOCOMMIT_PUSH:-1}"
+LOCK="$HOME/Library/Logs/claude-autocommit/lock"
+LOCK_STALE_MIN=30
+DRY=0
+
+usage() {
+    cat <<'EOF'
+usage: claude-autocommit [--dry-run] [--no-push] [--help]
+
+Commits ~/.claude/plans/ and ~/.claude/projects/*/memory/ and pushes to origin main.
+Nothing else in ~/.claude is touched.
+
+  --dry-run   report what would be committed; take no lock and write nothing
+  --no-push   commit but do not push
+
+environment
+  CLAUDE_AUTOCOMMIT_REPO           default $HOME/.claude
+  CLAUDE_AUTOCOMMIT_QUIESCE_MIN    skip files modified within N minutes (default 5)
+  CLAUDE_AUTOCOMMIT_MAX_DELETIONS  refuse a run deleting more than N files (default 20)
+  CLAUDE_AUTOCOMMIT_PUSH           0 to never push (default 1)
+EOF
+}
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --dry-run) DRY=1 ;;
+        --no-push) DO_PUSH=0 ;;
+        -h|--help) usage; exit 0 ;;
+        *) printf 'unknown argument: %s\n' "$1" >&2; usage >&2; exit 1 ;;
+    esac
+    shift
+done
+
+say()  { printf '%s claude-autocommit: %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*"; }
+warn() { say "$*" >&2; }
+die()  { warn "ERROR: $*"; exit 1; }
+
+# --- one run at a time -------------------------------------------------------------
+# launchd will not start a second copy while this one runs, but a hand invocation can.
+# mkdir is the portable atomic primitive; macOS has no flock(1).
+
+if [ "$DRY" -eq 0 ]; then
+    mkdir -p "$(dirname "$LOCK")" || die "cannot create $(dirname "$LOCK")"
+    if ! mkdir "$LOCK" 2>/dev/null; then
+        if [ -n "$(find "$LOCK" -maxdepth 0 -mmin "+$LOCK_STALE_MIN" 2>/dev/null)" ]; then
+            say "lock older than ${LOCK_STALE_MIN}m — taking it over"
+            rmdir "$LOCK" 2>/dev/null
+            mkdir "$LOCK" 2>/dev/null || exit 0
+        else
+            exit 0      # another run has it; the next interval picks this up
+        fi
+    fi
+    trap 'rmdir "$LOCK" 2>/dev/null' EXIT INT TERM
+fi
+
+# --- the repository ----------------------------------------------------------------
+
+cd "$REPO" 2>/dev/null || die "no such directory: $REPO"
+git rev-parse --git-dir >/dev/null 2>&1 || die "not a git repository: $REPO"
+
+# A template argument, not -t: macOS mktemp -t resolves the per-user Darwin temp
+# directory through confstr and ignores TMPDIR, which a sandboxed caller has moved.
+TMP="$(mktemp "${TMPDIR:-/tmp}/claude-autocommit.XXXXXX")" || die "mktemp failed"
+if [ "$DRY" -eq 0 ]; then
+    trap 'rm -f "$TMP" "$TMP.err" "$TMP.msg"; rmdir "$LOCK" 2>/dev/null' EXIT INT TERM
+else
+    trap 'rm -f "$TMP" "$TMP.err" "$TMP.msg"' EXIT INT TERM
+fi
+
+# The trailing /* is load-bearing. A git pathspec is matched against each *file* path,
+# so `projects/*/memory` matches nothing at all — it silently reported zero memory
+# files during development, which is the failure this whole script is written against:
+# permissive, silent, and indistinguishable from "nothing to do".
+SPEC_PLANS='plans'
+SPEC_MEMORY='projects/*/memory/*'
+
+# So assert the pathspec can still match something before believing an empty answer.
+tracked=$(git ls-files -- "$SPEC_PLANS" "$SPEC_MEMORY" 2>/dev/null | wc -l)
+[ "${tracked:-0}" -gt 0 ] || die "pathspec matches no tracked file — refusing to run (git behaviour changed, or this is a fresh repository with no plans and no memories yet)"
+
+# NUL-separated so a path with a space or a non-ASCII name survives, and written to a
+# file rather than captured: command substitution drops NUL bytes. Not piped, so $? is
+# git's own — a failed status is *unknown*, never "nothing to commit".
+git status --porcelain -z -- "$SPEC_PLANS" "$SPEC_MEMORY" >"$TMP" 2>"$TMP.err"
+rc=$?
+[ "$rc" -eq 0 ] || die "git status failed (rc=$rc): $(cat "$TMP.err" 2>/dev/null)"
+
+# --- classify ----------------------------------------------------------------------
+
+paths=""        # newline-separated, in the order git reported them
+defer_dirs=""   # directories holding a file this run is leaving alone
+n_defer=0
+n_del=0
+
+while IFS= read -r -d '' rec; do
+    [ -n "$rec" ] || continue
+    xy="${rec:0:2}"
+    p="${rec:3}"
+
+    # A rename emits two NUL records, so skipping one desynchronises this loop — and a
+    # renamed plan or memory is not something this job should be guessing about.
+    case "$xy" in
+        *R*) die "rename under plans/ or memory/ ($p) — commit it by hand" ;;
+    esac
+
+    case "$xy" in
+        *D*)
+            n_del=$((n_del + 1))
+            paths="$paths$p
+"
+            continue
+            ;;
+    esac
+
+    # Quiescence: a file touched in the last QUIESCE_MIN minutes may be mid-sequence —
+    # a memory written but its MEMORY.md pointer not yet added. Leave it for next run.
+    if [ -n "$(find "$p" -maxdepth 0 -type f -mmin "-$QUIESCE_MIN" 2>/dev/null)" ]; then
+        n_defer=$((n_defer + 1))
+        defer_dirs="$defer_dirs$(dirname "$p")
+"
+        continue
+    fi
+
+    paths="$paths$p
+"
+done <"$TMP"
+
+# An index must never be committed pointing at a file this run is deferring, so if any
+# memory in a directory is still settling, that directory's MEMORY.md waits with it.
+if [ -n "$defer_dirs" ] && [ -n "$paths" ]; then
+    kept=""
+    while IFS= read -r p; do
+        [ -n "$p" ] || continue
+        if [ "$(basename "$p")" = "MEMORY.md" ] &&
+           printf '%s' "$defer_dirs" | grep -qxF "$(dirname "$p")"; then
+            say "deferring $p — a memory in the same directory is still settling"
+            n_defer=$((n_defer + 1))
+            continue
+        fi
+        kept="$kept$p
+"
+    done <<EOF
+$paths
+EOF
+    paths="$kept"
+fi
+
+if [ -z "$paths" ]; then
+    [ "$DRY" -eq 1 ] && say "nothing to commit ($n_defer deferred)"
+    exit 0
+fi
+
+# A mass deletion is far more likely to be a tool misbehaving than an intention.
+if [ "$n_del" -gt "$MAX_DELETIONS" ]; then
+    die "$n_del deletions under plans/ or memory/ exceeds the cap of $MAX_DELETIONS — commit by hand"
+fi
+
+n_plans=$(printf '%s' "$paths" | grep -c '^plans/')
+n_mem=$(printf '%s' "$paths" | grep -c '/memory/')
+
+# Rebuild the list as positional parameters — 3.2-safe, and space-safe where an
+# unquoted $paths would not be.
+set --
+while IFS= read -r p; do
+    [ -n "$p" ] || continue
+    set -- "$@" "$p"
+done <<EOF
+$paths
+EOF
+
+if [ "$DRY" -eq 1 ]; then
+    say "would commit $n_plans plan(s) and $n_mem memory file(s); $n_defer deferred, $n_del deletion(s)"
+    for p in "$@"; do printf '  %s\n' "$p"; done
+    [ "$DO_PUSH" -eq 1 ] && say "would then: git push origin main"
+    exit 0
+fi
+
+# --- stage by name, then commit by pathspec ----------------------------------------
+
+for p in "$@"; do
+    out=$(git add -- "$p" 2>&1)
+    rc=$?
+    if [ "$rc" -ne 0 ]; then
+        case "$out" in
+            *index.lock*|*"Unable to create"*)
+                say "index locked by another process — retrying next interval"; exit 0 ;;
+            *) die "git add failed for $p (rc=$rc): $out" ;;
+        esac
+    fi
+done
+
+{
+    printf 'chore(auto): %d plan(s), %d memory file(s) — %s\n\n' \
+        "$n_plans" "$n_mem" "$(date '+%Y-%m-%d %H:%M')"
+    printf 'Committed by claude-autocommit on %s. Scope is plans/ and\n' "$(hostname -s)"
+    printf 'projects/*/memory/ only; everything else in ~/.claude is authored and\n'
+    printf 'committed by hand.\n\n'
+    printf '%s' "$paths"
+} >"$TMP.msg"
+
+# The pathspec is the safety property: it commits these files' worktree content and
+# ignores whatever else is sitting staged in the index.
+out=$(git commit -F "$TMP.msg" -- "$@" 2>&1)
+rc=$?
+if [ "$rc" -ne 0 ]; then
+    case "$out" in
+        *index.lock*|*"Unable to create"*)
+            say "index locked by another process — retrying next interval"; exit 0 ;;
+        *"nothing to commit"*|*"no changes added"*)
+            exit 0 ;;
+        *) die "git commit failed (rc=$rc): $out" ;;
+    esac
+fi
+
+say "committed $n_plans plan(s), $n_mem memory file(s)$([ "$n_defer" -gt 0 ] && printf ', %s deferred' "$n_defer")"
+
+# --- push ---------------------------------------------------------------------------
+# Never --force, never rebase. A non-fast-forward is left for a human; the commit is
+# already safe locally, which is the point of the job.
+
+if [ "$DO_PUSH" -eq 1 ]; then
+    out=$(git push origin main 2>&1)
+    rc=$?
+    if [ "$rc" -ne 0 ]; then
+        warn "push failed (rc=$rc), commit is local — leaving it: $out"
+    fi
+fi
+
+exit 0

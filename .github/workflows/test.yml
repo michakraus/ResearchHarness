@@ -1,0 +1,149 @@
+name: test
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  python:
+    name: Python ${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.11', '3.x']
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: harness test
+        run: python bin/harness test
+      - name: compileall
+        run: python -m compileall -q lib hooks scripts adapters
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: shellcheck over every tracked file with a sh or bash shebang
+        run: |
+          files=()
+          while IFS= read -r f; do
+            if head -n 1 "$f" | grep -qE '^#!(/usr)?/bin/(env )?(ba)?sh'; then
+              files+=("$f")
+            fi
+          done < <(git ls-files)
+          echo "${files[@]}"
+          shellcheck -S warning "${files[@]}"
+      - name: actionlint over .github/workflows/
+        env:
+          VERSION: 1.7.12
+          SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+        run: |
+          curl -sSfL -o actionlint.tar.gz \
+            "https://github.com/rhysd/actionlint/releases/download/v${VERSION}/actionlint_${VERSION}_linux_amd64.tar.gz"
+          echo "${SHA256}  actionlint.tar.gz" | sha256sum -c -
+          tar -xzf actionlint.tar.gz actionlint
+          ./actionlint .github/workflows/*.yml
+
+  # gitleaks with .gitleaks.toml over the pushed range, the checkout and the dummy render; every
+  # call passes GITLEAKS_FLAGS, with --redact, because the logs become public, and
+  # --ignore-gitleaks-allow, so the canary checks the flags of every scan. CI has no profile: the
+  # private strings are the pre-push hook's `harness leaks`.
+  leaks:
+    runs-on: ubuntu-latest
+    env:
+      # A .pyc holds its source's path, a home path on the runner.
+      PYTHONDONTWRITEBYTECODE: '1'
+      GITLEAKS_FLAGS: --config .gitleaks.toml --redact --ignore-gitleaks-allow --no-banner --no-color --verbose
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: install gitleaks
+        env:
+          VERSION: 8.30.1
+          SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+        run: |
+          curl -sSfL -o "$RUNNER_TEMP/gitleaks.tar.gz" \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${VERSION}/gitleaks_${VERSION}_linux_x64.tar.gz"
+          echo "${SHA256}  $RUNNER_TEMP/gitleaks.tar.gz" | sha256sum -c -
+          mkdir "$RUNNER_TEMP/bin"
+          tar -xzf "$RUNNER_TEMP/gitleaks.tar.gz" -C "$RUNNER_TEMP/bin" gitleaks
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+      - name: canary, a synthetic token and home path are found and the token is redacted
+        run: |
+          canary="$RUNNER_TEMP/canary"
+          mkdir "$canary"
+          token=ghp_$(python3 -c 'import secrets, string; print("".join(secrets.choice(string.ascii_letters + string.digits) for _ in range(36)))')
+          echo "token = \"$token\"" > "$canary/token.txt"
+          # Built at run time, so that this file holds no home path.
+          users=/Users
+          echo "path = $users/probe-user/x" > "$canary/home.txt"
+          status=0
+          read -ra flags <<< "$GITLEAKS_FLAGS"
+          gitleaks dir "${flags[@]}" --report-format json --report-path "$RUNNER_TEMP/canary.json" "$canary" > "$RUNNER_TEMP/canary.log" 2>&1 || status=$?
+          cat "$RUNNER_TEMP/canary.log"
+          if [ "$status" -ne 1 ]; then
+            echo "canary: gitleaks exited $status, not 1"
+            exit 1
+          fi
+          python3 - "$RUNNER_TEMP/canary.json" <<'EOF'
+          import json, sys
+          files = {f["File"].rsplit("/", 1)[-1]: f["RuleID"] for f in json.load(open(sys.argv[1]))}
+          print("canary findings:", files)
+          sys.exit(not (files.get("home.txt") == "home-path" and "token.txt" in files))
+          EOF
+          if grep -qF "$token" "$RUNNER_TEMP/canary.log"; then
+            echo "canary: the token is in the log, not redacted"
+            exit 1
+          fi
+      - name: gitleaks over the pushed range
+        env:
+          EVENT: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+          BEFORE: ${{ github.event.before }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          # A push: before..sha. When before is all zeros, absent or not in the clone (a forced
+          # push), origin/main..HEAD for a branch and the whole history for main.
+          if [ "$EVENT" = pull_request ]; then
+            range="$BASE..$HEAD"
+          elif [ -n "${BEFORE//0/}" ] && git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
+            range="$BEFORE..$GITHUB_SHA"
+          elif [ "$REF" = refs/heads/main ]; then
+            range="$GITHUB_SHA"
+          else
+            range="origin/main..$GITHUB_SHA"
+          fi
+          echo "range: $range"
+          read -ra flags <<< "$GITLEAKS_FLAGS"
+          gitleaks git "${flags[@]}" --log-opts="$range" .
+          # gitleaks git reads no commit message; pipefail, so a failed git log fails the step.
+          set -o pipefail
+          git log --format=%B "$range" | gitleaks stdin "${flags[@]}"
+      - name: gitleaks over the checkout
+        run: |
+          read -ra flags <<< "$GITLEAKS_FLAGS"
+          gitleaks dir "${flags[@]}" .
+      - name: gitleaks over the templates rendered with examples/profile.toml
+        run: |
+          render="$RUNNER_TEMP/render"
+          python3 -c 'import sys; sys.path.insert(0, "lib"); from harness import profile; print(*profile.templates(), sep="\n")' > "$RUNNER_TEMP/templates"
+          while IFS= read -r t; do
+            mkdir -p "$(dirname "$render/$t")"
+            python3 bin/harness --profile examples/profile.toml render "$t" > "$render/$t"
+            echo "rendered $t"
+          done < "$RUNNER_TEMP/templates"
+          read -ra flags <<< "$GITLEAKS_FLAGS"
+          gitleaks dir "${flags[@]}" "$render"

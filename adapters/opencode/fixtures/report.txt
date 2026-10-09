@@ -1,0 +1,24 @@
+input rules (deny + ask): 19
+emitted:                  27 (13 OpenCode-only)
+dropped:                  5
+round-trip:               OK
+
+per permission key:
+  bash                    7
+  edit                    6
+  external_directory      7
+  glob                    1
+  kaimon_debug_eval       1
+  kaimon_manage_extension 1
+  read                    3
+  webfetch                1
+
+dropped rules, with the reason:
+  [ask] mcp__terminal__read_terminal                server 'terminal' is not configured for OpenCode
+  [deny] mcp__kaimon__format_code                    already disabled server-side in ~/Research/.kaimon/tools.json
+  [deny] mcp__x                                      unparseable MCP rule
+  [deny] Agent(spawn)                                not a recognised rule form
+  [deny] Skill                                       not a recognised rule form
+
+NOT PORTED BY DESIGN: the 3 `allow` rules. OpenCode has no sandbox and
+defaults to allow, so they would add untested patterns and no control.

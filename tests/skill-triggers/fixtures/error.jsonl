@@ -1,0 +1,2 @@
+{"type":"system","subtype":"init","cwd":"/home/example/Research","session_id":"fixture-6","tools":["Bash","Read","Skill"],"model":"fixture-model","permissionMode":"default","apiKeySource":"none"}
+{"type":"result","subtype":"error_during_execution","is_error":true,"duration_ms":900,"num_turns":0,"session_id":"fixture-6","total_cost_usd":0,"usage":{"input_tokens":0,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":0}}

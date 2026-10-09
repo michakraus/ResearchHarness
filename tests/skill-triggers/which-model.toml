@@ -1,0 +1,5 @@
+# The triggering query of skills/which-model, whose model invocation is off: `near` should not load it.
+
+near = [
+    { query = "what model answers a slash command whose frontmatter asks for haiku?", skill = "none" },
+]

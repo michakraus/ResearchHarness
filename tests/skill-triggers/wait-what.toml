@@ -1,0 +1,5 @@
+# The triggering query of skills/wait-what, whose model invocation is off: `near` should not load it.
+
+near = [
+    { query = "that last message did not land, say it again more simply", skill = "none" },
+]

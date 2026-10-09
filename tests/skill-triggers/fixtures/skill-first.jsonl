@@ -1,0 +1,10 @@
+{"type":"system","subtype":"hook_started","hook_event":"SessionStart","hook_name":"SessionStart:startup","session_id":"recorded-1"}
+{"type":"system","subtype":"hook_started","hook_event":"SessionStart","hook_name":"SessionStart:startup","session_id":"recorded-1"}
+{"type":"system","subtype":"hook_response","hook_event":"SessionStart","hook_name":"SessionStart:startup","exit_code":0,"outcome":"success","session_id":"recorded-1"}
+{"type":"system","subtype":"hook_response","hook_event":"SessionStart","hook_name":"SessionStart:startup","exit_code":0,"outcome":"success","session_id":"recorded-1"}
+{"type":"system","subtype":"init","claude_code_version":"2.1.295","model":"claude-sonnet-5-5","permissionMode":"default","apiKeySource":"none","cwd":"/home/example/Research","session_id":"recorded-1"}
+{"type":"assistant","message":{"id":"msg_011CfqQhepC5QwXen4ujuoy8","type":"message","role":"assistant","model":"claude-sonnet-5-5","content":[{"type":"tool_use","id":"toolu_01Pxz1QV6tHq9r7Qyprd5bxT","name":"Skill","input":{"skill":"julia-performance","args":"why does step! allocate?"}}],"stop_reason":null,"usage":{"input_tokens":2,"cache_creation_input_tokens":25623,"cache_read_input_tokens":13234,"output_tokens":16}},"parent_tool_use_id":null,"session_id":"recorded-1"}
+{"type":"rate_limit_event","session_id":"recorded-1"}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_01Pxz1QV6tHq9r7Qyprd5bxT","content":"[stripped]"}]},"parent_tool_use_id":null,"session_id":"recorded-1"}
+{"type":"user","message":{"role":"user","content":[{"type":"text","text":"[stripped]"}]},"parent_tool_use_id":null,"session_id":"recorded-1"}
+{"type":"result","subtype":"error_max_turns","is_error":true,"duration_ms":44776,"num_turns":2,"stop_reason":"tool_use","terminal_reason":"max_turns","total_cost_usd":0.1059428,"usage":{"input_tokens":2,"cache_creation_input_tokens":25623,"cache_read_input_tokens":13234,"output_tokens":80},"session_id":"recorded-1"}

@@ -1,0 +1,22 @@
+# The Julia packages that the harness scripts load beyond the standard library. `harness install
+# --apply` copies this file to ~/.local/share/research-harness/julia/ ($RESEARCH_HARNESS_JULIA)
+# and instantiates it there, and every script that loads one of them puts that environment in
+# its LOAD_PATH. The scripts never use this file in place: a session can edit it, and the
+# unsandboxed updater would install whatever it names. No Manifest.toml is committed.
+
+[deps]
+ExplicitImports = "7d51a73a-1435-4ff3-83d9-f097790105c7"
+JSON = "682c06a0-de6a-54ab-a142-c8b1cf79cde6"
+JuliaFormatter = "98e50ef6-434e-11e9-1051-2b60c6c9e899"
+JuliaSyntax = "70703baa-626e-46a2-a12c-08ffd08c73b4"
+TestEnv = "1e6cf692-eddd-4d53-88a5-2d735e33781b"
+YAML = "ddb6d928-2868-570f-bddf-ab3f9cf99eb6"
+
+[compat]
+ExplicitImports = "1.15"
+JSON = "1.10"
+JuliaFormatter = "2.14"
+JuliaSyntax = "1.0.2"
+TestEnv = "1.103.7"
+YAML = "0.4.17"
+julia = "1.13"

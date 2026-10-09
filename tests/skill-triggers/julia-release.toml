@@ -1,0 +1,22 @@
+# The triggering queries of skills/julia-release: `load` should load it, `near` should not.
+
+load = [
+    "release this package",
+    "cut a release",
+    "tag version 0.4.2",
+    "register the new version",
+    "bump the version for a breaking release",
+    "AutoMerge is blocking the registry PR",
+    "the registry PR is stuck",
+    "close out the changelog and prepare the release notes",
+    "Mach ein Release mit der neuen Version",
+    "TagBot made no tag after the registration",
+]
+
+near = [
+    { query = "write the changelog entry for this change", skill = "none" },
+    { query = "is CI green across the packages?", skill = "none" },
+    { query = "audit the package for quality before we ship it", skill = "julia-package-audit" },
+    { query = "raise the compat bound of a dependency", skill = "none" },
+    { query = "did the speed-up survive the last merge?", skill = "julia-performance" },
+]

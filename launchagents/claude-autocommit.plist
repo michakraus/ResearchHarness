@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>{launchd_prefix}.claude-autocommit</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>{home}/.local/bin/claude-autocommit</string>
+    </array>
+    <key>StartInterval</key>
+    <integer>900</integer>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>{home}/Library/Logs/claude-autocommit/launchd.out</string>
+    <key>StandardErrorPath</key>
+    <string>{home}/Library/Logs/claude-autocommit/launchd.err</string>
+    <key>ProcessType</key>
+    <string>Background</string>
+    <key>LowPriorityIO</key>
+    <true/>
+    <key>Nice</key>
+    <integer>5</integer>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+        <!-- A credential prompt under launchd has no terminal to answer it and would
+             hang the job. Fail the push instead; the commit is already safe locally. -->
+        <key>GIT_TERMINAL_PROMPT</key>
+        <string>0</string>
+    </dict>
+</dict>
+</plist>

@@ -1,0 +1,8 @@
+# Installed as ~/Research/sgconfig.yml. ast-grep looks for sgconfig.yml in every parent directory,
+# so this registers Julia for every repository in the tree. Paths are relative to ~/Research.
+ruleDirs: [Harness/ast-grep/rules]
+customLanguages:
+  julia:
+    libraryPath: Harness/ast-grep/julia.dylib
+    extensions: [jl]
+    expandoChar: µ

@@ -1,0 +1,60 @@
+# The model tables of a ResearchHarness installation: which model each harness runs for each
+# agent. Copy this file to ~/.config/research-harness/models.toml, beside the profile, and fill it
+# in. `harness install` finds it as `--models F`, else $RESEARCH_HARNESS_MODELS, else beside the
+# profile that `--profile` or the default names. No template names these keys, and
+# `harness render` does not read this file.
+#
+# One table per harness. An agent's `model:` names a tier, `large`, `medium` or `small`, and each
+# table maps the tiers to that harness's models. A table with a tier's old name, `opus`, `sonnet`
+# or `haiku`, stops the install and names the rename.
+
+# The Claude Code model of each tier, written as the `model:` of the installed agent or skill.
+# All three tiers are required. A model is a letter, then letters, digits and . _ - [ ], so that
+# YAML reads it as written.
+[claude]
+large = "opus"
+medium = "sonnet"
+small = "haiku"
+
+[opencode]
+
+# The OpenCode model of each tier. An agent whose tier has no entry stops the install; an agent
+# with no `model:` gets no `model:` line.
+[opencode.models]
+large = "provider-a/large-model"
+medium = "provider-b/medium-model"
+small = "provider-b/small-model"
+
+# An agent whose OpenCode model is not the one its tier maps to.
+[opencode.model_overrides]
+builder = "provider-b/medium-model"
+
+# The `variant:` of every agent on a model. A variant is provider-specific.
+[opencode.model_variants]
+"provider-a/large-model" = "medium"
+
+# The `variant:` of one agent, over its model's.
+[opencode.variants]
+judge = "high"
+
+# The `reasoningEffort:` of one agent, for a model that has no variant for it.
+[opencode.reasoning_effort]
+critic-c = "high"
+
+# Copies of an agent on other models, in order: each is written as `<name>.md`, hidden, with its
+# own model and the agent's body. A council is keyed by an agent of agents/; any other key
+# stops the install.
+[opencode.councils]
+julia-critic = [
+    { name = "critic-b", model = "provider-c/other-model" },
+    { name = "critic-c", model = "provider-b/medium-model" },
+]
+
+# The oh-my-pi model of each tier, written to config.yml as a role of `modelRoles`; an agent's
+# `model:` becomes that role, `@opus`, `@sonnet` or `@haiku`. All three tiers are required.
+# `medium` is also the default model, `modelRoles.default`, so that oh-my-pi picks no model by
+# itself. oh-my-pi has no council and no per-agent override.
+[omp]
+large = "provider-a/large-model"
+medium = "provider-b/medium-model"
+small = "provider-b/small-model"

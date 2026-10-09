@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>{launchd_prefix}.kaimon</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>{home}/.julia/bin/kaimon</string>
+        <string>--headless</string>
+        <string>--port</string>
+        <string>2828</string>
+    </array>
+
+    <!-- LOAD-BEARING. Kaimon reads its tool policy from .kaimon/tools.json resolved
+         against the server process's pwd(). Started anywhere else, the entire policy
+         is SILENTLY ignored and all 53 default tools are advertised, including
+         pkg_add, pkg_rm and the agent_* family. This is the launchd expression of the
+         documented `cd ~/Research && kaimon ...`. Do not remove it. -->
+    <key>WorkingDirectory</key>
+    <string>{home}/Research</string>
+
+    <!-- A persistent server, not an interval job: start at login, restart on exit. -->
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+
+    <!-- Without this, a failure to bind port 2828 (typically a second server already
+         running) becomes a restart loop several times a second. -->
+    <key>ThrottleInterval</key>
+    <integer>60</integer>
+
+    <key>StandardOutPath</key>
+    <string>{home}/Library/Logs/kaimon/launchd.out</string>
+    <key>StandardErrorPath</key>
+    <string>{home}/Library/Logs/kaimon/launchd.err</string>
+
+    <!-- Adaptive, not Background: this must answer MCP calls promptly, unlike the
+         research-sync job which is deliberately deprioritised. -->
+    <key>ProcessType</key>
+    <string>Adaptive</string>
+
+    <!-- JULIA_APPS_JULIA_CMD is what decides which Julia runs, and it is here rather than
+         left to the shim on purpose. The Pkg-generated shim hardcodes an absolute juliaup
+         path; on 2026-09-07 the release it named (julia-1.13.0-rc3) was removed by an
+         upgrade and the job could no longer start — "command not found", which reads as a
+         broken Julia install rather than a stale pin. Pkg rewrites that line on every
+         `Pkg.Apps.add`, so a fix in the shim alone does not stay fixed. The launcher
+         resolves juliaup's default channel instead of naming one release.
+
+         PATH is not needed to start the job (the shim exports JULIA_DEPOT_PATH and
+         JULIA_LOAD_PATH itself). It is set for the subprocesses Kaimon spawns — git, and
+         Julia's own tooling — which otherwise get launchd's minimal default PATH.
+
+         KAIMON_QDRANT_MANAGED=off stops the background indexing, which the qdrant_* entries
+         in tools.json do not stop. The package preference of the same name lives in the app
+         environment, and every Kaimon update deletes it; this variable overrides it and
+         stays. See Semantic-Code-Search-Here.md. -->
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>JULIA_APPS_JULIA_CMD</key>
+        <string>{home}/.juliaup/bin/julia</string>
+        <key>PATH</key>
+        <string>{home}/.juliaup/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+        <key>KAIMON_QDRANT_MANAGED</key>
+        <string>off</string>
+    </dict>
+</dict>
+</plist>

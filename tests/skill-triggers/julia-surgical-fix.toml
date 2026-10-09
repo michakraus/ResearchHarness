@@ -1,0 +1,22 @@
+# The triggering queries of skills/julia-surgical-fix: `load` should load it, `near` should not.
+
+load = [
+    "fix the findings",
+    "address the review comments",
+    "apply the fixes from the review",
+    "clean this up",
+    "make the change and re-check it",
+    "fix the three findings of the report and touch nothing else",
+    "Behebe die Findings aus dem Review",
+    "address the reviewer's comments on the PR branch",
+    "apply the fix for finding 2 and verify it again",
+    "fix only what the review flagged, nothing more",
+]
+
+near = [
+    { query = "audit this package", skill = "julia-package-audit" },
+    { query = "measure the allocations before and after", skill = "julia-performance" },
+    { query = "who calls this before I change it?", skill = "julia-structure" },
+    { query = "revise the paper as the referee report asks", skill = "latex-revision" },
+    { query = "review this pull request", skill = "none" },
+]

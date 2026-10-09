@@ -1,0 +1,7 @@
+{
+  "deny": [
+    "{home}/.ssh/**",
+    "~/.aws/**",
+    "{home}/.local/share/opencode/**"
+  ]
+}

@@ -1,0 +1,41 @@
+  "permission": {
+    "read": {
+      "{home}/.ssh/**": "deny",
+      "~/.aws/**": "deny",
+      "{home}/.local/share/opencode/**": "deny"
+    },
+    "edit": {
+      "{home}/.claude/agents/**": "ask",
+      "{home}/.config/**": "deny",
+      "{home}/.config/**": "deny",
+      "{harness}/adapters/opencode/**": "ask",
+      "{home}/.claude/rules/**": "ask",
+      "{home}/.julia/packages/**": "deny"
+    },
+    "external_directory": {
+      "{home}/.julia/packages/*": "allow",
+      "{home}/Research/*": "allow",
+      "{home}/.claude/rules/*": "allow",
+      "{home}/.claude/skills/*": "allow",
+      "{home}/.claude/agents/*": "allow",
+      "{home}/.config/opencode/*": "allow",
+      "/tmp/*": "allow"
+    },
+    "glob": {
+      "/tmp/private/**": "deny"
+    },
+    "webfetch": {
+      "domain:example.org": "ask"
+    },
+    "kaimon_debug_eval": "ask",
+    "kaimon_manage_extension": "deny",
+    "bash": {
+      "git push *": "ask",
+      "rm -rf *": "ask",
+      "rm -rf *": "deny",
+      "say \"hi\" *": "deny",
+      "echo a\\b": "deny",
+      "kill *": "ask",
+      "pkill *": "ask"
+    }
+  }

@@ -1,0 +1,22 @@
+# The triggering queries of skills/julia-package-audit: `load` should load it, `near` should not.
+
+load = [
+    "audit this package",
+    "verify the package",
+    "review the whole package for code quality",
+    "is there any type piracy in this package?",
+    "check the package for type instabilities and avoidable allocations",
+    "does this package duplicate functionality from its dependencies?",
+    "find stale comments and historical notes in the docs of this package",
+    "are the comments in present tense? compact them where you can",
+    "Prüf das ganze Paket auf sauberen, knappen Code",
+    "sweep this Julia package for correctness and quality and give me a findings report",
+]
+
+near = [
+    { query = "why is this function allocating?", skill = "julia-performance" },
+    { query = "benchmark this change against main", skill = "julia-performance" },
+    { query = "who calls this function before I change its signature?", skill = "julia-structure" },
+    { query = "fix the findings from the audit", skill = "julia-surgical-fix" },
+    { query = "review PR #31", skill = "none" },
+]

@@ -1,0 +1,22 @@
+# The triggering queries of skills/latex-revision: `load` should load it, `near` should not.
+
+load = [
+    "revise this paper",
+    "do a revision pass over the manuscript",
+    "mark the changes in colour",
+    "address the referee report",
+    "respond to the reviewers",
+    "which changes are still unreviewed?",
+    "strip the change markings and typeset it clean",
+    "Überarbeite das Manuskript mit markierten Änderungen",
+    "use markchanges for the new section",
+    "go through the second referee's comments and revise the introduction",
+]
+
+near = [
+    { query = "check every derivation in paper.tex, claim by claim", skill = "none" },
+    { query = "verify this identity", skill = "math-verify" },
+    { query = "find papers on discrete gradient methods", skill = "none" },
+    { query = "address the review comments on the PR", skill = "julia-surgical-fix" },
+    { query = "write the changelog entry", skill = "none" },
+]

@@ -1,0 +1,3 @@
+{"type":"system","subtype":"init","cwd":"/home/example/Research","session_id":"fixture-8","tools":["Bash","Read","Skill"],"model":"fixture-model","permissionMode":"default","apiKeySource":"none"}
+{"type":"assistant","message":{"id":"msg_08","type":"message","role":"assistant","model":"<synthetic>","content":[{"type":"text","text":"API Error: 529 overloaded"}],"stop_reason":"stop_sequence","usage":{"input_tokens":0,"output_tokens":0}},"parent_tool_use_id":null,"session_id":"fixture-8"}
+{"type":"result","subtype":"success","is_error":true,"duration_ms":30500,"num_turns":1,"result":"API Error: 529 overloaded","session_id":"fixture-8","total_cost_usd":0,"usage":{"input_tokens":0,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":0}}

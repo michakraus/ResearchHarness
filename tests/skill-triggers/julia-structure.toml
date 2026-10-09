@@ -1,0 +1,22 @@
+# The triggering queries of skills/julia-structure: `load` should load it, `near` should not.
+
+load = [
+    "find the callers of assemble_matrix",
+    "who calls this?",
+    "how many methods does integrate have?",
+    "what breaks if I change this signature?",
+    "is this dead code?",
+    "explore the codebase",
+    "help me understand the architecture of this package",
+    "where is solve! defined?",
+    "Welche Methode läuft hier tatsächlich?",
+    "show me the structure of the solver module",
+]
+
+near = [
+    { query = "audit the whole package for quality", skill = "julia-package-audit" },
+    { query = "is this allocating?", skill = "julia-performance" },
+    { query = "check this identity numerically", skill = "math-verify" },
+    { query = "fix the review comments", skill = "julia-surgical-fix" },
+    { query = "find papers on variational integrators", skill = "none" },
+]

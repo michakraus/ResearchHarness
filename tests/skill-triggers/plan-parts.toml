@@ -1,0 +1,22 @@
+# The triggering queries of skills/plan-parts: `load` should load it, `near` should not.
+
+load = [
+    "plan this task",
+    "break this into pull requests",
+    "what can run in parallel here?",
+    "which parts need a decision first?",
+    "sharpen the done-condition of part C for the critic",
+    "write the parts table for this plan",
+    "Zerleg die Aufgabe in Teile, je ein PR",
+    "add the collision map and the specs to the finished plan",
+    "which tier should each part get?",
+    "plan the migration as parts with done-conditions",
+]
+
+near = [
+    { query = "build the next part", skill = "build-part" },
+    { query = "run the open parts", skill = "build-part" },
+    { query = "build this reviewed part", skill = "build-reviewed" },
+    { query = "check this part's branch before the PR opens", skill = "none" },
+    { query = "take PR #9 to green", skill = "none" },
+]

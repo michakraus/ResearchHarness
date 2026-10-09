@@ -1,0 +1,11 @@
+#!/bin/sh
+#
+# Pass a Claude Code hook event to iTerm2's cc-status utility, which shows the session's state
+# in its tab. Where iTerm2 has not installed the utility, exit 0 and do nothing, so that one
+# settings file serves a machine with iTerm2 and a machine without it.
+#
+# The event arrives as JSON on stdin; `exec` hands stdin and the arguments on unchanged.
+
+utility="$HOME/.config/iterm2/cc-status"
+[ -x "$utility" ] || exit 0
+exec "$utility" "$@"

@@ -1,0 +1,66 @@
+# The private profile of a ResearchHarness installation: every value that names a person, an
+# institution or a machine. Copy this file to ~/.config/research-harness/profile.toml and fill
+# it in. A template names a key as {key}; lib/harness/profile.py documents the render.
+
+# The home directory, as an absolute path without a trailing slash.
+home = "/home/example"
+
+# The checkout of this repository, as an absolute path without a trailing slash.
+harness = "/home/example/Research/Harness"
+
+# The directory name Claude Code gives the project of the research tree under
+# ~/.claude/projects/: the tree's absolute path with every `/` replaced by `-`. Keep one value
+# on every machine, so that every machine shares one memory pool.
+memory_project = "-home-example-Research"
+
+# The tree instructions: a directory of private instruction text about the research tree, which
+# `harness install` installs into ~/.claude/ beside the repository's sources. It mirrors the
+# layout of ~/.claude/. Its README.md is not installed, and neither is a file below its agents/
+# or hooks/: agents and hooks install from the repository only.
+tree_agents = "/home/example/Research/Environment/Agents"
+
+# The reverse-domain prefix of the LaunchAgent labels: `<launchd_prefix>.kaimon` and the others
+# in launchagents/.
+launchd_prefix = "org.example"
+
+# The GitHub accounts, organisations and the user's own, where a session may open a pull request
+# or an issue and comment on one without a prompt.
+org = ["example-org", "example-user"]
+
+# The directories that hold the research tree's repositories, as absolute paths.
+# `harness leaks` searches the harness for each directory name below them, so that no
+# source names a repository of the tree.
+repository_roots = ["/home/example/Research/Packages", "/home/example/Research/Experiments"]
+
+# The repositories that keep their own documentation workflow, a multi-job pipeline that
+# githooks/workflows/Documenter.yml does not describe: the installer skips them, and
+# verify-workflows.jl does not compare them.
+docs_exceptions = ["ExampleBook"]
+
+# The repositories that keep the canonical documentation workflow and add steps to it, such as a
+# TeX toolchain: the installer skips them, and verify-workflows.jl checks that the canonical body
+# survives in their copy.
+docs_additions = ["ExampleFigures"]
+
+# Hosts that WebFetch and a sandboxed command may reach beyond the template's list, such as the
+# institution's library resolver.
+extra_domain = ["library.example.org"]
+
+# Directories below `home` that no session may edit, such as a synchronised share.
+protected_dir = ["Nextcloud"]
+
+# The entries of the `provider` object in OpenCode's opencode.jsonc, as JSONC lines, comments
+# allowed: the model servers and accounts beyond OpenCode's built-in providers.
+opencode_providers = '''
+    "local": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "a local server",
+      "options": { "baseURL": "http://127.0.0.1:8080/v1" },
+      "models": {
+        "example-model": { "name": "Example model", "limit": { "context": 131072, "output": 32768 } }
+      }
+    }'''
+
+# Strings that must never appear in the repository: `harness leaks` searches every tracked file
+# for each. The home path, the user name, the institution's hosts, internal addresses.
+leak = ["/home/example", "example-user"]

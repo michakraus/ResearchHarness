@@ -1,0 +1,22 @@
+# The triggering queries of skills/julia-performance: `load` should load it, `near` should not.
+
+load = [
+    "why is this allocating?",
+    "how many allocations does step! make per call?",
+    "this got slower since last week",
+    "is this function type stable?",
+    "run @code_warntype on the residual function",
+    "benchmark this change against main",
+    "did the fix actually make the solver faster?",
+    "the allocation test fails",
+    "Warum ist der Solver seit dem Merge langsamer?",
+    "@benchmark the Newton step before and after the change",
+]
+
+near = [
+    { query = "audit the whole package for type instabilities", skill = "julia-package-audit" },
+    { query = "review this package for avoidable allocations and clean code", skill = "julia-package-audit" },
+    { query = "where is this method defined, and how many methods does it have?", skill = "julia-structure" },
+    { query = "is this method of second order?", skill = "math-verify" },
+    { query = "release the package", skill = "julia-release" },
+]

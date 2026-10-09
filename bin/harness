@@ -1,0 +1,18 @@
+#!/usr/bin/env python3
+# The front door of the harness tooling: `harness --help` lists the verbs. The version check
+# comes first and uses no syntax newer than Python 3.0, so an old interpreter prints the version
+# it found and the one it needs instead of a syntax error.
+
+import os
+import sys
+
+NEED = (3, 11)  # tomllib
+if sys.version_info < NEED:
+    sys.stderr.write("harness: Python %d.%d found, %d.%d or later needed\n" % (sys.version_info[:2] + NEED))
+    sys.exit(2)
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "lib"))
+
+from harness.cli import main  # noqa: E402
+
+sys.exit(main())

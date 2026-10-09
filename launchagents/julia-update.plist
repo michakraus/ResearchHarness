@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>{launchd_prefix}.julia-update</string>
+
+    <!-- The juliaup launcher rather than a release path, for the reason the kaimon job records:
+         an absolute juliaup path names one release, and an upgrade removes it.
+         The installed copy of the script, not the one in ~/Research: a session can write
+         ~/Research, and this job runs unsandboxed. ~/.local/bin is deny-write from a session. -->
+    <key>ProgramArguments</key>
+    <array>
+        <string>{home}/.juliaup/bin/julia</string>
+        <string>--startup-file=no</string>
+        <string>{home}/.local/bin/julia-update.jl</string>
+    </array>
+
+    <!-- Daily at 04:30. An interval job, not a persistent one: no KeepAlive, and nothing at
+         login. It restarts {launchd_prefix}.kaimon only when that server's Julia is deleted. -->
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>4</integer>
+        <key>Minute</key>
+        <integer>30</integer>
+    </dict>
+    <key>RunAtLoad</key>
+    <false/>
+
+    <key>StandardOutPath</key>
+    <string>{home}/Library/Logs/julia-update/launchd.out</string>
+    <key>StandardErrorPath</key>
+    <string>{home}/Library/Logs/julia-update/launchd.err</string>
+
+    <!-- Deprioritised like research-sync: a Pkg resolve that competes with an interactive Julia
+         session is worse than a late one. -->
+    <key>ProcessType</key>
+    <string>Background</string>
+    <key>LowPriorityIO</key>
+    <true/>
+    <key>Nice</key>
+    <integer>5</integer>
+
+    <!-- JULIA_PKG_USE_CLI_GIT is load-bearing: libgit2 crashes on this machine's authenticating
+         proxy and takes Manifest.toml with it. PATH is for the git that setting then calls. -->
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>JULIA_PKG_USE_CLI_GIT</key>
+        <string>true</string>
+        <key>PATH</key>
+        <string>{home}/.juliaup/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    </dict>
+</dict>
+</plist>

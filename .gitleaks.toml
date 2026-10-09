@@ -1,0 +1,18 @@
+# The gitleaks config of the leak gate: the pre-push hook and the `leaks` job of test.yml read it.
+# gitleaks finds the public shapes, tokens, keys and home paths; `harness leaks` finds the private
+# strings of the profile. Every call passes --config, --redact and --ignore-gitleaks-allow, so a
+# `gitleaks:allow` comment has no effect. A false positive is fixed in the text; an allowlist
+# entry here needs the user's approval and its own line in CHANGELOG.md.
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "home-path"
+description = "A home directory that names a user"
+regex = '''(?:/Users|/home)/[A-Za-z0-9_][A-Za-z0-9._-]*'''
+
+# The two example homes of the repository, and no other.
+[[rules.allowlists]]
+regexTarget = "match"
+regexes = ['''^/Users/me$''', '''^/home/example$''']

@@ -1,0 +1,22 @@
+# The triggering queries of skills/math-verify: `load` should load it, `near` should not.
+
+load = [
+    "verify this derivation",
+    "check this identity",
+    "is this integrator symplectic?",
+    "does this scheme preserve the energy?",
+    "check the Jacobi identity for this bracket",
+    "verify the order of the method",
+    "confirm this result numerically",
+    "is this conservation law exact?",
+    "Beweise, dass diese Abbildung symplektisch ist",
+    "prove that this discrete Lagrangian gives a second-order method",
+]
+
+near = [
+    { query = "check every claim of paper.tex before submission", skill = "none" },
+    { query = "benchmark this integrator", skill = "julia-performance" },
+    { query = "revise the paper", skill = "latex-revision" },
+    { query = "find the reference for this result", skill = "none" },
+    { query = "is this function type stable?", skill = "julia-performance" },
+]

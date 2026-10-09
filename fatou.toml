@@ -1,0 +1,10 @@
+# Global fatou config for this machine. Install it as a copy, and copy it again after a change:
+#   cp ~/Research/Harness/fatou.toml ~/.config/fatou/fatou.toml
+# fatou reads $XDG_CONFIG_HOME/fatou/fatou.toml. No repository under ~/Research has its own
+# fatou.toml, and fatou does not look above a git root, so this file is the only config it finds.
+#
+# unused-import does not follow `include`. In a package whose imports sit in the module file,
+# almost every finding is false. ExplicitImports.jl answers that question instead.
+# See ~/Research/Environment/Julia/fatou lint unused-import does not follow include.md
+[lint]
+ignore = ["unused-import"]

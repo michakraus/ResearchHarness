@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+#
+# Shared pre-commit hook for the five prose repositories: Knowledge, Environment, Tasks,
+# Bibliography and Library. Canonical copy:
+#
+#   ~/Research/Harness/githooks/pre-commit-wiki
+#
+# Installed byte-identical into each as `.githooks/pre-commit` by `harness wiki-lint-hook`, which
+# also sets `core.hooksPath=.githooks`. Edit this file and re-run the installer; never edit a copy.
+#
+# This is NOT the hook the Julia packages use. `pre-commit` beside it is theirs — JuliaFormatter,
+# fatou lint and a package load test on staged `.jl`. The two never meet: no repository is both a
+# Julia package and a prose repository.
+#
+# WHAT IT DOES
+#
+# Runs `wiki-lint.jl` over all five trees and blocks the commit if it reports an ERROR. About
+# three seconds. It does not filter to staged files, deliberately: a change to a *script* can
+# break a `checks:` or `depends_on:` pin in a page that is not in the commit, and the existing
+# `pre-commit` already demonstrates the cost of filtering — it exits 0 on a Markdown-only commit
+# and checks nothing.
+#
+# IT BLOCKS ON AN ERROR ANYWHERE, NOT ONLY IN THIS REPOSITORY
+#
+# That is a decision, and the alternative is one flag away. The five trees cross-reference each
+# other, so an edit here can only break a link over there: rename a `Knowledge/` page and the
+# error appears in `Tasks/`. A hook that failed only on its own repository would report that
+# error to nobody until someone happened to commit in `Tasks/`.
+#
+# The cost is that a pre-existing error in another repository blocks this commit. The tree is at
+# zero errors and errors here are rare and always real, so the cost should stay theoretical. If
+# it does not, narrow it rather than switching the hook off.
+#
+# Warnings never block. They are a backlog — orphans, dead paths in prose, unwritten link targets
+# — and several of them are not defects at all.
+#
+#   git commit --no-verify     skips this, and every other hook. Use it knowing that.
+
+set -o pipefail
+
+root="${RESEARCH_ROOT:-$HOME/Research}"
+lint="$root/Harness/scripts/wiki-lint.jl"
+
+if [ ! -f "$lint" ]; then
+    printf 'pre-commit: cannot find the lint at %s\n' "$lint" >&2
+    printf '            set RESEARCH_ROOT, or re-run harness wiki-lint-hook --apply\n' >&2
+    exit 1
+fi
+
+if ! command -v julia > /dev/null 2>&1; then
+    printf 'pre-commit: julia is not on PATH, so the wiki lint cannot run\n' >&2
+    printf '            fix the PATH rather than committing unchecked\n' >&2
+    exit 1
+fi
+
+if ! julia --startup-file=no "$lint" --quiet; then
+    printf '\n' >&2
+    printf 'pre-commit: the wiki lint reports an error. The commit is blocked.\n' >&2
+    printf '            Warnings do not block; only the ERROR lines above do.\n' >&2
+    printf '            An error in another repository blocks too — see this hook. \n' >&2
+    exit 1
+fi
+
+exit 0
