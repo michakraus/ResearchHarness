@@ -167,6 +167,13 @@ Documenter. The repository's homepage link opens the site.
 - [Architecture](docs/src/architecture.md): the three layers and the state in `~/.claude`, the
   Claude Code layer and its stamp, the neutral vocabulary, the OpenCode and oh-my-pi adapters,
   and the layout of the repository.
+- Components: one page for each kind of component, with a section for each one:
+  [agents](docs/src/components/agents.md), [skills](docs/src/components/skills.md),
+  [commands](docs/src/components/commands.md), [rules](docs/src/components/rules.md),
+  [guard hooks](docs/src/components/hooks.md), [git hooks and
+  workflows](docs/src/components/githooks.md), [scripts](docs/src/components/scripts.md),
+  [adapters](docs/src/components/adapters.md), [the harness
+  command](docs/src/components/harness.md) and [jobs and configuration](docs/src/components/other.md).
 - [Development](docs/src/development.md): the tests, the pre-push hook, the leak checks and CI.
 - [The tools](docs/src/tools.md): what each dependency does, why the harness needs it, and where
   the harness calls it.

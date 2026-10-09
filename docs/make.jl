@@ -35,6 +35,18 @@ makedocs(;
         "Setup" => ["setup-macos.md", "setup-linux.md"],
         "Use" => ["daily-use.md", "profile.md", "harness-command.md"],
         "Background" => ["security.md", "architecture.md", "tools.md"],
+        "Components" => [
+            "components/agents.md",
+            "components/skills.md",
+            "components/commands.md",
+            "components/rules.md",
+            "components/hooks.md",
+            "components/githooks.md",
+            "components/scripts.md",
+            "components/adapters.md",
+            "components/harness.md",
+            "components/other.md"
+        ],
         "Development" => "development.md"
     ]
 )
