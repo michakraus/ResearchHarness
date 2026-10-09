@@ -8,8 +8,9 @@ the absolute path of the checkout, for example `/Users/me/Research/Harness`.
 
 ## The dependencies
 
-[Dependencies](../README.md#dependencies) lists each tool, its minimum version and the code that
-calls it. [tools.md](tools.md) says what each tool does and why the harness needs it.
+[Dependencies](../README.md#dependencies) lists each tool, its minimum version and what the
+harness uses it for. [tools.md](tools.md) says what each tool does, why the harness needs it, and
+where the harness calls it.
 
 Homebrew supplies most of the required tools on macOS. These commands install them:
 
