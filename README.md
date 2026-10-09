@@ -153,6 +153,9 @@ The tables leave out the system tools: the POSIX shell utilities, such as `awk`,
 The pages of the documentation site are in `docs/src/`, and `docs/make.jl` builds them with
 Documenter. The repository's homepage link opens the site.
 
+- [Tutorial: a first session](docs/src/tutorial.md): the words that the other pages use, and
+  one session with Claude Code that shows the harness at work. Start here if you are new to
+  the harness or to coding agents.
 - [Setup on macOS](docs/src/setup-macos.md): each step of the setup on macOS, and the check that
   it worked.
 - [Setup on Linux](docs/src/setup-linux.md): the setup on Linux, which is coming.
