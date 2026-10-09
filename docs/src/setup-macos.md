@@ -1,14 +1,15 @@
 # Setup on macOS
 
-This page gives each step from a clean Mac to a working harness. [Installation](../README.md#installation)
-gives the short form of the same steps. [setup-linux.md](setup-linux.md) is the page for Linux.
+This page gives each step from a clean Mac to a working harness.
+[Installation](https://github.com/michakraus/ResearchHarness#installation) gives the short form of
+the same steps. [setup-linux.md](setup-linux.md) is the page for Linux.
 
 The steps use `~/Research/Harness` as the path of the checkout. The profile key `harness` holds
 the absolute path of the checkout, for example `/Users/me/Research/Harness`.
 
 ## The dependencies
 
-[Dependencies](../README.md#dependencies) lists each tool, its minimum version and what the
+[Dependencies](https://github.com/michakraus/ResearchHarness#dependencies) lists each tool, its minimum version and what the
 harness uses it for. [tools.md](tools.md) says what each tool does, why the harness needs it, and
 where the harness calls it.
 
