@@ -61,15 +61,11 @@ export default defineConfig({
         text: 'Getting started',
         items: [
           { text: 'Home', link: '/' },
+          { text: 'Concepts', link: '/concepts' },
           { text: 'Dependencies', link: '/dependencies' },
+          { text: 'Setup', link: '/setup-macos' },
+          { text: 'Setup on Linux', link: '/setup-linux' },
           { text: 'Tutorial', link: '/tutorial' }
-        ]
-      },
-      {
-        text: 'Setup',
-        items: [
-          { text: 'Setup on macOS', link: '/setup-macos' },
-          { text: 'Setup on Linux', link: '/setup-linux' }
         ]
       },
       {
