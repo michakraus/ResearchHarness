@@ -10,7 +10,7 @@
 // - in every figure of the site, no edge crosses another edge or passes through a box that is
 //   not its end (scripts/figures.mjs), and no figure loads a file from another host;
 // - every colour of the style module of the figures has a value for the dark theme in the built
-//   CSS.
+//   CSS, and no figure component or the generator names a colour itself.
 //
 // It prints one line for each problem and exits 1 when there is one.
 import { readFileSync, readdirSync, existsSync } from 'node:fs'
@@ -147,6 +147,15 @@ const colours = [...light].filter(([, value]) => COLOUR.test(value)).map(([name]
 if (colours.length === 0) problem('the built CSS has no colour of the style module of the figures under :root')
 for (const name of colours) {
   if (!dark.has(name)) problem(`the colour ${name} of the figures has no value under .dark`)
+}
+
+// The figure components and their generator name no colour: every colour is in the style module.
+const FIGURE_SOURCES = path.join(DOCS, '.vitepress', 'theme', 'figures')
+for (const file of readdirSync(FIGURE_SOURCES)) {
+  const lines = readFileSync(path.join(FIGURE_SOURCES, file), 'utf8').split('\n')
+  for (const [i, line] of lines.entries()) {
+    if (/#[0-9a-fA-F]{3,8}\b|rgba?\(|hsla?\(/.test(line)) problem(`docs/.vitepress/theme/figures/${file}:${i + 1} names a colour; use a property of figures.css`)
+  }
 }
 
 for (const p of problems) console.log(p)
