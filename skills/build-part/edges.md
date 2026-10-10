@@ -313,3 +313,9 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
 - a page that maps components to the places they serve, written from each component's main use:
   a component whose source names a second place is missing there. Derive the map from every
   place that each source names, by script (J5, *Publish the harness as ResearchHarness*)
+- a clause that sets a size bound which a layout library cannot meet for the largest input:
+  measure the largest graph with the library while writing the spec (J2c, *Publish the harness
+  as ResearchHarness*)
+- a graph whose edge labels a layout library places in a band beside the edges: a label nearer
+  another edge than its own reads as that edge's. Check that each label's own edge passes
+  through it (J2c, *Publish the harness as ResearchHarness*)
