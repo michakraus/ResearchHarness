@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- **The `pre-push` hook finds a Python of 3.11 or later under a versioned name.** It takes the
+  first of `python3`, `python3.14`, `python3.13`, `python3.12` and `python3.11` that is 3.11 or
+  later, for `harness leaks` and the suite, and still runs the suite on `python3.11` too. A
+  Homebrew upgrade can drop the unversioned `python3` link, and the hook then refused every push
+  to `main` because the system's `python3` is 3.9.
 - **`harness install` merges the Claude Code settings, and `harness settings install` is gone.**
   `~/.claude/settings.json` is the first file of the Claude Code plan, before the other files
   of its layer, so a new deny rule is in place before the files that it protects. The merge
