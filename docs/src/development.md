@@ -109,5 +109,6 @@ The pages in `docs/src/components/` describe each component: one page for each k
 level-2 section for each component, whose heading names it in backticks. `lib/harness/docs.py`
 says which files are the components of each page. Its cases in `harness test` fail when a
 component has no heading, when a heading names something that is no component of its page, and
-when a tool of the README's dependency tables has no heading in `tools.md`. So a new agent,
-skill, rule, hook or script needs its section in the same change.
+when a tool of the tables of `dependencies.md` has no heading on that page, or a heading there
+names something that is no tool of the tables. So a new agent, skill, rule, hook or script needs
+its section in the same change.

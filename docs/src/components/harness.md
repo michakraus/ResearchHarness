@@ -293,6 +293,6 @@ names in backticks in them. It fails when a component has no heading on its page
 when a heading names something that is no component of its page, so a removed component leaves no
 old section.
 
-It also checks that each tool of the dependency tables of the README has a level-2 heading in
-`docs/src/tools.md` that names it as a whole word. So a new agent, skill, hook, script or tool
-needs its section in the same change.
+It also checks `docs/src/dependencies.md`: its three tables, and one level-3 heading below them
+for each tool of the tables, with no heading that names a tool outside them. So a new agent,
+skill, hook, script or tool needs its section in the same change.

@@ -1,10 +1,12 @@
 // Checks of the built site in docs/build/, after `npm run docs:build`:
 //
 // - each page of the menu is a link of the sidebar on every page, and its HTML file exists;
+// - the sidebar starts with the home page and then the dependencies page;
 // - each link of a page's text to a heading of the site finds that heading, which VitePress's
 //   check of dead links does not test;
 // - each page has as many table rows as its Markdown source;
-// - the page agents-at-work has its four call graphs, each with `accTitle` and `accDescr`.
+// - the home page has the two figures of the README, and the page agents-at-work its four call
+//   graphs, each with `accTitle` and `accDescr`.
 //
 // It prints one line for each problem and exits 1 when there is one.
 import { readFileSync, readdirSync, existsSync } from 'node:fs'
@@ -15,10 +17,10 @@ const DOCS = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const BUILD = path.join(DOCS, 'build')
 const BASE = '/ResearchHarness/'
 
-// The menu of the site: every page of docs/src/, the 22 pages of the menu before VitePress.
+// The menu of the site: every page of docs/src/.
 const MENU = [
-  'index.md', 'tutorial.md', 'setup-macos.md', 'setup-linux.md', 'daily-use.md', 'profile.md',
-  'harness-command.md', 'agents-at-work.md', 'security.md', 'architecture.md', 'tools.md',
+  'index.md', 'dependencies.md', 'tutorial.md', 'setup-macos.md', 'setup-linux.md', 'daily-use.md', 'profile.md',
+  'harness-command.md', 'agents-at-work.md', 'security.md', 'architecture.md',
   'components/agents.md', 'components/skills.md', 'components/commands.md',
   'components/rules.md', 'components/hooks.md', 'components/githooks.md',
   'components/scripts.md', 'components/adapters.md', 'components/harness.md',
@@ -58,6 +60,8 @@ for (const [page, text] of built) {
   for (const target of MENU) {
     if (!sidebar.includes(url(target))) problem(`${page}: the sidebar has no link to ${target}`)
   }
+  const first = sidebar.slice(0, 2).join(' ')
+  if (first !== `${url('index.md')} ${url('dependencies.md')}`) problem(`${page}: the sidebar starts with ${first}, not the home page and the dependencies page`)
 }
 
 // A link with a fragment finds a heading of its page.
@@ -88,17 +92,23 @@ for (const [page, text] of built) {
   if (trs !== rows) problem(`${page}: ${rows} table rows in the source, ${trs} in the site`)
 }
 
-// The four call graphs of agents-at-work, in the page's script.
-const chunk = readdirSync(path.join(BUILD, 'assets')).find((f) => /^agents-at-work\.md\.[^.]+\.js$/.test(f))
-const graphs = chunk === undefined ? [] :
-  [...readFileSync(path.join(BUILD, 'assets', chunk), 'utf8').matchAll(/graph:"([^"]*)"/g)].map((m) => decodeURIComponent(m[1]))
-if (graphs.length !== 4) problem(`agents-at-work.md: ${graphs.length} call graphs, not 4`)
-for (const [i, graph] of graphs.entries()) {
-  if (!/^\s*accTitle: \S/m.test(graph) || !/^\s*accDescr: \S/m.test(graph)) {
-    problem(`agents-at-work.md: call graph ${i + 1} has no accTitle or no accDescr`)
+// The Mermaid figures of a page, in the page's script: the two of the README on the home page, and
+// the four call graphs of agents-at-work.
+let figures = 0
+for (const [page, count] of [['index.md', 2], ['agents-at-work.md', 4]]) {
+  const name = page.replace(/\.md$/, '')
+  const chunk = readdirSync(path.join(BUILD, 'assets')).find((f) => f.startsWith(`${name}.md.`) && /^[^.]+\.md\.[^.]+\.js$/.test(f))
+  const graphs = chunk === undefined ? [] :
+    [...readFileSync(path.join(BUILD, 'assets', chunk), 'utf8').matchAll(/graph:"([^"]*)"/g)].map((m) => decodeURIComponent(m[1]))
+  figures += graphs.length
+  if (graphs.length !== count) problem(`${page}: ${graphs.length} Mermaid figures, not ${count}`)
+  for (const [i, graph] of graphs.entries()) {
+    if (!/^\s*accTitle: \S/m.test(graph) || !/^\s*accDescr: \S/m.test(graph)) {
+      problem(`${page}: Mermaid figure ${i + 1} has no accTitle or no accDescr`)
+    }
   }
 }
 
 for (const p of problems) console.log(p)
-console.log(`${built.size} pages, ${fragments} links to a heading, ${graphs.length} call graphs, ${problems.length} problems`)
+console.log(`${built.size} pages, ${fragments} links to a heading, ${figures} Mermaid figures, ${problems.length} problems`)
 process.exit(problems.length === 0 ? 0 : 1)
