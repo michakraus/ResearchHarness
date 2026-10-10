@@ -87,6 +87,11 @@ on the `Recommends:` line; the user decides it.
 
 **A `continue` after two rounds with no progress is wrong.** Choose another move, or park.
 
+**A ruling that makes the code take a branch names the test that catches its removal**: the input,
+the assertion, and the mutant that deletes the branch or merges it into another. Put them in
+*Next round*, and add the mutant to the list that must be CAUGHT. A branch that no test reaches
+lets that mutant survive, and the round that runs on the ruling fails on it.
+
 ## How sure
 
 - **high** — the diffs and the reproducers show the cause, and the move removes it.

@@ -18,6 +18,12 @@
   `npm run docs:check` also finds the README's two figures on the home page and the
   dependencies page second in the sidebar.
 
+- **A ruling that adds a branch to the code names the test that catches its removal.** The
+  `advisor` writes the input, the assertion and the mutant as a `**Tests catch:**` sentence in its
+  decision; the `arbitrator` puts them in *Next round* and adds the mutant to the list that must be
+  CAUGHT. Without such a test, the mutant that deletes the branch survives, and the round that runs
+  on the ruling fails on a missing test while the code is right.
+
 - **The documentation site is built with VitePress, and its build needs no Julia.** The site is a
   plain VitePress project in `docs/`: `npm ci` and `npm run docs:build` build it, and
   `docs/package.json` pins `vitepress` 1.6.4, `vitepress-plugin-mermaid` 2.0.17, `mermaid`
