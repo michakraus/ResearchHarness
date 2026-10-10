@@ -56,7 +56,6 @@ step and the check that it worked.
    cp ~/Research/Harness/examples/{profile,models}.toml ~/.config/research-harness/
    mkdir -p ~/Research/Environment/Agents/instructions ~/Research/Packages ~/Research/Experiments
    touch ~/Research/Environment/Agents/instructions/research-tree.md
-   test -f ~/.claude/settings.json || echo '{}' > ~/.claude/settings.json
    ```
 
 4. In `~/.config/research-harness/profile.toml`, replace the example path `/home/example` with
@@ -64,14 +63,14 @@ step and the check that it worked.
 
 5. Install. `harness install` prints the plan and exits 1, because it would change files.
    `--apply` makes the change; the first one also downloads the Julia packages of the scripts.
-   Then the dry run reports `0 change(s) to make.` and exits 0. The settings verb works in the
-   same way.
+   Then the dry run reports `0 change(s) to make.` and exits 0. The install also merges the
+   sections `permissions`, `hooks` and `sandbox` of the settings template into
+   `~/.claude/settings.json`, keeps the other keys of that file, and creates it if it is missing.
 
    ```bash
    harness install
    harness install --apply
    harness install
-   harness settings install --apply
    ```
 
 ## A first session

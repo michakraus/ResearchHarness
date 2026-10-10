@@ -2,6 +2,31 @@
 
 ## Unreleased
 
+- **`harness install` merges the Claude Code settings, and `harness settings install` is gone.**
+  `~/.claude/settings.json` is the first file of the Claude Code plan, before the other files
+  of its layer, so a new deny rule is in place before the files that it protects. The merge
+  replaces each of `permissions`, `hooks` and `sandbox` with the section of the settings template
+  `settings/settings.proposal.json`, rendered with the profile, or removes the section when the
+  template lacks it. Every other key keeps its value and its place. The indent of the live file
+  is kept, and no character is escaped. A file whose owned sections equal the template's is
+  left untouched. Otherwise the old file is kept as `settings.json.bak-<stamp>`. The dry run
+  prints a `REPLACE` or `INSTALL` line, then the unified diff of the owned sections, and counts
+  the change as one. A missing file is created with the three sections, indent 2 and mode 0644.
+  The setup guide and the README no longer have the `echo '{}'` step. A file that cannot be
+  merged (not UTF-8, not JSON, not a JSON object, an owned key whose value is not an object, a
+  symlink, a directory, or unreadable) stops the install with exit 2 and one line that names
+  the file and the reason, before any file of any frontend is written.
+  `harness settings install`, with its flags `--proposal` and `--settings`, is removed. The
+  verb `harness settings` keeps `surface`, `compare`, `selftest`, `twins` and `domains`. The
+  warning of `harness install` that the settings would change is gone. Permission rules in other
+  settings files (`settings.local.json` and the `.claude/settings.json` of the research root and
+  its directories) now print in the output of `harness install`. A file that cannot be read as
+  a settings file is a warning, not a traceback. A Plan file may carry a sixth element, text
+  printed after the file's line when the file is a change. The undo of a settings change is
+  `git revert <commit>` and `harness install --apply`. The flow figure and the docs no longer
+  name the removed verb. The flow figure has a step card, *Merge the settings*, before
+  *Write Claude Code*.
+
 - **The call graphs are compact, and the flow figure shows the steps of `harness install`.** A
   call graph of *Agents at work* runs to the right when it fits the doc column, at most 765 px
   wide, so that the column draws it at a scale of 0.9 or more. Else it runs downwards, in rows of

@@ -2,6 +2,7 @@
 
 THE LAYER. `harness install` installs into ~/.claude/:
 
+  settings/settings.proposal.json  -> ~/.claude/settings.json (merged: the sections of OWNED only)
   agents/, skills/, rules/,
   instructions/, commands/ **      -> ~/.claude/**          (the same relative path)
   adapters/claude/**               -> ~/.claude/**          (the path relative to adapters/claude/)
@@ -32,10 +33,15 @@ a directory above one, that is a symlink, and on an installed path that is not a
 below directories. An installed file with no source, below a top-level directory that the layer
 writes into, is reported as EXTRA with its removal command; skills/synced/ and the hidden names
 are not searched, and a directory there that cannot be read exits 2, before anything is
-written. It writes neither the Claude Code settings nor ~/.claude.json, which it does not read
-either; when `harness settings install` would change the settings, or cannot compare them, it
-warns. After the layer, it writes the stamp: the sources and the digest over their files,
-which the `SessionStart` hook hooks/install-drift.py computes again at each session start and
+written. The Claude Code settings, ~/.claude/settings.json, are the first file of the layer, so
+that a new deny rule is in place before the files it protects: the settings template rendered with
+the profile replaces the sections `permissions`, `hooks` and `sandbox`, every other key stays as
+the app and the user wrote it, the old file is kept as a backup, and the dry run prints the
+unified diff of those sections after the file's line (`settings_file`). A settings file that
+cannot be merged exits 2 before anything is written. The permission rules of the other settings
+files of the research tree are a warning (`stray_warnings`); those files are read, never written.
+It neither reads nor writes ~/.claude.json. After the layer, it writes the stamp: the sources and
+the digest over their files, which the `SessionStart` hook hooks/install-drift.py computes again at each session start and
 compares, so that a session warns when the installation is behind the sources. The digest is that
 hook's own function, over the paths, the modes and the source bytes of the plan that the apply
 installs, before `render_source` rewrites an agent or a skill, not a commit, so an uncommitted
@@ -68,7 +74,6 @@ the harness does: deny, then ask, then allow, then the sandbox auto-allow.
     harness settings selftest
     harness settings twins [--settings F] [--list allow|ask|deny]
     harness settings domains [--settings F] [--emit]
-    harness settings install [--proposal F] [--settings F] [--apply]
 
 The proposal is a template: `{home}`, `{org}` and the other placeholders take their values
 from the private profile (`harness --profile F`). Every command renders a file that holds a
@@ -84,11 +89,13 @@ retrieves what a session can read is blocked by the proxy with no rule saying so
 checks by default and exits non-zero on a gap; `--emit` prints the block to install. Two
 hand-maintained copies of one list is this directory's oldest failure mode.
 
-`install --apply` merges the three sections a round owns -- permissions, hooks, sandbox --
-onto the live file, and its dry run shows what such a merge would change. It exists because the
+`harness install` merges the three sections a round owns -- permissions, hooks, sandbox --
+onto the live file, and its dry run shows what such a merge would change. It merges because the
 app rewrites settings.json on every UI model or effort change, so a `cp` of the proposal
 reverts whatever was set in the UI since the proposal was last touched. Measured twice in
-opposite directions on 2026-09-05.
+opposite directions on 2026-09-05. The merge reads the live file when it plans: a change that the
+app writes between the plan and the write is lost, so run `--apply` with no session changing its
+model.
 
 Caveats the numbers rest on, all measured 2026-09-05:
 
@@ -118,6 +125,7 @@ import os
 import pathlib
 import re
 import stat
+import subprocess
 import sys
 import tempfile
 import unicodedata
@@ -143,8 +151,8 @@ ADAPTER_CODE = {"adapter.py", "fixtures"}
 # The installed paths, relative to ~/.claude/, that are rendered with the profile. Every other
 # file is copied byte for byte, so a `{home}` in its prose stays as it is.
 CLAUDE_TEMPLATES = frozenset()
-# The installed paths that no source may hold: the Claude Code settings, which
-# `harness settings install` owns.
+# The installed paths that no source may hold: the Claude Code settings, which `harness install`
+# merges from the settings template (`settings_file`).
 CLAUDE_SETTINGS = frozenset({"settings.json", "settings.local.json"})
 # The Claude Code name of each neutral tool of frontmatter.TOOLS; the Kaimon tool
 # `mcp/kaimon/<tool>` is MCP_PREFIX followed by `<tool>`.
@@ -512,32 +520,97 @@ def cmd_domains(args):
     return 0
 
 
-# The sections a settings round owns. Everything else in the live file belongs to the app
-# — model, modelSettings, env — and a round must leave it exactly as it found it.
+# The sections of ~/.claude/settings.json that `harness install` merges from the settings
+# template. Everything else in the live file belongs to the app and the user — model,
+# modelSettings, env, statusLine — and the install leaves it exactly as it found it.
 OWNED = ("permissions", "hooks", "sandbox")
 
 
-def indent_of(path):
-    """The live file's own indentation, so a merge does not reformat it."""
-    for line in pathlib.Path(path).read_text().splitlines()[1:]:
+def indent_of(text):
+    """The indentation of a settings file's `text`, so that a merge does not reformat it; 2 when
+    no line after the first is indented by spaces."""
+    for line in text.splitlines()[1:]:
         stripped = line.lstrip(" ")
         if stripped and stripped != line:
             return len(line) - len(stripped)
     return 2
 
 
-def owned_diff(live_path, proposal_path):
+def settings_template(profile):
+    """The settings template parsed, and rendered with `profile` when it holds a placeholder, as
+    `read_settings` renders it."""
+    text = PROPOSAL.read_text()
+    cfg = json.loads(text)
+    if render_profile.PLACEHOLDER.search(text):
+        try:
+            cfg = render_profile.render_data(cfg, profile)
+        except (KeyError, TypeError, ValueError) as e:
+            raise HarnessError(f"{PROPOSAL}: {e.args[0]}") from e
+    return cfg
+
+
+def settings_file(root, profile):
+    """The file of the plan for `root`/settings.json, the Claude Code settings: (destination,
+    bytes, mode, label, backup, the unified diff of the owned sections).
+
+    Each key of OWNED is replaced from the rendered template, or removed when the template lacks
+    it; every other key keeps its value and its place, the file keeps its indent, and no
+    character is escaped. Owned sections equal to the template's leave the file as it is. A
+    missing file is created with the owned sections only, indented by 2, mode 0644. Exits 2,
+    before anything is written, on a file that is a symlink, is not a regular file, cannot be
+    read, is not UTF-8 or JSON, is not a JSON object, or holds an owned key whose value is not an
+    object.
+    """
     import difflib
 
-    live = read_settings(live_path)
-    proposal = read_settings(proposal_path)
-    a = json.dumps({k: live.get(k) for k in OWNED}, indent=2, sort_keys=True).splitlines()
-    b = json.dumps({k: proposal.get(k) for k in OWNED}, indent=2, sort_keys=True).splitlines()
-    return list(difflib.unified_diff(a, b, "live", "proposal", lineterm="")), live, proposal
+    live = root / "settings.json"
+    if live.is_symlink():
+        raise HarnessError(f"{live} is a symlink; `harness install` merges the settings into a file only")
+    cfg, indent, old = {}, 2, None
+    if live.exists():
+        if not live.is_file():
+            raise HarnessError(f"{live} is not a file; `harness install` merges the settings into a file only")
+        try:
+            old = live.read_bytes()
+        except OSError as e:
+            raise HarnessError(f"{live} cannot be read: {e.strerror}") from None
+        try:
+            text = old.decode("utf-8")
+        except UnicodeDecodeError as e:
+            raise HarnessError(f"{live} is not UTF-8: {e.reason} at byte {e.start}") from None
+        try:
+            cfg = json.loads(text)
+        except ValueError as e:
+            raise HarnessError(f"{live} is not JSON: {e}") from None
+        if not isinstance(cfg, dict):
+            raise HarnessError(f"{live} is not a JSON object")
+        wrong = [k for k in OWNED if k in cfg and not isinstance(cfg[k], dict)]
+        if wrong:
+            raise HarnessError(f"{live}: the value of {', '.join(wrong)} is not a JSON object")
+        indent = indent_of(text)
+    template = settings_template(profile)
+    a, b = (json.dumps({k: c.get(k) for k in OWNED}, indent=2, sort_keys=True, ensure_ascii=False).splitlines()
+            for c in (cfg, template))
+    diff = list(difflib.unified_diff(a, b, "~/.claude/settings.json", "settings/settings.proposal.json", lineterm=""))
+    if diff or old is None:
+        for key in OWNED:
+            if key in template:
+                cfg[key] = template[key]
+            else:
+                cfg.pop(key, None)
+        # ensure_ascii=False, because the merge leaves every key it does not own exactly as the
+        # app left it. The default escapes each non-ASCII character, and round twenty-four
+        # rewrote every em-dash inside `autoMode` as — — decoded values unchanged, bytes
+        # not.
+        data = (json.dumps(cfg, indent=indent, ensure_ascii=False) + "\n").encode("utf-8")
+    else:
+        data = old
+    return live, data, 0o644 if old is None else None, "~/.claude/settings.json", True, "\n".join(diff)
 
 
-def stray_grants():
-    """Permission rules outside the user file, which a round neither proposes nor sees.
+def stray_warnings():
+    """The warnings, [(line, …)], of the permission rules outside ~/.claude/settings.json, which
+    a settings round neither proposes nor sees, and of each such file that cannot be read.
 
     "Yes, don't ask again" writes its grant to the settings.local.json of the working
     directory. Such a grant adds to every session started there and can undo a round's
@@ -548,53 +621,19 @@ def stray_grants():
     paths = [home / ".claude" / "settings.local.json"]
     for root in (home / "Research", *sorted((home / "Research").glob("*"))):
         paths += [root / ".claude" / "settings.json", root / ".claude" / "settings.local.json"]
-    found = []
+    found, warnings = [], []
     for path in paths:
         if path.is_file():
-            permissions = json.loads(path.read_text()).get("permissions", {})
-            for kind in ("allow", "ask", "deny"):
-                found += [(path, kind, rule) for rule in permissions.get(kind, [])]
-    return found
-
-
-def report_stray():
-    found = stray_grants()
+            try:
+                permissions = json.loads(path.read_text(encoding="utf-8")).get("permissions", {})
+                found += [(path, kind, rule) for kind in ("allow", "ask", "deny") for rule in permissions.get(kind, [])]
+            except (OSError, ValueError, AttributeError, TypeError) as e:
+                warnings.append((f"{path} cannot be read as a settings file: {type(e).__name__}: {e}",))
     if found:
-        print(f"\n  WARNING: {len(found)} permission rule(s) outside the user file — fold them into the")
-        print("  proposal or delete them; this tool's other measurements do not see them:")
-        for path, kind, rule in found:
-            print(f"    {path}  {kind}  {rule}")
-
-
-def cmd_install(args):
-    lines, live, proposal = owned_diff(args.settings, args.proposal)
-    if not lines:
-        print("  the owned sections are identical — nothing to install")
-        report_stray()
-        return 0
-    if not args.apply:
-        print("\n".join(lines))
-        report_stray()
-        return outcome(args, len(lines))
-    preserved = [k for k in live if k not in OWNED]
-    for key in OWNED:
-        if key in proposal:
-            live[key] = proposal[key]
-        else:
-            live.pop(key, None)
-    # ensure_ascii=False, because this function promises to leave every key it does not own
-    # exactly as the app left it. The default escapes each non-ASCII character, and round
-    # twenty-four rewrote every em-dash inside `autoMode` as — — decoded values unchanged,
-    # bytes not. A diff of an unowned key must stay empty.
-    text = json.dumps(live, indent=indent_of(args.settings), ensure_ascii=False) + "\n"
-    pathlib.Path(args.settings).write_text(text, encoding="utf-8")
-    print(f"  installed {', '.join(OWNED)} into {args.settings}")
-    print(f"  preserved untouched: {', '.join(preserved) or '(none)'}")
-    print(f"  {sum(l.startswith('+') and not l.startswith('+++') for l in lines)} lines added, "
-          f"{sum(l.startswith('-') and not l.startswith('---') for l in lines)} removed")
-    print("  the live file is not tracked; commit the proposal in the harness repository")
-    report_stray()
-    return 0
+        warnings.insert(0, (f"{len(found)} permission rule(s) outside ~/.claude/settings.json — fold them into the "
+                            "settings template or delete them; `harness settings` does not measure them:",
+                            *(f"  {path}  {kind}  {rule}" for path, kind, rule in found)))
+    return warnings
 
 
 def run(args):
@@ -611,7 +650,7 @@ def register(sub):
 
 
 def register_settings(sub):
-    top = sub.add_parser("settings", help="measure, check and install the Claude Code settings")
+    top = sub.add_parser("settings", help="measure and check the Claude Code settings")
     top.set_defaults(run=run)
     sub = top.add_subparsers(dest="cmd", metavar="<sub>", required=True)
 
@@ -639,11 +678,6 @@ def register_settings(sub):
     d.add_argument("--settings", default=str(LIVE))
     d.add_argument("--emit", action="store_true", help="print the allowedDomains block instead of checking")
     d.set_defaults(func=cmd_domains)
-
-    p = changing(sub.add_parser("install", help="merge the proposal's owned sections onto the live file"))
-    p.add_argument("--proposal", default=str(PROPOSAL))
-    p.add_argument("--settings", default=str(LIVE))
-    p.set_defaults(func=cmd_install)
 
 
 # ---------------------------------------------------------------------------------------------
@@ -741,8 +775,8 @@ def claude_plan(profile, root, sources=None, templates=None):
                                    f"in {install.fold(rel.parts[0])}/ of this repository, not in {directory}")
             src, dst = directory / rel, pathlib.PurePosixPath(prefix, rel).as_posix()
             if install.fold(dst) in CLAUDE_SETTINGS:
-                raise HarnessError(f"{src}: ~/.claude/{dst} is the Claude Code settings, which "
-                                   "`harness settings install` owns; no source of this install holds it")
+                raise HarnessError(f"{src}: ~/.claude/{dst} is the Claude Code settings, which `harness install` "
+                                   "merges from the settings template; no source of this install holds it")
             if install.fold(dst) in owner:
                 raise HarnessError(f"~/.claude/{dst} has two sources, {owner[install.fold(dst)]} and {src}")
             owner[install.fold(dst)] = src
@@ -771,34 +805,6 @@ def claude_extras(root, plan):
             extra += [pathlib.Path(path, f) for f in sorted(files)
                       if not install.hidden(f) and install.fold((rel / f).as_posix()) not in ours]
     return extra
-
-
-def settings_warning(root, profile_path):
-    """The warnings, [(line, …)], when `harness settings install` would change the live settings,
-    or when they cannot be compared; this verb does not write them."""
-    live = root / "settings.json"
-    if not live.is_file():
-        return []
-    # Parsed and rendered by the reader of `harness settings install` itself, so that a file it
-    # cannot compare is the warning here and not a traceback.
-    global PROFILE
-    saved, PROFILE = PROFILE, profile_path
-    try:
-        if isinstance(read_settings(live), dict):
-            problem, lines = None, owned_diff(live, PROPOSAL)[0]
-        else:
-            problem = "it is not a JSON object"
-    except (HarnessError, ValueError, KeyError, TypeError) as e:
-        problem = f"{type(e).__name__}: {e}"
-    finally:
-        PROFILE = saved
-    if problem:
-        return [(f"{live} cannot be compared with the settings template: {problem}",
-                 "`harness install` does not write it.")]
-    if lines:
-        return [(f"{live} differs from the settings template in the sections a round owns.",
-                 "`harness settings install` would change it; `harness install` does not write it.")]
-    return []
 
 
 def load_models(path):
@@ -848,10 +854,12 @@ def plan(ctx):
     """The Claude Code layer of `harness install`, as the docstring of this module says. Its
     `rules` are [(installed path, source, bytes)] of each planned file below rules/, for oh-my-pi."""
     root = pathlib.Path.home() / ".claude"
+    # The settings go first, so that a new deny rule is in place before the files it protects.
+    settings = settings_file(root, ctx.profile)
     models = load_models(ctx.models)
     layer_sources = claude_sources(ctx.profile)
     layer = claude_plan(ctx.profile, root, layer_sources)
-    files = []
+    files = [settings]
     for dst, data, mode in layer:
         src = source_of(layer_sources, dst)[0]
         files.append((root / dst, render_source(src, data, models) if neutral_source(src) else data, mode,
@@ -862,7 +870,7 @@ def plan(ctx):
     extra = [f"\nEXTRA: {f} is installed and has no source here; the install leaves it.\n"
              f"       To remove it:  rm '{f}'" for f in claude_extras(root, layer)]
     rules = [(dst, source_of(layer_sources, dst)[0], data) for dst, data, _ in layer if dst.startswith("rules/")]
-    return frontends.Plan(files=files, warnings=settings_warning(root, ctx.args.profile), extra=extra, rules=rules)
+    return frontends.Plan(files=files, warnings=stray_warnings(), extra=extra, rules=rules)
 
 
 # ---------------------------------------------------------------------------------------------
@@ -1298,47 +1306,149 @@ def layer_cases(check, tmp):
              f"{rel} in the tree instructions is a SKIP line, not installed and not counted: "
              f"{first}, {code}, {again}, {tail(text2)}")
 
-    # settings.json is not written, and a change that `harness settings install` would make is a
-    # warning; ~/.claude.json, unreadable here, is neither read nor written.
+    # The Claude Code settings: `harness install` merges the sections of OWNED from the rendered
+    # settings template into ~/.claude/settings.json, as one file of the plan, and keeps every
+    # other key; ~/.claude.json, unreadable here, is neither read nor written.
+    settings_line = re.compile(r"^~/\.claude/settings\.json\s+(.*)$", re.M)
+    profile = render_profile.load(fresh()[0] / "profile.toml")
+    template = json.loads(render_profile.render_file(REPO / "settings" / "settings.proposal.json", profile))
+    owned = {k: template[k] for k in ("permissions", "hooks", "sandbox")}
     base, claude, tree = fresh()
-    (claude / "settings.json").write_text("{}\n")
     state = base / "home" / ".claude.json"
     state.write_text('{"state": 1}\n')
     state.chmod(0)
-    code, text = run(base, "--apply")
-    again, text2 = run(base)
-    state.chmod(0o600)
-    case(lambda: code == 0 and again == 0 and (claude / "settings.json").read_text() == "{}\n"
-         and "harness settings install" in text2,
-         f"settings.json is not written; its change is a warning, not counted: {code}, {again}, {tail(text2)}")
-    case(lambda: code == 0 and state.read_text() == '{"state": 1}\n', "~/.claude.json is neither read nor written")
-    profile = render_profile.load(base / "profile.toml")
-    (claude / "settings.json").write_text(
-        render_profile.render_file(REPO / "settings" / "settings.proposal.json", profile))
+    first, _ = run(base, "--apply")
+    live = {"model": "opus", "permissions": {"allow": ["Bash(rm *)"], "deny": []}, "env": {"X": "{home} — é"},
+            "statusLine": {"type": "command", "command": "x"}, "hooks": {}, "someFutureKey": [1, {"a": None}]}
+    old = json.dumps(live, indent=4, ensure_ascii=False) + "\n"
+    (claude / "settings.json").write_text(old)
     code, text = run(base)
-    case(lambda: code == 0 and "harness settings install" not in text,
-         f"a settings.json equal to the template gives no warning: {code}, {tail(text)}")
+    lines = text.splitlines()
+    at = [i for i, line in enumerate(lines) if settings_line.fullmatch(line)]
+    case(lambda: first == 0 and code == 1 and len(at) == 1 and settings_line.fullmatch(lines[at[0]]).group(1)
+         .startswith("REPLACE (backup: settings.json.bak-") and lines[at[0] + 1].startswith("--- ")
+         and lines[at[0] + 2].startswith("+++ ") and lines[at[0] + 3].startswith("@@ ")
+         and any(l.startswith("-") and "Bash(rm *)" in l for l in lines)
+         and re.search(r"^1 change\(s\) to make\.$", text, re.M) is not None
+         and (claude / "settings.json").read_text() == old,
+         f"a settings.json whose owned sections differ is one REPLACE line, then the unified diff of the owned "
+         f"sections, one change, exit 1, and the dry run writes nothing: {first}, {code}, {at}, {tail(text)}")
+    code, text = run(base, "--apply")
+    merged = json.loads((claude / "settings.json").read_text())
+    backups = sorted(claude.glob("settings.json.bak-*"))
+    expected = {"model": "opus", "permissions": owned["permissions"], "env": {"X": "{home} — é"},
+                "statusLine": {"type": "command", "command": "x"}, "hooks": owned["hooks"],
+                "someFutureKey": [1, {"a": None}], "sandbox": owned["sandbox"]}
+    case(lambda: code == 0 and merged == expected and list(merged) == list(expected)
+         and (claude / "settings.json").read_text() == json.dumps(expected, indent=4, ensure_ascii=False) + "\n",
+         f"--apply replaces the owned sections from the rendered template, keeps every other key, its value and its "
+         f"order, and the live file's indent of 4: {code}, {list(merged)}, {tail(text)}")
+    case(lambda: len(backups) == 1 and backups[0].read_text() == old,
+         f"--apply keeps the old settings.json as a backup: {[b.name for b in backups]}")
+    again, text2 = run(base)
+    case(lambda: again == 0 and [m.group(1) for m in settings_line.finditer(text2)] == ["already identical"]
+         and re.search(r"^0 change\(s\) to make\.$", text2, re.M) is not None,
+         f"the dry run after the --apply finds settings.json identical, 0 changes, exit 0: {again}, {tail(text2)}")
+    state.chmod(0o600)
+    case(lambda: state.read_text() == '{"state": 1}\n', "~/.claude.json is neither read nor written")
+    # Owned sections equal to the template's in another layout are no change: the file is left as it is.
+    (claude / "settings.json").write_text(json.dumps({"hooks": owned["hooks"], "sandbox": owned["sandbox"],
+                                                      "permissions": owned["permissions"], "model": "x"}) + "\n")
+    kept = (claude / "settings.json").read_bytes()
+    code, text = run(base, "--apply")
+    case(lambda: code == 0 and [m.group(1) for m in settings_line.finditer(text)] == ["already identical"]
+         and (claude / "settings.json").read_bytes() == kept,
+         f"a settings.json whose owned sections equal the template's, in another layout, is not rewritten: "
+         f"{code}, {tail(text)}")
 
-    # A settings.json that cannot be compared is a warning; the run goes on to its count line.
-    for label, data in [("not JSON", b"{\n"), ("not UTF-8", b'{"x": "\xff"}\n'), ("not an object", b"[]\n"),
-                        ("JSON after a UTF-8 BOM", b"\xef\xbb\xbf{}\n"),
-                        ("a template with a placeholder the profile does not define",b'{"env": {"X": "{no_such_key}"}}\n'),
-                        ("a template with a list placeholder in a value", b'{"env": {"X": "{org}"}}\n'),
-                        ("a template with a list placeholder in a key", b'{"{org}": 1}\n'),
-                        ("unreadable, of mode 000", b"{}\n")]:
+    # A missing settings.json is created with the owned sections only, indented by 2, mode 0644.
+    base, claude, tree = fresh()
+    code, text = run(base)
+    case(lambda: code == 1 and [m.group(1) for m in settings_line.finditer(text)] == ["INSTALL"]
+         and not (claude / "settings.json").exists(),
+         f"the dry run prints INSTALL for a missing settings.json and counts it: {code}, {tail(text)}")
+    code, text = run(base, "--apply")
+    case(lambda: code == 0 and list(json.loads((claude / "settings.json").read_text())) == list(owned)
+         and (claude / "settings.json").read_text() == json.dumps(owned, indent=2, ensure_ascii=False) + "\n"
+         and mode(claude / "settings.json") == 0o644,
+         f"--apply writes a missing settings.json with the three owned sections and no other key, indented by 2, "
+         f"mode 0644: {code}, {tail(text)}")
+
+    # The order: settings.json is the first file line of the Claude Code layer, the stamp the last.
+    base, claude, tree = fresh(["rules/x.md"])
+    code, text = run(base)
+    labels = re.findall(r"^(~/\.claude/\S+)\s", text, re.M)
+    case(lambda: len(labels) > 50 and labels[0] == "~/.claude/settings.json"
+         and labels[-1] == f"~/.claude/{install.STAMP}" and labels.count("~/.claude/settings.json") == 1,
+         f"settings.json is the first file line of the Claude Code layer, the stamp the last: "
+         f"{labels[:2]}, {labels[-1:]}")
+
+    # A settings.json that cannot be merged exits 2 with one line naming it and the reason, before
+    # anything of any frontend is written.
+    def snapshot(base):
+        """Every path below `base`, with its mode, and its bytes or the target of a link."""
+        out = {}
+        for path, dirs, files in os.walk(base):
+            for name in dirs + files:
+                p = pathlib.Path(path, name)
+                st = p.lstat()
+                out[str(p)] = (stat.S_IMODE(st.st_mode), os.readlink(p) if p.is_symlink()
+                               else p.read_bytes() if stat.S_ISREG(st.st_mode) else None)
+        return out
+
+    for label, data, reason in [("not JSON", b"{\n", "is not JSON"), ("not UTF-8", b'{"x": "\xff"}\n', "is not UTF-8"),
+                                ("JSON after a UTF-8 BOM", b"\xef\xbb\xbf{}\n", "is not JSON"),
+                                ("JSON that is not an object", b"[]\n", "is not a JSON object"),
+                                ("an owned key that is a list", b'{"permissions": []}\n', "permissions"),
+                                ("an owned key that is null", b'{"model": "x", "sandbox": null}\n', "sandbox"),
+                                ("a symlink", None, "symlink"), ("a directory", None, "is not a file"),
+                                ("unreadable, of mode 000", b"{}\n", "cannot be read")]:
         base, claude, tree = fresh(["rules/x.md"])
-        (claude / "settings.json").write_bytes(data)
-        if label == "unreadable, of mode 000":
-            (claude / "settings.json").chmod(0)
-        code, text = run(base)
-        applied, text2 = run(base, "--apply")
-        (claude / "settings.json").chmod(0o644)
-        case(lambda: code == 1 and applied == 0 and "Traceback" not in text + text2
-             and all("cannot be compared" in t for t in (text, text2))
-             and re.search(r"^\d+ change\(s\) made\.$", text2, re.M) is not None
-             and (claude / "rules" / "x.md").is_file() and (claude / "settings.json").read_bytes() == data,
-             f"a settings.json that is {label} is a warning, and the run reaches its count line: "
-             f"{code}, {applied}, {tail(text)}")
+        live = claude / "settings.json"
+        if label == "a symlink":
+            (base / "outside.json").write_text("{}\n")
+            live.symlink_to(base / "outside.json")
+        elif label == "a directory":
+            live.mkdir()
+        else:
+            live.write_bytes(data)
+        before = snapshot(base)
+        if label.startswith("unreadable"):
+            live.chmod(0)
+        code, text = run(base, "--apply")
+        if label.startswith("unreadable"):
+            live.chmod(0o644)
+        lines = text.strip().splitlines()
+        case(lambda: refused(code, text) and len(lines) == 1 and str(live) in lines[0] and reason in lines[0]
+             and snapshot(base) == before,
+             f"a settings.json that is {label} exits 2 with one line that names it and the reason, and no file "
+             f"changes: {code}, {lines[-3:]}")
+
+    # `harness settings install` is gone; the settings sub-commands that measure stay.
+    p = subprocess.run([sys.executable, str(REPO / "bin" / "harness"), "settings", "--help"], capture_output=True,
+                       text=True)
+    gone = subprocess.run([sys.executable, str(REPO / "bin" / "harness"), "settings", "install"],
+                          capture_output=True, text=True)
+    case(lambda: p.returncode == 0 and "install" not in p.stdout and gone.returncode == 2
+         and all(s in p.stdout for s in ["surface", "compare", "selftest", "twins", "domains"]),
+         f"`harness settings --help` lists no install, and `harness settings install` exits 2: {p.returncode}, "
+         f"{gone.returncode}, {gone.stderr.strip()[-120:]!r}")
+
+    # The permission rules of the other settings files are a warning of `harness install`; one that
+    # cannot be read as JSON is a warning too, not a traceback.
+    base, claude, tree = fresh()
+    research = base / "home" / "Research"
+    for rel, data in [("Research/.claude/settings.local.json", '{"permissions": {"allow": ["Bash(gh issue *)"]}}\n'),
+                      ("Research/Knowledge/.claude/settings.json", '{"permissions": {"deny": ["Read(x)"]}}\n'),
+                      ("Research/Broken/.claude/settings.local.json", "{\n")]:
+        (base / "home" / rel).parent.mkdir(parents=True)
+        (base / "home" / rel).write_text(data)
+    code, text = run(base)
+    case(lambda: code == 1 and "Traceback" not in text and "WARNING: 2 permission rule(s) outside" in text
+         and f"{research / '.claude' / 'settings.local.json'}  allow  Bash(gh issue *)" in text
+         and f"{research / 'Knowledge' / '.claude' / 'settings.json'}  deny  Read(x)" in text
+         and f"{research / 'Broken' / '.claude' / 'settings.local.json'} cannot be read as a settings file" in text,
+         f"`harness install` warns about the permission rules outside ~/.claude/settings.json: {code}, {tail(text)}")
 
     # Each installed path whose source is in this repository is planned from there: an installed
     # copy of it is a change, never EXTRA. A path in a subdirectory has its source at the same path

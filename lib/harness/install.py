@@ -196,8 +196,11 @@ def cmd_install(args):
         for lines, _ in plan.refused:
             for line in lines:
                 print(line)
-        for dst, data, mode, label, *backup in plan.files:
-            changed[i] += install_file(args.apply, data, dst, label, backup=bool(backup and backup[0]), mode=mode)
+        for dst, data, mode, label, *rest in plan.files:
+            change = install_file(args.apply, data, dst, label, backup=bool(rest and rest[0]), mode=mode)
+            if change and rest[1:]:
+                print(rest[1])
+            changed[i] += change
     # The warnings go before the steps after the files, so that a step that exits 2 leaves them printed.
     for plan in plans:
         for lines in plan.warnings:

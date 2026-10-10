@@ -16,7 +16,8 @@
 //   and no two labels overlap (scripts/figures.mjs);
 // - each call graph but Every spawn is at most 765 px wide, and the boxes of each of its layers
 //   have one width and share one edge line;
-// - in the flow figure, the group harness install holds a card for each of its steps, in order;
+// - in the flow figure, the group harness install holds a card for each of its steps, in order,
+//   and no box is harness settings install;
 // - every colour of the style module of the figures has a value for the dark theme in the built
 //   CSS, and no figure component or the generator names a colour itself.
 //
@@ -149,11 +150,12 @@ const MAX_GRAPH_WIDTH = 765
 // right. Its layers and its geometry are still checked.
 const WIDE_GRAPHS = ['Every spawn']
 // In the flow figure, harness install is a group that holds a card for each of its steps, from top
-// to bottom in the order in which lib/harness/install.py runs them.
+// to bottom in the order in which lib/harness/install.py runs them; the settings are the first file
+// of the Claude Code plan. No box is the removed verb harness settings install.
 const FLOW = 'From the sources to the frontends'
 const INSTALL_STEPS = [
-  'Read the profile', 'Render the sources', 'Install Julia packages', 'Write Claude Code',
-  'Write the stamp', 'Write the other layers', 'Link the skills'
+  'Read the profile', 'Render the sources', 'Install Julia packages', 'Merge the settings',
+  'Write Claude Code', 'Write the stamp', 'Write the other layers', 'Link the skills'
 ]
 let figures = 0
 for (const [page, text] of built) {
@@ -188,6 +190,7 @@ for (const [page, text] of built) {
       if (inside.join('\n') !== INSTALL_STEPS.join('\n')) {
         problem(`${name}: the group harness install holds ${inside.length ? inside.join(', ') : 'no card'}, not the steps ${INSTALL_STEPS.join(', ')}`)
       }
+      if (f.boxes.some((b) => b.name === 'harness settings install')) problem(`${name} has a box harness settings install`)
     }
   }
 }

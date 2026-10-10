@@ -25,7 +25,7 @@ because the first install of the harness runs it once.
 
 The installers of actionlint and fatou put the program into a directory in your home directory;
 the actionlint line uses `~/.local/bin`. That directory must be on the `PATH`. The installer of
-`juliaup` asks you to confirm its settings; its default settings install `juliaup` and the current
+`juliaup` asks you to confirm its settings; with its default settings, it installs `juliaup` and the current
 Julia release, and add them to the `PATH` in your shell's start file. Open a new terminal after
 it.
 

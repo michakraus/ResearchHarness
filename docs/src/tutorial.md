@@ -140,8 +140,7 @@ its place. A guard hook prevents accidents; it is not a security boundary.
 the shell, so the agent can use its edit tool at once and never try `sed`. That is the first layer
 of control at work. To see the hook, ask: `Run exactly this command: sed -i s/old/new/ README.md`.
 If the command runs and changes the file, the hooks of the settings are not installed: run
-`harness settings install` in your own terminal, and do what
-[Setup](setup-macos.md#harness-settings-install-apply) says.
+`harness install` in your own terminal, and do what [Setup](setup-macos.md#claude-code) says.
 
 ## Step 5: let a skill load
 

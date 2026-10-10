@@ -2,12 +2,12 @@
 
 ### K4 · A settings file or `~/.claude.json` that is not JSON gives a traceback and exit 1, not exit 2.
 
-- location: `adapters/claude/adapter.py:179`, `adapters/claude/adapter.py:666`
+- location: `adapters/claude/adapter.py:187`, `adapters/claude/adapter.py:700`
 - evidence: with a settings file that holds `{ not json`, `harness settings surface --settings
   <file>` ends with `json.decoder.JSONDecodeError: Expecting property name enclosed in double
   quotes: line 1 column 3 (char 2)` and exits 1, on `ed0248f` and on part E1a's branch alike.
-  The critic of E1a found the same for `settings compare`, `twins`, `domains` and `install`, and
-  for `trust` with an empty `~/.claude.json`. `read_settings` and `cmd_trust` catch `OSError` and
+  The critic of E1a found the same for `settings compare`, `twins` and `domains`, and for `trust`
+  with an empty `~/.claude.json`. `read_settings` and `cmd_trust` catch `OSError` and
   not `json.JSONDecodeError`, so the contract's exit 1, "would change", also means "unreadable".
 - kind: defect
 - found: 2026-10-05

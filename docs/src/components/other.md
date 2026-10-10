@@ -99,7 +99,7 @@ with placeholders such as `{home}`, `{org}` and `{protected_dir}`, which the pro
 The template has the sections `permissions`, `hooks` and `sandbox`, and other keys of
 `settings.json`. These components read it:
 
-- `harness settings install` merges `permissions`, `hooks` and `sandbox` into
+- `harness install` merges `permissions`, `hooks` and `sandbox` into
   `~/.claude/settings.json`. It keeps every other key of that file, and does not install the other
   keys of the template;
 - `harness settings surface`, `compare`, `twins` and `domains` measure and check it;

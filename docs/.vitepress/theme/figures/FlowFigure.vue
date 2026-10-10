@@ -1,9 +1,8 @@
 <script setup lang="ts">
-// The flow figure of the home page: the inputs on the left, `harness install` and
-// `harness settings install` in the middle, and the frontends on the right, with OpenCode and
-// oh-my-pi above Claude Code. A fixed grid: the private inputs are above the sources, the
-// settings template is the last source, and harness settings install is below the group of
-// harness install, so that no edge crosses another.
+// The flow figure of the home page: the inputs on the left, `harness install`, the one install
+// path of every frontend, in the middle, and the frontends on the right, with OpenCode and
+// oh-my-pi above Claude Code. A fixed grid: the private inputs are above the sources, so that no
+// edge crosses another.
 import FigArrow from './FigArrow.vue'
 import FigCard from './FigCard.vue'
 import FigFrame from './FigFrame.vue'
@@ -48,7 +47,6 @@ const sourceGroup = group(c1.x + INNER, privateGroup.y + privateGroup.h + INNER,
   { title: 'Adapters of the frontends', icon: 'adapter', lines: ['adapters/'] },
   { title: 'Settings template', icon: 'template', lines: ['settings/'] }
 ])
-const template = sourceGroup.cards[3]
 
 const mid = (b: Box) => b.y + b.h / 2
 const c2 = columns[1]
@@ -56,35 +54,31 @@ const c3 = columns[2]
 // harness install is a dashed group with a card for each of its steps, in the order in which
 // lib/harness/install.py runs them: cmd_install reads the profile and the model tables, plans each
 // frontend in the order of FRONTENDS (Claude Code, OpenCode, oh-my-pi), installs the Julia
-// environment, writes the files of each plan (the Claude Code plan ends with the stamp), and then
-// runs the steps after the files (OpenCode's links to the skills).
+// environment, writes the files of each plan, and then runs the steps after the files (OpenCode's
+// links to the skills). The Claude Code plan starts with the merge of ~/.claude/settings.json
+// (`files = [settings]` in `plan`, adapters/claude/adapter.py:862) and ends with the stamp
+// (adapters/claude/adapter.py:869).
 const installGroup = group(c2.x + INNER, BAND + INNER, c2.w - 2 * INNER, [
   { title: 'Read the profile', icon: 'profile', lines: ['and the model tables'] },
   { title: 'Render the sources', icon: 'sources', lines: ['a plan for each frontend'] },
   { title: 'Install Julia packages', icon: 'package', lines: ['for the Julia scripts'] },
+  { title: 'Merge the settings', icon: 'settings-install', lines: ['into ~/.claude/settings.json'] },
   { title: 'Write Claude Code', icon: 'install', lines: ['the files of ~/.claude/'] },
   { title: 'Write the stamp', icon: 'drive', lines: ['of the Claude Code layer'] },
   { title: 'Write the other layers', icon: 'install', lines: ['OpenCode, then oh-my-pi'] },
   { title: 'Link the skills', icon: 'skill', lines: ['for OpenCode'] }
 ])
-// harness settings install is below the group; Claude Code is level with the bottom of the group
-// and with harness settings install, so that it takes the arrows of both.
-const settings: Card = {
-  title: 'harness settings install', icon: 'settings-install', code: true, lines: ['writes the permission', 'and sandbox settings'],
-  x: c2.x + INNER, y: installGroup.y + installGroup.h + INNER, w: c2.w - 2 * INNER, h: cardHeight(2)
-}
-const HEIGHT = Math.max(sourceGroup.y + sourceGroup.h, settings.y + settings.h) + INNER
+const HEIGHT = Math.max(sourceGroup.y + sourceGroup.h, installGroup.y + installGroup.h) + INNER
 const frontend = (title: string, icon: string, line: string, y: number, h = cardHeight(1)): Card =>
   ({ title, icon, lines: [line], x: c3.x + INNER, y, w: c3.w - 2 * INNER, h })
 const opencode = frontend('OpenCode', 'code', '~/.config/opencode/', BAND + 3 * INNER)
 const omp = frontend('oh-my-pi', 'pi', '~/.omp/agent/', opencode.y + opencode.h + 3 * INNER)
-const claude = frontend('Claude Code', 'terminal', '~/.claude/', settings.y - 40, cardHeight(2))
+// Claude Code is level with the steps that write its files, from the settings to the stamp.
+const claude = frontend('Claude Code', 'terminal', '~/.claude/', installGroup.cards[3].y, cardHeight(2))
 
 // The arrows: each leaves its box on the right and enters the next on the left.
 const right = (b: Box, y: number): Point => [b.x + b.w, y]
 const left = (b: Box, y: number): Point => [b.x, y]
-const lane1 = c1.x + c1.w + GAP / 2
-const lane2 = c2.x + c2.w + GAP / 2
 const ARROWS = [
   {
     from: 'Private, on your machine', to: 'harness install',
@@ -94,20 +88,9 @@ const ARROWS = [
     from: 'The sources, in this repository', to: 'harness install',
     points: [right(sourceGroup, sourceGroup.y + 40), left(installGroup, sourceGroup.y + 40)]
   },
-  {
-    from: 'Settings template', to: 'harness settings install',
-    points: [right(template, mid(template)), [lane1, mid(template)], [lane1, mid(settings)], left(settings, mid(settings))]
-  },
   { from: 'harness install', to: 'OpenCode', points: [right(installGroup, mid(opencode)), left(opencode, mid(opencode))] },
   { from: 'harness install', to: 'oh-my-pi', points: [right(installGroup, mid(omp)), left(omp, mid(omp))] },
-  {
-    from: 'harness install', to: 'Claude Code',
-    points: [right(installGroup, claude.y + 16), left(claude, claude.y + 16)]
-  },
-  {
-    from: 'harness settings install', to: 'Claude Code', label: 'settings.json',
-    points: [right(settings, claude.y + claude.h - 16), left(claude, claude.y + claude.h - 16)], labelAt: [lane2, claude.y + claude.h - 16]
-  }
+  { from: 'harness install', to: 'Claude Code', points: [right(installGroup, mid(claude)), left(claude, mid(claude))] }
 ] as { from: string, to: string, points: Point[], label?: string, labelAt?: Point }[]
 </script>
 
@@ -117,7 +100,7 @@ const ARROWS = [
     :width="WIDTH"
     :height="HEIGHT"
     title="From the sources to the frontends"
-    desc="The sources of this repository, the agents, skills, rules, commands and instructions, the guard hooks, the settings template and the adapters, and two private inputs, the profile with the model tables and the tree instructions, go into harness install. Its steps, in order: it reads the profile and the model tables, renders the sources into a plan for each frontend, installs the Julia packages for the Julia scripts, writes the files of Claude Code into ~/.claude/ and then the stamp of that layer, writes the files of OpenCode into ~/.config/opencode/ and then those of oh-my-pi into ~/.omp/agent/, and links the skills for OpenCode. The settings template also goes into harness settings install, which writes ~/.claude/settings.json for Claude Code."
+    desc="The sources of this repository, the agents, skills, rules, commands and instructions, the guard hooks, the settings template and the adapters, and two private inputs, the profile with the model tables and the tree instructions, go into harness install. Its steps, in order: it reads the profile and the model tables, renders the sources into a plan for each frontend, installs the Julia packages for the Julia scripts, merges the settings template into ~/.claude/settings.json, writes the files of Claude Code into ~/.claude/ and then the stamp of that layer, writes the files of OpenCode into ~/.config/opencode/ and then those of oh-my-pi into ~/.omp/agent/, and links the skills for OpenCode. harness install is the one install path of every frontend."
   >
     <FigPanel
       v-for="c in columns"
@@ -139,7 +122,6 @@ const ARROWS = [
     <FigPanel :x="installGroup.x" :y="installGroup.y" :w="installGroup.w" :h="installGroup.h" title="harness install" dashed code>
       <FigCard v-for="card in installGroup.cards" :key="card.title" v-bind="card" accent="amber" />
     </FigPanel>
-    <FigCard v-bind="settings" accent="amber" tinted />
     <FigCard v-for="card in [opencode, omp, claude]" :key="card.title" v-bind="card" accent="blue" />
     <FigArrow v-for="a in ARROWS" :key="`${a.from} ${a.to}`" v-bind="a" />
   </FigFrame>

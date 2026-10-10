@@ -5,9 +5,9 @@ boundary: the OS sandbox of Claude Code. The other layers prevent accidents. The
 common mistake and tell the session what to do in its place, but a session that tries to get
 past them can do so.
 
-`harness settings install` writes the sandbox, the permission lists and the hooks from the
-settings template `settings/settings.proposal.json` into `~/.claude/settings.json`.
-[setup-macos.md](setup-macos.md#harness-settings-install-apply) gives the steps.
+`harness install` writes the sandbox, the permission lists and the hooks from the settings
+template `settings/settings.proposal.json` into `~/.claude/settings.json`.
+[setup-macos.md](setup-macos.md#claude-code) gives the steps.
 
 ## The mechanisms
 
@@ -48,8 +48,10 @@ the installed template. A later version can behave differently.
 
 ## Check a change of the settings
 
-After `harness settings install --apply`, run the dry run again. It must say that the owned
-sections are identical and exit 0.
+Before `harness install --apply`, read the difference of the sections `permissions`, `hooks` and
+`sandbox` that the dry run prints after the line of `~/.claude/settings.json`. After the
+`--apply`, run the dry run again. It must print `already identical` for `~/.claude/settings.json`
+and exit 0.
 
 Then check the change in a new session. For each changed rule, run more than one test: a call
 that the rule must stop, and a call that it must let through. One result can mislead, and a
