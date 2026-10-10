@@ -14,6 +14,16 @@
   key only, prints none of its values, and never writes it. The docs pages on oh-my-pi say so, and
   no longer name the approval mode `write`, the `@opus` roles or the `[omp]` table.
 
+- **`harness install` owns `modelSettings` of `~/.claude/settings.json` too**, beside
+  `permissions`, `hooks` and `sandbox`. `modelSettings` holds each model's effort and
+  auto-compact window, which OpenCode and oh-my-pi take from `models.toml`; so Claude Code's come
+  from the settings template. An `/effort` or `/autocompact` in the UI holds until the next
+  install, which shows it in its diff and replaces it. The template's `modelSettings` takes the
+  values of the user's live file: `effortLevel` `medium` for `claude-opus-5`, `claude-opus-5-5`,
+  `claude-sonnet-5` and `claude-sonnet-5-5`, where the template held `high` for the two 5 models,
+  and `autoCompactWindow` 100000 for `claude-haiku-5-5`, the key that `/autocompact` writes, so
+  that Haiku 5.5 stays below its price step at 100K input tokens, as under the other frontends.
+
 - **OpenCode and oh-my-pi keep their own copies, and oh-my-pi follows OpenCode's model layer.**
   `harness install` copies the Claude Code layer's `RTK.md`, `instructions/`, rules, the four
   guard scripts and the curated skills into `~/.config/opencode/` and `~/.omp/agent/`. Every

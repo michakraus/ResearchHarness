@@ -35,7 +35,8 @@ writes into, is reported as EXTRA with its removal command; skills/synced/ and t
 are not searched, and a directory there that cannot be read exits 2, before anything is
 written. The Claude Code settings, ~/.claude/settings.json, are the first file of the layer, so
 that a new deny rule is in place before the files it protects: the settings template rendered with
-the profile replaces the sections `permissions`, `hooks` and `sandbox`, every other key stays as
+the profile replaces the sections `permissions`, `hooks`, `sandbox` and `modelSettings` (OWNED),
+every other key stays as
 the app and the user wrote it, the old file is kept as a backup, and the dry run prints the
 unified diff of those sections after the file's line (`settings_file`). A settings file that
 cannot be merged exits 2 before anything is written. The permission rules of the other settings
@@ -89,11 +90,14 @@ retrieves what a session can read is blocked by the proxy with no rule saying so
 checks by default and exits non-zero on a gap; `--emit` prints the block to install. Two
 hand-maintained copies of one list is this directory's oldest failure mode.
 
-`harness install` merges the three sections a round owns -- permissions, hooks, sandbox --
+`harness install` merges the sections it owns -- permissions, hooks, sandbox, modelSettings --
 onto the live file, and its dry run shows what such a merge would change. It merges because the
 app rewrites settings.json on every UI model or effort change, so a `cp` of the proposal
 reverts whatever was set in the UI since the proposal was last touched. Measured twice in
-opposite directions on 2026-09-05. The merge reads the live file when it plans: a change that the
+opposite directions on 2026-09-05. `modelSettings` is owned all the same, so that each model's
+effort and auto-compact window come from the template, as the other frontends' come from
+models.toml: an `/effort` or `/autocompact` in the UI holds until the next install, which shows it
+in its diff and replaces it. The merge reads the live file when it plans: a change that the
 app writes between the plan and the write is lost, so run `--apply` with no session changing its
 model.
 
@@ -522,9 +526,12 @@ def cmd_domains(args):
 
 
 # The sections of ~/.claude/settings.json that `harness install` merges from the settings
-# template. Everything else in the live file belongs to the app and the user — model,
-# modelSettings, env, statusLine — and the install leaves it exactly as it found it.
-OWNED = ("permissions", "hooks", "sandbox")
+# template. `modelSettings` holds each model's effort and auto-compact window, which the other
+# frontends get from models.toml, so the template keeps it too: a value that `/effort` or
+# `/autocompact` writes into the live file is replaced by the next install. Everything else in the
+# live file belongs to the app and the user — model, env, statusLine — and the install leaves it
+# exactly as it found it.
+OWNED = ("permissions", "hooks", "sandbox", "modelSettings")
 
 
 def indent_of(text):
@@ -1339,7 +1346,7 @@ def layer_cases(check, tmp):
     settings_line = re.compile(r"^~/\.claude/settings\.json\s+(.*)$", re.M)
     profile = render_profile.load(fresh()[0] / "profile.toml")
     template = json.loads(render_profile.render_file(REPO / "settings" / "settings.proposal.json", profile))
-    owned = {k: template[k] for k in ("permissions", "hooks", "sandbox")}
+    owned = {k: template[k] for k in OWNED}
     base, claude, tree = fresh()
     state = base / "home" / ".claude.json"
     state.write_text('{"state": 1}\n')
@@ -1366,7 +1373,8 @@ def layer_cases(check, tmp):
     backups = sorted(claude.glob("settings.json.bak-*"))
     expected = {"model": "opus", "permissions": owned["permissions"], "env": {"X": "{home} — é"},
                 "statusLine": {"type": "command", "command": "x"}, "hooks": owned["hooks"],
-                "someFutureKey": [1, {"a": None}], "sandbox": owned["sandbox"]}
+                "someFutureKey": [1, {"a": None}], "sandbox": owned["sandbox"],
+                "modelSettings": owned["modelSettings"]}
     case(lambda: code == 0 and merged == expected and list(merged) == list(expected)
          and (claude / "settings.json").read_text() == json.dumps(expected, indent=4, ensure_ascii=False) + "\n",
          f"--apply replaces the owned sections from the rendered template, keeps every other key, its value and its "
@@ -1388,6 +1396,7 @@ def layer_cases(check, tmp):
     case(lambda: state.read_text() == '{"state": 1}\n', "~/.claude.json is neither read nor written")
     # Owned sections equal to the template's in another layout are no change: the file is left as it is.
     (claude / "settings.json").write_text(json.dumps({"hooks": owned["hooks"], "sandbox": owned["sandbox"],
+                                                      "modelSettings": owned["modelSettings"],
                                                       "permissions": owned["permissions"], "model": "x"}) + "\n")
     kept = (claude / "settings.json").read_bytes()
     code, text = run(base, "--apply")
@@ -1395,6 +1404,18 @@ def layer_cases(check, tmp):
          and (claude / "settings.json").read_bytes() == kept,
          f"a settings.json whose owned sections equal the template's, in another layout, is not rewritten: "
          f"{code}, {tail(text)}")
+    # An effort or an auto-compact window that the UI wrote into modelSettings is in the diff, and
+    # --apply replaces the section with the template's.
+    ui = json.loads(kept)
+    ui["modelSettings"] = {**ui["modelSettings"], "claude-ui-model": {"effortLevel": "low"}}
+    (claude / "settings.json").write_text(json.dumps(ui) + "\n")
+    dry, text = run(base)
+    code, _ = run(base, "--apply")
+    case(lambda: dry == 1 and any(l.startswith("-") and "claude-ui-model" in l for l in text.splitlines())
+         and code == 0 and json.loads((claude / "settings.json").read_text())["modelSettings"]
+         == owned["modelSettings"],
+         f"a modelSettings entry that the UI wrote is in the dry run's diff, and --apply replaces the section "
+         f"with the template's: {dry}, {code}, {tail(text)}")
 
     # A missing settings.json is created with the owned sections only, indented by 2, mode 0644.
     base, claude, tree = fresh()
@@ -1411,7 +1432,7 @@ def layer_cases(check, tmp):
     case(lambda: code == 0 and list(json.loads((claude / "settings.json").read_text())) == list(owned)
          and (claude / "settings.json").read_text() == json.dumps(owned, indent=2, ensure_ascii=False) + "\n"
          and mode(claude / "settings.json") == 0o644,
-         f"--apply writes a missing settings.json with the three owned sections and no other key, indented by 2, "
+         f"--apply writes a missing settings.json with the owned sections and no other key, indented by 2, "
          f"mode 0644 under a umask of 077: {code}, {tail(text)}")
 
     # Each owned key that the template lacks is removed from the live file; the other keys stay.
@@ -1423,7 +1444,8 @@ def layer_cases(check, tmp):
     with mock.patch.object(this, "PROPOSAL", lacking):
         code, text = inproc(base, None, apply=True)
     merged = json.loads((claude / "settings.json").read_text())
-    case(lambda: code == 0 and list(merged) == ["model", "permissions", "hooks"] and merged["model"] == "x",
+    case(lambda: code == 0 and list(merged) == ["model", "permissions", "hooks", "modelSettings"]
+         and merged["model"] == "x",
          f"an owned key that the template lacks is removed from settings.json: {code}, {list(merged)}, {tail(text)}")
 
     # A template that cannot be rendered exits 2 and names the template, before anything is written.

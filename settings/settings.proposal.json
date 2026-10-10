@@ -1197,11 +1197,20 @@
   },
   "effortLevel": "high",
   "modelSettings": {
-    "claude-sonnet-5": {
-      "effortLevel": "high"
-    },
     "claude-opus-5": {
-      "effortLevel": "high"
+      "effortLevel": "medium"
+    },
+    "claude-opus-5-5": {
+      "effortLevel": "medium"
+    },
+    "claude-sonnet-5": {
+      "effortLevel": "medium"
+    },
+    "claude-sonnet-5-5": {
+      "effortLevel": "medium"
+    },
+    "claude-haiku-5-5": {
+      "autoCompactWindow": 100000
     }
   }
 }
