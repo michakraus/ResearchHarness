@@ -16,7 +16,7 @@ The sections follow the purpose of the files:
 - the leak check, `.gitleaks.toml`;
 - the test queries of the skills, `tests/skill-triggers/`.
 
-## `claude-autocommit` and `claude-autocommit.plist`
+## `claude-autocommit`, `claude-autocommit-test.jl` and `claude-autocommit.plist`
 
 A macOS launch agent is a job that launchd, the service manager of macOS, runs for one user: on a
 schedule, at login, or as a server that it keeps alive. Each job is a plist file in

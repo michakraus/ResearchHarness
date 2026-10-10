@@ -199,7 +199,7 @@ The skill `julia-structure`, the rule `julia-code` and the agents `exhaustive-au
 `julia-branch-verifier`, `julia-critic` and `julia-load-doctor` use it. For dispatch, use
 Kaimon's `search_methods` on a warm session. For callers, use `julia-callers.jl`.
 
-## `fatou-lsp.jl`
+## `fatou-lsp.jl` and `fatou-lsp-test.jl`
 
 `fatou-lsp.jl` is a small client of the language server `fatou lsp`. It is a module that other
 scripts include; it has no command line. `julia-methods.jl` uses it.
@@ -212,6 +212,11 @@ an unqualified name; treat an empty result as unknown.
 `lsp_close` stops the server with the `shutdown` and `exit` messages of the protocol, and returns
 whether the server stopped. Do not ignore a `false`: a server that does not stop stays in memory.
 The variable `FATOU_LSP_BIN` names the `fatou` binary, when the script cannot find it.
+
+`fatou-lsp-test.jl` checks that the script finds a native `fatou` on the `PATH`, and the platform
+binary below an npm prefix. It also runs the client against the real `fatou`, or prints a skip
+line where none is on the `PATH` (`julia --startup-file=no fatou-lsp-test.jl`). CI runs it on
+Linux.
 
 ## `julia-callers.jl`
 
@@ -357,7 +362,7 @@ It prints four reports:
 It estimates the tokens of a tool result at 3.5 characters per token. The usage figures come from
 the API. No skill or agent calls it. For the context at the start, use `startup-tokens.py`.
 
-## `julia-update.jl`
+## `julia-update.jl` and `julia-update-test.jl`
 
 `julia-update.jl` keeps the Julia installation, the default environments and the Kaimon MCP
 server current. It runs four steps in order:

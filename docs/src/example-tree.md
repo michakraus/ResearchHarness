@@ -101,7 +101,7 @@ and a `CHANGELOG.md`. In the example, they are Julia packages.
   [`julia-code`](components/rules.md#julia-code), [`julia-tests`](components/rules.md#julia-tests),
   [`julia-docs`](components/rules.md#julia-docs), [`changelog`](components/rules.md#changelog) and
   [`known-issues`](components/rules.md#known-issues).
-- The shared git hooks [`pre-commit`](components/githooks.md#pre-commit) and
+- The shared git hooks [`pre-commit`](components/githooks.md#pre-commit-and-pre-commit-test-jl) and
   [`pre-push`](components/githooks.md#pre-push), and the workflows such as
   [`workflows/CI.yml`](components/githooks.md#workflows-ci-yml). The verbs `harness githooks`,
   `harness push-all` and `harness ci-protection` work on every git repository of this directory.
@@ -144,7 +144,7 @@ again, with its tests and a `CHANGELOG.md`.
 - The rules [`julia-code`](components/rules.md#julia-code),
   [`julia-tests`](components/rules.md#julia-tests) and
   [`changelog`](components/rules.md#changelog).
-- The git hooks [`pre-commit`](components/githooks.md#pre-commit) and
+- The git hooks [`pre-commit`](components/githooks.md#pre-commit-and-pre-commit-test-jl) and
   [`pre-push`](components/githooks.md#pre-push), and the same four verbs as in
   [Packages](#packages).
 
