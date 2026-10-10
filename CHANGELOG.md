@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+- **The newcomer pages: a concept page with a glossary, a setup guide that explains each step,
+  and a guided tutorial.** The new page *Concepts*, second in the menu, explains what a coding
+  agent is, what a harness adds, the three layers (the harness, the profile and the tree
+  instructions), the four layers of control around a tool call, and the division of work among
+  agents, each with a note on how it carries to another language. It shows two new figures,
+  drawn with the components and the style module of the figures, and the overview figure of the
+  home page. Its glossary has one entry for each of 19 terms. The setup guide, *Setup* in the
+  menu, says for each step what it does, why, and how to check it, marks what a reader who writes
+  no Julia may skip, and now makes the `repository_roots` directories, without which
+  `harness leaks` stops. The tutorial has eight steps, each with what you should see and what to
+  do when it does not happen, and a track for a repository with no Julia package; its quoted
+  outputs are the real texts of the hooks and verbs. *Daily use* links the tutorial in place of
+  repeating it. On the newcomer pages, the first use of a glossary term links its entry, and no
+  page holds a `file:line`: the call sites and version floors of *Dependencies* name the file
+  without the line. A new check, `docs/scripts/newcomer.mjs` with its cases, enforces both and
+  runs in `npm run docs:check`.
+
 - **The figures of the site have a new design, and the home page is a landing page.** Vue
   components draw every figure as inline SVG at build time: cards with an icon, group panels with
   a coloured header band and a number badge, and thin right-angled arrows. One style module,
