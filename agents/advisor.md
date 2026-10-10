@@ -44,6 +44,11 @@ intent is clear; and, for a `build` part whose section has none, its **Decided a
 one line per edge of `~/.claude/skills/build-part/edges.md` that the part reaches, with the answer
 — and its **Tests catch** — for each clause a test covers, the mutant that test must catch.
 
+**A decision that makes the code take a branch names the test that catches its removal**: the
+input, the assertion, and the mutant that deletes the branch or merges it into another. Write it
+as a `**Tests catch:**` sentence in the decision. A branch that no test reaches lets that mutant
+survive, and the next critic fails the round on it.
+
 **You do not decide**, and you say so in one line:
 
 - a `decision` part of the parts table — prepare a recommendation instead;
