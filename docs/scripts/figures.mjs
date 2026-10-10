@@ -75,9 +75,15 @@ function figure(head, body) {
   const edges = []
   for (const m of body.matchAll(/<path\b[^>]*\bdata-edge="[^"]*"[^>]*>/g)) {
     const a = attributes(m[0])
+    // The label of an edge: the box behind its text, after the edge's path, before the next edge.
+    const rest = body.slice(m.index + m[0].length)
+    const next = rest.search(/\bdata-edge="/)
+    const bg = /<rect\b[^>]*\bclass="fig-arrow-label-bg"[^>]*>/.exec(next < 0 ? rest : rest.slice(0, next))
+    const l = bg && attributes(bg[0])
     edges.push({
       name: unescape(a.get('data-edge')), from: unescape(a.get('data-from') ?? ''),
-      to: unescape(a.get('data-to') ?? ''), points: points(a.get('d') ?? '')
+      to: unescape(a.get('data-to') ?? ''), points: points(a.get('d') ?? ''),
+      ...(l ? { label: { x: Number(l.get('x')), y: Number(l.get('y')), w: Number(l.get('width')), h: Number(l.get('height')) } } : {})
     })
   }
   return {
@@ -217,6 +223,96 @@ export function geometryProblems(fig) {
       if (own.includes(box) || own.some((end) => contains(box, end))) continue
       if (segments(e).some((s) => through(s, box))) problems.push(`the edge ${e.name} passes through the box "${box.name}"`)
     }
+  }
+  return problems
+}
+
+/** Whether the segments `s` and `t` lie on one line and share a part longer than EPS: two edges
+ * on a trunk that they share. */
+function shared(s, t) {
+  const m = meet(s, t)
+  return m.length === 2 && Math.hypot(m[0][0] - m[1][0], m[0][1] - m[1][1]) > EPS
+}
+
+/** The problems of the labels of a figure's edges. A label sits on its own edge: the edge passes
+ * through the centre of the label's box. No other edge passes through the box, so that no other
+ * edge is as near the label as its own; a part of another edge on a trunk that it shares with the
+ * label's edge does not count. And no two labels overlap. */
+export function labelProblems(fig) {
+  const problems = []
+  const labelled = fig.edges.filter((e) => e.label)
+  for (const e of labelled) {
+    const b = e.label
+    const centre = [b.x + b.w / 2, b.y + b.h / 2]
+    if (!segments(e).some((s) => meet(s, [centre, centre]).length > 0)) {
+      problems.push(`the label of the edge ${e.name} is not on its own edge`)
+      continue
+    }
+    const own = segments(e)
+    for (const f of fig.edges) {
+      if (f === e) continue
+      const near = segments(f).filter((s) => !own.some((t) => shared(s, t))).some((s) => through(s, b))
+      if (near) problems.push(`the label of the edge ${e.name} is as near the edge ${f.name} as its own`)
+    }
+  }
+  for (const [i, e] of labelled.entries()) {
+    for (const f of labelled.slice(i + 1)) {
+      const [a, b] = [e.label, f.label]
+      if (a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h) {
+        problems.push(`the labels of the edges ${e.name} and ${f.name} overlap`)
+      }
+    }
+  }
+  return problems
+}
+
+/** The width of the viewBox of a figure, or NaN when it has none. The HTML of the build writes the
+ * attribute in lower case. */
+export function figureWidth(fig) {
+  const m = /\bviewBox="([^"]*)"/i.exec(fig.head)
+  return m ? Number(m[1].trim().split(/[\s,]+/)[2]) : NaN
+}
+
+/** The problem of a figure that is wider than `max` px, or null. A figure whose title `exempt`
+ * names has no width rule; the exemption is by title only. */
+export function widthProblem(fig, max, exempt = []) {
+  if (exempt.includes(fig.title)) return null
+  const width = figureWidth(fig)
+  return width <= max ? null : `is ${width} px wide, more than ${max} px`
+}
+
+/** The problems of the layers of a graph: the boxes of one layer have one width and share one
+ * edge line. The edges give the direction: a graph whose edges leave their boxes at the bottom
+ * runs downwards, and its layers are rows that share the top edge; a graph whose edges leave on
+ * the right runs to the right, and its layers are columns that share the left edge. A layer is a
+ * set of boxes whose extents along the direction overlap. */
+export function layerProblems(fig) {
+  const byName = new Map(fig.boxes.map((b) => [b.name, b]))
+  const sides = new Set(fig.edges.map((e) => {
+    const b = byName.get(e.from)
+    const [x, y] = e.points[0]
+    if (b && Math.abs(y - (b.y + b.h)) <= EPS) return 'bottom'
+    if (b && Math.abs(x - (b.x + b.w)) <= EPS) return 'right'
+    return 'other'
+  }))
+  if (sides.size === 0) return []
+  if (sides.size > 1 || sides.has('other')) return ['the edges leave their boxes on different sides, so the graph has no one direction']
+  const [kind, start, size, line] = sides.has('bottom') ? ['row', 'y', 'h', 'top edges'] : ['column', 'x', 'w', 'left edges']
+  const sorted = [...fig.boxes].sort((a, b) => a[start] - b[start])
+  const layers = []
+  for (const b of sorted) {
+    const last = layers.at(-1)
+    if (last && b[start] < Math.max(...last.map((c) => c[start] + c[size])) - EPS) last.push(b)
+    else layers.push([b])
+  }
+  const problems = []
+  const distinct = (values) => [...new Set(values)].sort((a, b) => a - b)
+  for (const layer of layers.filter((l) => l.length > 1)) {
+    const name = `the ${kind} of ${layer.map((b) => b.name).sort().join(', ')}`
+    const widths = distinct(layer.map((b) => b.w))
+    if (widths.length > 1) problems.push(`${name}: the boxes have the widths ${widths.join(', ')}, not one width`)
+    const edges = distinct(layer.map((b) => b[start]))
+    if (edges.length > 1) problems.push(`${name}: the boxes have the ${line} ${edges.join(', ')}, not one`)
   }
   return problems
 }

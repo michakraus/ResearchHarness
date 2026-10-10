@@ -12,6 +12,11 @@
 //   its four call graphs, each found by its <title> and with a <desc>;
 // - in every figure of the site, no edge crosses another edge or passes through a box that is
 //   not its end (scripts/figures.mjs), and no figure loads a file from another host;
+// - in every figure, each label of an edge is on its own edge, no other edge passes through it,
+//   and no two labels overlap (scripts/figures.mjs);
+// - each call graph but Every spawn is at most 765 px wide, and the boxes of each of its layers
+//   have one width and share one edge line;
+// - in the flow figure, the group harness install holds a card for each of its steps, in order;
 // - every colour of the style module of the figures has a value for the dark theme in the built
 //   CSS, and no figure component or the generator names a colour itself.
 //
@@ -19,7 +24,7 @@
 import { readFileSync, readdirSync, existsSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { figures as figuresOf, geometryProblems } from './figures.mjs'
+import { figures as figuresOf, geometryProblems, labelProblems, layerProblems, widthProblem } from './figures.mjs'
 
 const DOCS = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const BUILD = path.join(DOCS, 'build')
@@ -134,6 +139,22 @@ const FIGURES = {
   'concepts.md': ['The harness and its three layers', 'The harness, the profile and the tree instructions', 'The layers of control around one tool call'],
   'agents-at-work.md': ['The calls of build-part', 'The calls of build-reviewed', 'The calls of julia-pr-shepherd', 'Every spawn']
 }
+// The call graphs are compact: the doc column of VitePress 1.6.4 is 688 px wide (VPDoc.vue), so a
+// graph of at most 765 px shows at a scale of 0.9 or more. The boxes of one layer of a call graph
+// have one width and share one edge line.
+const CALL_GRAPHS = FIGURES['agents-at-work.md']
+const MAX_GRAPH_WIDTH = 765
+// The one exemption from the width, by title: Every spawn has 16 boxes and 16 labelled edges, and
+// elkjs draws it no narrower than 852 px, and that only with crossing edges, so it runs to the
+// right. Its layers and its geometry are still checked.
+const WIDE_GRAPHS = ['Every spawn']
+// In the flow figure, harness install is a group that holds a card for each of its steps, from top
+// to bottom in the order in which lib/harness/install.py runs them.
+const FLOW = 'From the sources to the frontends'
+const INSTALL_STEPS = [
+  'Read the profile', 'Render the sources', 'Install Julia packages', 'Write Claude Code',
+  'Write the stamp', 'Write the other layers', 'Link the skills'
+]
 let figures = 0
 for (const [page, text] of built) {
   const found = figuresOf(text)
@@ -154,6 +175,20 @@ for (const [page, text] of built) {
     for (const url of f.external) problem(`${name} loads ${url} from another host`)
     if (f.images > 0) problem(`${name} holds an image or a foreign object, not SVG shapes`)
     for (const p of geometryProblems(f)) problem(`${name}: ${p}`)
+    for (const p of labelProblems(f)) problem(`${name}: ${p}`)
+    if (CALL_GRAPHS.includes(f.title)) {
+      const wide = widthProblem(f, MAX_GRAPH_WIDTH, WIDE_GRAPHS)
+      if (wide) problem(`${name} ${wide}`)
+      for (const p of layerProblems(f)) problem(`${name}: ${p}`)
+    }
+    if (f.title === FLOW) {
+      const group = f.boxes.find((b) => b.name === 'harness install')
+      const inside = group ? f.boxes.filter((b) => b !== group && b.x >= group.x && b.y >= group.y &&
+        b.x + b.w <= group.x + group.w && b.y + b.h <= group.y + group.h).sort((a, b) => a.y - b.y).map((b) => b.name) : []
+      if (inside.join('\n') !== INSTALL_STEPS.join('\n')) {
+        problem(`${name}: the group harness install holds ${inside.length ? inside.join(', ') : 'no card'}, not the steps ${INSTALL_STEPS.join(', ')}`)
+      }
+    }
   }
 }
 
