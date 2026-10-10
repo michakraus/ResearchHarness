@@ -223,7 +223,7 @@ export async function callGraph(root?: string): Promise<Graph> {
           .filter(([p, q]) => p[b] === q[b] && Math.min(p[a], q[a]) <= centre[a] && centre[a] <= Math.max(p[a], q[a]))
           .sort((s, t) => Math.abs(s[0][b] - centre[b]) - Math.abs(t[0][b] - centre[b]))[0]
         const at = [round(x), round(y)]
-        if (on) at[b] = on[0][b]
+        if (on && direction === 'RIGHT') at[b] = on[0][b]
         labelAt = at as Point
       }
       return { from: edges[i].caller, to: edges[i].callee, ...(labelAt ? { label: labels[i], labelAt } : {}), points }
