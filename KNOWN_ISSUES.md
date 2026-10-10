@@ -463,3 +463,17 @@
   target that `install_file` writes behaves the same way; K9 is the symlink and directory case.
 - kind: found late
 - found: 2026-10-10
+
+### K60 · A stray settings rule with a lone surrogate stops the dry run of `harness install` with `UnicodeEncodeError`.
+
+- location: `adapters/claude/adapter.py:657`
+- evidence: found late — `adapters/claude/adapter.py`, the rule print of `stray_warnings`:
+  `f"  {path}  {kind}  {rule}"`. A stray `~/Research/.claude/settings.local.json` with
+  `{"permissions": {"allow": ["Bash(\ud800)"]}}` stops `harness install` (dry run) with
+  `UnicodeEncodeError: 'utf-8' codec can't encode character '\ud800' … surrogates not allowed`,
+  exit 1, on 3.14 and on 3.11. The fix escapes a lone surrogate in the merge and the diff, but not
+  in this print. The previous head fails the same way, so the fix diff did not introduce it.
+  Reproducer: the critic's `python3.14 probe_surrogates.py <abs tree> <abs scratch>`, line
+  "2 stray rule …". Found by the verify critic of part M, round 2.
+- kind: found late
+- found: 2026-10-10; the ID is K60 because publish part J4 holds K49 onwards on its own branch
