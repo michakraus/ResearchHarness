@@ -79,6 +79,58 @@ const LAYOUT = {
   'elk.padding': '[top=0,left=0,bottom=0,right=0]'
 }
 
+type Direction = 'RIGHT' | 'DOWN'
+// The options of each direction. The parts of a graph that share no node are laid out as one
+// graph, so that their layers line up. Downwards, the rows come from `rows` as partitions, the
+// simple node placement packs each row, and the edges from one box leave it on one trunk.
+const OPTIONS: Record<Direction, Record<string, string>> = {
+  RIGHT: { 'elk.direction': 'RIGHT', 'elk.separateConnectedComponents': 'false' },
+  DOWN: {
+    'elk.direction': 'DOWN',
+    'elk.separateConnectedComponents': 'false',
+    'elk.partitioning.activate': 'true',
+    'elk.layered.nodePlacement.strategy': 'SIMPLE',
+    'elk.layered.mergeEdges': 'true',
+    'elk.spacing.nodeNode': '16',
+    'elk.spacing.edgeNode': '12',
+    'elk.spacing.edgeEdge': '10'
+  }
+}
+/** The most boxes in one row of a graph that runs downwards: three cards fit the doc column. */
+const ROW = 3
+
+/** The rows of a graph that runs downwards: a node's depth is the longest path to it from a node
+ * that nothing calls. The nodes of one depth fill rows of at most ROW boxes, in the order of
+ * `names`, with the nodes that call others last, so that they are next to their callees. */
+function rows(names: string[], edges: Call[]): Map<string, number> {
+  const depth = new Map(names.map((n) => [n, 0]))
+  for (let changed = true, rounds = 0; changed; rounds++) {
+    if (rounds > names.length) throw new Error(`the calls of ${names.join(', ')} have a cycle`)
+    changed = false
+    for (const e of edges) {
+      if (depth.get(e.callee)! < depth.get(e.caller)! + 1) {
+        depth.set(e.callee, depth.get(e.caller)! + 1)
+        changed = true
+      }
+    }
+  }
+  const calls = (n: string) => edges.some((e) => e.caller === n)
+  const result = new Map<string, number>()
+  let row = 0
+  for (const d of [...new Set(depth.values())].sort((a, b) => a - b)) {
+    const group = names.filter((n) => depth.get(n) === d).sort((a, b) => Number(calls(a)) - Number(calls(b)))
+    for (let i = 0; i < group.length; i += ROW) {
+      for (const n of group.slice(i, i + ROW)) result.set(n, row)
+      row++
+    }
+  }
+  return result
+}
+
+// The doc column (688 px) draws a figure of at most 765 px, its frame's padding of 12 px on each
+// side included, at a scale of 0.9 or more.
+const MAX_WIDTH = 765 - 2 * 12
+
 const round = (n: number) => Math.round(n * 2) / 2
 
 /** The laid-out call graph of `root`, or of every edge when `root` is undefined. */
@@ -91,17 +143,60 @@ export async function callGraph(root?: string): Promise<Graph> {
   const nodes = names.map((name) => node(name, models))
   const labels = edges.map((c) => [c.label, c.effort && `at ${c.effort} effort`].filter(Boolean).join(', '))
   const elk = new ELK()
-  const graph = await elk.layout({
+  const row = rows(names, edges)
+  /** The layout of the graph in `direction`, each node as wide as `widths` says. */
+  const lay = (direction: Direction, widths: Map<string, number>) => elk.layout({
     id: 'root',
-    layoutOptions: { ...LAYOUT, 'elk.direction': 'RIGHT' },
-    children: nodes.map((n) => ({ id: n.name, width: cardWidth(n.name, [...n.lines]), height: cardHeight(2) })),
-    edges: edges.map((c, i) => ({
+    layoutOptions: { ...LAYOUT, ...OPTIONS[direction] },
+    children: nodes.map((n) => ({
+      id: n.name, width: widths.get(n.name)!, height: cardHeight(2),
+      ...(direction === 'DOWN' ? { layoutOptions: { 'elk.partitioning.partition': String(row.get(n.name)) } } : {})
+    })),
+    edges: edges.map((e, i) => ({
       id: `e${i}`,
-      sources: [c.caller],
-      targets: [c.callee],
+      sources: [e.caller],
+      targets: [e.callee],
       labels: labels[i] ? [{ text: labels[i], width: textWidth(labels[i], LABEL_SIZE) + 10, height: 18 }] : []
     }))
   })
+  /** The layers of a layout: the names of the nodes in each column or row. A layer is a set of
+   * nodes whose extents along the direction overlap, as the check of the built site reads it. */
+  const layersOf = (g: Awaited<ReturnType<typeof lay>>, direction: Direction) => {
+    const [start, size] = direction === 'RIGHT' ? ['x', 'width'] as const : ['y', 'height'] as const
+    const layers: { end: number, names: string[] }[] = []
+    for (const c of [...g.children!].sort((a, b) => a[start]! - b[start]!)) {
+      const last = layers.at(-1)
+      if (last && c[start]! < last.end) {
+        last.names.push(c.id)
+        last.end = Math.max(last.end, c[start]! + c[size]!)
+      } else layers.push({ end: c[start]! + c[size]!, names: [c.id] })
+    }
+    return layers.map((l) => l.names.sort())
+  }
+  /** The layout in `direction` with the boxes of each layer as wide as the widest box of the
+   * layer: a first layout gives the layers, and a second one lays out the wider boxes. */
+  const aligned = async (direction: Direction) => {
+    const natural = new Map(nodes.map((n) => [n.name, cardWidth(n.name, [...n.lines])]))
+    const first = layersOf(await lay(direction, natural), direction)
+    const widths = new Map(first.flatMap((layer) => {
+      const w = Math.max(...layer.map((name) => natural.get(name)!))
+      return layer.map((name) => [name, w] as const)
+    }))
+    const g = await lay(direction, widths)
+    const second = layersOf(g, direction)
+    if (JSON.stringify(second) !== JSON.stringify(first)) {
+      throw new Error(`the call graph of ${root ?? 'every edge'} changes its layers when its boxes widen: ${JSON.stringify(first)}, ${JSON.stringify(second)}`)
+    }
+    return g
+  }
+  // A graph runs to the right when it fits the doc column so, and downwards when it fits only so.
+  // When neither fits, it runs to the right, and the check of the built site names it.
+  let direction: Direction = 'RIGHT'
+  let graph = await aligned(direction)
+  if (graph.width! > MAX_WIDTH) {
+    const down = await aligned('DOWN')
+    if (down.width! <= MAX_WIDTH) [graph, direction] = [down, 'DOWN']
+  }
   const placed = new Map(graph.children!.map((c) => [c.id, c]))
   return {
     width: round(graph.width!),
@@ -116,14 +211,20 @@ export async function callGraph(root?: string): Promise<Graph> {
       const label = e.labels?.[0]
       let labelAt: Point | undefined
       if (labels[i]) {
-        // elkjs puts a label beside its edge; the label goes onto the horizontal segment of the
-        // edge below its centre, so that it reads as the edge's own.
+        // elkjs puts a label beside its edge; the label goes onto the segment of the edge across
+        // the layers (horizontal to the right, vertical downwards) nearest to its centre, so that
+        // it reads as the edge's own.
         const x = label!.x! + label!.width! / 2
         const y = label!.y! + label!.height! / 2
+        // a is the axis along the layers, b the axis across them.
+        const [a, b] = direction === 'RIGHT' ? [0, 1] : [1, 0]
+        const centre = [x, y]
         const on = points.slice(1).map((q, k) => [points[k], q])
-          .filter(([p, q]) => p[1] === q[1] && Math.min(p[0], q[0]) <= x && x <= Math.max(p[0], q[0]))
-          .sort((a, b) => Math.abs(a[0][1] - y) - Math.abs(b[0][1] - y))[0]
-        labelAt = [round(x), on ? on[0][1] : round(y)]
+          .filter(([p, q]) => p[b] === q[b] && Math.min(p[a], q[a]) <= centre[a] && centre[a] <= Math.max(p[a], q[a]))
+          .sort((s, t) => Math.abs(s[0][b] - centre[b]) - Math.abs(t[0][b] - centre[b]))[0]
+        const at = [round(x), round(y)]
+        if (on) at[b] = on[0][b]
+        labelAt = at as Point
       }
       return { from: edges[i].caller, to: edges[i].callee, ...(labelAt ? { label: labels[i], labelAt } : {}), points }
     })

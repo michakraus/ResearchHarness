@@ -2,7 +2,7 @@
 // `node --test scripts/`, which `npm run docs:check` does first.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { figures, geometryProblems, meet, points } from './figures.mjs'
+import { figureWidth, figures, geometryProblems, layerProblems, meet, points } from './figures.mjs'
 
 const box = (name, x, y, w, h) => `<rect data-box="${name}" x="${x}" y="${y}" width="${w}" height="${h}"/>`
 const edge = (from, to, d) => `<path data-edge="${from} → ${to}" data-from="${from}" data-to="${to}" d="${d}"/>`
@@ -84,6 +84,38 @@ test('an edge whose first or last point is not on the box it names is named', ()
 test('an edge whose end names no box is named', () => {
   const f = one(box('a', 0, 0, 20, 20) + edge('a', 'z', 'M20 10L100 10'))
   assert.deepEqual(geometryProblems(f), ['the edge a → z names the box "z", which the figure does not have'])
+})
+
+test('the width of a figure is the width of its viewBox, in either case of the attribute', () => {
+  assert.equal(figureWidth(one(box('a', 0, 0, 10, 10))), 400)
+  assert.equal(figureWidth(figures('<svg role="img" viewbox="-12 -12 765.5 300"><title>T</title></svg>')[0]), 765.5)
+  assert.ok(Number.isNaN(figureWidth(figures('<svg role="img"><title>T</title></svg>')[0])))
+})
+
+// A graph that runs downwards: a, then the row of b, c and d.
+const down = (c = [140, 'c'], d = 'd') =>
+  box('a', 0, 0, 100, 40) + box('b', 0, 100, 100, 40) + box('c', c[0], 100, 100, 40) + box(d, 280, 100, 100, 40) +
+  edge('a', 'b', 'M50 40L50 100') + edge('a', 'c', 'M50 40L50 70L190 70L190 100')
+
+test('the boxes of each row of a graph that runs downwards share their width and their top edge', () => {
+  assert.deepEqual(layerProblems(one(down())), [])
+  assert.deepEqual(layerProblems(one(down().replace('box="c" x="140" y="100" width="100"', 'box="c" x="140" y="100" width="130"'))),
+    ['the row of b, c, d: the boxes have the widths 100, 130, not one width'])
+  assert.deepEqual(layerProblems(one(down().replace('box="d" x="280" y="100"', 'box="d" x="280" y="110"'))),
+    ['the row of b, c, d: the boxes have the top edges 100, 110, not one'])
+})
+
+test('the boxes of each column of a graph that runs to the right share their width and their left edge', () => {
+  const right = (w) => box('a', 0, 0, 100, 40) + box('b', 200, 0, w, 40) + box('c', 200, 60, 120, 40) +
+    edge('a', 'b', 'M100 20L200 20') + edge('a', 'c', 'M100 20L150 20L150 80L200 80')
+  assert.deepEqual(layerProblems(one(right(120))), [])
+  assert.deepEqual(layerProblems(one(right(100))), ['the column of b, c: the boxes have the widths 100, 120, not one width'])
+})
+
+test('a graph whose edges leave their boxes on different sides has no direction', () => {
+  const f = one(box('a', 0, 0, 100, 40) + box('b', 0, 100, 100, 40) + box('c', 200, 0, 100, 40) +
+    edge('a', 'b', 'M50 40L50 100') + edge('a', 'c', 'M100 20L200 20'))
+  assert.deepEqual(layerProblems(f), ['the edges leave their boxes on different sides, so the graph has no one direction'])
 })
 
 test('a link to another host and an image are found', () => {

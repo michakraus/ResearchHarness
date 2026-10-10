@@ -11,6 +11,8 @@
 //   its four call graphs, each found by its <title> and with a <desc>;
 // - in every figure of the site, no edge crosses another edge or passes through a box that is
 //   not its end (scripts/figures.mjs), and no figure loads a file from another host;
+// - each call graph is at most 765 px wide, and the boxes of each of its layers have one width and
+//   share one edge line;
 // - every colour of the style module of the figures has a value for the dark theme in the built
 //   CSS, and no figure component or the generator names a colour itself.
 //
@@ -18,7 +20,7 @@
 import { readFileSync, readdirSync, existsSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { figures as figuresOf, geometryProblems } from './figures.mjs'
+import { figureWidth, figures as figuresOf, geometryProblems, layerProblems } from './figures.mjs'
 
 const DOCS = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const BUILD = path.join(DOCS, 'build')
@@ -129,6 +131,11 @@ const FIGURES = {
   'concepts.md': ['The harness and its three layers', 'The harness, the profile and the tree instructions', 'The layers of control around one tool call'],
   'agents-at-work.md': ['The calls of build-part', 'The calls of build-reviewed', 'The calls of julia-pr-shepherd', 'Every spawn']
 }
+// The call graphs are compact: the doc column of VitePress 1.6.4 is 688 px wide (VPDoc.vue), so a
+// graph of at most 765 px shows at a scale of 0.9 or more. The boxes of one layer of a call graph
+// have one width and share one edge line.
+const CALL_GRAPHS = FIGURES['agents-at-work.md']
+const MAX_GRAPH_WIDTH = 765
 let figures = 0
 for (const [page, text] of built) {
   const found = figuresOf(text)
@@ -149,6 +156,11 @@ for (const [page, text] of built) {
     for (const url of f.external) problem(`${name} loads ${url} from another host`)
     if (f.images > 0) problem(`${name} holds an image or a foreign object, not SVG shapes`)
     for (const p of geometryProblems(f)) problem(`${name}: ${p}`)
+    if (CALL_GRAPHS.includes(f.title)) {
+      const width = figureWidth(f)
+      if (!(width <= MAX_GRAPH_WIDTH)) problem(`${name} is ${width} px wide, more than ${MAX_GRAPH_WIDTH} px`)
+      for (const p of layerProblems(f)) problem(`${name}: ${p}`)
+    }
   }
 }
 

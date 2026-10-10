@@ -220,3 +220,46 @@ export function geometryProblems(fig) {
   }
   return problems
 }
+
+/** The width of the viewBox of a figure, or NaN when it has none. The HTML of the build writes the
+ * attribute in lower case. */
+export function figureWidth(fig) {
+  const m = /\bviewBox="([^"]*)"/i.exec(fig.head)
+  return m ? Number(m[1].trim().split(/[\s,]+/)[2]) : NaN
+}
+
+/** The problems of the layers of a graph: the boxes of one layer have one width and share one
+ * edge line. The edges give the direction: a graph whose edges leave their boxes at the bottom
+ * runs downwards, and its layers are rows that share the top edge; a graph whose edges leave on
+ * the right runs to the right, and its layers are columns that share the left edge. A layer is a
+ * set of boxes whose extents along the direction overlap. */
+export function layerProblems(fig) {
+  const byName = new Map(fig.boxes.map((b) => [b.name, b]))
+  const sides = new Set(fig.edges.map((e) => {
+    const b = byName.get(e.from)
+    const [x, y] = e.points[0]
+    if (b && Math.abs(y - (b.y + b.h)) <= EPS) return 'bottom'
+    if (b && Math.abs(x - (b.x + b.w)) <= EPS) return 'right'
+    return 'other'
+  }))
+  if (sides.size === 0) return []
+  if (sides.size > 1 || sides.has('other')) return ['the edges leave their boxes on different sides, so the graph has no one direction']
+  const [kind, start, size, line] = sides.has('bottom') ? ['row', 'y', 'h', 'top edges'] : ['column', 'x', 'w', 'left edges']
+  const sorted = [...fig.boxes].sort((a, b) => a[start] - b[start])
+  const layers = []
+  for (const b of sorted) {
+    const last = layers.at(-1)
+    if (last && b[start] < Math.max(...last.map((c) => c[start] + c[size])) - EPS) last.push(b)
+    else layers.push([b])
+  }
+  const problems = []
+  const distinct = (values) => [...new Set(values)].sort((a, b) => a - b)
+  for (const layer of layers.filter((l) => l.length > 1)) {
+    const name = `the ${kind} of ${layer.map((b) => b.name).sort().join(', ')}`
+    const widths = distinct(layer.map((b) => b.w))
+    if (widths.length > 1) problems.push(`${name}: the boxes have the widths ${widths.join(', ')}, not one width`)
+    const edges = distinct(layer.map((b) => b[start]))
+    if (edges.length > 1) problems.push(`${name}: the boxes have the ${line} ${edges.join(', ')}, not one`)
+  }
+  return problems
+}
