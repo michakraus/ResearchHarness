@@ -100,9 +100,9 @@ OLD_TIERS = {"opus": "large", "sonnet": "medium", "haiku": "small"}
 
 def read_models(path):
     """The model tables at `path`, parsed; a file that does not exist, cannot be read, is not
-    UTF-8 or is not TOML exits 2, and so does a table of the tiers, [claude], [opencode.models] or
-    [omp], with a key of OLD_TIERS: one message names each rename of each table, and a missing
-    [claude]."""
+    UTF-8 or is not TOML exits 2, and so does a table of the tiers, [claude], [models],
+    [opencode.models] or [omp.models], with a key of OLD_TIERS: one message names each rename of
+    each table, and a missing [claude]."""
     path = pathlib.Path(path)
     if not path.is_file():
         raise HarnessError(f"no model tables at {path} — copy examples/models.toml there and fill it in")
@@ -116,7 +116,8 @@ def read_models(path):
         raise HarnessError(f"{path} is not TOML: {e}") from None
     opencode, omp = models.get("opencode"), models.get("omp")
     renames = []
-    for name, table in [("claude", models.get("claude")), ("omp.models", omp.get("models") if isinstance(omp, dict) else None),
+    for name, table in [("claude", models.get("claude")), ("models", models.get("models")),
+                        ("omp.models", omp.get("models") if isinstance(omp, dict) else None),
                         ("opencode.models", opencode.get("models") if isinstance(opencode, dict) else None)]:
         old = [t for t in OLD_TIERS if isinstance(table, dict) and t in table]
         if old:
@@ -148,43 +149,57 @@ def tier_table(path, name, frontend):
     return {t: table[t] for t in tiers}
 
 
-# The sub-tables of the model tables of OpenCode and oh-my-pi, [opencode] and [omp]; each is
+# The model tables that OpenCode and oh-my-pi share, at the top level of models.toml; each is
 # optional. `models` maps a tier to a model; `model_overrides` an agent to its model in place of its
 # tier's; `model_variants` a model to the effort of every agent on it; `variants` and
 # `reasoning_effort` an agent or a council seat to its effort, over `model_variants`; `councils` an
-# agent to its seats; `context_limits` a model to the input tokens it may hold.
+# agent to its seats; `context_limits` a model to the input tokens it may hold. [opencode] and
+# [omp] may hold the same sub-tables, each key of which replaces the shared one for that frontend
+# alone. [claude] is Claude Code's table of the tiers, which reads none of them.
 MODEL_TABLES = ["models", "model_overrides", "model_variants", "variants", "reasoning_effort", "councils",
                 "context_limits"]
+# The frontends that read MODEL_TABLES, each with a table of its own overrides.
+SHARING = ("opencode", "omp")
 # A council has one to eight seats beside its agent.
 COUNCIL_SEATS = range(1, 9)
 
 
 def model_tables(path, name):
-    """The sub-tables MODEL_TABLES of the table [`name`] of the model tables at `path`, every one
-    present, and `path`. A council is a list of seats {name, model}, at most one of them with
-    `verify = true`, the seat that judges each verify round alone; no two seats share a name. A
-    context limit is a positive integer. Any other table exits 2."""
+    """The shared tables MODEL_TABLES of the model tables at `path`, each with the keys of its
+    sub-table of [`name`] over its own, every one present, and `path`. A council is a list of seats
+    {name, model}, at most one of them with `verify = true`, the seat that judges each verify
+    round alone; no two seats share a name. A context limit is a positive integer. Any other table,
+    at the top level or in [`name`], exits 2."""
     path = pathlib.Path(path)
-    table = read_models(path).get(name)
+    data = read_models(path)
+    tops = ["claude", *MODEL_TABLES, *SHARING]
+    if tiers := [t for t in frontmatter.TIERS if t in data]:
+        raise HarnessError(f"{path}: the tiers {', '.join(tiers)} are at the top level; move them into [models]")
+    if unknown := sorted(set(data) - set(tops)):
+        raise HarnessError(f"{path} has no table {', '.join(unknown)}; it has {', '.join(tops)}")
+    table = data.get(name, {})
     if not isinstance(table, dict):
-        raise HarnessError(f"{path} has no [{name}] table — examples/models.toml shows it")
-    unknown = sorted(set(table) - set(MODEL_TABLES))
+        raise HarnessError(f"{path}: [{name}] is not a table")
     if tiers := [t for t in frontmatter.TIERS if t in table]:
-        raise HarnessError(f"{path}: [{name}] holds the tiers {', '.join(tiers)}; move them into [{name}.models]")
-    if unknown:
+        raise HarnessError(f"{path}: [{name}] holds the tiers {', '.join(tiers)}; move them into [models], or "
+                           f"into [{name}.models] for {name} alone")
+    if unknown := sorted(set(table) - set(MODEL_TABLES)):
         raise HarnessError(f"{path}: [{name}] has no sub-table {', '.join(unknown)}; "
                            f"it has {', '.join(MODEL_TABLES)}")
-    models = {sub: table.get(sub, {}) for sub in MODEL_TABLES}
+    models = {}
     for sub in MODEL_TABLES:
-        if not isinstance(models[sub], dict):
-            raise HarnessError(f"{path}: [{name}.{sub}] is not a table")
+        for label, part in ((f"[{sub}]", data.get(sub, {})), (f"[{name}.{sub}]", table.get(sub, {}))):
+            if not isinstance(part, dict):
+                raise HarnessError(f"{path}: {label} is not a table")
+        models[sub] = {**data.get(sub, {}), **table.get(sub, {})}
+    where = lambda sub: f"[{sub}] or [{name}.{sub}]"  # noqa: E731
     for sub in ("models", "model_overrides", "model_variants", "variants", "reasoning_effort"):
         if wrong := [k for k, v in models[sub].items() if not (isinstance(v, str) and v.strip())]:
-            raise HarnessError(f"{path}: the value of {', '.join(wrong)} in [{name}.{sub}] is not a string that is "
+            raise HarnessError(f"{path}: the value of {', '.join(wrong)} in {where(sub)} is not a string that is "
                                "not blank")
     if wrong := [k for k, v in models["context_limits"].items() if not (type(v) is int and v > 0)]:
-        raise HarnessError(f"{path}: the value of {', '.join(wrong)} in [{name}.context_limits] is not a positive "
-                           "integer")
+        raise HarnessError(f"{path}: the value of {', '.join(wrong)} in {where('context_limits')} is not a "
+                           "positive integer")
     # Each seat is installed as `<name>.md`, so a second seat of one name would replace the first.
     seen = {}
     for agent, seats in models["councils"].items():

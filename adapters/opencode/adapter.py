@@ -20,9 +20,10 @@ After the files, the links that an earlier install wrote to ~/.agents/skills/ ar
 (`skill_links`): OpenCode reads that directory too.
 
 opencode.jsonc and guard-paths.json hold {home} and {opencode_providers}, rendered with the
-private profile; each model of [opencode.context_limits] becomes a provider entry before the
+private profile; each model of the context limits becomes a provider entry before the
 profile's own (`context_providers`). The agents are rendered from their neutral source in agents/,
-not from the installed copies, with the [opencode] tables of the model tables. OpenCode reads
+not from the installed copies, with the model tables that OpenCode shares with oh-my-pi and the
+keys of [opencode] over them (profile.model_tables). OpenCode reads
 AGENTS.md of its configuration directory in place of ~/.claude/CLAUDE.md, and its copies of RTK.md,
 the core and the tree instructions through `instructions` in opencode.jsonc. Every text but
 AGENTS.md names OpenCode's copies, not Claude Code's (frontends.relocate). An installed agent,
@@ -41,7 +42,7 @@ copy has one source, so it cannot drift from it. What changes in the port, and n
 1. The frontmatter. The `description:` line is copied as raw text. The neutral `tools:` (`shell`
    is `bash`, `agent` is `task`, `mcp/kaimon/<tool>` is `kaimon_<tool>`), `skills:` and
    `permissionMode:` have no OpenCode key, so all three become `permission:`. The tier of `model:`
-   maps through [opencode.models] of the model tables (`models.toml`), unless `model_overrides`
+   maps through `models` of the model tables (`models.toml`), unless `model_overrides`
    names the agent; an agent
    with no `model:` inherits its caller's model in both harnesses. `councils` adds copies of an
    agent on other models; the description of a seat with `verify = true` says that it also judges
@@ -166,7 +167,7 @@ OPENCODE_ONLY_RULES = [
 
 RESTART = "Restart OpenCode: its installed files changed, and it reads its configuration once, at startup."
 
-# The `output` of a model's `limit` that [opencode.context_limits] writes: OpenCode's schema needs
+# The `output` of a model's `limit` that a context limit writes: OpenCode's schema needs
 # one, and OpenCode caps a request's output at 32,000 tokens by default.
 OUTPUT_LIMIT = 32000
 
@@ -176,8 +177,8 @@ OUTPUT_LIMIT = 32000
 
 
 def load_models(path):
-    """The [opencode] tables of the models.toml at `path`, every sub-table present
-    (profile.model_tables)."""
+    """OpenCode's model tables at `path`, the shared ones with [opencode]'s over them, every
+    sub-table present (profile.model_tables)."""
     return profile_module.model_tables(path, "opencode")
 
 
@@ -578,7 +579,7 @@ def plan(ctx):
         limits = context_providers(models)
         own = profile_module.get(ctx.profile, "opencode_providers")
         if clash := [p for p in re.findall(r'^    ("[^"]+"):', limits, re.M) if re.search(rf"^\s*{p}\s*:", own, re.M)]:
-            raise HarnessError(f"{models['path']}: [opencode.context_limits] names the provider {', '.join(clash)}, "
+            raise HarnessError(f"{models['path']}: a context limit names the provider {', '.join(clash)}, "
                                "which `opencode_providers` of the profile defines too; put the limit there")
         profile = {**ctx.profile, "opencode_providers": limits + own}
         # The rendered file names OpenCode's copies of the instructions, not Claude Code's.
@@ -746,7 +747,7 @@ def selftest():
             check(False, "an unknown tier exits 2")
         except HarnessError as e:
             check(str(bad) in str(e) and "'nosuch'" in str(e), f"an unknown tier exits 2: {e}")
-        for case in [(None, "a missing models.toml"), ("[claude]\n", "a models.toml without [opencode]"),
+        for case in [(None, "a missing models.toml"), ("[claude]\n[modles]\n", "an unknown top-level table", "modles"),
                             ("[opencode.modles]\n", "an unknown sub-table"),
                             ("[opencode\nmodels = 1\n", "a malformed models.toml"),
                             ('[opencode]\nmodels = "x"\n', "a sub-table that is a string"),
@@ -793,6 +794,18 @@ def selftest():
             check(len(load_models(path)["councils"]["critic"]) == 8, "a council of eight seats loads")
         except HarnessError as e:
             check(False, f"a council of eight seats loads: {e}")
+        # The shared tables hold for every frontend; a key of [opencode] or [omp] replaces one for
+        # that frontend alone.
+        path.write_text('[models]\nlarge = "a/l"\nsmall = "a/s"\n[variants]\njudge = "high"\n'
+                        '[opencode.models]\nsmall = "b/s"\n[omp.variants]\njudge = "low"\n')
+        try:
+            oc, omp = load_models(path), profile_module.model_tables(path, "omp")
+            check(oc["models"] == {"large": "a/l", "small": "b/s"} and oc["variants"] == {"judge": "high"}
+                  and omp["models"] == {"large": "a/l", "small": "a/s"} and omp["variants"] == {"judge": "low"},
+                  "the shared tables hold for both frontends, and each frontend's key replaces the shared one for "
+                  "it alone")
+        except HarnessError as e:
+            check(False, f"the shared tables with a frontend's override load: {e}")
 
     # The lookup order of models.toml: --models, then $RESEARCH_HARNESS_MODELS, then the profile's directory.
     saved = os.environ.pop("RESEARCH_HARNESS_MODELS", None)

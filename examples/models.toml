@@ -4,86 +4,67 @@
 # profile that `--profile` or the default names. No template names these keys, and
 # `harness render` does not read this file.
 #
-# One table per harness. An agent's `model:` names a tier, `large`, `medium` or `small`, and each
-# table maps the tiers to that harness's models. A table with a tier's old name, `opus`, `sonnet`
-# or `haiku`, stops the install and names the rename.
+# An agent's `model:` names a tier, `large`, `medium` or `small`. Claude Code has its own table of
+# the tiers, [claude]. OpenCode and oh-my-pi share every other table, so that their agents run on
+# the same models; [opencode] and [omp] hold only where one of them differs. A table with a tier's
+# old name, `opus`, `sonnet` or `haiku`, stops the install and names the rename.
 
 # The Claude Code model of each tier, written as the `model:` of the installed agent or skill.
 # All three tiers are required. A model is a letter, then letters, digits and . _ - [ ], so that
-# YAML reads it as written.
+# YAML reads it as written. Claude Code reads none of the tables below.
 [claude]
 large = "opus"
 medium = "sonnet"
 small = "haiku"
 
-[opencode]
+# --- The tables of OpenCode and oh-my-pi ---------------------------------------------------------
 
-# The OpenCode model of each tier. An agent whose tier has no entry stops the install; an agent
-# with no `model:` gets no `model:` line.
-[opencode.models]
+# The model of each tier, as `provider/model`. oh-my-pi needs all three, and the `medium` model is
+# also its default model, `modelRoles.default` in config.yml, so that it picks no model by itself.
+# Under OpenCode, an agent whose tier has no entry stops the install. An agent with no `model:`
+# runs on its caller's model.
+[models]
 large = "provider-a/large-model"
 medium = "provider-b/medium-model"
 small = "provider-b/small-model"
 
-# An agent whose OpenCode model is not the one its tier maps to.
-[opencode.model_overrides]
+# An agent whose model is not the one its tier maps to.
+[model_overrides]
 builder = "provider-b/medium-model"
 
-# The `variant:` of every agent on a model. A variant is provider-specific.
-[opencode.model_variants]
+# The effort of every agent on a model: OpenCode's `variant:`, oh-my-pi's `thinking-level`. A
+# variant is provider-specific.
+[model_variants]
 "provider-a/large-model" = "medium"
 
-# The `variant:` of one agent, over its model's.
-[opencode.variants]
+# The effort of one agent or council seat, over its model's: OpenCode's `variant:`.
+[variants]
 judge = "high"
 
-# The `reasoningEffort:` of one agent, for a model that has no variant for it.
-[opencode.reasoning_effort]
+# The effort of one agent or council seat, for a model that has no variant for it: OpenCode's
+# `reasoningEffort:`. oh-my-pi writes it as `thinking-level`, as it writes a variant.
+[reasoning_effort]
 critic-c = "high"
 
-# Copies of an agent on other models, in order: each is written as `<name>.md`, hidden, with its
-# own model and the agent's body. A council is keyed by an agent of agents/; any other key
-# stops the install. One seat may add `verify = true`: it also judges each verify round, alone.
-[opencode.councils]
+# Copies of an agent on other models, in order: each is written as `<name>.md`, with its own
+# model and the agent's body. A council is keyed by an agent of agents/; any other key stops the
+# install. One seat may add `verify = true`: it also judges each verify round, alone.
+[councils]
 julia-critic = [
     { name = "critic-b", model = "provider-c/other-model", verify = true },
     { name = "critic-c", model = "provider-b/medium-model" },
 ]
 
-# The input tokens that a model may hold, written as its `limit` in the `provider` object of
-# opencode.jsonc. Name no provider that the profile's `opencode_providers` defines.
-[opencode.context_limits]
+# The input tokens that a model may hold: OpenCode's `limit` in the `provider` object of
+# opencode.jsonc, oh-my-pi's `contextWindow` in models.yml. Name no provider that the profile's
+# `opencode_providers` defines.
+[context_limits]
 "provider-b/small-model" = 100000
 
-# oh-my-pi has the same sub-tables as OpenCode. An agent's model and its effort, as
-# `thinking-level`, are written into its frontmatter; `variants` and `reasoning_effort` both give
-# an agent's effort. All three tiers are required here, and `medium` is also the default model,
-# `modelRoles.default` in config.yml, so that oh-my-pi picks no model by itself. A context limit is
-# written to models.yml as the model's `contextWindow`.
-[omp]
+# --- Where one frontend differs ------------------------------------------------------------------
 
+# [opencode] and [omp] hold the same sub-tables as above. Each key replaces the shared one for that
+# frontend alone; a key it does not name stays shared. Here oh-my-pi runs another small model, as
+# when the shared one answers only OpenCode.
 [omp.models]
-large = "provider-a/large-model"
-medium = "provider-b/medium-model"
-small = "provider-b/small-model"
-
-[omp.model_overrides]
-builder = "provider-b/medium-model"
-
-[omp.model_variants]
-"provider-a/large-model" = "medium"
-
-[omp.variants]
-judge = "high"
-
-[omp.reasoning_effort]
-critic-c = "high"
-
-[omp.councils]
-julia-critic = [
-    { name = "critic-b", model = "provider-c/other-model", verify = true },
-    { name = "critic-c", model = "provider-b/medium-model" },
-]
-
-[omp.context_limits]
-"provider-b/small-model" = 100000
+small = "provider-d/small-model"
