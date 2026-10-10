@@ -68,10 +68,15 @@ done
 
 tmp=$(mktemp -d "${TMPDIR:-/tmp}/harness-pre-push.XXXXXX") || exit 1
 trap 'rm -rf "$tmp"' EXIT
-# The commits that the push sends, in the checkout: those that no ref of origin holds. A forced
-# push sends the rewritten commits, and a new main on origin sends the whole history.
+# The commits that the push brings to main: old..sha, as CI scans them. A commit that a branch of
+# origin already holds is scanned too, because main has not seen it. A forced push sends the
+# rewritten commits, and a new main, or an old main that the checkout lacks, the whole history.
 origin_url=$(git remote get-url origin) || refuse "the checkout has no origin remote"
-git rev-list "$sha" --not --remotes=origin >"$tmp/commits" || refuse "git rev-list of the pushed commits failed"
+range=$sha
+case "$old" in
+    *[!0]*) git cat-file -e "$old^{commit}" 2>/dev/null && range="$old..$sha" ;;
+esac
+git rev-list "$range" >"$tmp/commits" || refuse "git rev-list of the pushed commits failed"
 git clone --shared --quiet --no-checkout "$root" "$tmp/repo" || exit 1
 cd "$tmp/repo" || exit 1
 git checkout --quiet --detach "$sha" || exit 1
@@ -95,8 +100,8 @@ leak_check() {
 }
 # The config of the pushed commit; a `gitleaks:allow` comment has no effect.
 gitleaks_flags=(--config "$tmp/repo/.gitleaks.toml" --redact --ignore-gitleaks-allow --no-banner --no-color --verbose)
-leak_check "gitleaks git, the commits that the push sends" \
-    gitleaks git "${gitleaks_flags[@]}" --log-opts="$sha --not --remotes=origin" "$root"
+leak_check "gitleaks git, the commits that the push brings to main" \
+    gitleaks git "${gitleaks_flags[@]}" --log-opts="$range" "$root"
 # gitleaks git reads no commit message, so the messages go to gitleaks stdin, read in the checkout.
 # No commit to send is empty input, which passes; without the test, git log would read HEAD.
 messages() (

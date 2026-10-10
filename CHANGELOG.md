@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- **The `pre-push` hook scans the commits that a push brings to `main`**, `old..sha` as CI does,
+  in place of the commits that no ref of `origin` holds. A commit that a branch on `origin`
+  already held passed the hook unscanned: Unify part M pushed its branch first, and a home path
+  that one of its commits added and the next removed reached `main` through the hook and was
+  found only by CI. The history of `main` was rewritten to drop that commit.
 - **The `pre-push` hook finds a Python of 3.11 or later under a versioned name.** It takes the
   first of `python3`, `python3.14`, `python3.13`, `python3.12` and `python3.11` that is 3.11 or
   later, for `harness leaks` and the suite, and still runs the suite on `python3.11` too. A
