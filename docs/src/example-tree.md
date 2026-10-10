@@ -72,8 +72,15 @@ and a `CHANGELOG.md`. In the example, they are Julia packages.
 - The agents of a planned change:
   [`julia-builder`](components/agents.md#julia-builder) builds one part of a plan, and
   [`julia-critic`](components/agents.md#julia-critic) judges it. The skill
-  [`build-part`](components/skills.md#build-part) runs the two in a loop. A part of a package ends
-  in a pull request.
+  [`build-part`](components/skills.md#build-part) runs the two in a loop. For a smaller part, the
+  skill [`build-reviewed`](components/skills.md#build-reviewed) runs
+  [`part-builder`](components/agents.md#part-builder) and
+  [`part-critic`](components/agents.md#part-critic) once. A part of a package ends in a pull
+  request.
+- [`worker`](components/agents.md#worker) reads the directory's own instruction file before its
+  first edit here.
+- [`changelog-scribe`](components/agents.md#changelog-scribe) writes an entry of a
+  `CHANGELOG.md`, under a version heading.
 - The agents of a pull request:
   [`julia-branch-verifier`](components/agents.md#julia-branch-verifier) checks a branch before the
   pull request opens, [`julia-pr-reviewer`](components/agents.md#julia-pr-reviewer) reviews it,
@@ -97,8 +104,8 @@ and a `CHANGELOG.md`. In the example, they are Julia packages.
 - The shared git hooks [`pre-commit`](components/githooks.md#pre-commit) and
   [`pre-push`](components/githooks.md#pre-push), and the workflows such as
   [`workflows/CI.yml`](components/githooks.md#workflows-ci-yml). The verbs `harness githooks`,
-  `harness workflows`, `harness push-all` and `harness ci-protection` work on every repository of
-  this directory.
+  `harness push-all` and `harness ci-protection` work on every git repository of this directory.
+  `harness workflows` works on each of them that has a `Project.toml`.
 
 **Named by:** the profile key `repository_roots`, which holds the path of this directory. The
 keys `docs_exceptions` and `docs_additions` name single repositories in it. The four verbs above
@@ -114,12 +121,21 @@ again, with its tests and a `CHANGELOG.md`.
 - The same agents of a planned change and of a pull request as in [Packages](#packages):
   [`julia-builder`](components/agents.md#julia-builder),
   [`julia-critic`](components/agents.md#julia-critic),
+  [`part-builder`](components/agents.md#part-builder),
+  [`part-critic`](components/agents.md#part-critic),
   [`julia-branch-verifier`](components/agents.md#julia-branch-verifier),
   [`julia-pr-reviewer`](components/agents.md#julia-pr-reviewer) and
-  [`julia-pr-shepherd`](components/agents.md#julia-pr-shepherd), with the skill
-  [`build-part`](components/skills.md#build-part) and the commands
+  [`julia-pr-shepherd`](components/agents.md#julia-pr-shepherd), with the skills
+  [`build-part`](components/skills.md#build-part) and
+  [`build-reviewed`](components/skills.md#build-reviewed) and the commands
   [`review-pr`](components/commands.md#review-pr) and
   [`merge-pr`](components/commands.md#merge-pr).
+- [`worker`](components/agents.md#worker) reads the directory's own instruction file before its
+  first edit here.
+- [`changelog-scribe`](components/agents.md#changelog-scribe) writes an entry of a
+  `CHANGELOG.md`, under a version heading.
+- [`git-hook-triage`](components/agents.md#git-hook-triage) finds why a git hook blocked a commit
+  or a push, or seems to hang.
 - The agents and the skill of a measurement:
   [`julia-perf-analyst`](components/agents.md#julia-perf-analyst) measures time and allocations
   before and after a change, and [`julia-performance`](components/skills.md#julia-performance)
@@ -147,8 +163,7 @@ what was tried and what it showed.
   with a case that must make the check fail, and keeps the check as a script.
 - [`changelog-scribe`](components/agents.md#changelog-scribe) writes an entry of the research
   log.
-- [`build-reviewed`](components/skills.md#build-reviewed) and
-  [`julia-builder`](components/agents.md#julia-builder) build a part of a plan here too, but the
+- [`julia-builder`](components/agents.md#julia-builder) builds a part of a plan here too, but the
   part ends in a commit to `main`, not in a pull request.
 - [`worker`](components/agents.md#worker) reads the directory's own instruction file before its
   first edit here.
@@ -172,6 +187,8 @@ directory's own instruction file.
   manuscript needs.
 - [`changelog-scribe`](components/agents.md#changelog-scribe) writes a dated pass, not a release,
   because a manuscript has no versions.
+- [`julia-builder`](components/agents.md#julia-builder) builds a part of a plan here too, but the
+  part ends in a commit to `main`, not in a pull request.
 - [`worker`](components/agents.md#worker) reads the directory's own instruction file before its
   first edit here.
 
@@ -205,16 +222,15 @@ Your tree can have other directories. Adapt the two values to it:
    path. Its name can be any name.
 2. Put the path of your tree instructions into `tree_agents`. The directory can be anywhere.
 3. Write your own directories, and the instruction file of each, into your tree instructions.
-   The harness itself names no directory of your tree.
 
-Some verbs do not read the profile. They find their directories by a fixed name below the
-research tree, `$RESEARCH_ROOT` or `~/Research`:
+Some verbs do not take their directories from the profile. They find them by a fixed name below
+the research tree, `$RESEARCH_ROOT` or `~/Research`:
 
 - `harness githooks`, `harness workflows`, `harness push-all` and `harness ci-protection` look in
   `Packages` and `Experiments`.
 - `harness wiki-lint-hook` looks for the prose repositories, `Knowledge` and `Library` among
   them. The script `wiki-lint.jl` reads the same names.
 
-A verb that finds no directory with its name skips it and changes nothing there. To use these verbs,
-keep the two names for the directories of your repositories, or set `$RESEARCH_ROOT` to a tree
-that has them.
+A verb that finds no directory with its name skips it and changes nothing there. To use these
+verbs, keep the two names for the directories of your repositories, or set `$RESEARCH_ROOT` to a
+tree that has them.

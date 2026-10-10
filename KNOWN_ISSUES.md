@@ -420,3 +420,14 @@
   component pages were written.
 - kind: docs
 - found: 2026-10-09
+
+### K45 · No script checks that a component named on `example-tree.md` without a link exists.
+
+- location: `docs/src/example-tree.md`, `docs/scripts/check-site.mjs`
+- evidence: a component that the page links to its section is checked, because
+  `check-site.mjs` fails on a link to a heading that does not exist (the mutant
+  `` [`paper-polisher`](components/agents.md#paper-polisher) `` gives "names no heading", exit 1).
+  A name in a code span with no link, such as `` `wiki-lint.jl` `` after its first use, is
+  checked only by a manual `ls`. Found by the critic of part J5.
+- kind: missing test
+- found: 2026-10-10
