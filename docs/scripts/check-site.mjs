@@ -24,7 +24,7 @@
 import { readFileSync, readdirSync, existsSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { figures as figuresOf, geometryProblems, labelProblems, layerProblems, widthProblem } from './figures.mjs'
+import { animationProblems, figures as figuresOf, geometryProblems, labelProblems, layerProblems, widthProblem } from './figures.mjs'
 
 const DOCS = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const BUILD = path.join(DOCS, 'build')
@@ -137,8 +137,21 @@ for (const [page, text] of built) {
 const FIGURES = {
   'index.md': ['The harness and its three layers', 'From the sources to the frontends'],
   'concepts.md': ['The harness and its three layers', 'The harness, the profile and the tree instructions', 'The layers of control around one tool call'],
-  'agents-at-work.md': ['The calls of build-part', 'The calls of build-reviewed', 'The calls of julia-pr-shepherd', 'Every spawn']
+  'agents-at-work.md': [
+    'The calls of build-part', 'From a task to a pull request with build-part',
+    'The calls of build-reviewed', 'From a task to a pull request with build-reviewed',
+    'The calls of julia-pr-shepherd', 'Every spawn'
+  ],
+  'security.md': ['One tool call through the layers of control'],
+  'daily-use.md': ['From an edit to the drift check']
 }
+// The animated walk-throughs, by their <title>. Every figure with a <style>, a @keyframes or a SMIL
+// element is animated, and each animated figure passes the checks of scripts/figures.mjs.
+const WALKTHROUGHS = [
+  'From a task to a pull request with build-part', 'From a task to a pull request with build-reviewed',
+  'One tool call through the layers of control', 'From an edit to the drift check'
+]
+const animated = (f) => /<style\b|@keyframes|<(?:animate|animateMotion|animateTransform|set)\b/.test(f.svg)
 // The call graphs are compact: the doc column of VitePress 1.6.4 is 688 px wide (VPDoc.vue), so a
 // graph of at most 765 px shows at a scale of 0.9 or more. The boxes of one layer of a call graph
 // have one width and share one edge line.
@@ -156,6 +169,7 @@ const INSTALL_STEPS = [
   'Write the stamp', 'Write the other layers', 'Link the skills'
 ]
 let figures = 0
+let walkthroughs = 0
 for (const [page, text] of built) {
   const found = figuresOf(text)
   figures += found.length
@@ -176,6 +190,11 @@ for (const [page, text] of built) {
     if (f.images > 0) problem(`${name} holds an image or a foreign object, not SVG shapes`)
     for (const p of geometryProblems(f)) problem(`${name}: ${p}`)
     for (const p of labelProblems(f)) problem(`${name}: ${p}`)
+    if (WALKTHROUGHS.includes(f.title) && !animated(f)) problem(`${name} is a walk-through with no animation`)
+    if (animated(f)) {
+      walkthroughs++
+      for (const p of animationProblems(f)) problem(`${name} ${p}`)
+    }
     if (CALL_GRAPHS.includes(f.title)) {
       const wide = widthProblem(f, MAX_GRAPH_WIDTH, WIDE_GRAPHS)
       if (wide) problem(`${name} ${wide}`)
@@ -213,15 +232,27 @@ for (const name of colours) {
   if (!dark.has(name)) problem(`the colour ${name} of the figures has no value under .dark`)
 }
 
-// The figure components and their generator name no colour: every colour is in the style module.
-const FIGURE_SOURCES = path.join(DOCS, '.vitepress', 'theme', 'figures')
-for (const file of readdirSync(FIGURE_SOURCES)) {
-  const lines = readFileSync(path.join(FIGURE_SOURCES, file), 'utf8').split('\n')
-  for (const [i, line] of lines.entries()) {
-    if (/#[0-9a-fA-F]{3,8}\b|rgba?\(|hsla?\(/.test(line)) problem(`docs/.vitepress/theme/figures/${file}:${i + 1} names a colour; use a property of figures.css`)
+// The figure components, their generators and the data of the figures in docs/figures/ name no
+// colour: every colour is in the style module.
+for (const dir of [path.join(DOCS, '.vitepress', 'theme', 'figures'), path.join(DOCS, 'figures')]) {
+  for (const file of readdirSync(dir)) {
+    const lines = readFileSync(path.join(dir, file), 'utf8').split('\n')
+    for (const [i, line] of lines.entries()) {
+      if (/#[0-9a-fA-F]{3,8}\b|rgba?\(|hsla?\(/.test(line)) problem(`${path.relative(path.dirname(DOCS), path.join(dir, file))}:${i + 1} names a colour; use a property of figures.css`)
+    }
+  }
+}
+
+// The hero of the home page sends a new reader to the introduction: its action Get started links
+// the page concepts.md.
+if (built.has('index.md')) {
+  const actions = [...content('index.md', built.get('index.md')).matchAll(/<a [^>]*?href="([^"]*)"[^>]*>\s*Get started\s*<\/a>/g)].map((m) => m[1])
+  if (actions.length !== 1 || actions[0] !== url('concepts.md')) {
+    problem(`index.md: the action Get started links ${actions.length ? actions.join(', ') : 'nothing'}, not ${url('concepts.md')}`)
   }
 }
 
 for (const p of problems) console.log(p)
-console.log(`${built.size} pages, ${fragments} links to a heading, ${figures} figures, ${colours.length} figure colours, ${problems.length} problems`)
+console.log(`${built.size} pages, ${fragments} links to a heading, ${figures} figures (${walkthroughs} animated), ` +
+  `${colours.length} figure colours, ${problems.length} problems`)
 process.exit(problems.length === 0 ? 0 : 1)

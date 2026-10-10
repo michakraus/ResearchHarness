@@ -18,6 +18,13 @@ spawns), and optionally `effort`, where the caller sets one other than the calle
 `agents/` or a skill of `skills/`, that `at` is a line of the caller's own source that names the
 callee, and that every source with the tool `agent`, and each skill of SPAWNING_SKILLS, is the
 caller of at least one entry.
+
+Each animated walk-through of the site is drawn from one file `docs/figures/walkthrough-<name>.toml`:
+its `title`, `subtitle` and `steps` (the edges in the order in which the token runs along them, as
+"from -> to"), its `[[box]]` and `[[group]]` entries, and its `[[edge]]` entries, each with `at`,
+the `file:line` that states the step. `harness test` checks that each box of the kind `agent` or
+`skill` shows an agent of `agents/` or a skill of `skills/`, that each `at` is a line of a file of
+the repository, and that the edges and the steps name boxes and edges of the file.
 """
 
 import re
@@ -30,6 +37,10 @@ from .frontmatter import parse_file
 PAGES = REPO / "docs" / "src" / "components"
 DEPENDENCIES = REPO / "docs" / "src" / "dependencies.md"
 CALLS = REPO / "docs" / "figures" / "calls.toml"
+# The data of each animated walk-through, and the kinds of its boxes: you, a skill, an agent, a
+# step with no agent, an outcome.
+WALKTHROUGH = "docs/figures/walkthrough-*.toml"
+BOX_KINDS = ("you", "skill", "agent", "step", "outcome")
 
 # The keys of a `[[call]]` entry, the ones it must have, and the values of `effort`.
 CALL_KEYS = {"caller", "callee", "at", "effort", "label"}
@@ -235,6 +246,53 @@ def call_cases(calls, sources, meta, lines, check):
         check(name in callers, f"calls.toml has an entry with the caller {name!r}, which spawns")
 
 
+def walkthroughs(paths):
+    """The walk-throughs among the tracked `paths`: docs/figures/walkthrough-*.toml."""
+    return sorted(p for p in paths if matches(WALKTHROUGH, p))
+
+
+def walkthrough_problems(data, sources, lines):
+    """What is wrong with one walk-through, the TOML table `data`, one phrase each. `sources` maps
+    the name of each agent and skill to its source path, and `lines(path)` gives the lines of a file
+    of the repository, or None for a path that is none."""
+    problems = [f"has no {key!r}" for key in ("title", "subtitle", "steps", "box", "edge") if key not in data]
+    boxes, groups = data.get("box", []), data.get("group", [])
+    ids = [b.get("id") for b in boxes + groups]
+    for name in sorted({i for i in ids if ids.count(i) > 1}, key=str):
+        problems.append(f"the id {name!r} is used twice")
+    group_ids = {g.get("id") for g in groups}
+    for b in boxes:
+        name, kind, shows = b.get("id"), b.get("kind"), b.get("shows")
+        if kind not in BOX_KINDS:
+            problems.append(f"box {name!r} has the kind {kind!r}, none of {', '.join(BOX_KINDS)}")
+        elif kind in ("agent", "skill"):
+            source = sources.get(shows) if isinstance(shows, str) else None
+            if source is None or not source.startswith("agents/" if kind == "agent" else "skills/"):
+                problems.append(f"box {name!r} shows {shows!r}, which is no {kind} of {kind}s/")
+        if "cell" not in b and b.get("in") not in group_ids:
+            problems.append(f"box {name!r} has neither a cell nor a group")
+    edges = set()
+    for e in data.get("edge", []):
+        edge = f"{e.get('from')} -> {e.get('to')}"
+        edges.add(edge)
+        for end in (e.get("from"), e.get("to")):
+            if end not in ids:
+                problems.append(f"the edge {edge} names no box {end!r}")
+        at = e.get("at")
+        place = re.fullmatch(r"(.+):([1-9][0-9]*)", at) if isinstance(at, str) else None
+        text = lines(place[1]) if place else None
+        if not place:
+            problems.append(f"at {at!r} is no file:line")
+        elif text is None:
+            problems.append(f"at {at!r} names no file of the repository")
+        elif int(place[2]) > len(text):
+            problems.append(f"at {at!r} is past the end of the file")
+    for step in data.get("steps", []):
+        if step not in edges:
+            problems.append(f"the step {step!r} names no edge")
+    return problems
+
+
 def selftest():
     """The matching rules on fixed inputs, then the pages of this checkout."""
     total = wrong = 0
@@ -329,9 +387,55 @@ def selftest():
     ], f"call_cases names a duplicate and each spawner without an entry: {found}")
 
     # calls.toml of this checkout.
-    sources = call_sources(tracked())
+    paths = tracked()
+    sources = call_sources(paths)
     meta = {name: parse_file(REPO / path).meta for name, path in sources.items()}
     calls = tomllib.loads(CALLS.read_text()).get("call", []) if CALLS.is_file() else []
     check(CALLS.is_file() and bool(calls), "docs/figures/calls.toml exists and has [[call]] entries")
     call_cases(calls, sources, meta, lambda path: (REPO / path).read_text().splitlines(), check)
+
+    # The rules of a walk-through on fixed inputs: each wrong entry gives one problem.
+    files = {"skills/s/SKILL.md": ["---", "Spawn `a`."], "agents/a.md": ["---"]}
+    good = {
+        "title": "T", "subtitle": "S", "steps": ["you -> s", "s -> g"],
+        "box": [{"id": "you", "cell": [0, 0], "kind": "you", "name": "You"},
+                {"id": "s", "cell": [1, 0], "kind": "skill", "shows": "s"},
+                {"id": "a", "in": "g", "kind": "agent", "shows": "a"}],
+        "group": [{"id": "g", "cell": [2, 0], "name": "G"}],
+        "edge": [{"from": "you", "to": "s", "route": ["right", "left"], "at": "skills/s/SKILL.md:2"},
+                 {"from": "s", "to": "g", "route": ["right", "left"], "at": "skills/s/SKILL.md:2", "label": "l"}],
+    }
+    sources = call_sources(["agents/a.md", "skills/s/SKILL.md"])
+    check(walkthrough_problems(good, sources, files.get) == [], "a true walk-through has no problem")
+    for label, change, phrase in [
+        ("an agent renamed", ("box", 2, {"shows": "nonexistent"}), "box 'a' shows 'nonexistent', which is no agent of agents/"),
+        ("a skill renamed", ("box", 1, {"shows": "nonexistent"}), "box 's' shows 'nonexistent', which is no skill of skills/"),
+        ("a skill as an agent", ("box", 1, {"kind": "agent"}), "box 's' shows 's', which is no agent of agents/"),
+        ("an unknown kind", ("box", 0, {"kind": "person"}), "box 'you' has the kind 'person'"),
+        ("a cited line past the end", ("edge", 0, {"at": "skills/s/SKILL.md:3"}), "at 'skills/s/SKILL.md:3' is past the end of the file"),
+        ("a cited file that does not exist", ("edge", 0, {"at": "skills/t/SKILL.md:1"}), "at 'skills/t/SKILL.md:1' names no file of the repository"),
+        ("a citation with no line", ("edge", 0, {"at": "skills/s/SKILL.md"}), "at 'skills/s/SKILL.md' is no file:line"),
+        ("an edge to no box", ("edge", 1, {"to": "z"}), "the edge s -> z names no box 'z'"),
+        ("a box with no cell", ("box", 1, {"cell": None}), "box 's' has neither a cell nor a group"),
+    ]:
+        data = {**good, change[0]: [dict(e) for e in good[change[0]]]}
+        data[change[0]][change[1]].update(change[2])
+        data[change[0]][change[1]] = {k: v for k, v in data[change[0]][change[1]].items() if v is not None}
+        found = walkthrough_problems(data, sources, files.get)
+        if label == "an edge to no box":
+            found = [p for p in found if "names no edge" not in p]
+        check(len(found) == 1 and phrase in found[0], f"a walk-through with {label} gives {phrase!r}: {found}")
+    found = walkthrough_problems({**good, "steps": ["you -> s", "a -> you"]}, sources, files.get)
+    check(found == ["the step 'a -> you' names no edge"], f"a step that names no edge is a problem: {found}")
+    found = walkthrough_problems({k: v for k, v in good.items() if k != "title"}, sources, files.get)
+    check(found == ["has no 'title'"], f"a walk-through with no title is a problem: {found}")
+
+    # The walk-throughs of this checkout.
+    walks = walkthroughs(paths)
+    check(len(walks) >= 4, f"docs/figures/ has at least four walk-throughs: {walks}")
+    known = set(paths)
+    lines = lambda path: (REPO / path).read_text().splitlines() if path in known else None
+    for path in walks:
+        problems = walkthrough_problems(tomllib.loads((REPO / path).read_text()), call_sources(paths), lines)
+        check(not problems, f"{path}" + (": " + "; ".join(problems) if problems else ": its boxes and cited lines exist"))
     return total, wrong

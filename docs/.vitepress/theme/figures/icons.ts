@@ -2,10 +2,10 @@
 // docs/package.json). The build inlines each icon as SVG shapes, so the site loads no icon from
 // another host. A figure names an icon by its key here.
 import {
-  AppWindow, Ban, Blocks, Bot, BrainCircuit, Code, Container, Download, FileCode, FileCog, FileText,
-  Files, FlaskConical, FolderTree, GitBranch, HardDrive, IdCard, Layers, Library, LockKeyhole,
-  NotebookPen, Package, Pi, Plug, ScrollText, Settings, Settings2, ShieldCheck, Sparkles,
-  SquareSlash, SquareTerminal, User, Workflow
+  AppWindow, Ban, Blocks, Bot, BrainCircuit, CircleCheck, Code, Container, Download, FileCode, FileCog,
+  FilePen, FileText, Files, FlaskConical, FolderTree, GitBranch, GitPullRequest, HardDrive, IdCard, Layers,
+  Library, LockKeyhole, NotebookPen, Package, Pi, Plug, Scale, ScrollText, Settings, Settings2, ShieldCheck,
+  Sparkles, SquareSlash, SquareTerminal, TriangleAlert, User, Workflow
 } from 'lucide'
 
 /** An icon: a list of SVG elements, each a tag and its attributes, on a 24 × 24 grid. */
@@ -44,7 +44,12 @@ const ICONS: Record<string, IconNode> = {
   ban: Ban,
   user: User,
   sandbox: Container,
-  drive: HardDrive
+  drive: HardDrive,
+  edit: FilePen,
+  verdict: Scale,
+  'pull-request': GitPullRequest,
+  warning: TriangleAlert,
+  check: CircleCheck
 }
 
 /** The icon `name`, or an error that names it. */

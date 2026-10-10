@@ -1,8 +1,10 @@
-// Cases of scripts/figures.mjs, the reader of a built figure and its geometry checks. Run with
-// `node --test scripts/`, which `npm run docs:check` does first.
+// Cases of scripts/figures.mjs, the reader of a built figure, its geometry checks and the checks of
+// an animated figure. `npm run docs:check` runs them first.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { figureWidth, figures, geometryProblems, labelProblems, layerProblems, meet, points, widthProblem } from './figures.mjs'
+import {
+  animationProblems, figureWidth, figures, geometryProblems, labelProblems, layerProblems, meet, points, widthProblem, xmlProblems
+} from './figures.mjs'
 
 const box = (name, x, y, w, h) => `<rect data-box="${name}" x="${x}" y="${y}" width="${w}" height="${h}"/>`
 const edge = (from, to, d) => `<path data-edge="${from} → ${to}" data-from="${from}" data-to="${to}" d="${d}"/>`
@@ -168,4 +170,68 @@ test('a link to another host and an image are found', () => {
   const f = one('<image href="https://example.org/i.svg"/>')
   assert.deepEqual(f.external, ['https://example.org/i.svg'])
   assert.equal(f.images, 1)
+})
+
+test('a well-formed SVG has no XML problem; a broken one names its first problem', () => {
+  assert.deepEqual(xmlProblems('<svg a="1"><!--[--><g><rect x="0"></rect><text>a &amp; b &#39;c&#39;</text></g><!--]--></svg>'), [])
+  assert.deepEqual(xmlProblems('<svg><g></svg>'), ['the element <g> closes with </svg>'])
+  assert.deepEqual(xmlProblems('<svg><g>'), ['the element <g> is not closed'])
+  assert.deepEqual(xmlProblems('<svg a=1></svg>'), ['the start tag <svg a=1> is not well-formed'])
+  assert.deepEqual(xmlProblems('<svg a="1" a="2"></svg>'), ['the start tag <svg> has the attribute a twice'])
+  assert.deepEqual(xmlProblems('<svg>a & b</svg>'), ['a & that starts no entity'])
+  assert.deepEqual(xmlProblems('<svg></svg><g></g>'), ['text or an element after the root element'])
+})
+
+// An animated figure as the walk-throughs draw it: a <style> with the rules of the animation, the
+// keyframes of each token, and the block for prefers-reduced-motion. Two tokens in a cycle of 10 s:
+// each moves for 0.7 s, and the steps hold 1.5 s and 7.1 s.
+const REDUCE = '@media (prefers-reduced-motion: reduce) { .wt-x .wt-anim { animation: none } ' +
+  '.wt-x .wt-box { opacity: 1 } .wt-x .wt-token { display: none } }'
+const animated = ({ reduce = REDUCE, count = 'infinite', tokens = [[15, 22], [37, 44]], body = '', head = '' } = {}) => {
+  const keyframes = tokens.map(([a, b], i) => `@keyframes wt-x-t${i} { 0%, ${a - 0.01}% { offset-distance: 0%; opacity: 0 } ` +
+    `${a}% { offset-distance: 0%; opacity: 1 } ${b}% { offset-distance: 100%; opacity: 1 } ` +
+    `${b + 0.01}%, 100% { offset-distance: 100%; opacity: 0 } }`).join(' ')
+  const rules = tokens.map((_, i) => `.wt-x .wt-t${i} { offset-path: path('M0 0L10 0'); animation-name: wt-x-t${i} }`).join(' ')
+  const style = `${head}.wt-x .wt-anim { animation-duration: 10s; animation-timing-function: linear; ` +
+    `animation-iteration-count: ${count}; animation-delay: var(--wt-delay, 0s) } ${rules} ${keyframes} ${reduce}`
+  const tokensSvg = tokens.map((_, i) => `<circle class="wt-token wt-anim wt-t${i}" r="5"></circle>`).join('')
+  return one(`<style>${style}</style><g class="wt-box wt-anim">${box('a', 0, 0, 10, 10)}</g>${tokensSvg}${body}`)
+}
+
+test('a true walk-through has no problem of its animation', () => {
+  assert.deepEqual(animationProblems(animated()), [])
+})
+
+test('a walk-through with no block for prefers-reduced-motion, or a block that misses a rule, is named', () => {
+  assert.deepEqual(animationProblems(animated({ reduce: '' })), ['has no @media (prefers-reduced-motion: reduce) block'])
+  assert.deepEqual(animationProblems(animated({ reduce: REDUCE.replace('.wt-x .wt-token { display: none } ', '') })),
+    ['shows the token under prefers-reduced-motion: no rule .wt-token { display: none }'])
+  assert.deepEqual(animationProblems(animated({ reduce: REDUCE.replace('animation: none', 'animation: wt 1s') })),
+    ['runs an animation under prefers-reduced-motion: no rule .wt-anim { animation: none }'])
+  assert.deepEqual(animationProblems(animated({ reduce: REDUCE.replace('opacity: 1', 'opacity: 0.4') })),
+    ['fades a box under prefers-reduced-motion: no rule .wt-box { opacity: 1 }'])
+})
+
+test('a walk-through whose animation does not loop is named', () => {
+  assert.deepEqual(animationProblems(animated({ count: '3' })), ['does not loop: no rule .wt-anim { animation-iteration-count: infinite }'])
+})
+
+test('a token faster than 0.5 s or slower than 0.8 s, and a step shorter than 1.2 s, are named', () => {
+  assert.deepEqual(animationProblems(animated({ tokens: [[15, 25], [37, 44]] })),
+    ['the token of wt-x-t0 moves for 1 s, not 0.5–0.8 s'])
+  assert.deepEqual(animationProblems(animated({ tokens: [[15, 22], [32, 39]] })),
+    ['the step after wt-x-t0 holds for 1 s, less than 1.2 s'])
+})
+
+test('a walk-through with no token, an unknown or unused keyframes, SMIL, a script or another host is named', () => {
+  assert.deepEqual(animationProblems(animated({ tokens: [] })), ['has no token'])
+  assert.deepEqual(animationProblems(animated({ head: '.wt-x .wt-q { animation-name: wt-x-q } ' })),
+    ['the animation wt-x-q has no @keyframes'])
+  assert.deepEqual(animationProblems(animated({ head: '@keyframes wt-x-z { 0% { opacity: 0 } 100% { opacity: 1 } } ' })),
+    ['the @keyframes wt-x-z is not used'])
+  assert.deepEqual(animationProblems(animated({ body: '<animate attributeName="x"></animate>' })), ['holds the SMIL element <animate>'])
+  assert.deepEqual(animationProblems(animated({ body: '<script>1</script>' })), ['holds a <script>'])
+  assert.deepEqual(animationProblems(animated({ head: '.wt-x .wt-box { background: url(https://example.org/a.png) } ' })),
+    ['loads https://example.org/a.png from another host'])
+  assert.deepEqual(animationProblems(animated({ body: '<g><rect></g>' })), ['does not parse as XML: the element <rect> closes with </g>'])
 })
