@@ -4,7 +4,7 @@ This agent is ported from Claude Code. Where the text below names a Claude Code 
 
 ## skills
 
-**oh-my-pi loads the {skills} for you** before your first turn. If one of them is not in your context, read its `SKILL.md` below `~/.agents/skills/` before you start. You may load no other skill.
+**oh-my-pi loads the {skills} for you** before your first turn. If one of them is not in your context, read it as `skill://<name>` before you start. You may load no other skill.
 
 ## worktree
 

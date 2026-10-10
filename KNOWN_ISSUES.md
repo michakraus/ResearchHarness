@@ -212,11 +212,11 @@
 
 ### K25 · A curated skill that fails `parse_file` makes `harness test` end in a traceback before the frontmatter case names it.
 
-- location: `lib/harness/install_cases.py:151`
-- evidence: with a 1,025-character `description` or `model: bogus` in `skills/build-part/SKILL.md`,
-  `bin/harness test` stops in the install module's `restart_cases` with
-  `FileNotFoundError: [Errno 2] No such file or directory: '…/restart/claude1/home/.agents/skills'`
-  (`sorted((home / ".agents" / "skills").iterdir())`), before the frontmatter case
+- location: `lib/harness/install_cases.py:161`
+- evidence: with `model: bogus` in `skills/build-part/SKILL.md`, `bin/harness test` stops in the
+  install module's `restart_cases` with
+  `FileNotFoundError: [Errno 2] No such file or directory: '…/restart/claude1/omp/AGENTS.md'`
+  (`(omp / "AGENTS.md").write_text(…)`), before the frontmatter case
   "the agents and curated skills … parse" can name the file and the rule. The exit is still
   nonzero. The base `4afc7a0` does the same with `model: bogus`.
 - kind: defect

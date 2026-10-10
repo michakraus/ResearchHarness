@@ -1,12 +1,17 @@
-"""The adapter of oh-my-pi: its config.yml, its guard extension, its AGENTS.md, its rules, its
-agents and its mcp.json. oh-my-pi has no verb of its own.
+"""The adapter of oh-my-pi: its config.yml, its models.yml, its guard extension, its AGENTS.md, its
+rules, its agents, its mcp.json, and its own copies of the shared files. oh-my-pi has no verb of
+its own.
 
 `harness install` writes these files into oh-my-pi's agent directory, $PI_CODING_AGENT_DIR, else
-~/.omp/agent, after the Claude Code layer is planned, whose rules it renders. An installed rule or
-agent with no source is EXTRA, with its removal command; the install leaves it:
+~/.omp/agent, after the Claude Code layer is planned, whose rules and shared files it copies. An
+installed rule, agent or skill with no source is EXTRA, with its removal command; the install
+leaves it:
 
   config.yml                  the approval mode and `bash.patterns`, from the settings template,
-                              and `modelRoles` from the [omp] table of models.toml (load_models)
+                              and `modelRoles.default` from [omp.models] of models.toml
+                              (load_models)
+  models.yml                  each model of [omp.context_limits] with its limit as `contextWindow`
+                              (`render_models`), after a backup; none with no limit
   extensions/guards.ts        adapters/omp/guards.ts: the shared guard scripts on every `bash` call,
                               and the path list on the paths of `read`, `grep`, `bash`, `edit` and
                               `write`
@@ -14,30 +19,33 @@ agent with no source is EXTRA, with its removal command; the install leaves it:
                               adapters/opencode/plugins/guard-paths.json, the template's Edit
                               denies, and its Edit asks
   AGENTS.md                   adapters/omp/OMP-DELTA.md, byte for byte; its first lines import
-                              RTK.md, the core and the tree instructions from ~/.claude
+                              oh-my-pi's copies of RTK.md, the core and the tree instructions
   rules/<name>.md             each rule that the Claude Code layer installs, as it renders it, with
                               its `paths` and `description` written as the JSON values `globs` and
                               `description` (`render_rule`); a rule source outside that grammar
                               exits 2, and so does one in a subdirectory of rules/
   mcp.json                    the Kaimon server alone, over HTTP (`render_mcp`)
-  agents/<name>.md            each agent of agents/, its tools mapped by TOOLS, its tier as
-                              the role `@<role>` that ROLES names, and an "Under oh-my-pi"
-                              section from adapters/omp/UNDER-OMP.md (`render_agent`); no
-                              council copy
+  agents/<name>.md            each agent of agents/, its tools mapped by TOOLS, its model and
+                              its thinking level from the [omp] tables, and an "Under oh-my-pi"
+                              section from adapters/omp/UNDER-OMP.md (`render_agent`); then a
+                              copy of an agent for each seat of its council
+  RTK.md, instructions/,      copies of the Claude Code layer's files that frontends.shared names:
+  hooks/, skills/             the guard scripts that guards.ts runs, and the skills that oh-my-pi
+                              reads from skills/ before ~/.agents/skills/
 
+Every text but AGENTS.md names oh-my-pi's copies, not Claude Code's (frontends.relocate).
 oh-my-pi auto-discovers only `.ts` and `.js` files below extensions/, so the path list there is
 data for guards.ts and no extension of its own. It lists a rule by its name, `globs` and
 `description`, and the model reads the body through `rule://<name>`; a rule with no `description`
 that YAML reads as a non-blank string, and no `alwaysApply`, is never used, so a rule source
-outside the grammar of `render_rule` exits 2. Nothing is written below skills/:
-oh-my-pi reads the links of ~/.agents/skills/ by default.
+outside the grammar of `render_rule` exits 2. The model reads a skill through `skill://<name>`.
 
-THE MODES. `tools.approvalMode: write` runs a read and an edit, and prompts for an `exec` call,
-such as `bash`, that no rule allows. `tools.approval.edit` and `write` are `allow`, as Claude Code
-edits inside its working directories without a prompt; the guard extension refuses the paths of
-the template's Edit denies, and those of its Edit asks, which it cannot ask for: it tells the model
-to ask the user in chat. `tools.approval.eval` is `deny`:
-`bash.patterns` does not reach the `eval` tool, which can spawn a shell.
+THE MODES. `tools.approvalMode: yolo` runs every call without a prompt; a `deny` pattern still
+refuses, a `prompt` pattern still asks, and both run before the mode is read. oh-my-pi runs every
+subagent in `yolo` anyway. `tools.approval.edit` and `write` are `allow`; the guard extension
+refuses the paths of the template's Edit denies, and those of its Edit asks, which it cannot ask
+for: it tells the model to ask the user in chat. `tools.approval.eval` is `deny`: `bash.patterns`
+does not reach the `eval` tool, which can spawn a shell.
 
 THE PATTERNS are the template's Bash entries, rendered with the profile: every `deny` as `deny`,
 then every `ask` as `prompt`, then every `allow` as `allow`, each list in the template's order. Claude
@@ -49,10 +57,13 @@ each such entry.
 `deny` and `prompt` also match each segment of a compound command, and `allow` only a whole
 command, so no rule is split, and `bash.allowCompoundCommands` stays off.
 
-THE MODELS. Each tier of TIERS is the role of `modelRoles` that ROLES names, on the model of the
-tier in [omp], and `default` is the model of DEFAULT_TIER, so that oh-my-pi picks no model by
-itself. config.yml opts no foreign configuration source in (`enabledProviders`), so oh-my-pi
-imports neither ~/.claude.json nor OpenCode's MCP servers.
+THE MODELS. The [omp] tables have the sub-tables of OpenCode's (profile.MODEL_TABLES), so that
+oh-my-pi's agents run on the models that OpenCode's run on. An agent's model is its override, else
+its tier's model; its thinking level is its `variants` or `reasoning_effort` entry, else its
+model's `model_variants` entry, where oh-my-pi has that level. `modelRoles.default` is the model
+of DEFAULT_TIER, so that oh-my-pi picks no model by itself. config.yml opts no foreign
+configuration source in (`enabledProviders`), so oh-my-pi imports neither ~/.claude.json nor
+OpenCode's MCP servers.
 
 config.yml is JSON below a comment header: JSON is YAML, and the cases read it back with the
 standard library.
@@ -82,6 +93,10 @@ HEADER = """\
 # repository and the [omp] table of models.toml; an edit here is replaced by the next install.
 # JSON is YAML.
 """
+MODELS_HEADER = """\
+# Generated by `harness install` from [omp.context_limits] of models.toml; an edit here is
+# replaced by the next install, after a backup. JSON is YAML.
+"""
 
 # The neutral tool name of frontmatter.TOOLS -> oh-my-pi's, from
 # packages/coding-agent/src/tools/builtin-names.ts of oh-my-pi at d9ee5e6. oh-my-pi's `read` also
@@ -92,11 +107,10 @@ TOOLS = {"read": "read", "edit": "edit", "write": "write", "grep": "grep", "glob
 MCP_PREFIX, OMP_MCP_PREFIX = frontmatter.MCP, "mcp__kaimon_"
 KAIMON_URL = "http://127.0.0.1:2828/"
 KAIMON_TOKEN = "~/.config/kaimon/opencode-token"
-# The tiers, the keys of [omp] in models.toml; DEFAULT_TIER is also the default model. ROLES names
-# the role of `modelRoles` of each tier, the name that an agent's `model: @<role>` reads.
+# The tiers, the keys of [omp.models] in models.toml; the model of DEFAULT_TIER is also the
+# default model, `modelRoles.default`.
 TIERS = frontmatter.TIERS
 DEFAULT_TIER = "medium"
-ROLES = {"large": "opus", "medium": "sonnet", "small": "haiku"}
 # oh-my-pi's thinking levels that an agent's `effort` can name; any other effort is dropped.
 THINKING_LEVELS = {"off", "minimal", "low", "medium", "high", "xhigh", "max"}
 # The names oh-my-pi reserves for the top-level session and an unnamed subagent.
@@ -128,19 +142,33 @@ def bash_patterns(permissions):
     return patterns, rewritten
 
 
-def render_config(profile, tiers):
+def render_config(profile, models):
     """The text of config.yml, with the settings template rendered with `profile`, and
-    `modelRoles` from `tiers`, load_models' table: the role that ROLES names for each tier, and
-    `default`, on the selector of DEFAULT_TIER."""
+    `modelRoles.default` the model of DEFAULT_TIER in `models`, load_models' tables."""
     permissions = json.loads(profile_module.render_file(SETTINGS, profile))["permissions"]
     patterns, _ = bash_patterns(permissions)
     config = {
-        "tools": {"approvalMode": "write", "approval": {"eval": "deny", "edit": "allow", "write": "allow"}},
+        "tools": {"approvalMode": "yolo", "approval": {"eval": "deny", "edit": "allow", "write": "allow"}},
         "bash": {"allowCompoundCommands": False,
                  "patterns": [{"match": match, "approval": approval} for match, approval in patterns]},
-        "modelRoles": {"default": tiers[DEFAULT_TIER], **{ROLES[t]: tiers[t] for t in TIERS}},
+        "modelRoles": {"default": models["models"][DEFAULT_TIER]},
     }
     return HEADER + json.dumps(config, indent=2, ensure_ascii=False) + "\n"
+
+
+def render_models(models):
+    """The text of models.yml, each context limit of `models` as the `contextWindow` of its model,
+    `providers.<provider>.modelOverrides.<model>`; None when `models` holds none. A model with no
+    `<provider>/` exits 2."""
+    providers = {}
+    for selector, limit in models["context_limits"].items():
+        provider, sep, model = selector.partition("/")
+        if not (sep and provider and model):
+            raise HarnessError(f"{models['path']}: the context limit of {selector!r} names no `<provider>/<model>`")
+        providers.setdefault(provider, {"modelOverrides": {}})["modelOverrides"][model] = {"contextWindow": limit}
+    if not providers:
+        return None
+    return MODELS_HEADER + json.dumps({"providers": providers}, indent=2) + "\n"
 
 
 def guard_paths(profile):
@@ -231,19 +259,28 @@ def render_rule(path, data=None):
 
 
 def load_models(path):
-    """{tier: selector} of the [omp] table of the models.toml at `path`: exactly the keys of TIERS,
-    each a string that is not blank, as a blank one leaves oh-my-pi to pick the model; any other
-    table exits 2 (profile.tier_table)."""
-    return profile_module.tier_table(path, "omp", "oh-my-pi")
+    """The [omp] tables of the models.toml at `path` (profile.model_tables), whose `models` maps
+    every tier of TIERS, so that oh-my-pi picks no model by itself; any other table exits 2."""
+    models = profile_module.model_tables(path, "omp")
+    if missing := [t for t in TIERS if t not in models["models"]]:
+        raise HarnessError(f"{path}: [omp.models] holds the tiers {', '.join(TIERS)}, one oh-my-pi model each; "
+                           f"it has no {', '.join(missing)}")
+    if unknown := sorted(set(models["models"]) - set(TIERS)):
+        raise HarnessError(f"{path}: [omp.models]: {', '.join(unknown)} is no tier")
+    return models
 
 
-def under_omp(meta, body):
-    """The "Under oh-my-pi" section of an agent with frontmatter `meta` and `body`: the rules of
-    adapters/omp/UNDER-OMP.md for each Claude Code mechanism that it uses; "" when it uses none."""
+def under_omp(meta, body, seats=0):
+    """The "Under oh-my-pi" section of an agent with frontmatter `meta` and `body`, and a council
+    of `seats` seats: the rules of adapters/omp/UNDER-OMP.md for each Claude Code mechanism that it
+    uses, and OpenCode's council rule; "" when it uses none."""
     text = (SOURCE / "UNDER-OMP.md").read_text()
     rules = {m.group(1): m.group(2).strip() for m in re.finditer(r"(?m)^## (\w+)\n(.*?)(?=^## |\Z)", text, re.S)}
+    if seats:
+        rules["council"] = frontends.adapter("opencode").council_rule(seats)
     tools, skills = meta.get("tools", []), meta.get("skills", [])
     used = [key for key, uses in [
+        ("council", bool(seats)),
         ("skills", bool(skills)),
         ("worktree", meta.get("isolation") == "worktree" or "isolation" in body),
         ("agent", "agent" in tools),
@@ -260,14 +297,16 @@ def under_omp(meta, body):
     return "## Under oh-my-pi\n\n" + rules["intro"] + "\n\n" + "\n".join("- " + l for l in lines) + "\n"
 
 
-def render_agent(path, tiers):
-    """(name, bytes) of the oh-my-pi agent of the agent at `path`, with `tiers` from load_models:
-    the frontmatter `name`, `description`, `tools` mapped by TOOLS, `model` the role `@<role>` that
-    ROLES names for the tier, `thinking-level` the `effort` where oh-my-pi has that level, and
-    `autoloadSkills` the `skills`, each value as JSON, which YAML reads as the same value; then the
-    generated-by comment, the "Under oh-my-pi" section and the body. A tool with no oh-my-pi name,
-    a wildcard among them, a tier that is not in `tiers`, no description, a `name:` that is not the
-    file name, and the reserved names `main` and `sub` exit 2."""
+def render_agent(path, models, root="~/.omp/agent"):
+    """[(name, bytes)] of the oh-my-pi agent of the agent at `path`, then of its council seats,
+    with `models` from load_models: the frontmatter `name`, `description`, `tools` mapped by
+    TOOLS, `model` the model of profile.agent_model, `thinking-level` the effort of
+    profile.agent_effort where oh-my-pi has that level, and `autoloadSkills` the `skills`, each value
+    as JSON, which YAML reads as the same value; then the generated-by comment, the "Under oh-my-pi"
+    section and the body, its shared paths relocated to `root`. A seat differs in its name, its
+    description and its model. A tool with no oh-my-pi name, a wildcard among them, a tier with no
+    model, no description, a `name:` that is not the file name, and the reserved names `main` and
+    `sub` exit 2."""
     path = pathlib.Path(path)
     name = path.name.removesuffix(".md")
     if name.strip().lower() in RESERVED:
@@ -294,21 +333,27 @@ def render_agent(path, tiers):
             if mapped not in tools:
                 tools.append(mapped)
         head["tools"] = tools
-    if "model" in meta:
-        if meta["model"] not in tiers:
-            raise HarnessError(f"{path}: the tier {meta['model']!r} is none of the tiers of [omp], "
-                               f"{', '.join(tiers)}")
-        head["model"] = "@" + ROLES[meta["model"]]
-    if meta.get("effort") in THINKING_LEVELS:
-        head["thinking-level"] = meta["effort"]
-    if "skills" in meta:
-        head["autoloadSkills"] = meta["skills"]
-    section = under_omp(meta, fm.body)
-    text = ("---\n" + "".join(f"{k}: {json.dumps(v, ensure_ascii=False)}\n" for k, v in head.items()) + "---\n\n"
-            f"<!-- Generated by `harness install` from agents/{name}.md of the harness repository. Do not "
+    seats = models["councils"].get(name, [])
+    section = under_omp(meta, fm.body, len(seats))
+    rest = (f"<!-- Generated by `harness install` from agents/{name}.md of the harness repository. Do not "
             "edit this file: edit the source and run `harness install --apply`. -->\n\n"
             + (section + "\n" if section else "") + fm.body.lstrip("\n"))
-    return name, text.encode()
+    rest = frontends.relocate(rest.encode(), root)
+
+    def render(agent, description, model):
+        fields = {**head, "name": agent, "description": description}
+        if model is not None:
+            fields["model"] = model
+        if (effort := profile_module.agent_effort(agent, model, models)) in THINKING_LEVELS:
+            fields["thinking-level"] = effort
+        if "skills" in meta:
+            fields["autoloadSkills"] = meta["skills"]
+        return (agent, ("---\n" + "".join(f"{k}: {json.dumps(v, ensure_ascii=False)}\n" for k, v in fields.items())
+                        + "---\n\n").encode() + rest)
+
+    model = profile_module.agent_model(name, meta.get("model"), models, path)
+    return [render(name, meta["description"], model)] + [
+        render(s["name"], profile_module.council_description(name, s, "oh-my-pi"), s["model"]) for s in seats]
 
 
 def render_mcp():
@@ -319,23 +364,48 @@ def render_mcp():
     return json.dumps({"mcpServers": {"kaimon": kaimon}}, indent=2) + "\n"
 
 
-def render_files(profile, rules, tiers, agents):
-    """[(path relative to the agent directory, bytes)] of the files: the permission layer with the
-    model roles of `tiers`, AGENTS.md, rules/<name>.md for each (source path, rendered bytes) of a
-    Claude Code rule in `rules`, mcp.json, and agents/<name>.md for each agent of `agents`."""
-    return [("config.yml", render_config(profile, tiers).encode()),
-            ("extensions/guards.ts", (SOURCE / "guards.ts").read_bytes()),
-            ("extensions/guard-paths.json", guard_paths(profile).encode()),
-            ("AGENTS.md", (SOURCE / "OMP-DELTA.md").read_bytes()),
-            *((f"rules/{p.name}", render_rule(p, data)) for p, data in rules),
-            ("mcp.json", render_mcp().encode()),
-            *((f"agents/{n}.md", data) for n, data in (render_agent(p, tiers) for p in sorted(agents.glob("*.md"))))]
+def render_agents(agents, models, root):
+    """[(name, bytes)] of every agent of the directory `agents` and of its council seats
+    (render_agent). A council keyed by a name that is no agent there, and a seat with the name of
+    an agent, exit 2."""
+    paths = sorted(agents.glob("*.md"))
+    names = {p.stem for p in paths}
+    for agent, seats in models["councils"].items():
+        if agent not in names:
+            raise HarnessError(f"{models['path']}: councils.{agent} of [omp] names no agent of {agents}; "
+                               "a council is keyed by the agent it copies")
+        for seat in seats:
+            if seat["name"] in names:
+                raise HarnessError(f"{models['path']}: the seat {seat['name']!r} of councils.{agent} of [omp] has "
+                                   "the name of an agent")
+    return [a for p in paths for a in render_agent(p, models, root)]
+
+
+def render_files(profile, rules, models, agents, shared, root="~/.omp/agent"):
+    """[(path relative to the agent directory, bytes, mode)] of the files: the permission layer with
+    the default model of `models`, models.yml when `models` holds a context limit, AGENTS.md,
+    rules/<name>.md for each (source path, rendered bytes) of a Claude Code rule in `rules`,
+    mcp.json, agents/<name>.md for each agent of `agents` and each council seat, and a copy of each
+    (path, bytes, mode) of `shared`, the Claude Code layer's shared files. Every text but AGENTS.md,
+    which names oh-my-pi's paths itself, names the copies below `root`, the agent directory in its
+    home form (frontends.relocate)."""
+    text = lambda data: frontends.relocate(data, root)  # noqa: E731
+    model_file = render_models(models)
+    return [("config.yml", render_config(profile, models).encode(), None),
+            *([("models.yml", model_file.encode(), None)] if model_file else []),
+            ("extensions/guards.ts", (SOURCE / "guards.ts").read_bytes(), None),
+            ("extensions/guard-paths.json", guard_paths(profile).encode(), None),
+            ("AGENTS.md", (SOURCE / "OMP-DELTA.md").read_bytes(), None),
+            *((f"rules/{p.name}", text(render_rule(p, data)), None) for p, data in rules),
+            ("mcp.json", render_mcp().encode(), None),
+            *((f"agents/{n}.md", data, None) for n, data in render_agents(agents, models, root)),
+            *((dst, text(data) if dst.endswith(".md") else data, mode) for dst, data, mode in shared)]
 
 
 def plan(ctx):
     """oh-my-pi's part of `harness install`, as the docstring of this module says; the rules are
     those of the Claude Code layer's plan in `ctx.plans`."""
-    tiers = load_models(ctx.models)
+    models = load_models(ctx.models)
     layer = ctx.plans["claude"].rules
     # oh-my-pi reads the files of its rules/ and no subdirectory, so a rule source in one is
     # refused before anything is written.
@@ -347,16 +417,25 @@ def plan(ctx):
     # with its source: the plan has checked the sources, and a source of rules/<name>.md exists in
     # one only.
     rules = [(src, data) for dst, src, data in layer if re.fullmatch(r"rules/[^/]+\.md", dst)]
-    agent, files = agent_dir(), render_files(ctx.profile, rules, tiers, ctx.agents)
-    # An installed oh-my-pi rule or agent with no source is left in place, and oh-my-pi still lists
-    # it: a file of rules/ whose name ends in `.md` or `.mdc`, and a file of agents/ that ends in `.md`.
-    ours = {install.fold(rel) for rel, _ in files}
+    agent = agent_dir()
+    files = render_files(ctx.profile, rules, models, ctx.agents, ctx.plans["claude"].shared,
+                         frontends.home_form(agent))
+    # An installed oh-my-pi rule, agent or skill with no source is left in place, and oh-my-pi still
+    # lists it: a file of rules/ whose name ends in `.md` or `.mdc`, a file of agents/ that ends in
+    # `.md`, and a directory of skills/.
+    ours = {install.fold(rel) for rel, _, _ in files}
+    skills = {install.fold("/".join(rel.split("/")[:2])) for rel, _, _ in files if rel.startswith("skills/")}
     extra = [f"\nEXTRA: {f} is installed and has no source here. oh-my-pi still lists it.\n"
              f"       To remove it:  rm '{f}'"
              for kind, suffixes in (("rules", (".md", ".mdc")), ("agents", (".md",)))
              for f in sorted(f for f in (agent / kind).glob("*") if f.is_file() and f.suffix in suffixes
                              and install.fold(f"{kind}/{f.name}") not in ours)]
-    return frontends.Plan(files=[(agent / rel, data, None, f"omp/{rel}") for rel, data in files], extra=extra)
+    extra += [f"\nEXTRA: {d} is installed and has no source here. oh-my-pi still lists it.\n"
+              f"       To remove it:  rm -r '{d}'"
+              for d in sorted((agent / "skills").glob("*")) if d.is_dir() and install.fold(f"skills/{d.name}") not in skills]
+    # models.yml can hold the user's own providers, so a replaced one is backed up first.
+    return frontends.Plan(files=[(agent / rel, data, mode, f"omp/{rel}", rel == "models.yml")
+                                 for rel, data, mode in files], extra=extra)
 
 
 def register(sub):
@@ -399,19 +478,22 @@ def omp_cases(case, fresh, run):
     tail = Scratch.tail
 
     line = re.compile(r"^omp/(\S+)\s+(\S+)", re.M)
-    base, _, tree = fresh(["rules/meta-repository.md"])
+    base, claude, tree = fresh(["rules/meta-repository.md"])
     code, dry = run(base)
     listed = dict(line.findall(dry))
     case(lambda: listed.get("config.yml") == "INSTALL" and listed.get("extensions/guards.ts") == "INSTALL"
          and not (base / "omp").exists(),
          f"the dry run lists config.yml and extensions/guards.ts, and writes nothing: {code}, {listed}")
     delta = REPO / "adapters" / "omp" / "OMP-DELTA.md"
-    imports = ["@~/.claude/RTK.md", "@~/.claude/instructions/core.md", "@~/.claude/instructions/research-tree.md"]
+    imports = ["@~/.omp/agent/RTK.md", "@~/.omp/agent/instructions/core.md",
+               "@~/.omp/agent/instructions/research-tree.md"]
     case(lambda: listed.get("AGENTS.md") == "INSTALL" and delta.read_text().split("\n")[:3] == imports,
-         f"the dry run lists AGENTS.md, from adapters/omp/OMP-DELTA.md, whose first lines import RTK.md, the core and the "
-         f"tree instructions: {listed.get('AGENTS.md')}")
-    case(lambda: len(delta.read_bytes()) <= 5114,
-         "adapters/omp/OMP-DELTA.md is no larger than OPENCODE-DELTA.md at dbc4897, 5,114 bytes")
+         f"the dry run lists AGENTS.md, from adapters/omp/OMP-DELTA.md, whose first lines import oh-my-pi's copies of "
+         f"RTK.md, the core and the tree instructions: {listed.get('AGENTS.md')}")
+    opencode_delta = REPO / "adapters" / "opencode" / "OPENCODE-DELTA.md"
+    case(lambda: len(delta.read_bytes()) <= len(opencode_delta.read_bytes()),
+         f"adapters/omp/OMP-DELTA.md, {len(delta.read_bytes())} bytes, is no larger than OPENCODE-DELTA.md, "
+         f"{len(opencode_delta.read_bytes())} bytes")
     # The rule sources: rules/ and the tree instructions' rules/, one rendered rule each.
     sources = sorted([*(REPO / "rules").glob("*.md"), tree / "rules" / "meta-repository.md"],
                      key=lambda p: p.name)
@@ -421,8 +503,8 @@ def omp_cases(case, fresh, run):
     agent = base / "omp"
     profile = profile_module.load(base / "profile.toml")
     case(lambda: code == 0 and omp_config(agent / "config.yml")["tools"]
-         == {"approvalMode": "write", "approval": {"eval": "deny", "edit": "allow", "write": "allow"}},
-         f"config.yml sets approvalMode write, eval deny, edit and write allow: {code}, {tail(text)}")
+         == {"approvalMode": "yolo", "approval": {"eval": "deny", "edit": "allow", "write": "allow"}},
+         f"config.yml sets approvalMode yolo, eval deny, edit and write allow: {code}, {tail(text)}")
     case(lambda: omp_config(agent / "config.yml")["bash"]["allowCompoundCommands"] is False,
          "config.yml keeps bash.allowCompoundCommands off")
     permissions = json.loads(profile_module.render_file(REPO / "settings" / "settings.proposal.json",
@@ -435,18 +517,37 @@ def omp_cases(case, fresh, run):
     edit_list, ask_list = (list(dict.fromkeys(re.sub(r"^//+", "/", r[r.index("(") + 1:-1])
                                               for r in permissions[key] if r.startswith(("Edit(", "Write("))))
                            for key in ("deny", "ask"))
+    # The Claude Code layer's copies: RTK.md, the instructions, the guard scripts and the skills.
+    shared = sorted(p.relative_to(claude).as_posix() for p in claude.rglob("*")
+                    if p.is_file() and frontends.shared(p.relative_to(claude).as_posix()))
+    seats = [s["name"] for s in load_models(REPO / "examples" / "models.toml")["councils"]["julia-critic"]]
+    installed = sorted(p.relative_to(agent).as_posix() for p in agent.rglob("*") if p.is_file())
     case(lambda: (agent / "extensions" / "guards.ts").read_bytes() == (REPO / "adapters" / "omp" / "guards.ts").read_bytes()
          and ask_list
          and json.loads((agent / "extensions" / "guard-paths.json").read_text())
          == {"deny": guard_list, "edit": edit_list, "ask": ask_list}
-         and sorted(p.relative_to(agent).as_posix() for p in agent.rglob("*") if p.is_file())
-         == sorted(["AGENTS.md", "config.yml", "extensions/guard-paths.json", "extensions/guards.ts", "mcp.json",
-                    *(f"rules/{s.name}" for s in sources),
-                    *(f"agents/{a.name}" for a in (REPO / "agents").glob("*.md"))])
-         and not (agent / "skills").exists(),
-         "--apply installs AGENTS.md, config.yml, guards.ts, guard-paths.json, whose `deny` is OpenCode's list, "
-         "whose `edit` is the template's Edit and Write denies and whose `ask` is its Edit and Write asks, "
-         "mcp.json, the rules and the agents, and nothing else: nothing below skills/")
+         and installed
+         == sorted(["AGENTS.md", "config.yml", "models.yml", "extensions/guard-paths.json", "extensions/guards.ts",
+                    "mcp.json", *(f"rules/{s.name}" for s in sources),
+                    *(f"agents/{a.name}" for a in (REPO / "agents").glob("*.md")), *(f"agents/{s}.md" for s in seats),
+                    *shared])
+         and {"RTK.md", "instructions/core.md", *(f"hooks/{g}" for g in frontends.GUARDS)} <= set(shared)
+         and any(s.startswith("skills/") for s in shared),
+         "--apply installs AGENTS.md, config.yml, models.yml, guards.ts, guard-paths.json, whose `deny` is "
+         "OpenCode's list, whose `edit` is the template's Edit and Write denies and whose `ask` is its Edit and "
+         "Write asks, mcp.json, the rules, the agents and the council seats, and its own copies of RTK.md, the "
+         f"instructions, the guard scripts and the skills, and nothing else: {installed}")
+    case(lambda: all((agent / s).read_bytes() == (frontends.relocate((claude / s).read_bytes(), str(agent))
+                                                  if s.endswith(".md") else (claude / s).read_bytes())
+                     for s in shared)
+         and all(os.access(agent / "hooks" / g, os.X_OK) for g in frontends.GUARDS),
+         "each copy is the Claude Code layer's file, a text with its shared paths relocated, and each guard script "
+         "is executable")
+    limits = load_models(REPO / "examples" / "models.toml")["context_limits"]
+    yml = omp_config(agent / "models.yml")
+    case(lambda: yml == {"providers": {s.split("/", 1)[0]: {"modelOverrides": {s.split("/", 1)[1]: {"contextWindow": n}}}
+                                       for s, n in limits.items()}},
+         f"models.yml holds each context limit as its model's contextWindow: {yml}")
     case(lambda: (agent / "AGENTS.md").read_bytes() == delta.read_bytes(),
          "--apply installs AGENTS.md as adapters/omp/OMP-DELTA.md, byte for byte")
 
@@ -460,7 +561,9 @@ def omp_cases(case, fresh, run):
         """Each difference of the rendered rule of `src` from its contract; none when it holds."""
         # The renderer writes each value as JSON; the sources hold a JSON list and a plain text.
         try:
-            (meta, body), (got, got_body) = front(src.read_text()), front((agent / "rules" / src.name).read_text())
+            # The body names oh-my-pi's copies of the shared paths (frontends.relocate).
+            source = frontends.relocate(src.read_bytes(), str(agent)).decode()
+            (meta, body), (got, got_body) = front(source), front((agent / "rules" / src.name).read_text())
             globs, paths = json.loads(got.get("globs", "null")), json.loads(meta.get("paths", "null"))
             description = json.loads(got.get("description", "null"))
         except (OSError, ValueError) as e:
@@ -707,8 +810,6 @@ def omp_head(text):
 def omp_agent_cases(case, fresh, run, agent):
     """The agents, the model roles and mcp.json of oh-my-pi; `agent` is the agent directory of an
     --apply with examples/models.toml, and `case`, `fresh` and `run` are those of omp_cases."""
-    import tomllib
-
     def tail(text):
         return (text.strip().splitlines() or ["no output"])[-1]
 
@@ -716,38 +817,50 @@ def omp_agent_cases(case, fresh, run, agent):
     # is `read`, which reads a URL, and a Kaimon tool is `mcp__kaimon_<tool>`. The role of each tier.
     names = {"read": "read", "edit": "edit", "write": "write", "grep": "grep", "glob": "glob", "shell": "bash",
              "agent": "task", "web_search": "web_search", "web_fetch": "read"}
-    role_of = {"large": "opus", "medium": "sonnet", "small": "haiku"}
+    models = load_models(REPO / "examples" / "models.toml")
     sources = sorted((REPO / "agents").glob("*.md"))
+    seats = {s["name"]: (a, s) for a, council in models["councils"].items() for s in council}
 
-    def differences(src):
-        """Each difference of the rendered agent of `src` from its contract; none when it holds."""
+    def differences(src, seat=None):
+        """Each difference of the rendered agent of `src`, or of its council seat `seat`, from its
+        contract; none when it holds."""
         fm = frontmatter.parse_file(src)
         meta = fm.meta
+        name = seat["name"] if seat else src.stem
         try:
-            head, rest = omp_head((agent / "agents" / src.name).read_text())
+            head, rest = omp_head((agent / "agents" / f"{name}.md").read_text())
         except OSError as e:
             return [f"{type(e).__name__}: {e}"]
         tools = list(dict.fromkeys(names.get(t) or "mcp__kaimon_" + t.removeprefix("mcp/kaimon/")
                                    for t in meta["tools"]))
-        want = {"name": src.stem, "description": meta["description"], "tools": tools}
-        if "model" in meta:
-            want["model"] = "@" + role_of[meta["model"]]
-        if "effort" in meta:
-            want["thinking-level"] = meta["effort"]
+        want = {"name": name, "description": meta["description"], "tools": tools}
+        model = profile_module.agent_model(src.stem, meta.get("model"), models, src)
+        if seat:
+            want["description"] = profile_module.council_description(src.stem, seat, "oh-my-pi")
+            model = seat["model"]
+        if model is not None:
+            want["model"] = model
+        if (effort := profile_module.agent_effort(name, model, models)) in THINKING_LEVELS:
+            want["thinking-level"] = effort
         if "skills" in meta:
             want["autoloadSkills"] = meta["skills"]
         worktree = meta.get("isolation") == "worktree" or "isolation" in fm.body
         kaimon = any(t.startswith("mcp/kaimon/") for t in meta["tools"])
-        uses = bool(meta.get("skills")) or "agent" in meta["tools"] or "shell" in meta["tools"] or worktree or kaimon
+        council = src.stem in models["councils"]
+        uses = (bool(meta.get("skills")) or "agent" in meta["tools"] or "shell" in meta["tools"] or worktree or kaimon
+                or council)
+        # The body names oh-my-pi's copies of the shared paths.
+        body = frontends.relocate(fm.body.lstrip("\n").encode(), str(agent)).decode()
         # The text before the body: the Under oh-my-pi section, which the body cannot stand in for.
-        under = rest.removesuffix(fm.body.lstrip("\n"))
+        under = rest.removesuffix(body)
         comment = f"<!-- Generated by `harness install` from agents/{src.name} of the harness repository."
         return [d for d, bad in [
             (f"the frontmatter {head} is not {want}", head != want),
             ("no generated-by comment naming its source in agents/", comment not in under),
-            ("the body is not the source's", not rest.endswith(fm.body.lstrip("\n")) or not fm.body.strip()),
+            ("the body is not the source's", not rest.endswith(body) or not fm.body.strip()),
             ("an Under oh-my-pi section where no mechanism is used, or none where one is",
              ("## Under oh-my-pi" in under) != uses),
+            ("no council rule", council and f"critics here, `1a`" not in under),
             ("no skills rule naming each skill", any(f"`{s}` skill" not in under and f"`{s}`," not in under
                                                      and f"`{s}` and" not in under for s in meta.get("skills", []))),
             ("no `git worktree add` rule for isolation: worktree",
@@ -757,34 +870,45 @@ def omp_agent_cases(case, fresh, run, agent):
             ("no `mcp__kaimon_` name for a Kaimon tool", kaimon and "`mcp__kaimon_ex`" not in under)] if bad]
 
     rendered = sorted(p.name for p in (agent / "agents").glob("*.md")) if (agent / "agents").is_dir() else []
-    case(lambda: rendered == [s.name for s in sources] and len(sources) == 20,
-         f"--apply renders one oh-my-pi agent per agent of agents/, 20, and no council copy: {rendered}")
+    case(lambda: rendered == sorted([s.name for s in sources] + [f"{s}.md" for s in seats]) and len(sources) == 20
+         and seats,
+         f"--apply renders one oh-my-pi agent per agent of agents/, 20, and one per council seat: {rendered}")
     case(lambda: {s.stem: differences(s) for s in sources} == {s.stem: [] for s in sources},
-         "each of the 20 agents has its name, its description, its tools mapped by the table, the role of its tier, "
-         "its effort as thinking-level, its skills as autoloadSkills, and its body, with an Under oh-my-pi section "
-         "where it uses a Claude Code mechanism: "
+         "each of the 20 agents has its name, its description, its tools mapped by the table, its model and its "
+         "effort as thinking-level from [omp], its skills as autoloadSkills, and its body, with an Under oh-my-pi "
+         "section where it uses a Claude Code mechanism: "
          + "; ".join(f"{s.stem} {differences(s)}" for s in sources if differences(s))[:1500])
+    by_stem = {s.stem: s for s in sources}
+    case(lambda: all(differences(by_stem[a], s) == [] for a, s in seats.values()),
+         "each council seat is its agent with the seat's name, model and description, and the agent's body: "
+         + "; ".join(f"{s['name']} {differences(by_stem[a], s)}" for a, s in seats.values()
+                     if differences(by_stem[a], s))[:1500])
+    verify = [s["name"] for _, s in seats.values() if s.get("verify")]
+    case(lambda: len(verify) == 1 and "judges each verify round" in (agent / "agents" / f"{verify[0]}.md").read_text(),
+         f"the verify seat's description says that it judges each verify round: {verify}")
 
-    # The model roles: one per tier of [omp], under the role that the agents name, and the default
-    # on the `medium` tier's selector.
-    tiers = tomllib.loads((REPO / "examples" / "models.toml").read_text())["omp"]
+    # The model roles: the default on the `medium` tier's model, and no other.
     try:
         roles = omp_config(agent / "config.yml").get("modelRoles")
     except (OSError, ValueError) as e:
         roles = f"{type(e).__name__}: {e}"
-    case(lambda: roles == {"default": tiers["medium"], **{role_of[t]: tiers[t] for t in tiers}}
-         and sorted(tiers) == ["large", "medium", "small"] and len(set(tiers.values())) == 3,
-         f"config.yml modelRoles holds one role per tier of [omp] and the default on the medium tier: {roles}")
+    case(lambda: roles == {"default": models["models"]["medium"]},
+         f"config.yml modelRoles holds the default on the medium tier's model: {roles}")
     # A missing tier, no [omp], and a tier that is no string, blank or not a tier exit 2 and write
     # nothing.
     example = (REPO / "examples" / "models.toml").read_text()
-    at = example.index("[omp]")
+    at = example.index("[omp.models]")
+    end = example.index("\n\n", at)
     for label, text, word in [
         ("no small tier", example[:at] + example[at:].replace('small = "provider-b/small-model"\n', "", 1), "small"),
         ("no [omp] table", example[:example.index("[omp]")], "[omp]"),
-        ("a tier that is a number", example.rstrip("\n").rsplit("\n", 1)[0] + "\nsmall = 5\n", "small"),
-        ("a blank tier", example.rstrip("\n").rsplit("\n", 1)[0] + '\nsmall = " "\n', "small"),
-        ("a key that is no tier", example + 'gpt = "provider-c/other-model"\n', "gpt"),
+        ("a tier that is a number", example[:at] + example[at:].replace('small = "provider-b/small-model"',
+                                                                        "small = 5", 1), "small"),
+        ("a blank tier", example[:at] + example[at:].replace('small = "provider-b/small-model"', 'small = " "', 1),
+         "small"),
+        ("a key that is no tier", example[:end] + '\ngpt = "provider-c/other-model"' + example[end:], "gpt"),
+        ("a tier directly in [omp]", example.replace("[omp]\n", '[omp]\nlarge = "p/m"\n', 1), "[omp.models]"),
+        ("a council keyed by no agent", example + '\n[omp.councils.nosuch]\n', "councils.nosuch"),
     ]:
         base2, _, _ = fresh()
         models = base2 / "models.toml"
@@ -830,7 +954,7 @@ def omp_agent_cases(case, fresh, run, agent):
         src = scratch / ("x.md" if name == "y" else f"{name}.md")
         src.write_text(head.format(name=name, model=model, tool=tool))
         try:
-            render_agent(src, tiers)
+            render_agent(src, models)
             refusal = None
         except HarnessError as e:
             refusal = str(e)

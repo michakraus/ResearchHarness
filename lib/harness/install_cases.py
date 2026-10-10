@@ -148,11 +148,15 @@ def restart_cases(check, tmp):
          f"only the OpenCode files change, opencode.jsonc with its backup: only its restart line: {code}, "
          f"{after_count(text)}, {len(backups)} backup(s)")
 
-    links = sorted((home / ".agents" / "skills").iterdir())
-    links[0].unlink()
+    # A link that an earlier install wrote into ~/.agents/skills/, which the OpenCode step removes.
+    links = home / ".agents" / "skills"
+    links.mkdir(parents=True, exist_ok=True)
+    (links / "old-skill").symlink_to(home / ".claude" / "skills" / "old-skill")
     code, text = run(base, "--apply")
-    case(lambda: expect(code, text, {"opencode"}) and "\n1 change(s) made." in text,
-         f"only an OpenCode step changes, a skill link: only its restart line: {code}, {after_count(text)}")
+    case(lambda: expect(code, text, {"opencode"}) and "\n1 change(s) made." in text
+         and not (links / "old-skill").is_symlink(),
+         f"only an OpenCode step changes, an old skill link removed: only its restart line: {code}, "
+         f"{after_count(text)}")
 
     (omp / "AGENTS.md").write_text("an edit of the installed copy\n")
     code, text = run(base, "--apply")

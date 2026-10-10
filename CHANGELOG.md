@@ -2,6 +2,27 @@
 
 ## Unreleased
 
+- **OpenCode and oh-my-pi keep their own copies, and oh-my-pi follows OpenCode's model layer.**
+  `harness install` copies the Claude Code layer's `RTK.md`, `instructions/`, rules, the four
+  guard scripts and the curated skills into `~/.config/opencode/` and `~/.omp/agent/`. Every
+  copied text, rule and agent names the frontend's own copies, not `~/.claude/`
+  (`frontends.relocate`). OpenCode's `instructions` and `AGENTS.md` of oh-my-pi import those
+  copies, and both guards run the scripts from `hooks/` beside them. The install removes the
+  links that it wrote to `~/.agents/skills/`, and writes nothing there. oh-my-pi reads the skills
+  through `skill://`; its guard lets `read`, `grep` and `bash` reach its copies of the skills, the
+  rules and the instructions, and keeps the rest of `~/.omp` closed.
+  **`models.toml` needs an edit before the next install:** `[omp]` now has the sub-tables of
+  `[opencode]`, so move its tiers into `[omp.models]`; an install with the old form exits 2 and
+  says so. oh-my-pi's agents get their model and thinking level from the same tables as
+  OpenCode's: `model_overrides`, `model_variants`, `variants`, `reasoning_effort` and
+  `councils`, so oh-my-pi runs the council of critics too. An agent's own `effort` no longer sets
+  its thinking level, as it sets no variant under OpenCode. A council seat with `verify = true`
+  judges each verify round alone, under both frontends. A new sub-table, `context_limits`, caps
+  the input tokens of a model: OpenCode gets a `limit` in its `provider` object, oh-my-pi a
+  `contextWindow` in a new `models.yml`, which compaction reads. oh-my-pi's approval mode is
+  `yolo`: its deny and prompt patterns, the `eval` deny and the guard extension still apply.
+  `config.yml` keeps only `modelRoles.default`. K25 stays: its traceback moves to a later line.
+
 - **The call graphs are compact, and the flow figure shows the steps of `harness install`.** A
   call graph of *Agents at work* runs to the right when it fits the doc column, at most 765 px
   wide, so that the column draws it at a scale of 0.9 or more. Else it runs downwards, in rows of

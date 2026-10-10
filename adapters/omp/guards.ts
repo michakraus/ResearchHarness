@@ -18,8 +18,8 @@
 //     rm-scope.py             a recursive `rm` outside the scratch zones, and a `git rm` outside a
 //                             worktree
 //
-// The scripts run from ~/.claude/hooks/ and are not copied, so every harness has one source. Each
-// runs with `python3` from PATH and gets Claude Code's payload on stdin,
+// The scripts run from oh-my-pi's own copy in hooks/ beside extensions/, which `harness install`
+// writes from the same source as Claude Code's. Each runs with `python3` from PATH and gets Claude Code's payload on stdin,
 // `{"tool_input": {"command": …}, "cwd": …}`.
 //
 // IT FAILS CLOSED, as OpenCode's guards.ts does, where Claude Code lets a failed hook pass:
@@ -43,8 +43,9 @@
 //
 // THE PATH LIST is guard-paths.json beside this file, as `harness install` renders it: under
 // `deny` the `read` denies of the settings template, under `edit` its `Edit` and `Write` denies,
-// under `ask` its `Edit` and `Write` asks. `deny` and `edit` get ~/.omp/**, oh-my-pi's own
-// directory, where its credentials and this file lie. A path that both `edit` and `ask` match is
+// under `ask` its `Edit` and `Write` asks. `edit` gets ~/.omp/**, oh-my-pi's own directory, where
+// its credentials and this file lie, and `deny` the same but the copies of the skills, the rules
+// and the instructions. A path that both `edit` and `ask` match is
 // refused as a deny. oh-my-pi has no path policy of its own. A tool path is checked as named,
 // after `@`, `file://`, `~` and a selector suffix `:…` are removed, relative to the working
 // directory; each part of a path list that `,`, `;` or a space separates is checked too. A bash
@@ -71,7 +72,7 @@ import { dirname, join, posix } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const HOME = homedir();
-const HOOKS = join(HOME, '.claude', 'hooks');
+const HOOKS = join(dirname(fileURLToPath(import.meta.url)), '..', 'hooks');
 const GUARDS = ['no-blind-stage.py', 'no-shell-file-write.py', 'gh-api-writes.py', 'rm-scope.py'];
 const TIMEOUT_MS = 10_000;
 const LIST = join(dirname(fileURLToPath(import.meta.url)), 'guard-paths.json');
@@ -159,6 +160,21 @@ function rule(glob, kind = 'deny') {
   return { glob, re: new RegExp('^' + re + '$', 'i'), prefix, kind };
 }
 
+// oh-my-pi's own directory as a `deny` rule, except the copies that `harness install` writes for
+// the model to read: agent/skills/, agent/rules/, agent/instructions/ and agent/RTK.md. `edit` and
+// `write` get the whole directory.
+const OWN = posix.join(HOME, '.omp');
+const OWN_READABLE = {
+  glob: `${OWN}/** but agent/skills, agent/rules, agent/instructions and agent/RTK.md`,
+  re: new RegExp(
+    '^' + OWN.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') +
+      '(?:/(?!agent/(?:(?:skills|rules|instructions)(?:/|$)|RTK\\.md$)).*)?$',
+    'i',
+  ),
+  prefix: OWN,
+  kind: 'deny',
+};
+
 // The rules of the path list, read once when oh-my-pi loads the extension: `deny` for `read`,
 // `grep` and `bash`, `edit` for `edit` and `write`, each with oh-my-pi's own directory added, and
 // `ask` for `edit` and `write`; a string in place of a list that cannot be used.
@@ -172,13 +188,13 @@ function pathRules() {
     const why = unusable(e?.message ?? e);
     return { deny: why, edit: why, ask: why };
   }
-  const rules = (key, kind = 'deny', own = [posix.join(HOME, '.omp', '**')]) => {
+  const rules = (key, kind = 'deny', own = [rule(posix.join(HOME, '.omp', '**'), kind)]) => {
     const globs = list?.[key];
     if (!Array.isArray(globs) || !globs.every((g) => typeof g === 'string'))
       return unusable(`it holds no list of strings under "${key}"`);
-    return [...globs, ...own].map((g) => rule(g, kind));
+    return [...globs.map((g) => rule(g, kind)), ...own];
   };
-  const deny = rules('deny');
+  const deny = rules('deny', 'deny', [OWN_READABLE]);
   if (typeof deny === 'string') return { deny, edit: deny, ask: deny };
   return { deny, edit: rules('edit'), ask: rules('ask', 'ask', []) };
 }

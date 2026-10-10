@@ -43,18 +43,47 @@ critic-c = "high"
 
 # Copies of an agent on other models, in order: each is written as `<name>.md`, hidden, with its
 # own model and the agent's body. A council is keyed by an agent of agents/; any other key
-# stops the install.
+# stops the install. One seat may add `verify = true`: it also judges each verify round, alone.
 [opencode.councils]
 julia-critic = [
-    { name = "critic-b", model = "provider-c/other-model" },
+    { name = "critic-b", model = "provider-c/other-model", verify = true },
     { name = "critic-c", model = "provider-b/medium-model" },
 ]
 
-# The oh-my-pi model of each tier, written to config.yml as a role of `modelRoles`; an agent's
-# `model:` becomes that role, `@opus`, `@sonnet` or `@haiku`. All three tiers are required.
-# `medium` is also the default model, `modelRoles.default`, so that oh-my-pi picks no model by
-# itself. oh-my-pi has no council and no per-agent override.
+# The input tokens that a model may hold, written as its `limit` in the `provider` object of
+# opencode.jsonc. Name no provider that the profile's `opencode_providers` defines.
+[opencode.context_limits]
+"provider-b/small-model" = 100000
+
+# oh-my-pi has the same sub-tables as OpenCode. An agent's model and its effort, as
+# `thinking-level`, are written into its frontmatter; `variants` and `reasoning_effort` both give
+# an agent's effort. All three tiers are required here, and `medium` is also the default model,
+# `modelRoles.default` in config.yml, so that oh-my-pi picks no model by itself. A context limit is
+# written to models.yml as the model's `contextWindow`.
 [omp]
+
+[omp.models]
 large = "provider-a/large-model"
 medium = "provider-b/medium-model"
 small = "provider-b/small-model"
+
+[omp.model_overrides]
+builder = "provider-b/medium-model"
+
+[omp.model_variants]
+"provider-a/large-model" = "medium"
+
+[omp.variants]
+judge = "high"
+
+[omp.reasoning_effort]
+critic-c = "high"
+
+[omp.councils]
+julia-critic = [
+    { name = "critic-b", model = "provider-c/other-model", verify = true },
+    { name = "critic-c", model = "provider-b/medium-model" },
+]
+
+[omp.context_limits]
+"provider-b/small-model" = 100000

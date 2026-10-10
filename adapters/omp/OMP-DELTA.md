@@ -1,6 +1,6 @@
-@~/.claude/RTK.md
-@~/.claude/instructions/core.md
-@~/.claude/instructions/research-tree.md
+@~/.omp/agent/RTK.md
+@~/.omp/agent/instructions/core.md
+@~/.omp/agent/instructions/research-tree.md
 
 # oh-my-pi
 
@@ -20,15 +20,18 @@ permission matcher does not bind here: the unsandboxed programs, a `git` alone o
 oh-my-pi runs no RTK rewrite: a command runs as typed, so the rewrite facts of `RTK.md` do not
 apply, and `grep` returns every match.
 
-The approval mode is `write`. A read or an edit runs; a command that no pattern allows asks, and
-in `omp -p` it is refused. The `eval` tool is denied: run code through `bash`.
+The approval mode is `yolo`. Every call runs without a prompt, except a command that a `deny`
+pattern refuses or a `prompt` pattern asks for; in `omp -p` a `prompt` pattern refuses. The
+`eval` tool is denied: run code through `bash`.
 
 ## The guard extension
 
 `extensions/guards.ts` runs `no-blind-stage.py`, `no-shell-file-write.py`, `gh-api-writes.py` and
-`rm-scope.py` from `~/.claude/hooks/` on each `bash` call. It refuses a path that the `read` tool
-may not read, such as a credential file or oh-my-pi's own directory, in `read`, `grep` and `bash`,
-and an installed `~/.claude` path or `~/.config/**` in `edit` and `write`. A refusal is final for
+`rm-scope.py` from `~/.omp/agent/hooks/` on each `bash` call. It refuses a path that the `read`
+tool may not read, such as a credential file or oh-my-pi's own directory, in `read`, `grep` and
+`bash`; the copies of the skills, the rules and the instructions below `~/.omp/agent/` stay
+readable. It refuses an installed `~/.claude` path, `~/.omp/**` or `~/.config/**` in `edit` and
+`write`. A refusal is final for
 that path: do not reach it in another form. Change a file with the edit tool, never with `sed -i`
 or `perl -pi`. A guard that would ask refuses instead, as does an edit of a `.githooks/`,
 `.github/workflows/`, `~/.claude/skills/` or `~/.claude/workflows/` path: ask the user in chat,
@@ -75,4 +78,22 @@ wrapper, the NFC characters with no precomposed form.
 
 ## Skills
 
-The skills are the links in `~/.agents/skills/`, which oh-my-pi reads by default.
+The skills are oh-my-pi's own copies in `~/.omp/agent/skills/`. Read a skill as `skill://<name>`,
+and a file beside its `SKILL.md` as `skill://<name>/<file>`.
+
+## Agents
+
+**Each agent's model and thinking level are in its own frontmatter**, so a spawn names no model.
+A council seat, and an agent that `models.toml` moves to another provider, needs that provider's
+credentials: without them oh-my-pi runs the agent on your own model, with only a log warning.
+
+## `build-part`: round 1 is a council of critics
+
+Where step 3 spawns two critics, spawn the council of `julia-critic` in one message:
+`julia-critic` as `Round: 1a`, and each of its council copies as `1b`, `1c`, … in the
+alphabetical order of their names. A council copy is an agent whose description says "The same
+agent as julia-critic". Each critic runs on a different model, at its own thinking level.
+Everything else in step 3 holds for every critic: the round fails when any critic fails, its
+findings are the union of the reports, and you wait for all of them. A verify round spawns one
+critic alone: the council copy whose description says that it judges each verify round, else
+`julia-critic`.

@@ -24,6 +24,7 @@ skipped.
 """
 
 import importlib.util
+import pathlib
 import sys
 import traceback
 import types
@@ -51,9 +52,41 @@ def Plan(**fields):
 
     A plan may hold more fields, which the install does not read and a later frontend reads
     through `ctx.plans`: `rules`, [(installed path, source, bytes)] of each file that the plan
-    installs below rules/.
+    installs below rules/; `shared`, [(installed path, bytes, mode)] of each file that `shared` names,
+    which each later frontend installs into its own directory.
     """
     return types.SimpleNamespace(**{"files": [], "warnings": [], "extra": [], "refused": [], "after": [], **fields})
+
+
+# The guard scripts that OpenCode's plugin and oh-my-pi's extension run on each shell call.
+GUARDS = ("no-blind-stage.py", "no-shell-file-write.py", "gh-api-writes.py", "rm-scope.py")
+# The paths below ~/.claude that a text can name and that each frontend holds a copy of, with the
+# first frontend's spelling; `relocate` rewrites them.
+SHARED_ROOTS = ("~/.claude/RTK.md", "~/.claude/instructions/", "~/.claude/hooks/", "~/.claude/rules/",
+                "~/.claude/skills/")
+
+
+def shared(dst):
+    """Whether the Claude Code layer's file at `dst`, relative to ~/.claude, is one that every
+    frontend holds a copy of: RTK.md, an instruction file, a guard script, or a file of a skill."""
+    return (dst == "RTK.md" or dst.startswith(("instructions/", "skills/"))
+            or dst in (f"hooks/{g}" for g in GUARDS))
+
+
+def relocate(data, root):
+    """`data` with each path of SHARED_ROOTS rewritten to the same path below `root`, a frontend's
+    directory in its home form, such as `~/.config/opencode`: a frontend's copy of a text names its
+    own copies, not Claude Code's."""
+    for old in SHARED_ROOTS:
+        data = data.replace(old.encode(), (root + old[len("~/.claude"):]).encode())
+    return data
+
+
+def home_form(path):
+    """`path` with the home directory written as `~`."""
+    home = str(pathlib.Path.home())
+    text = str(path)
+    return "~" + text[len(home):] if text == home or text.startswith(home + "/") else text
 
 
 def load():
