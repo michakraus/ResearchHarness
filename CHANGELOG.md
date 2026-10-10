@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- **OpenCode's rtk plugin finds `rtk` on the `PATH`**, as Claude Code's hook `rtk hook claude`
+  does, in place of the fixed path `/opt/homebrew/bin/rtk`, which exists on a Mac with Homebrew
+  only. `harness install` warns when no `rtk` is on the `PATH`; the warning leaves its exit status
+  as it is. When OpenCode's `PATH` has no `rtk`, each command runs unchanged, as before. The probe
+  runs the plugin with a fixture `rtk` on the `PATH` of `node` alone, and with none there.
+
 - **`harness install` no longer writes oh-my-pi's `config.yml`; its keys go to the overlay
   `~/.omp/agent/harness.yml`.** oh-my-pi's setup and its settings panel write `config.yml` and
   rewrite it as YAML with keys of their own, such as `setupVersion` and `theme`; the install
