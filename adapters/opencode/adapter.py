@@ -1,5 +1,5 @@
-"""The adapter of OpenCode: its part of `harness install`, and the generators of the agents, the
-permission block and the skill links.
+"""The adapter of OpenCode: its part of `harness install`, and the generators of the agents and
+the permission block.
 
     harness permissions [--apply]    # the permission block of opencode.jsonc and guard-paths.json
     harness install [--apply] [--force]
@@ -13,22 +13,27 @@ permission block and the skill links.
   adapters/opencode/agents/*.md    -> agents/               (the agents with no Claude Code source)
   adapters/opencode/plugins/*.ts   -> plugins/              (added; other plugins untouched)
   adapters/opencode/plugins/guard-paths.json -> plugins/    (the path guard's deny list; rendered)
-  ~/.agents/skills/<name>          -> ~/.claude/skills/<name>, links to the curated skills, after
-                                      the Claude Code layer, so that they see the skills it installs
+  the Claude Code layer's rules/, RTK.md, instructions/, hooks/ and skills/
+                                   -> the same paths        (OpenCode's own copies; frontends.shared)
+
+After the files, the links that an earlier install wrote to ~/.agents/skills/ are removed
+(`skill_links`): OpenCode reads that directory too.
 
 opencode.jsonc and guard-paths.json hold {home} and {opencode_providers}, rendered with the
-private profile. The agents are rendered from their neutral source in agents/, not from the
-installed copies, with the [opencode] tables of the model tables. OpenCode reads AGENTS.md of its
-configuration directory in place of ~/.claude/CLAUDE.md, and RTK.md, the core and the tree
-instructions through `instructions` in opencode.jsonc. An installed agent or plugin with no copy
-here is reported, with the command that removes it.
+private profile; each model of the context limits becomes a provider entry before the
+profile's own (`context_providers`). The agents are rendered from their neutral source in agents/,
+not from the installed copies, with the model tables that OpenCode shares with oh-my-pi and the
+keys of [opencode] over them (profile.model_tables). OpenCode reads
+AGENTS.md of its configuration directory in place of ~/.claude/CLAUDE.md, and its copies of RTK.md,
+the core and the tree instructions through `instructions` in opencode.jsonc. Every text but
+AGENTS.md names OpenCode's copies, not Claude Code's (frontends.relocate). An installed agent,
+plugin or skill with no copy here is reported, with the command that removes it.
 
 The installed opencode.jsonc can hold a secret that the repository's copy must never contain. If
 it holds a literal `Authorization` value, the install refuses to replace it, unless `--force`,
 and exits 2: replacing it would remove a working credential.
 
-`harness install` renders the agents and the skill links on every run; nothing of them is
-committed. The permission block and `plugins/guard-paths.json` hold no profile value, so they
+`harness install` renders the agents on every run; nothing of them is committed. The permission block and `plugins/guard-paths.json` hold no profile value, so they
 stay committed, and `harness permissions` regenerates them from the settings template.
 
 THE AGENTS. Each agent of agents/ becomes an OpenCode agent; a rendered
@@ -37,10 +42,11 @@ copy has one source, so it cannot drift from it. What changes in the port, and n
 1. The frontmatter. The `description:` line is copied as raw text. The neutral `tools:` (`shell`
    is `bash`, `agent` is `task`, `mcp/kaimon/<tool>` is `kaimon_<tool>`), `skills:` and
    `permissionMode:` have no OpenCode key, so all three become `permission:`. The tier of `model:`
-   maps through [opencode.models] of the model tables (`models.toml`), unless `model_overrides`
+   maps through `models` of the model tables (`models.toml`), unless `model_overrides`
    names the agent; an agent
    with no `model:` inherits its caller's model in both harnesses. `councils` adds copies of an
-   agent on other models. `effort:`, `omitClaudeMd:`, `cacheTtl:` and `isolation:` have no
+   agent on other models; the description of a seat with `verify = true` says that it also judges
+   each verify round. `effort:`, `omitClaudeMd:`, `cacheTtl:` and `isolation:` have no
    OpenCode equivalent and are dropped; the last one becomes a rule in the preamble.
 2. MCP tool names. OpenCode names an MCP tool `<server>_<tool>`, so `mcp__kaimon__ex` in the body
    becomes `kaimon_ex`.
@@ -61,12 +67,6 @@ up. Three semantic differences:
 3. Claude writes `Bash(cmd *)`, `Read(//abs/path)` and `mcp__server__tool`. OpenCode keys by tool
    name, and MCP tools are `<server>_<tool>`. The `//` prefix of Claude's absolute paths is
    reduced to one slash.
-
-THE SKILL LINKS. ~/.agents/skills/ holds a link to each curated skill: every directory directly
-below ~/.claude/skills/ that holds a SKILL.md, except a dot directory and
-`sources.EXCLUDED_SKILLS`. Every link there that points into
-~/.claude/skills/ is this generator's own; anything else is reported with the command that
-removes it, and left in place.
 """
 
 import argparse
@@ -102,11 +102,8 @@ EDIT_OVERRIDES = {
 
 MCP_PREFIX = "mcp__kaimon__"
 
-# The sub-tables of [opencode] in models.toml; every one is optional.
-MODEL_TABLES = ["models", "model_overrides", "model_variants", "variants", "reasoning_effort", "councils"]
-
 # The number of critics of a council, its agent and its seats, as the preamble writes it; a
-# council has one to eight seats.
+# council has one to eight seats (profile.COUNCIL_SEATS).
 NUMBER_WORDS = {2: "two", 3: "three", 4: "four", 5: "five", 6: "six", 7: "seven", 8: "eight", 9: "nine"}
 
 # MCP servers configured for OpenCode. A rule naming any other server is dropped: the tool
@@ -170,44 +167,19 @@ OPENCODE_ONLY_RULES = [
 
 RESTART = "Restart OpenCode: its installed files changed, and it reads its configuration once, at startup."
 
+# The `output` of a model's `limit` that a context limit writes: OpenCode's schema needs
+# one, and OpenCode caps a request's output at 32,000 tokens by default.
+OUTPUT_LIMIT = 32000
+
 
 # ---------------------------------------------------------------------------------------------
 # The model tables
 
 
 def load_models(path):
-    """The [opencode] tables of the models.toml at `path`, every sub-table present."""
-    path = pathlib.Path(path)
-    table = profile_module.read_models(path).get("opencode")
-    if not isinstance(table, dict):
-        raise HarnessError(f"{path} has no [opencode] table — examples/models.toml shows it")
-    unknown = sorted(set(table) - set(MODEL_TABLES))
-    if unknown:
-        raise HarnessError(f"{path}: [opencode] has no sub-table {', '.join(unknown)}; "
-                           f"it has {', '.join(MODEL_TABLES)}")
-    models = {name: table.get(name, {}) for name in MODEL_TABLES}
-    for name in MODEL_TABLES:
-        if not isinstance(models[name], dict):
-            raise HarnessError(f"{path}: [opencode.{name}] is not a table")
-        if name != "councils" and not all(isinstance(v, str) for v in models[name].values()):
-            raise HarnessError(f"{path}: a value of [opencode.{name}] is not a string")
-    # Each seat is installed as `<name>.md`, so a second seat of one name would replace the first.
-    seen = {}
-    for agent, seats in models["councils"].items():
-        if not (isinstance(seats, list) and all(isinstance(s, dict) and set(s) == {"name", "model"}
-                                                for s in seats)):
-            raise HarnessError(f"{path}: councils.{agent} is a list of {{ name = …, model = … }}")
-        if len(seats) + 1 not in NUMBER_WORDS:
-            raise HarnessError(f"{path}: councils.{agent} has {len(seats)} seats; a council has 1 to 8")
-        for seat in seats:
-            if not isinstance(seat["name"], str):
-                raise HarnessError(f"{path}: the seat name {seat['name']!r} of councils.{agent} is not a string")
-            if seat["name"] in seen:
-                raise HarnessError(f"{path}: the seat {seat['name']!r} of councils.{agent} is also a seat "
-                                   f"of councils.{seen[seat['name']]}")
-            seen[seat["name"]] = agent
-    models["path"] = path
-    return models
+    """OpenCode's model tables at `path`, the shared ones with [opencode]'s over them, every
+    sub-table present (profile.model_tables)."""
+    return profile_module.model_tables(path, "opencode")
 
 
 # ---------------------------------------------------------------------------------------------
@@ -239,6 +211,16 @@ def permission_block(name, meta):
     return "\n".join(lines)
 
 
+def council_rule(seats):
+    """The rule of the preamble of an agent with a council of `seats` seats: round 1 has one more
+    critic than seats."""
+    critics = [f"1{chr(ord('a') + i)}" for i in range(seats + 1)]
+    dirs = [f"`round-{c}/`" for c in critics]
+    return (f"**Round 1 has {NUMBER_WORDS[len(critics)]} critics here, {sources.code_list(critics)}**, each on a "
+            f"different model, and your probe directory is {', '.join(dirs[:-1])} or {dirs[-1]}. Judge "
+            "as the text below says; the text names only two because Claude Code runs two.")
+
+
 def preamble(name, meta, body, models):
     tools = set(meta.get("tools", []))
     rules = [
@@ -246,12 +228,7 @@ def preamble(name, meta, body, models):
         "the Claude Code sandbox or its permission matcher, the global `AGENTS.md` overrides it.",
     ]
     if name in models["councils"]:
-        critics = [f"1{chr(ord('a') + i)}" for i in range(len(models["councils"][name]) + 1)]
-        dirs = [f"`round-{c}/`" for c in critics]
-        rules.append(
-            f"**Round 1 has {NUMBER_WORDS[len(critics)]} critics here, {sources.code_list(critics)}**, each on a "
-            f"different model, and your probe directory is {', '.join(dirs[:-1])} or {dirs[-1]}. Judge "
-            "as the text below says; the text names only two because Claude Code runs two.")
+        rules.append(council_rule(len(models["councils"][name])))
     skills = meta.get("skills", [])
     if skills:
         rules.append(
@@ -287,24 +264,20 @@ def preamble(name, meta, body, models):
             "a Claude Code mechanism, these rules replace it:\n\n" + "\n".join("- " + r for r in rules) + "\n")
 
 
-def port(path, models):
+def port(path, models, root="~/.config/opencode"):
     """The OpenCode agent for one Claude Code agent, then its council copies: [(name, text), …].
-    A copy differs from the agent in its name, its model, `hidden: true` and its description."""
+    A copy differs from the agent in its name, its model, `hidden: true` and its description. The
+    body names the copies below `root`, the configuration directory (frontends.relocate)."""
     path = pathlib.Path(path)
     source = path.name.removesuffix(".md")
     fm = frontmatter.parse_file(path)
     meta = fm.meta
     if "description" not in fm.lines:
         raise HarnessError(f"{path}: no `description:` line")
-    model = None
-    if "model" in meta:
-        tier = meta["model"]
-        if not isinstance(tier, str) or tier not in models["models"]:
-            raise HarnessError(f"{path}: the tier {tier!r} has no entry in [opencode.models] of {models['path']}")
-        model = models["models"][tier]
-    model = models["model_overrides"].get(source, model)
+    model = profile_module.agent_model(source, meta.get("model"), models, path)
     body = fm.body.replace(MCP_PREFIX, "kaimon_")
-    rest = preamble(source, meta, body, models) + "\n" + body.lstrip("\n")
+    rest = frontends.relocate((preamble(source, meta, body, models) + "\n" + body.lstrip("\n")).encode(),
+                              root).decode()
 
     def render(name, description, model, hidden):
         head = ["---", description, "mode: subagent"]
@@ -322,16 +295,14 @@ def port(path, models):
 
     agents = [(source, render(source, fm.lines["description"], model, False))]
     for seat in models["councils"].get(source, []):
-        description = (f'description: "A member of the round-1 critic council of build-part under '
-                       f'OpenCode, on {seat["model"]}. The same agent as {source}, which has the full '
-                       f'description. Spawn it only as the build-part dispatcher."')
-        agents.append((seat["name"], render(seat["name"], description, seat["model"], True)))
+        agents.append((seat["name"], render(seat["name"], "description: " + json.dumps(
+            profile_module.council_description(source, seat, "OpenCode"), ensure_ascii=False), seat["model"], True)))
     return agents
 
 
-def render_agents(source_dir, models):
-    """Every agent of `source_dir` and its council copies, ported: [(name, text), …]. A council
-    keyed by a name that no agent of `source_dir` has exits 2."""
+def render_agents(source_dir, models, root="~/.config/opencode"):
+    """Every agent of `source_dir` and its council copies, ported with `root` (port): [(name,
+    text), …]. A council keyed by a name that no agent of `source_dir` has exits 2."""
     paths = sorted(pathlib.Path(source_dir).glob("*.md"))
     sources = {p.stem: p for p in paths}
     clash = sorted(set(sources) & set(OPENCODE_ONLY))
@@ -346,7 +317,7 @@ def render_agents(source_dir, models):
             if seat["name"] in taken:
                 raise HarnessError(f"{models['path']}: the seat {seat['name']!r} of councils.{agent} has the "
                                    f"name of the agent {taken[seat['name']]}")
-    return [a for path in paths for a in port(path, models)]
+    return [a for path in paths for a in port(path, models, root)]
 
 
 # ---------------------------------------------------------------------------------------------
@@ -503,45 +474,36 @@ def cmd_permissions(args):
 
 
 def skill_links(home, apply):
-    """Link each curated skill of `home`/.claude/skills into `home`/.agents/skills.
-
-    [(name, status, changes)]: `changes` is 1 for a link to create, repoint or remove, and 0 for
-    an identical link and for FOREIGN and EXTRA, which are reported with their removal command."""
+    """Remove the links of `home`/.agents/skills into `home`/.claude/skills, which an earlier
+    install wrote: each frontend holds its own copy of the skills, and OpenCode and oh-my-pi both
+    read ~/.agents/skills. [(name, status, changes)]: `changes` is 1 for a link to remove, and 0 for
+    anything else there, which is reported as EXTRA with its removal command."""
     source = pathlib.Path(home) / ".claude" / "skills"
     target = pathlib.Path(home) / ".agents" / "skills"
-    names = sources.curated_skills(source)
-
-    def ours(p):
-        return p.is_symlink() and os.readlink(p).startswith(f"{source}/")
-
-    if apply:
-        target.mkdir(parents=True, exist_ok=True)
     out = []
-    for name in names:
-        link, want = target / name, str(source / name)
-        if link.is_symlink() and os.readlink(link) == want:
-            out.append((name, "already identical", 0))
-        elif (link.is_symlink() or link.exists()) and not ours(link):
-            out.append((name, f"FOREIGN — not a link into {source}. To remove it:  rm -r '{link}'", 0))
-        elif not apply:
-            out.append((name, f"STALE -> {os.readlink(link)}" if link.is_symlink() else "MISSING", 1))
-        else:
-            existed = link.is_symlink()
-            if existed:
-                link.unlink()
-            link.symlink_to(want)
-            out.append((name, "updated" if existed else "created", 1))
     for name in sorted(os.listdir(target)) if target.is_dir() else []:
-        if name in names:
-            continue
         link = target / name
-        if ours(link):
+        if link.is_symlink() and os.readlink(link).startswith(f"{source}/"):
             if apply:
                 link.unlink()
-            out.append((name, "removed" if apply else "REMOVE — no longer a curated skill", 1))
+            out.append((name, "removed" if apply else "REMOVE — each frontend holds its own copy", 1))
         else:
-            out.append((name, f"EXTRA — not a curated skill. To remove it:  rm -r '{link}'", 0))
+            out.append((name, f"EXTRA — OpenCode and oh-my-pi still read it. To remove it:  rm -r '{link}'", 0))
     return out
+
+
+def context_providers(models):
+    """The JSONC lines of a `provider` entry for each context limit of `models`, each model's
+    `limit` with `context` and `input` the limit and `output` OUTPUT_LIMIT, every entry ending in a
+    comma; "" when `models` holds none. A model with no `<provider>/` exits 2."""
+    providers = {}
+    for selector, limit in models["context_limits"].items():
+        provider, sep, model = selector.partition("/")
+        if not (sep and provider and model):
+            raise HarnessError(f"{models['path']}: the context limit of {selector!r} names no `<provider>/<model>`")
+        providers.setdefault(provider, {})[model] = {"limit": {"context": limit, "input": limit,
+                                                               "output": OUTPUT_LIMIT}}
+    return "".join(f"    {json.dumps(p)}: {json.dumps({'models': m})},\n" for p, m in providers.items())
 
 
 # ---------------------------------------------------------------------------------------------
@@ -593,7 +555,9 @@ def plan(ctx):
     dest = destination()
     if not dest.is_dir():
         raise HarnessError(f"{dest} does not exist. Start OpenCode once, then re-run.")
-    agents = render_agents(ctx.agents, load_models(ctx.models))
+    root = frontends.home_form(dest)
+    models = load_models(ctx.models)
+    agents = render_agents(ctx.agents, models, root)
     committed = sorted(f.stem for f in (SOURCE / "agents").glob("*.md"))
     if committed != sorted(OPENCODE_ONLY):
         raise HarnessError(f"adapters/opencode/agents/ holds {', '.join(committed) or 'nothing'}; "
@@ -610,13 +574,27 @@ def plan(ctx):
                          "                                   then re-run; --force overwrites anyway, after a backup."],
                         "opencode.jsonc not replaced: the installed file holds a literal credential"))
     else:
-        files.append((config, profile_module.render_file(SOURCE / "opencode.jsonc", ctx.profile).encode(), None,
-                      "opencode.jsonc", True))
+        # The context limits are provider entries before the profile's own, which must not name
+        # the same provider: JSONC keeps the last of two equal keys.
+        limits = context_providers(models)
+        own = profile_module.get(ctx.profile, "opencode_providers")
+        if clash := [p for p in re.findall(r'^    ("[^"]+"):', limits, re.M) if re.search(rf"^\s*{p}\s*:", own, re.M)]:
+            raise HarnessError(f"{models['path']}: a context limit names the provider {', '.join(clash)}, "
+                               "which `opencode_providers` of the profile defines too; put the limit there")
+        profile = {**ctx.profile, "opencode_providers": limits + own}
+        # The rendered file names OpenCode's copies of the instructions, not Claude Code's.
+        text = profile_module.render_file(SOURCE / "opencode.jsonc", profile).encode()
+        files.append((config, frontends.relocate(text, root), None, "opencode.jsonc", True))
     # OpenCode loads the first that exists of AGENTS.md in its configuration directory and
     # ~/.claude/CLAUDE.md, so this file replaces the Claude Code one and leaves the directory-scoped
     # CLAUDE.md files alone.
     files.append((dest / "AGENTS.md", (SOURCE / "OPENCODE-DELTA.md").read_bytes(), 0o644,
                   "AGENTS.md from OPENCODE-DELTA.md"))
+    # OpenCode's own copies of the Claude Code layer's rules, instructions, guard scripts and skills.
+    claude = ctx.plans["claude"]
+    copies = [(dst, data, None) for dst, _, data in claude.rules] + claude.shared
+    files += [(dest / dst, frontends.relocate(data, root) if dst.endswith(".md") else data, mode, dst)
+              for dst, data, mode in copies]
 
     # The token file must exist before Kaimon is enabled, or OpenCode sends an empty bearer and
     # every request is refused with 401.
@@ -640,8 +618,7 @@ def plan(ctx):
     guard_list = profile_module.render_file(SOURCE / "plugins" / "guard-paths.json", ctx.profile).encode()
     files.append((dest / "plugins" / "guard-paths.json", guard_list, None, "plugins/guard-paths.json"))
 
-    # ~/.agents/skills/ holds links to the curated skills only. The links follow every frontend's
-    # files, so that they see the skills that the Claude Code layer installs.
+    # The links that an earlier install wrote to ~/.agents/skills/ go, after every frontend's files.
     def links(apply):
         changes = 0
         for name, status, change in skill_links(pathlib.Path.home(), apply):
@@ -654,13 +631,18 @@ def plan(ctx):
                          "every command unchanged. Correct the path in plugins/rtk.ts."))
     warnings += drift_checks()
 
-    # An installed agent or plugin with no copy here is left in place, and OpenCode still loads it.
+    # An installed agent, plugin or skill with no copy here is left in place, and OpenCode still
+    # loads it.
     ours = {"agents": {f"{name}.md" for name, _ in agents},
             "plugins": {f.name for f in (SOURCE / "plugins").glob("*.ts")}}
+    skills = {dst.split("/")[1] for dst, _, _ in copies if dst.startswith("skills/")}
     extra = [f"\nEXTRA: {f} is installed and has no copy here. OpenCode still loads it.\n"
              f"       To remove it:  rm '{f}'"
              for kind, ext in (("agents", "md"), ("plugins", "ts"))
              for f in sorted((dest / kind).glob(f"*.{ext}")) if f.name not in ours[kind]]
+    extra += [f"\nEXTRA: {d} is installed and has no copy here. OpenCode still loads it.\n"
+              f"       To remove it:  rm -r '{d}'"
+              for d in sorted((dest / "skills").glob("*")) if d.is_dir() and d.name not in skills]
     return frontends.Plan(files=files, warnings=warnings, extra=extra, refused=refused, after=[links])
 
 
@@ -765,7 +747,7 @@ def selftest():
             check(False, "an unknown tier exits 2")
         except HarnessError as e:
             check(str(bad) in str(e) and "'nosuch'" in str(e), f"an unknown tier exits 2: {e}")
-        for case in [(None, "a missing models.toml"), ("[claude]\n", "a models.toml without [opencode]"),
+        for case in [(None, "a missing models.toml"), ("[claude]\n[modles]\n", "an unknown top-level table", "modles"),
                             ("[opencode.modles]\n", "an unknown sub-table"),
                             ("[opencode\nmodels = 1\n", "a malformed models.toml"),
                             ('[opencode]\nmodels = "x"\n', "a sub-table that is a string"),
@@ -780,6 +762,17 @@ def selftest():
                              "a seat name in a second council", "councils.critic", "councils.judge"),
                             ('[opencode.councils]\ncritic = [{ name = "s", model = "m" }, { name = "s", model = "n" }]\n',
                              "a seat name twice in one council", "councils.critic"),
+                            ('[opencode.councils]\ncritic = [{ name = "s", model = "m", verify = true }, '
+                             '{ name = "t", model = "n", verify = true }]\n',
+                             "two verify seats in one council", "councils.critic", "verify"),
+                            ('[opencode.councils]\ncritic = [{ name = "s", model = "m", verify = "yes" }]\n',
+                             "a verify that is not true or false", "councils.critic", "verify"),
+                            ('[opencode.councils]\ncritic = [{ name = "s", model = "m", weight = 1 }]\n',
+                             "a seat with another key", "councils.critic"),
+                            ('[opencode.context_limits]\n"p/m" = "100k"\n', "a context limit that is a string",
+                             "context_limits"),
+                            ('[opencode.context_limits]\n"p/m" = 0\n', "a context limit of zero", "context_limits"),
+                            ('[opencode]\nlarge = "p/m"\n', "a tier directly in [opencode]", "[opencode.models]"),
                             *((f'[opencode.councils]\ncritic = [{{ name = {v}, model = "m" }}]\n',
                                f"a seat whose name is {label}", "councils.critic", "name")
                               for v, label in [("5", "a number"), ("true", "a boolean"), ('["s"]', "a list"),
@@ -801,6 +794,18 @@ def selftest():
             check(len(load_models(path)["councils"]["critic"]) == 8, "a council of eight seats loads")
         except HarnessError as e:
             check(False, f"a council of eight seats loads: {e}")
+        # The shared tables hold for every frontend; a key of [opencode] or [omp] replaces one for
+        # that frontend alone.
+        path.write_text('[models]\nlarge = "a/l"\nsmall = "a/s"\n[variants]\njudge = "high"\n'
+                        '[opencode.models]\nsmall = "b/s"\n[omp.variants]\njudge = "low"\n')
+        try:
+            oc, omp = load_models(path), profile_module.model_tables(path, "omp")
+            check(oc["models"] == {"large": "a/l", "small": "b/s"} and oc["variants"] == {"judge": "high"}
+                  and omp["models"] == {"large": "a/l", "small": "a/s"} and omp["variants"] == {"judge": "low"},
+                  "the shared tables hold for both frontends, and each frontend's key replaces the shared one for "
+                  "it alone")
+        except HarnessError as e:
+            check(False, f"the shared tables with a frontend's override load: {e}")
 
     # The lookup order of models.toml: --models, then $RESEARCH_HARNESS_MODELS, then the profile's directory.
     saved = os.environ.pop("RESEARCH_HARNESS_MODELS", None)
@@ -824,38 +829,49 @@ def selftest():
 
     with tempfile.TemporaryDirectory() as tmp:
         home = pathlib.Path(tmp)
-        skills = home / ".claude" / "skills"
-        for d in ("curated", "synced", "synced/claude-ai", ".trash", "notes"):
-            (skills / d).mkdir(parents=True)
-        for d in ("curated", "synced", "synced/claude-ai", ".trash"):
-            (skills / d / "SKILL.md").write_text("")
-        dry = skill_links(home, False)
-        check(dry == [("curated", "MISSING", 1)] and not (home / ".agents").exists(),
-              f"skill links, dry run with no ~/.agents/skills: {dry}")
-        applied = skill_links(home, True)
-        links = {p.name: os.readlink(p) for p in (home / ".agents" / "skills").iterdir()}
-        check(applied == [("curated", "created", 1)] and links == {"curated": str(skills / "curated")},
-              f"skill links, --apply on the scratch home: {links}")
-        target = home / ".agents" / "skills"
-        (target / "gone").symlink_to(skills / "gone")
-        (target / "other").mkdir()
-        # A curated skill whose name is taken in ~/.agents/skills/ by a directory, not a link.
-        (skills / "busy").mkdir()
-        (skills / "busy" / "SKILL.md").write_text("")
-        (target / "busy").mkdir()
-        again = [(n, s.split(" ")[0], c) for n, s, c in skill_links(home, False)]
-        check(again == [("busy", "FOREIGN", 0), ("curated", "already", 0), ("gone", "REMOVE", 1),
-                        ("other", "EXTRA", 0)],
-              f"skill links: a foreign entry at a curated name, identical, a stale own link, an extra entry: {again}")
-        # An own link at a curated name that points to another skill: STALE, then repointed.
-        (target / "curated").unlink()
-        (target / "curated").symlink_to(skills / "synced")
-        stale = [e for e in skill_links(home, False) if e[0] == "curated"]
-        repointed = [e for e in skill_links(home, True) if e[0] == "curated"]
-        check(stale == [("curated", f"STALE -> {skills / 'synced'}", 1)]
-              and repointed == [("curated", "updated", 1)]
-              and os.readlink(target / "curated") == str(skills / "curated"),
-              f"skill links: a stale link at a curated name, dry run {stale} and --apply {repointed}")
+        skills, target = home / ".claude" / "skills", home / ".agents" / "skills"
+        check(skill_links(home, False) == [] and not (home / ".agents").exists(),
+              "skill links: nothing to remove with no ~/.agents/skills, and nothing made")
+        target.mkdir(parents=True)
+        (target / "own").symlink_to(skills / "own")
+        (target / "elsewhere").symlink_to(home / "elsewhere")
+        (target / "dir").mkdir()
+        dry = [(n, s.split(" ")[0], c) for n, s, c in skill_links(home, False)]
+        check(dry == [("dir", "EXTRA", 0), ("elsewhere", "EXTRA", 0), ("own", "REMOVE", 1)]
+              and (target / "own").is_symlink(),
+              f"skill links, dry run: an own link to remove, a foreign link and a directory left: {dry}")
+        applied = [(n, s.split(" ")[0], c) for n, s, c in skill_links(home, True)]
+        check(applied == [("dir", "EXTRA", 0), ("elsewhere", "EXTRA", 0), ("own", "removed", 1)]
+              and sorted(p.name for p in target.iterdir()) == ["dir", "elsewhere"],
+              f"skill links, --apply removes the own link only: {applied}")
+
+    # The context limits: one provider entry per provider, each line ending in a comma.
+    limits = dict(models, context_limits={"p/a": 100, "p/b": 200, "q/c": 300})
+    check(context_providers(limits) == (
+        '    "p": {"models": {"a": {"limit": {"context": 100, "input": 100, "output": 32000}}, '
+        '"b": {"limit": {"context": 200, "input": 200, "output": 32000}}}},\n'
+        '    "q": {"models": {"c": {"limit": {"context": 300, "input": 300, "output": 32000}}}},\n')
+          and context_providers(dict(models, context_limits={})) == "",
+          "the context limits as provider entries")
+    try:
+        context_providers(dict(models, context_limits={"bare": 100}))
+        check(False, "a context limit of a model with no provider exits 2")
+    except HarnessError as e:
+        check("'bare'" in str(e), f"a context limit of a model with no provider exits 2: {e}")
+
+    # A verify seat says so in its description; the other seats do not.
+    verify = dict(models, councils={"critic": [{"name": "critic-b", "model": "provider-c/other-model", "verify": True},
+                                               {"name": "critic-c", "model": "provider-b/medium-model"}]})
+    ported = dict(port(FIXTURES / "agents" / "critic.md", verify))
+    check("It also judges each verify round, alone." in ported["critic-b"]
+          and "verify round, alone" not in ported["critic-c"] and ported["critic-c"] == expected.get("critic-c"),
+          "the verify seat's description names the verify round, and only its own")
+
+    # A text names OpenCode's copies, not Claude Code's.
+    check(frontends.relocate(b"see ~/.claude/rules/x.md, ~/.claude/skills/s/e.md, ~/.claude/RTK.md and "
+                             b"~/.claude/CLAUDE.md", "~/.config/opencode")
+          == b"see ~/.config/opencode/rules/x.md, ~/.config/opencode/skills/s/e.md, ~/.config/opencode/RTK.md and "
+             b"~/.claude/CLAUDE.md", "relocate rewrites the shared paths and leaves the others")
 
     with tempfile.TemporaryDirectory() as tmp:
         install_cases(check, pathlib.Path(tmp))
@@ -909,14 +925,6 @@ def install_cases(check, tmp):
     check("opencode-token does not exist" in text,
           "a directory at the token path is missing: " + last)
     token.rmdir()
-    # A HOME before its first install has no ~/.claude/skills/, so the skill links exit 2 in the dry
-    # run; the warnings are printed before them.
-    (home / ".claude" / "skills").rmdir()
-    text, last = dry_run()
-    (home / ".claude" / "skills").mkdir()
-    check("opencode-token does not exist" in text and "raised HarnessError" in last and ".claude/skills" in last
-          and text.index("opencode-token does not exist") < text.index("raised HarnessError"),
-          "with no ~/.claude/skills/, the warnings are printed before the skill links exit 2: " + last)
     token.write_text("token\n")
     text, last = dry_run()
     # The diff of the Claude Code settings names the token path in a deny rule, so the warnings are
@@ -961,9 +969,14 @@ def install_cases(check, tmp):
          and installed.read_bytes() == delta and mode(installed) == 0o644,
          f"OPENCODE-DELTA.md installs as AGENTS.md in OpenCode's configuration directory: {code}, {applied}, "
          f"{again}, {line.findall(text)}, {tail(text2)}")
-    case(lambda: instructions() == ["~/.claude/RTK.md", "~/.claude/instructions/core.md",
-                                    "~/.claude/instructions/research-tree.md"],
-         f"the rendered opencode.jsonc lists exactly RTK.md, the core and the tree instructions: {instructions()}")
+    shared = ("RTK.md", "instructions/core.md", "instructions/research-tree.md")
+    own = [f"{base}/opencode/{p}" for p in shared]
+    # A copy exists where the Claude Code layer installed the file; a scratch tree has no tree
+    # instructions.
+    copied = [(base / "opencode" / p).is_file() == (claude / p).is_file() for p in shared]
+    case(lambda: instructions() == own and all(copied) and (claude / "RTK.md").is_file(),
+         f"the rendered opencode.jsonc lists exactly OpenCode's own copies of RTK.md, the core and the tree "
+         f"instructions, each installed where Claude Code's is: {instructions()}, {copied}")
     # A hand-made AGENTS.md that differs from the source is replaced, not merged.
     installed.write_text("mine\n")
     code, text = run(base)

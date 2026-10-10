@@ -874,7 +874,9 @@ def render_source(src, data, models):
 
 def plan(ctx):
     """The Claude Code layer of `harness install`, as the docstring of this module says. Its
-    `rules` are [(installed path, source, bytes)] of each planned file below rules/, for oh-my-pi."""
+    `rules` are [(installed path, source, bytes)] of each planned file below rules/, for oh-my-pi,
+    and its `shared` the [(installed path, rendered bytes, mode)] of each file that
+    frontends.shared names, which OpenCode and oh-my-pi copy."""
     root = pathlib.Path.home() / ".claude"
     # The settings go first, so that a new deny rule is in place before the files it protects.
     settings = settings_file(root, ctx.profile)
@@ -892,7 +894,9 @@ def plan(ctx):
     extra = [f"\nEXTRA: {f} is installed and has no source here; the install leaves it.\n"
              f"       To remove it:  rm '{f}'" for f in claude_extras(root, layer)]
     rules = [(dst, source_of(layer_sources, dst)[0], data) for dst, data, _ in layer if dst.startswith("rules/")]
-    return frontends.Plan(files=files, warnings=stray_warnings(), extra=extra, rules=rules)
+    rendered = {str(f[0].relative_to(root)): f[1] for f in files}
+    shared = [(dst, rendered[dst], mode) for dst, _, mode in layer if frontends.shared(dst)]
+    return frontends.Plan(files=files, warnings=stray_warnings(), extra=extra, rules=rules, shared=shared)
 
 
 # ---------------------------------------------------------------------------------------------

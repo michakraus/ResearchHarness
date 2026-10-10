@@ -253,8 +253,9 @@ def selftest():
                   f"{label} exits 2 and names the file: {p.returncode}, {p.stderr.strip()[-200:]!r}")
         # A table of the tiers with an old key, Claude Code's name of a tier, exits 2 and names the rename.
         example = (REPO / "examples" / "models.toml").read_text()
-        for table, old, new in [("[claude]", "opus", "large"), ("[opencode.models]", "opus", "large"),
-                                ("[omp]", "opus", "large"), ("[omp]", "sonnet", "medium"), ("[omp]", "haiku", "small")]:
+        for table, old, new in [("[claude]", "opus", "large"), ("[models]", "opus", "large"),
+                                ("[models]", "sonnet", "medium"), ("[omp.models]", "opus", "large"),
+                                ("[omp.models]", "sonnet", "medium"), ("[omp.models]", "haiku", "small")]:
             at = example.index(table + "\n") + len(table) + 1
             bad.write_text(example[:at] + f'{old} = "provider-a/large-model"\n' + example[at:])
             p = subprocess.run(harness + ["--profile", str(profile_module.DUMMY), "--models", str(bad), "install"],
@@ -265,16 +266,16 @@ def selftest():
                   f"{p.stderr.strip()[-200:]!r}")
         # Old keys in two tables, and no [claude]: one refusal names every rename and the table to add.
         text = example.replace('[claude]\nlarge = "opus"\nmedium = "sonnet"\nsmall = "haiku"\n', "", 1)
-        for table, old in [("[opencode.models]", "sonnet"), ("[omp]", "haiku")]:
+        for table, old in [("[models]", "sonnet"), ("[omp.models]", "haiku")]:
             at = text.index(table + "\n") + len(table) + 1
             text = text[:at] + f'{old} = "provider-a/large-model"\n' + text[at:]
         bad.write_text(text)
         p = subprocess.run(harness + ["--profile", str(profile_module.DUMMY), "--models", str(bad), "install"],
                            capture_output=True, text=True)
-        check(p.returncode == 2 and all(w in p.stderr for w in ["[opencode.models]", "rename sonnet to medium",
-                                                                 "[omp]", "rename haiku to small", "[claude]"]),
-              f"old keys in [opencode.models] and [omp] and no [claude] exit 2 with one message that names all "
-              f"three: {p.returncode}, {p.stderr.strip()[-300:]!r}")
+        check(p.returncode == 2 and all(w in p.stderr for w in ["[models]", "rename sonnet to medium",
+                                                                 "[omp.models]", "rename haiku to small", "[claude]"]),
+              f"old keys in [models] and [omp.models] and no [claude] exit 2 with one message that names "
+              f"all three: {p.returncode}, {p.stderr.strip()[-300:]!r}")
         load_cases(check, pathlib.Path(tmp))
         restart_cases(check, pathlib.Path(tmp))
     return total, wrong

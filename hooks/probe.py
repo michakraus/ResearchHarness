@@ -512,6 +512,18 @@ OMP_PATH_CASES = [
     ("bash", {"command": "cat ~/.omp/agent/agent.db"}, "tree", "block"),
     ("bash", {"command": "cat agent/agent.db"}, "~/.omp", "block"),
     ("grep", {"pattern": "token", "path": "~/.omp/agent"}, "tree", "block"),
+    ("read", {"path": "~/.omp/agent/skillsx/a.md"}, "tree", "block"),
+    ("read", {"path": "~/.omp/agent/hooks/rm-scope.py"}, "tree", "block"),
+    # The copies of the skills, the rules and the instructions are readable; they are not editable.
+    ("read", {"path": "~/.omp/agent/skills/build-part/edges.md"}, "tree", "pass"),
+    ("read", {"path": "~/.omp/agent/rules/julia-code.md"}, "tree", "pass"),
+    ("read", {"path": "~/.omp/agent/instructions/core.md"}, "tree", "pass"),
+    ("read", {"path": "~/.omp/agent/RTK.md"}, "tree", "pass"),
+    ("bash", {"command": "cat ~/.omp/agent/skills/build-part/SKILL.md"}, "tree", "pass"),
+    ("grep", {"pattern": "x", "path": "~/.omp/agent/skills"}, "tree", "pass"),
+    ("edit", {"path": "~/.omp/agent/skills/build-part/edges.md", "old_string": "a", "new_string": "b"}, "tree",
+     "block"),
+    ("write", {"path": "~/.omp/agent/rules/julia-code.md", "content": "x"}, "tree", "block"),
     # Commands that name no denied path still run.
     ("bash", {"command": "cat src/Foo.jl"}, "tree", "pass"),
     ("bash", {"command": "ls -la"}, "tree", "pass"),
@@ -616,19 +628,19 @@ def omp_cases():
     node = shutil.which("node")
 
     def home(name, scripts=None, paths=None, timeout=None):
-        """A fixture home with the four guard scripts in ~/.claude/hooks/, each one that `scripts`
-        names replaced by its text there, or left out for None, and the extension with its path
-        list in `ext/`: `paths`, for a function the text `paths(rendered list, home)`, else the
+        """A fixture home with the four guard scripts in hooks/, beside ext/, each one that
+        `scripts` names replaced by its text there, or left out for None, and the extension with its
+        path list in `ext/`: `paths`, for a function the text `paths(rendered list, home)`, else the
         rendered list. `timeout` replaces the extension's timeout in milliseconds."""
         scripts = scripts or {}
         h = FIXTURE.name + "/" + name
-        os.makedirs(h + "/.claude/hooks")
+        os.makedirs(h + "/hooks")
         os.makedirs(h + "/ext")
         for script in ("no-blind-stage.py", "no-shell-file-write.py", "gh-api-writes.py", "rm-scope.py"):
             if script not in scripts:
-                os.symlink(HOOKS + script, h + "/.claude/hooks/" + script)
+                os.symlink(HOOKS + script, h + "/hooks/" + script)
             elif scripts[script] is not None:
-                with open(h + "/.claude/hooks/" + script, "w") as f:
+                with open(h + "/hooks/" + script, "w") as f:
                     f.write(scripts[script])
         with open(REPO + "/adapters/omp/guards.ts") as f:
             source = f.read()
@@ -839,22 +851,22 @@ def oc_cases():
     node = shutil.which("node")
 
     def home(name, scripts=None, paths=None, timeout=None, rtk=None):
-        """A fixture home with the four guard scripts in ~/.claude/hooks/, each one that `scripts`
-        names replaced by its text there, or left out for None, and the plugins with their path
-        list in `plugins/`: `paths`, else the rendered list, or none for False. `timeout` replaces
-        the guard's timeout in milliseconds; `rtk`, the text of a fixture `rtk`, or None for a
-        path where none is."""
+        """A fixture home with the four guard scripts in hooks/, beside plugins/, each one that
+        `scripts` names replaced by its text there, or left out for None, and the plugins with their
+        path list in `plugins/`: `paths`, else the rendered list, or none for False. `timeout`
+        replaces the guard's timeout in milliseconds; `rtk`, the text of a fixture `rtk`, or None
+        for a path where none is."""
         scripts = scripts or {}
         h = FIXTURE.name + "/" + name
-        for d in ("/.claude/hooks", "/plugins", "/bin", "/.ssh"):
+        for d in ("/hooks", "/plugins", "/bin", "/.ssh"):
             os.makedirs(h + d)
         for script in OC_SCRIPTS:
             if script not in scripts:
-                os.symlink(HOOKS + script, h + "/.claude/hooks/" + script)
+                os.symlink(HOOKS + script, h + "/hooks/" + script)
             elif scripts[script] is not None:
-                with open(h + "/.claude/hooks/" + script, "w") as f:
+                with open(h + "/hooks/" + script, "w") as f:
                     f.write("#!/usr/bin/env python3\n" + scripts[script])
-                os.chmod(h + "/.claude/hooks/" + script, 0o755)
+                os.chmod(h + "/hooks/" + script, 0o755)
         if rtk is not None:
             with open(h + "/bin/rtk", "w") as f:
                 f.write(rtk)

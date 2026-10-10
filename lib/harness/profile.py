@@ -100,9 +100,9 @@ OLD_TIERS = {"opus": "large", "sonnet": "medium", "haiku": "small"}
 
 def read_models(path):
     """The model tables at `path`, parsed; a file that does not exist, cannot be read, is not
-    UTF-8 or is not TOML exits 2, and so does a table of the tiers, [claude], [opencode.models] or
-    [omp], with a key of OLD_TIERS: one message names each rename of each table, and a missing
-    [claude]."""
+    UTF-8 or is not TOML exits 2, and so does a table of the tiers, [claude], [models],
+    [opencode.models] or [omp.models], with a key of OLD_TIERS: one message names each rename of
+    each table, and a missing [claude]."""
     path = pathlib.Path(path)
     if not path.is_file():
         raise HarnessError(f"no model tables at {path} — copy examples/models.toml there and fill it in")
@@ -114,9 +114,10 @@ def read_models(path):
         raise HarnessError(f"{path} is not UTF-8") from None
     except tomllib.TOMLDecodeError as e:
         raise HarnessError(f"{path} is not TOML: {e}") from None
-    opencode = models.get("opencode")
+    opencode, omp = models.get("opencode"), models.get("omp")
     renames = []
-    for name, table in [("claude", models.get("claude")), ("omp", models.get("omp")),
+    for name, table in [("claude", models.get("claude")), ("models", models.get("models")),
+                        ("omp.models", omp.get("models") if isinstance(omp, dict) else None),
                         ("opencode.models", opencode.get("models") if isinstance(opencode, dict) else None)]:
         old = [t for t in OLD_TIERS if isinstance(table, dict) and t in table]
         if old:
@@ -146,6 +147,108 @@ def tier_table(path, name, frontend):
     if wrong:
         raise HarnessError(f"{path}: the tier {', '.join(wrong)} of [{name}] is not a string that names a model")
     return {t: table[t] for t in tiers}
+
+
+# The model tables that OpenCode and oh-my-pi share, at the top level of models.toml; each is
+# optional. `models` maps a tier to a model; `model_overrides` an agent to its model in place of its
+# tier's; `model_variants` a model to the effort of every agent on it; `variants` and
+# `reasoning_effort` an agent or a council seat to its effort, over `model_variants`; `councils` an
+# agent to its seats; `context_limits` a model to the input tokens it may hold. [opencode] and
+# [omp] may hold the same sub-tables, each key of which replaces the shared one for that frontend
+# alone. [claude] is Claude Code's table of the tiers, which reads none of them.
+MODEL_TABLES = ["models", "model_overrides", "model_variants", "variants", "reasoning_effort", "councils",
+                "context_limits"]
+# The frontends that read MODEL_TABLES, each with a table of its own overrides.
+SHARING = ("opencode", "omp")
+# A council has one to eight seats beside its agent.
+COUNCIL_SEATS = range(1, 9)
+
+
+def model_tables(path, name):
+    """The shared tables MODEL_TABLES of the model tables at `path`, each with the keys of its
+    sub-table of [`name`] over its own, every one present, and `path`. A council is a list of seats
+    {name, model}, at most one of them with `verify = true`, the seat that judges each verify
+    round alone; no two seats share a name. A context limit is a positive integer. Any other table,
+    at the top level or in [`name`], exits 2."""
+    path = pathlib.Path(path)
+    data = read_models(path)
+    tops = ["claude", *MODEL_TABLES, *SHARING]
+    if tiers := [t for t in frontmatter.TIERS if t in data]:
+        raise HarnessError(f"{path}: the tiers {', '.join(tiers)} are at the top level; move them into [models]")
+    if unknown := sorted(set(data) - set(tops)):
+        raise HarnessError(f"{path} has no table {', '.join(unknown)}; it has {', '.join(tops)}")
+    table = data.get(name, {})
+    if not isinstance(table, dict):
+        raise HarnessError(f"{path}: [{name}] is not a table")
+    if tiers := [t for t in frontmatter.TIERS if t in table]:
+        raise HarnessError(f"{path}: [{name}] holds the tiers {', '.join(tiers)}; move them into [models], or "
+                           f"into [{name}.models] for {name} alone")
+    if unknown := sorted(set(table) - set(MODEL_TABLES)):
+        raise HarnessError(f"{path}: [{name}] has no sub-table {', '.join(unknown)}; "
+                           f"it has {', '.join(MODEL_TABLES)}")
+    models = {}
+    for sub in MODEL_TABLES:
+        for label, part in ((f"[{sub}]", data.get(sub, {})), (f"[{name}.{sub}]", table.get(sub, {}))):
+            if not isinstance(part, dict):
+                raise HarnessError(f"{path}: {label} is not a table")
+        models[sub] = {**data.get(sub, {}), **table.get(sub, {})}
+    where = lambda sub: f"[{sub}] or [{name}.{sub}]"  # noqa: E731
+    for sub in ("models", "model_overrides", "model_variants", "variants", "reasoning_effort"):
+        if wrong := [k for k, v in models[sub].items() if not (isinstance(v, str) and v.strip())]:
+            raise HarnessError(f"{path}: the value of {', '.join(wrong)} in {where(sub)} is not a string that is "
+                               "not blank")
+    if wrong := [k for k, v in models["context_limits"].items() if not (type(v) is int and v > 0)]:
+        raise HarnessError(f"{path}: the value of {', '.join(wrong)} in {where('context_limits')} is not a "
+                           "positive integer")
+    # Each seat is installed as `<name>.md`, so a second seat of one name would replace the first.
+    seen = {}
+    for agent, seats in models["councils"].items():
+        if not (isinstance(seats, list) and all(
+                isinstance(s, dict) and {"name", "model"} <= set(s) <= {"name", "model", "verify"} for s in seats)):
+            raise HarnessError(f"{path}: councils.{agent} is a list of {{ name = …, model = … }}, "
+                               "and one seat may add `verify = true`")
+        if len(seats) not in COUNCIL_SEATS:
+            raise HarnessError(f"{path}: councils.{agent} has {len(seats)} seats; a council has 1 to 8")
+        for seat in seats:
+            for key in ("name", "model"):
+                if not isinstance(seat[key], str) or not seat[key].strip():
+                    raise HarnessError(f"{path}: the seat {key} {seat[key]!r} of councils.{agent} is not a string")
+            if not isinstance(seat.get("verify", False), bool):
+                raise HarnessError(f"{path}: `verify` of the seat {seat['name']!r} of councils.{agent} is not true or false")
+            if seat["name"] in seen:
+                raise HarnessError(f"{path}: the seat {seat['name']!r} of councils.{agent} is also a seat "
+                                   f"of councils.{seen[seat['name']]}")
+            seen[seat["name"]] = agent
+        if sum(s.get("verify", False) for s in seats) > 1:
+            raise HarnessError(f"{path}: more than one seat of councils.{agent} has `verify = true`")
+    models["path"] = path
+    return models
+
+
+def agent_model(name, tier, models, where):
+    """The model of the agent `name` of tier `tier` (None for an agent with no tier), with
+    `models` from model_tables: its override, else its tier's model, else None, which leaves the
+    agent on its caller's model. A tier with no model exits 2, naming `where`."""
+    model = None
+    if tier is not None:
+        if not isinstance(tier, str) or tier not in models["models"]:
+            raise HarnessError(f"{where}: the tier {tier!r} has no entry in the models of {models['path']}")
+        model = models["models"][tier]
+    return models["model_overrides"].get(name, model)
+
+
+def agent_effort(name, model, models):
+    """The effort of the agent or seat `name` on `model`: its `variants` entry, else its
+    `reasoning_effort` entry, else the `model_variants` entry of `model`, else None."""
+    return models["variants"].get(name, models["reasoning_effort"].get(name, models["model_variants"].get(model)))
+
+
+def council_description(source, seat, frontend):
+    """The description of the council seat `seat` of the agent `source` under `frontend`."""
+    verify = " It also judges each verify round, alone." if seat.get("verify") else ""
+    return (f"A member of the round-1 critic council of build-part under {frontend}, on {seat['model']}.{verify} "
+            f"The same agent as {source}, which has the full description. Spawn it only as the build-part "
+            "dispatcher.")
 
 
 def render_line(line, profile):

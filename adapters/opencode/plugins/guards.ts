@@ -1,7 +1,8 @@
 // The Claude Code guard hooks for OpenCode.
 //
 // Four `PreToolUse` hooks on Claude Code's Bash matcher refuse what a permission glob cannot
-// express. This plugin runs the same scripts, from ~/.claude/hooks/, on every `shell` call:
+// express. This plugin runs the same scripts, from OpenCode's own copy in hooks/ beside plugins/,
+// on every `shell` call:
 //
 //     no-blind-stage.py       a `git add` that stages more than the paths it names
 //     no-shell-file-write.py  a shell command that writes a file inside a git working tree
@@ -67,7 +68,7 @@ const { dirname, join, posix } = process.getBuiltinModule('node:path');
 const { fileURLToPath } = process.getBuiltinModule('node:url');
 
 const ID = 'research-harness.guards';
-const HOOKS = join(homedir(), '.claude', 'hooks');
+const HOOKS = join(dirname(fileURLToPath(import.meta.url)), '..', 'hooks');
 const GUARDS = ['no-blind-stage.py', 'no-shell-file-write.py', 'gh-api-writes.py', 'rm-scope.py'];
 const TIMEOUT_MS = 10_000;
 const CLOSED = `The guard plugin ${ID} (guards.ts) fails closed. Tell the user, and do not run the command in another form.`;

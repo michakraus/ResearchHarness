@@ -2,6 +2,36 @@
 
 ## Unreleased
 
+- **OpenCode and oh-my-pi keep their own copies, and oh-my-pi follows OpenCode's model layer.**
+  `harness install` copies the Claude Code layer's `RTK.md`, `instructions/`, rules, the four
+  guard scripts and the curated skills into `~/.config/opencode/` and `~/.omp/agent/`. Every
+  copied text, rule and agent names the frontend's own copies, not `~/.claude/`
+  (`frontends.relocate`). OpenCode's `instructions` and `AGENTS.md` of oh-my-pi import those
+  copies, and both guards run the scripts from `hooks/` beside them. The install removes the
+  links that it wrote to `~/.agents/skills/`, and writes nothing there. oh-my-pi reads the skills
+  through `skill://`; its guard lets `read`, `grep` and `bash` reach its copies of the skills, the
+  rules and the instructions, and keeps the rest of `~/.omp` closed.
+  **OpenCode and oh-my-pi share one set of model tables** at the top level of `models.toml`:
+  `models`, `model_overrides`, `model_variants`, `variants`, `reasoning_effort`, `councils` and
+  `context_limits`. `[opencode]` and `[omp]` hold the same sub-tables, and each of their keys
+  replaces the shared one for that frontend alone, so a file of the earlier form with complete
+  `[opencode]` tables still loads. `[claude]` stays Claude Code's table of the tiers. Tiers
+  directly in `[omp]` exit 2 and name `[models]`, and so does an unknown top-level table. So
+  oh-my-pi's agents get their model and thinking level as OpenCode's do, and oh-my-pi runs the
+  council of critics too. An agent's own `effort` no longer sets its thinking level, as it sets
+  no variant under OpenCode. A council seat with `verify = true` judges each verify round alone,
+  under both frontends. A new table, `context_limits`, caps
+  the input tokens of a model: OpenCode gets a `limit` in its `provider` object, oh-my-pi a
+  `contextWindow` in a new `models.yml`, which compaction reads. A new optional profile key,
+  `omp_providers`, holds oh-my-pi's own providers, one table each, as `opencode_providers` holds
+  OpenCode's; the install writes them into `models.yml`. Name a provider as OpenCode names the
+  same account, such as `azure-cognitive-services` for Claude on Azure, so that `models.toml`
+  holds one model string for both frontends. An `apiKey` there must name an environment
+  variable or be a `!command`; a literal key stops the install, and the message does not show
+  it. oh-my-pi's approval mode is
+  `yolo`: its deny and prompt patterns, the `eval` deny and the guard extension still apply.
+  `config.yml` keeps only `modelRoles.default`. K25 stays: its traceback moves to a later line.
+
 - **Four animated walk-throughs show the work step by step.** *Agents at work* shows a part from
   a task to a pull request with `build-part` and with `build-reviewed`. *The security model* shows
   one tool call through the layers of control. *Typical use* shows a change of a source through
