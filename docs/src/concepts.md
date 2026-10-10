@@ -1,9 +1,9 @@
 # Introduction
 
 This page explains the ideas behind Research Harness. It is for a reader who has not used the
-harness and is fairly new to [coding agents](#coding-agent). You need no Julia to read it. Each section ends with a
-note on how its idea carries to another language. The [glossary](#glossary) at the end of the page
-gives a short entry for each word that the other pages use.
+harness and is fairly new to [coding agents](#coding-agent). You need no Julia to read it. Each
+section ends with a note on how its idea carries to another language. The [glossary](#glossary)
+at the end of the page gives a short entry for each word that the other pages use.
 
 ## What a coding agent is
 
@@ -18,8 +18,8 @@ each action. The context has a size limit, and a new session starts with an empt
 coding agent forgets each session when it ends.
 
 Each action of the coding agent is a [tool call](#tool-call): read a file, edit a file, search, or
-run a shell command. The frontend shows each tool call in the session. Before some tool calls, it asks
-you first: this is a [permission prompt](#permission-prompt).
+run a shell command. The frontend shows each tool call in the session. Before some tool calls, it
+asks you first: this is a [permission prompt](#permission-prompt).
 
 **In another language.** Nothing in this section depends on Julia. The three frontends work on
 code in any language.
@@ -174,7 +174,7 @@ suite of your language and returns only the verdict.
 ### Coding agent
 
 A language model that works in your files and your terminal. It reads, runs commands and edits
-code to do a task in plain language. Claude Code, OpenCode and oh-my-pi are coding agents.
+code to do a task in plain language. You talk to it through a frontend.
 
 ### Frontend
 

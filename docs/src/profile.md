@@ -57,8 +57,9 @@ with your profile. From your profile it reads only `leak`, `org` and `repository
 
 ## The tables of the model tables
 
-An [agent](concepts.md#agent) or a [skill](concepts.md#skill) names a tier in its `model:`: `large`, `medium` or `small`. Only
-`harness install` reads the model tables. It maps each tier to the model of each frontend.
+An [agent](concepts.md#agent) or a [skill](concepts.md#skill) names a tier in its `model:`:
+`large`, `medium` or `small`. Only `harness install` reads the model tables. It maps each tier to
+the model of each frontend.
 
 | table | what it holds | read by |
 |:--|:--|:--|

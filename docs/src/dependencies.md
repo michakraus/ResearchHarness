@@ -302,8 +302,8 @@ Call site: the update job (`scripts/julia-update.jl`).
 
 ### Claude Code
 
-Claude Code is Anthropic's [coding agent](concepts.md#coding-agent) for the terminal. It is one of the three frontends that
-the harness configures.
+Claude Code is Anthropic's [coding agent](concepts.md#coding-agent) for the terminal. It is one
+of the three frontends that the harness configures.
 
 `harness install` writes the Claude Code layer into `~/.claude/`: the agents, skills,
 [rules](concepts.md#rule),
