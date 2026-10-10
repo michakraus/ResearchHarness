@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- **OpenCode's rtk plugin finds `rtk` on the `PATH`**, as Claude Code's hook `rtk hook claude`
+  does, in place of the fixed path `/opt/homebrew/bin/rtk`, which exists on a Mac with Homebrew
+  only. `harness install` warns when no `rtk` is on the `PATH`; the warning leaves its exit status
+  as it is. When OpenCode's `PATH` has no `rtk`, each command runs unchanged, as before. The probe
+  runs the plugin with a fixture `rtk` on the `PATH` of `node` alone, and with none there.
+  
 - **The docs pages describe OpenCode's and oh-my-pi's own copies and the shared model tables.**
   The pages on the skills, the hooks, the adapters, the profile and the other components, and the
   architecture, setup, command and dependency pages, still named the links in `~/.agents/skills/`,

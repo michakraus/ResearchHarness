@@ -225,8 +225,9 @@ rewrite. On each `shell` call it runs `rtk hook check <command>`. Exit 0 gives t
 command, which replaces the command of the call.
 
 The plugin never fails a command. When RTK is absent, fails or takes more than 10 s, the command
-runs as it is. It calls RTK at `/opt/homebrew/bin/rtk`. `harness install` warns when that file is
-not executable.
+runs as it is. It calls `rtk` from the `PATH` of OpenCode, as the hook of Claude Code does.
+`harness install` warns when no `rtk` is on the `PATH`; the warning does not change its exit
+status.
 
 The rewrite differs from the hook of Claude Code: the plugin also rewrites the first command of a
 pipeline. So `grep -n p f | cat` stops at the limit of `rtk grep`. For a complete search, use the

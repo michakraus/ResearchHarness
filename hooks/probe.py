@@ -796,8 +796,8 @@ def omp_cases():
 # directory, linked into the fixture's `~/.claude/hooks/`, each run through its own shebang as the
 # plugin runs it, and the path list is `guard-paths.json` rendered with the dummy profile and the
 # fixture's home. A fail-closed case gets a home of its own, with one guard script replaced or the
-# path list left out; the timeout case lowers `TIMEOUT_MS` in its copy, and an rtk case replaces
-# the `RTK` constant by a fixture `rtk`.
+# path list left out; the timeout case lowers `TIMEOUT_MS` in its copy. An rtk case runs `node` with
+# the fixture home's `bin/` as its whole `PATH`, so the plugin finds the fixture `rtk` there or none.
 OC_DRIVER = """
 const [plugin, kind, name, event, dir] = process.argv.slice(1);
 const hooks = [];
@@ -828,7 +828,6 @@ process.stdout.write(JSON.stringify(out));
 OC_SCRIPTS = ("no-blind-stage.py", "no-shell-file-write.py", "gh-api-writes.py", "rm-scope.py")
 OC_PLUGINS = {"guards": "research-harness.guards", "rtk": "research-harness.rtk", "env": "research-harness.env"}
 OC_GUARD = "research-harness.guards"  # each refusal of a guard that cannot answer names the plugin
-OC_RTK = "const RTK = '/opt/homebrew/bin/rtk';"
 
 
 def oc_event(command, tool="shell", **fields):
@@ -854,8 +853,8 @@ def oc_cases():
         """A fixture home with the four guard scripts in hooks/, beside plugins/, each one that
         `scripts` names replaced by its text there, or left out for None, and the plugins with their
         path list in `plugins/`: `paths`, else the rendered list, or none for False. `timeout`
-        replaces the guard's timeout in milliseconds; `rtk`, the text of a fixture `rtk`, or None
-        for a path where none is."""
+        replaces the guard's timeout in milliseconds; `rtk`, the text of a fixture `bin/rtk`, or None
+        for a `bin/` with none."""
         scripts = scripts or {}
         h = FIXTURE.name + "/" + name
         for d in ("/hooks", "/plugins", "/bin", "/.ssh"):
@@ -874,15 +873,12 @@ def oc_cases():
         for plugin in OC_PLUGINS:
             with open(REPO + f"/adapters/opencode/plugins/{plugin}.ts") as f:
                 source = f.read()
-            for wanted, line, new in [(timeout is not None and plugin == "guards", "const TIMEOUT_MS = 10_000;",
-                                       f"const TIMEOUT_MS = {timeout};"),
-                                      (plugin == "rtk", OC_RTK, f"const RTK = {json.dumps(h + '/bin/rtk')};")]:
-                if not wanted:
-                    continue
+            if timeout is not None and plugin == "guards":
+                line = "const TIMEOUT_MS = 10_000;"
                 if line not in source:
                     raise OSError(f"adapters/opencode/plugins/{plugin}.ts holds no line {line!r}, "
                                   "which a case replaces")
-                source = source.replace(line, new)
+                source = source.replace(line, f"const TIMEOUT_MS = {timeout};")
             with open(h + f"/plugins/{plugin}.mjs", "w") as f:
                 f.write(source)
         if paths is not False:
@@ -891,11 +887,14 @@ def oc_cases():
                     REPO + "/adapters/opencode/plugins/guard-paths.json", {**dummy, "home": h}))
         return h
 
-    def drive(h, plugin, event, kind="tool", name="execute.before", cwd=CWD, process_cwd=None):
+    def drive(h, plugin, event, kind="tool", name="execute.before", cwd=CWD, process_cwd=None, path=None):
         """The driver's answer for one event, or the text of what went wrong. `cwd` is the
         session's directory, `ctx.location.directory`; `process_cwd`, the working directory of
-        the `node` process, or None for this one's."""
+        the `node` process, or None for this one's; `path`, the `PATH` of the `node` process, or
+        None for this one's."""
         env = {k: v for k, v in CLEAN.items() if k != "OPENCODE_CONFIG_DIR"}
+        if path is not None:
+            env["PATH"] = path
         try:
             p = subprocess.run([node, "--input-type=module", "-e", OC_DRIVER, h + f"/plugins/{plugin}.mjs", kind, name,
                                 json.dumps(event), cwd], capture_output=True, text=True, timeout=TIMEOUT,
@@ -935,7 +934,9 @@ def oc_cases():
         report(False, "exp node got none  [oc-plugin]  `node` is not on PATH, so no case of the plugins runs")
         return total, wrong
     exit_with = "import sys\nsys.exit({})\n".format
-    rewrite = ('#!/bin/sh\nif [ "$1 $2 $3" = "hook check git status" ]; then echo "rtk git status"; exit 0; fi\n'
+    # The fixture's rewrite is not the real RTK's `rtk git status`, so an `rtk` found elsewhere than
+    # on the fixture's PATH, such as a fixed path in the plugin, cannot give it.
+    rewrite = ('#!/bin/sh\nif [ "$1 $2 $3" = "hook check git status" ]; then echo "fixture-rtk git status"; exit 0; fi\n'
                'echo "No rewrite for: $3"; exit 1\n')
     try:
         good = home("oc-home", rtk=rewrite)
@@ -1016,15 +1017,16 @@ def oc_cases():
     got = answer if isinstance(answer, str) else (answer.get("setup"), answer["hooks"])
     report(got == (None, 1), f"exp {(None, 1)} got {got}  [oc-guards]  setup with no path list")
 
-    # The rewrite: (home, command after the hook).
-    for label, h, expected in [("rtk rewrites", good, "rtk git status"),
-                               ("rtk exits 1", fail["rtk exits 1"], "git status"),
-                               ("no rtk", fail["no rtk"], "git status")]:
-        answer = drive(h, "rtk", oc_event("git status"))
-        got = answer if isinstance(answer, str) else answer["event"]["input"]["command"]
+    # The rewrite: (home, command after the hook, verdict). The plugin finds `rtk` on the PATH of
+    # `node` alone, which is the home's `bin/`: the fixture there, or no `rtk` at all.
+    for label, h, expected in [("rtk rewrites", good, ("fixture-rtk git status", "pass")),
+                               ("rtk exits 1", fail["rtk exits 1"], ("git status", "pass")),
+                               ("no rtk on the PATH", fail["no rtk"], ("git status", "pass"))]:
+        answer = drive(h, "rtk", oc_event("git status"), path=h + "/bin")
+        got = answer if isinstance(answer, str) else (answer["event"]["input"]["command"], answer["verdict"])
         report(got == expected, f"exp {expected!r} got {got!r}  [oc-rtk   ]  {label}: git status")
     # Only the `shell` tool's command is rewritten.
-    answer = drive(good, "rtk", oc_event("git status", tool="bash"))
+    answer = drive(good, "rtk", oc_event("git status", tool="bash"), path=good + "/bin")
     got = answer if isinstance(answer, str) else answer["event"]["input"]["command"]
     report(got == "git status", f"exp 'git status' got {got!r}  [oc-rtk   ]  rtk rewrites, a bash event: git status")
 
