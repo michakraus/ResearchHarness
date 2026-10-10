@@ -190,7 +190,8 @@ export async function callGraph(root?: string): Promise<Graph> {
     return g
   }
   // A graph runs to the right when it fits the doc column so, and downwards when it fits only so.
-  // When neither fits, it runs to the right, and the check of the built site names it.
+  // When neither fits, it runs to the right, and the check of the built site names it unless
+  // the check exempts it by title.
   let direction: Direction = 'RIGHT'
   let graph = await aligned(direction)
   if (graph.width! > MAX_WIDTH) {

@@ -2,7 +2,7 @@
 // `node --test scripts/`, which `npm run docs:check` does first.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { figureWidth, figures, geometryProblems, layerProblems, meet, points } from './figures.mjs'
+import { figureWidth, figures, geometryProblems, layerProblems, meet, points, widthProblem } from './figures.mjs'
 
 const box = (name, x, y, w, h) => `<rect data-box="${name}" x="${x}" y="${y}" width="${w}" height="${h}"/>`
 const edge = (from, to, d) => `<path data-edge="${from} → ${to}" data-from="${from}" data-to="${to}" d="${d}"/>`
@@ -90,6 +90,15 @@ test('the width of a figure is the width of its viewBox, in either case of the a
   assert.equal(figureWidth(one(box('a', 0, 0, 10, 10))), 400)
   assert.equal(figureWidth(figures('<svg role="img" viewbox="-12 -12 765.5 300"><title>T</title></svg>')[0]), 765.5)
   assert.ok(Number.isNaN(figureWidth(figures('<svg role="img"><title>T</title></svg>')[0])))
+})
+
+test('a figure wider than the limit is a problem, unless its title is exempt by name', () => {
+  const wide = (title) => figures(`<svg role="img" viewbox="-12 -12 1171 300"><title>${title}</title></svg>`)[0]
+  assert.equal(widthProblem(wide('Every spawn'), 765, ['Every spawn']), null)
+  assert.equal(widthProblem(wide('The calls of build-part'), 765, ['Every spawn']), 'is 1171 px wide, more than 765 px')
+  assert.equal(widthProblem(wide('Every spawn of a part'), 765, ['Every spawn']), 'is 1171 px wide, more than 765 px')
+  assert.equal(widthProblem(figures('<svg role="img" viewbox="0 0 765 300"><title>T</title></svg>')[0], 765), null)
+  assert.equal(widthProblem(figures('<svg role="img"><title>T</title></svg>')[0], 765), 'is NaN px wide, more than 765 px')
 })
 
 // A graph that runs downwards: a, then the row of b, c and d.

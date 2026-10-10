@@ -7,7 +7,8 @@
   wide, so that the column draws it at a scale of 0.9 or more. Else it runs downwards, in rows of
   at most three boxes. The boxes of one column or row have the width of the widest box and share
   their left or top edge. `docs:check` names a call graph that is wider than 765 px, and a layer
-  whose boxes differ in width or edge. In the flow figure, `harness install` is a dashed group with
+  whose boxes differ in width or edge. *Every spawn* is the one exemption from the width rule: it
+  has 16 boxes and 16 labelled edges, and it stays drawn to the right, 1171 px wide. In the flow figure, `harness install` is a dashed group with
   a card for each of its steps, in the order in which `lib/harness/install.py` runs them, and
   `harness settings install` is below it; `docs:check` checks the cards and their order. The
   landing page says that your session keeps its context, not its room.

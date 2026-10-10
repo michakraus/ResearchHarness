@@ -228,6 +228,14 @@ export function figureWidth(fig) {
   return m ? Number(m[1].trim().split(/[\s,]+/)[2]) : NaN
 }
 
+/** The problem of a figure that is wider than `max` px, or null. A figure whose title `exempt`
+ * names has no width rule; the exemption is by title only. */
+export function widthProblem(fig, max, exempt = []) {
+  if (exempt.includes(fig.title)) return null
+  const width = figureWidth(fig)
+  return width <= max ? null : `is ${width} px wide, more than ${max} px`
+}
+
 /** The problems of the layers of a graph: the boxes of one layer have one width and share one
  * edge line. The edges give the direction: a graph whose edges leave their boxes at the bottom
  * runs downwards, and its layers are rows that share the top edge; a graph whose edges leave on
