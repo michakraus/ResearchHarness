@@ -193,7 +193,7 @@ agents, the skills, the rules, the commands and the hooks, and last the stamp
 `~/.claude/.harness-install.json`.
 
 These sections are the permission settings, the hooks, the [sandbox](concepts.md#sandbox) of
-Claude Code, and the effort and auto-compact window of each model. Without them, Claude Code runs
+Claude Code, and the [effort](concepts.md#effort) and auto-compact window of each model. Without them, Claude Code runs
 with its own defaults: no guard hook refuses a command, and no sandbox limits a shell command. An
 `/effort` or `/autocompact` that you type holds until the next install, which replaces it. The
 settings come first, so that a new deny rule is in place before the files that it protects. The
