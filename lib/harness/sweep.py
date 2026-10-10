@@ -42,7 +42,6 @@ VERBS = [
     ("settings selftest", ["settings", "selftest"]),
     ("settings twins", ["settings", "twins"]),
     ("settings domains", ["settings", "domains"]),
-    ("settings install", ["settings", "install"]),
     ("githooks", ["githooks"]),
     ("wiki-lint-hook", ["wiki-lint-hook"]),
     ("workflows", ["workflows"]),
@@ -57,17 +56,17 @@ VERBS = [
 # precondition of every verb that reads it; `settings compare` reads it to render the proposal.
 PRECONDITIONS = [
     ("the profile file", ".config/research-harness/profile.toml",
-     ["install", "settings compare", "settings install", "workflows", "render", "get", "leaks"]),
+     ["install", "settings compare", "workflows", "render", "get", "leaks"]),
     ("the model tables", ".config/research-harness/models.toml", ["install"]),
     ("~/.config/opencode", ".config/opencode", ["install"]),
     ("the tree instructions", "Research/Environment/Agents", ["install"]),
     ("~/.claude.json", ".claude.json", ["trust"]),
     ("~/.claude/settings.json", ".claude/settings.json",
-     ["settings surface", "settings twins", "settings domains", "settings install"]),
+     ["settings surface", "settings twins", "settings domains"]),
     ("a repository_roots entry", "Research/Experiments", ["leaks"]),
 ]
 
-APPLY = ["githooks", "wiki-lint-hook", "workflows", "trust", "settings install"]
+APPLY = ["githooks", "wiki-lint-hook", "workflows", "trust"]
 
 # The variables that would point a verb past the fixture.
 UNSET = ["RESEARCH_HARNESS_PROFILE", "RESEARCH_HARNESS_MODELS", "RESEARCH_HARNESS_JULIA",

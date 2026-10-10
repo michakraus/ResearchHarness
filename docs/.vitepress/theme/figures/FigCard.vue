@@ -1,7 +1,8 @@
 <script setup lang="ts">
 // A card: a rounded box at (x, y) with an icon on a tinted square, a title and up to two grey
-// lines. `tinted` fills the box with the accent's light colour. `box` names the card for the
-// geometry check of docs:check; it is the title unless given.
+// lines. `tinted` fills the box with the accent's light colour; `dashed` draws an outcome, with a
+// dashed border and no shadow. `box` names the card for the geometry check of docs:check; it is
+// the title unless given.
 import { computed } from 'vue'
 import FigIcon from './FigIcon.vue'
 import { CARD_PAD, ICON_BOX, LINE_SIZE, TITLE_SIZE, cardWidth } from './geometry'
@@ -16,9 +17,10 @@ const props = withDefaults(defineProps<{
   lines?: string[]
   accent?: string
   tinted?: boolean
+  dashed?: boolean
   code?: boolean
   box?: string
-}>(), { lines: () => [], accent: 'slate', tinted: false, code: false, box: undefined })
+}>(), { lines: () => [], accent: 'slate', tinted: false, dashed: false, code: false, box: undefined })
 
 // A hand layout that gives a card too little room stops the build.
 const need = cardWidth(props.title, props.lines, props.code)
@@ -37,7 +39,7 @@ const text = computed(() => {
 </script>
 
 <template>
-  <g :class="['fig-card', `fig-accent-${props.accent}`, { 'fig-card-tinted': props.tinted }]">
+  <g :class="['fig-card', `fig-accent-${props.accent}`, { 'fig-card-tinted': props.tinted, 'fig-card-dashed': props.dashed }]">
     <rect
       class="fig-card-box"
       :data-box="props.box ?? props.title"

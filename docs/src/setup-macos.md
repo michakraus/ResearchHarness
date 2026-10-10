@@ -33,8 +33,8 @@ curl -fsSL https://install.julialang.org | sh
 **Without Julia code**, skip the second line: fatou checks Julia code only.
 
 The third line downloads the installer of `juliaup` and runs it. The installer asks you to
-confirm its settings; its default settings install `juliaup` and the current Julia release, and
-add them to the `PATH` in your shell's start file. Open a new terminal after it, so that your shell
+confirm its settings; with its default settings, it installs `juliaup` and the current Julia release, and
+adds them to the `PATH` in your shell's start file. Open a new terminal after it, so that your shell
 finds `julia`. The six Julia packages of [Dependencies](dependencies.md#julia-and-its-packages)
 need no command: the first install adds them.
 
@@ -168,8 +168,7 @@ copies each [agent](concepts.md#agent), [skill](concepts.md#skill), [rule](conce
 
 The first `--apply` also instantiates the Julia environment of the scripts, so it downloads the
 Julia packages of `Project.toml`. The warnings after the plan name what the install does not do
-for you. For example, the Kaimon entry needs a token file, and `harness install` does not write
-`~/.claude/settings.json`.
+for you. For example, the Kaimon entry needs a token file.
 
 Without the OpenCode directory, `harness install` stops with exit 2, an error, and tells you to
 start OpenCode once. Without `~/.claude/skills/`, it stops with exit 2, an error, and says that
@@ -181,6 +180,39 @@ means that the installed files are the files of the sources.
 ```bash
 harness install
 ```
+
+### Claude Code
+
+`harness install` writes the Claude Code layer into `~/.claude/`. Its first file is
+`~/.claude/settings.json`: the install writes the sections `permissions`, `hooks` and `sandbox` of
+the file from the settings template `settings/settings.proposal.json`, rendered with the profile.
+It keeps every other key of the file, such as the model that you choose in Claude Code, and it
+keeps the old file as a backup, `settings.json.bak-<date>-<time>`. If the file does not exist, the
+install makes it, with these three sections only. Then it writes the instruction files, the
+agents, the skills, the rules, the commands and the hooks, and last the stamp
+`~/.claude/.harness-install.json`.
+
+These sections are the permission settings, the hooks and the [sandbox](concepts.md#sandbox) of
+Claude Code. Without them, Claude Code runs with its own defaults: no guard hook refuses a command,
+and no sandbox limits a shell command. The settings come first, so that a new deny rule is in place
+before the files that it protects. The dry run prints the difference of the three sections after
+the line of the file, for example:
+
+```text
+~/.claude/settings.json            REPLACE (backup: settings.json.bak-20261010-175004)
+--- ~/.claude/settings.json
++++ settings/settings.proposal.json
+```
+
+Read this difference before each `--apply`. [security.md](security.md) describes what the settings
+stop, and how to check a change of them. The installed settings refuse an edit of
+`~/.claude/settings.json` from a [session](concepts.md#session), so you run the install yourself,
+in your own terminal. The install reads the file when it makes its plan, so do not change the
+model of a running session while `--apply` runs: Claude Code writes the file then, and that change
+is lost.
+
+If `~/.claude/settings.json` is not a JSON object, is a symlink, or holds one of the three sections
+as a value that is not an object, the install stops with exit 2, an error, and writes no file.
 
 ### OpenCode
 
@@ -195,45 +227,6 @@ and the agents. It also links the skills into `~/.agents/skills/`.
 `$PI_CODING_AGENT_DIR`, else `~/.omp/agent/`: `config.yml` with the permission layer and the
 models, the guard extension, `AGENTS.md`, the rules, the agents and `mcp.json`.
 [architecture.md](architecture.md#the-opencode-and-oh-my-pi-adapters) describes the adapter.
-
-## `harness settings install --apply`
-
-**What it does.** `harness settings install` writes the sections `permissions`, `hooks` and
-`sandbox` of `~/.claude/settings.json` from the settings template
-`settings/settings.proposal.json`. It keeps every other key of the file. The file must exist,
-else the verb stops with exit 2, an error. If it does not exist, make an empty one:
-
-```bash
-test -f ~/.claude/settings.json || echo '{}' > ~/.claude/settings.json
-```
-
-Run the dry run. It prints the difference, and it exits 1, which means that it would change the
-file:
-
-```bash
-harness settings install
-```
-
-Then install the sections:
-
-```bash
-harness settings install --apply
-```
-
-**Why.** These sections are the permission settings, the hooks and the
-[sandbox](concepts.md#sandbox) of Claude Code. Without them, Claude Code runs with its own
-defaults: no guard hook refuses a command, and no sandbox limits a shell command. The installed
-settings refuse an edit of `~/.claude/settings.json` from a [session](concepts.md#session), so
-you run this verb yourself, in your own terminal. [security.md](security.md) describes what the
-settings stop, and how to check a change of them.
-
-**Check.** Run the dry run again. It prints
-`the owned sections are identical — nothing to install`, and it exits 0, which means that the
-file holds the sections of the template.
-
-```bash
-harness settings install
-```
 
 ## `git config core.hooksPath .githooks`
 

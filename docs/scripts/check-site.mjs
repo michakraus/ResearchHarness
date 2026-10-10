@@ -16,7 +16,8 @@
 //   and no two labels overlap (scripts/figures.mjs);
 // - each call graph but Every spawn is at most 765 px wide, and the boxes of each of its layers
 //   have one width and share one edge line;
-// - in the flow figure, the group harness install holds a card for each of its steps, in order;
+// - in the flow figure, the group harness install holds a card for each of its steps, in order,
+//   and no box is harness settings install;
 // - every colour of the style module of the figures has a value for the dark theme in the built
 //   CSS, and no figure component or the generator names a colour itself.
 //
@@ -24,7 +25,7 @@
 import { readFileSync, readdirSync, existsSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { figures as figuresOf, geometryProblems, labelProblems, layerProblems, widthProblem } from './figures.mjs'
+import { animationProblems, figures as figuresOf, geometryProblems, labelProblems, layerProblems, widthProblem } from './figures.mjs'
 
 const DOCS = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const BUILD = path.join(DOCS, 'build')
@@ -137,25 +138,40 @@ for (const [page, text] of built) {
 const FIGURES = {
   'index.md': ['The harness and its three layers', 'From the sources to the frontends'],
   'concepts.md': ['The harness and its three layers', 'The harness, the profile and the tree instructions', 'The layers of control around one tool call'],
-  'agents-at-work.md': ['The calls of build-part', 'The calls of build-reviewed', 'The calls of julia-pr-shepherd', 'Every spawn']
+  'agents-at-work.md': [
+    'The calls of build-part', 'From a task to a pull request with build-part',
+    'The calls of build-reviewed', 'From a task to a pull request with build-reviewed',
+    'The calls of julia-pr-shepherd', 'Every spawn'
+  ],
+  'security.md': ['One tool call through the layers of control'],
+  'daily-use.md': ['From an edit to the drift check']
 }
+// The animated walk-throughs, by their <title>. Every figure with a <style>, a @keyframes or a SMIL
+// element is animated, and each animated figure passes the checks of scripts/figures.mjs.
+const WALKTHROUGHS = [
+  'From a task to a pull request with build-part', 'From a task to a pull request with build-reviewed',
+  'One tool call through the layers of control', 'From an edit to the drift check'
+]
+const animated = (f) => /<style\b|@keyframes|<(?:animate|animateMotion|animateTransform|set)\b/.test(f.svg)
 // The call graphs are compact: the doc column of VitePress 1.6.4 is 688 px wide (VPDoc.vue), so a
 // graph of at most 765 px shows at a scale of 0.9 or more. The boxes of one layer of a call graph
 // have one width and share one edge line.
-const CALL_GRAPHS = FIGURES['agents-at-work.md']
+const CALL_GRAPHS = ['The calls of build-part', 'The calls of build-reviewed', 'The calls of julia-pr-shepherd', 'Every spawn']
 const MAX_GRAPH_WIDTH = 765
 // The one exemption from the width, by title: Every spawn has 16 boxes and 16 labelled edges, and
 // elkjs draws it no narrower than 852 px, and that only with crossing edges, so it runs to the
 // right. Its layers and its geometry are still checked.
 const WIDE_GRAPHS = ['Every spawn']
 // In the flow figure, harness install is a group that holds a card for each of its steps, from top
-// to bottom in the order in which lib/harness/install.py runs them.
+// to bottom in the order in which lib/harness/install.py runs them; the settings are the first file
+// of the Claude Code plan. No box is the removed verb harness settings install.
 const FLOW = 'From the sources to the frontends'
 const INSTALL_STEPS = [
-  'Read the profile', 'Render the sources', 'Install Julia packages', 'Write Claude Code',
-  'Write the stamp', 'Write the other layers', 'Link the skills'
+  'Read the profile', 'Render the sources', 'Install Julia packages', 'Merge the settings',
+  'Write Claude Code', 'Write the stamp', 'Write the other layers', 'Link the skills'
 ]
 let figures = 0
+let walkthroughs = 0
 for (const [page, text] of built) {
   const found = figuresOf(text)
   figures += found.length
@@ -176,6 +192,16 @@ for (const [page, text] of built) {
     if (f.images > 0) problem(`${name} holds an image or a foreign object, not SVG shapes`)
     for (const p of geometryProblems(f)) problem(`${name}: ${p}`)
     for (const p of labelProblems(f)) problem(`${name}: ${p}`)
+    if (WALKTHROUGHS.includes(f.title) && !animated(f)) problem(`${name} is a walk-through with no animation`)
+    // A walk-through takes the width rule of the call graphs, with no exemption.
+    if (WALKTHROUGHS.includes(f.title)) {
+      const wide = widthProblem(f, MAX_GRAPH_WIDTH)
+      if (wide) problem(`${name} ${wide}`)
+    }
+    if (animated(f)) {
+      walkthroughs++
+      for (const p of animationProblems(f)) problem(`${name} ${p}`)
+    }
     if (CALL_GRAPHS.includes(f.title)) {
       const wide = widthProblem(f, MAX_GRAPH_WIDTH, WIDE_GRAPHS)
       if (wide) problem(`${name} ${wide}`)
@@ -188,6 +214,7 @@ for (const [page, text] of built) {
       if (inside.join('\n') !== INSTALL_STEPS.join('\n')) {
         problem(`${name}: the group harness install holds ${inside.length ? inside.join(', ') : 'no card'}, not the steps ${INSTALL_STEPS.join(', ')}`)
       }
+      if (f.boxes.some((b) => b.name === 'harness settings install')) problem(`${name} has a box harness settings install`)
     }
   }
 }
@@ -213,15 +240,27 @@ for (const name of colours) {
   if (!dark.has(name)) problem(`the colour ${name} of the figures has no value under .dark`)
 }
 
-// The figure components and their generator name no colour: every colour is in the style module.
-const FIGURE_SOURCES = path.join(DOCS, '.vitepress', 'theme', 'figures')
-for (const file of readdirSync(FIGURE_SOURCES)) {
-  const lines = readFileSync(path.join(FIGURE_SOURCES, file), 'utf8').split('\n')
-  for (const [i, line] of lines.entries()) {
-    if (/#[0-9a-fA-F]{3,8}\b|rgba?\(|hsla?\(/.test(line)) problem(`docs/.vitepress/theme/figures/${file}:${i + 1} names a colour; use a property of figures.css`)
+// The figure components, their generators and the data of the figures in docs/figures/ name no
+// colour: every colour is in the style module.
+for (const dir of [path.join(DOCS, '.vitepress', 'theme', 'figures'), path.join(DOCS, 'figures')]) {
+  for (const file of readdirSync(dir)) {
+    const lines = readFileSync(path.join(dir, file), 'utf8').split('\n')
+    for (const [i, line] of lines.entries()) {
+      if (/#[0-9a-fA-F]{3,8}\b|rgba?\(|hsla?\(/.test(line)) problem(`${path.relative(path.dirname(DOCS), path.join(dir, file))}:${i + 1} names a colour; use a property of figures.css`)
+    }
+  }
+}
+
+// The hero of the home page sends a new reader to the introduction: its action Get started links
+// the page concepts.md.
+if (built.has('index.md')) {
+  const actions = [...content('index.md', built.get('index.md')).matchAll(/<a [^>]*?href="([^"]*)"[^>]*>\s*Get started\s*<\/a>/g)].map((m) => m[1])
+  if (actions.length !== 1 || actions[0] !== url('concepts.md')) {
+    problem(`index.md: the action Get started links ${actions.length ? actions.join(', ') : 'nothing'}, not ${url('concepts.md')}`)
   }
 }
 
 for (const p of problems) console.log(p)
-console.log(`${built.size} pages, ${fragments} links to a heading, ${figures} figures, ${colours.length} figure colours, ${problems.length} problems`)
+console.log(`${built.size} pages, ${fragments} links to a heading, ${figures} figures (${walkthroughs} animated), ` +
+  `${colours.length} figure colours, ${problems.length} problems`)
 process.exit(problems.length === 0 ? 0 : 1)

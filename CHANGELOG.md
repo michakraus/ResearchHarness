@@ -32,6 +32,67 @@
   `yolo`: its deny and prompt patterns, the `eval` deny and the guard extension still apply.
   `config.yml` keeps only `modelRoles.default`. K25 stays: its traceback moves to a later line.
 
+- **Four animated walk-throughs show the work step by step.** *Agents at work* shows a part from
+  a task to a pull request with `build-part` and with `build-reviewed`. *The security model* shows
+  one tool call through the layers of control. *Typical use* shows a change of a source through
+  `harness install` to the drift check at the next session start. A `WalkThrough` component draws
+  each one from its data file `docs/figures/walkthrough-<name>.toml`: a title and a subtitle, boxes
+  on a grid, dashed groups, and edges with right angles and labels. Each edge cites the
+  `file:line` that states its step. A box of an agent or a skill takes its model and effort from
+  the source's frontmatter and `examples/models.toml`, through `sources.ts`, which the call
+  graphs also read; a box can show the effort of its spawn instead, which an entry of
+  `calls.toml` must record, so the two critics of round 1 show `high`. The cards of one column
+  have one width, and a walk-through is at most 765 px wide, as a call graph. The colour of a
+  box says who acts: you and your session, an agent of each tier, a step with no agent, or a
+  dashed outcome; a legend explains the colours. The animation is CSS in the figure's own
+  `<style>`: the active box has a dark outline and the others fade, and a red token runs along
+  each edge in 0.7 s; each step holds 1.5 s, and the animation loops. Under
+  `prefers-reduced-motion` no animation runs, every box shows, and no token shows. With
+  JavaScript on, play, pause and step buttons show under the figure. `docs:check` finds each
+  walk-through by its title and checks each animated figure: its SVG parses as XML, it holds no
+  `<script>`, no SMIL and no other host, it loops, it has the reduced-motion rules, its timing
+  is 0.5–0.8 s per edge and at least 1.2 s per step, and it is at most 765 px wide. `harness test`
+  names a box that shows no agent or skill of the repository, an effort that no spawn of
+  `calls.toml` has, and a cited line that does not exist. The colour scan of
+  `docs:check` also reads `docs/figures/`. The *Get started* action of the landing page links the
+  *Introduction*, and `docs:check` fails when it links another page.
+- **The `pre-push` hook scans the commits that a push brings to `main`**, `old..sha` as CI does,
+  in place of the commits that no ref of `origin` holds. A commit that a branch on `origin`
+  already held passed the hook unscanned: Unify part M pushed its branch first, and a home path
+  that one of its commits added and the next removed reached `main` through the hook and was
+  found only by CI. The history of `main` was rewritten to drop that commit.
+- **The `pre-push` hook finds a Python of 3.11 or later under a versioned name.** It takes the
+  first of `python3`, `python3.14`, `python3.13`, `python3.12` and `python3.11` that is 3.11 or
+  later, for `harness leaks` and the suite, and still runs the suite on `python3.11` too. A
+  Homebrew upgrade can drop the unversioned `python3` link, and the hook then refused every push
+  to `main` because the system's `python3` is 3.9.
+- **`harness install` merges the Claude Code settings, and `harness settings install` is gone.**
+  `~/.claude/settings.json` is the first file of the Claude Code plan, before the other files
+  of its layer, so a new deny rule is in place before the files that it protects. The merge
+  replaces each of `permissions`, `hooks` and `sandbox` with the section of the settings template
+  `settings/settings.proposal.json`, rendered with the profile, or removes the section when the
+  template lacks it. Every other key keeps its value and its place. The indent of the live file
+  is kept, and no character is escaped but a lone surrogate. A file whose owned sections equal
+  the template's is left untouched. Otherwise the file keeps its mode, and the old file is kept
+  as `settings.json.bak-<stamp>`. The backup of each file that `harness install` replaces, for
+  every frontend, now keeps the mode of the file it copies. The dry run
+  prints a `REPLACE` or `INSTALL` line, then the unified diff of the owned sections, and counts
+  the change as one. A missing file is created with the three sections, indent 2 and mode 0644.
+  The setup guide and the README no longer have the `echo '{}'` step. A file that cannot be
+  merged (not UTF-8, not JSON, not a JSON object, an owned key whose value is not an object, a
+  symlink, a directory, or unreadable) stops the install with exit 2 and one line that names
+  the file and the reason, before any file of any frontend is written.
+  `harness settings install`, with its flags `--proposal` and `--settings`, is removed. The
+  verb `harness settings` keeps `surface`, `compare`, `selftest`, `twins` and `domains`. The
+  warning of `harness install` that the settings would change is gone. Permission rules in other
+  settings files (`settings.local.json` and the `.claude/settings.json` of the research root and
+  its directories) now print in the output of `harness install`. A file that cannot be read as
+  a settings file is a warning, not a traceback. A Plan file may carry a sixth element, text
+  printed after the file's line when the file is a change. The undo of a settings change is
+  `git revert <commit>` and `harness install --apply`. The flow figure and the docs no longer
+  name the removed verb. The flow figure has a step card, *Merge the settings*, before
+  *Write Claude Code*.
+
 - **The call graphs are compact, and the flow figure shows the steps of `harness install`.** A
   call graph of *Agents at work* runs to the right when it fits the doc column, at most 765 px
   wide, so that the column draws it at a scale of 0.9 or more. Else it runs downwards, in rows of

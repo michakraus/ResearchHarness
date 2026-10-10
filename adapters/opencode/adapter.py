@@ -927,7 +927,10 @@ def install_cases(check, tmp):
     token.rmdir()
     token.write_text("token\n")
     text, last = dry_run()
-    check("opencode-token" not in text and re.search(r"^\d+ change\(s\) to make\.$", text, re.M) is not None,
+    # The diff of the Claude Code settings names the token path in a deny rule, so the warnings are
+    # looked for by their own text.
+    check("opencode-token does not exist" not in text and f"{token} cannot be checked" not in text
+          and re.search(r"^\d+ change\(s\) to make\.$", text, re.M) is not None,
           "a regular file at the token path is neither missing nor unchecked: " + last)
 
     scratch = Scratch(check, tmp / "scratch")

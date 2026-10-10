@@ -1,0 +1,132 @@
+# The walk-through of one tool call through the layers of control: the instructions, the checks
+# before the call (the guard hooks and the permission settings, which deny, ask or allow), your
+# answer, the sandbox and the result. The token takes the path of an `ask`. The static figure of
+# the introduction (ControlFigure.vue) shows the same layers. The keys are those of
+# walkthrough-install.toml.
+
+title = "One tool call through the layers of control"
+subtitle = "A shell command of the agent meets the checks before the call, a permission prompt and the sandbox."
+steps = [
+  "instructions -> session",
+  "session -> checks",
+  "checks -> you",
+  "you -> sandbox",
+  "sandbox -> result",
+]
+
+[[box]]
+id = "instructions"
+cell = [0, 0]
+kind = "step"
+name = "Instructions"
+lines = ["CLAUDE.md, rules, skills", "say what to do"]
+icon = "rule"
+
+[[box]]
+id = "session"
+cell = [1, 0]
+kind = "you"
+name = "Your session"
+lines = ["the agent plans", "a shell command"]
+icon = "agent"
+
+[[group]]
+id = "checks"
+cell = [1, 1]
+name = "Checks before the call"
+
+[[box]]
+id = "hooks"
+in = "checks"
+kind = "step"
+name = "Guard hooks"
+lines = ["refuse an unsafe", "shell command"]
+icon = "guard"
+
+[[box]]
+id = "settings"
+in = "checks"
+kind = "step"
+name = "Permission settings"
+lines = ["deny, ask or allow", "each tool call"]
+icon = "settings"
+
+[[box]]
+id = "refused"
+cell = [0, 1]
+kind = "outcome"
+name = "Refused"
+lines = ["with a reason", "for the agent"]
+icon = "ban"
+
+[[box]]
+id = "you"
+cell = [2, 1]
+kind = "you"
+name = "You"
+lines = ["answer the", "permission prompt"]
+
+[[box]]
+id = "sandbox"
+cell = [1, 2]
+kind = "step"
+name = "The OS sandbox"
+lines = ["limits the files and", "the hosts of the command"]
+icon = "sandbox"
+
+[[box]]
+id = "result"
+cell = [1, 3]
+kind = "outcome"
+name = "The result"
+lines = ["the command reads and", "writes your files"]
+icon = "drive"
+
+[[edge]]
+from = "instructions"
+to = "session"
+route = ["right", "left"]
+label = "read"
+at = "docs/src/concepts.md:128"
+
+[[edge]]
+from = "session"
+to = "checks"
+route = ["bottom", "top"]
+label = "a tool call"
+at = "docs/src/components/hooks.md:5"
+
+[[edge]]
+from = "checks"
+to = "refused"
+route = ["left", "right"]
+label = "deny"
+at = "docs/src/security.md:27"
+
+[[edge]]
+from = "checks"
+to = "you"
+route = ["right", "left"]
+label = "ask"
+at = "docs/src/security.md:27"
+
+[[edge]]
+from = "checks"
+to = "sandbox"
+route = ["bottom", "top"]
+label = "allow"
+at = "docs/src/concepts.md:126"
+
+[[edge]]
+from = "you"
+to = "sandbox"
+route = ["bottom", "y 2", "right"]
+label = "yes"
+at = "docs/src/concepts.md:203"
+
+[[edge]]
+from = "sandbox"
+to = "result"
+route = ["bottom", "top"]
+label = "runs"
+at = "docs/src/concepts.md:139"

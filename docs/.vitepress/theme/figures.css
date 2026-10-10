@@ -16,6 +16,7 @@
   --fig-line-card: 1px;
   --fig-line-panel: 1.25px;
   --fig-line-arrow: 1.5px;
+  --fig-line-active: 3px;
   --fig-dash: 5 4;
 
   --fig-text: #1e293b;
@@ -29,6 +30,8 @@
   --fig-group-line: #94a3b8;
   --fig-arrow: #475569;
   --fig-label: #ffffff;
+  --fig-active: #0f172a;
+  --fig-token: #dc2626;
 
   --fig-slate: #334155;
   --fig-slate-soft: #eef2f6;
@@ -62,6 +65,8 @@
   --fig-group-line: #4b5563;
   --fig-arrow: #a3adbb;
   --fig-label: #1b1b1f;
+  --fig-active: #f8fafc;
+  --fig-token: #f87171;
 
   --fig-slate: #cbd5e1;
   --fig-slate-soft: #252a33;
@@ -123,6 +128,11 @@
   stroke: var(--fig-accent-line);
 }
 .fig .fig-card-tinted .fig-icon-bg { fill: var(--fig-card); }
+.fig .fig-card-dashed .fig-card-box {
+  stroke: var(--fig-group-line);
+  stroke-dasharray: var(--fig-dash);
+  filter: none;
+}
 
 /* A panel: a coloured header band, an optional number badge, and a light body. */
 .fig .fig-panel-box {
@@ -164,6 +174,38 @@
 .fig .fig-accent-teal { --fig-accent: var(--fig-teal); --fig-accent-soft: var(--fig-teal-soft); --fig-accent-line: var(--fig-teal-line); }
 .fig .fig-accent-amber { --fig-accent: var(--fig-amber); --fig-accent-soft: var(--fig-amber-soft); --fig-accent-line: var(--fig-amber-line); }
 .fig .fig-accent-yellow { --fig-accent: var(--fig-yellow); --fig-accent-soft: var(--fig-yellow-soft); --fig-accent-line: var(--fig-yellow-line); }
+
+/* A walk-through: the title line, the dark outline of the active box, the red token that runs
+   along an edge, and the legend. Its own <style> holds the animation (walkthroughs.data.ts). */
+.fig .wt-title { font-weight: 700; }
+.fig .wt-ring {
+  fill: none;
+  stroke: var(--fig-active);
+  stroke-width: var(--fig-line-active);
+  rx: var(--fig-radius-card);
+  opacity: 0;
+}
+.fig .wt-token { fill: var(--fig-token); opacity: 0; offset-rotate: 0deg; }
+.fig .wt-swatch {
+  fill: var(--fig-accent-soft);
+  stroke: var(--fig-accent-line);
+  stroke-width: var(--fig-line-card);
+  rx: var(--fig-radius-label);
+}
+.fig .wt-swatch-dashed { fill: none; stroke: var(--fig-group-line); stroke-dasharray: var(--fig-dash); }
+
+/* The play, pause and step controls under a walk-through, shown only when JavaScript runs. */
+.wt-controls { display: flex; gap: 8px; margin: 4px 0 8px; }
+.wt-controls button {
+  font-size: 13px;
+  padding: 2px 12px;
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 6px;
+  color: var(--vp-c-text-1);
+  background: var(--vp-c-bg-soft);
+}
+.wt-controls button:hover { border-color: var(--vp-c-brand-1); }
+.wt-controls button[aria-pressed="true"] { border-color: var(--vp-c-brand-1); color: var(--vp-c-brand-1); }
 
 /* The caption under a figure. */
 .fig-caption {

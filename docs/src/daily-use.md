@@ -35,22 +35,23 @@ it once from the start to the end.
 
 The settings template `settings/settings.proposal.json` is the source of the sections
 `permissions`, `hooks` and `sandbox` of `~/.claude/settings.json`. Edit the template, then read
-the difference and install it, in your own terminal:
+the difference and install it, in your own terminal. The dry run prints the difference of the
+three sections after the line of `~/.claude/settings.json`:
 
 ```bash
-harness settings install
-harness settings install --apply
+harness install
+harness install --apply
 ```
 
 A grant that names you, your institution or your machine goes into the
 [profile](concepts.md#profile), not into the
 template. Commit the template when you install a change: the commit is the record of the
-installed sections. To undo a change, install the template of an earlier commit with
-`--proposal`. Run these two commands in the checkout:
+installed sections. To undo a change, revert the commit of the template and install again. Run
+these commands in the checkout:
 
 ```bash
-git show HEAD~1:settings/settings.proposal.json > /tmp/previous.json
-harness settings install --proposal /tmp/previous.json --apply
+git revert <commit>
+harness install --apply
 ```
 
 [security.md](security.md#check-a-change-of-the-settings) says how to check the result.
@@ -62,6 +63,12 @@ start, the `SessionStart` [hook](concepts.md#hook) `hooks/install-drift.py` comp
 digest again from the sources. It warns when the installed layer is behind its sources, when the
 stamp is missing, and when it cannot read a source or the stamp. The warning names the cause and
 the command.
+
+<WalkThrough name="install" />
+
+*From an edit to the [drift](concepts.md#drift) check.* You edit a source. At the next session
+start, the hook finds the installed layer behind its sources and warns. You run the dry run and
+apply the plan. At the session start after that, the hook finds no difference.
 
 When the warning appears, an edit of a source is not installed yet. Run the dry run, read the
 plan, and apply it:

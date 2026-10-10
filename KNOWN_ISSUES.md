@@ -2,12 +2,12 @@
 
 ### K4 · A settings file or `~/.claude.json` that is not JSON gives a traceback and exit 1, not exit 2.
 
-- location: `adapters/claude/adapter.py:179`, `adapters/claude/adapter.py:666`
+- location: `adapters/claude/adapter.py:187`, `adapters/claude/adapter.py:700`
 - evidence: with a settings file that holds `{ not json`, `harness settings surface --settings
   <file>` ends with `json.decoder.JSONDecodeError: Expecting property name enclosed in double
   quotes: line 1 column 3 (char 2)` and exits 1, on `ed0248f` and on part E1a's branch alike.
-  The critic of E1a found the same for `settings compare`, `twins`, `domains` and `install`, and
-  for `trust` with an empty `~/.claude.json`. `read_settings` and `cmd_trust` catch `OSError` and
+  The critic of E1a found the same for `settings compare`, `twins` and `domains`, and for `trust`
+  with an empty `~/.claude.json`. `read_settings` and `cmd_trust` catch `OSError` and
   not `json.JSONDecodeError`, so the contract's exit 1, "would change", also means "unreadable".
 - kind: defect
 - found: 2026-10-05
@@ -431,3 +431,99 @@
   checked only by a manual `ls`. Found by the critic of part J5.
 - kind: missing test
 - found: 2026-10-10
+
+### K46 · A stray settings file whose `allow`, `ask` or `deny` is a string lists one rule per character.
+
+- location: `adapters/claude/adapter.py:649`
+- evidence: with `{"permissions": {"allow": "Bash(x)"}}` in `~/Research/.claude/settings.local.json`,
+  the dry run of `harness install` lists seven rules, `…/settings.local.json  allow  B`,
+  `allow  a`, and so on. `stray_warnings` iterates the value without a type check; the base's
+  `report_stray` did the same. Found by the critics of part M, round 1.
+- kind: found late
+- found: 2026-10-10
+
+### K47 · The settings merge re-emits the numbers of the keys it does not own, and indents a tab-indented or one-line file by 2.
+
+- location: `adapters/claude/adapter.py:530`, `adapters/claude/adapter.py:622`
+- evidence: a live `~/.claude/settings.json` with `"x": 1.10, "y": 1e400, "z": 1E5` and an owned
+  section that differs is written with `"x": 1.1`, `"y": Infinity` (which `JSON.parse` rejects)
+  and `"z": 100000.0`; a tab-indented file is written with 2 spaces, because `indent_of` counts
+  spaces only. The merge rule is the removed `harness settings install`'s, which behaved the same
+  way. Found by the critics of part M, round 1.
+- kind: found late
+- found: 2026-10-10
+
+### K48 · A read-only `~/.claude/settings.json` with a change ends `--apply` in a traceback, after the backup is written.
+
+- location: `lib/harness/install.py:78-85`
+- evidence: with `settings.json` of mode 0444 and an owned section that differs, `harness install
+  --apply` writes `settings.json.bak-<stamp>` and then ends in `PermissionError` and exit 1, where
+  the verb contract gives 1 the meaning "changes to make". A second `--apply` in the same second
+  fails on the backup instead, because `shutil.copy` gave the first backup the mode 0444. Every
+  target that `install_file` writes behaves the same way; K9 is the symlink and directory case.
+- kind: found late
+- found: 2026-10-10
+
+### K49 · No check reads "one box width per column" on a walk-through.
+
+- location: `docs/scripts/check-site.mjs:206`
+- evidence: `layerProblems` runs only on the four call graphs of `CALL_GRAPHS`. The generator
+  `walkthroughs.data.ts` gives every card of a column one width today, but a change that widens
+  one card of a column passes `docs:check`. A narrowed card is caught only because `FigCard`
+  draws no card then and an edge names a box that is missing. Found by the critic of part J4.
+- kind: missing test
+- found: 2026-10-10
+
+### K50 · A throw in the setup of a figure component does not stop the build.
+
+- location: `docs/.vitepress/theme/figures/FigCard.vue:25`, `docs/.vitepress/theme/figures/WalkThrough.vue:16`
+- evidence: the comment of `FigCard.vue` says that a card with too little room "stops the build".
+  VitePress logs a throw in a component's setup during SSR and still prints `build complete`.
+  With `<WalkThrough name="instal" />` in `daily-use.md`, `npm run docs:build` prints
+  `Error: no walk-through instal…` and then `build complete in 1.89s.`, and the page has no
+  figure. `docs:check` then names the missing title. A throw in a data loader does stop the
+  build. Found by the critic of part J4.
+- kind: defect
+- found: 2026-10-10
+
+### K51 · The effort check of a walk-through box accepts a spawn of any caller.
+
+- location: `lib/harness/docs.py:279`
+- evidence: a box with `effort` passes when any entry of `calls.toml` spawns its agent at that
+  effort. The check does not compare the caller of that entry with the skill or agent of the
+  walk-through, so a box of a skill that never spawns the agent at that effort passes. Found by
+  the critic of part J4.
+- kind: missing test
+- found: 2026-10-10
+
+### K52 · `harness test` checks only the tracked walk-through data files; the build draws every one on disk.
+
+- location: `lib/harness/docs.py:462`, `docs/.vitepress/theme/figures/walkthroughs.data.ts:322`
+- evidence: `walkthroughs(tracked())` reads the paths of `git ls-files`, and the data loader
+  reads every `docs/figures/walkthrough-*.toml` in the directory. A new data file is drawn on the
+  site and is not checked until it is staged. Found by the critic of part J4.
+- kind: missing test
+- found: 2026-10-10
+
+### K53 · The colour scan of `docs:check` passes a named colour.
+
+- location: `docs/scripts/check-site.mjs:246`
+- evidence: the scan matches a hex literal, `rgb(` and `hsl(` only, as J2b defined it. With
+  `const TOKEN = 'red'` in `walkthroughs.data.ts`, `docs:check` exits 0. Found by the critic of
+  part J4.
+- kind: defect
+- found: 2026-10-10
+
+### K60 · A stray settings rule with a lone surrogate stops the dry run of `harness install` with `UnicodeEncodeError`.
+
+- location: `adapters/claude/adapter.py:657`
+- evidence: found late — `adapters/claude/adapter.py`, the rule print of `stray_warnings`:
+  `f"  {path}  {kind}  {rule}"`. A stray `~/Research/.claude/settings.local.json` with
+  `{"permissions": {"allow": ["Bash(\ud800)"]}}` stops `harness install` (dry run) with
+  `UnicodeEncodeError: 'utf-8' codec can't encode character '\ud800' … surrogates not allowed`,
+  exit 1, on 3.14 and on 3.11. The fix escapes a lone surrogate in the merge and the diff, but not
+  in this print. The previous head fails the same way, so the fix diff did not introduce it.
+  Reproducer: the critic's `python3.14 probe_surrogates.py <abs tree> <abs scratch>`, line
+  "2 stray rule …". Found by the verify critic of part M, round 2.
+- kind: found late
+- found: 2026-10-10; the ID is K60 because publish part J4 holds K49 onwards on its own branch

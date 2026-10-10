@@ -39,8 +39,9 @@ def Plan(**fields):
     """One frontend's part of `harness install`:
 
       files        [(destination, bytes, mode, label)], each installed by `install.install_file`;
-                   a mode of None leaves the mode as it is, and a fifth element True asks for a
-                   backup of a file that is replaced
+                   a mode of None leaves the mode as it is, a fifth element True asks for a
+                   backup of a file that is replaced, and a sixth is text printed after the
+                   file's line when the file is a change
       warnings     [(line, …)], each printed as one WARNING after the files and before the steps
                    of `after`
       extra        the text of each installed file with no source, printed after the steps of

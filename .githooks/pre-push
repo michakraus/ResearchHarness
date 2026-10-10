@@ -10,10 +10,11 @@
 # that the push sends, gitleaks stdin over their messages, which gitleaks git does not read,
 # gitleaks over the tree at the SHA, and `harness leaks --commits` over both, messages included.
 # They fail closed: no gitleaks of 8.21 or later, no profile, an empty `leak` list or a check that
-# fails each refuse the push with one line. Then it runs `bin/harness test` on python3 and on
+# fails each refuse the push with one line. Then it runs `bin/harness test` on the first Python of
+# 3.11 or later among python3, python3.14, python3.13, python3.12 and python3.11, and on
 # python3.11, the compile check on python3.11, shellcheck over the shell files, and the Julia test
 # files that the changed paths of the pushed range select. A missing python3.11, shellcheck or
-# julia prints one skip line, because CI runs them; no python3 of 3.11 or later refuses the push.
+# julia prints one skip line, because CI runs them; no Python of 3.11 or later refuses the push.
 
 # No `set -u`: macOS ships bash 3.2, whose handling of unset expansions differs from bash 4+.
 set -o pipefail
@@ -54,16 +55,28 @@ minor=${BASH_REMATCH[2]}
 if [ "$major" -lt 8 ] || { [ "$major" -eq 8 ] && [ "$minor" -lt 21 ]; }; then
     refuse "gitleaks $gitleaks_version is older than 8.21"
 fi
-if ! command -v python3 >/dev/null || ! python3 -c 'import sys; sys.exit(sys.version_info < (3, 11))'; then
-    refuse "no python3 of 3.11 or later"
-fi
+# A Homebrew upgrade can drop the unversioned python3 link, which leaves the system's 3.9 first.
+python=
+for candidate in python3 python3.14 python3.13 python3.12 python3.11; do
+    if command -v "$candidate" >/dev/null &&
+        "$candidate" -c 'import sys; sys.exit(sys.version_info < (3, 11))' 2>/dev/null; then
+        python=$candidate
+        break
+    fi
+done
+[ -n "$python" ] || refuse "no python3 of 3.11 or later"
 
 tmp=$(mktemp -d "${TMPDIR:-/tmp}/harness-pre-push.XXXXXX") || exit 1
 trap 'rm -rf "$tmp"' EXIT
-# The commits that the push sends, in the checkout: those that no ref of origin holds. A forced
-# push sends the rewritten commits, and a new main on origin sends the whole history.
+# The commits that the push brings to main: old..sha, as CI scans them. A commit that a branch of
+# origin already holds is scanned too, because main has not seen it. A forced push sends the
+# rewritten commits, and a new main, or an old main that the checkout lacks, the whole history.
 origin_url=$(git remote get-url origin) || refuse "the checkout has no origin remote"
-git rev-list "$sha" --not --remotes=origin >"$tmp/commits" || refuse "git rev-list of the pushed commits failed"
+range=$sha
+case "$old" in
+    *[!0]*) git cat-file -e "$old^{commit}" 2>/dev/null && range="$old..$sha" ;;
+esac
+git rev-list "$range" >"$tmp/commits" || refuse "git rev-list of the pushed commits failed"
 git clone --shared --quiet --no-checkout "$root" "$tmp/repo" || exit 1
 cd "$tmp/repo" || exit 1
 git checkout --quiet --detach "$sha" || exit 1
@@ -87,8 +100,8 @@ leak_check() {
 }
 # The config of the pushed commit; a `gitleaks:allow` comment has no effect.
 gitleaks_flags=(--config "$tmp/repo/.gitleaks.toml" --redact --ignore-gitleaks-allow --no-banner --no-color --verbose)
-leak_check "gitleaks git, the commits that the push sends" \
-    gitleaks git "${gitleaks_flags[@]}" --log-opts="$sha --not --remotes=origin" "$root"
+leak_check "gitleaks git, the commits that the push brings to main" \
+    gitleaks git "${gitleaks_flags[@]}" --log-opts="$range" "$root"
 # gitleaks git reads no commit message, so the messages go to gitleaks stdin, read in the checkout.
 # No commit to send is empty input, which passes; without the test, git log would read HEAD.
 messages() (
@@ -102,7 +115,7 @@ leak_check "gitleaks dir, the tree at the SHA" gitleaks dir "${gitleaks_flags[@]
 # The clone's origin is the checkout; `harness leaks` allows the owner/name of the real one.
 git remote set-url origin "$origin_url" || exit 1
 leak_check "harness leaks, the tree at the SHA and the commits that the push sends" \
-    python3 bin/harness leaks --commits "$tmp/commits"
+    "$python" bin/harness leaks --commits "$tmp/commits"
 [ "$leaks" -eq 0 ] || exit 1
 
 # The changed paths of the range. A new main, or a remote SHA that this clone does not have,
@@ -119,7 +132,9 @@ changed=$(git diff --name-only --no-renames "$base" HEAD) || exit 1
 fail=0
 
 # The Python steps.
-for py in python3 python3.11; do
+pythons=("$python")
+[ "$python" = python3.11 ] || pythons+=(python3.11)
+for py in "${pythons[@]}"; do
     if ! command -v "$py" >/dev/null; then
         echo "skip  $py: not found; CI runs bin/harness test and the compile check on Python 3.11"
         continue
