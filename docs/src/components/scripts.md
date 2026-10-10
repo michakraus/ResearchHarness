@@ -369,13 +369,29 @@ server current. It runs four steps in order:
 4. A check of the Kaimon server. When the server runs from a Julia binary that `juliaup`
    deleted, the job restarts it. It reports any other reason for a restart, and does not restart.
 
-The header gives no command line. The launchd job `launchagents/julia-update.plist` runs the
-installed copy in `~/.local/bin/` each day at 04:30, not the copy in the checkout:
+The header gives no command line. A job of the service manager runs the installed copy in
+`~/.local/bin/` each day, not the copy in the checkout:
 
 ```bash
 ~/.juliaup/bin/julia --startup-file=no ~/.local/bin/julia-update.jl
 ```
 
-It uses the macOS tools `launchctl` and `osascript`. The script reads the profile key
-`launchd_prefix` for the label of the Kaimon job (see [Profile](../profile.md)). A failure or a
-restart that is due also shows a macOS notification. Exit 1 when a step fails.
+The script runs on macOS and on Linux, and stops with an error before the first step on any other
+system. It finds each tool on the `PATH`, which the job fixes. The two systems differ in four
+places:
+
+| | macOS | Linux |
+|:--|:--|:--|
+| the job | launchd, `launchagents/julia-update.plist` | `systemd --user`, the unit `julia-update.service` |
+| the binary of the Kaimon server | `ps -o comm=` of the process that `lsof` finds on port 2828 | the link `/proc/<pid>/exe` of that process, without its ` (deleted)` suffix |
+| the restart of the server | `launchctl kickstart -k gui/<uid>/<launchd_prefix>.kaimon` | `systemctl --user restart kaimon.service` |
+| the notification, and the log that it names | `osascript`; `~/Library/Logs/julia-update/` | `notify-send`; `journalctl --user -u julia-update.service` |
+
+On macOS the script reads the profile key `launchd_prefix` for the label of the Kaimon job (see
+[Profile](../profile.md)); on Linux it reads no profile. A failure or a restart that is due also
+shows a notification. Without the notifier on the `PATH`, the log line is the only report. When
+no `lsof` is on the `PATH`, the server check fails and the job restarts nothing. A restart that
+fails is a failure, with its output in the log. Exit 1 when a step fails.
+
+`julia-update-test.jl` runs the script on a fixture home with stubs of every tool it calls, on the
+system it runs on (`julia --startup-file=no julia-update-test.jl`). CI runs it on Linux.

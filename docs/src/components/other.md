@@ -37,6 +37,12 @@ claude-autocommit [--dry-run] [--no-push] [--help]
 `claude-autocommit.plist` runs the installed copy `~/.local/bin/claude-autocommit` at load and every
 15 minutes. Edit the script here, then copy it there again.
 
+The script runs on macOS and on Linux, under bash 3.2 too. A lock directory stops a second run.
+On macOS the lock is `~/Library/Logs/claude-autocommit/lock`, beside the job's log. On Linux it is
+`$XDG_STATE_HOME/claude-autocommit/lock`, or `~/.local/state/claude-autocommit/lock` when
+`XDG_STATE_HOME` is unset or empty. `claude-autocommit-test.jl` runs the script on a fixture
+repository with a bare remote, on the system it runs on.
+
 ## `julia-update.plist`
 
 A launch agent that keeps the Julia installation and the Kaimon server current. It runs daily at
@@ -47,7 +53,9 @@ scripts](scripts.md) describes what the script does.
 The job runs the installed copy and not the copy in `~/Research`, because a session can write
 `~/Research` and the job runs outside the sandbox. It sets `JULIA_PKG_USE_CLI_GIT=true`, so Pkg
 uses the `git` program, and a `PATH` for that `git`. It runs at a low priority, so it does not
-compete with an interactive Julia session. Its output goes to `~/Library/Logs/julia-update/`.
+compete with an interactive Julia session. Its output goes to `~/Library/Logs/julia-update/`. On
+Linux, the script runs as the `systemd --user` unit `julia-update.service`, whose output goes to
+the journal: `journalctl --user -u julia-update.service`.
 
 The label is `<launchd_prefix>.julia-update`. Render the plist with
 `harness render launchagents/julia-update.plist`. `harness leaks` renders it with the example

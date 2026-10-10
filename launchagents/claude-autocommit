@@ -36,7 +36,11 @@ REPO="${CLAUDE_AUTOCOMMIT_REPO:-$HOME/.claude}"
 QUIESCE_MIN="${CLAUDE_AUTOCOMMIT_QUIESCE_MIN:-5}"
 MAX_DELETIONS="${CLAUDE_AUTOCOMMIT_MAX_DELETIONS:-20}"
 DO_PUSH="${CLAUDE_AUTOCOMMIT_PUSH:-1}"
-LOCK="$HOME/Library/Logs/claude-autocommit/lock"
+# The lock lives beside the job's log on macOS, and in the XDG state directory on Linux.
+case "$(uname -s)" in
+    Darwin) LOCK="$HOME/Library/Logs/claude-autocommit/lock" ;;
+    *) LOCK="${XDG_STATE_HOME:-$HOME/.local/state}/claude-autocommit/lock" ;;
+esac
 LOCK_STALE_MIN=30
 DRY=0
 

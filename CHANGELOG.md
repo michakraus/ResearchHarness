@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+- **The two timer jobs run on Linux, and four scripts have a test that CI runs on Linux.**
+  `julia-update.jl` branches on the system once and stops with an error on a system that is
+  neither macOS nor Linux. On Linux it reads the Kaimon server's binary from `/proc/<pid>/exe`,
+  without its ` (deleted)` suffix, because `ps -o comm=` prints only a 15-character name there;
+  it restarts the server with `systemctl --user restart kaimon.service`, notifies with
+  `notify-send`, names `journalctl --user -u julia-update.service` as its log, and reads no
+  profile. On both systems it finds `lsof`, `ps`, `launchctl`, `systemctl`, `osascript` and
+  `notify-send` on the `PATH`; a missing `lsof` is now a failure ("cannot read the server") and
+  not "no server", a failed restart is a failure with its output in the log where it ended the
+  job with a stack trace, and a missing notifier leaves the log line only. `claude-autocommit`
+  takes its lock in `$XDG_STATE_HOME`, or `~/.local/state`, on Linux, and in `~/Library/Logs` on
+  macOS as before. New tests: `scripts/julia-update-test.jl`,
+  `launchagents/claude-autocommit-test.jl`, `githooks/pre-commit-test.jl` (the hook is
+  unchanged) and `scripts/fatou-lsp-test.jl`, in `julia.yml`'s matrix on `ubuntu-latest` and in
+  the selection of `.githooks/pre-push`. `julia.yml` also runs on a change in `launchagents/` or
+  `githooks/pre-commit`.
+
 - **`harness install` no longer writes oh-my-pi's `config.yml`; its keys go to the overlay
   `~/.omp/agent/harness.yml`.** oh-my-pi's setup and its settings panel write `config.yml` and
   rewrite it as YAML with keys of their own, such as `setupVersion` and `theme`; the install

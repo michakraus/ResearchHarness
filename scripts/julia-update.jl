@@ -20,6 +20,11 @@
 #    session, which have lost nothing that a restart could keep. Any other reason for a restart —
 #    a new Kaimon version, a new default release — is reported and left to a person.
 #
+# The job runs on macOS under launchd and on Linux under `systemd --user`. What differs between the
+# two — the service manager, the restart, the notifier, the log and how the server's binary is
+# read — is in one branch on the system below. The tools are found on the PATH, which the job's
+# plist or unit fixes to directories that no session can write.
+#
 # The app environment at ~/.julia/environments/apps/Kaimon is a derived artefact: every upgrade
 # regenerates its Project.toml from Kaimon's own, so nothing added there survives. Tools reach
 # JuliaFormatter and Aqua through a session, whose load path carries @v#.#.
@@ -28,7 +33,7 @@
 # inside it. The Kaimon LaunchAgent overrides that with JULIA_APPS_JULIA_CMD, so
 # only a bare shim call reads it.
 #
-# A failure or a due restart also sends a macOS notification, because nobody reads the log.
+# A failure or a due restart also sends a desktop notification, because nobody reads the log.
 
 using Dates
 using TOML
@@ -40,12 +45,62 @@ const APP = joinpath(homedir(), ".julia", "environments", "apps", "Kaimon")
 # The harness's Julia environment, installed by `harness install --apply`.
 const HARNESS_ENV = get(ENV, "RESEARCH_HARNESS_JULIA",
                         joinpath(homedir(), ".local", "share", "research-harness", "julia"))
-# The Kaimon job's label is `<launchd_prefix>.kaimon`, from the private profile, as in
-# launchagents/kaimon.plist.
-const PROFILE = get(ENV, "RESEARCH_HARNESS_PROFILE",
-                    joinpath(homedir(), ".config", "research-harness", "profile.toml"))
-const KAIMON_JOB = TOML.parsefile(PROFILE)["launchd_prefix"] * ".kaimon"
 const KAIMON_PORT = 2828
+
+"""The path of the tool `name` on the PATH, or an error that names it."""
+function tool(name)
+    path = Sys.which(name)
+    path === nothing && error("no $name on the PATH")
+    return path
+end
+
+# The system's own parts, in this one branch: the service manager, the restart of the Kaimon
+# server and the line that names it, the log, the notifier, and how the server's binary is read.
+if Sys.isapple()
+    # The Kaimon job's label is `<launchd_prefix>.kaimon`, from the private profile, as in
+    # launchagents/kaimon.plist.
+    const PROFILE = get(ENV, "RESEARCH_HARNESS_PROFILE",
+                        joinpath(homedir(), ".config", "research-harness", "profile.toml"))
+    const KAIMON_JOB = TOML.parsefile(PROFILE)["launchd_prefix"] * ".kaimon"
+    const SERVICE_MANAGER = "launchd"
+    const RESTART_HINT = "launchctl kickstart -k gui/\$(id -u)/$KAIMON_JOB"
+    const LOG = "~/Library/Logs/julia-update/"
+    const NOTIFIER = "osascript"
+    restart_cmd() = `$(tool("launchctl")) kickstart -k gui/$(Libc.getuid())/$KAIMON_JOB`
+    notify_cmd(notifier, message) =
+        `$notifier -e $("display notification \"$message\" with title \"julia-update\"")`
+    """
+    The binary of process `pid` from `ps -o comm=`, which prints its full path on macOS, or
+    `:ended` when the process has ended.
+    """
+    function binary_of(pid)
+        comm = readchomp(ignorestatus(`$(tool("ps")) -o comm= -p $pid`))
+        return isempty(comm) ? :ended : comm
+    end
+elseif Sys.islinux()
+    const SERVICE_MANAGER = "systemd"
+    const RESTART_HINT = "systemctl --user restart kaimon.service"
+    const LOG = "journalctl --user -u julia-update.service"
+    const NOTIFIER = "notify-send"
+    restart_cmd() = `$(tool("systemctl")) --user restart kaimon.service`
+    notify_cmd(notifier, message) = `$notifier julia-update $message`
+    """
+    The binary of process `pid` from `/proc/<pid>/exe`, or `:ended` when the process has ended.
+    `ps -o comm=` prints only a 15-character name on Linux. The link of a deleted binary ends in
+    ` (deleted)`, which is removed, so a binary written again at the same path exists.
+    """
+    function binary_of(pid)
+        exe = try
+            readlink("/proc/$pid/exe")
+        catch e
+            e isa Base.IOError || rethrow()
+            return :ended
+        end
+        return chopsuffix(exe, " (deleted)")
+    end
+else
+    error("julia-update.jl runs on macOS and Linux, not on $(Sys.KERNEL)")
+end
 
 """
 Run `cmd` with its output in the log, and return whether it succeeded.
@@ -81,20 +136,33 @@ function kaimon_version()
     return get(TOML.parsefile(project), "version", nothing)
 end
 
-"""The Julia binary of the process that listens on the Kaimon port, or `nothing`."""
+"""
+The Julia binary of the process that listens on the Kaimon port: its path, `:none` when no
+process listens, `:ended` when the process ended before its binary was read, or `:nolsof` when no
+`lsof` is on the PATH. A missing `lsof` is never "no server".
+"""
 function server_julia()
-    pid = readchomp(ignorestatus(`/usr/sbin/lsof -nP -iTCP:$KAIMON_PORT -sTCP:LISTEN -t`))
-    isempty(pid) && return nothing
-    return readchomp(`/bin/ps -o comm= -p $(first(split(pid)))`)
+    lsof = Sys.which("lsof")
+    lsof === nothing && return :nolsof
+    pids = split(readchomp(ignorestatus(`$lsof -nP -iTCP:$KAIMON_PORT -sTCP:LISTEN -t`)))
+    isempty(pids) && return :none
+    return binary_of(first(pids))
 end
 
 """The Julia binary that the launcher resolves for the default channel."""
 default_julia() = joinpath(readchomp(`$JULIA --startup-file=no -e 'print(Sys.BINDIR)'`), "julia")
 
-"""Show a macOS notification. `Base.notify` is a different function, hence the name."""
+"""
+Show a desktop notification, or only a log line when the notifier is not on the PATH.
+`Base.notify` is a different function, hence the name.
+"""
 function alert(message)
-    script = "display notification \"$message\" with title \"julia-update\""
-    run(ignorestatus(`/usr/bin/osascript -e $script`))
+    notifier = Sys.which(NOTIFIER)
+    if notifier === nothing
+        println("No $NOTIFIER on the PATH, so no notification: ", message)
+    else
+        run(ignorestatus(notify_cmd(notifier, message)))
+    end
     return nothing
 end
 
@@ -131,12 +199,21 @@ function main()
     println("--- server check")
     server = server_julia()
     due = String[]
-    if server === nothing
-        println("No process listens on port $KAIMON_PORT; launchd restarts the server.")
+    if server === :nolsof
+        println("FAILED: cannot read the server, because no lsof is on the PATH.")
+        push!(failures, "cannot read the server")
+    elseif server === :none
+        println("No process listens on port $KAIMON_PORT; $SERVICE_MANAGER restarts the server.")
+    elseif server === :ended
+        println("The process on port $KAIMON_PORT ended before its binary was read; ",
+                "$SERVICE_MANAGER restarts the server.")
     elseif !isfile(server)
-        println("RESTARTED: the server ran from $server, which juliaup deleted.")
-        uid = readchomp(`/usr/bin/id -u`)
-        run(`/bin/launchctl kickstart -k gui/$uid/$KAIMON_JOB`)
+        println("The server ran from $server, which juliaup deleted.")
+        if step("restart the server", restart_cmd())
+            println("RESTARTED: the server.")
+        else
+            push!(failures, "restart of the server")
+        end
     else
         before == after || push!(due, "Kaimon $before -> $after; the server runs $before")
         server == default_julia() || push!(due, "the server runs $server, not the default release")
@@ -146,7 +223,7 @@ function main()
         println("Kaimon $after. No restart due.")
     else
         println("RESTART DUE: ", join(due, "; "), ". ",
-            "Run: launchctl kickstart -k gui/\$(id -u)/$KAIMON_JOB — it stops every live session. ",
+            "Run: $RESTART_HINT — it stops every live session. ",
             "A new Kaimon version can advertise tools that ~/Research/.kaimon/tools.json has ",
             "never seen, so read the tool list after the restart.")
         alert("Kaimon restart due")
@@ -154,7 +231,7 @@ function main()
 
     if !isempty(failures)
         println("FAILED: ", join(failures, "; "))
-        alert("$(length(failures)) step(s) failed; see ~/Library/Logs/julia-update/")
+        alert("$(length(failures)) step(s) failed; see $LOG")
         return 1
     end
     return 0
