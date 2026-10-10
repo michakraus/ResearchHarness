@@ -175,7 +175,8 @@ function trunk(a, b, pt) {
     (a.to === b.to && same([...a.points].reverse(), [...b.points].reverse()))
 }
 
-/** The problems of a figure's geometry: an edge whose end names no box, two edges that meet
+/** The problems of a figure's geometry: an edge whose end names no box or does not lie on the box
+ * that it names, two edges that meet
  * outside a box at an end of both and off a trunk that they share, and an edge that passes
  * through a box that is neither one of its ends nor a box around one of them. */
 export function geometryProblems(fig) {
@@ -188,6 +189,13 @@ export function geometryProblems(fig) {
     if (e.points.length < 2) problems.push(`the edge ${e.name} has fewer than two points`)
   }
   if (problems.length > 0) return problems
+  // An edge starts on the box that it names as its start and ends on the box that it names as its
+  // end, so that the names that the checks below trust are true.
+  for (const e of fig.edges) {
+    const [first, last] = [e.points[0], e.points.at(-1)]
+    if (!inside(first, byName.get(e.from))) problems.push(`the edge ${e.name} starts at ${at(first)}, not on the box "${e.from}"`)
+    if (!inside(last, byName.get(e.to))) problems.push(`the edge ${e.name} ends at ${at(last)}, not on the box "${e.to}"`)
+  }
   const ends = (e) => [byName.get(e.from), byName.get(e.to)]
   for (const [i, a] of fig.edges.entries()) {
     for (const b of fig.edges.slice(i + 1)) {

@@ -10,6 +10,9 @@
   --fig-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   --fig-radius-card: 10px;
   --fig-radius-panel: 14px;
+  --fig-radius-icon: 8px;
+  --fig-radius-label: 5px;
+  --fig-line-icon: 2px;
   --fig-line-card: 1px;
   --fig-line-panel: 1.25px;
   --fig-line-arrow: 1.5px;
@@ -113,8 +116,8 @@
   filter: drop-shadow(0 1px 2px var(--fig-shadow)) drop-shadow(0 4px 10px var(--fig-shadow));
 }
 
-.fig .fig-icon-bg { fill: var(--fig-accent-soft); }
-.fig .fig-icon { color: var(--fig-accent); }
+.fig .fig-icon-bg { fill: var(--fig-accent-soft); rx: var(--fig-radius-icon); }
+.fig .fig-icon { color: var(--fig-accent); stroke-width: var(--fig-line-icon); }
 .fig .fig-card-tinted .fig-card-box {
   fill: var(--fig-accent-soft);
   stroke: var(--fig-accent-line);
@@ -129,6 +132,7 @@
   rx: var(--fig-radius-panel);
 }
 .fig .fig-panel-band { fill: var(--fig-accent-soft); }
+.fig .fig-panel-band-top { rx: var(--fig-radius-panel); }
 .fig .fig-panel-title { fill: var(--fig-accent); font-weight: 650; }
 .fig .fig-badge { fill: var(--fig-accent); }
 .fig .fig-badge-text { fill: var(--fig-on-accent); font-weight: 700; }
@@ -150,7 +154,7 @@
   stroke-linejoin: round;
 }
 .fig .fig-arrow-head { fill: var(--fig-arrow); }
-.fig .fig-arrow-label-bg { fill: var(--fig-label); }
+.fig .fig-arrow-label-bg { fill: var(--fig-label); rx: var(--fig-radius-label); }
 .fig .fig-arrow-label { fill: var(--fig-text-muted); }
 
 /* The accents: a component sets one on its group with the class fig-accent-<name>. */

@@ -45,7 +45,6 @@ const text = computed(() => {
       :y="props.y"
       :width="props.w"
       :height="props.h"
-      rx="10"
     />
     <rect
       class="fig-icon-bg"
@@ -53,7 +52,6 @@ const text = computed(() => {
       :y="props.y + (props.h - ICON_BOX) / 2"
       :width="ICON_BOX"
       :height="ICON_BOX"
-      rx="8"
     />
     <FigIcon :name="props.icon" :x="props.x + CARD_PAD + 7" :y="props.y + (props.h - ICON_BOX) / 2 + 7" :size="ICON_BOX - 14" />
     <text

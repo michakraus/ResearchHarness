@@ -8,14 +8,16 @@
   `docs/.vitepress/theme/figures.css`, holds every colour of the figures for the light and the
   dark theme, the font, the corner radii and the line widths. The icons come from `lucide`, and
   the build inlines them. The home page is no longer a copy of the README: it has a hero with
-  *Get started*, *Tutorial* and *GitHub*, six feature cards, and the overview and the flow
-  figure. In the flow figure, OpenCode and oh-my-pi are above Claude Code, and no arrows cross.
+  *Get started*, *Tutorial* and *GitHub*, six feature cards, the overview and the flow figure,
+  and its own edit link, because the home layout has no doc footer. A change of the README no
+  longer starts the docs workflow. In the flow figure, OpenCode and oh-my-pi are above Claude Code, and no arrows cross.
   The four call graphs of *Agents at work* keep their text and are laid out with `elkjs` at build
   time; a graph's block now holds `title:` and `desc:`. The README has no figure and links the
   site for them. `mermaid` and `vitepress-plugin-mermaid` leave `docs/package.json`, and
   `elkjs` 0.12.0 and `lucide` 1.55.0 join it. `npm run docs:check` finds the six figures by
-  their title and checks their description, fails on an arrow that crosses another arrow or
-  passes through a box, and on a figure colour with no dark value; it runs the cases of
+  their title and checks their description, fails on an arrow that crosses another arrow, passes
+  through a box or does not end on the box it names, on a figure colour with no dark value, and
+  on a home page with no edit link; it checks the anchors and tables of the home page too; it runs the cases of
   `docs/scripts/figures.test.mjs` first.
 
 - **A new README, and the dependencies move to their own page.** The README, and so the home page

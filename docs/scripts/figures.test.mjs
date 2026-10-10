@@ -74,6 +74,13 @@ test('an edge along the border of a box does not pass through it', () => {
   assert.deepEqual(geometryProblems(f), [])
 })
 
+test('an edge whose first or last point is not on the box it names is named', () => {
+  const f = one(box('a', 0, 0, 20, 20) + box('b', 100, 0, 20, 20) + box('c', 200, 0, 20, 20) + edge('a', 'c', 'M20 10L100 10'))
+  assert.deepEqual(geometryProblems(f), ['the edge a → c ends at (100, 10), not on the box "c"'])
+  const g = one(box('a', 0, 0, 20, 20) + box('b', 100, 0, 20, 20) + box('c', 200, 0, 20, 20) + edge('b', 'c', 'M20 10L200 10'))
+  assert.deepEqual(geometryProblems(g), ['the edge b → c starts at (20, 10), not on the box "b"'])
+})
+
 test('an edge whose end names no box is named', () => {
   const f = one(box('a', 0, 0, 20, 20) + edge('a', 'z', 'M20 10L100 10'))
   assert.deepEqual(geometryProblems(f), ['the edge a → z names the box "z", which the figure does not have'])

@@ -71,8 +71,8 @@ the whole history; for a pull request `base..head`), the messages of that range 
 with `examples/profile.toml`. CI has no profile, so the private strings are the hook's alone.
 `.github/workflows/julia.yml` runs the five Julia test files on Julia 1.13 when a
 `.jl` file, `Project.toml` or the workflow itself changes.
-`.github/workflows/docs.yml` builds the documentation site with VitePress when the README, a file
-under `docs/`, `agents/`, `skills/`, `examples/models.toml` or the workflow itself changes.
+`.github/workflows/docs.yml` builds the documentation site with VitePress when a file under
+`docs/`, `agents/`, `skills/`, `examples/models.toml` or the workflow itself changes.
 VitePress fails the build on a broken local link. On a push to `main`, the workflow also deploys
 the site to the `gh-pages` branch.
 

@@ -19,12 +19,6 @@ const props = withDefaults(defineProps<{
   box?: string
 }>(), { accent: 'slate', badge: undefined, icon: undefined, dashed: false, box: undefined })
 
-const R = 14
-/** The band: the top of the panel, with its two upper corners rounded. */
-const band = () => {
-  const { x, y, w } = props
-  return `M${x} ${y + BAND}V${y + R}Q${x} ${y} ${x + R} ${y}H${x + w - R}Q${x + w} ${y} ${x + w} ${y + R}V${y + BAND}Z`
-}
 const titleX = () => props.x + 16 + (props.badge !== undefined || props.icon !== undefined ? 32 : 0)
 </script>
 
@@ -37,10 +31,12 @@ const titleX = () => props.x + 16 + (props.badge !== undefined || props.icon !==
       :y="props.y"
       :width="props.w"
       :height="props.h"
-      :rx="props.dashed ? 10 : R"
     />
     <template v-if="!props.dashed">
-      <path class="fig-panel-band" :d="band()" />
+      <!-- The band: a rounded rectangle with the panel's corner radius, and a square one over its
+           lower half, so that only its two upper corners are rounded. -->
+      <rect class="fig-panel-band fig-panel-band-top" :x="props.x" :y="props.y" :width="props.w" :height="BAND" />
+      <rect class="fig-panel-band" :x="props.x" :y="props.y + BAND / 2" :width="props.w" :height="BAND / 2" />
       <template v-if="props.badge !== undefined">
         <circle class="fig-badge" :cx="props.x + 28" :cy="props.y + BAND / 2" r="12" />
         <text class="fig-badge-text" :x="props.x + 28" :y="props.y + BAND / 2 + 4.5" font-size="13" text-anchor="middle">{{ props.badge }}</text>

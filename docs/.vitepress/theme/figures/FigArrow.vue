@@ -41,7 +41,7 @@ const labelBox = computed(() => {
     />
     <path class="fig-arrow-head" :d="head" />
     <template v-if="labelBox">
-      <rect class="fig-arrow-label-bg" :x="labelBox.x" :y="labelBox.y" :width="labelBox.w" :height="labelBox.h" rx="5" />
+      <rect class="fig-arrow-label-bg" :x="labelBox.x" :y="labelBox.y" :width="labelBox.w" :height="labelBox.h" />
       <text class="fig-arrow-label" :x="props.labelAt![0]" :y="props.labelAt![1] + 4" :font-size="LABEL_SIZE" text-anchor="middle">{{ props.label }}</text>
     </template>
   </g>
