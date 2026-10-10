@@ -27,7 +27,7 @@ The layer goes into `~/.claude/`. The five neutral directories install at their 
 own path. An agent and a `SKILL.md` get two values rewritten: the tier of `model:` becomes the
 model of the `[claude]` table of `models.toml`, and each `tools:` item its Claude Code name. A hook
 keeps its mode, and every other file is installed with mode 0644. The first file of the layer is
-`~/.claude/settings.json`: the adapter merges the sections `permissions`, `hooks` and `sandbox` of
+`~/.claude/settings.json`: the adapter merges the sections `permissions`, `hooks`, `sandbox` and `modelSettings` of
 the settings template into it, keeps every other key, keeps the old file as a backup, and creates
 the file when it is missing. The dry run prints the difference of those sections after the file's
 line. After the layer, the adapter writes the stamp `~/.claude/.harness-install.json`. A path that

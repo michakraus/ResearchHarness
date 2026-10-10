@@ -34,9 +34,9 @@ it once from the start to the end.
 ## Change the settings
 
 The settings template `settings/settings.proposal.json` is the source of the sections
-`permissions`, `hooks` and `sandbox` of `~/.claude/settings.json`. Edit the template, then read
-the difference and install it, in your own terminal. The dry run prints the difference of the
-three sections after the line of `~/.claude/settings.json`:
+`permissions`, `hooks`, `sandbox` and `modelSettings` of `~/.claude/settings.json`. Edit the
+template, then read the difference and install it, in your own terminal. The dry run prints the
+difference of the four sections after the line of `~/.claude/settings.json`:
 
 ```bash
 harness install

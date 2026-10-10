@@ -184,18 +184,20 @@ harness install
 ### Claude Code
 
 `harness install` writes the Claude Code layer into `~/.claude/`. Its first file is
-`~/.claude/settings.json`: the install writes the sections `permissions`, `hooks` and `sandbox` of
-the file from the settings template `settings/settings.proposal.json`, rendered with the profile.
-It keeps every other key of the file, such as the model that you choose in Claude Code, and it
-keeps the old file as a backup, `settings.json.bak-<date>-<time>`. If the file does not exist, the
-install makes it, with these three sections only. Then it writes the instruction files, the
+`~/.claude/settings.json`: the install writes the sections `permissions`, `hooks`, `sandbox` and
+`modelSettings` of the file from the settings template `settings/settings.proposal.json`, rendered
+with the profile. It keeps every other key of the file, such as the model that you choose in
+Claude Code, and it keeps the old file as a backup, `settings.json.bak-<date>-<time>`. If the file
+does not exist, the install makes it, with these four sections only. Then it writes the instruction files, the
 agents, the skills, the rules, the commands and the hooks, and last the stamp
 `~/.claude/.harness-install.json`.
 
-These sections are the permission settings, the hooks and the [sandbox](concepts.md#sandbox) of
-Claude Code. Without them, Claude Code runs with its own defaults: no guard hook refuses a command,
-and no sandbox limits a shell command. The settings come first, so that a new deny rule is in place
-before the files that it protects. The dry run prints the difference of the three sections after
+These sections are the permission settings, the hooks, the [sandbox](concepts.md#sandbox) of
+Claude Code, and the effort and auto-compact window of each model. Without them, Claude Code runs
+with its own defaults: no guard hook refuses a command, and no sandbox limits a shell command. An
+`/effort` or `/autocompact` that you type holds until the next install, which replaces it. The
+settings come first, so that a new deny rule is in place before the files that it protects. The
+dry run prints the difference of the four sections after
 the line of the file, for example:
 
 ```text
@@ -211,7 +213,7 @@ in your own terminal. The install reads the file when it makes its plan, so do n
 model of a running session while `--apply` runs: Claude Code writes the file then, and that change
 is lost.
 
-If `~/.claude/settings.json` is not a JSON object, is a symlink, or holds one of the three sections
+If `~/.claude/settings.json` is not a JSON object, is a symlink, or holds one of the four sections
 as a value that is not an object, the install stops with exit 2, an error, and writes no file.
 
 ### OpenCode
