@@ -65,7 +65,7 @@ the command.
 
 <WalkThrough name="install" />
 
-*From an edit to the drift check.* You edit a source. At the next session start, the hook finds
+*From an edit to the [drift](concepts.md#drift) check.* You edit a source. At the next session start, the hook finds
 that the installed layer is behind its sources and warns. You run the dry run and apply the plan.
 At the session start after that, the hook finds no difference and stays silent.
 

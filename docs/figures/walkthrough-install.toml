@@ -128,14 +128,14 @@ from = "you"
 to = "dry-run"
 route = ["left", "right"]
 label = "run"
-at = "docs/src/daily-use.md:66"
+at = "docs/src/daily-use.md:72"
 
 [[edge]]
 from = "dry-run"
 to = "apply"
 route = ["bottom", "top"]
 label = "read the plan, then apply"
-at = "docs/src/daily-use.md:67"
+at = "docs/src/daily-use.md:73"
 
 [[edge]]
 from = "apply"
@@ -149,7 +149,7 @@ from = "layer"
 to = "hook"
 route = ["top+40", "y 1.5", "x 2-40", "bottom"]
 label = "at the next session start"
-at = "hooks/install-drift.py:9"
+at = "hooks/install-drift.py:8"
 
 [[edge]]
 from = "hook"
