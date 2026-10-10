@@ -4,6 +4,7 @@ import type { Theme } from 'vitepress'
 import CallGraph from './figures/CallGraph.vue'
 import FlowFigure from './figures/FlowFigure.vue'
 import OverviewFigure from './figures/OverviewFigure.vue'
+import HomeEditLink from './HomeEditLink.vue'
 import './figures.css'
 
 export default {
@@ -12,5 +13,6 @@ export default {
     app.component('CallGraph', CallGraph)
     app.component('FlowFigure', FlowFigure)
     app.component('OverviewFigure', OverviewFigure)
+    app.component('HomeEditLink', HomeEditLink)
   }
 } satisfies Theme

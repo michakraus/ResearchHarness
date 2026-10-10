@@ -4,6 +4,7 @@
 // - the sidebar starts with the home page and then the dependencies page;
 // - each link of a page's text to a heading of the site finds that heading, which VitePress's
 //   check of dead links does not test;
+// - the home page, whose home layout has no doc footer, has its own edit link;
 // - each page has as many table rows as its Markdown source;
 // - the home page has its two figures and the page agents-at-work its four call graphs, each
 //   found by its <title> and with a <desc>;
@@ -33,7 +34,7 @@ const MENU = [
 ]
 
 const problems = []
-const problem = (text) => problems.push(text)
+const problem = (text) => problems.includes(text) || problems.push(text)
 
 /** The URL path of a page, as the sidebar links it. */
 const url = (page) => BASE + page.replace(/(^|\/)index\.md$/, '$1').replace(/\.md$/, '')
@@ -48,6 +49,13 @@ const between = (text, start, end) => {
   return j < 0 ? '' : text.slice(i, j)
 }
 const hrefs = (text) => [...text.matchAll(/<a [^>]*?href="([^"]*)"/g)].map((m) => m[1])
+/** The content of a built page: its <main> element, or on the home page, whose home layout has no
+ * <main>, the home layout's container up to the page's scripts. An empty content is a problem. */
+const content = (page, text) => {
+  const region = page === 'index.md' ? between(text, 'class="VPHome"', '<script') : between(text, '<main', '</main>')
+  if (region === '') problem(`${page}: no content region in the built page`)
+  return region
+}
 
 const built = new Map()
 for (const page of MENU) {
@@ -76,7 +84,7 @@ const ids = (text) => new Set([...text.matchAll(/ id="([^"]*)"/g)].map((m) => m[
 const byUrl = new Map([...built].map(([page, text]) => [url(page), ids(text)]))
 let fragments = 0
 for (const [page, text] of built) {
-  for (const href of hrefs(between(text, '<main', '</main>'))) {
+  for (const href of hrefs(content(page, text))) {
     const link = new URL(href, `https://site${url(page)}`)
     if (link.host !== 'site' || link.hash === '') continue
     fragments++
@@ -84,6 +92,13 @@ for (const [page, text] of built) {
     if (!known) problem(`${page}: the link ${href} names no page of the menu`)
     else if (!known.has(decodeURIComponent(link.hash.slice(1)))) problem(`${page}: the link ${href} names no heading`)
   }
+}
+
+// The home page has an edit link to its source. Its home layout shows no doc footer, so the page
+// draws the link itself.
+const EDIT = 'https://github.com/michakraus/ResearchHarness/edit/main/docs/src/index.md'
+if (built.has('index.md') && !hrefs(content('index.md', built.get('index.md'))).includes(EDIT)) {
+  problem(`index.md: no edit link to ${EDIT}`)
 }
 
 // Each page keeps the rows of its tables: the header and body rows of the Markdown tables, outside
@@ -95,7 +110,7 @@ for (const [page, text] of built) {
     if (/^\s*(```|~~~)/.test(line)) fence = !fence
     else if (!fence && /^\s*\|/.test(line) && !/^\s*\|[\s:|-]+\|\s*$/.test(line)) rows++
   }
-  const trs = (between(text, '<main', '</main>').match(/<tr>/g) ?? []).length
+  const trs = (content(page, text).match(/<tr>/g) ?? []).length
   if (trs !== rows) problem(`${page}: ${rows} table rows in the source, ${trs} in the site`)
 }
 

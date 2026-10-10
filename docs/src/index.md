@@ -55,3 +55,5 @@ layer shows the tree of the harness's author, as an example; your tree holds you
 *From the sources to the frontends.* `harness install` writes the configuration of each frontend
 from the sources and your private files. [Architecture](architecture.md) describes the layers and
 what each frontend receives.
+
+<HomeEditLink />
