@@ -4,7 +4,7 @@
   "scripts": {
     "docs:dev": "vitepress dev",
     "docs:build": "vitepress build",
-    "docs:check": "node --test scripts/figures.test.mjs &&node scripts/check-site.mjs",
+    "docs:check": "node --test scripts/figures.test.mjs scripts/newcomer.test.mjs && node scripts/check-site.mjs && node scripts/newcomer.mjs",
     "docs:preview": "vitepress preview"
   },
   "devDependencies": {

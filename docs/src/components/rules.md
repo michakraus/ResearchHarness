@@ -15,7 +15,7 @@ read before which kind of work. These files are the harness layer. The profile a
 instructions add to them, and
 [the architecture](../architecture.md#the-three-layers) describes the three layers.
 
-To change a rule, edit its source and run `harness install --apply`; [Daily use](../daily-use.md)
+To change a rule, edit its source and run `harness install --apply`; [Typical use](../daily-use.md)
 gives the steps. The page starts with `core`, which loads always. The rules follow: first the
 rules about instruction files and records, then the rules about Julia work.
 

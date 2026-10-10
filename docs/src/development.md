@@ -96,10 +96,13 @@ the build; link to the file on GitHub instead. Link to a section of another page
 heading's anchor: `[text](setup-macos.md#harness-install-apply)`. An anchor is the heading in lower
 case, with each run of spaces and punctuation as one `-`. VitePress does not check an anchor, but
 `npm run docs:check` does. It also checks that every page of the menu is in the sidebar, that each
-page has the table rows of its source, that the home page has its two figures and the page
-`agents-at-work` its four call graphs, that no edge of a figure crosses another edge or passes
-through a box that is not its end, and that every colour of the figures has a value for the dark
-theme. It first runs the cases of `docs/scripts/figures.test.mjs`.
+page has the table rows of its source, that the home page has its two figures, the introduction
+its three and the page `agents-at-work` its four call graphs, that no edge of a figure crosses
+another edge or passes through a box that is not its end, and that every colour of the figures has
+a value for the dark theme. It first runs the cases of `docs/scripts/figures.test.mjs` and
+`docs/scripts/newcomer.test.mjs`. Last, `docs/scripts/newcomer.mjs` checks the newcomer pages that
+it names: the glossary of `concepts.md` has one entry for each of its terms, the first use of a
+term on each newcomer page links its entry, and no newcomer page holds a `file:line`.
 
 The figures are Vue components in `docs/.vitepress/theme/figures/`, which the build renders to
 inline SVG, so a page shows them with JavaScript off. `FigCard`, `FigPanel` and `FigArrow` draw a
@@ -107,7 +110,7 @@ card with an icon, a group panel with a header band, and a right-angled arrow. T
 from the npm package `lucide`, and the build inlines them. Every colour, the font, the corner radii
 and the line widths are custom properties in `docs/.vitepress/theme/figures.css`, with a value for
 the light and the dark theme; a component names no colour itself. The overview and the flow figure
-of the home page have a fixed layout in their components.
+of the home page, and the two figures of the introduction, have a fixed layout in their components.
 
 The call graphs of `agents-at-work.md` are generated. A block with the info string
 `calls <caller>`, or `calls` for every edge, holds the graph's `title:` and `desc:`, and the build

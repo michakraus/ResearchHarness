@@ -2,10 +2,11 @@
 
 Two private files adapt the harness to one user and one machine. Neither is in the repository.
 
-- **The profile** holds every value that names a person, an institution or a machine. Its path is
-  `harness --profile F`, else `$RESEARCH_HARNESS_PROFILE`, else
+- **The [profile](concepts.md#profile)** holds every value that names a person, an institution or
+  a machine. Its path is `harness --profile F`, else `$RESEARCH_HARNESS_PROFILE`, else
   `~/.config/research-harness/profile.toml`.
-- **The model tables** hold the model of each tier for each frontend. Their path is
+- **The model tables** hold the model of each [tier](concepts.md#tier) for each
+  [frontend](concepts.md#frontend). Their path is
   `harness --models F`, else `$RESEARCH_HARNESS_MODELS`, else `models.toml` beside the profile.
 
 `examples/profile.toml` and `examples/models.toml` show every key and every table, each with a
@@ -37,9 +38,9 @@ The table names each key of `examples/profile.toml` and the verbs that read it, 
 | `home` | the home directory, an absolute path | `install` and `settings` |
 | `harness` | the path of the checkout of this repository | `install`, in the OpenCode configuration |
 | `memory_project` | the name of the project directory of the research tree below `~/.claude/projects/`, which holds the memory | `install` and `settings`, in the settings template |
-| `tree_agents` | the directory of the tree instructions | `install`, which installs them into `~/.claude/` |
+| `tree_agents` | the directory of the [tree instructions](concepts.md#tree-instructions) | `install`, which [installs](concepts.md#install) them into `~/.claude/` |
 | `launchd_prefix` | the prefix of the labels of the launchd jobs in `launchagents/` | `render` of the `launchagents/` templates; the update job `scripts/julia-update.jl` |
-| `org` | the GitHub accounts and organisations where a session can open and comment on a pull request or an issue with no prompt | `install` and `settings`, in the settings template; `leaks`, which also searches for each of them |
+| `org` | the GitHub accounts and organisations where a [session](concepts.md#session) can open and comment on a pull request or an issue with no prompt | `install` and `settings`, in the settings template; `leaks`, which also searches for each of them |
 | `repository_roots` | the directories that hold the repositories of the research tree | `leaks`, which searches for the name of each directory below them |
 | `docs_exceptions` | the repositories that keep a documentation workflow of their own | `workflows`; `ci-protection`, through `githooks/verify-workflows.jl` |
 | `docs_additions` | the repositories that add steps to the canonical documentation workflow | `workflows`; `ci-protection`, through `githooks/verify-workflows.jl` |
@@ -56,8 +57,9 @@ with your profile. From your profile it reads only `leak`, `org` and `repository
 
 ## The tables of the model tables
 
-An agent or a skill names a tier in its `model:`: `large`, `medium` or `small`. Only
-`harness install` reads the model tables. It maps each tier to the model of each frontend.
+An [agent](concepts.md#agent) or a [skill](concepts.md#skill) names a tier in its `model:`:
+`large`, `medium` or `small`. Only `harness install` reads the model tables. It maps each tier to
+the model of each frontend.
 
 | table | what it holds | read by |
 |:--|:--|:--|
@@ -72,5 +74,5 @@ An agent or a skill names a tier in its `model:`: `large`, `medium` or `small`. 
 | `[omp]` | the oh-my-pi model of each tier, written to `config.yml` as a role; `medium` is also the default model; all three tiers are required | `install` |
 
 A table that names a tier by an old name, `opus`, `sonnet` or `haiku`, stops `harness install`
-with exit 2 and names the rename. [architecture.md](architecture.md#the-neutral-vocabulary)
-shows how each frontend reads a tier.
+with exit 2, an error, and the message names the rename.
+[architecture.md](architecture.md#the-neutral-vocabulary) shows how each frontend reads a tier.

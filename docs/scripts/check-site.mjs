@@ -1,13 +1,14 @@
 // Checks of the built site in docs/build/, after `npm run docs:build`:
 //
 // - each page of the menu is a link of the sidebar on every page, and its HTML file exists;
-// - the sidebar starts with the home page and then the dependencies page;
+// - the sidebar starts with Home, a top-level link, and then the group Getting started with the
+//   introduction, the dependencies page, the two setup pages and the tutorial, in this order;
 // - each link of a page's text to a heading of the site finds that heading, which VitePress's
 //   check of dead links does not test;
 // - the home page, whose home layout has no doc footer, has its own edit link;
 // - each page has as many table rows as its Markdown source;
-// - the home page has its two figures and the page agents-at-work its four call graphs, each
-//   found by its <title> and with a <desc>;
+// - the home page has its two figures, the introduction its three and the page agents-at-work
+//   its four call graphs, each found by its <title> and with a <desc>;
 // - in every figure of the site, no edge crosses another edge or passes through a box that is
 //   not its end (scripts/figures.mjs), and no figure loads a file from another host;
 // - every colour of the style module of the figures has a value for the dark theme in the built
@@ -25,13 +26,16 @@ const BASE = '/ResearchHarness/'
 
 // The menu of the site: every page of docs/src/.
 const MENU = [
-  'index.md', 'dependencies.md', 'tutorial.md', 'setup-macos.md', 'setup-linux.md', 'daily-use.md', 'profile.md',
+  'index.md', 'concepts.md', 'dependencies.md', 'setup-macos.md', 'setup-linux.md', 'tutorial.md', 'daily-use.md', 'profile.md',
   'harness-command.md', 'agents-at-work.md', 'security.md', 'architecture.md',
   'components/agents.md', 'components/skills.md', 'components/commands.md',
   'components/rules.md', 'components/hooks.md', 'components/githooks.md',
   'components/scripts.md', 'components/adapters.md', 'components/harness.md',
   'components/other.md', 'development.md'
 ]
+
+// The start of the sidebar: Home, then the group Getting started in this order.
+const START = ['index.md', 'concepts.md', 'dependencies.md', 'setup-macos.md', 'setup-linux.md', 'tutorial.md']
 
 const problems = []
 const problem = (text) => problems.includes(text) || problems.push(text)
@@ -75,8 +79,12 @@ for (const [page, text] of built) {
   for (const target of MENU) {
     if (!sidebar.includes(url(target))) problem(`${page}: the sidebar has no link to ${target}`)
   }
-  const first = sidebar.slice(0, 2).join(' ')
-  if (first !== `${url('index.md')} ${url('dependencies.md')}`) problem(`${page}: the sidebar starts with ${first}, not the home page and the dependencies page`)
+  const first = sidebar.slice(0, START.length).join(' ')
+  if (first !== START.map(url).join(' ')) problem(`${page}: the sidebar starts with ${first}, not ${START.join(', ')}`)
+  // Home is a headline of its own, a link at the top level, above the group Getting started.
+  const nav = between(text, 'id="VPSidebarNav"', '</nav>')
+  const home = /<div class="VPSidebarItem level-0 is-link"[^>]*>(?:(?!<\/a>)[\s\S])*?href="([^"]*)"/.exec(nav)
+  if (!home || home[1] !== url('index.md') || home.index > nav.indexOf('>Getting started</h2>')) problem(`${page}: Home is not a top-level link above the group Getting started`)
 }
 
 // A link with a fragment finds a heading of its page.
@@ -118,6 +126,7 @@ for (const [page, text] of built) {
 // below have these figures, by their <title>, and no other page has one.
 const FIGURES = {
   'index.md': ['The harness and its three layers', 'From the sources to the frontends'],
+  'concepts.md': ['The harness and its three layers', 'The harness, the profile and the tree instructions', 'The layers of control around one tool call'],
   'agents-at-work.md': ['The calls of build-part', 'The calls of build-reviewed', 'The calls of julia-pr-shepherd', 'Every spawn']
 }
 let figures = 0
