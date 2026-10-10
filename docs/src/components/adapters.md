@@ -79,8 +79,9 @@ The file tells the agent:
 - `rtk grep` and `rtk rg` stop at a limit per file, so read the first and the last lines;
 - use the `Read` tool when the exact bytes matter.
 
-Three frontends read it. `CLAUDE.md` imports it. OpenCode lists `~/.claude/RTK.md` in the
-`instructions` of `opencode.jsonc`. `OMP-DELTA.md` imports it too, but oh-my-pi runs no rewrite.
+Three frontends read it, each its own copy. `CLAUDE.md` imports `~/.claude/RTK.md`. OpenCode
+lists its copy in the `instructions` of `opencode.jsonc`. `OMP-DELTA.md` imports oh-my-pi's copy,
+but oh-my-pi runs no rewrite.
 
 ## `claude/statusline-command.sh`
 
@@ -109,11 +110,18 @@ exist. The adapter writes:
 - `agents/<name>.md` for each agent of `agents/`, and the two agents of `adapters/opencode/agents/`
   that have no Claude Code source;
 - the plugins `plugins/*.ts` and the rendered `plugins/guard-paths.json`;
-- a link in `~/.agents/skills/` to each curated skill in `~/.claude/skills/`.
+- its own copies of the files of the Claude Code layer that OpenCode reads: `RTK.md`,
+  `instructions/`, `rules/`, the guard scripts in `hooks/` and the skills in `skills/`.
 
-The port of an agent maps the tier through the `[opencode]` tables of `models.toml`, turns `tools:`
+In each text but `AGENTS.md`, a path below `~/.claude/` names the same path in OpenCode's
+directory, so OpenCode reads its own copies. The install also removes the links in
+`~/.agents/skills/` that an earlier install wrote, because OpenCode reads that directory too.
+
+The port of an agent maps the tier through the model tables of `models.toml`, which OpenCode
+shares with oh-my-pi, with the keys of `[opencode]` over them. It turns `tools:`
 and `skills:` into a `permission:` block, and adds an "Under OpenCode" section before the body. A
-council copies an agent onto other models. The install refuses to replace an `opencode.jsonc` that
+council copies an agent onto other models, and the description of a seat with `verify = true`
+says that it also judges each verify round. The install refuses to replace an `opencode.jsonc` that
 holds a literal `Authorization` value, unless you give `--force`.
 
 `harness permissions [--apply]` writes the permission block of `opencode.jsonc` and
@@ -128,10 +136,12 @@ permission block, path list and report. The cases compare the output with them.
 The configuration template of OpenCode. `harness install` renders it with the profile and writes
 it to `opencode.jsonc` in OpenCode's configuration directory.
 
-It sets the default model and the model for background work. Its `instructions` list
-`~/.claude/RTK.md`, `instructions/core.md` and `instructions/research-tree.md`, because OpenCode
-does not follow a file reference in an instruction file. The `provider` entries come from the
-profile key `opencode_providers`. The `mcp` entry connects to the Kaimon server at
+It sets the default model and the model for background work. Its `instructions` list `RTK.md`,
+`instructions/core.md` and `instructions/research-tree.md`, because OpenCode does not follow a
+file reference in an instruction file. The template names them below `~/.claude/`, and the
+install writes the paths of OpenCode's own copies. The `provider` entries come from the profile
+key `opencode_providers`. Before them, the install writes one entry for each model of the
+`context_limits` of `models.toml`, with that limit. The `mcp` entry connects to the Kaimon server at
 `http://127.0.0.1:2828/`, which `launchagents/kaimon.plist` starts. The token comes from
 `~/.config/kaimon/opencode-token` when OpenCode reads the file, so no secret is in the repository.
 
@@ -177,7 +187,7 @@ hook probe `hooks/probe.py` loads it under `node`, so it holds JavaScript syntax
 ## `opencode/plugins/guards.ts`
 
 The OpenCode plugin of the guard hooks. On every `shell` call it runs four guard scripts from
-`~/.claude/hooks/`: `no-blind-stage.py`, `no-shell-file-write.py`, `gh-api-writes.py` and
+`hooks/` in OpenCode's configuration directory, the install's copy: `no-blind-stage.py`, `no-shell-file-write.py`, `gh-api-writes.py` and
 `rm-scope.py`. It sends Claude Code's payload on standard input and reads the answer as Claude
 Code does. [The hooks](hooks.md) describes each script.
 
@@ -238,36 +248,45 @@ The install writes into oh-my-pi's agent directory, `$PI_CODING_AGENT_DIR`, else
   `bash.patterns`: every `deny`, then every `ask` as `prompt`, then every `allow`. oh-my-pi reads it
   when `PI_CONFIG_FILES` in `~/.omp/agent/.env` names it, and the install warns until it does;
 - `modelRoles.default` in `harness.yml`, the `medium` model of the model tables;
+- `models.yml`, after a backup: the providers of the profile key `omp_providers`, and each model
+  of the `context_limits` of `models.toml` with its limit as `contextWindow`;
 - `extensions/guards.ts` and the path list `extensions/guard-paths.json`;
 - `AGENTS.md`, from `OMP-DELTA.md`;
 - `rules/<name>.md` for each rule that the Claude Code layer installs, with `paths` written as
   `globs`;
 - `mcp.json`, with the Kaimon server alone;
-- `agents/<name>.md` for each agent of `agents/`, with the section of `UNDER-OMP.md`.
+- `agents/<name>.md` for each agent of `agents/`, with its model and its `thinking-level` from the
+  model tables and the section of `UNDER-OMP.md`, and a copy for each seat of its council;
+- its own copies of `RTK.md`, `instructions/`, the guard scripts in `hooks/` and the skills in
+  `skills/`. In each text but `AGENTS.md`, a path below `~/.claude/` names the same path in
+  oh-my-pi's directory.
 
 oh-my-pi takes the first pattern that matches, so this order keeps the precedence of Claude Code.
-A rule source outside the grammar of `render_rule`, or in a subdirectory of `rules/`, exits 2. A
-tool that the table `TOOLS` does not map exits 2 too. An installed rule or agent with no source is
-an EXTRA line. The skills need no file, because oh-my-pi reads the links in `~/.agents/skills/`.
+The model tables are the ones that OpenCode reads, with the keys of `[omp]` over them, so the
+agents of both frontends run on the same models. A rule source outside the grammar of
+`render_rule`, or in a subdirectory of `rules/`, exits 2. A tool that the table `TOOLS` does not
+map exits 2 too. An installed rule, agent or skill with no source is an EXTRA line.
 
 The adapter has no `fixtures/` directory. Its cases run the install on a scratch `HOME`.
 
 ## `omp/OMP-DELTA.md`
 
 The global instruction file of oh-my-pi. `harness install` writes it as `AGENTS.md` in oh-my-pi's
-agent directory, byte for byte. Its first three lines import `~/.claude/RTK.md`,
-`instructions/core.md` and `instructions/research-tree.md`.
+agent directory, byte for byte. Its first three lines import oh-my-pi's copies of `RTK.md`,
+`instructions/core.md` and `instructions/research-tree.md`, below `~/.omp/agent/`.
 
 It states the facts of oh-my-pi:
 
 - there is no sandbox, and `bash.patterns` and the guard extension are the two controls;
 - oh-my-pi runs no RTK rewrite, so a command runs as typed;
-- the approval mode is `write`, and the `eval` tool is denied;
+- the approval mode is `yolo`, and the `eval` tool is denied;
 - what the guard extension refuses;
 - there is no session scratchpad, no worktree hook and no background run;
 - read a `CLAUDE.md` below the working directory yourself;
 - read a rule through `rule://<name>` before work on a file that its globs match;
-- the skills are the links in `~/.agents/skills/`.
+- the skills are oh-my-pi's copies in `~/.omp/agent/skills/`, read through `skill://<name>`;
+- each agent's model is in its frontmatter, and a council seat needs its provider's credentials;
+- the council of critics of `build-part`.
 
 The cases check that the file is no larger than 5,114 bytes.
 
@@ -290,13 +309,14 @@ needs and does not find exits 2.
 The guard extension of oh-my-pi. `harness install` copies it to `extensions/guards.ts` in
 oh-my-pi's agent directory. It checks each tool call that a glob of `bash.patterns` cannot check:
 
-- `bash`: the four guard scripts of `~/.claude/hooks/`, which it runs with `python3`, and the path
+- `bash`: the four guard scripts of `~/.omp/agent/hooks/`, which it runs with `python3`, and the path
   list on the words of the command and on its working directory;
 - `read` and `grep`: the `deny` list on the path;
 - `edit` and `write`: the `edit` list, then the `ask` list, on each path that the call names.
 
 The path list is `guard-paths.json` beside the extension. The `deny` and `edit` lists also get
-`~/.omp/**`. The match ignores case. An `ask` match and an "ask" answer of a guard refuse the
+`~/.omp/**`. The copies of the skills, the rules and the instructions below `~/.omp/agent/` stay
+readable. The match ignores case. An `ask` match and an "ask" answer of a guard refuse the
 call, and tell the model to ask the user in chat.
 
 The extension fails closed: a guard that cannot run, fails or times out blocks the call, and so

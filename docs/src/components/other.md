@@ -130,10 +130,11 @@ cases use it as their dummy profile. So it must name every key that a template u
 The example of the model tables, `examples/models.toml`. An agent or a skill names a tier in its
 `model:`: `large`, `medium` or `small`. The model tables map each tier to a model of each frontend.
 
-The file has one table for each frontend. `[claude]` gives the Claude Code model of each tier.
-`[opencode]` has sub-tables: the model of each tier, a model for one agent, the variants, the
-reasoning effort, and the councils, which copy an agent onto other models. `[omp]` gives the
-oh-my-pi model of each tier. A table that names a tier by an old name, `opus`, `sonnet` or `haiku`,
+`[claude]` gives the Claude Code model of each tier. OpenCode and oh-my-pi share every other
+table, so that their agents run on the same models: the model of each tier, a model for one
+agent, the variants, the reasoning effort, the councils, which copy an agent onto other models,
+and the context limits. `[opencode]` and `[omp]` hold the same sub-tables, and each of their keys
+replaces the shared key for that frontend alone. A table that names a tier by an old name, `opus`, `sonnet` or `haiku`,
 stops `harness install` with exit 2.
 
 Copy the file to `models.toml` beside the profile. `harness --models F` and
