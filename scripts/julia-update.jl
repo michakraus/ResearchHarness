@@ -47,13 +47,6 @@ const HARNESS_ENV = get(ENV, "RESEARCH_HARNESS_JULIA",
                         joinpath(homedir(), ".local", "share", "research-harness", "julia"))
 const KAIMON_PORT = 2828
 
-"""The path of the tool `name` on the PATH, or an error that names it."""
-function tool(name)
-    path = Sys.which(name)
-    path === nothing && error("no $name on the PATH")
-    return path
-end
-
 # The system's own parts, in this one branch: the service manager, the restart of the Kaimon
 # server and the line that names it, the log, the notifier, and how the server's binary is read.
 if Sys.isapple()
@@ -66,15 +59,18 @@ if Sys.isapple()
     const RESTART_HINT = "launchctl kickstart -k gui/\$(id -u)/$KAIMON_JOB"
     const LOG = "~/Library/Logs/julia-update/"
     const NOTIFIER = "osascript"
-    restart_cmd() = `$(tool("launchctl")) kickstart -k gui/$(Libc.getuid())/$KAIMON_JOB`
+    const MANAGER = "launchctl"
+    restart_cmd(manager) = `$manager kickstart -k gui/$(Libc.getuid())/$KAIMON_JOB`
     notify_cmd(notifier, message) =
         `$notifier -e $("display notification \"$message\" with title \"julia-update\"")`
     """
-    The binary of process `pid` from `ps -o comm=`, which prints its full path on macOS, or
-    `:ended` when the process has ended.
+    The binary of process `pid` from `ps -o comm=`, which prints its full path on macOS,
+    `:ended` when the process has ended, or `:nops` when no `ps` is on the PATH.
     """
     function binary_of(pid)
-        comm = readchomp(ignorestatus(`$(tool("ps")) -o comm= -p $pid`))
+        ps = Sys.which("ps")
+        ps === nothing && return :nops
+        comm = readchomp(ignorestatus(`$ps -o comm= -p $pid`))
         return isempty(comm) ? :ended : comm
     end
 elseif Sys.islinux()
@@ -82,7 +78,8 @@ elseif Sys.islinux()
     const RESTART_HINT = "systemctl --user restart kaimon.service"
     const LOG = "journalctl --user -u julia-update.service"
     const NOTIFIER = "notify-send"
-    restart_cmd() = `$(tool("systemctl")) --user restart kaimon.service`
+    const MANAGER = "systemctl"
+    restart_cmd(manager) = `$manager --user restart kaimon.service`
     notify_cmd(notifier, message) = `$notifier julia-update $message`
     """
     The binary of process `pid` from `/proc/<pid>/exe`, or `:ended` when the process has ended.
@@ -138,8 +135,8 @@ end
 
 """
 The Julia binary of the process that listens on the Kaimon port: its path, `:none` when no
-process listens, `:ended` when the process ended before its binary was read, or `:nolsof` when no
-`lsof` is on the PATH. A missing `lsof` is never "no server".
+process listens, `:ended` when the process ended before its binary was read, or `:nolsof` or
+`:nops` when that tool is not on the PATH. A missing tool is never "no server".
 """
 function server_julia()
     lsof = Sys.which("lsof")
@@ -199,8 +196,9 @@ function main()
     println("--- server check")
     server = server_julia()
     due = String[]
-    if server === :nolsof
-        println("FAILED: cannot read the server, because no lsof is on the PATH.")
+    if server === :nolsof || server === :nops
+        println("FAILED: cannot read the server, because no ", server === :nolsof ? "lsof" : "ps",
+                " is on the PATH.")
         push!(failures, "cannot read the server")
     elseif server === :none
         println("No process listens on port $KAIMON_PORT; $SERVICE_MANAGER restarts the server.")
@@ -209,7 +207,11 @@ function main()
                 "$SERVICE_MANAGER restarts the server.")
     elseif !isfile(server)
         println("The server ran from $server, which juliaup deleted.")
-        if step("restart the server", restart_cmd())
+        manager = Sys.which(MANAGER)
+        if manager === nothing
+            println("FAILED: cannot restart the server, because no $MANAGER is on the PATH.")
+            push!(failures, "restart of the server")
+        elseif step("restart the server", restart_cmd(manager))
             println("RESTARTED: the server.")
         else
             push!(failures, "restart of the server")

@@ -93,9 +93,10 @@ function fixture()
     end
     stub(joinpath(stubs, "osascript"), LOG_LINE * "exit 0\n")
     stub(joinpath(stubs, "notify-send"), LOG_LINE * "exit 0\n")
-    # `ps -o comm= -p <pid>` prints a live process's full path on macOS, and nothing for an ended
-    # one. The real `ps` and `kill -0` are refused inside the agent sandbox, so this stub stands
-    # for it: it prints $STUB_COMM for the server's pid and nothing for any other.
+    # `ps -o comm= -p <pid>` prints a live process's full path on macOS, its 15-character name on
+    # Linux, and nothing for an ended one. The real `ps` and `kill -0` are refused inside the agent
+    # sandbox, so this stub stands for it: it prints $STUB_COMM, which `comm` sets for this system,
+    # for the server's pid and nothing for any other.
     stub(joinpath(stubs, "ps"), LOG_LINE * raw"""
         [ -n "$STUB_COMM" ] && [ "$4" = "$STUB_PID" ] || exit 1
         printf '%s\n' "$STUB_COMM"
@@ -138,12 +139,19 @@ function run_script(fx::Fixture, extra::Pair...)
     return code, String(take!(out)), readlines(fx.log)
 end
 
+"""
+What `ps -o comm=` prints for a process run from `binary`: the full path on macOS, and only the
+first 15 characters of the file name on Linux. So a script that read `ps` on Linux would test
+the name `julia`, never the server's path.
+"""
+comm(binary) = LINUX ? first(basename(binary), 15) : binary
+
 "Run the script against a live server; `prepare(binary)` acts on its binary first."
 function with_server(prepare, fx::Fixture, extra::Pair...)
     proc, binary = start_server(fx)
     try
         prepare(binary)
-        return run_script(fx, "STUB_PID" => string(getpid(proc)), "STUB_COMM" => binary, extra...)
+        return run_script(fx, "STUB_PID" => string(getpid(proc)), "STUB_COMM" => comm(binary), extra...)
     finally
         kill(proc)
         wait(proc)
@@ -251,6 +259,28 @@ end
         @test restarts(calls) == 1
         @test occursin("stub: no user manager", out)
         @test length(alerts(calls)) == 1
+    end
+
+    # Only macOS reads the binary with `ps`.
+    LINUX || @testset "no ps on the PATH (macOS): a failure, never \"no server\"" begin
+        fx = fixture()
+        rm(joinpath(fx.stubs, "ps"))
+        code, out, calls = with_server(rm, fx)
+        @test code == 1
+        @test occursin("cannot read the server, because no ps", out)
+        @test restarts(calls) == 0 && others(calls) == 0
+        @test length(alerts(calls)) == 1
+        @test !occursin("Stacktrace", out)
+    end
+
+    @testset "no service manager on the PATH: a failure and an alert, no stack trace" begin
+        fx = fixture()
+        rm(joinpath(fx.stubs, LINUX ? "systemctl" : "launchctl"))
+        code, out, calls = with_server(rm, fx)
+        @test code == 1
+        @test occursin("FAILED: cannot restart the server", out)
+        @test length(alerts(calls)) == 1
+        @test !occursin("Stacktrace", out)
     end
 
     @testset "no notifier on the PATH: the log line only, no error" begin

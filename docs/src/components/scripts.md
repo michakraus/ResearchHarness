@@ -396,7 +396,8 @@ On macOS the script reads the profile key `launchd_prefix` for the label of the 
 [Profile](../profile.md)); on Linux it reads no profile. A failure or a restart that is due also
 shows a notification. Without the notifier on the `PATH`, the log line is the only report. When
 no `lsof` is on the `PATH`, the server check fails and the job restarts nothing. A restart that
-fails is a failure, with its output in the log. Exit 1 when a step fails.
+fails is a failure, with its output in the log, and so is a restart with no service manager on
+the `PATH`. Exit 1 when a step fails.
 
 `julia-update-test.jl` runs the script on a fixture home with stubs of every tool it calls, on the
 system it runs on (`julia --startup-file=no julia-update-test.jl`). CI runs it on Linux.

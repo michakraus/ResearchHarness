@@ -10,8 +10,8 @@
   `notify-send`, names `journalctl --user -u julia-update.service` as its log, and reads no
   profile. On both systems it finds `lsof`, `ps`, `launchctl`, `systemctl`, `osascript` and
   `notify-send` on the `PATH`; a missing `lsof` is now a failure ("cannot read the server") and
-  not "no server", a failed restart is a failure with its output in the log where it ended the
-  job with a stack trace, and a missing notifier leaves the log line only. `claude-autocommit`
+  not "no server", a failed restart, or one with no service manager on the `PATH`, is a failure
+  in the log where it ended the job with a stack trace, and a missing notifier leaves the log line only. `claude-autocommit`
   takes its lock in `$XDG_STATE_HOME`, or `~/.local/state`, on Linux, and in `~/Library/Logs` on
   macOS as before. New tests: `scripts/julia-update-test.jl`,
   `launchagents/claude-autocommit-test.jl`, `githooks/pre-commit-test.jl` (the hook is
