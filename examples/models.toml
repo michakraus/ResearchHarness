@@ -20,7 +20,7 @@ small = "haiku"
 # --- The tables of OpenCode and oh-my-pi ---------------------------------------------------------
 
 # The model of each tier, as `provider/model`. oh-my-pi needs all three, and the `medium` model is
-# also its default model, `modelRoles.default` in config.yml, so that it picks no model by itself.
+# also its default model, `modelRoles.default` in harness.yml, so that it picks no model by itself.
 # Under OpenCode, an agent whose tier has no entry stops the install. An agent with no `model:`
 # runs on its caller's model.
 [models]

@@ -193,7 +193,7 @@ agents, the skills, the rules, the commands and the hooks, and last the stamp
 `~/.claude/.harness-install.json`.
 
 These sections are the permission settings, the hooks, the [sandbox](concepts.md#sandbox) of
-Claude Code, and the effort and auto-compact window of each model. Without them, Claude Code runs
+Claude Code, and the [effort](concepts.md#effort) and auto-compact window of each model. Without them, Claude Code runs
 with its own defaults: no guard hook refuses a command, and no sandbox limits a shell command. An
 `/effort` or `/autocompact` that you type holds until the next install, which replaces it. The
 settings come first, so that a new deny rule is in place before the files that it protects. The
@@ -220,7 +220,8 @@ as a value that is not an object, the install stops with exit 2, an error, and w
 
 `harness install` writes the OpenCode configuration into the OpenCode configuration directory:
 `opencode.jsonc` with its permission block, the plugins, the global instruction file `AGENTS.md`
-and the agents. It also links the skills into `~/.agents/skills/`.
+and the agents, and OpenCode's own copies of the instructions, the rules, the guard scripts and
+the skills. It removes the links in `~/.agents/skills/` that an earlier install wrote.
 [architecture.md](architecture.md#the-opencode-and-oh-my-pi-adapters) describes the adapter.
 
 ### oh-my-pi

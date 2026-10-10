@@ -72,7 +72,7 @@ Claude Code's tool names.
 
 | neutral, in `agents/` and `skills/` | Claude Code | OpenCode | oh-my-pi |
 |:--|:--|:--|:--|
-| `model: large`, `medium`, `small` | the `[claude]` table: `opus`, `sonnet`, `haiku` | the `[opencode.models]` table | the `[omp]` table, as the roles `@opus`, `@sonnet`, `@haiku`; the `default` role takes the `medium` model |
+| `model: large`, `medium`, `small` | the `[claude]` table: `opus`, `sonnet`, `haiku` | the shared `[models]` table, with `[opencode.models]` over it | the shared `[models]` table, with `[omp.models]` over it, as the literal `provider/model`; the `default` role takes the `medium` model |
 | `read`, `edit`, `write`, `grep`, `glob` | `Read`, `Edit`, `Write`, `Grep`, `Glob` | `read`, `edit`, `edit`, `grep`, `glob` | `read`, `edit`, `write`, `grep`, `glob` |
 | `shell` | `Bash` | `bash` | `bash` |
 | `agent` | `Agent` | `task` | `task` |
@@ -90,7 +90,10 @@ YAML reads as a boolean or null.
 OpenCode reads `adapters/opencode/OPENCODE-DELTA.md`, which `harness install` writes as `AGENTS.md` in
 OpenCode's configuration directory, in place of `~/.claude/CLAUDE.md`. `RTK.md`,
 `instructions/core.md` and `instructions/research-tree.md` reach it through `instructions` in
-`opencode.jsonc`. `CLAUDE.md` holds the Claude Code mechanics only.
+`opencode.jsonc`. `CLAUDE.md` holds the Claude Code mechanics only. Like oh-my-pi, OpenCode reads
+its own copies: the install writes `RTK.md`, `instructions/`, `rules/`, the guard scripts in
+`hooks/` and the skills in `skills/` into its configuration directory. In each copied text, a
+path below `~/.claude/` names the same path there.
 
 oh-my-pi gets its permission layer from the same settings template. `harness install` writes
 the overlay `harness.yml` into its agent directory, `$PI_CODING_AGENT_DIR`, else `~/.omp/agent`:
@@ -145,7 +148,7 @@ frontend either: `hooks/` holds the guard scripts that Claude Code and oh-my-pi 
 | `adapters/opencode/` | the OpenCode configuration, plugins, global instruction file, and the agents that have no Claude Code source |
 | `adapters/omp/` | the oh-my-pi guard extension, global instruction file and agent text |
 | `bin/`, `lib/harness/` | the `harness` command |
-| `adapters/<frontend>/adapter.py` | each frontend's part of the `harness` command, which `lib/harness/frontends.py` loads: the Claude Code layer, the settings and the trust; the generators of the OpenCode agents, permission block and skill links; the generator of oh-my-pi's `config.yml`, rules, agents and `mcp.json` |
+| `adapters/<frontend>/adapter.py` | each frontend's part of the `harness` command, which `lib/harness/frontends.py` loads: the Claude Code layer, the settings and the trust; the generators of the OpenCode agents and permission block; the generator of oh-my-pi's `harness.yml`, `models.yml`, rules, agents and `mcp.json` |
 | `hooks/` | the shared guard scripts: Claude Code `PreToolUse` hooks that refuse unsafe shell commands, which oh-my-pi's `guards.ts` calls too, the `SessionStart` hook that warns when `~/.claude/` is behind its sources, and their test cases (`probe.py`) |
 | `settings/` | the permission and sandbox settings template, the policy source of all three frontends |
 | `githooks/` | git hooks and GitHub Actions workflow templates for Julia packages, and their installers |

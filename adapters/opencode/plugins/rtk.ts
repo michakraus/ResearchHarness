@@ -23,7 +23,7 @@
 
 const { spawn } = process.getBuiltinModule('node:child_process');
 
-const RTK = '/opt/homebrew/bin/rtk';
+const RTK = 'rtk'; // found on the PATH, as Claude Code's hook runs `rtk hook claude`
 const TIMEOUT_MS = 10_000; // the same budget Claude Code gives `rtk hook claude`
 
 function rewrite(command) {

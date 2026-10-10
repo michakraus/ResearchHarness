@@ -126,6 +126,14 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
 - a plug-in member that the loader checks for presence only, where the spec fixes its type, such
   as "one string": a list or `None` loads and prints its repr (I round 1, *Unify the agent
   configuration*)
+- a stencil width whose length `(2w+1)^D` overflows `Int`: `w = typemax(Int)` on a 1×1 grid
+  reported length 1; compute the length with checked arithmetic, or state a representable-width
+  limit (P10, *Rewrite the reduced basis packages*)
+- an index form that the signature admits and the parent refuses: a single
+  `Vararg{Union{CartesianIndex, Tuple, Integer}, N}` `getindex` accepts mixed forms, which the
+  `AbstractArray` fallback then rejects with its own `ArgumentError`. Uniform forms per method would
+  add the ambiguities the part forbids, so decide the mixed case explicitly (P10, *Rewrite the
+  reduced basis packages*)
 
 ## A tool that reads files or a tree
 

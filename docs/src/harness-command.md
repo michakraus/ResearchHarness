@@ -10,7 +10,7 @@ Exit 2 is a usage error or a failure. `harness --profile F` names the private pr
 `$RESEARCH_HARNESS_PROFILE`, else `~/.config/research-harness/profile.toml`; `examples/profile.toml`
 shows every key. `harness --help` and `harness <verb> --help` describe each verb.
 `harness --models F` names the model tables, which map each tier to its Claude Code, OpenCode and
-oh-my-pi model, and an agent to its own OpenCode model, else `$RESEARCH_HARNESS_MODELS`, else
+oh-my-pi model, and an agent to its own model, else `$RESEARCH_HARNESS_MODELS`, else
 `models.toml` beside the profile; `examples/models.toml` shows the layout.
 
 | verb | does |

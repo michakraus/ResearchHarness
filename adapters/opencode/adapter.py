@@ -77,6 +77,7 @@ import json
 import os
 import pathlib
 import re
+import shutil
 import stat
 import tempfile
 from unittest import mock
@@ -626,9 +627,9 @@ def plan(ctx):
             changes += change
         return changes
 
-    if not os.access("/opt/homebrew/bin/rtk", os.X_OK):
-        warnings.append(("/opt/homebrew/bin/rtk is not executable. The rtk plugin then leaves",
-                         "every command unchanged. Correct the path in plugins/rtk.ts."))
+    if shutil.which("rtk") is None:
+        warnings.append(("rtk is not on the PATH. The rtk plugin then leaves every command unchanged.",
+                         "Install RTK, or put its directory on the PATH that OpenCode runs with."))
     warnings += drift_checks()
 
     # An installed agent, plugin or skill with no copy here is left in place, and OpenCode still
@@ -932,6 +933,26 @@ def install_cases(check, tmp):
     check("opencode-token does not exist" not in text and f"{token} cannot be checked" not in text
           and re.search(r"^\d+ change\(s\) to make\.$", text, re.M) is not None,
           "a regular file at the token path is neither missing nor unchecked: " + last)
+
+    # The rtk plugin finds `rtk` on the PATH, and so does the install: an `rtk` only in a fixture
+    # directory on the PATH is found, and a PATH with none gives the warning. The exit status comes
+    # from the count of changes alone, so the same count line in both runs is the same status.
+    # The PATH keeps this one's directories, less each one that holds an `rtk`.
+    fixture_bin = tmp / "rtk-bin"
+    fixture_bin.mkdir()
+    (fixture_bin / "rtk").write_text("#!/bin/sh\nexit 1\n")
+    (fixture_bin / "rtk").chmod(0o755)
+    rest = [d for d in os.environ.get("PATH", "").split(os.pathsep)
+            if d and not os.access(os.path.join(d, "rtk"), os.X_OK)]
+    counts = []
+    for label, path, warned in [("an rtk only in a fixture directory on the PATH", [str(fixture_bin)] + rest, False),
+                                ("no rtk on the PATH", rest, True)]:
+        text, last = dry_run(mock.patch.dict(os.environ, PATH=os.pathsep.join(path)))
+        counts.append(re.findall(r"^\d+ change\(s\) to make\.$", text, re.M))
+        check(("WARNING: rtk is not on the PATH" in text) == warned and len(counts[-1]) == 1,
+              f"{label}: the warning {'is' if warned else 'is not'} given, and the run reaches its count line: "
+              + last)
+    check(counts[0] == counts[1], f"the rtk warning leaves the count line, and so the exit status, as it is: {counts}")
 
     scratch = Scratch(check, tmp / "scratch")
     fresh, run, case, tail, mode = scratch.fresh, scratch.run, scratch.case, scratch.tail, scratch.mode
