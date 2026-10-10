@@ -27,13 +27,12 @@ CI. The hook tests the pushed commit, never the working tree: it clones the repo
 and runs there.
 
 First come the two leak checks, before the suite, so a refused push costs seconds. They check
-the tree at the pushed commit and every commit that the push brings to `main` (`git rev-list
-<old>..<sha>`, as CI scans them; the whole history for a new `main`), so a leak that a later
-commit removes or renames away still refuses the push, also when a branch on `origin` already
-holds the commit. `gitleaks` finds the public shapes, tokens, keys and home paths, with
-`.gitleaks.toml`: gitleaks' default rules and a `home-path` rule that allows only `/Users/me` and
-`/home/example`.
-`harness leaks --commits` finds the private strings of the profile's `leak` list and the names
+the tree at the pushed commit and every commit that the push brings to `main`
+(`git rev-list <old>..<sha>`, as CI scans them; the whole history for a new `main`), so a leak
+that a later commit removes or renames away still refuses the push, also when a branch on
+`origin` already holds the commit. `gitleaks` finds the public shapes, tokens, keys and home
+paths, with `.gitleaks.toml`: gitleaks' default rules and a `home-path` rule that allows only
+`/Users/me` and `/home/example`. `harness leaks --commits` finds the private strings of the profile's `leak` list and the names
 of the research tree, in the files and their paths. Both also search the message of each commit
 that the push sends, its subject and body: `gitleaks git` reads no message, so the hook pipes
 the messages (`git log --no-walk --format=%B`) into `gitleaks stdin`, and `harness leaks
