@@ -152,7 +152,7 @@ puts that environment on its load path. No `Manifest.toml` is committed.
 
 The scripts never use this file in place. A session can edit the checkout, and the update job runs
 outside the sandbox, so it must install only what the installed copy names.
-[The tools](../tools.md) says what each package does.
+[Dependencies](../dependencies.md#explicitimports-json-juliaformatter-juliasyntax-testenv-and-yaml) says what each package does.
 
 ## `fatou.toml`
 

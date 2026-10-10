@@ -6,8 +6,10 @@ backticks: "## `advisor`", or "## `gate.jl` and `gate-test.jl`" for a script and
 says which tracked files are the components of each page and how each is named. `harness test`
 checks both directions: every component has a heading on its page, and every name in backticks
 in a level-2 heading is a component of that page, so a removed component leaves no stale section.
-It also checks that every tool of the README's dependency tables has a heading in
-`docs/src/tools.md` that names it as a whole word.
+It also checks `docs/src/dependencies.md`: its three tables, under the level-2 headings of
+TABLES, with the columns `tool`, `minimum` and `used for`, and below them one level-3 heading per
+description, which names its tools, "Python" or "JSON, YAML and TestEnv". Every tool of the
+tables is named by a heading, and every name in a heading is a tool of the tables.
 
 The call graphs of `docs/src/agents-at-work.md` are drawn from `docs/figures/calls.toml`, one
 `[[call]]` entry per spawn: `caller`, `callee`, `at` (the `file:line` of the instruction that
@@ -26,7 +28,7 @@ from . import REPO
 from .frontmatter import parse_file
 
 PAGES = REPO / "docs" / "src" / "components"
-TOOLS = REPO / "docs" / "src" / "tools.md"
+DEPENDENCIES = REPO / "docs" / "src" / "dependencies.md"
 CALLS = REPO / "docs" / "figures" / "calls.toml"
 
 # The keys of a `[[call]]` entry, the ones it must have, and the values of `effort`.
@@ -36,6 +38,10 @@ EFFORTS = ("low", "medium", "high", "xhigh", "max")
 # The skills that spawn agents from the main session, which has the tool `agent` without a
 # `tools:` line.
 SPAWNING_SKILLS = ("build-part", "build-reviewed")
+# The tables of the dependencies page, in this order, each under a level-2 heading of this text,
+# and the header row of each.
+TABLES = ("Generic tools", "Julia and its packages", "Optional")
+TABLE_HEADER = "| tool | minimum | used for |"
 
 def stem(path):
     """The file name without `.md`: the name of an agent, a rule or a command."""
@@ -131,15 +137,38 @@ def word(name, text):
     return re.search(rf"(?<![\w./-]){re.escape(name)}(?![\w./-])", text) is not None
 
 
-def readme_tools(readme):
-    """The first cell of each row of the README's dependency tables."""
-    tools, inside = [], False
-    for line in readme.splitlines():
-        if line.startswith("## "):
-            inside = line == "## Dependencies"
-        elif inside and line.startswith("| ") and not line.startswith("| tool |"):
-            tools.append(line.split("|")[1].strip())
-    return tools
+def dependency_problems(text):
+    """What is wrong with the dependencies page `text`, one phrase each: the tables under the
+    level-2 headings, in the order of TABLES, with the header TABLE_HEADER; and the level-3
+    headings, whose names, split at ", " and " and ", are the tools of the tables, each once."""
+    tables, section, fenced = {}, None, False
+    for line in text.splitlines():
+        if line.startswith("```"):
+            fenced = not fenced
+        elif fenced:
+            continue
+        elif line.startswith("## "):
+            section = line[3:]
+        elif section is not None and line.startswith("|"):
+            tables.setdefault(section, []).append(line)
+    problems = []
+    if tuple(tables) != TABLES:
+        problems.append(f"the tables are under {list(tables)}, not {list(TABLES)}")
+    tools = []
+    for section, lines in tables.items():
+        if lines[0] != TABLE_HEADER:
+            problems.append(f"the table of {section!r} has the header {lines[0]!r}")
+        tools += [line.split("|")[1].strip() for line in lines[2:]]
+    names = [n for h in headings(text, 3) for n in re.split(r", | and ", h)]
+    for tool in sorted({t for t in tools if tools.count(t) > 1}):
+        problems.append(f"{tool!r} is a row of the tables more than once")
+    for tool in sorted(set(tools) - set(names)):
+        problems.append(f"{tool!r} is a row of the tables and no heading names it")
+    for name in sorted(set(names) - set(tools)):
+        problems.append(f"{name!r} is named by a heading and is no row of the tables")
+    for name in sorted({n for n in names if names.count(n) > 1}):
+        problems.append(f"{name!r} is named by more than one heading")
+    return problems
 
 
 def tracked():
@@ -245,9 +274,26 @@ def selftest():
             check(name in inside, f"components/{page} has a heading for {name!r}")
         for name in sorted(inside - names):
             check(False, f"components/{page}: {name!r} in a heading is no component of the page")
-    tool_heads = headings(TOOLS.read_text(), 2)
-    for tool in readme_tools((REPO / "README.md").read_text()):
-        check(any(word(tool, h) for h in tool_heads), f"tools.md has a heading for {tool!r}")
+
+    # The rules of the dependencies page on fixed inputs, then the page of this checkout.
+    def page(generic="| A | 1 | a |\n| B | 2 | b |\n", heads="### A\n### B and C\n### D, E\n", header=TABLE_HEADER,
+             order=TABLES):
+        bodies = {"Generic tools": generic, "Julia and its packages": "| C | 3 | c |\n", "Optional": "| D | 4 | d |\n| E | 5 | e |\n"}
+        tables = "".join(f"## {t}\n\n{header}\n|:--|:--|:--|\n{bodies[t]}\n" for t in order)
+        return f"# Dependencies\n\n{tables}## What each tool does\n\n```\n### Z\n```\n{heads}"
+    check(dependency_problems(page()) == [], "a true dependencies page has no problem")
+    for label, text, phrase in [
+        ("a row removed, its heading kept", page(generic="| A | 1 | a |\n"), "'B' is named by a heading and is no row"),
+        ("a heading removed, its row kept", page(heads="### A\n### B and C\n### E\n"), "'D' is a row of the tables and no heading"),
+        ("a row twice", page(generic="| A | 1 | a |\n| B | 2 | b |\n| A | 1 | a |\n"), "'A' is a row of the tables more than once"),
+        ("a tool in two headings", page(heads="### A\n### B and C\n### D, E\n### A\n"), "'A' is named by more than one heading"),
+        ("the tables out of order", page(order=(TABLES[1], TABLES[0], TABLES[2])), "the tables are under"),
+        ("another header", page(header="| tool | minimum | needed by |"), "has the header"),
+    ]:
+        found = dependency_problems(text)
+        check(len(found) == (3 if "header" in phrase else 1) and phrase in found[0], f"a dependencies page with {label} gives {phrase!r}: {found}")
+    problems = dependency_problems(DEPENDENCIES.read_text()) if DEPENDENCIES.is_file() else ["the page does not exist"]
+    check(not problems, "docs/src/dependencies.md: " + ("; ".join(problems) if problems else "its tables and their headings agree"))
 
     # The rules of calls.toml on fixed inputs: each wrong entry gives one problem.
     sources = call_sources(["agents/a.md", "agents/b.md", "skills/s/SKILL.md", "skills/s/edges.md"])

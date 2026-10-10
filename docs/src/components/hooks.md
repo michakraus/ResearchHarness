@@ -203,7 +203,7 @@ shows the state of the session in its tab. Claude Code runs it on the events `Se
 
 It hands its standard input and its arguments to `~/.config/iterm2/cc-status` unchanged. When
 that utility is not there, it exits 0 and does nothing. So one settings file serves a machine with
-iTerm2 and a machine without it. It guards nothing. [The tools](../tools.md#iterm2) say more about
+iTerm2 and a machine without it. It guards nothing. [Dependencies](../dependencies.md#iterm2) says more about
 iTerm2.
 
 ## `probe.py`

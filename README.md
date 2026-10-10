@@ -1,188 +1,177 @@
-# ResearchHarness
+# Research Harness
 
 [![Documentation](https://img.shields.io/badge/docs-dev-blue.svg)](https://michakraus.github.io/ResearchHarness/)
 
-ResearchHarness configures AI coding agents for work on research software in Julia. It configures
-three frontends: Claude Code, OpenCode and oh-my-pi. One set of neutral sources gives each
-frontend its configuration. One command, `harness`, installs the configuration and checks it.
+Research Harness is a configuration for coding agents that work on research software. A coding
+agent is a language model that reads your files, runs commands and edits code in your terminal.
+The harness gives three of them, Claude Code, OpenCode and oh-my-pi, one set of instructions,
+skills, sub-agents, permission settings and guard hooks. One command, `harness`, installs this
+configuration and checks it.
 
-The harness has these features:
+The harness is for a researcher who wants a coding agent to keep the same rules in every
+repository of a research tree: the packages, the experiments, the papers. Its own tools are for
+Julia code, but most of its ideas transfer to any language. [Dependencies](docs/src/dependencies.md#julia-and-its-packages)
+says what needs Julia.
 
-- **One instruction layer for three frontends.** The agents, skills, rules, commands and
-  instruction files are neutral sources. `harness install` writes them into the configuration of
-  Claude Code, OpenCode and oh-my-pi.
-- **Permission settings and their auditor.** One settings template is the policy source of all
-  three frontends. `harness settings` measures the prompt surface of the Claude Code settings and
-  installs them.
-- **Guard hooks.** Python hooks refuse unsafe shell commands before they run. Claude Code calls
-  them, and oh-my-pi calls them through an extension. A hook at session start warns when the
-  installed layer is behind its sources.
-- **Git hooks and CI workflows for Julia packages.** `harness githooks` and `harness workflows`
-  install the shared git hooks and GitHub workflows into every repository of a research tree.
-- **Julia tools.** Scripts for tests, mutation tests and code structure, and JuliaFormatter over
-  every tracked Julia file of the tree.
-- **Leak checks.** A private profile holds every value that names a person, an institution or a
-  machine. `harness leaks` and gitleaks keep these values and secrets out of the repository. The
-  pre-push hook and CI run both checks.
+```mermaid
+flowchart TB
+  accTitle: The harness and its three layers
+  accDescr: The harness surrounds three layers. At the top is the research tree, with the library, the knowledge, the packages, the experiments, the projects and the papers. In the middle are the components: agents, skills, commands, rules, guard hooks, git hooks and workflows, scripts and settings. At the bottom are the frontends: Claude Code, OpenCode and oh-my-pi.
+  subgraph harness["Research Harness"]
+    direction TB
+    subgraph tree["The research tree"]
+      direction LR
+      t1["Library"] ~~~ t2["Knowledge"] ~~~ t3["Packages"] ~~~ t4["Experiments"] ~~~ t5["Projects"] ~~~ t6["Papers"]
+    end
+    subgraph components["The components"]
+      direction LR
+      c1["Agents"] ~~~ c2["Skills"] ~~~ c3["Commands"] ~~~ c4["Rules"] ~~~ c5["Guard hooks"] ~~~ c6["Git hooks and workflows"] ~~~ c7["Scripts"] ~~~ c8["Settings"]
+    end
+    subgraph frontends["The frontends"]
+      direction LR
+      f1["Claude Code"] ~~~ f2["OpenCode"] ~~~ f3["oh-my-pi"]
+    end
+    tree ~~~ components ~~~ frontends
+  end
+```
+
+*The harness and its three layers.* The research tree is where the work is, the components are
+what the harness supplies, and the frontends are the agents that read them. The research-tree
+layer shows the tree of the harness's author, as an example; your tree holds your own directories.
+
+These are the main ideas:
+
+- **One set of sources for three frontends.** The agents, skills, rules, commands and instruction
+  files are neutral sources in this repository. `harness install` writes the configuration of
+  each frontend from them. You edit a source, never its installed copy.
+- **Instructions that load when they apply.** The core instructions load in every session. A rule
+  loads when the agent reads a matching file, and a skill when your request matches its
+  description.
+- **Safety in layers.** One settings template gives the permission and sandbox settings of all
+  three frontends. Guard hooks refuse unsafe shell commands before they run. A hook at session
+  start warns when the installed configuration is behind its sources.
+- **Long work goes to a sub-agent.** A test run or a review runs in its own context and returns a
+  short report, so your session keeps its room for the work.
+- **Private values stay private.** A private profile holds every value that names a person, an
+  institution or a machine. `harness leaks` and gitleaks keep these values and secrets out of the
+  repository.
+
+```mermaid
+flowchart LR
+  accTitle: From the sources to the frontends
+  accDescr: The sources of this repository, the agents, skills, rules, commands and instructions, the guard hooks, the settings template and the adapters, and two private inputs, the profile with the model tables and the tree instructions, go into harness install. It writes the configuration of Claude Code into ~/.claude/, of OpenCode into ~/.config/opencode/ and of oh-my-pi into ~/.omp/agent/. The settings template also goes into harness settings install, which writes ~/.claude/settings.json for Claude Code.
+  subgraph sources["The sources, in this repository"]
+    direction TB
+    s1["Agents, skills, rules,<br/>commands, instructions"]
+    s2["Guard hooks"]
+    s3["Settings template"]
+    s4["Adapters of the frontends"]
+  end
+  subgraph private["Private, on your machine"]
+    direction TB
+    p1["Profile and model tables"]
+    p2["Tree instructions"]
+  end
+  install["harness install"]
+  settings["harness settings install"]
+  sources --> install
+  private --> install
+  s3 --> settings
+  install --> claude["Claude Code<br/>~/.claude/"]
+  install --> opencode["OpenCode<br/>~/.config/opencode/"]
+  install --> omp["oh-my-pi<br/>~/.omp/agent/"]
+  settings -->|settings.json| claude
+```
+
+*From the sources to the frontends.* `harness install` writes the configuration of each frontend
+from the sources and your private files. [Architecture](docs/src/architecture.md) describes the
+layers and what each frontend receives.
 
 ## Installation
 
-These steps install the harness on macOS. [Setup on macOS](docs/src/setup-macos.md) gives the
-details. First, install the required tools of [Dependencies](#dependencies).
+These are the shortest steps on macOS. [Setup on macOS](docs/src/setup-macos.md) explains each
+step and the check that it worked.
 
-1. Clone the repository. These steps use the checkout `~/Research/Harness`.
+1. Install the required tools of [Dependencies](docs/src/dependencies.md). Setup on macOS gives
+   the Homebrew commands.
+
+2. Clone the repository to `~/Research/Harness`, and put its `bin/` on the `PATH`. Add the
+   `export` line to your shell's start file too, for example `~/.zshrc`. Then
+   `harness --help` lists the verbs.
 
    ```bash
    git clone https://github.com/michakraus/ResearchHarness.git ~/Research/Harness
-   ```
-
-2. Put `bin/` on the `PATH`. Also add this line to your shell's start file, for example
-   `~/.zshrc`.
-
-   ```bash
    export PATH="$HOME/Research/Harness/bin:$PATH"
    ```
 
-3. Make the private profile and the model tables from the examples.
+3. Copy the example profile and model tables, and make the directories and the settings file
+   that they and the install need.
 
    ```bash
-   mkdir -p ~/.config/research-harness
-   cp ~/Research/Harness/examples/profile.toml ~/.config/research-harness/profile.toml
-   cp ~/Research/Harness/examples/models.toml ~/.config/research-harness/models.toml
-   ```
-
-4. Write your values into `~/.config/research-harness/profile.toml`. Each value replaces the
-   example path `/home/example` with your home directory, for example `/Users/me`. The key
-   `harness` holds the absolute path of the checkout, for example `/Users/me/Research/Harness`.
-   The key `tree_agents` names the directory of your tree instructions, and each entry of
-   `repository_roots` names a directory of your research tree. These directories must exist.
-   With the example values, these commands make them:
-
-   ```bash
+   mkdir -p ~/.config/research-harness ~/.claude/skills ~/.config/opencode
+   cp ~/Research/Harness/examples/{profile,models}.toml ~/.config/research-harness/
    mkdir -p ~/Research/Environment/Agents/instructions ~/Research/Packages ~/Research/Experiments
    touch ~/Research/Environment/Agents/instructions/research-tree.md
-   ```
-
-5. Make the two directories and the settings file that the install needs on a new machine.
-   Without the directories, `harness install` stops with exit 2. Without the file,
-   `harness settings install` stops with exit 2.
-
-   ```bash
-   mkdir -p ~/.claude/skills ~/.config/opencode
    test -f ~/.claude/settings.json || echo '{}' > ~/.claude/settings.json
    ```
 
-6. Install the configuration of each frontend. The first command prints the plan. The second
-   command makes the change.
+4. In `~/.config/research-harness/profile.toml`, replace the example path `/home/example` with
+   your home directory, for example `/Users/me`, in each value.
+
+5. Install. `harness install` prints the plan and exits 1, because it would change files.
+   `--apply` makes the change; the first one also downloads the Julia packages of the scripts.
+   Then the dry run reports `0 change(s) to make.` and exits 0. The settings verb works in the
+   same way.
 
    ```bash
    harness install
    harness install --apply
-   ```
-
-7. Install the Claude Code settings in the same way.
-
-   ```bash
-   harness settings install
+   harness install
    harness settings install --apply
    ```
 
-## Basic usage
+## A first session
 
-A verb that changes something prints its plan. `--apply` makes the change. These are the daily
-verbs:
+This short tutorial needs Claude Code and the installed harness, and any git repository. It
+needs no Julia. [Tutorial: a first session](docs/src/tutorial.md) is the long form, on a Julia
+package.
 
-- `harness install` installs the configuration of each frontend from the sources.
-- `harness test` runs the harness's own test cases.
-- `harness leaks` searches the repository and its renders for the leak list of the profile.
-- `harness settings` measures, checks and installs the Claude Code settings.
+1. Start Claude Code in your repository. When it asks whether you trust the folder, answer yes.
 
-[The `harness` command](docs/src/harness-command.md) describes every verb, the profile and the
-flags.
+   ```bash
+   cd ~/path/to/your/repository
+   claude
+   ```
 
-## Dependencies
+2. Ask a question about the repository, for example `What does this repository hold? Name the
+   files that matter most.` Each tool call of the agent shows in the session. Some ask for your
+   permission first: read each one before you answer.
 
-The harness calls the tools below. A tool is required when a verb, a hook, the pre-push gate, CI
-or an installed git hook calls it. An optional tool serves one frontend or one job; the `used for`
-column also says what stops without it. The minimum is the floor that the code checks, that CI
-pins, that `[compat]` sets or that a release note names for a feature the code uses; each floor
-names its source. Where no floor exists, the cell gives the version that the harness is tested
-with. [The tools](docs/src/tools.md) says what each tool does, why the harness needs it, and
-where the harness calls it.
+3. Ask for an edit through the shell, for example `Replace "old" with "new" in README.md with
+   sed -i.` A guard hook refuses the command before it runs, and the session shows
+   `Refused: sed -i ...`. The agent then makes the edit with its own edit tool.
 
-### Required
+4. End the session with `/exit`. Then add an empty line to a source of the harness, so that the
+   installed copy is behind its source.
 
-| tool | minimum | used for |
-|:--|:--|:--|
-| Python | ≥ 3.11, the check at `bin/harness:9` | runs the `harness` command, the guard hooks and the pre-push gate |
-| git | tested with 2.54.0 | reads and pushes the repositories of the tree, makes the worktrees of Claude Code, and clones the pushed commit for the pre-push gate |
-| gh | tested with 2.102.0 | protects the default branch of each repository on GitHub, in `harness ci-protection` |
-| gitleaks | ≥ 8.21, the check at `.githooks/pre-push:54` | finds secrets in the commits of a push, in the pre-push gate and in CI |
-| Julia | ≥ 1.13, `[compat]` at `Project.toml:22` | runs the Julia scripts: the formatter, the test runner, the mutation tests, the workflow check and the installed git hooks |
-| ExplicitImports | ≥ 1.15, `[compat]` at `Project.toml:16` | finds the names that a package uses without an explicit import, in the script `explicit-imports.jl` and the package audit |
-| JSON | ≥ 1.10, `[compat]` at `Project.toml:17` | writes the reports of the test gate and the mutation tests |
-| JuliaFormatter | ≥ 2.14, `[compat]` at `Project.toml:18` | formats Julia code, in `harness format` and the installed pre-commit hook |
-| JuliaSyntax | ≥ 1.0.2, `[compat]` at `Project.toml:19` | parses Julia code to make the mutants of a mutation test |
-| TestEnv | ≥ 1.103.7, `[compat]` at `Project.toml:20` | runs the tests of a package in its test environment, for the test runner and the mutation tests |
-| YAML | ≥ 0.4.17, `[compat]` at `Project.toml:21` | reads the CI workflows and the frontmatter of the wiki pages |
-| Node.js | ≥ 20.16 (20.x), ≥ 22.3, for `process.getBuiltinModule`, as the API documentation says: <https://nodejs.org/api/process.html#processgetbuiltinmoduleid> | loads the guard extensions of oh-my-pi and OpenCode in the hook probe of `harness test`, and builds the documentation site with npm and VitePress |
-| shellcheck | tested with 0.11.0 | checks the shell scripts, in the pre-push gate and in CI |
-| actionlint | ≥ 1.7.12, the CI pin at `.github/workflows/test.yml:49` | checks the GitHub workflow files, in CI |
-| timeout | tested with 9.12 | stops `fatou lint` in the installed pre-commit hook after 60 seconds |
-| fatou | ≥ 0.22.0, the CI pin at `.github/workflows/julia.yml:45` | lints the staged Julia files before a commit, and rejects a mutant that uses an undefined name |
-| rsync | tested with 3.5.1 | copies a package without its `.git` directory, for the test runner and the mutation tests |
+   ```bash
+   echo >> ~/Research/Harness/instructions/core.md
+   ```
 
-### Optional
+5. Start a new session with `claude`. The harness warns at once: `~/.claude is behind its sources
+   (...): an edit there is not installed.` It blocks nothing.
 
-| tool | minimum | used for |
-|:--|:--|:--|
-| Claude Code | tested with 2.1.295 | reads the layer that `harness install` writes into `~/.claude/`, and runs the triggering test of the skills; without it, neither happens |
-| OpenCode | tested with 2.0.26 | reads the configuration that `harness install` writes into `~/.config/opencode/`; without it, nothing reads that configuration |
-| oh-my-pi | tested with 18.8.6 | reads the configuration that `harness install` writes into `~/.omp/agent/`; without it, nothing reads that configuration |
-| RTK | tested with 0.51.0 | shortens the output of shell commands in OpenCode; without it, the plugin passes each command unchanged |
-| Kaimon | tested with 2.10.0, the `version` of its app project | gives an agent a Julia session and tools for Julia code; without it, the update job stops with an error, and the agents have no Julia session |
-| jq | tested with 1.7.1 | reads the session data for the Claude Code status line; without it, the status line shows no values |
-| juliaup | tested with 1.18.9 | updates the Julia releases, in the update job; without it, the job cannot update them |
-| iTerm2 | tested with 3.7.3, the `CFBundleShortVersionString` of the app | shows the state of a Claude Code session in the terminal tab; without it, the hook `hooks/cc-status` does nothing and exits 0 |
-
-The tables leave out the system tools: the POSIX shell utilities, such as `awk`, `sed`, `grep`,
-`ps`, `kill`, `id` and `mktemp`; the tools that macOS supplies, `launchctl`, `security`,
-`osascript`, `lsof`, `pgrep` and `tar`; and the tools of the GitHub runner that the CI jobs call,
-`curl`, `tar` and `sha256sum`.
+Undo the edit with `git -C ~/Research/Harness restore instructions/core.md`, and the next session
+starts with no warning.
 
 ## Documentation
 
-The documentation site is <https://michakraus.github.io/ResearchHarness/>. Its pages are in
-`docs/src/`, and VitePress builds them.
-
-- [Tutorial: a first session](docs/src/tutorial.md): the words that the other pages use, and
-  one session with Claude Code that shows the harness at work. Start here if you are new to
-  the harness or to coding agents.
-- [Setup on macOS](docs/src/setup-macos.md): each step of the setup on macOS, and the check that
-  it worked.
-- [Setup on Linux](docs/src/setup-linux.md): the setup on Linux, which is coming.
-- [Daily use](docs/src/daily-use.md): a change of a source or of the settings, the drift warning,
-  the leak check, the verbs for the whole research tree and the triggering test of the skills.
-- [The security model](docs/src/security.md): what each security mechanism stops and does not
-  stop, and the limits of the model.
-- [Adapting the profile](docs/src/profile.md): each key of the profile and each table of the
-  model tables, and the verbs that read them.
-- [The `harness` command](docs/src/harness-command.md): the contract of every verb, the profile
-  and the model tables, the verbs, and the Julia environment.
-- [Architecture](docs/src/architecture.md): the three layers and the state in `~/.claude`, the
-  Claude Code layer and its stamp, the neutral vocabulary, the OpenCode and oh-my-pi adapters,
-  and the layout of the repository.
-- Components: one page for each kind of component, with a section for each one:
-  [agents](docs/src/components/agents.md), [skills](docs/src/components/skills.md),
-  [commands](docs/src/components/commands.md), [rules](docs/src/components/rules.md),
-  [guard hooks](docs/src/components/hooks.md), [git hooks and
-  workflows](docs/src/components/githooks.md), [scripts](docs/src/components/scripts.md),
-  [adapters](docs/src/components/adapters.md), [the harness
-  command](docs/src/components/harness.md) and [jobs and configuration](docs/src/components/other.md).
-- [Development](docs/src/development.md): the tests, the pre-push hook, the leak checks and CI.
-- [The tools](docs/src/tools.md): what each dependency does, why the harness needs it, and where
-  the harness calls it.
+Everything that this README leaves out is on the documentation site,
+<https://michakraus.github.io/ResearchHarness/>.
 
 ## License
 
-Code: MIT (`LICENSE`). Documentation: CC BY 4.0 (`LICENSE-docs`).
+The code is under the MIT license, in
+[`LICENSE`](https://github.com/michakraus/ResearchHarness/blob/main/LICENSE). The documentation is
+under CC BY 4.0, in
+[`LICENSE-docs`](https://github.com/michakraus/ResearchHarness/blob/main/LICENSE-docs).

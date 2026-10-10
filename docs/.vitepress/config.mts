@@ -25,7 +25,7 @@ function readmeLinks(md) {
 
 export default withMermaid(defineConfig({
   base: '/ResearchHarness/',
-  title: 'ResearchHarness',
+  title: 'Research Harness',
   description: 'A harness for coding agents in a research tree',
   srcDir: 'src',
   outDir: 'build',
@@ -51,8 +51,14 @@ export default withMermaid(defineConfig({
     },
     socialLinks: [{ icon: 'github', link: 'https://github.com/michakraus/ResearchHarness' }],
     sidebar: [
-      { text: 'Home', link: '/' },
-      { text: 'Tutorial', link: '/tutorial' },
+      {
+        text: 'Getting started',
+        items: [
+          { text: 'Home', link: '/' },
+          { text: 'Dependencies', link: '/dependencies' },
+          { text: 'Tutorial', link: '/tutorial' }
+        ]
+      },
       {
         text: 'Setup',
         items: [
@@ -73,8 +79,7 @@ export default withMermaid(defineConfig({
         items: [
           { text: 'Agents at work', link: '/agents-at-work' },
           { text: 'The security model', link: '/security' },
-          { text: 'Architecture', link: '/architecture' },
-          { text: 'The tools', link: '/tools' }
+          { text: 'Architecture', link: '/architecture' }
         ]
       },
       {

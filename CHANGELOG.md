@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+- **A new README, and the dependencies move to their own page.** The README, and so the home page
+  of the site, is now an overview for a reader who is new to the harness: what it is and for
+  whom, two Mermaid figures (the harness around its three layers, and the flow from the sources
+  through `harness install` to the frontends), the shortest installation on macOS in five steps,
+  a first session in five steps that needs any git repository and no Julia, and one link to the
+  site; it leaves the details to the pages that it links. The dependency tables are on the new
+  page *Dependencies* (`docs/src/dependencies.md`), second in the sidebar under *Getting
+  started*, in three tables: *Generic tools*, *Julia and its packages* and *Optional*, with the
+  same 25 rows, and a paragraph on what a reader who writes no Julia loses without the Julia
+  rows. The descriptions of `tools.md` are below the tables, and `tools.md` is gone, so a link
+  to `/tools` now finds no page. The case of `harness test` that read the README's tables reads
+  the tables of `dependencies.md` and checks both directions: every row has a heading on that
+  page, and every name in a heading is a row. The site's title is "Research Harness", and
+  `npm run docs:check` also finds the README's two figures on the home page and the
+  dependencies page second in the sidebar.
+
 - **A ruling that adds a branch to the code names the test that catches its removal.** The
   `advisor` writes the input, the assertion and the mutant as a `**Tests catch:**` sentence in its
   decision; the `arbitrator` puts them in *Next round* and adds the mutant to the list that must be
