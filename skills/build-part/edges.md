@@ -221,6 +221,10 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
 
 - a deleted unused binding whose right side was the only reader of a value computed further up,
   which is then computed and never read (N6, `FIELDS` in *Clear the remaining fatou findings*)
+- a family of near-identical blocks that the task names by a count, while the section's `Files` glob
+  matches fewer members than the count: the block outside the glob keeps its copy, and the branch's
+  CHANGELOG then claims the whole family went. Find the family by its interface — `<: Cache{`,
+  `function Cache(` — not by the glob (P43, *Rewrite the reduced basis packages*)
 
 ## A migration of tests or of text
 
