@@ -64,3 +64,13 @@ opencode_providers = '''
 # Strings that must never appear in the repository: `harness leaks` searches every tracked file
 # for each. The home path, the user name, the institution's hosts, internal addresses.
 leak = ["/home/example", "example-user"]
+
+# Optional. The providers of oh-my-pi's models.yml, one table each, which oh-my-pi reads as
+# written: the model servers and accounts beyond its built-in providers. Name a provider as
+# OpenCode names the same account, so that models.toml holds one model string for both. `apiKey`
+# names an environment variable, which oh-my-pi reads, so that no key is in the file.
+[omp_providers.example-cloud]
+baseUrl = "https://example-resource.example.org/anthropic"
+api = "anthropic-messages"
+apiKey = "EXAMPLE_CLOUD_API_KEY"
+models = [{ id = "example-model", reasoning = true, contextWindow = 200000 }]

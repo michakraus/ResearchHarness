@@ -19,7 +19,11 @@
   its thinking level, as it sets no variant under OpenCode. A council seat with `verify = true`
   judges each verify round alone, under both frontends. A new sub-table, `context_limits`, caps
   the input tokens of a model: OpenCode gets a `limit` in its `provider` object, oh-my-pi a
-  `contextWindow` in a new `models.yml`, which compaction reads. oh-my-pi's approval mode is
+  `contextWindow` in a new `models.yml`, which compaction reads. A new optional profile key,
+  `omp_providers`, holds oh-my-pi's own providers, one table each, as `opencode_providers` holds
+  OpenCode's; the install writes them into `models.yml`. Name a provider as OpenCode names the
+  same account, such as `azure-cognitive-services` for Claude on Azure, so that `models.toml`
+  holds one model string for both frontends. oh-my-pi's approval mode is
   `yolo`: its deny and prompt patterns, the `eval` deny and the guard extension still apply.
   `config.yml` keeps only `modelRoles.default`. K25 stays: its traceback moves to a later line.
 
