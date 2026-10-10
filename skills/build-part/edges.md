@@ -165,6 +165,12 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
 - a path the sandbox denies: `Path.is_file()` raises on Python 3.11 and returns `False` on 3.12
   and later, so an `except OSError` around it never runs there; check with `stat()` and test
   with `stat` patched (D1b round 1, *Unify the agent configuration*)
+- a file mode that the code sets explicitly, tested under the default umask: 022 already gives
+  0644, so a case for "a new file is 0644" passes with the explicit mode deleted; run the case
+  under a umask of 077 (M round 1, *Unify the agent configuration*)
+- a finish that quotes a critic's reproducer: the critics' probes live under the home directory,
+  so the quoted path is a home path that the leak gate refuses; quote the probe by its file name
+  (M finish, *Unify the agent configuration*)
 - a bound tested only on its refusing side: a case for "nine is refused" and none for "eight is
   accepted" lets a mutant that refuses eight survive (D1b round 1, *Unify the agent
   configuration*)
