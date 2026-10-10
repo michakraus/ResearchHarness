@@ -2,7 +2,7 @@
 // `node --test scripts/`, which `npm run docs:check` does first.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { figureWidth, figures, geometryProblems, layerProblems, meet, points, widthProblem } from './figures.mjs'
+import { figureWidth, figures, geometryProblems, labelProblems, layerProblems, meet, points, widthProblem } from './figures.mjs'
 
 const box = (name, x, y, w, h) => `<rect data-box="${name}" x="${x}" y="${y}" width="${w}" height="${h}"/>`
 const edge = (from, to, d) => `<path data-edge="${from} → ${to}" data-from="${from}" data-to="${to}" d="${d}"/>`
@@ -125,6 +125,43 @@ test('a graph whose edges leave their boxes on different sides has no direction'
   const f = one(box('a', 0, 0, 100, 40) + box('b', 0, 100, 100, 40) + box('c', 200, 0, 100, 40) +
     edge('a', 'b', 'M50 40L50 100') + edge('a', 'c', 'M100 20L200 20'))
   assert.deepEqual(layerProblems(f), ['the edges leave their boxes on different sides, so the graph has no one direction'])
+})
+
+// An arrow with a label, as FigArrow draws it: the path, the head, and the label's box.
+const labelled = (from, to, d, [x, y, w, h]) =>
+  `<g class="fig-arrow"><path class="fig-arrow-line" data-edge="${from} → ${to}" data-from="${from}" data-to="${to}" d="${d}"/>` +
+  `<path class="fig-arrow-head" d="M0 0Z"/><rect class="fig-arrow-label-bg" x="${x}" y="${y}" width="${w}" height="${h}"/></g>`
+// a calls b and c downwards; the two edges part at y = 60 and run down at x = 50 and x = 250.
+const pair = (bLabel, cLabel) => one(box('a', 0, 0, 300, 40) + box('b', 0, 160, 100, 40) + box('c', 200, 160, 100, 40) +
+  labelled('a', 'b', 'M150 40L150 60L50 60L50 160', bLabel) + labelled('a', 'c', 'M150 40L150 60L250 60L250 160', cLabel))
+
+test('the label of each edge is read with its box', () => {
+  const f = pair([10, 100, 80, 18], [210, 100, 80, 18])
+  assert.deepEqual(f.edges.map((e) => e.label), [{ x: 10, y: 100, w: 80, h: 18 }, { x: 210, y: 100, w: 80, h: 18 }])
+})
+
+test('a label centred on its own edge, with no other edge through it, passes', () => {
+  assert.deepEqual(labelProblems(pair([10, 100, 80, 18], [210, 100, 80, 18])), [])
+})
+
+test('a label beside its edge, in the band between two edges, is named', () => {
+  // The label of a → c sits left of its edge, between the two edges: nearer a → b than its own.
+  assert.deepEqual(labelProblems(pair([10, 100, 80, 18], [100, 100, 120, 18])),
+    ['the label of the edge a → c is not on its own edge'])
+})
+
+test('a label that another edge passes through is named, and one on a shared trunk is not', () => {
+  // The label of a → b is on its edge at the trunk (x = 150, y 40–60), which a → c shares.
+  assert.deepEqual(labelProblems(pair([110, 41, 80, 18], [210, 100, 80, 18])), [])
+  // A wide label of a → b at x = 50 reaches the edge a → c at x = 250.
+  assert.deepEqual(labelProblems(pair([-160, 100, 420, 18], [210, 130, 80, 18])),
+    ['the label of the edge a → b is as near the edge a → c as its own'])
+})
+
+test('two labels that overlap are named', () => {
+  // The edges run down at x = 50 and x = 250; the labels are on them but wide enough to meet.
+  const f = pair([-50, 100, 200, 18], [140, 110, 220, 18])
+  assert.ok(labelProblems(f).includes('the labels of the edges a → b and a → c overlap'), labelProblems(f).join('; '))
 })
 
 test('a link to another host and an image are found', () => {

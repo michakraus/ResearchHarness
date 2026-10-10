@@ -136,7 +136,7 @@ const ARROWS = [
     <FigPanel :x="sourceGroup.x" :y="sourceGroup.y" :w="sourceGroup.w" :h="sourceGroup.h" title="The sources, in this repository" dashed>
       <FigCard v-for="card in sourceGroup.cards" :key="card.title" v-bind="card" accent="violet" />
     </FigPanel>
-    <FigPanel :x="installGroup.x" :y="installGroup.y" :w="installGroup.w" :h="installGroup.h" title="harness install" dashed>
+    <FigPanel :x="installGroup.x" :y="installGroup.y" :w="installGroup.w" :h="installGroup.h" title="harness install" dashed code>
       <FigCard v-for="card in installGroup.cards" :key="card.title" v-bind="card" accent="amber" />
     </FigPanel>
     <FigCard v-bind="settings" accent="amber" tinted />

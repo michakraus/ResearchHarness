@@ -11,8 +11,10 @@
 //   its four call graphs, each found by its <title> and with a <desc>;
 // - in every figure of the site, no edge crosses another edge or passes through a box that is
 //   not its end (scripts/figures.mjs), and no figure loads a file from another host;
-// - each call graph but Every spawn is at most 765 px wide, and the boxes of each of its layers have one width and
-//   share one edge line;
+// - in every figure, each label of an edge is on its own edge, no other edge passes through it,
+//   and no two labels overlap (scripts/figures.mjs);
+// - each call graph but Every spawn is at most 765 px wide, and the boxes of each of its layers
+//   have one width and share one edge line;
 // - in the flow figure, the group harness install holds a card for each of its steps, in order;
 // - every colour of the style module of the figures has a value for the dark theme in the built
 //   CSS, and no figure component or the generator names a colour itself.
@@ -21,7 +23,7 @@
 import { readFileSync, readdirSync, existsSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { figures as figuresOf, geometryProblems, layerProblems, widthProblem } from './figures.mjs'
+import { figures as figuresOf, geometryProblems, labelProblems, layerProblems, widthProblem } from './figures.mjs'
 
 const DOCS = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const BUILD = path.join(DOCS, 'build')
@@ -168,6 +170,7 @@ for (const [page, text] of built) {
     for (const url of f.external) problem(`${name} loads ${url} from another host`)
     if (f.images > 0) problem(`${name} holds an image or a foreign object, not SVG shapes`)
     for (const p of geometryProblems(f)) problem(`${name}: ${p}`)
+    for (const p of labelProblems(f)) problem(`${name}: ${p}`)
     if (CALL_GRAPHS.includes(f.title)) {
       const wide = widthProblem(f, MAX_GRAPH_WIDTH, WIDE_GRAPHS)
       if (wide) problem(`${name} ${wide}`)

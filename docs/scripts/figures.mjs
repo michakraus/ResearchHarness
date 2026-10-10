@@ -75,9 +75,15 @@ function figure(head, body) {
   const edges = []
   for (const m of body.matchAll(/<path\b[^>]*\bdata-edge="[^"]*"[^>]*>/g)) {
     const a = attributes(m[0])
+    // The label of an edge: the box behind its text, after the edge's path, before the next edge.
+    const rest = body.slice(m.index + m[0].length)
+    const next = rest.search(/\bdata-edge="/)
+    const bg = /<rect\b[^>]*\bclass="fig-arrow-label-bg"[^>]*>/.exec(next < 0 ? rest : rest.slice(0, next))
+    const l = bg && attributes(bg[0])
     edges.push({
       name: unescape(a.get('data-edge')), from: unescape(a.get('data-from') ?? ''),
-      to: unescape(a.get('data-to') ?? ''), points: points(a.get('d') ?? '')
+      to: unescape(a.get('data-to') ?? ''), points: points(a.get('d') ?? ''),
+      ...(l ? { label: { x: Number(l.get('x')), y: Number(l.get('y')), w: Number(l.get('width')), h: Number(l.get('height')) } } : {})
     })
   }
   return {
@@ -216,6 +222,45 @@ export function geometryProblems(fig) {
     for (const box of fig.boxes) {
       if (own.includes(box) || own.some((end) => contains(box, end))) continue
       if (segments(e).some((s) => through(s, box))) problems.push(`the edge ${e.name} passes through the box "${box.name}"`)
+    }
+  }
+  return problems
+}
+
+/** Whether the segments `s` and `t` lie on one line and share a part longer than EPS: two edges
+ * on a trunk that they share. */
+function shared(s, t) {
+  const m = meet(s, t)
+  return m.length === 2 && Math.hypot(m[0][0] - m[1][0], m[0][1] - m[1][1]) > EPS
+}
+
+/** The problems of the labels of a figure's edges. A label sits on its own edge: the edge passes
+ * through the centre of the label's box. No other edge passes through the box, so that no other
+ * edge is as near the label as its own; a part of another edge on a trunk that it shares with the
+ * label's edge does not count. And no two labels overlap. */
+export function labelProblems(fig) {
+  const problems = []
+  const labelled = fig.edges.filter((e) => e.label)
+  for (const e of labelled) {
+    const b = e.label
+    const centre = [b.x + b.w / 2, b.y + b.h / 2]
+    if (!segments(e).some((s) => meet(s, [centre, centre]).length > 0)) {
+      problems.push(`the label of the edge ${e.name} is not on its own edge`)
+      continue
+    }
+    const own = segments(e)
+    for (const f of fig.edges) {
+      if (f === e) continue
+      const near = segments(f).filter((s) => !own.some((t) => shared(s, t))).some((s) => through(s, b))
+      if (near) problems.push(`the label of the edge ${e.name} is as near the edge ${f.name} as its own`)
+    }
+  }
+  for (const [i, e] of labelled.entries()) {
+    for (const f of labelled.slice(i + 1)) {
+      const [a, b] = [e.label, f.label]
+      if (a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h) {
+        problems.push(`the labels of the edges ${e.name} and ${f.name} overlap`)
+      }
     }
   }
   return problems

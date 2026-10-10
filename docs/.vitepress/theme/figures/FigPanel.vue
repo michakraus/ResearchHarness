@@ -1,7 +1,8 @@
 <script setup lang="ts">
 // A group panel at (x, y): a light body under a coloured header band with the title, and an
 // optional number badge or icon in the band. `dashed` draws a group or an outcome inside a panel:
-// a dashed border and a small grey title, with no band. `box` names the panel for the geometry
+// a dashed border and a small grey title, with no band; `code` sets that title in the monospace
+// font, for a command. `box` names the panel for the geometry
 // check of docs:check; it is the title unless given. The slot holds what the panel groups.
 import FigIcon from './FigIcon.vue'
 import { BAND } from './geometry'
@@ -16,8 +17,9 @@ const props = withDefaults(defineProps<{
   badge?: number
   icon?: string
   dashed?: boolean
+  code?: boolean
   box?: string
-}>(), { accent: 'slate', badge: undefined, icon: undefined, dashed: false, box: undefined })
+}>(), { accent: 'slate', badge: undefined, icon: undefined, dashed: false, code: false, box: undefined })
 
 const titleX = () => props.x + 16 + (props.badge !== undefined || props.icon !== undefined ? 32 : 0)
 </script>
@@ -46,7 +48,7 @@ const titleX = () => props.x + 16 + (props.badge !== undefined || props.icon !==
       </g>
       <text class="fig-panel-title" :x="titleX()" :y="props.y + BAND / 2 + 5" font-size="15">{{ props.title }}</text>
     </template>
-    <text v-else class="fig-panel-title" :x="props.x + 14" :y="props.y + 21" font-size="12">{{ props.title }}</text>
+    <text v-else :class="['fig-panel-title', { 'fig-code': props.code }]" :x="props.x + 14" :y="props.y + 21" font-size="12">{{ props.title }}</text>
     <slot />
   </g>
 </template>
