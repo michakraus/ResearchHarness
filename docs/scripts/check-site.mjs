@@ -15,7 +15,7 @@ const DOCS = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const BUILD = path.join(DOCS, 'build')
 const BASE = '/ResearchHarness/'
 
-// The menu of the site: every page of docs/src/, which the Documenter site had in its menu too.
+// The menu of the site: every page of docs/src/, the 22 pages of the menu before VitePress.
 const MENU = [
   'index.md', 'tutorial.md', 'setup-macos.md', 'setup-linux.md', 'daily-use.md', 'profile.md',
   'harness-command.md', 'agents-at-work.md', 'security.md', 'architecture.md', 'tools.md',

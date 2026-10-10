@@ -125,7 +125,12 @@ The harness needs Node.js because these extensions are JavaScript, and their fro
 in a JavaScript runtime. The plugins take the Node.js built-in modules from
 `process.getBuiltinModule`, which Node.js 22.3 and 20.16 added.
 
-Call sites: the hook probe of `harness test` (`hooks/probe.py:616`, `hooks/probe.py:839`).
+The documentation site is a VitePress project, and its build runs under Node.js too: `npm`
+installs the packages that `docs/package-lock.json` pins, and VitePress builds the site and draws
+the call graphs. Only the docs build needs these packages; the harness itself does not.
+
+Call sites: the hook probe of `harness test` (`hooks/probe.py:616`, `hooks/probe.py:839`); the
+docs build (`docs/package.json`, `.github/workflows/docs.yml`).
 
 ## shellcheck
 
