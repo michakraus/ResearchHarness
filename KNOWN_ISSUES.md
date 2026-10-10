@@ -527,3 +527,14 @@
   "2 stray rule …". Found by the verify critic of part M, round 2.
 - kind: found late
 - found: 2026-10-10; the ID is K60 because publish part J4 holds K49 onwards on its own branch
+
+### K61 · No test runs the real macOS `ps` against a deleted server binary.
+
+- location: `scripts/julia-update-test.jl`, the `ps` stub in `fixture`
+- evidence: the macOS half of `julia-update.jl` reads the server's binary with `ps -o comm=`, as
+  before the Linux change. The test stubs `ps`, because the agent sandbox refuses the real `ps`
+  and `kill -0` (EPERM). That `ps -o comm=` still prints the full path after the binary is deleted
+  rests on the base behaviour, not on a test. A live server's path was read by hand:
+  `ps -o comm= -p <pid>` printed the full path of the julia binary of the juliaup release.
+- kind: not verified
+- found: 2026-10-11
