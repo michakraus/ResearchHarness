@@ -96,10 +96,10 @@ run `harness workflows` or `harness githooks`.
 The settings template, the policy source of all three frontends. It holds the Claude Code settings
 with placeholders such as `{home}`, `{org}` and `{protected_dir}`, which the profile fills in.
 
-The template has the sections `permissions`, `hooks` and `sandbox`, and other keys of
-`settings.json`. These components read it:
+The template has the sections `permissions`, `hooks`, `sandbox` and `modelSettings`, and other
+keys of `settings.json`. These components read it:
 
-- `harness install` merges `permissions`, `hooks` and `sandbox` into
+- `harness install` merges `permissions`, `hooks`, `sandbox` and `modelSettings` into
   `~/.claude/settings.json`. It keeps every other key of that file, and does not install the other
   keys of the template;
 - `harness settings surface`, `compare`, `twins` and `domains` measure and check it;

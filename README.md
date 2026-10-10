@@ -64,7 +64,7 @@ step and the check that it worked.
 5. Install. `harness install` prints the plan and exits 1, because it would change files.
    `--apply` makes the change; the first one also downloads the Julia packages of the scripts.
    Then the dry run reports `0 change(s) to make.` and exits 0. The install also merges the
-   sections `permissions`, `hooks` and `sandbox` of the settings template into
+   sections `permissions`, `hooks`, `sandbox` and `modelSettings` of the settings template into
    `~/.claude/settings.json`, keeps the other keys of that file, and creates it if it is missing.
 
    ```bash
