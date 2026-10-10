@@ -7,7 +7,8 @@
 #   [[box]] id, cell [column, row] or `in` a group, kind (you, skill, agent, step, outcome), name,
 #           lines (up to two grey lines), icon, code (the name in the monospace font); a box of the
 #           kind agent or skill names the agent or skill in `shows`, and takes its name, model and
-#           effort from there
+#           effort from there; `effort` on an agent's box names the effort of its spawn, which an
+#           entry of calls.toml records
 #   [[group]] id, cell, name: a dashed group of the boxes that name it in `in`, one below another
 #   [[edge]] id (only where two edges have the same ends), from, to, route (the side it leaves,
 #           with +n or -n px from the side's centre; moves to "x <column>" or "y <row>", where .5

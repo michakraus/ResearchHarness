@@ -55,7 +55,7 @@ export type Walk = {
   css: string
 }
 
-type BoxData = { id: string, cell?: [number, number], in?: string, kind: keyof typeof ICON, name?: string, shows?: string, lines?: string[], icon?: string, code?: boolean }
+type BoxData = { id: string, cell?: [number, number], in?: string, kind: keyof typeof ICON, name?: string, shows?: string, effort?: string, lines?: string[], icon?: string, code?: boolean }
 type GroupData = { id: string, cell: [number, number], name: string }
 type EdgeData = { id?: string, from: string, to: string, route: string[], label?: string, at: string, label_on?: number, label_at?: number }
 type Data = { title: string, subtitle: string, steps: string[], box: BoxData[], group?: GroupData[], edge: EdgeData[] }
@@ -86,7 +86,9 @@ export function walkthrough(key: string, file: string): Walk {
       const facts = node(b.shows ?? fail(`box ${b.id} shows no agent or skill`), models)
       if (facts.kind !== b.kind) fail(`box ${b.id} shows ${b.shows}, which is a ${facts.kind}`)
       title = b.name ?? facts.name
-      lines = [...facts.lines]
+      // A spawn can set an effort other than the source's own, as calls.toml records it; the box
+      // shows the effort of its spawn. `harness test` checks it against calls.toml.
+      lines = b.effort === undefined ? [...facts.lines] : [facts.lines[0], `effort: ${b.effort}`]
       if (b.kind === 'skill') who = 'you'
       else if (facts.tier === 'large' || facts.tier === 'medium' || facts.tier === 'small') who = facts.tier
       else fail(`box ${b.id}: the agent ${b.shows} has no tier, so the figure cannot say who acts`)
@@ -94,11 +96,13 @@ export function walkthrough(key: string, file: string): Walk {
     if (lines.length > 2) fail(`box ${b.id} has more than two grey lines`)
     return { data: b, n, title, lines, who, icon: b.icon ?? ICON[b.kind], code: b.code ?? false }
   })
-  // One width for every card: the widest card's.
-  const W = Math.max(...cards.map((c) => cardWidth(c.title, c.lines, c.code)))
-
   // The rows: each as high as its highest box or group, the boxes centred in it.
   const members = (g: GroupData) => cards.filter((c) => c.data.in === g.id)
+  // One width for every card of a column: the widest card's. A member of a group is in the
+  // group's column.
+  const column = (c: typeof cards[number]) =>
+    c.data.in === undefined ? (c.data.cell ?? fail(`box ${c.data.id} has no cell`))[0]
+      : (groups.find((g) => g.id === c.data.in) ?? fail(`box ${c.data.id} is in no group`)).cell[0]
   const groupHeight = (g: GroupData) => GROUP_HEAD + members(g).length * (CARD + GROUP_GAP) - GROUP_GAP + GROUP_PAD
   const cells = [...cards.filter((c) => c.data.in === undefined).map((c) => ({ cell: c.data.cell ?? fail(`box ${c.data.id} has no cell`), h: CARD })),
     ...groups.map((g) => ({ cell: g.cell, h: groupHeight(g) }))]
@@ -106,9 +110,20 @@ export function walkthrough(key: string, file: string): Walk {
   const colCount = Math.max(...cells.map((c) => c.cell[0])) + 1
   const rowH = Array.from({ length: rowCount }, (_, r) => Math.max(CARD, ...cells.filter((c) => c.cell[1] === r).map((c) => c.h)))
   const rowTop = rowH.map((_, r) => TOP + rowH.slice(0, r).reduce((s, h) => s + h + GAP_Y, 0))
-  const colX = (c: number) => GROUP_PAD + c * (W + GAP_X)
+  const colW = Array.from({ length: colCount }, (_, k) => {
+    const widths = cards.filter((c) => column(c) === k).map((c) => cardWidth(c.title, c.lines, c.code))
+    return widths.length > 0 ? Math.max(...widths) : fail(`the column ${k} has no box`)
+  })
+  // A group reaches GROUP_PAD past its column on each side; the first column leaves room for it.
+  const left = groups.some((g) => g.cell[0] === 0) ? GROUP_PAD : 0
+  const colX = (c: number) => left + colW.slice(0, c).reduce((s, w) => s + w + GAP_X, 0)
   /** The x of a grid unit: a column's centre, or with .5 the centre of the gap after it. */
-  const unitX = (u: number) => colX(0) + u * (W + GAP_X) + W / 2
+  const unitX = (u: number) => {
+    const c = Math.floor(u)
+    if (u === c) return colX(c) + colW[c] / 2
+    if (u - c !== 0.5) fail(`the grid unit ${u} is neither a column nor the gap after one`)
+    return c < 0 ? colX(0) - GAP_X / 2 : colX(c) + colW[c] + GAP_X / 2
+  }
   /** The y of a grid unit: a row's centre, or with .5 the centre of the gap below it. */
   const unitY = (v: number) => {
     const r = Math.floor(v)
@@ -120,7 +135,7 @@ export function walkthrough(key: string, file: string): Walk {
   const boxes: WalkBox[] = []
   const place = (c: typeof cards[number], x: number, y: number): WalkBox => ({
     id: c.data.id, n: c.n, title: c.title, lines: c.lines, icon: c.icon, code: c.code,
-    accent: WHO[c.who].accent, dashed: c.who === 'outcome', x, y, w: W, h: CARD
+    accent: WHO[c.who].accent, dashed: c.who === 'outcome', x, y, w: colW[column(c)], h: CARD
   })
   for (const c of cards.filter((c) => c.data.in === undefined)) {
     const [col, row] = c.data.cell!
@@ -132,8 +147,9 @@ export function walkthrough(key: string, file: string): Walk {
     const inside = members(g).map((c, k) => place(c, x + GROUP_PAD, y + GROUP_HEAD + k * (CARD + GROUP_GAP)))
     if (inside.length === 0) fail(`the group ${g.id} has no member`)
     // The title of a dashed group: 12 px, from 14 px inside its left border.
-    if (textWidth(g.name, 12, true) > W + 2 * GROUP_PAD - 28) fail(`the title of the group ${g.id} is wider than the group`)
-    return { id: g.id, n: cards.length + i, title: g.name, x, y, w: W + 2 * GROUP_PAD, h, members: inside }
+    const w = colW[g.cell[0]] + 2 * GROUP_PAD
+    if (textWidth(g.name, 12, true) > w - 28) fail(`the title of the group ${g.id} is wider than the group`)
+    return { id: g.id, n: cards.length + i, title: g.name, x, y, w, h, members: inside }
   })
   const byId = new Map<string, Rect>([...boxes.map((b) => [b.id, b] as const), ...placedGroups.map((g) => [g.id, g] as const)])
   for (const [i, a] of [...byId].entries()) {
@@ -264,7 +280,7 @@ export function walkthrough(key: string, file: string): Walk {
   // The legend: one entry for each colour that a box of the figure has, in the order of WHO.
   const used = new Set(cards.map((c) => c.who))
   const bottom = Math.max(...[...byId.values()].map((b) => b.y + b.h))
-  const gridWidth = colX(colCount - 1) + W + GROUP_PAD
+  const gridWidth = Math.max(...[...byId.values()].map((b) => b.x + b.w))
   const legend: Walk['legend'] = []
   let [lx, ly] = [0, bottom + 32]
   for (const who of Object.keys(WHO) as Who[]) {

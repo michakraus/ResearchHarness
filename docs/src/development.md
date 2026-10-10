@@ -99,7 +99,9 @@ case, with each run of spaces and punctuation as one `-`. VitePress does not che
 page has the table rows of its source, that the home page has its two figures, the introduction
 its three and the page `agents-at-work` its four call graphs, that no edge of a figure crosses
 another edge or passes through a box that is not its end, and that every colour of the figures has
-a value for the dark theme. It first runs the cases of `docs/scripts/figures.test.mjs` and
+a value for the dark theme. It finds the four walk-throughs by their titles, and checks each
+animated figure: its SVG parses as XML, it holds no script, it loops, it stops under
+`prefers-reduced-motion`, and its token and its steps keep their timing. It first runs the cases of `docs/scripts/figures.test.mjs` and
 `docs/scripts/newcomer.test.mjs`. Last, `docs/scripts/newcomer.mjs` checks the newcomer pages that
 it names: the glossary of `concepts.md` has one entry for each of its terms, the first use of a
 term on each newcomer page links its entry, and no newcomer page holds a `file:line`.
@@ -118,6 +120,14 @@ draws the graph there. `docs/.vitepress/theme/figures/calls.data.ts` reads
 `docs/figures/calls.toml`, the frontmatter of `agents/` and `skills/`, and `examples/models.toml`
 at build time, and `elkjs` lays out each graph. So a change of an agent's `effort:` changes the
 figure with no other edit.
+
+The four walk-throughs are animated figures of the component `WalkThrough`. Each one has one data
+file `docs/figures/walkthrough-<name>.toml`: its title, its boxes on a grid, its edges with the
+`file:line` that states each step, and the order of the steps. A box of an agent or a skill takes
+its model and effort from the same sources as the call graphs.
+`docs/.vitepress/theme/figures/walkthroughs.data.ts` lays out each walk-through at build time and
+writes its animation as CSS in the figure. `harness test` checks each data file: each agent and
+skill exists, and each cited line exists.
 
 The pages in `docs/src/components/` describe each component: one page for each kind, and one
 level-2 section for each component, whose heading names it in backticks. `lib/harness/docs.py`

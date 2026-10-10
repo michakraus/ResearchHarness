@@ -191,6 +191,11 @@ for (const [page, text] of built) {
     for (const p of geometryProblems(f)) problem(`${name}: ${p}`)
     for (const p of labelProblems(f)) problem(`${name}: ${p}`)
     if (WALKTHROUGHS.includes(f.title) && !animated(f)) problem(`${name} is a walk-through with no animation`)
+    // A walk-through takes the width rule of the call graphs, with no exemption.
+    if (WALKTHROUGHS.includes(f.title)) {
+      const wide = widthProblem(f, MAX_GRAPH_WIDTH)
+      if (wide) problem(`${name} ${wide}`)
+    }
     if (animated(f)) {
       walkthroughs++
       for (const p of animationProblems(f)) problem(`${name} ${p}`)

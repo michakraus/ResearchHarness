@@ -58,12 +58,14 @@ id = "critic-1a"
 in = "round-1"
 kind = "agent"
 shows = "julia-critic"
+effort = "high"
 
 [[box]]
 id = "critic-1b"
 in = "round-1"
 kind = "agent"
 shows = "julia-critic"
+effort = "high"
 
 [[box]]
 id = "runner-1"
