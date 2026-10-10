@@ -114,12 +114,18 @@ export async function callGraph(root?: string): Promise<Graph> {
       const s = e.sections![0]
       const points = [s.startPoint, ...(s.bendPoints ?? []), s.endPoint].map((p) => [round(p.x), round(p.y)] as Point)
       const label = e.labels?.[0]
-      return {
-        from: edges[i].caller,
-        to: edges[i].callee,
-        ...(labels[i] ? { label: labels[i], labelAt: [round(label!.x! + label!.width! / 2), round(label!.y! + label!.height! / 2)] as Point } : {}),
-        points
+      let labelAt: Point | undefined
+      if (labels[i]) {
+        // elkjs puts a label beside its edge; the label goes onto the horizontal segment of the
+        // edge below its centre, so that it reads as the edge's own.
+        const x = label!.x! + label!.width! / 2
+        const y = label!.y! + label!.height! / 2
+        const on = points.slice(1).map((q, k) => [points[k], q])
+          .filter(([p, q]) => p[1] === q[1] && Math.min(p[0], q[0]) <= x && x <= Math.max(p[0], q[0]))
+          .sort((a, b) => Math.abs(a[0][1] - y) - Math.abs(b[0][1] - y))[0]
+        labelAt = [round(x), on ? on[0][1] : round(y)]
       }
+      return { from: edges[i].caller, to: edges[i].callee, ...(labelAt ? { label: labels[i], labelAt } : {}), points }
     })
   }
 }

@@ -13,11 +13,11 @@ type Box = { x: number, y: number, w: number, h: number }
 type Card = Box & { title: string, icon: string, lines?: string[], code?: boolean }
 
 const WIDTH = 1080
-const GAP = 60
+const GAP = 70
 const COLUMNS = [
-  { title: 'Inputs', badge: 1, accent: 'violet', w: 340 },
+  { title: 'Inputs', badge: 1, accent: 'violet', w: 330 },
   { title: 'Install', badge: 2, accent: 'amber', w: 300 },
-  { title: 'Frontends', badge: 3, accent: 'blue', w: 320 }
+  { title: 'Frontends', badge: 3, accent: 'blue', w: 310 }
 ]
 const columns = COLUMNS.map((c, i) => ({ ...c, x: COLUMNS.slice(0, i).reduce((s, d) => s + d.w + GAP, 0) }))
 const INNER = 16
@@ -65,9 +65,10 @@ const frontend = (title: string, icon: string, line: string, y: number, h = card
   ({ title, icon, lines: [line], x: c3.x + INNER, y, w: c3.w - 2 * INNER, h })
 const opencode = frontend('OpenCode', 'code', '~/.config/opencode/', BAND + 3 * INNER)
 const omp = frontend('oh-my-pi', 'pi', '~/.omp/agent/', opencode.y + opencode.h + 3 * INNER)
-// harness install sits level with oh-my-pi, and Claude Code low enough to take both its inputs.
+// harness install sits level with oh-my-pi, and Claude Code level with harness settings install,
+// so that it takes the arrows of both.
 install.y = mid(omp) - install.h / 2
-const claude = frontend('Claude Code', 'terminal', '~/.claude/', settings.y - 28, settings.h + 28)
+const claude = frontend('Claude Code', 'terminal', '~/.claude/', settings.y, settings.h)
 
 // The arrows: each leaves its box on the right and enters the next on the left.
 const right = (b: Box, y: number): Point => [b.x + b.w, y]
@@ -95,7 +96,7 @@ const ARROWS = [
   },
   {
     from: 'harness settings install', to: 'Claude Code', label: 'settings.json',
-    points: [right(settings, mid(settings)), left(claude, mid(settings))], labelAt: [lane2, mid(settings)]
+    points: [right(settings, claude.y + claude.h - 20), left(claude, claude.y + claude.h - 20)], labelAt: [lane2, claude.y + claude.h - 20]
   }
 ] as { from: string, to: string, points: Point[], label?: string, labelAt?: Point }[]
 </script>

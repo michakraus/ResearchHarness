@@ -11,33 +11,8 @@ configuration and checks it.
 The harness is for a researcher who wants a coding agent to keep the same rules in every
 repository of a research tree: the packages, the experiments, the papers. Its own tools are for
 Julia code, but most of its ideas transfer to any language. [Dependencies](docs/src/dependencies.md#julia-and-its-packages)
-says what needs Julia.
-
-```mermaid
-flowchart TB
-  accTitle: The harness and its three layers
-  accDescr: The harness surrounds three layers. At the top is the research tree, with the library, the knowledge, the packages, the experiments, the projects and the papers. In the middle are the components: agents, skills, commands, rules, guard hooks, git hooks and workflows, scripts and settings. At the bottom are the frontends: Claude Code, OpenCode and oh-my-pi.
-  subgraph harness["Research Harness"]
-    direction TB
-    subgraph tree["The research tree"]
-      direction LR
-      t1["Library"] ~~~ t2["Knowledge"] ~~~ t3["Packages"] ~~~ t4["Experiments"] ~~~ t5["Projects"] ~~~ t6["Papers"]
-    end
-    subgraph components["The components"]
-      direction LR
-      c1["Agents"] ~~~ c2["Skills"] ~~~ c3["Commands"] ~~~ c4["Rules"] ~~~ c5["Guard hooks"] ~~~ c6["Git hooks and workflows"] ~~~ c7["Scripts"] ~~~ c8["Settings"]
-    end
-    subgraph frontends["The frontends"]
-      direction LR
-      f1["Claude Code"] ~~~ f2["OpenCode"] ~~~ f3["oh-my-pi"]
-    end
-    tree ~~~ components ~~~ frontends
-  end
-```
-
-*The harness and its three layers.* The research tree is where the work is, the components are
-what the harness supplies, and the frontends are the agents that read them. The research-tree
-layer shows the tree of the harness's author, as an example; your tree holds your own directories.
+says what needs Julia. The [documentation site](https://michakraus.github.io/ResearchHarness/)
+shows the harness and its layers, and the way from its sources to the frontends, in two figures.
 
 These are the main ideas:
 
@@ -55,37 +30,6 @@ These are the main ideas:
 - **Private values stay private.** A private profile holds every value that names a person, an
   institution or a machine. `harness leaks` and gitleaks keep these values and secrets out of the
   repository.
-
-```mermaid
-flowchart LR
-  accTitle: From the sources to the frontends
-  accDescr: The sources of this repository, the agents, skills, rules, commands and instructions, the guard hooks, the settings template and the adapters, and two private inputs, the profile with the model tables and the tree instructions, go into harness install. It writes the configuration of Claude Code into ~/.claude/, of OpenCode into ~/.config/opencode/ and of oh-my-pi into ~/.omp/agent/. The settings template also goes into harness settings install, which writes ~/.claude/settings.json for Claude Code.
-  subgraph sources["The sources, in this repository"]
-    direction TB
-    s1["Agents, skills, rules,<br/>commands, instructions"]
-    s2["Guard hooks"]
-    s3["Settings template"]
-    s4["Adapters of the frontends"]
-  end
-  subgraph private["Private, on your machine"]
-    direction TB
-    p1["Profile and model tables"]
-    p2["Tree instructions"]
-  end
-  install["harness install"]
-  settings["harness settings install"]
-  sources --> install
-  private --> install
-  s3 --> settings
-  install --> claude["Claude Code<br/>~/.claude/"]
-  install --> opencode["OpenCode<br/>~/.config/opencode/"]
-  install --> omp["oh-my-pi<br/>~/.omp/agent/"]
-  settings -->|settings.json| claude
-```
-
-*From the sources to the frontends.* `harness install` writes the configuration of each frontend
-from the sources and your private files. [Architecture](docs/src/architecture.md) describes the
-layers and what each frontend receives.
 
 ## Installation
 

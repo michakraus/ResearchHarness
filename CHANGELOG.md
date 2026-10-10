@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+- **The figures of the site have a new design, and the home page is a landing page.** Vue
+  components draw every figure as inline SVG at build time: cards with an icon, group panels with
+  a coloured header band and a number badge, and thin right-angled arrows. One style module,
+  `docs/.vitepress/theme/figures.css`, holds every colour of the figures for the light and the
+  dark theme, the font, the corner radii and the line widths. The icons come from `lucide`, and
+  the build inlines them. The home page is no longer a copy of the README: it has a hero with
+  *Get started*, *Tutorial* and *GitHub*, six feature cards, and the overview and the flow
+  figure. In the flow figure, OpenCode and oh-my-pi are above Claude Code, and no arrows cross.
+  The four call graphs of *Agents at work* keep their text and are laid out with `elkjs` at build
+  time; a graph's block now holds `title:` and `desc:`. The README has no figure and links the
+  site for them. `mermaid` and `vitepress-plugin-mermaid` leave `docs/package.json`, and
+  `elkjs` 0.12.0 and `lucide` 1.55.0 join it. `npm run docs:check` finds the six figures by
+  their title and checks their description, fails on an arrow that crosses another arrow or
+  passes through a box, and on a figure colour with no dark value; it runs the cases of
+  `docs/scripts/figures.test.mjs` first.
+
 - **A new README, and the dependencies move to their own page.** The README, and so the home page
   of the site, is now an overview for a reader who is new to the harness: what it is and for
   whom, two Mermaid figures (the harness around its three layers, and the flow from the sources
