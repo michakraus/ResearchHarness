@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- **The docs pages describe OpenCode's and oh-my-pi's own copies and the shared model tables.**
+  The pages on the skills, the hooks, the adapters, the profile and the other components, and the
+  architecture, setup, command and dependency pages, still named the links in `~/.agents/skills/`,
+  the guard scripts of `~/.claude/hooks/` under the other frontends, the `[opencode.*]` tables
+  and the `@opus` roles of oh-my-pi. They now name each frontend's copies, the tables that
+  OpenCode and oh-my-pi share with `[opencode]` and `[omp]` over them, the context limits and the
+  verify seat of a council. `examples/models.toml` names `harness.yml`, not `config.yml`.
+
 - **`harness install` no longer writes oh-my-pi's `config.yml`; its keys go to the overlay
   `~/.omp/agent/harness.yml`.** oh-my-pi's setup and its settings panel write `config.yml` and
   rewrite it as YAML with keys of their own, such as `setupVersion` and `theme`; the install

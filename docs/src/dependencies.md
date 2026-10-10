@@ -321,7 +321,8 @@ OpenCode is an open-source coding agent for the terminal. It is one of the three
 the harness configures.
 
 `harness install` writes the OpenCode configuration into `~/.config/opencode/`: the permission
-block, the agents, the plugins and the global [instruction file](concepts.md#instruction-file).
+block, the agents, the plugins, the global [instruction file](concepts.md#instruction-file), and
+OpenCode's own copies of the instructions, the rules, the guard scripts and the skills.
 
 The harness does not need OpenCode to run. Without it, nothing reads that configuration.
 

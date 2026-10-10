@@ -64,14 +64,17 @@ the model of each frontend.
 | table | what it holds | read by |
 |:--|:--|:--|
 | `[claude]` | the Claude Code model of each tier, written as the `model:` of the installed agent or skill; all three tiers are required | `install` |
-| `[opencode]` | the tables of OpenCode below | `install` |
-| `[opencode.models]` | the OpenCode model of each tier | `install` |
-| `[opencode.model_overrides]` | an agent whose OpenCode model is not the model of its tier | `install` |
-| `[opencode.model_variants]` | the `variant:` of every agent on one model | `install` |
-| `[opencode.variants]` | the `variant:` of one agent, over the variant of its model | `install` |
-| `[opencode.reasoning_effort]` | the `reasoningEffort:` of one agent | `install` |
-| `[opencode.councils]` | the copies of an agent on other models | `install` |
-| `[omp]` | the keys of the shared model tables that differ for oh-my-pi alone; the `medium` model is also its default model, in `harness.yml`, and all three tiers are required | `install` |
+| `[models]` | the OpenCode and oh-my-pi model of each tier, as `provider/model`; the `medium` model is also oh-my-pi's default model, in `harness.yml`, and oh-my-pi needs all three tiers | `install` |
+| `[model_overrides]` | an agent whose model is not the model of its tier | `install` |
+| `[model_variants]` | the [effort](concepts.md#effort) of every agent on one model: OpenCode's `variant:`, oh-my-pi's `thinking-level` | `install` |
+| `[variants]` | the effort of one agent or council seat, over the effort of its model | `install` |
+| `[reasoning_effort]` | the effort of one agent or council seat, for a model that has no variant for it: OpenCode's `reasoningEffort:`, oh-my-pi's `thinking-level` | `install` |
+| `[councils]` | the copies of an agent on other models; one seat may add `verify = true`, and then it also judges each verify round | `install` |
+| `[context_limits]` | the input tokens that a model may hold: a provider entry in `opencode.jsonc`, `contextWindow` in oh-my-pi's `models.yml` | `install` |
+| `[opencode]`, `[omp]` | the same sub-tables, such as `[omp.models]`; each key replaces the shared key for that frontend alone | `install` |
+
+OpenCode and oh-my-pi share every table but `[claude]`, so that their agents run on the same
+models.
 
 A table that names a tier by an old name, `opus`, `sonnet` or `haiku`, stops `harness install`
 with exit 2, an error, and the message names the rename.

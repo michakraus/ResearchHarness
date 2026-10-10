@@ -12,8 +12,9 @@ The sources are in `hooks/`. `harness install --apply` copies them to `~/.claude
 Claude Code calls them through the `hooks` section of its settings, which
 `harness install --apply` writes from `settings/settings.proposal.json`. oh-my-pi calls
 four of them through its guard extension `adapters/omp/guards.ts`, and OpenCode calls the same
-four through its plugin `adapters/opencode/plugins/guards.ts`. Both run the scripts from
-`~/.claude/hooks/`, so each hook has one source. `hooks/probe.py` holds the test cases of the
+four through its plugin `adapters/opencode/plugins/guards.ts`. Each of the two runs its own copy
+of the scripts, which `harness install` writes to `hooks/` in its directory:
+`~/.omp/agent/hooks/` and `~/.config/opencode/hooks/`. Each hook still has one source. `hooks/probe.py` holds the test cases of the
 hooks, and `harness test` runs it.
 
 The hooks prevent accidents. They are not a security boundary: each one reads the text of a
