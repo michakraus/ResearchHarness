@@ -32,7 +32,10 @@ sources, and the docs build draws the figures from it. So a figure changes when 
 
 ## The builder-critic loop: `build-part`
 
-![The build-part skill spawns julia-builder, julia-critic in round 1 at high effort and in each verify round at its own effort, julia-test-runner, advisor and arbitrator. julia-builder spawns julia-branch-verifier and changelog-scribe.](assets/figures/build-part.svg)
+```calls build-part
+accTitle: The calls of build-part
+accDescr: The build-part skill spawns julia-builder, julia-critic in round 1 at high effort and in each verify round at its own effort, julia-test-runner, advisor and arbitrator. julia-builder spawns julia-branch-verifier and changelog-scribe.
+```
 
 You start `build-part` in your session when a part of a task file is ready to build. The skill
 does not write code. It spawns `julia-builder` to build the part, and then a new `julia-critic`
@@ -49,7 +52,10 @@ agent, so that the large contexts of the builder and the critic do not wait on i
 
 ## A smaller loop: `build-reviewed`
 
-![The build-reviewed skill spawns part-builder, part-critic and julia-test-runner. part-builder spawns julia-branch-verifier.](assets/figures/build-reviewed.svg)
+```calls build-reviewed
+accTitle: The calls of build-reviewed
+accDescr: The build-reviewed skill spawns part-builder, part-critic and julia-test-runner. part-builder spawns julia-branch-verifier.
+```
 
 A part of tier `reviewed` is small, with a fast gate. You start `build-reviewed` in a session on
 the large model. It spawns one `part-builder` and keeps it for the whole part. When the builder
@@ -62,7 +68,10 @@ finish, so it is the second reviewer.
 
 ## From review to green CI: `julia-pr-shepherd`
 
-![The julia-pr-shepherd agent spawns julia-pr-reviewer, changelog-scribe and ci-triage.](assets/figures/julia-pr-shepherd.svg)
+```calls julia-pr-shepherd
+accTitle: The calls of julia-pr-shepherd
+accDescr: The julia-pr-shepherd agent spawns julia-pr-reviewer, changelog-scribe and ci-triage.
+```
 
 You spawn `julia-pr-shepherd` with a pull request of a Julia package. It does not review the pull
 request itself: it spawns `julia-pr-reviewer`, which posts the review. Then the shepherd fixes the
@@ -75,7 +84,10 @@ not shaped by the fix.
 
 ## Every spawn
 
-![Every edge of calls.toml: the build-part, build-reviewed and julia-structure skills, and the julia-builder, part-builder and julia-pr-shepherd agents, with each agent that they spawn.](assets/figures/calls.svg)
+```calls
+accTitle: Every spawn
+accDescr: Every edge of calls.toml: the build-part, build-reviewed and julia-structure skills, and the julia-builder, part-builder and julia-pr-shepherd agents, with each agent that they spawn.
+```
 
 This figure shows every entry of `calls.toml`. It adds one skill: `julia-structure` sends a claim
 that nothing uses a name to `exhaustive-auditor`. An agent that is not in this figure is spawned

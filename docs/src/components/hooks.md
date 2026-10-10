@@ -172,7 +172,7 @@ the user and to the session, and it names the command to run. It does not run
 `harness install`, and an edit of the models table is no drift.
 
 It only warns: it blocks nothing and exits 0 for each input.
-[Daily use](@ref "The drift warning at session start") says what to do when the warning
+[Daily use](../daily-use.md#the-drift-warning-at-session-start) says what to do when the warning
 appears.
 
 ## `prompt-log.py`
@@ -203,13 +203,13 @@ shows the state of the session in its tab. Claude Code runs it on the events `Se
 
 It hands its standard input and its arguments to `~/.config/iterm2/cc-status` unchanged. When
 that utility is not there, it exits 0 and does nothing. So one settings file serves a machine with
-iTerm2 and a machine without it. It guards nothing. [The tools](@ref "iTerm2") say more about
+iTerm2 and a machine without it. It guards nothing. [The tools](../tools.md#iterm2) say more about
 iTerm2.
 
 ## `probe.py`
 
 This script holds the test cases of the hooks and runs them. `harness test` runs it after the own
-cases of each module; [Development](@ref "Tests") describes the run.
+cases of each module; [Development](../development.md#tests) describes the run.
 
 A case is a script, an input and the expected result. The probe runs each case in its own
 process, with a timeout, and prints one line per case: `ok` or `BAD`, the expected and the actual

@@ -86,7 +86,7 @@ such as this one:
 Run `harness install` to see the changes, then `harness install --apply`.
 ```
 
-The warning blocks nothing. [Daily use](@ref "The drift warning at session start") says what to
+The warning blocks nothing. [Daily use](daily-use.md#the-drift-warning-at-session-start) says what to
 do.
 
 ## Step 3: ask a question and watch the tool calls

@@ -47,7 +47,7 @@ git show HEAD~1:settings/settings.proposal.json > /tmp/previous.json
 harness settings install --proposal /tmp/previous.json --apply
 ```
 
-[security.md](@ref "Check a change of the settings") says how to check the result.
+[security.md](security.md#check-a-change-of-the-settings) says how to check the result.
 
 ## The drift warning at session start
 
@@ -65,7 +65,7 @@ harness install --apply
 ```
 
 The hook only warns. It blocks nothing, and the session continues with the old installed layer.
-[architecture.md](@ref "The Claude Code layer") describes the stamp.
+[architecture.md](architecture.md#the-claude-code-layer) describes the stamp.
 
 ## The leak check before a push
 
@@ -81,7 +81,7 @@ harness leaks
 ```
 
 It searches every tracked file, its path and the templates rendered with the example profile.
-Change the text that holds a hit. [development.md](@ref "The pre-push hook") describes
+Change the text that holds a hit. [development.md](development.md#the-pre-push-hook) describes
 both checks.
 
 ## The verbs for the whole research tree

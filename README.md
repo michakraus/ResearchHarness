@@ -125,7 +125,7 @@ where the harness calls it.
 | JuliaSyntax | ≥ 1.0.2, `[compat]` at `Project.toml:19` | parses Julia code to make the mutants of a mutation test |
 | TestEnv | ≥ 1.103.7, `[compat]` at `Project.toml:20` | runs the tests of a package in its test environment, for the test runner and the mutation tests |
 | YAML | ≥ 0.4.17, `[compat]` at `Project.toml:21` | reads the CI workflows and the frontmatter of the wiki pages |
-| Node.js | ≥ 20.16 (20.x), ≥ 22.3, for `process.getBuiltinModule`, as the API documentation says: <https://nodejs.org/api/process.html#processgetbuiltinmoduleid> | loads the guard extensions of oh-my-pi and OpenCode in the hook probe of `harness test` |
+| Node.js | ≥ 20.16 (20.x), ≥ 22.3, for `process.getBuiltinModule`, as the API documentation says: <https://nodejs.org/api/process.html#processgetbuiltinmoduleid> | loads the guard extensions of oh-my-pi and OpenCode in the hook probe of `harness test`, and builds the documentation site with npm and VitePress |
 | shellcheck | tested with 0.11.0 | checks the shell scripts, in the pre-push gate and in CI |
 | actionlint | ≥ 1.7.12, the CI pin at `.github/workflows/test.yml:49` | checks the GitHub workflow files, in CI |
 | timeout | tested with 9.12 | stops `fatou lint` in the installed pre-commit hook after 60 seconds |
@@ -153,7 +153,7 @@ The tables leave out the system tools: the POSIX shell utilities, such as `awk`,
 ## Documentation
 
 The documentation site is <https://michakraus.github.io/ResearchHarness/>. Its pages are in
-`docs/src/`, and `docs/make.jl` builds them with Documenter.
+`docs/src/`, and VitePress builds them.
 
 - [Tutorial: a first session](docs/src/tutorial.md): the words that the other pages use, and
   one session with Claude Code that shows the harness at work. Start here if you are new to

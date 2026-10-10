@@ -1,5 +1,5 @@
 # The call edges of the harness: one [[call]] entry for each spawn of an agent by an agent or a
-# skill. docs/figures/figures.jl draws the figures of docs/src/agents-at-work.md from this file,
+# skill. docs/.vitepress/calls.mjs draws the figures of docs/src/agents-at-work.md from this file,
 # and `harness test` checks it (lib/harness/docs.py).
 #
 #   caller  the agent or skill that spawns

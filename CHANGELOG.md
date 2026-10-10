@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+- **The documentation site is built with VitePress, and its build needs no Julia.** The site is a
+  plain VitePress project in `docs/`: `npm ci` and `npm run docs:build` build it, and
+  `docs/package.json` pins `vitepress` 1.6.4, `vitepress-plugin-mermaid` 2.0.17, `mermaid`
+  11.17.2, `smol-toml` and `yaml`, with a committed `docs/package-lock.json`. Documenter,
+  Graphviz_jll, `docs/Project.toml`, `docs/make.jl`, `docs/figures/figures.jl` and the committed
+  SVG figures are gone, and with them the workflow step that compared the figures. The call
+  graphs of *Agents at work* are Mermaid diagrams that `docs/.vitepress/calls.mjs` writes at
+  build time from `docs/figures/calls.toml`, the frontmatter of `agents/` and `skills/` and
+  `examples/models.toml`, with the same text in each box as before; each has an accessible title
+  and description, and its colours follow the site's light and dark theme. The home page
+  includes the README. The `@ref` links of the pages are plain Markdown links to a page and a
+  heading. A new check, `npm run docs:check`, finds every page of the menu in the sidebar, every
+  linked heading, the table rows of each page and the four call graphs. The docs workflow
+  builds the site on Node.js 24, runs the check, and on a push to `main` deploys the site to
+  `gh-pages` with a `.nojekyll`, at the same address. A page's URL loses its trailing slash:
+  `/tutorial/` is now `/tutorial`.
+
 - **The documentation site shows who spawns whom.** The new page *Agents at work*
   (`docs/src/agents-at-work.md`, under *Background*) has four call graphs: the `build-part`
   loop, the `build-reviewed` loop, the `julia-pr-shepherd` chain and every spawn. Each box shows

@@ -9,7 +9,7 @@ repository runs these test files, as [Development](../development.md) describes.
 
 The Julia scripts load their packages from the environment that `harness install --apply` makes
 in `~/.local/share/research-harness/julia/` (see
-[The Julia environment](@ref "The Julia environment")). The variable
+[The Julia environment](../harness-command.md#the-julia-environment)). The variable
 `RESEARCH_HARNESS_JULIA` names another location. So no caller gives `--project`. Always give
 `--startup-file=no`: the startup file can load Revise, and its errors then fill the output.
 

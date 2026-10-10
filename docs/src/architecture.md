@@ -148,4 +148,4 @@ frontend either: `hooks/` holds the guard scripts that Claude Code and oh-my-pi 
 | `ast-grep/`, `fatou.toml` | linter configuration |
 | `agent-workflows/` | workflow scripts for fan-out over many repositories |
 | `examples/` | the example profile and model tables |
-| `docs/` | the pages of the documentation site in `docs/src/`, and its build, `docs/make.jl` |
+| `docs/` | the pages of the documentation site in `docs/src/`, and its VitePress build |
