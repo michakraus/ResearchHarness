@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- **The call graphs are compact, and the flow figure shows the steps of `harness install`.** A
+  call graph of *Agents at work* runs to the right when it fits the doc column, at most 765 px
+  wide, so that the column draws it at a scale of 0.9 or more. Else it runs downwards, in rows of
+  at most three boxes. The boxes of one column or row have the width of the widest box and share
+  their left or top edge. `docs:check` names a call graph that is wider than 765 px, and a layer
+  whose boxes differ in width or edge. In the flow figure, `harness install` is a dashed group with
+  a card for each of its steps, in the order in which `lib/harness/install.py` runs them, and
+  `harness settings install` is below it; `docs:check` checks the cards and their order. The
+  landing page says that your session keeps its context, not its room.
+
 - **The newcomer pages: an introduction with a glossary, a setup guide that explains each step,
   and a guided tutorial.** The menu has *Home* as a headline of its own, then *Getting started*
   with *Introduction*, *Dependencies*, *Setup on macOS*, *Setup on Linux* and *Tutorial*; the

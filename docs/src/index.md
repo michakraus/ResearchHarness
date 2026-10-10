@@ -30,7 +30,7 @@ features:
     link: /security
   - icon: workflow
     title: Long work goes to a sub-agent
-    details: A test run or a review runs in its own context and returns a short report, so your session keeps its room for the work.
+    details: A test run or a review runs in its own context and returns a short report, so your session keeps its context for the work.
     link: /agents-at-work
   - icon: private
     title: Private values stay private
