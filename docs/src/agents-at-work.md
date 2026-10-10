@@ -79,7 +79,8 @@ finish, so it is the second reviewer.
 
 *From a task to a pull request with build-reviewed.* The skill spawns one `part-builder`, and one
 `part-critic` judges its work. After a FAIL, the same builder fixes the findings, and your session
-checks the fix before it sends the finish. With a PASS, the skill goes to the finish at once.
+checks the fix before it sends the finish. With a PASS, your session reads the result, and then
+it sends the finish.
 
 ## From review to green CI: `julia-pr-shepherd`
 

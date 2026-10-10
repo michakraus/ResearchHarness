@@ -431,3 +431,53 @@
   checked only by a manual `ls`. Found by the critic of part J5.
 - kind: missing test
 - found: 2026-10-10
+
+### K49 · No check reads "one box width per column" on a walk-through.
+
+- location: `docs/scripts/check-site.mjs:206`
+- evidence: `layerProblems` runs only on the four call graphs of `CALL_GRAPHS`. The generator
+  `walkthroughs.data.ts` gives every card of a column one width today, but a change that widens
+  one card of a column passes `docs:check`. A narrowed card is caught only because `FigCard`
+  draws no card then and an edge names a box that is missing. Found by the critic of part J4.
+- kind: missing test
+- found: 2026-10-10
+
+### K50 · A throw in the setup of a figure component does not stop the build.
+
+- location: `docs/.vitepress/theme/figures/FigCard.vue:25`, `docs/.vitepress/theme/figures/WalkThrough.vue:16`
+- evidence: the comment of `FigCard.vue` says that a card with too little room "stops the build".
+  VitePress logs a throw in a component's setup during SSR and still prints `build complete`.
+  With `<WalkThrough name="instal" />` in `daily-use.md`, `npm run docs:build` prints
+  `Error: no walk-through instal…` and then `build complete in 1.89s.`, and the page has no
+  figure. `docs:check` then names the missing title. A throw in a data loader does stop the
+  build. Found by the critic of part J4.
+- kind: defect
+- found: 2026-10-10
+
+### K51 · The effort check of a walk-through box accepts a spawn of any caller.
+
+- location: `lib/harness/docs.py:279`
+- evidence: a box with `effort` passes when any entry of `calls.toml` spawns its agent at that
+  effort. The check does not compare the caller of that entry with the skill or agent of the
+  walk-through, so a box of a skill that never spawns the agent at that effort passes. Found by
+  the critic of part J4.
+- kind: missing test
+- found: 2026-10-10
+
+### K52 · `harness test` checks only the tracked walk-through data files; the build draws every one on disk.
+
+- location: `lib/harness/docs.py:462`, `docs/.vitepress/theme/figures/walkthroughs.data.ts:322`
+- evidence: `walkthroughs(tracked())` reads the paths of `git ls-files`, and the data loader
+  reads every `docs/figures/walkthrough-*.toml` in the directory. A new data file is drawn on the
+  site and is not checked until it is staged. Found by the critic of part J4.
+- kind: missing test
+- found: 2026-10-10
+
+### K53 · The colour scan of `docs:check` passes a named colour.
+
+- location: `docs/scripts/check-site.mjs:246`
+- evidence: the scan matches a hex literal, `rgb(` and `hsl(` only, as J2b defined it. With
+  `const TOKEN = 'red'` in `walkthroughs.data.ts`, `docs:check` exits 0. Found by the critic of
+  part J4.
+- kind: defect
+- found: 2026-10-10

@@ -101,10 +101,11 @@ its three and the page `agents-at-work` its four call graphs, that no edge of a 
 another edge or passes through a box that is not its end, and that every colour of the figures has
 a value for the dark theme. It finds the four walk-throughs by their titles, and checks each
 animated figure: its SVG parses as XML, it holds no script, it loops, it stops under
-`prefers-reduced-motion`, and its token and its steps keep their timing. It first runs the cases of `docs/scripts/figures.test.mjs` and
-`docs/scripts/newcomer.test.mjs`. Last, `docs/scripts/newcomer.mjs` checks the newcomer pages that
-it names: the glossary of `concepts.md` has one entry for each of its terms, the first use of a
-term on each newcomer page links its entry, and no newcomer page holds a `file:line`.
+`prefers-reduced-motion`, and its token and its steps keep their timing. It first runs the cases
+of `docs/scripts/figures.test.mjs` and `docs/scripts/newcomer.test.mjs`. Last,
+`docs/scripts/newcomer.mjs` checks the newcomer pages that it names: the glossary of
+`concepts.md` has one entry for each of its terms, the first use of a term on each newcomer page
+links its entry, and no newcomer page holds a `file:line`.
 
 The figures are Vue components in `docs/.vitepress/theme/figures/`, which the build renders to
 inline SVG, so a page shows them with JavaScript off. `FigCard`, `FigPanel` and `FigArrow` draw a

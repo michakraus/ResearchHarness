@@ -12,10 +12,11 @@
   the source's frontmatter and `examples/models.toml`, through `sources.ts`, which the call
   graphs also read; a box can show the effort of its spawn instead, which an entry of
   `calls.toml` must record, so the two critics of round 1 show `high`. The cards of one column
-  have one width, and a walk-through is at most 765 px wide, as a call graph. The colour of a box says who acts: you and your session, an agent of each
-  tier, a step with no agent, or a dashed outcome; a legend explains the colours. The animation is
-  CSS in the figure's own `<style>`: the active box has a dark outline and the others fade, and a
-  red token runs along each edge in 0.7 s; each step holds 1.5 s, and the animation loops. Under
+  have one width, and a walk-through is at most 765 px wide, as a call graph. The colour of a
+  box says who acts: you and your session, an agent of each tier, a step with no agent, or a
+  dashed outcome; a legend explains the colours. The animation is CSS in the figure's own
+  `<style>`: the active box has a dark outline and the others fade, and a red token runs along
+  each edge in 0.7 s; each step holds 1.5 s, and the animation loops. Under
   `prefers-reduced-motion` no animation runs, every box shows, and no token shows. With
   JavaScript on, play, pause and step buttons show under the figure. `docs:check` finds each
   walk-through by its title and checks each animated figure: its SVG parses as XML, it holds no
