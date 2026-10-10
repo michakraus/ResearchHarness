@@ -23,7 +23,9 @@
   `omp_providers`, holds oh-my-pi's own providers, one table each, as `opencode_providers` holds
   OpenCode's; the install writes them into `models.yml`. Name a provider as OpenCode names the
   same account, such as `azure-cognitive-services` for Claude on Azure, so that `models.toml`
-  holds one model string for both frontends. oh-my-pi's approval mode is
+  holds one model string for both frontends. An `apiKey` there must name an environment
+  variable or be a `!command`; a literal key stops the install, and the message does not show
+  it. oh-my-pi's approval mode is
   `yolo`: its deny and prompt patterns, the `eval` deny and the guard extension still apply.
   `config.yml` keeps only `modelRoles.default`. K25 stays: its traceback moves to a later line.
 
