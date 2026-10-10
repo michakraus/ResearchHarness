@@ -1,1 +1,0 @@
-import{_ as t,o,c as s,a2 as a}from"./chunks/framework.ctLVBroV.js";const u=JSON.parse('{"title":"The tools","description":"","frontmatter":{},"headers":[],"relativePath":"tools.md","filePath":"tools.md"}'),i={name:"tools.md"};function n(r,e,d,h,c,l){return o(),s("div",null,[...e[0]||(e[0]=[a("",103)])])}const m=t(i,[["render",n]]);export{u as __pageData,m as default};

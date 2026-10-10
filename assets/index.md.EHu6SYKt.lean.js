@@ -1,1 +1,0 @@
-import{_ as t,o as s,c as a,a2 as i}from"./chunks/framework.ctLVBroV.js";const g=JSON.parse('{"title":"ResearchHarness","description":"","frontmatter":{},"headers":[],"relativePath":"index.md","filePath":"index.md"}'),o={name:"index.md"};function n(l,e,h,d,r,c){return s(),a("div",null,[...e[0]||(e[0]=[i("",24)])])}const u=t(o,[["render",n]]);export{g as __pageData,u as default};
