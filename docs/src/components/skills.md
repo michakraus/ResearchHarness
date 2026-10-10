@@ -6,7 +6,7 @@ frontmatter of `SKILL.md` holds the `name` and a `description`. The agent reads 
 each skill. It loads the whole skill when a request matches a description, or when the user types
 `/<name>`. A skill with `disable-model-invocation: true` loads only when the user types its name.
 The optional key `model:` names a tier, `large`, `medium` or `small`, which each frontend maps to
-a model ([The neutral vocabulary](@ref "The neutral vocabulary")).
+a model ([The neutral vocabulary](../architecture.md#the-neutral-vocabulary)).
 
 `harness install` copies each skill to `~/.claude/skills/<name>/` and links it into
 `~/.agents/skills/`, where OpenCode and oh-my-pi find it. Edit the source in `skills/`, not the
@@ -14,7 +14,7 @@ installed copy. The description decides when a skill loads, so its words are the
 the requests. `harness skill-triggers` tests which skill loads on a query. The queries of each
 skill are in `tests/skill-triggers/<name>.toml`: `load` lists the queries that must load the
 skill, and `near` lists near misses that must load another skill or none.
-[The triggering test of the skills](@ref "The triggering test of the skills") tells how to run
+[The triggering test of the skills](../daily-use.md#the-triggering-test-of-the-skills) tells how to run
 it. Run it after you change a description.
 
 The skills fall into four groups. `plan-parts`, `build-part` and `build-reviewed` plan work as

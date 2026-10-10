@@ -13,7 +13,7 @@ oh-my-pi gets each rule in its own `rules/` directory, with the `paths:` list as
 OpenCode loads no rule by itself: its global instruction file tells the agent which rule to
 read before which kind of work. These files are the harness layer. The profile and the tree
 instructions add to them, and
-[the architecture](@ref "The three layers") describes the three layers.
+[the architecture](../architecture.md#the-three-layers) describes the three layers.
 
 To change a rule, edit its source and run `harness install --apply`; [Daily use](../daily-use.md)
 gives the steps. The page starts with `core`, which loads always. The rules follow: first the

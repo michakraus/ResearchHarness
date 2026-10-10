@@ -9,7 +9,7 @@ The files of this page are in `githooks/` and `githooks/workflows/`. They are te
 Julia repositories of the research tree, and a few scripts beside them. Two verbs of the
 `harness` command install the templates into every repository below `Packages/` and
 `Experiments/` (see
-[The verbs for the whole research tree](@ref "The verbs for the whole research tree")):
+[The verbs for the whole research tree](../daily-use.md#the-verbs-for-the-whole-research-tree)):
 
 - `harness githooks --apply` copies `pre-commit`, `pre-push` and `scripts/test-layout.jl` into
   `.githooks/` of each repository, and sets `core.hooksPath` there.

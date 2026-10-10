@@ -63,8 +63,8 @@ A new verb that changes something uses `changing` and `outcome`, so that it keep
 The argument parser of `harness`, and the verb `harness test`. `main` loads the three adapters
 through `frontends.py` first. An adapter that fails to load exits 2 before any verb runs. Then
 `main` adds the global options `--profile F` and `--models F`, and one sub-command for each verb
-of the modules and the adapters. A `HarnessError` of a verb prints one line, `harness <verb>:
-<message>`, and exits 2.
+of the modules and the adapters. A `HarnessError` of a verb prints one line,
+`harness <verb>: <message>`, and exits 2.
 
 `harness test` runs the cases in this order:
 

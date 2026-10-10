@@ -11,7 +11,7 @@ modules by path, in the order Claude Code, OpenCode, oh-my-pi. Each module gives
 part of `harness install`, its test cases for `harness test`, and the restart line that the install
 prints after a change. The other files of an adapter are instruction text, configuration and
 extension code. `harness install --apply` copies or renders them into the configuration directory
-of the frontend. [The architecture](@ref "The OpenCode and oh-my-pi adapters")
+of the frontend. [The architecture](../architecture.md#the-opencode-and-oh-my-pi-adapters)
 describes what each frontend receives, and [the harness command](harness.md) describes the loader.
 
 The sections follow the three frontends: first Claude Code, then OpenCode, then oh-my-pi. In each
