@@ -108,7 +108,7 @@ The template has the sections `permissions`, `hooks` and `sandbox`, and other ke
 - `harness leaks` renders it with the example profile.
 
 Edit the template, never the installed `settings.json`, and commit it when you install it.
-[Daily use](../daily-use.md) gives the steps. [The security model](../security.md) says which of
+[Typical use](../daily-use.md) gives the steps. [The security model](../security.md) says which of
 its mechanisms is a boundary and which only prevents accidents.
 
 ## `profile.toml`
@@ -233,5 +233,5 @@ Another count or form exits 2.
 removed, and some streams written by hand. The cases of `harness test` read them to check how a
 session's output is judged.
 
-Run the test after you change the `description` of a skill. [Daily use](../daily-use.md) shows the
+Run the test after you change the `description` of a skill. [Typical use](../daily-use.md) shows the
 commands.

@@ -1,4 +1,4 @@
-# Daily use
+# Typical use
 
 This page describes the work that comes back again and again after the setup. The
 [tutorial](tutorial.md) shows the first time of most of it, step by step; this page is the

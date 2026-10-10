@@ -57,13 +57,14 @@ export default defineConfig({
     },
     socialLinks: [{ icon: 'github', link: 'https://github.com/michakraus/ResearchHarness' }],
     sidebar: [
+      // Home is a headline of its own: a group with a link and no items.
+      { text: 'Home', link: '/', items: [] },
       {
         text: 'Getting started',
         items: [
-          { text: 'Home', link: '/' },
-          { text: 'Concepts', link: '/concepts' },
+          { text: 'Introduction', link: '/concepts' },
           { text: 'Dependencies', link: '/dependencies' },
-          { text: 'Setup', link: '/setup-macos' },
+          { text: 'Setup on macOS', link: '/setup-macos' },
           { text: 'Setup on Linux', link: '/setup-linux' },
           { text: 'Tutorial', link: '/tutorial' }
         ]
@@ -71,7 +72,7 @@ export default defineConfig({
       {
         text: 'Use',
         items: [
-          { text: 'Daily use', link: '/daily-use' },
+          { text: 'Typical use', link: '/daily-use' },
           { text: 'Adapting the profile', link: '/profile' },
           { text: 'The <code>harness</code> command', link: '/harness-command' }
         ]

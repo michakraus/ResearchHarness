@@ -14,7 +14,7 @@ step differs.
 ## The terms
 
 The tutorial uses the words below. Each word links its entry in the glossary of
-[Concepts](concepts.md#glossary), which also explains the ideas behind them.
+[Introduction](concepts.md#glossary), which also explains the ideas behind them.
 
 - **At work:** [coding agent](concepts.md#coding-agent),
   [frontend](concepts.md#frontend), [session](concepts.md#session),
@@ -59,7 +59,7 @@ working rules, `instructions/core.md`, and your tree instructions,
 **When it does not happen.** If your shell does not find `claude`, install Claude Code first, as
 [Dependencies](dependencies.md#claude-code) says. If the session starts with a warning that
 `~/.claude is behind its sources`, a source changed after the last install. End the session with
-`/exit`, and do what [Daily use](daily-use.md#the-drift-warning-at-session-start) says. Step 8
+`/exit`, and do what [Typical use](daily-use.md#the-drift-warning-at-session-start) says. Step 8
 shows this warning on purpose.
 
 ## Step 2: ask a question and watch the tool calls
@@ -271,12 +271,12 @@ a file that every session reads. A fact about your own work goes into your tree 
 edited the source and not the installed copy in `~/.claude/`; the settings refuse an edit of an
 installed copy from a session, and the next install overwrites it. A change of an agent, a skill or
 a rule of the harness goes into its source in the checkout in the same way.
-[Daily use](daily-use.md) describes this and the other work that comes back again and again.
+[Typical use](daily-use.md) describes this and the other work that comes back again and again.
 
 ## Next steps
 
-- [Daily use](daily-use.md): a change of the settings, the leak check and the verbs for the whole
+- [Typical use](daily-use.md): a change of the settings, the leak check and the verbs for the whole
   research tree.
-- [Concepts](concepts.md): the ideas behind each step of this tutorial.
+- [Introduction](concepts.md): the ideas behind each step of this tutorial.
 - [The security model](security.md): what each layer of control stops, and what it does not.
 - [Agents at work](agents-at-work.md): which agents start which sub-agents.

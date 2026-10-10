@@ -172,7 +172,7 @@ the user and to the session, and it names the command to run. It does not run
 `harness install`, and an edit of the models table is no drift.
 
 It only warns: it blocks nothing and exits 0 for each input.
-[Daily use](../daily-use.md#the-drift-warning-at-session-start) says what to do when the warning
+[Typical use](../daily-use.md#the-drift-warning-at-session-start) says what to do when the warning
 appears.
 
 ## `prompt-log.py`

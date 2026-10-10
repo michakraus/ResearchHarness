@@ -1,4 +1,4 @@
-# Concepts
+# Introduction
 
 This page explains the ideas behind Research Harness. It is for a reader who has not used the
 harness and is fairly new to [coding agents](#coding-agent). You need no Julia to read it. Each section ends with a

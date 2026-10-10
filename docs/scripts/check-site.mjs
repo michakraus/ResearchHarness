@@ -1,12 +1,13 @@
 // Checks of the built site in docs/build/, after `npm run docs:build`:
 //
 // - each page of the menu is a link of the sidebar on every page, and its HTML file exists;
-// - the sidebar starts with the home page, the concept page and the dependencies page;
+// - the sidebar starts with Home, a top-level link, and then the group Getting started with the
+//   introduction, the dependencies page, the two setup pages and the tutorial, in this order;
 // - each link of a page's text to a heading of the site finds that heading, which VitePress's
 //   check of dead links does not test;
 // - the home page, whose home layout has no doc footer, has its own edit link;
 // - each page has as many table rows as its Markdown source;
-// - the home page has its two figures, the concept page its three and the page agents-at-work
+// - the home page has its two figures, the introduction its three and the page agents-at-work
 //   its four call graphs, each found by its <title> and with a <desc>;
 // - in every figure of the site, no edge crosses another edge or passes through a box that is
 //   not its end (scripts/figures.mjs), and no figure loads a file from another host;
@@ -32,6 +33,9 @@ const MENU = [
   'components/scripts.md', 'components/adapters.md', 'components/harness.md',
   'components/other.md', 'development.md'
 ]
+
+// The start of the sidebar: Home, then the group Getting started in this order.
+const START = ['index.md', 'concepts.md', 'dependencies.md', 'setup-macos.md', 'setup-linux.md', 'tutorial.md']
 
 const problems = []
 const problem = (text) => problems.includes(text) || problems.push(text)
@@ -75,8 +79,12 @@ for (const [page, text] of built) {
   for (const target of MENU) {
     if (!sidebar.includes(url(target))) problem(`${page}: the sidebar has no link to ${target}`)
   }
-  const first = sidebar.slice(0, 3).join(' ')
-  if (first !== `${url('index.md')} ${url('concepts.md')} ${url('dependencies.md')}`) problem(`${page}: the sidebar starts with ${first}, not the home page, the concept page and the dependencies page`)
+  const first = sidebar.slice(0, START.length).join(' ')
+  if (first !== START.map(url).join(' ')) problem(`${page}: the sidebar starts with ${first}, not ${START.join(', ')}`)
+  // Home is a headline of its own, a link at the top level, above the group Getting started.
+  const nav = between(text, 'id="VPSidebarNav"', '</nav>')
+  const home = /<div class="VPSidebarItem level-0 is-link"[^>]*>(?:(?!<\/a>)[\s\S])*?href="([^"]*)"/.exec(nav)
+  if (!home || home[1] !== url('index.md') || home.index > nav.indexOf('>Getting started</h2>')) problem(`${page}: Home is not a top-level link above the group Getting started`)
 }
 
 // A link with a fragment finds a heading of its page.

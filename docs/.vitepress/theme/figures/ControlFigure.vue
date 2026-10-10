@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// The figure of the layers of control around one tool call, on the concept page: the
+// The figure of the layers of control around one tool call, on the introduction: the
 // instructions guide the agent; the agent's tool call meets the checks before the call, the
 // permission settings and the guard hooks, which refuse it, ask you, or let it run; a shell
 // command then runs inside the sandbox. A fixed grid with one centre column, so that no edge

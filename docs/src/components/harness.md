@@ -236,7 +236,7 @@ passes when at least 8 of its 10 `load` queries load it and at most 1 of its 5 `
 The report goes to `.scratch/skill-triggers/` below the research root. Every session costs tokens.
 
 Its cases run the parser, the verdict, the majority and the pass rule, and run `--apply` on a fake
-`claude`. [Daily use](../daily-use.md) shows the commands.
+`claude`. [Typical use](../daily-use.md) shows the commands.
 
 ## `sources.py`
 

@@ -5,7 +5,7 @@ step does, why the harness needs it, and how you see that it worked.
 [Installation](https://github.com/michakraus/ResearchHarness#installation) in the README gives
 the short form of the same steps. [setup-linux.md](setup-linux.md) is the page for Linux.
 
-The steps use `~/Research/Harness` as the path of the checkout. [Concepts](concepts.md) explains
+The steps use `~/Research/Harness` as the path of the checkout. [Introduction](concepts.md) explains
 the words that this page uses, and the glossary there has an entry for each.
 
 **Without Julia code.** If you write no Julia, you can skip the steps and lines that this page
@@ -18,27 +18,33 @@ with its meaning.
 
 ## The dependencies
 
-**What it does.** Homebrew installs the tools that the harness calls.
+**What it does.** These commands install every required tool that the harness calls. Homebrew
+installs all but Julia, and the installer of `juliaup` installs Julia.
 [Dependencies](dependencies.md) lists each tool, its minimum version and what the harness uses it
 for. Its section [What each tool does](dependencies.md#what-each-tool-does) says why the harness
 needs each tool, and where it calls it.
 
 ```bash
-brew install python python@3.11 git gh gitleaks node shellcheck actionlint coreutils rsync juliaup
+brew install python python@3.11 git gh gitleaks node shellcheck actionlint coreutils rsync
 brew install jolars/tap/fatou
+curl -fsSL https://install.julialang.org | sh
 ```
 
 **Without Julia code**, skip the second line: fatou checks Julia code only.
 
+The third line downloads the installer of `juliaup` and runs it. The installer asks you to
+confirm its settings; its default settings install `juliaup` and the current Julia release, and
+add them to the `PATH` in your shell's start file. Open a new terminal after it, so that your shell
+finds `julia`. The six Julia packages of [Dependencies](dependencies.md#julia-and-its-packages)
+need no command: the first install adds them.
+
 **Why.** `harness` runs on the `python3` of the `PATH`, which must be 3.11 or later. `python`
 supplies a current `python3`, and `python@3.11` supplies `python3.11`, which the pre-push
 [hook](concepts.md#hook) also runs. `coreutils` supplies `timeout`, which macOS does not have.
-The optional tools serve one [frontend](concepts.md#frontend) or one job each. Install them when
-you need that frontend or that job.
-
-Then install Julia 1.13 or later with `juliaup`. You need Julia even if you write no Julia code:
-the first install instantiates the Julia environment of the harness's
-scripts, and it stops without `julia`.
+You need Julia even if you write no Julia code: the first install instantiates the Julia
+environment of the harness's scripts, and it stops without `julia`. The optional tools of
+Dependencies serve one [frontend](concepts.md#frontend) or one job each. Install them when you
+need that frontend or that job.
 
 **Check.** Each command prints its version: Python 3.11 or later, and Julia 1.13 or later.
 

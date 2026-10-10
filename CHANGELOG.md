@@ -2,18 +2,22 @@
 
 ## Unreleased
 
-- **The newcomer pages: a concept page with a glossary, a setup guide that explains each step,
-  and a guided tutorial.** The new page *Concepts*, second in the menu, explains what a coding
-  agent is, what a harness adds, the three layers (the harness, the profile and the tree
-  instructions), the four layers of control around a tool call, and the division of work among
-  agents, each with a note on how it carries to another language. It shows two new figures,
+- **The newcomer pages: an introduction with a glossary, a setup guide that explains each step,
+  and a guided tutorial.** The menu has *Home* as a headline of its own, then *Getting started*
+  with *Introduction*, *Dependencies*, *Setup on macOS*, *Setup on Linux* and *Tutorial*; the
+  *Setup* group goes, and *Daily use* is now *Typical use*. The new page *Introduction*
+  (`concepts.md`) explains what a coding agent is, what a harness adds, the three layers (the
+  harness, the profile and the tree instructions), the four layers of control around a tool call,
+  and the division of work among agents, each with a note on how it carries to another language. It shows two new figures,
   drawn with the components and the style module of the figures, and the overview figure of the
-  home page. Its glossary has one entry for each of 19 terms. The setup guide, *Setup* in the
-  menu, says for each step what it does, why, and how to check it, marks what a reader who writes
-  no Julia may skip, and now makes the `repository_roots` directories, without which
-  `harness leaks` stops. The tutorial has eight steps, each with what you should see and what to
-  do when it does not happen, and a track for a repository with no Julia package; its quoted
-  outputs are the real texts of the hooks and verbs. *Daily use* links the tutorial in place of
+  home page. Its glossary has one entry for each of 19 terms. The setup guide for macOS says for
+  each step what it does, why, and how to check it, marks what a reader who writes no Julia may
+  skip, installs every required tool with `brew` and Julia with the installer of `juliaup`, and
+  now makes the `repository_roots` directories, without which `harness leaks` stops. The Linux
+  page gets its first step: the required tools with `apt-get`, and actionlint, fatou and Julia
+  with their own installers; its other steps are still to come. The tutorial has eight steps,
+  each with what you should see and what to do when it does not happen, and a track for a
+  repository with no Julia package; its quoted outputs are the real texts of the hooks and verbs. *Typical use* links the tutorial in place of
   repeating it. On the newcomer pages, the first use of a glossary term links its entry, and no
   page holds a `file:line`: the call sites and version floors of *Dependencies* name the file
   without the line. A new check, `docs/scripts/newcomer.mjs` with its cases, enforces both and

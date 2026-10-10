@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// The figure of the three layers of an installation, on the concept page: the harness, the
+// The figure of the three layers of an installation, on the introduction: the harness, the
 // profile and the tree instructions as panels on the left, each with what it holds, and arrows
 // into `harness install`, which writes the configuration of the frontends. A fixed grid: the
 // install card is level with the middle panel, so that the arrows of the outer panels bend in one
