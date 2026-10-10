@@ -71,8 +71,8 @@ the whole history; for a pull request `base..head`), the messages of that range 
 with `examples/profile.toml`. CI has no profile, so the private strings are the hook's alone.
 `.github/workflows/julia.yml` runs the five Julia test files on Julia 1.13 when a
 `.jl` file, `Project.toml` or the workflow itself changes.
-`.github/workflows/docs.yml` builds the documentation site with VitePress when the README, a file
-under `docs/`, `agents/`, `skills/`, `examples/models.toml` or the workflow itself changes.
+`.github/workflows/docs.yml` builds the documentation site with VitePress when a file under
+`docs/`, `agents/`, `skills/`, `examples/models.toml` or the workflow itself changes.
 VitePress fails the build on a broken local link. On a push to `main`, the workflow also deploys
 the site to the `gh-pages` branch.
 
@@ -81,8 +81,8 @@ the site to the `gh-pages` branch.
 The site is a VitePress project in `docs/`, and its build needs Node.js, not Julia. The pages are
 in `docs/src/`, and the configuration and the sidebar are in `docs/.vitepress/config.mts`.
 `docs/package.json` pins the npm packages, and `docs/package-lock.json` pins their dependencies.
-The home page, `docs/src/index.md`, includes the README, and the build changes the README's links
-into `docs/src/` to work between pages. Build the site locally from `docs/`:
+The home page, `docs/src/index.md`, is a landing page of its own, with VitePress's home layout;
+it does not include the README. Build the site locally from `docs/`:
 
 ```bash
 npm ci
@@ -96,14 +96,25 @@ the build; link to the file on GitHub instead. Link to a section of another page
 heading's anchor: `[text](setup-macos.md#harness-install-apply)`. An anchor is the heading in lower
 case, with each run of spaces and punctuation as one `-`. VitePress does not check an anchor, but
 `npm run docs:check` does. It also checks that every page of the menu is in the sidebar, that each
-page has the table rows of its source, and that the page `agents-at-work` has its four call graphs.
+page has the table rows of its source, that the home page has its two figures and the page
+`agents-at-work` its four call graphs, that no edge of a figure crosses another edge or passes
+through a box that is not its end, and that every colour of the figures has a value for the dark
+theme. It first runs the cases of `docs/scripts/figures.test.mjs`.
 
-The call graphs of `agents-at-work.md` are Mermaid diagrams. A block with the info string
-`calls <caller>`, or `calls` for every edge, holds the graph's `accTitle:` and `accDescr:`, and
-`docs/.vitepress/calls.mjs` adds the nodes and the edges at build time, from
-`docs/figures/calls.toml`, the frontmatter of `agents/` and `skills/`, and
-`examples/models.toml`. So a change of an agent's `effort:` changes the figure with no other edit.
-The graphs follow the light and dark theme of the site.
+The figures are Vue components in `docs/.vitepress/theme/figures/`, which the build renders to
+inline SVG, so a page shows them with JavaScript off. `FigCard`, `FigPanel` and `FigArrow` draw a
+card with an icon, a group panel with a header band, and a right-angled arrow. The icons come
+from the npm package `lucide`, and the build inlines them. Every colour, the font, the corner radii
+and the line widths are custom properties in `docs/.vitepress/theme/figures.css`, with a value for
+the light and the dark theme; a component names no colour itself. The overview and the flow figure
+of the home page have a fixed layout in their components.
+
+The call graphs of `agents-at-work.md` are generated. A block with the info string
+`calls <caller>`, or `calls` for every edge, holds the graph's `title:` and `desc:`, and the build
+draws the graph there. `docs/.vitepress/theme/figures/calls.data.ts` reads
+`docs/figures/calls.toml`, the frontmatter of `agents/` and `skills/`, and `examples/models.toml`
+at build time, and `elkjs` lays out each graph. So a change of an agent's `effort:` changes the
+figure with no other edit.
 
 The pages in `docs/src/components/` describe each component: one page for each kind, and one
 level-2 section for each component, whose heading names it in backticks. `lib/harness/docs.py`

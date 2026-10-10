@@ -3,27 +3,34 @@
 //   npm ci
 //   npm run docs:build
 //
-// The pages are in docs/src/, and the site goes to docs/build/. The home page includes the
-// README. The docs workflow deploys the site to gh-pages on a push to main.
+// The pages are in docs/src/, and the site goes to docs/build/. The figures are Vue components
+// in theme/figures/, which the build renders to SVG. The docs workflow deploys the site to
+// gh-pages on a push to main.
 import { defineConfig } from 'vitepress'
-import { withMermaid } from 'vitepress-plugin-mermaid'
-import { callsMarkdown } from './calls.mjs'
+import { iconSvg } from './theme/figures/icons'
 
-/** A markdown-it plugin: the home page includes README.md, whose links into docs/src/ become links
- * between pages of the site. */
-function readmeLinks(md) {
-  md.core.ruler.push('readme-links', (state) => {
-    if (state.env.relativePath !== 'index.md') return
-    for (const block of state.tokens) {
-      for (const token of block.children ?? []) {
-        const href = token.type === 'link_open' && token.attrGet('href')
-        if (href && href.startsWith('docs/src/')) token.attrSet('href', href.slice('docs/src/'.length))
+const attribute = (s: string) => s.replaceAll('&', '&amp;').replaceAll('"', '&quot;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
+
+/** A markdown-it plugin that turns each `calls <root>` block, or `calls` for every edge, into a
+ * call graph of theme/figures/calls.data.ts. The block holds the figure's `title:` and `desc:`
+ * lines. */
+function callsMarkdown(md) {
+  md.core.ruler.push('calls', (state) => {
+    for (const token of state.tokens) {
+      const m = token.type === 'fence' && /^calls(?:\s+(\S+))?\s*$/.exec(token.info)
+      if (!m) continue
+      const field = (name: string) => {
+        const line = new RegExp(`^${name}:\\s*(.+)$`, 'm').exec(token.content)
+        if (!line) throw new Error(`a calls block with no ${name}: line`)
+        return attribute(line[1].trim())
       }
+      token.type = 'html_block'
+      token.content = `<CallGraph${m[1] ? ` root="${attribute(m[1])}"` : ''} title="${field('title')}" desc="${field('desc')}" />\n`
     }
   })
 }
 
-export default withMermaid(defineConfig({
+export default defineConfig({
   base: '/ResearchHarness/',
   title: 'Research Harness',
   description: 'A harness for coding agents in a research tree',
@@ -33,21 +40,20 @@ export default withMermaid(defineConfig({
   markdown: {
     config(md) {
       md.use(callsMarkdown)
-      md.use(readmeLinks)
     }
   },
-  vite: {
-    // Mermaid puts each kind of diagram into a chunk of its own, and the largest is about 700 kB.
-    // A page loads only the chunks of the diagrams it draws.
-    build: { chunkSizeWarningLimit: 1000 }
+  // A feature card of the home page names its icon by a key of theme/figures/icons.ts; the build
+  // inlines the icon's SVG.
+  transformPageData(pageData) {
+    for (const feature of pageData.frontmatter.features ?? []) {
+      if (typeof feature.icon === 'string') feature.icon = iconSvg(feature.icon, 28)
+    }
   },
   themeConfig: {
     outline: 'deep',
     search: { provider: 'local' },
-    // The home page includes the README, so its edit link opens the README.
     editLink: {
-      pattern: ({ filePath }) => 'https://github.com/michakraus/ResearchHarness/edit/main/' +
-        (filePath === 'index.md' ? 'README.md' : `docs/src/${filePath}`)
+      pattern: 'https://github.com/michakraus/ResearchHarness/edit/main/docs/src/:path'
     },
     socialLinks: [{ icon: 'github', link: 'https://github.com/michakraus/ResearchHarness' }],
     sidebar: [
@@ -100,4 +106,4 @@ export default withMermaid(defineConfig({
       { text: 'Development', link: '/development' }
     ]
   }
-}))
+})

@@ -7,9 +7,9 @@ name: docs
 on:
   push:
     branches: [main]
-    paths: ['README.md', 'docs/**', 'agents/**', 'skills/**', 'examples/models.toml', '.github/workflows/docs.yml']
+    paths: ['docs/**', 'agents/**', 'skills/**', 'examples/models.toml', '.github/workflows/docs.yml']
   pull_request:
-    paths: ['README.md', 'docs/**', 'agents/**', 'skills/**', 'examples/models.toml', '.github/workflows/docs.yml']
+    paths: ['docs/**', 'agents/**', 'skills/**', 'examples/models.toml', '.github/workflows/docs.yml']
   workflow_dispatch:
 
 permissions:

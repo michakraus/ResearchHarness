@@ -4,14 +4,14 @@
   "scripts": {
     "docs:dev": "vitepress dev",
     "docs:build": "vitepress build",
-    "docs:check": "node scripts/check-site.mjs",
+    "docs:check": "node --test scripts/figures.test.mjs &&node scripts/check-site.mjs",
     "docs:preview": "vitepress preview"
   },
   "devDependencies": {
-    "mermaid": "11.17.2",
+    "elkjs": "0.12.0",
+    "lucide": "1.55.0",
     "smol-toml": "1.9.1",
     "vitepress": "1.6.4",
-    "vitepress-plugin-mermaid": "2.0.17",
     "yaml": "2.9.1"
   }
 }
