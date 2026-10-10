@@ -188,6 +188,10 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
 - a test fixture `HOME` placed directly in the temporary directory: with `TMPDIR` unset, as on a
   Linux CI runner, its parent is `/tmp`, and a rule keyed on the parent of `HOME` changes; put
   `HOME` one level down (E1a round 1, *Publish the harness as ResearchHarness*)
+- a stub of a system tool that prints the same on every system: a script that branches on the
+  system then passes its other system's form too. Make the stub print what that system's tool
+  prints, such as the 15-character name of Linux `ps -o comm=` (C1 round 1, *Synchronise the
+  machines with chezmoi*)
 - a test fixture that runs `git` with the caller's environment: inside a git hook, `GIT_DIR`
   names the caller's repository, so the fixture's `init`, `add` and `commit` land there; drop every
   inherited `GIT_*` (E1a round 1, *Publish the harness as ResearchHarness*)
