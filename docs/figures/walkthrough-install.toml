@@ -1,0 +1,160 @@
+# The walk-through of a change of a source, from the edit through `harness install` to the drift
+# check at the next session start. docs/.vitepress/theme/figures/walkthroughs.data.ts draws it, and
+# `harness test` checks it (lib/harness/docs.py).
+#
+#   steps   the edges in the order in which the token runs along them, each by its id, else as
+#           "from -> to"
+#   [[box]] id, cell [column, row] or `in` a group, kind (you, skill, agent, step, outcome), name,
+#           lines (up to two grey lines), icon, code (the name in the monospace font); a box of the
+#           kind agent or skill names the agent or skill in `shows`, and takes its name, model and
+#           effort from there; `effort` on an agent's box names the effort of its spawn, which an
+#           entry of calls.toml records
+#   [[group]] id, cell, name: a dashed group of the boxes that name it in `in`, one below another
+#   [[edge]] id (only where two edges have the same ends), from, to, route (the side it leaves,
+#           with +n or -n px from the side's centre; moves to "x <column>" or "y <row>", where .5
+#           is the gap after it and +n or -n moves n px; the side it enters), label, label_on (the
+#           segment of the label, else the longest), label_at (the fraction along it, else 0.5),
+#           and `at`, the file:line that states the step
+
+title = "From an edit to the drift check"
+subtitle = "A change of a source goes through harness install, and a hook checks it at the next session start."
+steps = [
+  "you -> sources",
+  "sources -> hook",
+  "hook -> warning",
+  "warning -> you",
+  "you -> dry-run",
+  "dry-run -> apply",
+  "apply -> layer",
+  "layer -> hook",
+  "hook -> current",
+]
+
+[[box]]
+id = "dry-run"
+cell = [0, 0]
+kind = "step"
+name = "harness install"
+code = true
+lines = ["the dry run", "prints the plan"]
+icon = "install"
+
+[[box]]
+id = "you"
+cell = [1, 0]
+kind = "you"
+name = "You"
+lines = ["edit a source", "and install it"]
+
+[[box]]
+id = "sources"
+cell = [2, 0]
+kind = "step"
+name = "The sources"
+lines = ["agents/, skills/, rules/", "in this repository"]
+icon = "sources"
+
+[[box]]
+id = "apply"
+cell = [0, 1]
+kind = "step"
+name = "Apply the plan"
+lines = ["harness install --apply", "writes the files"]
+icon = "install"
+
+[[box]]
+id = "warning"
+cell = [1, 1]
+kind = "outcome"
+name = "A warning"
+lines = ["~/.claude is behind", "its sources"]
+icon = "warning"
+
+[[box]]
+id = "hook"
+cell = [2, 1]
+kind = "step"
+name = "install-drift.py"
+code = true
+lines = ["the hook at session start", "compares two digests"]
+icon = "guard"
+
+[[box]]
+id = "layer"
+cell = [0, 2]
+kind = "outcome"
+name = "~/.claude/"
+code = true
+lines = ["the installed files", "and the stamp"]
+icon = "drive"
+
+[[box]]
+id = "current"
+cell = [1, 2]
+kind = "outcome"
+name = "No warning"
+lines = ["the installed layer", "is current"]
+icon = "check"
+
+[[edge]]
+from = "you"
+to = "sources"
+route = ["right", "left"]
+label = "edit"
+at = "docs/src/daily-use.md:10"
+
+[[edge]]
+from = "sources"
+to = "hook"
+route = ["bottom", "top"]
+label = "at the next session start"
+at = "hooks/install-drift.py:2"
+
+[[edge]]
+from = "hook"
+to = "warning"
+route = ["left", "right"]
+label = "differ"
+at = "hooks/install-drift.py:114"
+
+[[edge]]
+from = "warning"
+to = "you"
+route = ["top", "bottom"]
+label = "names the command"
+at = "hooks/install-drift.py:97"
+
+[[edge]]
+from = "you"
+to = "dry-run"
+route = ["left", "right"]
+label = "run"
+at = "docs/src/daily-use.md:72"
+
+[[edge]]
+from = "dry-run"
+to = "apply"
+route = ["bottom", "top"]
+label = "read the plan, then apply"
+at = "docs/src/daily-use.md:73"
+
+[[edge]]
+from = "apply"
+to = "layer"
+route = ["bottom-40", "top"]
+label = "writes"
+at = "docs/src/daily-use.md:60"
+
+[[edge]]
+from = "layer"
+to = "hook"
+route = ["top+40", "y 1.5", "x 2-40", "bottom"]
+label = "at the next session start"
+at = "hooks/install-drift.py:8"
+
+[[edge]]
+from = "hook"
+to = "current"
+route = ["bottom+40", "y 2", "right"]
+label = "equal"
+at = "hooks/install-drift.py:95"

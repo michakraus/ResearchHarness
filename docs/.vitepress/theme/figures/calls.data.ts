@@ -3,19 +3,17 @@
 //
 // The edges come from docs/figures/calls.toml: one entry for each spawn. The kind of each node
 // comes from where its source is, its effort from the source's frontmatter, and an agent's model
-// from its tier and the [claude] table of examples/models.toml. elkjs lays out each graph (layered,
-// with orthogonal edges), and the CallGraph component draws it. `harness test` checks calls.toml.
-import { readFileSync, existsSync } from 'node:fs'
+// from its tier and the [claude] table of examples/models.toml (sources.ts). elkjs lays out each
+// graph (layered, with orthogonal edges), and the CallGraph component draws it. `harness test`
+// checks calls.toml.
+import { readFileSync } from 'node:fs'
 import path from 'node:path'
-import { fileURLToPath } from 'node:url'
 import ELK from 'elkjs/lib/elk.bundled.js'
 import { parse as parseToml } from 'smol-toml'
-import { parse as parseYaml } from 'yaml'
 import { LABEL_SIZE, cardHeight, cardWidth, roundedPath, textWidth, type Point } from './geometry'
+import { ROOT, claudeModels, node } from './sources'
 // The checks of the built site, so that the layout places each label where the checks pass.
 import { geometryProblems, labelProblems, points as pathPoints } from '../../../scripts/figures.mjs'
-
-const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..')
 
 type Call = { caller: string, callee: string, at: string, effort?: string, label?: string }
 
@@ -24,28 +22,6 @@ export type GraphNode = { name: string, kind: 'agent' | 'skill', lines: string[]
 /** An edge of a laid-out graph: its polyline and its label. */
 export type GraphEdge = { from: string, to: string, label?: string, points: Point[], labelAt?: Point }
 export type Graph = { width: number, height: number, nodes: GraphNode[], edges: GraphEdge[] }
-
-/** The frontmatter of the Markdown file `file`, read as YAML. */
-function frontmatter(file: string) {
-  const m = /^---\n([\s\S]*?)\n---\n/.exec(readFileSync(file, 'utf8'))
-  if (!m) throw new Error(`${file} has no frontmatter`)
-  return parseYaml(m[1])
-}
-
-/** The name, kind and the two grey lines (model, effort) of the agent or skill `name`. */
-function node(name: string, models: Record<string, string>) {
-  const agent = path.join(ROOT, 'agents', `${name}.md`)
-  const kind = existsSync(agent) ? 'agent' : 'skill'
-  const meta = frontmatter(kind === 'agent' ? agent : path.join(ROOT, 'skills', name, 'SKILL.md'))
-  let model: string
-  // A skill runs in the session that loads it, on the session's model, whatever its `model:`.
-  if (kind === 'skill') model = "the session's model"
-  else if (meta.model === undefined) model = "the caller's model"
-  else if (models[meta.model] === undefined) throw new Error(`${name}: no model for the tier ${meta.model}`)
-  else model = models[meta.model]
-  const effort = meta.effort ?? "the session's effort"
-  return { name, kind, lines: [`${kind} on ${model}`, `effort: ${effort}`] } as const
-}
 
 /** The entries of `calls` that `root` reaches: its own spawns, then their callees' spawns. */
 function reached(calls: Call[], root?: string) {
@@ -138,7 +114,7 @@ const round = (n: number) => Math.round(n * 2) / 2
 /** The laid-out call graph of `root`, or of every edge when `root` is undefined. */
 export async function callGraph(root?: string): Promise<Graph> {
   const calls: Call[] = parseToml(readFileSync(path.join(ROOT, 'docs', 'figures', 'calls.toml'), 'utf8')).call as Call[]
-  const models = parseToml(readFileSync(path.join(ROOT, 'examples', 'models.toml'), 'utf8')).claude as Record<string, string>
+  const models = claudeModels()
   if (root !== undefined && !calls.some((c) => c.caller === root)) throw new Error(`calls.toml has no edge from ${root}`)
   const edges = reached(calls, root)
   const names = [...new Set(edges.flatMap((c) => [c.caller, c.callee]))]

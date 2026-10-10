@@ -2,6 +2,30 @@
 
 ## Unreleased
 
+- **Four animated walk-throughs show the work step by step.** *Agents at work* shows a part from
+  a task to a pull request with `build-part` and with `build-reviewed`. *The security model* shows
+  one tool call through the layers of control. *Typical use* shows a change of a source through
+  `harness install` to the drift check at the next session start. A `WalkThrough` component draws
+  each one from its data file `docs/figures/walkthrough-<name>.toml`: a title and a subtitle, boxes
+  on a grid, dashed groups, and edges with right angles and labels. Each edge cites the
+  `file:line` that states its step. A box of an agent or a skill takes its model and effort from
+  the source's frontmatter and `examples/models.toml`, through `sources.ts`, which the call
+  graphs also read; a box can show the effort of its spawn instead, which an entry of
+  `calls.toml` must record, so the two critics of round 1 show `high`. The cards of one column
+  have one width, and a walk-through is at most 765 px wide, as a call graph. The colour of a
+  box says who acts: you and your session, an agent of each tier, a step with no agent, or a
+  dashed outcome; a legend explains the colours. The animation is CSS in the figure's own
+  `<style>`: the active box has a dark outline and the others fade, and a red token runs along
+  each edge in 0.7 s; each step holds 1.5 s, and the animation loops. Under
+  `prefers-reduced-motion` no animation runs, every box shows, and no token shows. With
+  JavaScript on, play, pause and step buttons show under the figure. `docs:check` finds each
+  walk-through by its title and checks each animated figure: its SVG parses as XML, it holds no
+  `<script>`, no SMIL and no other host, it loops, it has the reduced-motion rules, its timing
+  is 0.5–0.8 s per edge and at least 1.2 s per step, and it is at most 765 px wide. `harness test`
+  names a box that shows no agent or skill of the repository, an effort that no spawn of
+  `calls.toml` has, and a cited line that does not exist. The colour scan of
+  `docs:check` also reads `docs/figures/`. The *Get started* action of the landing page links the
+  *Introduction*, and `docs:check` fails when it links another page.
 - **The `pre-push` hook scans the commits that a push brings to `main`**, `old..sha` as CI does,
   in place of the commits that no ref of `origin` holds. A commit that a branch on `origin`
   already held passed the hook unscanned: Unify part M pushed its branch first, and a home path

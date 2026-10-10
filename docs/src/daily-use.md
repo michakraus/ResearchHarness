@@ -64,6 +64,12 @@ digest again from the sources. It warns when the installed layer is behind its s
 stamp is missing, and when it cannot read a source or the stamp. The warning names the cause and
 the command.
 
+<WalkThrough name="install" />
+
+*From an edit to the [drift](concepts.md#drift) check.* You edit a source. At the next session
+start, the hook finds the installed layer behind its sources and warns. You run the dry run and
+apply the plan. At the session start after that, the hook finds no difference.
+
 When the warning appears, an edit of a source is not installed yet. Run the dry run, read the
 plan, and apply it:
 

@@ -7,7 +7,7 @@ hero:
   actions:
     - theme: brand
       text: Get started
-      link: /setup-macos
+      link: /concepts
     - theme: alt
       text: Tutorial
       link: /tutorial
