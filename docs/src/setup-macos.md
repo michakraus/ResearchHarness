@@ -224,8 +224,17 @@ and the agents. It also links the skills into `~/.agents/skills/`.
 ### oh-my-pi
 
 `harness install` writes the oh-my-pi configuration into its agent directory,
-`$PI_CODING_AGENT_DIR`, else `~/.omp/agent/`: `config.yml` with the permission layer and the
-models, the guard extension, `AGENTS.md`, the rules, the agents and `mcp.json`.
+`$PI_CODING_AGENT_DIR`, else `~/.omp/agent/`: `harness.yml` with the permission layer and the
+default model, `models.yml`, the guard extension, `AGENTS.md`, the rules, the agents, `mcp.json`,
+and oh-my-pi's own copies of the instructions, the guard scripts and the skills. It never writes
+oh-my-pi's own `config.yml`. oh-my-pi reads `harness.yml` over `config.yml` only when
+`PI_CONFIG_FILES` names it, so add this line to `~/.omp/agent/.env` once; the install warns until
+it is there:
+
+```text
+PI_CONFIG_FILES=~/.omp/agent/harness.yml
+```
+
 [architecture.md](architecture.md#the-opencode-and-oh-my-pi-adapters) describes the adapter.
 
 ## `git config core.hooksPath .githooks`

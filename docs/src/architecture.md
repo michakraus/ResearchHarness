@@ -93,19 +93,22 @@ OpenCode's configuration directory, in place of `~/.claude/CLAUDE.md`. `RTK.md`,
 `opencode.jsonc`. `CLAUDE.md` holds the Claude Code mechanics only.
 
 oh-my-pi gets its permission layer from the same settings template. `harness install` writes
-`config.yml` into its agent directory, `$PI_CODING_AGENT_DIR`, else `~/.omp/agent`:
-`tools.approvalMode: write`, the `eval` tool denied, and the template's Bash entries as
+the overlay `harness.yml` into its agent directory, `$PI_CODING_AGENT_DIR`, else `~/.omp/agent`:
+`tools.approvalMode: yolo`, the `eval` tool denied, and the template's Bash entries as
 `bash.patterns`, every `deny`, then every `ask` as `prompt`, then every `allow`, since oh-my-pi
-takes the first rule that matches. Beside it go `extensions/guards.ts`, from
-`adapters/omp/guards.ts`, and the rendered path list `extensions/guard-paths.json`. The extension
-runs four of the guard hooks on every `bash` call, `rm-scope.py` among them, the template's read
-denies on `read`, `grep` and `bash`, and its Edit denies on `edit` and `write`, with `~/.omp/**`
-added to both; it refuses the paths of the template's Edit asks on `edit` and `write` too, and
-tells the model to ask the user in chat; it blocks the call when a guard cannot run, fails or
-times out.
+takes the first rule that matches. oh-my-pi's own `config.yml`, which its setup and its settings
+panel write, is never written: oh-my-pi reads `harness.yml` over it when `PI_CONFIG_FILES` in the
+agent directory's `.env` names it, and the install warns until it does. Beside it go
+`extensions/guards.ts`, from `adapters/omp/guards.ts`, and the rendered path list
+`extensions/guard-paths.json`. The extension runs four of the guard hooks, from oh-my-pi's own
+copy in `hooks/`, on every `bash` call, `rm-scope.py` among them, the template's read denies on
+`read`, `grep` and `bash`, and its Edit denies on `edit` and `write`, with `~/.omp/**` added to
+both, except that its copies of the skills, the rules and the instructions stay readable; it
+refuses the paths of the template's Edit asks on `edit` and `write` too, and tells the model to
+ask the user in chat; it blocks the call when a guard cannot run, fails or times out.
 
 oh-my-pi reads the same instructions. `harness install` writes `adapters/omp/OMP-DELTA.md` as
-`AGENTS.md` in its agent directory; its first lines import `~/.claude/RTK.md`,
+`AGENTS.md` in its agent directory; its first lines import oh-my-pi's own copies of `RTK.md`,
 `instructions/core.md` and `instructions/research-tree.md`, and the rest states the facts of
 oh-my-pi. Each rule that the Claude Code layer installs goes to `rules/<name>.md` there, its
 frontmatter written anew as `globs: <JSON list>` and `description: <JSON string>`, which YAML
@@ -114,16 +117,16 @@ reads as the source's `paths` and `description`: oh-my-pi lists it by its name, 
 `description: <text>`, not blank, and at most one line `paths: ["…", …]`, with no tab and no
 whitespace at a line's edge (`render_rule` gives the grammar), and a rule source in a
 subdirectory of `rules/` exits 2, as oh-my-pi reads none.
-The skills need no file: oh-my-pi reads the links of `~/.agents/skills/` by default.
+The skills are oh-my-pi's own copies in `skills/`, which it reads through `skill://`.
 
 oh-my-pi gets the agents, the models and the MCP entry too. Each agent of `agents/` goes to
 `agents/<name>.md` in its agent directory, with `name`, `description`, `tools` mapped by the table
-`TOOLS` of `adapters/omp/adapter.py` (a tool it does not map exits 2), `model` the role that
-`ROLES` names for the tier, `@opus`, `@sonnet` or `@haiku`, `effort` as `thinking-level`, `skills`
-as `autoloadSkills`, and the body, after an "Under oh-my-pi" section from
-`adapters/omp/UNDER-OMP.md` for an agent that uses a Claude Code mechanism. The `[omp]` table of
-`models.toml` gives the model of each tier, `large`, `medium` and `small`; `config.yml` holds them
-as those roles of `modelRoles`, and `modelRoles.default` is the `medium` model.
+`TOOLS` of `adapters/omp/adapter.py` (a tool it does not map exits 2), `model` the model of its
+tier or its override, `thinking-level` its effort from the model tables, `skills` as
+`autoloadSkills`, and the body, after an "Under oh-my-pi" section from `adapters/omp/UNDER-OMP.md`
+for an agent that uses a Claude Code mechanism; each council seat gets a copy. The model tables of
+`models.toml`, which OpenCode shares, give the model of each tier, `large`, `medium` and `small`;
+`harness.yml` holds `modelRoles.default`, the `medium` model.
 `mcp.json` holds Kaimon alone, over HTTP, with its token read from
 `~/.config/kaimon/opencode-token` by a command when oh-my-pi connects, so that no secret is in the
 file.

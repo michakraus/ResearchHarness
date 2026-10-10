@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+- **`harness install` no longer writes oh-my-pi's `config.yml`; its keys go to the overlay
+  `~/.omp/agent/harness.yml`.** oh-my-pi's setup and its settings panel write `config.yml` and
+  rewrite it as YAML with keys of their own, such as `setupVersion` and `theme`; the install
+  replaced the whole file, so oh-my-pi lost them and ran its setup again at almost every start.
+  oh-my-pi reads each file that `PI_CONFIG_FILES` names after `config.yml` and over it, and never
+  writes one; it loads the agent directory's `.env` before. So `harness.yml` holds the approval
+  mode, `bash.patterns` and `modelRoles.default`, and one line in `~/.omp/agent/.env`,
+  `PI_CONFIG_FILES=~/.omp/agent/harness.yml`, makes oh-my-pi read it. The install warns, with that
+  line, when neither its environment nor the `.env` names the file; it reads the `.env` for that
+  key only, prints none of its values, and never writes it. The docs pages on oh-my-pi say so, and
+  no longer name the approval mode `write`, the `@opus` roles or the `[omp]` table.
+
 - **OpenCode and oh-my-pi keep their own copies, and oh-my-pi follows OpenCode's model layer.**
   `harness install` copies the Claude Code layer's `RTK.md`, `instructions/`, rules, the four
   guard scripts and the curated skills into `~/.config/opencode/` and `~/.omp/agent/`. Every

@@ -436,7 +436,7 @@ STAMP = ".harness-install.json"
 # fixture home of its own, with one guard script replaced or the path list changed; the timeout
 # case runs a copy of the extension whose timeout is 0.3 s, so that it costs no 10 s.
 #
-# A bash case also gives the verdict of `config.yml`'s `bash.patterns`, rendered with the dummy
+# A bash case also gives the verdict of `harness.yml`'s `bash.patterns`, rendered with the dummy
 # profile, by oh-my-pi's matching (`src/tools/bash.ts` at v18.6.1): the first rule that matches
 # wins; `allow` matches only a whole command with no shell control character; `deny` and `prompt`
 # match the whole command or one of its segments. This port splits segments by text, so it stands

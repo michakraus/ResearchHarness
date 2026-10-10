@@ -1,6 +1,6 @@
 // The guard extension of oh-my-pi: the Claude Code guard hooks, and the path list.
 //
-// oh-my-pi's `bash.patterns` in config.yml refuse what a glob can express. This extension checks
+// oh-my-pi's `bash.patterns` in harness.yml refuse what a glob can express. This extension checks
 // what a glob cannot, on each `tool_call`:
 //
 //     bash   the four guard scripts below, and the path list on the words of the command, on

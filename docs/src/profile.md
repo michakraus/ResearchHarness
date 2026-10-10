@@ -71,7 +71,7 @@ the model of each frontend.
 | `[opencode.variants]` | the `variant:` of one agent, over the variant of its model | `install` |
 | `[opencode.reasoning_effort]` | the `reasoningEffort:` of one agent | `install` |
 | `[opencode.councils]` | the copies of an agent on other models | `install` |
-| `[omp]` | the oh-my-pi model of each tier, written to `config.yml` as a role; `medium` is also the default model; all three tiers are required | `install` |
+| `[omp]` | the keys of the shared model tables that differ for oh-my-pi alone; the `medium` model is also its default model, in `harness.yml`, and all three tiers are required | `install` |
 
 A table that names a tier by an old name, `opus`, `sonnet` or `haiku`, stops `harness install`
 with exit 2, an error, and the message names the rename.

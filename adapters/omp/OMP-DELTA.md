@@ -10,7 +10,7 @@ tree instructions above describe the work; this file describes the tools.
 ## There is no sandbox
 
 oh-my-pi has no filesystem or network allowlist. Two controls stand in its place: the
-`bash.patterns` of `config.yml`, and the guard extension. A deny pattern is escaped by any command
+`bash.patterns` of `harness.yml`, and the guard extension. A deny pattern is escaped by any command
 carried inside a string argument, so treat every command as unconfined. Where a sandbox would make
 a mistake survivable, ask. A rule that exists only because of Claude Code's sandbox or its
 permission matcher does not bind here: the unsandboxed programs, a `git` alone on its line, no
