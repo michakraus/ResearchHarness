@@ -87,13 +87,8 @@ elseif Sys.islinux()
     ` (deleted)`, which is removed, so a binary written again at the same path exists.
     """
     function binary_of(pid)
-        exe = try
-            readlink("/proc/$pid/exe")
-        catch e
-            e isa Base.IOError || rethrow()
-            return :ended
-        end
-        return chopsuffix(exe, " (deleted)")
+        comm = readchomp(ignorestatus(`$(Sys.which("ps")) -o comm= -p $pid`))
+        return isempty(comm) ? :ended : comm
     end
 else
     error("julia-update.jl runs on macOS and Linux, not on $(Sys.KERNEL)")
