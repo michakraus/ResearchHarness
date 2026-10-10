@@ -1,0 +1,169 @@
+/* The style module of the figures: every colour, the font, the corner radii and the line widths
+   of the figure components in theme/figures/. A component names a colour only through a custom
+   property of this file, so the figures follow the light and the dark theme of the site.
+
+   Each accent has three colours: `--fig-<accent>` for a badge, an icon and a heading;
+   `--fig-<accent>-soft` for a header band and a tinted card; `--fig-<accent>-line` for a border.
+   `npm run docs:check` requires a value under .dark for each colour under :root. */
+:root {
+  --fig-font: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --fig-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --fig-radius-card: 10px;
+  --fig-radius-panel: 14px;
+  --fig-line-card: 1px;
+  --fig-line-panel: 1.25px;
+  --fig-line-arrow: 1.5px;
+  --fig-dash: 5 4;
+
+  --fig-text: #1e293b;
+  --fig-text-muted: #64748b;
+  --fig-on-accent: #ffffff;
+  --fig-card: #ffffff;
+  --fig-card-line: #e2e8f0;
+  --fig-shadow: rgba(15, 23, 42, 0.10);
+  --fig-panel: #f8fafc;
+  --fig-panel-line: #e2e8f0;
+  --fig-group-line: #94a3b8;
+  --fig-arrow: #475569;
+  --fig-label: #ffffff;
+
+  --fig-slate: #334155;
+  --fig-slate-soft: #eef2f6;
+  --fig-slate-line: #cbd5e1;
+  --fig-blue: #2563eb;
+  --fig-blue-soft: #e8f0fe;
+  --fig-blue-line: #bfd3f8;
+  --fig-violet: #7c3aed;
+  --fig-violet-soft: #f1ebfe;
+  --fig-violet-line: #d8c8fa;
+  --fig-teal: #0d9488;
+  --fig-teal-soft: #e3f6f3;
+  --fig-teal-line: #b3e3dc;
+  --fig-amber: #c2620c;
+  --fig-amber-soft: #fdf3e2;
+  --fig-amber-line: #f3d6a6;
+  --fig-yellow: #a16207;
+  --fig-yellow-soft: #fdf5d3;
+  --fig-yellow-line: #eed98a;
+}
+
+.dark {
+  --fig-text: #e2e8f0;
+  --fig-text-muted: #94a3b8;
+  --fig-on-accent: #0f172a;
+  --fig-card: #1e2129;
+  --fig-card-line: #343a46;
+  --fig-shadow: rgba(0, 0, 0, 0.45);
+  --fig-panel: #17191f;
+  --fig-panel-line: #2c313b;
+  --fig-group-line: #4b5563;
+  --fig-arrow: #a3adbb;
+  --fig-label: #1b1b1f;
+
+  --fig-slate: #cbd5e1;
+  --fig-slate-soft: #252a33;
+  --fig-slate-line: #3a414d;
+  --fig-blue: #7aa7ff;
+  --fig-blue-soft: #1c2a44;
+  --fig-blue-line: #2f4a78;
+  --fig-violet: #b69bff;
+  --fig-violet-soft: #2a2140;
+  --fig-violet-line: #4a3a72;
+  --fig-teal: #4fd1c0;
+  --fig-teal-soft: #163330;
+  --fig-teal-line: #255a53;
+  --fig-amber: #f5b05a;
+  --fig-amber-soft: #3a2a14;
+  --fig-amber-line: #6b4a1c;
+  --fig-yellow: #f2cc4d;
+  --fig-yellow-soft: #352e12;
+  --fig-yellow-line: #64561f;
+}
+
+/* A figure is as wide as its column, up to its own width. */
+.fig {
+  display: block;
+  width: 100%;
+  height: auto;
+  margin: 24px auto 8px;
+  font-family: var(--fig-font);
+  overflow: visible;
+}
+
+.fig text {
+  font-family: var(--fig-font);
+  fill: var(--fig-text);
+}
+
+.fig .fig-muted {
+  fill: var(--fig-text-muted);
+}
+
+.fig .fig-code {
+  font-family: var(--fig-mono);
+}
+
+/* A card: a rounded box with a thin border and a soft shadow, an icon on a tinted square, a
+   title and up to two grey lines. */
+.fig .fig-card-box {
+  fill: var(--fig-card);
+  stroke: var(--fig-card-line);
+  stroke-width: var(--fig-line-card);
+  rx: var(--fig-radius-card);
+  filter: drop-shadow(0 1px 2px var(--fig-shadow)) drop-shadow(0 4px 10px var(--fig-shadow));
+}
+
+.fig .fig-icon-bg { fill: var(--fig-accent-soft); }
+.fig .fig-icon { color: var(--fig-accent); }
+.fig .fig-card-tinted .fig-card-box {
+  fill: var(--fig-accent-soft);
+  stroke: var(--fig-accent-line);
+}
+.fig .fig-card-tinted .fig-icon-bg { fill: var(--fig-card); }
+
+/* A panel: a coloured header band, an optional number badge, and a light body. */
+.fig .fig-panel-box {
+  fill: var(--fig-panel);
+  stroke: var(--fig-accent-line);
+  stroke-width: var(--fig-line-panel);
+  rx: var(--fig-radius-panel);
+}
+.fig .fig-panel-band { fill: var(--fig-accent-soft); }
+.fig .fig-panel-title { fill: var(--fig-accent); font-weight: 650; }
+.fig .fig-badge { fill: var(--fig-accent); }
+.fig .fig-badge-text { fill: var(--fig-on-accent); font-weight: 700; }
+
+/* The dashed variant: a group or an outcome inside a panel. */
+.fig .fig-panel-dashed .fig-panel-box {
+  fill: none;
+  stroke: var(--fig-group-line);
+  stroke-dasharray: var(--fig-dash);
+  rx: var(--fig-radius-card);
+}
+.fig .fig-panel-dashed .fig-panel-title { fill: var(--fig-text-muted); font-weight: 600; }
+
+/* An arrow: a thin dark-grey line with right angles, and a filled head. */
+.fig .fig-arrow-line {
+  fill: none;
+  stroke: var(--fig-arrow);
+  stroke-width: var(--fig-line-arrow);
+  stroke-linejoin: round;
+}
+.fig .fig-arrow-head { fill: var(--fig-arrow); }
+.fig .fig-arrow-label-bg { fill: var(--fig-label); }
+.fig .fig-arrow-label { fill: var(--fig-text-muted); }
+
+/* The accents: a component sets one on its group with the class fig-accent-<name>. */
+.fig .fig-accent-slate { --fig-accent: var(--fig-slate); --fig-accent-soft: var(--fig-slate-soft); --fig-accent-line: var(--fig-slate-line); }
+.fig .fig-accent-blue { --fig-accent: var(--fig-blue); --fig-accent-soft: var(--fig-blue-soft); --fig-accent-line: var(--fig-blue-line); }
+.fig .fig-accent-violet { --fig-accent: var(--fig-violet); --fig-accent-soft: var(--fig-violet-soft); --fig-accent-line: var(--fig-violet-line); }
+.fig .fig-accent-teal { --fig-accent: var(--fig-teal); --fig-accent-soft: var(--fig-teal-soft); --fig-accent-line: var(--fig-teal-line); }
+.fig .fig-accent-amber { --fig-accent: var(--fig-amber); --fig-accent-soft: var(--fig-amber-soft); --fig-accent-line: var(--fig-amber-line); }
+.fig .fig-accent-yellow { --fig-accent: var(--fig-yellow); --fig-accent-soft: var(--fig-yellow-soft); --fig-accent-line: var(--fig-yellow-line); }
+
+/* The caption under a figure. */
+.fig-caption {
+  margin-top: 4px;
+  font-size: 14px;
+  color: var(--vp-c-text-2);
+}
