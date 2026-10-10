@@ -12,6 +12,7 @@
     "{home}/.config/chezmoi/**",
     "{home}/.config/gh/hosts.yml",
     "{home}/.claude/.credentials.json",
+    "{home}/.omp/agent/.env",
     "**/.env",
     "**/.env.*",
     "**/secrets/**",

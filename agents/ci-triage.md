@@ -2,6 +2,7 @@
 name: ci-triage
 model: medium
 omitClaudeMd: true
+cacheTtl: 1h
 description: "Read GitHub Actions results across one or many repositories and separate real regressions from known-red. Use when: why is CI red, check CI across the packages, is the matrix green, what's failing on GitHub, did the workflow run, are the required checks passing, read the CI results as they land. Returns a per-repository verdict where 'expected red' is a first-class outcome. Use git-hook-triage for local hooks rather than Actions, and julia-pr-reviewer when the question is about one pull request's content."
 tools:
   - read

@@ -40,8 +40,8 @@ copy has one source, so it cannot drift from it. What changes in the port, and n
    maps through [opencode.models] of the model tables (`models.toml`), unless `model_overrides`
    names the agent; an agent
    with no `model:` inherits its caller's model in both harnesses. `councils` adds copies of an
-   agent on other models. `effort:`, `omitClaudeMd:` and `isolation:` have no OpenCode
-   equivalent and are dropped; the last one becomes a rule in the preamble.
+   agent on other models. `effort:`, `omitClaudeMd:`, `cacheTtl:` and `isolation:` have no
+   OpenCode equivalent and are dropped; the last one becomes a rule in the preamble.
 2. MCP tool names. OpenCode names an MCP tool `<server>_<tool>`, so `mcp__kaimon__ex` in the body
    becomes `kaimon_ex`.
 3. A preamble, "Under OpenCode", before the body. It replaces each Claude Code mechanism the agent

@@ -112,6 +112,7 @@
       "{home}/.config/chezmoi/**": "deny",
       "{home}/.config/gh/hosts.yml": "deny",
       "{home}/.claude/.credentials.json": "deny",
+      "{home}/.omp/agent/.env": "deny",
       "**/.env": "deny",
       "**/.env.*": "deny",
       "**/secrets/**": "deny",
