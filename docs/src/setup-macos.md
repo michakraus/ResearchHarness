@@ -34,7 +34,7 @@ curl -fsSL https://install.julialang.org | sh
 
 The third line downloads the installer of `juliaup` and runs it. The installer asks you to
 confirm its settings; with its default settings, it installs `juliaup` and the current Julia release, and
-add them to the `PATH` in your shell's start file. Open a new terminal after it, so that your shell
+adds them to the `PATH` in your shell's start file. Open a new terminal after it, so that your shell
 finds `julia`. The six Julia packages of [Dependencies](dependencies.md#julia-and-its-packages)
 need no command: the first install adds them.
 

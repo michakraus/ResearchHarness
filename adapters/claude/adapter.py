@@ -118,6 +118,7 @@ Caveats the numbers rest on, all measured 2026-09-05:
 import argparse
 import collections
 import contextlib
+import errno
 import functools
 import io
 import json
@@ -536,6 +537,20 @@ def indent_of(text):
     return 2
 
 
+LONE_SURROGATE = re.compile(r"[\ud800-\udfff]")
+
+
+def dumps(obj, **kwargs):
+    """`obj` as JSON text in which no character is escaped but a lone surrogate.
+
+    The merge leaves every key it does not own as the app wrote it, and the default
+    `ensure_ascii=True` would write each non-ASCII character, an em-dash say, as `\\u2014`. A lone
+    surrogate stays an escape, because UTF-8 cannot encode it: it comes from a `\\ud800` in the
+    JSON text, which JavaScript's `JSON.stringify` writes for one.
+    """
+    return LONE_SURROGATE.sub(lambda m: f"\\u{ord(m[0]):04x}", json.dumps(obj, ensure_ascii=False, **kwargs))
+
+
 def settings_template(profile):
     """The settings template parsed, and rendered with `profile` when it holds a placeholder, as
     `read_settings` renders it."""
@@ -555,7 +570,7 @@ def settings_file(root, profile):
 
     Each key of OWNED is replaced from the rendered template, or removed when the template lacks
     it; every other key keeps its value and its place, the file keeps its indent, and no
-    character is escaped. Owned sections equal to the template's leave the file as it is. A
+    character but a lone surrogate is escaped. Owned sections equal to the template's leave the file as it is. A
     missing file is created with the owned sections only, indented by 2, mode 0644. Exits 2,
     before anything is written, on a file that is a symlink, is not a regular file, cannot be
     read, is not UTF-8 or JSON, is not a JSON object, or holds an owned key whose value is not an
@@ -564,11 +579,18 @@ def settings_file(root, profile):
     import difflib
 
     live = root / "settings.json"
-    if live.is_symlink():
+    # One lstat, so that a stat the sandbox denies is "cannot be read" on every Python, never "missing".
+    try:
+        st = os.lstat(live)
+    except FileNotFoundError:
+        st = None
+    except OSError as e:
+        raise HarnessError(f"{live} cannot be read: {e.strerror}") from None
+    if st is not None and stat.S_ISLNK(st.st_mode):
         raise HarnessError(f"{live} is a symlink; `harness install` merges the settings into a file only")
     cfg, indent, old = {}, 2, None
-    if live.exists():
-        if not live.is_file():
+    if st is not None:
+        if not stat.S_ISREG(st.st_mode):
             raise HarnessError(f"{live} is not a file; `harness install` merges the settings into a file only")
         try:
             old = live.read_bytes()
@@ -589,8 +611,7 @@ def settings_file(root, profile):
             raise HarnessError(f"{live}: the value of {', '.join(wrong)} is not a JSON object")
         indent = indent_of(text)
     template = settings_template(profile)
-    a, b = (json.dumps({k: c.get(k) for k in OWNED}, indent=2, sort_keys=True, ensure_ascii=False).splitlines()
-            for c in (cfg, template))
+    a, b = (dumps({k: c.get(k) for k in OWNED}, indent=2, sort_keys=True).splitlines() for c in (cfg, template))
     diff = list(difflib.unified_diff(a, b, "~/.claude/settings.json", "settings/settings.proposal.json", lineterm=""))
     if diff or old is None:
         for key in OWNED:
@@ -598,11 +619,7 @@ def settings_file(root, profile):
                 cfg[key] = template[key]
             else:
                 cfg.pop(key, None)
-        # ensure_ascii=False, because the merge leaves every key it does not own exactly as the
-        # app left it. The default escapes each non-ASCII character, and round twenty-four
-        # rewrote every em-dash inside `autoMode` as — — decoded values unchanged, bytes
-        # not.
-        data = (json.dumps(cfg, indent=indent, ensure_ascii=False) + "\n").encode("utf-8")
+        data = (dumps(cfg, indent=indent) + "\n").encode("utf-8")
     else:
         data = old
     return live, data, 0o644 if old is None else None, "~/.claude/settings.json", True, "\n".join(diff)
@@ -623,12 +640,17 @@ def stray_warnings():
         paths += [root / ".claude" / "settings.json", root / ".claude" / "settings.local.json"]
     found, warnings = [], []
     for path in paths:
-        if path.is_file():
-            try:
-                permissions = json.loads(path.read_text(encoding="utf-8")).get("permissions", {})
-                found += [(path, kind, rule) for kind in ("allow", "ask", "deny") for rule in permissions.get(kind, [])]
-            except (OSError, ValueError, AttributeError, TypeError) as e:
-                warnings.append((f"{path} cannot be read as a settings file: {type(e).__name__}: {e}",))
+        # stat() in the try, because Path.is_file() raises on Python 3.11 where a directory cannot
+        # be searched, and returns False on 3.12 and later.
+        try:
+            if not stat.S_ISREG(path.stat().st_mode):
+                continue
+            permissions = json.loads(path.read_text(encoding="utf-8")).get("permissions", {})
+            found += [(path, kind, rule) for kind in ("allow", "ask", "deny") for rule in permissions.get(kind, [])]
+        except (FileNotFoundError, NotADirectoryError):
+            continue
+        except (OSError, ValueError, AttributeError, TypeError) as e:
+            warnings.append((f"{path} cannot be read as a settings file: {type(e).__name__}: {e}",))
     if found:
         warnings.insert(0, (f"{len(found)} permission rule(s) outside ~/.claude/settings.json — fold them into the "
                             "settings template or delete them; `harness settings` does not measure them:",
@@ -1183,7 +1205,8 @@ def layer_cases(check, tmp):
     case(lambda: code == 0 and warning is None,
          f"the hook skips adapter.py and fixtures/ of adapters/claude/, as the plan does: {code}, {warning!r}")
 
-    # settings.json and settings.local.json are not written, from any source and in any case.
+    # A settings.json or a settings.local.json in a source, in any case, is refused and not
+    # installed; ~/.claude/settings.json comes from the settings template only.
     for name in ["settings.json", "settings.local.json", "Settings.json"]:
         base, claude, tree = fresh([name])
         (claude / name).write_text("{}\n")
@@ -1322,6 +1345,7 @@ def layer_cases(check, tmp):
             "statusLine": {"type": "command", "command": "x"}, "hooks": {}, "someFutureKey": [1, {"a": None}]}
     old = json.dumps(live, indent=4, ensure_ascii=False) + "\n"
     (claude / "settings.json").write_text(old)
+    (claude / "settings.json").chmod(0o600)
     code, text = run(base)
     lines = text.splitlines()
     at = [i for i, line in enumerate(lines) if settings_line.fullmatch(line)]
@@ -1345,10 +1369,17 @@ def layer_cases(check, tmp):
          f"order, and the live file's indent of 4: {code}, {list(merged)}, {tail(text)}")
     case(lambda: len(backups) == 1 and backups[0].read_text() == old,
          f"--apply keeps the old settings.json as a backup: {[b.name for b in backups]}")
+    case(lambda: mode(claude / "settings.json") == 0o600 and len(backups) == 1 and mode(backups[0]) == 0o600,
+         f"--apply keeps the mode 0600 of a settings.json it replaces, in the file and in its backup: "
+         f"{oct(mode(claude / 'settings.json'))}, {[oct(mode(b)) for b in backups]}")
     again, text2 = run(base)
+    # An unchanged settings.json prints its line and nothing after it, not even a blank line.
+    after = [b for a, b in zip(text2.splitlines(), text2.splitlines()[1:]) if settings_line.fullmatch(a)]
     case(lambda: again == 0 and [m.group(1) for m in settings_line.finditer(text2)] == ["already identical"]
+         and len(after) == 1 and after[0].strip() != ""
          and re.search(r"^0 change\(s\) to make\.$", text2, re.M) is not None,
-         f"the dry run after the --apply finds settings.json identical, 0 changes, exit 0: {again}, {tail(text2)}")
+         f"the dry run after the --apply finds settings.json identical, prints no blank line after it, 0 changes, "
+         f"exit 0: {again}, {after[:1]}, {tail(text2)}")
     state.chmod(0o600)
     case(lambda: state.read_text() == '{"state": 1}\n', "~/.claude.json is neither read nor written")
     # Owned sections equal to the template's in another layout are no change: the file is left as it is.
@@ -1367,12 +1398,56 @@ def layer_cases(check, tmp):
     case(lambda: code == 1 and [m.group(1) for m in settings_line.finditer(text)] == ["INSTALL"]
          and not (claude / "settings.json").exists(),
          f"the dry run prints INSTALL for a missing settings.json and counts it: {code}, {tail(text)}")
-    code, text = run(base, "--apply")
+    # Under a umask of 077 only an explicit mode gives 0644; the process inherits the umask.
+    umask = os.umask(0o077)
+    try:
+        code, text = run(base, "--apply")
+    finally:
+        os.umask(umask)
     case(lambda: code == 0 and list(json.loads((claude / "settings.json").read_text())) == list(owned)
          and (claude / "settings.json").read_text() == json.dumps(owned, indent=2, ensure_ascii=False) + "\n"
          and mode(claude / "settings.json") == 0o644,
          f"--apply writes a missing settings.json with the three owned sections and no other key, indented by 2, "
-         f"mode 0644: {code}, {tail(text)}")
+         f"mode 0644 under a umask of 077: {code}, {tail(text)}")
+
+    # Each owned key that the template lacks is removed from the live file; the other keys stay.
+    base, claude, tree = fresh()
+    lacking = tmp / "settings-without-sandbox.json"
+    lacking.write_text(json.dumps({k: v for k, v in json.loads(PROPOSAL.read_text()).items() if k != "sandbox"},
+                                  indent=2, ensure_ascii=False) + "\n")
+    (claude / "settings.json").write_text(json.dumps({"model": "x", "sandbox": {"enabled": True}}, indent=2) + "\n")
+    with mock.patch.object(this, "PROPOSAL", lacking):
+        code, text = inproc(base, None, apply=True)
+    merged = json.loads((claude / "settings.json").read_text())
+    case(lambda: code == 0 and list(merged) == ["model", "permissions", "hooks"] and merged["model"] == "x",
+         f"an owned key that the template lacks is removed from settings.json: {code}, {list(merged)}, {tail(text)}")
+
+    # A template that cannot be rendered exits 2 and names the template, before anything is written.
+    for label, key, value in [("an undefined placeholder", "allow", [*template["permissions"]["allow"],
+                                                                     "Bash(x {no_such_key})"]),
+                              ("a list placeholder in a string that is not a list item", "defaultMode", "{org}")]:
+        base, claude, tree = fresh()
+        broken = tmp / "settings-unrenderable.json"
+        cfg = json.loads(PROPOSAL.read_text())
+        cfg["permissions"][key] = value
+        broken.write_text(json.dumps(cfg, indent=2, ensure_ascii=False) + "\n")
+        with mock.patch.object(this, "PROPOSAL", broken):
+            code, text = inproc(base, None, apply=True)
+        case(lambda: code == 2 and str(broken) in text and "Traceback" not in text
+             and not (claude / "settings.json").exists(),
+             f"a settings template with {label} exits 2, names the template and writes nothing: {code}, {tail(text)}")
+
+    # A lone surrogate escape, which JavaScript's JSON.stringify can write, stays an escape: in a key
+    # the merge keeps, and in the printed diff of an owned section.
+    base, claude, tree = fresh()
+    (claude / "settings.json").write_bytes(b'{\n  "note": "\\ud800",\n  "permissions": {"allow": ["\\udfff"]}\n}\n')
+    code, text = run(base)
+    applied, text2 = run(base, "--apply")
+    written = (claude / "settings.json").read_text()
+    case(lambda: code == 1 and applied == 0 and "Traceback" not in text + text2 and "\\udfff" in text
+         and '"note": "\\ud800"' in written and json.loads(written)["note"] == "\ud800",
+         f"a lone surrogate escape in settings.json stays an escape in the diff and in the merged file: {code}, "
+         f"{applied}, {tail(text + text2)}")
 
     # The order: settings.json is the first file line of the Claude Code layer, the stamp the last.
     base, claude, tree = fresh(["rules/x.md"])
@@ -1424,6 +1499,28 @@ def layer_cases(check, tmp):
              f"a settings.json that is {label} exits 2 with one line that names it and the reason, and no file "
              f"changes: {code}, {lines[-3:]}")
 
+    # A settings.json whose stat the sandbox denies (EPERM) is a file that cannot be read, not a
+    # missing one: Path.exists() returns False there on Python 3.12 and later, and raises on 3.11.
+    base, claude, tree = fresh(["rules/x.md"])
+    live = claude / "settings.json"
+    live.write_text('{"model": "opus", "env": {"X": "1"}}\n')
+    before = snapshot(base)
+
+    def denied(real):
+        def call(path, *a, **k):
+            if os.fspath(path) == str(live):
+                raise PermissionError(errno.EPERM, "Operation not permitted", str(live))
+            return real(path, *a, **k)
+        return call
+
+    with mock.patch.object(os, "stat", denied(os.stat)), mock.patch.object(os, "lstat", denied(os.lstat)):
+        code, text = inproc(base, None, apply=True)
+    lines = text.strip().splitlines()
+    case(lambda: code == 2 and len(lines) == 1 and str(live) in lines[0] and "cannot be read" in lines[0]
+         and snapshot(base) == before,
+         f"a settings.json whose stat is denied exits 2 with one line that names it, and no file changes: "
+         f"{code}, {lines[-3:]}")
+
     # `harness settings install` is gone; the settings sub-commands that measure stay.
     p = subprocess.run([sys.executable, str(REPO / "bin" / "harness"), "settings", "--help"], capture_output=True,
                        text=True)
@@ -1449,6 +1546,19 @@ def layer_cases(check, tmp):
          and f"{research / 'Knowledge' / '.claude' / 'settings.json'}  deny  Read(x)" in text
          and f"{research / 'Broken' / '.claude' / 'settings.local.json'} cannot be read as a settings file" in text,
          f"`harness install` warns about the permission rules outside ~/.claude/settings.json: {code}, {tail(text)}")
+    # A directory of ~/Research that cannot be searched is a warning too, on every Python.
+    base, claude, tree = fresh()
+    locked = base / "home" / "Research" / "Locked"
+    (locked / ".claude").mkdir(parents=True)
+    (locked / ".claude" / "settings.json").write_text('{"permissions": {"allow": ["Bash(x)"]}}\n')
+    locked.chmod(0)
+    try:
+        code, text = run(base)
+    finally:
+        locked.chmod(0o755)
+    case(lambda: code == 1 and "Traceback" not in text
+         and f"{locked / '.claude' / 'settings.json'} cannot be read as a settings file" in text,
+         f"a directory of ~/Research that cannot be searched is a warning of `harness install`: {code}, {tail(text)}")
 
     # Each installed path whose source is in this repository is planned from there: an installed
     # copy of it is a change, never EXTRA. A path in a subdirectory has its source at the same path

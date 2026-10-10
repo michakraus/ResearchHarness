@@ -8,8 +8,10 @@
   replaces each of `permissions`, `hooks` and `sandbox` with the section of the settings template
   `settings/settings.proposal.json`, rendered with the profile, or removes the section when the
   template lacks it. Every other key keeps its value and its place. The indent of the live file
-  is kept, and no character is escaped. A file whose owned sections equal the template's is
-  left untouched. Otherwise the old file is kept as `settings.json.bak-<stamp>`. The dry run
+  is kept, and no character is escaped but a lone surrogate. A file whose owned sections equal
+  the template's is left untouched. Otherwise the file keeps its mode, and the old file is kept
+  as `settings.json.bak-<stamp>`. The backup of each file that `harness install` replaces, for
+  every frontend, now keeps the mode of the file it copies. The dry run
   prints a `REPLACE` or `INSTALL` line, then the unified diff of the owned sections, and counts
   the change as one. A missing file is created with the three sections, indent 2 and mode 0644.
   The setup guide and the README no longer have the `echo '{}'` step. A file that cannot be

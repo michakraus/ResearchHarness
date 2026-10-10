@@ -431,3 +431,35 @@
   checked only by a manual `ls`. Found by the critic of part J5.
 - kind: missing test
 - found: 2026-10-10
+
+### K46 · A stray settings file whose `allow`, `ask` or `deny` is a string lists one rule per character.
+
+- location: `adapters/claude/adapter.py:649`
+- evidence: with `{"permissions": {"allow": "Bash(x)"}}` in `~/Research/.claude/settings.local.json`,
+  the dry run of `harness install` lists seven rules, `…/settings.local.json  allow  B`,
+  `allow  a`, and so on. `stray_warnings` iterates the value without a type check; the base's
+  `report_stray` did the same. Found by the critics of part M, round 1.
+- kind: found late
+- found: 2026-10-10
+
+### K47 · The settings merge re-emits the numbers of the keys it does not own, and indents a tab-indented or one-line file by 2.
+
+- location: `adapters/claude/adapter.py:530`, `adapters/claude/adapter.py:622`
+- evidence: a live `~/.claude/settings.json` with `"x": 1.10, "y": 1e400, "z": 1E5` and an owned
+  section that differs is written with `"x": 1.1`, `"y": Infinity` (which `JSON.parse` rejects)
+  and `"z": 100000.0`; a tab-indented file is written with 2 spaces, because `indent_of` counts
+  spaces only. The merge rule is the removed `harness settings install`'s, which behaved the same
+  way. Found by the critics of part M, round 1.
+- kind: found late
+- found: 2026-10-10
+
+### K48 · A read-only `~/.claude/settings.json` with a change ends `--apply` in a traceback, after the backup is written.
+
+- location: `lib/harness/install.py:78-85`
+- evidence: with `settings.json` of mode 0444 and an owned section that differs, `harness install
+  --apply` writes `settings.json.bak-<stamp>` and then ends in `PermissionError` and exit 1, where
+  the verb contract gives 1 the meaning "changes to make". A second `--apply` in the same second
+  fails on the backup instead, because `shutil.copy` gave the first backup the mode 0444. Every
+  target that `install_file` writes behaves the same way; K9 is the symlink and directory case.
+- kind: found late
+- found: 2026-10-10

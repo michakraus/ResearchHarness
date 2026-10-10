@@ -78,7 +78,7 @@ def install_file(apply, data, dst, label, backup=False, mode=None):
     if apply:
         dst.parent.mkdir(parents=True, exist_ok=True)
         if note:
-            shutil.copyfile(dst, dst.with_name(f"{dst.name}.bak-{stamp}"))
+            shutil.copy(dst, dst.with_name(f"{dst.name}.bak-{stamp}"))
         if not same:
             dst.write_bytes(data)
         if mode is not None:
