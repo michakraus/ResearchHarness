@@ -26,15 +26,19 @@ The layer goes into `~/.claude/`. The five neutral directories install at their 
 `adapters/claude/` at the top, `hooks/` into `~/.claude/hooks/`, and the tree instructions at their
 own path. An agent and a `SKILL.md` get two values rewritten: the tier of `model:` becomes the
 model of the `[claude]` table of `models.toml`, and each `tools:` item its Claude Code name. A hook
-keeps its mode, and every other file is installed with mode 0644. After the layer, the adapter
-writes the stamp `~/.claude/.harness-install.json`. A path that two sources hold, a symlink, or a
-source that holds `settings.json` exits 2 before anything is written. An installed file with no
-source is an EXTRA line with its removal command.
+keeps its mode, and every other file is installed with mode 0644. The first file of the layer is
+`~/.claude/settings.json`: the adapter merges the sections `permissions`, `hooks` and `sandbox` of
+the settings template into it, keeps every other key, keeps the old file as a backup, and creates
+the file when it is missing. The dry run prints the difference of those sections after the file's
+line. After the layer, the adapter writes the stamp `~/.claude/.harness-install.json`. A path that
+two sources hold, a symlink, a source that holds `settings.json`, and a `settings.json` that is
+not a JSON object with an object in each of those sections exit 2 before anything is written. An
+installed file with no source is an EXTRA line with its removal command. The permission rules of
+the other settings files of the research tree are a warning.
 
-`harness settings` has six sub-verbs: `surface`, `compare`, `selftest`, `twins`, `domains` and
-`install`. `surface` reads the session transcripts below `~/.claude/projects/` and counts the Bash
-commands that reach a prompt. `install` merges the sections `permissions`, `hooks` and `sandbox`
-of the settings template into `~/.claude/settings.json`, and keeps every other key.
+`harness settings` has five sub-verbs: `surface`, `compare`, `selftest`, `twins` and `domains`.
+`surface` reads the session transcripts below `~/.claude/projects/` and counts the Bash commands
+that reach a prompt.
 `harness trust` marks the research root and each git repository below it as trusted in
 `~/.claude.json`. A session cannot read that file, so run it in your own terminal.
 

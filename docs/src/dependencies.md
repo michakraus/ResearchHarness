@@ -307,7 +307,7 @@ of the three frontends that the harness configures.
 
 `harness install` writes the Claude Code layer into `~/.claude/`: the agents, skills,
 [rules](concepts.md#rule),
-instructions, commands and hooks. `harness settings` writes its permission settings.
+instructions, commands and hooks, and the permission settings of `~/.claude/settings.json`.
 `harness skill-triggers --apply` runs `claude -p` to measure which skill loads on a query.
 
 The harness does not need Claude Code to run. Without it, nothing reads the layer in

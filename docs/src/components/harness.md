@@ -276,8 +276,8 @@ files that the verbs read, and a research root with one package and one prose re
   changes no file;
 - it removes each precondition alone, such as the profile or `~/.claude.json`, and checks that each
   verb that needs it exits 2 with one line;
-- it runs `--apply` of `githooks`, `wiki-lint-hook`, `workflows`, `trust` and `settings install`,
-  and checks that the dry run after it exits 0.
+- it runs `--apply` of `githooks`, `wiki-lint-hook`, `workflows` and `trust`, and checks that the
+  dry run after it exits 0.
 
 It does not run `format`, `ci-protection` or `skill-triggers`.
 [Development](../development.md) describes the tests.

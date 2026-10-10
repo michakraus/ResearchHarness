@@ -26,7 +26,7 @@ adapts the harness without a change of the repository.
 |:--|:--|:--|
 | the installed layer: `CLAUDE.md`, `RTK.md`, the status line script, `agents/`, `skills/`, `rules/`, `instructions/`, `commands/` and `hooks/` | `harness install --apply`, from the harness and the tree instructions | edit the source, then install; the settings template denies an edit of an installed copy |
 | the stamp `.harness-install.json` | `harness install --apply` | written after each install; the `SessionStart` hook compares it with the sources |
-| the sections `permissions`, `hooks` and `sandbox` of `settings.json` | `harness settings install --apply`, from the settings template | edit the template, then install; the install keeps the other keys of the file |
+| the sections `permissions`, `hooks` and `sandbox` of `settings.json` | `harness install --apply`, from the settings template | edit the template, then install; the install keeps the other keys of the file |
 | everything else: the other keys of `settings.json`, the memory and the sessions below `projects/`, the plans | Claude Code | the harness does not write them |
 
 `~/.claude.json` belongs to Claude Code too. Only `harness trust --apply` writes it, and it
@@ -42,9 +42,12 @@ repository: the five neutral directories `agents/`, `skills/`, `rules/`, `instru
 instructions, a private directory of instruction text about the user's own tree that mirrors the
 layout of `~/.claude/`; the profile key `tree_agents` names it. A file of `adapters/claude/` below
 a directory that a neutral directory or `hooks/` installs exits 2.
-A path that two sources hold, and an installed path that is a symlink, exit 2. The verb writes
-neither `~/.claude/settings.json`, which `harness settings install` owns, nor `~/.claude.json`.
-After the layer, `--apply` writes the stamp `~/.claude/.harness-install.json`: the sources
+A path that two sources hold, and an installed path that is a symlink, exit 2. The first file of
+the layer is `~/.claude/settings.json`, so that a new deny rule is in place before the files it
+protects: the verb replaces the sections `permissions`, `hooks` and `sandbox` from the settings
+template, rendered with the profile, keeps every other key, and keeps the old file as a backup. A
+`settings.json` that it cannot merge exits 2 before anything is written. The verb neither reads
+nor writes `~/.claude.json`. After the layer, `--apply` writes the stamp `~/.claude/.harness-install.json`: the sources
 and a SHA-256 over the paths, modes and source bytes that it installs. At each session start the
 `SessionStart` hook `hooks/install-drift.py` computes the same digest from the sources and warns
 when the two differ, when the stamp is missing, or when a source cannot be read. It only warns,
