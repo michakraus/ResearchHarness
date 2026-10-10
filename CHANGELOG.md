@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- **Performance is a trade against simplicity, not a limit on it.** `rules/julia-code.md` named
+  performance as the third limit of a simplification and kept only the version that is not slower,
+  so a reviewer rejected a much shorter implementation for a loss of about 10 %. The rule now keeps
+  readability and comprehensibility as limits, and weighs performance as an equal: measured at
+  more than one system size, judged by how the loss scales and by how much clarity it buys, with
+  no fixed threshold, and never a reason on its own to reject a simplification. The reviewer's
+  `quality` finding asks for the trade measured per size.
+
 - **The two timer jobs run on Linux, and four scripts have a test that CI runs on Linux.**
   `julia-update.jl` branches on the system once and stops with an error on a system that is
   neither macOS nor Linux. On Linux it reads the Kaimon server's binary from `/proc/<pid>/exe`,

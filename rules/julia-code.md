@@ -158,13 +158,21 @@ answer. The `julia-structure` skill has the full routing.
 
 When the task is to write, port, modernise or review Julia code, judge the quality of that code
 critically, and look for the radical simplification: fewer lines, fewer types, fewer special
-cases, and a dependency's function instead of a local copy. Three limits bound it. A
-simplification that costs any of them is wrong:
+cases, and a dependency's function instead of a local copy. Two limits bound it. A
+simplification that costs either of them is wrong:
 
 - **Readability** — a reader follows the code without the diff beside it.
 - **Comprehensibility** — the design stays visible in the code.
-- **Performance** — measure the hot path before and after the change, and keep the version that
-  is not slower. The `julia-performance` skill says how to measure.
+
+**Performance is weighed against simplicity, as an equal, not as a limit.** Measure the hot path
+before and after the change, at more than one system size; the `julia-performance` skill says how.
+Then judge the trade, because no fixed threshold decides it. A loss of 10 % can be too much for a
+small gain in clarity, and a loss of 20 % can be right when the code gets much shorter or clearer.
+Judge how the loss scales: a version twice as slow at one or two degrees of freedom can be the
+better one when it is faster on large systems, and a loss that grows with the system size weighs
+heavily. A difference of about 10 % on a loaded machine can be noise, so repeat it in a second cold
+process before it decides anything. Report the trade with its numbers — lines removed, timings per
+size — and do not reject a simplification on speed alone.
 
 Start every accumulator from `zero(T)` or `one(T)`, never from a literal such as `0.0`. A literal
 promotes `Float32` to `Float64`, and a `Float32` test then passes on the promoted value.

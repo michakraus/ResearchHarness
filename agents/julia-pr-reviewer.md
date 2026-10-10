@@ -156,8 +156,9 @@ less than a defect that merges.
 was checked and held; it does not grade it.
 
 **Judge code quality critically** by the stance in `~/.claude/rules/julia-code.md`, which loads
-when you read the package's code. A radical simplification that keeps the three limits is a
-`quality` finding with the simpler code in it.
+when you read the package's code. A radical simplification that keeps the two limits is a
+`quality` finding with the simpler code in it, and with the performance trade measured per system
+size.
 
 ## Output — use exactly this shape
 
