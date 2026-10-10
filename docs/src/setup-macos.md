@@ -220,7 +220,8 @@ as a value that is not an object, the install stops with exit 2, an error, and w
 
 `harness install` writes the OpenCode configuration into the OpenCode configuration directory:
 `opencode.jsonc` with its permission block, the plugins, the global instruction file `AGENTS.md`
-and the agents. It also links the skills into `~/.agents/skills/`.
+and the agents, and OpenCode's own copies of the instructions, the rules, the guard scripts and
+the skills. It removes the links in `~/.agents/skills/` that an earlier install wrote.
 [architecture.md](architecture.md#the-opencode-and-oh-my-pi-adapters) describes the adapter.
 
 ### oh-my-pi
