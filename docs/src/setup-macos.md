@@ -166,8 +166,8 @@ for you. For example, the Kaimon entry needs a token file, and `harness install`
 `~/.claude/settings.json`.
 
 Without the OpenCode directory, `harness install` stops with exit 2, an error, and tells you to
-start OpenCode once. Without `~/.claude/skills/`, it stops with exit 2 and says that the path is
-not a directory.
+start OpenCode once. Without `~/.claude/skills/`, it stops with exit 2, an error, and says that
+the path is not a directory.
 
 **Check.** Run the dry run again. Its last line is `0 change(s) to make.`, and it exits 0, which
 means that the installed files are the files of the sources.

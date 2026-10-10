@@ -1,18 +1,20 @@
 # Daily use
 
-This page describes the work that comes back again and again after the setup.
-[harness-command.md](harness-command.md) describes the contract of every verb: a verb that
-changes something prints its plan, and `--apply` makes the change.
+This page describes the work that comes back again and again after the setup. The
+[tutorial](tutorial.md) shows the first time of most of it, step by step; this page is the
+reference. [harness-command.md](harness-command.md) describes the contract of every verb: a verb
+that changes something prints its plan, and `--apply` makes the change.
 
 ## Change an agent, a skill, a rule or an instruction
 
 Edit the source in this repository, never its installed copy in `~/.claude/`. The sources are in
 the neutral directories `agents/`, `skills/`, `rules/`, `instructions/` and `commands/`, and in
 `adapters/claude/` for `CLAUDE.md` and `RTK.md`. A fact about your own research tree goes into the
-tree instructions. The next `harness install --apply` overwrites an edit of an installed copy, and
-the installed settings refuse such an edit from a session.
+[tree instructions](concepts.md#tree-instructions). The next `harness install --apply` overwrites
+an edit of an installed copy, and the installed settings refuse such an edit from a
+[session](concepts.md#session).
 
-Then read the plan and install the change:
+Then read the plan and [install](concepts.md#install) the change:
 
 ```bash
 harness install
@@ -20,11 +22,14 @@ harness install --apply
 ```
 
 A running session keeps the files that it has read. After an `--apply`, the verb prints one
-line for each frontend whose files changed, which tells you to restart that frontend.
+line for each [frontend](concepts.md#frontend) whose files changed, which tells you to restart
+that frontend.
 
 **Put a correction into a file.** A fact that you tell a session lasts for that session only. A
-fact in an instruction file, a rule, a skill or the tree instructions reaches every later session.
-When you correct a session, also put the correction into the file where it belongs.
+fact in an [instruction file](concepts.md#instruction-file), a [rule](concepts.md#rule), a
+[skill](concepts.md#skill) or the tree instructions reaches every later session. Step 8 of the
+tutorial, [Make a correction that lasts](tutorial.md#step-8-make-a-correction-that-lasts), shows
+it once from the start to the end.
 
 ## Change the settings
 
@@ -37,7 +42,8 @@ harness settings install
 harness settings install --apply
 ```
 
-A grant that names you, your institution or your machine goes into the profile, not into the
+A grant that names you, your institution or your machine goes into the
+[profile](concepts.md#profile), not into the
 template. Commit the template when you install a change: the commit is the record of the
 installed sections. To undo a change, install the template of an earlier commit with
 `--proposal`. Run these two commands in the checkout:
@@ -52,9 +58,10 @@ harness settings install --proposal /tmp/previous.json --apply
 ## The drift warning at session start
 
 `harness install --apply` writes the stamp `~/.claude/.harness-install.json`. At each session
-start, the `SessionStart` hook `hooks/install-drift.py` computes the stamp's digest again from the
-sources. It warns when the installed layer is behind its sources, when the stamp is missing, and
-when it cannot read a source or the stamp. The warning names the cause and the command.
+start, the `SessionStart` [hook](concepts.md#hook) `hooks/install-drift.py` computes the stamp's
+digest again from the sources. It warns when the installed layer is behind its sources, when the
+stamp is missing, and when it cannot read a source or the stamp. The warning names the cause and
+the command.
 
 When the warning appears, an edit of a source is not installed yet. Run the dry run, read the
 plan, and apply it:
