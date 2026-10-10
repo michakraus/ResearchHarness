@@ -57,7 +57,7 @@ export type Walk = {
 
 type BoxData = { id: string, cell?: [number, number], in?: string, kind: keyof typeof ICON, name?: string, shows?: string, lines?: string[], icon?: string, code?: boolean }
 type GroupData = { id: string, cell: [number, number], name: string }
-type EdgeData = { from: string, to: string, route: string[], label?: string, at: string, label_on?: number, label_at?: number }
+type EdgeData = { id?: string, from: string, to: string, route: string[], label?: string, at: string, label_on?: number, label_at?: number }
 type Data = { title: string, subtitle: string, steps: string[], box: BoxData[], group?: GroupData[], edge: EdgeData[] }
 
 /** The gaps between the columns and between the rows, the top of the grid below the title, the
@@ -131,6 +131,8 @@ export function walkthrough(key: string, file: string): Walk {
     const [x, y] = [colX(g.cell[0]) - GROUP_PAD, rowTop[g.cell[1]] + (rowH[g.cell[1]] - h) / 2]
     const inside = members(g).map((c, k) => place(c, x + GROUP_PAD, y + GROUP_HEAD + k * (CARD + GROUP_GAP)))
     if (inside.length === 0) fail(`the group ${g.id} has no member`)
+    // The title of a dashed group: 12 px, from 14 px inside its left border.
+    if (textWidth(g.name, 12, true) > W + 2 * GROUP_PAD - 28) fail(`the title of the group ${g.id} is wider than the group`)
     return { id: g.id, n: cards.length + i, title: g.name, x, y, w: W + 2 * GROUP_PAD, h, members: inside }
   })
   const byId = new Map<string, Rect>([...boxes.map((b) => [b.id, b] as const), ...placedGroups.map((g) => [g.id, g] as const)])
@@ -180,7 +182,13 @@ export function walkthrough(key: string, file: string): Walk {
       ...(e.label ? { label: e.label, labelAt: [a[0] + f * (b[0] - a[0]), a[1] + f * (b[1] - a[1])] as Point } : {})
     }
   })
-  const edgeOf = new Map(data.edge.map((e, n) => [`${e.from} -> ${e.to}`, edges[n]]))
+  // A step names an edge by its id, else by "from -> to".
+  const edgeOf = new Map<string, WalkEdge>()
+  data.edge.forEach((e, n) => {
+    const key = e.id ?? `${e.from} -> ${e.to}`
+    if (edgeOf.has(key)) fail(`two edges have the name ${key}; give one an id`)
+    edgeOf.set(key, edges[n])
+  })
   const steps = data.steps.map((s) => edgeOf.get(s) ?? fail(`the step ${s} names no edge`))
   if (steps.length === 0) fail('there is no step')
 

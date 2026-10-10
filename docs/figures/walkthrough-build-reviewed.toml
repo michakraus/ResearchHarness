@@ -1,0 +1,126 @@
+# The walk-through of a part of tier reviewed, from the part to the pull request with the skill
+# build-reviewed: one builder for the whole part, one critic, one fix round, your session's read
+# and the finish. The keys are those of walkthrough-install.toml.
+
+title = "From a task to a pull request with build-reviewed"
+subtitle = "One builder holds the whole part. One critic judges it once, and your session reads the fix."
+steps = [
+  "you -> skill",
+  "skill -> builder",
+  "builder -> round",
+  "round -> verdict",
+  "verdict -> builder",
+  "builder -> skill",
+  "finish",
+  "builder -> pr",
+]
+
+[[box]]
+id = "you"
+cell = [1, 0]
+kind = "you"
+name = "You"
+lines = ["a part of tier", "reviewed"]
+
+[[box]]
+id = "skill"
+cell = [1, 1]
+kind = "skill"
+shows = "build-reviewed"
+
+[[box]]
+id = "builder"
+cell = [1, 2]
+kind = "agent"
+shows = "part-builder"
+
+[[group]]
+id = "round"
+cell = [1, 3]
+name = "One critic, and a long suite"
+
+[[box]]
+id = "critic"
+in = "round"
+kind = "agent"
+shows = "part-critic"
+
+[[box]]
+id = "runner"
+in = "round"
+kind = "agent"
+shows = "julia-test-runner"
+
+[[box]]
+id = "verdict"
+cell = [2, 3]
+kind = "outcome"
+name = "The verdict"
+lines = ["FAIL, with the", "blocking defects"]
+icon = "verdict"
+
+[[box]]
+id = "pr"
+cell = [0, 3]
+kind = "outcome"
+name = "A pull request"
+lines = ["or a push to main,", "as the plan says"]
+icon = "pull-request"
+
+[[edge]]
+from = "you"
+to = "skill"
+route = ["bottom", "top"]
+label = "a reviewed part"
+at = "skills/build-reviewed/SKILL.md:23"
+
+[[edge]]
+from = "skill"
+to = "builder"
+route = ["bottom", "top"]
+label = "build"
+at = "skills/build-reviewed/SKILL.md:38"
+
+[[edge]]
+from = "builder"
+to = "round"
+route = ["bottom", "top"]
+label = "ready for critic"
+at = "skills/build-reviewed/SKILL.md:61"
+
+[[edge]]
+from = "round"
+to = "verdict"
+route = ["right", "left"]
+at = "skills/build-reviewed/SKILL.md:68"
+
+[[edge]]
+from = "verdict"
+to = "builder"
+route = ["top", "y 2+18", "right"]
+label = "FAIL: the findings"
+label_at = 0.6
+at = "skills/build-reviewed/SKILL.md:71"
+
+[[edge]]
+from = "builder"
+to = "skill"
+route = ["right-18", "x 1.5", "y 1", "right"]
+label = "ready for review"
+at = "skills/build-reviewed/SKILL.md:73"
+
+[[edge]]
+id = "finish"
+from = "skill"
+to = "builder"
+route = ["left", "x 0.5", "y 2-18", "left"]
+label = "Round: finish"
+at = "skills/build-reviewed/SKILL.md:89"
+
+[[edge]]
+from = "builder"
+to = "pr"
+route = ["left+18", "x 0", "top"]
+label = "the pull request"
+label_on = 0
+at = "skills/build-reviewed/SKILL.md:90"

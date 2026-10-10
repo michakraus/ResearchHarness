@@ -1,0 +1,212 @@
+# The walk-through of a part of tier build, from a task to the pull request with the skills
+# plan-parts and build-part: the builder, round 1 with two critics and the suite, the verdict, a
+# fix and a verify round, the arbitrator at the second FAIL, a ruling, the PASS, the finish and the
+# pull request. After each round the skill spawns a new julia-builder, so the builder of the fix
+# rounds and of the finish has a box of its own. The keys are those of walkthrough-install.toml.
+
+title = "From a task to a pull request with build-part"
+subtitle = "Each critic judges the work blind, a new builder fixes each round, and the arbitrator rules at the second FAIL."
+steps = [
+  "you -> plan",
+  "plan -> dispatch",
+  "dispatch -> builder",
+  "builder -> round-1",
+  "round-1 -> verdict-1",
+  "verdict-1 -> fixer",
+  "fixer -> verify",
+  "verify -> verdict-2",
+  "verdict-2 -> arbitrator",
+  "arbitrator -> fixer",
+  "fixer -> verify",
+  "verify -> verdict-2",
+  "verdict-2 -> finisher",
+  "finisher -> pr",
+]
+
+[[box]]
+id = "you"
+cell = [0, 0]
+kind = "you"
+name = "You"
+lines = ["a task file"]
+
+[[box]]
+id = "plan"
+cell = [1, 0]
+kind = "skill"
+shows = "plan-parts"
+
+[[box]]
+id = "dispatch"
+cell = [2, 0]
+kind = "skill"
+shows = "build-part"
+
+[[box]]
+id = "builder"
+cell = [2, 1]
+kind = "agent"
+shows = "julia-builder"
+
+[[group]]
+id = "round-1"
+cell = [1, 1]
+name = "Round 1, at high effort"
+
+[[box]]
+id = "critic-1a"
+in = "round-1"
+kind = "agent"
+shows = "julia-critic"
+
+[[box]]
+id = "critic-1b"
+in = "round-1"
+kind = "agent"
+shows = "julia-critic"
+
+[[box]]
+id = "runner-1"
+in = "round-1"
+kind = "agent"
+shows = "julia-test-runner"
+
+[[box]]
+id = "verdict-1"
+cell = [0, 1]
+kind = "outcome"
+name = "The verdict"
+lines = ["of round 1"]
+icon = "verdict"
+
+[[box]]
+id = "fixer"
+cell = [0, 2]
+kind = "agent"
+shows = "julia-builder"
+
+[[group]]
+id = "verify"
+cell = [1, 2]
+name = "A verify round"
+
+[[box]]
+id = "critic-v"
+in = "verify"
+kind = "agent"
+shows = "julia-critic"
+
+[[box]]
+id = "runner-v"
+in = "verify"
+kind = "agent"
+shows = "julia-test-runner"
+
+[[box]]
+id = "verdict-2"
+cell = [2, 2]
+kind = "outcome"
+name = "The verdict"
+lines = ["of the verify round"]
+icon = "verdict"
+
+[[box]]
+id = "arbitrator"
+cell = [1, 3]
+kind = "agent"
+shows = "arbitrator"
+
+[[box]]
+id = "finisher"
+cell = [2, 3]
+kind = "agent"
+shows = "julia-builder"
+
+[[box]]
+id = "pr"
+cell = [2, 4]
+kind = "outcome"
+name = "A pull request"
+lines = ["the user merges it"]
+icon = "pull-request"
+
+[[edge]]
+from = "you"
+to = "plan"
+route = ["right", "left"]
+label = "a task"
+at = "skills/plan-parts/SKILL.md:4"
+
+[[edge]]
+from = "plan"
+to = "dispatch"
+route = ["right", "left"]
+label = "the table"
+at = "skills/build-part/SKILL.md:9"
+
+[[edge]]
+from = "dispatch"
+to = "builder"
+route = ["bottom", "top"]
+label = "build"
+at = "skills/build-part/SKILL.md:115"
+
+[[edge]]
+from = "builder"
+to = "round-1"
+route = ["left", "right"]
+at = "skills/build-part/SKILL.md:150"
+
+[[edge]]
+from = "round-1"
+to = "verdict-1"
+route = ["left", "right"]
+at = "skills/build-part/SKILL.md:171"
+
+[[edge]]
+from = "verdict-1"
+to = "fixer"
+route = ["bottom", "top"]
+label = "FAIL: a fix round"
+at = "skills/build-part/SKILL.md:181"
+
+[[edge]]
+from = "fixer"
+to = "verify"
+route = ["right", "left"]
+at = "skills/build-part/SKILL.md:161"
+
+[[edge]]
+from = "verify"
+to = "verdict-2"
+route = ["right", "left"]
+at = "skills/build-part/SKILL.md:171"
+
+[[edge]]
+from = "verdict-2"
+to = "arbitrator"
+route = ["left+20", "x 1.5", "y 3", "right"]
+label = "second FAIL"
+label_at = 0.6
+at = "skills/build-part/SKILL.md:199"
+
+[[edge]]
+from = "arbitrator"
+to = "fixer"
+route = ["left", "x 0", "bottom"]
+label = "a ruling, then a fix"
+at = "skills/build-part/SKILL.md:217"
+
+[[edge]]
+from = "verdict-2"
+to = "finisher"
+route = ["bottom", "top"]
+label = "PASS: the finish"
+at = "skills/build-part/SKILL.md:190"
+
+[[edge]]
+from = "finisher"
+to = "pr"
+route = ["bottom", "top"]
+label = "the pull request"
+at = "skills/build-part/SKILL.md:192"

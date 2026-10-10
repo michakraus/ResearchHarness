@@ -9,6 +9,13 @@ past them can do so.
 settings template `settings/settings.proposal.json` into `~/.claude/settings.json`.
 [setup-macos.md](setup-macos.md#harness-settings-install-apply) gives the steps.
 
+<WalkThrough name="tool-call" />
+
+*One tool call through the layers of control.* The agent reads the instructions and plans a shell
+command. The guard hooks and the permission settings check the call: a deny refuses it, an ask
+shows you a prompt, and an allow lets it run. After your yes, the command runs inside the OS
+sandbox.
+
 ## The mechanisms
 
 Each row states the behaviour of the Claude Code version in the last column, in a session with

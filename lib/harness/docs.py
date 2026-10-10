@@ -20,8 +20,9 @@ callee, and that every source with the tool `agent`, and each skill of SPAWNING_
 caller of at least one entry.
 
 Each animated walk-through of the site is drawn from one file `docs/figures/walkthrough-<name>.toml`:
-its `title`, `subtitle` and `steps` (the edges in the order in which the token runs along them, as
-"from -> to"), its `[[box]]` and `[[group]]` entries, and its `[[edge]]` entries, each with `at`,
+its `title`, `subtitle` and `steps` (the edges in the order in which the token runs along them, each
+by its `id`, else as "from -> to"), its `[[box]]` and `[[group]]` entries, and its `[[edge]]`
+entries, each with `at`,
 the `file:line` that states the step. `harness test` checks that each box of the kind `agent` or
 `skill` shows an agent of `agents/` or a skill of `skills/`, that each `at` is a line of a file of
 the repository, and that the edges and the steps name boxes and edges of the file.
@@ -274,7 +275,10 @@ def walkthrough_problems(data, sources, lines):
     edges = set()
     for e in data.get("edge", []):
         edge = f"{e.get('from')} -> {e.get('to')}"
-        edges.add(edge)
+        key = e.get("id", edge)
+        if key in edges:
+            problems.append(f"two edges have the name {key!r}")
+        edges.add(key)
         for end in (e.get("from"), e.get("to")):
             if end not in ids:
                 problems.append(f"the edge {edge} names no box {end!r}")
@@ -429,6 +433,12 @@ def selftest():
     check(found == ["the step 'a -> you' names no edge"], f"a step that names no edge is a problem: {found}")
     found = walkthrough_problems({k: v for k, v in good.items() if k != "title"}, sources, files.get)
     check(found == ["has no 'title'"], f"a walk-through with no title is a problem: {found}")
+    twice = {**good, "edge": [*good["edge"], dict(good["edge"][0])]}
+    found = walkthrough_problems(twice, sources, files.get)
+    check(found == ["two edges have the name 'you -> s'"], f"two edges of one name are a problem: {found}")
+    twice["edge"][-1]["id"] = "again"
+    found = walkthrough_problems({**twice, "steps": [*good["steps"], "again"]}, sources, files.get)
+    check(found == [], f"a second edge with its own id, named by a step, is no problem: {found}")
 
     # The walk-throughs of this checkout.
     walks = walkthroughs(paths)

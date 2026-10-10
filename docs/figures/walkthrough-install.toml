@@ -2,13 +2,18 @@
 # check at the next session start. docs/.vitepress/theme/figures/walkthroughs.data.ts draws it, and
 # `harness test` checks it (lib/harness/docs.py).
 #
-#   steps   the edges in the order in which the token runs along them, as "from -> to"
-#   [[box]] id, cell [column, row], kind (you, skill, agent, step, outcome), name, lines (up to two
-#           grey lines), icon, code (the name in the monospace font); a box of the kind agent or
-#           skill names the agent or skill in `shows`, and takes its model and effort from there
-#   [[edge]] from, to, route (the side it leaves, moves to "x <column>" or "y <row>", where .5 is
-#           the gap after it and +n or -n moves n px, and the side it enters), label, and `at`, the
-#           file:line that states the step
+#   steps   the edges in the order in which the token runs along them, each by its id, else as
+#           "from -> to"
+#   [[box]] id, cell [column, row] or `in` a group, kind (you, skill, agent, step, outcome), name,
+#           lines (up to two grey lines), icon, code (the name in the monospace font); a box of the
+#           kind agent or skill names the agent or skill in `shows`, and takes its name, model and
+#           effort from there
+#   [[group]] id, cell, name: a dashed group of the boxes that name it in `in`, one below another
+#   [[edge]] id (only where two edges have the same ends), from, to, route (the side it leaves,
+#           with +n or -n px from the side's centre; moves to "x <column>" or "y <row>", where .5
+#           is the gap after it and +n or -n moves n px; the side it enters), label, label_on (the
+#           segment of the label, else the longest), label_at (the fraction along it, else 0.5),
+#           and `at`, the file:line that states the step
 
 title = "From an edit to the drift check"
 subtitle = "A change of a source goes through harness install, and a hook checks it at the next session start."

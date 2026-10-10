@@ -155,7 +155,7 @@ const animated = (f) => /<style\b|@keyframes|<(?:animate|animateMotion|animateTr
 // The call graphs are compact: the doc column of VitePress 1.6.4 is 688 px wide (VPDoc.vue), so a
 // graph of at most 765 px shows at a scale of 0.9 or more. The boxes of one layer of a call graph
 // have one width and share one edge line.
-const CALL_GRAPHS = FIGURES['agents-at-work.md']
+const CALL_GRAPHS = ['The calls of build-part', 'The calls of build-reviewed', 'The calls of julia-pr-shepherd', 'Every spawn']
 const MAX_GRAPH_WIDTH = 765
 // The one exemption from the width, by title: Every spawn has 16 boxes and 16 labelled edges, and
 // elkjs draws it no narrower than 852 px, and that only with crossing edges, so it runs to the

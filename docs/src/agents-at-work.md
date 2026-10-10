@@ -50,6 +50,15 @@ The work is split because a context that wrote the code does not judge it well. 
 with no knowledge of the builder's reasons finds more defects. A long suite run goes to a small
 agent, so that the large contexts of the builder and the critic do not wait on it.
 
+<WalkThrough name="build-part" />
+
+*From a task to a pull request with build-part.* `plan-parts` writes the parts table, and
+`build-part` runs one part. In round 1, two critics judge the work at high effort beside a run of
+the full suite. After a FAIL, a new builder fixes the work, and one critic judges the fix. The
+second FAIL goes to the arbitrator. After a PASS, a new builder finishes the part and opens the
+pull request. The figure shows the default models of Claude Code. Your `models.toml` can add a
+council of critics on other models for OpenCode.
+
 ## A smaller loop: `build-reviewed`
 
 ```calls build-reviewed
@@ -65,6 +74,12 @@ than five minutes goes to `julia-test-runner`. Before the pull request, the buil
 
 The split is smaller here: one builder, one critic. Your session reads the result before the
 finish, so it is the second reviewer.
+
+<WalkThrough name="build-reviewed" />
+
+*From a task to a pull request with build-reviewed.* The skill spawns one `part-builder`, and one
+`part-critic` judges its work. After a FAIL, the same builder fixes the findings, and your session
+checks the fix before it sends the finish. With a PASS, the skill goes to the finish at once.
 
 ## From review to green CI: `julia-pr-shepherd`
 
