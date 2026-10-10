@@ -89,19 +89,19 @@ label = "before the pull request"
 [[call]]
 caller = "julia-pr-shepherd"
 callee = "julia-pr-reviewer"
-at = "agents/julia-pr-shepherd.md:94"
+at = "agents/julia-pr-shepherd.md:95"
 label = "review"
 
 [[call]]
 caller = "julia-pr-shepherd"
 callee = "changelog-scribe"
-at = "agents/julia-pr-shepherd.md:143"
+at = "agents/julia-pr-shepherd.md:144"
 label = "the entry"
 
 [[call]]
 caller = "julia-pr-shepherd"
 callee = "ci-triage"
-at = "agents/julia-pr-shepherd.md:210"
+at = "agents/julia-pr-shepherd.md:211"
 label = "red CI"
 
 [[call]]

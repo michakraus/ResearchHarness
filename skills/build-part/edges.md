@@ -300,3 +300,9 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   excluded command, bypasses every list of the sandbox; and a rule for "outside the sandbox"
   that leaves out a condition, such as no redirection to a file (F3, *Publish the harness as
   ResearchHarness*)
+- a clause that expects a framework feature, such as an edit link, on a layout that drops it,
+  such as VitePress's home layout: build the page and grep the output for the feature (J2b,
+  *Publish the harness as ResearchHarness*)
+- a check that reads its input from a container, such as `<main>`, that one page lacks: the check
+  then skips that page in silence. Fail on an empty container (J2b, *Publish the harness as
+  ResearchHarness*)

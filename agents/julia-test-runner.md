@@ -2,6 +2,7 @@
 name: julia-test-runner
 model: small
 omitClaudeMd: true
+cacheTtl: 1h
 description: "Run Julia tests and return only the verdict, keeping the suite output out of the main context. Use when: run the tests, run the full suite, run that one testset, does this still pass, check the suite before I push, run testrunner on X. Returns pass/fail per testset with failing output quoted verbatim and nothing else. Use julia-perf-analyst instead when the question is how fast or how much it allocates rather than whether it passes."
 tools:
   - read

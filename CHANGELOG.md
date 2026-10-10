@@ -20,6 +20,19 @@
   on a home page with no edit link; it checks the anchors and tables of the home page too; it runs the cases of
   `docs/scripts/figures.test.mjs` first.
 
+- **The credentials of oh-my-pi are denied, and the main session keeps its prompt cache for one
+  hour.** `~/.omp/agent/.env`, where oh-my-pi keeps its API keys, is in the `Read` denies, the
+  sandbox's `denyRead` and `credentials.files` of the settings template, and so in the read
+  denies of OpenCode and the path list of its guard. A `Read(**/.env)` rule matches relative to
+  the working directory, so it did not cover a file in `~/.omp`. The template sets
+  `promptCacheTtl` to `"1h"`, and enables the `cache-tax` mod of the `claude-code-mods`
+  marketplace (`karanb192/claude-code-mods`), which keeps the cache warm during a break and shows
+  the cost of a cold send. These three top-level keys are outside the sections that
+  `harness settings install` merges, so they reach the live file by hand. `subagentPromptCacheTtl`
+  stays unset, because it would apply to every subagent and override the agents' own choice: the
+  frontmatter key `cacheTtl: 1h` gives `julia-test-runner`, `julia-pr-shepherd` and `ci-triage`,
+  which wait on suites and CI, a one-hour cache. OpenCode and oh-my-pi drop the key.
+
 - **A new README, and the dependencies move to their own page.** The README, and so the home page
   of the site, is now an overview for a reader who is new to the harness: what it is and for
   whom, two Mermaid figures (the harness around its three layers, and the flow from the sources

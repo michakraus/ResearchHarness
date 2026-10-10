@@ -2,6 +2,7 @@
 name: julia-pr-shepherd
 model: large
 effort: high
+cacheTtl: 1h
 description: "Take a pull request on a Julia package from review to green CI: review it, post the review, fix the findings, push, and verify the required checks. Use when: review and fix PR #NN, take PR #NN all the way, address the review comments and push, fix the review findings and get CI green, shepherd this PR. Stops at green — it never merges. It runs its sub-agents and CI waits in the foreground and returns one report, with a Verdict: line. Spawn it from a working directory inside the package's checkout. Use julia-pr-reviewer when only a review is wanted and nothing is to be fixed, and julia-branch-verifier before the PR exists."
 tools:
   - agent

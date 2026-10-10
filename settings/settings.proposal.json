@@ -447,6 +447,7 @@
       "Read(/{home}/.config/chezmoi/**)",
       "Read(/{home}/.config/gh/hosts.yml)",
       "Read(/{home}/.claude/.credentials.json)",
+      "Read(/{home}/.omp/agent/.env)",
       "Read(**/.env)",
       "Read(**/.env.*)",
       "Read(**/secrets/**)",
@@ -893,8 +894,17 @@
       }
     ]
   },
+  "extraKnownMarketplaces": {
+    "claude-code-mods": {
+      "source": {
+        "source": "github",
+        "repo": "karanb192/claude-code-mods"
+      }
+    }
+  },
   "enabledPlugins": {
-    "research-papers@research-papers-marketplace": false
+    "research-papers@research-papers-marketplace": false,
+    "cache-tax@claude-code-mods": true
   },
   "sandbox": {
     "enabled": true,
@@ -1098,7 +1108,8 @@
         "~/.config/api-keys",
         "~/.config/chezmoi",
         "~/.config/gh/hosts.yml",
-        "~/.claude/.credentials.json"
+        "~/.claude/.credentials.json",
+        "~/.omp/agent/.env"
       ]
     },
     "credentials": {
@@ -1142,6 +1153,10 @@
         {
           "path": "~/.claude/.credentials.json",
           "mode": "deny"
+        },
+        {
+          "path": "~/.omp/agent/.env",
+          "mode": "deny"
         }
       ]
     },
@@ -1157,6 +1172,7 @@
     ]
   },
   "autoMemoryDirectory": "~/.claude/projects/{memory_project}/memory",
+  "promptCacheTtl": "1h",
   "disableClaudeAiConnectors": true,
   "skillOverrides": {
     "docs": "off",

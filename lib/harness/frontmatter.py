@@ -1,6 +1,6 @@
 """The strict frontmatter parser of the agents' and skills' Markdown files.
 
-The frontmatter is the block between a `---` on line 1 and the next `---` line. It holds ten
+The frontmatter is the block between a `---` on line 1 and the next `---` line. It holds eleven
 keys (KEYS), each once, in one of two forms:
 
     key: value          a value plain or in double quotes, `\\\\` and `\\"` the only escapes
@@ -32,7 +32,7 @@ from . import HarnessError
 
 KEYS = {
     "name", "description", "model", "tools", "skills", "effort", "isolation",
-    "disable-model-invocation", "omitClaudeMd", "permissionMode",
+    "disable-model-invocation", "omitClaudeMd", "permissionMode", "cacheTtl",
 }
 BOOLEAN = "disable-model-invocation"
 LISTS = {"tools", "skills"}
