@@ -97,6 +97,8 @@ supplies, and which programs read it.
 <OverviewFigure />
 
 *The harness and its three layers.* These are not the three layers of the section above.
+[An example tree](example-tree.md) describes the six directories of the research tree and the
+components that serve each.
 
 - **The research tree** is where the work is: the directories that hold your repositories and
   your notes. The figure shows the tree of the harness's author, as an example: a library of
