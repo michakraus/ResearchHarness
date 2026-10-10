@@ -16,6 +16,17 @@
   in the monospace font. `harness settings install` is below it. `docs:check` checks the cards
   and their order. The landing page says that your session keeps its context, not its room.
 
+- **A new docs page, *An example tree*, describes the research tree of the overview figure.** It
+  has one section for each of the six directories (library, knowledge, packages, experiments,
+  projects and papers): what the directory holds, which agents, skills, rules, commands, git hooks,
+  scripts and verbs serve it, each linked to its component section, and which profile key, verb or
+  tree instruction names it. It ends with the profile values `repository_roots` and `tree_agents`
+  of such a tree, and how to adapt them to another layout; it also says which verbs find their
+  directories by a fixed name. The page is the last entry of *Getting started*, after *Tutorial*.
+  The caption of the overview figure on the home page and on the *Introduction* links it.
+  `docs/scripts/check-site.mjs` checks the new entry in the order of *Getting started*, and
+  `docs/scripts/newcomer.mjs` checks the page as a newcomer page.
+
 - **The newcomer pages: an introduction with a glossary, a setup guide that explains each step,
   and a guided tutorial.** The menu has *Home* as a headline of its own, then *Getting started*
   with *Introduction*, *Dependencies*, *Setup on macOS*, *Setup on Linux* and *Tutorial*; the

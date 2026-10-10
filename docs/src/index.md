@@ -49,6 +49,8 @@ features:
 *The harness and its three layers.* The research tree is where the work is, the components are
 what the harness supplies, and the frontends are the agents that read them. The research-tree
 layer shows the tree of the harness's author, as an example; your tree holds your own directories.
+[An example tree](example-tree.md) describes the six directories and the components that serve
+each.
 
 <FlowFigure />
 
