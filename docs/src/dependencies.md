@@ -69,7 +69,9 @@ Kaimon and juliaup can stay out.
 The tables leave out the system tools: the POSIX shell utilities, such as `awk`, `sed`, `grep`,
 `ps`, `kill`, `id` and `mktemp`; the tools that macOS supplies, `launchctl`, `security`,
 `osascript`, `lsof`, `pgrep` and `tar`; and the tools of the GitHub runner that the CI jobs call,
-`curl`, `tar` and `sha256sum`.
+`curl`, `tar` and `sha256sum`. On Linux, the update job `julia-update.jl` calls `lsof`,
+`systemctl` and `notify-send` in place of the macOS tools, and finds each on the `PATH`. Without
+`lsof` its server check fails; without `notify-send` it writes the log line only.
 
 ## What each tool does
 

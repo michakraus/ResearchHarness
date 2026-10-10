@@ -22,7 +22,7 @@ then install again; never edit a copy. The other scripts of this page run from t
 This repository has a pre-push hook of its own, `.githooks/pre-push`; it is not a template, and
 [Development](../development.md) describes it.
 
-## `pre-commit`
+## `pre-commit` and `pre-commit-test.jl`
 
 `pre-commit` is the shared pre-commit hook of the Julia repositories. It runs these stages:
 
@@ -40,6 +40,10 @@ working tree, not the index. The lint only warns, because `fatou lint` gives fal
 NFC stage does not change a file; run `nfc.jl --apply` to fix one. A commit with no
 staged `.jl` file and no change below `test/` passes with no check. `git commit --no-verify` skips
 the hook.
+
+`pre-commit-test.jl` runs the hook, unchanged, in a fixture package repository: a formatted file
+passes, and a misformatted file, a file that does not load and a change below `test/` without
+`test-layout.jl` are refused (`julia --startup-file=no pre-commit-test.jl`). CI runs it on Linux.
 
 ## `pre-push`
 

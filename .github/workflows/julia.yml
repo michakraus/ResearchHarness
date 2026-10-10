@@ -2,9 +2,9 @@ name: julia
 
 on:
   push:
-    paths: ['**.jl', 'Project.toml', '.github/workflows/julia.yml']
+    paths: ['**.jl', 'Project.toml', 'launchagents/**', 'githooks/pre-commit', '.github/workflows/julia.yml']
   pull_request:
-    paths: ['**.jl', 'Project.toml', '.github/workflows/julia.yml']
+    paths: ['**.jl', 'Project.toml', 'launchagents/**', 'githooks/pre-commit', '.github/workflows/julia.yml']
 
 permissions:
   contents: read
@@ -26,6 +26,10 @@ jobs:
           - scripts/run-tests-test.jl
           - scripts/test-layout-test.jl
           - githooks/release-notes-test.jl
+          - scripts/julia-update-test.jl
+          - launchagents/claude-autocommit-test.jl
+          - githooks/pre-commit-test.jl
+          - scripts/fatou-lsp-test.jl
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: julia-actions/setup-julia@fa02766e078afaaf09b14210362cee14137e6a32 # v3.0.2
@@ -39,7 +43,8 @@ jobs:
           mkdir -p "$env_dir"
           cp Project.toml "$env_dir/"
           julia --startup-file=no --project="$env_dir" -e 'using Pkg; Pkg.instantiate()'
-      # mutate.jl checks each mutant with `fatou lint`, so its tests need fatou on the PATH.
+      # mutate.jl checks each mutant with `fatou lint`, so its tests need fatou on the PATH, and
+      # fatou-lsp-test.jl drives `fatou lsp`.
       - name: Install fatou
         env:
           VERSION: 0.22.0
