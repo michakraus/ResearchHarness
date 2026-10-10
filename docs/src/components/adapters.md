@@ -232,10 +232,11 @@ own.
 
 The install writes into oh-my-pi's agent directory, `$PI_CODING_AGENT_DIR`, else `~/.omp/agent`:
 
-- `config.yml`, with the approval mode `write`, the `eval` tool denied, and the Bash rules of the
-  settings template as `bash.patterns`: every `deny`, then every `ask` as `prompt`, then every
-  `allow`;
-- `modelRoles` in `config.yml`, from the `[omp]` table of `models.toml`;
+- `harness.yml`, an overlay over oh-my-pi's own `config.yml`, which the install never writes: the
+  approval mode `yolo`, the `eval` tool denied, and the Bash rules of the settings template as
+  `bash.patterns`: every `deny`, then every `ask` as `prompt`, then every `allow`. oh-my-pi reads it
+  when `PI_CONFIG_FILES` in `~/.omp/agent/.env` names it, and the install warns until it does;
+- `modelRoles.default` in `harness.yml`, the `medium` model of the model tables;
 - `extensions/guards.ts` and the path list `extensions/guard-paths.json`;
 - `AGENTS.md`, from `OMP-DELTA.md`;
 - `rules/<name>.md` for each rule that the Claude Code layer installs, with `paths` written as
