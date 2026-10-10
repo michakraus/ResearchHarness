@@ -310,3 +310,6 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
 - a check that reads its input from a container, such as `<main>`, that one page lacks: the check
   then skips that page in silence. Fail on an empty container (J2b, *Publish the harness as
   ResearchHarness*)
+- a page that maps components to the places they serve, written from each component's main use:
+  a component whose source names a second place is missing there. Derive the map from every
+  place that each source names, by script (J5, *Publish the harness as ResearchHarness*)
