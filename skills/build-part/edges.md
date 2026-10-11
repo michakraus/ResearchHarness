@@ -337,3 +337,8 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
 - a graph whose edge labels a layout library places in a band beside the edges: a label nearer
   another edge than its own reads as that edge's. Check that each label's own edge passes
   through it (J2c, *Publish the harness as ResearchHarness*)
+- a reworded error message in an upstream package: a consumer's `@test_throws` matches the old
+  text by substring, so the consumer's suite goes red while every upstream test passes. In a part
+  that must not change a value, keep the message and record the wording in `KNOWN_ISSUES.md`; grep
+  each consumer's tests for the old substring before a rewording (N2b, *Simplify the optimiser
+  package and the learning package for 0.9*)
