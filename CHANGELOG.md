@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- **`scripts/base-tree.jl` puts the tree of one commit into a directory, with no permission
+  prompt.** The builders and critics of the loop need the unmodified tree for the "on the
+  unmodified tree" column of `evidence.md`, and wrote it with `git archive -o <file> <ref>` and a
+  second `tar -x` call: about one call in five, and each one asks, because `-o` writes any path
+  from outside the sandbox. A worktree-isolated agent has no other choice, because Claude Code
+  refuses a pipeline that holds `git` there. `base-tree.jl <package> <ref> <dir> [<path> ...]`
+  does it in one call, refuses a directory that is not empty, and prints the number of files and
+  the commit. `evidence.md` names it in its rules for a row and in its table of tools.
+  `scripts/base-tree-test.jl` checks it on the commits of this repository, in `julia.yml`'s matrix
+  and in the selection of `.githooks/pre-push`.
+
 - **Performance is a trade against simplicity, not a limit on it.** `rules/julia-code.md` named
   performance as the third limit of a simplification and kept only the version that is not slower,
   so a reviewer rejected a much shorter implementation for a loss of about 10 %. The rule now keeps

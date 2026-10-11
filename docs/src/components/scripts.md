@@ -155,6 +155,23 @@ UNKNOWN.
 The skill `build-part` and the agents `julia-builder` and `julia-critic` use it.
 `run-tests-test.jl` holds its tests.
 
+## `base-tree.jl` and `base-tree-test.jl`
+
+`base-tree.jl` puts the tree of one commit of a package into a new or empty directory, for a probe
+on the unmodified tree.
+
+```bash
+julia --startup-file=no base-tree.jl <package> <ref> <dir> [<path> ...]
+```
+
+With paths, it writes only those paths of the tree. It prints the directory, the number of files
+and the commit. It refuses a directory that is not empty, so that no old file stays in the tree.
+It does in one call what `git archive <ref> | tar -x` does, but with no permission prompt: a
+worktree-isolated agent cannot run a pipeline that holds `git`, and `git archive -o` asks.
+
+The skill `build-part` names it for the agents `julia-builder` and `julia-critic`.
+`base-tree-test.jl` checks it on the commits of this repository, in about 3 s.
+
 ## `gate.jl` and `gate-test.jl`
 
 `gate.jl` runs the checks that a script can run before a critic reads a head, and writes one
