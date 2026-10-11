@@ -178,7 +178,7 @@ if [ "$fail" -ne 0 ]; then
 fi
 
 # The Julia selection: the test files that the changed paths select.
-all="scripts/gate-test.jl scripts/mutants-test.jl scripts/run-tests-test.jl scripts/test-layout-test.jl githooks/release-notes-test.jl scripts/julia-update-test.jl launchagents/claude-autocommit-test.jl githooks/pre-commit-test.jl scripts/fatou-lsp-test.jl"
+all="scripts/gate-test.jl scripts/mutants-test.jl scripts/run-tests-test.jl scripts/test-layout-test.jl githooks/release-notes-test.jl scripts/julia-update-test.jl launchagents/claude-autocommit-test.jl githooks/pre-commit-test.jl scripts/fatou-lsp-test.jl scripts/base-tree-test.jl"
 selection=
 select_test() {
     case " $selection " in
@@ -198,6 +198,7 @@ while IFS= read -r path; do
         launchagents/claude-autocommit) select_test launchagents/claude-autocommit-test.jl ;;
         githooks/pre-commit) select_test githooks/pre-commit-test.jl ;;
         scripts/fatou-lsp.jl) select_test scripts/fatou-lsp-test.jl ;;
+        scripts/base-tree.jl) select_test scripts/base-tree-test.jl ;;
         *-test.jl) [ -f "$path" ] && select_test "$path" ;; # a deleted test file selects nothing
         Project.toml) for f in $all; do select_test "$f"; done ;;
         *.jl) echo "Julia: $path selects no test file" ;;
@@ -211,6 +212,7 @@ duration() {
         githooks/release-notes-test.jl) echo "about 4 s" ;;
         launchagents/claude-autocommit-test.jl) echo "about 2 s" ;;
         githooks/pre-commit-test.jl) echo "about 5 s" ;;
+        scripts/base-tree-test.jl) echo "about 3 s" ;;
         scripts/fatou-lsp-test.jl) echo "about 7 s" ;;
         scripts/julia-update-test.jl) echo "about 14 s" ;;
         scripts/test-layout-test.jl) echo "about 2 min" ;;

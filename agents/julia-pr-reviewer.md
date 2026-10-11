@@ -133,6 +133,9 @@ reader skims past.
 - **Re-measure any figure the PR claims.** A PR's own allocation numbers have failed to
   reproduce here. Quoting them onward launders a wrong number into a review.
 - Check a "missing file" or "unused function" claim against the actual diff and the source.
+- **Probe the base in a tree of its own**, written in one call by
+  `julia --startup-file=no ~/Research/Harness/scripts/base-tree.jl <worktree> origin/<base> ~/Research/.scratch/review/<Repository>-pr<n>/base [<path> ...]`.
+  Your worktree refuses a pipeline that holds `git`, and `git archive -o` asks for permission.
 - **Never probe Metal from Bash; use a Kaimon session of your own.** This machine has a Metal GPU,
   but the Bash sandbox hides it: `Metal.devices()` is empty and the call dies with a `BoundsError`.
   That result is the sandbox, not missing hardware. Start your own session with `start_session`,

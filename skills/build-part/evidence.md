@@ -34,7 +34,9 @@ recorded and not blocking.
 - **A test that reproduces a defect FAILS on the unmodified tree.** One that passes there PINS
   behaviour, and the row says so. `pins.jl <worktree> origin/main <unit>` gives the column for a
   whole test file. Where the part names a mutant, the row quotes `mutate.jl`'s
-  verdict on it: CAUGHT, or the clause is not met.
+  verdict on it: CAUGHT, or the clause is not met. For any other command on the unmodified tree,
+  `base-tree.jl` puts that tree into a new directory: the critic's `<round directory>/base/`, the
+  builder's `<worktree>/.claude/scratch/base/`.
 - **The unmodified tree is `origin/main`**, never a draft of the fix from this session. "Each new
   test fails before the fix" is a claim about each test: name the tests that reproduce a defect
   and the tests that pin behaviour as regression guards.
@@ -74,6 +76,7 @@ They run under `~/Research/Harness/scripts/`:
 | check a list of mutants without running it | `julia --startup-file=no mutate.jl <worktree> --check <mutants.toml>` |
 | write the operator mutants of the diff against the base as a list | `julia --startup-file=no mutants.jl <worktree> <mutants.toml>` |
 | run the branch's tests on the base's `src/` | `julia --startup-file=no pins.jl <worktree> origin/main <unit> ...` |
+| put the tree of the base, or only the named paths of it, into a new or empty directory | `julia --startup-file=no base-tree.jl <worktree> origin/main <dir> [<path> ...]` |
 | run a probe script with the package and its test dependencies | `julia --startup-file=no --project=<worktree> -e 'using TestEnv; TestEnv.activate(); include("<probe>.jl")'` |
 
 The header of `mutate.jl` gives the form of a mutant list. Its TOML strings take Unicode and
