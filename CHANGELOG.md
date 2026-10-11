@@ -9,7 +9,9 @@
   from outside the sandbox. A worktree-isolated agent has no other choice, because Claude Code
   refuses a pipeline that holds `git` there. `base-tree.jl <package> <ref> <dir> [<path> ...]`
   does it in one call, refuses a directory that is not empty, and prints the number of files and
-  the commit. `evidence.md` names it in its rules for a row and in its table of tools.
+  the commit. `evidence.md` names it in its rules for a row and in its table of tools, and
+  `julia-pr-reviewer`, which is worktree-isolated and used `-o` too, names it for a probe on the
+  base.
   `scripts/base-tree-test.jl` checks it on the commits of this repository, in `julia.yml`'s matrix
   and in the selection of `.githooks/pre-push`.
 

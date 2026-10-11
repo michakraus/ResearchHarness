@@ -169,8 +169,8 @@ and the commit. It refuses a directory that is not empty, so that no old file st
 It does in one call what `git archive <ref> | tar -x` does, but with no permission prompt: a
 worktree-isolated agent cannot run a pipeline that holds `git`, and `git archive -o` asks.
 
-The skill `build-part` names it for the agents `julia-builder` and `julia-critic`.
-`base-tree-test.jl` checks it on the commits of this repository, in about 3 s.
+The skill `build-part` names it for the agents `julia-builder` and `julia-critic`, and the agent
+`julia-pr-reviewer` names it for its probes. `base-tree-test.jl` checks it on the commits of this repository, in about 3 s.
 
 ## `gate.jl` and `gate-test.jl`
 
