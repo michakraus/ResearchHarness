@@ -139,6 +139,10 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   bytes that an exact `@allocated` comparison against the caller's typed path sees — 16 to 800 B per
   call — and those bytes depend on what the process ran before. Type the parameter as
   `rhs::F) where {F <: Base.Callable}` (P41, *Rewrite the reduced basis packages*)
+- a copy removed by preallocating the result with `similar(operand, …)`: it pins the element type of
+  that operand, so a mixed input loses the type the product would have promoted — a Float32 basis with
+  finite Float64 coordinates returned `±Inf Float32` instead of a finite Float64 result. Allocate with
+  `T = promote_type(eltype(operand), eltype(input))` (P29, *Rewrite the reduced basis packages*)
 
 ## A tool that reads files or a tree
 
@@ -353,3 +357,7 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   zero reads `[0, 0, 0]` and the assertion holds whatever the code does. Bind the nested block's
   field to its own name, or with `local`, and assert that the expected value is not itself zero
   (P13 verify 2, *Rewrite the reduced basis packages*)
+- a new entry that copies the form of the file's older entries instead of the house rule: where a
+  `KNOWN_ISSUES.md` uses `## KI-<n> · kind · problem` with prose, a new entry still takes
+  `### K<n> · <problem>` and the four bullets, and takes the next `K<n>` after the highest in the
+  file, never the older scheme (P10 and P29, *Rewrite the reduced basis packages*)
