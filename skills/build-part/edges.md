@@ -134,6 +134,11 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   `AbstractArray` fallback then rejects with its own `ArgumentError`. Uniform forms per method would
   add the ambiguities the part forbids, so decide the mixed case explicitly (P10, *Rewrite the
   reduced basis packages*)
+- a function argument that a method only passes on: a method whose parameter is typed
+  `rhs::Base.Callable` is not specialised on the function it is given, so its runtime dispatch costs
+  bytes that an exact `@allocated` comparison against the caller's typed path sees — 16 to 800 B per
+  call — and those bytes depend on what the process ran before. Type the parameter as
+  `rhs::F) where {F <: Base.Callable}` (P41, *Rewrite the reduced basis packages*)
 
 ## A tool that reads files or a tree
 
@@ -342,3 +347,9 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   that must not change a value, keep the message and record the wording in `KNOWN_ISSUES.md`; grep
   each consumer's tests for the old substring before a rewording (N2b, *Simplify the optimiser
   package and the learning package for 0.9*)
+- a fixture a nested `@testset begin` block assigns inside an enclosing `@testset for`: it assigns
+  the *outer* variable, so every later testset reads the new value, and an expected value built from
+  it can turn vacuous — a Lorentz acceleration whose field a preceding testset has already set to
+  zero reads `[0, 0, 0]` and the assertion holds whatever the code does. Bind the nested block's
+  field to its own name, or with `local`, and assert that the expected value is not itself zero
+  (P13 verify 2, *Rewrite the reduced basis packages*)
