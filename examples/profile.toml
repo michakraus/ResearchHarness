@@ -23,6 +23,11 @@ tree_agents = "/home/example/Research/Environment/Agents"
 # in launchagents/.
 launchd_prefix = "org.example"
 
+# The branch of the ~/.claude repository's origin that claude-autocommit pushes to: `main` on the
+# machine whose memory is the template, a branch of its own, such as `memory/<host>`, on each
+# other machine. `harness render` gives `main` when the profile has no such key.
+autocommit_branch = "main"
+
 # The GitHub accounts, organisations and the user's own, where a session may open a pull request
 # or an issue and comment on one without a prompt.
 org = ["example-org", "example-user"]

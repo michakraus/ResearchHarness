@@ -1,0 +1,14 @@
+# Starts claude-autocommit.service when the timer starts and every 15 minutes after each run, as
+# launchagents/claude-autocommit.plist does with RunAtLoad and StartInterval. Enable it with
+# `systemctl --user enable --now claude-autocommit.timer`.
+
+[Unit]
+Description=Commit the plans and memories of ~/.claude every 15 minutes
+
+[Timer]
+OnActiveSec=0
+OnUnitActiveSec=15min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

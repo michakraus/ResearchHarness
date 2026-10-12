@@ -4,7 +4,8 @@
 #
 #   canonical copy   ~/Research/Harness/launchagents/claude-autocommit
 #   installed copy   ~/.local/bin/claude-autocommit        (edit here, then reinstall)
-#   launched by      claude-autocommit.plist, rendered with the profile
+#   launched by      claude-autocommit.plist on macOS, systemd/claude-autocommit.timer on Linux,
+#                    each rendered with the profile
 #
 # WHY THE SCOPE IS TWO DIRECTORIES
 #
@@ -36,6 +37,9 @@ REPO="${CLAUDE_AUTOCOMMIT_REPO:-$HOME/.claude}"
 QUIESCE_MIN="${CLAUDE_AUTOCOMMIT_QUIESCE_MIN:-5}"
 MAX_DELETIONS="${CLAUDE_AUTOCOMMIT_MAX_DELETIONS:-20}"
 DO_PUSH="${CLAUDE_AUTOCOMMIT_PUSH:-1}"
+# The branch of origin that receives the local main: the profile's autocommit_branch, which the
+# plist and the systemd unit set, so that a machine other than the template pushes to its own.
+BRANCH="${CLAUDE_AUTOCOMMIT_BRANCH:-main}"
 # The lock lives beside the job's log on macOS, and in the XDG state directory on Linux.
 case "$(uname -s)" in
     Darwin) LOCK="$HOME/Library/Logs/claude-autocommit/lock" ;;
@@ -48,8 +52,8 @@ usage() {
     cat <<'EOF'
 usage: claude-autocommit [--dry-run] [--no-push] [--help]
 
-Commits ~/.claude/plans/ and ~/.claude/projects/*/memory/ and pushes to origin main.
-Nothing else in ~/.claude is touched.
+Commits ~/.claude/plans/ and ~/.claude/projects/*/memory/ and pushes the local main to
+origin's $CLAUDE_AUTOCOMMIT_BRANCH, main by default. Nothing else in ~/.claude is touched.
 
   --dry-run   report what would be committed; take no lock and write nothing
   --no-push   commit but do not push
@@ -59,6 +63,7 @@ environment
   CLAUDE_AUTOCOMMIT_QUIESCE_MIN    skip files modified within N minutes (default 5)
   CLAUDE_AUTOCOMMIT_MAX_DELETIONS  refuse a run deleting more than N files (default 20)
   CLAUDE_AUTOCOMMIT_PUSH           0 to never push (default 1)
+  CLAUDE_AUTOCOMMIT_BRANCH         the branch of origin to push to (default main)
 EOF
 }
 
@@ -212,7 +217,7 @@ EOF
 if [ "$DRY" -eq 1 ]; then
     say "would commit $n_plans plan(s) and $n_mem memory file(s); $n_defer deferred, $n_del deletion(s)"
     for p in "$@"; do printf '  %s\n' "$p"; done
-    [ "$DO_PUSH" -eq 1 ] && say "would then: git push origin main"
+    [ "$DO_PUSH" -eq 1 ] && say "would then: git push origin main:refs/heads/$BRANCH"
     exit 0
 fi
 
@@ -260,7 +265,7 @@ say "committed $n_plans plan(s), $n_mem memory file(s)$([ "$n_defer" -gt 0 ] && 
 # already safe locally, which is the point of the job.
 
 if [ "$DO_PUSH" -eq 1 ]; then
-    out=$(git push origin main 2>&1)
+    out=$(git push origin "main:refs/heads/$BRANCH" 2>&1)
     rc=$?
     if [ "$rc" -ne 0 ]; then
         warn "push failed (rc=$rc), commit is local — leaving it: $out"

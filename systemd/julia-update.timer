@@ -1,0 +1,14 @@
+# Starts julia-update.service daily at 04:30, as launchagents/julia-update.plist does, and not at
+# login. Persistent=true runs a start missed while the machine slept or was off when the timer
+# starts again, as launchd runs a missed calendar start at wake. Enable it with
+# `systemctl --user enable --now julia-update.timer`.
+
+[Unit]
+Description=Update Julia and the Kaimon server daily
+
+[Timer]
+OnCalendar=*-*-* 04:30:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

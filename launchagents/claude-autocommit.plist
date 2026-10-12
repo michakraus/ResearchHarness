@@ -30,6 +30,10 @@
              hang the job. Fail the push instead; the commit is already safe locally. -->
         <key>GIT_TERMINAL_PROMPT</key>
         <string>0</string>
+        <!-- The branch of origin that receives the commits: main on the template machine, a
+             branch of its own on each other machine. -->
+        <key>CLAUDE_AUTOCOMMIT_BRANCH</key>
+        <string>{autocommit_branch}</string>
     </dict>
 </dict>
 </plist>

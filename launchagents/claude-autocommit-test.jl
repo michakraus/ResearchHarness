@@ -89,6 +89,31 @@ end
         @test git(repo, env, "diff", "--cached", "--name-only") == "settings.json"
     end
 
+    @testset "the push goes to CLAUDE_AUTOCOMMIT_BRANCH ($label)" for (label, branch) in
+                                                                     (("unset", nothing),
+                                                                      ("memory/test", "memory/test"))
+        home, repo, remote, env = fixture()
+        branch === nothing || (env["CLAUDE_AUTOCOMMIT_BRANCH"] = branch)
+        before = git(remote, env, "rev-parse", "main")
+        memory = joinpath(repo, MEMORY, "one.md")
+        write(memory, "one fact\n")
+        settle(memory)
+
+        code, out = run_script(repo, env)
+        @test code == 0
+        head = git(repo, env, "rev-parse", "HEAD")
+        @test head != before
+        branches = split(git(remote, env, "for-each-ref", "--format=%(refname:short)", "refs/heads"))
+        if branch === nothing
+            @test branches == ["main"]
+            @test git(remote, env, "rev-parse", "main") == head
+        else
+            @test sort(branches) == sort(["main", branch])
+            @test git(remote, env, "rev-parse", branch) == head
+            @test git(remote, env, "rev-parse", "main") == before
+        end
+    end
+
     @testset "the lock lands at this system's path (XDG_STATE_HOME $label)" for (label, xdg) in
                                                                                  (("unset", nothing),
                                                                                   ("empty", ""),

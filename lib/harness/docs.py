@@ -100,6 +100,7 @@ KINDS = [
     ("harness.md", "bin/harness", base),
     ("harness.md", "lib/harness/*.py", base),
     ("other.md", "launchagents/*", base),
+    ("other.md", "systemd/*", base),
     ("other.md", "agent-workflows/*.js", base),
     ("other.md", "ast-grep/*.*", under("ast-grep")),
     ("other.md", "ast-grep/rules/*", under("ast-grep")),

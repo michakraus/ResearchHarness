@@ -40,6 +40,7 @@ The table names each key of `examples/profile.toml` and the verbs that read it, 
 | `memory_project` | the name of the project directory of the research tree below `~/.claude/projects/`, which holds the memory | `install` and `settings`, in the settings template |
 | `tree_agents` | the directory of the [tree instructions](concepts.md#tree-instructions) | `install`, which [installs](concepts.md#install) them into `~/.claude/` |
 | `launchd_prefix` | the prefix of the labels of the launchd jobs in `launchagents/` | `render` of the `launchagents/` templates; the update job `scripts/julia-update.jl` |
+| `autocommit_branch` | the branch of the `origin` of `~/.claude` that `claude-autocommit` pushes to: `main` on the machine whose memory is the template, a branch of its own on each other machine. Optional: `render` gives `main` without it | `render` of `launchagents/claude-autocommit.plist` and `systemd/claude-autocommit.service` |
 | `org` | the GitHub accounts and organisations where a [session](concepts.md#session) can open and comment on a pull request or an issue with no prompt | `install` and `settings`, in the settings template; `leaks`, which also searches for each of them |
 | `repository_roots` | the directories that hold the repositories of the research tree | `leaks`, which searches for the name of each directory below them |
 | `docs_exceptions` | the repositories that keep a documentation workflow of their own | `workflows`; `ci-protection`, through `githooks/verify-workflows.jl` |

@@ -538,3 +538,14 @@
   `ps -o comm= -p <pid>` printed the full path of the julia binary of the juliaup release.
 - kind: not verified
 - found: 2026-10-11
+
+### K62 · The PATH check of the units reads only the template's `allowWrite`, not the write grants that the live sandbox adds.
+
+- location: `lib/harness/units.py`, `path_problems`
+- evidence: Claude Code's sandbox also lets a session write its working directory and `$TMPDIR`,
+  and neither is in `sandbox.filesystem.allowWrite` of `settings/settings.proposal.json`. A job's
+  `PATH` element below a session's working directory or `$TMPDIR`, outside every `allowWrite`
+  entry, passes the check. The rule follows the dispatcher's decision Q1 of part D2, which takes
+  the template's `allowWrite` as the measure. No unit's `PATH` holds such a directory today.
+- kind: defect
+- found: 2026-10-12, the critic of part D2

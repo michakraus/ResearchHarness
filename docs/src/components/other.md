@@ -8,7 +8,8 @@ profile.
 
 The sections follow the purpose of the files:
 
-- the launch agents of macOS, in `launchagents/`;
+- the launch agents of macOS, in `launchagents/`, and their `systemd --user` units for Linux, in
+  `systemd/`;
 - the agent workflow `agent-workflows/repo-drift.js`;
 - the settings template, the example profile and the example model tables;
 - the Julia environment of the scripts, `Project.toml`;
@@ -26,7 +27,10 @@ them. `harness render launchagents/<name>` prints the rendered plist.
 
 `claude-autocommit` is a bash script that commits the plan files and the project memories of
 `~/.claude/`, which must be a git repository. It commits `plans/` and `projects/*/memory/` only, and
-pushes to `origin main`. It stages each path by name and commits with a pathspec, so a file that
+pushes the local `main` to the branch of `origin` that `CLAUDE_AUTOCOMMIT_BRANCH` names, `main`
+when the variable is unset. The plist and the unit set it from the profile key
+`autocommit_branch`: `main` on the machine whose memory is the template, a branch of its own on
+each other machine. It stages each path by name and commits with a pathspec, so a file that
 another session staged stays staged. It skips a file that changed in the last 5 minutes, and refuses
 a rename or more than 20 deletions.
 
@@ -41,7 +45,8 @@ The script runs on macOS and on Linux, under bash 3.2 too. A lock directory stop
 On macOS the lock is `~/Library/Logs/claude-autocommit/lock`, beside the job's log. On Linux it is
 `$XDG_STATE_HOME/claude-autocommit/lock`, or `~/.local/state/claude-autocommit/lock` when
 `XDG_STATE_HOME` is unset or empty. `claude-autocommit-test.jl` runs the script on a fixture
-repository with a bare remote, on the system it runs on.
+repository with a bare remote, on the system it runs on, and checks the branch that receives the
+push.
 
 ## `julia-update.plist`
 
@@ -76,6 +81,39 @@ Julia release. `KAIMON_QDRANT_MANAGED=off` stops the background index.
 OpenCode and oh-my-pi connect to this server at `http://127.0.0.1:2828/`. The update job
 `julia-update.plist` restarts it when its Julia release is deleted. Render the plist with
 `harness render launchagents/kaimon.plist`.
+
+## `kaimon.service`, `julia-update.service`, `julia-update.timer`, `claude-autocommit.service` and `claude-autocommit.timer`
+
+The `systemd --user` units in `systemd/` run the three jobs of the plists on Linux. Like the
+plists, they are templates of the profile: `harness render systemd/<name>` prints a rendered unit,
+and the harness has no verb that installs them. Copy each rendered unit into
+`~/.config/systemd/user/`, run `systemctl --user daemon-reload`, and enable the server and the two
+timers:
+
+```
+systemctl --user enable --now kaimon.service julia-update.timer claude-autocommit.timer
+```
+
+Each unit describes the same job as its plist:
+
+| unit | plist | how it runs |
+|:--|:--|:--|
+| `kaimon.service` | `kaimon.plist` | at login (`WantedBy=default.target`), restarted on exit after 60 s (`Restart=always`, `RestartSec=60`), in `~/Research` |
+| `julia-update.service`, `julia-update.timer` | `julia-update.plist` | daily at 04:30 (`OnCalendar`), not at login |
+| `claude-autocommit.service`, `claude-autocommit.timer` | `claude-autocommit.plist` | when the timer starts (`OnActiveSec=0`), then 15 minutes after each run (`OnUnitActiveSec`) |
+
+The program and its arguments, the environment and the `PATH` are those of the plist. Both timers
+set `Persistent=true`, so a calendar start that the machine missed while it slept runs when the
+timer starts again. The units are `--user` units only. Their output goes to the journal:
+`journalctl --user -u <name>`. `julia-update.jl` restarts the server as `kaimon.service`.
+
+The jobs run outside the sandbox, so their `PATH` holds no directory that a session can write:
+each directory is one that the settings template keeps out of a session's writes, because no
+`allowWrite` entry covers it or a `denyWrite` entry names it, or is one of `/usr/bin`, `/bin`,
+`/usr/sbin`, `/sbin`, `/usr/local/bin` and `/opt/homebrew/bin`. `harness test` renders each unit
+and its plist with the example profile and checks all of this, through
+`units.py` of [the harness command](harness.md). CI renders each unit on `ubuntu-latest` and runs
+`systemd-analyze verify --user` on it. `harness leaks` renders them with the example profile.
 
 ## `repo-drift.js`
 

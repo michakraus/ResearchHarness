@@ -1,0 +1,20 @@
+# The daily update of Julia and the Kaimon server, the Linux twin of
+# launchagents/julia-update.plist. julia-update.timer starts it; it has no [Install] section of
+# its own. Its output goes to the journal: `journalctl --user -u julia-update.service`.
+
+[Unit]
+Description=Update Julia and the Kaimon server
+
+[Service]
+Type=oneshot
+# The juliaup launcher, not a release path, and the installed copy of the script, which a session
+# cannot write: ~/.local/bin is deny-write, and this job runs outside the sandbox.
+ExecStart={home}/.juliaup/bin/julia --startup-file=no {home}/.local/bin/julia-update.jl
+# Deprioritised: a Pkg resolve that competes with an interactive Julia session is worse than a
+# late one.
+Nice=5
+IOSchedulingClass=idle
+# JULIA_PKG_USE_CLI_GIT is load-bearing: libgit2 fails behind an authenticating proxy. PATH is for
+# the git that setting then calls, and holds no directory a session can write.
+Environment=JULIA_PKG_USE_CLI_GIT=true
+Environment=PATH={home}/.juliaup/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin
