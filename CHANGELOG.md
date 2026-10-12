@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- **No session writes a `systemd --user` unit or juliaup's own directory, and RTK can write its
+  data on Linux.** The settings template denies `~/.config/systemd/user` and
+  `~/.local/share/systemd`, the two directories from which `systemd --user` loads a user's units,
+  to the `Edit` tool and in the sandbox's `denyWrite`, as it denies `~/Library/LaunchAgents`.
+  `~/.config` was denied already; the second directory was not. It denies `~/.juliaup`, where
+  juliaup's upstream installer puts `juliaup` and the `julia` launcher, the same way. RTK's Linux
+  data directory, `~/.local/share/rtk` (the tracking database, the tee spool and the hook markers),
+  joins `allowWrite` beside `~/Library/Application Support/rtk`; its Linux configuration directory,
+  `~/.config/rtk`, stays denied. `harness permissions --apply` carries the three denies into
+  OpenCode's list.
+
 - **The three launch agents have `systemd --user` units for Linux, and `claude-autocommit` pushes
   to a branch per machine.** `systemd/` holds `kaimon.service`, `julia-update.service` with
   `julia-update.timer`, and `claude-autocommit.service` with `claude-autocommit.timer`, templates
