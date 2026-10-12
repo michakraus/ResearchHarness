@@ -448,6 +448,10 @@
       "Read(/{home}/.config/gh/hosts.yml)",
       "Read(/{home}/.claude/.credentials.json)",
       "Read(/{home}/.omp/agent/.env)",
+      "Read(/{home}/.omp/agent/agent.db)",
+      "Read(/{home}/.omp/agent/agent.db-wal)",
+      "Read(/{home}/.local/share/opencode/auth.json)",
+      "Read(/{home}/.local/share/opencode/mcp-auth.json)",
       "Read(**/.env)",
       "Read(**/.env.*)",
       "Read(**/secrets/**)",
@@ -1109,7 +1113,11 @@
         "~/.config/chezmoi",
         "~/.config/gh/hosts.yml",
         "~/.claude/.credentials.json",
-        "~/.omp/agent/.env"
+        "~/.omp/agent/.env",
+        "~/.omp/agent/agent.db",
+        "~/.omp/agent/agent.db-wal",
+        "~/.local/share/opencode/auth.json",
+        "~/.local/share/opencode/mcp-auth.json"
       ]
     },
     "credentials": {
@@ -1156,6 +1164,22 @@
         },
         {
           "path": "~/.omp/agent/.env",
+          "mode": "deny"
+        },
+        {
+          "path": "~/.omp/agent/agent.db",
+          "mode": "deny"
+        },
+        {
+          "path": "~/.omp/agent/agent.db-wal",
+          "mode": "deny"
+        },
+        {
+          "path": "~/.local/share/opencode/auth.json",
+          "mode": "deny"
+        },
+        {
+          "path": "~/.local/share/opencode/mcp-auth.json",
           "mode": "deny"
         }
       ]

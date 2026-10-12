@@ -13,6 +13,8 @@
     "{home}/.config/gh/hosts.yml",
     "{home}/.claude/.credentials.json",
     "{home}/.omp/agent/.env",
+    "{home}/.omp/agent/agent.db",
+    "{home}/.omp/agent/agent.db-wal",
     "**/.env",
     "**/.env.*",
     "**/secrets/**",

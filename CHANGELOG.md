@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- **The deny lists refuse the login stores of OpenCode and oh-my-pi.** A sandboxed Claude Code
+  session could read OpenCode's `~/.local/share/opencode/auth.json` (every provider key that
+  `opencode auth login` stores) and `mcp-auth.json`, and oh-my-pi's `~/.omp/agent/agent.db` with
+  its write-ahead log `agent.db-wal` (the `/login` credentials). The settings template now denies
+  the four paths in `permissions.deny` (`Read`), in `sandbox.filesystem.denyRead` and in
+  `sandbox.credentials.files`, each directly after the `~/.omp/agent/.env` entry. The OpenCode
+  `opencode.jsonc` and `plugins/guard-paths.json`, and with them the oh-my-pi
+  `extensions/guard-paths.json`, add the two `agent.db` paths; they already deny all of
+  `~/.local/share/opencode/`. Each frontend still reads its own store, because the denies act on an
+  agent's tools and commands, not on the frontend's process.
+
 - **`scripts/base-tree.jl` puts the tree of one commit into a directory, with no permission
   prompt.** The builders and critics of the loop need the unmodified tree for the "on the
   unmodified tree" column of `evidence.md`, and wrote it with `git archive -o <file> <ref>` and a
