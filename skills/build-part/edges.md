@@ -361,3 +361,10 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   `KNOWN_ISSUES.md` uses `## KI-<n> · kind · problem` with prose, a new entry still takes
   `### K<n> · <problem>` and the four bullets, and takes the next `K<n>` after the highest in the
   file, never the older scheme (P10 and P29, *Rewrite the reduced basis packages*)
+- a fix that rewrites a comment about dispatch from a critic's sentence, not from the methods: a
+  subtype such as `Manifold <: AbstractMatrix` makes "an array" false. Write the comment from the
+  method table (G10 verify 2, *Simplify the optimiser package and the learning package for 0.9*)
+- a moved table marked with the version of the commit that first wrote its cells, while a later
+  commit measured them again on a newer dependency: name the last measurement. `git log -S` on a
+  cell finds the last change of the value, not the last run that reproduced it (G10 round 1b,
+  *Simplify the optimiser package and the learning package for 0.9*)
