@@ -8,8 +8,9 @@
   of the profile like the plists (`harness render systemd/<name>`). Each runs the program, the
   arguments, the environment and the `PATH` of its plist, on the same schedule; the server restarts
   on exit, and both timers are `Persistent=true`. The new module `lib/harness/units.py` checks
-  this in `harness test`, with the example profile, and checks that every directory of a `PATH`
-  is one that the settings template keeps out of a session's writes or a system directory. CI's
+  this in `harness test`, with the example profile. It refuses a unit key that it does not read,
+  such as an extra timer trigger, and checks that every element of a `PATH` is an absolute
+  directory that the settings template keeps out of a session's writes, or a system directory. CI's
   new `systemd` job renders each unit on `ubuntu-latest` and runs `systemd-analyze verify --user`
   on it. `claude-autocommit` pushes the local `main` to `$CLAUDE_AUTOCOMMIT_BRANCH`, `main` when
   unset; the plist and the unit set it from the new optional profile key `autocommit_branch`,

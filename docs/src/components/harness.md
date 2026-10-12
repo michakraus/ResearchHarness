@@ -141,7 +141,9 @@ harness leaks [--commits F]
 
 `render` prints a template with each placeholder `{key}` replaced by its profile value. A list
 value repeats the line, or the JSON list element, once for each item. A placeholder that the
-profile does not have exits 2, except `autocommit_branch`, which renders `main`. `get` prints one value, one line for each item of a list.
+profile does not have exits 2, except `autocommit_branch`, which `render` gives the value `main`.
+`get` prints one value, one line for each item of a list; a key that the profile does not have
+exits 2, `autocommit_branch` too.
 
 `leaks` searches every tracked file and its path for each string of the profile's `leak` list, and
 for the name of each directory below a `repository_roots` entry and each `org` entry. The
@@ -242,12 +244,14 @@ Its cases run the parser, the verdict, the majority and the pass rule, and run `
 
 The cases of the `systemd --user` units in `systemd/`. The module has no verb. It renders each
 unit and its plist in `launchagents/` with `examples/profile.toml` and checks that both describe
-one job: the program and its arguments, the environment and its `PATH`, the schedule, the start at
-login, and `Restart=always` where the plist has `KeepAlive`. Every directory of the `PATH` must be
-one that the settings template keeps out of a session's writes, or a system directory. Its cases
-also apply a mutant to each rendered template, a removed restart or a session-writable directory
-on the `PATH`, and expect a problem, and check that `render` gives `autocommit_branch` the value
-`main` when the profile has no such key. [Jobs and configuration](other.md) describes the units.
+one job: the program and its arguments, the working directory, the environment and its `PATH`,
+the timer's triggers, the start at login, and `Restart=always` where the plist has `KeepAlive`. A
+section, a key or a repeated key that the check does not read is a problem, and so is a continued
+line. Every element of the `PATH` must be an absolute directory that the settings template keeps
+out of a session's writes, or a system directory; an empty element, the working directory, is a
+problem. Its cases also apply a mutant to the rendered templates, such as a removed restart, an
+extra trigger or a session-writable directory on the `PATH`, and expect a problem, and check that
+`render` gives `autocommit_branch` the value `main` when the profile has no such key. [Jobs and configuration](other.md) describes the units.
 
 ## `sources.py`
 
