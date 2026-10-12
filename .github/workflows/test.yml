@@ -55,6 +55,12 @@ jobs:
           done
           systemd-analyze --version | head -n 1
           systemd-analyze verify --user "$units"/*
+          # The canary: without the program that kaimon.service starts, verify must fail.
+          rm "$HOME/.julia/bin/kaimon"
+          if systemd-analyze verify --user "$units/kaimon.service"; then
+            echo "canary: systemd-analyze verify passed a unit whose ExecStart does not exist"
+            exit 1
+          fi
 
   lint:
     runs-on: ubuntu-latest
