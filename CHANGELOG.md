@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- **OpenCode loads `opencode-anthropic-login-via-cli` again, pinned to 1.7.0.** OpenCode v2
+  refused 1.6.1 at every start ("Plugin must export a default definition with an id and an effect
+  or setup function"), so the `anthropic` provider had no login. The adapter named `@latest`, but
+  OpenCode keeps the version it fetched first under that name and never fetched 1.7.0, the first
+  release with a v2 export. The pin also means a later release loads only after a review and a
+  new pin.
+
 - **The deny lists refuse the login stores of OpenCode and oh-my-pi.** A sandboxed Claude Code
   session could read OpenCode's `~/.local/share/opencode/auth.json` (every provider key that
   `opencode auth login` stores) and `mcp-auth.json`, and oh-my-pi's `~/.omp/agent/agent.db` with

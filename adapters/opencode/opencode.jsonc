@@ -1,7 +1,7 @@
 {
   "$schema": "https://opencode.ai/config.json",
 
-  "plugin": ["opencode-anthropic-login-via-cli@latest"],
+  "plugin": ["opencode-anthropic-login-via-cli@1.7.0"],
 
   // Option A, the default: the hosted model is primary. Option B is the `local` agent,
   // reached with `opencode --agent local`. See agents/ and README.md.
