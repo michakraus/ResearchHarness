@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+- **No session changes RTK's configuration, its user filters or its filter trust store.** RTK
+  keeps the SHA-256 hashes of the filter files that it may apply in `trusted_filters.json`, in its
+  data directory, which a session must write for the tracking database. A session could write a
+  project's `.rtk/filters.toml` and trust it there, and a filter can rewrite what every later
+  agent sees. The settings template now denies that file to the `Edit` tool and in the sandbox's
+  `denyWrite`, in both of RTK's data directories (`~/Library/Application Support/rtk` on macOS,
+  `~/.local/share/rtk` on Linux). On macOS, where the same directory holds `config.toml` and
+  `filters.toml`, it denies those two files too; on Linux they are under `~/.config`, which is
+  denied already. Only `rtk trust`, `rtk untrust`, `rtk init` and `rtk config` write these files,
+  and the user runs them outside the sandbox. `harness permissions --apply` carries the four
+  denies into OpenCode's list.
+
 - **No session writes a `systemd --user` unit or juliaup's own directory, and RTK can write its
   data on Linux.** The settings template denies `~/.config/systemd/user` and
   `~/.local/share/systemd`, the two directories from which `systemd --user` loads a user's units,
