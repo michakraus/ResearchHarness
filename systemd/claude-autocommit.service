@@ -1,0 +1,19 @@
+# Commits the plan files and project memories of ~/.claude, the Linux twin of
+# launchagents/claude-autocommit.plist. claude-autocommit.timer starts it; it has no [Install]
+# section of its own. Its output goes to the journal.
+
+[Unit]
+Description=Commit the plans and memories of ~/.claude
+
+[Service]
+Type=oneshot
+# The installed copy, which a session cannot write.
+ExecStart={home}/.local/bin/claude-autocommit
+Nice=5
+IOSchedulingClass=idle
+# PATH holds no directory a session can write. A credential prompt has no terminal to answer it
+# and would hang the job, so GIT_TERMINAL_PROMPT=0 fails the push instead; the commit is safe
+# locally. CLAUDE_AUTOCOMMIT_BRANCH is the branch of origin that receives the commits.
+Environment=PATH=/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin
+Environment=GIT_TERMINAL_PROMPT=0
+Environment=CLAUDE_AUTOCOMMIT_BRANCH={autocommit_branch}

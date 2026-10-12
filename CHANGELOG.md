@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+- **The three launch agents have `systemd --user` units for Linux, and `claude-autocommit` pushes
+  to a branch per machine.** `systemd/` holds `kaimon.service`, `julia-update.service` with
+  `julia-update.timer`, and `claude-autocommit.service` with `claude-autocommit.timer`, templates
+  of the profile like the plists (`harness render systemd/<name>`). Each runs the program, the
+  arguments, the environment and the `PATH` of its plist, on the same schedule; the server restarts
+  on exit, and both timers are `Persistent=true`. The new module `lib/harness/units.py` checks
+  this in `harness test`, with the example profile, and checks that every directory of a `PATH`
+  is one that the settings template keeps out of a session's writes or a system directory. CI's
+  new `systemd` job renders each unit on `ubuntu-latest` and runs `systemd-analyze verify --user`
+  on it. `claude-autocommit` pushes the local `main` to `$CLAUDE_AUTOCOMMIT_BRANCH`, `main` when
+  unset; the plist and the unit set it from the new optional profile key `autocommit_branch`,
+  which `harness render` fills with `main` when the profile has none. `harness leaks` and CI's
+  gitleaks step now also render `claude-autocommit.plist` and the five units. Installing a unit
+  stays a step by hand.
+
 - **OpenCode loads `opencode-anthropic-login-via-cli` again, pinned to 1.7.0.** OpenCode v2
   refused 1.6.1 at every start ("Plugin must export a default definition with an id and an effect
   or setup function"), so the `anthropic` provider had no login. The adapter named `@latest`, but

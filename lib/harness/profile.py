@@ -16,7 +16,8 @@ repeats what holds it, once per item in profile order, and removes it for an emp
 parsed JSON list (`render_data`) the string element, in text (`render_text`) the line, which must
 then end in a comma. More than one list placeholder in one element or line is an error, and so is
 a placeholder that the profile does not define: a template that renders with a hole in it is a
-grant or a deny that silently matches nothing.
+grant or a deny that silently matches nothing. The one exception is a key of DEFAULTS, which
+`render` fills with its default where the profile has none: `autocommit_branch` renders `main`.
 
 `leaks` also searches the repository, not the renders, for a name of the research tree: every
 directory below a `repository_roots` entry, read when it runs, and every `org` entry. It matches
@@ -55,7 +56,16 @@ TEMPLATES = [
     "settings/settings.proposal.json",
     "launchagents/kaimon.plist",
     "launchagents/julia-update.plist",
+    "launchagents/claude-autocommit.plist",
+    "systemd/kaimon.service",
+    "systemd/julia-update.service",
+    "systemd/julia-update.timer",
+    "systemd/claude-autocommit.service",
+    "systemd/claude-autocommit.timer",
 ]
+
+# The keys that `render` gives a value when the profile has none.
+DEFAULTS = {"autocommit_branch": "main"}
 
 
 def load(path=None):
@@ -321,7 +331,7 @@ def render_file(path, profile):
 
 
 def cmd_render(args):
-    sys.stdout.write(render_file(args.template, load(args.profile)))
+    sys.stdout.write(render_file(args.template, DEFAULTS | load(args.profile)))
     return 0
 
 
