@@ -9,8 +9,8 @@
   the four paths in `permissions.deny` (`Read`), in `sandbox.filesystem.denyRead` and in
   `sandbox.credentials.files`, each directly after the `~/.omp/agent/.env` entry. The OpenCode
   `opencode.jsonc` and `plugins/guard-paths.json`, and with them the oh-my-pi
-  `extensions/guard-paths.json`, add the two `agent.db` paths; they already deny all of
-  `~/.local/share/opencode/`. Each frontend still reads its own store, because the denies act on an
+  `extensions/guard-paths.json`, add the four paths, as `harness permissions` derives them from
+  the template; they already denied all of `~/.local/share/opencode/`. Each frontend still reads its own store, because the denies act on an
   agent's tools and commands, not on the frontend's process.
 
 - **`scripts/base-tree.jl` puts the tree of one commit into a directory, with no permission

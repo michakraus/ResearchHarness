@@ -15,6 +15,8 @@
     "{home}/.omp/agent/.env",
     "{home}/.omp/agent/agent.db",
     "{home}/.omp/agent/agent.db-wal",
+    "{home}/.local/share/opencode/auth.json",
+    "{home}/.local/share/opencode/mcp-auth.json",
     "**/.env",
     "**/.env.*",
     "**/secrets/**",

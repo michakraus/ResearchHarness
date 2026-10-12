@@ -115,6 +115,8 @@
       "{home}/.omp/agent/.env": "deny",
       "{home}/.omp/agent/agent.db": "deny",
       "{home}/.omp/agent/agent.db-wal": "deny",
+      "{home}/.local/share/opencode/auth.json": "deny",
+      "{home}/.local/share/opencode/mcp-auth.json": "deny",
       "**/.env": "deny",
       "**/.env.*": "deny",
       "**/secrets/**": "deny",
