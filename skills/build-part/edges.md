@@ -66,10 +66,19 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
 - a scale of `1e±8`, and a scale that is **not a power of 2** — a power of 2 is exact and hides
   round-off
 - the other precision: `Float32` and `Float64`; `Float16` where a type parameter admits it
+- a mutant that no test can kill in one of the two precisions, because the only value of the other
+  type that the test passes there converts exactly — a seed `c = Δ` in `Float64` whose only off-type
+  value is `1.0f0`. Name the mutant as caught in the precision that kills it, and say why the other
+  cannot (M1b verify 3, *Simplify the optimiser package and the learning package for 0.9*)
 - a first trial step of `Inf`, or above the caller's ceiling; an invalid ceiling
 - an empty, a one-element or a zero-width case; the edge of a grid
 - a tie that round-off decides, for example a safeguard of the form `w <= wprev / 2`
 - a square or a product of unscaled quantities, which overflows at extreme scales
+- one scale formed as a scalar and applied to the whole gradient: `1/(‖R‖‖Y‖)` is subnormal in
+  `Float32` once its product passes `1/floatmin(Float32)` and is zero at an extreme `Y` scale, where
+  dividing each gradient entry by the two norms on its own leaves every entry finite. Divide per
+  entry, and measure the scalar's own threshold before a comment claims it holds (M1b round 1b,
+  *Simplify the optimiser package and the learning package for 0.9*)
 - a counter or a budget that a relative stop cannot end, such as a bracket whose lower end is 0
 - a status that hides a failure, such as *stalled* for a large increase
 - a minimiser near an end of the bracket, where a safeguard on the interpolated step falls back to
@@ -115,6 +124,11 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   `gradient(::BFGSState)`)
 - a cotangent of the leaf's own structured type, and one of another precision, where the hook asks
   for a leaf of the same type (G7, K17 and K20)
+- a pullback seeded with the other float type — `back(one(value))` with a `Float64` seed on a
+  `Float32` network: one pullback hands back the seed's type at every leaf and the other converts it,
+  so the two disagree where the data does not. Decide the seed's conversion per pullback and test
+  each precision with a seed of the other type (M1b round 1a, *Simplify the optimiser package and
+  the learning package for 0.9*)
 - a device row checked only against a host twin that runs the same code, so wrong arithmetic passes
   both; and an equality over several storage blocks tested only by changing every block at once
   (G7, verify 2)
