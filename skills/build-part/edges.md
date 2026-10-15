@@ -121,6 +121,9 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
 - the precision of a device: Metal has `Float32` only, and a `Float64` array or scalar raises an
   error. Query `KernelAbstractions.supports_float64(backend)`; do not hardcode a default. Metal has
   no `qr` and no `svd` on an `MtlArray` (the solver package's capability spike)
+- a non-`isbits` element type, such as `BigFloat`, on a path that builds an `MMatrix`: StaticArrays
+  refuses `setindex!` on it, so an R1 kernel written for `Float32` and `Float64` has no `BigFloat`
+  method (I round 1a, *Design the solver package*)
 - the backend of a result, not only that it runs: `zero(Y)` of a device point (G5, *Simplify GO and
   GML for 0.9*)
 - a deleted method of a dependency's function, whose generic fallback then answers with another
