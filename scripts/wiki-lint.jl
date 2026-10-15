@@ -1,9 +1,10 @@
 #!/usr/bin/env julia
 #
 # Structural lint for the Markdown that carries claims and cross references: the two vaults
-# `Knowledge/` and `Environment/`, and the two reference trees `Tasks/` and `Bibliography/`.
+# `Knowledge/` and `Environment/`, and the three reference trees `Tasks/`, `Bibliography/` and
+# `Library/`: five trees, the `SCOPES` below.
 #
-#     julia --startup-file=no wiki-lint.jl            # all four
+#     julia --startup-file=no wiki-lint.jl            # all five
 #     julia --startup-file=no wiki-lint.jl Knowledge  # one of them
 #     julia --startup-file=no wiki-lint.jl --strict   # warnings fail too
 #     julia --startup-file=no wiki-lint.jl --quiet    # findings and totals only

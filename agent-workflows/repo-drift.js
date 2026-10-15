@@ -12,12 +12,14 @@ export const meta = {
 //   Workflow({scriptPath: '<home>/Research/Harness/agent-workflows/repo-drift.js',
 //             args: ['<home>/Research/Packages/Example', ...]})
 //
-// The installer that generates these workflows skips Experiments/, so include repositories from
-// there deliberately — that is where drift is expected and where verify-workflows.jl does not look.
+// `harness workflows` (lib/harness/githooks.py) installs these workflows into the repositories of
+// Packages/ and Experiments/ alike, and TagBot.yml into those of Packages/ only. An experiment
+// therefore has no TagBot.yml, and the audit below reports it as missing there: that row is
+// expected.
 //
 // Read-only by construction: every prompt forbids editing, and no agent is given a worktree.
-// Grade the result against githooks/verify-workflows.jl rather than trusting it — see
-// ../Dynamic-Workflows.md, worked example 1.
+// Grade the result against githooks/verify-workflows.jl rather than trusting it — see "Grading a
+// script" in README.md.
 
 const DRIFT = {
   type: 'object',

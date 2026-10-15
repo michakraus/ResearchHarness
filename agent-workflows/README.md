@@ -1,7 +1,6 @@
 # Workflow scripts
 
-Canonical, version-controlled `Workflow` scripts. The tutorial is `../Dynamic-Workflows.md`; this
-directory is the code.
+Canonical, version-controlled `Workflow` scripts of Claude Code.
 
 ## Why they live here and not in `~/.claude/workflows/`
 
@@ -49,22 +48,14 @@ script composes prompts for sub-agents and is therefore instruction-bearing code
 ## Grading a script
 
 A workflow's output is a claim, and it gets checked like any other. `repo-drift.js` has ground
-truth: `../githooks/verify-workflows.jl`. Run both and compare, including the case
-`verify-workflows.jl` is known to miss — an experiment repository carried a pre-unification `TagBot.yml`,
-**removed 2026-09-07**, so this particular case no longer exists to compare on. Pick another
-before quoting this paragraph as a live test.
+truth: `../githooks/verify-workflows.jl`. Run both and compare.
 
-**The reason given here was wrong, and it propagated.** This said the file survived "because the
-installer skips `Experiments/`". It does not: `../githooks/install-workflows.sh:80` iterates
-`Packages/*/` and `Experiments/*/` alike and gates `TagBot.yml` at `:94` on `kind = package`, which
-its own header at `:28` states outright. The file survived because `install_file` only ever
-*copies* — nothing removes a file the template set no longer covers — and
-`verify-workflows.jl:146` skips the TagBot comparison for experiments rather than asserting its
-absence. `Experiments/CLAUDE.md:21-25` had it right all along.
-
-Caught by `julia-branch-verifier` on the branch that did the removal, after this sentence had
-already been copied into that repository's changelog as the stated cause. Worth noting as a case
-where the pre-PR gate earned its keep on a diff with no executable line in it.
+`harness workflows` (`../lib/harness/githooks.py`) iterates the repositories of `Packages/` and
+`Experiments/` alike, and adds `TagBot.yml` only for a package. It copies the templates and
+removes only the files of its `RETIRED` list, so a `TagBot.yml` left in an experiment stays there.
+`verify-workflows.jl` asserts that no experiment holds a `TagBot.yml`, and reports such a file.
+`repo-drift.js` compares `TagBot.yml` in every repository, so it reports the file as missing in
+an experiment: that row is expected.
 
 A script whose output has never been compared against something independent is an unverified script,
 which is the same standard this tree applies to a mathematical claim.

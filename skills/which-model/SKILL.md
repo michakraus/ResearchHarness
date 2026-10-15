@@ -1,6 +1,6 @@
 ---
 name: which-model
-description: "Probe: report which model runs a typed slash command whose frontmatter names haiku. Only for the user to type as /which-model."
+description: "Probe: report which model runs a typed slash command whose frontmatter names the tier small. Only for the user to type as /which-model."
 model: small
 disable-model-invocation: true
 ---
