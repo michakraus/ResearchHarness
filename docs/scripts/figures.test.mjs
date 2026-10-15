@@ -2,8 +2,12 @@
 // an animated figure. `npm run docs:check` runs them first.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { existsSync, readFileSync, readdirSync } from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import {
-  animationProblems, figureWidth, figures, geometryProblems, labelProblems, layerProblems, meet, points, widthProblem, xmlProblems
+  animationProblems, columnProblems, figureWidth, figures, geometryProblems, labelProblems, layerProblems, meet, points,
+  widthProblem, xmlProblems
 } from './figures.mjs'
 
 const box = (name, x, y, w, h) => `<rect data-box="${name}" x="${x}" y="${y}" width="${w}" height="${h}"/>`
@@ -121,6 +125,40 @@ test('the boxes of each column of a graph that runs to the right share their wid
     edge('a', 'b', 'M100 20L200 20') + edge('a', 'c', 'M100 20L150 20L150 80L200 80')
   assert.deepEqual(layerProblems(one(right(120))), [])
   assert.deepEqual(layerProblems(one(right(100))), ['the column of b, c: the boxes have the widths 100, 120, not one width'])
+})
+
+// A card and a panel as FigCard and FigPanel draw them.
+const card = (name, x, y, w, h) => `<rect class="fig-card-box" data-box="${name}" x="${x}" y="${y}" width="${w}" height="${h}"/>`
+const panel = (name, x, y, w, h) => `<rect class="fig-panel-box" data-box="${name}" x="${x}" y="${y}" width="${w}" height="${h}"/>`
+
+test('the cards of each column of a walk-through share their width; a panel and a box with no card class do not count', () => {
+  // The column of a and b, the column of c and d inside the panel g, which is wider than its cards.
+  const walk = (w) => card('a', 0, 0, 100, 40) + card('b', 0, 80, w, 40) + panel('g', 180, 0, 160, 140) +
+    card('c', 200, 40, 120, 40) + card('d', 200, 90, 120, 40) + box('legend', 0, 200, 400, 20)
+  assert.deepEqual(columnProblems(one(walk(100))), [])
+  assert.deepEqual(columnProblems(one(walk(130))), ['the column of a, b: the cards have the widths 100, 130, not one width'])
+})
+
+// The walk-throughs of the built site, when docs/build/ holds one: each passes, and each with one
+// card widened is refused.
+const BUILD = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'build')
+const pages = (dir) => readdirSync(dir, { withFileTypes: true }).flatMap((e) =>
+  e.isDirectory() ? pages(path.join(dir, e.name)) : e.name.endsWith('.html') ? [path.join(dir, e.name)] : [])
+const walks = existsSync(BUILD)
+  ? pages(BUILD).flatMap((p) => figures(readFileSync(p, 'utf8'))).filter((f) => /\bclass="[^"]*\bwt\b/.test(f.head))
+  : []
+
+test('the walk-throughs of the built site have one card width per column, and a widened card is refused', { skip: walks.length === 0 && 'no built site in docs/build/' }, () => {
+  assert.ok(walks.length >= 4, `at least four walk-throughs, found ${walks.length}`)
+  for (const f of walks) {
+    assert.deepEqual(columnProblems(f), [], f.title)
+    // A card that shares its column with another card.
+    const cards = f.boxes.filter((b) => b.card)
+    const widened = cards.find((b) => cards.some((c) => c !== b && c.x < b.x + b.w && b.x < c.x + c.w))
+    assert.ok(widened, `${f.title} has a column of two cards`)
+    const changed = { ...f, boxes: f.boxes.map((b) => (b === widened ? { ...b, w: b.w + 10 } : b)) }
+    assert.equal(columnProblems(changed).length, 1, `${f.title}: the card ${widened.name} widened by 10 px`)
+  }
 })
 
 test('a graph whose edges leave their boxes on different sides has no direction', () => {

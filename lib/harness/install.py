@@ -344,7 +344,8 @@ def load_cases(check, tmp):
     """An adapter that fails to load, or that lacks a member of the interface, makes `harness
     install --apply` exit 2 with its path, and its line where it has one, before any frontend
     writes; no adapter is skipped. The adapters load from a copy below `tmp`, with
-    `frontends.REPO` set to it in the process of the install."""
+    `frontends.REPO` set to it in the process of the install. Then `frontends.load()` twice in this
+    process on an adapter that lacks a member."""
     from .install_cases import Scratch
 
     scratch = Scratch(check, tmp / "homes")
@@ -378,6 +379,31 @@ def load_cases(check, tmp):
               and after == before,
               f"an adapter with {label} exits 2 with its path{' and line' * (name != middle)}, and nothing is "
               f"written: {p.returncode}, {len(after) - len(before)} new paths, {p.stderr.strip()[-200:]!r}")
+
+    # `frontends.load()` twice in one process, on a scratch adapter that lacks a member: each call
+    # raises, and the adapter is not left in `sys.modules`, so the second call loads it again.
+    from unittest import mock
+
+    repo = tmp / "repo-twice"
+    for frontend in frontends.FRONTENDS:
+        (repo / "adapters" / frontend).mkdir(parents=True)
+        text = (REPO / "adapters" / frontend / "adapter.py").read_text()
+        (repo / "adapters" / frontend / "adapter.py").write_text(text + "del plan\n" * (frontend == middle))
+    key = f"harness_adapter_{middle}"
+    results = []
+    with mock.patch.dict(sys.modules), mock.patch.object(frontends, "REPO", repo):
+        for name in frontends.FRONTENDS:
+            sys.modules.pop(f"harness_adapter_{name}", None)
+        for _ in range(2):
+            try:
+                frontends.load()
+                raised = None
+            except HarnessError as e:
+                raised = str(e)
+            results.append((raised, key in sys.modules))
+    check(all(raised is not None and "defines no plan" in raised and not held for raised, held in results),
+          f"frontends.load() twice on an adapter with no `plan`: HarnessError both times, and {key} is absent "
+          f"from sys.modules after each: {results}")
 
 
 def register(sub):

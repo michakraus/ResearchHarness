@@ -16,6 +16,7 @@
 //   and no two labels overlap (scripts/figures.mjs);
 // - each call graph but Every spawn is at most 765 px wide, and the boxes of each of its layers
 //   have one width and share one edge line;
+// - in each walk-through, the cards of one column, the cards whose x spans overlap, have one width;
 // - in the flow figure, the group harness install holds a card for each of its steps, in order,
 //   and no box is harness settings install;
 // - every colour of the style module of the figures has a value for the dark theme in the built
@@ -25,7 +26,7 @@
 import { readFileSync, readdirSync, existsSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { animationProblems, figures as figuresOf, geometryProblems, labelProblems, layerProblems, widthProblem } from './figures.mjs'
+import { animationProblems, columnProblems, figures as figuresOf, geometryProblems, labelProblems, layerProblems, widthProblem } from './figures.mjs'
 
 const DOCS = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const BUILD = path.join(DOCS, 'build')
@@ -193,10 +194,12 @@ for (const [page, text] of built) {
     for (const p of geometryProblems(f)) problem(`${name}: ${p}`)
     for (const p of labelProblems(f)) problem(`${name}: ${p}`)
     if (WALKTHROUGHS.includes(f.title) && !animated(f)) problem(`${name} is a walk-through with no animation`)
-    // A walk-through takes the width rule of the call graphs, with no exemption.
+    // A walk-through takes the width rule of the call graphs, with no exemption, and the cards of
+    // each of its columns have one width.
     if (WALKTHROUGHS.includes(f.title)) {
       const wide = widthProblem(f, MAX_GRAPH_WIDTH)
       if (wide) problem(`${name} ${wide}`)
+      for (const p of columnProblems(f)) problem(`${name}: ${p}`)
     }
     if (animated(f)) {
       walkthroughs++

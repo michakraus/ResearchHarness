@@ -18,6 +18,9 @@ a list, for `trust`.
 
 For each verb of `APPLY`, `--apply` and then the dry run again: the second run exits 0.
 
+A verb's run that takes more than `TIMEOUT` seconds exits `timeout`, a wrong case; one case runs the
+runner on a child that outlives a timeout of 1 s.
+
 Not swept: `format` runs Julia over the tree, `ci-protection` needs `gh` with a login, and
 `skill-triggers` runs its dry run and its `--apply` in its own cases.
 `install --apply` instantiates a Julia environment, and `push-all --apply` pushes.
@@ -29,6 +32,7 @@ import pathlib
 import subprocess
 import sys
 import tempfile
+import time
 
 from . import REPO
 from .profile import DUMMY
@@ -123,6 +127,19 @@ def digest(root):
     return h.hexdigest()
 
 
+# The seconds that one verb's run of the sweep may take.
+TIMEOUT = 120
+
+
+def run(command, env, cwd, timeout=TIMEOUT):
+    """One run of `command`; a run that outlives `timeout` exits `timeout`, which no check of the
+    sweep accepts: it is in neither (0, 1) nor 2."""
+    try:
+        return subprocess.run(command, env=env, cwd=cwd, capture_output=True, text=True, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        return subprocess.CompletedProcess(command, "timeout", "", "")
+
+
 def selftest():
     """The sweep's cases: (number of cases, number wrong)."""
     total = wrong = 0
@@ -142,10 +159,17 @@ def selftest():
 
         def harness(args):
             """One verb's run; a verb that hangs exits `timeout`, which is a wrong case."""
-            try:
-                return subprocess.run(HARNESS + args, env=env, cwd=tmp, capture_output=True, text=True, timeout=120)
-            except subprocess.TimeoutExpired:
-                return subprocess.CompletedProcess(args, "timeout", "", "")
+            return run(HARNESS + args, env, tmp)
+
+        # The runner on a child that outlives a timeout of 1 s: the run ends at the timeout and
+        # exits `timeout`, which the dry-run check, the precondition check and the --apply check
+        # each count as wrong.
+        start = time.monotonic()
+        p = run([sys.executable, "-c", "import time; time.sleep(30)"], env, tmp, timeout=1)
+        took = time.monotonic() - start
+        check(p.returncode == "timeout" and p.returncode not in (0, 1, 2) and took < 15,
+              f"a child that outlives the timeout exits {p.returncode!r} after {took:.1f} s, which no check "
+              f"accepts; the sweep's own timeout is {TIMEOUT} s")
 
         for verb, _ in VERBS:
             before = digest(tmp)

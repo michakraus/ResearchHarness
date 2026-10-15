@@ -112,6 +112,10 @@ class Scratch:
 
 
 COUNT_LINE = re.compile(r"^\d+ change\(s\) (made|to make)\.$", re.M)
+# The tools on the PATH of the precondition cases with no `julia`. Measured: the dry run and --apply
+# of these cases start no tool from the PATH, and pass with an empty directory. git and sh are linked
+# all the same, so that a later change of the install that starts one of them still finds it.
+NO_JULIA_TOOLS = ["git", "sh"]
 
 
 def precondition_cases(check, tmp):
@@ -129,9 +133,18 @@ def precondition_cases(check, tmp):
          f"with no ~/.claude/skills/, the dry run exits 1 with the count line N change(s) to make.: "
          f"{code}, {found}, {scratch.tail(text)!r}")
 
-    # A PATH with no `julia`: the directories of this one without it, and one with a `julia` that
-    # cannot be executed, or one that exits 1.
-    path = [d for d in os.environ.get("PATH", "").split(os.pathsep) if d and not shutil.which("julia", path=d)]
+    # A PATH with no `julia`: one scratch directory of links to the tools of NO_JULIA_TOOLS, so that a
+    # `julia` beside them, as in /usr/bin, takes no tool away; then one with a `julia` that cannot be
+    # executed, or one that exits 1.
+    tools = tmp / "preconditions" / "tools"
+    tools.mkdir(parents=True)
+    missing = [tool for tool in NO_JULIA_TOOLS if shutil.which(tool) is None]
+    if missing:
+        check(False, f"the precondition cases with no julia need {', '.join(missing)} on the PATH; they do not run")
+        return
+    for tool in NO_JULIA_TOOLS:
+        (tools / tool).symlink_to(shutil.which(tool))
+    path = [str(tools)]
     stubs = tmp / "preconditions" / "bin"
     stubs.mkdir()
     base, _, _ = scratch.fresh()
@@ -294,9 +307,9 @@ def target_cases(check, tmp):
 def setup_guard_cases(check, tmp):
     """The groups of cases that edit or read the files of a setup install — `layer_cases` of the
     Claude Code adapter, `install_cases` of the OpenCode adapter, `omp_cases` of the oh-my-pi
-    adapter — each run with every `harness install` failing: each reports the failed setup install
-    as one wrong case with the exit status and the last line, raises nothing, and runs no case
-    after it."""
+    adapter — and `drift_cases` of the hook probe, each run with every `harness install` failing:
+    each reports the failed setup install as one wrong case with the exit status and the last line,
+    raises nothing, and runs no case after it."""
     from unittest import mock
 
     from . import frontends
@@ -328,6 +341,31 @@ def setup_guard_cases(check, tmp):
               f"{name}: a failed setup install is one wrong case with its exit status and last line, and the "
               f"group stops there: raised {raised}, {len(setup)} such line(s), "
               f"{len(labels) - 1 - (setup[0] if setup else -1)} case(s) after it")
+
+    # The `[inst-drif]` group of the hook probe, hooks/probe.py, loaded in this process, with its
+    # install failing.
+    import contextlib
+    import importlib.util
+    import io
+
+    spec = importlib.util.spec_from_file_location("harness_probe", REPO / "hooks" / "probe.py")
+    probe = importlib.util.module_from_spec(spec)
+    out = io.StringIO()
+    try:
+        spec.loader.exec_module(probe)
+        with contextlib.redirect_stdout(out):
+            result = probe.drift_cases(lambda base, env: (2, f"some output\n{failure}\n"))
+        raised = None
+    except Exception as e:  # the defect that the case looks for: reported
+        result, raised = None, f"{type(e).__name__}: {e}"
+    finally:
+        if hasattr(probe, "FIXTURE"):
+            probe.FIXTURE.cleanup()
+    lines = [line for line in out.getvalue().splitlines() if "[inst-drif]" in line]
+    check(raised is None and result == (1, 1) and len(lines) == 1 and lines[0].startswith("BAD")
+          and "exits 2" in lines[0] and failure in lines[0],
+          f"probe [inst-drif]: a failed setup install is one wrong case with its exit status and last line, and "
+          f"the group stops there: raised {raised}, {result}, {lines}")
 
 
 def restart_cases(check, tmp):

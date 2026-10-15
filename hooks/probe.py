@@ -549,6 +549,8 @@ OMP_PATH_CASES = [
     # The write tool removes a hashline header, `[path]` or `[path#TAG]`, from its path.
     ("write", {"path": "[~/.omp/agent/config.yml]", "content": "x"}, "~/Research", "block"),
     ("write", {"path": "[~/.claude/hooks/no-shell-file-write.py#1A2B]", "content": "x"}, "~/Research", "block"),
+    # An exact-file deny matches only the path without the tag, so this case needs the tag removed.
+    ("write", {"path": "[~/.zshrc#1A2B]", "content": "x"}, "~/Research", "block"),
     ("write", {"path": "[Notes/plan.md#1A2B]", "content": "x"}, "~/Research", "pass"),
     # The other edit modes: a patch's `rename`, and the paths of a hashline or apply_patch `input`.
     ("edit", {"path": "Notes/plan.md", "edits": [{"op": "update", "rename": "~/.config/x.md"}]}, "~/Research",
@@ -1129,12 +1131,26 @@ def drift(env, payload="{}"):
         else ("unreadable output", proc.stdout[-200:])
 
 
-def drift_cases():
+class SetupFailed(Exception):
+    """A `harness install --apply` of the drift cases that exits with another status than 0."""
+
+
+def install(base, env):
+    """`harness install --apply` on the drift fixture below `base`: (exit status, output)."""
+    p = subprocess.run([sys.executable, REPO + "/bin/harness", "--profile", base + "/profile.toml", "--models",
+                        REPO + "/examples/models.toml", "install", "--apply"],
+                       capture_output=True, text=True, env=env, timeout=120)
+    return p.returncode, p.stdout + p.stderr
+
+
+def drift_cases(install=install):
     """The cases of `install-drift.py`: (number of cases, number wrong).
 
-    `harness install --apply` installs into a fixture `HOME`, from this repository and from tree
-    instructions in the fixture. Each case changes the fixture and expects the hook to be quiet,
-    or to warn with a text that names what it found."""
+    `install` runs `harness install --apply` into a fixture `HOME`, from this repository and from
+    tree instructions in the fixture. Each case changes the fixture and expects the hook to be
+    quiet, or to warn with a text that names what it found. The cases read the files that the
+    install writes, so a failed install is one wrong case with its exit status and last line, and
+    the cases after it do not run."""
     base = os.path.join(FIXTURE.name, "drift")
     home, tree = base + "/home", base + "/Agents"
     claude = home + "/.claude"
@@ -1157,12 +1173,10 @@ def drift_cases():
            "PI_CODING_AGENT_DIR": base + "/omp"}
 
     def apply():
-        """`harness install --apply` on the fixture; an exit other than 0 raises."""
-        p = subprocess.run([sys.executable, REPO + "/bin/harness", "--profile", base + "/profile.toml", "--models",
-                            REPO + "/examples/models.toml", "install", "--apply"],
-                           capture_output=True, text=True, env=env, timeout=120)
-        if p.returncode != 0:
-            raise RuntimeError(f"harness install --apply exits {p.returncode}: {(p.stdout + p.stderr)[-200:]}")
+        """`harness install --apply` on the fixture; an exit other than 0 raises SetupFailed."""
+        code, text = install(base, env)
+        if code != 0:
+            raise SetupFailed(f"harness install --apply exits {code}: {(text.strip().splitlines() or ['no output'])[-1]}")
 
     def edit(path, text="an edit that is not installed\n"):
         with open(path, "a") as f:
@@ -1227,6 +1241,10 @@ def drift_cases():
             if change is not None:
                 change()
             got, message = drift(env, "not json at all" if label.startswith("a payload") else "{}")
+        except SetupFailed as e:  # the cases after it would read files that the install did not write
+            total, wrong = total + 1, wrong + 1
+            print(f"BAD exp {expected} got {e}  [inst-drif]  {label}; the cases after it do not run")
+            break
         except Exception as e:  # a case that crashes is wrong, and the next case still runs
             got, message = f"raised {type(e).__name__}", str(e)
         ok = got == expected and text in message

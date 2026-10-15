@@ -654,6 +654,21 @@ def commit_cases():
             ok = got == status and all(line in out.getvalue().splitlines() for line in lines)
             wrong += not ok
             print(f"{'ok ' if ok else 'BAD'}  leaks: {label} -> exit {got}")
+        # The templates that `harness leaks` renders: TEMPLATES and each adapter's. The leak string is
+        # the suffix of a rendered template's name, so each template it renders is one hit on line 0.
+        (pathlib.Path(tmp) / "profile-templates.toml").write_text(
+            f"leak = [\" (rendered with the dummy)\"]\norg = []\n"
+            f"repository_roots = [{json.dumps(str(pathlib.Path(tmp) / 'roots'))}]\n")
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            cmd_leaks(argparse.Namespace(profile=pathlib.Path(tmp) / "profile-templates.toml", commits=None), repo)
+        rendered = {line.strip().rsplit(" (rendered with the dummy):0: ", 1)[0]
+                    for line in out.getvalue().splitlines() if " (rendered with the dummy):0: " in line}
+        adapters = {t for adapter in frontends.load() for t in adapter.TEMPLATES}
+        ok = bool(adapters - set(TEMPLATES)) and rendered == set(TEMPLATES) | adapters
+        wrong += not ok
+        print(f"{'ok ' if ok else 'BAD'}  leaks: renders TEMPLATES and each adapter's TEMPLATES -> "
+              f"{len(rendered)} templates, missing {sorted((set(TEMPLATES) | adapters) - rendered)}")
         # The limits that docs/src/security.md states: a leak only in a commit's author name, only in
         # the message of an annotated tag on a listed commit, or only in a note on one, is no hit; the
         # same leak in a listed commit's message is one, so the fixture can see it. Empty commits.
@@ -682,7 +697,7 @@ def commit_cases():
             ok = "LEAK" in shown and status == min(expected, 1) and summary.endswith(f", {expected} hits")
             wrong += not ok
             print(f"{'ok ' if ok else 'BAD'}  leaks --commits: {label} -> exit {status}, {summary.strip()!r}")
-    return len(cases) + 3 + len(message_cases) + len(runs) + len(limits), wrong
+    return len(cases) + 3 + len(message_cases) + len(runs) + 1 + len(limits), wrong
 
 
 def selftest():
