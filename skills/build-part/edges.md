@@ -58,6 +58,11 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
 - a settings change predicted to leave Claude Code's dialogs as they are: a `git -C` command runs
   sandboxed and is approved unless an `ask` or `deny` names it, so narrowing a `git -C` ask removes
   dialogs whatever `allow` holds (L, round sixty-four P2, *Unify the agent configuration*)
+- a check that reads a field the tool fills from several backends, or that the host's own
+  configuration reshapes: `git`'s `%G?` is `G` for a trusted OpenPGP or X.509 signature as well as
+  an SSH one, and `log.showSignature = true` puts text before the format. Pin the backend and the
+  options on the call (`-c gpg.openpgp.program=false`, `--no-show-signature`), and test each
+  backend the host can hold (E1 round 1, *Synchronise the machines with chezmoi*)
 
 ## A numerical method
 
