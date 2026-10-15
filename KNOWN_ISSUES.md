@@ -395,3 +395,16 @@
   `install_cases.target_cases` covers the escape.
 - kind: not verified
 - found: 2026-10-15, the critic of publish part P1
+
+### K70 · `install.selftest()` prints a stray line `x.md  INSTALL` with no `ok` or `BAD` prefix.
+
+- location: `lib/harness/install_cases.py:287`
+- evidence: `python3 -c "from harness import install; install.selftest()"` from `lib/` prints
+  `x.md                               INSTALL` just before the case "an OSError in the write is a
+  HarnessError that names the target", on `699ad23` too. That case of `target_cases` calls
+  `install.install_file(True, b"x\n", target, "x.md")` in-process, and `install_file` prints its
+  plan line (`lib/harness/install.py:82`) before the write fails; the case does not capture
+  stdout. The line is not a case and changes no count, but it reads as install output inside the
+  case list.
+- kind: defect
+- found: 2026-10-16, the builder of publish part P3
