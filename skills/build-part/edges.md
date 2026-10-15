@@ -252,6 +252,9 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   longer isolates the check it names, and only another case still covers that check. After a
   fixture change, read each mutation case's output for the one line it expects (G4, *Faster test
   suites for the learning package and the optimiser package*)
+- a case for "the checks count this result as wrong" that restates the accepted values in the
+  test: a check that starts to accept the result survives; pass the result through the checks'
+  own code (P3 round 1, *Publish the harness as ResearchHarness*)
 
 ## A step that runs a user's script
 
