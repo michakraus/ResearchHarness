@@ -979,6 +979,11 @@ def install_cases(check, tmp):
     applied, text2 = run(base, "--apply")
     again, text3 = run(base)
     installed = base / "opencode" / "AGENTS.md"
+    # The cases below read the files that this install writes: a failed one leaves them unwritten.
+    if applied != 0:
+        check(False, f"the setup install --apply of the OpenCode install cases exits {applied}: {tail(text2)!r}; "
+                     f"the cases after it do not run")
+        return
 
     def instructions():
         jsonc = (base / "opencode" / "opencode.jsonc").read_text()

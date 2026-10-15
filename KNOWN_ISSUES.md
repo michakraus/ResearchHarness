@@ -187,30 +187,6 @@
 - kind: defect
 - found: 2026-10-08
 
-### K23 · When the install exits 2, later cases of `layer_cases` raise `FileNotFoundError`.
-
-- location: `adapters/claude/adapter.py:906`
-- evidence: with the `[opencode.councils]` key of `examples/models.toml` set to an agent that
-  `agents/` does not hold, `bin/harness test` reports the install's exit 2 once, and then cases
-  that read the files that the install did not write fail as
-  `raised FileNotFoundError: [Errno 2] No such file or directory: '…/home/.claude/hooks/cc-status'`
-  and `'…/home/.claude/instructions/research-tree.md'`. The case is counted wrong, but its label
-  names the follow-on file, not the exit 2 that causes it.
-- kind: defect
-- found: 2026-10-08
-
-### K25 · A curated skill that fails `parse_file` makes `harness test` end in a traceback before the frontmatter case names it.
-
-- location: `lib/harness/install_cases.py:161`
-- evidence: with `model: bogus` in `skills/build-part/SKILL.md`, `bin/harness test` stops in the
-  install module's `restart_cases` with
-  `FileNotFoundError: [Errno 2] No such file or directory: '…/restart/claude1/omp/AGENTS.md'`
-  (`(omp / "AGENTS.md").write_text(…)`), before the frontmatter case
-  "the agents and curated skills … parse" can name the file and the rule. The exit is still
-  nonzero. The base `4afc7a0` does the same with `model: bogus`.
-- kind: defect
-- found: 2026-10-09
-
 ### K26 · Under OpenCode, a `$OPENCODE_CONFIG_DIR/guard-paths.json` that is not JSON is ignored, and its `allow` list with it.
 
 - location: `adapters/opencode/plugins/guards.ts:176`
@@ -538,3 +514,15 @@
   the template's `allowWrite` as the measure. No unit's `PATH` holds such a directory today.
 - kind: defect
 - found: 2026-10-12, the critic of part D2
+
+### K63 · A curated skill that fails `parse_file` ends `harness test` in the skill-triggers cases with exit 2 and no summary line.
+
+- location: `lib/harness/skill_triggers.py:590`
+- evidence: with `model: bogus` in a scratch copy of `skills/build-part/SKILL.md`,
+  `bin/harness test` prints the frontmatter case's `BAD` line that names the file, and then
+  `read_queries()` in the `selftest` of `skill_triggers`, outside any case, raises the
+  `HarnessError` of `parse_file`. `cli.main` prints
+  `harness test: …/skills/build-part/SKILL.md: the model 'bogus' is not a tier; …` and exits 2.
+  No `N cases, M wrong` line is printed, and the cases after it do not run. No traceback.
+- kind: defect
+- found: 2026-10-15

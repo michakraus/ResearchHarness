@@ -991,6 +991,11 @@ def layer_cases(check, tmp):
     base, claude, tree = fresh(["instructions/research-tree.md", "rules/tool.sh", "README.md"])
     (tree / "rules" / "tool.sh").chmod(0o755)
     code, text = run(base, "--apply")
+    # The cases below read the files that this install writes: a failed one leaves them unwritten.
+    if code != 0:
+        check(False, f"the setup install --apply of the layer cases exits {code}: {tail(text)!r}; "
+                     f"the layer cases after it do not run")
+        return
     again, text2 = run(base)
     case(lambda: code == 0 and again == 0,
          f"after an --apply, a second dry run exits 0: {code}, {again}, {tail(text2)}")
@@ -1030,6 +1035,10 @@ def layer_cases(check, tmp):
          f"TOOLS maps exactly the neutral tools of frontmatter.TOOLS: {sorted(set(TOOLS) ^ set(frontmatter.TOOLS))}")
     base, claude, tree = fresh()
     code, text = run(base, "--apply")
+    if code != 0:
+        check(False, f"the setup install --apply of the render cases exits {code}: {tail(text)!r}; "
+                     f"the layer cases after it do not run")
+        return
 
     def changed_lines(src):
         """The lines in which the installed copy of `src` differs from it, as (source, installed)."""

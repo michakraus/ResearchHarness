@@ -14,9 +14,15 @@
   `commit_cases` measure the limits of the leak gate that `docs/src/security.md` states:
   `harness leaks --commits` reports no hit for a leak string only in a commit's author name, only
   in the message of an annotated tag on a listed commit, or only in a `git notes` note on one, and
-  one hit for the same string in the commit's message. `restart_cases` reports a failed setup
-  install as a wrong case with its exit status and last line, and stops, in place of a
-  `FileNotFoundError` traceback when it edits a file that the install did not write.
+  one hit for the same string in the commit's message. A failed setup install no longer turns
+  the cases after it into a `FileNotFoundError` traceback or into wrong cases that name a
+  follow-on file: `restart_cases`, the Claude Code adapter's `layer_cases` (both of its setup
+  installs), the OpenCode adapter's `install_cases` and the oh-my-pi adapter's `omp_cases` each
+  report it as one wrong case with the install's exit status and last line, and that group of
+  cases stops. With a curated skill that fails `parse_file`, `harness test` now prints the
+  frontmatter case's `BAD` line that names the file, prints no traceback, and exits nonzero; K23
+  and K25 leave `KNOWN_ISSUES.md`. It still ends early, in the skill-triggers cases, with exit 2
+  and no summary line: K63.
 
 - **No session changes RTK's configuration, its user filters or its filter trust store.** RTK
   keeps the SHA-256 hashes of the filter files that it may apply in `trusted_filters.json`, in its
