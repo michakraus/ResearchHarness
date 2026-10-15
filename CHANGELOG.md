@@ -4,8 +4,9 @@
 
 - **Nine missing cases and checks: K6, K15, K17, K19, K45, K49, K52, K64 and K65 leave
   `KNOWN_ISSUES.md`.** The contract sweep runs one verb through `sweep.run`, whose timeout is a
-  parameter; a case gives it a child that outlives 1 s and shows the result `timeout`, which no
-  check of the sweep accepts. The sweep's own timeout stays 120 s (K6). A probe case writes
+  parameter; a case gives it a child that outlives 1 s and passes the result through the sweep's
+  own checks, now the functions `dry_run_ok`, `refused_ok` and `applied_ok`, each of which counts it
+  wrong. The sweep's own timeout stays 120 s (K6). A probe case writes
   `[~/.zshrc#1A2B]`, an exact-file deny, so it blocks only when `writePath` drops the tag (K15). A
   case of `harness leaks` shows that it renders each adapter's `TEMPLATES` (K17), and one calls
   `frontends.load()` twice on an adapter that lacks a member (K19). `harness test` requires each
