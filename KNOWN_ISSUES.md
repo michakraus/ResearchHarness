@@ -144,17 +144,6 @@
 - kind: missing test
 - found: 2026-10-08
 
-### K18 · The dry run of `harness install` exits 2 on a HOME with no `~/.claude/skills/`.
-
-- location: `lib/harness/sources.py:26`
-- evidence: the skill links of OpenCode read `~/.claude/skills/`, and `curated_skills` raises
-  `<home>/.claude/skills is not a directory` when it does not exist. The dry run before a first
-  install therefore ends in exit 2 after the files, with no count line, on the base `6a4d726` and
-  on this branch alike. The case "with no ~/.claude/skills/, the warnings are printed before the
-  skill links exit 2" shows it.
-- kind: defect
-- found: 2026-10-08
-
 ### K19 · No case shows that `frontends.load` removes an adapter that lacks a member from `sys.modules`.
 
 - location: `lib/harness/frontends.py:80`
@@ -197,30 +186,6 @@
   `adapters/opencode/fixtures/expected/`.
 - kind: defect
 - found: 2026-10-08
-
-### K23 · When the install exits 2, later cases of `layer_cases` raise `FileNotFoundError`.
-
-- location: `adapters/claude/adapter.py:906`
-- evidence: with the `[opencode.councils]` key of `examples/models.toml` set to an agent that
-  `agents/` does not hold, `bin/harness test` reports the install's exit 2 once, and then cases
-  that read the files that the install did not write fail as
-  `raised FileNotFoundError: [Errno 2] No such file or directory: '…/home/.claude/hooks/cc-status'`
-  and `'…/home/.claude/instructions/research-tree.md'`. The case is counted wrong, but its label
-  names the follow-on file, not the exit 2 that causes it.
-- kind: defect
-- found: 2026-10-08
-
-### K25 · A curated skill that fails `parse_file` makes `harness test` end in a traceback before the frontmatter case names it.
-
-- location: `lib/harness/install_cases.py:161`
-- evidence: with `model: bogus` in `skills/build-part/SKILL.md`, `bin/harness test` stops in the
-  install module's `restart_cases` with
-  `FileNotFoundError: [Errno 2] No such file or directory: '…/restart/claude1/omp/AGENTS.md'`
-  (`(omp / "AGENTS.md").write_text(…)`), before the frontmatter case
-  "the agents and curated skills … parse" can name the file and the rule. The exit is still
-  nonzero. The base `4afc7a0` does the same with `model: bogus`.
-- kind: defect
-- found: 2026-10-09
 
 ### K26 · Under OpenCode, a `$OPENCODE_CONFIG_DIR/guard-paths.json` that is not JSON is ignored, and its `allow` list with it.
 
@@ -549,3 +514,37 @@
   the template's `allowWrite` as the measure. No unit's `PATH` holds such a directory today.
 - kind: defect
 - found: 2026-10-12, the critic of part D2
+
+### K63 · A curated skill that fails `parse_file` ends `harness test` in the skill-triggers cases with exit 2 and no summary line.
+
+- location: `lib/harness/skill_triggers.py:590`
+- evidence: with `model: bogus` in a scratch copy of `skills/build-part/SKILL.md`,
+  `bin/harness test` prints the frontmatter case's `BAD` line that names the file, and then
+  `read_queries()` in the `selftest` of `skill_triggers`, outside any case, raises the
+  `HarnessError` of `parse_file`. `cli.main` prints
+  `harness test: …/skills/build-part/SKILL.md: the model 'bogus' is not a tier; …` and exits 2.
+  No `N cases, M wrong` line is printed, and the cases after it do not run. No traceback.
+- kind: defect
+- found: 2026-10-15
+
+### K64 · When the install exits 2, cases of the hook probe's `[inst-drif]` group name a follow-on file.
+
+- location: `hooks/probe.py:1209`
+- evidence: with the `[councils]` key of `examples/models.toml` set to an agent that `agents/`
+  does not hold, in a scratch copy of the repository, `bin/harness test` prints
+  `BAD exp quiet got raised FileNotFoundError [inst-drif] the stamp names copies of rules/ and hooks/…`
+  and a wrong case for `a missing stamp is drift` (`:1216`): the steps read the stamp that the
+  failed `--apply` did not write. The label names the stamp, not the exit 2 that causes it. This
+  is the class of K23, which part K fixed in `layer_cases`, at a site of the probe.
+- kind: defect
+- found: 2026-10-15, the critic of part K
+
+### K65 · The no-julia `PATH` of `precondition_cases` drops every directory that holds a `julia`.
+
+- location: `lib/harness/install_cases.py:122`
+- evidence: the case builds its `PATH` from the directories of the current one in which
+  `shutil.which("julia", path=d)` finds nothing. Where `julia` is in `/usr/bin`, as on some Linux
+  CI images, the `PATH` also loses `git` and `sh`, and the cases fail for another reason. Not
+  measured: here `julia` is in `~/.juliaup/bin`.
+- kind: defect
+- found: 2026-10-15, the critic of part K

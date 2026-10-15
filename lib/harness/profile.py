@@ -525,8 +525,9 @@ def commit_cases():
         repo = pathlib.Path(tmp) / "repo"
         repo.mkdir()
 
-        def git(*args):
-            return subprocess.run(["git", *args], cwd=repo, env=env, check=True, capture_output=True,
+        def git(*args, **extra):
+            """`git args` in the fixture; `extra` sets variables of its environment."""
+            return subprocess.run(["git", *args], cwd=repo, env={**env, **extra}, check=True, capture_output=True,
                                   text=True).stdout.strip()
 
         def commit(name, data=None, *move):
@@ -653,7 +654,35 @@ def commit_cases():
             ok = got == status and all(line in out.getvalue().splitlines() for line in lines)
             wrong += not ok
             print(f"{'ok ' if ok else 'BAD'}  leaks: {label} -> exit {got}")
-    return len(cases) + 3 + len(message_cases) + len(runs), wrong
+        # The limits that docs/src/security.md states: a leak only in a commit's author name, only in
+        # the message of an annotated tag on a listed commit, or only in a note on one, is no hit; the
+        # same leak in a listed commit's message is one, so the fixture can see it. Empty commits.
+        git("commit", "-q", "--allow-empty", "-m", "clean", GIT_AUTHOR_NAME="the LEAK author")
+        author = git("rev-parse", "HEAD")
+        tagged = note(b"clean\n")
+        git("tag", "-a", "v1", "-m", "the LEAK in a tag", tagged)
+        noted = note(b"clean\n")
+        git("notes", "add", "-m", "the LEAK in a note", noted)
+        messaged = note(b"the LEAK in a message\n")
+        # (label, SHA, where git shows the leak, expected hits)
+        limits = [
+            ("a leak only in a commit's author name", author, git("show", "-s", "--format=%an", author), 0),
+            ("a leak only in the message of an annotated tag on the commit", tagged,
+             git("tag", "-l", "--format=%(contents)", "v1"), 0),
+            ("a leak only in a git note on the commit", noted, git("notes", "show", noted), 0),
+            ("the same leak in the commit's message", messaged, git("show", "-s", "--format=%B", messaged), 1),
+        ]
+        for label, sha, shown, expected in limits:
+            (pathlib.Path(tmp) / "commits").write_text(sha + "\n")
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                status = cmd_leaks(argparse.Namespace(profile=pathlib.Path(tmp) / "profile.toml",
+                                                      commits=pathlib.Path(tmp) / "commits"), repo)
+            summary = out.getvalue().splitlines()[-1]
+            ok = "LEAK" in shown and status == min(expected, 1) and summary.endswith(f", {expected} hits")
+            wrong += not ok
+            print(f"{'ok ' if ok else 'BAD'}  leaks --commits: {label} -> exit {status}, {summary.strip()!r}")
+    return len(cases) + 3 + len(message_cases) + len(runs) + len(limits), wrong
 
 
 def selftest():

@@ -5,6 +5,7 @@ the helpers of its cases.
 import os
 import pathlib
 import re
+import shutil
 import stat
 import subprocess
 import sys
@@ -101,6 +102,99 @@ class Scratch:
 COUNT_LINE = re.compile(r"^\d+ change\(s\) (made|to make)\.$", re.M)
 
 
+def precondition_cases(check, tmp):
+    """`harness install` on a scratch HOME that lacks one thing, with the other preconditions of a
+    scratch install: no ~/.claude/skills/, then no `julia` that starts while the Julia environment
+    has a change pending, then a `julia` that starts and fails."""
+    scratch = Scratch(check, tmp / "preconditions")
+    case, run = scratch.case, scratch.run
+
+    base, claude, _ = scratch.fresh()
+    (claude / "skills").rmdir()
+    code, text = run(base)
+    found = [m.group(1) for m in COUNT_LINE.finditer(text)]
+    case(lambda: code == 1 and found == ["to make"] and "Traceback" not in text and not (claude / "skills").exists(),
+         f"with no ~/.claude/skills/, the dry run exits 1 with the count line N change(s) to make.: "
+         f"{code}, {found}, {scratch.tail(text)!r}")
+
+    # A PATH with no `julia`: the directories of this one without it, and one with a `julia` that
+    # cannot be executed, or one that exits 1.
+    path = [d for d in os.environ.get("PATH", "").split(os.pathsep) if d and not shutil.which("julia", path=d)]
+    stubs = tmp / "preconditions" / "bin"
+    stubs.mkdir()
+    base, _, _ = scratch.fresh()
+    (base / "julia" / "Manifest.toml").unlink()
+    code, text = run(base, extra_env={"PATH": os.pathsep.join(path)})
+    case(lambda: code == 1 and "INSTANTIATE" in text and "Traceback" not in text
+         and "julia cannot be started" not in text,
+         f"no julia on the PATH, a change pending in the Julia environment: the dry run exits 1 and prints "
+         f"INSTANTIATE: {code}, {scratch.tail(text)!r}")
+    for directories, stub, label in [
+        (path, None, "no julia on the PATH"),
+        ([str(stubs), *path], 0o644, "a julia on the PATH that is not executable"),
+    ]:
+        base, _, _ = scratch.fresh()
+        (base / "julia" / "Manifest.toml").unlink()
+        if stub is not None:
+            (stubs / "julia").write_text("#!/bin/sh\nexit 0\n")
+            (stubs / "julia").chmod(stub)
+        code, text = run(base, "--apply", extra_env={"PATH": os.pathsep.join(directories)})
+        last = scratch.tail(text)
+        case(lambda: scratch.refused(code, text) and shutil.which("julia", path=os.pathsep.join(directories)) is None
+             and text.count("julia cannot be started") == 1
+             and all(w in last for w in ["julia", "not found on the PATH", "juliaup"]),
+             f"{label}, a change pending in the Julia environment: --apply exits 2 with one line that names julia, "
+             f"the PATH and juliaup: {code}, {last!r}")
+
+    base, _, _ = scratch.fresh()
+    (base / "julia" / "Manifest.toml").unlink()
+    (stubs / "julia").write_text("#!/bin/sh\nexit 1\n")
+    (stubs / "julia").chmod(0o755)
+    code, text = run(base, "--apply", extra_env={"PATH": os.pathsep.join([str(stubs), *path])})
+    last = scratch.tail(text)
+    case(lambda: scratch.refused(code, text) and f"Pkg.instantiate failed in {base / 'julia'}" in last,
+         f"a julia that starts and exits 1: --apply exits 2 with Pkg.instantiate failed: {code}, {last!r}")
+
+
+def setup_guard_cases(check, tmp):
+    """The groups of cases that edit or read the files of a setup install — `layer_cases` of the
+    Claude Code adapter, `install_cases` of the OpenCode adapter, `omp_cases` of the oh-my-pi
+    adapter — each run with every `harness install` failing: each reports the failed setup install
+    as one wrong case with the exit status and the last line, raises nothing, and runs no case
+    after it."""
+    from unittest import mock
+
+    from . import frontends
+
+    failure = "harness install: an injected failure of the setup install"
+
+    def failing(base, *argv, extra_env=None, models=None):
+        return 2, failure
+
+    def omp(record, where):
+        scratch = Scratch(record, where)
+        frontends.adapter("omp").omp_cases(scratch.case, scratch.fresh, failing)
+
+    groups = [("claude", frontends.adapter("claude").layer_cases),
+              ("opencode", frontends.adapter("opencode").install_cases), ("omp", omp)]
+    for n, (name, group) in enumerate(groups):
+        where = tmp / f"guard{n}"
+        where.mkdir(parents=True)
+        labels = []
+        try:
+            with mock.patch.object(Scratch, "run", staticmethod(failing)):
+                group(lambda ok, label: labels.append((ok, label)), where)
+            raised = None
+        except Exception as e:  # the defect that the case looks for: reported, and the next group runs
+            raised = f"{type(e).__name__}: {e}"
+        setup = [i for i, (ok, label) in enumerate(labels)
+                 if not ok and "the setup install --apply" in label and "exits 2" in label and failure in label]
+        check(raised is None and len(setup) == 1 and setup[0] == len(labels) - 1,
+              f"{name}: a failed setup install is one wrong case with its exit status and last line, and the "
+              f"group stops there: raised {raised}, {len(setup)} such line(s), "
+              f"{len(labels) - 1 - (setup[0] if setup else -1)} case(s) after it")
+
+
 def restart_cases(check, tmp):
     """The restart lines of `harness install`, one case per row: only the Claude Code layer
     changes, only the OpenCode files, only an OpenCode step, only the oh-my-pi files, only the
@@ -132,6 +226,11 @@ def restart_cases(check, tmp):
     code, text = run(base, "--apply")
     case(lambda: expect(code, text, set(frontends.FRONTENDS)),
          f"a first --apply prints the restart line of every frontend, once each: {code}, {after_count(text)}")
+    # The cases below edit the files that this install writes: a failed one leaves them unwritten.
+    if code != 0:
+        check(False, f"the setup install --apply of the restart cases exits {code}: {scratch.tail(text)!r}; "
+                     f"the restart cases after it do not run")
+        return
     code, text = run(base, "--apply")
     case(lambda: expect(code, text, set()) and "\n0 change(s) made." in text,
          f"an --apply with no change prints no restart line: {code}, {after_count(text)}")

@@ -572,6 +572,12 @@ def omp_cases(case, fresh, run):
     case(lambda: all(listed.get(f"rules/{s.name}") == "INSTALL" for s in sources) and len(sources) == 8,
          f"the dry run lists one rules/<name>.md per rule source, 8: {sorted(k for k in listed if k.startswith('rules/'))}")
     code, text = run(base, "--apply")
+    # The cases below read and edit the files that this install writes: a failed one leaves them
+    # unwritten.
+    if code != 0:
+        case(lambda: False, f"the setup install --apply of the oh-my-pi cases exits {code}: {tail(text)!r}; "
+                            f"the cases after it do not run")
+        return
     agent = base / "omp"
     profile = profile_module.load(base / "profile.toml")
     case(lambda: code == 0 and omp_config(agent / OVERLAY)["tools"]
