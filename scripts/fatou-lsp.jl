@@ -1,11 +1,11 @@
 #!/usr/bin/env julia
 #
-# A minimal LSP client for `fatou lsp`, shared by `julia-methods.jl` and `probe-fatou-lsp.jl`.
+# A minimal LSP client for `fatou lsp`, included by `julia-methods.jl` and by its checks,
+# `fatou-lsp-test.jl`.
 #
 # Fatou is the only static tool here that lists every method of a Julia name separately, including
 # a module-qualified definition such as `Base.length(x::Problem) = …`. It never runs Julia, so it
-# works on a package that does not load. Measurements and the
-# comparison against the code graph are in `Environment/Notes/Helpers-and-MCPs.md`.
+# works on a package that does not load.
 #
 # Two things about driving it that cost an afternoon each:
 #

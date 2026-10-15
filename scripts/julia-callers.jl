@@ -2,9 +2,9 @@
 #
 # Who calls this function, answered from the running system rather than from a text search.
 #
-# This is the check behind the claim in `Environment/Notes/Helpers-and-MCPs.md` that a live Julia
-# session answers the caller question exactly, including through module-qualified method
-# definitions — the idiom a static index of this tree cannot see at all.
+# It checks one claim: a live Julia session answers the caller question exactly, including
+# through module-qualified method definitions — the idiom a static index of this tree cannot see
+# at all.
 #
 # It works by enumerating every method whose *defining* module is one of the targets, then
 # scanning each method's lowered IR for a `GlobalRef` to the function. The defining module of a
