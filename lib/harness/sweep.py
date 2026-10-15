@@ -11,7 +11,10 @@ $RESEARCH_ROOT, with one package, one prose repository and the tree instructions
     and no traceback.
 
 `settings domains` gives each of the two messages of `read_settings` once: with no settings file,
-and with one of mode 000.
+and with one of mode 000. A settings file that is not JSON, not UTF-8, JSON but not an object,
+nested deeper than the parser reads, or an object whose `permissions` is a list makes each `settings` verb that reads
+it exit 2 with one line that names it; so does such a `~/.claude.json`, or one whose `projects` is
+a list, for `trust`.
 
 For each verb of `APPLY`, `--apply` and then the dry run again: the second run exits 0.
 
@@ -186,6 +189,40 @@ def selftest():
                     live.chmod(0o644)
             check(p.returncode == 2 and p.stderr == f"harness settings: {expect}\n",
                   f"settings domains, settings file {label}: exit {p.returncode}, stderr {p.stderr.strip()[-300:]!r}")
+
+        # A settings file, and ~/.claude.json, that is not JSON, not UTF-8, JSON but not an object,
+        # nested deeper than the parser's recursion limit, or an object whose `permissions` or
+        # `projects` is not an object: each verb that reads it exits 2 with one line that names the
+        # file and what it is.
+        settings_verbs = ["settings surface", "settings compare", "settings twins", "settings domains"]
+        # Python 3.11 stops at its recursion limit, 3.12 and later at a stack of 16 MB: 400000 levels
+        # are past both.
+        depth = 400000
+        for label, data, reason, files in (
+                ("not JSON", b"{ not json\n", "is not JSON", "both"),
+                ("not UTF-8", b'{"x": "\xff"}\n', "is not UTF-8", "both"),
+                ("JSON but not an object", b"[]\n", "is not a JSON object", "both"),
+                (f"an array nested {depth} deep", b"[" * depth + b"]" * depth + b"\n", "nested too deep", "both"),
+                (f"an object nested {depth} deep", b'{"a": ' * depth + b"0" + b"}" * depth + b"\n", "nested too deep",
+                 "both"),
+                ("an object whose permissions is a list", b'{"permissions": []}\n', "permissions", "settings"),
+                ("an object whose projects is a list", b'{"projects": []}\n', "projects", "trust")):
+            for path, verbs in ((live, settings_verbs if files != "trust" else []),
+                                (home / ".claude.json", ["trust"] if files != "settings" else [])):
+                if not verbs:
+                    continue
+                old = path.read_bytes()
+                path.write_bytes(data)
+                try:
+                    runs = [(verb, harness(argv[verb])) for verb in verbs]
+                finally:
+                    path.write_bytes(old)
+                for verb, p in runs:
+                    lines = p.stderr.strip().splitlines()
+                    check(p.returncode == 2 and len(lines) == 1 and str(path) in lines[0] and reason in lines[0]
+                          and "Traceback" not in p.stdout + p.stderr,
+                          f"{verb}, {path.name} {label}: exit {p.returncode}, {len(lines)} stderr line(s)"
+                          + (f": {lines[-1][-300:]!r}" if lines else ""))
 
         for verb in APPLY:
             applied = harness(argv[verb] + ["--apply"])

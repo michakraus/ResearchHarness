@@ -1,17 +1,5 @@
 # Known issues
 
-### K4 · A settings file or `~/.claude.json` that is not JSON gives a traceback and exit 1, not exit 2.
-
-- location: `adapters/claude/adapter.py:187`, `adapters/claude/adapter.py:700`
-- evidence: with a settings file that holds `{ not json`, `harness settings surface --settings
-  <file>` ends with `json.decoder.JSONDecodeError: Expecting property name enclosed in double
-  quotes: line 1 column 3 (char 2)` and exits 1, on `ed0248f` and on part E1a's branch alike.
-  The critic of E1a found the same for `settings compare`, `twins` and `domains`, and for `trust`
-  with an empty `~/.claude.json`. `read_settings` and `cmd_trust` catch `OSError` and
-  not `json.JSONDecodeError`, so the contract's exit 1, "would change", also means "unreadable".
-- kind: defect
-- found: 2026-10-05
-
 ### K6 · No test reaches the timeout path of the contract sweep.
 
 - location: `lib/harness/sweep.py:139`
@@ -35,22 +23,6 @@
   `ask` on the sources; its *Done when* does not name one.
 - kind: defect
 - found: 2026-10-05
-
-### K9 · `install_file` writes through a symlink and fails with a traceback on a directory.
-
-- location: `lib/harness/install.py:63-85`
-- evidence: `install_file` reads and writes `dst` with `is_file`, `write_bytes` and `chmod`, which
-  follow a symlink. With `<config>/AGENTS.md` a symlink to `~/.claude/CLAUDE.md`, `--apply`
-  writes the delta through the link into `~/.claude/CLAUDE.md`, and the Claude plan of the same
-  run writes it back, so the next dry run is again `AGENTS.md from OPENCODE-DELTA.md   REPLACE`.
-  With a directory at `<config>/AGENTS.md`, the dry run says `INSTALL`, and `--apply` exits 1
-  with `IsADirectoryError` and a traceback, where the verb contract gives 1 the meaning
-  "changes to make". Every target that `install_file` writes behaves the same way. To reproduce:
-  make `<config>/AGENTS.md` a symlink to `~/.claude/CLAUDE.md`, run `bin/harness install --apply`
-  and then `bin/harness install`, and read the `AGENTS.md` line; then make `<config>/AGENTS.md`
-  an empty directory, run `bin/harness install --apply`, and read the exit status and stderr.
-- kind: found late
-- found: 2026-10-06
 
 ### K10 · Under OpenCode, an edit of the installed `~/.claude/rules/**` asks, where the settings template denies it.
 
@@ -365,17 +337,6 @@
 - kind: found late
 - found: 2026-10-10
 
-### K48 · A read-only `~/.claude/settings.json` with a change ends `--apply` in a traceback, after the backup is written.
-
-- location: `lib/harness/install.py:78-85`
-- evidence: with `settings.json` of mode 0444 and an owned section that differs, `harness install
-  --apply` writes `settings.json.bak-<stamp>` and then ends in `PermissionError` and exit 1, where
-  the verb contract gives 1 the meaning "changes to make". A second `--apply` in the same second
-  fails on the backup instead, because `shutil.copy` gave the first backup the mode 0444. Every
-  target that `install_file` writes behaves the same way; K9 is the symlink and directory case.
-- kind: found late
-- found: 2026-10-10
-
 ### K49 · No check reads "one box width per column" on a walk-through.
 
 - location: `docs/scripts/check-site.mjs:206`
@@ -425,20 +386,6 @@
   part J4.
 - kind: defect
 - found: 2026-10-10
-
-### K60 · A stray settings rule with a lone surrogate stops the dry run of `harness install` with `UnicodeEncodeError`.
-
-- location: `adapters/claude/adapter.py:657`
-- evidence: found late — `adapters/claude/adapter.py`, the rule print of `stray_warnings`:
-  `f"  {path}  {kind}  {rule}"`. A stray `~/Research/.claude/settings.local.json` with
-  `{"permissions": {"allow": ["Bash(\ud800)"]}}` stops `harness install` (dry run) with
-  `UnicodeEncodeError: 'utf-8' codec can't encode character '\ud800' … surrogates not allowed`,
-  exit 1, on 3.14 and on 3.11. The fix escapes a lone surrogate in the merge and the diff, but not
-  in this print. The previous head fails the same way, so the fix diff did not introduce it.
-  Reproducer: the critic's `python3.14 probe_surrogates.py <abs tree> <abs scratch>`, line
-  "2 stray rule …". Found by the verify critic of part M, round 2.
-- kind: found late
-- found: 2026-10-10; the ID is K60 because publish part J4 holds K49 onwards on its own branch
 
 ### K61 · No test runs the real macOS `ps` against a deleted server binary.
 
@@ -516,3 +463,25 @@
   of the part that cleared K42 and K44, which names only `scripts/` and `agent-workflows/`.
 - kind: docs
 - found: 2026-10-15
+
+### K68 · A stray settings file nested deeper than the JSON parser reads stops `harness install` with `RecursionError`.
+
+- location: `adapters/claude/adapter.py:682`
+- evidence: `stray_warnings` turns `OSError`, `ValueError`, `AttributeError` and `TypeError` into a
+  warning, but not `RecursionError`. With `~/Research/.claude/settings.local.json` holding
+  `"[" * 400000 + "]" * 400000`, `stray_warnings()` raises `RecursionError` on Python 3.14, so the
+  dry run of `harness install` ends in a traceback and exit 1. Python 3.11 raises it from a depth
+  of 1000. The settings verbs and the merge of `~/.claude/settings.json` refuse such a file with
+  exit 2 (`json_object`); this read of the other settings files does not use it.
+- kind: defect
+- found: 2026-10-15, the builder of publish part P1, after its critic's finding on deep nesting
+
+### K69 · No case shows a stray settings path with a lone surrogate.
+
+- location: `adapters/claude/adapter.py:682`
+- evidence: `stray_warnings` escapes each whole line, so a lone surrogate in the path is escaped
+  as one in the rule is. A case cannot make such a path on macOS: APFS refuses a name that is not
+  UTF-8 (`OSError: [Errno 92] Illegal byte sequence`). The rule case in
+  `install_cases.target_cases` covers the escape.
+- kind: not verified
+- found: 2026-10-15, the critic of publish part P1

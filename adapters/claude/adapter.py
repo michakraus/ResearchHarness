@@ -182,17 +182,37 @@ def read_settings(path):
     """A settings file parsed, and rendered with the profile when it holds a placeholder.
 
     The proposal is a template (`{home}`, `{org}`, …); the live file is its render. Every
-    command reads through here, so a proposal and a live file compare as the same thing.
+    command reads through here, so a proposal and a live file compare as the same thing. A file
+    that is missing, cannot be read, or is not UTF-8, not JSON (`json_object`) or not a JSON object,
+    or whose `permissions` is not an object, exits 2.
     """
     try:
-        text = pathlib.Path(path).read_text()
+        text = pathlib.Path(path).read_text(encoding="utf-8")
     except FileNotFoundError as e:
         raise HarnessError(f"no settings file at {path}") from e
     except OSError as e:
         raise HarnessError(f"cannot read {path}: {e.strerror}") from e
-    cfg = json.loads(text)
+    except UnicodeDecodeError as e:
+        raise HarnessError(f"{path} is not UTF-8: {e.reason} at byte {e.start}") from None
+    cfg = json_object(path, text)
+    if not isinstance(cfg.get("permissions", {}), dict):
+        raise HarnessError(f"{path}: the value of permissions is not a JSON object")
     if render_profile.PLACEHOLDER.search(text):
         cfg = render_profile.render_data(cfg, render_profile.load(PROFILE))
+    return cfg
+
+
+def json_object(path, text):
+    """`text`, the contents of the file at `path`, parsed; exits 2 when it is not JSON, is nested
+    deeper than the parser reads, or is not a JSON object."""
+    try:
+        cfg = json.loads(text)
+    except ValueError as e:
+        raise HarnessError(f"{path} is not JSON: {e}") from None
+    except RecursionError:  # Python 3.11's recursion limit, or the stack limit of 3.12 and later
+        raise HarnessError(f"{path} is JSON nested too deep for the parser") from None
+    if not isinstance(cfg, dict):
+        raise HarnessError(f"{path} is not a JSON object")
     return cfg
 
 # The matcher evaluates each segment of a compound command separately.
@@ -547,6 +567,11 @@ def indent_of(text):
 LONE_SURROGATE = re.compile(r"[\ud800-\udfff]")
 
 
+def escaped(text):
+    """`text` with each lone surrogate written as its escape, `\\ud800` say, which UTF-8 can encode."""
+    return LONE_SURROGATE.sub(lambda m: f"\\u{ord(m[0]):04x}", text)
+
+
 def dumps(obj, **kwargs):
     """`obj` as JSON text in which no character is escaped but a lone surrogate.
 
@@ -555,7 +580,7 @@ def dumps(obj, **kwargs):
     surrogate stays an escape, because UTF-8 cannot encode it: it comes from a `\\ud800` in the
     JSON text, which JavaScript's `JSON.stringify` writes for one.
     """
-    return LONE_SURROGATE.sub(lambda m: f"\\u{ord(m[0]):04x}", json.dumps(obj, ensure_ascii=False, **kwargs))
+    return escaped(json.dumps(obj, ensure_ascii=False, **kwargs))
 
 
 def settings_template(profile):
@@ -580,7 +605,7 @@ def settings_file(root, profile):
     character but a lone surrogate is escaped. Owned sections equal to the template's leave the file as it is. A
     missing file is created with the owned sections only, indented by 2, mode 0644. Exits 2,
     before anything is written, on a file that is a symlink, is not a regular file, cannot be
-    read, is not UTF-8 or JSON, is not a JSON object, or holds an owned key whose value is not an
+    read, is not UTF-8 or JSON (`json_object`), is not a JSON object, or holds an owned key whose value is not an
     object.
     """
     import difflib
@@ -597,6 +622,8 @@ def settings_file(root, profile):
         raise HarnessError(f"{live} is a symlink; `harness install` merges the settings into a file only")
     cfg, indent, old = {}, 2, None
     if st is not None:
+        if stat.S_ISDIR(st.st_mode):
+            raise HarnessError(f"{live} is a directory; `harness install` merges the settings into a file only")
         if not stat.S_ISREG(st.st_mode):
             raise HarnessError(f"{live} is not a file; `harness install` merges the settings into a file only")
         try:
@@ -607,12 +634,7 @@ def settings_file(root, profile):
             text = old.decode("utf-8")
         except UnicodeDecodeError as e:
             raise HarnessError(f"{live} is not UTF-8: {e.reason} at byte {e.start}") from None
-        try:
-            cfg = json.loads(text)
-        except ValueError as e:
-            raise HarnessError(f"{live} is not JSON: {e}") from None
-        if not isinstance(cfg, dict):
-            raise HarnessError(f"{live} is not a JSON object")
+        cfg = json_object(live, text)
         wrong = [k for k in OWNED if k in cfg and not isinstance(cfg[k], dict)]
         if wrong:
             raise HarnessError(f"{live}: the value of {', '.join(wrong)} is not a JSON object")
@@ -634,7 +656,8 @@ def settings_file(root, profile):
 
 def stray_warnings():
     """The warnings, [(line, …)], of the permission rules outside ~/.claude/settings.json, which
-    a settings round neither proposes nor sees, and of each such file that cannot be read.
+    a settings round neither proposes nor sees, and of each such file that cannot be read; a lone
+    surrogate in a line is written as its escape.
 
     "Yes, don't ask again" writes its grant to the settings.local.json of the working
     directory. Such a grant adds to every session started there and can undo a round's
@@ -657,11 +680,11 @@ def stray_warnings():
         except (FileNotFoundError, NotADirectoryError):
             continue
         except (OSError, ValueError, AttributeError, TypeError) as e:
-            warnings.append((f"{path} cannot be read as a settings file: {type(e).__name__}: {e}",))
+            warnings.append((escaped(f"{path} cannot be read as a settings file: {type(e).__name__}: {e}"),))
     if found:
         warnings.insert(0, (f"{len(found)} permission rule(s) outside ~/.claude/settings.json — fold them into the "
                             "settings template or delete them; `harness settings` does not measure them:",
-                            *(f"  {path}  {kind}  {rule}" for path, kind, rule in found)))
+                            *(escaped(f"  {path}  {kind}  {rule}") for path, kind, rule in found)))
     return warnings
 
 
@@ -727,10 +750,15 @@ def roots():
 def cmd_trust(args):
     try:
         with open(CONFIG, encoding="utf-8") as f:
-            config = json.load(f)
+            text = f.read()
     except OSError as e:
         raise HarnessError(f"cannot read {CONFIG}: {e.strerror} — run it outside a session") from e
+    except UnicodeDecodeError as e:
+        raise HarnessError(f"{CONFIG} is not UTF-8: {e.reason} at byte {e.start}") from None
+    config = json_object(CONFIG, text)
     projects = config.setdefault("projects", {})
+    if not isinstance(projects, dict):
+        raise HarnessError(f"{CONFIG}: the value of projects is not a JSON object")
     missing = [p for p in roots() if not projects.get(p, {}).get("hasTrustDialogAccepted")]
     for path in missing:
         print(("trust  " if args.apply else "untrusted  ") + path)
@@ -777,8 +805,8 @@ def source_of(sources, dst):
             if path.is_relative_to(prefix) and (d / path.relative_to(prefix)).is_file()]
 
 
-def claude_plan(profile, root, sources=None, templates=None):
-    """[(installed path relative to `root`, bytes, mode)] of the Claude Code layer; `templates`
+def claude_plan(profile, sources=None, templates=None):
+    """[(installed path relative to ~/.claude, bytes, mode)] of the Claude Code layer; `templates`
     defaults to CLAUDE_TEMPLATES. A file below a top-level name that its source does not install,
     as the source's third element names it, is not planned; a file below a skipped top-level
     directory of its source, as the source's fourth element names it (compared as `fold` does), is
@@ -786,9 +814,8 @@ def claude_plan(profile, root, sources=None, templates=None):
 
     Exits 2, through HarnessError and before anything is written, on a source that holds the
     Claude Code settings or a file that cannot be read, on a file of adapters/claude/ below a
-    directory that a neutral directory or hooks/ installs, on a path that two sources hold, on an
-    installed path, or a directory above one, that is a symlink, and on an installed path that is
-    not a readable file below directories.
+    directory that a neutral directory or hooks/ installs, and on a path that two sources hold.
+    The installed paths are checked by `install.check_files`, as every frontend's are.
     """
     templates = CLAUDE_TEMPLATES if templates is None else templates
     owner, plan = {}, []
@@ -815,7 +842,6 @@ def claude_plan(profile, root, sources=None, templates=None):
             except (OSError, ValueError) as e:
                 raise HarnessError(f"{src} cannot be read: {e}") from None
             plan.append((dst, data, mode))
-    install.check_targets(root, "~/.claude", plan)
     return sorted(plan)
 
 
@@ -889,7 +915,7 @@ def plan(ctx):
     settings = settings_file(root, ctx.profile)
     models = load_models(ctx.models)
     layer_sources = claude_sources(ctx.profile)
-    layer = claude_plan(ctx.profile, root, layer_sources)
+    layer = claude_plan(ctx.profile, layer_sources)
     files = [settings]
     for dst, data, mode in layer:
         src = source_of(layer_sources, dst)[0]
@@ -1505,9 +1531,10 @@ def layer_cases(check, tmp):
     for label, data, reason in [("not JSON", b"{\n", "is not JSON"), ("not UTF-8", b'{"x": "\xff"}\n', "is not UTF-8"),
                                 ("JSON after a UTF-8 BOM", b"\xef\xbb\xbf{}\n", "is not JSON"),
                                 ("JSON that is not an object", b"[]\n", "is not a JSON object"),
+                                ("JSON nested 400000 deep", b"[" * 400000 + b"]" * 400000 + b"\n", "nested too deep"),
                                 ("an owned key that is a list", b'{"permissions": []}\n', "permissions"),
                                 ("an owned key that is null", b'{"model": "x", "sandbox": null}\n', "sandbox"),
-                                ("a symlink", None, "symlink"), ("a directory", None, "is not a file"),
+                                ("a symlink", None, "symlink"), ("a directory", None, "is a directory"),
                                 ("unreadable, of mode 000", b"{}\n", "cannot be read")]:
         base, claude, tree = fresh(["rules/x.md"])
         live = claude / "settings.json"
@@ -1619,7 +1646,7 @@ def layer_cases(check, tmp):
     # Each `@` import of CLAUDE.md has a source in the plan: an import with none loads nothing.
     base, claude, tree = fresh(["instructions/research-tree.md"])
     with contextlib.redirect_stdout(io.StringIO()):
-        planned = {dst for dst, _, _ in claude_plan(render_profile.load(base / "profile.toml"), claude)}
+        planned = {dst for dst, _, _ in claude_plan(render_profile.load(base / "profile.toml"))}
     case(lambda: "RTK.md" in imports() and all(i in planned for i in imports()),
          f"each @ import of CLAUDE.md has a source in the plan: {imports()}, "
          f"{[i for i in imports() if i not in planned]} with none")
@@ -1653,7 +1680,7 @@ def layer_cases(check, tmp):
     # planned bytes and modes, which the stamp records.
     profile = render_profile.load(base / "profile.toml")
     with mock.patch.dict(os.environ, HOME=str(base / "home")), contextlib.redirect_stdout(io.StringIO()):
-        plan = claude_plan(profile, claude)
+        plan = claude_plan(profile)
     planned = [dst for dst, _, _ in plan]
     case(lambda: [dst for dst, _, _ in hook.files(sources)] == planned and len(planned) > 50
          and hook.digest(sources) == hook.digest_of(plan),
