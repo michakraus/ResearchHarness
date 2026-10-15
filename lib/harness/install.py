@@ -232,8 +232,9 @@ def cmd_install(args):
 
 def selftest():
     """A malformed profile or models.toml exits 2 with no traceback; then `load_cases`,
-    `install_cases.restart_cases` and `install_cases.precondition_cases`."""
-    from .install_cases import precondition_cases, restart_cases
+    `install_cases.restart_cases`, `install_cases.precondition_cases` and
+    `install_cases.setup_guard_cases`."""
+    from .install_cases import precondition_cases, restart_cases, setup_guard_cases
 
     total = wrong = 0
 
@@ -283,6 +284,7 @@ def selftest():
         load_cases(check, pathlib.Path(tmp))
         restart_cases(check, pathlib.Path(tmp))
         precondition_cases(check, pathlib.Path(tmp))
+        setup_guard_cases(check, pathlib.Path(tmp))
     return total, wrong
 
 

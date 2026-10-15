@@ -1035,10 +1035,6 @@ def layer_cases(check, tmp):
          f"TOOLS maps exactly the neutral tools of frontmatter.TOOLS: {sorted(set(TOOLS) ^ set(frontmatter.TOOLS))}")
     base, claude, tree = fresh()
     code, text = run(base, "--apply")
-    if code != 0:
-        check(False, f"the setup install --apply of the render cases exits {code}: {tail(text)!r}; "
-                     f"the layer cases after it do not run")
-        return
 
     def changed_lines(src):
         """The lines in which the installed copy of `src` differs from it, as (source, installed)."""

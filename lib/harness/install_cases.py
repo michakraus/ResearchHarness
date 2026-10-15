@@ -156,6 +156,45 @@ def precondition_cases(check, tmp):
          f"a julia that starts and exits 1: --apply exits 2 with Pkg.instantiate failed: {code}, {last!r}")
 
 
+def setup_guard_cases(check, tmp):
+    """The groups of cases that edit or read the files of a setup install — `layer_cases` of the
+    Claude Code adapter, `install_cases` of the OpenCode adapter, `omp_cases` of the oh-my-pi
+    adapter — each run with every `harness install` failing: each reports the failed setup install
+    as one wrong case with the exit status and the last line, raises nothing, and runs no case
+    after it."""
+    from unittest import mock
+
+    from . import frontends
+
+    failure = "harness install: an injected failure of the setup install"
+
+    def failing(base, *argv, extra_env=None, models=None):
+        return 2, failure
+
+    def omp(record, where):
+        scratch = Scratch(record, where)
+        frontends.adapter("omp").omp_cases(scratch.case, scratch.fresh, failing)
+
+    groups = [("claude", frontends.adapter("claude").layer_cases),
+              ("opencode", frontends.adapter("opencode").install_cases), ("omp", omp)]
+    for n, (name, group) in enumerate(groups):
+        where = tmp / f"guard{n}"
+        where.mkdir(parents=True)
+        labels = []
+        try:
+            with mock.patch.object(Scratch, "run", staticmethod(failing)):
+                group(lambda ok, label: labels.append((ok, label)), where)
+            raised = None
+        except Exception as e:  # the defect that the case looks for: reported, and the next group runs
+            raised = f"{type(e).__name__}: {e}"
+        setup = [i for i, (ok, label) in enumerate(labels)
+                 if not ok and "the setup install --apply" in label and "exits 2" in label and failure in label]
+        check(raised is None and len(setup) == 1 and setup[0] == len(labels) - 1,
+              f"{name}: a failed setup install is one wrong case with its exit status and last line, and the "
+              f"group stops there: raised {raised}, {len(setup)} such line(s), "
+              f"{len(labels) - 1 - (setup[0] if setup else -1)} case(s) after it")
+
+
 def restart_cases(check, tmp):
     """The restart lines of `harness install`, one case per row: only the Claude Code layer
     changes, only the OpenCode files, only an OpenCode step, only the oh-my-pi files, only the

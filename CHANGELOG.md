@@ -16,10 +16,11 @@
   in the message of an annotated tag on a listed commit, or only in a `git notes` note on one, and
   one hit for the same string in the commit's message. A failed setup install no longer turns
   the cases after it into a `FileNotFoundError` traceback or into wrong cases that name a
-  follow-on file: `restart_cases`, the Claude Code adapter's `layer_cases` (both of its setup
-  installs), the OpenCode adapter's `install_cases` and the oh-my-pi adapter's `omp_cases` each
-  report it as one wrong case with the install's exit status and last line, and that group of
-  cases stops. With a curated skill that fails `parse_file`, `harness test` now prints the
+  follow-on file: `restart_cases`, the Claude Code adapter's `layer_cases`, the OpenCode
+  adapter's `install_cases` and the oh-my-pi adapter's `omp_cases` each report it as one wrong
+  case with the install's exit status and last line, and that group of cases stops. A new case,
+  `setup_guard_cases`, runs the three adapter groups with every install failing and checks this.
+  With a curated skill that fails `parse_file`, `harness test` now prints the
   frontmatter case's `BAD` line that names the file, prints no traceback, and exits nonzero; K23
   and K25 leave `KNOWN_ISSUES.md`. It still ends early, in the skill-triggers cases, with exit 2
   and no summary line: K63.

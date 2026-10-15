@@ -526,3 +526,25 @@
   No `N cases, M wrong` line is printed, and the cases after it do not run. No traceback.
 - kind: defect
 - found: 2026-10-15
+
+### K64 · When the install exits 2, cases of the hook probe's `[inst-drif]` group name a follow-on file.
+
+- location: `hooks/probe.py:1209`
+- evidence: with the `[councils]` key of `examples/models.toml` set to an agent that `agents/`
+  does not hold, in a scratch copy of the repository, `bin/harness test` prints
+  `BAD exp quiet got raised FileNotFoundError [inst-drif] the stamp names copies of rules/ and hooks/…`
+  and a wrong case for `a missing stamp is drift` (`:1216`): the steps read the stamp that the
+  failed `--apply` did not write. The label names the stamp, not the exit 2 that causes it. This
+  is the class of K23, which part K fixed in `layer_cases`, at a site of the probe.
+- kind: defect
+- found: 2026-10-15, the critic of part K
+
+### K65 · The no-julia `PATH` of `precondition_cases` drops every directory that holds a `julia`.
+
+- location: `lib/harness/install_cases.py:122`
+- evidence: the case builds its `PATH` from the directories of the current one in which
+  `shutil.which("julia", path=d)` finds nothing. Where `julia` is in `/usr/bin`, as on some Linux
+  CI images, the `PATH` also loses `git` and `sh`, and the cases fail for another reason. Not
+  measured: here `julia` is in `~/.juliaup/bin`.
+- kind: defect
+- found: 2026-10-15, the critic of part K
