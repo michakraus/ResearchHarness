@@ -144,17 +144,6 @@
 - kind: missing test
 - found: 2026-10-08
 
-### K18 · The dry run of `harness install` exits 2 on a HOME with no `~/.claude/skills/`.
-
-- location: `lib/harness/sources.py:26`
-- evidence: the skill links of OpenCode read `~/.claude/skills/`, and `curated_skills` raises
-  `<home>/.claude/skills is not a directory` when it does not exist. The dry run before a first
-  install therefore ends in exit 2 after the files, with no count line, on the base `6a4d726` and
-  on this branch alike. The case "with no ~/.claude/skills/, the warnings are printed before the
-  skill links exit 2" shows it.
-- kind: defect
-- found: 2026-10-08
-
 ### K19 · No case shows that `frontends.load` removes an adapter that lacks a member from `sys.modules`.
 
 - location: `lib/harness/frontends.py:80`

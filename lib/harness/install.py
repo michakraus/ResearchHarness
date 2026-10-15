@@ -171,9 +171,13 @@ def install_julia_env(apply):
         changes += 1
     if apply and changes:
         # `Pkg.resolve` adds no registry, so a new depot needs General first.
-        p = subprocess.run([*JULIA, f"--project={JULIA_ENV}", "-e",
-                            "using Pkg; isempty(Pkg.Registry.reachable_registries()) && "
-                            "Pkg.Registry.add(\"General\"); Pkg.resolve(); Pkg.instantiate()"])
+        try:
+            p = subprocess.run([*JULIA, f"--project={JULIA_ENV}", "-e",
+                                "using Pkg; isempty(Pkg.Registry.reachable_registries()) && "
+                                "Pkg.Registry.add(\"General\"); Pkg.resolve(); Pkg.instantiate()"])
+        except OSError as e:
+            raise HarnessError(f"julia cannot be started ({e.strerror}): it is not found on the PATH, or not "
+                               "executable; install Julia with juliaup") from None
         if p.returncode != 0:
             raise HarnessError(f"Pkg.instantiate failed in {JULIA_ENV}")
     return changes
@@ -227,9 +231,9 @@ def cmd_install(args):
 
 
 def selftest():
-    """A malformed profile or models.toml exits 2 with no traceback; then `load_cases` and
-    `install_cases.restart_cases`."""
-    from .install_cases import restart_cases
+    """A malformed profile or models.toml exits 2 with no traceback; then `load_cases`,
+    `install_cases.restart_cases` and `install_cases.precondition_cases`."""
+    from .install_cases import precondition_cases, restart_cases
 
     total = wrong = 0
 
@@ -278,6 +282,7 @@ def selftest():
               f"all three: {p.returncode}, {p.stderr.strip()[-300:]!r}")
         load_cases(check, pathlib.Path(tmp))
         restart_cases(check, pathlib.Path(tmp))
+        precondition_cases(check, pathlib.Path(tmp))
     return total, wrong
 
 

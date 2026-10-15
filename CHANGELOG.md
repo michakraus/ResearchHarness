@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+- **`harness install --apply` with no `julia` exits 2 with one line, and new cases show K18's fix
+  and measure the leak gate's limits.** With a change pending in the Julia environment and no `julia` that starts
+  (none on the `PATH`, or one that is not executable), the apply exits 2 with
+  `julia cannot be started (…): it is not found on the PATH, or not executable; install Julia with
+  juliaup`, in place of a `FileNotFoundError` traceback and exit 1; a `julia` that starts and
+  fails keeps `Pkg.instantiate failed in …`, and the dry run still starts nothing. A new case in
+  `harness test` (`precondition_cases`) runs the dry run on a scratch `HOME` with no
+  `~/.claude/skills/` and shows exit 1 with its count line: K18, fixed by `8a99f73`, which
+  replaced the OpenCode skill links with own copies, and leaves `KNOWN_ISSUES.md`. Four cases in
+  `commit_cases` measure the limits of the leak gate that `docs/src/security.md` states:
+  `harness leaks --commits` reports no hit for a leak string only in a commit's author name, only
+  in the message of an annotated tag on a listed commit, or only in a `git notes` note on one, and
+  one hit for the same string in the commit's message. `restart_cases` reports a failed setup
+  install as a wrong case with its exit status and last line, and stops, in place of a
+  `FileNotFoundError` traceback when it edits a file that the install did not write.
+
 - **No session changes RTK's configuration, its user filters or its filter trust store.** RTK
   keeps the SHA-256 hashes of the filter files that it may apply in `trusted_filters.json`, in its
   data directory, which a session must write for the tracking database. A session could write a
