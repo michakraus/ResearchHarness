@@ -19,6 +19,33 @@
   installed into a tree that holds the page: K66. Three other files that cite a notes page outside
   the repository are K67.
 
+- **Four tracebacks of `harness` become one line and exit 2: K4, K9, K48 and K60 leave
+  `KNOWN_ISSUES.md`.** Exit 1 means "changes to make" in the verb contract, so a traceback with
+  exit 1 read as a pending change. A settings file that is not UTF-8, not JSON, JSON but not an
+  object, JSON nested deeper than the parser reads, or an object whose `permissions` is not an
+  object makes `settings surface`, `compare`, `twins` and `domains` exit 2 with one line that
+  names the file and what is wrong with it. Such a `~/.claude.json`, or one whose `projects` is
+  not an object, does the same for `trust` (K4). The merge of `~/.claude/settings.json` refuses
+  deep nesting the same way. `harness install` now checks every target of every frontend and of
+  the Julia environment before it writes anything. Before, only the Claude Code layer had this
+  check. A symlink at a target, or at a directory above one, is refused and not written through.
+  A directory at a target is refused too. In the dry run and under `--apply`, each refusal is one
+  line that names the target once and what it is, and nothing else is printed (K9). A target with
+  a change that the user cannot write, or a new target below a directory that cannot be written,
+  makes `--apply` exit 2 with one line, before any file or backup is written. So does a target
+  whose mode the install changes and that another user owns, because only the owner can change
+  a mode. The dry run prints its whole plan and its count line, then that line, and exits 2, so
+  that a session, which cannot write the installed files, still sees the plan (K48). An `OSError`
+  in the write itself, from a full disk say, also exits 2 with the target. A backup now has mode
+  0600, whatever the mode of the file it keeps, so a backup of a 0644 file is no longer readable
+  by others, and a backup never carries a 0444 that blocks the next one. A permission rule
+  outside `~/.claude/settings.json` with a lone surrogate prints it as `\ud800`; the dry run no
+  longer stops with `UnicodeEncodeError` (K60). New cases in `harness test` show each refusal: 30
+  in the contract sweep for K4, 17 in `install_cases.target_cases`, and one more input in the
+  settings-merge cases of the Claude Code adapter. `claude_plan` takes no `root` any more, because
+  the target check left it. A stray settings file nested too deep still ends the dry run in a
+  traceback (K68).
+
 - **`harness install --apply` with no `julia` exits 2 with one line, and new cases show K18's fix
   and measure the leak gate's limits.** With a change pending in the Julia environment and no `julia` that starts
   (none on the `PATH`, or one that is not executable), the apply exits 2 with

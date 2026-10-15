@@ -98,6 +98,18 @@ class Scratch:
     def mode(path):
         return stat.S_IMODE(path.stat().st_mode)
 
+    @staticmethod
+    def snapshot(base):
+        """Every path below `base`, with its mode, and its bytes or the target of a link."""
+        out = {}
+        for path, dirs, files in os.walk(base):
+            for name in dirs + files:
+                p = pathlib.Path(path, name)
+                st = p.lstat()
+                out[str(p)] = (stat.S_IMODE(st.st_mode), os.readlink(p) if p.is_symlink()
+                               else p.read_bytes() if stat.S_ISREG(st.st_mode) else None)
+        return out
+
 
 COUNT_LINE = re.compile(r"^\d+ change\(s\) (made|to make)\.$", re.M)
 
@@ -154,6 +166,129 @@ def precondition_cases(check, tmp):
     last = scratch.tail(text)
     case(lambda: scratch.refused(code, text) and f"Pkg.instantiate failed in {base / 'julia'}" in last,
          f"a julia that starts and exits 1: --apply exits 2 with Pkg.instantiate failed: {code}, {last!r}")
+
+
+def target_cases(check, tmp):
+    """The targets that `harness install` cannot write, each on a fresh scratch HOME: a symlink and a
+    directory at the OpenCode AGENTS.md and at ~/.claude/CLAUDE.md, a settings.json of mode 0444
+    with a change, and a directory of mode 0555 where a new target goes. The dry run and --apply
+    each exit 2 with one line that names the target once and what it is, and no file changes; for a
+    target that cannot be written, the dry run prints its plan and count line before it. Then the
+    mode of a backup, a mode change of a target that another user owns, an OSError in the write
+    itself, and a stray rule with a lone surrogate."""
+    import errno
+    from unittest import mock
+
+    from . import HarnessError, install
+
+    scratch = Scratch(check, tmp / "targets")
+    case, run, snapshot = scratch.case, scratch.run, scratch.snapshot
+
+    def refusals(base, target, what, label, shown=None):
+        """The dry run and --apply on `base`, each refused with one line that names `target`; with
+        `shown`, the label of a planned line, the dry run prints its plan first, that line and the
+        count line among it, and the refusal last."""
+        before = snapshot(base)
+        for argv in ([], ["--apply"]):
+            code, text = run(base, *argv)
+            lines = text.strip().splitlines()
+            plan = shown is not None and not argv
+            case(lambda: scratch.refused(code, text) and lines[-1].count(str(target)) == 1 and what in lines[-1]
+                 and (len(lines) == 1 if not plan else
+                      any(l.startswith(shown) for l in lines[:-1]) and len(COUNT_LINE.findall(text)) == 1
+                      and COUNT_LINE.search(text).group(1) == "to make"
+                      and not any(str(target) in l for l in lines[:-1]))
+                 and snapshot(base) == before,
+                 f"{label}: {' '.join(['install', *argv])} exits 2, "
+                 + ("prints its plan with its count line, then one line that names it" if plan
+                    else "with one line that names it")
+                 + f", and no file changes: {code}, {len(lines)} line(s), {scratch.tail(text)!r}")
+
+    for where, rel in [("opencode", "AGENTS.md"), ("home/.claude", "CLAUDE.md")]:
+        for kind, what in [("a symlink", "is a symlink"), ("a directory", "is a directory")]:
+            base, _, _ = scratch.fresh()
+            target = base / where / rel
+            if kind == "a symlink":
+                (base / "outside.md").write_text("outside\n")
+                target.symlink_to(base / "outside.md")
+            else:
+                target.mkdir()
+            refusals(base, target, what, f"{kind} at {where}/{rel}")
+
+    base, claude, _ = scratch.fresh()
+    live = claude / "settings.json"
+    live.write_text('{"model": "x"}\n')
+    live.chmod(0o444)
+    try:
+        refusals(base, live, "cannot be written", "a settings.json of mode 0444 with a change",
+                 shown="~/.claude/settings.json")
+    finally:
+        live.chmod(0o644)
+
+    base, _, _ = scratch.fresh()
+    (base / "opencode").chmod(0o555)
+    try:
+        refusals(base, base / "opencode" / "opencode.jsonc", "cannot be written",
+                 "a new opencode.jsonc in a directory of mode 0555", shown="opencode.jsonc")
+    finally:
+        (base / "opencode").chmod(0o755)
+
+    # A backup never keeps the mode of the file it backs up: the file's 0644 becomes 0600.
+    base, claude, _ = scratch.fresh()
+    (claude / "settings.json").write_text('{"model": "x"}\n')
+    (claude / "settings.json").chmod(0o644)
+    code, text = run(base, "--apply")
+    backups = sorted(claude.glob("settings.json.bak-*"))
+    case(lambda: code == 0 and len(backups) == 1 and scratch.mode(backups[0]) == 0o600
+         and backups[0].read_text() == '{"model": "x"}\n',
+         f"the backup of a settings.json of mode 0644 has mode 0600: {code}, "
+         f"{[oct(scratch.mode(b)) for b in backups]}, {scratch.tail(text)!r}")
+
+    # A target whose bytes stay and whose mode changes is a chmod, which needs the owner: one that
+    # another user owns is refused before anything is written, and one of mode 0444 that the user
+    # owns is not.
+    owned = tmp / "targets" / "owned.md"
+    owned.write_bytes(b"x\n")
+    owned.chmod(0o444)
+    files = [(owned, b"x\n", 0o644, "owned.md")]
+    with mock.patch.object(os, "geteuid", return_value=owned.stat().st_uid + 1):
+        other = install.check_files(files)
+    mine = install.check_files(files)
+    owned.chmod(0o644)
+    case(lambda: other is not None and other.count(str(owned)) == 1 and "owner" in other and mine is None,
+         f"a mode change of a target another user owns is refused, and of a 0444 target the user owns is not: "
+         f"{other!r}, {mine!r}")
+    # A writable target whose bytes change, with a mode in the plan, is followed by a chmod too.
+    with mock.patch.object(os, "geteuid", return_value=owned.stat().st_uid + 1):
+        other = install.check_files([(owned, b"y\n", 0o644, "owned.md")])
+        unnamed = install.check_files([(owned, b"y\n", None, "owned.md")])
+    case(lambda: other is not None and "owner" in other and unnamed is None,
+         f"a byte change with a mode in the plan, of a writable target another user owns, is refused, and one "
+         f"with no mode is not: {other!r}, {unnamed!r}")
+
+    # An OSError in the write itself, after the checks, as a full disk gives it: exit 2 with the target.
+    target = tmp / "targets" / "full" / "x.md"
+    full = OSError(errno.ENOSPC, "No space left on device", str(target))
+    with mock.patch.object(pathlib.Path, "write_bytes", side_effect=full):
+        try:
+            install.install_file(True, b"x\n", target, "x.md")
+            raised = None
+        except (HarnessError, OSError) as e:  # an OSError is the defect that the case looks for
+            raised = e
+    case(lambda: isinstance(raised, HarnessError) and str(target) in str(raised)
+         and "No space left on device" in str(raised),
+         f"an OSError in the write is a HarnessError that names the target: {raised!r}")
+
+    # A stray rule with a lone surrogate prints it escaped, and the dry run exits as it does without it.
+    base, _, _ = scratch.fresh()
+    without, _ = run(base)
+    stray = base / "home" / "Research" / ".claude" / "settings.local.json"
+    stray.parent.mkdir(parents=True)
+    stray.write_text('{"permissions": {"allow": ["Bash(\\ud800)"]}}\n')
+    code, text = run(base)
+    case(lambda: code == without and "Traceback" not in text and f"{stray}  allow  Bash(\\ud800)" in text,
+         f"a stray rule with a lone surrogate prints it as \\ud800, and the dry run exits {without} as without it: "
+         f"{code}, {scratch.tail(text)!r}")
 
 
 def setup_guard_cases(check, tmp):

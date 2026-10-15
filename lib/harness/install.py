@@ -17,14 +17,18 @@ What it installs:
 It loads the profile and the model tables, `--models F`, else $RESEARCH_HARNESS_MODELS, else
 models.toml beside the profile; examples/models.toml shows them. Then it plans each frontend, in
 the order of FRONTENDS. A plan writes nothing, so each refusal that exits 2 at once does
-so before anything is written. Then it installs the Julia environment and the files of each plan in
-that order, prints the warnings, and runs the steps of each plan that follow the files. It prints
-the installed files with no source, then the count line. After an `--apply`, it prints the restart
-line of each frontend whose files or steps changed something, in that order; the Julia environment
-belongs to no frontend. A plan's own refusal exits 2 after these lines, once the rest is installed.
+so before anything is written. So does `check_files`, which then checks every target of the Julia
+environment and of each plan: a symlink or a directory at a target exits 2. A target with a change
+that cannot be written exits 2 there under `--apply`; a dry run prints its whole plan and count
+line first, then that refusal, and exits 2. Then it installs the Julia environment and the files
+of each plan in that order, prints the warnings, and runs the steps of each plan that follow the
+files. It prints the installed files with no source, then the count line. After an `--apply`, it
+prints the restart line of each frontend whose files or steps changed something, in that order;
+the Julia environment belongs to no frontend. A plan's own refusal exits 2 after these lines, once
+the rest is installed.
 
-A file that differs from the plan, in its bytes or in its mode, is a change. The plan's checks of
-a layer that mirrors its sources (`source_files`, `check_targets`) and the stamp (`stamp_bytes`),
+A file that differs from the plan, in its bytes or in its mode, is a change. The plan's check of
+a layer that mirrors its sources (`source_files`) and the stamp (`stamp_bytes`),
 which the `SessionStart` hook hooks/install-drift.py computes again at each session start, are
 here, for the adapter that installs such a layer.
 """
@@ -63,7 +67,8 @@ def warn(*lines):
 
 def install_file(apply, data, dst, label, backup=False, mode=None):
     """Install `data` (bytes) at `dst`, with `mode` when given; 1 when either differs, after the
-    change under `apply`."""
+    change under `apply`. A backup has mode 0600, whatever the mode of the file it keeps. An
+    OSError in the write exits 2 with `dst`: `check_files` has run, but a disk can fill after it."""
     same = dst.is_file() and dst.read_bytes() == data
     old = stat.S_IMODE(dst.stat().st_mode) if dst.is_file() else None
     if same and mode in (None, old):
@@ -76,13 +81,19 @@ def install_file(apply, data, dst, label, backup=False, mode=None):
     else:
         print(f"{label:<34} {'REPLACE' if dst.is_file() else 'INSTALL'}{note}")
     if apply:
-        dst.parent.mkdir(parents=True, exist_ok=True)
-        if note:
-            shutil.copy(dst, dst.with_name(f"{dst.name}.bak-{stamp}"))
-        if not same:
-            dst.write_bytes(data)
-        if mode is not None:
-            dst.chmod(mode)
+        try:
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            if note:
+                copy = dst.with_name(f"{dst.name}.bak-{stamp}")
+                shutil.copyfile(dst, copy)
+                copy.chmod(0o600)
+            if not same:
+                dst.write_bytes(data)
+            if mode is not None:
+                dst.chmod(mode)
+        except OSError as e:
+            where = "" if e.filename in (None, str(dst)) else f" ({e.filename})"
+            raise HarnessError(f"{dst} cannot be written: {e.strerror or e}{where}") from None
     return 1
 
 
@@ -148,8 +159,8 @@ def source_files(directory):
 
 def check_targets(root, shown, plan):
     """Exit 2 on an installed path of `plan`, [(path relative to `root`, …)], or a directory above
-    one, that is a symlink, and on one that is not a readable file below directories; `shown` is
-    `root` as the messages name it."""
+    one, `root` included, that is a symlink, and on one that is a directory or not a readable file
+    below directories; `shown` is `root` as the messages name it."""
     for dst, *_ in plan:
         parts = pathlib.PurePosixPath(dst).parts
         for i in range(len(parts) + 1):
@@ -158,8 +169,40 @@ def check_targets(root, shown, plan):
                 raise HarnessError(f"{path} is a symlink; nothing is written through it")
             if i < len(parts) and path.exists() and not path.is_dir():
                 raise HarnessError(f"{path} is not a directory, and {shown}/{dst} is installed below it")
+        if path.is_dir():
+            raise HarnessError(f"{path} is a directory, where the install writes a file")
         if path.exists() and not (path.is_file() and os.access(path, os.R_OK)):
-            raise HarnessError(f"{path} is not a file that can be read, and {shown}/{dst} is installed there")
+            raise HarnessError(f"{path} is not a file that can be read, where the install writes a file")
+
+
+def check_files(files):
+    """Exit 2, before anything is written, on a target of `files`, [(destination, bytes, mode,
+    label, backup, …)] as a Plan holds them, that `check_targets` refuses below the directory that
+    holds them all. Then the refusal of the first target that the install cannot change, or None:
+    a target whose bytes change and that cannot be written (an existing file, its directory when it
+    is backed up, or the nearest directory above a new file), and a target with a change that
+    `install_file` follows with a `chmod` and that another user owns: a `chmod` needs the owner (or
+    root), not write access, so an owned file of mode 0444 can still change its mode."""
+    if not files:
+        return None
+    root = pathlib.Path(os.path.commonpath([dst.parent for dst, *_ in files]))
+    check_targets(root, frontends.home_form(root), [(dst.relative_to(root).as_posix(),) for dst, *_ in files])
+    for dst, data, mode, _, *rest in files:
+        if not dst.is_file():
+            above = next(p for p in dst.parents if p.exists())
+            if not os.access(above, os.W_OK | os.X_OK):
+                return f"{dst} cannot be written: the directory {above} cannot be written"
+            continue
+        same, st = dst.read_bytes() == data, dst.stat()
+        if not same and not os.access(dst, os.W_OK):
+            return f"{dst} cannot be written, and the install changes it"
+        if not same and rest and rest[0] and not os.access(dst.parent, os.W_OK | os.X_OK):
+            return f"{dst} cannot be written: its backup goes to {dst.parent}, which cannot be written"
+        # `install_file` runs a chmod on a changed file whenever the plan names a mode.
+        if (mode is not None and (not same or mode != stat.S_IMODE(st.st_mode))
+                and os.geteuid() not in (0, st.st_uid)):
+            return f"{dst} cannot change its mode to {mode:04o}: another user is its owner"
+    return None
 
 
 def install_julia_env(apply):
@@ -192,6 +235,14 @@ def cmd_install(args):
     for adapter in adapters:
         ctx.plans[adapter.NAME] = adapter.plan(ctx)
     plans = list(ctx.plans.values())
+    # Every target, the Julia environment's and each plan's, is checked before anything is written.
+    # A target that cannot be written stops an --apply here, and a dry run after its count line,
+    # so that a session, which cannot write the installed files, still sees the plan.
+    unwritable = [r for r in [check_files([(JULIA_ENV / "Project.toml", (REPO / "Project.toml").read_bytes(), None,
+                                            "julia/Project.toml")]),
+                              *(check_files(plan.files) for plan in plans)] if r]
+    if unwritable and args.apply:
+        raise HarnessError(unwritable[0])
     # The Julia environment belongs to no frontend, so its changes count in no plan's.
     julia = install_julia_env(args.apply)
     changed = [0] * len(plans)
@@ -224,7 +275,7 @@ def cmd_install(args):
         print()
         for line in restarts:
             print(line)
-    refused = [message for plan in plans for _, message in plan.refused]
+    refused = unwritable[:1] + [message for plan in plans for _, message in plan.refused]
     if refused:
         raise HarnessError("; ".join(refused))
     return outcome(args, changes)
@@ -232,9 +283,9 @@ def cmd_install(args):
 
 def selftest():
     """A malformed profile or models.toml exits 2 with no traceback; then `load_cases`,
-    `install_cases.restart_cases`, `install_cases.precondition_cases` and
-    `install_cases.setup_guard_cases`."""
-    from .install_cases import precondition_cases, restart_cases, setup_guard_cases
+    `install_cases.restart_cases`, `install_cases.precondition_cases`,
+    `install_cases.target_cases` and `install_cases.setup_guard_cases`."""
+    from .install_cases import precondition_cases, restart_cases, setup_guard_cases, target_cases
 
     total = wrong = 0
 
@@ -284,6 +335,7 @@ def selftest():
         load_cases(check, pathlib.Path(tmp))
         restart_cases(check, pathlib.Path(tmp))
         precondition_cases(check, pathlib.Path(tmp))
+        target_cases(check, pathlib.Path(tmp))
         setup_guard_cases(check, pathlib.Path(tmp))
     return total, wrong
 
