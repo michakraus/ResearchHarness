@@ -101,9 +101,9 @@ exits 2 before any file is written.
 
 Before it writes, the verb checks every target of the Julia environment and of each plan
 (`check_files`). A symlink, a directory or an entry that is no readable file at a target, or a
-symlink or a file in the place of a directory above it, exits 2 at once. A target that the install changes and cannot write, or whose
-mode it cannot change, exits 2 before anything is written under `--apply`. A dry run prints its
-whole plan and count line first, then that refusal, and exits 2.
+symlink or a file in the place of a directory above it, exits 2 at once. A target that the install
+changes and cannot write, or whose mode it cannot change, exits 2 before anything is written under
+`--apply`. A dry run prints its whole plan and count line first, then that refusal, and exits 2.
 
 Then the verb installs the Julia environment of the scripts: it copies `Project.toml` to
 `~/.local/share/research-harness/julia/`, or to `$RESEARCH_HARNESS_JULIA`, and instantiates it.

@@ -9,12 +9,12 @@
   setup of a figure component, such as `<WalkThrough name="instal" />`, makes `npm run docs:build`
   exit 1: an error handler of the theme logs it during the server render and sets the exit status,
   where VitePress went on to `build complete` and exited 0 (K50). The effort of a walk-through box
-passes only when an entry of `calls.toml` gives the box's agent that effort from a caller that a
-skill or agent box of the same walk-through shows; a spawn at that effort by any other caller no
-longer passes (K51). The colour scan of `docs:check`
-  also refuses a CSS named colour as a quoted string or after `fill`, `stroke` or `color`, such as
-  `const TOKEN = 'red'`; `none`, `currentColor`, `transparent` and `inherit` pass, and so does an
-  accent name of `figures.css` as a quoted string after `accent`, as in `accent: 'teal'` (K53).
+  passes only when an entry of `calls.toml` gives the box's agent that effort from a caller that a
+  skill or agent box of the same walk-through shows; a spawn at that effort by any other caller no
+  longer passes (K51). The colour scan of `docs:check` also refuses a CSS named colour as a quoted
+  string or after `fill`, `stroke` or `color`, such as `const TOKEN = 'red'`; `none`,
+  `currentColor`, `transparent` and `inherit` pass, and so does an accent name of `figures.css` as
+  a quoted string after `accent`, as in `accent: 'teal'` (K53).
   `docs/src/components/other.md` says that `repo-drift.js` reports `TagBot.yml` as missing in an
   experiment, as expected, and `docs/src/components/harness.md` names the checks of the targets
   that `harness install` makes before it writes.

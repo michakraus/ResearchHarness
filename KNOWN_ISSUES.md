@@ -285,3 +285,13 @@
   case list.
 - kind: defect
 - found: 2026-10-16, the builder of publish part P3
+
+### K72 · The named-colour scan of `docs:check` passes a colour inside a longer string.
+
+- location: `docs/scripts/check-site.mjs:275`
+- evidence: `colourIn` refuses a CSS named colour only as a whole quoted string or after `fill`,
+  `stroke` or `color`. With `const B = { border: '1px solid red' }` or
+  `<rect style="background: red" />` in a file of `docs/.vitepress/theme/figures/`,
+  `node scripts/check-site.mjs` exits 0.
+- kind: defect
+- found: 2026-10-16, the critic of publish part P5
