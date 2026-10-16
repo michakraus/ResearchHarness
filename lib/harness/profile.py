@@ -773,11 +773,16 @@ def commit_cases():
 PREPUSH_TOOLS = ["bash", "sh", "git", "mktemp", "rm", "cat", "tail", "head", "grep", "awk"]
 
 
-def prepush_case():
+def prepush_case(path=None):
     """`.githooks/pre-push` on a fixture checkout whose `origin` is a GitHub URL, for a push to
     main, with stubs of gitleaks and of `bin/harness` and no python3.11, shellcheck or julia on the
     PATH: `harness leaks` runs in the hook's clone with that URL as its `origin`, not the path of
-    the checkout. (number of cases, number wrong)"""
+    the checkout. The tools are linked from `path`, this process's PATH by default, without a
+    directory named `git-core`: git puts its exec path first in a hook's PATH, and a `git` started
+    from a link to that copy looks for `git-upload-pack` beside the link. (number of cases, number
+    wrong)"""
+    search = os.pathsep.join(d for d in (os.environ.get("PATH", "") if path is None else path).split(os.pathsep)
+                             if pathlib.PurePath(d).name != "git-core")
     env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
     env.update(GIT_CONFIG_GLOBAL="/dev/null", GIT_CONFIG_NOSYSTEM="1",
                GIT_AUTHOR_NAME="leaks", GIT_AUTHOR_EMAIL="leaks@example.org",
@@ -787,12 +792,12 @@ def prepush_case():
         tmp = pathlib.Path(tmp)
         tools, repo, seen = tmp / "bin", tmp / "repo", tmp / "origin-seen"
         tools.mkdir()
-        missing = [tool for tool in PREPUSH_TOOLS if shutil.which(tool) is None]
+        missing = [tool for tool in PREPUSH_TOOLS if shutil.which(tool, path=search) is None]
         if missing:
             print(f"BAD  pre-push: the case needs {', '.join(missing)} on the PATH; it does not run")
             return 1, 1
         for tool in PREPUSH_TOOLS:
-            (tools / tool).symlink_to(shutil.which(tool))
+            (tools / tool).symlink_to(shutil.which(tool, path=search))
         (tools / "python3").symlink_to(sys.executable)
         (tools / "gitleaks").write_text('#!/bin/sh\n[ "$1" = version ] && echo v8.24.0\n'
                                         '[ "$1" = stdin ] && cat >/dev/null\nexit 0\n')
@@ -847,7 +852,10 @@ def selftest():
         print(f"{'ok ' if got == expected else 'BAD'}  {line!r} -> {got!r}")
     n, w = commit_cases()
     n2, w2 = prepush_case()
-    return len(CASES) + len(NAME_CASES) + n + n2, wrong + w + w2
+    # As inside a git hook: git's exec path first on the PATH.
+    exec_path = subprocess.run(["git", "--exec-path"], capture_output=True, text=True, check=True).stdout.strip()
+    n3, w3 = prepush_case(exec_path + os.pathsep + os.environ.get("PATH", ""))
+    return len(CASES) + len(NAME_CASES) + n + n2 + n3, wrong + w + w2 + w3
 
 
 def register(sub):
