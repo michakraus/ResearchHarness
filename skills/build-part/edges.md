@@ -102,6 +102,13 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   decrease exists (K10, round 5; the C1 replay of l14)
 - a stationary point that is a maximum, which a test of the slope's sign accepts; a test on a convex
   merit only does not show it (K12, round 5)
+- a bit-for-bit comparison of a product built from `muladd`, across two compilation contexts: the
+  compiler may contract the product into a fused multiply–add in one and not the other, so a
+  `ComplexF32` static product differs by up to 2 ulp between a kernel and the host that evaluates
+  the same expression, when every operand is bit-identical and the two Julia versions disagree about
+  which context contracts (L-a verify 2 and 3, *Design the solver package*). Write every operand out
+  of the kernel whole and compare those exactly, and compare the product at a stated ulp bound — a
+  tolerance on the product alone hides a corruption of an operand that reaches only it.
 - a solver swap that changes the quantity a tolerance bounds: the old solver tested `maximum(abs, F)`
   where the replacement tests `‖F‖₂`, so the same `abstol` is now stricter and rejects a solve the
   reference accepted (P44, *Rewrite the reduced basis packages*)
@@ -128,6 +135,12 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
 - the precision of a device: Metal has `Float32` only, and a `Float64` array or scalar raises an
   error. Query `KernelAbstractions.supports_float64(backend)`; do not hardcode a default. Metal has
   no `qr` and no `svd` on an `MtlArray` (the solver package's capability spike)
+- a mutable static array offered as an iterate: `x + α * d` and `map` on an `MVector` or an
+  `MMatrix` return a new mutable array, which the heap holds, so no method makes it `isbits` or
+  allocation-free while the type stays (L-a round 1, *Design the solver package*). A plan that lists
+  `MMatrix` among the iterates of a zero-allocation clause is naming the in-kernel storage that a
+  storage spike decided; the clause belongs on the immutable form (`SVector`) alone, and a mutable
+  static array that is an iterate for the call form carries no allocation promise.
 - a non-`isbits` element type, such as `BigFloat`, on a path that builds an `MMatrix`: StaticArrays
   refuses `setindex!` on it, so an R1 kernel written for `Float32` and `Float64` has no `BigFloat`
   method (I round 1a, *Design the solver package*)
@@ -305,6 +318,11 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
 ## A migration of tests or of text
 
 - doctests in the manual pages, not only in the docstrings
+- a tolerance or an API that answers on the session's Julia and not on the `[compat]` floor:
+  `eps(::Type{ComplexF32})` returns a value on 1.13 and raises a `MethodError` on 1.11, so a device
+  test that uses it errors in CI's `min` job while every local run is green (J round 1 and verify 2,
+  *Design the solver package*). Run the floor once per part, and write `eps(real(T))` wherever `T`
+  may be complex.
 - a new `test/Project.toml` that makes `Pkg.test()` write a `test/Manifest.toml` the
   `.gitignore` does not name
 - a renamed file whose old name stays in a comment under `src/`, `ext/` or `scripts/`
