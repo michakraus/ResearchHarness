@@ -23,14 +23,20 @@ Each animated walk-through of the site is drawn from one file `docs/figures/walk
 its `title`, `subtitle` and `steps` (the edges in the order in which the token runs along them, each
 by its `id`, else as "from -> to"), its `[[box]]` and `[[group]]` entries, and its `[[edge]]`
 entries, each with `at`,
-the `file:line` that states the step. `harness test` checks that each box of the kind `agent` or
+the `file:line` that states the step. `harness test` reads every such file on disk, tracked or not,
+as the site's data loader does, and checks that each box of the kind `agent` or
 `skill` shows an agent of `agents/` or a skill of `skills/`, that each `at` is a line of a file of
 the repository, that the edges and the steps name boxes and edges of the file, and that a box
 with `effort`, the effort of its spawn, shows an agent that an entry of calls.toml spawns at it.
+
+On `docs/src/example-tree.md`, each code span that has the shape of a component's name
+(COMPONENT_SHAPE) names a component of some page, unless NOT_COMPONENTS lists it.
 """
 
+import pathlib
 import re
 import subprocess
+import tempfile
 import tomllib
 
 from . import REPO
@@ -43,6 +49,12 @@ CALLS = REPO / "docs" / "figures" / "calls.toml"
 # step with no agent, an outcome.
 WALKTHROUGH = "docs/figures/walkthrough-*.toml"
 BOX_KINDS = ("you", "skill", "agent", "step", "outcome")
+# The page of the example tree, the shape of a component's name in one of its code spans (a script,
+# or a lowercase word of letters, digits and hyphens with a hyphen), and the spans of that shape that
+# name no component: none on today's page.
+EXAMPLE_TREE = REPO / "docs" / "src" / "example-tree.md"
+COMPONENT_SHAPE = re.compile(r".+\.(?:jl|py|js|mjs|ts|sh)|[a-z0-9]+(?:-[a-z0-9]+)+")
+NOT_COMPONENTS = set()
 
 # The keys of a `[[call]]` entry, the ones it must have, and the values of `effort`.
 CALL_KEYS = {"caller", "callee", "at", "effort", "label"}
@@ -144,6 +156,17 @@ def headings(text, level):
 def named(text):
     """The names in backticks in a heading."""
     return set(re.findall(r"`([^`]+)`", text))
+
+
+def code_spans(text):
+    """The text of each code span of Markdown `text`, outside code fences."""
+    found, fenced = [], False
+    for line in text.splitlines():
+        if line.startswith("```"):
+            fenced = not fenced
+        elif not fenced:
+            found += [m[2].strip() for m in re.finditer(r"(?<!`)(`+)(?!`)(.+?)(?<!`)\1(?!`)", line)]
+    return found
 
 
 def word(name, text):
@@ -249,9 +272,16 @@ def call_cases(calls, sources, meta, lines, check):
         check(name in callers, f"calls.toml has an entry with the caller {name!r}, which spawns")
 
 
-def walkthroughs(paths):
-    """The walk-throughs among the tracked `paths`: docs/figures/walkthrough-*.toml."""
-    return sorted(p for p in paths if matches(WALKTHROUGH, p))
+def walkthroughs(root=REPO):
+    """The walk-throughs on disk below `root`, tracked or not, as paths relative to it:
+    docs/figures/walkthrough-*.toml. The data loader of the site draws every one of them."""
+    return sorted(p.relative_to(root).as_posix() for p in root.glob(WALKTHROUGH))
+
+
+def shaped_spans(text, names):
+    """The code spans of Markdown `text` that have the shape of a component's name and are neither
+    in `names` nor in NOT_COMPONENTS."""
+    return [s for s in code_spans(text) if COMPONENT_SHAPE.fullmatch(s) and s not in names | NOT_COMPONENTS]
 
 
 def walkthrough_problems(data, sources, lines, calls=()):
@@ -344,6 +374,18 @@ def selftest():
             check(name in inside, f"components/{page} has a heading for {name!r}")
         for name in sorted(inside - names):
             check(False, f"components/{page}: {name!r} in a heading is no component of the page")
+
+    # The code spans of example-tree.md that have the shape of a component's name: on fixed inputs,
+    # then on the page of this checkout, each is a component of some page.
+    check(code_spans("`a` and ``b`c``\n```\n`d`\n```\n` e `\n") == ["a", "b`c", "e"],
+          "code_spans reads each code span outside code fences")
+    sample = "`julia-builder`, `wiki-lint.jl`, `julia-bilder`, `gate.sh`, `harness install`, `repository_roots`, `main`"
+    found = shaped_spans(sample, {"julia-builder", "wiki-lint.jl"})
+    check(found == ["julia-bilder", "gate.sh"], f"shaped_spans names a script and a hyphenated name that are no component: {found}")
+    names = set().union(*components(tracked()).values())
+    found = shaped_spans(EXAMPLE_TREE.read_text(), names) if EXAMPLE_TREE.is_file() else ["the page does not exist"]
+    check(not found, "docs/src/example-tree.md: every code span of a component's shape names a component"
+          + (f": not {', '.join(found)}" if found else ""))
 
     # The rules of the dependencies page on fixed inputs, then the page of this checkout.
     def page(generic="| A | 1 | a |\n| B | 2 | b |\n", heads="### A\n### B and C\n### D, E\n", header=TABLE_HEADER,
@@ -459,8 +501,18 @@ def selftest():
     found = walkthrough_problems({**twice, "steps": [*good["steps"], "again"]}, sources, files.get)
     check(found == [], f"a second edge with its own id, named by a step, is no problem: {found}")
 
-    # The walk-throughs of this checkout.
-    walks = walkthroughs(paths)
+    # The walk-throughs are read from disk: an untracked data file is read, a file of another name
+    # is not.
+    with tempfile.TemporaryDirectory(prefix="harness-docs-") as tmp:
+        figures = pathlib.Path(tmp) / "docs" / "figures"
+        figures.mkdir(parents=True)
+        for name in ("walkthrough-new.toml", "calls.toml", "walkthrough-new.txt"):
+            (figures / name).touch()
+        found = walkthroughs(pathlib.Path(tmp))
+        check(found == ["docs/figures/walkthrough-new.toml"], f"walkthroughs reads an untracked data file on disk: {found}")
+
+    # The walk-throughs of this checkout, tracked or not; the files that they cite are tracked.
+    walks = walkthroughs()
     check(len(walks) >= 4, f"docs/figures/ has at least four walk-throughs: {walks}")
     known = set(paths)
     lines = lambda path: (REPO / path).read_text().splitlines() if path in known else None

@@ -18,6 +18,10 @@ a list, for `trust`.
 
 For each verb of `APPLY`, `--apply` and then the dry run again: the second run exits 0.
 
+A verb's run that takes more than `TIMEOUT` seconds exits `timeout`, a wrong case; one case runs the
+runner on a child that outlives a timeout of 1 s and passes the result through each check of the
+sweep: `dry_run_ok`, `refused_ok` and `applied_ok`.
+
 Not swept: `format` runs Julia over the tree, `ci-protection` needs `gh` with a login, and
 `skill-triggers` runs its dry run and its `--apply` in its own cases.
 `install --apply` instantiates a Julia environment, and `push-all --apply` pushes.
@@ -29,6 +33,7 @@ import pathlib
 import subprocess
 import sys
 import tempfile
+import time
 
 from . import REPO
 from .profile import DUMMY
@@ -123,6 +128,36 @@ def digest(root):
     return h.hexdigest()
 
 
+# The seconds that one verb's run of the sweep may take.
+TIMEOUT = 120
+
+
+def run(command, env, cwd, timeout=TIMEOUT):
+    """One run of `command`; a run that outlives `timeout` exits `timeout`, which no check of the
+    sweep accepts."""
+    try:
+        return subprocess.run(command, env=env, cwd=cwd, capture_output=True, text=True, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        return subprocess.CompletedProcess(command, "timeout", "", "")
+
+
+# The checks of the sweep, each on the result of `run`.
+
+def dry_run_ok(p, changed):
+    """A dry run: exit 0 or 1, no traceback, and no file below the fixture `changed`."""
+    return p.returncode in (0, 1) and "Traceback" not in p.stdout + p.stderr and not changed
+
+
+def refused_ok(p):
+    """A refusal: exit 2 with one line on stderr and no traceback."""
+    return p.returncode == 2 and len(p.stderr.strip().splitlines()) == 1 and "Traceback" not in p.stdout + p.stderr
+
+
+def applied_ok(applied, again):
+    """An --apply and the dry run after it: both exit 0."""
+    return applied.returncode == 0 and again.returncode == 0
+
+
 def selftest():
     """The sweep's cases: (number of cases, number wrong)."""
     total = wrong = 0
@@ -142,17 +177,35 @@ def selftest():
 
         def harness(args):
             """One verb's run; a verb that hangs exits `timeout`, which is a wrong case."""
-            try:
-                return subprocess.run(HARNESS + args, env=env, cwd=tmp, capture_output=True, text=True, timeout=120)
-            except subprocess.TimeoutExpired:
-                return subprocess.CompletedProcess(args, "timeout", "", "")
+            return run(HARNESS + args, env, tmp)
+
+        # The runner on a child that outlives a timeout of 1 s: the run ends at the timeout, and each
+        # check of the sweep counts its result as wrong. The refusal check gets the result with one
+        # stderr line, and a run that exits 0 is the other run of the --apply check, so that only the
+        # exit status can fail them; with the exit status of a good run, each check passes.
+        start = time.monotonic()
+        p = run([sys.executable, "-c", "import time; time.sleep(30)"], env, tmp, timeout=1)
+        took = time.monotonic() - start
+
+        def like(code, stderr=""):
+            return subprocess.CompletedProcess(p.args, code, "", stderr)
+
+        line = "harness: one line\n"
+        verdicts = {"dry run": dry_run_ok(p, False), "refusal": refused_ok(like(p.returncode, line)),
+                    "--apply": applied_ok(p, like(0)), "dry run after --apply": applied_ok(like(0), p)}
+        controls = [dry_run_ok(like(0), False), dry_run_ok(like(1), False), refused_ok(like(2, line)),
+                    applied_ok(like(0), like(0))]
+        check(took < 15 and not any(verdicts.values()) and all(controls),
+              f"a child that outlives the timeout exits {p.returncode!r} after {took:.1f} s, and the sweep's "
+              f"checks accept it: {verdicts}, and the exits of good runs: {controls}; the sweep's own timeout "
+              f"is {TIMEOUT} s")
 
         for verb, _ in VERBS:
             before = digest(tmp)
             p = harness(argv[verb])
             changed = digest(tmp) != before
             traceback = "Traceback" in p.stdout + p.stderr
-            check(p.returncode in (0, 1) and not traceback and not changed,
+            check(dry_run_ok(p, changed),
                   f"{verb}: dry run exits {p.returncode}, traceback {traceback}, a file changed {changed}"
                   + (f": {p.stderr.strip()[-300:]!r}" if p.returncode not in (0, 1) or traceback else ""))
 
@@ -164,7 +217,7 @@ def selftest():
                 for verb in verbs:
                     p = harness(argv[verb])
                     lines = p.stderr.strip().splitlines()
-                    check(p.returncode == 2 and len(lines) == 1 and "Traceback" not in p.stdout + p.stderr,
+                    check(refused_ok(p),
                           f"{verb} without {precondition}: exit {p.returncode}, {len(lines)} stderr line(s)"
                           + (f": {lines[-1]!r}" if lines else ""))
             finally:
@@ -187,7 +240,7 @@ def selftest():
                     aside.rename(live)
                 else:
                     live.chmod(0o644)
-            check(p.returncode == 2 and p.stderr == f"harness settings: {expect}\n",
+            check(refused_ok(p) and p.stderr == f"harness settings: {expect}\n",
                   f"settings domains, settings file {label}: exit {p.returncode}, stderr {p.stderr.strip()[-300:]!r}")
 
         # A settings file, and ~/.claude.json, that is not JSON, not UTF-8, JSON but not an object,
@@ -219,15 +272,14 @@ def selftest():
                     path.write_bytes(old)
                 for verb, p in runs:
                     lines = p.stderr.strip().splitlines()
-                    check(p.returncode == 2 and len(lines) == 1 and str(path) in lines[0] and reason in lines[0]
-                          and "Traceback" not in p.stdout + p.stderr,
+                    check(refused_ok(p) and str(path) in lines[0] and reason in lines[0],
                           f"{verb}, {path.name} {label}: exit {p.returncode}, {len(lines)} stderr line(s)"
                           + (f": {lines[-1][-300:]!r}" if lines else ""))
 
         for verb in APPLY:
             applied = harness(argv[verb] + ["--apply"])
             again = harness(argv[verb])
-            check(applied.returncode == 0 and again.returncode == 0,
+            check(applied_ok(applied, again),
                   f"{verb} --apply exits {applied.returncode}, the dry run after it {again.returncode}"
                   + (f": {(applied.stderr + again.stderr).strip()[-300:]!r}" if applied.stderr + again.stderr else ""))
     return total, wrong

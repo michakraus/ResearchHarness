@@ -1,15 +1,5 @@
 # Known issues
 
-### K6 · No test reaches the timeout path of the contract sweep.
-
-- location: `lib/harness/sweep.py:139`
-- evidence: the mutant that makes a timeout return `subprocess.CompletedProcess(args, 0, "", "")`
-  in place of the return code `"timeout"` survives `bin/harness test` (517 cases, 27 wrong, as
-  the unmutated copy). The return code `"timeout"` is in neither `(0, 1)` nor `2`, so it fails
-  every check of the sweep by reading.
-- kind: missing test
-- found: 2026-10-05
-
 ### K8 · No `ask` entry surfaces an edit of the sources in the neutral directories and `adapters/claude/`.
 
 - location: `settings/settings.proposal.json:688-689`
@@ -76,15 +66,6 @@
 - kind: defect
 - found: 2026-10-06
 
-### K15 · No probe case shows that `writePath` drops the `#TAG` of a header.
-
-- location: `hooks/probe.py`
-- evidence: a mutant of `writePath` that keeps `#TAG` passes `hooks/probe.py` (447 cases, 0
-  wrong). The one tagged `write` case is under `~/.claude/hooks/**`, a directory rule that matches
-  with or without the tag. An exact-file rule shows it: `{"path": "[~/.zshrc#1A2B]"}` must block.
-- kind: missing test
-- found: 2026-10-06
-
 ### K16 · A leading `:` before `./` or `../` passes the oh-my-pi path guard.
 
 - location: `adapters/omp/guards.ts:341`
@@ -95,25 +76,6 @@
   verified).
 - kind: found late
 - found: 2026-10-06
-
-### K17 · No case checks the templates that `harness leaks` renders.
-
-- location: `lib/harness/profile.py:260`
-- evidence: the mutant `cmd_leaks` without the adapters' `TEMPLATES` survives `bin/harness test`
-  (841 cases, 1 wrong, the same as the unmutated copy, which has no `.git` for the `leaks` case).
-  The same edit on the base `6a4d726` survives too. The behaviour itself is unchanged; no case
-  pins it.
-- kind: missing test
-- found: 2026-10-08
-
-### K19 · No case shows that `frontends.load` removes an adapter that lacks a member from `sys.modules`.
-
-- location: `lib/harness/frontends.py:80`
-- evidence: a mutant that deletes `del sys.modules[key]` after the member check survives
-  `bin/harness test` (install unit: 7 cases, 0 wrong). No caller calls `load()` again in the same
-  process after a failure, so the effect cannot be seen; a case would call `load()` twice.
-- kind: missing test
-- found: 2026-10-08
 
 ### K20 · `omp_agent_cases` defines its own `tail`, a copy of `Scratch.tail`.
 
@@ -305,17 +267,6 @@
 - kind: defect
 - found: 2026-10-09
 
-### K45 · No script checks that a component named on `example-tree.md` without a link exists.
-
-- location: `docs/src/example-tree.md`, `docs/scripts/check-site.mjs`
-- evidence: a component that the page links to its section is checked, because
-  `check-site.mjs` fails on a link to a heading that does not exist (the mutant
-  `` [`paper-polisher`](components/agents.md#paper-polisher) `` gives "names no heading", exit 1).
-  A name in a code span with no link, such as `` `wiki-lint.jl` `` after its first use, is
-  checked only by a manual `ls`. Found by the critic of part J5.
-- kind: missing test
-- found: 2026-10-10
-
 ### K46 · A stray settings file whose `allow`, `ask` or `deny` is a string lists one rule per character.
 
 - location: `adapters/claude/adapter.py:649`
@@ -337,16 +288,6 @@
 - kind: found late
 - found: 2026-10-10
 
-### K49 · No check reads "one box width per column" on a walk-through.
-
-- location: `docs/scripts/check-site.mjs:206`
-- evidence: `layerProblems` runs only on the four call graphs of `CALL_GRAPHS`. The generator
-  `walkthroughs.data.ts` gives every card of a column one width today, but a change that widens
-  one card of a column passes `docs:check`. A narrowed card is caught only because `FigCard`
-  draws no card then and an edge names a box that is missing. Found by the critic of part J4.
-- kind: missing test
-- found: 2026-10-10
-
 ### K50 · A throw in the setup of a figure component does not stop the build.
 
 - location: `docs/.vitepress/theme/figures/FigCard.vue:25`, `docs/.vitepress/theme/figures/WalkThrough.vue:16`
@@ -366,15 +307,6 @@
   effort. The check does not compare the caller of that entry with the skill or agent of the
   walk-through, so a box of a skill that never spawns the agent at that effort passes. Found by
   the critic of part J4.
-- kind: missing test
-- found: 2026-10-10
-
-### K52 · `harness test` checks only the tracked walk-through data files; the build draws every one on disk.
-
-- location: `lib/harness/docs.py:462`, `docs/.vitepress/theme/figures/walkthroughs.data.ts:322`
-- evidence: `walkthroughs(tracked())` reads the paths of `git ls-files`, and the data loader
-  reads every `docs/figures/walkthrough-*.toml` in the directory. A new data file is drawn on the
-  site and is not checked until it is staged. Found by the critic of part J4.
 - kind: missing test
 - found: 2026-10-10
 
@@ -421,28 +353,6 @@
 - kind: defect
 - found: 2026-10-15
 
-### K64 · When the install exits 2, cases of the hook probe's `[inst-drif]` group name a follow-on file.
-
-- location: `hooks/probe.py:1209`
-- evidence: with the `[councils]` key of `examples/models.toml` set to an agent that `agents/`
-  does not hold, in a scratch copy of the repository, `bin/harness test` prints
-  `BAD exp quiet got raised FileNotFoundError [inst-drif] the stamp names copies of rules/ and hooks/…`
-  and a wrong case for `a missing stamp is drift` (`:1216`): the steps read the stamp that the
-  failed `--apply` did not write. The label names the stamp, not the exit 2 that causes it. This
-  is the class of K23, which part K fixed in `layer_cases`, at a site of the probe.
-- kind: defect
-- found: 2026-10-15, the critic of part K
-
-### K65 · The no-julia `PATH` of `precondition_cases` drops every directory that holds a `julia`.
-
-- location: `lib/harness/install_cases.py:122`
-- evidence: the case builds its `PATH` from the directories of the current one in which
-  `shutil.which("julia", path=d)` finds nothing. Where `julia` is in `/usr/bin`, as on some Linux
-  CI images, the `PATH` also loses `git` and `sh`, and the cases fail for another reason. Not
-  measured: here `julia` is in `~/.juliaup/bin`.
-- kind: defect
-- found: 2026-10-15, the critic of part K
-
 ### K66 · A public rule and skill cite a notes page that the repository does not hold.
 
 - location: `rules/julia-code.md:256`
@@ -485,3 +395,16 @@
   `install_cases.target_cases` covers the escape.
 - kind: not verified
 - found: 2026-10-15, the critic of publish part P1
+
+### K70 · `install.selftest()` prints a stray line `x.md  INSTALL` with no `ok` or `BAD` prefix.
+
+- location: `lib/harness/install_cases.py:287`
+- evidence: `python3 -c "from harness import install; install.selftest()"` from `lib/` prints
+  `x.md                               INSTALL` just before the case "an OSError in the write is a
+  HarnessError that names the target", on `699ad23` too. That case of `target_cases` calls
+  `install.install_file(True, b"x\n", target, "x.md")` in-process, and `install_file` prints its
+  plan line (`lib/harness/install.py:82`) before the write fails; the case does not capture
+  stdout. The line is not a case and changes no count, but it reads as install output inside the
+  case list.
+- kind: defect
+- found: 2026-10-16, the builder of publish part P3

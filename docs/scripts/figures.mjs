@@ -69,7 +69,9 @@ function figure(head, body) {
     const a = attributes(m[0])
     boxes.push({
       name: unescape(a.get('data-box')),
-      x: Number(a.get('x')), y: Number(a.get('y')), w: Number(a.get('width')), h: Number(a.get('height'))
+      x: Number(a.get('x')), y: Number(a.get('y')), w: Number(a.get('width')), h: Number(a.get('height')),
+      // A card (FigCard), not a panel (FigPanel), which frames a group.
+      card: /(?:^|\s)fig-card-box(?:\s|$)/.test(a.get('class') ?? '')
     })
   }
   const edges = []
@@ -481,6 +483,26 @@ export function layerProblems(fig) {
     if (widths.length > 1) problems.push(`${name}: the boxes have the widths ${widths.join(', ')}, not one width`)
     const edges = distinct(layer.map((b) => b[start]))
     if (edges.length > 1) problems.push(`${name}: the boxes have the ${line} ${edges.join(', ')}, not one`)
+  }
+  return problems
+}
+
+/** The problems of the columns of a walk-through: the cards of one column have one width. A column
+ * is a set of cards whose x spans overlap; a panel, which frames a group, is no card. */
+export function columnProblems(fig) {
+  const cards = fig.boxes.filter((b) => b.card).sort((a, b) => a.x - b.x)
+  const columns = []
+  for (const b of cards) {
+    const last = columns.at(-1)
+    if (last && b.x < Math.max(...last.map((c) => c.x + c.w)) - EPS) last.push(b)
+    else columns.push([b])
+  }
+  const problems = []
+  for (const column of columns.filter((c) => c.length > 1)) {
+    const widths = [...new Set(column.map((b) => b.w))].sort((a, b) => a - b)
+    if (widths.length > 1) {
+      problems.push(`the column of ${column.map((b) => b.name).sort().join(', ')}: the cards have the widths ${widths.join(', ')}, not one width`)
+    }
   }
   return problems
 }
