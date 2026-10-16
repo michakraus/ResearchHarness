@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- **OpenCode's default model is `opendesign/deepseek-v4.1-flash`, in place of
+  `opencode-go/deepseek-v4.1-flash`.** The private profile defines the `opendesign` provider in
+  `opencode_providers`; an installation without it must name another model in
+  `adapters/opencode/opencode.jsonc`. OpenCode has no model fallback, so the Go model is a manual
+  switch.
+
 - **Nine missing cases and checks: K6, K15, K17, K19, K45, K49, K52, K64 and K65 leave
   `KNOWN_ISSUES.md`.** The contract sweep runs one verb through `sweep.run`, whose timeout is a
   parameter; a case gives it a child that outlives 1 s and passes the result through the sweep's
