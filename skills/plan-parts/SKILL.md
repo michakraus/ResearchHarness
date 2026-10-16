@@ -209,6 +209,22 @@ stays scannable, and a done-condition that fits in a cell is usually too weak.
 Lines move when other parts merge, and a spec that cites a line without its commit gives the
 builder no way to tell a moved line from a wrong premise.
 
+**Before a spec is final, a `reader` agent measures its facts.** Run `git fetch` in the part's
+repository, then spawn one `reader` per part, all parts at once, with `premise-check.md` beside
+this skill as its brief and the part, the task file, the checkout, `origin/main`'s commit and a
+scratch directory as its inputs. It lists each fact that the section states, and each fact of
+another section that the clauses rest on — what a tool does, a count, a `file:line`, a version,
+what a file holds, an identity, never a requirement — and marks each one `holds`, `false` or
+`cannot`, with the command or the file it read. Fix every `false` fact in the spec before the
+build; a `cannot` stays as it is. A `reader` in its own context, not the planner, does the check,
+because the planner reads its own facts as true, and the measurements stay out of the planning
+context. It costs about $1 per spec.
+
+**The check finds false facts, not stale specs.** On 21 recorded specs it reports 0.24 false
+alarms per spec and finds 96 false facts, but only 4 of the 18 stale premises that cost a loop an
+advisor call or a critic round. A clause that a builder cannot meet, or that two readers read two
+ways, passes it.
+
 A spec is not a workflow. Do not prescribe the order of the builder's work: its steps are in
 `julia-builder`, and a longer brief improves the first build more than the final result.
 
@@ -221,8 +237,8 @@ collision map: the plan's own rules, one sentence each, and the extra sections t
 
 ## What this skill does not do
 
-**It does not run anything.** It produces a table, the specs, §V and §L. The `build-part` skill
-runs the loop, and so can a human or a `/loop`. A planning step that also spawns builders is an
+**It runs nothing but the premise check.** It produces a table, the specs, §V and §L. The
+`build-part` skill runs the loop, and so can a human or a `/loop`. A planning step that also spawns builders is an
 agent graph, and the merge gate stops it one step later anyway.
 
 **It does not merge, and it does not plan a merge.** Merging is the user's, every time.
@@ -241,7 +257,7 @@ and costs more tokens doing it.
 
 ## Grading a table you produced
 
-Six failure shapes to check for in your own output:
+Seven failure shapes to check for in your own output:
 
 - **parts that mirror the section numbering.** One part per finding is a renumbering.
 - **a tier column with one value throughout.** It has stopped carrying information.
@@ -252,3 +268,5 @@ Six failure shapes to check for in your own output:
   shows it false?
 - **a spec with no edge decided and no mutant named.** Its critic loop will find the edges for you,
   one round at a time.
+- **a spec that no premise check measured**, or one that still states a fact the check found
+  `false`.

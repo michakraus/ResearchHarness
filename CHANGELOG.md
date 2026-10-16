@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- **`plan-parts` checks the facts of each spec before it is final.** One `reader` agent per part
+  measures each fact that the part's section states, and each fact of another section that its
+  clauses rest on, at `origin/main` of the part's repository, and marks it `holds`, `false` or
+  `cannot`; the planner fixes each `false` fact before the build. The brief is
+  `skills/plan-parts/premise-check.md`. On 21 recorded specs the same check found 96 false facts
+  at 0.24 false alarms per spec, for about $1 per spec, but only 4 of the 18 stale premises that
+  cost a loop a round or an advisor call, so it is a check of stated facts, not a guard against
+  stale specs. It runs in a `reader`, not in the planner's context, because that is the measured
+  form and the planner reads its own facts as true. `calls.toml` has the new edge.
+
 - **OpenCode: the file tools are refused outside the allowed directories, and a `**/` read deny
   also binds a file of the project root.** OpenCode v2's built-in rule set allows every path and
   the last matching rule wins, so a path outside every `external_directory` allow entry was

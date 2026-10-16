@@ -105,6 +105,12 @@ at = "agents/julia-pr-shepherd.md:204"
 label = "red CI"
 
 [[call]]
+caller = "plan-parts"
+callee = "reader"
+at = "skills/plan-parts/SKILL.md:213"
+label = "premise check, one per part"
+
+[[call]]
 caller = "julia-structure"
 callee = "exhaustive-auditor"
 at = "skills/julia-structure/SKILL.md:3"

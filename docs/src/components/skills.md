@@ -37,7 +37,9 @@ backward path, it adds them to a finished task file and changes nothing else.
 
 The tier cell holds `decision`, `build`, `reviewed` or `direct`, with the reason beside it. Each
 spec holds *Done when*, *Decided at the edges*, *Tests catch* (the mutants that the tests must
-catch), *Files*, *Not in this part*, and *Traps*. The skill runs on the `large` tier.
+catch), *Files*, *Not in this part*, and *Traps*. Before a spec is final, one `reader` agent per
+part measures each fact that the spec states, with the brief `premise-check.md`, and the planner
+fixes each fact that it finds false. The skill runs on the `large` tier.
 
 It does not run anything and it does not merge. Use `build-part` or `build-reviewed` to build a
 part.

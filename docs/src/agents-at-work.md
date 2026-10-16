@@ -102,11 +102,12 @@ not shaped by the fix.
 
 ```calls
 title: Every spawn
-desc: Every edge of calls.toml: the build-part, build-reviewed and julia-structure skills, and the julia-builder, part-builder and julia-pr-shepherd agents, with each agent that they spawn.
+desc: Every edge of calls.toml: the build-part, build-reviewed, plan-parts and julia-structure skills, and the julia-builder, part-builder and julia-pr-shepherd agents, with each agent that they spawn.
 ```
 
-This figure shows every entry of `calls.toml`. It adds one skill: `julia-structure` sends a claim
-that nothing uses a name to `exhaustive-auditor`. An agent that is not in this figure is spawned
+This figure shows every entry of `calls.toml`. It adds two skills: `plan-parts` sends each part's
+spec to a `reader` that measures its facts, and `julia-structure` sends a claim that nothing uses
+a name to `exhaustive-auditor`. An agent that is not in this figure is spawned
 only from your session. Only the agents with the tool `agent` can spawn: `julia-builder`,
 `part-builder` and `julia-pr-shepherd`. Each spawn costs a new context, so an agent spawns only
 where a fresh context or a smaller model does the work better.
