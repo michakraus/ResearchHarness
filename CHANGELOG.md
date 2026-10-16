@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+- **New: three audit scripts measure the instruction files.** `instructions.jl` writes one table of
+  the agents, skills, rules, commands and global files of a harness checkout, the tree's own
+  instructions and rules, every `CLAUDE.md`, every evidence page and every memory file: tokens,
+  when each loads, how many runs loaded it in a window, and which failure classes of the
+  taxonomy cite it. A load is what the transcripts record: the `instructions` record at the start
+  of a Claude Code run, a rule or `CLAUDE.md` that loads on a Read, a Skill call, an agent type, a
+  slash command, or a Read of the file. `citations.jl` checks what these files cite: each path,
+  command, long flag, tool name, agent and skill. It reads the flags from the help of `git`, `gh`,
+  `glab`, `juliaup`, `rtk`, `jq`, `rg` and `harness`, and from the source of a script it finds.
+  `tense-lint.jl` reports each word that dates an instruction file or tells its history, the list
+  of `rules/instruction-files.md`, outside code, quotations and mentions, and exits 1 on a hit.
+
 - **Transcripts stay 90 days, and the one-hour prompt cache of three agents takes effect.** The
   settings template sets `cleanupPeriodDays` to 90. Claude Code deletes a transcript after 30 days
   by default, and a re-measurement two weeks after a change must still read the baseline of the
