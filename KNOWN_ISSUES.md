@@ -1,19 +1,5 @@
 # Known issues
 
-### K8 · No `ask` entry surfaces an edit of the sources in the neutral directories and `adapters/claude/`.
-
-- location: `settings/settings.proposal.json:688-689`
-- evidence: the `ask` list holds `Edit` of `~/.claude/skills/**` and `workflows/**`; the installed
-  paths `CLAUDE.md`, `RTK.md`, `agents/**`, `rules/**` and the rest are `Edit` denies. The
-  installed-copy paragraph of the tree instructions' `instructions/research-tree.md` (*An agent, a
-  skill, a rule or an instruction file in `~/.claude/` is an installed copy*) sends each such edit
-  to the neutral directories and `adapters/claude/` of `~/Research/Harness/`, which no `ask` entry
-  names, so an edit of the global
-  instructions is not surfaced. D4 of the plan makes the installed copies deny-write and adds no
-  `ask` on the sources; its *Done when* does not name one.
-- kind: defect
-- found: 2026-10-05
-
 ### K10 · Under OpenCode, an edit of the installed `~/.claude/rules/**` asks, where the settings template denies it.
 
 - location: `adapters/opencode/adapter.py:161`
@@ -24,18 +10,6 @@
   `adapters/opencode/adapter.py:432`). Every other installed path of the template's `Edit` denies
   is a deny under OpenCode too. The fix removes that entry, and the fixtures
   `adapters/opencode/fixtures/permission-block.txt` and `report.txt` with it.
-- kind: found late
-- found: 2026-10-06
-
-### K11 · The stamp names the checkout that ran `harness install --apply`.
-
-- location: `lib/harness/install.py:112`
-- evidence: `stamp_bytes` writes each source as its absolute directory: the neutral directories,
-  `adapters/claude/` and `hooks/` of the checkout whose `bin/harness` ran. An apply from a worktree makes the `SessionStart` hook
-  read that worktree in every later session, and warn that it cannot be read once the worktree is
-  removed; a dry run from another checkout lists the stamp as `REPLACE`, though every installed
-  file is identical. Read from the code, not run. The hook has no profile and no other way to find
-  the sources, so a stamp without these paths needs a decision.
 - kind: found late
 - found: 2026-10-06
 
@@ -76,27 +50,6 @@
   verified).
 - kind: found late
 - found: 2026-10-06
-
-### K20 · `omp_agent_cases` defines its own `tail`, a copy of `Scratch.tail`.
-
-- location: `adapters/omp/adapter.py:712`
-- evidence: `adapters/omp/adapter.py:712-713` defines `tail(text)` with the body of
-  `Scratch.tail` in `lib/harness/install_cases.py`; `omp_cases` of the same file uses
-  `Scratch.tail`. `tail = Scratch.tail` replaces it.
-- kind: dead code
-- found: 2026-10-08
-
-### K21 · A `[claude]` model with a `:` or an `@`, as a Bedrock or a Vertex model ID, exits 2.
-
-- location: `adapters/claude/adapter.py:155`
-- evidence: `MODEL` matches a letter followed by letters, digits and `. _ - [ ]`, because
-  `render_source` writes the model into `model:` as a plain YAML scalar. `opus`, `opus[1m]` and
-  `claude-opus-4-1-20250805` match; `us.anthropic.claude-opus-4-1-20250805-v1:0` and
-  `claude-opus-4-1@20250805` do not, and `load_models` exits 2 on them, although Claude Code
-  accepts both. The fix: write a model that is not a plain safe scalar double-quoted, with JSON
-  escaping, in place of the refusal.
-- kind: defect
-- found: 2026-10-08
 
 ### K22 · Under OpenCode, a verify critic carries the round-1 rule of the council.
 
@@ -267,27 +220,6 @@
 - kind: defect
 - found: 2026-10-09
 
-### K46 · A stray settings file whose `allow`, `ask` or `deny` is a string lists one rule per character.
-
-- location: `adapters/claude/adapter.py:649`
-- evidence: with `{"permissions": {"allow": "Bash(x)"}}` in `~/Research/.claude/settings.local.json`,
-  the dry run of `harness install` lists seven rules, `…/settings.local.json  allow  B`,
-  `allow  a`, and so on. `stray_warnings` iterates the value without a type check; the base's
-  `report_stray` did the same. Found by the critics of part M, round 1.
-- kind: found late
-- found: 2026-10-10
-
-### K47 · The settings merge re-emits the numbers of the keys it does not own, and indents a tab-indented or one-line file by 2.
-
-- location: `adapters/claude/adapter.py:530`, `adapters/claude/adapter.py:622`
-- evidence: a live `~/.claude/settings.json` with `"x": 1.10, "y": 1e400, "z": 1E5` and an owned
-  section that differs is written with `"x": 1.1`, `"y": Infinity` (which `JSON.parse` rejects)
-  and `"z": 100000.0`; a tab-indented file is written with 2 spaces, because `indent_of` counts
-  spaces only. The merge rule is the removed `harness settings install`'s, which behaved the same
-  way. Found by the critics of part M, round 1.
-- kind: found late
-- found: 2026-10-10
-
 ### K50 · A throw in the setup of a figure component does not stop the build.
 
 - location: `docs/.vitepress/theme/figures/FigCard.vue:25`, `docs/.vitepress/theme/figures/WalkThrough.vue:16`
@@ -330,28 +262,17 @@
 - kind: not verified
 - found: 2026-10-11
 
-### K62 · The PATH check of the units reads only the template's `allowWrite`, not the write grants that the live sandbox adds.
+### K71 · The PATH check of the units does not place a session's working directory, which the live sandbox lets the session write.
 
-- location: `lib/harness/units.py`, `path_problems`
-- evidence: Claude Code's sandbox also lets a session write its working directory and `$TMPDIR`,
-  and neither is in `sandbox.filesystem.allowWrite` of `settings/settings.proposal.json`. A job's
-  `PATH` element below a session's working directory or `$TMPDIR`, outside every `allowWrite`
-  entry, passes the check. The rule follows the dispatcher's decision Q1 of part D2, which takes
-  the template's `allowWrite` as the measure. No unit's `PATH` holds such a directory today.
+- location: `lib/harness/units.py:152`
+- evidence: Claude Code's sandbox lets a session write its working directory, which no entry of
+  `sandbox.filesystem.allowWrite` of `settings/settings.proposal.json` names. `path_problems`
+  fails a `PATH` element at or below `$TMPDIR`, `/var/folders` or `/private/var/folders`, but a
+  working directory has no fixed value, so an element below a directory where a session may start,
+  outside every `allowWrite` entry and in no `denyWrite` entry, passes the check. No unit's `PATH`
+  holds such a directory. The user decided to keep it a recorded limit.
 - kind: defect
 - found: 2026-10-12, the critic of part D2
-
-### K63 · A curated skill that fails `parse_file` ends `harness test` in the skill-triggers cases with exit 2 and no summary line.
-
-- location: `lib/harness/skill_triggers.py:590`
-- evidence: with `model: bogus` in a scratch copy of `skills/build-part/SKILL.md`,
-  `bin/harness test` prints the frontmatter case's `BAD` line that names the file, and then
-  `read_queries()` in the `selftest` of `skill_triggers`, outside any case, raises the
-  `HarnessError` of `parse_file`. `cli.main` prints
-  `harness test: …/skills/build-part/SKILL.md: the model 'bogus' is not a tier; …` and exits 2.
-  No `N cases, M wrong` line is printed, and the cases after it do not run. No traceback.
-- kind: defect
-- found: 2026-10-15
 
 ### K66 · A public rule and skill cite a notes page that the repository does not hold.
 
