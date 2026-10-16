@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- **The OpenCode agents `local` and `qwen-worker` are retired.** They ran a local model for
+  offline work and were an experiment; no run of 2026-10-02 to 2026-10-16 used either. Every
+  OpenCode agent is rendered from `agents/`, so the adapter drops `adapters/opencode/agents/`
+  and its checks. `opencode.jsonc` keeps the local model as `small_model`. `harness install`
+  reports the two installed copies as EXTRA, with the command that removes each.
+
 - **`harness install` adds each key of the settings template that `~/.claude/settings.json`
   lacks.** It replaced the four sections `permissions`, `hooks`, `sandbox` and `modelSettings` and
   installed no other key, so `cleanupPeriodDays` of the template never reached the installed

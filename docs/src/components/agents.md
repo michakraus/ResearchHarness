@@ -16,8 +16,7 @@ shape of the report.
 `harness install` copies each agent to `~/.claude/agents/` for Claude Code, with the tier and the
 tools written as Claude Code names them. It renders each agent for OpenCode, with an "Under
 OpenCode" section before the body, and for oh-my-pi. [Architecture](../architecture.md) gives the
-map of the tools and tiers. Two agents, `local` and `qwen-worker`, are for OpenCode only: their
-sources are in `adapters/opencode/agents/`. The sections below come in five groups: the
+map of the tools and tiers. The sections below come in five groups: the
 builder-critic loop, pull requests and CI, Julia diagnosis and tests, research, and the
 general-purpose agents.
 
@@ -324,32 +323,3 @@ a rename with no effect, it reports "no entry needed".
 It edits `CHANGELOG.md` and no other file. Under OpenCode, a path rule limits its edits to that
 file. It does not stage or commit, and it does not change a version number. Use the
 `julia-release` skill for a release.
-
-## `local`
-
-An OpenCode-only agent, from `adapters/opencode/agents/local.md`. It is a primary agent for
-offline work: a local model controls the work and does it, with no network. Select it with
-`opencode --agent local`, or with the Tab key in a session.
-
-Its instructions are short, because a local model cannot hold the full set of rules. It works in
-small steps and reports each result. Before it adds a name, it runs `julia-methods.jl`. It
-follows rules for Julia performance and for the tests of type stability and allocations. It uses
-Kaimon `ex` for a type instability and `fatou lint` for one file. It stops after two failed
-attempts.
-
-It does not commit to `main` in a package repository, never uses `git add -A`, and does not delete
-dead code. It has no Claude Code or oh-my-pi copy.
-
-## `qwen-worker`
-
-An OpenCode-only agent, from `adapters/opencode/agents/qwen-worker.md`. It is a sub-agent that
-runs on the local model, for mechanical Julia work: a bounded edit, a format pass, a named
-testset, or the diagnosis of one allocation. Use it when the result is checkable and the method
-is known.
-
-Its rules are the same short set as those of `local`. Its frontmatter denies the `task` tool and
-all Kaimon tools. So it cannot start a sub-agent or use a live Julia session. It reports a type
-instability to the primary agent, which has a session.
-
-Do not use it to select an approach, to design an algorithm, or for work over many files. It has
-no Claude Code or oh-my-pi copy.

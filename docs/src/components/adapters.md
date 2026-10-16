@@ -107,8 +107,7 @@ exist. The adapter writes:
 
 - `opencode.jsonc`, rendered with the profile, with a backup of a file that it replaces;
 - `AGENTS.md`, from `OPENCODE-DELTA.md`;
-- `agents/<name>.md` for each agent of `agents/`, and the two agents of `adapters/opencode/agents/`
-  that have no Claude Code source;
+- `agents/<name>.md` for each agent of `agents/`;
 - the plugins `plugins/*.ts` and the rendered `plugins/guard-paths.json`;
 - its own copies of the files of the Claude Code layer that OpenCode reads: `RTK.md`,
   `instructions/`, `rules/`, the guard scripts in `hooks/` and the skills in `skills/`.
