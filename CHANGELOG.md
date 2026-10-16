@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- **`harness install` adds each key of the settings template that `~/.claude/settings.json`
+  lacks.** It replaced the four sections `permissions`, `hooks`, `sandbox` and `modelSettings` and
+  installed no other key, so `cleanupPeriodDays` of the template never reached the installed
+  settings. A key that the file has keeps its value, so the model and the effort that the app
+  writes stay. The dry run shows each added key in its diff, as `null` against the template's
+  value. A key of the template that the user deletes from the file comes back at the next
+  install; to keep another value, set it in the file. A missing settings file is created with
+  every key of the template.
+
 - **New: three audit scripts measure the instruction files.** `instructions.jl` writes one table of
   the agents, skills, rules, commands and global files of a harness checkout, the tree's own
   instructions and rules, every `CLAUDE.md`, every evidence page and every memory file: tokens,

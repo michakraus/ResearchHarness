@@ -2,7 +2,7 @@
 
 THE LAYER. `harness install` installs into ~/.claude/:
 
-  settings/settings.proposal.json  -> ~/.claude/settings.json (merged: the sections of OWNED only)
+  settings/settings.proposal.json  -> ~/.claude/settings.json (merged: OWNED, and the keys it lacks)
   agents/, skills/, rules/,
   instructions/, commands/ **      -> ~/.claude/**          (the same relative path)
   adapters/claude/**               -> ~/.claude/**          (the path relative to adapters/claude/)
@@ -37,9 +37,11 @@ are not searched, and a directory there that cannot be read exits 2, before anyt
 written. The Claude Code settings, ~/.claude/settings.json, are the first file of the layer, so
 that a new deny rule is in place before the files it protects: the settings template rendered with
 the profile replaces the sections `permissions`, `hooks`, `sandbox` and `modelSettings` (OWNED),
-every other key stays as
+each other key of the template that the file lacks is added, every other key stays as
 the app and the user wrote it, the old file is kept as a backup, and the dry run prints the
-unified diff of those sections after the file's line (`settings_file`). A settings file that
+unified diff of those sections and keys after the file's line (`settings_file`). A key of the
+template that the user removes comes back at the next install; another value in the file stays.
+A settings file that
 cannot be merged exits 2 before anything is written. The permission rules of the other settings
 files of the research tree are a warning (`stray_warnings`); those files are read, never written.
 It neither reads nor writes ~/.claude.json. After the layer, it writes the stamp: the sources and
@@ -555,7 +557,7 @@ def cmd_domains(args):
 # frontends get from models.toml, so the template keeps it too: a value that `/effort` or
 # `/autocompact` writes into the live file is replaced by the next install. Everything else in the
 # live file belongs to the app and the user — model, env, statusLine — and the install leaves it
-# exactly as it found it.
+# exactly as it found it; it only adds a key of the template that the live file lacks.
 OWNED = ("permissions", "hooks", "sandbox", "modelSettings")
 
 
@@ -634,13 +636,15 @@ def settings_template(profile):
 
 def settings_file(root, profile):
     """The file of the plan for `root`/settings.json, the Claude Code settings: (destination,
-    bytes, mode, label, backup, the unified diff of the owned sections).
+    bytes, mode, label, backup, the unified diff of the owned sections and the added keys).
 
     Each key of OWNED is replaced from the rendered template, or removed when the template lacks
-    it; every other key keeps its value and its place, the file keeps its indent (`indent_of`),
-    and no character but a lone surrogate is escaped. Owned sections equal to the template's
-    leave the file as it is. A missing file is created with the owned sections only, indented by
-    2, mode 0644. Exits 2, before anything is written, on a file that is a symlink, is not a
+    it. Each other key of the template that the file lacks is added after the file's keys, with
+    the template's value; every other key keeps its value and its place, the file keeps its indent
+    (`indent_of`), and no character but a lone surrogate is escaped. Owned sections equal to the
+    template's, in a file that holds every key of the template, leave the file as it is. A missing
+    file is created with the keys of the template, indented by 2, mode 0644. Exits 2, before
+    anything is written, on a file that is a symlink, is not a
     regular file, cannot be read, is not UTF-8 or JSON (`json_object`), is not a JSON object, or
     holds an owned key whose value is not an object, and, when the merge writes the file, on a
     number outside the owned sections that it would write in other text (`rewritten_numbers`).
@@ -677,7 +681,9 @@ def settings_file(root, profile):
             raise HarnessError(f"{live}: the value of {', '.join(wrong)} is not a JSON object")
         indent = indent_of(text)
     template = settings_template(profile)
-    a, b = (dumps({k: c.get(k) for k in OWNED}, indent=2, sort_keys=True).splitlines() for c in (cfg, template))
+    added = [k for k in template if k not in OWNED and k not in cfg]
+    a, b = (dumps({k: c.get(k) for k in [*OWNED, *added]}, indent=2, sort_keys=True).splitlines()
+            for c in (cfg, template))
     diff = list(difflib.unified_diff(a, b, "~/.claude/settings.json", "settings/settings.proposal.json", lineterm=""))
     if diff or old is None:
         rewritten = rewritten_numbers(text, OWNED) if old is not None else []
@@ -690,6 +696,8 @@ def settings_file(root, profile):
                 cfg[key] = template[key]
             else:
                 cfg.pop(key, None)
+        for key in added:
+            cfg[key] = template[key]
         data = (dumps(cfg, indent=indent) + "\n").encode("utf-8")
     else:
         data = old
@@ -1477,12 +1485,18 @@ def layer_cases(check, tmp):
              f"{first}, {code}, {again}, {tail(text2)}")
 
     # The Claude Code settings: `harness install` merges the sections of OWNED from the rendered
-    # settings template into ~/.claude/settings.json, as one file of the plan, and keeps every
-    # other key; ~/.claude.json, unreadable here, is neither read nor written.
+    # settings template into ~/.claude/settings.json, as one file of the plan, adds each other key
+    # of the template that the file lacks, and keeps every other key; ~/.claude.json, unreadable
+    # here, is neither read nor written.
     settings_line = re.compile(r"^~/\.claude/settings\.json\s+(.*)$", re.M)
     profile = render_profile.load(fresh()[0] / "profile.toml")
     template = json.loads(render_profile.render_file(REPO / "settings" / "settings.proposal.json", profile))
     owned = {k: template[k] for k in OWNED}
+    others = {k: v for k, v in template.items() if k not in OWNED}
+
+    def lacked(cfg):
+        """The keys of `others` that `cfg` lacks, with the template's values, in its order."""
+        return {k: v for k, v in others.items() if k not in cfg}
     base, claude, tree = fresh()
     state = base / "home" / ".claude.json"
     state.write_text('{"state": 1}\n')
@@ -1510,11 +1524,12 @@ def layer_cases(check, tmp):
     expected = {"model": "opus", "permissions": owned["permissions"], "env": {"X": "{home} — é"},
                 "statusLine": {"type": "command", "command": "x"}, "hooks": owned["hooks"],
                 "someFutureKey": [1, {"a": None}], "sandbox": owned["sandbox"],
-                "modelSettings": owned["modelSettings"]}
-    case(lambda: code == 0 and merged == expected and list(merged) == list(expected)
+                "modelSettings": owned["modelSettings"], **lacked(live)}
+    case(lambda: code == 0 and merged == expected and list(merged) == list(expected) and len(lacked(live)) > 5
          and (claude / "settings.json").read_text() == json.dumps(expected, indent=4, ensure_ascii=False) + "\n",
-         f"--apply replaces the owned sections from the rendered template, keeps every other key, its value and its "
-         f"order, and the live file's indent of 4: {code}, {list(merged)}, {tail(text)}")
+         f"--apply replaces the owned sections from the rendered template, adds the template's other keys that the "
+         f"file lacks after its keys, keeps every other key, its value and its order, and the live file's indent "
+         f"of 4: {code}, {list(merged)}, {tail(text)}")
     case(lambda: len(backups) == 1 and backups[0].read_text() == old,
          f"--apply keeps the old settings.json as a backup: {[b.name for b in backups]}")
     case(lambda: mode(claude / "settings.json") == 0o600 and len(backups) == 1 and mode(backups[0]) == 0o600,
@@ -1530,16 +1545,34 @@ def layer_cases(check, tmp):
          f"exit 0: {again}, {after[:1]}, {tail(text2)}")
     state.chmod(0o600)
     case(lambda: state.read_text() == '{"state": 1}\n', "~/.claude.json is neither read nor written")
-    # Owned sections equal to the template's in another layout are no change: the file is left as it is.
+    # Owned sections equal to the template's in another layout, in a file that holds every key of the
+    # template, are no change: the file is left as it is, and a key with another value than the
+    # template's keeps it.
     (claude / "settings.json").write_text(json.dumps({"hooks": owned["hooks"], "sandbox": owned["sandbox"],
                                                       "modelSettings": owned["modelSettings"],
-                                                      "permissions": owned["permissions"], "model": "x"}) + "\n")
+                                                      "permissions": owned["permissions"], **others,
+                                                      "model": "x", "cleanupPeriodDays": 7}) + "\n")
     kept = (claude / "settings.json").read_bytes()
     code, text = run(base, "--apply")
     case(lambda: code == 0 and [m.group(1) for m in settings_line.finditer(text)] == ["already identical"]
-         and (claude / "settings.json").read_bytes() == kept,
-         f"a settings.json whose owned sections equal the template's, in another layout, is not rewritten: "
-         f"{code}, {tail(text)}")
+         and (claude / "settings.json").read_bytes() == kept and others["cleanupPeriodDays"] != 7,
+         f"a settings.json whose owned sections equal the template's, in another layout, and that holds every key "
+         f"of the template, some with other values, is not rewritten: {code}, {tail(text)}")
+    # A key of the template that the file lacks is in the dry run's diff, and --apply adds it after the
+    # file's keys and changes no other key.
+    lacking = json.loads(kept)
+    del lacking["cleanupPeriodDays"]
+    (claude / "settings.json").write_text(json.dumps(lacking) + "\n")
+    dry, text = run(base)
+    code, _ = run(base, "--apply")
+    merged = json.loads((claude / "settings.json").read_text())
+    case(lambda: dry == 1
+         and any(l.rstrip(",") == f'+  "cleanupPeriodDays": {others["cleanupPeriodDays"]}' for l in text.splitlines())
+         and any(l.rstrip(",") == '-  "cleanupPeriodDays": null' for l in text.splitlines())
+         and code == 0 and merged == {**lacking, "cleanupPeriodDays": others["cleanupPeriodDays"]}
+         and list(merged)[-1] == "cleanupPeriodDays",
+         f"a key of the template that settings.json lacks is in the dry run's diff, and --apply adds it last and "
+         f"changes no other key: {dry}, {code}, {list(merged)[-3:]}, {tail(text)}")
     # An effort or an auto-compact window that the UI wrote into modelSettings is in the diff, and
     # --apply replaces the section with the template's.
     ui = json.loads(kept)
@@ -1553,7 +1586,7 @@ def layer_cases(check, tmp):
          f"a modelSettings entry that the UI wrote is in the dry run's diff, and --apply replaces the section "
          f"with the template's: {dry}, {code}, {tail(text)}")
 
-    # A missing settings.json is created with the owned sections only, indented by 2, mode 0644.
+    # A missing settings.json is created with the keys of the template, indented by 2, mode 0644.
     base, claude, tree = fresh()
     code, text = run(base)
     case(lambda: code == 1 and [m.group(1) for m in settings_line.finditer(text)] == ["INSTALL"]
@@ -1565,11 +1598,12 @@ def layer_cases(check, tmp):
         code, text = run(base, "--apply")
     finally:
         os.umask(umask)
-    case(lambda: code == 0 and list(json.loads((claude / "settings.json").read_text())) == list(owned)
-         and (claude / "settings.json").read_text() == json.dumps(owned, indent=2, ensure_ascii=False) + "\n"
+    case(lambda: code == 0 and list(json.loads((claude / "settings.json").read_text())) == [*owned, *others]
+         and (claude / "settings.json").read_text()
+         == json.dumps({**owned, **others}, indent=2, ensure_ascii=False) + "\n"
          and mode(claude / "settings.json") == 0o644,
-         f"--apply writes a missing settings.json with the owned sections and no other key, indented by 2, "
-         f"mode 0644 under a umask of 077: {code}, {tail(text)}")
+         f"--apply writes a missing settings.json with the owned sections, then the template's other keys, "
+         f"indented by 2, mode 0644 under a umask of 077: {code}, {tail(text)}")
 
     # Each owned key that the template lacks is removed from the live file; the other keys stay.
     base, claude, tree = fresh()
@@ -1580,8 +1614,8 @@ def layer_cases(check, tmp):
     with mock.patch.object(this, "PROPOSAL", lacking):
         code, text = inproc(base, None, apply=True)
     merged = json.loads((claude / "settings.json").read_text())
-    case(lambda: code == 0 and list(merged) == ["model", "permissions", "hooks", "modelSettings"]
-         and merged["model"] == "x",
+    case(lambda: code == 0 and list(merged)[:4] == ["model", "permissions", "hooks", "modelSettings"]
+         and "sandbox" not in merged and merged["model"] == "x",
          f"an owned key that the template lacks is removed from settings.json: {code}, {list(merged)}, {tail(text)}")
 
     # A template that cannot be rendered exits 2 and names the template, before anything is written.
@@ -1620,7 +1654,8 @@ def layer_cases(check, tmp):
         (claude / "settings.json").write_text(data)
         code, text = run(base, "--apply")
         written = (claude / "settings.json").read_text()
-        expected = json.dumps({**json.loads(data), **owned}, indent=indent, ensure_ascii=False) + "\n"
+        expected = json.dumps({**json.loads(data), **owned, **lacked(json.loads(data))}, indent=indent,
+                              ensure_ascii=False) + "\n"
         case(lambda: code == 0 and written == expected and written.count("\n") == (1 if indent is None else
                                                                                    expected.count("\n")),
              f"a {label} settings.json is written in the same form: {code}, {written[:60]!r}, {tail(text)}")
@@ -1655,7 +1690,7 @@ def layer_cases(check, tmp):
          f"the numbers 1.5, 10 and -0.0 pass unchanged, and one in an owned section is replaced: {dry}, {code}, "
          f"{tail(text + text2)}")
     # A file that the merge leaves as it is keeps its numbers: there is nothing to check.
-    kept = json.dumps(owned, indent=2, ensure_ascii=False)[:-2] + ',\n  "x": 1.10\n}\n'
+    kept = json.dumps({**owned, **others}, indent=2, ensure_ascii=False)[:-2] + ',\n  "x": 1.10\n}\n'
     live.write_text(kept)
     code, text = run(base, "--apply")
     case(lambda: code == 0 and live.read_text() == kept,
