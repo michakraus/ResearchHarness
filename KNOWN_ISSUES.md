@@ -207,31 +207,6 @@
 - kind: defect, upstream behaviour
 - found: 2026-10-09, by the critic of part E3
 
-### K39 · Two `run-tests.jl` runs of packages of one name, started in the same second, write one log and one times file.
-
-- location: `scripts/run-tests.jl:343`
-- evidence: the log, the times file and the one-process driver are
-  `~/Research/.scratch/tests/<name>-<yyyymmdd-HHMMSS>-…`, with no process ID. Two `--jobs 2 core`
-  runs of two fixtures with one basename, started together, both print
-  `PASS in 12 s — log: …/jl_HrnNyd-20261009-130118-named.log`: one log for both. Each verdict
-  comes from its own processes' exit codes, so it stays correct. The summary under it, the log
-  and the times file can be the other run's. A `--jobs` run keeps its workers' files in a
-  directory of its own (`mktempdir`). Found by the critic of part I1.
-- kind: defect
-- found: 2026-10-09
-
-### K50 · A throw in the setup of a figure component does not stop the build.
-
-- location: `docs/.vitepress/theme/figures/FigCard.vue:25`, `docs/.vitepress/theme/figures/WalkThrough.vue:16`
-- evidence: the comment of `FigCard.vue` says that a card with too little room "stops the build".
-  VitePress logs a throw in a component's setup during SSR and still prints `build complete`.
-  With `<WalkThrough name="instal" />` in `daily-use.md`, `npm run docs:build` prints
-  `Error: no walk-through instal…` and then `build complete in 1.89s.`, and the page has no
-  figure. `docs:check` then names the missing title. A throw in a data loader does stop the
-  build. Found by the critic of part J4.
-- kind: defect
-- found: 2026-10-10
-
 ### K51 · The effort check of a walk-through box accepts a spawn of any caller.
 
 - location: `lib/harness/docs.py:279`
@@ -240,15 +215,6 @@
   walk-through, so a box of a skill that never spawns the agent at that effort passes. Found by
   the critic of part J4.
 - kind: missing test
-- found: 2026-10-10
-
-### K53 · The colour scan of `docs:check` passes a named colour.
-
-- location: `docs/scripts/check-site.mjs:246`
-- evidence: the scan matches a hex literal, `rgb(` and `hsl(` only, as J2b defined it. With
-  `const TOKEN = 'red'` in `walkthroughs.data.ts`, `docs:check` exits 0. Found by the critic of
-  part J4.
-- kind: defect
 - found: 2026-10-10
 
 ### K61 · No test runs the real macOS `ps` against a deleted server binary.

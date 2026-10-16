@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+- **The docs checks and `run-tests.jl`: K39, K50 and K53 leave `KNOWN_ISSUES.md`.** The log, the
+  times file and the one-process driver of a `run-tests.jl` run carry its process ID after the
+  date stamp, so two runs of packages of one name, started in one second, write files of their
+  own; a case asserts that their logs differ and name each run's process ID (K39). A throw in the
+  setup of a figure component, such as `<WalkThrough name="instal" />`, makes `npm run docs:build`
+  exit 1: an error handler of the theme logs it during the server render and sets the exit status,
+  where VitePress went on to `build complete` and exited 0 (K50). The colour scan of `docs:check`
+  also refuses a CSS named colour as a quoted string or after `fill`, `stroke` or `color`, such as
+  `const TOKEN = 'red'`; `none`, `currentColor`, `transparent` and `inherit` pass, and so does an
+  accent name of `figures.css` as a quoted string after `accent`, as in `accent: 'teal'` (K53).
+  `docs/src/components/other.md` says that `repo-drift.js` reports `TagBot.yml` as missing in an
+  experiment, as expected, and `docs/src/components/harness.md` names the checks of the targets
+  that `harness install` makes before it writes.
+
 - **Seven small fixes in the Python code, and one decision: K8, K11, K20, K21, K46, K47, K62 and
   K63 leave `KNOWN_ISSUES.md`.** K8 is closed by the user's decision: no `ask` rule surfaces an
   edit of the instruction sources, because the git history and the pull request are the review of

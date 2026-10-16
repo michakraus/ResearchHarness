@@ -244,12 +244,48 @@ for (const name of colours) {
 }
 
 // The figure components, their generators and the data of the figures in docs/figures/ name no
-// colour: every colour is in the style module.
+// colour: every colour is in the style module. A colour is a hex literal, `rgb(` or `hsl(`, or a
+// CSS named colour as a quoted string or after `fill`, `stroke` or `color`. `none`, `currentColor`,
+// `transparent` and `inherit` are no named colour. An accent name of figures.css (a class
+// fig-accent-<name>) passes as a quoted string after `accent` on its line: it is a key of the style
+// module, as in `accent: 'teal'`, not a colour.
+const NAMED_COLOURS = new Set(('aliceblue antiquewhite aqua aquamarine azure beige bisque black ' +
+  'blanchedalmond blue blueviolet brown burlywood cadetblue chartreuse chocolate coral cornflowerblue ' +
+  'cornsilk crimson cyan darkblue darkcyan darkgoldenrod darkgray darkgreen darkgrey darkkhaki ' +
+  'darkmagenta darkolivegreen darkorange darkorchid darkred darksalmon darkseagreen darkslateblue ' +
+  'darkslategray darkslategrey darkturquoise darkviolet deeppink deepskyblue dimgray dimgrey ' +
+  'dodgerblue firebrick floralwhite forestgreen fuchsia gainsboro ghostwhite gold goldenrod gray ' +
+  'green greenyellow grey honeydew hotpink indianred indigo ivory khaki lavender lavenderblush ' +
+  'lawngreen lemonchiffon lightblue lightcoral lightcyan lightgoldenrodyellow lightgray lightgreen ' +
+  'lightgrey lightpink lightsalmon lightseagreen lightskyblue lightslategray lightslategrey ' +
+  'lightsteelblue lightyellow lime limegreen linen magenta maroon mediumaquamarine mediumblue ' +
+  'mediumorchid mediumpurple mediumseagreen mediumslateblue mediumspringgreen mediumturquoise ' +
+  'mediumvioletred midnightblue mintcream mistyrose moccasin navajowhite navy oldlace olive ' +
+  'olivedrab orange orangered orchid palegoldenrod palegreen paleturquoise palevioletred papayawhip ' +
+  'peachpuff peru pink plum powderblue purple rebeccapurple red rosybrown royalblue saddlebrown ' +
+  'salmon sandybrown seagreen seashell sienna silver skyblue slateblue slategray slategrey snow ' +
+  'springgreen steelblue tan teal thistle tomato turquoise violet wheat white whitesmoke yellow ' +
+  'yellowgreen').split(' '))
+const ACCENTS = new Set([...readFileSync(path.join(DOCS, '.vitepress', 'theme', 'figures.css'), 'utf8')
+  .matchAll(/\.fig-accent-([a-z]+)\s*\{/g)].map((m) => m[1]))
+/** The colour that a line of a figure source names itself, or null. */
+const colourIn = (line) => {
+  const literal = /#[0-9a-fA-F]{3,8}\b|rgba?\(|hsla?\(/.exec(line)
+  if (literal) return literal[0]
+  for (const m of line.matchAll(/\b(?:fill|stroke|color)\b\s*[:=]\s*\\?["'`]?([A-Za-z]+)|(["'`])([A-Za-z]+)\2/g)) {
+    const name = (m[1] ?? m[3]).toLowerCase()
+    if (!NAMED_COLOURS.has(name)) continue
+    if (m[3] !== undefined && ACCENTS.has(name) && /\baccent\b/.test(line.slice(0, m.index))) continue
+    return m[0]
+  }
+  return null
+}
 for (const dir of [path.join(DOCS, '.vitepress', 'theme', 'figures'), path.join(DOCS, 'figures')]) {
   for (const file of readdirSync(dir)) {
     const lines = readFileSync(path.join(dir, file), 'utf8').split('\n')
     for (const [i, line] of lines.entries()) {
-      if (/#[0-9a-fA-F]{3,8}\b|rgba?\(|hsla?\(/.test(line)) problem(`${path.relative(path.dirname(DOCS), path.join(dir, file))}:${i + 1} names a colour; use a property of figures.css`)
+      const colour = colourIn(line)
+      if (colour) problem(`${path.relative(path.dirname(DOCS), path.join(dir, file))}:${i + 1} names a colour (${colour}); use a property of figures.css`)
     }
   }
 }
