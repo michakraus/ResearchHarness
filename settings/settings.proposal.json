@@ -1212,6 +1212,7 @@
   },
   "autoMemoryDirectory": "~/.claude/projects/{memory_project}/memory",
   "promptCacheTtl": "1h",
+  "cleanupPeriodDays": 90,
   "disableClaudeAiConnectors": true,
   "skillOverrides": {
     "docs": "off",
