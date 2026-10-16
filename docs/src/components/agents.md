@@ -90,8 +90,8 @@ converges.
 ## `part-builder`
 
 The builder for a part whose tier cell is `reviewed`, in any language. The `build-reviewed` skill
-starts it. One builder holds the whole part: the caller sends it the critic's findings and the
-finish by message.
+starts it, and starts a new one for each later round: the fix after the critic and the finish,
+with the last builder's report as the handoff note.
 
 It reads its part's sections and the plan's §V and §L, which name the gate: the suite and the
 checks that the change must pass. It writes the tests first, then the code, and verifies each
@@ -117,15 +117,16 @@ part of tier `build`, and `julia-pr-reviewer` for a pull request that exists.
 
 ## `julia-pr-shepherd`
 
-The shepherd takes a pull request on a Julia package from review to green CI. Use it with a
+The shepherd takes a pull request on a Julia package from review to a pushed fix. Use it with a
 request such as "review and fix PR #NN" or "take PR #NN all the way". Start it from a directory
 in the package's checkout; it then works in a worktree of its own.
 
 It checks first that the pull request is open, is no draft, and accepts a push. Then it starts
 `julia-pr-reviewer`, which posts the review. It fixes the findings of severity `blocker`, `bug`
 and `correctness-risk`, and starts `changelog-scribe` for a changelog entry. It commits the paths
-by name, pushes, and waits for CI in the foreground. When CI is red across several jobs, it can
-start `ci-triage`. At the end, it posts one comment that answers each finding.
+by name, pushes, and posts one comment that answers each finding. It does not wait for CI: its
+report names the runs of the push and the `gh run watch` command for each, and its caller waits.
+A sub-agent's cache lives 5 minutes, so a wait for CI inside it writes its whole context again.
 
 It never merges and never approves. It makes one fix round only, and it stops on a design
 decision. Use `julia-pr-reviewer` when you want only a review.

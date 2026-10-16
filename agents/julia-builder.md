@@ -125,7 +125,9 @@ that check passes.
    FAILS or PINS. Where the part names a mutant, the test that must catch it is written now.
 3. **Write the code**: the minimum that makes the tests pass. Probe it in a warm session on your
    worktree, as *A warm session for probes* in `evidence.md` says, and write a probe file only for
-   what must last.
+   what must last. A comment or docstring says what the code does and why, in the present tense.
+   It tells no history and names no part, clause or round of the plan; the history goes in
+   `CHANGELOG.md`.
 4. **Verify each clause before you move to the next.** Run its test file with
    `run-tests.jl <worktree> <unit>`. A failure stops you at that clause.
 5. **Run `run-tests.jl <worktree> affected`** after the last code change. Then **run the named

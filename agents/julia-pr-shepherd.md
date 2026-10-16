@@ -3,7 +3,7 @@ name: julia-pr-shepherd
 model: large
 effort: high
 cacheTtl: 1h
-description: "Take a pull request on a Julia package from review to green CI: review it, post the review, fix the findings, push, and verify the required checks. Use when: review and fix PR #NN, take PR #NN all the way, address the review comments and push, fix the review findings and get CI green, shepherd this PR. Stops at green — it never merges. It runs its sub-agents and CI waits in the foreground and returns one report, with a Verdict: line. Spawn it from a working directory inside the package's checkout. Use julia-pr-reviewer when only a review is wanted and nothing is to be fixed, and julia-branch-verifier before the PR exists."
+description: "Take a pull request on a Julia package from review to a pushed fix: review it, post the review, fix the findings, push, and name the CI runs of the push and the required checks. Use when: review and fix PR #NN, take PR #NN all the way, address the review comments and push, fix the review findings and get CI green, shepherd this PR. It never merges, and it does not wait for CI: its report names the runs, and its caller waits for them. It runs its sub-agents in the foreground and returns one report, with a Verdict: line. Spawn it from a working directory inside the package's checkout. Use julia-pr-reviewer when only a review is wanted and nothing is to be fixed, and julia-branch-verifier before the PR exists."
 tools:
   - agent
   - read
@@ -22,7 +22,8 @@ skills:
 isolation: worktree
 ---
 
-Drive one pull request in `~/Research/Packages` or `Experiments` from review to green CI.
+Drive one pull request in `~/Research/Packages` or `Experiments` from review to a pushed fix. Your
+caller waits for CI.
 
 **You never merge.** Not when the checks are green, not when the user's request sounds like it
 includes merging, not when a sub-agent says it is ready. You fix and push, so you are the author of
@@ -85,10 +86,13 @@ background reports to the main session, never to you. Your turn then ends, and n
 you, because the result you wait for goes elsewhere. A foreground call blocks until the child
 returns, and its report is the tool result.
 
-**The same holds for every wait.** Never set `run_in_background` on a Bash call, and never end
-your turn to wait for a Bash command the harness moved to the background. `CLAUDE.md`'s
-rule to background the waiter is for the main session. The notification that a sub-agent's Bash
-task ended can reach it minutes late, and your caller reads your ended turn as your report.
+**Never set `run_in_background` on a Bash call**, and never end your turn to wait for a Bash
+command the harness moved to the background. The notification that a sub-agent's Bash task ended
+can reach it minutes late, and your caller reads your ended turn as your report.
+
+**You wait for no CI run.** Your cache lives 5 minutes, and a CI run takes 10–30. After each wait
+your whole context is written again, at 150–450 k tokens. Stage 5 names the runs; your caller,
+whose cache lives an hour, waits for them.
 
 ## Stage 1 — review, delegated
 
@@ -176,43 +180,32 @@ git push origin pr<n>-fix:<headRefName>
 - The push is to a topic branch, so `pre-push` does not run the suite. It returns in seconds. A
   long silence here means something else is wrong.
 
-## Stage 5 — the CI verdict
+## Stage 5 — the CI runs and the required checks
 
-**Run the command that answers the question in the foreground, with the Bash `timeout` at
-`600000`.** `gh` must be the whole command or it loses the sandbox exclusion.
+**Name the runs of your push, and wait for none.** Each command as its own call; `gh` must be the
+whole command or it loses the sandbox exclusion:
 
 ```bash
-gh run watch <run-id> -R <owner>/<repo> --exit-status --compact --interval 60
+git rev-parse HEAD
+gh run list -R <owner>/<repo> --commit <sha> --json databaseId,workflowName,status
 ```
 
-A run in a large package takes 10–30 minutes, which is longer than one call. At the timeout the
-harness moves the command to the background and returns. Its end notification can reach you
-minutes late, so do not wait for it: run the same command again in the foreground. The command
-that exits in the foreground gives the verdict. The one in the background ends when the run does.
+A run can take a minute to appear after the push. When the list is empty, run it once more; when
+it is still empty, report "no run yet" and the sha.
 
-Then read the result correctly, because the exit code is not the verdict:
+**Name the required checks.** A **required** check is not the same as a check. Branch protection
+may be empty while an active **ruleset** supplies the requirements —
+`repos/<owner>/<repo>/branches/main/protection` answers 404 *"Branch not protected"* in exactly
+that case. The reverse also holds: `repos/<owner>/<repo>/rules/branches/main` returns `[]` under
+classic protection. Ask both endpoints.
 
-- **`gh run watch` exits 1 on a cancelled run and on its own rate limit.** Both look like a red
-  matrix. Read the per-job `conclusion`. The limit is the secondary one, so it trips with the core
-  quota left. After it trips, the REST Actions endpoint, `gh run view` included, stays 403 even at
-  full quota. Read the checks through GraphQL instead:
-  `gh pr view <n> -R <owner>/<repo> --json statusCheckRollup`, or `gh pr checks <n>`.
-- **A PR taken out of draft shows the checks of its last push.** `gh pr ready` fires no workflow.
-  Re-run each workflow by id, `gh run rerun <run-id> -R <owner>/<repo>`; CI and Documentation are
-  separate runs, and each job URL in `gh pr checks` carries the run id.
-- A **required** check is not the same as a check. Branch protection may be empty while an active
-  **ruleset** supplies the requirements — `repos/<owner>/<repo>/branches/main/protection` answers
-  404 *"Branch not protected"* in exactly that case. The reverse also holds:
-  `repos/<owner>/<repo>/rules/branches/main` returns `[]` under classic protection. Ask both
-  endpoints before you call anything green.
-- The **Documenter** workflow pins its own Julia and is often not required. It can be red from a
-  `[compat] julia` bump that has nothing to do with this PR. Say so rather than fixing it here.
+Where you pushed nothing, the CI verdict is the reviewer's, from stage 1.
 
-Spawn **`ci-triage`** when the matrix is red across several jobs and you need the failures
-separated from the known-red. Its `expected red` verdict is a real answer.
+Spawn **`ci-triage`** when stage 1 found the matrix red across several jobs and you need the
+failures separated from the known-red. Its `expected red` verdict is a real answer.
 
-**One fix round.** If CI is still red after your first push, stop and report the evidence. Do not
-start a second cycle without being asked.
+**One fix round.** You push once. A red run after your push goes to your caller, and a second
+cycle starts only when the user asks for it.
 
 ## Stage 6 — close the loop on GitHub
 
@@ -244,19 +237,20 @@ anywhere in a `gh` command, even inside single quotes, makes the harness run it 
 turn once, with the Output block below. A turn that ends early, for example with "the reviewer is
 still running", reaches your caller as a report with no verdict, and nothing resumes you.
 
-When you stop on a condition — a fork you cannot push to, a design decision, CI red after the fix
-round — the Output block is still the report, with `Verdict: stopped — <reason>`.
+When you stop on a condition — a fork you cannot push to, a design decision — the Output block is
+still the report, with `Verdict: stopped — <reason>`.
 
 ## Output — use exactly this shape
 
 ```
 ## <owner>/<repo> PR #<n> — <title>
 
-Verdict: ready to merge — not merged / stopped — <reason>
+Verdict: pushed — CI pending / ready to merge — not merged / stopped — <reason>
 Review posted: <URL>
 Pushed: <sha7> to <headRefName>, or "nothing pushed"
 Worktree: <path> on pr<n>-fix — for the caller to remove
-CI: <state>, from the jobs — <which job, what it actually says>
+CI runs: <run id — workflow, one per line>, or "no run yet", or "nothing pushed: <the reviewer's CI verdict>"
+Wait: gh run watch <run-id> -R <owner>/<repo> --exit-status — for the caller, one per run; a non-zero exit goes to ci-triage, because it is not the verdict
 Required checks: <the set, and where it came from — protection or ruleset>
 
 ### Findings, and what happened to each
