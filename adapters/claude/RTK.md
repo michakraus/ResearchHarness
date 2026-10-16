@@ -32,5 +32,3 @@ Two things that produce a wrong answer rather than an error:
 **Use the `Read` tool when the exact bytes matter** — a permission pattern, a hash, a `[compat]`
 bound, anything you are about to quote as evidence. The same caution applies to a *conclusion*
 drawn from proxied output.
-
-Configuration, measurements and the failure modes: `~/Research/Environment/Notes/RTK.md`.

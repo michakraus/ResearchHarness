@@ -5,8 +5,7 @@ description: "Answer a structural question about Julia code with tools that read
 
 # Structural questions about Julia code
 
-**There is no code graph in this tree.** The tools below answer these questions. The measurements
-behind that choice are in `Environment/Notes/Helpers-and-MCPs.md`.
+**There is no code graph in this tree.** The tools below answer these questions.
 
 **Contents**
 
@@ -58,8 +57,7 @@ keeps the qualified name and the signature. Walks the package's files itself, be
 `workspace/symbol` is lossy while `documentSymbol` is exact.
 
 Use it first for "what is there". It needs no session and no manifest, so it is **the only tool
-that works on a package that does not load**. Its grading against source is in
-`Environment/Notes/Helpers-and-MCPs.md`.
+that works on a package that does not load**.
 
 It reports **definitions only** — no dispatch, no callers, and nothing built by `@eval`.
 
@@ -70,7 +68,7 @@ it is also the only one that sees methods generated at load time: `for name in (
 `src/integrators/dgvi/integrators_dgvi_common.jl:183` of the integrator package creates five types and
 ten constructors that no parser can see.
 
-Two costs, both easy to forget (the measurements are in `Environment/Notes/Helpers-and-MCPs.md`):
+Two costs, both easy to forget:
 
 - **It answers about the manifest-resolved copy in `~/.julia/packages/`, not your working tree.**
   A dependency there can be a minor version behind. "Who calls this before I change its signature"

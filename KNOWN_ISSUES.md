@@ -230,27 +230,6 @@
 - kind: defect
 - found: 2026-10-12, the critic of part D2
 
-### K66 · A public rule and skill cite a notes page that the repository does not hold.
-
-- location: `rules/julia-code.md:256`
-- evidence: `rules/julia-code.md:256` and `skills/julia-structure/SKILL.md:9`, `:62` and `:73`
-  cite `Environment/Notes/Helpers-and-MCPs.md`; `git ls-files` lists no such file. The citations
-  stay: `harness install` puts the rule and the skill into a tree where the page exists, and the
-  pointer is how a session there finds the evidence. A reader of the public repository cannot open
-  it.
-- kind: docs
-- found: 2026-10-15
-
-### K67 · Three more public files cite a notes page that the repository does not hold.
-
-- location: `adapters/opencode/opencode.jsonc:46`
-- evidence: `adapters/opencode/opencode.jsonc:46` and `githooks/pre-commit:150` cite
-  `Environment/Notes/Helpers-and-MCPs.md`, and `adapters/claude/CLAUDE.md:37` cites
-  `Environment/Notes/Dynamic-Workflows.md`; `git ls-files` lists neither page. Found by the builder
-  of the part that cleared K42 and K44, which names only `scripts/` and `agent-workflows/`.
-- kind: docs
-- found: 2026-10-15
-
 ### K68 · A stray settings file nested deeper than the JSON parser reads stops `harness install` with `RecursionError`.
 
 - location: `adapters/claude/adapter.py:682`
@@ -272,19 +251,6 @@
   `install_cases.target_cases` covers the escape.
 - kind: not verified
 - found: 2026-10-15, the critic of publish part P1
-
-### K70 · `install.selftest()` prints a stray line `x.md  INSTALL` with no `ok` or `BAD` prefix.
-
-- location: `lib/harness/install_cases.py:287`
-- evidence: `python3 -c "from harness import install; install.selftest()"` from `lib/` prints
-  `x.md                               INSTALL` just before the case "an OSError in the write is a
-  HarnessError that names the target", on `699ad23` too. That case of `target_cases` calls
-  `install.install_file(True, b"x\n", target, "x.md")` in-process, and `install_file` prints its
-  plan line (`lib/harness/install.py:82`) before the write fails; the case does not capture
-  stdout. The line is not a case and changes no count, but it reads as install output inside the
-  case list.
-- kind: defect
-- found: 2026-10-16, the builder of publish part P3
 
 ### K72 · The named-colour scan of `docs:check` passes a colour inside a longer string.
 

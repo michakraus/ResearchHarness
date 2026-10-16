@@ -34,7 +34,7 @@ uses its main checkout's trust and needs no entry.
 ## Workflows
 
 For fan-out over more than a handful of repositories, use a workflow rather than hand-rolled agent
-calls: `Environment/Notes/Dynamic-Workflows.md`.
+calls.
 
 ## Waiting is not work. Background the answer, not a sleep.
 
@@ -57,7 +57,7 @@ name what is still pending. **Never start two waiters for one thing.**
 **A wait costs what the waiting context costs.** A sub-agent's prompt cache lives 5 minutes; its
 first call after a longer pause writes the whole context again, $2.5–3.5 at 500–700 k tokens. Keep a wait of more than 5 minutes — a full suite, a docs build, a CI run — in a
 small context, such as a `julia-test-runner` or the dispatcher, and never make a large context wait
-on it. Measurement: `Environment/Notes/Builder-Critic-Loop.md`, *What the loop costs*.
+on it.
 
 ## `git` and `gh` are the whole command
 
@@ -84,8 +84,6 @@ a call of its own, then give a relative name: `git init <name>`, `git clone <url
 worktree comes from `EnterWorktree`. A `--bare` or `--mirror` repository has no `.git` directory,
 so it works with any path.
 
-Mechanisms and measurements: `Environment/Notes/Git-and-GitHub.md`.
-
 ## The sandbox is the security boundary, not the deny list
 
 `settings.json`'s `deny` list is accident-prevention, not containment: deny rules are text
@@ -108,4 +106,3 @@ the OS sandbox — the filesystem and network allowlists.
 - **A prompt is a real control; a deny pattern may not be.**
 
 **Read `rtk hook check '<cmd>'` rather than any sentence about which commands are rewritten.**
-Evidence and the rest: `Environment/Notes/Sandbox-and-Permissions.md`.

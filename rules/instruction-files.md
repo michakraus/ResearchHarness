@@ -73,7 +73,7 @@ file parked there "because it does not load" does load, in every session, for as
 
 **The always-on file keeps the imperative; the mechanism and the evidence move.** "Never
 `git add -A`" must fire anywhere, so it stays there. The paragraph explaining why belongs in a
-rule, a scoped file or an `Environment/Notes/` page.
+rule, a scoped file or an evidence page.
 
 ## Before you write the rule, ask whether it should be a check
 
@@ -89,7 +89,7 @@ stand in for. That is what an instruction file is for.
 **Where the check goes.** A glob over the command text goes to
 `Harness/settings/settings.proposal.json`. What a glob cannot express — a flag cluster, anything
 needing the parsed command — goes to `Harness/hooks/` as a script plus a page, and
-`Environment/Notes/hooks/README.md` gives the form. A check inside a repository goes to
+the hooks page gives the form. A check inside a repository goes to
 `Harness/githooks/`. Both `~/.claude/settings.json` and `~/.claude/hooks/` are
 deny-write from a session, so the session writes the proposal and the user installs it. Propose it
 anyway. The prose rule is the fallback, not the first answer.

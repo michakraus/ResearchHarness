@@ -42,9 +42,8 @@
   },
 
   "mcp": {
-    // codebase-memory-mcp was here until 2026-09-16. It was rejected on measurement —
-    // Environment/Notes/Helpers-and-MCPs.md, "What was rejected" — and removing it returns
-    // 5,816 tokens, 9% of the 64k window. Do not add it back.
+    // codebase-memory-mcp was here until 2026-09-16. It was rejected on measurement, and
+    // removing it returns 5,816 tokens, 9% of the 64k window. Do not add it back.
 
     // Kaimon is a persistent HTTP server on 127.0.0.1:2828, started by the LaunchAgent
     // launchagents/kaimon.plist. It is NOT a subprocess, thus the type is "remote".

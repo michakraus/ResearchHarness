@@ -252,5 +252,3 @@ not tooling; Python-based tools are fine.
 A script that verifies an algorithm or a mathematical statement is **archived into the
 repository's `scripts/`**, not left in `/tmp`. A claim whose check has been thrown away is an
 unverified claim.
-
-Measurements and the trials behind all of this: `Environment/Notes/Helpers-and-MCPs.md`.

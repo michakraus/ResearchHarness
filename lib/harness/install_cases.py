@@ -191,7 +191,9 @@ def target_cases(check, tmp):
     target that cannot be written, the dry run prints its plan and count line before it. Then the
     mode of a backup, a mode change of a target that another user owns, an OSError in the write
     itself, and a stray rule with a lone surrogate."""
+    import contextlib
     import errno
+    import io
     from unittest import mock
 
     from . import HarnessError, install
@@ -282,17 +284,20 @@ def target_cases(check, tmp):
          f"with no mode is not: {other!r}, {unnamed!r}")
 
     # An OSError in the write itself, after the checks, as a full disk gives it: exit 2 with the target.
+    # The plan line that `install_file` prints before the write goes into `out`, not into the case list.
     target = tmp / "targets" / "full" / "x.md"
     full = OSError(errno.ENOSPC, "No space left on device", str(target))
-    with mock.patch.object(pathlib.Path, "write_bytes", side_effect=full):
+    out = io.StringIO()
+    with mock.patch.object(pathlib.Path, "write_bytes", side_effect=full), contextlib.redirect_stdout(out):
         try:
             install.install_file(True, b"x\n", target, "x.md")
             raised = None
         except (HarnessError, OSError) as e:  # an OSError is the defect that the case looks for
             raised = e
     case(lambda: isinstance(raised, HarnessError) and str(target) in str(raised)
-         and "No space left on device" in str(raised),
-         f"an OSError in the write is a HarnessError that names the target: {raised!r}")
+         and "No space left on device" in str(raised) and out.getvalue() == f"{'x.md':<34} INSTALL\n",
+         f"an OSError in the write is a HarnessError that names the target, after the plan line: "
+         f"{raised!r}, {out.getvalue()!r}")
 
     # A stray rule with a lone surrogate prints it escaped, and the dry run exits as it does without it.
     base, _, _ = scratch.fresh()

@@ -50,5 +50,3 @@ which the user edits. An unlisted one gets the template installed over its own w
 
 A push to `main` or `master` runs the full suite through `pre-push`, which is silent for as long as
 the suite takes — **10–30 minutes in the large packages**. A topic branch does not run it.
-
-Mechanism and measurements: `Environment/Notes/Git-and-GitHub.md`.

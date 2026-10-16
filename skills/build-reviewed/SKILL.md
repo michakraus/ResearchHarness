@@ -7,9 +7,9 @@ description: "Build one part of a decomposed task file whose tier cell is review
 # A reviewed part: one builder, one critic, one fix round
 
 A part of tier `reviewed` is a small code change with a fast gate: a script, a tool, a check, a
-change to a test layout. `Environment/Notes/Builder-Critic-Loop.md`, *Three loop levels*, holds the
-reasons. One builder holds the whole part. One fresh critic judges it blind, once. This session
-reads the result before the finish.
+change to a test layout.
+One builder holds the whole part. One fresh critic judges it blind, once. This session reads the
+result before the finish.
 
 **Run this in a session on the large model.** This session decides the questions inside the part
 and reads the diff, so it is a reviewer, not only a dispatcher.
