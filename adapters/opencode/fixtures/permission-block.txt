@@ -9,7 +9,6 @@
       "{home}/.config/**": "deny",
       "{home}/.config/**": "deny",
       "{harness}/adapters/opencode/**": "ask",
-      "{home}/.claude/rules/**": "ask",
       "{home}/.julia/packages/**": "deny"
     },
     "external_directory": {

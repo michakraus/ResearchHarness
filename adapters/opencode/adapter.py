@@ -144,15 +144,13 @@ CLAUDE_TO_OPENCODE_TOOL = {
 # `external_directory` allows the paths outside the session root that the instructions send an
 # agent to: ~/Research for a session rooted in a worktree, the rule, skill and agent files, the
 # installed OpenCode configuration, the installed Julia package sources, and /tmp. Edits there
-# stay gated: ~/.config/** and the installed agents and skills are denied, other skills ask, the
-# rules get their own `edit` ask below, which wins over the template's deny (K10), and
-# ~/.julia/packages/** is denied, because no other rule gates an edit there.
+# stay gated: ~/.config/** and the installed agents, skills and rules are denied, other skills
+# ask, and ~/.julia/packages/** is denied, because no other rule gates an edit there.
 OPENCODE_ONLY_RULES = [
     ("read", [("{home}/.local/share/opencode/**", "deny")]),
     ("bash", [("kill *", "ask"), ("pkill *", "ask")]),
     ("edit", [
         ("{harness}/adapters/opencode/**", "ask"),
-        ("{home}/.claude/rules/**", "ask"),
         ("{home}/.julia/packages/**", "deny"),
     ]),
     ("external_directory", [
@@ -827,6 +825,13 @@ def selftest():
     check(render_block(emitted) == (FIXTURES / "permission-block.txt").read_text(), "the permission block")
     check(guard(emitted) == (FIXTURES / "guard-paths.json").read_text(), "the guard list")
     check(report(emitted, dropped, permissions) == (FIXTURES / "report.txt").read_text(), "the report")
+    # OpenCode takes the last rule that matches: each `edit` path that the settings template denies
+    # stays a deny, with no OpenCode-only rule of the same path after it (K10).
+    edit = collect_rules()[0]["edit"]
+    undone = sorted({p for i, (p, a) in enumerate(edit) if a == "deny"
+                     and any(q == p and b != "deny" for q, b in edit[i + 1:])})
+    check(not undone and ("{home}/.claude/rules/**", "deny") in edit,
+          f"each edit path that the settings template denies is a deny under OpenCode: {undone}")
 
     with tempfile.TemporaryDirectory() as tmp:
         home = pathlib.Path(tmp)

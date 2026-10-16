@@ -190,7 +190,7 @@ def target_cases(check, tmp):
     each exit 2 with one line that names the target once and what it is, and no file changes; for a
     target that cannot be written, the dry run prints its plan and count line before it. Then the
     mode of a backup, a mode change of a target that another user owns, an OSError in the write
-    itself, and a stray rule with a lone surrogate."""
+    itself, a stray rule with a lone surrogate, and a stray settings file nested 400000 deep."""
     import contextlib
     import errno
     import io
@@ -309,6 +309,15 @@ def target_cases(check, tmp):
     case(lambda: code == without and "Traceback" not in text and f"{stray}  allow  Bash(\\ud800)" in text,
          f"a stray rule with a lone surrogate prints it as \\ud800, and the dry run exits {without} as without it: "
          f"{code}, {scratch.tail(text)!r}")
+
+    # A stray settings file nested deeper than the JSON parser reads is a warning line, as one that
+    # is not JSON is, and the dry run exits as it does without it.
+    stray.write_text("[" * 400000 + "]" * 400000)
+    code, text = run(base)
+    warning = f"{stray} cannot be read as a settings file: RecursionError"
+    case(lambda: code == without and "Traceback" not in text and warning in text,
+         f"a stray settings file nested 400000 deep is the warning line {warning!r}, and the dry run exits "
+         f"{without} as without it: {code}, {scratch.tail(text)!r}")
 
 
 def setup_guard_cases(check, tmp):

@@ -542,6 +542,11 @@ OMP_PATH_CASES = [
      "~/Research", "block"),
     ("write", {"path": "~/.claude/hooks/no-shell-file-write.py", "content": "x"}, "~/Research", "block"),
     ("write", {"path": "../.claude/hooks/no-shell-file-write.py", "content": "x"}, "~/Research", "block"),
+    # oh-my-pi's path resolver drops a leading `:` before `./` and `../`, as before `/` and `~`.
+    ("write", {"path": ":../.claude/hooks/x.py", "content": "x"}, "~/Research", "block"),
+    ("read", {"path": ":../.netrc"}, "~/Research", "block"),
+    ("read", {"path": ":./../.netrc"}, "~/Research", "block"),
+    ("write", {"path": ":./Notes/plan.md", "content": "x"}, "~/Research", "pass"),
     ("write", {"path": "~/.config/gh/config.yml", "content": "x"}, "~/Research", "block"),
     ("edit", {"path": ".git/config", "old_string": "a", "new_string": "b"}, "tree", "block"),
     ("edit", {"path": "Notes/plan.md", "old_string": "a", "new_string": "b"}, "~/Research", "pass"),
@@ -792,7 +797,8 @@ def omp_cases():
 # event, as OpenCode 2.0.25 does. The event of `execute.before` is the shape the binary builds,
 # `{tool, sessionID, agent, messageID, id, input}`, with the shell tool named `shell`; that of the
 # shell's `create.before` is `{command, cwd, timeout, shell, env}`; `ctx.location.directory` is the
-# session's directory. A hook that throws refuses the call, and the driver prints the reason, the
+# session's directory, and an empty directory leaves `location` out of the stub context. A hook that
+# throws refuses the call, and the driver prints the reason, the
 # event after the hooks, the plugin's exports and its id. Each plugin is copied into a fixture home
 # as `<name>.mjs`, so the plugins hold JavaScript syntax only. The guard scripts are the four of this
 # directory, linked into the fixture's `~/.claude/hooks/`, each run through its own shebang as the
@@ -809,9 +815,10 @@ const register = (k) => async (n, cb) => {
 };
 const mod = await import(plugin);
 const out = { exports: Object.keys(mod).sort(), id: mod.default?.id };
+const ctx = { tool: { hook: register('tool') }, shell: { hook: register('shell') } };
+if (dir !== '') ctx.location = { directory: dir };
 try {
-  await mod.default.setup({ location: { directory: dir }, tool: { hook: register('tool') },
-                            shell: { hook: register('shell') } });
+  await mod.default.setup(ctx);
 } catch (e) {
   out.setup = String(e?.message ?? e);
 }
@@ -889,14 +896,18 @@ def oc_cases():
                     REPO + "/adapters/opencode/plugins/guard-paths.json", {**dummy, "home": h}))
         return h
 
-    def drive(h, plugin, event, kind="tool", name="execute.before", cwd=CWD, process_cwd=None, path=None):
+    def drive(h, plugin, event, kind="tool", name="execute.before", cwd=CWD, process_cwd=None, path=None,
+              config_dir=None):
         """The driver's answer for one event, or the text of what went wrong. `cwd` is the
-        session's directory, `ctx.location.directory`; `process_cwd`, the working directory of
-        the `node` process, or None for this one's; `path`, the `PATH` of the `node` process, or
-        None for this one's."""
+        session's directory, `ctx.location.directory`, or "" for a context with no `location`;
+        `process_cwd`, the working directory of the `node` process, or None for this one's; `path`,
+        the `PATH` of the `node` process, or None for this one's; `config_dir`, its
+        `OPENCODE_CONFIG_DIR`, or None for none."""
         env = {k: v for k, v in CLEAN.items() if k != "OPENCODE_CONFIG_DIR"}
         if path is not None:
             env["PATH"] = path
+        if config_dir is not None:
+            env["OPENCODE_CONFIG_DIR"] = config_dir
         try:
             p = subprocess.run([node, "--input-type=module", "-e", OC_DRIVER, h + f"/plugins/{plugin}.mjs", kind, name,
                                 json.dumps(event), cwd], capture_output=True, text=True, timeout=TIMEOUT,
@@ -910,10 +921,10 @@ def oc_cases():
         except ValueError:
             return f"unreadable output {p.stdout[-80:]!r}"
 
-    def verdict(h, event, want=None, cwd=CWD, process_cwd=None):
+    def verdict(h, event, want=None, cwd=CWD, process_cwd=None, config_dir=None):
         """'refuse' or 'pass' for the guard plugin on one event; with `want`, a refusal whose
         reason lacks that text is wrong, and without it, a refusal because a guard failed."""
-        answer = drive(h, "guards", event, cwd=cwd, process_cwd=process_cwd)
+        answer = drive(h, "guards", event, cwd=cwd, process_cwd=process_cwd, config_dir=config_dir)
         if isinstance(answer, str):
             return answer
         if "setup" in answer:
@@ -949,6 +960,9 @@ def oc_cases():
             ("a guard takes longer than the timeout",
              {"scripts": {"no-blind-stage.py": "import time\ntime.sleep(20)\n"}, "timeout": 300}),
             ("the path list is missing", {"paths": False}),
+            ("a guard denies", {"scripts": {"no-blind-stage.py": "import json\nprint(json.dumps({'hookSpecificOutput': "
+                                            "{'permissionDecision': 'deny', 'permissionDecisionReason': "
+                                            "'the fixture guard denies'}}))\n"}}),
             ("rtk exits 1", {"rtk": '#!/bin/sh\necho "rtk git status"\nexit 1\n'}),
             ("no rtk", {}),
         ])}
@@ -976,6 +990,7 @@ def oc_cases():
         (oc_event("rtk cat ~/.local/share/opencode/auth.json"), "refuse", "path guard"),
         # The guard scripts do not know `rtk`, so only the form without it reaches no-blind-stage.py.
         (oc_event("rtk git add -A"), "refuse", None),
+        (oc_event(" rtk git add -A"), "refuse", None),
         (oc_event("git status"), "pass", None),
         (oc_event(None, tool="read", filePath="~/.local/share/opencode/auth.json"), "pass", None),
         # Only the `shell` tool is checked, whatever command another tool's input holds.
@@ -1005,9 +1020,13 @@ def oc_cases():
         ("session directory", oc_event("rm -rf build"), pkg, wt, "refuse", None),
         ("workdir", oc_event("rm -rf build", workdir=wt), pkg, pkg, "pass", None),
         ("workdir", oc_event("rm -rf build", workdir=pkg), wt, wt, "refuse", None),
+        # A context with no `location`: the session's directory is the `node` process's.
+        ("no location, the node directory", oc_event("rm -rf build"), "", pkg, "refuse", None),
+        ("no location, the node directory", oc_event("rm -rf build"), "", wt, "pass", None),
     ]:
         got = verdict(good, event, want, cwd=directory, process_cwd=process_cwd)
-        report(got == expected, f"exp {expected} got {got}  [oc-guards]  {label}: {event['input']} in {directory}")
+        report(got == expected,
+               f"exp {expected} got {got}  [oc-guards]  {label}: {event['input']} in {directory or process_cwd}")
 
     # Fail closed: each refuses `git status`, with a reason that names the guard plugin.
     for label in ("a guard script is missing", "a guard exits 1", "a guard prints {",
@@ -1018,6 +1037,29 @@ def oc_cases():
     answer = drive(fail["the path list is missing"], "guards", oc_event("git status"))
     got = answer if isinstance(answer, str) else (answer.get("setup"), answer["hooks"])
     report(got == (None, 1), f"exp {(None, 1)} got {got}  [oc-guards]  setup with no path list")
+    # A `deny` decision of a guard script refuses, as an `ask` does.
+    got = verdict(fail["a guard denies"], oc_event("git status"), "the fixture guard denies")
+    report(got == "refuse", f"exp refuse got {got}  [oc-guards]  a guard prints a deny decision: git status")
+
+    # The list in $OPENCODE_CONFIG_DIR: one that is not JSON refuses every `shell` call, as a missing
+    # or broken global list does; a valid one, or none there, adds to the global list.
+    local = FIXTURE.name + "/oc-config"
+    os.makedirs(local + "/broken")
+    os.makedirs(local + "/valid")
+    os.makedirs(local + "/none")
+    with open(local + "/broken/guard-paths.json", "w") as f:
+        f.write('{"allow": [')
+    with open(local + "/valid/guard-paths.json", "w") as f:
+        f.write('{"deny": ["/etc/**"]}')
+    for label, directory, event, expected, want in [
+        ("a local list that is not JSON", "broken", oc_event("git status"), "refuse", OC_GUARD),
+        ("a local list that is not JSON", "broken", oc_event("true"), "refuse", OC_GUARD),
+        ("a valid local list", "valid", oc_event("git status"), "pass", None),
+        ("a valid local list", "valid", oc_event("cat /etc/hosts"), "refuse", "path guard"),
+        ("no local list", "none", oc_event("git status"), "pass", None),
+    ]:
+        got = verdict(good, event, want, config_dir=local + "/" + directory)
+        report(got == expected, f"exp {expected} got {got}  [oc-guards]  {label}: {event['input']['command']}")
 
     # The rewrite: (home, command after the hook, verdict). The plugin finds `rtk` on the PATH of
     # `node` alone, which is the home's `bin/`: the fixture there, or no `rtk` at all.

@@ -354,7 +354,7 @@ function writePath(raw) {
 // The first form of the tool path `raw` that `rules` refuse; null when every form passes.
 function refusedToolPath(raw, cwd, wide, rules = DENY) {
   for (const piece of new Set([raw, ...raw.split(/[,;\s]+/)])) {
-    let p = piece.trim().replace(/^[@:](?=[/~])/, '');
+    let p = piece.trim().replace(/^(?:[@:](?=[/~])|:(?=\.\.?\/))/, '');
     if (p === '') continue;
     if (/^file:\/\//i.test(p)) {
       try {

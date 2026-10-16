@@ -727,7 +727,7 @@ def stray_warnings():
                                              "rules are not listed"),))
         except (FileNotFoundError, NotADirectoryError):
             continue
-        except (OSError, ValueError, AttributeError, TypeError) as e:
+        except (OSError, ValueError, AttributeError, TypeError, RecursionError) as e:
             warnings.append((escaped(f"{path} cannot be read as a settings file: {type(e).__name__}: {e}"),))
     if found:
         warnings.insert(0, (f"{len(found)} permission rule(s) outside ~/.claude/settings.json — fold them into the "

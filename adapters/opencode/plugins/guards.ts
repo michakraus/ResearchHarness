@@ -31,7 +31,8 @@
 //
 // IT FAILS CLOSED, where Claude Code lets a failed hook pass: Claude Code's sandbox stands behind
 // its hooks, and nothing stands behind this plugin. A path list beside this file that is missing
-// or not JSON refuses every `shell` call too. One case stays open: a plugin whose `setup` throws, or that
+// or not JSON refuses every `shell` call too, and so does one in `$OPENCODE_CONFIG_DIR` that is
+// present and not JSON. One case stays open: a plugin whose `setup` throws, or that
 // does not load, is logged as `failed to load plugin`, and the session starts without it. So
 // `setup` never throws, and hooks/probe.py loads this file before an install.
 //
@@ -157,24 +158,34 @@ function rule(glob) {
   return { glob, re: new RegExp('^' + re + '$'), prefix };
 }
 
+// The parsed JSON of `file`; undefined when there is no such file, and null when it cannot be read
+// or is not JSON.
 function load(file) {
+  let text;
   try {
-    return JSON.parse(readFileSync(file, 'utf8'));
+    text = readFileSync(file, 'utf8');
+  } catch (e) {
+    return e?.code === 'ENOENT' ? undefined : null;
+  }
+  try {
+    return JSON.parse(text);
   } catch {
     return null;
   }
 }
 
-// Read once, when OpenCode loads the plugin. A list beside this file that cannot be used is an
-// error text, which the hook throws on every `shell` call, rather than run with no credential
-// guard. A list in `$OPENCODE_CONFIG_DIR` that is not JSON is ignored, as under v1 (K26).
+// Read once, when OpenCode loads the plugin. A list beside this file that cannot be used, or a
+// list in `$OPENCODE_CONFIG_DIR` that is present and cannot be read or is not JSON, is an error
+// text, which the hook throws on every `shell` call, rather than run with a guard that lacks it.
 function lists() {
   const here = dirname(fileURLToPath(import.meta.url));
   const global = load(join(here, 'guard-paths.json'));
   if (!Array.isArray(global?.deny))
     return `The path guard has no list: ${join(here, 'guard-paths.json')} is missing or not JSON. ${CLOSED} Run harness install --apply.`;
   const dir = process.env.OPENCODE_CONFIG_DIR;
-  const local = dir ? load(join(dir, 'guard-paths.json')) : null;
+  const local = dir ? load(join(dir, 'guard-paths.json')) : undefined;
+  if (local === null)
+    return `The path guard cannot use its list: ${join(dir, 'guard-paths.json')} cannot be read or is not JSON. ${CLOSED} Correct or remove that file.`;
   return {
     allow: local?.allow ? local.allow.map(rule) : null,
     deny: [...global.deny, ...(local?.deny ?? [])].map(rule),
@@ -239,7 +250,8 @@ async function check(event, l, directory) {
     return 'Refused: an in-place shell edit (sed -i, perl -pi, awk -i). Change a file with the edit tool, or write a new file with the write tool.';
   const cwd = typeof workdir === 'string' ? workdir : directory;
   const forms = [command];
-  if (command.startsWith('rtk ')) forms.push(command.slice(4));
+  const bare = command.trimStart();
+  if (bare.startsWith('rtk ')) forms.push(bare.slice(4));
   for (const form of forms) {
     const payload = JSON.stringify({ tool_input: { command: form }, cwd });
     for (const script of GUARDS) {
