@@ -14,6 +14,18 @@
   `tense-lint.jl` reports each word that dates an instruction file or tells its history, the list
   of `rules/instruction-files.md`, outside code, quotations and mentions, and exits 1 on a hit.
 
+- **Transcripts stay 90 days, and the one-hour prompt cache of three agents takes effect.** The
+  settings template sets `cleanupPeriodDays` to 90. Claude Code deletes a transcript after 30 days
+  by default, and a re-measurement two weeks after a change must still read the baseline of the
+  two weeks before it. `harness install` writes the `cacheTtl:` line of an agent below a new
+  `experimental:` line. Claude Code 2.1.299 to 2.1.301 reads an agent's prompt-cache TTL there
+  alone and ignores a top-level `cacheTtl:`, so the `cacheTtl: 1h` of `julia-pr-shepherd`,
+  `julia-test-runner` and `ci-triage` had no effect: from 2026-10-11 on, 39 shepherd runs wrote
+  32.7 M tokens to the 5-minute cache and none to the one-hour cache. Claude Code still refuses
+  the one-hour TTL of an agent while a subscription is in overage, and a `subagentPromptCacheTtl`
+  setting or `CLAUDE_CODE_SUBAGENT_PROMPT_CACHE_TTL` takes precedence over the agent. The sources
+  keep `cacheTtl: 1h`; OpenCode and oh-my-pi drop it, as before.
+
 - **Waits move out of the large contexts, and builders get the rule for comments.** In 14 days of
   transcripts, 161 of the 182 cache rewrites of `julia-pr-shepherd` followed a CI wait
   (`gh run watch`, `gh pr checks`), 40 % of its input cost, and 32 of the 40 rewrites of
