@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- **The pre-push case of K35 passes inside a real `git push`.** `prepush_case` linked its tools
+  from the PATH, and inside a git hook git puts its exec path first there, so the case linked the
+  `git` of `libexec/git-core`. On macOS, that `git` started from a link looks for `git-upload-pack`
+  beside the link, so the hook's `git clone` failed and every push to `main` was refused, while CI
+  and a plain `harness test` passed. The case links its tools without a `git-core` directory, and
+  `harness test` runs it a second time with git's exec path first, as a hook does.
+
 - **The quick fixes: K10, K16, K26, K27, K29, K30, K31, K32, K33, K34, K35 and K68 leave
   `KNOWN_ISSUES.md`.** A stray settings file nested deeper than the JSON parser reads is a warning
   line of `harness install`, as one that is not JSON is, not a traceback (K68). Under OpenCode an
