@@ -184,7 +184,6 @@
       "{home}/.local/share/rtk/trusted_filters.json": "deny",
       "{home}/{protected_dir}/**": "deny",
       "{harness}/adapters/opencode/**": "ask",
-      "{home}/.claude/rules/**": "ask",
       "{home}/.julia/packages/**": "deny"
     },
     "external_directory": {

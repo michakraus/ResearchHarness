@@ -38,6 +38,7 @@ import json
 import os
 import pathlib
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -394,6 +395,20 @@ def read_commits(path):
     return shas
 
 
+# The escapes of a path that git quotes: `\` and three octal digits, or one character.
+QUOTED = re.compile(rb'\\([0-7]{3}|.)')
+ESCAPES = {b"a": 7, b"b": 8, b"t": 9, b"n": 10, b"v": 11, b"f": 12, b"r": 13}
+
+
+def unquoted(path):
+    """`path` of a diff header with git's quotes removed: git writes a path with a byte outside
+    printable ASCII, a `"` or a `\\` in double quotes, with C escapes."""
+    if len(path) < 2 or path[0] != '"' or path[-1] != '"':
+        return path
+    return QUOTED.sub(lambda m: bytes([int(m[1], 8) if len(m[1]) == 3 else ESCAPES.get(m[1], m[1][0])]),
+                      path[1:-1].encode()).decode(errors="replace")
+
+
 def added_lines(sha, repo=REPO):
     """(where, text) for each path and line that the commit `sha` adds. A path is that of each
     file that the commit adds or changes against any parent, a rename's new path too, as line 0.
@@ -419,7 +434,7 @@ def added_lines(sha, repo=REPO):
             parents, number = len(hunk.group(1)) - 1, int(hunk.group(2))
         elif not parents:
             if line.startswith("+++ "):  # git ends a path that holds a space with a tab
-                path = line[4:].removeprefix("b/").removesuffix("\t")
+                path = unquoted(line[4:].removesuffix("\t")).removeprefix("b/")
         elif not line.startswith("\\"):  # not "\ No newline at end of file"
             prefix = line[:parents]
             if "+" in prefix:
@@ -697,12 +712,126 @@ def commit_cases():
             ok = "LEAK" in shown and status == min(expected, 1) and summary.endswith(f", {expected} hits")
             wrong += not ok
             print(f"{'ok ' if ok else 'BAD'}  leaks --commits: {label} -> exit {status}, {summary.strip()!r}")
-    return len(cases) + 3 + len(message_cases) + len(runs) + 1 + len(limits), wrong
+        # An evil merge: a path that the merge itself adds, so it differs from both parents and
+        # `-m` names it twice, and a path that differs from the second parent only.
+        git("switch", "-q", "-c", "side3")
+        commit("s.txt", b"side\n")
+        git("switch", "-q", "main")
+        commit("m-Pkg.md", b"main\n")
+        git("merge", "-q", "--no-ff", "--no-commit", "side3")
+        (repo / "evil-Pkg.md").write_bytes(b"evil\n")
+        git("add", "--", "evil-Pkg.md")
+        git("commit", "-q", "-m", "merge")
+        evil = git("rev-parse", "HEAD")
+        # A merge whose resolution adds a LEAK line that neither parent has, after a line of the
+        # second parent that it removes.
+        commit("f.txt", b"base\n")
+        git("switch", "-q", "-c", "side4")
+        commit("f.txt", b"side\n")
+        git("switch", "-q", "main")
+        commit("f.txt", b"main\n")
+        subprocess.run(["git", "merge", "-q", "--no-ff", "side4"], cwd=repo, env=env, capture_output=True)
+        (repo / "f.txt").write_bytes(b"main\nLEAK\n")
+        git("add", "--", "f.txt")
+        git("commit", "-q", "-m", "merge")
+        resolved = git("rev-parse", "HEAD")
+        # Paths that git quotes in a diff header: a non-ASCII character, and a `"`.
+        cafe = commit("café.txt", b"LEAK\n")
+        quote = commit('a"b.txt', b"LEAK\n")
+        # (label, SHA, expected places); the leak string is LEAK, the tree name Pkg.
+        place_cases = [
+            ("an evil merge names each path once, the one that differs from the second parent only too", evil,
+             [f"{evil[:12]} evil-Pkg.md:0", f"{evil[:12]} m-Pkg.md:0"]),
+            ("a line that a merge's resolution adds, which neither parent has", resolved,
+             [f"{resolved[:12]} f.txt:2"]),
+            ("a leak in a path with a non-ASCII character", cafe, [f"{cafe[:12]} café.txt:1"]),
+            ('a leak in a path with a "', quote, [f'{quote[:12]} a"b.txt:1']),
+        ]
+        for label, sha, expected in place_cases:
+            got = [where for where, _ in commit_hits([sha], ["LEAK"], pattern, None, repo)]
+            wrong += got != expected
+            print(f"{'ok ' if got == expected else 'BAD'}  leaks --commits: {label} -> {got}")
+        # `cmd_leaks` allows the owner/name of the origin of `repo`, not that of this checkout: the
+        # message of `own` names org/Pkg, and Pkg is a tree name.
+        for name in ("m-Pkg.md", "evil-Pkg.md", "f.txt", "café.txt", 'a"b.txt'):
+            commit(name)
+        git("remote", "add", "origin", "https://github.com/org/Pkg.git")
+        (pathlib.Path(tmp) / "commits").write_text(own + "\n")
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            status = cmd_leaks(argparse.Namespace(profile=pathlib.Path(tmp) / "profile.toml",
+                                                  commits=pathlib.Path(tmp) / "commits"), repo)
+        summary = out.getvalue().splitlines()[-1]
+        ok = own_repository(repo) == "org/Pkg" != own_repository() and status == 0 and summary.endswith(", 0 hits")
+        wrong += not ok
+        print(f"{'ok ' if ok else 'BAD'}  leaks --commits: the own owner/name of a repository whose origin is not "
+              f"this checkout's -> exit {status}, {summary.strip()!r}")
+    return len(cases) + 3 + len(message_cases) + len(runs) + 1 + len(limits) + len(place_cases) + 1, wrong
+
+
+# The tools that `.githooks/pre-push` starts from the PATH in `prepush_case`, besides the stubs.
+PREPUSH_TOOLS = ["bash", "sh", "git", "mktemp", "rm", "cat", "tail", "head", "grep", "awk"]
+
+
+def prepush_case():
+    """`.githooks/pre-push` on a fixture checkout whose `origin` is a GitHub URL, for a push to
+    main, with stubs of gitleaks and of `bin/harness` and no python3.11, shellcheck or julia on the
+    PATH: `harness leaks` runs in the hook's clone with that URL as its `origin`, not the path of
+    the checkout. (number of cases, number wrong)"""
+    env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+    env.update(GIT_CONFIG_GLOBAL="/dev/null", GIT_CONFIG_NOSYSTEM="1",
+               GIT_AUTHOR_NAME="leaks", GIT_AUTHOR_EMAIL="leaks@example.org",
+               GIT_COMMITTER_NAME="leaks", GIT_COMMITTER_EMAIL="leaks@example.org")
+    url = "https://github.com/owner/fixture.git"
+    with tempfile.TemporaryDirectory(prefix="harness-pre-push-") as tmp:
+        tmp = pathlib.Path(tmp)
+        tools, repo, seen = tmp / "bin", tmp / "repo", tmp / "origin-seen"
+        tools.mkdir()
+        missing = [tool for tool in PREPUSH_TOOLS if shutil.which(tool) is None]
+        if missing:
+            print(f"BAD  pre-push: the case needs {', '.join(missing)} on the PATH; it does not run")
+            return 1, 1
+        for tool in PREPUSH_TOOLS:
+            (tools / tool).symlink_to(shutil.which(tool))
+        (tools / "python3").symlink_to(sys.executable)
+        (tools / "gitleaks").write_text('#!/bin/sh\n[ "$1" = version ] && echo v8.24.0\n'
+                                        '[ "$1" = stdin ] && cat >/dev/null\nexit 0\n')
+        (tools / "gitleaks").chmod(0o755)
+        (repo / "bin").mkdir(parents=True)
+        (repo / "bin" / "harness").write_text(
+            "import os, subprocess, sys\n"
+            "if sys.argv[1] == 'leaks':\n"
+            "    url = subprocess.run(['git', 'remote', 'get-url', 'origin'], capture_output=True, text=True).stdout\n"
+            "    open(os.environ['ORIGIN_SEEN'], 'w').write(url.strip())\n"
+            "print('0 cases, 0 wrong')\n")
+
+        def git(*args):
+            return subprocess.run(["git", *args], cwd=repo, env=env, check=True, capture_output=True,
+                                  text=True).stdout.strip()
+
+        git("init", "-q", "-b", "main")
+        git("add", "--", "bin/harness")
+        git("commit", "-q", "-m", "fixture")
+        git("remote", "add", "origin", url)
+        sha = git("rev-parse", "HEAD")
+        try:
+            p = subprocess.run([str(REPO / ".githooks" / "pre-push"), "origin", url],
+                               input=f"refs/heads/main {sha} refs/heads/main {'0' * 40}\n", cwd=repo,
+                               env={**env, "PATH": str(tools), "ORIGIN_SEEN": str(seen), "TMPDIR": str(tmp)},
+                               capture_output=True, text=True, timeout=60)
+            code, text = p.returncode, p.stdout + p.stderr
+        except subprocess.TimeoutExpired:
+            code, text = None, "TIMEOUT"
+        got = seen.read_text() if seen.exists() else None
+    ok = code == 0 and got == url
+    print(f"{'ok ' if ok else 'BAD'}  pre-push: harness leaks runs in the clone with the checkout's origin URL "
+          f"-> exit {code}, origin {got!r}, {(text.strip().splitlines() or ['no output'])[-1]!r}")
+    return 1, int(not ok)
 
 
 def selftest():
-    """The render's cases, the tree-name cases and the cases of `--commits`: (number of cases,
-    number wrong)."""
+    """The render's cases, the tree-name cases, the cases of `--commits` and the `origin` case of
+    the pre-push hook: (number of cases, number wrong)."""
     wrong = 0
     for template, profile, expected in CASES:
         try:
@@ -717,7 +846,8 @@ def selftest():
         wrong += got != expected
         print(f"{'ok ' if got == expected else 'BAD'}  {line!r} -> {got!r}")
     n, w = commit_cases()
-    return len(CASES) + len(NAME_CASES) + n, wrong + w
+    n2, w2 = prepush_case()
+    return len(CASES) + len(NAME_CASES) + n + n2, wrong + w + w2
 
 
 def register(sub):

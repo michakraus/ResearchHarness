@@ -2,6 +2,28 @@
 
 ## Unreleased
 
+- **The quick fixes: K10, K16, K26, K27, K29, K30, K31, K32, K33, K34, K35 and K68 leave
+  `KNOWN_ISSUES.md`.** A stray settings file nested deeper than the JSON parser reads is a warning
+  line of `harness install`, as one that is not JSON is, not a traceback (K68). Under OpenCode an
+  edit of the installed `~/.claude/rules/**` is a deny, as under Claude Code: the OpenCode-only
+  `ask` that came after the template's deny is gone, from `opencode.jsonc` and its fixtures too
+  (K10). The OpenCode guard plugin also checks the form without `rtk` when white space comes
+  before `rtk` or a tab after it, so ` rtk git add -A` and `rtk<tab>git add -A` are refused (K27),
+  and a `$OPENCODE_CONFIG_DIR/guard-paths.json` that is present and cannot be read or is not JSON
+  refuses every `shell` call, as a missing global list does (K26); `docs/src/components/adapters.md`
+  says so. The oh-my-pi path guard drops a leading `:` before `./` and `../`, as before `/` and
+  `~`, so `write {"path": ":../.claude/hooks/x.py"}` from `~/Research` blocks (K16). New probe
+  cases give the OpenCode guard plugin a context with no `location`, where the session's directory
+  is the `node` process's (K29), and a guard script that prints a `deny` decision (K30).
+  `harness leaks --commits` labels a hit in a path that git quotes, such as `café.txt` or
+  `a"b.txt`, with the path, not git's quoted form (K31). New cases of the leak gate run
+  `cmd_leaks` on a fixture whose `origin` is not this checkout's (K32), take an evil merge whose
+  paths are each named once, one of them differing from the second parent only (K33), and a merge
+  whose resolution adds a leak line that neither parent has (K34); a case in `harness test` runs
+  `.githooks/pre-push` on a fixture checkout with stubs of gitleaks and `bin/harness`, and checks
+  the `origin` URL that `harness leaks` sees in the hook's clone (K35). K75 records that a `~`
+  with no `/` after it, as in `read {"path": "~.netrc"}`, passes the oh-my-pi path guard.
+
 - **No public file cites a notes page of the tree: K66, K67 and K70 leave `KNOWN_ISSUES.md`.**
   `adapters/claude/CLAUDE.md`, `RTK.md`, `opencode.jsonc`, `githooks/pre-commit`,
   `launchagents/claude-autocommit`, four rules and three skills named an `Environment/Notes/` page

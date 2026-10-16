@@ -1,11 +1,11 @@
 input rules (deny + ask): 19
-emitted:                  27 (13 OpenCode-only)
+emitted:                  26 (12 OpenCode-only)
 dropped:                  5
 round-trip:               OK
 
 per permission key:
   bash                    7
-  edit                    6
+  edit                    5
   external_directory      7
   glob                    1
   kaimon_debug_eval       1

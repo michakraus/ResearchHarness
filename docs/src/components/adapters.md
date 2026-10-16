@@ -197,8 +197,9 @@ exists. It also refuses a directory that holds a denied path when the command re
 changes into it. A second check refuses an in-place edit, such as `sed -i`, with a short message.
 
 The plugin fails closed. A script that cannot start, fails or times out after 10 s refuses the
-command. A missing path list refuses every `shell` call. A guard that would ask refuses too, and
-the model must ask the user in chat.
+command. A missing path list refuses every `shell` call. So does a
+`$OPENCODE_CONFIG_DIR/guard-paths.json` that is present and cannot be read or is not JSON. A
+guard that would ask refuses too, and the model must ask the user in chat.
 
 The path guard checks text only. A path that a command builds at run time, or a relative path,
 passes it.

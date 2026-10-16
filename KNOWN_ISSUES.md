@@ -1,18 +1,5 @@
 # Known issues
 
-### K10 · Under OpenCode, an edit of the installed `~/.claude/rules/**` asks, where the settings template denies it.
-
-- location: `adapters/opencode/adapter.py:161`
-- evidence: `OPENCODE_ONLY_RULES` appends `"{home}/.claude/rules/**": "ask"` to the `edit` block,
-  after the rules that `harness permissions` generates from the settings template. The generated
-  `adapters/opencode/opencode.jsonc` holds `"{home}/.claude/rules/**": "deny"` at line 137 and the
-  OpenCode-only `"ask"` at line 176, and OpenCode takes the last rule that matches (the comment at
-  `adapters/opencode/adapter.py:432`). Every other installed path of the template's `Edit` denies
-  is a deny under OpenCode too. The fix removes that entry, and the fixtures
-  `adapters/opencode/fixtures/permission-block.txt` and `report.txt` with it.
-- kind: found late
-- found: 2026-10-06
-
 ### K13 · A `write` path in a header nested twice passes the oh-my-pi path guard.
 
 - location: `adapters/omp/guards.ts:327`
@@ -40,17 +27,6 @@
 - kind: defect
 - found: 2026-10-06
 
-### K16 · A leading `:` before `./` or `../` passes the oh-my-pi path guard.
-
-- location: `adapters/omp/guards.ts:341`
-- evidence: `refusedToolPath` drops a leading `:` only before `/` or `~`. oh-my-pi's path resolver
-  (`KS`, which the `write` tool calls) also drops it before `./` and `../`, so
-  `{"path": ":../.claude/hooks/gh-api-writes.py"}` from `~/Research` passes the guard, and
-  `read {"path": ":../.netrc"}` does too (that the `read` tool resolves through `KS` is not
-  verified).
-- kind: found late
-- found: 2026-10-06
-
 ### K22 · Under OpenCode, a verify critic carries the round-1 rule of the council.
 
 - location: `adapters/opencode/adapter.py:291-297`
@@ -63,27 +39,6 @@
   `adapters/opencode/fixtures/expected/`.
 - kind: defect
 - found: 2026-10-08
-
-### K26 · Under OpenCode, a `$OPENCODE_CONFIG_DIR/guard-paths.json` that is not JSON is ignored, and its `allow` list with it.
-
-- location: `adapters/opencode/plugins/guards.ts:176`
-- evidence: `lists()` refuses every `shell` call when the list beside the plugin is missing or
-  not JSON, but `load` returns null for a local list that does not parse, and the plugin then
-  runs with the global list only. With a valid local list `{"allow": ["{home}/Research/**"]}`,
-  `cat /etc/hosts` is refused; with the same file cut to `{"allow": [`, it passes. v1 behaves the
-  same way. Found by the critics of part W1, round 1.
-- kind: defect
-- found: 2026-10-09
-
-### K27 · Under OpenCode, a leading space before `rtk ` hides the rest of the command from the guard scripts.
-
-- location: `adapters/opencode/plugins/guards.ts:241`
-- evidence: the guard checks the form without `rtk ` only when `command.startsWith('rtk ')`, on
-  the command as given. So `rtk git add -A` is refused by `no-blind-stage.py`, but ` rtk git add -A`,
-  with one leading space, passes. v1 behaves the same way. The path guard and the in-place check
-  scan the whole command and are not affected. Found by the critics of part W1, round 1.
-- kind: defect
-- found: 2026-10-09
 
 ### K28 · A `file://~/…` path passes the `edit` and `ask` lists of the oh-my-pi path guard.
 
@@ -98,83 +53,6 @@
   report 2 wrong. Whether oh-my-pi itself resolves `file://~` to the home directory is not
   verified.
 - kind: defect
-- found: 2026-10-09
-
-### K29 · No probe case reaches the `process.cwd()` fallback of the OpenCode guard plugin.
-
-- location: `adapters/opencode/plugins/guards.ts:262`
-- evidence: the guard takes the working directory of a call without `workdir` from
-  `ctx.location.directory`, and from `process.cwd()` when `ctx.location` has no string
-  `directory`. Every OpenCode case of `hooks/probe.py` gives the stub context a `location`. A
-  mutant that replaces `: process.cwd()` with `: '/'` passes all 38 OpenCode cases of the probe. A case with no
-  `location` in the stub context, the `node` working directory in the fixture repository, and
-  `rm -rf build`, expecting a refusal, would catch it. Found by the verify critic of part W1.
-- kind: missing test
-- found: 2026-10-09
-
-### K30 · No probe case gives the OpenCode guard plugin a `deny` decision.
-
-- location: `adapters/opencode/plugins/guards.ts:120`
-- evidence: the plugin refuses a guard's `permissionDecision` of `ask` or of `deny`. Only
-  `gh-api-writes.py:228` and `rm-scope.py:245` print a decision, and both print `ask`, so no
-  script reaches the `deny` half. A mutant that removes `|| hook?.permissionDecision === 'deny'`
-  passes all 38 OpenCode cases of the probe. A fixture guard that prints a `deny` decision would catch it. Found by the
-  verify critic of part W1.
-- kind: missing test
-- found: 2026-10-09
-
-### K31 · `harness leaks --commits` labels a line hit in a path that git quotes with the quoted path.
-
-- location: `lib/harness/profile.py:302`
-- evidence: `added_lines` takes the path of a line from the `+++ ` header of `git show`, which
-  git quotes for a path with a non-ASCII character or a `"`. A leak line in `café.txt` is
-  reported at `"b/caf\303\251.txt":1`, not at `café.txt:1`. The hit still counts and still
-  refuses the push; only the place label is wrong. Reproducer:
-  `.scratch/critic/Harness-E2/round-2/label_probe.py` in the research root. Found by the verify
-  critic of part E2, round 2.
-- kind: defect
-- found: 2026-10-09
-
-### K32 · No case reaches `own_repository(repo)` in `cmd_leaks`.
-
-- location: `lib/harness/profile.py:327`
-- evidence: the mutant that calls `own_repository()` in place of `own_repository(repo)` (P8 of
-  the critics of part E2) survives `bin/harness test`. In the pre-push hook `repo` is `REPO`, so
-  the two calls agree there; a case would run `cmd_leaks` on a fixture repository whose `origin`
-  differs from this checkout's. Found by the verify critic of part E2, round 2.
-- kind: missing test
-- found: 2026-10-09
-
-### K33 · No case reaches the de-duplication of the `-m` paths or the second parent's column of `git diff-tree`.
-
-- location: `lib/harness/profile.py:283-287`
-- evidence: the mutants Q1 (`dict.fromkeys` removed) and Q2 (`--first-parent` added) both
-  survive `commit_cases()`, `(15, 0)`. Neither turns a hit into no hit: Q1 only prints a path
-  twice when an evil merge changes it against both parents. An evil-merge case that expects
-  exactly one `:0` hit would catch both. Reproducer:
-  `.scratch/critic/Harness-E2/round-3/own_mutants.py` in the research root, on a clone of
-  `80fdc4a`. Found by the verify critic of part E2, round 3.
-- kind: found late
-- found: 2026-10-09
-
-### K34 · No case reaches a line of a merge's combined diff in `added_lines`.
-
-- location: `lib/harness/profile.py:299`
-- evidence: the mutant D4 of the critics of part E2 (`parents, number = 1, int(hunk.group(2))`)
-  survives `bin/harness test`, `977 cases, 0 wrong`. The merge case of `commit_cases` has no
-  lines in its combined diff. A merge whose resolution adds a `LEAK` line that neither parent has
-  would catch it. Found by the critics of part E2, round 1a, and again in round 3.
-- kind: found late
-- found: 2026-10-09
-
-### K35 · No committed test covers the `origin` URL that the pre-push hook sets in its clone.
-
-- location: `.githooks/pre-push:92`
-- evidence: the hook runs `git remote set-url origin "$origin_url"` in the clone, so that
-  `harness leaks --commits` allows the checkout's own `owner/name`. A mutant that drops the line
-  (d3 of the critics of part E2) passes the hook in a real worktree. The only check is the
-  fixture case `ownrepo` of the critic of part E2, round 1b, which is not committed.
-- kind: missing test
 - found: 2026-10-09
 
 ### K36 · A whole-history gitleaks scan is red until the history is rewritten.
@@ -230,21 +108,9 @@
 - kind: defect
 - found: 2026-10-12, the critic of part D2
 
-### K68 · A stray settings file nested deeper than the JSON parser reads stops `harness install` with `RecursionError`.
-
-- location: `adapters/claude/adapter.py:682`
-- evidence: `stray_warnings` turns `OSError`, `ValueError`, `AttributeError` and `TypeError` into a
-  warning, but not `RecursionError`. With `~/Research/.claude/settings.local.json` holding
-  `"[" * 400000 + "]" * 400000`, `stray_warnings()` raises `RecursionError` on Python 3.14, so the
-  dry run of `harness install` ends in a traceback and exit 1. Python 3.11 raises it from a depth
-  of 1000. The settings verbs and the merge of `~/.claude/settings.json` refuse such a file with
-  exit 2 (`json_object`); this read of the other settings files does not use it.
-- kind: defect
-- found: 2026-10-15, the builder of publish part P1, after its critic's finding on deep nesting
-
 ### K69 · No case shows a stray settings path with a lone surrogate.
 
-- location: `adapters/claude/adapter.py:682`
+- location: `adapters/claude/adapter.py:698`
 - evidence: `stray_warnings` escapes each whole line, so a lone surrogate in the path is escaped
   as one in the rule is. A case cannot make such a path on macOS: APFS refuses a name that is not
   UTF-8 (`OSError: [Errno 92] Illegal byte sequence`). The rule case in
@@ -275,3 +141,15 @@
   `Board.base`, the test fixtures) is not such a citation.
 - kind: docs
 - found: 2026-10-16, the builder of publish part P6
+
+### K75 · A `~` with no `/` after it passes the oh-my-pi path guard.
+
+- location: `adapters/omp/guards.ts:207`
+- evidence: `absolute()` expands `~` only before `/` or at the end of the path, and joins any
+  other path to the working directory. So `read {"path": "~.netrc"}` and
+  `read {"path": ":~.netrc"}` from `~/Research` pass the guard, as `~/Research/~.netrc`, while the
+  path utilities of oh-my-pi 18.11.1 map `~foo` to `$HOME/foo`. That the `read` tool resolves
+  its path through that function is not verified. Reproducer: the probe cases of
+  `.scratch/critic/Harness-P7/edges.py` in the research root, run on a copy of the checkout.
+- kind: defect
+- found: 2026-10-16, the critic of publish part P7
