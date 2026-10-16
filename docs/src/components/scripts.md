@@ -392,6 +392,10 @@ julia --startup-file=no scripts/audit/report.jl .
 julia --startup-file=no scripts/audit/sample.jl . <seed> 40
 julia --startup-file=no scripts/audit/taxonomy.jl <lines-dir>
 scripts/audit/crosscheck.sh 2026-10-02T00:00:00Z 2026-10-16T00:00:00Z
+julia --startup-file=no -t 8 scripts/audit/instructions.jl . <lines-dir> --from 2026-10-02T00:00:00Z --to 2026-10-16T00:00:00Z \
+    --harness <checkout> --tree <dir> --claude-md <root> --notes <dir>
+julia --startup-file=no scripts/audit/citations.jl instructions.tsv --kind agent --root <dir> --tools tools.tsv
+julia --startup-file=no scripts/audit/tense-lint.jl instructions.tsv --kind agent
 ```
 
 - `transcripts.jl` writes one row per run to `runs.tsv`: a main session or a sub-agent, with its
@@ -412,6 +416,22 @@ scripts/audit/crosscheck.sh 2026-10-02T00:00:00Z 2026-10-16T00:00:00Z
   and reason.
 - `crosscheck.sh` computes two totals of `transcripts.jl` again with `jq`, on a path that shares
   no code with it: all context tokens, and the cache reads of the `julia-builder` runs.
+- `instructions.jl` writes `instructions.tsv`, one row per instruction file: the agents, skills,
+  rules, commands and global files of a harness checkout, the tree's instructions and rules, every
+  `CLAUDE.md` below a root, the pages below an evidence directory, and every memory file. Each row
+  gives the tokens at 3.5 characters each, when the file loads, the runs that loaded it in the
+  window, and the failure classes whose lines cite it. A load is a record in `runs.tsv` (agent
+  type, Skill call, rule or `CLAUDE.md` on a Read) or in a Claude Code transcript (the
+  `instructions` record at the start of a run, a Read of the file, a slash command). It prints the
+  table, the totals per kind, the files that no run loaded, and the files that loaded and that no
+  failure line cites.
+- `citations.jl` reads the rows of `instructions.tsv` and checks what each file cites in a code
+  span, a fenced shell block or a link: a path exists, a command is an executable, a long flag is
+  in the help of its command or in the source of its script, a tool name is one that a run called,
+  and an agent or skill name is in the table. It prints the citations that do not resolve.
+- `tense-lint.jl` reports each word of `rules/instruction-files.md` that dates a text or tells its
+  history (*now*, *as of*, *no longer*, *since* a date, and the others), outside code, quotations
+  and mentions, with `file:line`. It skips a `CHANGELOG.md`, and exits 1 on a hit.
 
 Output tokens are not in the cost. A transcript writes one API message as several records, and
 only the last one holds the full output count, so a sum of output is complete only where the

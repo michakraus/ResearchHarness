@@ -8,6 +8,27 @@
   and its checks. `opencode.jsonc` keeps the local model as `small_model`. `harness install`
   reports the two installed copies as EXTRA, with the command that removes each.
 
+- **`harness install` adds each key of the settings template that `~/.claude/settings.json`
+  lacks.** It replaced the four sections `permissions`, `hooks`, `sandbox` and `modelSettings` and
+  installed no other key, so `cleanupPeriodDays` of the template never reached the installed
+  settings. A key that the file has keeps its value, so the model and the effort that the app
+  writes stay. The dry run shows each added key in its diff, as `null` against the template's
+  value. A key of the template that the user deletes from the file comes back at the next
+  install; to keep another value, set it in the file. A missing settings file is created with
+  every key of the template.
+
+- **New: three audit scripts measure the instruction files.** `instructions.jl` writes one table of
+  the agents, skills, rules, commands and global files of a harness checkout, the tree's own
+  instructions and rules, every `CLAUDE.md`, every evidence page and every memory file: tokens,
+  when each loads, how many runs loaded it in a window, and which failure classes of the
+  taxonomy cite it. A load is what the transcripts record: the `instructions` record at the start
+  of a Claude Code run, a rule or `CLAUDE.md` that loads on a Read, a Skill call, an agent type, a
+  slash command, or a Read of the file. `citations.jl` checks what these files cite: each path,
+  command, long flag, tool name, agent and skill. It reads the flags from the help of `git`, `gh`,
+  `glab`, `juliaup`, `rtk`, `jq`, `rg` and `harness`, and from the source of a script it finds.
+  `tense-lint.jl` reports each word that dates an instruction file or tells its history, the list
+  of `rules/instruction-files.md`, outside code, quotations and mentions, and exits 1 on a hit.
+
 - **Transcripts stay 90 days, and the one-hour prompt cache of three agents takes effect.** The
   settings template sets `cleanupPeriodDays` to 90. Claude Code deletes a transcript after 30 days
   by default, and a re-measurement two weeks after a change must still read the baseline of the
