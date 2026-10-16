@@ -19,7 +19,7 @@ One script for two hook events, told apart by `hook_event_name`:
 Why a hook: Claude Code runs a `git worktree add` whose path is absolute, starts with `~`
 or holds `..` inside the sandbox, whatever `excludedCommands` says, and the sandbox
 denies every write under `.git`. Every spelling of a path under `~/Research/.worktrees/`
-is one of those. `worktree.md` has the evidence.
+is one of those.
 
 **It fails closed.** Every error exits 1 with the reason on stderr, and Claude Code then
 reports the hook as failed. No worktree is better than one in the wrong place or on the

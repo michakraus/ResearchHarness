@@ -38,7 +38,7 @@ every file clean. Before you report a silent sweep as a pass, prove it detects a
 **From a session, `harness githooks --apply` cannot set `core.hooksPath`**; the hook copies
 still land, and it exits 2 with one command per repository. **A session cannot set
 `core.hooksPath` or `core.fsmonitor`**: `.git/config` is denied for those keys, because each names
-a program that the next top-level `git` runs (`settings/settings.json.md`). A top-level
+a program that the next top-level `git` runs. A top-level
 `git config` of either fails with `could not lock config file`, while a neutral key writes. Give
 the user the commands it prints, to run in their terminal.
 
