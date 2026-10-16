@@ -192,3 +192,17 @@
   home directory outside any git repository, meets neither rule. Not probed.
 - kind: not verified
 - found: 2026-10-16, the `read` deny decoy probe
+
+### K78 · Under OpenCode v2 a `**/` `edit` deny probably does not stop the `edit` tool on a file in the project root.
+
+- location: `adapters/opencode/adapter.py:374`
+- evidence: v2 (2.0.30) matches a `read` pattern against the path relative to the project root,
+  with `*` crossing `/` and both ends anchored: `**/*.pem` did not stop a read of `x.pem` in the
+  root, and its root form `*.pem` did, in decoy probes of 2026-10-16. `with_root_forms` adds the
+  root form to the `read` rules only, so the `edit` denies `**/.git/**`, `**/.mcp.json`,
+  `**/.claude/settings.json` and `**/.claude/settings.local.json` have none
+  (`adapters/opencode/opencode.jsonc:165`), and `.git/` and `.mcp.json` of the project root
+  are the cases that matter. That the `edit` tool uses the same match is not probed. A root form
+  `.git/**` must also not stop an edit that a session needs.
+- kind: not verified
+- found: 2026-10-16, the `read` deny decoy probe

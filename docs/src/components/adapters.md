@@ -146,7 +146,11 @@ key `opencode_providers`. Before them, the install writes one entry for each mod
 
 The `permission` block is generated. Do not edit it by hand: run `harness permissions --apply`,
 which writes it from the settings template. OpenCode takes the last rule that matches, so each
-`ask` comes before each `deny`. The `allow` rules of the template are not ported.
+`ask` comes before each `deny`. The `allow` rules of the template are not ported. OpenCode matches
+a path pattern against the path relative to the project root, so each `**/X` read rule is followed
+by its root form `X`, which `plugins/guard-paths.json` leaves out. `external_directory` starts with
+`"*": "deny"`: OpenCode's built-in rules allow every path, and a file tool is refused outside the
+allow entries that follow.
 
 OpenCode has no sandbox. This permission block is its only control, and a command inside a string
 argument escapes it.
