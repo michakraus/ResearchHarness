@@ -246,6 +246,9 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   reader rejects (a UTF-8 BOM), and a list of exception types misses one the reader raises
   (`TypeError` from a list placeholder); wrap the reader's own call, and test each input class
   that reaches it (D2 verify 2 and verify 3, *Unify the agent configuration*)
+- a guard that matches a command word with one literal space (`startsWith('rtk ')`): a tab or
+  several spaces after the word, or white space before it, hides the rest of the command; match
+  `\s+` and test a tab (P7 round 1, *Publish the harness as ResearchHarness*)
 - a new value in a column of fixed width: a name as long as the width runs into the next column,
   and a test that lists only the old, shorter values cannot see it (G1 round 1, *Faster test
   suites for the learning package and the optimiser package*)
