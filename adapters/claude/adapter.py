@@ -17,9 +17,10 @@ directory installs at its own path below ~/.claude/, adapters/claude/ at the top
 tree instructions mirror the layout of ~/.claude/. The code of this adapter, adapter.py, and
 fixtures/ of adapters/claude/ are not sources. A file is copied byte for byte, unless
 CLAUDE_TEMPLATES lists its installed path; a template is rendered with the profile. An agent of
-agents/ and a SKILL.md of skills/ are copied with two values rewritten in place (`render_source`):
-the tier of `model:` becomes its Claude Code model from the [claude] table of models.toml
-(`load_models`), and each `tools:` item its Claude Code name from TOOLS. A hook keeps
+agents/ and a SKILL.md of skills/ are copied with three changes (`render_source`): the tier of
+`model:` becomes its Claude Code model from the [claude] table of models.toml (`load_models`),
+each `tools:` item its Claude Code name from TOOLS, and a `cacheTtl:` line moves below a new
+`experimental:` line, the one key from which Claude Code reads an agent's TTL. A hook keeps
 its source's mode, and every other file is installed 0644. A name that starts with `.`, and
 __pycache__, is not a source. A file below agents/ or hooks/ in the tree instructions is not
 installed: agents and hooks install from this repository only, so each such file is a SKIP line,
@@ -943,10 +944,10 @@ def neutral_source(src):
 
 def render_source(src, data, models):
     """`data`, the bytes of the agent or skill at `src`, with the value of `model:` replaced by its
-    model in `models`, load_models' table, and each `tools:` item by its name in TOOLS; every other
-    byte as it is. A model is written bare where MODEL matches it and the source's value is not
-    quoted, else as JSON writes it. A value outside the neutral vocabulary exits 2
-    (frontmatter.parse_file)."""
+    model in `models`, load_models' table, each `tools:` item by its name in TOOLS, and the
+    `cacheTtl:` line indented below a new `experimental:` line; every other byte as it is. A model
+    is written bare where MODEL matches it and the source's value is not quoted, else as JSON
+    writes it. A value outside the neutral vocabulary exits 2 (frontmatter.parse_file)."""
     fm = frontmatter.parse_file(src, data)
     lines = data.decode("utf-8").split("\n")
     key = None
@@ -961,6 +962,10 @@ def render_source(src, data, models):
                 model = models[fm.meta["model"]]
                 bare = MODEL.fullmatch(model) and not value.startswith('"')
                 lines[i] = "model:" + rest.replace(value, model if bare else json.dumps(model), 1)
+            elif key == "cacheTtl":
+                # Claude Code reads an agent's prompt-cache TTL from `experimental:` alone, and
+                # ignores a top-level `cacheTtl:`.
+                lines[i] = "experimental:\n  " + line
         elif key == "tools":
             tool = item.group(1).strip(" ")
             name = TOOLS[tool] if tool in TOOLS else MCP_PREFIX + tool.removeprefix(frontmatter.MCP)
@@ -1109,7 +1114,7 @@ def layer_cases(check, tmp):
 
     # The neutral vocabulary: the Claude Code renders of two agents are the installed files of
     # 2f31fee, byte for byte, and every agent and skill differs from its source in the value of
-    # `model:` and the `tools:` items alone.
+    # `model:`, the `tools:` items and the place of `cacheTtl:` alone.
     example = load_models(REPO / "examples" / "models.toml")
     for name in ["julia-builder", "literature-scout"]:
         src = REPO / "agents" / f"{name}.md"
@@ -1121,15 +1126,22 @@ def layer_cases(check, tmp):
     case(lambda: render_source(quoted, quoted.read_bytes(), example)
          == b'---\nname: q\ndescription: "d"\nmodel: "opus"\n---\nbody\n',
          'a quoted `model: "large"` renders as the quoted model, `model: "opus"`')
+    ttl = tmp / "ttl.md"
+    ttl.write_text('---\nname: t\ndescription: "d"\ncacheTtl: 1h\nmodel: small\n---\ncacheTtl: 1h\n')
+    case(lambda: render_source(ttl, ttl.read_bytes(), example)
+         == b'---\nname: t\ndescription: "d"\nexperimental:\n  cacheTtl: 1h\nmodel: haiku\n---\ncacheTtl: 1h\n',
+         "`cacheTtl: 1h` renders below a new `experimental:` line, and the same text in the body stays")
     case(lambda: sorted(TOOLS) == sorted(frontmatter.TOOLS),
          f"TOOLS maps exactly the neutral tools of frontmatter.TOOLS: {sorted(set(TOOLS) ^ set(frontmatter.TOOLS))}")
     base, claude, tree = fresh()
     code, text = run(base, "--apply")
 
     def changed_lines(src):
-        """The lines in which the installed copy of `src` differs from it, as (source, installed)."""
+        """The lines in which the installed copy of `src` differs from it, as (source, installed).
+        An installed `experimental:` line and the line after it count as one line."""
         old = src.read_text().split("\n")
-        new = (claude / src.relative_to(REPO)).read_text().split("\n")
+        new = (claude / src.relative_to(REPO)).read_text().replace("\nexperimental:\n", "\nexperimental:\0")
+        new = [line.replace("\0", "\n") for line in new.split("\n")]
         count = [("line count", len(old), len(new))] * (len(old) != len(new))
         return [(a, b) for a, b in zip(old, new) if a != b] + count
 
@@ -1138,19 +1150,23 @@ def layer_cases(check, tmp):
                                          if not (re.fullmatch(r"model: (large|medium|small)", a)
                                                  and b == f"model: {example[a[len('model: '):]]}")
                                          and not (re.fullmatch(r"  - [a-z_]+|  - mcp/kaimon/\w+", a)
-                                                  and (b[4:] in names or b[4:].startswith(MCP_PREFIX)))]
+                                                  and (b[4:] in names or b[4:].startswith(MCP_PREFIX)))
+                                         and not (a.startswith("cacheTtl:") and b == "experimental:\n  " + a)]
              for src in neutral.listing()}
     def owed(src):
-        """The number of lines that the render changes in `src`: its `model:` and its `tools:` items."""
+        """The number of lines that the render changes in `src`: its `model:`, its `tools:` items and
+        its `cacheTtl:`."""
         meta = frontmatter.parse_file(src).meta
-        return ("model" in meta) + len(meta.get("tools", []))
+        return ("model" in meta) + len(meta.get("tools", [])) + ("cacheTtl" in meta)
 
-    # Each `model:` and each `tools:` item of a source changes, so a source installed as it is fails.
+    # Each `model:`, each `tools:` item and each `cacheTtl:` of a source changes, so a source
+    # installed as it is fails.
     unchanged = [str(src.relative_to(REPO)) for src in neutral.listing() if len(changed_lines(src)) != owed(src)]
     case(lambda: code == 0 and len(wrong) > 25 and not any(wrong.values()) and not unchanged
          and any(s.name == "SKILL.md" and changed_lines(s) for s in neutral.listing()),
-         f"every agent and skill is installed with its `model:` mapped by [claude] and its `tools:` items by TOOLS, "
-         f"and every other byte as in its source: {code}, {[(k, v) for k, v in wrong.items() if v][:3]}, "
+         f"every agent and skill is installed with its `model:` mapped by [claude], its `tools:` items by TOOLS "
+         f"and its `cacheTtl:` below `experimental:`, and every other byte as in its source: {code}, "
+         f"{[(k, v) for k, v in wrong.items() if v][:3]}, "
          f"not rewritten: {unchanged}")
 
     # [claude] is required, with exactly the three tiers, each a model; any other table exits 2 and
