@@ -110,9 +110,10 @@ timer starts again. The units are `--user` units only. Their output goes to the 
 The jobs run outside the sandbox, so their `PATH` holds no directory that a session can write:
 each directory is one that the settings template keeps out of a session's writes, because no
 `allowWrite` entry covers it or a `denyWrite` entry names it, or is one of `/usr/bin`, `/bin`,
-`/usr/sbin`, `/sbin`, `/usr/local/bin` and `/opt/homebrew/bin`, and is not at or below `$TMPDIR`,
-`/var/folders` or `/private/var/folders`, which the live sandbox lets a session write. `harness test` renders each unit
-and its plist with the example profile and checks all of this, through
+`/usr/sbin`, `/sbin`, `/usr/local/bin` and `/opt/homebrew/bin`, and is not at or below `$TMPDIR`
+(also its real path), `/var/folders` or `/private/var/folders`, which the live sandbox lets a
+session write. `harness test` renders each unit and its plist with the example profile and checks
+all of this, through
 `units.py` of [the harness command](harness.md). CI renders each unit on `ubuntu-latest` and runs
 `systemd-analyze verify --user` on it. `harness leaks` renders them with the example profile.
 

@@ -144,9 +144,12 @@ def covers(entry, directory):
 
 def session_dirs():
     """The directories that the live sandbox lets a session write beyond the template's
-    `allowWrite`, whatever it denies: $TMPDIR when it is an absolute path, and SESSION_DIRS."""
+    `allowWrite`, whatever it denies: $TMPDIR when it is an absolute path, as written and with its
+    symlinks resolved (on macOS /tmp is /private/tmp), and SESSION_DIRS."""
     tmpdir = os.environ.get("TMPDIR", "")
-    return [posixpath.normpath(tmpdir)] * tmpdir.startswith("/") + list(SESSION_DIRS)
+    if not tmpdir.startswith("/"):
+        return list(SESSION_DIRS)
+    return list(dict.fromkeys([posixpath.normpath(tmpdir), os.path.realpath(tmpdir), *SESSION_DIRS]))
 
 
 def path_problems(path, filesystem, home):
@@ -385,6 +388,15 @@ def selftest():
             with mock.patch.dict(os.environ, env, clear=True):
                 got = path_problems(path, fs, "/h")
             check(got == want, f"PATH {path} with TMPDIR={tmpdir} -> session-writable {got}")
+    # A $TMPDIR that is a symlink, as /tmp is on macOS: an element below its real path fails too.
+    with tempfile.TemporaryDirectory(prefix="harness-units-") as tmp:
+        real, link = pathlib.Path(tmp, "real"), pathlib.Path(tmp, "link")
+        real.mkdir()
+        link.symlink_to(real)
+        element = os.path.realpath(real) + "/bin"
+        with mock.patch.dict(os.environ, {"TMPDIR": str(link)}):
+            got = path_problems(element, {"allowWrite": [], "denyWrite": []}, "/h")
+        check(got == [element], f"PATH {element} below the real path of a symlinked TMPDIR -> session-writable {got}")
 
     # autocommit_branch: the profile's value, `main` without it; a missing `home` exits 2.
     base = 'home = "/h"\nlaunchd_prefix = "org.x"\n'
