@@ -242,6 +242,11 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
 - a test fixture that runs `git` with the caller's environment: inside a git hook, `GIT_DIR`
   names the caller's repository, so the fixture's `init`, `add` and `commit` land there; drop every
   inherited `GIT_*` (E1a round 1, *Publish the harness as ResearchHarness*)
+- a test of a git hook that links its tools from the PATH: inside a real hook git puts its exec
+  path first, and Apple's `git` started from a link to that copy cannot find `git-upload-pack`.
+  The test passes in CI and in the suite and fails inside the push; run it once with
+  `git --exec-path` first on the PATH (P7, after the merge, *Publish the harness as
+  ResearchHarness*)
 - a guard that turns a reader's failure into a warning: a pre-parse of its own accepts what the
   reader rejects (a UTF-8 BOM), and a list of exception types misses one the reader raises
   (`TypeError` from a list placeholder); wrap the reader's own call, and test each input class
