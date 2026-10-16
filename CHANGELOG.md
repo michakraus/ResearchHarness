@@ -2,6 +2,32 @@
 
 ## Unreleased
 
+- **Seven small fixes in the Python code, and one decision: K8, K11, K20, K21, K46, K47, K62 and
+  K63 leave `KNOWN_ISSUES.md`.** K8 is closed by the user's decision: no `ask` rule surfaces an
+  edit of the instruction sources, because the git history and the pull request are the review of
+  such an edit. The stamp `~/.claude/.harness-install.json` names each source of this repository
+  below the profile's `harness` path, whatever checkout runs `harness install --apply`, so a dry
+  run from a worktree with the same sources no longer lists the stamp as `REPLACE`, and the `SessionStart` hook reads
+  the profile's checkout. With no `harness` key the stamp names the running checkout, as before,
+  and a `harness` value that is not an absolute path exits 2 (K11). `omp_agent_cases` uses
+  `Scratch.tail` in place of its own copy (K20). A `[claude]` model that is not a plain YAML
+  string, such as the Bedrock ID `us.anthropic.claude-opus-4-1-20250805-v1:0` or the Vertex ID
+  `claude-opus-4-1@20250805`, loads and is written into `model:` as JSON writes the string; a
+  model with a control character, or a word that YAML reads as a boolean or null, still exits 2
+  (K21). A stray settings file whose `allow`, `ask` or `deny` is not a list is one warning line
+  that names the file and the key, not one rule per character (K46). The merge of
+  `~/.claude/settings.json` keeps a tab indent, and writes a one-line file on one line. When it
+  writes the file, a number outside the owned sections that it would write in other text, such as
+  `1.10`, `1e400` or `1E5`, makes the dry run and `--apply` exit 2 with one line that names the
+  key, and nothing is written (K47). The `PATH` check of the units fails an element at or below
+  `$TMPDIR`, `/var/folders` or `/private/var/folders`, which the live sandbox lets a session write;
+  a session's working directory has no fixed value and stays a recorded limit, K71, in K62's place
+  (K62). A curated skill that fails `parse_file` is one wrong case of the skill-triggers cases, and
+  `harness test` goes on to its summary line, where it exited 2 with none (K63). The scratch
+  profile of the install cases names this checkout as `harness`. The comment of `[claude]` in
+  `examples/models.toml`, `docs/src/architecture.md` and `docs/src/components/other.md` state the
+  new rules of the model and of the `PATH`.
+
 - **Nine missing cases and checks: K6, K15, K17, K19, K45, K49, K52, K64 and K65 leave
   `KNOWN_ISSUES.md`.** The contract sweep runs one verb through `sweep.run`, whose timeout is a
   parameter; a case gives it a child that outlives 1 s and passes the result through the sweep's

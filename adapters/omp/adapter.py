@@ -948,8 +948,9 @@ def omp_head(text):
 def omp_agent_cases(case, fresh, run, agent):
     """The agents, the model roles and mcp.json of oh-my-pi; `agent` is the agent directory of an
     --apply with examples/models.toml, and `case`, `fresh` and `run` are those of omp_cases."""
-    def tail(text):
-        return (text.strip().splitlines() or ["no output"])[-1]
+    from harness.install_cases import Scratch
+
+    tail = Scratch.tail
 
     # The neutral tool names and oh-my-pi's, read from its builtin-names.ts at d9ee5e6: web_fetch
     # is `read`, which reads a URL, and a Kaimon tool is `mcp__kaimon_<tool>`. The role of each tier.

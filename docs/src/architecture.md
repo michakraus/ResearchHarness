@@ -82,8 +82,9 @@ Claude Code's tool names.
 The Claude Code layer copies an agent or a skill with these two values rewritten in place and
 every other byte as it is. A table of `models.toml` that names a tier by its old name, `opus`,
 `sonnet` or `haiku`, exits 2 and names the rename; so does a `models.toml` without `[claude]`,
-and a `[claude]` model that is not a letter followed by letters, digits and `. _ - [ ]`, or that
-YAML reads as a boolean or null.
+and a `[claude]` model that holds a control character, or that YAML reads as a boolean or null.
+A model that is not a letter followed by letters, digits and `. _ - [ ]`, such as a Bedrock or a
+Vertex model ID, is written into `model:` double-quoted, as JSON writes a string.
 
 ## The OpenCode and oh-my-pi adapters
 

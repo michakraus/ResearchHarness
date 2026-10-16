@@ -10,8 +10,10 @@
 # old name, `opus`, `sonnet` or `haiku`, stops the install and names the rename.
 
 # The Claude Code model of each tier, written as the `model:` of the installed agent or skill.
-# All three tiers are required. A model is a letter, then letters, digits and . _ - [ ], so that
-# YAML reads it as written. Claude Code reads none of the tables below.
+# All three tiers are required. A model is a letter, then letters, digits and . _ - [ ], written
+# as it is; any other model, a Bedrock or a Vertex model ID say, is written double-quoted, so that
+# YAML reads it as written. A model holds no control character and is no word that YAML reads as
+# a boolean or null. Claude Code reads none of the tables below.
 [claude]
 large = "opus"
 medium = "sonnet"

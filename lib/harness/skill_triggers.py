@@ -570,8 +570,30 @@ def selftest():
     check(status == 1 and "| julia-performance | 7/10 | 5/5 | 0 | FAIL |" in report,
           f"a failing skill exits 1: exit {status}")
 
-    # The verb's --apply with --skill, on the fake `claude` in PATH and a fixture research root:
-    # one session, the near query of wait-what.
+    apply_skill_case(check, harness)
+    # A curated skill that fails parse_file, as read_queries raises it, is one wrong case of
+    # apply_skill_case, not the end of `harness test`.
+    from unittest import mock
+
+    results = []
+    with mock.patch(f"{__name__}.read_queries", side_effect=HarnessError("x/SKILL.md: the model 'bogus' is not a tier")):
+        try:
+            apply_skill_case(lambda ok, label: results.append((ok, label)), [sys.executable, "-c", "pass"])
+            raised = None
+        except Exception as e:
+            raised = f"{type(e).__name__}: {e}"
+    check(raised is None and [ok for ok, _ in results] == [False] and "'bogus' is not a tier" in results[0][1],
+          f"a query file that read_queries refuses is one wrong case of the --apply --skill case: raised {raised}, "
+          f"{results}")
+    return total, wrong
+
+
+def apply_skill_case(check, harness):
+    """The verb's --apply with --skill, run as `harness`, on the fake `claude` in PATH and a fixture
+    research root: one session, the near query of wait-what. A query file that read_queries refuses
+    is a wrong case that names the refusal."""
+    import sys
+
     with tempfile.TemporaryDirectory(prefix="harness-skill-triggers-") as tmp:
         tmp = pathlib.Path(tmp)
         (tmp / "bin").mkdir()
@@ -587,12 +609,15 @@ def selftest():
             if (tmp / "bin" / "calls.jsonl").is_file() else []
         reports = list((tmp / "root").rglob("*.md"))
         report = reports[0].read_text() if len(reports) == 1 else ""
-        near = read_queries()["wait-what"][1]
+        try:
+            near = read_queries()["wait-what"][1]
+        except HarnessError as e:
+            check(False, f"--apply --skill wait-what: the query files cannot be read: {e}")
+            return
         check(p.returncode == 0 and [c["query"] for c in calls] == [near[0][0]]
               and "| wait-what | 0/0 | 0/1 | 0 | PASS |" in report and report.count(" | PASS |") == 1,
               f"--apply --skill wait-what runs only its query and reports only its row: exit {p.returncode},"
               f" {len(calls)} sessions, {p.stderr.strip()[-200:]!r}")
-    return total, wrong
 
 
 def register(sub):

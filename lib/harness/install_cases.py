@@ -18,10 +18,12 @@ RULE_HEAD = '---\npaths: ["**/*.x"]\ndescription: A rule of the scratch tree.\n-
 
 
 def scratch_profile(path, tree, raw=None):
-    """The dummy profile with `tree_agents` set to `tree`, or without the key for None; `raw` is
-    the key's TOML value as written, in place of `tree`."""
+    """The dummy profile with `harness` set to this checkout, so that the `SessionStart` hook reads
+    the sources that the stamp names, and `tree_agents` set to `tree`, or without the key for None;
+    `raw` is the key's TOML value as written, in place of `tree`."""
     line = f"tree_agents = {raw}" if raw is not None else "" if tree is None else f'tree_agents = "{tree}"'
-    path.write_text(re.sub(r"(?m)^tree_agents = .*$", line, profile_module.DUMMY.read_text()))
+    text = re.sub(r"(?m)^harness = .*$", lambda _: f'harness = "{REPO}"', profile_module.DUMMY.read_text())
+    path.write_text(re.sub(r"(?m)^tree_agents = .*$", line, text))
     return path
 
 
