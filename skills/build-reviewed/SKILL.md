@@ -1,15 +1,16 @@
 ---
 name: build-reviewed
 model: large
-description: "Build one part of a decomposed task file whose tier cell is reviewed: one part-builder, one blind part-critic, at most one fix round by the same builder, and the dispatching session's own read before the finish. Triggers on: build this reviewed part, take the next reviewed part, run part T, build the small part. The dispatching session decides the questions inside the part and takes real decisions to the user; no advisor and no arbitrator run. A FAIL that the fix round does not close goes to the user. Use the build-part skill for a part of tier build, and the plan-parts skill to choose a part's tier."
+description: "Build one part of a decomposed task file whose tier cell is reviewed: one part-builder, one blind part-critic, at most one fix round by a new part-builder, and the dispatching session's own read before the finish. Triggers on: build this reviewed part, take the next reviewed part, run part T, build the small part. The dispatching session decides the questions inside the part and takes real decisions to the user; no advisor and no arbitrator run. A FAIL that the fix round does not close goes to the user. Use the build-part skill for a part of tier build, and the plan-parts skill to choose a part's tier."
 ---
 
-# A reviewed part: one builder, one critic, one fix round
+# A reviewed part: one critic, one fix round
 
 A part of tier `reviewed` is a small code change with a fast gate: a script, a tool, a check, a
 change to a test layout.
-One builder holds the whole part. One fresh critic judges it blind, once. This session reads the
-result before the finish.
+One builder builds the part. One fresh critic judges it blind, once. A new builder takes each later
+round: a decided question, the fix and the finish. This session reads the result before the
+finish.
 
 **Run this in a session on the large model.** This session decides the questions inside the part
 and reads the diff, so it is a reviewer, not only a dispatcher.
@@ -44,17 +45,23 @@ outside the user's own organisations, a push or a pull request needs the user's 
 - **A part that commits to `main`** (the plan's §L says so): spawn it in a worktree the same way,
   or without isolation from the repository, as §L says.
 
-**Keep the builder's agentId.** You message this builder through the whole part. Before each
-`SendMessage`, `cd` into its directory as a Bash call of its own.
+**Spawn a new `part-builder` for each later round; never `SendMessage` the last one.** A critic
+takes 6–23 minutes, so a resumed builder finds its 5-minute cache expired and writes its whole
+context again: 158–362 k tokens at each resume. A new one starts from the reports. First `cd` into
+the builder's directory as a Bash call of its own, then the `Agent` call, without isolation. Pass
+the task file, the part, its rows, the directory, the branch, the base, the head, the round, and the
+last builder's report as the handoff note.
 
 **A report whose *Question for the dispatcher* is not `none` holds the critic back.** Decide it from
 the part's sections and the evidence, and write the decision into the section as
-`**Decided (dispatcher, <date>):** <decision>`. Commit the task file, and send the builder the
-section and the line. Where the question changes a public answer, picks between designs, or weakens
-the *Done when*, ask the user instead, and set the state to `waiting for the user — <question>`.
+`**Decided (dispatcher, <date>):** <decision>`. Commit the task file, and spawn a new builder with
+`Round: build`, the section and the line. Where the question changes a public answer, picks
+between designs, or weakens the *Done when*, ask the user instead, and set the state to
+`waiting for the user — <question>`.
 
 A run under *Left for the dispatcher* goes to `julia-test-runner` (no `model` parameter), or you run
-it yourself when it is short. Send the builder its verdict line and its failures.
+it yourself when it is short. Spawn a new builder with `Round: build`, the run's verdict line and
+its failures.
 
 ## 3 · One critic
 
@@ -68,8 +75,8 @@ new critic once.
 ## 4 · Read the verdict
 
 - **PASS, and the gate green** — go to 5.
-- **FAIL** — `SendMessage` the builder the critic's *Blocking defects* and *Other defects*
-  verbatim, with the gate's failures. Add no instruction of your own; a decision goes into the
+- **FAIL** — spawn a new builder with `Round: fix`, the critic's *Blocking defects* and *Other
+  defects* verbatim, and the gate's failures. Add no instruction of your own; a decision goes into the
   section first, as in 2. When the builder returns `ready for review`, **check the fix yourself**:
   run each reproducer of the critic, run the gate, and read `git diff <judged head>..HEAD`. Each
   blocking defect is closed, and the fix diff adds nothing outside it.
@@ -86,8 +93,8 @@ not the part's. Repair it, and run the critic again.
 
 Read `git diff <base>...HEAD` once against the *Done when* and the critic's evidence table. Your
 read is the last check, not a second critic: a doubt you can show with a command goes to the
-builder as a blocking defect, under 4. Then `SendMessage` the builder `Round: finish`. It
-finishes as the plan's §L says: a pull request in `Packages/` and `Experiments/`, else a push to
+builder as a blocking defect, under 4. Then spawn a new builder with `Round: finish` and the
+critic's verdict and evidence table. It finishes as the plan's §L says: a pull request in `Packages/` and `Experiments/`, else a push to
 `main`. After a push to a repository with CI, background `gh run watch <id> --exit-status -R
 <owner>/<repo>`.
 

@@ -2,7 +2,7 @@
 name: part-builder
 model: large
 effort: medium
-description: "Build one part of a decomposed task file whose tier cell is reviewed, in any language: tests first, the plan's own gate, a commit, and a report for one critic. Use when: build this reviewed part, take part T, work this small part. The build-reviewed skill spawns it and sends it the critic's findings and the finish by message, so one builder holds the whole part. It runs every command under 5 minutes itself and leaves longer runs to its caller. Use julia-builder for a part of tier build, which runs the full builder-critic loop, and worker for a task with no part and no critic."
+description: "Build one part of a decomposed task file whose tier cell is reviewed, in any language: tests first, the plan's own gate, a commit, and a report for one critic. Use when: build this reviewed part, take part T, work this small part. The build-reviewed skill spawns it for the build, and a new one for each later round — the fix after the critic, the finish — with the last builder's report as the handoff note. It runs every command under 5 minutes itself and leaves longer runs to its caller. Use julia-builder for a part of tier build, which runs the full builder-critic loop, and worker for a task with no part and no critic."
 tools:
   - read
   - edit
@@ -64,7 +64,9 @@ script in any interpreter writes a file.
 2. **Write the tests first**: at least one per clause that code can check, and one for each mutant
    that *Tests catch* names. Run each new test on the base where you can, and record whether it
    fails there.
-3. **Write the code**: the minimum that makes the tests pass.
+3. **Write the code**: the minimum that makes the tests pass. A comment or docstring says what
+   the code does and why, in the present tense. It tells no history and names no part, clause or
+   round of the plan; the history goes in `CHANGELOG.md`.
 4. **Verify each clause**: run its test, and break each named mutant by hand once to see its test
    fail. Restore the code and run the test again.
 5. **Run the gate** of §V and §L. A run longer than 5 minutes goes under *Left for the dispatcher*
@@ -74,9 +76,25 @@ script in any interpreter writes a file.
 
 Then commit on the branch, stage paths by name, and return with `Verdict: ready for critic`.
 
-## The critic's findings
+## Spawned for a later round
 
-Your caller sends you the critic's report by message. You keep your context, so you know the build.
+Your caller spawns a **new** builder for each round after the first, with `Round: build`,
+`Round: fix` or `Round: finish`. You have no memory of the build. You get the task file, the part
+and its rows, the directory, the branch, the base and the head, and the last builder's report as
+the handoff note. Read your part's sections as above, and `git diff <base>..<head>` in the
+directory. The handoff note is not evidence: check each claim of it that you rely on.
+
+`pwd` must be the directory your caller names, and `git rev-parse --short HEAD` the head it names,
+on the part's branch. Otherwise stop and report. Make no branch.
+
+- **`Round: build`**: you also get a decision written into the part's section, or the verdict of a
+  run left for the dispatcher. Go on as *Build to the Done when* says, and return with
+  `Verdict: ready for critic`.
+- **`Round: fix`**: you also get the critic's report. Do what *The critic's findings* says.
+- **`Round: finish`**: you also get the critic's verdict and evidence table. Do what *The finish*
+  says.
+
+## The critic's findings
 
 - **Fix every blocking defect.** Each names a reproducer: make it a test that fails before your
   fix. Where you are sure a blocking defect is wrong, leave the code and show the evidence. A fix
@@ -95,8 +113,8 @@ with `Verdict: ready for review`.
 
 ## The finish
 
-Your caller sends `Round: finish` after its own read of the diff. Do what the plan's §L says for
-the finish. In `Packages/` and `Experiments/`: delegate to `julia-branch-verifier` in the
+Your caller spawns you with `Round: finish` after its own read of the diff. Do what the plan's §L
+says for the finish. In `Packages/` and `Experiments/`: delegate to `julia-branch-verifier` in the
 foreground, fix only the text it leaves, then open the pull request with `gh pr create` and
 `--body-file`. The body holds the critic's verdict and evidence table, the `KNOWN_ISSUES.md`
 entries of the branch, and every `**Decided (…)**` line of the part's section. No local path and no

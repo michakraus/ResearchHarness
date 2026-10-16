@@ -14,7 +14,8 @@
 # Writes to <out-dir>:
 #
 #   runs.tsv      one row per run: a main session or a sub-agent; `loaded` lists the rules and
-#                 directory CLAUDE.md files that loaded on a Read (nested_memory records)
+#                 directory CLAUDE.md files that loaded on a Read (nested_memory records), and
+#                 `rewrite_after` what the run waited on before each cache rewrite, with counts
 #   tools.tsv     one row per run and tool: calls, result bytes, errors
 #   results.tsv   the 500 largest tool results: run, tool, bytes, what was called, markers
 #   reports.jsonl prompt and report of every run of a loop agent type (LOOP_TYPES)
@@ -90,6 +91,7 @@ mutable struct Run
     compactions::Int
     rewrites::Int
     rewrite_tok::Int
+    rewrite_after::Dict{String,Int}
     prompt::String
     report::String
 end
@@ -128,6 +130,7 @@ Run(source, id, file) = Run(
     0,
     0,
     0,
+    Dict(),
     "",
     "",
 )
@@ -155,6 +158,18 @@ function text_of(content)
     content isa AbstractString && return String(content)
     content isa AbstractVector || return ""
     join((str(g(c, "text")) for c in content if c isa AbstractDict), "")
+end
+
+"What a run waits on during a tool call: `gh` with its subcommand, another command's program, an agent type, or the tool."
+function waited_on(name, input)
+    if name == "Bash"
+        words = split(str(g(input, "command")))
+        isempty(words) && return "Bash"
+        words[1] == "gh" && return join(words[1:min(3, end)], " ")
+        return "Bash " * replace(basename(words[1]), r"[^\w.+-]" => "")
+    end
+    name == "Agent" && return "Agent " * str(g(input, "subagent_type"))
+    name
 end
 
 "What a tool call names: the command, the path, the pattern or the agent type."
@@ -245,6 +260,8 @@ function parse_claude(path, root, from, to)
     uses = Dict{String,Tuple{String,String}}()
     msgs = Dict{String,Tuple{String,Any,Bool,Int,Int}}()  # message id -> (model, usage, stop, output, order)
     msg_ts = Dict{String,String}()  # message id -> timestamp of its first record
+    waited = Dict{String,String}()  # message id -> what the run waited on before it
+    last_wait = "start"
     handback = ""
     lasttext = ""
     any_in = false
@@ -295,6 +312,7 @@ function parse_claude(path, root, from, to)
                 stop = g(msg, "stop_reason") !== nothing
                 old = get(msgs, mid, nothing)
                 get!(msg_ts, mid, ts)
+                get!(waited, mid, last_wait)
                 if old === nothing || o > old[4] || (stop && !old[3])
                     msgs[mid] = (
                         model,
@@ -312,6 +330,7 @@ function parse_claude(path, root, from, to)
                     inp = g(b, "input")
                     uses[str(g(b, "id"))] = (name, called(name, inp))
                     get!(tools, name, [0, 0, 0])[1] += 1
+                    last_wait = waited_on(name, inp)
                     name == "Skill" && push!(r.skills, str(g(inp, "skill")))
                     name == "SubagentHandback" && (handback = str(g(inp, "message")))
                 elseif bt == "text"
@@ -342,6 +361,10 @@ function parse_claude(path, root, from, to)
                     ),
                 )
             end
+        elseif typ == "user" &&
+               content isa AbstractString &&
+               g(rec, "toolUseResult") === nothing
+            last_wait = "message from caller"
         end
     end
     any_in || return nothing
@@ -355,6 +378,7 @@ function parse_claude(path, root, from, to)
         if !isempty(prev) && w > REWRITE && minutes(prev, msg_ts[mid]) > (sub ? 5 : 60)
             r.rewrites += 1
             r.rewrite_tok += w
+            bump!(r.rewrite_after, get(waited, mid, "?"))
         end
         prev = msg_ts[mid]
     end
@@ -572,6 +596,7 @@ const RUN_COLS = [
     "prs",
     "skills",
     "loaded",
+    "rewrite_after",
     "file",
 ]
 
@@ -617,6 +642,7 @@ function row(r::Run, tools)
         join(sort(collect(r.prs)), " "),
         join(r.skills, ";"),
         join(sort(collect(r.loaded)), ";"),
+        join(("$k:$n" for (k, n) in sort(collect(r.rewrite_after); by = x -> -x[2])), ";"),
         r.file,
     )
     join((clean(string(v)) for v in vals), '\t')

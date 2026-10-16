@@ -359,11 +359,19 @@ function main(dir)
         "minutes in a sub-agent, over 60 minutes in a main session. Priced at the model's 5-minute write for a ",
         "sub-agent and its 1-hour write for a main session.\n",
     )
-    println("| agent type | runs | rewrites | Mtok | \$ | share of the type's input \$ |")
-    println("|:--|--:|--:|--:|--:|--:|")
+    println(
+        "| agent type | runs | rewrites | Mtok | \$ | share of the type's input \$ | waited on before |",
+    )
+    println("|:--|--:|--:|--:|--:|--:|:--|")
     wprice = Dict("claude-opus-5-5" => (5.0, 8.0), "claude-sonnet-5-5" => (2.5, 4.0))
     rw = Dict{String,Vector{Float64}}()
+    after = Dict{String,Dict{String,Int}}()
     for r in runs
+        a = get!(after, r["agent_type"], Dict{String,Int}())
+        for e in split(get(r, "rewrite_after", ""), ';'; keepempty = false)
+            k, n = rsplit(e, ':'; limit = 2)
+            a[k] = get(a, k, 0) + parse(Int, n)
+        end
         v = get!(rw, r["agent_type"], zeros(5))
         p = get(wprice, r["model"], (0.0, 0.0))
         v[1] += 1
@@ -377,6 +385,14 @@ function main(dir)
         println(
             "| $t | $(Int(v[1])) | $(Int(v[2])) | $(mtok(v[3])) | $(usd(v[4])) | ",
             v[5] > 0 ? "$(round(Int, 100 * v[4] / v[5])) %" : "—",
+            " | ",
+            join(
+                (
+                    "`$k` $n" for
+                    (k, n) in first(sort(collect(after[t]); by = x -> -x[2]), 3)
+                ),
+                ", ",
+            ),
             " |",
         )
     end

@@ -16,92 +16,92 @@
 [[call]]
 caller = "build-part"
 callee = "julia-builder"
-at = "skills/build-part/SKILL.md:115"
+at = "skills/build-part/SKILL.md:116"
 label = "build, fix, finish"
 
 [[call]]
 caller = "build-part"
 callee = "julia-critic"
-at = "skills/build-part/SKILL.md:149"
+at = "skills/build-part/SKILL.md:150"
 effort = "high"
 label = "round 1, two critics"
 
 [[call]]
 caller = "build-part"
 callee = "julia-critic"
-at = "skills/build-part/SKILL.md:80"
+at = "skills/build-part/SKILL.md:81"
 label = "verify round"
 
 [[call]]
 caller = "build-part"
 callee = "julia-test-runner"
-at = "skills/build-part/SKILL.md:166"
+at = "skills/build-part/SKILL.md:167"
 label = "full suite"
 
 [[call]]
 caller = "build-part"
 callee = "advisor"
-at = "skills/build-part/SKILL.md:261"
+at = "skills/build-part/SKILL.md:262"
 label = "a question"
 
 [[call]]
 caller = "build-part"
 callee = "arbitrator"
-at = "skills/build-part/SKILL.md:200"
+at = "skills/build-part/SKILL.md:201"
 label = "no convergence"
 
 [[call]]
 caller = "build-reviewed"
 callee = "part-builder"
-at = "skills/build-reviewed/SKILL.md:38"
+at = "skills/build-reviewed/SKILL.md:39"
 label = "build, fix, finish"
 
 [[call]]
 caller = "build-reviewed"
 callee = "part-critic"
-at = "skills/build-reviewed/SKILL.md:61"
+at = "skills/build-reviewed/SKILL.md:68"
 label = "one critic"
 
 [[call]]
 caller = "build-reviewed"
 callee = "julia-test-runner"
-at = "skills/build-reviewed/SKILL.md:56"
+at = "skills/build-reviewed/SKILL.md:62"
 label = "a long run"
 
 [[call]]
 caller = "julia-builder"
 callee = "julia-branch-verifier"
-at = "agents/julia-builder.md:240"
+at = "agents/julia-builder.md:242"
 label = "before the pull request"
 
 [[call]]
 caller = "julia-builder"
 callee = "changelog-scribe"
-at = "agents/julia-builder.md:252"
+at = "agents/julia-builder.md:254"
 label = "a CHANGELOG fix"
 
 [[call]]
 caller = "part-builder"
 callee = "julia-branch-verifier"
-at = "agents/part-builder.md:99"
+at = "agents/part-builder.md:117"
 label = "before the pull request"
 
 [[call]]
 caller = "julia-pr-shepherd"
 callee = "julia-pr-reviewer"
-at = "agents/julia-pr-shepherd.md:95"
+at = "agents/julia-pr-shepherd.md:99"
 label = "review"
 
 [[call]]
 caller = "julia-pr-shepherd"
 callee = "changelog-scribe"
-at = "agents/julia-pr-shepherd.md:144"
+at = "agents/julia-pr-shepherd.md:148"
 label = "the entry"
 
 [[call]]
 caller = "julia-pr-shepherd"
 callee = "ci-triage"
-at = "agents/julia-pr-shepherd.md:211"
+at = "agents/julia-pr-shepherd.md:204"
 label = "red CI"
 
 [[call]]

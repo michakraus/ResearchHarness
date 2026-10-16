@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+- **Waits move out of the large contexts, and builders get the rule for comments.** In 14 days of
+  transcripts, 161 of the 182 cache rewrites of `julia-pr-shepherd` followed a CI wait
+  (`gh run watch`, `gh pr checks`), 40 % of its input cost, and 32 of the 40 rewrites of
+  `part-builder` followed a resume after its critic. A sub-agent's cache lives 5 minutes; the
+  `cacheTtl: 1h` of the shepherd's frontmatter gave no one-hour write in its 39 runs from
+  2026-10-11 on. So `julia-pr-shepherd` no longer waits for CI: it pushes, names the runs of the push and the
+  `gh run watch` command for each, and its caller waits. `build-reviewed` spawns a new
+  `part-builder` for each later round, with the last report as the handoff note, as `build-part`
+  does for `julia-builder`. The two facts about reading a red `gh run watch` move to `ci-triage`.
+  `julia-builder` and `part-builder` state that a comment or docstring tells no history and names no
+  part, clause or round; only the critic's file and the CHANGELOG rule said so. `build-part` asks
+  its session to say so when it does not run on sonnet: all 32 dispatcher sessions of the skill in
+  the window ran on Opus. `transcripts.jl` records what each run waited on before a cache rewrite,
+  and report 7 of `report.jl` lists the three most frequent per agent type.
+
 - **New: the audit scripts in `scripts/audit/` measure the harness from its own transcripts.**
   `transcripts.jl` reads the sessions of Claude Code, OpenCode and oh-my-pi in a window of time
   and writes one table of runs: agent type, model, effort, tokens by kind, input cost, tool calls,

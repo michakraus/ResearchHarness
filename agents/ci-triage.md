@@ -44,6 +44,13 @@ Two consequences you must use:
   fails with `x509: OSStatus -26276`. A loop calling `gh` once per repository cannot run. Batch
   with GraphQL aliasing, or issue one `gh` call per `Bash` invocation. "No CI runs found" for
   nearly every repository is this failure, not a result.
+- **`gh run watch --exit-status` exits 1 on a cancelled run and on its own rate limit.** Both look
+  like a red matrix: read the per-job `conclusion`. The limit is the secondary one, so it trips with
+  the core quota left, and after it the REST Actions endpoints, `gh run view` included, stay 403 at
+  full quota. Read the checks through GraphQL: `gh pr view <n> -R <owner>/<repo> --json
+  statusCheckRollup`, or `gh pr checks <n>`.
+- **A PR taken out of draft shows the checks of its last push.** `gh pr ready` fires no workflow;
+  each workflow re-runs by id, `gh run rerun <run-id> -R <owner>/<repo>`.
 - Branch protection is **not** installed on two private repositories; a missing required-check gate
   there is known and is not a finding.
 - **Every job of one repository fails in about 1 s, with `steps=0`, an empty `runner_name` and no

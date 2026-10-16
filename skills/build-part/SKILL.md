@@ -13,7 +13,8 @@ work.
 
 **The `model: medium` of this skill does not apply**, typed as `/build-part` or invoked through
 the Skill tool: the turn stays on the session's model. Dispatching is table reading, and it is not worth an opus turn: run
-the loop in a session on sonnet.
+the loop in a session on sonnet. **When this session runs on another model, say so to the user in
+one line before the first spawn**, and go on.
 
 **Spawn `julia-test-runner` without a `model` parameter.** A `model` passed to the `Agent` tool
 replaces the agent's own, so a runner spawned with `model: opus` runs on Opus, not on Haiku.
