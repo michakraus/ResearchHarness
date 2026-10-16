@@ -422,12 +422,19 @@ end
     outs = [IOBuffer(), IOBuffer()]
     ps = [run(pipeline(ignorestatus(`$(Base.julia_cmd()) --startup-file=no $RUNTESTS $d --jobs 2 core`);
               stdout = o, stderr = o); wait = false) for (d, o) in zip((slow, twin), outs)]
+    pids = getpid.(ps)
     foreach(wait, ps)
-    for (p, o) in zip(ps, outs)
+    logs = map(zip(ps, outs, pids)) do (p, o, pid)
         s = String(take!(o))
         @test p.exitcode == 0
         @test occursin("\nPASS in", s)
+        log, times = run_files(s)
+        # the log and the times file carry the run's process ID before the mode suffix
+        @test endswith(log, "-$pid-named.log")
+        @test endswith(times, "-$pid-times.tsv") && isfile(times)
+        log
     end
+    @test logs[1] != logs[2]
 end
 
 @testset "--jobs refuses a count that is not a whole number of 1 or more" begin
@@ -451,6 +458,8 @@ end
     @test occursin(r"D6: test/base/options.jl runs [\d.]+ s cold", s)
     @test all(l -> length(split(l, '\t')) == 3, readlines(last(run_files(s))))
     @test !occursin("worker", read(first(run_files(s)), String))
+    # the driver carries the stamp and the process ID of the log
+    @test isfile(replace(first(run_files(s)), r"-[a-z]+\.log$" => "-driver.jl"))
 end
 
 @testset "a core run with --jobs prints no D6 verdict, and says why in one line" begin

@@ -340,7 +340,8 @@ function main(args)
     jobs > 1 && (sel = in_order(sel, entries))
     dir = expanduser("~/Research/.scratch/tests")
     mkpath(dir)
-    stamp = Dates.format(now(), "yyyymmdd-HHMMSS")
+    # the process ID keeps apart two runs of packages of one name, started in one second
+    stamp = Dates.format(now(), "yyyymmdd-HHMMSS") * "-$(getpid())"
     log = joinpath(dir, "$name-$stamp-$(mode in ("full", "affected", "select") ? mode : "named").log")
     times = joinpath(dir, "$name-$stamp-times.tsv")
     runs = mode != "select" && (sel === :full || !isempty(sel))
