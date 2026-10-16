@@ -379,6 +379,44 @@ It prints four reports:
 It estimates the tokens of a tool result at 3.5 characters per token. The usage figures come from
 the API. No skill or agent calls it. For the context at the start, use `startup-tokens.py`.
 
+## The audit scripts
+
+The scripts in `scripts/audit/` measure the harness over a window of time: where the tokens go,
+how the builder-critic loop converges, and which failures it has. They read the transcripts of
+Claude Code, OpenCode and oh-my-pi, and change no source file. No skill or agent calls them. Run
+them from the directory that is to hold the tables.
+
+```bash
+julia --startup-file=no -t 8 scripts/audit/transcripts.jl . --from 2026-10-02T00:00:00Z --to 2026-10-16T00:00:00Z
+julia --startup-file=no scripts/audit/report.jl .
+julia --startup-file=no scripts/audit/sample.jl . <seed> 40
+julia --startup-file=no scripts/audit/taxonomy.jl <lines-dir>
+scripts/audit/crosscheck.sh 2026-10-02T00:00:00Z 2026-10-16T00:00:00Z
+```
+
+- `transcripts.jl` writes one row per run to `runs.tsv`: a main session or a sub-agent, with its
+  agent type, model, effort, tokens by kind, input cost, first-call context, tool calls, wall time,
+  verdict, task file, part, pull requests, skills, the rules that loaded on a read, and the cache
+  rewrites after a pause. It also writes the tool calls per run, the 500 largest tool results, and
+  the prompt and report of each run of a loop agent. Only records with a timestamp in the window
+  count.
+- `report.jl` reads those tables and writes the reports: tokens per part and tier, critic rounds
+  to a PASS, the advisor and arbitrator calls, the largest tool results, the first-call context per
+  agent type, and the cache rewrites. It also writes a GraphQL query for the loop's pull requests.
+  `gh` reads a token that the sandbox denies to a script, so the query runs as a command of its own,
+  and its output goes into `prs.tsv`; the script's header gives the command. With `prs.tsv`, the
+  reports add the state, the commits after opening and the failing checks of each pull request.
+- `sample.jl` draws a sample of parts, seeded by a SHA-256 hash, so the draw does not depend on the
+  Julia version. It writes one dossier per part for a reader.
+- `taxonomy.jl` counts the failure lines that the readers return, by class, stage, preventing file
+  and reason.
+- `crosscheck.sh` computes two totals of `transcripts.jl` again with `jq`, on a path that shares
+  no code with it: all context tokens, and the cache reads of the `julia-builder` runs.
+
+Output tokens are not in the cost. A transcript writes one API message as several records, and
+only the last one holds the full output count, so a sum of output is complete only where the
+column `out_complete` is near 1.
+
 ## `julia-update.jl` and `julia-update-test.jl`
 
 `julia-update.jl` keeps the Julia installation, the default environments and the Kaimon MCP

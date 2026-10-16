@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+- **New: the audit scripts in `scripts/audit/` measure the harness from its own transcripts.**
+  `transcripts.jl` reads the sessions of Claude Code, OpenCode and oh-my-pi in a window of time
+  and writes one table of runs: agent type, model, effort, tokens by kind, input cost, tool calls,
+  verdict, part, pull requests, the rules that loaded, and the cache rewrites after a pause.
+  `report.jl` turns it into the cost per part and tier, the critic rounds to a PASS, the advisor
+  and arbitrator calls, the largest tool results, the first-call context per agent type and, with
+  the output of one `gh api graphql` query, the commits and checks of each loop pull request.
+  `sample.jl` draws a seeded sample of parts as dossiers for a failure taxonomy, and `taxonomy.jl`
+  counts the readers' failure lines. `crosscheck.sh` computes two totals again with `jq`, and they
+  must agree to the token. Output tokens stay out of the cost, because most transcripts do not
+  record them completely.
+
 - **The pre-push case of K35 passes inside a real `git push`.** `prepush_case` linked its tools
   from the PATH, and inside a git hook git puts its exec path first there, so the case linked the
   `git` of `libexec/git-core`. On macOS, that `git` started from a link looks for `git-upload-pack`
