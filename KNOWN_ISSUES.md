@@ -142,6 +142,22 @@
 - kind: docs
 - found: 2026-10-16, the builder of publish part P6
 
+### K74 · `mutate.jl --warm` is unsound for a mutant that changes a method signature.
+
+- location: `scripts/mutate-worker.jl:99`
+- evidence: a warm worker restores a mutant by re-`include`ing the file, and an `include` cannot
+  remove a method that the previous copy defined. Measured on part L-a of the solver package
+  (2026-10-16, Julia 1.13.2, `MUTATE_WARM_MIN=100`): the narrowing mutant `N5` — `buffer`'s value
+  method narrowed from `StaticArray` to `StaticVector` — read `SURVIVED` in the warm run and
+  `CAUGHT` in a single-mutant cold run of the same list and the same units; the widening mutant
+  `V1` left a live method after its restore, so the worker's final baseline failed and 31 of 32
+  mutants read `UNKNOWN` (`1 CAUGHT, 0 SURVIVED, 31 UNKNOWN, 0 INVALID, of 32`). A cold run of the
+  same list on the same tree gives 32 CAUGHT, 0 SURVIVED. The warm mode's own note in
+  `build-part/evidence.md` already sends a survivor to a cold re-run; a *signature* mutant needs
+  the cold run for every verdict, not only for a survivor.
+- kind: defect
+- found: 2026-10-16, the fix builder of part L-a of the solver package
+
 ### K75 · A `~` with no `/` after it passes the oh-my-pi path guard.
 
 - location: `adapters/omp/guards.ts:207`
