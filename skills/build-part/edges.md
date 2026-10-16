@@ -449,3 +449,8 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   commit measured them again on a newer dependency: name the last measurement. `git log -S` on a
   cell finds the last change of the value, not the last run that reproduced it (G10 round 1b,
   *Simplify the optimiser package and the learning package for 0.9*)
+- a moved block whose own directional reference — "the table above", "the section below" — points
+  at the neighbours it had before the move: the verbatim-move rule keeps the words and makes the
+  direction false, and a byte-comparison of the moved block calls that move correct. Read the
+  directions a moved block carries, and re-point the phrase with the plan's leave (P18 round 1c,
+  *Rewrite the reduced basis packages*)
