@@ -300,6 +300,10 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
 - a new `test/Project.toml` that makes `Pkg.test()` write a `test/Manifest.toml` the
   `.gitignore` does not name
 - a renamed file whose old name stays in a comment under `src/`, `ext/` or `scripts/`
+- a removal of every citation of a directory, checked by its path only: a citation by the bare
+  file name (`Loop-Benchmark.md`) or of a page in a subdirectory (`settings/settings.json.md`)
+  survives; grep for the file name of every page below the directory (P6, *Publish the harness as
+  ResearchHarness*)
 - a CHANGELOG entry that states more than the change, or rewrites an old entry
 - an entry that the source already marks closed or withdrawn (planning, *Move the open issues*)
 - an entry longer than the one-sentence field of the target form (planning, *Move the open issues*)
