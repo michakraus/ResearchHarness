@@ -250,8 +250,8 @@ async function check(event, l, directory) {
     return 'Refused: an in-place shell edit (sed -i, perl -pi, awk -i). Change a file with the edit tool, or write a new file with the write tool.';
   const cwd = typeof workdir === 'string' ? workdir : directory;
   const forms = [command];
-  const bare = command.trimStart();
-  if (bare.startsWith('rtk ')) forms.push(bare.slice(4));
+  const rtk = /^\s*rtk\s+/.exec(command);
+  if (rtk) forms.push(command.slice(rtk[0].length));
   for (const form of forms) {
     const payload = JSON.stringify({ tool_input: { command: form }, cwd });
     for (const script of GUARDS) {

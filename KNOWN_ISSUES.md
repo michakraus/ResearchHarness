@@ -110,7 +110,7 @@
 
 ### K69 · No case shows a stray settings path with a lone surrogate.
 
-- location: `adapters/claude/adapter.py:682`
+- location: `adapters/claude/adapter.py:698`
 - evidence: `stray_warnings` escapes each whole line, so a lone surrogate in the path is escaped
   as one in the rule is. A case cannot make such a path on macOS: APFS refuses a name that is not
   UTF-8 (`OSError: [Errno 92] Illegal byte sequence`). The rule case in
@@ -141,3 +141,15 @@
   `Board.base`, the test fixtures) is not such a citation.
 - kind: docs
 - found: 2026-10-16, the builder of publish part P6
+
+### K74 · A `~` with no `/` after it passes the oh-my-pi path guard.
+
+- location: `adapters/omp/guards.ts:207`
+- evidence: `absolute()` expands `~` only before `/` or at the end of the path, and joins any
+  other path to the working directory. So `read {"path": "~.netrc"}` and
+  `read {"path": ":~.netrc"}` from `~/Research` pass the guard, as `~/Research/~.netrc`, while the
+  path utilities of oh-my-pi 18.11.1 map `~foo` to `$HOME/foo`. That the `read` tool resolves
+  its path through that function is not verified. Reproducer: the probe cases of
+  `.scratch/critic/Harness-P7/edges.py` in the research root, run on a copy of the checkout.
+- kind: defect
+- found: 2026-10-16, the critic of publish part P7

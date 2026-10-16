@@ -991,6 +991,8 @@ def oc_cases():
         # The guard scripts do not know `rtk`, so only the form without it reaches no-blind-stage.py.
         (oc_event("rtk git add -A"), "refuse", None),
         (oc_event(" rtk git add -A"), "refuse", None),
+        (oc_event("rtk\tgit add -A"), "refuse", None),
+        (oc_event("rtk  git add -A"), "refuse", None),
         (oc_event("git status"), "pass", None),
         (oc_event(None, tool="read", filePath="~/.local/share/opencode/auth.json"), "pass", None),
         # Only the `shell` tool is checked, whatever command another tool's input holds.
