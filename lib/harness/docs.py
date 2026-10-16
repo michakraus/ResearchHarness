@@ -99,7 +99,6 @@ def whole(name):
 # path segment.
 KINDS = [
     ("agents.md", "agents/*.md", stem),
-    ("agents.md", "adapters/opencode/agents/*.md", stem),
     ("skills.md", "skills/*/SKILL.md", parent),
     ("commands.md", "commands/*.md", stem),
     ("rules.md", "rules/*.md", stem),

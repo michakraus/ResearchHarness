@@ -10,7 +10,6 @@ the permission block.
   adapters/opencode/opencode.jsonc -> opencode.jsonc       (REPLACED, after a backup; rendered)
   adapters/opencode/OPENCODE-DELTA.md -> AGENTS.md         (OpenCode's global instruction file)
   agents/*.md                      -> agents/               (rendered with the model tables, below)
-  adapters/opencode/agents/*.md    -> agents/               (the agents with no Claude Code source)
   adapters/opencode/plugins/*.ts   -> plugins/              (added; other plugins untouched)
   adapters/opencode/plugins/guard-paths.json -> plugins/    (the path guard's deny list; rendered)
   the Claude Code layer's rules/, RTK.md, instructions/, hooks/ and skills/
@@ -91,9 +90,6 @@ TEMPLATES = ["adapters/opencode/opencode.jsonc", "adapters/opencode/plugins/guar
 SOURCE = REPO / "adapters" / "opencode"
 SETTINGS = REPO / "settings" / "settings.proposal.json"
 FIXTURES = SOURCE / "fixtures"
-
-# The agents of adapters/opencode/agents/: written by hand, with no Claude Code source.
-OPENCODE_ONLY = ["local", "qwen-worker"]
 
 # Narrower than the tool list can say. OpenCode's `edit` covers edit, write and patch together,
 # so an agent whose Claude body confines it to one file gets that file as a path rule.
@@ -304,18 +300,14 @@ def render_agents(source_dir, models, root="~/.config/opencode"):
     text), …]. A council keyed by a name that no agent of `source_dir` has exits 2."""
     paths = sorted(pathlib.Path(source_dir).glob("*.md"))
     sources = {p.stem: p for p in paths}
-    clash = sorted(set(sources) & set(OPENCODE_ONLY))
-    if clash:
-        raise HarnessError(f"{source_dir}: more than one agent named {', '.join(clash)}")
-    taken = {**sources, **{name: SOURCE / "agents" / f"{name}.md" for name in OPENCODE_ONLY}}
     for agent, seats in models["councils"].items():
         if agent not in sources:
             raise HarnessError(f"{models['path']}: councils.{agent} names no agent of {source_dir}; "
                                "a council is keyed by the agent it copies")
         for seat in seats:
-            if seat["name"] in taken:
+            if seat["name"] in sources:
                 raise HarnessError(f"{models['path']}: the seat {seat['name']!r} of councils.{agent} has the "
-                                   f"name of the agent {taken[seat['name']]}")
+                                   f"name of the agent {sources[seat['name']]}")
     return [a for path in paths for a in port(path, models, root)]
 
 
@@ -556,12 +548,7 @@ def plan(ctx):
         raise HarnessError(f"{dest} does not exist. Start OpenCode once, then re-run.")
     root = frontends.home_form(dest)
     models = load_models(ctx.models)
-    agents = render_agents(ctx.agents, models, root)
-    committed = sorted(f.stem for f in (SOURCE / "agents").glob("*.md"))
-    if committed != sorted(OPENCODE_ONLY):
-        raise HarnessError(f"adapters/opencode/agents/ holds {', '.join(committed) or 'nothing'}; "
-                           f"it must hold {', '.join(OPENCODE_ONLY)}, the agents with no Claude Code source")
-    agents = sorted(agents + [(n, (SOURCE / "agents" / f"{n}.md").read_text()) for n in committed])
+    agents = sorted(render_agents(ctx.agents, models, root))
     files, refused, warnings = [], [], []
 
     config = dest / "opencode.jsonc"
@@ -711,25 +698,8 @@ def selftest():
         except HarnessError as e:
             check("councils.critic" in str(e) and str(clash / "critic-b.md") in str(e),
                   f"a seat with the name of a source agent exits 2: {e}")
-        local = dict(models, councils={"critic": [{"name": "local", "model": "provider-c/other-model"}]})
-        try:
-            render_agents(FIXTURES / "agents", local)
-            check(False, "a seat with the name of an agent of adapters/opencode/agents/ exits 2")
-        except HarnessError as e:
-            check(str(models["path"]) in str(e) and "councils.critic" in str(e)
-                  and "adapters/opencode/agents/local.md" in str(e),
-                  f"a seat with the name of an agent of adapters/opencode/agents/ exits 2: {e}")
-        twin = pathlib.Path(tmp) / "twin"
-        twin.mkdir()
-        (twin / "local.md").write_text((FIXTURES / "agents" / "bare.md").read_text())
-        try:
-            render_agents(twin, models)
-            check(False, "a source agent with the name of an agent of adapters/opencode/agents/ exits 2")
-        except HarnessError as e:
-            check(str(twin) in str(e) and str(e).endswith(" local"),
-                  f"a source agent with the name of an agent of adapters/opencode/agents/ exits 2: {e}")
         # A council keyed by an agent with no source would be dropped with no error.
-        for key in ("nosuch", "local"):
+        for key in ("nosuch",):
             orphan = dict(models, councils={key: [{"name": "seat-x", "model": "provider-c/other-model"}]})
             try:
                 render_agents(FIXTURES / "agents", orphan)

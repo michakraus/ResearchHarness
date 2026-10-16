@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- **The OpenCode agents `local` and `qwen-worker` are retired.** They ran a local model for
+  offline work and were an experiment; no run of 2026-10-02 to 2026-10-16 used either. Every
+  OpenCode agent is rendered from `agents/`, so the adapter drops `adapters/opencode/agents/`
+  and its checks. `opencode.jsonc` keeps the local model as `small_model`. `harness install`
+  reports the two installed copies as EXTRA, with the command that removes each.
+
 - **Transcripts stay 90 days, and the one-hour prompt cache of three agents takes effect.** The
   settings template sets `cleanupPeriodDays` to 90. Claude Code deletes a transcript after 30 days
   by default, and a re-measurement two weeks after a change must still read the baseline of the

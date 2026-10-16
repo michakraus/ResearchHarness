@@ -3,8 +3,7 @@
 
   "plugin": ["opencode-anthropic-login-via-cli@1.7.0"],
 
-  // Option A, the default: the hosted model is primary. Option B is the `local` agent,
-  // reached with `opencode --agent local`. See agents/ and README.md.
+  // The hosted model is primary.
   "model": "opencode/nemotron-3.5-super-vl-free",
 
   // Background work (session titles and similar) goes to the local model. It then costs

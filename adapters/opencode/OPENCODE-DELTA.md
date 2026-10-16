@@ -91,8 +91,7 @@ use it for work that pushes, merges or releases.**
 
 ## Agents
 
-Every agent but `local` and `qwen-worker` is rendered from its source in `agents/` of the
-harness by `harness install`. Each of those starts with an *Under OpenCode* section that replaces
+Every agent is rendered from its source in `agents/` of the harness by `harness install`. Each of those starts with an *Under OpenCode* section that replaces
 the Claude Code mechanisms it uses. Its skills do not load by themselves; the section names them.
 
 **Each agent's model is in its own frontmatter**, so a spawn passes no `model:` and names no tier.
