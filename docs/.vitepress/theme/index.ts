@@ -20,5 +20,13 @@ export default {
     app.component('OverviewFigure', OverviewFigure)
     app.component('WalkThrough', WalkThrough)
     app.component('HomeEditLink', HomeEditLink)
+    // A throw in a component's setup fails the build. Vue logs such a throw during the server
+    // render and VitePress goes on to `build complete`, so the handler sets the exit status.
+    if (import.meta.env.SSR) {
+      app.config.errorHandler = (error) => {
+        console.error(error)
+        process.exitCode = 1
+      }
+    }
   }
 } satisfies Theme

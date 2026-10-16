@@ -134,7 +134,9 @@ The first stage runs one agent per repository, on a small model. It compares the
 CI, dependabot, Documenter and TagBot files, and `codecov.yml` at the repository root with
 `Harness/githooks/`. It also reports `core.hooksPath` and whether `.gitignore` and `CHANGELOG.md`
 exist. A second stage reads each file that differs again, and confirms or overturns the finding.
-The result names each repository that returned nothing.
+The result names each repository that returned nothing. The script compares `TagBot.yml` in every
+repository, and `harness workflows` adds it only to a package, so its row "missing" in an
+experiment is expected.
 
 The script only reads. Check its result against `githooks/verify-workflows.jl`. To correct a drift,
 run `harness workflows` or `harness githooks`.
