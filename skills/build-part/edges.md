@@ -205,6 +205,9 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
 - a write check that tests only for write access: a target whose bytes stay and whose mode
   changes needs a `chmod`, which needs the owner, not write access (P1 round 1, *Publish the
   harness as ResearchHarness*)
+- a rule over a directory named by an environment variable, compared as written: a path below
+  its real location (`/private/tmp/…` for a `TMPDIR` under `/tmp` on macOS) passes; compare the
+  resolved path too (P4 round 1, *Publish the harness as ResearchHarness*)
 - a fix that changes how a file is read: it can remove a rejection that the old read gave for
   free, such as a lone CR read as a line break (D1 verify 2, *Unify the agent configuration*)
 - a path the sandbox denies: `Path.is_file()` raises on Python 3.11 and returns `False` on 3.12
