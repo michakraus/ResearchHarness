@@ -20,7 +20,7 @@
 # A run loaded a file when one of these records names it, inside [from, to):
 #
 #   an agent definition   runs.tsv agent_type is its name, or its name and a suffix such as `-high`
-#   a skill               runs.tsv skills names it
+#   a skill               runs.tsv skills names it, or a user message holds `<command-name>/<name>`
 #   a rule                runs.tsv loaded names its installed copy
 #   a CLAUDE.md           runs.tsv loaded names it, or a Claude Code `instructions` record does
 #   the global files      a Claude Code `instructions` record names the installed copy
@@ -105,8 +105,8 @@ function harness_files(h)
         for f in mdfiles(dir)
             r = relpath(f, h)
             if basename(f) == "SKILL.md"
-                push!(v, File(f, "skill", "on a Skill call of `$d`; its description always", r,
-                              [:skill => d]))
+                push!(v, File(f, "skill", "on a Skill call or /$d; its description always", r,
+                              [:skill => d, :command => d]))
             else
                 push!(v, File(f, "skill file", "on a Read, when `$d` sends one", r,
                               [:read => joinpath(INSTALLED, "skills", d, basename(f))]))
