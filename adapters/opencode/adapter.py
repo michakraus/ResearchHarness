@@ -141,7 +141,9 @@ CLAUDE_TO_OPENCODE_TOOL = {
 # agent to: ~/Research for a session rooted in a worktree, the rule, skill and agent files, the
 # installed OpenCode configuration, the installed Julia package sources, and /tmp. Edits there
 # stay gated: ~/.config/** and the installed agents, skills and rules are denied, other skills
-# ask, and ~/.julia/packages/** is denied, because no other rule gates an edit there.
+# ask, and ~/.julia/packages/** is denied, because no other rule gates an edit there. Its first
+# rule denies every other path: v2's built-in rule set starts with an allow of everything, and the
+# last matching rule wins, so without it a path outside the allow entries is allowed.
 OPENCODE_ONLY_RULES = [
     ("read", [("{home}/.local/share/opencode/**", "deny")]),
     ("bash", [("kill *", "ask"), ("pkill *", "ask")]),
@@ -150,6 +152,7 @@ OPENCODE_ONLY_RULES = [
         ("{home}/.julia/packages/**", "deny"),
     ]),
     ("external_directory", [
+        ("*", "deny"),
         ("{home}/.julia/packages/*", "allow"),
         ("{home}/Research/*", "allow"),
         ("{home}/.claude/rules/*", "allow"),
@@ -367,7 +370,16 @@ def collect_rules(settings=SETTINGS):
                 emitted.setdefault(key, []).append((pattern, action))
     for key, rules in OPENCODE_ONLY_RULES:
         emitted.setdefault(key, []).extend(rules)
+    if "read" in emitted:
+        emitted["read"] = with_root_forms(emitted["read"])
     return emitted, dropped, permissions
+
+
+def with_root_forms(rules):
+    """`rules` with each `**/X` rule followed by `X`, the same rule for a file of the project root.
+    v2 matches a pattern against the path relative to the project root, turns `*` into `.*` and
+    anchors both ends, so `**/.env` needs a `/` before `.env` and misses `.env` itself."""
+    return [r for p, a in rules for r in [(p, a)] + ([(p[3:], a)] if p.startswith("**/") else [])]
 
 
 def json_key(s):
@@ -397,8 +409,10 @@ def render_block(emitted):
 
 def guard(emitted):
     """`plugins/guard-paths.json`: the `read` denies, for the path guard of `plugins/guards.ts`,
-    which applies them to the paths a `bash` command names."""
-    return json.dumps({"deny": [p for p, a in emitted["read"] if a == "deny"]}, indent=2, ensure_ascii=False) + "\n"
+    which applies them to the paths a `bash` command names. A root form is left out: the guard
+    tests absolute paths, where its `**/X` already matches."""
+    denies = [p for p, a in emitted["read"] if a == "deny"]
+    return json.dumps({"deny": [p for p in denies if "**/" + p not in denies]}, indent=2, ensure_ascii=False) + "\n"
 
 
 def report(emitted, dropped, permissions):
@@ -406,13 +420,14 @@ def report(emitted, dropped, permissions):
     n_in = len(permissions.get("deny", [])) + len(permissions.get("ask", []))
     n_out = sum(len(v) for v in emitted.values())
     n_new = sum(len(rules) for _, rules in OPENCODE_ONLY_RULES)
-    # The OpenCode-only rules have no input counterpart, so they are subtracted before the
-    # identity is checked; otherwise adding one would mask a rule that went missing.
+    n_root = sum(p.startswith("**/") for p, _ in emitted.get("read", []))
+    # The OpenCode-only rules and the root forms have no input counterpart, so they are subtracted
+    # before the identity is checked; otherwise adding one would mask a rule that went missing.
     lines = [
         f"input rules (deny + ask): {n_in}",
-        f"emitted:                  {n_out} ({n_new} OpenCode-only)",
+        f"emitted:                  {n_out} ({n_new} OpenCode-only, {n_root} root forms)",
         f"dropped:                  {len(dropped)}",
-        f"round-trip:               {'OK' if (n_out - n_new) + len(dropped) == n_in else 'MISMATCH'}",
+        f"round-trip:               {'OK' if (n_out - n_new - n_root) + len(dropped) == n_in else 'MISMATCH'}",
         "",
         "per permission key:",
         *(f"  {key.ljust(24)}{len(emitted[key])}" for key in sorted(emitted)),

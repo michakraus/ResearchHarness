@@ -31,8 +31,9 @@ only because of Claude Code's sandbox or its permission matcher does not bind he
 unsandboxed programs, a `git` alone on its line, no `cd … &&`, no `git -C`, no `$?`, and a failed
 `ps` read as a refusal. `ps` and `pgrep` run here.
 
-**`external_directory` is the one boundary here.** A tool that touches a path outside the workspace
-root asks first; in `opencode run` it refuses. A session rooted at `/` has no such path.
+**`external_directory` is the one boundary here.** A file tool that touches a path outside the
+workspace root and outside the directories that `opencode.jsonc` allows is refused. A session
+rooted at `/` has no such path.
 
 **Pass `workdir`; do not `cd` inside a command, and do not write `..`.** OpenCode resolves the path
 arguments of `cd`, `cat`, `cp`, `mv`, `rm`, `mkdir`, `touch`, `chmod` and `chown` against `workdir`,

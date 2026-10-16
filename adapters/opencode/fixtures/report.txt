@@ -1,16 +1,16 @@
-input rules (deny + ask): 19
-emitted:                  26 (12 OpenCode-only)
+input rules (deny + ask): 20
+emitted:                  29 (13 OpenCode-only, 1 root forms)
 dropped:                  5
 round-trip:               OK
 
 per permission key:
   bash                    7
   edit                    5
-  external_directory      7
+  external_directory      8
   glob                    1
   kaimon_debug_eval       1
   kaimon_manage_extension 1
-  read                    3
+  read                    5
   webfetch                1
 
 dropped rules, with the reason:

@@ -116,12 +116,19 @@
       "{home}/.local/share/opencode/auth.json": "deny",
       "{home}/.local/share/opencode/mcp-auth.json": "deny",
       "**/.env": "deny",
+      ".env": "deny",
       "**/.env.*": "deny",
+      ".env.*": "deny",
       "**/secrets/**": "deny",
+      "secrets/**": "deny",
       "**/*.pem": "deny",
+      "*.pem": "deny",
       "**/*.key": "deny",
+      "*.key": "deny",
       "**/id_rsa*": "deny",
+      "id_rsa*": "deny",
       "**/id_ed25519*": "deny",
+      "id_ed25519*": "deny",
       "{home}/.local/share/opencode/**": "deny"
     },
     "edit": {
@@ -186,6 +193,7 @@
       "{home}/.julia/packages/**": "deny"
     },
     "external_directory": {
+      "*": "deny",
       "{home}/.julia/packages/*": "allow",
       "{home}/Research/*": "allow",
       "{home}/.claude/rules/*": "allow",

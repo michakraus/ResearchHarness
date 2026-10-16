@@ -2,6 +2,7 @@
   "deny": [
     "{home}/.ssh/**",
     "~/.aws/**",
+    "**/*.pem",
     "{home}/.local/share/opencode/**"
   ]
 }

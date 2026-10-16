@@ -2,6 +2,8 @@
     "read": {
       "{home}/.ssh/**": "deny",
       "~/.aws/**": "deny",
+      "**/*.pem": "deny",
+      "*.pem": "deny",
       "{home}/.local/share/opencode/**": "deny"
     },
     "edit": {
@@ -12,6 +14,7 @@
       "{home}/.julia/packages/**": "deny"
     },
     "external_directory": {
+      "*": "deny",
       "{home}/.julia/packages/*": "allow",
       "{home}/Research/*": "allow",
       "{home}/.claude/rules/*": "allow",

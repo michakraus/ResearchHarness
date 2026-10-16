@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+- **OpenCode: the file tools are refused outside the allowed directories, and a `**/` read deny
+  also binds a file of the project root.** OpenCode v2's built-in rule set allows every path and
+  the last matching rule wins, so a path outside every `external_directory` allow entry was
+  allowed; the absolute read denies of the credential files do not bind the `read` tool, so they
+  did not close that gap. The generated block starts
+  `external_directory` with `"*": "deny"`, before the allow entries. v2 matches a read pattern
+  against the path relative to the project root, with `*` crossing `/` and both ends anchored, so
+  `**/.env` did not match `.env` in the root and `**/*.pem` did not match `x.pem`. Each `**/X`
+  read rule is followed by its root form `X`; `harness permissions` reports their count, and
+  `plugins/guard-paths.json` leaves them out, because the path guard tests absolute paths, where
+  `**/X` already matches.
+
 - **The OpenCode agents `local` and `qwen-worker` are retired.** They ran a local model for
   offline work and were an experiment; no run of 2026-10-02 to 2026-10-16 used either. Every
   OpenCode agent is rendered from `agents/`, so the adapter drops `adapters/opencode/agents/`

@@ -16,6 +16,7 @@
     "deny": [
       "Read(//{home}/.ssh/**)",
       "Read(~/.aws/**)",
+      "Read(**/*.pem)",
       "Edit(//{home}/.config/**)",
       "Write(//{home}/.config/**)",
       "Glob(//tmp/private/**)",
