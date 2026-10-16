@@ -2,13 +2,16 @@
 
 ## Unreleased
 
-- **The docs checks and `run-tests.jl`: K39, K50 and K53 leave `KNOWN_ISSUES.md`.** The log, the
+- **The docs checks and `run-tests.jl`: K39, K50, K51 and K53 leave `KNOWN_ISSUES.md`.** The log, the
   times file and the one-process driver of a `run-tests.jl` run carry its process ID after the
   date stamp, so two runs of packages of one name, started in one second, write files of their
   own; a case asserts that their logs differ and name each run's process ID (K39). A throw in the
   setup of a figure component, such as `<WalkThrough name="instal" />`, makes `npm run docs:build`
   exit 1: an error handler of the theme logs it during the server render and sets the exit status,
-  where VitePress went on to `build complete` and exited 0 (K50). The colour scan of `docs:check`
+  where VitePress went on to `build complete` and exited 0 (K50). The effort of a walk-through box
+passes only when an entry of `calls.toml` gives the box's agent that effort from a caller that a
+skill or agent box of the same walk-through shows; a spawn at that effort by any other caller no
+longer passes (K51). The colour scan of `docs:check`
   also refuses a CSS named colour as a quoted string or after `fill`, `stroke` or `color`, such as
   `const TOKEN = 'red'`; `none`, `currentColor`, `transparent` and `inherit` pass, and so does an
   accent name of `figures.css` as a quoted string after `accent`, as in `accent: 'teal'` (K53).

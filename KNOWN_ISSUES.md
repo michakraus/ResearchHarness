@@ -207,16 +207,6 @@
 - kind: defect, upstream behaviour
 - found: 2026-10-09, by the critic of part E3
 
-### K51 · The effort check of a walk-through box accepts a spawn of any caller.
-
-- location: `lib/harness/docs.py:279`
-- evidence: a box with `effort` passes when any entry of `calls.toml` spawns its agent at that
-  effort. The check does not compare the caller of that entry with the skill or agent of the
-  walk-through, so a box of a skill that never spawns the agent at that effort passes. Found by
-  the critic of part J4.
-- kind: missing test
-- found: 2026-10-10
-
 ### K61 · No test runs the real macOS `ps` against a deleted server binary.
 
 - location: `scripts/julia-update-test.jl`, the `ps` stub in `fixture`
