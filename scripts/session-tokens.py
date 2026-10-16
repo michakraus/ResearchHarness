@@ -17,7 +17,7 @@ Companion to startup-tokens.py, which measures the start. Four reports:
    more times in a row; four or more errors in a row.
 4. Compactions.
 
-Tokens for tool results are estimated at 3.5 characters per token, the ratio Startup-Tokens.md
+Tokens for tool results are estimated at 3.5 characters per token, the ratio
 measured for this tree's text. Usage figures are the API's own.
 
     python3 session-tokens.py            # the last 7 days

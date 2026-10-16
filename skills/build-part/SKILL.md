@@ -172,8 +172,8 @@ or the critic's context writes that context again in full after every 5 minutes 
 
 **After each critic round, spawn a new `julia-builder`; never `SendMessage` the last one.** A
 resumed builder writes its whole context again (456–458 k tokens in round 4), and a new one starts from
-the reports: in the C1 replay it cost a quarter to a half as much, with fewer blocking defects left
-(`Loop-Benchmark.md`, *C1 · the fresh fixer*). First `cd <worktree>` as a Bash call of its own,
+the reports: in the C1 replay it cost a quarter to a half as much, with fewer blocking defects left.
+First `cd <worktree>` as a Bash call of its own,
 then the `Agent` call, without isolation. Pass the task file, the part, its rows as in 1, the
 worktree, the branch, the base, the head that the critic judged, and the last builder's report as
 the handoff note. From here on, *the builder* is the `julia-builder` of the current round.
