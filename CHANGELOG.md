@@ -22,8 +22,9 @@
   key, and nothing is written (K47). The `PATH` check of the units fails an element at or below
   `$TMPDIR`, `/var/folders` or `/private/var/folders`, which the live sandbox lets a session write;
   a session's working directory has no fixed value and stays a recorded limit, K71, in K62's place
-  (K62). A curated skill that fails `parse_file` is one wrong case of the skill-triggers cases, and
-  `harness test` goes on to its summary line, where it exited 2 with none (K63). The scratch
+  (K62). A curated skill that fails `parse_file` is one wrong case of the skill-triggers cases and one
+  of the `calls.toml` cases of `docs.py`, and `harness test` goes on to its summary line, where it
+  exited 2 with none (K63). The scratch
   profile of the install cases names this checkout as `harness`. The comment of `[claude]` in
   `examples/models.toml`, `docs/src/architecture.md` and `docs/src/components/other.md` state the
   new rules of the model and of the `PATH`.

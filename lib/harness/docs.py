@@ -39,7 +39,7 @@ import subprocess
 import tempfile
 import tomllib
 
-from . import REPO
+from . import REPO, HarnessError
 from .frontmatter import parse_file
 
 PAGES = REPO / "docs" / "src" / "components"
@@ -335,6 +335,22 @@ def walkthrough_problems(data, sources, lines, calls=()):
     return problems
 
 
+def checkout_call_cases(paths, check):
+    """The cases of calls.toml of this checkout, whose tracked files are `paths`; its [[call]]
+    entries. A source that parse_file refuses is one wrong case that names the refusal, and the
+    call cases do not run."""
+    sources = call_sources(paths)
+    calls = tomllib.loads(CALLS.read_text()).get("call", []) if CALLS.is_file() else []
+    try:
+        meta = {name: parse_file(REPO / path).meta for name, path in sources.items()}
+    except HarnessError as e:
+        check(False, f"the sources of calls.toml cannot be read, so its entries are not checked: {e}")
+        return calls
+    check(CALLS.is_file() and bool(calls), "docs/figures/calls.toml exists and has [[call]] entries")
+    call_cases(calls, sources, meta, lambda path: (REPO / path).read_text().splitlines(), check)
+    return calls
+
+
 def selftest():
     """The matching rules on fixed inputs, then the pages of this checkout."""
     total = wrong = 0
@@ -440,13 +456,22 @@ def selftest():
         "calls.toml has an entry with the caller 'build-reviewed', which spawns",
     ], f"call_cases names a duplicate and each spawner without an entry: {found}")
 
-    # calls.toml of this checkout.
+    # calls.toml of this checkout; a source that parse_file refuses is one wrong case, not the end of
+    # `harness test`.
     paths = tracked()
-    sources = call_sources(paths)
-    meta = {name: parse_file(REPO / path).meta for name, path in sources.items()}
-    calls = tomllib.loads(CALLS.read_text()).get("call", []) if CALLS.is_file() else []
-    check(CALLS.is_file() and bool(calls), "docs/figures/calls.toml exists and has [[call]] entries")
-    call_cases(calls, sources, meta, lambda path: (REPO / path).read_text().splitlines(), check)
+    calls = checkout_call_cases(paths, check)
+    from unittest import mock
+
+    found = []
+    with mock.patch(f"{__name__}.parse_file", side_effect=HarnessError("x/SKILL.md: the model 'bogus' is not a tier")):
+        try:
+            checkout_call_cases(paths, lambda ok, label: found.append((ok, label)))
+            raised = None
+        except Exception as e:
+            raised = f"{type(e).__name__}: {e}"
+    check(raised is None and [ok for ok, _ in found if not ok] == [False]
+          and "'bogus' is not a tier" in next(label for ok, label in found if not ok),
+          f"a source of calls.toml that parse_file refuses is one wrong case: raised {raised}, {found}")
 
     # The rules of a walk-through on fixed inputs: each wrong entry gives one problem.
     files = {"skills/s/SKILL.md": ["---", "Spawn `a`."], "agents/a.md": ["---"]}
