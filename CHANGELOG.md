@@ -21,7 +21,7 @@
   paths are each named once, one of them differing from the second parent only (K33), and a merge
   whose resolution adds a leak line that neither parent has (K34); a case in `harness test` runs
   `.githooks/pre-push` on a fixture checkout with stubs of gitleaks and `bin/harness`, and checks
-  the `origin` URL that `harness leaks` sees in the hook's clone (K35). K74 records that a `~`
+  the `origin` URL that `harness leaks` sees in the hook's clone (K35). K75 records that a `~`
   with no `/` after it, as in `read {"path": "~.netrc"}`, passes the oh-my-pi path guard.
 
 - **No public file cites a notes page of the tree: K66, K67 and K70 leave `KNOWN_ISSUES.md`.**

@@ -142,7 +142,7 @@
 - kind: docs
 - found: 2026-10-16, the builder of publish part P6
 
-### K74 · A `~` with no `/` after it passes the oh-my-pi path guard.
+### K75 · A `~` with no `/` after it passes the oh-my-pi path guard.
 
 - location: `adapters/omp/guards.ts:207`
 - evidence: `absolute()` expands `~` only before `/` or at the end of the path, and joins any
