@@ -2,11 +2,8 @@
 
 ## Unreleased
 
-- **OpenCode's default model is `opendesign/deepseek-v4.1-flash`, in place of
-  `opencode-go/deepseek-v4.1-flash`.** The private profile defines the `opendesign` provider in
-  `opencode_providers`; an installation without it must name another model in
-  `adapters/opencode/opencode.jsonc`. OpenCode has no model fallback, so the Go model is a manual
-  switch.
+- **OpenCode's default model is `opencode/nemotron-3.5-super-vl-free`, Zen's free Nemotron, in
+  place of `opencode-go/deepseek-v4.1-flash`.**
 
 - **The docs checks and `run-tests.jl`: K39, K50, K51 and K53 leave `KNOWN_ISSUES.md`.** The log, the
   times file and the one-process driver of a `run-tests.jl` run carry its process ID after the
