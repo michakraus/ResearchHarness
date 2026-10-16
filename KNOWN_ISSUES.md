@@ -169,3 +169,26 @@
   `.scratch/critic/Harness-P7/edges.py` in the research root, run on a copy of the checkout.
 - kind: defect
 - found: 2026-10-16, the critic of publish part P7
+
+### K76 · Under OpenCode v2 an agent with `bash: deny` still has the `execute` tool, and no probe shows that a `permission` rule binds a tool called inside it.
+
+- location: `adapters/opencode/adapter.py:391`
+- evidence: v2 (2.0.30) gives an agent the `execute` tool of Code Mode. In a decoy probe of
+  2026-10-16, agents with `bash`, `edit`, `task`, `webfetch` and `websearch` denied still had it.
+  Its catalog listed 14 of Kaimon's 33 MCP tools, and `search` inside `execute` finds the rest. The
+  generated block has no rule that names `execute`. No probe called it, so whether a `kaimon_*`,
+  `read` or `external_directory` rule applies to a call inside `execute` is not measured.
+- kind: not verified
+- found: 2026-10-16, the `read` deny decoy probe
+
+### K77 · Under OpenCode v2 no rule of the generated block stops the `read` tool on a credential file inside the session's project root.
+
+- location: `adapters/opencode/adapter.py:154`
+- evidence: v2 (2.0.30) binds a `read` deny only in project-relative form: an absolute or `~/`
+  pattern, in an agent or in `opencode.jsonc`, did not stop the `read` tool on a decoy in decoy
+  probes of 2026-10-16, and a project-relative one did. The credential denies are absolute, so
+  `external_directory` with `"*": "deny"` is what refuses them, and it consults only a path outside
+  the project root. A session whose project root holds the file, for example one started in the
+  home directory outside any git repository, meets neither rule. Not probed.
+- kind: not verified
+- found: 2026-10-16, the `read` deny decoy probe
