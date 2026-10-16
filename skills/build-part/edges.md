@@ -52,6 +52,13 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
 - a case meant for one guard that an earlier check stops first: `sed -i` never reaches
   `no-shell-file-write.py`; give each guard a case that only it refuses (W1 round 1, *Unify the
   agent configuration*)
+- **a case meant for one guard that a *later* guard now also catches, when both raise the same error
+  type:** P25's fix added an `isempty` guard after the two-times guard, and a one-time input trips
+  the new one with the same `ArgumentError`, so the test's `isa ArgumentError` no longer saw the
+  two-times guard dropped and a named mutant that round 1 had caught survived (P25 verify 2,
+  *Rewrite the reduced basis packages*). **Assert the refusing guard's own phrase, not the type
+  alone.** The mirror of the entry above: there an earlier check hides the case, here a later one
+  hides the mutant
 - a live probe whose prompt the model refuses on its own, such as a read of a credential file in a
   subagent: no tool call runs, and the probe measures nothing; probe with a command the model has
   no reason to refuse (W1 clause 6, *Unify the agent configuration*)
