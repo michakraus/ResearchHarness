@@ -13,8 +13,8 @@ entries, inside a repository and across repositories, gets its cosine.
 A `--pair` names a labelled pair: each side is a repository and a substring of the entry's first
 line. The script prints the rank of each labelled pair, and the best unlabelled pair, to stderr.
 With `--threshold` and `--out`, it writes every pair at or above the threshold, sorted by cosine
-and then by repository and line, with both texts. The design is in `Decision-Models.md`, *Details
-of proposals 2 and 3*. It only proposes; whether a pair is one issue is the reader's call.
+and then by repository and line, with both texts. It only proposes; whether a pair is one issue is
+the reader's call.
 
 Exit status 0 on success; 1 when Ollama fails, a model is missing, an embedding has zero norm, or a
 `--pair` needle matches no entry or more than one. Nothing is written on a failure.

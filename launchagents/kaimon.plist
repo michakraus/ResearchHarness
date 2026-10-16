@@ -57,7 +57,7 @@
          KAIMON_QDRANT_MANAGED=off stops the background indexing, which the qdrant_* entries
          in tools.json do not stop. The package preference of the same name lives in the app
          environment, and every Kaimon update deletes it; this variable overrides it and
-         stays. See Semantic-Code-Search-Here.md. -->
+         stays. -->
     <key>EnvironmentVariables</key>
     <dict>
         <key>JULIA_APPS_JULIA_CMD</key>

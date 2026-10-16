@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+- **No public file cites a notes page of the tree: K66, K67 and K70 leave `KNOWN_ISSUES.md`.**
+  `adapters/claude/CLAUDE.md`, `RTK.md`, `opencode.jsonc`, `githooks/pre-commit`,
+  `launchagents/claude-autocommit`, four rules and three skills named an `Environment/Notes/` page
+  that this repository does not hold, and `launchagents/kaimon.plist`,
+  `scripts/known-issues-similar.py`, `scripts/session-tokens.py`, `skills/build-part/SKILL.md`,
+  `hooks/worktree.py` and `rules/generated-hooks-and-workflows.md` named one by its file name. A
+  sentence that held only the pointer is gone; a sentence that also states a fact or an
+  instruction keeps it. `rules/instruction-files.md` says "an evidence page" and "the hooks page".
+  The tree instructions keep the pointers (K66, K67). K73 records six citations of a task file,
+  another class. The case of `install_cases.target_cases` for an OSError in the write captures the
+  plan line that `install_file` prints, and asserts it, so `install.selftest()` prints no stray
+  `x.md  INSTALL` line (K70).
+
 - **OpenCode's default model is `opencode/nemotron-3.5-super-vl-free`, Zen's free Nemotron, in
   place of `opencode-go/deepseek-v4.1-flash`.**
 

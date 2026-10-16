@@ -75,6 +75,3 @@ checks docstring attachment, cross-references and `checkdocs`.
   `[compat] julia`, or every docs job fails in "Install dependencies". A pin below the floor can be
   a deliberate workaround: read `docs/src/maintenance.md` first. The Documentation check is not a
   required check, so the pull request that breaks it merges green.
-
-Evidence and measurements: `~/Research/Environment/Notes/Tree-Wide-Gotchas.md`, § "Building the
-documentation".

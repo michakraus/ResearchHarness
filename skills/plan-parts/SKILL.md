@@ -130,9 +130,8 @@ file names out of them rather than guessing.
 | **`opus-medium`** | the builder and the critic | `julia-builder`, `julia-critic`; `part-builder`, `part-critic` |
 
 The planner, the builder, the critic and the advisor never run on sonnet or haiku. The dispatcher's
-session and the suite runner are not tiers of a part, and `build-part` sets them.
-`Environment/Notes/Loop-Benchmark.md` holds the measurements behind these tiers; a change to a
-tier follows a measurement there, not this skill.
+session and the suite runner are not tiers of a part, and `build-part` sets them. A change to a
+tier follows a measurement, not this skill.
 
 **A part's `tier` cell says whether the user decides first, and how the part is built.** It holds
 one of four values:
@@ -144,8 +143,7 @@ one of four values:
 | **`reviewed`** | decided, small, with a fast gate | a script, a tool or a check of a few files whose gate runs in minutes | `build-reviewed`: one builder, one blind critic, one fix round |
 | **`direct`** | mechanical, with a deterministic oracle | a move, a rename, a one-line change rolled out to many repositories; every clause is a command such as a diff, a count or a listing | the main session, or a workflow; no critic |
 
-`Environment/Notes/Builder-Critic-Loop.md`, *Three loop levels*, holds the evidence. When unsure
-between two of the three build tiers, take the heavier one.
+When unsure between two of the three build tiers, take the heavier one.
 
 **Write the reason in the `what it is` cell for every part, and never assign one value
 throughout.** A cell with no reason beside it collapses to all-`decision` and stops carrying
@@ -240,9 +238,6 @@ overhead. The one part still gets its spec, §V and §L.
 
 The frontmatter runs this skill on opus. A cheaper model splits a file into one part per finding,
 and costs more tokens doing it.
-
-The measurements behind this skill's rules, the graded set, and how to remove the answer from it
-are in `Environment/Notes/Builder-Critic-Loop.md`, *Planning parts*.
 
 ## Grading a table you produced
 
