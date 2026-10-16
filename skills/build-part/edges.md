@@ -435,6 +435,16 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
 - a fix that rewrites a comment about dispatch from a critic's sentence, not from the methods: a
   subtype such as `Manifold <: AbstractMatrix` makes "an array" false. Write the comment from the
   method table (G10 verify 2, *Simplify the optimiser package and the learning package for 0.9*)
+- a rewritten comment whose *other* clause still states the old behaviour: the round removed the
+  history phrases and left "whose two element types are free" beside a bound of
+  `T1 <: Union{T, Integer}`, which the fix's own grep for history phrases cannot see. Write every
+  clause of a rewritten comment from the method table, and grep the claim's own words as well as the
+  history (M2 verify 2, *Simplify the optimiser package and the learning package for 0.9*)
+- a comment that says nothing calls a function, in the file that the part now makes its caller: the
+  header claimed "nothing in the package, the tests or the scripts called it", and the finder's grep
+  over `src/` and `ext/` never reaches a `test/` header. Read the header of a test file the part
+  gives its first caller, or of the file whose prose the part rewrites (M2 verify 2, *Simplify the
+  optimiser package and the learning package for 0.9*)
 - a moved table marked with the version of the commit that first wrote its cells, while a later
   commit measured them again on a newer dependency: name the last measurement. `git log -S` on a
   cell finds the last change of the value, not the last run that reproduced it (G10 round 1b,
