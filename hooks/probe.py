@@ -1165,8 +1165,10 @@ def drift_cases(install=install):
         with open(os.path.join(tree, name), "w") as f:
             # A rule needs a `description`, or the install exits 2 on oh-my-pi's rendering of it.
             f.write(f"---\ndescription: d\n---\n{name}\n" if name.startswith("rules/") else f"{name}\n")
+    # The stamp names the sources below the profile's `harness`, so the profile names this checkout.
     with open(REPO + "/examples/profile.toml") as f:
-        lines = [f'tree_agents = "{tree}"' if l.startswith("tree_agents = ") else l for l in f.read().splitlines()]
+        lines = [f'tree_agents = "{tree}"' if l.startswith("tree_agents = ") else f'harness = "{REPO}"'
+                 if l.startswith("harness = ") else l for l in f.read().splitlines()]
     with open(base + "/profile.toml", "w") as f:
         f.write("\n".join(lines) + "\n")
     env = {**CLEAN, "HOME": home, "OPENCODE_CONFIG_DIR": base + "/opencode", "RESEARCH_HARNESS_JULIA": base + "/julia",

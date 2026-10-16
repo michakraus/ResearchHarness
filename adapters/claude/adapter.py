@@ -129,6 +129,7 @@ import json
 import os
 import pathlib
 import re
+import shutil
 import stat
 import subprocess
 import sys
@@ -164,10 +165,13 @@ CLAUDE_SETTINGS = frozenset({"settings.json", "settings.local.json"})
 TOOLS = {"read": "Read", "edit": "Edit", "write": "Write", "grep": "Grep", "glob": "Glob", "shell": "Bash",
          "agent": "Agent", "web_search": "WebSearch", "web_fetch": "WebFetch"}
 MCP_PREFIX = "mcp__kaimon__"
-# A model of [claude], which render_source writes as it is into `model:`: a plain YAML scalar
-# that reads as this string, and no word of YAML_WORDS, which YAML reads as a boolean or null.
+# A model of [claude] that render_source writes as it is into `model:`: a plain YAML scalar that
+# reads as this string. Any other model is written as JSON writes a string, a YAML double-quoted
+# scalar. A word of YAML_WORDS, which YAML reads as a boolean or null, and a model that holds a
+# control character of MODEL_CONTROL exit 2.
 MODEL = re.compile(r"[A-Za-z][A-Za-z0-9._\[\]-]*")
 YAML_WORDS = {"true", "false", "yes", "no", "on", "off", "y", "n", "null"}
+MODEL_CONTROL = re.compile(r"[\x00-\x1f\x7f-\x9f\N{LINE SEPARATOR}\N{PARAGRAPH SEPARATOR}]")
 
 CONFIG = os.path.expanduser("~/.claude.json")
 SKIP = {".git", ".worktrees", "node_modules"}
@@ -555,13 +559,44 @@ OWNED = ("permissions", "hooks", "sandbox", "modelSettings")
 
 
 def indent_of(text):
-    """The indentation of a settings file's `text`, so that a merge does not reformat it; 2 when
-    no line after the first is indented by spaces."""
-    for line in text.splitlines()[1:]:
-        stripped = line.lstrip(" ")
+    """The indentation of a settings file's `text`, as the `indent` of json.dumps, so that a merge
+    does not reformat it: the spaces and tabs that open the first indented line after the first;
+    None, one line, for a file of one line; 2 when no line after the first is indented."""
+    # A line ends at "\n" only: JSON allows a raw U+2028 in a string, where splitlines breaks.
+    lines = text.rstrip("\n").split("\n")
+    if len(lines) == 1:
+        return None
+    for line in lines[1:]:
+        stripped = line.lstrip(" \t")
         if stripped and stripped != line:
-            return len(line) - len(stripped)
+            return line[:len(line) - len(stripped)]
     return 2
+
+
+class Number:
+    """A number token of a JSON text, as `json.loads` gives it to `parse_int` and `parse_float`."""
+
+    def __init__(self, text):
+        self.text = text
+
+
+def rewritten_numbers(text, skip):
+    """[(key, source text, emitted text)] of each number in the JSON object `text`, outside its
+    top-level keys `skip`, whose text json.dumps writes otherwise for its parsed value: `1.10` as
+    `1.1`, `1e400` as `Infinity`. A key is named as a path, `env.list[1]`."""
+    found, stack = [], [(k, v) for k, v in reversed(json.loads(text, parse_int=Number, parse_float=Number).items())
+                        if k not in skip]
+    while stack:
+        key, value = stack.pop()
+        if isinstance(value, dict):
+            stack += [(f"{key}.{k}", v) for k, v in reversed(value.items())]
+        elif isinstance(value, list):
+            stack += [(f"{key}[{i}]", v) for i, v in reversed(list(enumerate(value)))]
+        elif isinstance(value, Number):
+            emitted = json.dumps(json.loads(value.text))
+            if emitted != value.text:
+                found.append((key, value.text, emitted))
+    return found
 
 
 LONE_SURROGATE = re.compile(r"[\ud800-\udfff]")
@@ -601,12 +636,13 @@ def settings_file(root, profile):
     bytes, mode, label, backup, the unified diff of the owned sections).
 
     Each key of OWNED is replaced from the rendered template, or removed when the template lacks
-    it; every other key keeps its value and its place, the file keeps its indent, and no
-    character but a lone surrogate is escaped. Owned sections equal to the template's leave the file as it is. A
-    missing file is created with the owned sections only, indented by 2, mode 0644. Exits 2,
-    before anything is written, on a file that is a symlink, is not a regular file, cannot be
-    read, is not UTF-8 or JSON (`json_object`), is not a JSON object, or holds an owned key whose value is not an
-    object.
+    it; every other key keeps its value and its place, the file keeps its indent (`indent_of`),
+    and no character but a lone surrogate is escaped. Owned sections equal to the template's
+    leave the file as it is. A missing file is created with the owned sections only, indented by
+    2, mode 0644. Exits 2, before anything is written, on a file that is a symlink, is not a
+    regular file, cannot be read, is not UTF-8 or JSON (`json_object`), is not a JSON object, or
+    holds an owned key whose value is not an object, and, when the merge writes the file, on a
+    number outside the owned sections that it would write in other text (`rewritten_numbers`).
     """
     import difflib
 
@@ -643,6 +679,11 @@ def settings_file(root, profile):
     a, b = (dumps({k: c.get(k) for k in OWNED}, indent=2, sort_keys=True).splitlines() for c in (cfg, template))
     diff = list(difflib.unified_diff(a, b, "~/.claude/settings.json", "settings/settings.proposal.json", lineterm=""))
     if diff or old is None:
+        rewritten = rewritten_numbers(text, OWNED) if old is not None else []
+        if rewritten:
+            raise HarnessError(f"{live}: the merge would rewrite " + ", ".join(
+                f"the number `{source}` of `{key}` as `{emitted}`" for key, source, emitted in rewritten)
+                + "; write each as the merge writes it, then run the install again")
         for key in OWNED:
             if key in template:
                 cfg[key] = template[key]
@@ -656,8 +697,9 @@ def settings_file(root, profile):
 
 def stray_warnings():
     """The warnings, [(line, …)], of the permission rules outside ~/.claude/settings.json, which
-    a settings round neither proposes nor sees, and of each such file that cannot be read; a lone
-    surrogate in a line is written as its escape.
+    a settings round neither proposes nor sees, of each such file that cannot be read, and of each
+    `allow`, `ask` or `deny` there that is not a list; a lone surrogate in a line is written as its
+    escape.
 
     "Yes, don't ask again" writes its grant to the settings.local.json of the working
     directory. Such a grant adds to every session started there and can undo a round's
@@ -676,7 +718,13 @@ def stray_warnings():
             if not stat.S_ISREG(path.stat().st_mode):
                 continue
             permissions = json.loads(path.read_text(encoding="utf-8")).get("permissions", {})
-            found += [(path, kind, rule) for kind in ("allow", "ask", "deny") for rule in permissions.get(kind, [])]
+            for kind in ("allow", "ask", "deny"):
+                rules = permissions.get(kind, [])
+                if isinstance(rules, list):
+                    found += [(path, kind, rule) for rule in rules]
+                else:
+                    warnings.append((escaped(f"{path}: the value of permissions.{kind} is not a list, so its "
+                                             "rules are not listed"),))
         except (FileNotFoundError, NotADirectoryError):
             continue
         except (OSError, ValueError, AttributeError, TypeError) as e:
@@ -790,6 +838,17 @@ def tree_agents(profile):
     return tree
 
 
+def harness_checkout(profile):
+    """The checkout of this repository that the profile key `harness` names, which the stamp names
+    the sources below; None with no such key, and the stamp then names this checkout."""
+    if "harness" not in profile:
+        return None
+    value = profile["harness"]
+    if not isinstance(value, str) or not pathlib.Path(value).is_absolute():
+        raise HarnessError(f"harness: {value!r} is not an absolute path")
+    return pathlib.Path(value)
+
+
 def claude_sources(profile):
     """Each source of ~/.claude/: (directory, installed prefix, top-level names not installed,
     top-level directories whose files are skipped with a SKIP line)."""
@@ -864,14 +923,15 @@ def claude_extras(root, plan):
 
 def load_models(path):
     """{tier: model} of the [claude] table of the models.toml at `path`: exactly the tiers of
-    frontmatter.TIERS, each a model of MODEL that is not a word of YAML_WORDS, which YAML reads as
-    that string; any other table exits 2 (profile.tier_table)."""
+    frontmatter.TIERS, each a model with no control character of MODEL_CONTROL that is not a word
+    of YAML_WORDS; any other table exits 2 (profile.tier_table)."""
     models = render_profile.tier_table(path, "claude", "Claude Code")
-    wrong = [t for t in frontmatter.TIERS if not MODEL.fullmatch(models[t]) or models[t].lower() in YAML_WORDS]
+    wrong = [t for t in frontmatter.TIERS if MODEL_CONTROL.search(models[t]) or models[t].lower() in YAML_WORDS]
     if wrong:
         raise HarnessError(f"{path}: the tier {', '.join(wrong)} of [claude] is "
-                           + ", ".join(repr(models[t]) for t in wrong) + ", which the install cannot write "
-                           "as a plain YAML string: a model is a letter, then letters, digits and . _ - [ ]")
+                           + ", ".join(repr(models[t]) for t in wrong) + ", which the install does not write "
+                           "into `model:`: a model holds no control character and is no word that YAML reads "
+                           "as a boolean or null")
     return models
 
 
@@ -884,7 +944,9 @@ def neutral_source(src):
 def render_source(src, data, models):
     """`data`, the bytes of the agent or skill at `src`, with the value of `model:` replaced by its
     model in `models`, load_models' table, and each `tools:` item by its name in TOOLS; every other
-    byte as it is. A value outside the neutral vocabulary exits 2 (frontmatter.parse_file)."""
+    byte as it is. A model is written bare where MODEL matches it and the source's value is not
+    quoted, else as JSON writes it. A value outside the neutral vocabulary exits 2
+    (frontmatter.parse_file)."""
     fm = frontmatter.parse_file(src, data)
     lines = data.decode("utf-8").split("\n")
     key = None
@@ -897,7 +959,8 @@ def render_source(src, data, models):
                 rest = line.split(":", 1)[1]
                 value = rest.strip(" ")
                 model = models[fm.meta["model"]]
-                lines[i] = "model:" + rest.replace(value, f'"{model}"' if value.startswith('"') else model, 1)
+                bare = MODEL.fullmatch(model) and not value.startswith('"')
+                lines[i] = "model:" + rest.replace(value, model if bare else json.dumps(model), 1)
         elif key == "tools":
             tool = item.group(1).strip(" ")
             name = TOOLS[tool] if tool in TOOLS else MCP_PREFIX + tool.removeprefix(frontmatter.MCP)
@@ -923,7 +986,8 @@ def plan(ctx):
                       f"~/.claude/{dst}"))
     # The stamp goes after the layer, so that an apply that stops before its end leaves the old one.
     # It is over the source bytes of `layer`, which the hook reads again, not over the rendered ones.
-    files.append((root / install.STAMP, install.stamp_bytes(layer_sources, layer), 0o644, f"~/.claude/{install.STAMP}"))
+    files.append((root / install.STAMP, install.stamp_bytes(layer_sources, layer, harness_checkout(ctx.profile)), 0o644,
+                  f"~/.claude/{install.STAMP}"))
     extra = [f"\nEXTRA: {f} is installed and has no source here; the install leaves it.\n"
              f"       To remove it:  rm '{f}'" for f in claude_extras(root, layer)]
     rules = [(dst, source_of(layer_sources, dst)[0], data) for dst, data, _ in layer if dst.startswith("rules/")]
@@ -1098,9 +1162,10 @@ def layer_cases(check, tmp):
         ("a blank tier in [claude]", text0.replace('small = "haiku"\n', 'small = " "\n', 1)),
         ("a tier that is a number in [claude]", text0.replace('small = "haiku"\n', "small = 5\n", 1)),
         ("a fourth key in [claude]", text0.replace('small = "haiku"\n', 'small = "haiku"\nhuge = "x"\n', 1)),
+        # A newline or another control character, and a word that YAML reads as a boolean or null.
         *((f"the model {value} in [claude]", text0.replace('small = "haiku"\n', f'small = "{value}"\n', 1))
-          for value in [r"haiku\npermissionMode: bypassPermissions", "a: b", "haiku #1", " haiku", "haiku ",
-                        "[haiku]", r"hai\"ku", "null", "Yes", "1", "-haiku", "hai ku"]),
+          for value in [r"haiku\npermissionMode: bypassPermissions", r"hai\tku", r"haiku\r", r"haiku\u0007",
+                        *(r"haiku\u%04x" % c for c in (0x7F, 0x85, 0x2028, 0x2029)), "null", "Yes"]),
     ]:
         base, claude, tree = fresh(["rules/x.md"])
         models = base / "models.toml"
@@ -1111,11 +1176,35 @@ def layer_cases(check, tmp):
              f"a models.toml with {label} exits 2, names the file and [claude], and writes nothing: "
              f"{code}, {tail(text)}")
 
-    # A model of [claude] that YAML reads as itself, a plain string, loads.
-    for value in ["opus", "claude-opus-4-1", "claude-3.5-haiku", "opus[1m]", "inherit"]:
+    # A model of [claude] loads, a Bedrock and a Vertex model ID among them, and the rendered agent's
+    # `model:` reads as that string: a plain YAML scalar of MODEL, else a YAML double-quoted scalar
+    # with JSON's escapes, also for a source whose value is quoted.
+    def model_line(src, models):
+        """The `model:` line of the agent `src` rendered with the [claude] table of `models`, or the
+        error that the load or the render raises."""
+        try:
+            return render_source(src, src.read_bytes(), load_models(models)).decode().split("\n")[3]
+        except Exception as e:  # a refusal is the case's failure, not the end of `harness test`
+            return f"raised {type(e).__name__}: {e}"
+
+    agent = tmp / "agent-small.md"
+    agent.write_text('---\nname: a\ndescription: "d"\nmodel: small\n---\nbody\n')
+    for value in ["opus", "claude-opus-4-1", "claude-3.5-haiku", "opus[1m]", "inherit",
+                  "us.anthropic.claude-opus-4-1-20250805-v1:0", "claude-opus-4-1@20250805", "a: b", "haiku #1",
+                  " haiku", "haiku ", "[haiku]", 'hai"ku', "hai\\ku", "1", "-haiku", "hai ku", "modèle"]:
         models = tmp / "models-value.toml"
-        models.write_text(text0.replace('small = "haiku"\n', f'small = "{value}"\n', 1))
-        case(lambda: load_models(models)["small"] == value, f"the model {value!r} of [claude] loads")
+        models.write_text(text0.replace('small = "haiku"\n', f"small = {json.dumps(value)}\n", 1))
+
+        line = model_line(agent, models)
+        written = line.removeprefix("model: ")
+        case(lambda: load_models(models)["small"] == value and line.startswith("model: ")
+             and (written == value if MODEL.fullmatch(value) else written[:1] == '"' and json.loads(written) == value),
+             f"the model {value!r} of [claude] loads, and the rendered `model:` reads as it: {line!r}")
+    agent.write_text('---\nname: a\ndescription: "d"\nmodel: "small"\n---\nbody\n')
+    models.write_text(text0.replace('small = "haiku"\n', 'small = "us.anthropic.claude-opus-4-1-20250805-v1:0"\n', 1))
+    line = model_line(agent, models)
+    case(lambda: line == 'model: "us.anthropic.claude-opus-4-1-20250805-v1:0"',
+         f'a quoted `model: "small"` renders a Bedrock model ID quoted once: {line!r}')
 
     # A source with a value outside the neutral vocabulary exits 2, names the file, and writes nothing.
     for rel, lines in [("agents/x.md", "model: opus"), ("agents/x.md", "tools:\n  - Read"),
@@ -1506,6 +1595,56 @@ def layer_cases(check, tmp):
          f"a lone surrogate escape in settings.json stays an escape in the diff and in the merged file: {code}, "
          f"{applied}, {tail(text + text2)}")
 
+    # The merge keeps a tab indent, and writes a one-line file on one line.
+    for label, data, indent in [("tab-indented", '{\n\t"model": "x",\n\t"env": {\n\t\t"A": "1"\n\t}\n}\n', "\t"),
+                                ("one-line", '{"model": "x", "env": {"A": "1"}}\n', None),
+                                ("one-line (a raw U+2028 in a string)",
+                                 '{"model": "x' + chr(0x2028) + 'y", "env": {"A": "1"}}\n', None)]:
+        base, claude, tree = fresh()
+        (claude / "settings.json").write_text(data)
+        code, text = run(base, "--apply")
+        written = (claude / "settings.json").read_text()
+        expected = json.dumps({**json.loads(data), **owned}, indent=indent, ensure_ascii=False) + "\n"
+        case(lambda: code == 0 and written == expected and written.count("\n") == (1 if indent is None else
+                                                                                   expected.count("\n")),
+             f"a {label} settings.json is written in the same form: {code}, {written[:60]!r}, {tail(text)}")
+
+    # A number outside the owned sections that the merge would write in other text exits 2, the dry run
+    # and --apply, with one line that names the key, and no file changes.
+    def number_file(body):
+        return "{\n" + body + ',\n  "permissions": {"allow": ["Bash(rm *)"]}\n}\n'
+
+    for body, key, literal in [('  "x": 1.10', "x", "1.10"), ('  "y": 1e400', "y", "1e400"), ('  "z": 1E5', "z", "1E5"),
+                               ('  "env": {"list": [1, 2.50]}', "env.list[1]", "2.50")]:
+        for argv in [(), ("--apply",)]:
+            base, claude, tree = fresh(["rules/x.md"])
+            live = claude / "settings.json"
+            live.write_text(number_file(body))
+            before = scratch.snapshot(base)
+            code, text = run(base, *argv)
+            lines = text.strip().splitlines()
+            case(lambda: refused(code, text) and len(lines) == 1 and str(live) in lines[0] and f"`{key}`" in lines[0]
+                 and f"`{literal}`" in lines[0] and scratch.snapshot(base) == before,
+                 f"a settings.json with {body.strip()} exits 2 {'under --apply' if argv else 'in the dry run'} with "
+                 f"one line that names {key}, and no file changes: {code}, {lines[-3:]}")
+    # `1.5`, `10` and `-0.0` are written as their source text, and a number in an owned section is replaced.
+    base, claude, tree = fresh(["rules/x.md"])
+    live = claude / "settings.json"
+    live.write_text(number_file('  "x": 1.5,\n  "y": 10,\n  "z": [-0.0],\n  "sandbox": {"n": 1.10}'))
+    dry, text = run(base)
+    code, text2 = run(base, "--apply")
+    written = live.read_text()
+    case(lambda: dry == 1 and code == 0 and '"x": 1.5,' in written and '"y": 10,' in written and "-0.0" in written
+         and json.loads(written)["sandbox"] == owned["sandbox"],
+         f"the numbers 1.5, 10 and -0.0 pass unchanged, and one in an owned section is replaced: {dry}, {code}, "
+         f"{tail(text + text2)}")
+    # A file that the merge leaves as it is keeps its numbers: there is nothing to check.
+    kept = json.dumps(owned, indent=2, ensure_ascii=False)[:-2] + ',\n  "x": 1.10\n}\n'
+    live.write_text(kept)
+    code, text = run(base, "--apply")
+    case(lambda: code == 0 and live.read_text() == kept,
+         f"a settings.json whose owned sections equal the template's keeps 1.10, unchecked: {code}, {tail(text)}")
+
     # The order: settings.json is the first file line of the Claude Code layer, the stamp the last.
     base, claude, tree = fresh(["rules/x.md"])
     code, text = run(base)
@@ -1617,6 +1756,18 @@ def layer_cases(check, tmp):
     case(lambda: code == 1 and "Traceback" not in text
          and f"{locked / '.claude' / 'settings.json'} cannot be read as a settings file" in text,
          f"a directory of ~/Research that cannot be searched is a warning of `harness install`: {code}, {tail(text)}")
+    # A stray allow, ask or deny that is not a list is one warning line that names the file and the key, and
+    # lists no rule of it.
+    for kind, value in [("allow", '"Bash(x)"'), ("ask", '{"Bash(y)": 1}'), ("deny", "5")]:
+        base, claude, tree = fresh()
+        stray = base / "home" / "Research" / ".claude" / "settings.local.json"
+        stray.parent.mkdir(parents=True)
+        stray.write_text(f'{{"permissions": {{"{kind}": {value}}}}}\n')
+        code, text = run(base)
+        lines = [l for l in text.splitlines() if str(stray) in l]
+        case(lambda: code == 1 and "Traceback" not in text and len(lines) == 1 and f"permissions.{kind}" in lines[0]
+             and "permission rule(s)" not in text,
+             f"a stray {kind} of {value} is one warning line that names the file and the key: {code}, {lines}")
 
     # Each installed path whose source is in this repository is planned from there: an installed
     # copy of it is a change, never EXTRA. A path in a subdirectory has its source at the same path
@@ -1701,6 +1852,65 @@ def layer_cases(check, tmp):
          and "behind its sources" in warning,
          f"a source edited after the plan is read, while --apply runs, leaves a stamp that the hook warns on: "
          f"{code}, {warning[:80]!r}")
+
+    # The stamp names each source of this repository below the profile's `harness` path, whatever
+    # checkout runs the apply: a second checkout with the same sources finds the stamp identical and
+    # writes the same bytes, and the hook reads the profile's checkout. The scratch profile names this one.
+    other = tmp / "checkout-2"
+    git_env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+    listed = subprocess.run(["git", "ls-files", "-z"], cwd=REPO, capture_output=True, text=True, env=git_env).stdout
+    for rel in filter(None, listed.split("\0")):
+        if (REPO / rel).is_file():
+            (other / rel).parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(REPO / rel, other / rel)
+    base, claude, tree = fresh(["rules/x.md"])
+    code, text = run(base, "--apply")
+    first = (claude / install.STAMP).read_bytes() if code == 0 else b""
+
+    def run_other(*argv):
+        p = subprocess.run([sys.executable, str(other / "bin" / "harness"), "--profile", str(base / "profile.toml"),
+                            "--models", str(REPO / "examples" / "models.toml"), "install", *argv],
+                           capture_output=True, text=True, env=scratch.env(base), cwd=base, timeout=60)
+        return p.returncode, p.stdout + p.stderr
+
+    dry, text2 = run_other()
+    applied, text3 = run_other("--apply")
+    second = (claude / install.STAMP).read_bytes() if (claude / install.STAMP).is_file() else b""
+    named = [s[0] for s in json.loads(second)["sources"]] if second else []
+    warning = hook.check(str(base / "home"))
+    case(lambda: code == 0 and stamp_line.findall(text2) == ["already"] and applied == 0 and second == first
+         and named == [s[0] for s in sources[:-1]] + [str(tree)] and warning is None,
+         f"a dry run and an --apply from a second checkout find the stamp identical, and it names the profile's "
+         f"checkout: {code}, {dry}, {applied}, {stamp_line.findall(text2)}, {named[:1]}, {warning!r}, {tail(text3)}")
+
+    # In the adapter's plan: the profile's `harness` path names the repository's sources; with no
+    # `harness` key the running checkout does; a value that is not an absolute path exits 2.
+    def planned_stamp(value):
+        """The source directories of the planned stamp with the profile's `harness` set to `value`,
+        or with no such key for None, or the message of a refusal."""
+        prof = {k: v for k, v in render_profile.load(base / "profile.toml").items() if k != "harness"}
+        if value is not None:
+            prof["harness"] = value
+        ctx = argparse.Namespace(profile=prof, models=REPO / "examples" / "models.toml")
+        try:
+            with mock.patch.dict(os.environ, HOME=str(base / "home")), contextlib.redirect_stdout(io.StringIO()):
+                files = this.plan(ctx).files
+        except HarnessError as e:
+            return str(e)
+        return [s[0] for s in json.loads(next(f[1] for f in files if f[0].name == install.STAMP))["sources"]]
+
+    repository = [str(REPO / d) for d in NEUTRAL] + [str(CLAUDE_ADAPTER), str(REPO / "hooks")]
+    elsewhere = ["/elsewhere/Harness/" + d for d in NEUTRAL] + ["/elsewhere/Harness/adapters/claude",
+                                                               "/elsewhere/Harness/hooks"]
+    for value, expected in [("/elsewhere/Harness", elsewhere + [str(tree)]), ("/elsewhere/Harness/", elsewhere + [str(tree)]),
+                            (None, repository + [str(tree)])]:
+        got = planned_stamp(value)
+        case(lambda: got == expected,
+             f"the planned stamp with harness = {value!r} names the sources {got if isinstance(got, str) else got[:1]}")
+    for value in ["relative/Harness", ["/elsewhere/Harness"], ""]:
+        got = planned_stamp(value)
+        case(lambda: isinstance(got, str) and got.startswith("harness: ") and "absolute path" in got,
+             f"a profile with harness = {value!r} exits 2 and names the key: {got if isinstance(got, str) else got[:1]}")
 
     # Every installed path, the stamp included, is an `Edit` deny of the settings template, and the
     # paths the desktop app and the sessions write below ~/.claude stay writable.

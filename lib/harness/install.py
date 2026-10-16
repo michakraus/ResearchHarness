@@ -121,13 +121,18 @@ def drift_hook():
     return module
 
 
-def stamp_bytes(sources, plan):
+def stamp_bytes(sources, plan, harness=None):
     """The stamp of `sources`, each (directory, installed prefix, top-level names not installed,
     top-level directories not installed), and of `plan`, [(installed path, bytes, mode)] of them:
     JSON with each source as [directory, installed prefix, sorted names not installed, sorted
     directories not installed], and the digest of hooks/install-drift.py over the planned paths,
-    bytes and modes, which are what the apply installs, each file with the bytes of its source."""
-    sources = [[str(d), prefix, sorted(skip), sorted(skipped)] for d, prefix, skip, skipped in sources]
+    bytes and modes, which are what the apply installs, each file with the bytes of its source.
+    A directory in this checkout is named below `harness`, the profile's checkout of this
+    repository, when given, so that every checkout with the same sources writes the same stamp."""
+    def named(d):
+        return str(pathlib.Path(harness, d.relative_to(REPO)) if harness is not None and d.is_relative_to(REPO) else d)
+
+    sources = [[named(d), prefix, sorted(skip), sorted(skipped)] for d, prefix, skip, skipped in sources]
     return (json.dumps({"sources": sources, "digest": drift_hook().digest_of(plan)}, indent=2) + "\n").encode()
 
 

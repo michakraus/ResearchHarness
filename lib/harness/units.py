@@ -17,9 +17,11 @@ templates of the profile. JOBS pairs them. `harness test` renders each with
 - the service has `Restart=always` where the plist has `KeepAlive`;
 - every element of the `PATH` is an absolute, normalised directory that the settings template
   denies to a session's writes, that is no `allowWrite` entry covers it or a `denyWrite` entry
-  names it, or a system directory of SYSTEM_DIRS. A job runs outside the sandbox, so a directory
-  that a session can write, the working directory of an empty element included, would let a
-  session put a program on its `PATH`.
+  names it, or a system directory of SYSTEM_DIRS, and is not at or below $TMPDIR or a directory of
+  SESSION_DIRS, which the live sandbox lets a session write. A job runs outside the sandbox, so a
+  directory that a session can write, the working directory of an empty element included, would
+  let a session put a program on its `PATH`. A session's working directory, which the sandbox
+  lets it write too, has no fixed value, and the check does not place it.
 
 The module has no verb; its cases run in `harness test`.
 """
@@ -28,12 +30,14 @@ import contextlib
 import fnmatch
 import io
 import json
+import os
 import pathlib
 import plistlib
 import posixpath
 import shlex
 import tempfile
 import types
+from unittest import mock
 
 from . import REPO, HarnessError, profile
 
@@ -47,6 +51,9 @@ JOBS = [
 ]
 # The directories that no session can write and that a job's PATH may hold beyond the denied ones.
 SYSTEM_DIRS = ("/usr/bin", "/bin", "/usr/sbin", "/sbin", "/usr/local/bin", "/opt/homebrew/bin")
+# The directories below which macOS puts a session's $TMPDIR, which the live sandbox lets the session
+# write, and the settings template does not name.
+SESSION_DIRS = ("/var/folders", "/private/var/folders")
 # The suffixes of a systemd time span that a timer here uses, in seconds.
 SPAN = {"": 1, "s": 1, "sec": 1, "min": 60, "m": 60, "h": 3600}
 # The sections and keys that the check reads, {section: keys}, of a service and of a timer. Any
@@ -135,15 +142,27 @@ def covers(entry, directory):
     return any(fnmatch.fnmatchcase(str(p), entry) for p in [path, *path.parents])
 
 
+def session_dirs():
+    """The directories that the live sandbox lets a session write beyond the template's
+    `allowWrite`, whatever it denies: $TMPDIR when it is an absolute path, as written and with its
+    symlinks resolved (on macOS /tmp is /private/tmp), and SESSION_DIRS."""
+    tmpdir = os.environ.get("TMPDIR", "")
+    if not tmpdir.startswith("/"):
+        return list(SESSION_DIRS)
+    return list(dict.fromkeys([posixpath.normpath(tmpdir), os.path.realpath(tmpdir), *SESSION_DIRS]))
+
+
 def path_problems(path, filesystem, home):
     """The elements of `path` that a session can write, or that this check cannot place: one that
-    is not an absolute, normalised path (an empty element is the working directory), and a
-    directory that is not a system directory, is covered by an `allowWrite` entry and is named by
-    no `denyWrite` entry."""
+    is not an absolute, normalised path (an empty element is the working directory), a directory
+    at or below one of `session_dirs`, and a directory that is not a system directory, is covered
+    by an `allowWrite` entry and is named by no `denyWrite` entry."""
     allow = [expand(e, home) for e in filesystem["allowWrite"]]
     deny = [expand(e, home) for e in filesystem["denyWrite"]]
+    session = session_dirs()
     return [d for d in path.split(":")
             if not d.startswith("/") or posixpath.normpath(d) != d
+            or any(pathlib.PurePosixPath(d).is_relative_to(s) for s in session)
             or d not in SYSTEM_DIRS and any(covers(e, d) for e in allow) and not any(covers(e, d) for e in deny)]
 
 
@@ -355,6 +374,29 @@ def selftest():
                       ("/usr/bin:./bin", ["./bin"]), ("/h/R/bin/../x", ["/h/R/bin/../x"])]:
         got = path_problems(path, fs, "/h")
         check(got == bad, f"PATH {path} -> session-writable {got}")
+
+    # A directory below $TMPDIR, /var/folders or /private/var/folders is a session's to write, whatever
+    # the settings grant or deny; a sibling of one is not below it.
+    fs = {"allowWrite": [], "denyWrite": ["/s/**", "/var/**", "/private/**"]}
+    for tmpdir in ["/s/tmp/", None]:
+        env = {k: v for k, v in os.environ.items() if k != "TMPDIR"} | ({"TMPDIR": tmpdir} if tmpdir else {})
+        for path, bad in [("/s/tmp", ["/s/tmp"]), ("/s/tmp/bin", ["/s/tmp/bin"]), ("/s/tmp2/bin", []), ("/s/bin", []),
+                          ("/var/folders/ab/T/bin", ["/var/folders/ab/T/bin"]), ("/var/folders", ["/var/folders"]),
+                          ("/private/var/folders/ab/T", ["/private/var/folders/ab/T"]), ("/var/folders2/bin", []),
+                          ("/usr/bin:/var/folders/x:/bin", ["/var/folders/x"])]:
+            want = bad if tmpdir or not path.startswith("/s/tmp") else []
+            with mock.patch.dict(os.environ, env, clear=True):
+                got = path_problems(path, fs, "/h")
+            check(got == want, f"PATH {path} with TMPDIR={tmpdir} -> session-writable {got}")
+    # A $TMPDIR that is a symlink, as /tmp is on macOS: an element below its real path fails too.
+    with tempfile.TemporaryDirectory(prefix="harness-units-") as tmp:
+        real, link = pathlib.Path(tmp, "real"), pathlib.Path(tmp, "link")
+        real.mkdir()
+        link.symlink_to(real)
+        element = os.path.realpath(real) + "/bin"
+        with mock.patch.dict(os.environ, {"TMPDIR": str(link)}):
+            got = path_problems(element, {"allowWrite": [], "denyWrite": []}, "/h")
+        check(got == [element], f"PATH {element} below the real path of a symlinked TMPDIR -> session-writable {got}")
 
     # autocommit_branch: the profile's value, `main` without it; a missing `home` exits 2.
     base = 'home = "/h"\nlaunchd_prefix = "org.x"\n'
