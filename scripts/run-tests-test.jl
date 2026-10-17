@@ -936,8 +936,9 @@ end
 
 @testset "a second run on an unchanged tree runs no mutant, and --only runs one verdict again" begin
     pkg = fixture()
-    # the list lies where a builder keeps it; the result goes to ~/Research/.scratch/mutants/
-    dir = mkpath(joinpath(pkg, ".claude", "scratch"))
+    # the list lies inside the package, as a builder's under `.claude/scratch/` does (the sandbox
+    # refuses a `mkdir` of `.claude`); the result goes to ~/Research/.scratch/mutants/
+    dir = mkpath(joinpath(pkg, "scratch"))
     list = joinpath(dir, "mutants.toml")
     write(list, """
     [[mutant]]
