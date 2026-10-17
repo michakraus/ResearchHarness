@@ -57,6 +57,11 @@ before the next call. So name the worktree in every command: `cd <worktree> && g
 call for a git read — never `git -C`, which reaches a permission prompt where this form does not —
 and the worktree path as the first argument of `run-tests.jl` and `mutate.jl`.
 
+**A probe needs no repository.** Compare two copies with `git diff --no-index <a> <b>`, and read
+the worktree with `cd <worktree> && git …`. After the reset, a `git init`, `git clone` or
+`git checkout` of yours runs in your root, which is often the builder's worktree; a hook refuses
+`git init` and `git clone` inside a work tree.
+
 Read the changed files on disk. **Commit messages, comments and the CHANGELOG are claims, not
 evidence.**
 

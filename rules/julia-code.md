@@ -95,7 +95,7 @@ Report it. A test at the wrong seam gives false confidence.
 
 **Revise keeps a deleted method**, and it can leave some methods of a file stale. Before a number,
 a type or a pass/fail goes into a CHANGELOG, a PR body or a task file, call
-`manage_repl(command = "restart")` and measure again; `Revise.revise()` does not resync a
+`manage_repl(command = "restart", session = <key>)` and measure again; `Revise.revise()` does not resync a
 half-reloaded session. Confirm the reload with `isdefined` on a name
 the branch adds and on one it deletes.
 

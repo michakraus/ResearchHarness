@@ -135,7 +135,8 @@ that check passes.
    `<worktree>/.claude/scratch/`, check it with `mutate.jl <worktree> --check <list>`, and run it
    once with `mutate.jl <worktree> --warm <list> <unit> ...`, with the test files that must catch
    them as the units. A SURVIVED named mutant fails its clause: add the test that catches it, and
-   run the list again. Quote the totals line. The whole suite is not yours to run: the
+   run the list again. Quote the totals line. The result file is under `~/Research/.scratch/mutants/`,
+   at the path of the `result:` line. The whole suite is not yours to run: the
    dispatcher runs it beside the critic.
 6. **Run your own mutants**: one per guard, branch, comparison and decided edge that your change
    adds or changes, in any file of the diff, as *Which mutants run* in `evidence.md` says. A

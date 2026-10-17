@@ -108,6 +108,8 @@ changes and cannot write, or whose mode it cannot change, exits 2 before anythin
 Then the verb installs the Julia environment of the scripts: it copies `Project.toml` to
 `~/.local/share/research-harness/julia/`, or to `$RESEARCH_HARNESS_JULIA`, and instantiates it.
 Then it installs the files of each plan, prints the warnings, and runs the steps after the files.
+One warning is its own: `behind_origin` warns when the checkout is behind its local
+`origin/main`. It fetches nothing.
 It prints the count line, and after `--apply` the restart line of each frontend whose files
 changed. A file that differs in its bytes or its mode is a change. `--force` replaces a file that
 an adapter refuses to replace.
@@ -118,7 +120,8 @@ computes again.
 
 Its cases check that a broken profile or `models.toml` exits 2 with the file name, and that an
 adapter that fails to load exits 2 and writes nothing. They also run the restart cases of
-`install_cases.py`.
+`install_cases.py`, and `behind_origin` on a scratch repository whose `origin/main` is ahead of,
+level with and behind its `HEAD`.
 
 ## `install_cases.py`
 
@@ -258,6 +261,15 @@ out of a session's writes, or a system directory; an empty element, the working 
 problem. Its cases also apply a mutant to the rendered templates, such as a removed restart, an
 extra trigger or a session-writable directory on the `PATH`, and expect a problem, and check that
 `render` gives `autocommit_branch` the value `main` when the profile has no such key. [Jobs and configuration](other.md) describes the units.
+
+## `script_cases.py`
+
+The cases of scripts in `scripts/` that need no Julia. The module has no verb. It reads the
+critic's `rsync` copy from `skills/build-part/evidence.md` and `copy_command` from
+`scripts/run-tests.jl`, runs each on a fixture tree with a `.env`, a `.env.ts`, a `.git` and a
+`.claude`, and checks that the copy holds none of them. A control copy with no flag must hold the
+`.env.ts`. Then it runs `scripts/spec-gate.py` on a fixture task file and checks the verdict of
+each part: a part whose *Files* lie in two repositories is `SPANS`, unless its tier is `direct`.
 
 ## `sources.py`
 

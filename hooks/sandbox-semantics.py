@@ -27,6 +27,12 @@ All four shapes fail **silently or misleadingly**, which is what makes them wort
     holds `..`. The harness then withdraws the exemption, and the `Operation not permitted`
     reads as a path problem, so sessions retry another spelling of the same path.
 
+A fifth shape succeeds where it should not: **a `git init` or `git clone` whose working
+directory is inside an existing work tree.** A `cd` outside the agent's working directories
+is reset before the next call, so the command runs in the agent's root — a builder's
+worktree, `Tasks`, `Environment` — and leaves a repository there. The hook reads the payload's
+`cwd` and refuses when it, or the target below it, has a `.git` on its path.
+
 The first three are not expressible as a `permissions.deny` glob. The matcher sees no
 nesting, cannot require every part of a command to match, and reads `?` as a wildcard, so
 no glob can name `$?` literally. The fourth needs a glob for each position of the path
@@ -162,6 +168,22 @@ For a worktree, call `EnterWorktree`; the `WorktreeCreate` hook makes it in
 `~/Research/.worktrees/`.
 """
 
+WORK_TREE_MESSAGE = """Refused: {found} in {cwd}
+
+This directory is inside the work tree {root}. A `cd` outside the agent's working
+directories is reset before the next call, so the command runs in the agent's root and
+leaves a repository in a work tree that is not the one you meant.
+
+A probe needs no repository. Compare two copies with `git diff --no-index <a> <b>`, and read
+a worktree with `cd <worktree> && git <read> …` in one call.
+
+To make a repository, `cd` in a call of its own into a directory that is no work tree, such
+as `~/Research/.scratch/<name>`, and give a relative name there:
+
+    git init <name>
+    git clone <url> <name>
+"""
+
 DOLLAR_MESSAGE = """Refused: {segment}
 
 `$?` in a sandboxed command refuses the whole call before it runs, and the refusal reads
@@ -228,6 +250,41 @@ def path_screened(heads):
             if (token[:1] in "/\\~$" or DRIVE.match(token)
                     or ".." in re.split(r"[/\\]", token)):
                 return found, token
+    return None
+
+
+def work_tree(path):
+    """Return the root of the work tree that holds `path`, or None."""
+    path = os.path.realpath(path)
+    while True:
+        if os.path.lexists(os.path.join(path, ".git")):
+            return path
+        parent = os.path.dirname(path)
+        if parent == path:
+            return None
+        path = parent
+
+
+def in_work_tree(heads, cwd):
+    """Return (command, root) for a `git init` or `git clone` that lands in a work tree, or None.
+
+    The target is the last argument that is not a flag, resolved against the working directory;
+    without one it is the working directory. A clone's URL, read as the target, lies below the
+    working directory too, so the verdict is the working directory's."""
+    if not cwd:
+        return None
+    for head, arguments in heads:
+        if head != "git":
+            continue
+        sub = git_subcommand(arguments)
+        if sub not in ("init", "clone"):
+            continue
+        rest = arguments[arguments.index(sub) + 1:]
+        operands = [token for token in rest if not token.startswith("-")]
+        target = os.path.expanduser(os.path.expandvars(operands[-1])) if operands else "."
+        root = work_tree(os.path.join(cwd, target))
+        if root:
+            return "git " + sub, root
     return None
 
 
@@ -386,6 +443,10 @@ def main():
         found = path_screened(classified[0]) if classified else None
         if found:
             sys.stderr.write(PATH_MESSAGE.format(found=found[0], argument=found[1]))
+            return 2
+        found = in_work_tree(classified[0], cwd) if classified else None
+        if found:
+            sys.stderr.write(WORK_TREE_MESSAGE.format(found=found[0], cwd=cwd, root=found[1]))
             return 2
 
     if "$?" in command and sandboxed(command, cwd):

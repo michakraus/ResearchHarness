@@ -53,7 +53,10 @@
 #       call at the start of each function that a mutant changes. If it is not CAUGHT, the units
 #       reach none of those functions, and every mutant is UNKNOWN.
 #
-#   Both list modes write the verdicts to <mutants>.result.json beside the list: each mutant's
+#   Both list modes write the verdicts to a result file under ~/Research/.scratch/mutants/, named
+#   <package directory>-<list name>-<hash of the list's path>.result.json, and print its path on
+#   the `result:` line; a list may lie under the worktree's .claude/scratch/, where the sandbox
+#   refuses the write of a script. The result file holds each mutant's
 #   file, line, operator, verdict, detail and edits, the tree hash and the units its verdict holds
 #   for, and the survivors (SURVIVED and NO-COVERAGE) grouped by line. It holds the last run of
 #   the list, whatever its units. A later run of the list
@@ -319,8 +322,16 @@ function report(list, verdicts)
     return counts["UNKNOWN"] + counts["INVALID"] == 0 ? 0 : 3
 end
 
-"The result file of a mutant list: beside it, with the extension `.result.json`."
-result_path(list) = splitext(abspath(list))[1] * ".result.json"
+"""
+The result file of the mutant list `list` of `pkg`: under ~/Research/.scratch/mutants/, named
+`<package directory>-<list name>-<hash of the list's path>.result.json`. A list under the
+worktree's `.claude/scratch/` has its result outside it, where the sandbox lets the write through.
+"""
+function result_path(pkg, list)
+    tag = bytes2hex(SHA.sha256(abspath(list)))[1:8]
+    name = "$(basename(rstrip(abspath(pkg), '/')))-$(splitext(basename(list))[1])-$tag.result.json"
+    return joinpath(mkpath(expanduser("~/Research/.scratch/mutants")), name)
+end
 
 """
 The hash of what a verdict depends on: `Project.toml`, `Manifest.toml` and every file under
@@ -364,9 +375,9 @@ found on, or `nothing` where the mutant runs. Without `only`, a mutant with the 
 CAUGHT, SURVIVED or NO-COVERAGE found on the same tree with the same units. With `only`, a mutant
 runs if its verdict there is `only` or the result does not hold it; every other keeps its verdict.
 """
-function kept_verdicts(file, list, units, tree, only)
+function kept_verdicts(pkg, file, list, units, tree, only)
     out = Vector{Union{Nothing, Tuple{Tuple{String, String}, String}}}(nothing, length(list))
-    path = result_path(file)
+    path = result_path(pkg, file)
     isfile(path) || return out
     earlier = Dict(Edit[(e["file"], e["from"], e["to"], e["at"]) for e in m["edits"]] => m
                    for m in JSON.parsefile(path)["mutants"])
@@ -400,7 +411,7 @@ function write_result(pkg, file, list, verdicts, trees, units, tree)
             push!(get!(Vector{String}, groups, (m["file"], something(m["line"], 0))), m["name"])
     end
     survivors = [Dict("file" => f, "line" => l, "mutants" => names) for ((f, l), names) in sort(collect(groups))]
-    path = result_path(file)
+    path = result_path(pkg, file)
     write(path, JSON.json(Dict("package" => pkg, "list" => abspath(file), "units" => units, "tree" => tree,
             "mutants" => ms, "survivors_by_line" => survivors); pretty = 2))
     return path
@@ -410,7 +421,7 @@ function run_list(pkg, file, units; only = nothing)
     list = read_list(file)
     list isa String && (println(stderr, list); return 2)
     tree = tree_hash(pkg)
-    kept = kept_verdicts(file, list, sort(units), tree, only)
+    kept = kept_verdicts(pkg, file, list, sort(units), tree, only)
     verdicts = map(zip(list, invalid_all(pkg, list), kept)) do ((_, edits), why, k)
         why !== nothing ? ("INVALID", why) : k !== nothing ? first(k) : cold(pkg, edits, units)
     end
@@ -722,8 +733,8 @@ function run_warm(pkg, file, units; n = 1, only = nothing)
     n > 1 && (ENV["JULIA_NUM_THREADS"] = "1"; ENV["OPENBLAS_NUM_THREADS"] = "1")
     why = invalid_all(pkg, list)
     tree = tree_hash(pkg)
-    kept = kept_verdicts(file, list, sort(units), tree, only)
-    trees = [k === nothing ? tree : last(k) for k in kept]
+    kept = kept_verdicts(pkg, file, list, sort(units), tree, only)
+    trees =[k === nothing ? tree : last(k) for k in kept]
     finish(verdicts) = (status = report(list, verdicts);
         println("result: ", write_result(pkg, file, list, verdicts, trees, sort(units), tree)); status)
     test = joinpath(pkg, "test")
@@ -771,7 +782,7 @@ function run_warm(pkg, file, units; n = 1, only = nothing)
         empty!(jobs)
     end
     nkept = count(!isnothing, kept)
-    nkept == 0 || println("kept: $nkept verdicts from $(result_path(file))")
+    nkept == 0 || println("kept: $nkept verdicts from $(result_path(pkg, file))")
     # the smoke mutant: if the units reach no function that a mutant changes, no verdict means anything
     torun = [[j["i"] for j in jobs]; [c[1] for c in colds]]
     smoke = isempty(torun) ? nothing : smoke_edits(pkg, list, torun)
@@ -889,8 +900,8 @@ function main(args)
         v = k < length(units) ? units[k + 1] : ""
         v in ("CAUGHT", "SURVIVED", "NO-COVERAGE", "UNKNOWN") ||
             (println(stderr, "`--only` needs a verdict: CAUGHT, SURVIVED, NO-COVERAGE or UNKNOWN."); return 2)
-        isfile(result_path(args[3])) ||
-            (println(stderr, "`--only` reads $(result_path(args[3])), which does not exist: run the list once first."); return 2)
+        isfile(result_path(pkg, args[3])) ||
+            (println(stderr, "`--only` reads $(result_path(pkg, args[3])), which does not exist: run the list once first."); return 2)
         only = v
         deleteat!(units, k:(k + 1))
     end

@@ -27,6 +27,8 @@ oh-my-pi model, and an agent to its own model, else `$RESEARCH_HARNESS_MODELS`, 
 
 [development.md](development.md) describes the cases of `harness test`, and
 [architecture.md](architecture.md) the Claude Code layer that `harness install` writes.
+`harness install` warns when its checkout is behind its `origin/main`, as the last fetch saw it.
+It fetches nothing, and it installs the checkout as it is.
 
 ## The Julia environment
 

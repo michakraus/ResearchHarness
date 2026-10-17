@@ -76,9 +76,11 @@ function foreign_manifests(pkg)
     end
 end
 
-# `.claude/` holds the harness-made `.cc-writes`, whose `mkdir` the sandbox refuses in a copy.
+# `.claude/` holds the harness-made `.cc-writes`, whose `mkdir` the sandbox refuses in a copy. The
+# sandbox denies `.env` and `.env.*` too, so a copy of one leaves a temporary file that it cannot
+# remove.
 copy_command(pkg, copy, leave_out = String[]) =
-    `rsync -a --exclude=.git --exclude=.claude $(["--exclude=/$f" for f in leave_out]) $(pkg)/ $(copy)/`
+    `rsync -a --exclude=.git --exclude=.claude --exclude=.env '--exclude=.env.*' $(["--exclude=/$f" for f in leave_out]) $(pkg)/ $(copy)/`
 
 "The test files that `runtests.jl` lists, as `Entry` values of `test-layout.jl`."
 units(pkg) = layout(pkg).entries

@@ -38,6 +38,11 @@ comments and the CHANGELOG are claims, not evidence. **You change nothing there.
 probe with the Write tool under `~/Research/.scratch/critic/<Repository>-<part>/`, and run it
 against a copy or by path. No command of yours runs longer than 5 minutes.
 
+**A probe needs no repository.** A `cd` in a Bash call of its own is reset before the next call,
+so a `git init`, `git clone` or `git checkout` after it runs in your root, which is often the
+builder's directory. Compare two copies with `git diff --no-index <a> <b>`, and read the work with
+`cd <directory> && git …` in one call.
+
 1. **Write your own evidence table**: one row per clause, with your command, its result on the
    base, its result on the head, and your verdict.
 2. **Run every check yourself**, with the gate that §V and §L name. A result you did not produce is

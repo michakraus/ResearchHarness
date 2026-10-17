@@ -7,10 +7,18 @@ names hold a **Decided at the edges** and a **Tests catch**. With no part named,
 part of the file is checked: not merged, declined, done or in review. A named part is checked
 whatever its state. A part elsewhere — `Environment`, `Library`, the instruction files — is exempt.
 
-One line per part: PASS, MISSING <labels>, or EXEMPT <why>. A section key that matches no heading
-is printed as unresolved, because its text cannot be searched. The exit status is 0 when every
-checked part passes or is exempt, 1 when one misses a label, and 3 when this script fails.
-The parts table comes from `parts-table.awk`, beside this script.
+Every checked part, exempt or not, has its **Files** in one repository: a path in the **Files**
+of its sections that lies in another repository of the tree (`Tasks/…`, `Harness/…`,
+`Packages/<Other>/…`, `~/.claude/…`) is SPANS <repositories>. An isolated builder cannot write
+outside its own worktree, so such a file is a dispatcher step of its own, named in the part. A
+`direct` part runs in the main session or a workflow, with no isolated builder, and is not checked
+for it. A section that several parts name gives each of them its **Files**.
+
+One line per part: PASS, MISSING <labels>, SPANS <repositories>, or EXEMPT <why>. A section key
+that matches no heading is printed as unresolved, because its text cannot be searched. The exit
+status is 0 when every checked part passes or is exempt, 1 when one misses a label or spans
+repositories, and 3 when this script fails. The parts table comes from `parts-table.awk`, beside
+this script. The research root is $RESEARCH_ROOT, else ~/Research.
 """
 import os
 import re
@@ -18,7 +26,12 @@ import subprocess
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-RESEARCH = os.path.expanduser("~/Research")
+RESEARCH = os.environ.get("RESEARCH_ROOT") or os.path.expanduser("~/Research")
+# The trees whose directories are each a repository; any other top-level directory is one.
+TREES = ("Packages", "Experiments", "Papers", "Books", "Projects")
+# A **Files** label, up to the next numbered or bold label, or the next heading.
+FILES = re.compile(r"\*\*Files:?\*\*:?(.*?)(?=\n\s*\d+\.\s+\*\*|\n\s*\*\*|\n#|\Z)", re.DOTALL)
+PATH = re.compile(r"`([^`\s]*/[^`\s]*)`")
 LABELS = ("Decided at the edges", "Tests catch")
 CLOSED = re.compile(r"merged|declined|done|PR #")
 HEADING = re.compile(r"^(#{2,4})\s+§?([0-9A-Z][0-9A-Za-z.]*)")
@@ -58,6 +71,45 @@ def applies(repository):
     return False, repository
 
 
+def home(repository):
+    """The repository of a part's `repository` cell, as a key such as `Packages/Example`; a group
+    in words, such as "the 16 repositories with …", is its own key."""
+    if repository.strip(" `").lower().startswith("the "):
+        return repository.strip(" `")
+    name = repository.strip(" `").split(",")[0].strip(" `()")
+    first = name.split()[0] if name.split() else ""
+    for tree in ("Packages", "Experiments"):
+        if first and os.path.isdir(os.path.join(RESEARCH, tree, first)):
+            return f"{tree}/{first}"
+    return first
+
+
+def repository_of(path, own):
+    """The repository key of a path in a part's **Files**; `own` for a path inside the part's own."""
+    expanded = os.path.expanduser(path)
+    if os.path.isabs(expanded):
+        rel = os.path.relpath(expanded, RESEARCH)
+        if rel.startswith(".."):
+            outside = os.path.relpath(expanded, os.path.expanduser("~"))
+            return "~/" + outside.split("/")[0] if not outside.startswith("..") else expanded
+    else:
+        rel = path
+        first = rel.split("/")[0]
+        own_dir = os.path.join(RESEARCH, own)
+        if not os.path.isdir(os.path.join(RESEARCH, first)) or os.path.exists(os.path.join(own_dir, first)):
+            return own
+    segments = rel.split("/")
+    return "/".join(segments[:2]) if segments[0] in TREES and len(segments) > 2 else segments[0]
+
+
+def spans(body, own):
+    """The repositories that the **Files** of a part's text name, when there are more than one."""
+    keys = {own}
+    for m in FILES.finditer(body):
+        keys |= {repository_of(p, own) for p in PATH.findall(m.group(1))}
+    return sorted(keys) if len(keys) > 1 else []
+
+
 def main(argv):
     if not argv:
         print(__doc__.strip().splitlines()[2].strip())
@@ -71,14 +123,19 @@ def main(argv):
         if not wanted and (tier != "build" or CLOSED.search(state)):
             continue
         seen.add(part)
-        gate, note = applies(repository)
-        if not gate:
-            print(f"{part}\tEXEMPT\tnot in Packages/ or Experiments/: {note}")
-            continue
         keys = [k.strip().lstrip("§") for k in cell.split(",")]
         keys = [k.split()[0] for k in keys if k and k.split()[0] not in ("V", "L")]
         found = [k for k in keys if k in text]
         body = "\n".join(text[k] for k in found)
+        across = spans(body, home(repository)) if tier != "direct" else []
+        if across:
+            print(f"{part}\tSPANS {', '.join(across)}\ta file in another repository is a dispatcher step of its own")
+            failed = True
+            continue
+        gate, note = applies(repository)
+        if not gate:
+            print(f"{part}\tEXEMPT\tnot in Packages/ or Experiments/: {note}")
+            continue
         missing = [lab for lab in LABELS if lab not in body]
         verdict = "PASS" if not missing else "MISSING " + ", ".join(missing)
         failed |= bool(missing)

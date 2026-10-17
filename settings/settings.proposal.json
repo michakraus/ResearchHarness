@@ -809,6 +809,16 @@
         ]
       },
       {
+        "matcher": "mcp__kaimon__ex|mcp__kaimon__manage_repl",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "{home}/.claude/hooks/kaimon-session.py",
+            "timeout": 5
+          }
+        ]
+      },
+      {
         "hooks": [
           {
             "type": "command",

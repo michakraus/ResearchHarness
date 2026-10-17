@@ -122,7 +122,8 @@ julia --startup-file=no mutate.jl <package> --warm <mutants.toml> [--jobs <n>] [
 julia --startup-file=no mutate.jl <package> --check <mutants.toml>
 ```
 
-The list modes write `<mutants>.result.json` beside the list. `--check` runs nothing and says
+The list modes write a result file under `~/Research/.scratch/mutants/`, named for the package
+directory and the list, and print its path on the `result:` line. `--check` runs nothing and says
 VALID or INVALID for each mutant. The checks need `fatou` on the `PATH` and Julia 1.12 or later.
 Without units, the script runs the units that the diff against `origin/main` reaches.
 
@@ -294,9 +295,14 @@ With no part named, it checks each open `build` part of the file. A part that is
 declined, done or in review is not open. A named part is checked in any state. A part outside
 `Packages/` and `Experiments/` is exempt.
 
-It prints one line per part: PASS, MISSING with the labels, or EXEMPT with the reason. Exit 0:
-each checked part passes or is exempt. 1: a part misses a label. 3: the script failed. It reads
-the parts table through `parts-table.awk`. The skills `build-part` and `build-reviewed` run it.
+It also checks that the **Files** of each checked part other than a `direct` one lie in one
+repository. An isolated builder cannot write outside its worktree, so a file in another
+repository is a step of the dispatcher.
+
+It prints one line per part: PASS, MISSING with the labels, SPANS with the repositories, or EXEMPT
+with the reason. Exit 0: each checked part passes or is exempt. 1: a part misses a label or spans
+two repositories. 3: the script failed. It reads the parts table through `parts-table.awk`. The
+skills `build-part`, `build-reviewed` and `plan-parts` run it.
 
 ## `known-issues-similar.py`
 

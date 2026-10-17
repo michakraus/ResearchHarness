@@ -102,7 +102,9 @@ A `build` part in `Packages/` or `Experiments/` starts only when its sections ho
 cd ~/Research && python3 Harness/scripts/spec-gate.py "Tasks/<file>.md" <part>
 ```
 
-It prints `PASS`, `EXEMPT` or `MISSING <labels>`, and exits 0, 0 or 1. A section key it prints as
+It prints `PASS`, `EXEMPT`, `MISSING <labels>` or `SPANS <repositories>`, and exits 0, 0, 1 or 1.
+For a `SPANS`, move each file of the other repository out of the part's *Files* into a step of
+your own after the merge, name that step in the part, and run the gate again. A section key it prints as
 `unresolved` matches no heading: read that section by hand for the labels. Where a label is
 missing, spawn the `advisor`:
 write the missing heading for this part, from its sections and

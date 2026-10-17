@@ -198,10 +198,6 @@ CASES = [
     (SANDBOX, "git worktree add ../X-y -b y origin/main", 2),
     (SANDBOX, "git worktree move wt $HOME/wt", 2),
     (SANDBOX, "git bundle create /tmp/x.bundle main", 2),
-    (SANDBOX, "git init", 0),
-    (SANDBOX, "git init -q r48probe", 0),
-    (SANDBOX, "git clone https://github.com/example-org/X.jl.git X", 0),
-    (SANDBOX, "git clone git@github.com:example-org/X.jl.git", 0),
     (SANDBOX, "git worktree list", 0),
     (SANDBOX, "git worktree remove " + q(HOME + "/Research/.worktrees/X-y"), 0),
     (SANDBOX, "git bundle verify /tmp/x.bundle", 0),
@@ -218,6 +214,48 @@ CASES = [
     (STAGE, "git status\ngit add -nA", 2),
     (STAGE, "(git add -nA)", 2),
     (STAGE, "git add -nA; echo \"it's", 2),
+]
+
+# `kaimon-session.py`: (payload, expected exit). An `ex` without `ses` and a `manage_repl` without
+# `session` are refused; a call with its key, `check_eval`, another tool and unreadable input pass.
+KAIMON = HOOKS + "kaimon-session.py"
+KAIMON_CASES = [
+    ('{"tool_name":"mcp__kaimon__ex","tool_input":{"e":"1 + 1"}}', 2),
+    ('{"tool_name":"mcp__kaimon__ex","tool_input":{"e":"1 + 1","ses":""}}', 2),
+    ('{"tool_name":"mcp__kaimon__ex","tool_input":{"e":"1 + 1","session":"a1b2c3d4"}}', 2),
+    ('{"tool_name":"mcp__kaimon__manage_repl","tool_input":{"command":"shutdown"}}', 2),
+    ('{"tool_name":"mcp__kaimon__manage_repl","tool_input":{"command":"restart","ses":"a1b2c3d4"}}', 2),
+    ('{"tool_name":"mcp__kaimon__ex","tool_input":{"e":"1 + 1","q":false,"ses":"a1b2c3d4"}}', 0),
+    ('{"tool_name":"mcp__kaimon__manage_repl","tool_input":{"command":"shutdown","session":"a1b2c3d4"}}', 0),
+    ('{"tool_name":"mcp__kaimon__check_eval","tool_input":{"eval_id":"e1f2a3b4"}}', 0),
+    ('{"tool_name":"mcp__kaimon__start_session","tool_input":{"project_path":"/x"}}', 0),
+    ('{"tool_name":"mcp__other__ex","tool_input":{"e":"1"}}', 0),
+    ('{"tool_name":"mcp__kaimon__ex","tool_input":"e"}', 0),
+    ('{"tool_input":{"e":"1"}}', 0),
+    ("not json at all", 0),
+]
+
+# `sandbox-semantics.py` with another working directory: a `git init` or `git clone` inside a work
+# tree is refused, one in a directory that is no work tree passes. `CWD` is a work tree of the
+# fixture; `.scratch` and `Packages` are not.
+SCRATCH = R + "/.scratch"
+SANDBOX_CWD_CASES = [
+    (CWD, "git init", 2),
+    (CWD, "git init -q r48probe", 2),
+    (TOOL, "git init", 2),
+    (PKG + "/src", "git init probe", 2),
+    (CWD, "git clone https://github.com/example-org/X.jl.git X", 2),
+    (CWD, "git clone git@github.com:example-org/X.jl.git", 2),
+    (CWD, "git -c init.defaultBranch=main init probe", 2),
+    (SCRATCH, "git init", 0),
+    (SCRATCH, "git init -q r48probe", 0),
+    (SCRATCH, "git clone https://github.com/example-org/X.jl.git X", 0),
+    (SCRATCH, "git clone git@github.com:example-org/X.jl.git", 0),
+    (R + "/Packages", "git clone https://github.com/example-org/X.jl.git X", 0),
+    (CWD, "git init --bare " + q(R + "/.worktrees/X-origin.git"), 0),
+    (CWD, "git clone --mirror https://github.com/example-org/X.jl.git " + q(SCRATCH + "/X.git"), 0),
+    (CWD, "git status", 0),
+    (CWD, "git diff --no-index a.jl b.jl", 0),
 ]
 
 # `gh-api-writes.py` answers on stdout as well as by exit status: "ask" is a JSON decision
@@ -284,6 +322,59 @@ WORKTREE_CASES = [
     '{"hook_event_name":"WorktreeRemove","worktree_path":"' + CWD + '"}',
     '{"hook_event_name":"WorktreeRemove","worktree_path":"/nonexistent/.worktrees/x"}',
 ]
+
+# `worktree.py`'s manifest test, called as a function: (version, `[compat]` entry, inside or not).
+COMPAT_CASES = [
+    ("0.3.5", "0.4", False), ("0.4.2", "0.4", True), ("0.5.0", "0.4", False),
+    ("1.9.0", "1.2", True), ("2.0.0", "1.2", False), ("1.1.9", "1.2", False),
+    ("0.0.3", "0.0.3", True), ("0.0.4", "0.0.3", False), ("0.9.0", "0", True), ("1.0.0", "0", False),
+    ("1.2.9", "~1.2", True), ("1.3.0", "~1.2", False), ("0.0.3", "~0.0.3", True), ("0.0.4", "~0.0.3", False),
+    ("1.2.3", "=1.2.3", True), ("1.2.4", "=1.2.3", False),
+    ("5.0.0", ">= 1.2", True), ("1.1.0", "≥ 1.2", False), ("1.9.9", "< 2", True), ("2.0.0", "< 2", False),
+    ("2.3.7", "1.2 - 2.3", True), ("2.4.0", "1.2 - 2.3", False),
+    ("0.3.1", "0.3, 0.4", True), ("0.4.1", "0.3, 0.4", True), ("0.5.0", "0.3, 0.4", False),
+    ("1.2.3", "<= 2", None), ("1.2.3", "1.x", None),
+]
+# (manifest deps as {name: version or None}, the project's `[deps]` and `[compat]`, copied or not)
+MANIFEST_CASES = [
+    ({"A": "0.4.1", "B": None}, ["A", "B"], {"A": "0.4"}, True),
+    ({"A": "0.3.0", "B": None}, ["A", "B"], {"A": "0.4"}, False),
+    ({"A": "0.4.1"}, ["A", "C"], {"A": "0.4"}, False),
+    ({"A": "0.4.1"}, ["A"], {"A": "<= 1"}, False),
+    ({"A": "0.4.1"}, ["A"], {"julia": "1.11"}, True),
+]
+
+
+def manifest_cases():
+    """`worktree.py`'s `compat_ranges` and `copy_manifest`: (number of cases, number wrong)."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("worktree_hook", WORKTREE)
+    hook = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(hook)
+    total = wrong = 0
+    for version, entry, expected in COMPAT_CASES:
+        ranges = hook.compat_ranges(entry)
+        v = hook.parse_version(version)
+        got = None if ranges is None else any(lo <= v < hi for lo, hi in ranges)
+        total, wrong = total + 1, wrong + (got != expected)
+        print(f"{'ok ' if got == expected else 'BAD'} exp {expected} got {got}  [worktree ]  {version} in [compat] {entry!r}")
+    for k, (deps, names, compat, expected) in enumerate(MANIFEST_CASES):
+        repo, wt = os.path.join(FIXTURE.name, f"manifest-{k}", "repo"), os.path.join(FIXTURE.name, f"manifest-{k}", "wt")
+        os.makedirs(repo)
+        os.makedirs(wt)
+        with open(os.path.join(repo, "Manifest.toml"), "w") as f:
+            f.write('julia_version = "1.13.0"\nmanifest_format = "2.0"\n')
+            for name, version in deps.items():
+                f.write(f'\n[[deps.{name}]]\nuuid = "{k}"\n' + (f'version = "{version}"\n' if version else ""))
+        with open(os.path.join(wt, "Project.toml"), "w") as f:
+            f.write('name = "P"\n\n[deps]\n' + "".join(f'{n} = "u"\n' for n in names)
+                    + "\n[compat]\n" + "".join(f'{n} = "{c}"\n' for n, c in compat.items()))
+        hook.copy_manifest(hook.Path(repo), hook.Path(wt))
+        got = os.path.exists(os.path.join(wt, "Manifest.toml"))
+        total, wrong = total + 1, wrong + (got != expected)
+        print(f"{'ok ' if got == expected else 'BAD'} exp {expected} got {got}  [worktree ]  manifest {deps} for {names} {compat}")
+    return total, wrong
+
 
 # `directory-scope.py` fails closed to "ask", so a payload it cannot read expects "ask".
 # `LINK` is a symlink inside the tree that points out of it, made by `fixture`.
@@ -1370,6 +1461,18 @@ def cases():
         wrong += got != expected
         mark = "ok " if got == expected else "BAD"
         print(f"{mark} exp {expected} got {got}  [{script.rsplit('/', 1)[-1][:9]}]  {command}")
+    for payload, expected in KAIMON_CASES:
+        got = run(KAIMON, payload)
+        total += 1
+        wrong += got != expected
+        mark = "ok " if got == expected else "BAD"
+        print(f"{mark} exp {expected} got {got}  [kaimon-se]  {payload}")
+    for cwd, command, expected in SANDBOX_CWD_CASES:
+        got = run(SANDBOX, json.dumps({"tool_input": {"command": command}, "cwd": cwd}))
+        total += 1
+        wrong += got != expected
+        mark = "ok " if got == expected else "BAD"
+        print(f"{mark} exp {expected} got {got}  [sandbox-s]  {command} in {cwd}")
     for command, expected in GHAPI_CASES:
         got = decision(GHAPI, json.dumps({"tool_input": {"command": command}}))
         total += 1
@@ -1426,6 +1529,8 @@ def cases():
         wrong += got != 1
         mark = "ok " if got == 1 else "BAD"
         print(f"{mark} exp 1 got {got}  [worktree ]  fail-closed: {payload!r}")
+    n, bad = manifest_cases()
+    total, wrong = total + n, wrong + bad
     n, bad = drift_cases()
     total, wrong = total + n, wrong + bad
     n, bad = omp_cases()

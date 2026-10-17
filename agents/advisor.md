@@ -34,7 +34,9 @@ on it; a quoted result is a claim.
 
 To read a repository or a worktree with `git`, run `cd <path> && git <read> …` in one call. Your
 `cd` does not persist to the next call. Never use `git -C`: it reaches a permission prompt where
-this form does not.
+this form does not. **A probe needs no repository**: after the reset, a `git init`, `git clone` or
+`git checkout` runs in your root, which can be a worktree, `Tasks` or `Environment`. Compare two
+copies with `git diff --no-index <a> <b>`.
 
 ## Decide only what is yours
 

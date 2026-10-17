@@ -90,9 +90,14 @@ function survivor_lines(result)
     end
 end
 
-"The generated sweep's step: information only, with the survivors by line."
-function generated_step(code, out, secs, log, result)
+"""
+The generated sweep's step: information only, with the survivors by line, read from the result
+file that mutate.jl names on its `result:` line.
+"""
+function generated_step(code, out, secs, log)
     t = totals(out)
+    m = match(r"^result: (.+)$"m, out)
+    result = m === nothing ? "" : String(m.captures[1])
     (t === nothing || !isfile(result)) && return Step("generated", "UNKNOWN", "mutate.jl exited $code", String[], secs, log)
     smoke = [String(l) for l in split(out, '\n') if startswith(l, "smoke:")]
     return Step("generated", "INFO", t, [smoke; survivor_lines(result)], secs, log)
@@ -180,7 +185,7 @@ function main(args)
         code, _, t1 = logged(julia_cmd("mutants.jl", pkg, list, base), log1)
         if code == 0
             code, o, t2 = logged(julia_cmd("mutate.jl", pkg, "--warm", list, "--jobs", string(jobs)), log)
-            push!(steps, generated_step(code, o, t1 + t2, log, joinpath(out, "generated.result.json")))
+            push!(steps, generated_step(code, o, t1 + t2, log))
         else
             push!(steps, Step("generated", "UNKNOWN", "mutants.jl exited $code", String[], t1, log1))
         end

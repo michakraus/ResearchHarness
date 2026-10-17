@@ -201,6 +201,13 @@ stays scannable, and a done-condition that fits in a cell is usually too weak.
    builder runs it, and the critic runs it again, with `mutate.jl`. Without a named mutant, a test
    that passes with the feature deleted passes the loop.
 4. **Files** — the files the part creates or changes, which is its row of the collision map.
+   **They lie in the part's one repository.** An isolated builder cannot write outside its
+   worktree, so a file in another repository — the task file, a `Harness/` script, another
+   package — is a dispatcher step of its own: name it in the part, under *Not in this part*, with
+   the dispatcher as its owner. Run
+   `python3 Harness/scripts/spec-gate.py "Tasks/<file>.md" <part> ...` from `~/Research` on the
+   parts you wrote: it prints `SPANS <repositories>` and exits 1 for a part whose *Files* name two
+   repositories.
 5. **Not in this part** — what a builder might reasonably add and must not, with the part that
    owns it.
 6. **Traps**, where the plan knows one: a failure that a previous attempt met, with its cause.
@@ -237,7 +244,7 @@ collision map: the plan's own rules, one sentence each, and the extra sections t
 
 ## What this skill does not do
 
-**It runs nothing but the premise check.** It produces a table, the specs, §V and §L. The
+**It runs nothing but the premise check and `spec-gate.py`.** It produces a table, the specs, §V and §L. The
 `build-part` skill runs the loop, and so can a human or a `/loop`. A planning step that also spawns builders is an
 agent graph, and the merge gate stops it one step later anyway.
 
@@ -257,7 +264,7 @@ and costs more tokens doing it.
 
 ## Grading a table you produced
 
-Seven failure shapes to check for in your own output:
+Eight failure shapes to check for in your own output:
 
 - **parts that mirror the section numbering.** One part per finding is a renumbering.
 - **a tier column with one value throughout.** It has stopped carrying information.
@@ -270,3 +277,5 @@ Seven failure shapes to check for in your own output:
   one round at a time.
 - **a spec that no premise check measured**, or one that still states a fact the check found
   `false`.
+- **a part whose *Files* span two repositories.** Its builder meets a guard on the first write
+  outside its worktree; `spec-gate.py` reports it as `SPANS`.
