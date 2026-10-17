@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- **`skills/build-part/edges.md` states the same-error-type guard case as a mechanism, in the
+  present tense.** The example of the edge class "a case meant for one guard that a later guard
+  also catches" told one part's history in the past tense. It now says that a fix which adds a
+  later guard raising the same error type makes an `isa` test pass whether or not the earlier guard
+  is dropped, so a named mutant survives. The citation and the advice to assert the refusing
+  guard's own phrase are unchanged. The tense lint reports 7 hits in the file in place of 8.
+
 - **OpenCode's default model is `opencode-go/deepseek-v4.1-flash`, on the paid OpenCode Go plan,
   in place of `opencode/deepseek-v4.1-flash-free`, Zen's free DeepSeek.** The default model is the
   dispatcher's seat, and a dispatcher whose free seat stops stalls the whole builder-critic loop.
