@@ -137,8 +137,11 @@ head. Keep its report away from every critic.
 
 **A report with no *Mutants* table, or with an open survivor in it, is not ready.** The builder
 writes and runs a mutant per guard, branch, comparison and decided edge of its change, and closes
-or justifies each survivor (*Which mutants run* in `evidence.md`). `SendMessage` the builder the
-gap, and spawn the critic only when it returns `ready for critic` with the table complete.
+or justifies each survivor (*Which mutants run* in `evidence.md`). **A report with no *Text
+checked* table is not ready either**: as its last step of every round, the builder rereads each
+text line that its diff adds, changes or makes false, and fixes the false ones. `SendMessage` the
+builder the gap, and spawn the critic only when it returns `ready for critic` with both tables
+complete.
 
 **A report whose *Question for the dispatcher* is not `none` is not ready**, whatever its verdict
 line says. Put the question to the advisor first (*A question inside the loop*). On `Parks: no`,
@@ -187,16 +190,18 @@ the handoff note. From here on, *the builder* is the `julia-builder` of the curr
 - **FAIL** — spawn it with `Round: fix <N>`, and add the critic's *Blocking defects*, *Other
   defects* and *Fix first*, verbatim — both critics' in round 1 — every failing testset of the
   suite run with its output, and the critics' reproducer directories. The builder fixes the
-  blocking defects and the other defects that its branch causes, and records the rest
-  (`~/.claude/rules/known-issues.md`; `julia-builder`). **Add no instruction of your own.** A
+  blocking defects and the other defects that its branch causes, records the rest
+  (`~/.claude/rules/known-issues.md`; `julia-builder`), and rereads the text that its fix adds,
+  changes or makes false. **Add no instruction of your own.** A
   decision goes into the task file first, by the advisor's route, and your prompt names its line.
   Where the builder returns `Paths to stage:`, commit them in the worktree. When it returns
   `ready for critic`, go to 3 for the next round. Read each blocking defect's cause before the
   spawn: step 5 can send the round to the arbitrator first.
 - **PASS** — spawn it with `Round: finish`, and add the critic's verdict and evidence table
-  verbatim for the pull-request body, and the suite's counts. The builder runs the verifier and
-  opens the pull request. After a PASS the code does not change, except for the verifier's fixes
-  and a text-only fix of an other defect that the branch causes. **A finish builder that stops to
+  verbatim for the pull-request body, and the suite's counts. The builder rereads the text of the
+  whole branch, runs the verifier and opens the pull request. After a PASS the code does not
+  change, except for the verifier's fixes and the text-only fixes of the reread and of an other
+  defect that the branch causes. **A finish builder that stops to
   ask for a code change** goes to the arbitrator, with the trigger `stop after PASS`.
 
 **A round whose every blocking defect is `harness` does not count.** Repair the harness, or have it

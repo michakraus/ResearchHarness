@@ -79,6 +79,19 @@ script in any interpreter writes a file.
    with its exact command; never `sleep`, and never poll a log in a loop.
 7. **Read the *Done when* again against `git diff <base>...HEAD`.** Every clause has a row with
    evidence, and nothing in the diff is outside the part.
+8. **Reread the text of your change**, last, once the code does not change. Read
+   `~/.claude/rules/changelog.md` and `~/.claude/rules/known-issues.md` first. List each line of a
+   comment, docstring, message string, `CHANGELOG.md`, `KNOWN_ISSUES.md`, README or docs page that
+   `git diff <base>...HEAD` adds or changes; each comment or docstring in or next to a block that
+   the diff changes; and each line of those files that names a symbol, a file, a line number, a
+   count or a behaviour that the diff changes, moves or removes, found with `grep` over the
+   directory. Check each line against the code, the part's sections, or a command under 5 minutes.
+   Fix each line that is false or has no support, that the diff makes stale, that tells history
+   outside `CHANGELOG.md`, that records in `KNOWN_ISSUES.md` a defect that your branch causes or
+   breaks that file's form, or that breaks the file's own width, wrap or grammar. A defect that
+   your branch causes is fixed, not recorded. A claim about a run, a registry or a measurement
+   holds only with a run you did or a record you read; otherwise remove it. List the lines in
+   *Text checked*.
 
 Then commit on the branch, stage paths by name, and return with `Verdict: ready for critic`.
 
@@ -114,18 +127,20 @@ on the part's branch. Otherwise stop and report. Make no branch.
   `KNOWN_ISSUES.md` on your branch, or under *Reported, not fixed* where the repository keeps
   none.
 
-Run the test of each fix, step 5 for the lines that the fix adds or changes, and the gate again,
-commit, fill *Blocking defects answered*, and return
-with `Verdict: ready for review`.
+Run the test of each fix, step 5 for the lines that the fix adds or changes, the gate again, and
+step 8 for the text that the fix adds, changes or makes false, commit, fill *Blocking defects
+answered*, and return with `Verdict: ready for review`.
 
 ## The finish
 
-Your caller spawns you with `Round: finish` after its own read of the diff. Do what the plan's §L
-says for the finish. In `Packages/` and `Experiments/`: delegate to `julia-branch-verifier` in the
-foreground, fix only the text it leaves, then open the pull request with `gh pr create` and
-`--body-file`. The body holds the critic's verdict and evidence table, the `KNOWN_ISSUES.md`
-entries of the branch, and every `**Decided (…)**` line of the part's section. No local path and no
-closing keyword in it. **After the critic's report, the code changes only for its findings.**
+Your caller spawns you with `Round: finish` after its own read of the diff. Run step 8 over the
+whole branch first; here it fixes text only, and a false line whose fix needs a change of code goes
+to your caller under *Question for the dispatcher*. Then do what the plan's §L says for the finish.
+In `Packages/` and `Experiments/`: delegate to `julia-branch-verifier` in the foreground, fix only
+the text it leaves, then open the pull request with `gh pr create` and `--body-file`. The body
+holds the critic's verdict and evidence table, the `KNOWN_ISSUES.md` entries of the branch, and
+every `**Decided (…)**` line of the part's section. No local path and no closing keyword in it.
+**After the critic's report, the code changes only for its findings**, and the text for step 8.
 
 **Run everything in the foreground.** Never set `run_in_background`, and never end your turn to
 wait: your caller reads the turn you end as your report.
@@ -159,6 +174,14 @@ Paths to stage: <the uncommitted paths, or "none">
 <every mutant of this round, named and your own: kind is named, guard, branch, comparison or
 edge; verdict is CAUGHT, closed by <test>, or no-defect — <equivalent | dead code | message
 text>. Then one line: n written, n caught, n closed, n no-defect, n open>
+
+### Text checked
+| file:lines | artifact | verdict |
+|:--|:--|:--|
+<step 8 of this round: one row per file and line range it read, and one row per line it fixed;
+artifact is comment, docstring, message, changelog, known-issues or docs; verdict is holds, or
+fixed in <sha7> — <false | stale | history | known-issues | form>. Then one line: n lines
+checked, n fixed>
 
 ### Left for the dispatcher
 <each run longer than 5 minutes, with its exact command, or "none">

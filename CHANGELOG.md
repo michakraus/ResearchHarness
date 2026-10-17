@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+- **The builders reread the text of their change as the last step of every round.**
+  `julia-builder` (step 9) and `part-builder` (step 8) list each comment, docstring, message,
+  `CHANGELOG.md`, `KNOWN_ISSUES.md`, README and docs line that the diff adds or changes, each one
+  in or next to a changed block, and each one that names what the diff changes; they check each
+  claim against the code, the spec or a short command, and fix what is false, has no support, is
+  stale, tells history, records a branch-caused defect in `KNOWN_ISSUES.md`, or breaks the file's
+  form. A fix round rereads the text that its fix adds, changes or makes false; the finish rereads
+  the whole branch before the verifier and fixes text only. A new *Text checked* table in the
+  report lists the lines checked and fixed, and `build-part` and `build-reviewed` hold a report
+  without it back from the critic. Before, no build step reread the text: the builders left it to
+  the verifier, which runs once after the last critic, so 51 of 80 false text lines in the audit
+  sample were found after the PASS or merged false. In a replay on 48 recorded heads the text pass
+  found 49 of 76 such lines (64 %), with a median of 2 false alarms per unit. A lint script over
+  the diff found 12 of the 33 lines of its classes (36 %) with 260 false alarms, and is not added.
+  The critics and the verifier are unchanged.
+
 - **The builders write and run mutants of their own change.** `julia-builder` and `part-builder`
   write one mutant per guard, branch, comparison and decided edge that the change adds or
   changes, in any language, and run each before they return; a fixer does the same for its fix.

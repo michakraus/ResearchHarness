@@ -67,7 +67,9 @@ its failures.
 
 **A report with no *Mutants* table, or with an open survivor in it, is not ready.** The builder
 writes and runs a mutant per guard, branch, comparison and decided edge of its change, and closes
-or justifies each survivor. Spawn a new builder with `Round: build` and that gap.
+or justifies each survivor. **A report with no *Text checked* table is not ready either**: as its
+last step of every round, the builder rereads each text line that its diff adds, changes or makes
+false, and fixes the false ones. Spawn a new builder with `Round: build` and that gap.
 
 When the builder returns `ready for critic`, spawn **one** `part-critic`, without isolation. Pass the task file, the part, the builder's directory, the
 base and the head. **Never pass the builder's report.** For a part whose gate runs longer than 5

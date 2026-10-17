@@ -30,11 +30,13 @@ The builder reads the rows of the parts table and the sections of its own part, 
 task file. It works in a worktree that its caller makes. It writes the tests first, then the code,
 and verifies each clause of the part's *Done when*. It writes and runs one mutant per guard,
 branch, comparison and decided edge of its change, and closes or justifies each survivor; its
-report lists every mutant with its verdict. Then it commits and returns
-`Verdict: ready for critic`. After each critic round, the caller starts a new builder on the same
-worktree. After a FAIL, it fixes the blocking defects and records other defects in the
-repository's `KNOWN_ISSUES.md`. After a PASS, it runs `julia-branch-verifier` and opens the pull
-request.
+report lists every mutant with its verdict. As the last step of every round, it rereads each
+comment, docstring, message, `CHANGELOG.md`, `KNOWN_ISSUES.md` and docs line that its diff adds,
+changes or makes false, checks each claim, and fixes the false ones; its report lists the lines
+that it checked and fixed. Then it commits and returns `Verdict: ready for critic`. After each
+critic round, the caller starts a new builder on the same worktree. After a FAIL, it fixes the
+blocking defects and records other defects in the repository's `KNOWN_ISSUES.md`. After a PASS,
+it rereads the text of the whole branch, runs `julia-branch-verifier` and opens the pull request.
 
 It runs no command longer than 5 minutes. A longer run goes to its caller under *Left for the
 dispatcher*. It never merges, and it does not edit the task file. Use `julia-pr-shepherd` to take
@@ -97,8 +99,9 @@ with the last builder's report as the handoff note.
 It reads its part's sections and the plan's §V and §L, which name the gate: the suite and the
 checks that the change must pass. It writes the tests first, then the code, and verifies each
 clause. Like `julia-builder`, it runs a mutant per guard, branch, comparison and decided edge of
-its change, and lists each one with its verdict. It commits and returns `Verdict: ready for critic`. After the critic's report, it fixes
-the blocking defects and records other defects. On `Round: finish` it does what §L says. In a
+its change, and lists each one with its verdict, and it rereads the text of its change as the last
+step of every round. It commits and returns `Verdict: ready for critic`. After the critic's
+report, it fixes the blocking defects and records other defects. On `Round: finish` it does what §L says. In a
 package repository, it runs `julia-branch-verifier` and opens the pull request.
 
 It runs no command longer than 5 minutes and does not edit the task file. Use `julia-builder` for
