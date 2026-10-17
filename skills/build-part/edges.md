@@ -53,9 +53,9 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   `no-shell-file-write.py`; give each guard a case that only it refuses (W1 round 1, *Unify the
   agent configuration*)
 - **a case meant for one guard that a *later* guard now also catches, when both raise the same error
-  type:** P25's fix added an `isempty` guard after the two-times guard, and a one-time input trips
-  the new one with the same `ArgumentError`, so the test's `isa ArgumentError` no longer saw the
-  two-times guard dropped and a named mutant that round 1 had caught survived (P25 verify 2,
+  type:** a fix adds an `isempty` guard after a two-times guard, and a one-time input trips the new
+  guard with the same `ArgumentError`, so an `isa ArgumentError` test passes whether or not the
+  two-times guard is dropped, and a named mutant that the test caught survives (P25 verify 2,
   *Rewrite the reduced basis packages*). **Assert the refusing guard's own phrase, not the type
   alone.** The mirror of the entry above: there an earlier check hides the case, here a later one
   hides the mutant
