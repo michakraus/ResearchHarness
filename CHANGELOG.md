@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- **OpenCode's default model is `opencode-go/deepseek-v4.1-flash`, on the paid OpenCode Go plan,
+  in place of `opencode/deepseek-v4.1-flash-free`, Zen's free DeepSeek.** The default model is the
+  dispatcher's seat, and a dispatcher whose free seat stops stalls the whole builder-critic loop.
+  The builder's and the verifier's seats, and the free seats of the diagnostic agents, come from
+  the user's `models.toml` and are unchanged here.
+
 - **oh-my-pi keeps a fallback that only switches the provider.** The empty fallback chains of
   `harness.yml` also replaced a chain in `config.yml` that sends a model to the same model through
   another provider, such as `opendesign/deepseek-v4.1-flash` to `opencode-go/deepseek-v4.1-flash`.
