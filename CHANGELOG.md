@@ -2,6 +2,41 @@
 
 ## Unreleased
 
+- **oh-my-pi: no revived agents, a Kaimon timeout of 120 s, a path guard that reads a pattern as
+  a pattern, approvals returned to the caller, and no silent model fallback.** Five failures that
+  only the oh-my-pi runs showed, with their mechanisms:
+  - A parked agent was woken by `write agent://<name>` 11 times in 6 sessions, 3 of them by a
+    sub-agent; a woken agent returned the output of its earlier run, or worked the same worktree
+    beside its replacement. `OMP-DELTA.md` has the dispatcher continue an agent only by a new
+    spawn with the last report as the handoff, also for a placeholder or empty report; the new
+    `write` section of `UNDER-OMP.md` tells each agent with the write tool never to write to
+    another agent; and the guard extension refuses a sub-agent's write to `agent://`, which it
+    tells by oh-my-pi's `ctx.agent.kind` (`"sub"`, the session's `"main"`).
+  - oh-my-pi cut an MCP call after 30 s in 141 of 445 runs. `mcp.json` gives Kaimon a `timeout` of
+    120 000 ms, above Kaimon's own move of a slow eval to the background at about 30 s.
+  - The path guard cut a word with a glob character back to its last `/`, so a pattern such as
+    `/\[compat\]/` became `/`, which holds every denied path: 55 refusals in 32 runs. A glob now
+    reaches only the names that its first glob segment matches, and the program argument of an
+    awk, sed or grep is no path. Of the 65 such refusals in the transcripts, 52 pass; the other
+    13 hold no pattern: a `find /`, which still refuses, a `tr / _`, and 11 heredoc bodies whose
+    division `/` stands in a command that a word such as `tree` or `zip` in the body marks as
+    recursive. 20 probe cases check both sides: 11 pattern forms pass, 9 path forms still refuse.
+  - A sub-agent has no approval prompt: 9 prompts in 2 runs, and one builder dropped `--repo` from
+    `gh pr create`, which then matched no rule and ran unasked under `yolo`. `UNDER-OMP.md` has a
+    sub-agent return a command that needs approval to its caller, and the finish builder return
+    `gh pr create`; `harness.yml` ends `bash.patterns` with a `prompt` for `gh pr create*`, so the
+    command asks with or without `--repo` unless `-R` or `--repo` names an organisation first.
+    Claude Code's template is unchanged: it already asks for an unmatched command.
+  - After one rate limit, oh-my-pi moved a critic seat to another model in 2 runs, through
+    `retry.fallbackChains`. `harness.yml` gives each model of an agent or a seat an empty chain,
+    which oh-my-pi's exact-model lookup takes before a role or `default`, so a seat fails on its
+    own model. The session's model loses its chain too where an agent shares it.
+
+- **OpenCode: two levels of sub-agents.** `opencode.jsonc` sets `experimental.subagent_depth` to
+  2, so that a builder that the dispatcher spawns can spawn `julia-branch-verifier` or a `reader`.
+  OpenCode allows one level by default: in a probe, `julia-builder` could not spawn `reader` and
+  got "Subagent depth limit reached (1)".
+
 - **The builders reread the text of their change as the last step of every round.**
   `julia-builder` (step 9) and `part-builder` (step 8) list each comment, docstring, message,
   `CHANGELOG.md`, `KNOWN_ISSUES.md`, README and docs line that the diff adds or changes, each one

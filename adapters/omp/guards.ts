@@ -10,7 +10,7 @@
 //     edit   the edit list, then the ask list, on each path it names: `path`, a `rename`, the
 //            file headers of `input`
 //     write  the edit list, then the ask list, on its `path`, and on the path of a hashline
-//            header `[path#TAG]` in it
+//            header `[path#TAG]` in it; and a sub-agent's write to `agent://`, which it refuses
 //
 //     no-blind-stage.py       a `git add` that stages more than the paths it names
 //     no-shell-file-write.py  a shell command that writes a file inside a git working tree
@@ -53,7 +53,8 @@
 // as a path relative to its `cwd`, else the working directory, and so is each part of a word that
 // `=`, `:` or `,` separates. The match ignores case, as the default macOS file system does. For
 // `grep`, and for a command that recurses, globs or `cd`s, a directory that holds a denied path is
-// refused as well.
+// refused as well; a glob reaches only the names that its first glob segment matches. The program
+// argument of an awk, sed or grep is a pattern, not a path.
 //
 // It is a text check, with known gaps: a path that a command builds at run time passes it;
 // a `grep` or a recursive command reaches the files below a directory that a `**/` rule, such as
@@ -210,18 +211,53 @@ function absolute(raw, cwd) {
   return n.length > 1 ? n.replace(/\/+$/, '') : n;
 }
 
+// The shell glob `segment`, one path segment, as a regular expression that ignores case: `*` any
+// text, a leading dot included, `?` one character, `[…]` a bracket expression, `\x` the character
+// x. null for a segment it cannot read, which then matches every name.
+function segmentGlob(segment) {
+  let re = '';
+  for (let i = 0; i < segment.length; i++) {
+    const c = segment[i];
+    if (c === '\\' && i + 1 < segment.length) re += segment[++i].replace(/[.*+?^${}()|[\]\\\/-]/g, '\\$&');
+    else if (c === '*') re += '.*';
+    else if (c === '?') re += '.';
+    else if (c === '[') {
+      const j = segment.indexOf(']', i + 2);
+      if (j < 0) re += '\\[';
+      else {
+        const body = segment.slice(i + 1, j).replace(/^!/, '^').replace(/\\/g, '\\\\');
+        re += `[${body}]`;
+        i = j;
+      }
+    } else re += c.replace(/[.*+?^${}()|[\]\\\/-]/g, '\\$&');
+  }
+  try {
+    return new RegExp('^' + re + '$', 'i');
+  } catch {
+    return null;
+  }
+}
+
 // The rule of `rules` that refuses `path`, absolute, with the reason; null when none does. `wide`:
-// the call reaches below `path`, so a directory that holds a denied path is refused too.
+// the call reaches below `path`, so a directory that holds a denied path is refused too. A path
+// with a glob character is cut back to the directory before its first glob segment, and reaches
+// only the names below that directory that the segment can match: `/[0-9]+/`, a pattern, reaches
+// no denied path below `/`, and `/Us*/me/.ssh` does.
 function refusedAt(path, wide, rules = DENY) {
   const g = path.search(/[*?[]/);
+  let segment = null;
   if (g >= 0) {
-    path = path.slice(0, path.lastIndexOf('/', g)) || '/';
+    const cut = path.lastIndexOf('/', g);
+    const end = path.indexOf('/', g);
+    segment = segmentGlob(path.slice(cut + 1, end < 0 ? undefined : end)) ?? /^/;
+    path = path.slice(0, cut) || '/';
     wide = true;
   }
   const under = (path === '/' ? '/' : path + '/').toLowerCase();
   for (const d of rules) {
     if (d.re.test(path)) return `${path} — it matches the ${d.kind} rule ${d.glob}`;
-    if (wide && d.prefix.startsWith('/') && d.prefix.toLowerCase().startsWith(under))
+    if (wide && d.prefix.startsWith('/') && d.prefix.toLowerCase().startsWith(under) &&
+        (segment === null || segment.test(d.prefix.slice(under.length).split('/')[0])))
       return `${path} — the call reaches into it, and it holds ${d.prefix}, which the ${d.kind} rule ${d.glob} covers`;
   }
   return null;
@@ -285,8 +321,58 @@ function words(command) {
 // The words before a command name that leave it the command.
 const LEAD = new Set([null, '{', '!', 'then', 'do', 'else', 'builtin', 'command']);
 
+// The programs whose program argument is a pattern or a script, not a path, and for each the
+// options that take the next word: a program under `-e` (sed, grep) or `--regexp`, a variable
+// under `-v` (awk) or a separator under `-F` (awk). With `-e` or `-f` no other word is the program.
+const PROGRAMS = {
+  awk: { takes: /^-[Fv]$/, program: /^-e$/ },
+  gawk: { takes: /^-[Fv]$/, program: /^-e$/ },
+  sed: { takes: /^$/, program: /^(?:-e|--expression)$/ },
+  gsed: { takes: /^$/, program: /^(?:-e|--expression)$/ },
+  grep: { takes: /^-[ABCm]$/, program: /^(?:-e|--regexp)$/ },
+  egrep: { takes: /^-[ABCm]$/, program: /^(?:-e|--regexp)$/ },
+  fgrep: { takes: /^-[ABCm]$/, program: /^(?:-e|--regexp)$/ },
+};
+
+// The indices into `list`, words(), of each program argument of an awk, sed or grep: the word
+// after `-e` or `--regexp`, the text after `-e` or `--regexp=` in one word, else the first word
+// that is no option and follows no option that takes it. A `-f` names a file, which is a path.
+function programArguments(list) {
+  const out = new Set();
+  for (const [i, { word, prev, seg }] of list.entries()) {
+    const kind = PROGRAMS[word];
+    if (!kind || !LEAD.has(prev)) continue;
+    const rest = [];
+    for (let j = i + 1; j < list.length && list[j].seg === seg; j++) rest.push(j);
+    let named = false;
+    for (const [k, j] of rest.entries()) {
+      const w = list[j].word;
+      if (kind.program.test(w) && k + 1 < rest.length) {
+        out.add(rest[k + 1]);
+        named = true;
+      } else if (/^(?:-e.|--regexp=|--expression=)/.test(w) || /^-[a-zA-Z]*f$/.test(w)) named = true;
+    }
+    if (named) continue;
+    for (let k = 0; k < rest.length; k++) {
+      const w = list[rest[k]].word;
+      if (w === '--') {
+        if (k + 1 < rest.length) out.add(rest[k + 1]);
+        break;
+      }
+      if (/^-./.test(w)) {
+        if (kind.takes.test(w)) k++;
+        continue;
+      }
+      out.add(rest[k]);
+      break;
+    }
+  }
+  return out;
+}
+
 // The first word of `command`, or part of a word, that the list refuses as a path relative to
-// `dir`; null when every word passes. Each argument of a `cd` or `pushd` is checked wide. One with
+// `dir`; null when every word passes. The program argument of an awk, sed or grep is no path, and
+// refusedCommand still reads a home path in it. Each argument of a `cd` or `pushd` is checked wide. One with
 // no directory, or with `-`, moves home or to a directory the command does not name, so the home
 // directory is checked wide.
 function refusedWords(command, dir) {
@@ -300,7 +386,9 @@ function refusedWords(command, dir) {
     const refused = (to.length === 0 || to[0].word === '-') && refusedAt(absolute('~', dir), true);
     if (refused) return `${refused} (a ${word} with no directory, or with -, goes there)`;
   }
-  for (const { word, prev, seg } of list) {
+  const programs = programArguments(list);
+  for (const [i, { word, prev, seg }] of list.entries()) {
+    if (programs.has(i)) continue;
     const wide = recursive || cds.has(seg) || prev === 'cd' || prev === 'pushd';
     for (const part of new Set([word, ...word.split(/[=:,]/)])) {
       const refused = part && refusedAt(absolute(part, dir), wide);
@@ -380,6 +468,16 @@ async function check(event, ctx) {
   const cwd = typeof ctx?.cwd === 'string' ? ctx.cwd : process.cwd();
   const pathRefusal = (refused) =>
     `Refused by the path guard: ${refused}. Use only the paths your task names. Do not reach this path in another form.`;
+
+  // A write to `agent://<name>` messages that agent, and wakes it when it is parked. A sub-agent
+  // never does: oh-my-pi names a sub-agent's context `agent.kind: "sub"`, the session's "main".
+  if (tool === 'write' && ctx?.agent?.kind === 'sub' && typeof input.path === 'string' &&
+      /^\s*agent:\/\//i.test(input.path))
+    return (
+      `Refused by the guard: a sub-agent writes to no other agent (${input.path.trim()}). A write to ` +
+      'agent:// wakes a parked agent, which then returns stale output. Put what you need in your ' +
+      'report to your caller, and let your caller spawn a new agent.'
+    );
 
   if (tool === 'edit' || tool === 'write') {
     if (typeof EDIT === 'string') return EDIT;

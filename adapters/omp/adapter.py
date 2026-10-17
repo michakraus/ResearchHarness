@@ -8,7 +8,8 @@ installed rule, agent or skill with no source is EXTRA, with its removal command
 leaves it:
 
   harness.yml                 the approval mode and `bash.patterns`, from the settings template,
-                              and `modelRoles.default` from the `models` of models.toml
+                              `modelRoles.default` from the `models` of models.toml, and an empty
+                              `retry.fallbackChains` entry for each model of an agent or a seat
                               (render_config, load_models): an overlay that oh-my-pi reads when
                               `PI_CONFIG_FILES` names it (`overlay_warning`)
   models.yml                  the providers of the profile's `omp_providers`, and each model of
@@ -26,7 +27,8 @@ leaves it:
                               its `paths` and `description` written as the JSON values `globs` and
                               `description` (`render_rule`); a rule source outside that grammar
                               exits 2, and so does one in a subdirectory of rules/
-  mcp.json                    the Kaimon server alone, over HTTP (`render_mcp`)
+  mcp.json                    the Kaimon server alone, over HTTP, with a request timeout above
+                              Kaimon's own move of a slow eval to the background (`render_mcp`)
   agents/<name>.md            each agent of agents/, its tools mapped by TOOLS, its model and
                               its thinking level from the model tables, and an "Under oh-my-pi"
                               section from adapters/omp/UNDER-OMP.md (`render_agent`); then a
@@ -57,14 +59,23 @@ matches any text, as Claude Code's does. Two forms of Claude Code's have no dire
 suffix `:*` renders to `*` after the same prefix, and a bare `Bash` to `*`; `bash_patterns` lists
 each such entry.
 `deny` and `prompt` also match each segment of a compound command, and `allow` only a whole
-command, so no rule is split, and `bash.allowCompoundCommands` stays off.
+command, so no rule is split, and `bash.allowCompoundCommands` stays off. The rules of OMP_LAST
+follow: they ask for a command that matches no rule of the template, which Claude Code asks for
+and `yolo` runs.
 
 THE MODELS. oh-my-pi reads the model tables that it shares with OpenCode, with the keys of [omp]
 over them (profile.model_tables), so that its agents run on the models that OpenCode's run on.
 An agent's model is its override, else
 its tier's model; its thinking level is its `variants` or `reasoning_effort` entry, else its
 model's `model_variants` entry, where oh-my-pi has that level. `modelRoles.default` is the model
-of DEFAULT_TIER, so that oh-my-pi picks no model by itself. The overlay opts no foreign
+of DEFAULT_TIER, so that oh-my-pi picks no model by itself. Each model that an agent or a council
+seat runs on gets an empty chain in `retry.fallbackChains`: after a provider error, oh-my-pi's
+retry looks up the chain of the failing model, an exact model key before a role and `default`
+(`session/retry-fallback-chains.ts`), and a chain with no other model switches to none. So a
+seat fails on its own model and does not run on another one; the session's model loses its
+chain too when an agent shares it. oh-my-pi merges a mapping of the overlay into config.yml's key
+by key (`config/settings.ts`), so a chain that config.yml gives any other model or role stays.
+The overlay opts no foreign
 configuration source in (`enabledProviders`), so oh-my-pi imports neither ~/.claude.json nor
 OpenCode's MCP servers.
 
@@ -97,6 +108,10 @@ SETTINGS = REPO / "settings" / "settings.proposal.json"
 GUARD_PATHS = REPO / "adapters" / "opencode" / "plugins" / "guard-paths.json"
 # The template's lists, in the order oh-my-pi must see them, with oh-my-pi's approval for each.
 APPROVAL = [("deny", "deny"), ("ask", "prompt"), ("allow", "allow")]
+# The patterns that follow the template's, after every `allow`: a command that no rule matches
+# runs unasked under `yolo`, where Claude Code asks. `gh pr create` with no `-R` or `--repo` is
+# such a command, and it opens a pull request in whatever repository the checkout names.
+OMP_LAST = [("gh pr create*", "prompt")]
 
 # The configuration overlay that the install writes, beside oh-my-pi's own config.yml.
 OVERLAY = "harness.yml"
@@ -121,6 +136,11 @@ TOOLS = {"read": "read", "edit": "edit", "write": "write", "grep": "grep", "glob
 MCP_PREFIX, OMP_MCP_PREFIX = frontmatter.MCP, "mcp__kaimon_"
 KAIMON_URL = "http://127.0.0.1:2828/"
 KAIMON_TOKEN = "~/.config/kaimon/opencode-token"
+# oh-my-pi cuts an MCP request after its server's `timeout` in milliseconds, 30 s when none is
+# set (`mcp/timeout.ts`; `OMP_MCP_TIMEOUT_MS` holds over both). Kaimon moves an eval that takes
+# longer than about 30 s to the background and answers with its id, so a call ends well inside
+# this timeout.
+KAIMON_TIMEOUT_MS = 120_000
 # The tiers, the keys of `models` in models.toml; the model of DEFAULT_TIER is also the
 # default model, `modelRoles.default`.
 TIERS = frontmatter.TIERS
@@ -156,16 +176,25 @@ def bash_patterns(permissions):
     return patterns, rewritten
 
 
+def agent_models(models):
+    """The models that an agent or a council seat can run on, sorted, from load_models' tables
+    `models`: each tier's model, each override and each seat's model."""
+    seats = [s["model"] for council in models["councils"].values() for s in council]
+    return sorted({*models["models"].values(), *models["model_overrides"].values(), *seats})
+
+
 def render_config(profile, models):
-    """The text of the overlay OVERLAY, with the settings template rendered with `profile`, and
-    `modelRoles.default` the model of DEFAULT_TIER in `models`, load_models' tables."""
+    """The text of the overlay OVERLAY, with the settings template rendered with `profile`,
+    `modelRoles.default` the model of DEFAULT_TIER in `models`, load_models' tables, and an empty
+    fallback chain for each model of agent_models."""
     permissions = json.loads(profile_module.render_file(SETTINGS, profile))["permissions"]
     patterns, _ = bash_patterns(permissions)
     config = {
         "tools": {"approvalMode": "yolo", "approval": {"eval": "deny", "edit": "allow", "write": "allow"}},
         "bash": {"allowCompoundCommands": False,
-                 "patterns": [{"match": match, "approval": approval} for match, approval in patterns]},
+                 "patterns": [{"match": match, "approval": approval} for match, approval in patterns + OMP_LAST]},
         "modelRoles": {"default": models["models"][DEFAULT_TIER]},
+        "retry": {"fallbackChains": {model: [] for model in agent_models(models)}},
     }
     return HEADER + json.dumps(config, indent=2, ensure_ascii=False) + "\n"
 
@@ -316,6 +345,10 @@ def under_omp(meta, body, seats=0):
         ("agent", "agent" in tools),
         # oh-my-pi's default bash timeout is 300 s, and julia-test-runner runs suites of 10-30 minutes.
         ("bash", "shell" in tools),
+        # A write to `agent://<name>` wakes a parked agent.
+        ("write", "write" in tools),
+        # A sub-agent has no approval prompt, and `gh pr create` can need one.
+        ("pr", re.search(r"(?i)open the pull request", body) is not None),
         ("mcp", any(t.startswith(MCP_PREFIX) for t in tools))] if uses]
     if not used:
         return ""
@@ -388,8 +421,9 @@ def render_agent(path, models, root="~/.omp/agent"):
 
 def render_mcp():
     """The text of mcp.json: the Kaimon server alone, over HTTP, with its token read from
-    KAIMON_TOKEN by a shell command when oh-my-pi connects, so that no secret is in the file."""
-    kaimon = {"type": "http", "url": KAIMON_URL,
+    KAIMON_TOKEN by a shell command when oh-my-pi connects, so that no secret is in the file, and
+    the request timeout KAIMON_TIMEOUT_MS."""
+    kaimon = {"type": "http", "url": KAIMON_URL, "timeout": KAIMON_TIMEOUT_MS,
               "headers": {"Authorization": f"!printf 'Bearer %s' \"$(cat {KAIMON_TOKEN})\""}}
     return json.dumps({"mcpServers": {"kaimon": kaimon}}, indent=2) + "\n"
 
@@ -889,11 +923,12 @@ def omp_cases(case, fresh, run):
          "with PI_CODING_AGENT_DIR set, nothing is written to ~/.omp or to a project .omp/")
 
     # The patterns are the template's Bash entries, rendered with the profile: deny, then ask as
-    # prompt, then allow, each in the template's order. oh-my-pi takes the first rule that
-    # matches, so this order is Claude Code's precedence.
+    # prompt, then allow, each in the template's order, then OMP_LAST. oh-my-pi takes the first
+    # rule that matches, so this order is Claude Code's precedence.
     expected = [{"match": r[len("Bash("):-1], "approval": approval}
                 for action, approval in (("deny", "deny"), ("ask", "prompt"), ("allow", "allow"))
                 for r in permissions[action] if r.startswith("Bash(")]
+    expected += [{"match": "gh pr create*", "approval": "prompt"}]
 
     def rendered():
         try:
@@ -911,7 +946,7 @@ def omp_cases(case, fresh, run):
     own = [a for key, rules in opencode.OPENCODE_ONLY_RULES if key == "bash" for _, a in rules]
     oc = {a: sum(1 for _, x in emitted["bash"] if x == a) - own.count(a) for a in ("deny", "ask")}
     counted = {a: sum(1 for p in got if isinstance(p, dict) and p.get("approval") == b)
-               for a, b in (("deny", "deny"), ("ask", "prompt"))}
+               - sum(1 for _, x in OMP_LAST if x == b) for a, b in (("deny", "deny"), ("ask", "prompt"))}
     case(lambda: counted == oc,
          f"the deny and prompt counts equal the OpenCode block's bash deny and ask counts: oh-my-pi {counted}, "
          f"OpenCode {oc}")
@@ -986,8 +1021,9 @@ def omp_agent_cases(case, fresh, run, agent):
         worktree = meta.get("isolation") == "worktree" or "isolation" in fm.body
         kaimon = any(t.startswith("mcp/kaimon/") for t in meta["tools"])
         council = src.stem in models["councils"]
+        opens = re.search(r"(?i)open the pull request", fm.body) is not None
         uses = (bool(meta.get("skills")) or "agent" in meta["tools"] or "shell" in meta["tools"] or worktree or kaimon
-                or council)
+                or council or "write" in meta["tools"] or opens)
         # The body names oh-my-pi's copies of the shared paths.
         body = frontends.relocate(fm.body.lstrip("\n").encode(), str(agent)).decode()
         # The text before the body: the Under oh-my-pi section, which the body cannot stand in for.
@@ -1006,6 +1042,9 @@ def omp_agent_cases(case, fresh, run, agent):
              worktree and ("Nothing makes a worktree" not in under or "git worktree add" not in under)),
             ("no `task` rule for the agent tool", "agent" in meta["tools"] and "`task` tool" not in under),
             ("no `timeout` rule for the shell tool", "shell" in meta["tools"] and "`timeout`" not in under),
+            ("no approval rule for the shell tool", "shell" in meta["tools"] and "needs approval" not in under),
+            ("no `agent://` rule for the write tool", "write" in meta["tools"] and "`agent://" not in under),
+            ("no rule that hands `gh pr create` to the caller", opens != ("gh pr create" in under)),
             ("no `mcp__kaimon_` name for a Kaimon tool", kaimon and "`mcp__kaimon_ex`" not in under)] if bad]
 
     rendered = sorted(p.name for p in (agent / "agents").glob("*.md")) if (agent / "agents").is_dir() else []
@@ -1033,6 +1072,17 @@ def omp_agent_cases(case, fresh, run, agent):
         roles = f"{type(e).__name__}: {e}"
     case(lambda: roles == {"default": models["models"]["medium"]},
          f"the overlay's modelRoles holds the default on the medium tier's model: {roles}")
+    # No silent fallback: every model that a rendered agent or seat names has an empty chain, and
+    # the overlay holds no other chain, so it neither adds a fallback nor hides config.yml's.
+    named = {json.loads(m) for p in (agent / "agents").glob("*.md")
+             for m in re.findall(r"(?m)^model: (\".*\")$", p.read_text())}
+    try:
+        chains = omp_config(agent / OVERLAY).get("retry", {}).get("fallbackChains")
+    except (OSError, ValueError) as e:
+        chains = f"{type(e).__name__}: {e}"
+    case(lambda: len(named) > 1 and chains == {m: [] for m in named},
+         f"the overlay gives each model of an agent or a seat, and only those, an empty fallback chain: {chains}, "
+         f"{sorted(named)}")
     # A missing tier, no model tables, and a tier that is no string, blank or not a tier exit 2 and
     # write nothing. The example's [omp.models] replaces the shared small tier.
     example = (REPO / "examples" / "models.toml").read_text()
@@ -1060,7 +1110,7 @@ def omp_agent_cases(case, fresh, run, agent):
     # The MCP entry: Kaimon over HTTP, the token read by a command at connect time, no other
     # server, and no foreign configuration source opted in, so ~/.claude.json is not imported.
     url, token = "http://127.0.0.1:2828/", "~/.config/kaimon/opencode-token"
-    want = {"mcpServers": {"kaimon": {"type": "http", "url": url, "headers": {
+    want = {"mcpServers": {"kaimon": {"type": "http", "url": url, "timeout": 120000, "headers": {
         "Authorization": f"!printf 'Bearer %s' \"$(cat {token})\""}}}}
     try:
         mcp = json.loads((agent / "mcp.json").read_text())

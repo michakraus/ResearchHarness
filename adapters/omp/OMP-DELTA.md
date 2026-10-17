@@ -27,7 +27,8 @@ pattern refuses or a `prompt` pattern asks for; in `omp -p` a `prompt` pattern r
 ## The guard extension
 
 `extensions/guards.ts` runs `no-blind-stage.py`, `no-shell-file-write.py`, `gh-api-writes.py` and
-`rm-scope.py` from `~/.omp/agent/hooks/` on each `bash` call. It refuses a path that the `read`
+`rm-scope.py` from `~/.omp/agent/hooks/` on each `bash` call. It refuses a sub-agent's write to
+`agent://`. It refuses a path that the `read`
 tool may not read, such as a credential file or oh-my-pi's own directory, in `read`, `grep` and
 `bash`; the copies of the skills, the rules and the instructions below `~/.omp/agent/` stay
 readable. It refuses an installed `~/.claude` path, `~/.omp/**` or `~/.config/**` in `edit` and
@@ -86,6 +87,14 @@ and a file beside its `SKILL.md` as `skill://<name>/<file>`.
 **Each agent's model and thinking level are in its own frontmatter**, so a spawn names no model.
 A council seat, and an agent that `models.toml` moves to another provider, needs that provider's
 credentials: without them oh-my-pi runs the agent on your own model, with only a log warning.
+A provider error ends an agent's run on its own model: rerun that agent, never on another model.
+
+**Continue an agent by a new spawn**, with the last report as its handoff, also after an
+unfinished, placeholder or empty report and where a skill says to `SendMessage`. Never write to
+`agent://`: it wakes a parked agent, which returns stale output.
+
+**Run a command that a sub-agent returns for approval**, such as the finish builder's
+`gh pr create`, or give it to the user.
 
 ## `build-part`: round 1 is a council of critics
 

@@ -143,6 +143,8 @@ key `opencode_providers`. Before them, the install writes one entry for each mod
 `context_limits` of `models.toml`, with that limit. The `mcp` entry connects to the Kaimon server at
 `http://127.0.0.1:2828/`, which `launchagents/kaimon.plist` starts. The token comes from
 `~/.config/kaimon/opencode-token` when OpenCode reads the file, so no secret is in the repository.
+`experimental.subagent_depth` is 2, so that a builder that the dispatcher spawns can spawn
+`julia-branch-verifier` or a `reader`; OpenCode allows one level by default.
 
 The `permission` block is generated. Do not edit it by hand: run `harness permissions --apply`,
 which writes it from the settings template. OpenCode takes the last rule that matches, so each
@@ -249,16 +251,21 @@ The install writes into oh-my-pi's agent directory, `$PI_CODING_AGENT_DIR`, else
 
 - `harness.yml`, an overlay over oh-my-pi's own `config.yml`, which the install never writes: the
   approval mode `yolo`, the `eval` tool denied, and the Bash rules of the settings template as
-  `bash.patterns`: every `deny`, then every `ask` as `prompt`, then every `allow`. oh-my-pi reads it
-  when `PI_CONFIG_FILES` in `~/.omp/agent/.env` names it, and the install warns until it does;
-- `modelRoles.default` in `harness.yml`, the `medium` model of the model tables;
+  `bash.patterns`: every `deny`, then every `ask` as `prompt`, then every `allow`, then a `prompt`
+  for `gh pr create*`, which `yolo` would otherwise run unasked when it names no repository.
+  oh-my-pi reads it when `PI_CONFIG_FILES` in `~/.omp/agent/.env` names it, and the install warns
+  until it does;
+- `modelRoles.default` in `harness.yml`, the `medium` model of the model tables, and an empty
+  `retry.fallbackChains` entry for each model of an agent or a council seat, so that a provider
+  error does not move an agent to another model;
 - `models.yml`, after a backup: the providers of the profile key `omp_providers`, and each model
   of the `context_limits` of `models.toml` with its limit as `contextWindow`;
 - `extensions/guards.ts` and the path list `extensions/guard-paths.json`;
 - `AGENTS.md`, from `OMP-DELTA.md`;
 - `rules/<name>.md` for each rule that the Claude Code layer installs, with `paths` written as
   `globs`;
-- `mcp.json`, with the Kaimon server alone;
+- `mcp.json`, with the Kaimon server alone and a request timeout of 120 s, above Kaimon's own
+  move of a slow eval to the background;
 - `agents/<name>.md` for each agent of `agents/`, with its model and its `thinking-level` from the
   model tables and the section of `UNDER-OMP.md`, and a copy for each seat of its council;
 - its own copies of `RTK.md`, `instructions/`, the guard scripts in `hooks/` and the skills in
@@ -290,6 +297,8 @@ It states the facts of oh-my-pi:
 - read a rule through `rule://<name>` before work on a file that its globs match;
 - the skills are oh-my-pi's copies in `~/.omp/agent/skills/`, read through `skill://<name>`;
 - each agent's model is in its frontmatter, and a council seat needs its provider's credentials;
+- the dispatcher continues an agent by a new spawn, never by a write to `agent://`, and runs a
+  command that a sub-agent returns for approval;
 - the council of critics of `build-part`.
 
 The cases check that the file is no larger than 5,114 bytes.
@@ -300,8 +309,11 @@ The text of the "Under oh-my-pi" section that the oh-my-pi adapter puts before t
 agent. The section replaces each Claude Code mechanism that the agent uses.
 
 The file has one level-2 section for each mechanism: `intro`, `skills`, `worktree`, `agent`,
-`bash` and `mcp`. `render_agent` takes `intro`, then the section of each mechanism that the agent
-uses: preloaded skills, worktree isolation, the `Agent` tool, the shell tool, or a Kaimon tool. In
+`bash`, `write`, `pr` and `mcp`. `render_agent` takes `intro`, then the section of each mechanism
+that the agent uses: preloaded skills, worktree isolation, the `Agent` tool, the shell tool, the
+write tool, a body that opens the pull request, or a Kaimon tool. `bash` has a sub-agent return a
+command that needs approval to its caller; `write` forbids a write to another agent; `pr` has the
+builder return `gh pr create` to its caller. In
 `skills`, `{skills}` becomes the names of the agent's skills. An agent that uses none of these
 mechanisms gets no section.
 
@@ -316,7 +328,13 @@ oh-my-pi's agent directory. It checks each tool call that a glob of `bash.patter
 - `bash`: the four guard scripts of `~/.omp/agent/hooks/`, which it runs with `python3`, and the path
   list on the words of the command and on its working directory;
 - `read` and `grep`: the `deny` list on the path;
-- `edit` and `write`: the `edit` list, then the `ask` list, on each path that the call names.
+- `edit` and `write`: the `edit` list, then the `ask` list, on each path that the call names;
+- `write` in a sub-agent: a path `agent://<name>`, which it refuses, because the write wakes a
+  parked agent. oh-my-pi gives a sub-agent's context `agent.kind: "sub"`.
+
+A word with a glob character reaches only the names that its first glob segment matches, so a
+pattern such as `/[0-9]+/` reaches no denied path. The program argument of an awk, sed or grep is
+not checked as a path; a home path in it is still refused.
 
 The path list is `guard-paths.json` beside the extension. The `deny` and `edit` lists also get
 `~/.omp/**`. The copies of the skills, the rules and the instructions below `~/.omp/agent/` stay
