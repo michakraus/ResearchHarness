@@ -154,6 +154,19 @@ that check passes.
    `evidence.md` says.
 8. **Read the *Done when* again against the diff.** Every clause has a PASS row, and nothing in
    the diff is outside the part.
+9. **Reread the text of your change**, last, once the code does not change. Read
+   `~/.claude/rules/changelog.md` and `~/.claude/rules/known-issues.md` first. List each line of a
+   comment, docstring, message string, `CHANGELOG.md`, `KNOWN_ISSUES.md`, README or docs page that
+   `git diff <base>...HEAD` adds or changes, with `origin/main` as the base in the build; each
+   comment or docstring in or next to a block that the diff changes; and each line of those files
+   that names a symbol, a file, a line number, a count or a behaviour that the diff changes, moves
+   or removes, found with `grep` over the worktree. Check each line against the code, the part's
+   sections, or a command under 5 minutes. Fix each line that is false or has no support, that the
+   diff makes stale, that tells history outside `CHANGELOG.md`, that records in `KNOWN_ISSUES.md` a
+   defect that your branch causes or breaks that file's form, or that breaks the file's own width,
+   wrap or grammar. A defect that your branch causes is fixed, not recorded. A claim about a run, a
+   registry or a measurement holds only with a run you did or a record you read; otherwise remove
+   it. List the lines in *Text checked*.
 
 ## Keep the context small, and never wait long
 
@@ -170,12 +183,13 @@ again**, at $5 per million tokens: $2.5 at 500 k, on every such pause. Three rul
 
 ## Return for the critic
 
-When steps 1–8 pass, **commit on the part's branch**, shut down your Kaimon session, and return
+When steps 1–9 pass, **commit on the part's branch**, shut down your Kaimon session, and return
 with `Verdict: ready for critic`.
 Do not push, do not run `julia-branch-verifier`, and do not open the pull request yet.
 
 **Your caller then sends you a message** by your agentId, with the survivors of a generated sweep,
-a gap in your *Mutants* table, or a decision. A gap you close as step 6 says. After each critic round it spawns a new builder instead (*Spawned after a critic
+a gap in your *Mutants* or *Text checked* table, or a decision. A gap you close as step 6 or
+step 9 says. After each critic round it spawns a new builder instead (*Spawned after a critic
 round*). Each input is handled so:
 
 - **The survivors of a generated sweep**, before round 1, where the plan's §L asks for the sweep.
@@ -188,7 +202,8 @@ round*). Each input is handled so:
   Each blocking defect names a reproducer: make it a test that fails before your fix. Where you are
   sure a blocking defect is wrong, leave the code and show the evidence. Run the test file of each
   fix, then `run-tests.jl <worktree> affected`, then step 6 for the lines that the fix adds or
-  changes. Commit, and return with `Verdict: ready for critic` again.
+  changes, then step 9 for the text that the fix adds, changes or makes false. Commit, and return
+  with `Verdict: ready for critic` again.
   **A critic's *Fix* is a suggestion, not the fix.** A fix that adds an exit, a stop, a guard or a
   status changes the result on inputs that no reproducer names. Before you commit one, read the
   section of `~/.claude/skills/build-part/edges.md` for the part's kind, and test the new rule on
@@ -238,8 +253,10 @@ its paths under `Paths to stage:`; your caller commits them.
   Do what *The critic's findings* and the two items after it say. Commit, fill *Blocking defects
   answered* for this round, and return with `Verdict: ready for critic`.
 - **`Round: finish`.** You also get the passing critic's verdict and evidence table, and the
-  suite's counts. Do what *The critic's PASS* says, then *Verify before the pull request* and
-  *Open the pull request*. The body lists the `KNOWN_ISSUES.md` entries of the whole branch, from
+  suite's counts. Do what *The critic's PASS* says, then step 9 over the whole branch, then
+  *Verify before the pull request* and *Open the pull request*. Step 9 here fixes text only; a
+  false line whose fix needs a change of code goes to your caller as a question. The body lists
+  the `KNOWN_ISSUES.md` entries of the whole branch, from
   `git diff <base>..HEAD -- KNOWN_ISSUES.md`, and every advisor line of the part's section.
 
 ## Verify before the pull request
@@ -335,6 +352,14 @@ Paths to stage: <for a direct-to-main part spawned outside its repository, the u
 <every mutant of this round, named and your own: kind is named, guard, branch, comparison or
 edge; verdict is CAUGHT, closed by <test>, or no-defect — <equivalent | dead code | message
 text>. Then one line: n written, n caught, n closed, n no-defect, n open>
+
+### Text checked
+| file:lines | artifact | verdict |
+|:--|:--|:--|
+<step 9 of this round: one row per file and line range it read, and one row per line it fixed;
+artifact is comment, docstring, message, changelog, known-issues or docs; verdict is holds, or
+fixed in <sha7> — <false | stale | history | known-issues | form>. Then one line: n lines
+checked, n fixed>
 
 ### Left for the dispatcher
 <each run longer than 5 minutes, with its exact command, or "none">
