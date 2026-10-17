@@ -146,7 +146,7 @@
   plan line that `install_file` prints, and asserts it, so `install.selftest()` prints no stray
   `x.md  INSTALL` line (K70).
 
-- **OpenCode's default model is `opencode/nemotron-3.5-super-vl-free`, Zen's free Nemotron, in
+- **OpenCode's default model is `opencode/deepseek-v4.1-flash-free`, Zen's free DeepSeek, in
   place of `opencode-go/deepseek-v4.1-flash`.**
 
 - **The docs checks and `run-tests.jl`: K39, K50, K51 and K53 leave `KNOWN_ISSUES.md`.** The log, the
