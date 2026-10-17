@@ -38,6 +38,13 @@
     changes between Pkg versions. On the main checkouts of the tree, 8 of 43 manifests lie outside
     their own `[compat]`. `harness install` warns, without a fetch, when its checkout is behind its
     local `origin/main`.
+  - oh-my-pi's guard extension and OpenCode's guard plugin run the R1 and R3 checks too. They run
+    `sandbox-semantics.py --work-tree`, its work-tree check alone, on each shell call, because they
+    have no sandbox for its other shapes; the check follows each `cd` of the command, since neither
+    refuses a `cd … &&` form. They run `kaimon-session.py` on their names of the Kaimon tools,
+    `mcp__kaimon_ex` and `mcp__kaimon_manage_repl` under oh-my-pi, `kaimon_ex` and
+    `kaimon_manage_repl` under OpenCode. `harness install` copies both scripts into each
+    frontend's `hooks/`.
 
 - **`skills/build-part/edges.md` states the same-error-type guard case as a mechanism, in the
   present tense.** The example of the edge class "a case meant for one guard that a later guard

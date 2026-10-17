@@ -11,8 +11,9 @@ events of a session.
 The sources are in `hooks/`. `harness install --apply` copies them to `~/.claude/hooks/`.
 Claude Code calls them through the `hooks` section of its settings, which
 `harness install --apply` writes from `settings/settings.proposal.json`. oh-my-pi calls
-four of them through its guard extension `adapters/omp/guards.ts`, and OpenCode calls the same
-four through its plugin `adapters/opencode/plugins/guards.ts`. Each of the two runs its own copy
+six of them through its guard extension `adapters/omp/guards.ts`, and OpenCode calls the same
+six through its plugin `adapters/opencode/plugins/guards.ts`: four shell guards, the work-tree check
+of `sandbox-semantics.py`, and `kaimon-session.py`. Each of the two runs its own copy
 of the scripts, which `harness install` writes to `hooks/` in its directory:
 `~/.omp/agent/hooks/` and `~/.config/opencode/hooks/`. Each hook still has one source. `hooks/probe.py` holds the test cases of the
 hooks, and `harness test` runs it.
@@ -63,7 +64,8 @@ echo '{"tool_input":{"command":"echo x > src/Foo.jl"},"cwd":"/path/in/a/repo"}' 
 ## `sandbox-semantics.py`
 
 This hook refuses a command whose shape makes the Claude Code sandbox give a false result. Claude
-Code runs it as a `PreToolUse` hook on the `Bash` matcher. oh-my-pi and OpenCode do not run it.
+Code runs it as a `PreToolUse` hook on the `Bash` matcher. oh-my-pi and OpenCode run only its
+work-tree check, as `sandbox-semantics.py --work-tree`, on each shell call: they have no sandbox.
 
 The settings let a command run outside the sandbox only when every part of it starts with `git`,
 `gh`, `glab` or `ps` and no part redirects a file. A sandboxed `gh` cannot reach the network, and
@@ -77,9 +79,10 @@ certificate fault. The hook exits 2 on four shapes:
 - a path argument of `git init`, `git clone`, `git worktree add`, `git worktree move` or
   `git bundle create` that starts with `/`, `~` or `$`, or holds `..`.
 
-It also exits 2 on a `git init` or `git clone` whose working directory, or target below it, is
-inside a git work tree. A `cd` outside the agent's working directories is reset before the next
-call, so such a command runs in the agent's root and leaves a repository in another work tree.
+It also exits 2 on a `git init` or `git clone` whose working directory, after each `cd` of the
+command, or target below it, is inside a git work tree. Under Claude Code a `cd` outside the
+agent's working directories is reset before the next call, so such a command runs in the agent's
+root and leaves a repository in another work tree.
 
 Each refusal gives the form that works, for example a separate Bash call. It fails open. Test it:
 
@@ -147,7 +150,9 @@ echo '{"tool_input":{"path":"~/Research/Packages"}}' | ./directory-scope.py
 ## `kaimon-session.py`
 
 This hook refuses a Kaimon call that names no session. Claude Code runs it as a `PreToolUse` hook
-on the matcher `mcp__kaimon__ex|mcp__kaimon__manage_repl`. oh-my-pi and OpenCode do not run it.
+on the matcher `mcp__kaimon__ex|mcp__kaimon__manage_repl`. oh-my-pi runs it on
+`mcp__kaimon_ex` and `mcp__kaimon_manage_repl`, and OpenCode on `kaimon_ex` and
+`kaimon_manage_repl`, their names of the same tools.
 
 An `ex` call needs `ses`, and a `manage_repl` call needs `session`. Without the key, Kaimon uses
 the session that the agent is bound to, else the only one connected, which can be another agent's.

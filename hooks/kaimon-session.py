@@ -3,7 +3,9 @@
 
 A `PreToolUse` hook on the matcher `mcp__kaimon__ex|mcp__kaimon__manage_repl`. It exits 2,
 which refuses the call and shows this script's stderr to the model, when an `ex` call has no
-`ses`, or a `manage_repl` call has no `session`.
+`ses`, or a `manage_repl` call has no `session`. oh-my-pi's guard extension runs it on
+`mcp__kaimon_ex` and `mcp__kaimon_manage_repl`, and OpenCode's guard plugin on `kaimon_ex` and
+`kaimon_manage_repl`, their names of the same tools.
 
 Without the key, Kaimon takes the session the agent is bound to, else the only connected one.
 Under a builder-critic loop several agents hold sessions at once, so a call without the key
@@ -25,6 +27,8 @@ import sys
 
 # The session parameter of each tool, by the last part of its name.
 KEYS = {"ex": "ses", "manage_repl": "session"}
+# The prefix of a Kaimon tool's name: Claude Code's, oh-my-pi's and OpenCode's, longest first.
+PREFIXES = ("mcp__kaimon__", "mcp__kaimon_", "kaimon_")
 
 MESSAGE = """Refused: `{tool}` without `{key}`.
 
@@ -42,10 +46,12 @@ def main():
         payload = json.load(sys.stdin)
         name = payload["tool_name"]
         arguments = payload["tool_input"]
-        prefix = "mcp__kaimon__"
     except Exception:
         return 0
-    if not isinstance(name, str) or not name.startswith(prefix):
+    if not isinstance(name, str):
+        return 0
+    prefix = next((p for p in PREFIXES if name.startswith(p)), None)
+    if prefix is None:
         return 0
     tool = name[len(prefix):]
     key = KEYS.get(tool)

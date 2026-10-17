@@ -31,7 +31,9 @@ A fifth shape succeeds where it should not: **a `git init` or `git clone` whose 
 directory is inside an existing work tree.** A `cd` outside the agent's working directories
 is reset before the next call, so the command runs in the agent's root — a builder's
 worktree, `Tasks`, `Environment` — and leaves a repository there. The hook reads the payload's
-`cwd` and refuses when it, or the target below it, has a `.git` on its path.
+`cwd`, follows each `cd` of the command, and refuses when that directory, or the target below
+it, has a `.git` on its path. oh-my-pi's and OpenCode's guards run this check alone, as
+`sandbox-semantics.py --work-tree`: they have no sandbox, so the other shapes do not apply there.
 
 The first three are not expressible as a `permissions.deny` glob. The matcher sees no
 nesting, cannot require every part of a command to match, and reads `?` as a wildcard, so
@@ -170,9 +172,9 @@ For a worktree, call `EnterWorktree`; the `WorktreeCreate` hook makes it in
 
 WORK_TREE_MESSAGE = """Refused: {found} in {cwd}
 
-This directory is inside the work tree {root}. A `cd` outside the agent's working
-directories is reset before the next call, so the command runs in the agent's root and
-leaves a repository in a work tree that is not the one you meant.
+This directory is inside the work tree {root}, so the command leaves a repository in a work
+tree. Under Claude Code, a `cd` outside the agent's working directories is reset before the
+next call, so the command runs in the agent's root, which is often not the directory you meant.
 
 A probe needs no repository. Compare two copies with `git diff --no-index <a> <b>`, and read
 a worktree with `cd <worktree> && git <read> …` in one call.
@@ -266,14 +268,18 @@ def work_tree(path):
 
 
 def in_work_tree(heads, cwd):
-    """Return (command, root) for a `git init` or `git clone` that lands in a work tree, or None.
+    """Return (command, root, directory) for a `git init` or `git clone` that lands in a work
+    tree, or None.
 
-    The target is the last argument that is not a flag, resolved against the working directory;
-    without one it is the working directory. A clone's URL, read as the target, lies below the
+    The target is the last argument that is not a flag, resolved against the working directory
+    after each `cd` before it in the command; without one it is that working directory. A clone's URL, read as the target, lies below the
     working directory too, so the verdict is the working directory's."""
     if not cwd:
         return None
     for head, arguments in heads:
+        if head == "cd" and arguments:
+            cwd = os.path.join(cwd, os.path.expanduser(os.path.expandvars(arguments[0])))
+            continue
         if head != "git":
             continue
         sub = git_subcommand(arguments)
@@ -284,7 +290,7 @@ def in_work_tree(heads, cwd):
         target = os.path.expanduser(os.path.expandvars(operands[-1])) if operands else "."
         root = work_tree(os.path.join(cwd, target))
         if root:
-            return "git " + sub, root
+            return "git " + sub, root, cwd
     return None
 
 
@@ -426,6 +432,16 @@ def main():
         return 0
     cwd = payload.get("cwd") if isinstance(payload.get("cwd"), str) else None
 
+    # `--work-tree`: only the work-tree check, for oh-my-pi and OpenCode, which have no sandbox
+    # for the other four shapes to describe.
+    if sys.argv[1:] == ["--work-tree"]:
+        classified = top_level(command, cwd) if "git" in command else None
+        found = in_work_tree(classified[0], cwd) if classified else None
+        if found:
+            sys.stderr.write(WORK_TREE_MESSAGE.format(found=found[0], cwd=found[2], root=found[1]))
+            return 2
+        return 0
+
     if any(name in command for name in ("gh", "glab", "git")):
         found = nested(command)
         if found:
@@ -446,7 +462,7 @@ def main():
             return 2
         found = in_work_tree(classified[0], cwd) if classified else None
         if found:
-            sys.stderr.write(WORK_TREE_MESSAGE.format(found=found[0], cwd=cwd, root=found[1]))
+            sys.stderr.write(WORK_TREE_MESSAGE.format(found=found[0], cwd=found[2], root=found[1]))
             return 2
 
     if "$?" in command and sandboxed(command, cwd):
