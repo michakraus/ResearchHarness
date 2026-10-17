@@ -124,6 +124,18 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   norm; keep a direct check of that quantity (G8, verify 5)
 - an exact `==` between non-zero `@allocated` readings that reach `inv` or `exp`, whose allocation
   differs by 16–48 B between calls on Windows (G8, the verifier after verify 6 and verify 7)
+- a `Float32` precision row whose fixture builds its scale as a `Float64` literal: the input is
+  promoted, so the row measures the other precision, and every figure taken from it describes the
+  promoted path — the check 3 ratios quoted in a CHANGELOG named a `Float64` input under a
+  `Float32` heading. Convert the scale to `T` and assert `eltype(C) === T` in each input set
+  (M4, *Simplify the optimiser package and the learning package for 0.9*)
+- an untimed warm-up of a device measurement that is not synchronized, so the device's unfinished
+  work lands in the first timed sample: synchronize the warm-up exactly as every timed call is
+  (M4, *Simplify the optimiser package and the learning package for 0.9*)
+- a docstring that states a kernel's guarantee without the domain its rows cover, such as the
+  sizes and the scales: it reads as universal, while elimination overflows outside them. Name the
+  tested sizes and scales in the contract, and where it fails (M4, *Simplify the optimiser
+  package and the learning package for 0.9*)
 
 ## A type or an interface
 
