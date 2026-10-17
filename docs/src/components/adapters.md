@@ -257,7 +257,8 @@ The install writes into oh-my-pi's agent directory, `$PI_CODING_AGENT_DIR`, else
   until it does;
 - `modelRoles.default` in `harness.yml`, the `medium` model of the model tables, and an empty
   `retry.fallbackChains` entry for each model of an agent or a council seat, so that a provider
-  error does not move an agent to another model;
+  error does not move an agent to another model. A model whose chain in `config.yml` names only
+  the same model through another provider keeps that chain;
 - `models.yml`, after a backup: the providers of the profile key `omp_providers`, and each model
   of the `context_limits` of `models.toml` with its limit as `contextWindow`;
 - `extensions/guards.ts` and the path list `extensions/guard-paths.json`;

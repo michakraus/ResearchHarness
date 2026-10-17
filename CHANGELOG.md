@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- **oh-my-pi keeps a fallback that only switches the provider.** The empty fallback chains of
+  `harness.yml` also replaced a chain in `config.yml` that sends a model to the same model through
+  another provider, such as `opendesign/deepseek-v4.1-flash` to `opencode-go/deepseek-v4.1-flash`.
+  That model was the session's default and the `medium` tier's, so a rate limit on one provider
+  stopped the session instead of moving it to the other account. The install reads
+  `retry.fallbackChains` of `config.yml` and writes no empty chain for a model whose chain names
+  only the same model, with or without a thinking level or as `<provider>/*`. A chain to another
+  model, a key with no selector and a form that the install cannot read still get the empty chain,
+  so a council seat still keeps its model. A change of that chain takes effect at the next install.
+
 - **oh-my-pi: no revived agents, a Kaimon timeout of 120 s, a path guard that reads a pattern as
   a pattern, approvals returned to the caller, and no silent model fallback.** Five failures that
   only the oh-my-pi runs showed, with their mechanisms:
