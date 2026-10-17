@@ -135,11 +135,16 @@ that check passes.
    `<worktree>/.claude/scratch/`, check it with `mutate.jl <worktree> --check <list>`, and run it
    once with `mutate.jl <worktree> --warm <list> <unit> ...`, with the test files that must catch
    them as the units. A SURVIVED named mutant fails its clause: add the test that catches it, and
-   run the list again. Quote the totals line. **Write no other mutants, and run no sweep of your
-   diff.** Where the plan's §L asks for a generated sweep, put its commands under *Left for the
-   dispatcher*, as *Which mutants run* in `evidence.md` says. The whole suite is not yours to run:
-   the dispatcher runs it beside the critic.
-6. **Run the checks that the tests do not cover**, for each one that the part touches: the
+   run the list again. Quote the totals line. The whole suite is not yours to run: the
+   dispatcher runs it beside the critic.
+6. **Run your own mutants**: one per guard, branch, comparison and decided edge that your change
+   adds or changes, in any file of the diff, as *Which mutants run* in `evidence.md` says. A
+   mutant in a Julia package file goes into a second list under `<worktree>/.claude/scratch/` and
+   runs with `mutate.jl` as in step 5; any other file you break by hand, run its test, and restore.
+   Close each survivor with a test that catches it, or justify it as no-defect in *Mutants*:
+   equivalent, dead code, or message text that no clause names. Where the plan's §L asks for a
+   generated sweep, put its commands under *Left for the dispatcher*; it is not your step.
+7. **Run the checks that the tests do not cover**, for each one that the part touches: the
    docstring doctests, `doctest(<Package>; manual = false)`, for a changed docstring;
    `@inferred` and `@allocated` in a cold process for a method on a hot path, with every
    allocation assertion in the form of *Allocation assertions* in `evidence.md`; a script that the
@@ -147,7 +152,7 @@ that check passes.
    (`Documenter.yml`); CI's Doctests job runs only `doctest(<Package>)`. The
    run on the Julia floor goes under *Left for the dispatcher* as *The floor runs once* in
    `evidence.md` says.
-7. **Read the *Done when* again against the diff.** Every clause has a PASS row, and nothing in
+8. **Read the *Done when* again against the diff.** Every clause has a PASS row, and nothing in
    the diff is outside the part.
 
 ## Keep the context small, and never wait long
@@ -165,12 +170,12 @@ again**, at $5 per million tokens: $2.5 at 500 k, on every such pause. Three rul
 
 ## Return for the critic
 
-When steps 1–7 pass, **commit on the part's branch**, shut down your Kaimon session, and return
+When steps 1–8 pass, **commit on the part's branch**, shut down your Kaimon session, and return
 with `Verdict: ready for critic`.
 Do not push, do not run `julia-branch-verifier`, and do not open the pull request yet.
 
-**Your caller then sends you a message** by your agentId, with the survivors of a generated sweep
-or a decision. After each critic round it spawns a new builder instead (*Spawned after a critic
+**Your caller then sends you a message** by your agentId, with the survivors of a generated sweep,
+a gap in your *Mutants* table, or a decision. A gap you close as step 6 says. After each critic round it spawns a new builder instead (*Spawned after a critic
 round*). Each input is handled so:
 
 - **The survivors of a generated sweep**, before round 1, where the plan's §L asks for the sweep.
@@ -182,8 +187,8 @@ round*). Each input is handled so:
   it to what each defect needs.
   Each blocking defect names a reproducer: make it a test that fails before your fix. Where you are
   sure a blocking defect is wrong, leave the code and show the evidence. Run the test file of each
-  fix, then `run-tests.jl <worktree> affected`. Commit, and return with `Verdict: ready for critic`
-  again.
+  fix, then `run-tests.jl <worktree> affected`, then step 6 for the lines that the fix adds or
+  changes. Commit, and return with `Verdict: ready for critic` again.
   **A critic's *Fix* is a suggestion, not the fix.** A fix that adds an exit, a stop, a guard or a
   status changes the result on inputs that no reproducer names. Before you commit one, read the
   section of `~/.claude/skills/build-part/edges.md` for the part's kind, and test the new rule on
@@ -323,6 +328,13 @@ Paths to stage: <for a direct-to-main part spawned outside its repository, the u
 ### Evidence
 | clause | test or command | on the unmodified tree | on the branch | verdict |
 |:--|:--|:--|:--|:--|
+
+### Mutants
+| file:line | from → to | kind | verdict |
+|:--|:--|:--|:--|
+<every mutant of this round, named and your own: kind is named, guard, branch, comparison or
+edge; verdict is CAUGHT, closed by <test>, or no-defect — <equivalent | dead code | message
+text>. Then one line: n written, n caught, n closed, n no-defect, n open>
 
 ### Left for the dispatcher
 <each run longer than 5 minutes, with its exact command, or "none">

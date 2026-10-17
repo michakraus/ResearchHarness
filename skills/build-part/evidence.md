@@ -98,6 +98,7 @@ verdict and runs nothing; any change under `src/`, `ext/` or `test/` runs every 
 | kind | written by | run by | a survivor |
 |:--|:--|:--|:--|
 | **named**: each mutant of the part's *Tests catch* | `plan-parts` | the builder, once, with `--warm`; each round 1 critic again | fails its clause, and blocks |
+| **own**: one mutant per guard, branch, comparison and decided edge that the change adds or changes, in any language | the builder, and each fixer for its fix | the builder, once, before it returns: `mutate.jl` in a Julia package file, by hand elsewhere | the builder closes it with a test, or justifies it as no-defect in its report: equivalent, dead code, or message text that no clause names |
 | **doubted**: a mutant for a clause whose test a critic doubts | the critic | the critic, in the same list as the named ones | blocks when it is in a clause's domain |
 | **generated**: every operator mutant of the diff, from `mutants.jl` | the script | the dispatcher's runner, before round 1, only where the plan's §L asks for it | goes to the builder, which adds a test or shows that the mutant changes no behaviour, then runs the list again with `--only SURVIVED` |
 
@@ -107,7 +108,10 @@ seeds, and quote "fails n of N". Try more than one mutant. Where the code runs o
 types, add a mutant that spells `adjoint` as `transpose`: only a complex element type separates the
 two. Report which mutant each assertion catches, not a claim about "the suite".
 
-No agent sweeps the whole diff on its own. A sweep's output enters the context that each later
+**The builder's report lists every mutant it ran**, named and own, with its verdict, in its
+*Mutants* table. A survivor that it leaves neither closed nor justified is a defect of the build.
+
+No agent runs the generated sweep on its own. A sweep's output enters the context that each later
 call reads again, and its survivors are a search with no end. Where the plan's §L asks for a
 generated sweep, the builder writes these two commands under *Left for the dispatcher*:
 
