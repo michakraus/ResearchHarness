@@ -4,7 +4,7 @@
   "plugin": ["opencode-anthropic-login-via-cli@1.7.0"],
 
   // The hosted model is primary.
-  "model": "opencode/deepseek-v4.1-flash-free",
+  "model": "opencode-go/deepseek-v4.1-flash",
 
   // Background work (session titles and similar) goes to the local model. It then costs
   // nothing, and it continues to operate without a network.
