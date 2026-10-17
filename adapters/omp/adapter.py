@@ -10,6 +10,7 @@ leaves it:
   harness.yml                 the approval mode and `bash.patterns`, from the settings template,
                               `modelRoles.default` from the `models` of models.toml, and an empty
                               `retry.fallbackChains` entry for each model of an agent or a seat
+                              but one whose config.yml chain only switches the provider
                               (render_config, load_models): an overlay that oh-my-pi reads when
                               `PI_CONFIG_FILES` names it (`overlay_warning`)
   models.yml                  the providers of the profile's `omp_providers`, and each model of
@@ -72,9 +73,13 @@ of DEFAULT_TIER, so that oh-my-pi picks no model by itself. Each model that an a
 seat runs on gets an empty chain in `retry.fallbackChains`: after a provider error, oh-my-pi's
 retry looks up the chain of the failing model, an exact model key before a role and `default`
 (`session/retry-fallback-chains.ts`), and a chain with no other model switches to none. So a
-seat fails on its own model and does not run on another one; the session's model loses its
-chain too when an agent shares it. oh-my-pi merges a mapping of the overlay into config.yml's key
-by key (`config/settings.ts`), so a chain that config.yml gives any other model or role stays.
+seat fails on its own model and does not run on another one. A model whose chain in config.yml
+names only the same model through another provider, `opendesign/m` to `opencode-go/m`, gets no
+empty chain: that chain switches the account, not the model, and the session keeps it where an
+agent shares its model. The install reads config.yml for this (config_chains), so a changed chain
+there takes effect at the next install. oh-my-pi merges a mapping of the overlay into
+config.yml's key by key (`config/settings.ts`), so a chain that config.yml gives any other model
+or role stays.
 The overlay opts no foreign
 configuration source in (`enabledProviders`), so oh-my-pi imports neither ~/.claude.json nor
 OpenCode's MCP servers.
@@ -183,10 +188,66 @@ def agent_models(models):
     return sorted({*models["models"].values(), *models["model_overrides"].values(), *seats})
 
 
-def render_config(profile, models):
+def config_chains(text):
+    """{key: [selector]} of `retry.fallbackChains` in `text`, oh-my-pi's config.yml, in the block
+    form that oh-my-pi writes: `retry:`, `  fallbackChains:`, `    <key>:`, `      - <selector>`,
+    each key and selector plain or quoted. A key in any other form is left out, and so gets the
+    empty chain of render_config."""
+    unquote = lambda s: json.loads(s) if s[:1] == '"' else s[1:-1] if s[:1] == "'" else s  # noqa: E731
+    chains, section, key = {}, None, None
+    for line in text.splitlines():
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        indent = len(line) - len(line.lstrip(" "))
+        body = line.strip()
+        if indent == 0:
+            section = "retry" if body == "retry:" else None
+        elif section and indent == 2:
+            section = "chains" if body == "fallbackChains:" and section in ("retry", "chains") else "retry"
+            key = None
+        elif section == "chains" and indent == 4:
+            key = None
+            if body.endswith(":"):
+                try:
+                    key = unquote(body[:-1].strip())
+                except ValueError:
+                    key = None
+                if key is not None:
+                    chains[key] = []
+        elif section == "chains" and indent == 6 and key is not None:
+            try:
+                if not body.startswith("- "):
+                    raise ValueError(body)
+                chains[key].append(unquote(body[2:].strip()))
+            except ValueError:
+                chains.pop(key, None)
+                key = None
+    return chains
+
+
+# A thinking-level suffix of an oh-my-pi model selector, `<provider>/<id>:<level>`.
+LEVEL_SUFFIX = re.compile(r":(?:off|minimal|low|medium|high|xhigh|max)$")
+
+
+def same_model(model, chain):
+    """True when `chain` holds a selector and each one names `model`, `<provider>/<id>`, through
+    another provider: `<other>/<id>`, `<other>/*`, either with a thinking level. Such a chain
+    switches the account, not the model, so a council seat keeps its model. A key with no
+    selector is YAML's null, which oh-my-pi ignores, and then its `default` chain applies."""
+    provider, _, ident = model.partition("/")
+    for selector in chain:
+        other, _, rest = LEVEL_SUFFIX.sub("", selector).partition("/")
+        if other == provider or rest not in (ident, "*"):
+            return False
+    return bool(chain)
+
+
+def render_config(profile, models, chains=None):
     """The text of the overlay OVERLAY, with the settings template rendered with `profile`,
     `modelRoles.default` the model of DEFAULT_TIER in `models`, load_models' tables, and an empty
-    fallback chain for each model of agent_models."""
+    fallback chain for each model of agent_models but one whose chain in `chains`, config.yml's
+    (config_chains), only names the same model through another provider."""
+    chains = chains or {}
     permissions = json.loads(profile_module.render_file(SETTINGS, profile))["permissions"]
     patterns, _ = bash_patterns(permissions)
     config = {
@@ -194,7 +255,8 @@ def render_config(profile, models):
         "bash": {"allowCompoundCommands": False,
                  "patterns": [{"match": match, "approval": approval} for match, approval in patterns + OMP_LAST]},
         "modelRoles": {"default": models["models"][DEFAULT_TIER]},
-        "retry": {"fallbackChains": {model: [] for model in agent_models(models)}},
+        "retry": {"fallbackChains": {model: [] for model in agent_models(models)
+                                     if not (model in chains and same_model(model, chains[model]))}},
     }
     return HEADER + json.dumps(config, indent=2, ensure_ascii=False) + "\n"
 
@@ -445,9 +507,10 @@ def render_agents(agents, models, root):
     return [a for p in paths for a in render_agent(p, models, root)]
 
 
-def render_files(profile, rules, models, agents, shared, root="~/.omp/agent"):
+def render_files(profile, rules, models, agents, shared, root="~/.omp/agent", chains=None):
     """[(path relative to the agent directory, bytes, mode)] of the files: the overlay OVERLAY, the
-    permission layer with the default model of `models`, models.yml when the profile holds a
+    permission layer with the default model of `models` and the fallback chains of render_config
+    over config.yml's `chains`, models.yml when the profile holds a
     provider or `models` a
     context limit, AGENTS.md,
     rules/<name>.md for each (source path, rendered bytes) of a Claude Code rule in `rules`,
@@ -457,7 +520,7 @@ def render_files(profile, rules, models, agents, shared, root="~/.omp/agent"):
     home form (frontends.relocate)."""
     text = lambda data: frontends.relocate(data, root)  # noqa: E731
     model_file = render_models(models, profile)
-    return [(OVERLAY, render_config(profile, models).encode(), None),
+    return [(OVERLAY, render_config(profile, models, chains).encode(), None),
             *([("models.yml", model_file.encode(), None)] if model_file else []),
             ("extensions/guards.ts", (SOURCE / "guards.ts").read_bytes(), None),
             ("extensions/guard-paths.json", guard_paths(profile).encode(), None),
@@ -484,8 +547,13 @@ def plan(ctx):
     # one only.
     rules = [(src, data) for dst, src, data in layer if re.fullmatch(r"rules/[^/]+\.md", dst)]
     agent = agent_dir()
+    # config.yml is oh-my-pi's; a missing one holds no chain.
+    try:
+        chains = config_chains((agent / "config.yml").read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        chains = {}
     files = render_files(ctx.profile, rules, models, ctx.agents, ctx.plans["claude"].shared,
-                         frontends.home_form(agent))
+                         frontends.home_form(agent), chains)
     # An installed oh-my-pi rule, agent or skill with no source is left in place, and oh-my-pi still
     # lists it: a file of rules/ whose name ends in `.md` or `.mdc`, a file of agents/ that ends in
     # `.md`, and a directory of skills/.
@@ -961,6 +1029,40 @@ def omp_cases(case, fresh, run):
          "a `:*` suffix renders to the glob of the same prefix, a bare Bash to *, and each is listed")
 
     omp_agent_cases(case, fresh, run, agent)
+
+    # config.yml's chains, in the block form that oh-my-pi writes: a chain that only switches the
+    # provider of the same model keeps its model out of the overlay's empty chains; a chain to
+    # another model, a key with no selector, and an inline value do not.
+    config_yml = ("theme:\n  dark: titanium\nretry:\n  maxRetries: 3\n  fallbackChains:\n"
+                  "    provider-b/medium-model:\n      - other/medium-model\n"
+                  "    \"provider-a/large-model\":\n      - provider-c/other-model\n"
+                  "    provider-c/other-model:\n    provider-d/small-model: []\n"
+                  "    default:\n      - other/medium-model\nmodelRoles: {}\n")
+    parsed = config_chains(config_yml)
+    case(lambda: parsed == {"provider-b/medium-model": ["other/medium-model"],
+                            "provider-a/large-model": ["provider-c/other-model"],
+                            "provider-c/other-model": [], "default": ["other/medium-model"]},
+         f"config_chains reads retry.fallbackChains of the block form, a quoted key too, and leaves out an "
+         f"inline value: {parsed}")
+    for model, chain, want in [
+        ("p/m", ["q/m"], True), ("p/m", ["q/m:high", "r/*"], True), ("p/m", ["p/m"], False),
+        ("p/m", ["q/n"], False), ("p/m", ["q/m", "q/n"], False), ("p/m", [], False),
+        ("local/org/m", ["other/org/m"], True)]:
+        case(lambda: same_model(model, chain) == want,
+             f"same_model({model!r}, {chain!r}) is {want}: {same_model(model, chain)}")
+    base, _, _ = fresh()
+    (base / "omp").mkdir(parents=True, exist_ok=True)
+    (base / "omp" / "config.yml").write_text(config_yml)
+    code, text = run(base, "--apply")
+    try:
+        chains = omp_config(base / "omp" / OVERLAY)["retry"]["fallbackChains"]
+    except (OSError, ValueError, KeyError) as e:
+        chains = f"{type(e).__name__}: {e}"
+    case(lambda: code == 0 and chains == {"provider-a/large-model": [], "provider-c/other-model": [],
+                                          "provider-d/small-model": []}
+         and (base / "omp" / "config.yml").read_text() == config_yml,
+         f"with a config.yml chain that only switches the provider, the overlay leaves that model's chain to "
+         f"config.yml and leaves config.yml unchanged: {code}, {chains}, {tail(text)}")
 
     base, _, _ = fresh()
     code, text = run(base, "--apply", extra_env={"PI_CODING_AGENT_DIR": None})
