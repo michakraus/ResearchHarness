@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+- **The builders write and run mutants of their own change.** `julia-builder` and `part-builder`
+  write one mutant per guard, branch, comparison and decided edge that the change adds or
+  changes, in any language, and run each before they return; a fixer does the same for its fix.
+  Each survivor is closed with a test or justified as no-defect (equivalent, dead code, or message
+  text that no clause names), and a new *Mutants* table in the report lists every mutant with its
+  verdict. `build-part` and `build-reviewed` hold a report back from the critic while the table
+  is missing or holds an open survivor; `evidence.md` adds the kind *own* to *Which mutants run*.
+  Before, `julia-builder` ran only the named mutants and wrote no others, so a decided edge with no
+  named mutant got no test. In a replay on 31 recorded round-1 heads the builders' own mutants
+  found 29 of 42 tests that cannot fail (69 %), in every language, with a median of 2.5
+  no-defect survivors per unit; the generated sweep of `mutants.jl` found 5 of 10 Julia lines,
+  none beyond them, and timed out on 2 of 3 large-package units, so it stays where a plan's §L
+  asks for it. The critics are unchanged.
+
 - **`plan-parts` checks the facts of each spec before it is final.** One `reader` agent per part
   measures each fact that the part's section states, and each fact of another section that its
   clauses rest on, at `origin/main` of the part's repository, and marks it `holds`, `false` or

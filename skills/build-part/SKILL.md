@@ -135,6 +135,11 @@ user's approval. Ask the user first.
 **2 · The builder returns `Verdict: ready for critic`.** Keep its agentId, worktree, branch and
 head. Keep its report away from every critic.
 
+**A report with no *Mutants* table, or with an open survivor in it, is not ready.** The builder
+writes and runs a mutant per guard, branch, comparison and decided edge of its change, and closes
+or justifies each survivor (*Which mutants run* in `evidence.md`). `SendMessage` the builder the
+gap, and spawn the critic only when it returns `ready for critic` with the table complete.
+
 **A report whose *Question for the dispatcher* is not `none` is not ready**, whatever its verdict
 line says. Put the question to the advisor first (*A question inside the loop*). On `Parks: no`,
 send the builder the decision, and spawn the critic only when the builder returns

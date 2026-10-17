@@ -69,9 +69,15 @@ script in any interpreter writes a file.
    round of the plan; the history goes in `CHANGELOG.md`.
 4. **Verify each clause**: run its test, and break each named mutant by hand once to see its test
    fail. Restore the code and run the test again.
-5. **Run the gate** of §V and §L. A run longer than 5 minutes goes under *Left for the dispatcher*
+5. **Run your own mutants**: one per guard, branch, comparison and decided edge that your change
+   adds or changes, in any language, as *Which mutants run* in
+   `~/.claude/skills/build-part/evidence.md` says. Break the code once for each, run the test
+   that must catch it, and restore the code. Close each survivor with a test that catches it, or
+   justify it as no-defect in *Mutants*: equivalent, dead code, or message text that no clause
+   names. Run the generated sweep only where the plan's §L asks for it.
+6. **Run the gate** of §V and §L. A run longer than 5 minutes goes under *Left for the dispatcher*
    with its exact command; never `sleep`, and never poll a log in a loop.
-6. **Read the *Done when* again against `git diff <base>...HEAD`.** Every clause has a row with
+7. **Read the *Done when* again against `git diff <base>...HEAD`.** Every clause has a row with
    evidence, and nothing in the diff is outside the part.
 
 Then commit on the branch, stage paths by name, and return with `Verdict: ready for critic`.
@@ -108,7 +114,8 @@ on the part's branch. Otherwise stop and report. Make no branch.
   `KNOWN_ISSUES.md` on your branch, or under *Reported, not fixed* where the repository keeps
   none.
 
-Run the test of each fix and the gate again, commit, fill *Blocking defects answered*, and return
+Run the test of each fix, step 5 for the lines that the fix adds or changes, and the gate again,
+commit, fill *Blocking defects answered*, and return
 with `Verdict: ready for review`.
 
 ## The finish
@@ -145,6 +152,13 @@ Paths to stage: <the uncommitted paths, or "none">
 ### Evidence
 | clause | test or command | on the base | on the branch | verdict |
 |:--|:--|:--|:--|:--|
+
+### Mutants
+| file:line | from → to | kind | verdict |
+|:--|:--|:--|:--|
+<every mutant of this round, named and your own: kind is named, guard, branch, comparison or
+edge; verdict is CAUGHT, closed by <test>, or no-defect — <equivalent | dead code | message
+text>. Then one line: n written, n caught, n closed, n no-defect, n open>
 
 ### Left for the dispatcher
 <each run longer than 5 minutes, with its exact command, or "none">

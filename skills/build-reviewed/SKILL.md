@@ -65,6 +65,10 @@ its failures.
 
 ## 3 · One critic
 
+**A report with no *Mutants* table, or with an open survivor in it, is not ready.** The builder
+writes and runs a mutant per guard, branch, comparison and decided edge of its change, and closes
+or justifies each survivor. Spawn a new builder with `Round: build` and that gap.
+
 When the builder returns `ready for critic`, spawn **one** `part-critic`, without isolation. Pass the task file, the part, the builder's directory, the
 base and the head. **Never pass the builder's report.** For a part whose gate runs longer than 5
 minutes, spawn `julia-test-runner` on the head in the same message.
