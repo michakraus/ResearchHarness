@@ -3,8 +3,10 @@
 // oh-my-pi's `bash.patterns` in harness.yml refuse what a glob can express. This extension checks
 // what a glob cannot, on each `tool_call`:
 //
-//     bash   the four guard scripts below, and the path list on the words of the command, on
+//     bash   the five guard scripts below, and the path list on the words of the command, on
 //            its `cwd` and on the working directory
+//     mcp__kaimon_ex, mcp__kaimon_manage_repl
+//            kaimon-session.py, which refuses a call without its session key
 //     read   the path list on its `path`
 //     grep   the path list on its `path`, and on a directory that holds a denied path
 //     edit   the edit list, then the ask list, on each path it names: `path`, a `rename`, the
@@ -17,10 +19,11 @@
 //     gh-api-writes.py        a `gh api` write, and a `glab api` DELETE
 //     rm-scope.py             a recursive `rm` outside the scratch zones, and a `git rm` outside a
 //                             worktree
+//     sandbox-semantics.py    with `--work-tree`: a `git init` or `git clone` inside a work tree
 //
 // The scripts run from oh-my-pi's own copy in hooks/ beside extensions/, which `harness install`
 // writes from the same source as Claude Code's. Each runs with `python3` from PATH and gets Claude Code's payload on stdin,
-// `{"tool_input": {"command": …}, "cwd": …}`.
+// `{"tool_input": {"command": …}, "cwd": …}`; kaimon-session.py gets `{"tool_name": …, "tool_input": …}`.
 //
 // IT FAILS CLOSED, as OpenCode's guards.ts does, where Claude Code lets a failed hook pass:
 //
@@ -75,13 +78,18 @@ import { fileURLToPath } from 'node:url';
 const HOME = homedir();
 const HOOKS = join(dirname(fileURLToPath(import.meta.url)), '..', 'hooks');
 const GUARDS = ['no-blind-stage.py', 'no-shell-file-write.py', 'gh-api-writes.py', 'rm-scope.py'];
+// The work-tree check of sandbox-semantics.py alone: oh-my-pi has no sandbox for its other shapes.
+const WORK_TREE = 'sandbox-semantics.py';
+// The Kaimon calls that name a session, and the script that refuses one without its key.
+const KAIMON = 'kaimon-session.py';
+const KAIMON_TOOLS = ['mcp__kaimon_ex', 'mcp__kaimon_manage_repl'];
 const TIMEOUT_MS = 10_000;
 const LIST = join(dirname(fileURLToPath(import.meta.url)), 'guard-paths.json');
 const CLOSED = 'The guard extension fails closed. Tell the user, and do not run the call in another form.';
 const ASK_USER = 'Ask the user in chat';
 
-// The reason `script` refuses `payload`, or null when it lets the call run.
-function run(script, payload) {
+// The reason `script`, with the arguments `args`, refuses `payload`, or null when it lets the call run.
+function run(script, payload, args = []) {
   return new Promise((resolve) => {
     let done = false;
     let child = null;
@@ -104,7 +112,7 @@ function run(script, payload) {
     // python3 exits 2 on a script it cannot open, which reads as the script's own refusal.
     if (!existsSync(join(HOOKS, script))) return failed(`is missing from ${HOOKS}`);
     try {
-      child = spawn('python3', [join(HOOKS, script)], { stdio: ['pipe', 'pipe', 'pipe'] });
+      child = spawn('python3', [join(HOOKS, script), ...args], { stdio: ['pipe', 'pipe', 'pipe'] });
     } catch (e) {
       return failed(`could not run (${e?.message ?? e})`);
     }
@@ -462,6 +470,8 @@ function refusedToolPath(raw, cwd, wide, rules = DENY) {
 // The reason to block `event`, or null to let it run.
 async function check(event, ctx) {
   const tool = event?.toolName;
+  if (KAIMON_TOOLS.includes(tool))
+    return run(KAIMON, JSON.stringify({ tool_name: tool, tool_input: event.input ?? {} }));
   if (!['bash', 'read', 'grep', 'edit', 'write'].includes(tool)) return null;
   if (typeof DENY === 'string') return DENY;
   const input = event.input ?? {};
@@ -519,7 +529,10 @@ async function check(event, ctx) {
     refusedAt(dir, moved || RECURSIVE.test(command)) ?? refusedCommand(command) ?? refusedWords(command, dir);
   if (refused) return pathRefusal(refused);
   const payload = JSON.stringify({ tool_input: { command }, cwd: moved ? dir : cwd });
-  const verdicts = await Promise.all(GUARDS.map((script) => run(script, payload)));
+  const verdicts = await Promise.all([
+    ...GUARDS.map((script) => run(script, payload)),
+    run(WORK_TREE, payload, ['--work-tree']),
+  ]);
   return verdicts.find((v) => v !== null) ?? null;
 }
 

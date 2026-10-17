@@ -753,7 +753,7 @@ end
         @test match(Regex("(\\w+): $name —"), out)[1] == match(Regex("(\\w+): $name —"), cold)[1]
     end
     # two workers give the same verdicts; without the result, every mutant runs again
-    rm(M.result_path(list))
+    rm(M.result_path(pkg, list))
     code2, out2 = script(MUTATE, pkg, "--warm", list, "--jobs", "2", "base/options.jl", "quality/aqua.jl")
     @test code2 == 0
     @test occursin("warm: 3 mutants in", out2) && occursin("2 workers", out2)
@@ -935,7 +935,10 @@ end
 end
 
 @testset "a second run on an unchanged tree runs no mutant, and --only runs one verdict again" begin
-    dir = mktempdir(mkpath(expanduser("~/Research/.scratch/run-tests-test")))
+    pkg = fixture()
+    # the list lies inside the package, as a builder's under `.claude/scratch/` does (the sandbox
+    # refuses a `mkdir` of `.claude`); the result goes to ~/Research/.scratch/mutants/
+    dir = mkpath(joinpath(pkg, "scratch"))
     list = joinpath(dir, "mutants.toml")
     write(list, """
     [[mutant]]
@@ -951,12 +954,14 @@ end
     from = "h() = 3"
     to = "h() = 4"
     """)
-    pkg = fixture()
     code, out = script(MUTATE, pkg, "--warm", list, "base/options.jl")
     @test code == 0
     @test occursin("1 CAUGHT, 1 SURVIVED", out)
-    result = M.result_path(list)
-    @test result == joinpath(dir, "mutants.result.json")
+    result = M.result_path(pkg, list)
+    @test dirname(result) == expanduser("~/Research/.scratch/mutants")
+    @test startswith(basename(result), basename(pkg) * "-mutants-") && endswith(result, ".result.json")
+    @test M.result_path(pkg, joinpath(pkg, "other", "mutants.toml")) != result
+    @test isfile(result) && readdir(dir) == ["mutants.toml"]
     @test occursin("result: $result", out)
     r = M.JSON.parsefile(result)
     ms = Dict(m["name"] => m for m in r["mutants"])

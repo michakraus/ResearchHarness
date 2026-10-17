@@ -17,7 +17,9 @@ nothing from the machine's own `HOME`.
 sweep, as described above. It needs nothing from the machine's own `HOME`, and it passes wherever
 the checkout lies, below `/tmp/` or `$TMPDIR` too. The hook probe loads `adapters/omp/guards.ts`
 and the OpenCode plugins `adapters/opencode/plugins/*.ts` under `node`, so `node` must be on
-`PATH`; a missing `node` is a wrong case.
+`PATH`; a missing `node` is a wrong case. The cases of `lib/harness/script_cases.py` run the
+package copies of `run-tests.jl` and the critic with `rsync`, and `scripts/spec-gate.py` on a
+fixture task file; they need no Julia.
 
 ## The pre-push hook
 

@@ -2,6 +2,50 @@
 
 ## Unreleased
 
+- **Six remedies for the harness friction of the Claude Code loop.** The harness audit sorted 50
+  failure lines of class *harness* into nine mechanisms; four were still open. Each remedy has its
+  own cases in `harness test`:
+  - A critic's or an advisor's `git init`, `git clone` or `git checkout` ran in the builder's
+    worktree, in `Tasks` or in `Environment`, because a `cd` outside the agent's working
+    directories is reset before the next call (9 lines). `sandbox-semantics.py` refuses a `git
+    init` or `git clone` whose working directory, or target below it, is inside a work tree, with
+    a message that names the reset. `julia-critic`, `part-critic` and `advisor` say that a probe
+    needs no repository: `git diff --no-index` compares copies. The cases that let `git init` and
+    `git clone` pass in the probe's own work tree now run in a directory that is no work tree.
+  - `mutate.jl` wrote a list's result beside the list, under the worktree's `.claude/scratch/`,
+    where the sandbox refuses the write (7 lines). It writes the result under
+    `~/Research/.scratch/mutants/`, named for the package directory, the list and a hash of the
+    list's path, and prints the path on its `result:` line; `gate.jl` reads the result from that
+    line. The lists stay where they are.
+  - A Kaimon `ex` without `ses` ran in another agent's session (part of 8 lines). The new hook
+    `kaimon-session.py`, on `mcp__kaimon__ex|mcp__kaimon__manage_repl`, refuses an `ex` without
+    `ses` and a `manage_repl` without `session`. `check_eval` takes only an `eval_id` and no session
+    key, so the hook does not cover it. `build-part/evidence.md` says to probe in a fresh process
+    when `start_session` times out twice, and its `manage_repl` restart, like the one in
+    `rules/julia-code.md`, names the session.
+  - The critic's `rsync` copy and `run-tests.jl`'s `copy_command` copied `.env.*` files, and the
+    sandbox, which denies them, left temporary files that no one could remove (2 lines). Both
+    copies exclude `.env` and `.env.*`.
+  - A spec gave an isolated builder a file outside its repository (2 lines). `plan-parts` keeps a
+    part's *Files* in one repository and makes a file elsewhere a dispatcher step; `spec-gate.py`
+    reports `SPANS <repositories>` and exits 1 for a part, other than a `direct` one, whose *Files*
+    span two. Over the 438 parts of the 200 task files, it reports only the parts of one archived
+    task file whose `repository` cell names `Environment` and whose files are in `Harness/`.
+  - `worktree.py` copied a stale `Manifest.toml` into a new worktree, and `harness install` read
+    an unpulled checkout (3 lines). The hook copies the manifest only when it holds every package
+    of the worktree's `[deps]` at a version inside its `[compat]`, and else says why. Pkg's
+    `project_hash` is not the test, because Pkg computes it with an internal function whose input
+    changes between Pkg versions. On the main checkouts of the tree, 8 of 43 manifests lie outside
+    their own `[compat]`. `harness install` warns, without a fetch, when its checkout is behind its
+    local `origin/main`.
+  - oh-my-pi's guard extension and OpenCode's guard plugin run the R1 and R3 checks too. They run
+    `sandbox-semantics.py --work-tree`, its work-tree check alone, on each shell call, because they
+    have no sandbox for its other shapes; the check follows each `cd` of the command, since neither
+    refuses a `cd … &&` form. They run `kaimon-session.py` on their names of the Kaimon tools,
+    `mcp__kaimon_ex` and `mcp__kaimon_manage_repl` under oh-my-pi, `kaimon_ex` and
+    `kaimon_manage_repl` under OpenCode. `harness install` copies both scripts into each
+    frontend's `hooks/`.
+
 - **`skills/build-part/edges.md` states the same-error-type guard case as a mechanism, in the
   present tense.** The example of the edge class "a case meant for one guard that a later guard
   also catches" told one part's history in the past tense. It now says that a fix which adds a

@@ -11,16 +11,17 @@ events of a session.
 The sources are in `hooks/`. `harness install --apply` copies them to `~/.claude/hooks/`.
 Claude Code calls them through the `hooks` section of its settings, which
 `harness install --apply` writes from `settings/settings.proposal.json`. oh-my-pi calls
-four of them through its guard extension `adapters/omp/guards.ts`, and OpenCode calls the same
-four through its plugin `adapters/opencode/plugins/guards.ts`. Each of the two runs its own copy
+six of them through its guard extension `adapters/omp/guards.ts`, and OpenCode calls the same
+six through its plugin `adapters/opencode/plugins/guards.ts`: four shell guards, the work-tree check
+of `sandbox-semantics.py`, and `kaimon-session.py`. Each of the two runs its own copy
 of the scripts, which `harness install` writes to `hooks/` in its directory:
 `~/.omp/agent/hooks/` and `~/.config/opencode/hooks/`. Each hook still has one source. `hooks/probe.py` holds the test cases of the
 hooks, and `harness test` runs it.
 
 The hooks prevent accidents. They are not a security boundary: each one reads the text of a
 command. [The security model](../security.md) says what they stop and what they do not stop. The
-page groups the hooks: first the five shell guards, then the hooks of the directory and worktree
-tools, then the session hooks, and last the probe.
+page groups the hooks: first the five shell guards, then the hooks of the directory and Kaimon
+tools and of the worktree tools, then the session hooks, and last the probe.
 
 ## `no-blind-stage.py`
 
@@ -63,7 +64,8 @@ echo '{"tool_input":{"command":"echo x > src/Foo.jl"},"cwd":"/path/in/a/repo"}' 
 ## `sandbox-semantics.py`
 
 This hook refuses a command whose shape makes the Claude Code sandbox give a false result. Claude
-Code runs it as a `PreToolUse` hook on the `Bash` matcher. oh-my-pi and OpenCode do not run it.
+Code runs it as a `PreToolUse` hook on the `Bash` matcher. oh-my-pi and OpenCode run only its
+work-tree check, as `sandbox-semantics.py --work-tree`, on each shell call: they have no sandbox.
 
 The settings let a command run outside the sandbox only when every part of it starts with `git`,
 `gh`, `glab` or `ps` and no part redirects a file. A sandboxed `gh` cannot reach the network, and
@@ -76,6 +78,11 @@ certificate fault. The hook exits 2 on four shapes:
 - a `$?` in a command that runs sandboxed;
 - a path argument of `git init`, `git clone`, `git worktree add`, `git worktree move` or
   `git bundle create` that starts with `/`, `~` or `$`, or holds `..`.
+
+It also exits 2 on a `git init` or `git clone` whose working directory, after each `cd` of the
+command, or target below it, is inside a git work tree. Under Claude Code a `cd` outside the
+agent's working directories is reset before the next call, so such a command runs in the agent's
+root and leaves a repository in another work tree.
 
 Each refusal gives the form that works, for example a separate Bash call. It fails open. Test it:
 
@@ -140,6 +147,23 @@ and an input that the hook cannot read. So it fails closed to a prompt. Test it:
 echo '{"tool_input":{"path":"~/Research/Packages"}}' | ./directory-scope.py
 ```
 
+## `kaimon-session.py`
+
+This hook refuses a Kaimon call that names no session. Claude Code runs it as a `PreToolUse` hook
+on the matcher `mcp__kaimon__ex|mcp__kaimon__manage_repl`. oh-my-pi runs it on
+`mcp__kaimon_ex` and `mcp__kaimon_manage_repl`, and OpenCode on `kaimon_ex` and
+`kaimon_manage_repl`, their names of the same tools.
+
+An `ex` call needs `ses`, and a `manage_repl` call needs `session`. Without the key, Kaimon uses
+the session that the agent is bound to, else the only one connected, which can be another agent's.
+`ex` ignores an unknown parameter, so an `ex` with `session` in place of `ses` exits 2 too.
+`check_eval` takes only the `eval_id` of its job, so the matcher leaves it out. The message names
+the rule of `skills/build-part/evidence.md`. It fails open. Test it:
+
+```bash
+echo '{"tool_name":"mcp__kaimon__ex","tool_input":{"e":"1"}}' | ./kaimon-session.py ; echo "exit $?"
+```
+
 ## `worktree.py`
 
 This hook makes and removes the worktrees of Claude Code. Claude Code runs it on the events
@@ -151,7 +175,9 @@ On `WorktreeCreate` it fetches `origin` in the repository that holds `cwd`. It t
 `origin/main`. It prints the path on standard output. An existing branch is checked out, and an
 existing worktree of the repository is printed as it is. A name `agent-<hex>`, from a sub-agent,
 gets a detached worktree with no branch. The hook copies the main checkout's `Manifest.toml` into
-the new worktree. On `WorktreeRemove` it runs `git worktree remove` without `--force`, so git
+the new worktree when the manifest holds every package of the worktree's `[deps]` at a version
+inside its `[compat]`. Else it copies none and says why on standard error, because Julia does not
+check `[compat]` at `using`, and a stale manifest loads old dependencies. On `WorktreeRemove` it runs `git worktree remove` without `--force`, so git
 refuses a worktree with changes, and the branch stays.
 
 It fails closed: each error exits 1 with the reason, and no worktree is made. Test it:

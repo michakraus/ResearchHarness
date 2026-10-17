@@ -89,8 +89,9 @@ because the warm mode's coverage runs and its cold sample of the kills cost more
 there (`MUTATE_WARM_MIN` sets the 20).
 `--warm` first runs one smoke mutant, an `error` call in each function that the list changes:
 when no unit reaches one of them, every verdict is UNKNOWN, and the units are the wrong ones.
-Each run writes `<mutants>.result.json` beside the list, with every verdict and the survivors
-grouped by line. A run of the same list on the same tree, with the same units, keeps each
+Each run writes a result file under `~/Research/.scratch/mutants/`, named for the worktree and the
+list, with every verdict and the survivors grouped by line, and prints its path on the `result:`
+line. The list stays under `<worktree>/.claude/scratch/`. A run of the same list on the same tree, with the same units, keeps each
 verdict and runs nothing; any change under `src/`, `ext/` or `test/` runs every mutant again.
 
 ## Which mutants run
@@ -160,8 +161,12 @@ last.**
 
 1. **Start one session for your tree**: `start_session(project_path = <tree>)`. The builder's tree
    is its worktree, where Revise reloads `src/` before each call. A critic's tree is a copy,
-   `rsync -a --exclude=.git --exclude=.claude <worktree>/ <round directory>/tree/`: two critics
-   judge one worktree at once, and one path has one session.
+   `rsync -a --exclude=.git --exclude=.claude --exclude=.env --exclude='.env.*' <worktree>/ <round directory>/tree/`
+   (the sandbox denies `.env` files, so a copy of one leaves a file that no one can remove): two critics
+   judge one worktree at once, and one path has one session. A timeout of `start_session` does
+   not stop the start: call `ping` before you call it again. **When `start_session` times out
+   twice, probe in a fresh process**, `julia --startup-file=no <probe file>`, and go on; a
+   session is a speed-up, not a precondition.
 2. **Load the test environment in a call of its own.** `TestEnv.activate()` alone fails in a
    session, because the package's project is active:
 
@@ -190,7 +195,7 @@ last.**
 Four things stay out of the session: a measurement (`@allocated`, a timing), which needs a cold
 process; a run on another Julia; the evidence row of a test, which is `run-tests.jl`'s; and any
 call after a change of `Project.toml`, because Revise reloads `src/` and no dependency — restart
-with `manage_repl(command = "restart")`. Nothing in the session writes into the worktree: no
+with `manage_repl(command = "restart", session = <key>)`. Nothing in the session writes into the worktree: no
 `Pkg` call on it, no file write.
 
 **Ask the session instead of writing a probe:**

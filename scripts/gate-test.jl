@@ -49,12 +49,13 @@ end
      "survivors_by_line": [{"file": "src/a.jl", "line": 3, "mutants": ["G1", "G2"]}]}
     """)
     @test Gate.survivor_lines(result) == ["src/a.jl:3: `x < 1` → `x <= 1`; `y` → `(z)` (no unit runs it)"]
-    out = "smoke: CAUGHT — x\n\n1 CAUGHT, 1 SURVIVED, 1 NO-COVERAGE, 0 UNKNOWN, 0 INVALID, of 3 mutants\n"
-    s = Gate.generated_step(0, out, 60.0, "/g.log", result)
+    out = "smoke: CAUGHT — x\n\n1 CAUGHT, 1 SURVIVED, 1 NO-COVERAGE, 0 UNKNOWN, 0 INVALID, of 3 mutants\nresult: $result\n"
+    s = Gate.generated_step(0, out, 60.0, "/g.log")
     @test s.verdict == "INFO" && length(s.detail) == 2
-    # no totals, or no result, is no verdict
-    @test Gate.generated_step(2, "", 1.0, "/g.log", result).verdict == "UNKNOWN"
-    @test Gate.generated_step(0, out, 1.0, "/g.log", joinpath(DIR, "none.json")).verdict == "UNKNOWN"
+    # no totals, no `result:` line, or no result file, is no verdict
+    @test Gate.generated_step(2, "result: $result\n", 1.0, "/g.log").verdict == "UNKNOWN"
+    @test Gate.generated_step(0, replace(out, r"result: .*\n" => ""), 1.0, "/g.log").verdict == "UNKNOWN"
+    @test Gate.generated_step(0, replace(out, result => joinpath(DIR, "none.json")), 1.0, "/g.log").verdict == "UNKNOWN"
 end
 
 @testset "the format step names each file that the formatter would change" begin

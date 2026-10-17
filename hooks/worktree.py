@@ -11,7 +11,8 @@ One script for two hook events, told apart by `hook_event_name`:
     A name `agent-<hex>` is a sub-agent's `isolation: "worktree"`: that worktree is
     detached at the base and gets no branch, so nothing is left behind but the worktree.
     The agent makes its own branch with `git switch -c`. Either way the main checkout's
-    gitignored `Manifest.toml` is copied in, so the pre-commit load test can run.
+    gitignored `Manifest.toml` is copied in, so the pre-commit load test can run, when it
+    holds every dependency of the worktree's `Project.toml` inside its `[compat]`.
   * **`WorktreeRemove`** — input `{"worktree_path": …}`. Runs `git worktree remove <path>`
     from the owning repository. Without `--force`, so git refuses a worktree with changes.
     The branch stays: it may carry an open pull request.
@@ -126,17 +127,126 @@ def create(payload):
 
 
 def copy_manifest(repo, path):
-    """Copy the main checkout's `Manifest.toml` into a worktree that has none.
+    """Copy the main checkout's `Manifest.toml` into a worktree that has none, when it fits.
 
     The manifest is gitignored, so a new worktree has none, and the pre-commit load test
     `julia --project=. -e "using <Package>"` then fails with "is required but does not seem
     to be installed". The main checkout's copy names packages already in the depot, so no
-    resolve and no network is needed. A dependency the branch adds is still missing, and
-    the load test still says so.
+    resolve and no network is needed.
+
+    Julia does not check `[compat]` at `using`, so a manifest that a main checkout behind
+    `origin` resolved loads old dependency versions, and the load test fails on a later
+    commit as if the source were broken. So the copy is made only when `manifest_fits` says
+    the manifest fits the worktree's `Project.toml`; else stderr says why, and the worktree
+    gets no manifest.
     """
     source, target = repo / "Manifest.toml", path / "Manifest.toml"
-    if source.is_file() and not target.exists():
-        shutil.copy2(source, target)
+    if not source.is_file() or target.exists():
+        return
+    try:
+        import tomllib  # Python 3.11; an older `python3` makes the worktree with no manifest
+    except ImportError:
+        sys.stderr.write("worktree hook: no Manifest.toml copied: this Python has no tomllib\n")
+        return
+    try:
+        with open(path / "Project.toml", "rb") as f:
+            project = tomllib.load(f)
+        with open(source, "rb") as f:
+            manifest = tomllib.load(f)
+    except (OSError, tomllib.TOMLDecodeError) as err:
+        sys.stderr.write(f"worktree hook: no Manifest.toml copied: {err}\n")
+        return
+    why = manifest_fits(project, manifest)
+    if why:
+        sys.stderr.write(f"worktree hook: no Manifest.toml copied, because {why}; "
+                         "run `Pkg.instantiate()` in the worktree\n")
+        return
+    shutil.copy2(source, target)
+
+
+def manifest_fits(project, manifest):
+    """None when `manifest` fits `project`, else the reason it does not.
+
+    It fits when it is of format 2, holds every package of the project's `[deps]`, and the
+    version of each lies inside that package's `[compat]` entry. A package with no version, a
+    standard library, has nothing to compare. The test reads the names and the versions, not
+    Pkg's `project_hash`: Pkg computes that hash with an internal function whose input changes
+    between Pkg versions, so a hash computed here would disagree with a manifest that fits.
+    """
+    if not str(manifest.get("manifest_format", "")).startswith("2."):
+        return "the manifest is not of format 2"
+    entries = manifest.get("deps", {})
+    compat = project.get("compat", {})
+    for name in sorted(project.get("deps", {})):
+        if name not in entries:
+            return f"the manifest has no entry for {name}"
+        version = entries[name][0].get("version") if entries[name] else None
+        if version is None or name not in compat:
+            continue
+        ranges = compat_ranges(compat[name])
+        if ranges is None:
+            return f"the [compat] entry {name} = {compat[name]!r} is not one this hook reads"
+        v = parse_version(version.split("-")[0].split("+")[0])
+        if v is None or not any(lo <= v < hi for lo, hi in ranges):
+            return f"the manifest holds {name} {version}, outside [compat] {name} = {compat[name]!r}"
+    return None
+
+
+INFINITY = (float("inf"),) * 3
+
+
+def parse_version(text):
+    """`1`, `1.2` or `1.2.3` as a tuple of one to three integers, or None."""
+    parts = text.strip().split(".")
+    if not 1 <= len(parts) <= 3 or not all(p.isdigit() for p in parts):
+        return None
+    return tuple(int(p) for p in parts)
+
+
+def pad(v):
+    return v + (0,) * (3 - len(v))
+
+
+def bump(v, depth):
+    """The version after every version that agrees with `v` in its first `depth` parts."""
+    v = pad(v)
+    return v[:depth - 1] + (v[depth - 1] + 1,) + (0,) * (3 - depth)
+
+
+def compat_ranges(spec):
+    """The `[compat]` entry `spec` as half-open version ranges [lo, hi), as Pkg reads it, or None.
+
+    Caret (the default) and tilde specifiers, `=`, `>=`/`≥`, `<`, and hyphen ranges, separated by
+    commas, which make a union."""
+    ranges = []
+    for term in str(spec).split(","):
+        term = term.strip()
+        if " - " in term:
+            a, b = (parse_version(x) for x in term.split(" - ", 1))
+            if a is None or b is None:
+                return None
+            ranges.append((pad(a), bump(b, len(b))))
+            continue
+        m = re.fullmatch(r"(\^|~|=|>=|≥|<)?\s*(.+)", term)
+        if m is None:
+            return None
+        op, v = m.group(1) or "^", parse_version(m.group(2))
+        if v is None:
+            return None
+        n = len(v)
+        if op == "^":
+            depth = 1 if v[0] != 0 or n == 1 else 2 if v[1] != 0 or n == 2 else 3
+            ranges.append((pad(v), bump(v, depth)))
+        elif op == "~":
+            depth = 1 if n == 1 else 3 if n == 3 and v[0] == v[1] == 0 else 2
+            ranges.append((pad(v), bump(v, depth)))
+        elif op == "=":
+            ranges.append((pad(v), bump(v, n)))
+        elif op in (">=", "≥"):
+            ranges.append((pad(v), INFINITY))
+        else:
+            ranges.append(((0, 0, 0), pad(v)))
+    return ranges
 
 
 def remove(payload):

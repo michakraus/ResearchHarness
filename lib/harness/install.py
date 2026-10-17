@@ -65,6 +65,22 @@ def warn(*lines):
     print("WARNING: " + "\n         ".join(lines))
 
 
+def behind_origin(repo=REPO):
+    """The warning lines when the checkout `repo` is behind its local `origin/main`, else None.
+
+    It reads the refs as the last fetch left them and fetches nothing, so the install stays
+    offline. A checkout with no `origin/main`, or no git, gets no warning."""
+    # No `GIT_*` variable of the caller: a `GIT_DIR` that a git hook exports names another repository.
+    env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+    p = subprocess.run(["git", "rev-list", "--count", "HEAD..refs/remotes/origin/main"], cwd=repo,
+                       capture_output=True, text=True, env=env)
+    behind = int(p.stdout) if p.returncode == 0 and p.stdout.strip().isdigit() else 0
+    if not behind:
+        return None
+    return [f"the checkout {repo} is {behind} commit(s) behind its origin/main, as its last fetch saw it.",
+            "The install reads the checkout as it is. Run `git pull` there, then install again."]
+
+
 def install_file(apply, data, dst, label, backup=False, mode=None):
     """Install `data` (bytes) at `dst`, with `mode` when given; 1 when either differs, after the
     change under `apply`. A backup has mode 0600, whatever the mode of the file it keeps. An
@@ -265,6 +281,9 @@ def cmd_install(args):
     for plan in plans:
         for lines in plan.warnings:
             warn(*lines)
+    behind = behind_origin()
+    if behind:
+        warn(*behind)
     for i, plan in enumerate(plans):
         for step in plan.after:
             changed[i] += step(args.apply)
@@ -342,7 +361,41 @@ def selftest():
         precondition_cases(check, pathlib.Path(tmp))
         target_cases(check, pathlib.Path(tmp))
         setup_guard_cases(check, pathlib.Path(tmp))
+        behind_cases(check, pathlib.Path(tmp))
     return total, wrong
+
+
+def behind_cases(check, tmp):
+    """`behind_origin` on a scratch repository: a checkout behind its `origin/main` warns with the
+    count; one level with it, one ahead of it, one with no `origin/main` and a directory with no
+    repository do not."""
+    repo = tmp / "behind"
+    repo.mkdir()
+    env = {**{k: v for k, v in os.environ.items() if not k.startswith("GIT_")},
+           "GIT_CONFIG_GLOBAL": "/dev/null", "GIT_CONFIG_NOSYSTEM": "1",
+           "GIT_AUTHOR_NAME": "case", "GIT_AUTHOR_EMAIL": "case@example.org",
+           "GIT_COMMITTER_NAME": "case", "GIT_COMMITTER_EMAIL": "case@example.org"}
+
+    def git(*args):
+        return subprocess.run(["git", *args], cwd=repo, env=env, check=True, capture_output=True,
+                              text=True).stdout.strip()
+
+    git("init", "-q", "-b", "main")
+    check(behind_origin(repo) is None, "a checkout with no origin/main gets no warning")
+    commits = []
+    for n in range(3):
+        git("commit", "-q", "--allow-empty", "-m", f"c{n}")
+        commits.append(git("rev-parse", "HEAD"))
+    for head, origin, expected in [(2, 2, None), (0, 2, "2 commit(s) behind"), (1, 2, "1 commit(s) behind"),
+                                   (2, 0, None)]:
+        git("update-ref", "refs/remotes/origin/main", commits[origin])
+        git("reset", "-q", "--hard", commits[head])
+        got = behind_origin(repo)
+        ok = got is None if expected is None else got is not None and expected in got[0] and str(repo) in got[0]
+        check(ok, f"HEAD at c{head}, origin/main at c{origin}: {expected or 'no warning'} -> {got}")
+    plain = tmp / "no-repository"
+    plain.mkdir()
+    check(behind_origin(plain) is None, "a directory with no repository gets no warning")
 
 
 def load_cases(check, tmp):

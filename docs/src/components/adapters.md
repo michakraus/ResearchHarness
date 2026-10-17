@@ -191,10 +191,11 @@ hook probe `hooks/probe.py` loads it under `node`, so it holds JavaScript syntax
 
 ## `opencode/plugins/guards.ts`
 
-The OpenCode plugin of the guard hooks. On every `shell` call it runs four guard scripts from
-`hooks/` in OpenCode's configuration directory, the install's copy: `no-blind-stage.py`, `no-shell-file-write.py`, `gh-api-writes.py` and
-`rm-scope.py`. It sends Claude Code's payload on standard input and reads the answer as Claude
-Code does. [The hooks](hooks.md) describes each script.
+The OpenCode plugin of the guard hooks. On every `shell` call it runs five guard scripts from
+`hooks/` in OpenCode's configuration directory, the install's copy: `no-blind-stage.py`, `no-shell-file-write.py`, `gh-api-writes.py`,
+`rm-scope.py`, and `sandbox-semantics.py --work-tree`, its work-tree check alone. On every
+`kaimon_ex` and `kaimon_manage_repl` call it runs `kaimon-session.py`. It sends Claude Code's
+payload on standard input and reads the answer as Claude Code does. [The hooks](hooks.md) describes each script.
 
 The plugin adds two checks. The path guard refuses a command that names a path of
 `guard-paths.json` beside the plugin, and of `$OPENCODE_CONFIG_DIR/guard-paths.json` when it
@@ -326,8 +327,10 @@ needs and does not find exits 2.
 The guard extension of oh-my-pi. `harness install` copies it to `extensions/guards.ts` in
 oh-my-pi's agent directory. It checks each tool call that a glob of `bash.patterns` cannot check:
 
-- `bash`: the four guard scripts of `~/.omp/agent/hooks/`, which it runs with `python3`, and the path
-  list on the words of the command and on its working directory;
+- `bash`: the four shell guard scripts of `~/.omp/agent/hooks/` and `sandbox-semantics.py
+  --work-tree`, which it runs with `python3`, and the path list on the words of the command and on
+  its working directory;
+- `mcp__kaimon_ex` and `mcp__kaimon_manage_repl`: `kaimon-session.py`;
 - `read` and `grep`: the `deny` list on the path;
 - `edit` and `write`: the `edit` list, then the `ask` list, on each path that the call names;
 - `write` in a sub-agent: a path `agent://<name>`, which it refuses, because the write wakes a
