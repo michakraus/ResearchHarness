@@ -466,3 +466,9 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   direction false, and a byte-comparison of the moved block calls that move correct. Read the
   directions a moved block carries, and re-point the phrase with the plan's leave (P18 round 1c,
   *Rewrite the reduced basis packages*)
+- a decided convention that the part must state in prose, such as a quantity's relation to the
+  figure a reader knows it from: a docstring clause is a clause, and a fix builder that reads the
+  `Done when` checks as the only deliverable skips it while every code check passes. Grep the
+  decided block's own words in the files that *Files* names, and assert them from a test, so the
+  verdict does not rest on reading the docstring (P38a verify 2, *Rewrite the reduced basis
+  packages*)
