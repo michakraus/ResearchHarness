@@ -449,7 +449,10 @@ await mod.default({ on: (name, h) => { if (name === 'tool_call') handler = h; } 
 let ev = JSON.parse(event);
 // "throw": reading the event's input throws, so the handler's own error path runs.
 if (mode === 'throw') ev = new Proxy(ev, { get: (t, k) => { if (k === 'input') throw new Error('probe'); return t[k]; } });
-const answer = await handler(ev, { cwd });
+// "sub" and "main": the context names the agent as oh-my-pi does for a sub-agent and the session.
+const agent = { sub: { kind: 'sub', id: 'Probe', name: 'reader', depth: 1, parentId: 'main' },
+                main: { kind: 'main', id: 'main', name: 'main', depth: 0 } }[mode];
+const answer = await handler(ev, agent ? { cwd, agent } : { cwd });
 process.stdout.write(JSON.stringify(answer ?? null));
 """
 OMP_HOME = FIXTURE.name + "/omp-home"
@@ -472,6 +475,14 @@ OMP_CASES = [
     ("write", {"path": "notes.md", "content": "x"}, "pass", None),
     # gh-api-writes.py answers exit 0 with an "ask" decision, which the extension turns into a block.
     ("bash", {"command": "gh api -X POST repos/a/b/issues"}, "block", None),
+    # `gh pr create` runs unasked only with `-R` or `--repo` first, on an organisation of the
+    # profile; with the repository later, elsewhere, or not named at all, it asks.
+    ("bash", {"command": "gh pr create --repo example-org/X.jl --title T --body-file b.md"}, "pass", "allow"),
+    ("bash", {"command": "gh pr create -R example-user/X.jl --title T"}, "pass", "allow"),
+    ("bash", {"command": "gh pr create --title T --repo example-org/X.jl"}, "pass", "prompt"),
+    ("bash", {"command": "gh pr create --repo other/X.jl --title T"}, "pass", "prompt"),
+    ("bash", {"command": "gh pr create --title T --body-file b.md"}, "pass", "prompt"),
+    ("bash", {"command": "gh pr create"}, "pass", "prompt"),
 ]
 # (tool, input, the session's working directory, the extension's verdict): "tree" is the probe's
 # work tree, "~" the fixture home, "~/Research" a directory below it.
@@ -574,6 +585,33 @@ OMP_PATH_CASES = [
     ("edit", {"input": "*** Begin Patch\n[Notes/plan.md#1A2B]\nPUT 1.=1:\n+x\n*** End Patch\n"}, "~/Research",
      "pass"),
     ("edit", {"input": "PUT 1.=1:\n+x\n"}, "~/Research", "block"),
+    # The program argument of an awk, sed or grep is a pattern, not a path: the forms that the
+    # guard refused as the path `/` in the oh-my-pi runs.
+    ("bash", {"command": "sed -n '/\\[compat\\]/,$p' Project.toml"}, "~/Research", "pass"),
+    ("bash", {"command": "git show v0.2.1:Project.toml | sed -n '/\\[compat\\]/,$p'"}, "~/Research", "pass"),
+    ("bash", {"command": "sed -n '/^## \\[Unreleased\\]/,+3p' CHANGELOG.md | head -6"}, "~/Research", "pass"),
+    ("bash", {"command": "awk '/^\\[\\[deps\\.(A|B)\\]\\]/{p=1;print;next} /^\\[\\[/{p=0} p&&/version|path/' "
+                         "Manifest.toml"}, "~/Research", "pass"),
+    ("bash", {"command": "awk -F'|' '/^\\| \\*\\*P[0-9]+\\*\\*/ {print $2}' plan.md"}, "~/Research", "pass"),
+    ("bash", {"command": "awk '/^\\[compat\\]/{f=1} f&&/^Base/{print $0; exit}' Project.toml"}, "~/Research",
+     "pass"),
+    ("bash", {"command": "grep -rn token src | sed -n '/function f!/,/^[0-9]*-end/p'"}, "tree", "pass"),
+    ("bash", {"command": "grep -E '/[0-9]+/' notes.md"}, "~/Research", "pass"),
+    ("bash", {"command": "sed -e '/[a-z]*/d' -e 's/x/y/' f.txt"}, "~/Research", "pass"),
+    ("bash", {"command": "grep -n -e '/[*]/' f.txt"}, "~/Research", "pass"),
+    # A glob reaches only the names that its first glob segment matches.
+    ("bash", {"command": "ls /[0-9]*/x"}, "~/Research", "pass"),
+    # The refusals stay: the files that such a program reads, a home path in the program text, a
+    # `-f` file, a real root, and a glob whose segment matches a denied name.
+    ("bash", {"command": "sed -n '/x/p' ~/.netrc"}, "tree", "block"),
+    ("bash", {"command": "awk '/^machine/' .netrc"}, "~", "block"),
+    ("bash", {"command": "awk 'BEGIN{while((getline l < \"~/.netrc\")>0) print l}'"}, "tree", "block"),
+    ("bash", {"command": "grep -f ~/.netrc notes.md"}, "tree", "block"),
+    ("bash", {"command": "find / -name x"}, "tree", "block"),
+    ("bash", {"command": "grep -r token /*"}, "tree", "block"),
+    ("bash", {"command": "cat ~/.ss*/config"}, "tree", "block"),
+    ("bash", {"command": "ls ~/*"}, "tree", "block"),
+    ("bash", {"command": "cat ~/[.]netrc"}, "tree", "block"),
 ]
 # (tool, input, the session's working directory, the extension's verdict, text the reason holds):
 # the cases whose reason matters. "~/Research/P" is a main checkout of the fixture home.
@@ -600,6 +638,18 @@ OMP_REASON_CASES = [
     # A path under a deny and an ask is refused with the deny text: the deny list is checked first.
     ("edit", {"path": "~/.claude/skills/build-part/SKILL.md", "old_string": "a", "new_string": "b"}, "~/Research",
      "block", "the deny rule"),
+]
+# (tool, input, the agent whose context the driver gives, the extension's verdict, text the reason
+# holds): a sub-agent writes to no other agent, since a write to `agent://` wakes a parked agent;
+# the session, which continues an agent only by a new spawn, is left to OMP-DELTA.md.
+SUB_AGENT = "a sub-agent writes to no other agent"
+OMP_AGENT_CASES = [
+    ("write", {"path": "agent://CriticP13a", "content": "Your round is done."}, "sub", "block", SUB_AGENT),
+    ("write", {"path": " AGENT://SuiteP16a", "content": "Run the suite."}, "sub", "block", SUB_AGENT),
+    ("write", {"path": "agent://CriticP34b", "content": "Write the report."}, "main", "pass", None),
+    ("write", {"path": "agent://CriticP34b", "content": "Write the report."}, "", "pass", None),
+    ("write", {"path": "Notes/plan.md", "content": "x"}, "sub", "pass", None),
+    ("read", {"path": "agent://CriticP13a"}, "sub", "pass", None),
 ]
 
 
@@ -745,6 +795,9 @@ def omp_cases():
     for tool, data, cwd, expected, want in OMP_REASON_CASES:
         got = verdict(good, tool, data, cwd=where[cwd], want=want)
         report(got == expected, f"exp {expected} got {got}  [omp-guard]  {tool} {data}  in {cwd}, with {want!r}")
+    for tool, data, agent, expected, want in OMP_AGENT_CASES:
+        got = verdict(good, tool, data, cwd=where["~/Research"], mode=agent, want=want)
+        report(got == expected, f"exp {expected} got {got}  [omp-guard]  {tool} {data}  in a {agent or 'unnamed'} agent")
     got = verdict(both, "edit", {"path": "~/.claude/hooks/x", "old_string": "a", "new_string": "b"},
                   cwd=good + "/Research", want="the deny rule")
     report(got == "block", f"exp block got {got}  [omp-guard]  a path under a deny and an ask: edit ~/.claude/hooks/x")
