@@ -32,6 +32,11 @@
     which oh-my-pi's exact-model lookup takes before a role or `default`, so a seat fails on its
     own model. The session's model loses its chain too where an agent shares it.
 
+- **OpenCode: two levels of sub-agents.** `opencode.jsonc` sets `experimental.subagent_depth` to
+  2, so that a builder that the dispatcher spawns can spawn `julia-branch-verifier` or a `reader`.
+  OpenCode allows one level by default: in a probe, `julia-builder` could not spawn `reader` and
+  got "Subagent depth limit reached (1)".
+
 - **The builders reread the text of their change as the last step of every round.**
   `julia-builder` (step 9) and `part-builder` (step 8) list each comment, docstring, message,
   `CHANGELOG.md`, `KNOWN_ISSUES.md`, README and docs line that the diff adds or changes, each one

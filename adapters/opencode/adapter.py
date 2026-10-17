@@ -993,6 +993,11 @@ def install_cases(check, tmp):
     case(lambda: instructions() == own and all(copied) and (claude / "RTK.md").is_file(),
          f"the rendered opencode.jsonc lists exactly OpenCode's own copies of RTK.md, the core and the tree "
          f"instructions, each installed where Claude Code's is: {instructions()}, {copied}")
+    # A builder spawns the verifier or a reader, so sub-agents nest two levels deep.
+    depth = re.findall(r'"experimental":\s*\{\s*"subagent_depth":\s*(\d+)\s*\}',
+                       (base / "opencode" / "opencode.jsonc").read_text())
+    case(lambda: depth == ["2"],
+         f"the rendered opencode.jsonc sets experimental.subagent_depth to 2, once: {depth}")
     # A hand-made AGENTS.md that differs from the source is replaced, not merged.
     installed.write_text("mine\n")
     code, text = run(base)

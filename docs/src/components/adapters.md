@@ -143,6 +143,8 @@ key `opencode_providers`. Before them, the install writes one entry for each mod
 `context_limits` of `models.toml`, with that limit. The `mcp` entry connects to the Kaimon server at
 `http://127.0.0.1:2828/`, which `launchagents/kaimon.plist` starts. The token comes from
 `~/.config/kaimon/opencode-token` when OpenCode reads the file, so no secret is in the repository.
+`experimental.subagent_depth` is 2, so that a builder that the dispatcher spawns can spawn
+`julia-branch-verifier` or a `reader`; OpenCode allows one level by default.
 
 The `permission` block is generated. Do not edit it by hand: run `harness permissions --apply`,
 which writes it from the settings template. OpenCode takes the last rule that matches, so each
