@@ -301,7 +301,7 @@ It states the facts of oh-my-pi:
   command that a sub-agent returns for approval;
 - the council of critics of `build-part`.
 
-The cases check that the file is no larger than 5,114 bytes.
+The cases check that the file is no larger than `OPENCODE-DELTA.md`.
 
 ## `omp/UNDER-OMP.md`
 
