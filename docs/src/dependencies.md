@@ -72,8 +72,8 @@ The tables leave out the system tools: the POSIX shell utilities, such as `awk`,
 `curl`, `tar` and `sha256sum`. On Linux, the update job `julia-update.jl` calls `lsof`,
 `systemctl` and `notify-send` in place of the macOS tools, and finds each on the `PATH`. Without
 `lsof` its server check fails; without `notify-send` it writes the log line only. On Linux, the
-[sandbox](concepts.md#sandbox) of Claude Code needs bubblewrap, `bwrap`, and socat. The settings template sets
-`failIfUnavailable`, so without them Claude Code does not start.
+[sandbox](concepts.md#sandbox) of Claude Code needs bubblewrap, `bwrap`, and socat. The settings
+template sets `failIfUnavailable`, so without them Claude Code does not start.
 
 ## What each tool does
 

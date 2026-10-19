@@ -56,7 +56,7 @@ grep " $f\$" "gitleaks_${v}_checksums.txt" | sha256sum -c - && tar -xzf "$f" git
 cd ~
 ```
 
-**Only to push to the harness**, install gitleaks: only the pre-push
+**Only to push to the harness**, install gitleaks: on your machine, only the pre-push
 [hook](concepts.md#hook) of the harness runs it, before a push to the harness. A user who only
 installs the harness skips these lines. To update gitleaks, run the lines again with a new `v=`.
 
@@ -91,8 +91,8 @@ hook prints one skip line, because CI runs it. bubblewrap and socat are the tool
 install instantiates the Julia environment of the harness's scripts, and it stops without
 `julia`.
 
-**Check.** Each command prints its version: Python 3.11 or later, Node.js 22.3 or later, gitleaks
-8.21 or later, and Julia 1.13 or later.
+**Check.** Each command prints its version: Python 3.11 or later, Node.js 22.3 or later (or 20.16
+or later in 20.x), gitleaks 8.21 or later, actionlint 1.7.12 or later, and Julia 1.13 or later.
 
 ```bash
 python3 --version
@@ -104,11 +104,11 @@ julia --version
 
 ## The sandbox of Claude Code
 
-**What it does.** On Linux, Claude Code runs each shell command in a sandbox of bubblewrap,
-`bwrap`, and it needs socat beside it. The settings template of the harness sets
-`sandbox.enabled` and `failIfUnavailable: true`. So without a working sandbox, Claude Code does
-not start, rather than run the commands without one. [The dependencies](#the-dependencies)
-installs both tools.
+**What it does.** On Linux, Claude Code runs the shell commands of a
+[session](concepts.md#session) in a sandbox of bubblewrap, `bwrap`, and it needs socat beside it.
+The settings template of the harness sets `sandbox.enabled` and `failIfUnavailable: true`. So
+without a working sandbox, Claude Code does not start, rather than run the commands without one.
+[The dependencies](#the-dependencies) installs both tools.
 
 **Why.** bubblewrap makes the sandbox from user namespaces of the kernel, and the settings of a
 machine can refuse them to a user. Then `bwrap` fails, and Claude Code does not start. The cause
@@ -259,9 +259,9 @@ needs the tools of [The sandbox of Claude Code](#the-sandbox-of-claude-code).
 ### OpenCode
 
 The install writes the OpenCode configuration as on macOS, which
-[setup-macos.md](setup-macos.md#opencode) describes. The settings keep `~/.opencode/bin`, where the
-installer of OpenCode puts the program, and `~/.local/bin` out of the writes of a
-[session](concepts.md#session).
+[setup-macos.md](setup-macos.md#opencode) describes. The settings template keeps `~/.opencode/bin`,
+where the installer of OpenCode puts the program, and `~/.local/bin` out of the writes of a
+Claude Code session.
 
 ### oh-my-pi
 
