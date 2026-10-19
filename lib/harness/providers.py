@@ -15,11 +15,18 @@ it in `<provider>/<model>`:
   frontends  optional: the frontends that get the provider, by default FRONTENDS
   models     optional: a table of model tables, keyed by the model id, each with
                name       optional: the model's `name` in both
-               reasoning  optional: `reasoning` in both
+               reasoning  optional: `reasoning` in both; oh-my-pi gets `false` without it, as
+                          OpenCode's default is, or it sends the agent's effort
                context    optional, with `output`: OpenCode's `limit.context`, oh-my-pi's
                           `contextWindow`
                output     optional, with `context`: OpenCode's `limit.output`, oh-my-pi's
                           `maxTokens`
+               effort     optional: the reasoning effort that the model always gets, such as
+                          "none" or "medium": OpenCode's `options.reasoningEffort`; for oh-my-pi
+                          `reasoning = true`, a `compat.reasoningEffortMap` that maps each
+                          thinking level of LEVELS to it, and `compat.reasoningDisableMode =
+                          "none-effort"`, so that a request sends `reasoning_effort` in every
+                          thinking format, and "none" when an agent turns thinking off
                opencode, omp  optional: the frontend's own keys of the model, merged over the rest
   opencode, omp  optional: the frontend's own keys of the provider, merged over the rest
 
@@ -42,7 +49,9 @@ FRONTENDS = ("opencode", "omp")
 APIS = {"anthropic": ("@ai-sdk/anthropic", "anthropic-messages"),
         "openai-compatible": ("@ai-sdk/openai-compatible", "openai-completions")}
 PROVIDER_KEYS = ("api", "url", "name", "key", "frontends", "models", *FRONTENDS)
-MODEL_KEYS = ("name", "reasoning", "context", "output", *FRONTENDS)
+MODEL_KEYS = ("name", "reasoning", "context", "output", "effort", *FRONTENDS)
+# The thinking levels of oh-my-pi 18.12.0, the keys of a model's `compat.reasoningEffortMap`.
+LEVELS = ("minimal", "low", "medium", "high", "xhigh", "max")
 # A `key`: an environment variable, or a file whose path oh-my-pi's shell reads as written.
 ENV_KEY = re.compile(r"\{env:([A-Z_][A-Z0-9_]*)\}")
 FILE_KEY = re.compile(r"\{file:([A-Za-z0-9_./~+-]+)\}")
@@ -112,6 +121,8 @@ def check(path, name, provider):
             raise HarnessError(f"{at}: `context` and `output` come together")
         if [k for k in ("context", "output") if k in table and not (type(table[k]) is int and table[k] > 0)]:
             raise HarnessError(f"{at}: `context` and `output` are positive integers")
+        if "effort" in table and not (isinstance(table["effort"], str) and table["effort"].strip()):
+            raise HarnessError(f"{at}: `effort` is not a string that names an effort, such as \"none\"")
         for own in FRONTENDS:
             if not isinstance(table.get(own, {}), dict):
                 raise HarnessError(f"{at}: `{own}` is not a table")
@@ -142,6 +153,8 @@ def opencode(providers):
                 base = {k: m[k] for k in ("name", "reasoning") if k in m}
                 if "context" in m:
                     base["limit"] = {"context": m["context"], "output": m["output"]}
+                if "effort" in m:
+                    base["options"] = {"reasoningEffort": m["effort"]}
                 entry["models"][model] = merged(base, m.get("opencode", {}))
         out[name] = merged(entry, p.get("opencode", {}))
     return out
@@ -159,9 +172,19 @@ def omp(providers):
         if "models" in p:
             entry["models"] = []
             for model, m in p["models"].items():
-                base = {"id": model, **{k: m[k] for k in ("name", "reasoning") if k in m}}
+                # A model without `reasoning` gets the agent's effort under oh-my-pi, and none under
+                # OpenCode; `false` sends none.
+                base = {"id": model, **({"name": m["name"]} if "name" in m else {}),
+                        "reasoning": m.get("reasoning", False)}
                 if "context" in m:
                     base |= {"contextWindow": m["context"], "maxTokens": m["output"]}
+                # oh-my-pi sends no effort for a model without `reasoning`, and the default
+                # disable mode of a Qwen model on a generic host sends `enable_thinking`, not
+                # `reasoning_effort`.
+                if "effort" in m:
+                    base |= {"reasoning": True,
+                             "compat": {"reasoningEffortMap": dict.fromkeys(LEVELS, m["effort"]),
+                                        "reasoningDisableMode": "none-effort"}}
                 entry["models"].append(merged(base, m.get("omp", {})))
         out[name] = merged(entry, p.get("omp", {}))
     return out
@@ -183,7 +206,7 @@ CASES = [
      {"o": {"npm": "@ai-sdk/openai-compatible", "options": {"baseURL": "https://h/v1", "apiKey": "{file:~/.config/k}"},
             "models": {"org/m:7b": {}}}},
      {"o": {"baseUrl": "https://h/v1", "api": "openai-completions", "apiKey": "!cat ~/.config/k",
-            "models": [{"id": "org/m:7b"}]}}),
+            "models": [{"id": "org/m:7b", "reasoning": False}]}}),
     ("a frontend's own keys merge over the rest, of the provider and of a model",
      '[o]\napi = "openai-compatible"\nurl = "http://127.0.0.1:8080/v1"\nomp = { apiKey = "K" }\n'
      'opencode = { options = { timeout = 5 } }\n'
@@ -193,11 +216,34 @@ CASES = [
             "models": {"m": {"limit": {"context": 1, "output": 1}, "tool_call": False,
                              "options": {"reasoningEffort": "none"}}}}},
      {"o": {"baseUrl": "http://127.0.0.1:8080/v1", "api": "openai-completions", "apiKey": "K",
-            "models": [{"id": "m", "contextWindow": 2, "maxTokens": 1}]}}),
+            "models": [{"id": "m", "reasoning": False, "contextWindow": 2, "maxTokens": 1}]}}),
     ("`frontends` limits a provider to OpenCode",
      '[o]\napi = "openai-compatible"\nurl = "https://h/v1"\nfrontends = ["opencode"]\n',
      {"o": {"npm": "@ai-sdk/openai-compatible", "options": {"baseURL": "https://h/v1"}}}, {}),
+    ("`effort` fixes the effort in both, and oh-my-pi's model reasons and sends it in every thinking format",
+     '[o]\napi = "openai-compatible"\nurl = "https://h/v1"\n[o.models.m]\neffort = "none"\n',
+     {"o": {"npm": "@ai-sdk/openai-compatible", "options": {"baseURL": "https://h/v1"},
+            "models": {"m": {"options": {"reasoningEffort": "none"}}}}},
+     {"o": {"baseUrl": "https://h/v1", "api": "openai-completions",
+            "models": [{"id": "m", "reasoning": True, "compat": {
+                "reasoningEffortMap": {"minimal": "none", "low": "none", "medium": "none", "high": "none",
+                                       "xhigh": "none", "max": "none"},
+                "reasoningDisableMode": "none-effort"}}]}}),
+    ("a frontend's own keys merge over `effort`",
+     '[o]\napi = "openai-compatible"\nurl = "https://h/v1"\n[o.models.m]\nreasoning = false\neffort = "medium"\n'
+     'opencode = { options = { reasoningEffort = "low", x = 1 } }\nomp = { compat = { reasoningEffortMap = { max = "high" } } }\n',
+     {"o": {"npm": "@ai-sdk/openai-compatible", "options": {"baseURL": "https://h/v1"},
+            "models": {"m": {"reasoning": False, "options": {"reasoningEffort": "low", "x": 1}}}}},
+     {"o": {"baseUrl": "https://h/v1", "api": "openai-completions",
+            "models": [{"id": "m", "reasoning": True, "compat": {
+                "reasoningEffortMap": {"minimal": "medium", "low": "medium", "medium": "medium", "high": "medium",
+                                       "xhigh": "medium", "max": "high"},
+                "reasoningDisableMode": "none-effort"}}]}}),
     ("an empty file", "", {}, {}),
+    ("a blank effort", '[o]\napi = "openai-compatible"\nurl = "https://h/v1"\n[o.models.m]\neffort = " "\n',
+     None, None),
+    ("an effort that is no string", '[o]\napi = "openai-compatible"\nurl = "https://h/v1"\n[o.models.m]\neffort = 1\n',
+     None, None),
     ("a literal key", '[o]\napi = "openai-compatible"\nurl = "https://h/v1"\nkey = "sk-LITERAL"\n', None, None),
     ("a file key with a shell character", '[o]\napi = "openai-compatible"\nurl = "https://h/v1"\n'
      'key = "{file:~/k;rm}"\n', None, None),
