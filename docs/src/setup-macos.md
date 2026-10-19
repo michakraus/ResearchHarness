@@ -100,6 +100,15 @@ tree. Each entry must be a directory. With the example values, these commands ma
 mkdir -p ~/Research/Packages ~/Research/Experiments
 ```
 
+The [providers](profile.md#the-providers) are optional. Copy them only when OpenCode or oh-my-pi
+uses a model server or an account beyond its built-in providers:
+
+```bash
+cp ~/Research/Harness/examples/providers.toml ~/.config/research-harness/providers.toml
+```
+
+Then replace the example providers with your own.
+
 The [network overlay](profile.md#the-network-overlay) is optional. Copy it only when Claude Code
 must reach a host that `settings/network.toml` does not name, such as the library resolver of your
 institution, or must not reach a host:

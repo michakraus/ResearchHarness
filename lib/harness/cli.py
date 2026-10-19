@@ -7,7 +7,7 @@ import sys
 
 from . import REPO, HarnessError, __doc__ as CONTRACT
 from . import docs, fmt, frontends, frontmatter, githooks, install, network, profile, protection, pushall, sweep
-from . import script_cases, skill_triggers, units
+from . import providers, script_cases, skill_triggers, units
 
 # The modules of lib/harness/; the adapters of lib/harness/frontends.py follow `install`.
 MODULES = [install, frontmatter, githooks, pushall, protection, fmt, profile]
@@ -16,6 +16,7 @@ MODULES.append(docs)
 MODULES.append(units)
 MODULES.append(script_cases)
 MODULES.append(network)
+MODULES.append(providers)
 
 PROBE = REPO / "hooks" / "probe.py"
 SUMMARY = re.compile(r"(\d+) cases, (\d+) wrong")
@@ -68,7 +69,7 @@ def main(argv=None):
     sub = ap.add_subparsers(dest="verb", metavar="<verb>", required=True)
     for module in modules():
         # A module with no verb of its own; its cases run in `harness test`.
-        if module not in (frontmatter, docs, units, script_cases, network):
+        if module not in (frontmatter, docs, units, script_cases, network, providers):
             module.register(sub)
     sub.add_parser("test", help="run the harness's own test cases").set_defaults(run=cmd_test)
     args = ap.parse_args(argv)

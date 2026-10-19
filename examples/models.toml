@@ -58,8 +58,8 @@ julia-critic = [
 ]
 
 # The input tokens that a model may hold: OpenCode's `limit` in the `provider` object of
-# opencode.jsonc, oh-my-pi's `contextWindow` in models.yml. Name no provider that the profile's
-# `opencode_providers` defines.
+# opencode.jsonc, oh-my-pi's `contextWindow` in models.yml: a model of a built-in provider. A model
+# of providers.toml holds its limit there, as `context`.
 [context_limits]
 "provider-b/small-model" = 100000
 

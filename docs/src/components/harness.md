@@ -285,6 +285,16 @@ a profile with the key `extra_domain`, and a template that holds a host of its o
 check each rule, each exit 2, and that an overlay changes no file of OpenCode or oh-my-pi.
 [Adapting the profile](../profile.md#the-network-overlay) describes the keys.
 
+## `providers.py`
+
+The model providers of OpenCode and oh-my-pi. The module has no verb. It reads `providers.toml`
+beside the profile, which may be missing, and gives each frontend its entries: the `provider`
+object of `opencode.jsonc` and the providers of oh-my-pi's `models.yml`. The OpenCode and oh-my-pi
+adapters call it in `install`. A literal key, an unknown key, a value of the wrong type, and a
+profile with the key `opencode_providers` or `omp_providers` exit 2. Its cases check the mapping
+of each key, the merge of a frontend's own keys, and each exit 2.
+[Adapting the profile](../profile.md#the-providers) describes the keys.
+
 ## `sources.py`
 
 The names of the neutral sources: the five directories `agents/`, `skills/`, `rules/`,

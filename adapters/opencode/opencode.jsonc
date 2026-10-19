@@ -34,10 +34,10 @@
     "~/.claude/instructions/research-tree.md"
   ],
 
-  // The providers come from the private profile (`opencode_providers`): their hosts, servers
-  // and accounts name the user's institution and machines.
+  // The providers come from the private providers.toml beside the profile: their hosts,
+  // servers and accounts name the user's institution and machines.
   "provider": {
-    {opencode_providers}
+    {providers}
   },
 
   "mcp": {

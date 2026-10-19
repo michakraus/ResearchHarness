@@ -54,22 +54,5 @@ protected_dir = ["Nextcloud"]
 # for each. The home path, the user name, the institution's hosts, internal addresses.
 leak = ["/home/example", "example-user"]
 
-# The providers of OpenCode's opencode.jsonc, one table each, which `harness install` writes as
-# entries of its `provider` object: the model servers and accounts beyond OpenCode's built-in
-# providers. A model id with `.`, `/` or `:` is a quoted key, such as `models."org/model:7b"`. The
-# comments here stay here; the generated file holds none.
-[opencode_providers.local]
-npm = "@ai-sdk/openai-compatible"
-name = "a local server"
-options = { baseURL = "http://127.0.0.1:8080/v1" }
-models = { example-model = { name = "Example model", limit = { context = 131072, output = 32768 } } }
-
-# Optional. The providers of oh-my-pi's models.yml, one table each, which oh-my-pi reads as
-# written: the model servers and accounts beyond its built-in providers. Name a provider as
-# OpenCode names the same account, so that models.toml holds one model string for both. `apiKey`
-# names an environment variable, which oh-my-pi reads, so that no key is in the file.
-[omp_providers.example-cloud]
-baseUrl = "https://example-resource.example.org/anthropic"
-api = "anthropic-messages"
-apiKey = "EXAMPLE_CLOUD_API_KEY"
-models = [{ id = "example-model", reasoning = true, contextWindow = 200000 }]
+# The model servers and accounts of OpenCode and oh-my-pi are in providers.toml beside this file,
+# which examples/providers.toml shows.
