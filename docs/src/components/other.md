@@ -152,7 +152,7 @@ keys of `settings.json`. These components read it:
 - `harness install` merges `permissions`, `hooks`, `sandbox` and `modelSettings` into
   `~/.claude/settings.json`. It keeps every other key of that file, and does not install the other
   keys of the template;
-- `harness settings surface`, `compare`, `twins` and `domains` measure and check it;
+- `harness settings surface`, `compare` and `twins` measure and check it;
 - `harness permissions` writes the OpenCode permission block from its `ask` and `deny` rules;
 - `harness install` writes the `bash.patterns` and the path list of oh-my-pi from it;
 - `harness leaks` renders it with the example profile.
@@ -160,6 +160,24 @@ keys of `settings.json`. These components read it:
 Edit the template, never the installed `settings.json`, and commit it when you install it.
 [Typical use](../daily-use.md) gives the steps. [The security model](../security.md) says which of
 its mechanisms is a boundary and which only prevents accidents.
+
+The template names no host: its `sandbox.network.allowedDomains` is empty, and it has no
+`WebFetch(domain:…)` rule. `network.toml` gives them.
+
+## `network.toml`
+
+The hosts of the network rules of Claude Code, in three arrays: `allow`, the hosts that the
+`WebFetch` tool and a sandboxed command can reach; `infrastructure`, the hosts that only a
+sandboxed command can reach; `deny`, the hosts that neither can reach, with a reason for each in
+`[deny_reasons]`. Comments group the hosts: literature, mathematics, Julia, GitHub, package
+registries.
+
+`harness install`, `harness render` of the settings template and `harness settings` generate the
+`WebFetch(domain:…)` rules and the lists of `sandbox.network` from this file and from the overlay
+`network.toml` beside the profile, which `examples/network.toml` shows. A `deny` entry of either
+file wins over an `allow` or `infrastructure` entry of either file. OpenCode and oh-my-pi do not
+read the file. [Adapting the profile](../profile.md#the-network-overlay) gives the rules of each
+key.
 
 ## `profile.toml`
 

@@ -2,6 +2,28 @@
 
 ## Unreleased
 
+- **The hosts of the Claude Code network rules are in `settings/network.toml`, not in the settings
+  template.** The template held each host twice by hand: 73 `WebFetch(domain:…)` rules in
+  `permissions.allow`, one of them the placeholder `{extra_domain}`, and their mirror plus the infrastructure hosts in
+  `sandbox.network.allowedDomains`, which `harness settings domains` checked. The new file has
+  three arrays with comment headings: `allow` (72 hosts), `infrastructure` (17) and `deny` (empty),
+  and a table `[deny_reasons]`. `harness install`, `harness render` of the template and the
+  `harness settings` verbs generate the rules from it: `allow` X gives `WebFetch(domain:X)` and X in
+  `allowedDomains`, with `*.X` when X is its own registrable domain; `infrastructure` X gives X in
+  `allowedDomains` as written; `deny` X gives `WebFetch(domain:X)` in `permissions.deny`, except for
+  an entry with a port, and X in `sandbox.network.deniedDomains`, with the reasons in
+  `sandbox.network.deniedDomainReasons`, which Claude Code 2.1.302 reads. An optional overlay
+  `network.toml` beside the profile adds its own entries, and a `deny` entry of either file removes
+  each matching allow host from the generated lists. A URL, a port outside `deny`, `*.` in `allow`,
+  a host in `allow` and `deny` of one file, a reason for no `deny` entry and an unknown key exit 2,
+  naming the file and the key. The generated settings equal the earlier ones as sets of hosts, and
+  every other key is unchanged. `harness settings domains` is removed: no hand-kept mirror is left
+  to check. OpenCode and oh-my-pi do not read the lists; their output is unchanged.
+  **Migration:** the profile key `extra_domain` is retired, and a profile that still has it makes
+  `harness install` exit 2. Move its hosts into the `allow` array of
+  `~/.config/research-harness/network.toml`, then remove the key. `examples/network.toml` shows the
+  overlay.
+
 - **`opencode_providers` in the profile is TOML tables, one `[opencode_providers.<name>]` per
   provider, the same form as `omp_providers`.** The JSONC text in a TOML string was hard to edit.
   `harness install` serialises each provider table as JSON and writes it as one entry of the

@@ -100,6 +100,16 @@ tree. Each entry must be a directory. With the example values, these commands ma
 mkdir -p ~/Research/Packages ~/Research/Experiments
 ```
 
+The [network overlay](profile.md#the-network-overlay) is optional. Copy it only when Claude Code
+must reach a host that `settings/network.toml` does not name, such as the library resolver of your
+institution, or must not reach a host:
+
+```bash
+cp ~/Research/Harness/examples/network.toml ~/.config/research-harness/network.toml
+```
+
+Then replace the example hosts with your own, or empty the arrays.
+
 **Why.** The profile holds every value that names a person, an institution or a machine, so the
 repository holds none. The model tables give the model of each [tier](concepts.md#tier) for each
 frontend.

@@ -17,7 +17,7 @@ oh-my-pi model, and an agent to its own model, else `$RESEARCH_HARNESS_MODELS`, 
 |:--|:--|
 | `install` | the Julia environment of the scripts, the Claude Code layer with the sections `permissions`, `hooks`, `sandbox` and `modelSettings` of `settings.json`, the OpenCode configuration, and the oh-my-pi permission layer, instructions, rules, agents, models and MCP entry |
 | `permissions` | the OpenCode permission block and path-guard list, from the settings template |
-| `settings <sub>` | measure and check the Claude Code settings: `surface`, `compare`, `twins`, `domains`, `selftest` |
+| `settings <sub>` | measure and check the Claude Code settings: `surface`, `compare`, `twins`, `selftest` |
 | `githooks`, `wiki-lint-hook`, `workflows` | the shared git hooks and GitHub workflows, into every repository of the research tree |
 | `push-all`, `ci-protection` | push every repository ahead of its upstream; protect every default branch |
 | `format` | JuliaFormatter over every tracked `.jl` file of the tree |

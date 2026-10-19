@@ -10,7 +10,7 @@ $RESEARCH_ROOT, with one package, one prose repository and the tree instructions
   * with each precondition of `PRECONDITIONS` removed alone, it exits 2 with one line on stderr
     and no traceback.
 
-`settings domains` gives each of the two messages of `read_settings` once: with no settings file,
+`settings twins` gives each of the two messages of `read_settings` once: with no settings file,
 and with one of mode 000. A settings file that is not JSON, not UTF-8, JSON but not an object,
 nested deeper than the parser reads, or an object whose `permissions` is a list makes each `settings` verb that reads
 it exit 2 with one line that names it; so does such a `~/.claude.json`, or one whose `projects` is
@@ -49,7 +49,6 @@ VERBS = [
     ("settings compare", ["settings", "compare", "{live}", PROPOSAL]),
     ("settings selftest", ["settings", "selftest"]),
     ("settings twins", ["settings", "twins"]),
-    ("settings domains", ["settings", "domains"]),
     ("githooks", ["githooks"]),
     ("wiki-lint-hook", ["wiki-lint-hook"]),
     ("workflows", ["workflows"]),
@@ -70,7 +69,7 @@ PRECONDITIONS = [
     ("the tree instructions", "Research/Environment/Agents", ["install"]),
     ("~/.claude.json", ".claude.json", ["trust"]),
     ("~/.claude/settings.json", ".claude/settings.json",
-     ["settings surface", "settings twins", "settings domains"]),
+     ["settings surface", "settings twins"]),
     ("a repository_roots entry", "Research/Experiments", ["leaks"]),
 ]
 
@@ -234,20 +233,20 @@ def selftest():
             else:
                 live.chmod(0)
             try:
-                p = harness(argv["settings domains"])
+                p = harness(argv["settings twins"])
             finally:
                 if label == "missing":
                     aside.rename(live)
                 else:
                     live.chmod(0o644)
             check(refused_ok(p) and p.stderr == f"harness settings: {expect}\n",
-                  f"settings domains, settings file {label}: exit {p.returncode}, stderr {p.stderr.strip()[-300:]!r}")
+                  f"settings twins, settings file {label}: exit {p.returncode}, stderr {p.stderr.strip()[-300:]!r}")
 
         # A settings file, and ~/.claude.json, that is not JSON, not UTF-8, JSON but not an object,
         # nested deeper than the parser's recursion limit, or an object whose `permissions` or
         # `projects` is not an object: each verb that reads it exits 2 with one line that names the
         # file and what it is.
-        settings_verbs = ["settings surface", "settings compare", "settings twins", "settings domains"]
+        settings_verbs = ["settings surface", "settings compare", "settings twins"]
         # Python 3.11 stops at its recursion limit, 3.12 and later at a stack of 16 MB: 400000 levels
         # are past both.
         depth = 400000

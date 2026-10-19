@@ -47,10 +47,6 @@ docs_exceptions = ["ExampleBook"]
 # survives in their copy.
 docs_additions = ["ExampleFigures"]
 
-# Hosts that WebFetch and a sandboxed command may reach beyond the template's list, such as the
-# institution's library resolver.
-extra_domain = ["library.example.org"]
-
 # Directories below `home` that no session may edit, such as a synchronised share.
 protected_dir = ["Nextcloud"]
 

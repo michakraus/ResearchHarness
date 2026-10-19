@@ -1,0 +1,128 @@
+# The network lists of the Claude Code settings. `harness install`, `harness render` and
+# `harness settings` generate them into the settings template; the template holds no host.
+#
+#   allow           a host that the WebFetch tool and a sandboxed command can reach:
+#                   `WebFetch(domain:X)` in `permissions.allow`, and X in
+#                   `sandbox.network.allowedDomains`, with `*.X` when X is its own registrable
+#                   domain. Write the host, never `*.X`.
+#   infrastructure  a host that only a sandboxed command can reach, in `allowedDomains` exactly as
+#                   written; `*.X` is allowed.
+#   deny            a host that neither can reach: `WebFetch(domain:X)` in `permissions.deny`, and X
+#                   in `sandbox.network.deniedDomains`. `*`, `*.X` and `X:port` are allowed; an
+#                   entry with a port is no WebFetch rule.
+#   [deny_reasons]  the reason for a `deny` entry, keyed by the exact entry, which Claude Code shows
+#                   the model when the sandbox refuses a connection.
+#
+# An overlay with the same keys, `network.toml` beside the profile, adds its entries. A `deny`
+# entry of either file removes each `allow` and `infrastructure` host that it matches. Each entry is
+# a host, not a URL. A host not on any list prompts.
+
+allow = [
+    # literature: indexes and metadata
+    "doi.org",
+    "dx.doi.org",
+    "crossref.org",
+    "api.crossref.org",
+    "api.labs.crossref.org",
+    "api.datacite.org",
+    "openalex.org",
+    "api.openalex.org",
+    "semanticscholar.org",
+    "api.semanticscholar.org",
+    "dblp.org",
+    "inspirehep.net",
+    "ui.adsabs.harvard.edu",
+    "zbmath.org",
+    "mathscinet.ams.org",
+    "europepmc.org",
+    "openaire.eu",
+    "api.unpaywall.org",
+    "core.ac.uk",
+    "scholar.archive.org",
+    "orcid.org",
+    # literature: preprints and repositories
+    "arxiv.org",
+    "export.arxiv.org",
+    "hal.science",
+    "ssrn.com",
+    "zenodo.org",
+    "osti.gov",
+    "ntrs.nasa.gov",
+    "inis.iaea.org",
+    "openreview.net",
+    "aclanthology.org",
+    "archive.org",
+    "openlibrary.org",
+    # literature: publishers
+    "sciencedirect.com",
+    "link.springer.com",
+    "journals.aps.org",
+    "iopscience.iop.org",
+    "pubs.aip.org",
+    "epubs.siam.org",
+    "cambridge.org",
+    "onlinelibrary.wiley.com",
+    "tandfonline.com",
+    "academic.oup.com",
+    "projecteuclid.org",
+    "numdam.org",
+    "msp.org",
+    "nature.com",
+    "science.org",
+    "scipost.org",
+    "aanda.org",
+    "ams.org",
+    "ems.press",
+    "ieeexplore.ieee.org",
+    "dl.acm.org",
+    "pnas.org",
+    "royalsocietypublishing.org",
+    "annualreviews.org",
+    "worldscientific.com",
+    "mdpi.com",
+    "sagepub.com",
+    # mathematics: references and forums
+    "dlmf.nist.gov",
+    "netlib.org",
+    "ncatlab.org",
+    "mathoverflow.net",
+    "math.stackexchange.com",
+    # Julia
+    "docs.julialang.org",
+    "discourse.julialang.org",
+    "julia-testitems.org",
+    # GitHub
+    "github.com",
+    "raw.githubusercontent.com",
+    # the documentation of the frontends
+    "code.claude.com",
+    "opencode.ai",
+]
+
+infrastructure = [
+    # the Anthropic API, for a nested `claude -p`
+    "api.anthropic.com",
+    # GitHub
+    "api.github.com",
+    "objects.githubusercontent.com",
+    "codeload.github.com",
+    "uploads.github.com",
+    # GitHub Pages, for the InterLinks inventories of a Documenter build
+    "github.io",
+    "*.github.io",
+    # the Codecov API
+    "api.codecov.io",
+    # Julia
+    "pkg.julialang.org",
+    "*.pkg.julialang.org",
+    "storage.julialang.net",
+    "julialang.org",
+    "julialang-s3.julialang.org",
+    # package registries
+    "conda.anaconda.org",
+    "registry.npmjs.org",
+    "pypi.org",
+    "files.pythonhosted.org",
+]
+
+deny = []
