@@ -15,7 +15,8 @@
 #
 # An overlay with the same keys, `network.toml` beside the profile, adds its entries. A `deny`
 # entry of either file removes each `allow` and `infrastructure` host that it matches. Each entry is
-# a host, not a URL. A host not on any list prompts.
+# a host, not a URL. The sandbox refuses a host that no list names, with no prompt
+# (`strictAllowlist`); a WebFetch of it matches no rule and asks in the default permission mode.
 
 allow = [
     # literature: indexes and metadata

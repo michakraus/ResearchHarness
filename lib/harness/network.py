@@ -20,9 +20,10 @@ never a URL.
 
 The two files are one union, the harness list's entries first. An `allow` or `infrastructure` entry
 that a `deny` entry without a port matches — the same host, a host or a `*.` form below a `*.`
-entry, or any host for `*` — is left out of every generated allow list. A `deny` entry with a port
-leaves the host on the allow lists; the sandbox refuses that port alone. With no `deny` entry the
-template gets no `deniedDomains` and no `deniedDomainReasons`.
+entry, or any host for `*` — is left out of every generated allow list, and so is the `*.X` form of
+an `allow` host X that such an entry matches: a deny `*.X` keeps X and drops `*.X`. A `deny` entry
+with a port leaves the host on the allow lists; the sandbox refuses that port alone. With no `deny`
+entry the template gets no `deniedDomains` and no `deniedDomainReasons`.
 
 Exit 2, naming the file and the key: an unknown key; a value of the wrong type; an entry that is
 not a string, is a URL, or is no host name; a port outside `deny`; `*` outside `deny`; `*.` in
@@ -153,12 +154,15 @@ def generate(lists):
     """(WebFetch allow rules, WebFetch deny rules, allowedDomains, deniedDomains,
     deniedDomainReasons) of the merged `lists`."""
     whole = [d for d in lists["deny"] if ":" not in d]
-    kept = {key: [h for h in lists[key] if not any(denies(d, h) for d in whole)]
-            for key in ("allow", "infrastructure")}
-    mirror = [form for h in kept["allow"] for form in ([h, "*." + h] if h == registrable(h) else [h])]
-    return ([f"{WEBFETCH}{h})" for h in kept["allow"]],
+
+    def kept(hosts):
+        return [h for h in hosts if not any(denies(d, h) for d in whole)]
+
+    allow = kept(lists["allow"])
+    mirror = kept(form for h in allow for form in ([h, "*." + h] if h == registrable(h) else [h]))
+    return ([f"{WEBFETCH}{h})" for h in allow],
             [f"{WEBFETCH}{d})" for d in lists["deny"] if ":" not in d],
-            list(dict.fromkeys(kept["infrastructure"] + mirror)),
+            list(dict.fromkeys(kept(lists["infrastructure"]) + mirror)),
             list(lists["deny"]),
             dict(lists["deny_reasons"]))
 
@@ -291,6 +295,11 @@ def selftest():
              and f"{WEBFETCH}docs.julialang.org)" not in fetch(one, "allow")
              and "julialang.org" in net(one)["allowedDomains"],
              "a deny of *.X removes each host and *. form below X, and keeps X itself")
+        mirrored = rendered('deny = ["*.nature.com"]\n')
+        case(lambda: f"{WEBFETCH}nature.com)" in fetch(mirrored, "allow")
+             and "nature.com" in net(mirrored)["allowedDomains"]
+             and "*.nature.com" not in net(mirrored)["allowedDomains"],
+             "a deny of *.X, with X in allow, keeps the WebFetch rule and X, and drops the mirror form *.X")
         everything = rendered('deny = ["*"]\n')
         case(lambda: fetch(everything, "allow") == [] and net(everything)["allowedDomains"] == [],
              "a deny of * removes every allow and infrastructure host")

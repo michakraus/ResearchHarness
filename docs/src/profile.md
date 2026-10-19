@@ -90,17 +90,18 @@ the overlay `network.toml` beside the profile adds your own, such as the library
 institution. The overlay is optional. `examples/network.toml` shows it. Both files have the same
 keys, and each key is optional in the overlay.
 
-| key | what it holds | generated rules |
+| key | what it holds | what the install writes |
 |:--|:--|:--|
 | `allow` | the hosts that the `WebFetch` tool and a sandboxed command can reach; write a host, never `*.X` | `WebFetch(domain:X)` in `permissions.allow`; `X` in `sandbox.network.allowedDomains`, and `*.X` too when `X` is its own registrable domain |
 | `infrastructure` | the hosts that only a sandboxed command can reach, such as a package registry; `*.X` is allowed | `X` in `allowedDomains`, as written |
 | `deny` | the hosts that neither can reach; `*`, `*.X` and `X:port` are allowed | `X` in `sandbox.network.deniedDomains`; `WebFetch(domain:X)` in `permissions.deny`, except for an entry with a port |
-| `[deny_reasons]` | a reason for a `deny` entry, keyed by the exact entry | `sandbox.network.deniedDomainReasons`, which Claude Code shows the model when the sandbox refuses the host |
+| `[deny_reasons]` | a reason for a `deny` entry, keyed by the exact entry | `sandbox.network.deniedDomainReasons`, which Claude Code shows the model when the [sandbox](concepts.md#sandbox) refuses the host |
 
 `install`, `render` of the settings template and `settings` read both files. A `deny` entry of
 either file removes each `allow` and `infrastructure` host that it matches from the generated
-allow lists. A `deny` entry with a port leaves the host on the allow lists. A host that no list
-names prompts. An entry that is a URL, a port outside `deny`, a host in `allow` and in `deny` of
+allow lists. A `deny` entry with a port leaves the host on the allow lists. The sandbox refuses a
+host that no list names, with no prompt, because the template sets `strictAllowlist`. A `WebFetch`
+of such a host is on no list either, so it asks in the default permission mode. An entry that is a URL, a port outside `deny`, a host in `allow` and in `deny` of
 one file, and a key that the table does not name stop the verb with exit 2. So does the profile
 key `extra_domain`: move its hosts into the overlay's `allow`.
 
