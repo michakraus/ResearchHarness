@@ -9,8 +9,10 @@ Two private files adapt the harness to one user and one machine. Neither is in t
   [frontend](concepts.md#frontend). Their path is
   `harness --models F`, else `$RESEARCH_HARNESS_MODELS`, else `models.toml` beside the profile.
 
-A third private file is optional: the [network overlay](#the-network-overlay), `network.toml`
-beside the profile, adds hosts to the network lists of Claude Code.
+Two more private files beside the profile are optional. [`providers.toml`](#the-providers) holds
+the model servers and accounts of OpenCode and oh-my-pi. The
+[network overlay](#the-network-overlay), `network.toml`, adds hosts to the network lists of
+Claude Code.
 
 `examples/profile.toml` and `examples/models.toml` show every key and every table, each with a
 comment that says what the value is. Copy them and write your values into the copies, as
@@ -49,7 +51,6 @@ The table names each key of `examples/profile.toml` and the verbs that read it, 
 | `docs_exceptions` | the repositories that keep a documentation workflow of their own | `workflows`; `ci-protection`, through `githooks/verify-workflows.jl` |
 | `docs_additions` | the repositories that add steps to the canonical documentation workflow | `workflows`; `ci-protection`, through `githooks/verify-workflows.jl` |
 | `protected_dir` | the directories below `home` that no session can edit | `install`, in the settings template and the OpenCode configuration; `settings` |
-| `opencode_providers` | the model servers of OpenCode beyond its own providers, one TOML table each, `[opencode_providers.<name>]`, written as the entries of the `provider` object. A string of JSONC lines, the earlier form, stops `install` with exit status 2 | `install`, in the OpenCode configuration |
 | `leak` | the strings that must never appear in the repository | `leaks` |
 
 `install` reads the settings template too, because it writes the permission layer of oh-my-pi
@@ -73,7 +74,7 @@ the model of each frontend.
 | `[variants]` | the effort of one agent or council seat, over the effort of its model | `install` |
 | `[reasoning_effort]` | the effort of one agent or council seat, for a model that has no variant for it: OpenCode's `reasoningEffort:`, oh-my-pi's `thinking-level` | `install` |
 | `[councils]` | the copies of an agent on other models; one seat may add `verify = true`, and then it also judges each verify round | `install` |
-| `[context_limits]` | the input tokens that a model may hold: a provider entry in `opencode.jsonc`, `contextWindow` in oh-my-pi's `models.yml` | `install` |
+| `[context_limits]` | the input tokens that a model of a built-in provider may hold: a provider entry in `opencode.jsonc`, `contextWindow` in oh-my-pi's `models.yml`. A provider of `providers.toml` stops `install` with exit 2: its model holds the limit as `context` | `install` |
 | `[opencode]`, `[omp]` | the same sub-tables, such as `[omp.models]`; each key replaces the shared key for that frontend alone | `install` |
 
 OpenCode and oh-my-pi share every table but `[claude]`, so that their agents run on the same
@@ -82,6 +83,27 @@ models.
 A table that names a tier by an old name, `opus`, `sonnet` or `haiku`, stops `harness install`
 with exit 2, an error, and the message names the rename.
 [architecture.md](architecture.md#the-neutral-vocabulary) shows how each frontend reads a tier.
+
+## The providers
+
+`providers.toml` beside the profile holds each model server and account beyond the built-in
+providers of OpenCode and oh-my-pi, once. `install` writes each provider into the `provider`
+object of OpenCode's `opencode.jsonc` and into oh-my-pi's `models.yml`. The file is optional.
+`examples/providers.toml` shows it. A table is one provider, named as `models.toml` names it in
+`provider/model`.
+
+| key | what it holds | OpenCode | oh-my-pi |
+|:--|:--|:--|:--|
+| `api` | `"anthropic"` or `"openai-compatible"` | `npm`: `@ai-sdk/anthropic`, `@ai-sdk/openai-compatible` | `api`: `anthropic-messages`, `openai-completions` |
+| `url` | the base URL, with its `/v1` | `options.baseURL` | `baseUrl`, without the `/v1` for `"anthropic"` |
+| `name` | the name that the frontend shows; optional | `name` | — |
+| `key` | `{env:VAR}` or `{file:PATH}`; optional. A literal key stops `install` with exit 2 | `options.apiKey`, as written | `apiKey`: `VAR`, or `!cat PATH` |
+| `frontends` | the frontends that get the provider; optional, both by default | | |
+| `[<name>.models."<id>"]` | a model: `name`, `reasoning`, and `context` with `output`, each optional | `models.<id>`: `name`, `reasoning`, `limit` | an item of `models`: `id`, `name`, `reasoning`, `contextWindow`, `maxTokens` |
+| `opencode`, `omp` | a frontend's own keys, of a provider or of a model, merged over the rest | merged | merged |
+
+A key that the table does not name stops `install` with exit 2, and so does the profile key
+`opencode_providers` or `omp_providers`: move its providers into `providers.toml`.
 
 ## The network overlay
 

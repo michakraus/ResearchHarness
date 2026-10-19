@@ -209,6 +209,18 @@ Copy the file to `models.toml` beside the profile. `harness --models F` and
 `$RESEARCH_HARNESS_MODELS` name another path. Only `harness install` reads it. The test cases use
 the example as it is. [Adapting the profile](../profile.md) describes each table.
 
+## `providers.toml`
+
+The example of the providers, `examples/providers.toml`: the model servers and accounts of
+OpenCode and oh-my-pi beyond their built-in providers, each written once. A table is one provider,
+with neutral keys such as `api`, `url` and `key`, and its models. `harness install` writes each
+provider into the `provider` object of OpenCode's `opencode.jsonc` and into oh-my-pi's
+`models.yml`.
+
+Copy the file to `providers.toml` beside the profile, and write your providers into the copy. The
+file is optional. The test cases copy the example beside their scratch profile.
+[Adapting the profile](../profile.md#the-providers) maps each key to each frontend.
+
 ## `Project.toml`
 
 The Julia environment of the scripts of the harness. It names the six packages that the scripts

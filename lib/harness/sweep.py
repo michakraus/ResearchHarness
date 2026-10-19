@@ -97,7 +97,8 @@ def make_fixture(home, env):
         (home / directory).mkdir(parents=True)
     (home / ".claude" / "settings.json").write_text('{\n  "model": "fixture"\n}\n')
     (home / ".claude.json").write_text("{}\n")
-    for name, source in (("profile.toml", DUMMY), ("models.toml", REPO / "examples" / "models.toml")):
+    for name, source in (("profile.toml", DUMMY), ("models.toml", REPO / "examples" / "models.toml"),
+                         ("providers.toml", REPO / "examples" / "providers.toml")):
         text = source.read_text().replace("/home/example", str(home))
         (home / ".config" / "research-harness" / name).write_text(text)
     package = research / "Packages" / "Example"

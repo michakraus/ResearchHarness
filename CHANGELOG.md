@@ -2,6 +2,26 @@
 
 ## Unreleased
 
+- **The model providers of OpenCode and oh-my-pi are in one file, `providers.toml` beside the
+  profile, and each provider is written once.** The profile held the same accounts twice, as
+  `opencode_providers` and `omp_providers`, in each frontend's own keys. A provider of the new
+  file is a table with neutral keys: `api` (`"anthropic"` or `"openai-compatible"`), `url`, `name`,
+  `key` (`{env:VAR}` or `{file:PATH}`), `frontends`, and models with `name`, `reasoning`, `context`
+  and `output`. `harness install` writes each provider into the `provider` object of
+  `opencode.jsonc` and into oh-my-pi's `models.yml`. It writes the `url` of an `"anthropic"`
+  provider without its `/v1` for oh-my-pi, whose client appends `/v1/messages`, and a `{file:…}`
+  key as `!cat PATH`. The tables `opencode` and `omp` hold a frontend's own keys, of a provider or a
+  model, such as OpenCode's `tool_call` and `reasoningEffort`. A literal key, an unknown key, an
+  `"anthropic"` URL without `/v1` and a context limit of `models.toml` on a provider of the file
+  exit 2 and name the file. For oh-my-pi the last one is new: such a limit joined the provider's
+  table before. A model of oh-my-pi now has the `name` of its table. The placeholder of
+  `opencode.jsonc` is `{providers}`, which `harness render` and `harness leaks` render empty.
+  **Migration:** a profile that still has `opencode_providers` or `omp_providers` makes
+  `harness install` exit 2. Write each provider once in
+  `~/.config/research-harness/providers.toml`, then remove both keys from the profile.
+  `examples/providers.toml` shows the form, and [profile.md](docs/src/profile.md#the-providers)
+  maps each key to each frontend.
+
 - **The hosts of the Claude Code network rules are in `settings/network.toml`, not in the settings
   template.** The template held each host twice by hand: 73 `WebFetch(domain:…)` rules in
   `permissions.allow`, one of them the placeholder `{extra_domain}`, and their mirror plus the infrastructure hosts in

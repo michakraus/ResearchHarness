@@ -138,10 +138,10 @@ it to `opencode.jsonc` in OpenCode's configuration directory.
 It sets the default model and the model for background work. Its `instructions` list `RTK.md`,
 `instructions/core.md` and `instructions/research-tree.md`, because OpenCode does not follow a
 file reference in an instruction file. The template names them below `~/.claude/`, and the
-install writes the paths of OpenCode's own copies. The `provider` entries come from the profile
-key `opencode_providers`, a table of provider tables, each serialised as JSON. Before them, the
-install writes one entry for each provider of the `context_limits` of `models.toml`, with that
-limit. A provider in both stops the install with exit status 2. The `mcp` entry connects to the Kaimon server at
+install writes the paths of OpenCode's own copies. The `provider` entries come from
+`providers.toml` beside the profile, as [profile.md](../profile.md#the-providers) maps them.
+Before them, the install writes one entry for each provider of the `context_limits` of
+`models.toml`, with that limit. A provider in both stops the install with exit status 2. The `mcp` entry connects to the Kaimon server at
 `http://127.0.0.1:2828/`, which `launchagents/kaimon.plist` starts. The token comes from
 `~/.config/kaimon/opencode-token` when OpenCode reads the file, so no secret is in the repository.
 `experimental.subagent_depth` is 2, so that a builder that the dispatcher spawns can spawn
@@ -261,8 +261,9 @@ The install writes into oh-my-pi's agent directory, `$PI_CODING_AGENT_DIR`, else
   `retry.fallbackChains` entry for each model of an agent or a council seat, so that a provider
   error does not move an agent to another model. A model whose chain in `config.yml` names only
   the same model through another provider keeps that chain;
-- `models.yml`, after a backup: the providers of the profile key `omp_providers`, and each model
-  of the `context_limits` of `models.toml` with its limit as `contextWindow`;
+- `models.yml`, after a backup: the providers of `providers.toml` beside the profile, and each
+  model of the `context_limits` of `models.toml` with its limit as `contextWindow`; a limit on a
+  provider of `providers.toml` stops the install with exit status 2;
 - `extensions/guards.ts` and the path list `extensions/guard-paths.json`;
 - `AGENTS.md`, from `OMP-DELTA.md`;
 - `rules/<name>.md` for each rule that the Claude Code layer installs, with `paths` written as

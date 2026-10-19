@@ -19,7 +19,8 @@ alone: the members of a JSON object, at that line's indentation, with no comma a
 More than one list placeholder in one element or line is an error, and so is
 a placeholder that the profile does not define: a template that renders with a hole in it is a
 grant or a deny that silently matches nothing. The one exception is a key of DEFAULTS, which
-`render` fills with its default where the profile has none: `autocommit_branch` renders `main`.
+`render` and `leaks` fill with its default where the profile has none: `autocommit_branch` renders
+`main`, and `providers`, which `harness install` fills from providers.toml, no provider.
 `render` of the settings template also generates its network rules from `settings/network.toml`
 and the overlay `network.toml` beside the profile (`network.py`).
 
@@ -71,8 +72,9 @@ TEMPLATES = [
     "systemd/claude-autocommit.timer",
 ]
 
-# The keys that `render` gives a value when the profile has none.
-DEFAULTS = {"autocommit_branch": "main"}
+# The keys that `render` and `leaks` give a value when the profile has none. `harness install`
+# fills `providers` from providers.toml.
+DEFAULTS = {"autocommit_branch": "main", "providers": {}}
 
 
 def location(path=None):
@@ -120,6 +122,12 @@ def network_path(profile=None):
     """The overlay of the network lists: network.toml beside the profile `profile`, else beside
     the profile of `location`."""
     return location(profile).parent / "network.toml"
+
+
+def providers_path(profile=None):
+    """The model providers of OpenCode and oh-my-pi (`providers.py`): providers.toml beside the
+    profile `profile`, else beside the profile of `location`."""
+    return location(profile).parent / "providers.toml"
 
 
 # The old keys of a table of the tiers, Claude Code's names, and the neutral tier of each.
@@ -505,7 +513,7 @@ def cmd_leaks(args, repo=REPO):
         raise HarnessError("the profile's `leak` list is empty — nothing to check against")
     names = tree_names(profile)
     pattern, allowed = name_pattern(names), own_repository(repo)
-    dummy = load(DUMMY)
+    dummy = DEFAULTS | load(DUMMY)
     files = subprocess.run(
         ["git", "ls-files", "-z"], cwd=repo, capture_output=True, text=True, check=True
     ).stdout.split("\0")
