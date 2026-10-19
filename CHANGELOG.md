@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+- **Setup on Linux gives all the steps.** Before, `docs/src/setup-linux.md` gave the dependencies
+  only and said the other steps were coming. It now has the sections of `setup-macos.md`, each
+  with what it does, why and its check, for Debian and Ubuntu, with the package names and versions
+  checked on Ubuntu 26.04 only, and three sections of its own: the sandbox of Claude Code
+  (bubblewrap and socat, with a `bwrap` check), the jobs (the `systemd --user` units and linger),
+  and a machine reached over SSH. Its
+  `apt-get` line no longer installs gitleaks, because Ubuntu 26.04 packages 8.16.0, below the
+  minimum 8.21: gitleaks comes from its release into `~/.local/bin`, checked against the
+  release's checksum file, and only a push to the harness needs it. The page is a newcomer page
+  of `docs/scripts/newcomer.mjs`. `dependencies.md` names bubblewrap and socat for the sandbox on
+  Linux. The README links the page for Linux, and `setup-macos.md` says that it gives all the
+  steps for Linux.
+
 - **A session cannot replace OpenCode's binary in `~/.opencode/bin`.** OpenCode's installer puts
   it there on Linux, and the template protected `~/.local/bin` but not this directory. The
   template now has `~/.opencode/bin` in `sandbox.filesystem.denyWrite` and

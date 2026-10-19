@@ -34,7 +34,8 @@ These are the main ideas:
 ## Installation
 
 These are the shortest steps on macOS. [Setup on macOS](docs/src/setup-macos.md) explains each
-step and the check that it worked.
+step and the check that it worked. For Linux, [Setup on Linux](docs/src/setup-linux.md) gives
+all the steps.
 
 1. Install the required tools of [Dependencies](docs/src/dependencies.md). Setup on macOS gives
    the Homebrew commands.

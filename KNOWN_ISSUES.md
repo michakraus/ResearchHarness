@@ -206,3 +206,17 @@
   `.git/**` must also not stop an edit that a session needs.
 - kind: not verified
 - found: 2026-10-16, the `read` deny decoy probe
+
+### K79 · `harness render` reads a relative template path from the working directory, and a missing template ends in a traceback with exit 1.
+
+- location: `lib/harness/profile.py:361`
+- evidence: `render_file` opens `pathlib.Path(path)`, so `harness render systemd/kaimon.service`
+  run outside the checkout prints `FileNotFoundError: [Errno 2] No such file or directory:
+  'systemd/kaimon.service'` and exits 1: `cmd_render` (lines 371–378) catches nothing, and `main`
+  in `lib/harness/cli.py` catches only `HarnessError`. The verb contract of `harness --help` gives
+  exit 1 to a dry run with something to change and exit 2 to a usage error or a failure. A
+  redirect of the output leaves an empty file in place of the unit.
+  `docs/src/components/other.md:89` gives the same relative form, `harness render
+  systemd/<name>`, with no working directory.
+- kind: defect
+- found: 2026-10-19
