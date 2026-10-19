@@ -92,14 +92,19 @@ install instantiates the Julia environment of the harness's scripts, and it stop
 `julia`.
 
 **Check.** Each command prints its version: Python 3.11 or later, Node.js 22.3 or later (or 20.16
-or later in 20.x), gitleaks 8.21 or later, actionlint 1.7.12 or later, and Julia 1.13 or later.
+or later in 20.x), actionlint 1.7.12 or later, and Julia 1.13 or later.
 
 ```bash
 python3 --version
 node --version
-gitleaks version
 actionlint --version
 julia --version
+```
+
+**Only to push to the harness**, check gitleaks too. It prints its version, 8.21 or later:
+
+```bash
+gitleaks version
 ```
 
 ## The sandbox of Claude Code
@@ -274,16 +279,37 @@ the install warns until it is there.
 
 **What it does.** The `systemd --user` units of the harness run three jobs: the Kaimon server, the
 update job of Julia and the autocommit of `~/.claude`.
-[components/other.md](components/other.md) says what each unit runs. The programs must be in place
-first: Kaimon in `~/.julia/bin`, and the installed copies of `claude-autocommit` and
-`julia-update.jl` in `~/.local/bin`. These commands render each unit with the profile into
-`~/.config/systemd/user/`, and enable the server and the two timers:
+[components/other.md](components/other.md) says what each unit runs.
+
+The units of the update job and the autocommit run the installed copies of two scripts of the
+checkout in `~/.local/bin`, not the copies in the checkout: a session cannot write
+`~/.local/bin`, and the jobs run outside the sandbox. These commands install the two copies:
+
+```bash
+install -m 755 ~/Research/Harness/launchagents/claude-autocommit ~/.local/bin/
+install -m 755 ~/Research/Harness/scripts/julia-update.jl ~/.local/bin/
+```
+
+After you change one of the two scripts in the checkout, run its line again. The autocommit
+commits in `~/.claude/`, which must be a git repository.
+
+These commands render each unit with the profile into `~/.config/systemd/user/`, and enable the
+timer of the autocommit:
 
 ```bash
 mkdir -p ~/.config/systemd/user
-for u in kaimon.service julia-update.service julia-update.timer claude-autocommit.service claude-autocommit.timer; do harness render "systemd/$u" > ~/.config/systemd/user/"$u"; done
+for u in kaimon.service julia-update.service julia-update.timer claude-autocommit.service claude-autocommit.timer; do harness render ~/Research/Harness/systemd/"$u" > ~/.config/systemd/user/"$u"; done
 systemctl --user daemon-reload
-systemctl --user enable --now kaimon.service julia-update.timer claude-autocommit.timer
+systemctl --user enable --now claude-autocommit.timer
+```
+
+**With Kaimon only.** The server runs `~/.julia/bin/kaimon`, and the update job stops with an
+error without Kaimon. This page does not install Kaimon;
+[Dependencies](dependencies.md#kaimon) says what it does. With Kaimon in `~/.julia/bin`, this
+command enables the server and the timer of the update job:
+
+```bash
+systemctl --user enable --now kaimon.service julia-update.timer
 ```
 
 Then an administrator turns on linger for your account:
@@ -299,13 +325,19 @@ account, with the name of your account in place of `"$USER"`.
 last logout, and the units stop with it. Linger keeps the server and the timers running when no
 one is logged in.
 
-**Check.** The first command prints `Linger=yes`, the second `active`, and the third lists both
-timers:
+**Check.** The first command prints `Linger=yes`, and the second lists the timer of the
+autocommit:
 
 ```bash
 loginctl show-user "$USER" -p Linger
+systemctl --user list-timers --no-pager | grep claude-autocommit
+```
+
+With Kaimon, the first command prints `active`, and the second lists the timer of the update job:
+
+```bash
 systemctl --user is-active kaimon.service
-systemctl --user list-timers --no-pager | grep -E 'julia-update|claude-autocommit'
+systemctl --user list-timers --no-pager | grep julia-update
 ```
 
 ## `git config core.hooksPath .githooks`
