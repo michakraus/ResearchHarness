@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- **`harness trust` skips `.scratch/`.** A critic's probe clone or a source checkout there is a
+  git repository, so the walk listed each one, and `--apply` trusted dozens of throwaway
+  directories. The walk now skips a directory named `.scratch`, as it skips `.worktrees`. An entry
+  that an earlier `--apply` wrote stays in `~/.claude.json`.
+
 - **A model of `providers.toml` can fix its reasoning effort for both frontends, with `effort`.**
   Before, only OpenCode's own `options.reasoningEffort` held it, so oh-my-pi sent the effort that
   the agent asked for, or none. GWDG SAIA answers `high` slowly or not at all on some models, and
