@@ -11,6 +11,8 @@
     "{home}/.config/api-keys/**",
     "{home}/.config/chezmoi/**",
     "{home}/.config/gh/hosts.yml",
+    "{home}/.config/glab-cli/config.yml",
+    "{home}/Library/Application Support/glab-cli/config.yml",
     "{home}/.claude/.credentials.json",
     "{home}/.omp/agent/.env",
     "{home}/.omp/agent/agent.db",

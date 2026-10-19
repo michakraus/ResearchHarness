@@ -373,6 +373,8 @@
       "Read(/{home}/.config/api-keys/**)",
       "Read(/{home}/.config/chezmoi/**)",
       "Read(/{home}/.config/gh/hosts.yml)",
+      "Read(/{home}/.config/glab-cli/config.yml)",
+      "Read(/{home}/Library/Application Support/glab-cli/config.yml)",
       "Read(/{home}/.claude/.credentials.json)",
       "Read(/{home}/.omp/agent/.env)",
       "Read(/{home}/.omp/agent/agent.db)",
@@ -929,6 +931,8 @@
         "~/.config/api-keys",
         "~/.config/chezmoi",
         "~/.config/gh/hosts.yml",
+        "~/.config/glab-cli/config.yml",
+        "~/Library/Application Support/glab-cli/config.yml",
         "~/.claude/.credentials.json",
         "~/.omp/agent/.env",
         "~/.omp/agent/agent.db",
@@ -973,6 +977,14 @@
         },
         {
           "path": "~/.config/gh/hosts.yml",
+          "mode": "deny"
+        },
+        {
+          "path": "~/.config/glab-cli/config.yml",
+          "mode": "deny"
+        },
+        {
+          "path": "~/Library/Application Support/glab-cli/config.yml",
           "mode": "deny"
         },
         {

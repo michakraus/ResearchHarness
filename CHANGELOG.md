@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- **A session cannot read `glab`'s configuration file.** Without a keyring, as on a Linux host
+  with no Secret Service, `glab auth login` stores the token in `config.yml`, and the template
+  denied a read of `gh`'s `hosts.yml` but of no `glab` file. The template now has
+  `~/.config/glab-cli/config.yml` (Linux) and `~/Library/Application Support/glab-cli/config.yml`
+  (macOS) in the `Read(…)` denies, in `sandbox.filesystem.denyRead` and in
+  `sandbox.credentials.files`; `harness permissions --apply` writes both into the OpenCode and
+  oh-my-pi deny lists. `glab` runs outside the sandbox, so it still reads its own file.
+
 - **`harness trust` skips `.scratch/`.** A critic's probe clone or a source checkout there is a
   git repository, so the walk listed each one, and `--apply` trusted dozens of throwaway
   directories. The walk now skips a directory named `.scratch`, as it skips `.worktrees`. An entry

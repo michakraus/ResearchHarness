@@ -114,6 +114,8 @@
       "{home}/.config/api-keys/**": "deny",
       "{home}/.config/chezmoi/**": "deny",
       "{home}/.config/gh/hosts.yml": "deny",
+      "{home}/.config/glab-cli/config.yml": "deny",
+      "{home}/Library/Application Support/glab-cli/config.yml": "deny",
       "{home}/.claude/.credentials.json": "deny",
       "{home}/.omp/agent/.env": "deny",
       "{home}/.omp/agent/agent.db": "deny",
