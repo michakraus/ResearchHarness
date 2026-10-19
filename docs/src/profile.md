@@ -47,7 +47,7 @@ The table names each key of `examples/profile.toml` and the verbs that read it, 
 | `docs_additions` | the repositories that add steps to the canonical documentation workflow | `workflows`; `ci-protection`, through `githooks/verify-workflows.jl` |
 | `extra_domain` | the hosts beyond the template's list that `WebFetch` and a sandboxed command can reach | `install` and `settings`, in the settings template |
 | `protected_dir` | the directories below `home` that no session can edit | `install`, in the settings template and the OpenCode configuration; `settings` |
-| `opencode_providers` | the model servers of OpenCode beyond its own providers, as lines of JSONC | `install`, in the OpenCode configuration |
+| `opencode_providers` | the model servers of OpenCode beyond its own providers, one TOML table each, `[opencode_providers.<name>]`, written as the entries of the `provider` object. A string of JSONC lines, the earlier form, stops `install` with exit status 2 | `install`, in the OpenCode configuration |
 | `leak` | the strings that must never appear in the repository | `leaks` |
 
 `install` reads the settings template too, because it writes the permission layer of oh-my-pi

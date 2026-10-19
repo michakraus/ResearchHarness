@@ -54,21 +54,19 @@ extra_domain = ["library.example.org"]
 # Directories below `home` that no session may edit, such as a synchronised share.
 protected_dir = ["Nextcloud"]
 
-# The entries of the `provider` object in OpenCode's opencode.jsonc, as JSONC lines, comments
-# allowed: the model servers and accounts beyond OpenCode's built-in providers.
-opencode_providers = '''
-    "local": {
-      "npm": "@ai-sdk/openai-compatible",
-      "name": "a local server",
-      "options": { "baseURL": "http://127.0.0.1:8080/v1" },
-      "models": {
-        "example-model": { "name": "Example model", "limit": { "context": 131072, "output": 32768 } }
-      }
-    }'''
-
 # Strings that must never appear in the repository: `harness leaks` searches every tracked file
 # for each. The home path, the user name, the institution's hosts, internal addresses.
 leak = ["/home/example", "example-user"]
+
+# The providers of OpenCode's opencode.jsonc, one table each, which `harness install` writes as
+# entries of its `provider` object: the model servers and accounts beyond OpenCode's built-in
+# providers. A model id with `.`, `/` or `:` is a quoted key, such as `models."org/model:7b"`. The
+# comments here stay here; the generated file holds none.
+[opencode_providers.local]
+npm = "@ai-sdk/openai-compatible"
+name = "a local server"
+options = { baseURL = "http://127.0.0.1:8080/v1" }
+models = { example-model = { name = "Example model", limit = { context = 131072, output = 32768 } } }
 
 # Optional. The providers of oh-my-pi's models.yml, one table each, which oh-my-pi reads as
 # written: the model servers and accounts beyond its built-in providers. Name a provider as

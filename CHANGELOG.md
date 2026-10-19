@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+- **`opencode_providers` in the profile is TOML tables, one `[opencode_providers.<name>]` per
+  provider, the same form as `omp_providers`.** The JSONC text in a TOML string was hard to edit.
+  `harness install` serialises each provider table as JSON and writes it as one entry of the
+  `provider` object of `opencode.jsonc`, after the entries of the `context_limits`. A model id with
+  `.`, `/` or `:` is a quoted key, such as `models."org/model:7b"`. Comments stay in the profile;
+  the generated `opencode.jsonc` holds none. The check that a context limit names no provider of
+  the profile compares the parsed names, not text, and still exits 2 with the same advice. The
+  renderer gains one rule for this: a table placeholder alone on its line renders as the members
+  of a JSON object, so `harness render` and `harness leaks` render the template too.
+  **Migration:** a profile with the string form makes `harness install` exit 2, with a message that
+  names the profile and the new form; there is no converter. Convert the profile before the next
+  install: each top-level entry of the JSONC object becomes a table `[opencode_providers.<name>]`,
+  each of its keys a TOML key, and each model a table `[opencode_providers.<name>.models."<id>"]`.
+  `examples/profile.toml` shows the form.
+
 - **Six remedies for the harness friction of the Claude Code loop.** The harness audit sorted 50
   failure lines of class *harness* into nine mechanisms; four were still open. Each remedy has its
   own cases in `harness test`:

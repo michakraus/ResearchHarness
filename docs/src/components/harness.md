@@ -149,7 +149,8 @@ harness leaks [--commits F]
 ```
 
 `render` prints a template with each placeholder `{key}` replaced by its profile value. A list
-value repeats the line, or the JSON list element, once for each item. A placeholder that the
+value repeats the line, or the JSON list element, once for each item. A table value renders only
+on a line that holds the placeholder alone, as the members of a JSON object. A placeholder that the
 profile does not have exits 2, except `autocommit_branch`, which `render` gives the value `main`.
 `get` prints one value, one line for each item of a list; a key that the profile does not have
 exits 2, `autocommit_branch` too.

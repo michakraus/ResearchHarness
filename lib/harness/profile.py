@@ -14,7 +14,9 @@ A placeholder is `{name}`: lower case, digits and `_`, no colon, so OpenCode's `
 `{file:…}` pass through. `name` is a profile key. A string value substitutes. A list value
 repeats what holds it, once per item in profile order, and removes it for an empty list: in a
 parsed JSON list (`render_data`) the string element, in text (`render_text`) the line, which must
-then end in a comma. More than one list placeholder in one element or line is an error, and so is
+then end in a comma. A table value renders in text only, on a line that holds the placeholder
+alone: the members of a JSON object, at that line's indentation, with no comma after the last.
+More than one list placeholder in one element or line is an error, and so is
 a placeholder that the profile does not define: a template that renders with a hole in it is a
 grant or a deny that silently matches nothing. The one exception is a key of DEFAULTS, which
 `render` fills with its default where the profile has none: `autocommit_branch` renders `main`.
@@ -50,6 +52,8 @@ DEFAULT = pathlib.Path.home() / ".config" / "research-harness" / "profile.toml"
 DUMMY = REPO / "examples" / "profile.toml"
 
 PLACEHOLDER = re.compile(r"\{([a-z][a-z0-9_]*)\}")
+# A line that holds one placeholder alone, after its indentation.
+ALONE = re.compile(r"( *)\{([a-z][a-z0-9_]*)\}\n?")
 
 # The templates that `leaks` renders with the dummy profile, relative to the repository, with
 # the TEMPLATES of each adapter.
@@ -69,9 +73,14 @@ TEMPLATES = [
 DEFAULTS = {"autocommit_branch": "main"}
 
 
+def location(path=None):
+    """The path of the profile: `path`, else the environment's, else the default path."""
+    return pathlib.Path(path or os.environ.get("RESEARCH_HARNESS_PROFILE") or DEFAULT)
+
+
 def load(path=None):
     """The profile at `path`, else the environment's, else the default path."""
-    path = pathlib.Path(path or os.environ.get("RESEARCH_HARNESS_PROFILE") or DEFAULT)
+    path = location(path)
     if not path.is_file():
         raise HarnessError(f"no profile at {path} — copy examples/profile.toml there and fill it in")
     try:
@@ -268,7 +277,8 @@ def render_line(line, profile):
     def substitute(m):
         v = value(m.group(1), profile, m.group(0))
         if not isinstance(v, str):
-            raise TypeError(f"placeholder {m.group(0)}: a list renders only on a line of its own")
+            kind = "table" if isinstance(v, dict) else "list"
+            raise TypeError(f"placeholder {m.group(0)}: a {kind} renders only on a line of its own")
         return v
 
     return PLACEHOLDER.sub(substitute, line)
@@ -279,15 +289,26 @@ def render_text(text, profile):
 
     Such a line becomes one copy per item, and disappears for an empty list. It must end in a
     comma, unless the list has exactly one item: a copy of the last entry of a JSON object or
-    list would otherwise need a comma it does not have, or leave one dangling.
+    list would otherwise need a comma it does not have, or leave one dangling. A line that holds a
+    table placeholder alone becomes the table's members as JSON (`members`).
     """
     out = []
     for line in text.splitlines(keepends=True):
+        if (m := ALONE.fullmatch(line)) and isinstance(profile.get(m.group(2)), dict):
+            out.append(members(profile[m.group(2)], m.group(1)))
+            continue
         copies = expand(line, profile)
         if len(copies) != 1 and not line.rstrip().endswith(","):
             raise ValueError(f"{line.strip()!r}: a repeated line must end in a comma")
         out += copies
     return "".join(out)
+
+
+def members(table, indent):
+    """The members of `table` as the lines of a JSON object, each line after `indent`, with no
+    comma after the last; "" for an empty table."""
+    lines = json.dumps(table, indent=2, ensure_ascii=False).splitlines()[1:-1]
+    return "".join(f"{indent}{line[2:]}\n" for line in lines)
 
 
 def expand(text, profile):
@@ -512,6 +533,10 @@ CASES = [
     (["{home}/{dir}/**"], {"home": "/h", "dir": ["D"]}, ["/h/D/**"]),
     (["{a}{b}"], {"a": ["1"], "b": ["2"]}, None),
     ({"{home}": ["{home}"]}, {"home": "/h"}, {"/h": ["/h"]}),
+    ("{\n  {t}\n}\n", {"t": {"a": {"m/x:1": 2}, "b": []}}, '{\n  "a": {\n    "m/x:1": 2\n  },\n  "b": []\n}\n'),
+    ("{\n  {t}\n}\n", {"t": {}}, "{\n}\n"),
+    ("  x: {t},\n", {"t": {"a": 1}}, None),
+    (["{t}"], {"t": {"a": 1}}, None),
 ]
 
 
