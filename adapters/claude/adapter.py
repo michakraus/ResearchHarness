@@ -36,7 +36,8 @@ writes into, is reported as EXTRA with its removal command; skills/synced/ and t
 are not searched, and a directory there that cannot be read exits 2, before anything is
 written. The Claude Code settings, ~/.claude/settings.json, are the first file of the layer, so
 that a new deny rule is in place before the files it protects: the settings template rendered with
-the profile replaces the sections `permissions`, `hooks`, `sandbox` and `modelSettings` (OWNED),
+the profile, with the network rules of settings/network.toml and its overlay (`network.py`), replaces
+the sections `permissions`, `hooks`, `sandbox` and `modelSettings` (OWNED),
 each other key of the template that the file lacks is added, every other key stays as
 the app and the user wrote it, the old file is kept as a backup, and the dry run prints the
 unified diff of those sections and keys after the file's line (`settings_file`). A key of the
@@ -77,21 +78,15 @@ the harness does: deny, then ask, then allow, then the sandbox auto-allow.
     harness settings compare OLD NEW [--days N]
     harness settings selftest
     harness settings twins [--settings F] [--list allow|ask|deny]
-    harness settings domains [--settings F] [--emit]
 
 The proposal is a template: `{home}`, `{org}` and the other placeholders take their values
 from the private profile (`harness --profile F`). Every command renders a file that holds a
-placeholder before it reads it.
+placeholder before it reads it, and generates its network rules from settings/network.toml and
+the overlay beside the profile.
 
 `twins` emits the `git -C * <sub>` patterns for a `git` rule set. `-C` precedes the
 subcommand, so `Bash(git status *)` never matches `git -C /path status`; the twin has to
 go in the same list as its plain form or the flag changes a verdict.
-
-`domains` holds the one invariant across the file's two domain lists: every host granted
-to the WebFetch tool must also be reachable by a shell subprocess, or a script that
-retrieves what a session can read is blocked by the proxy with no rule saying so. It
-checks by default and exits non-zero on a gap; `--emit` prints the block to install. Two
-hand-maintained copies of one list is this directory's oldest failure mode.
 
 `harness install` merges the sections it owns -- permissions, hooks, sandbox, modelSettings --
 onto the live file, and its dry run shows what such a merge would change. It merges because the
@@ -141,7 +136,7 @@ import unicodedata
 from datetime import datetime, timedelta, timezone
 from unittest import mock
 
-from harness import REPO, HarnessError, changing, frontends, frontmatter, install, outcome
+from harness import REPO, HarnessError, changing, frontends, frontmatter, install, network, outcome
 from harness import profile as render_profile
 from harness import sources as neutral
 from harness.githooks import research_root
@@ -188,10 +183,11 @@ PROFILE = None  # `harness --profile`; None lets the profile module choose
 def read_settings(path):
     """A settings file parsed, and rendered with the profile when it holds a placeholder.
 
-    The proposal is a template (`{home}`, `{org}`, …); the live file is its render. Every
-    command reads through here, so a proposal and a live file compare as the same thing. A file
-    that is missing, cannot be read, or is not UTF-8, not JSON (`json_object`) or not a JSON object,
-    or whose `permissions` is not an object, exits 2.
+    The proposal is a template (`{home}`, `{org}`, …); the live file is its render, with the
+    network rules that `network.apply` generates. Every command reads through here, so a proposal
+    and a live file compare as the same thing. A file that is missing, cannot be read, or is not
+    UTF-8, not JSON (`json_object`) or not a JSON object, or whose `permissions` is not an object,
+    exits 2.
     """
     try:
         text = pathlib.Path(path).read_text(encoding="utf-8")
@@ -205,7 +201,8 @@ def read_settings(path):
     if not isinstance(cfg.get("permissions", {}), dict):
         raise HarnessError(f"{path}: the value of permissions is not a JSON object")
     if render_profile.PLACEHOLDER.search(text):
-        cfg = render_profile.render_data(cfg, render_profile.load(PROFILE))
+        profile = render_profile.load(PROFILE)
+        cfg = network.apply(render_profile.render_data(cfg, profile), profile, render_profile.network_path(PROFILE))
     return cfg
 
 
@@ -487,71 +484,6 @@ def cmd_twins(args):
         print()
 
 
-# Suffixes under which the registrable domain is three labels, not two. Only the ones
-# this file's own entries need; a general public-suffix list would be a dependency.
-MULTI_LABEL_SUFFIXES = ("ac.uk", "co.uk", "org.uk", "gov.uk")
-
-
-def registrable(host):
-    """The registrable domain of a host — nature.com for www.nature.com, core.ac.uk for itself."""
-    labels = host.split(".")
-    n = 3 if host.endswith(MULTI_LABEL_SUFFIXES) else 2
-    return ".".join(labels[-n:]) if len(labels) >= n else host
-
-
-def webfetch_domains(path):
-    """The domains of the WebFetch(domain:…) grants in a settings file, in file order."""
-    cfg = read_settings(path)
-    out = []
-    for rule in cfg.get("permissions", {}).get("allow", []):
-        m = re.match(r"^WebFetch\(domain:(.*)\)$", rule)
-        if m and m.group(1) not in out:
-            out.append(m.group(1))
-    return out
-
-
-def mirror_domains(path):
-    """What sandbox.network.allowedDomains must contain for the WebFetch grants to work.
-
-    The two lists do not match the same way. WebFetch is given a domain; the sandbox list
-    is matched by the proxy against the hostname a request actually goes to, so a bare
-    `nature.com` there does not cover the `www.nature.com` the traffic uses. Hence: an
-    entry that *is* its own registrable domain is a site and emits the pair `X` and `*.X`
-    — the idiom the file already uses for `pkg.julialang.org`; an entry below its
-    registrable domain is one exact host and emits only itself.
-    """
-    out = []
-    for host in webfetch_domains(path):
-        out.append(host)
-        if host == registrable(host):
-            out.append("*." + host)
-    return out
-
-
-def cmd_domains(args):
-    required = mirror_domains(args.settings)
-    cfg = read_settings(args.settings)
-    current = cfg.get("sandbox", {}).get("network", {}).get("allowedDomains", [])
-
-    if args.emit:
-        # Entries that no WebFetch grant implies are the infrastructure hosts — package
-        # registries, the code host. They are not derivable and are kept at the head.
-        infra = [d for d in current if d not in required]
-        block = infra + [d for d in required if d not in infra]
-        print(json.dumps(block, indent=8)[1:-1].rstrip())
-        return 0
-
-    missing = [d for d in required if d not in current]
-    if missing:
-        print(f"  {len(missing)} WebFetch domains unreachable from a shell subprocess, {args.settings}:")
-        for d in missing:
-            print(f"    {d}")
-        return 1
-    print(f"  the sandbox allowlist covers all {len(webfetch_domains(args.settings))} "
-          f"WebFetch domains ({len(current)} entries, {len(current) - len(required)} infrastructure)")
-    return 0
-
-
 # The sections of ~/.claude/settings.json that `harness install` merges from the settings
 # template. `modelSettings` holds each model's effort and auto-compact window, which the other
 # frontends get from models.toml, so the template keeps it too: a value that `/effort` or
@@ -621,9 +553,10 @@ def dumps(obj, **kwargs):
     return escaped(json.dumps(obj, ensure_ascii=False, **kwargs))
 
 
-def settings_template(profile):
-    """The settings template parsed, and rendered with `profile` when it holds a placeholder, as
-    `read_settings` renders it."""
+def settings_template(profile, overlay):
+    """The settings template parsed, rendered with `profile` when it holds a placeholder, and with
+    the network rules of settings/network.toml and the overlay at `overlay`, as `read_settings`
+    renders it."""
     text = PROPOSAL.read_text()
     cfg = json.loads(text)
     if render_profile.PLACEHOLDER.search(text):
@@ -631,12 +564,13 @@ def settings_template(profile):
             cfg = render_profile.render_data(cfg, profile)
         except (KeyError, TypeError, ValueError) as e:
             raise HarnessError(f"{PROPOSAL}: {e.args[0]}") from e
-    return cfg
+    return network.apply(cfg, profile, overlay)
 
 
-def settings_file(root, profile):
+def settings_file(root, profile, overlay):
     """The file of the plan for `root`/settings.json, the Claude Code settings: (destination,
-    bytes, mode, label, backup, the unified diff of the owned sections and the added keys).
+    bytes, mode, label, backup, the unified diff of the owned sections and the added keys);
+    `overlay` is the path of the network overlay (`settings_template`).
 
     Each key of OWNED is replaced from the rendered template, or removed when the template lacks
     it. Each other key of the template that the file lacks is added after the file's keys, with
@@ -680,8 +614,8 @@ def settings_file(root, profile):
         if wrong:
             raise HarnessError(f"{live}: the value of {', '.join(wrong)} is not a JSON object")
         indent = indent_of(text)
-    template = settings_template(profile)
-    added = [k for k in template if k not in OWNED and k not in cfg]
+    template = settings_template(profile, overlay)
+    added =[k for k in template if k not in OWNED and k not in cfg]
     a, b = (dumps({k: c.get(k) for k in [*OWNED, *added]}, indent=2, sort_keys=True).splitlines()
             for c in (cfg, template))
     diff = list(difflib.unified_diff(a, b, "~/.claude/settings.json", "settings/settings.proposal.json", lineterm=""))
@@ -782,11 +716,6 @@ def register_settings(sub):
     t.add_argument("--settings", default=str(LIVE))
     t.add_argument("--list", choices=("allow", "ask", "deny"))
     t.set_defaults(func=cmd_twins)
-
-    d = sub.add_parser("domains", help="check, or emit, the sandbox mirror of the WebFetch grants")
-    d.add_argument("--settings", default=str(LIVE))
-    d.add_argument("--emit", action="store_true", help="print the allowedDomains block instead of checking")
-    d.set_defaults(func=cmd_domains)
 
 
 # ---------------------------------------------------------------------------------------------
@@ -988,7 +917,7 @@ def plan(ctx):
     frontends.shared names, which OpenCode and oh-my-pi copy."""
     root = pathlib.Path.home() / ".claude"
     # The settings go first, so that a new deny rule is in place before the files it protects.
-    settings = settings_file(root, ctx.profile)
+    settings = settings_file(root, ctx.profile, render_profile.network_path(ctx.args.profile))
     models = load_models(ctx.models)
     layer_sources = claude_sources(ctx.profile)
     layer = claude_plan(ctx.profile, layer_sources)
@@ -1489,8 +1418,9 @@ def layer_cases(check, tmp):
     # of the template that the file lacks, and keeps every other key; ~/.claude.json, unreadable
     # here, is neither read nor written.
     settings_line = re.compile(r"^~/\.claude/settings\.json\s+(.*)$", re.M)
-    profile = render_profile.load(fresh()[0] / "profile.toml")
-    template = json.loads(render_profile.render_file(REPO / "settings" / "settings.proposal.json", profile))
+    home = fresh()[0]
+    profile = render_profile.load(home / "profile.toml")
+    template = settings_template(profile, home / "network.toml")
     owned = {k: template[k] for k in OWNED}
     others = {k: v for k, v in template.items() if k not in OWNED}
 
@@ -1606,16 +1536,17 @@ def layer_cases(check, tmp):
          f"indented by 2, mode 0644 under a umask of 077: {code}, {tail(text)}")
 
     # Each owned key that the template lacks is removed from the live file; the other keys stay.
+    # The template keeps `sandbox`, which holds the slot of the network lists, and lacks `hooks`.
     base, claude, tree = fresh()
-    lacking = tmp / "settings-without-sandbox.json"
-    lacking.write_text(json.dumps({k: v for k, v in json.loads(PROPOSAL.read_text()).items() if k != "sandbox"},
+    lacking = tmp / "settings-without-hooks.json"
+    lacking.write_text(json.dumps({k: v for k, v in json.loads(PROPOSAL.read_text()).items() if k != "hooks"},
                                   indent=2, ensure_ascii=False) + "\n")
-    (claude / "settings.json").write_text(json.dumps({"model": "x", "sandbox": {"enabled": True}}, indent=2) + "\n")
+    (claude / "settings.json").write_text(json.dumps({"model": "x", "hooks": {"Stop": []}}, indent=2) + "\n")
     with mock.patch.object(this, "PROPOSAL", lacking):
         code, text = inproc(base, None, apply=True)
     merged = json.loads((claude / "settings.json").read_text())
-    case(lambda: code == 0 and list(merged)[:4] == ["model", "permissions", "hooks", "modelSettings"]
-         and "sandbox" not in merged and merged["model"] == "x",
+    case(lambda: code == 0 and list(merged)[:4] == ["model", "permissions", "sandbox", "modelSettings"]
+         and "hooks" not in merged and merged["model"] == "x",
          f"an owned key that the template lacks is removed from settings.json: {code}, {list(merged)}, {tail(text)}")
 
     # A template that cannot be rendered exits 2 and names the template, before anything is written.
@@ -1769,15 +1700,17 @@ def layer_cases(check, tmp):
          f"a settings.json whose stat is denied exits 2 with one line that names it, and no file changes: "
          f"{code}, {lines[-3:]}")
 
-    # `harness settings install` is gone; the settings sub-commands that measure stay.
+    # `harness settings install` and `harness settings domains` are gone; the settings sub-commands
+    # that measure stay. The network lists are generated, so no command checks a mirror of them.
     p = subprocess.run([sys.executable, str(REPO / "bin" / "harness"), "settings", "--help"], capture_output=True,
                        text=True)
-    gone = subprocess.run([sys.executable, str(REPO / "bin" / "harness"), "settings", "install"],
-                          capture_output=True, text=True)
-    case(lambda: p.returncode == 0 and "install" not in p.stdout and gone.returncode == 2
-         and all(s in p.stdout for s in ["surface", "compare", "selftest", "twins", "domains"]),
-         f"`harness settings --help` lists no install, and `harness settings install` exits 2: {p.returncode}, "
-         f"{gone.returncode}, {gone.stderr.strip()[-120:]!r}")
+    gone = [subprocess.run([sys.executable, str(REPO / "bin" / "harness"), "settings", verb],
+                           capture_output=True, text=True) for verb in ("install", "domains")]
+    case(lambda: p.returncode == 0 and "install" not in p.stdout and "domains" not in p.stdout
+         and all(g.returncode == 2 for g in gone)
+         and all(s in p.stdout for s in ["surface", "compare", "selftest", "twins"]),
+         f"`harness settings --help` lists no install and no domains, and each exits 2: {p.returncode}, "
+         f"{[g.returncode for g in gone]}, {gone[-1].stderr.strip()[-120:]!r}")
 
     # The permission rules of the other settings files are a warning of `harness install`; one that
     # cannot be read as JSON is a warning too, not a traceback.
@@ -1942,7 +1875,8 @@ def layer_cases(check, tmp):
         prof = {k: v for k, v in render_profile.load(base / "profile.toml").items() if k != "harness"}
         if value is not None:
             prof["harness"] = value
-        ctx = argparse.Namespace(profile=prof, models=REPO / "examples" / "models.toml")
+        ctx = argparse.Namespace(profile=prof, models=REPO / "examples" / "models.toml",
+                                 args=argparse.Namespace(profile=str(base / "profile.toml")))
         try:
             with mock.patch.dict(os.environ, HOME=str(base / "home")), contextlib.redirect_stdout(io.StringIO()):
                 files = this.plan(ctx).files

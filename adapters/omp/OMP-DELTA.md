@@ -15,7 +15,8 @@ carried inside a string argument, so treat every command as unconfined. Where a 
 a mistake survivable, ask. A rule that exists only because of Claude Code's sandbox or its
 permission matcher does not bind here: the unsandboxed programs, a `git` alone on its line, no
 `cd … &&`, no `git -C`, no `$?`, and a failed `ps` read as a refusal. A compound command and a
-`git -C` still cost a prompt, because an `allow` pattern matches only a whole command.
+`git -C` still cost a prompt, because an `allow` pattern matches only a whole command. The network
+lists of `network.toml` apply to Claude Code only; here no list limits the hosts a command reaches.
 
 oh-my-pi runs no RTK rewrite: a command runs as typed, so the rewrite facts of `RTK.md` do not
 apply, and `grep` returns every match.

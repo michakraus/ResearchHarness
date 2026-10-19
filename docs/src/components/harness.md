@@ -153,7 +153,8 @@ value repeats the line, or the JSON list element, once for each item. A table va
 on a line that holds the placeholder alone, as the members of a JSON object. A placeholder that the
 profile does not have exits 2, except `autocommit_branch`, which `render` gives the value `main`.
 `get` prints one value, one line for each item of a list; a key that the profile does not have
-exits 2, `autocommit_branch` too.
+exits 2, `autocommit_branch` too. `render` of the settings template also adds its network rules
+(`network.py`).
 
 `leaks` searches every tracked file and its path for each string of the profile's `leak` list, and
 for the name of each directory below a `repository_roots` entry and each `org` entry. The
@@ -271,6 +272,18 @@ critic's `rsync` copy from `skills/build-part/evidence.md` and `copy_command` fr
 `.claude`, and checks that the copy holds none of them. A control copy with no flag must hold the
 `.env.ts`. Then it runs `scripts/spec-gate.py` on a fixture task file and checks the verdict of
 each part: a part whose *Files* lie in two repositories is `SPANS`, unless its tier is `direct`.
+
+## `network.py`
+
+The network rules of the Claude Code settings. The module has no verb. It reads
+`settings/network.toml` and the overlay `network.toml` beside the profile, and writes into the
+rendered settings template the `WebFetch(domain:…)` rules of `permissions.allow` and
+`permissions.deny` and the lists `allowedDomains`, `deniedDomains` and `deniedDomainReasons` of
+`sandbox.network`. A `deny` entry removes each `allow` and `infrastructure` host that it matches.
+`install`, `render` of the settings template and `settings` call it. A file that breaks the schema,
+a profile with the key `extra_domain`, and a template that holds a host of its own exit 2. Its cases
+check each rule, each exit 2, and that an overlay changes no file of OpenCode or oh-my-pi.
+[Adapting the profile](../profile.md#the-network-overlay) describes the keys.
 
 ## `sources.py`
 

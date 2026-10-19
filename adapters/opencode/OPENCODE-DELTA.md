@@ -29,7 +29,8 @@ control, and a deny pattern is escaped by any command carried inside a string ar
 command as unconfined. Where a sandbox would make a mistake survivable, ask. A rule that exists
 only because of Claude Code's sandbox or its permission matcher does not bind here: the
 unsandboxed programs, a `git` alone on its line, no `cd … &&`, no `git -C`, no `$?`, and a failed
-`ps` read as a refusal. `ps` and `pgrep` run here.
+`ps` read as a refusal. `ps` and `pgrep` run here. The network lists of `network.toml` apply to
+Claude Code only; here no list limits the hosts that a command or `webfetch` reaches.
 
 **`external_directory` is the one boundary here.** A file tool that touches a path outside the
 workspace root and outside the directories that `opencode.jsonc` allows is refused. A session

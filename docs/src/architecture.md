@@ -151,11 +151,11 @@ frontend either: `hooks/` holds the guard scripts that Claude Code and oh-my-pi 
 | `bin/`, `lib/harness/` | the `harness` command |
 | `adapters/<frontend>/adapter.py` | each frontend's part of the `harness` command, which `lib/harness/frontends.py` loads: the Claude Code layer, the settings and the trust; the generators of the OpenCode agents and permission block; the generator of oh-my-pi's `harness.yml`, `models.yml`, rules, agents and `mcp.json` |
 | `hooks/` | the shared guard scripts: Claude Code `PreToolUse` hooks that refuse unsafe shell commands, which oh-my-pi's `guards.ts` calls too, the `SessionStart` hook that warns when `~/.claude/` is behind its sources, and their test cases (`probe.py`) |
-| `settings/` | the permission and sandbox settings template, the policy source of all three frontends |
+| `settings/` | the permission and sandbox settings template, the policy source of all three frontends, and `network.toml`, the hosts from which the install generates the network rules of Claude Code |
 | `githooks/` | git hooks and GitHub Actions workflow templates for Julia packages, and their installers |
 | `scripts/` | Julia test, mutation, and code-structure tools; transcript and lint tools |
 | `launchagents/` | macOS launchd job templates |
 | `ast-grep/`, `fatou.toml` | linter configuration |
 | `agent-workflows/` | workflow scripts for fan-out over many repositories |
-| `examples/` | the example profile and model tables |
+| `examples/` | the example profile, model tables and network overlay |
 | `docs/` | the pages of the documentation site in `docs/src/`, and its VitePress build |

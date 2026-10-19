@@ -9,6 +9,9 @@ Two private files adapt the harness to one user and one machine. Neither is in t
   [frontend](concepts.md#frontend). Their path is
   `harness --models F`, else `$RESEARCH_HARNESS_MODELS`, else `models.toml` beside the profile.
 
+A third private file is optional: the [network overlay](#the-network-overlay), `network.toml`
+beside the profile, adds hosts to the network lists of Claude Code.
+
 `examples/profile.toml` and `examples/models.toml` show every key and every table, each with a
 comment that says what the value is. Copy them and write your values into the copies, as
 [setup-macos.md](setup-macos.md#the-profile-and-the-model-tables) shows. A template of the
@@ -45,7 +48,6 @@ The table names each key of `examples/profile.toml` and the verbs that read it, 
 | `repository_roots` | the directories that hold the repositories of the research tree | `leaks`, which searches for the name of each directory below them |
 | `docs_exceptions` | the repositories that keep a documentation workflow of their own | `workflows`; `ci-protection`, through `githooks/verify-workflows.jl` |
 | `docs_additions` | the repositories that add steps to the canonical documentation workflow | `workflows`; `ci-protection`, through `githooks/verify-workflows.jl` |
-| `extra_domain` | the hosts beyond the template's list that `WebFetch` and a sandboxed command can reach | `install` and `settings`, in the settings template |
 | `protected_dir` | the directories below `home` that no session can edit | `install`, in the settings template and the OpenCode configuration; `settings` |
 | `opencode_providers` | the model servers of OpenCode beyond its own providers, one TOML table each, `[opencode_providers.<name>]`, written as the entries of the `provider` object. A string of JSONC lines, the earlier form, stops `install` with exit status 2 | `install`, in the OpenCode configuration |
 | `leak` | the strings that must never appear in the repository | `leaks` |
@@ -80,3 +82,27 @@ models.
 A table that names a tier by an old name, `opus`, `sonnet` or `haiku`, stops `harness install`
 with exit 2, an error, and the message names the rename.
 [architecture.md](architecture.md#the-neutral-vocabulary) shows how each frontend reads a tier.
+
+## The network overlay
+
+The settings template names no host. `settings/network.toml` holds the hosts of the harness, and
+the overlay `network.toml` beside the profile adds your own, such as the library resolver of your
+institution. The overlay is optional. `examples/network.toml` shows it. Both files have the same
+keys, and each key is optional in the overlay.
+
+| key | what it holds | what the install writes |
+|:--|:--|:--|
+| `allow` | the hosts that the `WebFetch` tool and a sandboxed command can reach; write a host, never `*.X` | `WebFetch(domain:X)` in `permissions.allow`; `X` in `sandbox.network.allowedDomains`, and `*.X` too when `X` is its own registrable domain |
+| `infrastructure` | the hosts that only a sandboxed command can reach, such as a package registry; `*.X` is allowed | `X` in `allowedDomains`, as written |
+| `deny` | the hosts that neither can reach; `*`, `*.X` and `X:port` are allowed | `X` in `sandbox.network.deniedDomains`; `WebFetch(domain:X)` in `permissions.deny`, except for an entry with a port |
+| `[deny_reasons]` | a reason for a `deny` entry, keyed by the exact entry | `sandbox.network.deniedDomainReasons`, which Claude Code shows the model when the [sandbox](concepts.md#sandbox) refuses the host |
+
+`install`, `render` of the settings template and `settings` read both files. A `deny` entry of
+either file removes each `allow` and `infrastructure` host that it matches from the generated
+allow lists. A `deny` entry with a port leaves the host on the allow lists. The sandbox refuses a
+host that no list names, with no prompt, because the template sets `strictAllowlist`. A `WebFetch`
+of such a host is on no list either, so it asks in the default permission mode. An entry that is a URL, a port outside `deny`, a host in `allow` and in `deny` of
+one file, and a key that the table does not name stop the verb with exit 2. So does the profile
+key `extra_domain`: move its hosts into the overlay's `allow`.
+
+The lists apply to Claude Code only. OpenCode and oh-my-pi have no network allowlist.

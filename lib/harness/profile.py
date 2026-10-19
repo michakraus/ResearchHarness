@@ -20,6 +20,8 @@ More than one list placeholder in one element or line is an error, and so is
 a placeholder that the profile does not define: a template that renders with a hole in it is a
 grant or a deny that silently matches nothing. The one exception is a key of DEFAULTS, which
 `render` fills with its default where the profile has none: `autocommit_branch` renders `main`.
+`render` of the settings template also generates its network rules from `settings/network.toml`
+and the overlay `network.toml` beside the profile (`network.py`).
 
 `leaks` also searches the repository, not the renders, for a name of the research tree: every
 directory below a `repository_roots` entry, read when it runs, and every `org` entry. It matches
@@ -46,7 +48,7 @@ import sys
 import tempfile
 import tomllib
 
-from . import REPO, HarnessError, frontends, frontmatter
+from . import REPO, HarnessError, frontends, frontmatter, network
 
 DEFAULT = pathlib.Path.home() / ".config" / "research-harness" / "profile.toml"
 DUMMY = REPO / "examples" / "profile.toml"
@@ -112,6 +114,12 @@ def models_path(args):
         return pathlib.Path(os.environ["RESEARCH_HARNESS_MODELS"])
     profile = args.profile or os.environ.get("RESEARCH_HARNESS_PROFILE") or DEFAULT
     return pathlib.Path(profile).parent / "models.toml"
+
+
+def network_path(profile=None):
+    """The overlay of the network lists: network.toml beside the profile `profile`, else beside
+    the profile of `location`."""
+    return location(profile).parent / "network.toml"
 
 
 # The old keys of a table of the tiers, Claude Code's names, and the neutral tier of each.
@@ -353,7 +361,12 @@ def render_file(path, profile):
 
 
 def cmd_render(args):
-    sys.stdout.write(render_file(args.template, DEFAULTS | load(args.profile)))
+    profile = DEFAULTS | load(args.profile)
+    if pathlib.Path(args.template).resolve() == network.TEMPLATE:
+        cfg = network.apply(json.loads(render_file(args.template, profile)), profile, network_path(args.profile))
+        sys.stdout.write(json.dumps(cfg, indent=2, ensure_ascii=False) + "\n")
+    else:
+        sys.stdout.write(render_file(args.template, profile))
     return 0
 
 

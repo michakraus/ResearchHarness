@@ -36,7 +36,7 @@ not a JSON object with an object in each of those sections exit 2 before anythin
 installed file with no source is an EXTRA line with its removal command. The permission rules of
 the other settings files of the research tree are a warning.
 
-`harness settings` has five sub-verbs: `surface`, `compare`, `selftest`, `twins` and `domains`.
+`harness settings` has four sub-verbs: `surface`, `compare`, `selftest` and `twins`.
 `surface` reads the session transcripts below `~/.claude/projects/` and counts the Bash commands
 that reach a prompt.
 `harness trust` marks the research root and each git repository below it as trusted in
