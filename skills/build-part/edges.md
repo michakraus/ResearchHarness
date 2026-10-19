@@ -59,6 +59,11 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   *Rewrite the reduced basis packages*). **Assert the refusing guard's own phrase, not the type
   alone.** The mirror of the entry above: there an earlier check hides the case, here a later one
   hides the mutant
+- **a refusal message that names several values, tested on a case where two of them are equal:** a
+  message can name the outer scale and the march's scale, and a test at `χ = 2` matches either, so a
+  mutant that drops one of the two sentences survives; the equal case never separates them. Give
+  each named value a different number, and assert each at its own place in the phrase. This binds a
+  critic's or an advisor's prescribed case too (P38b verify 2, *Rewrite the reduced basis packages*)
 - a live probe whose prompt the model refuses on its own, such as a read of a credential file in a
   subagent: no tool call runs, and the probe measures nothing; probe with a command the model has
   no reason to refuse (W1 clause 6, *Unify the agent configuration*)
