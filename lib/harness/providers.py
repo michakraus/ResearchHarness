@@ -15,7 +15,8 @@ it in `<provider>/<model>`:
   frontends  optional: the frontends that get the provider, by default FRONTENDS
   models     optional: a table of model tables, keyed by the model id, each with
                name       optional: the model's `name` in both
-               reasoning  optional: `reasoning` in both
+               reasoning  optional: `reasoning` in both; oh-my-pi gets `false` without it, as
+                          OpenCode's default is, or it sends the agent's effort
                context    optional, with `output`: OpenCode's `limit.context`, oh-my-pi's
                           `contextWindow`
                output     optional, with `context`: OpenCode's `limit.output`, oh-my-pi's
@@ -171,7 +172,10 @@ def omp(providers):
         if "models" in p:
             entry["models"] = []
             for model, m in p["models"].items():
-                base = {"id": model, **{k: m[k] for k in ("name", "reasoning") if k in m}}
+                # A model without `reasoning` gets the agent's effort under oh-my-pi, and none under
+                # OpenCode; `false` sends none.
+                base = {"id": model, **({"name": m["name"]} if "name" in m else {}),
+                        "reasoning": m.get("reasoning", False)}
                 if "context" in m:
                     base |= {"contextWindow": m["context"], "maxTokens": m["output"]}
                 # oh-my-pi sends no effort for a model without `reasoning`, and the default
@@ -202,7 +206,7 @@ CASES = [
      {"o": {"npm": "@ai-sdk/openai-compatible", "options": {"baseURL": "https://h/v1", "apiKey": "{file:~/.config/k}"},
             "models": {"org/m:7b": {}}}},
      {"o": {"baseUrl": "https://h/v1", "api": "openai-completions", "apiKey": "!cat ~/.config/k",
-            "models": [{"id": "org/m:7b"}]}}),
+            "models": [{"id": "org/m:7b", "reasoning": False}]}}),
     ("a frontend's own keys merge over the rest, of the provider and of a model",
      '[o]\napi = "openai-compatible"\nurl = "http://127.0.0.1:8080/v1"\nomp = { apiKey = "K" }\n'
      'opencode = { options = { timeout = 5 } }\n'
@@ -212,7 +216,7 @@ CASES = [
             "models": {"m": {"limit": {"context": 1, "output": 1}, "tool_call": False,
                              "options": {"reasoningEffort": "none"}}}}},
      {"o": {"baseUrl": "http://127.0.0.1:8080/v1", "api": "openai-completions", "apiKey": "K",
-            "models": [{"id": "m", "contextWindow": 2, "maxTokens": 1}]}}),
+            "models": [{"id": "m", "reasoning": False, "contextWindow": 2, "maxTokens": 1}]}}),
     ("`frontends` limits a provider to OpenCode",
      '[o]\napi = "openai-compatible"\nurl = "https://h/v1"\nfrontends = ["opencode"]\n',
      {"o": {"npm": "@ai-sdk/openai-compatible", "options": {"baseURL": "https://h/v1"}}}, {}),
