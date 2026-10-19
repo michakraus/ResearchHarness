@@ -180,6 +180,7 @@
       "{home}/.gitconfig": "deny",
       "{home}/.config/**": "deny",
       "{home}/.local/bin/**": "deny",
+      "{home}/.opencode/bin/**": "deny",
       "{home}/.local/share/chezmoi/**": "deny",
       "{home}/.julia/juliaup/julia-*/**": "deny",
       "{home}/.julia/juliaup/juliaup.json": "deny",

@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- **A session cannot replace OpenCode's binary in `~/.opencode/bin`.** OpenCode's installer puts
+  it there on Linux, and the template protected `~/.local/bin` but not this directory. The
+  template now has `~/.opencode/bin` in `sandbox.filesystem.denyWrite` and
+  `Edit(/{home}/.opencode/bin/**)` in the denies, beside `~/.local/bin`; `harness permissions
+  --apply` writes the `Edit` deny into the OpenCode and oh-my-pi lists. OpenCode's own updater
+  runs outside the sandbox and still writes the directory.
+
 - **A session cannot read `glab`'s configuration file.** Without a keyring, as on a Linux host
   with no Secret Service, `glab auth login` stores the token in `config.yml`, and the template
   denied a read of `gh`'s `hosts.yml` but of no `glab` file. The template now has
