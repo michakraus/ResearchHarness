@@ -57,6 +57,7 @@ THE TRUST. `harness trust [--apply]` marks the research root and every git repos
 trusted in `~/.claude.json`. Claude Code keys workspace trust on the git repository root, and a
 trusted parent folder does not cover a git repository nested inside it, so each repository raises
 its own trust dialog. A worktree uses its main checkout's trust, so `.worktrees/` needs no entry.
+A clone under `.scratch/` is a throwaway probe, so it gets no entry either.
 No setting pre-trusts a tree; the documented route is
 `projects["<root>"].hasTrustDialogAccepted = true`. The user runs it: a session cannot read or
 write `~/.claude.json`. Run it after a clone; a new repository is untrusted until then. A running
@@ -172,7 +173,7 @@ YAML_WORDS = {"true", "false", "yes", "no", "on", "off", "y", "n", "null"}
 MODEL_CONTROL = re.compile(r"[\x00-\x1f\x7f-\x9f\N{LINE SEPARATOR}\N{PARAGRAPH SEPARATOR}]")
 
 CONFIG = os.path.expanduser("~/.claude.json")
-SKIP = {".git", ".worktrees", "node_modules"}
+SKIP = {".git", ".scratch", ".worktrees", "node_modules"}
 
 PROJECTS = pathlib.Path.home() / ".claude" / "projects"
 LIVE = pathlib.Path.home() / ".claude" / "settings.json"

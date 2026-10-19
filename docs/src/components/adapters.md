@@ -40,7 +40,8 @@ the other settings files of the research tree are a warning.
 `surface` reads the session transcripts below `~/.claude/projects/` and counts the Bash commands
 that reach a prompt.
 `harness trust` marks the research root and each git repository below it as trusted in
-`~/.claude.json`. A session cannot read that file, so run it in your own terminal.
+`~/.claude.json`. It skips `.worktrees/` and `.scratch/`. A session cannot read that file, so run
+it in your own terminal.
 
 `fixtures/` holds the expected Claude Code renders of two agents, which the cases compare.
 
