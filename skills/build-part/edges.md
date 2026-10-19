@@ -435,6 +435,10 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   excluded command, bypasses every list of the sandbox; and a rule for "outside the sandbox"
   that leaves out a condition, such as no redirection to a file (F3, *Publish the harness as
   ResearchHarness*)
+- a command block of a setup page that calls a verb with a relative path, such as `harness render
+  systemd/<unit>`: it works only from the checkout, and with a redirect it writes an empty file
+  from any other directory. Follow the page from its top and run each block in the directory that
+  the steps before it leave (F4, *Synchronise the machines with chezmoi*)
 - a clause that expects a framework feature, such as an edit link, on a layout that drops it,
   such as VitePress's home layout: build the page and grep the output for the feature (J2b,
   *Publish the harness as ResearchHarness*)
