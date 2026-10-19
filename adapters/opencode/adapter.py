@@ -79,6 +79,7 @@ import re
 import shutil
 import stat
 import tempfile
+import tomllib
 from unittest import mock
 
 from harness import REPO, HarnessError, changing, frontends, frontmatter, install, outcome, sources
@@ -499,17 +500,32 @@ def skill_links(home, apply):
 
 
 def context_providers(models):
-    """The JSONC lines of a `provider` entry for each context limit of `models`, each model's
-    `limit` with `context` and `input` the limit and `output` OUTPUT_LIMIT, every entry ending in a
-    comma; "" when `models` holds none. A model with no `<provider>/` exits 2."""
+    """A `provider` entry for each context limit of `models`, {provider: {"models": …}}, each
+    model's `limit` with `context` and `input` the limit and `output` OUTPUT_LIMIT; {} when `models`
+    holds none. A model with no `<provider>/` exits 2."""
     providers = {}
     for selector, limit in models["context_limits"].items():
         provider, sep, model = selector.partition("/")
         if not (sep and provider and model):
             raise HarnessError(f"{models['path']}: the context limit of {selector!r} names no `<provider>/<model>`")
-        providers.setdefault(provider, {})[model] = {"limit": {"context": limit, "input": limit,
-                                                               "output": OUTPUT_LIMIT}}
-    return "".join(f"    {json.dumps(p)}: {json.dumps({'models': m})},\n" for p, m in providers.items())
+        providers.setdefault(provider, {"models": {}})["models"][model] = {
+            "limit": {"context": limit, "input": limit, "output": OUTPUT_LIMIT}}
+    return providers
+
+
+def profile_providers(profile, where):
+    """The profile's `opencode_providers`, a table of provider tables, each an entry of the
+    `provider` object as written. The string of JSONC lines of the earlier form, and any other value
+    that is no table of tables, exit 2 and name `where`, the profile's path."""
+    own = profile_module.get(profile, "opencode_providers")
+    if isinstance(own, str):
+        raise HarnessError(f"{where}: `opencode_providers` is a string of JSONC lines, a form no longer read; write "
+                           "each provider as a TOML table of its own, `[opencode_providers.<name>]`, as "
+                           "examples/profile.toml shows")
+    if not (isinstance(own, dict) and all(isinstance(v, dict) for v in own.values())):
+        raise HarnessError(f"{where}: `opencode_providers` is no table of provider tables, "
+                           "`[opencode_providers.<name>]` — examples/profile.toml shows it")
+    return own
 
 
 # ---------------------------------------------------------------------------------------------
@@ -576,13 +592,13 @@ def plan(ctx):
                         "opencode.jsonc not replaced: the installed file holds a literal credential"))
     else:
         # The context limits are provider entries before the profile's own, which must not name
-        # the same provider: JSONC keeps the last of two equal keys.
+        # the same provider: the profile's entry would replace the limit's.
         limits = context_providers(models)
-        own = profile_module.get(ctx.profile, "opencode_providers")
-        if clash := [p for p in re.findall(r'^    ("[^"]+"):', limits, re.M) if re.search(rf"^\s*{p}\s*:", own, re.M)]:
+        own = profile_providers(ctx.profile, profile_module.location(ctx.args.profile))
+        if clash := [json.dumps(p) for p in limits if p in own]:
             raise HarnessError(f"{models['path']}: a context limit names the provider {', '.join(clash)}, "
                                "which `opencode_providers` of the profile defines too; put the limit there")
-        profile = {**ctx.profile, "opencode_providers": limits + own}
+        profile = {**ctx.profile, "opencode_providers": limits | own}
         # The rendered file names OpenCode's copies of the instructions, not Claude Code's.
         text = profile_module.render_file(SOURCE / "opencode.jsonc", profile).encode()
         files.append((config, frontends.relocate(text, root), None, "opencode.jsonc", True))
@@ -836,19 +852,62 @@ def selftest():
               and sorted(p.name for p in target.iterdir()) == ["dir", "elsewhere"],
               f"skill links, --apply removes the own link only: {applied}")
 
-    # The context limits: one provider entry per provider, each line ending in a comma.
+    # The context limits: one provider entry per provider.
     limits = dict(models, context_limits={"p/a": 100, "p/b": 200, "q/c": 300})
-    check(context_providers(limits) == (
-        '    "p": {"models": {"a": {"limit": {"context": 100, "input": 100, "output": 32000}}, '
-        '"b": {"limit": {"context": 200, "input": 200, "output": 32000}}}},\n'
-        '    "q": {"models": {"c": {"limit": {"context": 300, "input": 300, "output": 32000}}}},\n')
-          and context_providers(dict(models, context_limits={})) == "",
+    check(context_providers(limits) == {
+        "p": {"models": {"a": {"limit": {"context": 100, "input": 100, "output": 32000}},
+                         "b": {"limit": {"context": 200, "input": 200, "output": 32000}}}},
+        "q": {"models": {"c": {"limit": {"context": 300, "input": 300, "output": 32000}}}}}
+          and context_providers(dict(models, context_limits={})) == {},
           "the context limits as provider entries")
     try:
         context_providers(dict(models, context_limits={"bare": 100}))
         check(False, "a context limit of a model with no provider exits 2")
     except HarnessError as e:
         check("'bare'" in str(e), f"a context limit of a model with no provider exits 2: {e}")
+
+    # The profile's providers, one TOML table each, become the entries of the `provider` object of
+    # the rendered opencode.jsonc after the context limits; a quoted model id keeps its `/` and `:`.
+    dummy = profile_module.load(profile_module.DUMMY)
+    own = tomllib.loads('[opencode_providers.local]\nnpm = "@ai-sdk/openai-compatible"\n'
+                        'options = { baseURL = "http://127.0.0.1:8080/v1" }\n'
+                        '[opencode_providers.local.models."org/model:7b"]\nname = "M"\n'
+                        'limit = { context = 1000, output = 100 }\n')
+    entries = context_providers(limits) | profile_providers(dict(dummy, **own), "profile.toml")
+    text = profile_module.render_file(SOURCE / "opencode.jsonc", dict(dummy, opencode_providers=entries))
+    try:
+        provider = json.loads(re.sub(r"(?m)^\s*//.*$", "", text))["provider"]
+    except ValueError as e:
+        provider = f"no JSON: {e}"
+    check(provider == {**context_providers(limits), **own["opencode_providers"]}
+          and list(provider) == ["p", "q", "local"]
+          and provider["local"]["models"] == {"org/model:7b": {"name": "M", "limit": {"context": 1000, "output": 100}}},
+          f"the profile's provider tables render after the context limits, a quoted model id intact: {provider}")
+    for value, label in [('    "local": {}', "the string of JSONC lines of the earlier form"),
+                         (["local"], "a list"), ({"local": "x"}, "a table that holds no table")]:
+        try:
+            profile_providers({"opencode_providers": value}, "/p/profile.toml")
+            check(False, f"`opencode_providers` as {label} exits 2")
+        except HarnessError as e:
+            check("/p/profile.toml" in str(e) and "`opencode_providers`" in str(e)
+                  and "[opencode_providers.<name>]" in str(e)
+                  and ("no longer read" in str(e)) == isinstance(value, str),
+                  f"`opencode_providers` as {label} exits 2, names the profile, the key and the form: {e}")
+
+    # A context limit on a provider that the profile defines too exits 2 before anything renders.
+    with tempfile.TemporaryDirectory() as tmp:
+        clashing = pathlib.Path(tmp) / "models.toml"
+        clashing.write_text((REPO / "examples" / "models.toml").read_text().replace(
+            '"provider-b/small-model" = 100000', '"provider-b/small-model" = 100000\n"local/example-model" = 1000'))
+        ctx = argparse.Namespace(args=argparse.Namespace(profile=str(profile_module.DUMMY), force=False),
+                                 profile=dummy, models=clashing, agents=sources.AGENTS, plans={})
+        try:
+            with mock.patch.dict(os.environ, OPENCODE_CONFIG_DIR=tmp):
+                plan(ctx)
+            check(False, "a context limit on a provider of the profile exits 2")
+        except HarnessError as e:
+            check(str(clashing) in str(e) and '"local"' in str(e) and "put the limit there" in str(e),
+                  f"a context limit on a provider of the profile exits 2: {e}")
 
     # A verify seat says so in its description; the other seats do not.
     verify = dict(models, councils={"critic": [{"name": "critic-b", "model": "provider-c/other-model", "verify": True},

@@ -37,7 +37,7 @@
   // The providers come from the private profile (`opencode_providers`): their hosts, servers
   // and accounts name the user's institution and machines.
   "provider": {
-{opencode_providers}
+    {opencode_providers}
   },
 
   "mcp": {
