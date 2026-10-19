@@ -3,7 +3,7 @@
 This page gives each step from a clean Mac to a working harness. For each step it says what the
 step does, why the harness needs it, and how you see that it worked.
 [Installation](https://github.com/michakraus/ResearchHarness#installation) in the README gives
-the short form of the same steps. [setup-linux.md](setup-linux.md) is the page for Linux.
+the short form of the same steps. [setup-linux.md](setup-linux.md) gives all the steps for Linux.
 
 The steps use `~/Research/Harness` as the path of the checkout. [Introduction](concepts.md) explains
 the words that this page uses, and the glossary there has an entry for each.

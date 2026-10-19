@@ -2,7 +2,7 @@
 // `node --test scripts/newcomer.test.mjs`, which `npm run docs:check` does first.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { TERMS, entryProblems, fileLineProblems, firstUseProblems } from './newcomer.mjs'
+import { NEWCOMER, TERMS, entryProblems, fileLineProblems, firstUseProblems } from './newcomer.mjs'
 
 const G = 'concepts.md'
 const uses = (page, text) => firstUseProblems(page, text, page === G)
@@ -10,6 +10,11 @@ const uses = (page, text) => firstUseProblems(page, text, page === G)
 test('the set of terms is the nineteen terms of clause 2', () => {
   assert.equal(TERMS.length, 19)
   assert.equal(new Set(TERMS).size, 19)
+})
+
+test('both setup pages, for macOS and for Linux, are newcomer pages', () => {
+  assert.ok(NEWCOMER.includes('setup-macos.md'))
+  assert.ok(NEWCOMER.includes('setup-linux.md'))
 })
 
 test('an unlinked first use names the page, the line and the term', () => {

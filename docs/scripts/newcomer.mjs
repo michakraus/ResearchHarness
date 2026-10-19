@@ -22,8 +22,8 @@ export const TERMS = [
 ]
 /** The newcomer pages, below docs/src/. */
 export const NEWCOMER = [
-  'concepts.md', 'dependencies.md', 'setup-macos.md', 'tutorial.md', 'daily-use.md', 'profile.md',
-  'example-tree.md'
+  'concepts.md', 'dependencies.md', 'setup-macos.md', 'setup-linux.md', 'tutorial.md', 'daily-use.md',
+  'profile.md', 'example-tree.md'
 ]
 /** The page of the glossary, and the anchor of a term's entry on it. */
 export const GLOSSARY = 'concepts.md'
