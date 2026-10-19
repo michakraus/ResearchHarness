@@ -136,6 +136,13 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   sizes and the scales: it reads as universal, while elimination overflows outside them. Name the
   tested sizes and scales in the contract, and where it fails (M4, *Simplify the optimiser
   package and the learning package for 0.9*)
+- a bit-for-bit pin recorded from the parent commit whose value passes through a LAPACK
+  factorisation of a seeded draw, such as the QR of a `StiefelManifold` initialisation: OpenBLAS
+  0.3.29 (Julia 1.12.7) and 0.3.30 (1.13.2) give the same `randn` and different last bits of the
+  orthonormalised weight, so the pin holds on the Julia that recorded it and reddens the floor
+  suite. Record such a pin on both versions, and set the leaf to a fixed, exactly orthonormal
+  matrix before the pinned pass (M5, *Simplify the optimiser package and the learning package for
+  0.9*)
 
 ## A type or an interface
 
@@ -197,6 +204,15 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   that operand, so a mixed input loses the type the product would have promoted — a Float32 basis with
   finite Float64 coordinates returned `±Inf Float32` instead of a finite Float64 result. Allocate with
   `T = promote_type(eltype(operand), eltype(input))` (P29, *Rewrite the reduced basis packages*)
+- the scalar-indexing state restored by copying one value into both stores: `allowscalar` writes a
+  task-local key and a process-wide default, and `@allowscalar` restores only the task-local key,
+  so a test that captures the task-local value alone leaves the default changed for every later
+  file in the process. Capture both, write neither, and assert both after the scope (M5,
+  *Simplify the optimiser package and the learning package for 0.9*)
+- a host array mixed into a device broadcast: a `JLArray` broadcast reads a host `Matrix`, so a
+  test that compares values on the device cannot see one, and a mutant that allocates the encoding
+  on `CPU()` survives. Assert the backend of what the layer produces (M5, *Simplify the optimiser
+  package and the learning package for 0.9*)
 
 ## A tool that reads files or a tree
 
@@ -472,3 +488,7 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   decided block's own words in the files that *Files* names, and assert them from a test, so the
   verdict does not rest on reading the docstring (P38a verify 2, *Rewrite the reduced basis
   packages*)
+- a mutant whose `from` calls a local that the mutant's own `to` defines later, or never: the
+  harness reports VALID and CAUGHT, but the kill is the `UndefVarError`, not the defect the mutant
+  names. Read the failed assertion's message, and spell the mutant so its only change is the
+  defect (M5, *Simplify the optimiser package and the learning package for 0.9*)
