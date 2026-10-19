@@ -27,8 +27,9 @@ context = 200000
 output = 32000
 
 # A local server with the OpenAI API, for OpenCode alone. `key = "{file:~/path}"` would read the key
-# from a file of its own. `opencode` and `omp` hold a frontend's own keys, of a provider or a model,
-# merged over the rest: here OpenCode's `tool_call`, which oh-my-pi has no key for.
+# from a file of its own. `effort` is the reasoning effort that the model always gets, whatever the
+# agent asks for. `opencode` and `omp` hold a frontend's own keys, of a provider or a model, merged
+# over the rest: here OpenCode's `tool_call`, which oh-my-pi has no key for.
 [local]
 api = "openai-compatible"
 url = "http://127.0.0.1:8080/v1"
@@ -39,4 +40,5 @@ frontends = ["opencode"]
 name = "Example model"
 context = 131072
 output = 32768
+effort = "none"
 opencode = { tool_call = false }

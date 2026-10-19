@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+- **A model of `providers.toml` can fix its reasoning effort for both frontends, with `effort`.**
+  Before, only OpenCode's own `options.reasoningEffort` held it, so oh-my-pi sent the effort that
+  the agent asked for, or none. GWDG SAIA answers `high` slowly or not at all on some models, and
+  a model whose default is `xhigh` needs `none`. `effort = "none"` gives OpenCode
+  `options.reasoningEffort`, and gives oh-my-pi `reasoning = true`, a `compat.reasoningEffortMap`
+  that maps each of its thinking levels to the effort, and `compat.reasoningDisableMode =
+  "none-effort"`. Without `reasoning`, oh-my-pi 18.12.0 sends no effort; without the disable mode,
+  a Qwen model on a generic host sends `enable_thinking` and no `reasoning_effort`. Both are read
+  from the oh-my-pi binary, not measured against a server. One difference stays: when an agent
+  turns thinking off, oh-my-pi sends `none`, and OpenCode still sends the fixed effort. A frontend's
+  own `opencode` or `omp` table merges over `effort`. A blank `effort` exits 2.
+
 - **The model providers of OpenCode and oh-my-pi are in one file, `providers.toml` beside the
   profile, and each provider is written once.** The profile held the same accounts twice, as
   `opencode_providers` and `omp_providers`, in each frontend's own keys. A provider of the new

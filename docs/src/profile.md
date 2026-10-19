@@ -100,6 +100,7 @@ object of OpenCode's `opencode.jsonc` and into oh-my-pi's `models.yml`. The file
 | `key` | `{env:VAR}` or `{file:PATH}`; optional. A literal key stops `install` with exit 2 | `options.apiKey`, as written | `apiKey`: `VAR`, or `!cat PATH` |
 | `frontends` | the frontends that get the provider; optional, both by default | | |
 | `[<name>.models."<id>"]` | a model: `name`, `reasoning`, and `context` with `output`, each optional | `models.<id>`: `name`, `reasoning`, `limit` | an item of `models`: `id`, `name`, `reasoning`, `contextWindow`, `maxTokens` |
+| `effort` of a model | the reasoning effort that the model always gets, such as `"none"`; optional | `options.reasoningEffort` | `reasoning = true`, and in `compat` a `reasoningEffortMap` that maps each thinking level to it and `reasoningDisableMode = "none-effort"`; an agent that turns thinking off sends `"none"` |
 | `opencode`, `omp` | a frontend's own keys, of a provider or of a model, merged over the rest | merged | merged |
 
 A key that the table does not name stops `install` with exit 2, and so does the profile key
