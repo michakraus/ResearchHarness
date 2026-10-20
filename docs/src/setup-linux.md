@@ -6,9 +6,9 @@ what the step does, why the harness needs it, and how you see that it worked.
 
 The commands are for Debian and Ubuntu, with `apt-get`. The package names and the versions that
 this page gives are checked on Ubuntu 26.04 only; other distributions and releases are not
-checked. The steps use `~/Research/Harness` as the path of the checkout.
-[Introduction](concepts.md) explains the words that this page uses, and the glossary there has an
-entry for each.
+checked. The commands run on the two architectures `x86_64` and `aarch64` (64-bit Arm). The steps
+use `~/Research/Harness` as the path of the checkout. [Introduction](concepts.md) explains the
+words that this page uses, and the glossary there has an entry for each.
 
 **Without Julia code.** If you write no Julia, you can skip the steps and lines that this page
 marks. You still need Julia itself, because the [install](concepts.md#install) runs it once.
@@ -22,16 +22,77 @@ without one.
 found something to change, and exit 2 an error. Each step below names the code that it expects,
 with its meaning.
 
+## Check the machine
+
+**What it does.** These commands change nothing. They print the facts of the machine that the
+later steps depend on: the system, the architecture, the settings for user namespaces, your login
+shell, the user manager of systemd, the groups of your account, the tools and directories that are
+already there, and the versions that `apt-get` would install.
+
+```bash
+. /etc/os-release; echo "$PRETTY_NAME"
+uname -m
+uname -r
+sysctl kernel.apparmor_restrict_unprivileged_userns kernel.unprivileged_userns_clone
+echo "$SHELL"
+getent passwd "$USER" | cut -d: -f7
+systemctl --user is-system-running
+loginctl show-user "$USER" -p Linger
+id -nG
+command -v claude opencode omp julia juliaup rtk
+for d in ~/.claude ~/.config/opencode ~/.omp ~/.julia ~/.juliaup ~/Research; do test -e "$d" && echo "exists $d" || echo "absent $d"; done
+grep -n -E 'opencode|juliaup|\.local/bin' ~/.bashrc ~/.profile ~/.bash_profile ~/.zshrc
+apt-cache policy python3 git gh nodejs npm shellcheck rsync curl jq bubblewrap socat lsof gitleaks | grep -E '^[a-z0-9]|Installed|Candidate'
+busctl --user status org.freedesktop.secrets >/dev/null 2>&1 && echo SECRETS-OK
+```
+
+A line that fails prints its error, and the next line runs.
+
+**Why.** Each line answers a question of a later step:
+
+- The system and the architecture select the commands. This page covers Ubuntu 26.04 on `x86_64`
+  and `aarch64`. With another value of `uname -m`, the release files of
+  [The dependencies](#the-dependencies) do not exist; install those tools from their own sites.
+- The two `sysctl` keys decide whether the [sandbox](concepts.md#sandbox) of Claude Code can
+  start. `kernel.unprivileged_userns_clone = 0` means that the kernel refuses user namespaces to a
+  user who is not root. `kernel.apparmor_restrict_unprivileged_userns = 1` means that AppArmor
+  refuses them to each program, unless AppArmor allows them to that program. Then the check of
+  [The sandbox of Claude Code](#the-sandbox-of-claude-code) can fail, and Claude Code does not
+  start. A key that does not exist sets no limit. The fix is the administrator's: a change of the
+  settings of the kernel or of AppArmor.
+- `$SHELL` and the shell in the `getent` line are your login shell. The installers of juliaup and
+  OpenCode write their `PATH` lines into the start files of that shell, for example `~/.bashrc`
+  for bash and `~/.zshrc` for zsh.
+- `systemctl --user is-system-running` prints `running` when the user manager of systemd runs,
+  or `degraded` when it runs and a unit failed; [The jobs](#the-jobs) need it. `Linger=no` means
+  that the user manager stops at your last logout.
+- `id -nG` lists the groups of your account. On Ubuntu, a member of the group `sudo` may run
+  `sudo`, so you are an administrator. Without `sudo` in the list, ask an administrator to run the
+  lines of this page that start with `sudo`.
+- The `command -v`, `exists` and `grep` lines show what an earlier install left: a
+  [frontend](concepts.md#frontend), a Julia, a directory of a frontend, or a `PATH` line in a
+  start file. Each step below installs over it or adds to it; read the output before you
+  continue.
+- The `apt-cache` line gives the version that `apt-get` installs, under `Candidate`, and the
+  version that is there, under `Installed`. Compare each with the minimum of
+  [Dependencies](dependencies.md).
+- `SECRETS-OK` means that a Secret Service answers, as at the desktop of the machine. Over SSH,
+  the line prints nothing; [A machine reached over SSH](#a-machine-reached-over-ssh) says what
+  follows.
+
+**Check.** The first line names the system, for example `Ubuntu 26.04.1 LTS`, and the second line
+prints `x86_64` or `aarch64`.
+
 ## The dependencies
 
-**What it does.** These commands install every required tool that the harness calls, and the two
-tools of the [sandbox](concepts.md#sandbox) of Claude Code. `apt-get` installs the tools that
-Ubuntu 26.04 packages at or above the minimum of [Dependencies](dependencies.md), and bubblewrap,
-socat and lsof. These two lines need an administrator:
+**What it does.** These commands install every required tool that the harness calls, the two
+tools of the sandbox of Claude Code, and the optional tools jq and RTK. `apt-get` installs the
+tools that Ubuntu 26.04 packages at or above the minimum of [Dependencies](dependencies.md), and
+bubblewrap, socat, lsof and jq. These two lines need an administrator:
 
 ```bash
 sudo apt-get update
-sudo apt-get install -y python3 git gh nodejs npm shellcheck coreutils rsync curl bubblewrap socat lsof
+sudo apt-get install -y python3 git gh nodejs npm shellcheck coreutils rsync curl jq bubblewrap socat lsof
 ```
 
 The tools of `~/.local/bin` need no administrator. First put that directory on the `PATH`:
@@ -44,41 +105,72 @@ export PATH="$HOME/.local/bin:$PATH"
 Add the `export` line to your shell's start file too, for example `~/.bashrc`, so that each new
 shell finds the tools.
 
-gitleaks comes from its release. These lines download the release and its checksum file
-`gitleaks_<version>_checksums.txt`, check the release against the checksum, and only then install
-`gitleaks` into `~/.local/bin`. The file names are those for x86_64:
+gitleaks and RTK come from their releases, which have one file for each architecture. This block
+sets the names of the two files for the architecture of the machine. On an architecture other
+than `x86_64` and `aarch64`, it prints a message, sets no name, and the download lines below
+download nothing:
+
+```bash
+case "$(uname -m)" in
+  x86_64)  gl=gitleaks_8.30.1_linux_x64.tar.gz;   rt=rtk-x86_64-unknown-linux-musl.tar.gz ;;
+  aarch64) gl=gitleaks_8.30.1_linux_arm64.tar.gz; rt=rtk-aarch64-unknown-linux-gnu.tar.gz ;;
+  *)       gl=; rt=; echo "This page covers x86_64 and aarch64, not $(uname -m): install gitleaks and RTK from their own sites." ;;
+esac
+```
+
+**Optional: RTK.** RTK shortens the output of shell commands. The OpenCode plugin of the harness
+asks `rtk` for the rewrite of each shell command; without RTK, the plugin passes each command
+unchanged. These lines download the release 1.0.1 and its checksum file `checksums.txt`, check
+the release against the checksum, and only then install `rtk` into `~/.local/bin`:
 
 ```bash
 d=$(mktemp -d); cd "$d"
-v=8.30.1; f=gitleaks_${v}_linux_x64.tar.gz
-curl -fsSL -O "https://github.com/gitleaks/gitleaks/releases/download/v$v/$f" -O "https://github.com/gitleaks/gitleaks/releases/download/v$v/gitleaks_${v}_checksums.txt"
-grep " $f\$" "gitleaks_${v}_checksums.txt" | sha256sum -c - && tar -xzf "$f" gitleaks && install -m 755 gitleaks ~/.local/bin/
+v=1.0.1
+[ -n "$rt" ] && curl -fsSL -O "https://github.com/rtk-ai/rtk/releases/download/v$v/$rt" -O "https://github.com/rtk-ai/rtk/releases/download/v$v/checksums.txt"
+grep " $rt\$" checksums.txt | sha256sum -c - && tar -xzf "$rt" rtk && install -m 755 rtk ~/.local/bin/
 cd ~
 ```
 
 **Only to push to the harness**, install gitleaks: on your machine, only the pre-push
 [hook](concepts.md#hook) of the harness runs it, before a push to the harness. A user who only
-installs the harness skips these lines. To update gitleaks, run the lines again with a new `v=`.
+installs the harness skips these lines. They download the release 8.30.1 and its checksum file
+`gitleaks_8.30.1_checksums.txt`, check the release against the checksum, and only then install
+`gitleaks` into `~/.local/bin`:
 
-actionlint, fatou and Julia come from their own installers, which their projects give:
+```bash
+d=$(mktemp -d); cd "$d"
+v=8.30.1
+[ -n "$gl" ] && curl -fsSL -O "https://github.com/gitleaks/gitleaks/releases/download/v$v/$gl" -O "https://github.com/gitleaks/gitleaks/releases/download/v$v/gitleaks_${v}_checksums.txt"
+grep " $gl\$" "gitleaks_${v}_checksums.txt" | sha256sum -c - && tar -xzf "$gl" gitleaks && install -m 755 gitleaks ~/.local/bin/
+cd ~
+```
+
+A failed `sha256sum` stops its line, and nothing is installed. To update RTK or gitleaks, change
+its version in the `case` block and in `v=`, and run the lines again.
+
+actionlint, fatou and Julia come from their own installers, which their projects give. Each
+installer selects the file for the architecture itself:
 
 ```bash
 bash <(curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash) latest ~/.local/bin
 curl --proto '=https' --tlsv1.2 -sSf https://fatou.dev/install | sh
-curl -fsSL https://install.julialang.org | sh
+curl -fsSL https://install.julialang.org | sh -s -- --yes
+export PATH="$HOME/.juliaup/bin:$PATH"
 ```
 
 **Without Julia code**, skip the fatou line: fatou checks Julia code only.
 
-The actionlint line installs `actionlint` into `~/.local/bin`, and the fatou installer checks
-the checksum of its download. The installer of `juliaup` asks you to confirm its settings; with
-its default settings, it installs `juliaup` and the current Julia release, and adds them to the
-`PATH` in your shell's start file. Open a new terminal after it, so that your shell finds
-`julia`. The six Julia packages of [Dependencies](dependencies.md#julia-and-its-packages) need no
-command: the first install adds them.
-
-The installer of OpenCode puts `opencode` into `~/.opencode/bin`, and adds that directory to the
-`PATH` in your shell's start file.
+The actionlint line installs `actionlint` into `~/.local/bin`. The fatou installer installs
+`fatou` into `~/.local/bin`, and checks the checksum of its download when the release publishes
+one. The installer of `juliaup`
+asks no question with `--yes`: with its default settings, it installs `juliaup` and the `julia`
+launcher into `~/.juliaup/bin`, and the current Julia release below `~/.julia`. It adds
+`~/.juliaup/bin` to the `PATH` in a block between the lines `# >>> juliaup initialize >>>` and
+`# <<< juliaup initialize <<<`, in each of `~/.bashrc`, `~/.profile`, `~/.bash_profile`,
+`~/.bash_login` and `~/.zshrc` that exists. The `export` line puts `~/.juliaup/bin` on the `PATH`
+of the shell that you are in. The six Julia packages of
+[Dependencies](dependencies.md#julia-and-its-packages) need no command: the first install adds
+them.
 
 **Why.** Each tool has the job that [Dependencies](dependencies.md#what-each-tool-does)
 describes. Ubuntu 26.04 packages Python 3.14 and Node.js 22.22, which meet their minimums, but
@@ -87,24 +179,141 @@ distribution can package an older version than the minimum that Dependencies giv
 that tool from its own site. The pre-push hook also runs `python3.11`; where it is missing, the
 hook prints one skip line, because CI runs it. bubblewrap and socat are the tools of
 [The sandbox of Claude Code](#the-sandbox-of-claude-code). The update job of
-[The jobs](#the-jobs) calls `lsof`. You need Julia even if you write no Julia code: the first
-install instantiates the Julia environment of the harness's scripts, and it stops without
-`julia`.
+[The jobs](#the-jobs) calls `lsof`. jq is optional: the status line of Claude Code reads its data
+with jq, and without it, the status line shows no values. You need Julia even if you write no
+Julia code: the first install instantiates the Julia environment of the harness's scripts, and it
+stops without `julia`.
 
-**Check.** Each command prints its version: Python 3.11 or later, Node.js 22.3 or later (or 20.16
-or later in 20.x), actionlint 1.7.12 or later, and Julia 1.13 or later.
+**Check.** The first command prints the version of each package that `apt-get` installed. Each
+command after it prints the version of one tool: Python 3.11 or later, Node.js 22.3 or later (or
+20.16 or later in 20.x), RTK 1.0.1, actionlint 1.7.12 or later, fatou 0.22.0 or later, and Julia
+1.13 or later.
 
 ```bash
+dpkg-query -W python3 git gh nodejs npm shellcheck coreutils rsync curl jq bubblewrap socat lsof
 python3 --version
 node --version
+jq --version
+rtk --version
 actionlint --version
+fatou --version
+juliaup --version
 julia --version
 ```
+
+**Without RTK**, skip the `rtk` line. **Without Julia code**, skip the `fatou` line.
 
 **Only to push to the harness**, check gitleaks too. It prints its version, 8.21 or later:
 
 ```bash
 gitleaks version
+```
+
+## The frontends
+
+**What it does.** These steps install the three [frontends](concepts.md#frontend) that the
+harness configures: Claude Code, OpenCode 2 and oh-my-pi. Each frontend is optional, as
+[Dependencies](dependencies.md#optional) says. Skip the subsection of each frontend that you do
+not use. `harness install` writes the configuration of all three either way. Of the directories
+of the frontends, it needs only the configuration directory of OpenCode, which the `mkdir` line
+of [`harness install --apply`](#harness-install-apply) makes.
+
+**Why.** Each frontend reads the configuration that `harness install` writes; a frontend that is
+not installed reads nothing. The installers below are the ones that the projects give, and each
+selects the file for the architecture of the machine itself.
+
+### Install Claude Code
+
+This command runs the installer of Claude Code:
+
+```bash
+curl -fsSL https://claude.ai/install.sh | bash
+```
+
+The installer puts the launcher at `~/.local/bin/claude`, a symbolic link to the current version
+in `~/.local/share/claude/versions/`. Claude Code updates itself in the background, and
+`claude update` updates it at once. The installer changes no start file: it needs `~/.local/bin`
+on the `PATH`, which [The dependencies](#the-dependencies) puts there.
+
+**Check.** The command prints the version, for example `2.1.303 (Claude Code)`:
+
+```bash
+claude --version
+```
+
+**Optional: the signed manifest.** On Linux, the binaries of Claude Code have no code signature
+of their own. Each release has a file `manifest.json` with the SHA-256 checksum of each binary,
+and a signature of that file by the release key of Anthropic. These commands check the installed
+version against the manifest. They need `gpg`, from the package `gnupg`, and jq:
+
+```bash
+d=$(mktemp -d); cd "$d"
+curl -fsSL https://downloads.claude.ai/keys/claude-code.asc | gpg --import
+gpg --fingerprint security@anthropic.com
+REPO=https://downloads.claude.ai/claude-code-releases
+VERSION=$(claude --version | cut -d' ' -f1)
+curl -fsSLO "$REPO/$VERSION/manifest.json"
+curl -fsSLO "$REPO/$VERSION/manifest.json.sig"
+gpg --verify manifest.json.sig manifest.json
+jq -r '.platforms[].checksum' manifest.json | grep -qFx "$(sha256sum < ~/.local/share/claude/versions/"$VERSION" | cut -d' ' -f1)" && echo CHECKSUM-OK
+cd ~
+```
+
+The fingerprint must be `31DD DE24 DDFA B679 F42D  7BD2 BAA9 29FF 1A7E CACE`. `gpg --verify`
+must print `Good signature from "Anthropic Claude Code Release Signing <security@anthropic.com>"`;
+its warning that the key is not certified with a trusted signature is expected for a key that you
+have just imported. The last line prints `CHECKSUM-OK` when the checksum of the installed binary
+is one of the checksums of the manifest. The manifests of releases before 2.1.89 have no
+signature.
+
+### Install OpenCode 2
+
+This command runs the installer of OpenCode 2:
+
+```bash
+curl -fsSL https://opencode.ai/v2/install | bash
+```
+
+The installer puts `opencode` into `~/.opencode/bin`. When that directory is not on the `PATH`, it
+adds two lines to the first start file of your login shell that exists, for example `~/.bashrc`
+for bash or `~/.zshrc` for zsh: the line `# opencode`, and the line
+`export PATH=/home/me/.opencode/bin:$PATH` with your home directory in place of
+`/home/me`. Its option `--no-modify-path` leaves the start files as they are.
+`opencode upgrade` updates it. This command puts the directory on the `PATH` of the shell that you
+are in:
+
+```bash
+export PATH="$HOME/.opencode/bin:$PATH"
+```
+
+The command `curl -fsSL https://opencode.ai/install | bash`, without `v2`, installs OpenCode 1
+only. Both versions use the command `opencode` and the directory `~/.opencode/bin`, so install
+one of them only. The harness configures OpenCode 2.
+
+**Check.** The command prints the version, 2.0 or later:
+
+```bash
+opencode --version
+```
+
+### Install oh-my-pi
+
+This command runs the installer of oh-my-pi, with its option `--binary`:
+
+```bash
+curl -fsSL https://omp.sh/install | sh -s -- --binary
+```
+
+The installer downloads the prebuilt binary for the machine, checks its SHA-256 checksum, and
+only then puts `omp` into `~/.local/bin`, or into `$PI_INSTALL_DIR` when that variable is set.
+Without `--binary`, an installer that finds `bun` installs oh-my-pi with `bun` into the directory
+of `bun` instead. The installer changes no start file: it needs `~/.local/bin` on the `PATH`, which
+[The dependencies](#the-dependencies) puts there. `omp update` updates it.
+
+**Check.** The command prints the version, for example `omp/18.12.3`:
+
+```bash
+omp --version
 ```
 
 ## The sandbox of Claude Code
@@ -117,7 +326,8 @@ without a working sandbox, Claude Code does not start, rather than run the comma
 
 **Why.** bubblewrap makes the sandbox from user namespaces of the kernel, and the settings of a
 machine can refuse them to a user. Then `bwrap` fails, and Claude Code does not start. The cause
-is in the machine's settings for unprivileged user namespaces, which are the administrator's.
+is in the machine's settings for unprivileged user namespaces, which are the administrator's;
+[Check the machine](#check-the-machine) prints them.
 
 **Check.** The first command prints the paths of the two tools. The second makes a sandbox and
 prints `BWRAP-OK`:
@@ -181,7 +391,7 @@ gives the command that copies its example.
 
 **Why.** The profile holds every value that names a person, an institution or a machine, so the
 repository holds none. The model tables give the model of each [tier](concepts.md#tier) for each
-[frontend](concepts.md#frontend).
+frontend.
 
 **Check.** `harness get` prints the value of one key. It must print your home directory, not
 `/home/example`.
@@ -218,12 +428,15 @@ ls ~/Research/Environment/Agents/instructions
 ## `harness install --apply`
 
 **What it does.** `harness install` writes the configuration of each frontend from the sources of
-the harness, the profile and the tree instructions. It needs two directories:
-`~/.claude/skills/` and the OpenCode configuration directory, `$OPENCODE_CONFIG_DIR`, else
-`~/.config/opencode/`. On a new machine, make them before the first install:
+the harness, the profile and the tree instructions. It needs two directories, else it stops with
+exit 2, an error: the directory of the tree instructions, which the profile key `tree_agents`
+names, and the configuration directory of OpenCode, `$OPENCODE_CONFIG_DIR`, else
+`~/.config/opencode/`. It needs the directory of OpenCode also when you do not use OpenCode. It
+makes `~/.claude/` and `~/.omp/agent/` itself. On a new machine, make the two directories before
+the first install; the command uses the example value of `tree_agents`:
 
 ```bash
-mkdir -p ~/.claude/skills ~/.config/opencode
+mkdir -p ~/Research/Environment/Agents/instructions ~/.config/opencode
 ```
 
 Then run the dry run. It prints each file that it would install, and it exits 1, which means that
@@ -276,6 +489,32 @@ line `PI_CONFIG_FILES=~/.omp/agent/harness.yml` is in `~/.omp/agent/.env`, and i
 get the variables of the settings template's `env` from the same file. So add the four lines that
 [setup-macos.md](setup-macos.md#oh-my-pi) gives once; the install warns until they are there.
 
+## Kaimon
+
+**With Kaimon only.** **Without Julia code, skip this step.** Kaimon gives an agent a Julia
+session and tools for Julia code; [Dependencies](dependencies.md#kaimon) says what it does.
+
+**What it does.** The first command installs Kaimon as a Julia app, which puts the command
+`kaimon` into `~/.julia/bin`. The second puts that directory on the `PATH` of the shell that you
+are in:
+
+```bash
+julia -e 'using Pkg; Pkg.Apps.add("Kaimon")'
+export PATH="$HOME/.julia/bin:$PATH"
+```
+
+Add the `export` line to your shell's start file too, for example `~/.bashrc`, so that each new
+shell finds `kaimon`.
+
+**Why.** The Kaimon server of [The jobs](#the-jobs) runs `~/.julia/bin/kaimon`, and the update job
+updates Kaimon.
+
+**Check.** The command prints `KAIMON-OK`:
+
+```bash
+test -x ~/.julia/bin/kaimon && echo KAIMON-OK
+```
+
 ## The jobs
 
 **What it does.** The `systemd --user` units of the harness run three jobs: the Kaimon server, the
@@ -305,9 +544,8 @@ systemctl --user enable --now claude-autocommit.timer
 ```
 
 **With Kaimon only.** The server runs `~/.julia/bin/kaimon`, and the update job stops with an
-error without Kaimon. This page does not install Kaimon;
-[Dependencies](dependencies.md#kaimon) says what it does. With Kaimon in `~/.julia/bin`, this
-command enables the server and the timer of the update job:
+error without Kaimon. [Kaimon](#kaimon) installs it. With Kaimon in `~/.julia/bin`, this command
+enables the server and the timer of the update job:
 
 ```bash
 systemctl --user enable --now kaimon.service julia-update.timer
