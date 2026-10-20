@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+- **Setup on Linux installs the frontends and covers `aarch64`.** The page gave no command for
+  Claude Code, OpenCode or oh-my-pi, nor for RTK, jq or Kaimon, its release file names were for
+  `x86_64` only, and its juliaup line asked questions. It now starts with *Check the machine*,
+  which changes nothing and prints the system, the architecture, the two `sysctl` keys of user
+  namespaces, the login shell, the user manager of systemd, the groups that show an administrator,
+  what an earlier install left, the `apt-get` candidates and the Secret Service. *The
+  dependencies* adds jq to the `apt-get` line, sets the gitleaks and RTK file names in one
+  `case "$(uname -m)"` block for `x86_64` and `aarch64` (another value prints a message and
+  downloads nothing), installs RTK 1.0.1 after the `sha256sum -c` of its `checksums.txt`, runs the
+  juliaup installer with `--yes`, and checks the version of each tool. A new section, *The
+  frontends*, installs Claude Code, OpenCode 2 (`opencode.ai/v2/install`; the installer without
+  `v2` installs OpenCode 1 only) and oh-my-pi (with `--binary`, so that `omp` goes into
+  `~/.local/bin`), each with its directory, its update command, its `PATH` line and a version
+  check, and an optional check of Claude Code against its signed manifest. A new *Kaimon* step
+  installs Kaimon with `Pkg.Apps.add`, and *The jobs* refers to it. *`harness install --apply`*
+  makes the two directories that the install needs, the tree instructions and the OpenCode
+  configuration; it no longer makes `~/.claude/skills`, which the install makes itself.
+
 - **A new guard hook, `git-archive-output.py`, refuses `git archive -o` and names the read that
   needs no prompt.** Agents wrote an archive of a commit to read its unmodified tree, usually the
   base of their branch: the permission log holds 35 such prompts from 2026-10-04 to 2026-10-19,
