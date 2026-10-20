@@ -14,102 +14,44 @@ Julia code, but most of its ideas transfer to any language. [Dependencies](docs/
 says what needs Julia. The [documentation site](https://michakraus.github.io/ResearchHarness/)
 shows the harness and its layers, and the way from its sources to the frontends, in two figures.
 
-These are the main ideas:
+## Features
 
 - **One set of sources for three frontends.** The agents, skills, rules, commands and instruction
   files are neutral sources in this repository. `harness install` writes the configuration of
-  each frontend from them. You edit a source, never its installed copy.
+  each frontend from them, with the model of each tier that your model tables give. You edit a
+  source, never its installed copy.
 - **Instructions that load when they apply.** The core instructions load in every session. A rule
   loads when the agent reads a matching file, and a skill when your request matches its
-  description.
+  description. Your own instructions about your research tree install beside them.
 - **Safety in layers.** One settings template gives the permission and sandbox settings of all
-  three frontends. Guard hooks refuse unsafe shell commands before they run. A hook at session
-  start warns when the installed configuration is behind its sources.
-- **Long work goes to a sub-agent.** A test run or a review runs in its own context and returns a
-  short report, so your session keeps its room for the work.
+  three frontends, and the network hosts that Claude Code's sandbox can reach. Guard hooks refuse
+  unsafe shell commands before they run, such as a file edit through `sed -i` or a `git add -A`.
+  A hook at session start warns when the installed configuration is behind its sources.
+- **Long work goes to a sub-agent.** A test run, a review or a literature search runs in its own
+  context and returns a short report, so your session keeps its room for the work.
+- **A builder and a critic for each change.** A plan is split into parts, each one pull request.
+  A builder writes the tests and the code of a part, and a critic that has not seen the builder's
+  reasoning judges it against the part's done-condition, with mutants that a good test must catch.
+  The skills `plan-parts`, `build-part` and `build-reviewed` run the loop.
+- **Tools for Julia packages.** Agents run the tests, measure allocations and timings, find why a
+  package does not load, and review and fix pull requests. Kaimon gives an agent a live Julia
+  session. `harness githooks` and `harness workflows` give every package of the tree the same git
+  hooks and CI workflows.
+- **Tools for papers.** Agents search the literature, check the claims of a manuscript with Julia
+  scripts, and mark the changes of a revision.
 - **Private values stay private.** A private profile holds every value that names a person, an
-  institution or a machine. `harness leaks` and gitleaks keep these values and secrets out of the
-  repository.
+  institution or a machine, so one profile serves every machine and the repository holds none.
+  `harness leaks` and gitleaks keep these values and secrets out of the repository.
+- **One command checks a machine.** `harness doctor` checks the tools, the profile, the install
+  and the background jobs, read-only, and names the setup step that fixes each failure.
 
-## Installation
+## Getting started
 
-These are the shortest steps on macOS. [Setup on macOS](docs/src/setup-macos.md) explains each
-step and the check that it worked. For Linux, [Setup on Linux](docs/src/setup-linux.md) gives
-all the steps.
-
-1. Install the required tools of [Dependencies](docs/src/dependencies.md). Setup on macOS gives
-   the Homebrew commands.
-
-2. Clone the repository to `~/Research/Harness`, and put its `bin/` on the `PATH`. Add the
-   `export` line to your shell's start file too, for example `~/.zshrc`. Then
-   `harness --help` lists the verbs.
-
-   ```bash
-   git clone https://github.com/michakraus/ResearchHarness.git ~/Research/Harness
-   export PATH="$HOME/Research/Harness/bin:$PATH"
-   ```
-
-3. Copy the example profile and model tables, and make the directories and the file that they
-   and the install need.
-
-   ```bash
-   mkdir -p ~/.config/research-harness ~/.config/opencode
-   cp ~/Research/Harness/examples/{profile,models}.toml ~/.config/research-harness/
-   mkdir -p ~/Research/Environment/Agents/instructions ~/Research/Packages ~/Research/Experiments
-   touch ~/Research/Environment/Agents/instructions/research-tree.md
-   ```
-
-4. In `~/.config/research-harness/profile.toml`, fill in the keys that name a person, an
-   organisation or a machine: `org`, `leak`, `launchd_prefix`, `memory_project` and
-   `template_host`. The paths start with `~/` and work as copied; `harness get home` must print
-   your home directory. In `models.toml`, replace the example models of OpenCode and oh-my-pi
-   with your own.
-
-5. Install. `harness install` prints the plan and exits 1, because it would change files.
-   `--apply` makes the change; the first one also downloads the Julia packages of the scripts.
-   Then the dry run reports `0 change(s) to make.` and exits 0. The install also merges the
-   sections `permissions`, `hooks`, `sandbox` and `modelSettings` of the settings template into
-   `~/.claude/settings.json`, keeps the other keys of that file, and creates it if it is missing.
-
-   ```bash
-   harness install
-   harness install --apply
-   harness install
-   ```
-
-## A first session
-
-This short tutorial needs Claude Code and the installed harness, and any git repository. It
-needs no Julia. [Tutorial: a first session](docs/src/tutorial.md) is the long form, on a Julia
-package.
-
-1. Start Claude Code in your repository. When it asks whether you trust the folder, answer yes.
-
-   ```bash
-   cd ~/path/to/your/repository
-   claude
-   ```
-
-2. Ask a question about the repository, for example `What does this repository hold? Name the
-   files that matter most.` Each tool call of the agent shows in the session. Some ask for your
-   permission first: read each one before you answer.
-
-3. Ask for an edit through the shell, for example `Replace "old" with "new" in README.md with
-   sed -i.` A guard hook refuses the command before it runs, and the session shows
-   `Refused: sed -i ...`. The agent then makes the edit with its own edit tool.
-
-4. End the session with `/exit`. Then add an empty line to a source of the harness, so that the
-   installed copy is behind its source.
-
-   ```bash
-   echo >> ~/Research/Harness/instructions/core.md
-   ```
-
-5. Start a new session with `claude`. The harness warns at once: `~/.claude is behind its sources
-   (...): an edit there is not installed.` It blocks nothing.
-
-Undo the edit with `git -C ~/Research/Harness restore instructions/core.md`, and the next session
-starts with no warning.
+- [Setup on macOS](docs/src/setup-macos.md) and [Setup on Linux](docs/src/setup-linux.md) give
+  each step from a clean machine to a working harness, with the check of each step.
+- [Tutorial: a first session](docs/src/tutorial.md) starts your first session and shows the
+  guard hooks and the drift warning at work.
+- [Introduction](docs/src/concepts.md) explains the ideas and the terminology of the harness.
 
 ## Documentation
 

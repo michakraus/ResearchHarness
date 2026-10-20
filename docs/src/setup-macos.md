@@ -3,14 +3,12 @@
 This page gives each step from a clean Mac to a working harness. For each step it says what the
 step does, why the harness needs it, and how you see that it worked.
 [setup-linux.md](setup-linux.md) is the page for Linux, with the same steps in the same order.
-[Installation](https://github.com/michakraus/ResearchHarness#installation) in the README gives the
-short form.
 
 The commands use Homebrew. The package names and the versions that this page gives are checked
 on macOS 27 on Apple silicon (`arm64`) only. On an Intel Mac, Homebrew is in `/usr/local` in place
 of `/opt/homebrew`, and the `PATH` of the launchd jobs of [The jobs](#the-jobs) names
 `/opt/homebrew/bin` only; that case is not checked. The steps use `~/Research/Harness` as the path
-of the checkout. [Introduction](concepts.md) explains the words that this page uses, and the
+of the checkout. [Introduction](concepts.md) explains the terms that this page uses, and the
 glossary there has an entry for each.
 
 **Without Julia code.** If you write no Julia, you can skip the steps and lines that this page

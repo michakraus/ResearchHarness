@@ -13,7 +13,7 @@ step differs.
 
 ## The terms
 
-The tutorial uses the words below. Each word links its entry in the glossary of
+The tutorial uses the terms below. Each term links its entry in the glossary of
 [Introduction](concepts.md#glossary), which also explains the ideas behind them.
 
 - **At work:** [coding agent](concepts.md#coding-agent),

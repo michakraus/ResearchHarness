@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- **The README describes the harness and links the setup pages.** Its short *Installation* left
+  out the frontends, Kaimon and the jobs, so a reader who followed it had no frontend for the
+  next section, and it drifted from the setup pages. Its *A first session* repeated the first
+  steps of the tutorial. Both sections are gone. *Features* now also names the builder-critic
+  loop, the tools for Julia packages and for papers, one profile for every machine and
+  `harness doctor`; *Getting started* links the two setup pages, the tutorial and the
+  introduction. The README, the setup pages, the tutorial and the introduction call the entries
+  of the glossary terms, not words.
+
 - **The output of `harness install` and of the Julia test files is in columns.** The install
   padded each label to 34 characters, so a longer label pushed its status out of the column. The
   label column now has the width of the longest label of the install, and two spaces separate it
