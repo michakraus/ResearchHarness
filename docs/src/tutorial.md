@@ -247,8 +247,8 @@ a file that every session reads. A fact about your own work goes into your tree 
    the number of changes. The dry run exits 1, which means that it would change files.
 
    ```text
-   ~/.claude/instructions/research-tree.md REPLACE
-   ~/.claude/.harness-install.json    REPLACE
+   ~/.claude/instructions/research-tree.md  REPLACE
+   ~/.claude/.harness-install.json          REPLACE
    ```
 
    Then install the change:

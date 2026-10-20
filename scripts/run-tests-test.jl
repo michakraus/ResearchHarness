@@ -10,6 +10,12 @@
 
 using Test
 
+# Run as a script, the file runs again inside one test set, so that it prints one summary table.
+if abspath(PROGRAM_FILE) == @__FILE__() && Test.get_testset_depth() == 0
+    @testset "run-tests-test.jl" verbose = true include(@__FILE__)
+    exit()
+end
+
 # the warm mode's test sets use short lists, which run cold by default; one test set unsets it
 ENV["MUTATE_WARM_MIN"] = "0"
 

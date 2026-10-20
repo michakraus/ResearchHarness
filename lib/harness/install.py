@@ -58,6 +58,9 @@ JULIA = ["julia", "--startup-file=no"]
 # updater installs there.
 JULIA_ENV = pathlib.Path(os.environ.get("RESEARCH_HARNESS_JULIA")
                          or pathlib.Path.home() / ".local" / "share" / "research-harness" / "julia")
+# The width of the label column of the lines that `install_file` prints. `cmd_install` sets it to
+# the longest label of the install, so that the status column lines up.
+WIDTH = 34
 
 
 def warn(*lines):
@@ -88,14 +91,14 @@ def install_file(apply, data, dst, label, backup=False, mode=None):
     same = dst.is_file() and dst.read_bytes() == data
     old = stat.S_IMODE(dst.stat().st_mode) if dst.is_file() else None
     if same and mode in (None, old):
-        print(f"{label:<34} already identical")
+        print(f"{label:<{WIDTH}}  already identical")
         return 0
     stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
     note = f" (backup: {dst.name}.bak-{stamp})" if backup and dst.is_file() and not same else ""
     if same:
-        print(f"{label:<34} MODE {old:04o} -> {mode:04o}")
+        print(f"{label:<{WIDTH}}  MODE {old:04o} -> {mode:04o}")
     else:
-        print(f"{label:<34} {'REPLACE' if dst.is_file() else 'INSTALL'}{note}")
+        print(f"{label:<{WIDTH}}  {'REPLACE' if dst.is_file() else 'INSTALL'}{note}")
     if apply:
         try:
             dst.parent.mkdir(parents=True, exist_ok=True)
@@ -231,7 +234,7 @@ def install_julia_env(apply):
     changes = install_file(apply, (REPO / "Project.toml").read_bytes(), JULIA_ENV / "Project.toml",
                            "julia/Project.toml")
     if not (JULIA_ENV / "Manifest.toml").is_file():
-        print(f"{'julia/Manifest.toml':<34} INSTANTIATE")
+        print(f"{'julia/Manifest.toml':<{WIDTH}}  INSTANTIATE")
         changes += 1
     if apply and changes:
         # `Pkg.resolve` adds no registry, so a new depot needs General first.
@@ -248,6 +251,7 @@ def install_julia_env(apply):
 
 
 def cmd_install(args):
+    global WIDTH
     adapters = frontends.load()
     profile = profile_module.load(args.profile)
     models = profile_module.models_path(args)
@@ -256,6 +260,8 @@ def cmd_install(args):
     for adapter in adapters:
         ctx.plans[adapter.NAME] = adapter.plan(ctx)
     plans = list(ctx.plans.values())
+    WIDTH = max(len(label) for label in ["julia/Manifest.toml", *(f[3] for plan in plans for f in plan.files),
+                                         *(r[0] for plan in plans for r in plan.refused)])
     # Every target, the Julia environment's and each plan's, is checked before anything is written.
     # A target that cannot be written stops an --apply here, and a dry run after its count line,
     # so that a session, which cannot write the installed files, still sees the plan.
@@ -269,9 +275,9 @@ def cmd_install(args):
     changed = [0] * len(plans)
 
     for i, plan in enumerate(plans):
-        for lines, _ in plan.refused:
-            for line in lines:
-                print(line)
+        for label, lines, _ in plan.refused:
+            for left, line in zip([label, *[""] * (len(lines) - 1)], lines):
+                print(f"{left:<{WIDTH}}  {line}")
         for dst, data, mode, label, *rest in plan.files:
             change = install_file(args.apply, data, dst, label, backup=bool(rest and rest[0]), mode=mode)
             if change and rest[1:]:
@@ -299,7 +305,7 @@ def cmd_install(args):
         print()
         for line in restarts:
             print(line)
-    refused = unwritable[:1] + [message for plan in plans for _, message in plan.refused]
+    refused = unwritable[:1] + [message for plan in plans for _, _, message in plan.refused]
     if refused:
         raise HarnessError("; ".join(refused))
     return outcome(args, changes)
