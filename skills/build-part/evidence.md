@@ -5,6 +5,7 @@
 - [Rules for a row](#rules-for-a-row)
 - [The tools](#the-tools)
 - [Which mutants run](#which-mutants-run)
+  - [A fix round's mutants](#a-fix-rounds-mutants)
 - [A warm session for probes](#a-warm-session-for-probes)
 - [Hostile inputs](#hostile-inputs)
 - [Allocation assertions](#allocation-assertions)
@@ -130,6 +131,33 @@ breaking its precompile images. Never pass another `--check-bounds` while a suit
 Julia before 1.13 skips every allocation assertion guarded by the flag, so an allocation row needs
 a cold process of its own. An unguarded assertion runs there, and can fail (*Allocation
 assertions*).
+
+### A fix round's mutants
+
+**Round 1 runs the full set**: every named mutant, and an own mutant for each guard, branch,
+comparison and decided edge of the whole change. **A fix round runs only the mutants that its fix
+touches.** The fix diff is `git diff <judged head>` in the worktree, with the head that the critic
+judged; it holds the round's commits and its uncommitted changes. The builder of a fix round runs
+these mutants and no others:
+
+1. **Own**: one per guard, branch, comparison and decided edge that the fix diff adds or changes.
+2. **Function**: each mutant of an earlier round — named, own or a critic's — whose `from` lies in
+   a function that the fix diff changes in a source file, or, outside a function, on a line that
+   the fix diff changes. Where the fix changes the `from` itself, write the entry against the new
+   text.
+3. **Test**: each named mutant whose test in *Tests catch* the fix diff changes or deletes a line
+   of. A test line that the fix only adds cannot lose a kill.
+4. **Survivor**: each mutant that a critic of the last round reports SURVIVED, from that critic's
+   list.
+
+Every other mutant keeps the verdict of its earlier round; do not run the earlier lists again. A
+fix that changes no function, no line outside a function and no named test runs only its own
+mutants. Write the selected mutants of a Julia package file into one list,
+`<worktree>/.claude/scratch/fix-<N>-mutants.toml`, check it with `--check`, and run it once with
+`--warm` and the units that must catch them. Each list pays one smoke run, and a list of 20
+mutants or fewer runs each mutant cold, about a minute each in a large package. In the *Mutants*
+table of a fix round, the kind of a selected earlier mutant is `function`, `test` or `survivor`,
+and the closing line adds `n earlier mutants keep their verdicts`.
 
 **Another Julia is one command.** `julia +1.11 --startup-file=no run-tests.jl <worktree> full`
 runs the suite on the 1.11 floor. Where another minor version resolved the manifest, `run-tests.jl`

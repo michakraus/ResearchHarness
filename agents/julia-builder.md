@@ -202,9 +202,10 @@ round*). Each input is handled so:
   it to what each defect needs.
   Each blocking defect names a reproducer: make it a test that fails before your fix. Where you are
   sure a blocking defect is wrong, leave the code and show the evidence. Run the test file of each
-  fix, then `run-tests.jl <worktree> affected`, then step 6 for the lines that the fix adds or
-  changes, then step 9 for the text that the fix adds, changes or makes false. Commit, and return
-  with `Verdict: ready for critic` again.
+  fix, then `run-tests.jl <worktree> affected`, then the mutants of *A fix round's mutants* in
+  `evidence.md` in place of steps 5 and 6: only the mutants that the fix touches, in one list, and
+  no earlier list again. Then step 9 for the text that the fix adds, changes or makes false.
+  Commit, and return with `Verdict: ready for critic` again.
   **A critic's *Fix* is a suggestion, not the fix.** A fix that adds an exit, a stop, a guard or a
   status changes the result on inputs that no reproducer names. Before you commit one, read the
   section of `~/.claude/skills/build-part/edges.md` for the part's kind, and test the new rule on
@@ -351,8 +352,10 @@ Paths to stage: <for a direct-to-main part spawned outside its repository, the u
 | file:line | from → to | kind | verdict |
 |:--|:--|:--|:--|
 <every mutant of this round, named and your own: kind is named, guard, branch, comparison or
-edge; verdict is CAUGHT, closed by <test>, or no-defect — <equivalent | dead code | message
-text>. Then one line: n written, n caught, n closed, n no-defect, n open>
+edge, and in a fix round function, test or survivor for an earlier mutant; verdict is CAUGHT,
+closed by <test>, or no-defect — <equivalent | dead code | message text>. Then one line: n
+written, n caught, n closed, n no-defect, n open; in a fix round, n earlier mutants keep their
+verdicts>
 
 ### Text checked
 | file:lines | artifact | verdict |

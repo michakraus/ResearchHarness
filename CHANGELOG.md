@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+- **A fix round runs only the mutants that its fix touches.** Round 1 still runs the full set.
+  On 2026-10-19 the second fix round of the oh-my-pi part M5 (GeometricMachineLearning) spent
+  about 76 of its 103 minutes on mutant runs: its builder ran all 36 mutants of the earlier
+  rounds again, in six lists of 20 or fewer, so each mutant ran cold, at about a minute each, with
+  a smoke run per list; that one run took 37 minutes. The fix changed three test files and no source file, so none of the 36
+  had a site in it. The new section *A fix round's mutants* of `skills/build-part/evidence.md`
+  selects four kinds: an own mutant per guard, branch, comparison and decided edge of the fix;
+  an earlier mutant whose `from` lies in a function that the fix changes; a named mutant whose
+  test in *Tests catch* the fix changes or deletes a line of; and each survivor that the last
+  critic names. Every other mutant keeps its earlier verdict, and the selected ones run in one
+  list. `julia-builder` and `part-builder` follow it in a fix round, their *Mutants* table gives
+  the kind of each selected earlier mutant and the count of kept verdicts, and `build-part` and
+  `build-reviewed` name it in their check of the report. `mutate.jl` does not change. A case of
+  `harness test` checks that the section holds its four rules and that the four files point at
+  it.
+
 - **Agent shell commands run Julia with two threads and two BLAS threads.** A part runs up to
   three critics and a suite at the same time, and an unset `OPENBLAS_NUM_THREADS` gives each Julia
   process one BLAS thread per core. On 2026-10-19 two oh-my-pi parts that ran together held the

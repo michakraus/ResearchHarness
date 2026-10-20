@@ -6,6 +6,8 @@
   a temporary file that no one can remove; each copy leaves them out.
 - scripts/spec-gate.py on a fixture task file: a part whose **Files** span two repositories is
   SPANS, and one whose files lie in its repository is not.
+- The fix round's mutants: skills/build-part/evidence.md defines them in one section, with its
+  four rules, and both builders and both build skills point at it.
 """
 
 import os
@@ -26,6 +28,10 @@ SPEC_GATE = REPO / "scripts" / "spec-gate.py"
 KEPT = ["src/A.jl", "test/runtests.jl", "env.jl"]
 LEFT_OUT = [".env", ".env.ts", "test/.env.local", ".git/HEAD", ".claude/scratch/x"]
 
+# The files whose fix round runs only the mutants that the fix touches.
+FIX_ROUND_FILES = ["agents/julia-builder.md", "agents/part-builder.md",
+                   "skills/build-part/SKILL.md", "skills/build-reviewed/SKILL.md"]
+
 # The fixture task file of the spec gate: (part, repository, tier, Files, expected verdict).
 SPEC_PARTS = [
     ("A", "Example", "build", "`src/A.jl`, `test/a.jl`, `CHANGELOG.md`", "PASS"),
@@ -38,6 +44,24 @@ SPEC_PARTS = [
     ("H", "Harness", "reviewed", "`scripts/x.py`, `CHANGELOG.md`", "EXEMPT"),
     ("I", "Harness", "reviewed", "`scripts/x.py`, `Tasks/plan.md`", "SPANS Harness-Tasks"),
 ]
+
+
+def fix_round_mutants(read):
+    """The problems of the fix round's mutant rule, with `read(relpath)` giving a file's text: the
+    section in evidence.md with its four rules, and a pointer to it in each builder and skill."""
+    problems = []
+    evidence = read("skills/build-part/evidence.md")
+    section = re.search(r"^### A fix round's mutants\n(.*?)(?=^#)", evidence, re.S | re.M)
+    if section is None:
+        return ["evidence.md has no section `### A fix round's mutants`"]
+    for phrase in ("**Round 1 runs the full set**", "**Own**", "**Function**", "**Test**", "**Survivor**",
+                   "do not run the earlier lists again"):
+        if phrase not in section.group(1):
+            problems.append(f"the section lacks {phrase}")
+    for path in FIX_ROUND_FILES:
+        if "*A fix round's mutants*" not in " ".join(read(path).split()):
+            problems.append(f"{path} names no *A fix round's mutants*")
+    return problems
 
 
 def critic_excludes(text):
@@ -116,4 +140,9 @@ def selftest():
                 # the line names each repository of the expected pair
                 ok = all(name in got for name in expected.split()[1].split("-"))
             check(ok, f"part {part} ({tier}) with {files}: expected {expected} -> {got}")
+    problems = fix_round_mutants(lambda path: (REPO / path).read_text())
+    check(not problems, f"a fix round runs only the mutants that its fix touches -> {problems or 'holds'}")
+    # the control: without the section, the case finds the gap
+    gap = fix_round_mutants(lambda path: "" if path.endswith("evidence.md") else (REPO / path).read_text())
+    check(bool(gap), f"evidence.md without the section is a problem -> {gap}")
     return total, wrong
