@@ -218,6 +218,17 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   test that compares values on the device cannot see one, and a mutant that allocates the encoding
   on `CPU()` survives. Assert the backend of what the layer produces (M5, *Simplify the optimiser
   package and the learning package for 0.9*)
+- a parameter set read by position instead of by name: a forward pass that takes the head products
+  by their position in a `NamedTuple` gives a different result for the same values in another
+  order, where the parent read them by name. Read the fields by their names, and test a parameter
+  set whose fields are reordered (M5, the learning package)
+- a comment between a docstring and its definition: a `#` line after the closing `"""` detaches the
+  documentation, and every `@ref` to the name turns into an unresolved reference. Put the comment
+  inside the definition, and run the reference check (M5, the learning package)
+- a rename of a field that one type carries and another keeps: an item names one architecture, and
+  a second type of the same family keeps the old field name, so the family is now named two ways.
+  Grep the family for the old name, and record the one the item does not name (M5, the learning
+  package)
 
 ## A tool that reads files or a tree
 
