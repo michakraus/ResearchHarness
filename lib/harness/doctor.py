@@ -27,8 +27,8 @@ for its existence, mode and size, and of `~/.claude`'s `origin` only whether it 
 remote URL can hold a credential.
 
 A session's sandbox, known by $SANDBOX_RUNTIME, can refuse `bwrap`, `systemctl`, `loginctl`,
-`launchctl` and the version flag of a tool, and deny a file. There, such a check that does not get its answer is SKIP with the
-reason; run the verb in a plain terminal for its real verdict.
+`launchctl` and the version flag of a tool, and deny a file. There, such a check that does not
+get its answer is SKIP with the reason; run the verb in a plain terminal for its real verdict.
 """
 
 import contextlib
