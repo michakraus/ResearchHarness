@@ -26,7 +26,7 @@ entries, each with `at`,
 the `file:line` that states the step. `harness test` reads every such file on disk, tracked or not,
 as the site's data loader does, and checks that each box of the kind `agent` or
 `skill` shows an agent of `agents/` or a skill of `skills/`, that each `at` is a line of a file of
-the repository, that the edges and the steps name boxes and edges of the file, and that a box
+the repository and not a blank one, that the edges and the steps name boxes and edges of the file, and that a box
 with `effort`, the effort of its spawn, shows an agent that an entry of calls.toml spawns at it,
 from a caller that a skill or agent box of the same walk-through shows.
 
@@ -333,6 +333,8 @@ def walkthrough_problems(data, sources, lines, calls=()):
             problems.append(f"at {at!r} names no file of the repository")
         elif int(place[2]) > len(text):
             problems.append(f"at {at!r} is past the end of the file")
+        elif not text[int(place[2]) - 1].strip():
+            problems.append(f"at {at!r} is a blank line")
     for step in data.get("steps", []):
         if step not in edges:
             problems.append(f"the step {step!r} names no edge")
@@ -478,7 +480,7 @@ def selftest():
           f"a source of calls.toml that parse_file refuses is one wrong case: raised {raised}, {found}")
 
     # The rules of a walk-through on fixed inputs: each wrong entry gives one problem.
-    files = {"skills/s/SKILL.md": ["---", "Spawn `a`."], "agents/a.md": ["---"]}
+    files = {"skills/s/SKILL.md": ["---", "Spawn `a`.", ""], "agents/a.md": ["---"]}
     good = {
         "title": "T", "subtitle": "S", "steps": ["you -> s", "s -> g"],
         "box": [{"id": "you", "cell": [0, 0], "kind": "you", "name": "You"},
@@ -495,7 +497,8 @@ def selftest():
         ("a skill renamed", ("box", 1, {"shows": "nonexistent"}), "box 's' shows 'nonexistent', which is no skill of skills/"),
         ("a skill as an agent", ("box", 1, {"kind": "agent"}), "box 's' shows 's', which is no agent of agents/"),
         ("an unknown kind", ("box", 0, {"kind": "person"}), "box 'you' has the kind 'person'"),
-        ("a cited line past the end", ("edge", 0, {"at": "skills/s/SKILL.md:3"}), "at 'skills/s/SKILL.md:3' is past the end of the file"),
+        ("a cited line past the end", ("edge", 0, {"at": "skills/s/SKILL.md:4"}), "at 'skills/s/SKILL.md:4' is past the end of the file"),
+        ("a cited blank line", ("edge", 0, {"at": "skills/s/SKILL.md:3"}), "at 'skills/s/SKILL.md:3' is a blank line"),
         ("a cited file that does not exist", ("edge", 0, {"at": "skills/t/SKILL.md:1"}), "at 'skills/t/SKILL.md:1' names no file of the repository"),
         ("a citation with no line", ("edge", 0, {"at": "skills/s/SKILL.md"}), "at 'skills/s/SKILL.md' is no file:line"),
         ("an edge to no box", ("edge", 1, {"to": "z"}), "the edge s -> z names no box 'z'"),

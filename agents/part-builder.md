@@ -127,9 +127,11 @@ on the part's branch. Otherwise stop and report. Make no branch.
   `KNOWN_ISSUES.md` on your branch, or under *Reported, not fixed* where the repository keeps
   none.
 
-Run the test of each fix, step 5 for the lines that the fix adds or changes, the gate again, and
-step 8 for the text that the fix adds, changes or makes false, commit, fill *Blocking defects
-answered*, and return with `Verdict: ready for review`.
+Run the test of each fix, then the mutants of *A fix round's mutants* in
+`~/.claude/skills/build-part/evidence.md` in place of steps 4 and 5: only the mutants that the fix
+touches, and no earlier mutant again. Then run the gate again, and step 8 for the text that the
+fix adds, changes or makes false. Commit, fill *Blocking defects answered*, and return with
+`Verdict: ready for review`.
 
 ## The finish
 
@@ -172,8 +174,10 @@ Paths to stage: <the uncommitted paths, or "none">
 | file:line | from → to | kind | verdict |
 |:--|:--|:--|:--|
 <every mutant of this round, named and your own: kind is named, guard, branch, comparison or
-edge; verdict is CAUGHT, closed by <test>, or no-defect — <equivalent | dead code | message
-text>. Then one line: n written, n caught, n closed, n no-defect, n open>
+edge, and in a fix round function, test or survivor for an earlier mutant; verdict is CAUGHT,
+closed by <test>, or no-defect — <equivalent | dead code | message text>. Then one line: n
+written, n caught, n closed, n no-defect, n open; in a fix round, n earlier mutants keep their
+verdicts>
 
 ### Text checked
 | file:lines | artifact | verdict |

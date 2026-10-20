@@ -139,11 +139,12 @@ head. Keep its report away from every critic.
 
 **A report with no *Mutants* table, or with an open survivor in it, is not ready.** The builder
 writes and runs a mutant per guard, branch, comparison and decided edge of its change, and closes
-or justifies each survivor (*Which mutants run* in `evidence.md`). **A report with no *Text
-checked* table is not ready either**: as its last step of every round, the builder rereads each
-text line that its diff adds, changes or makes false, and fixes the false ones. `SendMessage` the
-builder the gap, and spawn the critic only when it returns `ready for critic` with both tables
-complete.
+or justifies each survivor (*Which mutants run* in `evidence.md`). Round 1 runs the full set; a
+fix round runs only the mutants that its fix touches (*A fix round's mutants*). **A report with
+no *Text checked* table is not ready either**: as its last step of every round, the builder
+rereads each text line that its diff adds, changes or makes false, and fixes the false ones.
+`SendMessage` the builder the gap, and spawn the critic only when it returns `ready for critic`
+with both tables complete.
 
 **A report whose *Question for the dispatcher* is not `none` is not ready**, whatever its verdict
 line says. Put the question to the advisor first (*A question inside the loop*). On `Parks: no`,
