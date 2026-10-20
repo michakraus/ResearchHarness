@@ -569,11 +569,12 @@ def plan(ctx):
 
     config = dest / "opencode.jsonc"
     if literal_secret(config) and not ctx.args.force:
-        refused.append((["opencode.jsonc                     REFUSED — the installed file holds a literal Authorization",
-                         "                                   value, and replacing it would remove that credential. Move",
-                         "                                   the token into ~/.config/kaimon/opencode-token, use",
-                         '                                   "Authorization": "Bearer {file:~/.config/kaimon/opencode-token}",',
-                         "                                   then re-run; --force overwrites anyway, after a backup."],
+        refused.append(("opencode.jsonc",
+                        ["REFUSED — the installed file holds a literal Authorization",
+                         "value, and replacing it would remove that credential. Move",
+                         "the token into ~/.config/kaimon/opencode-token, use",
+                         '"Authorization": "Bearer {file:~/.config/kaimon/opencode-token}",',
+                         "then re-run; --force overwrites anyway, after a backup."],
                         "opencode.jsonc not replaced: the installed file holds a literal credential"))
     else:
         # The context limits are provider entries before those of providers.toml, which must not

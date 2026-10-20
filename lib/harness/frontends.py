@@ -46,8 +46,9 @@ def Plan(**fields):
                    of `after`
       extra        the text of each installed file with no source, printed after the steps of
                    `after`
-      refused      [((line, …), message)]: the lines are printed before the files, and the install
-                   exits 2 with the messages after its count line
+      refused      [(label, (line, …), message)]: the lines are printed before the files, in the
+                   status column beside the label, and the install exits 2 with the messages after
+                   its count line
       after        [step], each called with `apply` after every frontend's files are installed;
                    it prints its lines and returns its number of changes
 
