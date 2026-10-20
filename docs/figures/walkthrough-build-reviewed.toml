@@ -72,27 +72,27 @@ from = "you"
 to = "skill"
 route = ["bottom", "top"]
 label = "a reviewed part"
-at = "skills/build-reviewed/SKILL.md:23"
+at = "skills/build-reviewed/SKILL.md:24"
 
 [[edge]]
 from = "skill"
 to = "builder"
 route = ["bottom", "top"]
 label = "build"
-at = "skills/build-reviewed/SKILL.md:38"
+at = "skills/build-reviewed/SKILL.md:39"
 
 [[edge]]
 from = "builder"
 to = "round"
 route = ["bottom", "top"]
 label = "ready for critic"
-at = "skills/build-reviewed/SKILL.md:61"
+at = "skills/build-reviewed/SKILL.md:76"
 
 [[edge]]
 from = "round"
 to = "verdict"
 route = ["right", "left"]
-at = "skills/build-reviewed/SKILL.md:68"
+at = "skills/build-reviewed/SKILL.md:80"
 
 [[edge]]
 from = "verdict"
@@ -100,14 +100,14 @@ to = "builder"
 route = ["top", "y 2+18", "right"]
 label = "FAIL: the findings"
 label_at = 0.6
-at = "skills/build-reviewed/SKILL.md:71"
+at = "skills/build-reviewed/SKILL.md:86"
 
 [[edge]]
 from = "builder"
 to = "skill"
 route = ["right-18", "x 1.5", "y 1", "right"]
 label = "ready for review"
-at = "skills/build-reviewed/SKILL.md:73"
+at = "skills/build-reviewed/SKILL.md:88"
 
 [[edge]]
 id = "finish"
@@ -115,7 +115,7 @@ from = "skill"
 to = "builder"
 route = ["left", "x 0.5", "y 2-18", "left"]
 label = "Round: finish"
-at = "skills/build-reviewed/SKILL.md:89"
+at = "skills/build-reviewed/SKILL.md:104"
 
 [[edge]]
 from = "builder"
@@ -123,4 +123,4 @@ to = "pr"
 route = ["left+18", "x 0", "top"]
 label = "the pull request"
 label_on = 0
-at = "skills/build-reviewed/SKILL.md:90"
+at = "skills/build-reviewed/SKILL.md:105"

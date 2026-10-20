@@ -18,6 +18,13 @@
   `harness test` checks that the section holds its four rules and that the four files point at
   it.
 
+- **The walk-throughs cite the lines that state their steps.** Each edge of a walk-through
+  figure cites the `file:line` that states its step, and `harness test` checked only that the
+  line exists. Ten edges of `walkthrough-build-part.toml`, all eight of
+  `walkthrough-build-reviewed.toml` and two of `walkthrough-install.toml` cited a line that does
+  not state the step, five of them a blank line. Each now cites its step, and `harness test`
+  also refuses a citation of a blank line.
+
 - **Agent shell commands run Julia with two threads and two BLAS threads.** A part runs up to
   three critics and a suite at the same time, and an unset `OPENBLAS_NUM_THREADS` gives each Julia
   process one BLAS thread per core. On 2026-10-19 two oh-my-pi parts that ran together held the
