@@ -24,15 +24,15 @@ All four shapes fail **silently or misleadingly**, which is what makes them wort
     refused before it runs, and the refusal reads as a permission problem.
   * **A path argument to `git init`, `git clone`, `git worktree add`, `git worktree move`
     or `git bundle create`** that starts with `/`, `\\`, `~` or `$`, is a drive letter, or
-    holds `..`. The harness then withdraws the exemption, and the `Operation not permitted`
+    holds `..`. Claude Code then withdraws the exemption, and the `Operation not permitted`
     reads as a path problem, so sessions retry another spelling of the same path.
 
 A fifth shape succeeds where it should not: **a `git init` or `git clone` whose working
-directory is inside an existing work tree.** A `cd` outside the agent's working directories
-is reset before the next call, so the command runs in the agent's root — a builder's
-worktree, `Tasks`, `Environment` — and leaves a repository there. The hook reads the payload's
-`cwd`, follows each `cd` of the command, and refuses when that directory, or the target below
-it, has a `.git` on its path. oh-my-pi's and OpenCode's guards run this check alone, as
+directory is inside an existing working tree.** A `cd` outside the agent's working directories
+is reset before the next call, so the command runs in the agent's root — a builder's worktree
+or another directory of the research tree — and leaves a repository there. The hook reads the
+payload's `cwd`, follows each `cd` of the command, and refuses when that directory, or the
+target below it, has a `.git` on its path. oh-my-pi's and OpenCode's guards run this check alone, as
 `sandbox-semantics.py --work-tree`: they have no sandbox, so the other shapes do not apply there.
 
 The first three are not expressible as a `permissions.deny` glob. The matcher sees no
@@ -41,7 +41,7 @@ no glob can name `$?` literally. The fourth needs a glob for each position of th
 among the flags, and a deny message cannot name the fix.
 
 **It fails open.** Any input it does not understand exits 0. The `$?` half duplicates a
-refusal the harness already makes, so failing open there loses only the message.
+refusal Claude Code already makes, so failing open there loses only the message.
 
 Test it without installing:
 
@@ -85,7 +85,7 @@ GIT_WRITES = {
 # `git` global options that consume the token after them.
 TAKES_VALUE = {"-C", "-c", "--git-dir", "--work-tree", "--exec-path", "--namespace"}
 
-# The `git` commands whose path arguments the harness screens, as (subcommand, action).
+# The `git` commands whose path arguments Claude Code screens, as (subcommand, action).
 # An argument after them that is not a flag and reads as a path outside the working
 # directory withdraws the exemption, so the command runs sandboxed and cannot create `.git`.
 PATH_SCREENED = {
@@ -134,7 +134,7 @@ SUBSTITUTED = "it holds a backtick or a `$(`"
 
 
 def substituted(command):
-    """True when the raw text holds what the harness reads as a command substitution."""
+    """True when the raw text holds what Claude Code reads as a command substitution."""
     return "`" in command or "$(" in command
 
 
@@ -256,7 +256,7 @@ def path_screened(heads):
 
 
 def work_tree(path):
-    """Return the root of the work tree that holds `path`, or None."""
+    """Return the root of the working tree that holds `path`, or None."""
     path = os.path.realpath(path)
     while True:
         if os.path.lexists(os.path.join(path, ".git")):
@@ -364,7 +364,7 @@ def part_head(tokens):
 
 
 def into_cwd(head, arguments, cwd):
-    """True for a `cd` to the working directory, which the harness drops before matching."""
+    """True for a `cd` to the working directory, which Claude Code drops before matching."""
     if head != "cd" or len(arguments) != 1 or not cwd:
         return False
     target = os.path.expanduser(os.path.expandvars(arguments[0]))
@@ -393,7 +393,7 @@ def exposed(command, cwd):
     classified = top_level(command, cwd)
     if classified is None:
         # Text that does not parse, such as a body with an apostrophe, fails open, except
-        # for a substitution behind a leading `gh` or `glab`: the harness sandboxes that
+        # for a substitution behind a leading `gh` or `glab`: Claude Code sandboxes that
         # whatever the rest of the text holds.
         words = command.split(None, 1)
         if words and words[0] in ("gh", "glab") and substituted(command):
@@ -432,7 +432,7 @@ def main():
         return 0
     cwd = payload.get("cwd") if isinstance(payload.get("cwd"), str) else None
 
-    # `--work-tree`: only the work-tree check, for oh-my-pi and OpenCode, which have no sandbox
+    # `--work-tree`: only the working-tree check, for oh-my-pi and OpenCode, which have no sandbox
     # for the other four shapes to describe.
     if sys.argv[1:] == ["--work-tree"]:
         classified = top_level(command, cwd) if "git" in command else None

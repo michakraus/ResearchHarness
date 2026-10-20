@@ -10,7 +10,7 @@ leaves it:
   harness.yml                 the approval mode and `bash.patterns`, from the settings template,
                               `modelRoles.default` from the `models` of models.toml, and an empty
                               `retry.fallbackChains` entry for each model of an agent or a seat
-                              but one whose config.yml chain only switches the provider
+                              except one whose config.yml chain only switches the provider
                               (render_config, load_models): an overlay that oh-my-pi reads when
                               `PI_CONFIG_FILES` names it (`overlay_warning`)
   models.yml                  the providers of providers.toml beside the profile
@@ -48,7 +48,7 @@ outside the grammar of `render_rule` exits 2. The model reads a skill through `s
 
 THE MODES. `tools.approvalMode: yolo` runs every call without a prompt; a `deny` pattern still
 refuses, a `prompt` pattern still asks, and both run before the mode is read. oh-my-pi runs every
-subagent in `yolo` anyway. `tools.approval.edit` and `write` are `allow`; the guard extension
+sub-agent in `yolo` anyway. `tools.approval.edit` and `write` are `allow`; the guard extension
 refuses the paths of the template's Edit denies, and those of its Edit asks, which it cannot ask
 for: it tells the model to ask the user in chat. `tools.approval.eval` is `deny`: `bash.patterns`
 does not reach the `eval` tool, which can spawn a shell.
@@ -57,9 +57,9 @@ THE PATTERNS are the template's Bash entries, rendered with the profile: every `
 then every `ask` as `prompt`, then every `allow` as `allow`, each list in the template's order. Claude
 Code resolves by category, deny before ask before allow; oh-my-pi takes the first rule that
 matches, so this order keeps Claude Code's precedence. oh-my-pi's glob has one wildcard, `*`, which
-matches any text, as Claude Code's does. Two forms of Claude Code's have no direct glob: the prefix
-suffix `:*` renders to `*` after the same prefix, and a bare `Bash` to `*`; `bash_patterns` lists
-each such entry.
+matches any text, as Claude Code's does. Two forms of Claude Code's have no direct glob: the
+suffix `:*` of a prefix rule renders to `*` after the same prefix, and a bare `Bash` to `*`;
+`bash_patterns` lists each such entry.
 `deny` and `prompt` also match each segment of a compound command, and `allow` only a whole
 command, so no rule is split, and `bash.allowCompoundCommands` stays off. The rules of OMP_LAST
 follow: they ask for a command that matches no rule of the template, which Claude Code asks for
@@ -80,10 +80,8 @@ empty chain: that chain switches the account, not the model, and the session kee
 agent shares its model. The install reads config.yml for this (config_chains), so a changed chain
 there takes effect at the next install. oh-my-pi merges a mapping of the overlay into
 config.yml's key by key (`config/settings.ts`), so a chain that config.yml gives any other model
-or role stays.
-The overlay opts no foreign
-configuration source in (`enabledProviders`), so oh-my-pi imports neither ~/.claude.json nor
-OpenCode's MCP servers.
+or role stays. The overlay enables no foreign configuration source (`enabledProviders`), so
+oh-my-pi imports neither ~/.claude.json nor OpenCode's MCP servers.
 
 THE OVERLAY. config.yml is oh-my-pi's own: its setup and its settings panel write it, and it
 rewrites the whole file as YAML, with keys such as `setupVersion` and `theme`. The install never
@@ -93,8 +91,10 @@ directory's `.env` into the environment before (`utils/src/env.ts`). So `PI_CONF
 `.env` names harness.yml, and the harness's keys hold over what oh-my-pi writes. The install warns
 when neither the environment nor the `.env` names it; it never writes the `.env`, which holds the
 user's keys. oh-my-pi has no `env` setting either, so the install warns, with the lines, when
-neither sets a shell variable of the settings template's `env` (`env_warning`). harness.yml is JSON below a comment header: JSON is YAML, and the cases read it back
-with the standard library.
+neither sets a shell variable of the settings template's `env` (`env_warning`).
+
+harness.yml is JSON below a comment header: JSON is YAML, and the cases read it back with the
+standard library.
 """
 
 import json
@@ -247,7 +247,7 @@ def same_model(model, chain):
 def render_config(profile, models, chains=None):
     """The text of the overlay OVERLAY, with the settings template rendered with `profile`,
     `modelRoles.default` the model of DEFAULT_TIER in `models`, load_models' tables, and an empty
-    fallback chain for each model of agent_models but one whose chain in `chains`, config.yml's
+    fallback chain for each model of agent_models except one whose chain in `chains`, config.yml's
     (config_chains), only names the same model through another provider."""
     chains = chains or {}
     permissions = json.loads(profile_module.render_file(SETTINGS, profile))["permissions"]
@@ -606,7 +606,7 @@ def overlay_warning(agent):
 
 
 def env_warning(agent):
-    """[(line, …)]: a warning when a variable of the settings template's `env`, but one that
+    """[(line, …)]: a warning when a variable of the settings template's `env`, except one that
     configures Claude Code itself (`CLAUDE_CODE_*`), is set neither in the environment of the install
     nor in the `.env` of the agent directory `agent`, with the lines that the `.env` needs; [] when
     each is set. oh-my-pi has no `env` setting, and its `bash` calls inherit the environment into

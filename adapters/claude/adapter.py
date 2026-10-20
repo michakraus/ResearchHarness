@@ -10,70 +10,86 @@ THE LAYER. `harness install` installs into ~/.claude/:
   the tree instructions, **        -> ~/.claude/**          (the same relative path; not README.md)
   the stamp                        -> ~/.claude/.harness-install.json
 
-The Claude Code layer has these sources: the five neutral directories agents/, skills/, rules/,
-instructions/ and commands/, adapters/claude/ and hooks/ in this repository, and the tree
-instructions, the private directory that the profile key `tree_agents` names. Each neutral
-directory installs at its own path below ~/.claude/, adapters/claude/ at the top of it, and the
-tree instructions mirror the layout of ~/.claude/. The code of this adapter, adapter.py, and
-fixtures/ of adapters/claude/ are not sources. A file is copied byte for byte, unless
-CLAUDE_TEMPLATES lists its installed path; a template is rendered with the profile. An agent of
-agents/ and a SKILL.md of skills/ are copied with three changes (`render_source`): the tier of
-`model:` becomes its Claude Code model from the [claude] table of models.toml (`load_models`),
-each `tools:` item its Claude Code name from TOOLS, and a `cacheTtl:` line moves below a new
-`experimental:` line, the one key from which Claude Code reads an agent's TTL. A hook keeps
-its source's mode, and every other file is installed 0644. A name that starts with `.`, and
-__pycache__, is not a source. A file below agents/ or hooks/ in the tree instructions is not
-installed: agents and hooks install from this repository only, so each such file is a SKIP line,
-not counted as a change. Before anything is written, it exits 2 on a missing `tree_agents` key, on a
-value that is not the absolute path of a directory, on a source that holds the Claude Code
-settings, a symlink, an entry that is neither a file nor a directory, or a directory or file
-that cannot be read, on a file of adapters/claude/ below a directory that a neutral directory or
-hooks/ installs, on a path that two sources hold (compared with case and Unicode form
-folded, on every platform, as the default macOS volume compares them), on an installed path, or
-a directory above one, that is a symlink, and on an installed path that is not a readable file
-below directories. An installed file with no source, below a top-level directory that the layer
-writes into, is reported as EXTRA with its removal command; skills/synced/ and the hidden names
-are not searched, and a directory there that cannot be read exits 2, before anything is
-written. The Claude Code settings, ~/.claude/settings.json, are the first file of the layer, so
-that a new deny rule is in place before the files it protects: the settings template rendered with
-the profile, with the network rules of settings/network.toml and its overlay (`network.py`), replaces
-the sections `permissions`, `hooks`, `sandbox` and `modelSettings` (OWNED),
-each other key of the template that the file lacks is added, every other key stays as
-the app and the user wrote it, the old file is kept as a backup, and the dry run prints the
-unified diff of those sections and keys after the file's line (`settings_file`). A key of the
-template that the user removes comes back at the next install; another value in the file stays.
-A settings file that
-cannot be merged exits 2 before anything is written. The permission rules of the other settings
-files of the research tree are a warning (`stray_warnings`); those files are read, never written.
-It neither reads nor writes ~/.claude.json. After the layer, it writes the stamp: the sources and
-the digest over their files, which the `SessionStart` hook hooks/install-drift.py computes again at each session start and
-compares, so that a session warns when the installation is behind the sources. The digest is that
-hook's own function, over the paths, the modes and the source bytes of the plan that the apply
-installs, before `render_source` rewrites an agent or a skill, not a commit, so an uncommitted
-edit that the apply installed counts, and a source edited while the apply runs is drift; an edit
-of the [claude] table is no drift. A stamp that differs is a change like any installed file.
+Sources. The layer reads the five neutral directories agents/, skills/, rules/, instructions/
+and commands/, and adapters/claude/ and hooks/ of this repository. It also reads the tree
+instructions: the private directory that the profile key `tree_agents` names. Each neutral
+directory installs at its own path below ~/.claude/, and adapters/claude/ at the top of it. The
+tree instructions mirror the layout of ~/.claude/. These are not sources: the code of this
+adapter, adapter.py, and fixtures/ of adapters/claude/, a name that starts with `.`, and
+__pycache__. A file below agents/ or hooks/ of the tree instructions is not installed, because
+agents and hooks install from this repository only. Each such file is a SKIP line and does not
+count as a change.
 
-THE TRUST. `harness trust [--apply]` marks the research root and every git repository under it as
-trusted in `~/.claude.json`. Claude Code keys workspace trust on the git repository root, and a
-trusted parent folder does not cover a git repository nested inside it, so each repository raises
-its own trust dialog. A worktree uses its main checkout's trust, so `.worktrees/` needs no entry.
-A clone under `.scratch/` is a throwaway probe, so it gets no entry either.
-No setting pre-trusts a tree; the documented route is
-`projects["<root>"].hasTrustDialogAccepted = true`. The user runs it: a session cannot read or
-write `~/.claude.json`. Run it after a clone; a new repository is untrusted until then. A running
-Claude Code writes the file too, so run the dry run once more after `--apply`, and if keys are
-missing again, quit the app and apply again.
+Files. A file is copied byte for byte, unless CLAUDE_TEMPLATES lists its installed path; a
+template is rendered with the profile. An agent of agents/ and a SKILL.md of skills/ are copied
+with three changes (`render_source`):
 
-THE SETTINGS. Measure the permission-prompt surface of ~/.claude/settings.json against real
-traffic.
+  * the model tier of `model:` becomes its Claude Code model from the [claude] table of
+    models.toml (`load_models`);
+  * each `tools:` item becomes its Claude Code name from TOOLS;
+  * a `cacheTtl:` line moves below a new `experimental:` line, the only key from which Claude
+    Code reads the TTL of an agent.
 
-The question every settings round has to answer is "how many prompts does this actually
-cost, and which commands are they" — and until now that was counted by hand, at least
-seven times. This module is the instrument.
+A hook keeps the mode of its source. Every other file is installed with mode 0644.
 
-It reads the session transcripts under ~/.claude/projects/, splits every Bash command
-into the segments the permission matcher evaluates, and classifies each one exactly as
-the harness does: deny, then ask, then allow, then the sandbox auto-allow.
+Refusals. The install exits with status 2, before anything is written, on a wrong `tree_agents`
+value, on a source that it cannot use, on a path that two sources hold, and on an installed path
+that it cannot write. The docstring of `plan` lists each case.
+
+Extra files. An installed file with no source, below a top-level directory that the layer
+writes into, is reported as EXTRA with its removal command. skills/synced/ and the hidden names
+are not searched. A directory there that cannot be read exits with status 2, before anything
+is written.
+
+Settings. The Claude Code settings, ~/.claude/settings.json, are the first file of the layer,
+so that a new deny rule is in place before the files it protects. The settings template is
+rendered with the profile and with the network rules of settings/network.toml and its overlay
+(`network.py`). The rendered template replaces the sections of OWNED: `permissions`, `hooks`,
+`sandbox` and `modelSettings`. Each other key of the template that the file lacks is added.
+Every other key stays as the app and the user wrote it. The old file is kept as a backup. The
+dry run prints the unified diff of those sections and keys after the line of the file
+(`settings_file`). A key of the template that the user removes comes back at the next install;
+another value in the file stays. A settings file that cannot be merged exits with status 2
+before anything is written.
+
+The install merges because the app rewrites settings.json at each change of model or effort in
+the UI. A `cp` of the proposal would revert each value set in the UI since the proposal last
+changed. `modelSettings` is owned all the same, so that the effort and the auto-compact window
+of each model come from the template, as those of the other frontends come from models.toml. An
+`/effort` or `/autocompact` in the UI holds until the next install, which shows it in its diff
+and replaces it. The merge reads the live file when it plans, so a change that the app writes
+between the plan and the write is lost. Run `--apply` while no session changes its model.
+
+The permission rules of the other settings files of the research tree give a warning
+(`stray_warnings`). The install reads those files and never writes them. It neither reads nor
+writes ~/.claude.json.
+
+Stamp. After the layer, the install writes the stamp: the sources and a digest over their
+files. The `SessionStart` hook hooks/install-drift.py computes the digest again at each session
+start and compares it, so that a session warns when the installation is behind the sources. The
+digest is a function of that hook, not a commit. It covers the paths, the modes and the source
+bytes of the plan that the apply installs, before `render_source` rewrites an agent or a skill.
+So an uncommitted edit that the apply installed counts, and a source edited while the apply runs
+is drift. An edit of the [claude] table is no drift. A stamp that differs is a change, like any
+installed file.
+
+THE TRUST. `harness trust [--apply]` marks the research root and every git repository under it
+as trusted in `~/.claude.json`. Claude Code keys workspace trust on the root of the git
+repository. A trusted parent folder does not cover a git repository nested inside it, so each
+repository raises its own trust dialog. A worktree uses the trust of its main checkout, so
+`.worktrees/` needs no entry. A clone under `.scratch/` is a throwaway probe, so it gets no entry
+either. No setting pre-trusts a tree; the documented route is
+`projects["<root>"].hasTrustDialogAccepted = true`. The user runs the verb, because a session
+cannot read or write `~/.claude.json`. Run it after a clone: a new repository is untrusted until
+then. A running Claude Code writes the file too. So run `harness trust` again after `--apply`,
+and if keys are missing again, quit the app and apply again.
+
+THE SETTINGS. The `settings` verbs measure ~/.claude/settings.json against real traffic. They
+count the permission prompts that a settings file causes, per command.
+
+They read the session transcripts under ~/.claude/projects/. They split each Bash command into
+the segments that the permission matcher evaluates. They classify each segment as Claude Code
+does: deny, then ask, then allow, then the sandbox auto-allow.
 
     harness settings surface [--settings F] [--days N] [--head N]
     harness settings compare OLD NEW [--days N]
@@ -81,41 +97,29 @@ the harness does: deny, then ask, then allow, then the sandbox auto-allow.
     harness settings twins [--settings F] [--list allow|ask|deny]
 
 The proposal is a template: `{home}`, `{org}` and the other placeholders take their values
-from the private profile (`harness --profile F`). Every command renders a file that holds a
-placeholder before it reads it, and generates its network rules from settings/network.toml and
+from the private profile (`harness --profile F`). Every verb renders a file that holds a
+placeholder before it reads it. It generates the network rules from settings/network.toml and
 the overlay beside the profile.
 
 `twins` emits the `git -C * <sub>` patterns for a `git` rule set. `-C` precedes the
-subcommand, so `Bash(git status *)` never matches `git -C /path status`; the twin has to
-go in the same list as its plain form or the flag changes a verdict.
+subcommand, so `Bash(git status *)` never matches `git -C /path status`. The twin goes in the
+same list as its plain form; otherwise the flag changes a verdict.
 
-`harness install` merges the sections it owns -- permissions, hooks, sandbox, modelSettings --
-onto the live file, and its dry run shows what such a merge would change. It merges because the
-app rewrites settings.json on every UI model or effort change, so a `cp` of the proposal
-reverts whatever was set in the UI since the proposal was last touched. Measured twice in
-opposite directions on 2026-09-05. `modelSettings` is owned all the same, so that each model's
-effort and auto-compact window come from the template, as the other frontends' come from
-models.toml: an `/effort` or `/autocompact` in the UI holds until the next install, which shows it
-in its diff and replaces it. The merge reads the live file when it plans: a change that the
-app writes between the plan and the write is lost, so run `--apply` with no session changing its
-model.
+Caveats of the measurement:
 
-Caveats the numbers rest on, all measured 2026-09-05:
-
-  * The matcher expands nothing — no variables, no ~, no symlinks. `$TMPDIR/x` and
+  * The matcher expands nothing: no variables, no ~, no symbolic links. `$TMPDIR/x` and
     `/tmp/claude-<pid>/x` are different strings and need different patterns.
-  * `autoAllowBashIfSandboxed` is on, so a segment matching no rule is auto-approved
-    unless it is led by one of the sandbox-excluded commands, which fall through to
-    ordinary handling and therefore prompt. That set is read from the settings file
-    being analysed rather than hardcoded here — it was hardcoded as (git, gh, ps) until
-    2026-09-08, and went stale the moment `glab` joined it.
-  * An `ask` prompts in `default` mode but routes to the auto-mode classifier in `auto`.
-    This script counts the gate, not what a classifier did with it.
-  * `rule_matches` copies Claude Code 2.1.282's own Bash matcher, read from the binary on
-    2026-09-26, because `fnmatch` differs from it: a trailing `:*` is a prefix rule, not a
-    glob; `[`, `]` and `?` are literal; a lone trailing ` *` also matches the bare
-    command. Run `selftest` after a Claude Code update. Whether the Bash path collapses
-    whitespace or ignores case is not established; this models neither.
+  * `autoAllowBashIfSandboxed` is on, so a segment that matches no rule is approved
+    automatically, unless one of the commands excluded from the sandbox leads it. Those
+    commands fall through to the ordinary handling, so they prompt. The set is read from the
+    settings file under analysis, because a hardcoded copy goes stale when the list changes.
+  * An `ask` prompts in `default` mode, but goes to the auto-mode classifier in `auto`. This
+    script counts the gate, not what a classifier did with it.
+  * `rule_matches` reproduces the Bash matcher of Claude Code 2.1.282, read from its binary,
+    because `fnmatch` differs from it: a trailing `:*` makes a prefix rule, not a glob; `[`,
+    `]` and `?` are literal; a lone trailing ` *` also matches the bare command. Run
+    `selftest` after a Claude Code update. It is not established whether the Bash path
+    collapses whitespace or ignores case; this module models neither.
 """
 
 import argparse
@@ -296,7 +300,7 @@ ESCAPED_STAR, ESCAPED_BACKSLASH, GLOBSTAR = "\x00S\x00", "\x00B\x00", "\x00G\x00
 
 @functools.lru_cache(maxsize=None)
 def wildcard_regex(pattern):
-    """The regex Claude Code builds for a Bash wildcard rule (`q4` in 2.1.282)."""
+    """The regex Claude Code 2.1.282 builds for a Bash wildcard rule."""
     source, text, index = pattern.strip(), "", 0
     while index < len(source):
         if source[index] == "\\" and index + 1 < len(source) and source[index + 1] in "*\\":
@@ -327,7 +331,7 @@ def unescaped_star(pattern):
 
 
 def ends_in_star(pattern):
-    """Whether a pattern ends in an unescaped `*` (`mzn` in 2.1.282)."""
+    """Whether a pattern ends in an unescaped `*`."""
     text = pattern.rstrip()
     return text.endswith("*") and not escaped_at(text, len(text) - 1)
 
@@ -458,7 +462,7 @@ MATCHER_CASES = [
 
 
 def matcher_cases():
-    """The matcher against the recorded harness cases: (number of cases, number wrong)."""
+    """The matcher against the recorded Claude Code cases: (number of cases, number wrong)."""
     wrong = 0
     for rule, kind, segment, expected in MATCHER_CASES:
         got = rule_matches(segment, rule, kind)
@@ -658,9 +662,9 @@ def stray_warnings():
     escape.
 
     "Yes, don't ask again" writes its grant to the settings.local.json of the working
-    directory. Such a grant adds to every session started there and can undo a round's
-    narrowing: on 2026-10-03 `Bash(gh issue *)` in ~/Research/.claude/settings.local.json
-    let `gh issue comment -R <any owner>` run after round fifty-two had narrowed it.
+    directory. Such a grant adds to every session started there and can undo a narrowing of the
+    template: for example, a local `Bash(gh issue *)` allows `gh issue comment` again after the
+    template has narrowed it.
     """
     home = pathlib.Path.home()
     paths = [home / ".claude" / "settings.local.json"]
@@ -701,33 +705,56 @@ def run(args):
 
 def register(sub):
     register_settings(sub)
-    changing(sub.add_parser("trust", help="trust the research root and every repository in it for Claude Code")
+    changing(sub.add_parser("trust", help="trust the research root and every repository in it for Claude Code",
+                            description="Mark the research root and every git repository under it as trusted in "
+                                        "~/.claude.json, so that Claude Code shows no trust dialog. Without --apply "
+                                        "it lists the untrusted roots and exits 1 when there is one; --apply writes "
+                                        "~/.claude.json. Run it outside a session, which cannot read that file.")
              ).set_defaults(run=cmd_trust)
 
 
 def register_settings(sub):
-    top = sub.add_parser("settings", help="measure and check the Claude Code settings")
+    top = sub.add_parser("settings", help="measure and check the Claude Code settings",
+                         description="Measure and check the Claude Code settings against the Bash commands of the "
+                                     "recent session transcripts in ~/.claude/projects/. Each sub-verb is read-only: "
+                                     "it prints a report and changes no file.")
     top.set_defaults(run=run)
     sub = top.add_subparsers(dest="cmd", metavar="<sub>", required=True)
 
-    s = sub.add_parser("surface", help="prompt surface of one settings file")
-    s.add_argument("--settings", default=str(LIVE))
-    s.add_argument("--days", type=int, default=5)
-    s.add_argument("--head", type=int, default=0)
+    s = sub.add_parser("surface", help="prompt surface of one settings file",
+                       description="Count the segments of the recent Bash commands that reach a permission prompt "
+                                   "under one settings file, by leading word. Read-only.")
+    s.add_argument("--settings", default=str(LIVE), metavar="F",
+                   help="the settings file to measure (default: ~/.claude/settings.json)")
+    s.add_argument("--days", type=int, default=5, metavar="N",
+                   help="read the Bash commands of the last N days (default: 5)")
+    s.add_argument("--head", type=int, default=0, metavar="N",
+                   help="also print the N most frequent prompting segments (default: 0, none)")
     s.set_defaults(func=cmd_surface)
 
-    c = sub.add_parser("compare", help="prompt surface of two settings files, side by side")
-    c.add_argument("old")
-    c.add_argument("new")
-    c.add_argument("--days", type=int, default=5)
+    c = sub.add_parser("compare", help="prompt surface of two settings files, side by side",
+                       description="Count the segments of the recent Bash commands that reach a permission prompt "
+                                   "under two settings files, by leading word, side by side and with the difference. "
+                                   "Read-only.")
+    c.add_argument("old", help="the settings file before the change")
+    c.add_argument("new", help="the settings file after the change")
+    c.add_argument("--days", type=int, default=5, metavar="N",
+                   help="read the Bash commands of the last N days (default: 5)")
     c.set_defaults(func=cmd_compare)
 
-    m = sub.add_parser("selftest", help="check the matcher against the recorded harness cases")
+    m = sub.add_parser("selftest", help="check the matcher against the recorded Claude Code cases",
+                       description="Check the Bash matcher of this module against the recorded cases of Claude "
+                                   "Code. Read-only; exits 1 when a case fails. Run it after a Claude Code update.")
     m.set_defaults(func=cmd_selftest)
 
-    t = sub.add_parser("twins", help="emit the git -C twins of a rule set")
-    t.add_argument("--settings", default=str(LIVE))
-    t.add_argument("--list", choices=("allow", "ask", "deny"))
+    t = sub.add_parser("twins", help="emit the git -C twins of a rule set",
+                       description="Print the `git -C * <sub>` twin of each plain `git` rule of a settings file, as "
+                                   "lines for its rule lists: `Bash(git status *)` does not match "
+                                   "`git -C /path status`. Read-only.")
+    t.add_argument("--settings", default=str(LIVE), metavar="F",
+                   help="the settings file to read (default: ~/.claude/settings.json)")
+    t.add_argument("--list", choices=("allow", "ask", "deny"),
+                   help="print the twins of this list only (default: all three)")
     t.set_defaults(func=cmd_twins)
 
 
@@ -927,7 +954,16 @@ def plan(ctx):
     """The Claude Code layer of `harness install`, as the docstring of this module says. Its
     `rules` are [(installed path, source, bytes)] of each planned file below rules/, for oh-my-pi,
     and its `shared` the [(installed path, rendered bytes, mode)] of each file that
-    frontends.shared names, which OpenCode and oh-my-pi copy."""
+    frontends.shared names, which OpenCode and oh-my-pi copy.
+
+    Exits 2 before anything is written: on a missing `tree_agents` key, or a value that is not
+    the absolute path of a directory; on a source that holds the Claude Code settings, a symbolic
+    link, an entry that is neither a file nor a directory, or a directory or file that cannot be
+    read; on a file of adapters/claude/ below a directory that a neutral directory or hooks/
+    installs; on a path that two sources hold, compared with case and Unicode form folded on
+    every platform, as the default macOS volume compares them; on an installed path, or a
+    directory above one, that is a symbolic link; and on an installed path that is not a readable
+    file below directories."""
     root = pathlib.Path.home() / ".claude"
     # The settings go first, so that a new deny rule is in place before the files it protects.
     settings = settings_file(root, ctx.profile, render_profile.network_path(ctx.args.profile))

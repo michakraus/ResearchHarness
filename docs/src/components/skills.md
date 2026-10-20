@@ -5,17 +5,18 @@ A skill is a packaged set of instructions for the agent. Each skill is a directo
 frontmatter of `SKILL.md` holds the `name` and a `description`. The agent reads the description of
 each skill. It loads the whole skill when a request matches a description, or when the user types
 `/<name>`. A skill with `disable-model-invocation: true` loads only when the user types its name.
-The optional key `model:` names a tier, `large`, `medium` or `small`, which each frontend maps to
-a model ([The neutral vocabulary](../architecture.md#the-neutral-vocabulary)).
+The optional key `model:` names a model tier, `large`, `medium` or `small`, which each frontend
+maps to a model ([The neutral vocabulary](../architecture.md#the-neutral-vocabulary)).
 
 `harness install` copies each skill to `~/.claude/skills/<name>/`, and gives OpenCode and
 oh-my-pi each a copy of their own: `skills/<name>/` in OpenCode's configuration directory and in
 oh-my-pi's agent directory. In these copies, a path below `~/.claude/` names the same path in the
-frontend's own directory. Edit the source in `skills/`, not an installed copy. The description decides when a skill loads, so its words are the trigger words of
-the requests. `harness skill-triggers` tests which skill loads on a query. The queries of each
-skill are in `tests/skill-triggers/<name>.toml`: `load` lists the queries that must load the
-skill, and `near` lists near misses that must load another skill or none.
-[The triggering test of the skills](../daily-use.md#the-triggering-test-of-the-skills) tells how to run
+frontend's own directory. Edit the source in `skills/`, not an installed copy. The description
+decides when a skill loads, so its words are the trigger words of the requests.
+`harness skill-triggers` tests which skill loads on a query. The queries of each skill are in
+`tests/skill-triggers/<name>.toml`: `load` lists the queries that must load the skill, and `near`
+lists near misses that must load another skill or none.
+[The skill-trigger test](../daily-use.md#the-triggering-test-of-the-skills) tells how to run
 it. Run it after you change a description.
 
 The skills fall into four groups. `plan-parts`, `build-part` and `build-reviewed` plan work as
@@ -26,40 +27,42 @@ manuscripts. `wait-what` and `which-model` are small session helpers that the us
 ## `plan-parts`
 
 `plan-parts` plans work as parts. A part is one pull request: one branch, one worktree and one
-*Done when*. The skill writes the parts table, the collision map, a tier per part, and a spec for
+*Done when*, the part's acceptance criteria. The skill writes the parts table, the collision map,
+a part tier per part, and a spec for
 each part. It also writes the plan's own sections §V (rules for building and verifying) and §L
 (the loop for this plan), from the template `plan-sections.md` in the skill directory.
 
 It loads when the user wants a task planned or split into pull requests, asks what can run in
-parallel, asks which parts need a decision first, or wants a done-condition sharpened. It has two
+parallel, asks which parts need a decision first, or wants a *Done when* sharpened. It has two
 entry paths. On the forward path, it writes the table and the specs while the plan forms. On the
 backward path, it adds them to a finished task file and changes nothing else.
 
-The tier cell holds `decision`, `build`, `reviewed` or `direct`, with the reason beside it. Each
-spec holds *Done when*, *Decided at the edges*, *Tests catch* (the mutants that the tests must
-catch), *Files*, *Not in this part*, and *Traps*. Before a spec is final, one `reader` agent per
-part measures each fact that the spec states, with the brief `premise-check.md`, and the planner
-fixes each fact that it finds false. The skill runs on the `large` tier.
+The part-tier cell holds `decision`, `build`, `reviewed` or `direct`, with the reason beside it.
+Each spec holds *Done when*, *Decided at the edges*, *Tests catch* (the mutants that the tests
+must catch), *Files*, *Not in this part*, and *Traps*. Before a spec is final, one `reader` agent
+per part measures each fact that the spec states, with the brief `premise-check.md`, and the
+planner fixes each fact that it finds false. The skill runs on the `large` model tier.
 
-It runs nothing but its premise check and `spec-gate.py`, and it does not merge. Use `build-part` or `build-reviewed` to build a
-part.
+It runs nothing but its premise check and `spec-gate.py`, and it does not merge. Use `build-part`
+or `build-reviewed` to build a part.
 
 ## `build-part`
 
 `build-part` runs the next part of a task file through the builder-critic loop. A builder agent
-makes the work, and a separate critic agent with a fresh context judges it blind against the
-part's benchmark. The loop repeats until a critic passes the part on a green test suite.
+does the work, and a separate critic agent with a fresh context judges it blind against the
+part's *Done when*. The loop repeats until a critic passes the part on a green test suite.
 
 It loads on requests such as "build the next part", "build part D" or "run the open parts". It
 reads the parts table with `scripts/parts-table.awk`, not the whole task file. It checks each open
 pull request with `gh` and chooses a part that is open, unblocked and free of file collisions. A
-part of tier `build` in `Packages/` or `Experiments/` starts only after `scripts/spec-gate.py`
-passes. The frontmatter tier `medium` does not apply when the user types `/build-part`, so run the
-loop in a session on the medium model.
+part of part tier `build` in `Packages/` or `Experiments/` starts only after
+`scripts/spec-gate.py` passes. The frontmatter model tier `medium` does not apply when the user
+types `/build-part`, so run the loop in a session on the medium model.
 
-In round 1, two `julia-critic` agents judge the part beside a full-suite run. After each round, a
-fresh `julia-builder` fixes the blocking defects. A question inside the loop goes to the `advisor`
-agent, not to the user. A loop without convergence goes to the `arbitrator` agent. At the end, a
+In round 1, the first critic round, two `julia-critic` agents judge the part beside a full-suite
+run. After each round, a fresh `julia-builder` fixes the blocking defects. A question inside the
+loop goes to the `advisor` agent, not to the user. A loop that does not converge goes to the
+`arbitrator` agent. At the end, a
 builder opens the pull request. The skill writes only the `state` cell of the task file and the
 lines that record the loop.
 
@@ -71,20 +74,20 @@ without a parts table.
 
 ## `build-reviewed`
 
-`build-reviewed` builds one part whose tier cell is `reviewed`: a small change with a fast gate,
-such as a script, a tool or a check. One `part-builder` agent builds it, one blind `part-critic`
-agent judges it once, and the same builder gets at most one fix round.
+`build-reviewed` builds one part whose part-tier cell is `reviewed`: a small change with a fast
+gate, such as a script, a tool or a check. One `part-builder` agent builds it, one blind
+`part-critic` agent judges it once, and a new `part-builder` gets at most one fix round.
 
 It loads on requests such as "build this reviewed part" or "build the small part". Run it in a
 session on the large model, because the session decides the questions inside the part and reads
 the diff. The skill reads the parts table, checks the spec, and sets the `state` cell. After a
 FAIL, the session checks the fix itself with the critic's reproducers, the gate and the diff. A
-defect that the fix round does not close goes to the user. Before the finish, the session reads
-the whole diff against the *Done when*.
+defect that the fix round does not close goes to the user. Before the finish, the last builder
+round that opens the pull request, the session reads the whole diff against the *Done when*.
 
 It runs no advisor, no arbitrator and no second critic without the user. It does not merge, and it
-does not change a part's tier. Use `build-part` for a part of tier `build`, and `plan-parts` to
-choose a tier.
+does not change a part's part tier. Use `build-part` for a part of part tier `build`, and
+`plan-parts` to choose a part tier.
 
 ## `julia-structure`
 
@@ -108,7 +111,7 @@ use the `exhaustive-auditor` agent. For a whole-package sweep, use `julia-packag
 
 ## `julia-performance`
 
-`julia-performance` gives the rules for a Julia performance measurement that means something:
+`julia-performance` gives the rules for a Julia performance measurement that is valid:
 allocations, type stability, timings, and before-and-after comparisons.
 
 It loads for a question about the speed, the memory or the inference of Julia code, for example a
@@ -177,7 +180,7 @@ AutoMerge blocks a registry pull request. The procedure has six steps:
 
 AutoMerge blocks a breaking release without release notes. The skill does not use a
 `Register.yml` workflow, because that workflow has no release-notes input and bumps the version
-itself. The skill also tells how to check that a registration landed.
+itself. The skill also tells how to check that a registration succeeded.
 
 ## `math-verify`
 
@@ -202,7 +205,7 @@ markings are a review queue: a marked passage is one that the author has not acc
 
 It loads on requests such as "revise this paper", "address the referee report", "mark the changes"
 or "strip the change markings". It gives the preamble block with the macros `\fixed` and `\added`
-and their maths forms. A later pass adds a third colour, with `\rev`. A passage in the colour of
+and their math-mode forms. A later pass adds a third colour, with `\rev`. A passage in the colour of
 this pass waits for review, and one in an older colour is not accepted yet. An unmarked passage is
 accepted. The skill never strips a marker that it did not resolve, because to strip a marker is to
 accept it. `\markchangesfalse` typesets the document without colour.
@@ -225,7 +228,7 @@ The skill reads nothing and changes nothing itself.
 ## `which-model`
 
 `which-model` is a probe. It shows which model runs a typed slash command whose frontmatter names
-the `small` tier. The user types `/which-model`, and the agent never loads it on its own.
+the `small` model tier. The user types `/which-model`, and the agent never loads it on its own.
 
 The agent replies with exactly the sentence "which-model probe ran." and uses no tools. The skill
 reads nothing and changes nothing.

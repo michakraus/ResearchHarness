@@ -2,7 +2,7 @@
 
     harness render TEMPLATE    # print the rendered text
     harness get KEY            # print a profile value, one line per item
-    harness leaks              # the repository and its renders hold no leak string
+    harness leaks              # the repository and its renders hold no private string
     harness leaks --commits F  # nor does a line that a commit of F adds or its message, one SHA per line
     harness test               # the render's own cases, with every other module's
 
@@ -565,7 +565,7 @@ def message_lines(sha, repo=REPO):
 
 
 def commit_hits(shas, leak, pattern, allowed, repo=REPO):
-    """(where, string) for each leak string and tree name in a path or on a line that one of `shas`
+    """(where, string) for each private string and tree name in a path or on a line that one of `shas`
     adds, or on a line of its message."""
     return [(where, s) for sha in shas for where, line in added_lines(sha, repo) + message_lines(sha, repo)
             for s in [s for s in leak if s in line] + name_hits(line, pattern, allowed)]
@@ -973,7 +973,7 @@ def prepush_case(path=None):
 
 def prepush_branch_cases():
     """`.githooks/pre-push` for a push of a topic branch, on a fixture checkout whose
-    `refs/remotes/origin/main` holds a commit that adds the leak string and one that removes it.
+    `refs/remotes/origin/main` holds a commit that adds the private string and one that removes it.
     The stub of `bin/harness leaks` searches the tree at HEAD and each commit of `--commits` for
     the string. A clean branch passes, so the commits of origin/main are not sent; a branch whose
     new commit adds the string and whose next commit removes it is refused; a branch on the
@@ -1249,13 +1249,21 @@ def selftest():
 
 
 def register(sub):
-    r = sub.add_parser("render", help="print a template rendered with the profile")
-    r.add_argument("template")
+    r = sub.add_parser("render", help="print a template rendered with the profile",
+                       description="Print TEMPLATE with each placeholder `{key}` replaced by its profile value. "
+                                   "Read-only; a placeholder that the profile lacks exits with status 2.")
+    r.add_argument("template", help="the path of the template file")
     r.set_defaults(run=cmd_render)
-    g = sub.add_parser("get", help="print a profile value, one line per item of a list")
-    g.add_argument("key")
+    g = sub.add_parser("get", help="print a profile value, one line per item of a list",
+                       description="Print the profile value of KEY, one line per item of a list. Read-only; a key "
+                                   "that the profile lacks exits with status 2.")
+    g.add_argument("key", help="a key of the profile, such as `home`")
     g.set_defaults(run=cmd_get)
-    l = sub.add_parser("leaks", help="search the repository and its renders for the leak list")
+    l = sub.add_parser("leaks", help="search the repository and its renders for the private strings of the profile's `leak` list",
+                       description="Search the tracked files of this repository for the private strings of the "
+                                   "profile's `leak` list and for the names of the research tree, and the templates, "
+                                   "rendered with the dummy profile, for the private strings. Read-only; exits 1 on "
+                                   "a hit.")
     l.add_argument("--commits", metavar="FILE",
                    help="also search the paths and lines that each commit of FILE adds, and its message, "
                         "one SHA per line")

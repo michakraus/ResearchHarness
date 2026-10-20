@@ -1,19 +1,19 @@
-# The model tables of a ResearchHarness installation: which model each harness runs for each
+# The model tables of a ResearchHarness installation: which model each frontend runs for each
 # agent. Copy this file to ~/.config/research-harness/models.toml, beside the profile, and fill it
-# in. `harness install` finds it as `--models F`, else $RESEARCH_HARNESS_MODELS, else beside the
-# profile that `--profile` or the default names. No template names these keys, and
+# in. `harness install` finds it as `--models F`, otherwise $RESEARCH_HARNESS_MODELS, otherwise
+# beside the profile that `--profile` or the default names. No template names these keys, and
 # `harness render` does not read this file.
 #
 # An agent's `model:` names a tier, `large`, `medium` or `small`. Claude Code has its own table of
 # the tiers, [claude]. OpenCode and oh-my-pi share every other table, so that their agents run on
-# the same models; [opencode] and [omp] hold only where one of them differs. A table with a tier's
-# old name, `opus`, `sonnet` or `haiku`, stops the install and names the rename.
+# the same models; [opencode] and [omp] hold only the keys where one of them differs. A table
+# with a tier's old name, `opus`, `sonnet` or `haiku`, stops the install and names the rename.
 
 # The Claude Code model of each tier, written as the `model:` of the installed agent or skill.
-# All three tiers are required. A model is a letter, then letters, digits and . _ - [ ], written
-# as it is; any other model, a Bedrock or a Vertex model ID say, is written double-quoted, so that
-# YAML reads it as written. A model holds no control character and is no word that YAML reads as
-# a boolean or null. Claude Code reads none of the tables below.
+# All three tiers are required. Write a model name that starts with a letter and holds only
+# letters, digits and . _ - [ ] as it is. Quote any other name, for example a Bedrock or Vertex
+# model ID, so that YAML reads it as written. A model name holds no control character and is no
+# word that YAML reads as a boolean or null. Claude Code reads none of the tables below.
 [claude]
 large = "opus"
 medium = "sonnet"
@@ -66,7 +66,7 @@ julia-critic = [
 # --- Where one frontend differs ------------------------------------------------------------------
 
 # [opencode] and [omp] hold the same sub-tables as above. Each key replaces the shared one for that
-# frontend alone; a key it does not name stays shared. Here oh-my-pi runs another small model, as
-# when the shared one answers only OpenCode.
+# frontend alone; a key it does not name stays shared. Here oh-my-pi runs another small model, for
+# example when only OpenCode can reach the shared model.
 [omp.models]
 small = "provider-d/small-model"

@@ -1,29 +1,29 @@
 # Dependencies
 
 The harness calls the tools below. A tool is required when a verb, a [hook](concepts.md#hook), the
-pre-push gate, CI or an installed git hook calls it. An optional tool serves one
+pre-push hook, CI or an installed git hook calls it. An optional tool serves one
 [frontend](concepts.md#frontend) or one job; the `used for`
-column also says what stops without it. The minimum is the floor that the code checks, that CI
-pins, that `[compat]` sets or that a release note names for a feature the code uses; each floor
-names its source. Where no floor exists, the cell gives the version that the harness is tested
+column also says what stops without it. Each minimum comes from one source, which the cell
+names: a check in the code, a CI pin, a `[compat]` entry, or the release note of a feature that
+the code uses. Where no minimum exists, the cell gives the version that the harness is tested
 with.
 
 The tools are in three tables. *Generic tools* are the required tools that serve any language.
 *Julia and its packages* are the tools that only Julia code needs; in this table, Kaimon and
-juliaup are optional, as their rows say. *Optional* are the other optional tools. Below the tables,
-[What each tool does](#what-each-tool-does) says what each tool does, why the harness needs it,
-and where the harness calls it.
+juliaup are optional, as their rows say. *Optional* lists the other optional tools. Below the
+tables, [What each tool does](#what-each-tool-does) says what each tool does, why the harness
+needs it, and where the harness calls it.
 
 ## Generic tools
 
 | tool | minimum | used for |
 |:--|:--|:--|
-| Python | ≥ 3.11, the check in `bin/harness` | runs the `harness` command, the guard hooks and the pre-push gate |
-| git | tested with 2.54.0 | reads and pushes the repositories of the tree, makes the worktrees of Claude Code, and clones the pushed commit for the pre-push gate |
+| Python | ≥ 3.11, the check in `bin/harness` | runs the `harness` command, the guard hooks and the pre-push hook |
+| git | tested with 2.54.0 | reads and pushes the repositories of the tree, makes the worktrees of Claude Code, and clones the pushed commit for the pre-push hook |
 | gh | tested with 2.102.0 | protects the default branch of each repository on GitHub, in `harness ci-protection` |
-| gitleaks | ≥ 8.21, the check in `.githooks/pre-push` | finds secrets in the commits of a push, in the pre-push gate and in CI; needed only to push to the harness, so `harness doctor` gives a `WARN`, not a `FAIL`, without it |
+| gitleaks | ≥ 8.21, the check in `.githooks/pre-push` | finds secrets in the commits of a push, in the pre-push hook and in CI; needed only to push to the harness, so `harness doctor` gives a `WARN`, not a `FAIL`, without it |
 | Node.js | ≥ 20.16 (20.x), ≥ 22.3, for `process.getBuiltinModule`, as the API documentation says: <https://nodejs.org/api/process.html#processgetbuiltinmoduleid> | loads the guard extensions of oh-my-pi and OpenCode in the hook probe of `harness test`, and builds the documentation site with npm and VitePress |
-| shellcheck | tested with 0.11.0 | checks the shell scripts, in the pre-push gate and in CI |
+| shellcheck | tested with 0.11.0 | checks the shell scripts, in the pre-push hook and in CI |
 | actionlint | ≥ 1.7.12, the CI pin in `.github/workflows/test.yml` | checks the GitHub workflow files, in CI |
 | timeout | tested with 9.12 | stops `fatou lint` in the installed pre-commit hook after 60 seconds |
 | rsync | tested with 3.5.1 | copies a package without its `.git` directory, for the test runner and the mutation tests |
@@ -59,7 +59,7 @@ Kaimon and juliaup can stay out.
 
 | tool | minimum | used for |
 |:--|:--|:--|
-| Claude Code | tested with 2.1.295 | reads the layer that `harness install` writes into `~/.claude/`, and runs the triggering test of the [skills](concepts.md#skill); without it, neither happens |
+| Claude Code | tested with 2.1.295 | reads the layer that `harness install` writes into `~/.claude/`, and runs the skill-trigger test, which checks which [skill](concepts.md#skill) loads on a query; without it, neither happens |
 | OpenCode | tested with 2.0.26 | reads the configuration that `harness install` writes into `~/.config/opencode/`; without it, nothing reads that configuration |
 | oh-my-pi | tested with 18.8.6 | reads the configuration that `harness install` writes into `~/.omp/agent/`; without it, nothing reads that configuration |
 | RTK | tested with 0.51.0 | shortens the output of shell commands in OpenCode; without it, the plugin passes each command unchanged |
@@ -72,7 +72,7 @@ The tables leave out the system tools: the POSIX shell utilities, such as `awk`,
 `curl`, `tar` and `sha256sum`. On Linux, the update job `julia-update.jl` calls `lsof`,
 `systemctl` and `notify-send` in place of the macOS tools, and finds each on the `PATH`. Without
 `lsof` its server check fails; without `notify-send` it writes the log line only. On Linux, the
-[sandbox](concepts.md#sandbox) of Claude Code needs bubblewrap, `bwrap`, and socat. The settings
+Claude Code [sandbox](concepts.md#sandbox) needs bubblewrap, `bwrap`, and socat. The settings
 template sets `failIfUnavailable`, so without them Claude Code does not start.
 
 ## What each tool does
@@ -86,7 +86,7 @@ The sections follow the order of the tables.
 Python is the language of the `harness` command, the guard hooks and the hook probe. The
 command uses the standard library only, so no package must be installed.
 
-Every verb runs on Python. The pre-push gate runs `bin/harness test` on `python3` and on
+Every verb runs on Python. The pre-push hook runs `bin/harness test` on `python3` and on
 `python3.11`, and CI runs it on Python 3.11 and the latest 3.x. The guard hooks are Python
 scripts, which Claude Code, OpenCode and oh-my-pi call before a [tool call](concepts.md#tool-call).
 
@@ -95,8 +95,9 @@ tables are TOML, and
 `tomllib` is in the standard library from 3.11. A shell script cannot parse TOML or JSON safely,
 and a compiled tool needs a build step on each machine.
 
-Call sites: every verb (`bin/harness`); the pre-push gate (`.githooks/pre-push`, also for
-`python3.11`, which the gate skips when it is missing, because CI job `python` runs Python 3.11);
+Call sites: every verb (`bin/harness`); the pre-push hook (`.githooks/pre-push`, also for
+`python3.11`, which the hook skips when it is missing, because the CI job `python` runs Python
+3.11);
 the guard hooks, which oh-my-pi calls (`adapters/omp/guards.ts`).
 
 ### git
@@ -106,13 +107,13 @@ git is the version control system. Each repository of the research tree is a git
 The verbs that work across the tree use git: `harness githooks` reads each repository's
 configuration, `harness push-all` pushes each repository, and `harness leaks --commits` reads the
 commits of a push. The hook `hooks/worktree.py` makes the worktrees of Claude Code, and the
-pre-push gate clones the pushed commit and tests it.
+pre-push hook clones the pushed commit and tests it.
 
 The harness needs git because its work is on git repositories: the hooks, the commits and the
-pushes are git's own objects. No other tool reads them.
+pushes are git concepts. No other tool reads them.
 
 Call sites: the verbs (`lib/harness/githooks.py`, `lib/harness/profile.py`); the hook
-`hooks/worktree.py`; the pre-push gate (`.githooks/pre-push`).
+`hooks/worktree.py`; the pre-push hook (`.githooks/pre-push`).
 
 ### gh
 
@@ -131,7 +132,7 @@ Call site: `harness ci-protection` (`lib/harness/protection.py`).
 gitleaks finds secrets in text: tokens, keys and other values with a known shape. It reads a
 directory, the commits of a git repository, or standard input.
 
-The pre-push gate runs gitleaks over the commits that a push sends, over their messages and over
+The pre-push hook runs gitleaks over the commits that a push sends, over their messages and over
 the tree of the pushed commit. The CI job `leaks` does the same with gitleaks 8.30.1 at a fixed
 checksum. The configuration `.gitleaks.toml` adds a pattern for home paths.
 
@@ -143,14 +144,14 @@ and `stdin` commands
 first with several allowlists for one pattern, `[[rules.allowlists]]`, which `.gitleaks.toml` uses
 ([release note](https://github.com/gitleaks/gitleaks/releases/tag/v8.21.0)).
 
-Call sites: the pre-push gate (`.githooks/pre-push`); CI job `leaks`, which pins 8.30.1.
+Call sites: the pre-push hook (`.githooks/pre-push`); the CI job `leaks`, which pins 8.30.1.
 
 ### Node.js
 
 Node.js runs JavaScript outside a browser.
 
 `harness test` runs the hook probe, which loads the guard extension of oh-my-pi and the OpenCode
-plugins under Node.js and checks their decisions. A missing `node` is a wrong case of the probe.
+plugins under Node.js and checks their decisions. Without `node`, a test case of the probe fails.
 
 The harness needs Node.js because these extensions are JavaScript, and their frontends run them
 in a JavaScript runtime. The plugins take the Node.js built-in modules from
@@ -168,28 +169,28 @@ docs build (`docs/package.json`, `.github/workflows/docs.yml`).
 shellcheck finds errors in shell scripts: a missing quote, an unset variable, a construct that
 does not work in the given shell.
 
-The pre-push gate and CI job `lint` run `shellcheck -S warning` over each tracked file with a sh
-or bash shebang, for example the git hooks, the hook `hooks/cc-status`, the status line script
-and `launchagents/claude-autocommit`. The gate
-skips shellcheck when it is missing, because CI runs it.
+The pre-push hook and the CI job `lint` run `shellcheck -S warning` over each tracked file with a
+sh or bash shebang, for example the git hooks, the hook `hooks/cc-status`, the status line script
+and `launchagents/claude-autocommit`. The pre-push hook skips shellcheck when it is missing,
+because CI runs it.
 
 The harness needs shellcheck because the git hooks run in every repository of the tree, and an
 error in a hook can let a commit through unchecked. The shell does not report most of these
 errors itself.
 
-Call sites: the pre-push gate (`.githooks/pre-push`); CI job `lint`.
+Call sites: the pre-push hook (`.githooks/pre-push`); the CI job `lint`.
 
 ### actionlint
 
 actionlint checks GitHub Actions workflow files: the syntax, the expressions and the shell
 scripts in the `run:` steps.
 
-CI job `lint` runs actionlint 1.7.12, at a fixed checksum, over `.github/workflows/`.
+The CI job `lint` runs actionlint 1.7.12, at a fixed checksum, over `.github/workflows/`.
 
 The harness needs actionlint because GitHub reports an error in a workflow only when the workflow
 runs. actionlint finds the error before the push.
 
-Call site: CI job `lint` (`.github/workflows/test.yml`).
+Call site: the CI job `lint` (`.github/workflows/test.yml`).
 
 ### timeout
 
@@ -227,7 +228,7 @@ the wiki lint.
 `harness install` instantiates the Julia environment of the scripts. `harness format` and
 `harness ci-protection` run Julia scripts. The installed git hooks run Julia to check the format,
 the Unicode form and the load of a package before a commit, and the test suite before a push to
-`main`. CI job `test` runs the Julia test files of the harness on Julia 1.13.
+`main`. The CI job `test` runs the Julia test files of the harness on Julia 1.13.
 
 The harness needs Julia because a tool that reads, runs or rewrites Julia code must parse it as
 Julia does. Only Julia's own parser and loader give that result.
@@ -235,7 +236,7 @@ Julia does. Only Julia's own parser and loader give that result.
 Call sites: `harness install` (`lib/harness/install.py`), `harness format`
 (`lib/harness/fmt.py`) and `harness ci-protection` (`lib/harness/protection.py`); the installed
 git hooks (`githooks/pre-commit`, `githooks/pre-push`, `githooks/pre-commit-wiki`); the pre-push
-gate (`.githooks/pre-push`), which skips it when it is missing, because CI job `test` runs the
+hook (`.githooks/pre-push`), which skips it when it is missing, because the CI job `test` runs the
 Julia tests.
 
 ### ExplicitImports, JSON, JuliaFormatter, JuliaSyntax, TestEnv and YAML
@@ -272,14 +273,14 @@ fatou is a linter and a language server for Julia code.
 
 The installed pre-commit hook runs `fatou lint` on the staged Julia files and prints its findings
 as advice. `mutate.jl` runs `fatou lint` to reject a mutant that uses an undefined name, and
-`fatou-lsp.jl` uses its language server. CI job `test` installs fatou 0.22.0 for the tests of
+`fatou-lsp.jl` uses its language server. The CI job `test` installs fatou 0.22.0 for the tests of
 `mutate.jl`.
 
 The harness needs fatou because it reports an undefined name from the source alone. Julia reports
 such a name only when the code runs.
 
-Call sites: the installed pre-commit hook (`githooks/pre-commit`); `scripts/mutate.jl`; CI job
-`test` (`.github/workflows/julia.yml`).
+Call sites: the installed pre-commit hook (`githooks/pre-commit`); `scripts/mutate.jl`; the CI
+job `test` (`.github/workflows/julia.yml`).
 
 ### Kaimon
 
@@ -292,7 +293,7 @@ server must restart. The oh-my-pi and OpenCode configurations hold its MCP entry
 The harness does not need Kaimon to run. Without it, the update job stops with an error, and an
 agent has no Julia session and no Kaimon tools.
 
-Call sites: the update job (`scripts/julia-update.jl`).
+Call site: the update job (`scripts/julia-update.jl`).
 
 ### juliaup
 
@@ -317,7 +318,7 @@ instructions, commands and hooks, and the permission settings of `~/.claude/sett
 `harness skill-triggers --apply` runs `claude -p` to measure which skill loads on a query.
 
 The harness does not need Claude Code to run. Without it, nothing reads the layer in
-`~/.claude/`, and the triggering test of the skills cannot run.
+`~/.claude/`, and the skill-trigger test cannot run.
 
 Call site: `harness skill-triggers --apply` (`lib/harness/skill_triggers.py`).
 
@@ -328,7 +329,7 @@ the harness configures.
 
 `harness install` writes the OpenCode configuration into `~/.config/opencode/`: the permission
 block, the agents, the plugins, the global [instruction file](concepts.md#instruction-file), and
-OpenCode's own copies of the instructions, the rules, the guard scripts and the skills.
+OpenCode's own copies of the instructions, the rules, the guard hooks and the skills.
 
 The harness does not need OpenCode to run. Without it, nothing reads that configuration.
 
@@ -351,7 +352,7 @@ Call site: `harness install` (`adapters/omp/adapter.py`).
 RTK (Rust Token Killer) rewrites shell commands so that their output uses fewer tokens: for
 example, it replaces `cat` with its own reader.
 
-The OpenCode plugin `rtk.ts` asks `rtk hook check` for the rewrite of each shell command.
+The OpenCode plugin `rtk.ts` asks `rtk hook check` to rewrite each shell command.
 
 The harness does not need RTK. Without it, the plugin passes each command unchanged, and the
 output of a command is longer.

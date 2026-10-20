@@ -41,8 +41,8 @@
 #   1  at least one finding at the failing severity
 #   2  the lint itself could not run
 #
-# `harness ci-protection` reads an exit status; so does a pre-commit hook. Do not make this script
-# print a verdict and exit 0.
+# The pre-commit hook `pre-commit-wiki` reads the exit status. Do not make this script print a
+# verdict and exit 0.
 #
 # WHAT IS NOT LINTED, AND WHY
 #
@@ -65,35 +65,21 @@
 #     `~/Research/.syncignore`". A dead path is sometimes the point of the sentence.
 #   * `orphan` — a page nothing links to is worth knowing about, not a fault.
 #
-# THREE CHECKS WERE WRITTEN AND REMOVED, EACH AFTER MEASURING THE CORPUS
+# DELIBERATELY ABSENT CHECKS
 #
-# **`date-in-prose`** demanded that an absolute date move into `verified:`. It fired 333 times, and
-# a sample showed roughly one in four was a page timestamp; the rest date a *measurement*, an
-# *observation* or a *changelog entry* — `Measured 2026-09-02, by probing each of the nine declared
-# entries` is this tree's own discipline, not decay. Narrowing it to lines that begin
-# `Verified|Measured|Checked <date>` left 27, and most of those were still dating a probe.
-#
-# **`frontmatter`** warned on every page without a YAML block: 160 of them. Adding an empty block
-# to all 160 would silence the warning and tell a reader nothing. Frontmatter is now **opt-in and
-# earned** — a page declares `verified:` and `depends_on:` when it wants a mechanical staleness
-# check — and the lint validates what is there rather than demanding that something be there.
+# Three checks are deliberately absent, because the corpus showed their findings were not defects:
+# `date-in-prose`, a required `frontmatter` block and a required `readme-alias`. Frontmatter is
+# opt-in: a page declares `verified:` and `depends_on:` when it wants a mechanical staleness check,
+# and the lint validates what is there.
 #
 # WHAT `verified:` MEANS, EXACTLY
 #
 # `verified: 2026-09-19` says **the declared dependencies held on that date** — the paths existed
 # and the anchors matched. It does **not** say the claim was re-derived or the scripts re-run.
 # That is the only reading the `stale` check can enforce, so it is the only one the key may carry.
-# Re-running a check is `checks:`, and running them is phase 4 of
-# `Tasks/Stop Knowledge going stale.md`, not this script.
+# Re-running a check is `checks:`. Running the checks is a separate task, not this script.
 #
-# **`readme-alias`** wanted every `README.md` to declare an alias so `[[…]]` to it would resolve.
-# These READMEs render on GitLab, where a YAML block shows, and Obsidian already resolves a
-# vault-relative `[[Notes/reviews/README]]`. The link form was the fix, not metadata.
-#
-# The pattern in all three: a check written from a policy, not from the corpus. Measure what a new
-# check would fire on before trusting it, and delete it when the corpus disagrees.
-#
-# `--strict` fails on warnings too. Do not turn it on before the backlog is cleared.
+# `--strict` fails on warnings too.
 
 # The harness's Julia environment, which `harness install --apply` instantiates from
 # Project.toml; first in LOAD_PATH, so no caller needs `--project`.

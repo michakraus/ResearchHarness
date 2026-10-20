@@ -23,8 +23,8 @@
 # A selection runs in one fresh process through `TestEnv`, which builds the test environment
 # outside the package directory, each file in its own module under a `@testset` of its label, and
 # each file timed once. A file's time is cold, compilation included, in the order of
-# `runtests.jl`. A run of the group `core` reports each `core` file above the 60 s of the convention
-# (D6); a named or `affected` run reports none, because its first file pays the compilation that
+# `runtests.jl`. A run of the group `core` reports each `core` file above the 60 s limit of the test
+# convention (rule D6 of test-layout.jl); a named or `affected` run reports none, because its first file pays the compilation that
 # the files before it pay in a `core` run. The report is advice: the exit status stays the tests'.
 # The run prints the load average at its start.
 # It runs with the `--check-bounds` that `Pkg.test()` of the same Julia uses — `yes` up to 1.12, the

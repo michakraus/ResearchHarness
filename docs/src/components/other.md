@@ -2,9 +2,9 @@
 
 This page describes the components that are neither agents, skills, hooks, scripts nor adapters:
 the background jobs, an agent workflow, the configuration files and the test queries of the skills.
-Most of them reach the user through a copy that the user makes once. `harness install` copies only
-`Project.toml` of this page. `harness render` prints a template of this page with the values of the
-profile.
+Most of them reach the user through a copy that the user makes once. Of the files of this page,
+`harness install` copies only `Project.toml`. `harness render` prints a template of this page with
+the values of the profile.
 
 The sections follow the purpose of the files:
 
@@ -29,11 +29,13 @@ them. `harness render launchagents/<name>` prints the rendered plist.
 `~/.claude/`, which must be a git repository. It commits `plans/` and `projects/*/memory/` only, and
 pushes the local `main` to the branch of `origin` that `CLAUDE_AUTOCOMMIT_BRANCH` names, `main`
 when the variable is unset. The plist and the unit set it from the profile key
-`autocommit_branch`: `main` on the machine whose memory is the template, a branch of its own on
-each other machine. Without that key, the profile key `template_host` gives it:
-[One profile for every machine](../profile.md#one-profile-for-every-machine). It stages each path by name and commits with a pathspec, so a file that
-another session staged stays staged. It skips a file that changed in the last 5 minutes, and refuses
-a rename or more than 20 deletions.
+`autocommit_branch`: `main` on the template host, and a branch of its own on each other machine.
+The template host is the machine whose Claude Code memory is the template for the other
+machines. Without the key `autocommit_branch`, the profile key `template_host` gives the branch:
+[One profile for every machine](../profile.md#one-profile-for-every-machine). The script stages
+each path by name and commits with a pathspec, so a file that another session staged stays
+staged. It skips a file that changed in the last 5 minutes, and refuses a rename or more than 20
+deletions.
 
 ```
 claude-autocommit [--dry-run] [--no-push] [--help]
@@ -57,10 +59,11 @@ A launch agent that keeps the Julia installation and the Kaimon server current. 
 scripts](scripts.md) describes what the script does.
 
 The job runs the installed copy and not the copy in `~/Research`, because a session can write
-`~/Research` and the job runs outside the sandbox. It sets `JULIA_PKG_USE_CLI_GIT=true`, so Pkg
-uses the `git` program, and a `PATH` for that `git`. It runs at a low priority, so it does not
-compete with an interactive Julia session. Its output goes to `~/Library/Logs/julia-update/`. On
-Linux, the script runs as the `systemd --user` unit `julia-update.service`, whose output goes to
+`~/Research` and the job runs outside the Claude Code sandbox. It sets
+`JULIA_PKG_USE_CLI_GIT=true`, so Pkg uses the `git` program, and a `PATH` for that `git`. It runs
+at a low priority, so it does not compete with an interactive Julia session. Its output goes to
+`~/Library/Logs/julia-update/`. On Linux, the script runs as the `systemd --user` unit
+`julia-update.service`, whose output goes to
 the journal: `journalctl --user -u julia-update.service`.
 
 The label is `<launchd_prefix>.julia-update`. Render the plist with
@@ -108,15 +111,15 @@ set `Persistent=true`, so a calendar start that the machine missed while it slep
 timer starts again. The units are `--user` units only. Their output goes to the journal:
 `journalctl --user -u <name>`. `julia-update.jl` restarts the server as `kaimon.service`.
 
-The jobs run outside the sandbox, so their `PATH` holds no directory that a session can write:
-each directory is one that the settings template keeps out of a session's writes, because no
-`allowWrite` entry covers it or a `denyWrite` entry names it, or is one of `/usr/bin`, `/bin`,
-`/usr/sbin`, `/sbin`, `/usr/local/bin` and `/opt/homebrew/bin`, and is not at or below `$TMPDIR`
-(also its real path), `/var/folders` or `/private/var/folders`, which the live sandbox lets a
-session write. `harness test` renders each unit and its plist with the example profile and checks
-all of this, through
-`units.py` of [the harness command](harness.md). CI renders each unit on `ubuntu-latest` and runs
-`systemd-analyze verify --user` on it. `harness leaks` renders them with the example profile.
+The jobs run outside the sandbox, so their `PATH` holds no directory that a session can write.
+Each directory is one that the settings template keeps out of a session's writes, because no
+`allowWrite` entry covers it or a `denyWrite` entry names it, or one of `/usr/bin`, `/bin`,
+`/usr/sbin`, `/sbin`, `/usr/local/bin` and `/opt/homebrew/bin`. No directory is at or below
+`$TMPDIR` (also its real path), `/var/folders` or `/private/var/folders`, which the live sandbox
+lets a session write. `harness test` renders each unit and its plist with the example profile and
+checks all of this, through `units.py` of [the harness command](harness.md). CI renders each
+unit on `ubuntu-latest` and runs `systemd-analyze verify --user` on it. `harness leaks` renders
+them with the example profile.
 
 ## `repo-drift.js`
 
@@ -134,7 +137,7 @@ Workflow({scriptPath: '<home>/Research/Harness/agent-workflows/repo-drift.js',
 The first stage runs one agent per repository, on a small model. It compares the two git hooks, the
 CI, dependabot, Documenter and TagBot files, and `codecov.yml` at the repository root with
 `Harness/githooks/`. It also reports `core.hooksPath` and whether `.gitignore` and `CHANGELOG.md`
-exist. A second stage reads each file that differs again, and confirms or overturns the finding.
+exist. A second stage reads each differing file again, and confirms or overturns the finding.
 The result names each repository that returned nothing. The script compares `TagBot.yml` in every
 repository, and `harness workflows` adds it only to a package, so its row "missing" in an
 experiment is expected.
@@ -203,8 +206,8 @@ The example of the model tables, `examples/models.toml`. An agent or a skill nam
 table, so that their agents run on the same models: the model of each tier, a model for one
 agent, the variants, the reasoning effort, the councils, which copy an agent onto other models,
 and the context limits. `[opencode]` and `[omp]` hold the same sub-tables, and each of their keys
-replaces the shared key for that frontend alone. A table that names a tier by an old name, `opus`, `sonnet` or `haiku`,
-stops `harness install` with exit 2.
+replaces the shared key for that frontend alone. When a table names a tier by an old name,
+`opus`, `sonnet` or `haiku`, `harness install` stops with exit status 2.
 
 Copy the file to `models.toml` beside the profile. `harness --models F` and
 `$RESEARCH_HARNESS_MODELS` name another path. Only `harness install` reads it. The test cases use
@@ -233,7 +236,7 @@ JuliaFormatter, JuliaSyntax, TestEnv and YAML.
 puts that environment on its load path. No `Manifest.toml` is committed.
 
 The scripts never use this file in place. A session can edit the checkout, and the update job runs
-outside the sandbox, so it must install only what the installed copy names.
+outside the sandbox, so the job must install only the packages that the installed copy names.
 [Dependencies](../dependencies.md#explicitimports-json-juliaformatter-juliasyntax-testenv-and-yaml) says what each package does.
 
 ## `fatou.toml`
@@ -296,20 +299,21 @@ It keeps the default rules of gitleaks, and adds the rule `home-path`: a path be
 `/Users/me` and `/home/example`. Every call of gitleaks passes `--ignore-gitleaks-allow`, so a
 `gitleaks:allow` comment has no effect.
 
-Fix a false positive in the text. A new allowlist entry needs the approval of the user and its own
-line in `CHANGELOG.md`. `harness leaks` finds the private strings of the profile, which gitleaks does
-not know. [Development](../development.md) describes both checks.
+Remove a false positive by a change of the text, not of the configuration. A new allowlist entry
+needs the approval of the user and its own line in `CHANGELOG.md`. `harness leaks` finds the
+private strings of the profile, which gitleaks does not know. [Development](../development.md)
+describes both checks.
 
 ## `tests/skill-triggers`
 
-The queries of the triggering test of the skills, one TOML file for each skill of `skills/`,
+The queries of the skill-trigger test, one TOML file for each skill of `skills/`,
 `tests/skill-triggers/<skill>.toml`. `harness skill-triggers` reads them.
 
 A skill that the model can load has `load`, 10 queries that must load it, and `near`, 5 queries
 that must not. Each `near` entry names the skill that the query belongs to, or `none`. A skill with
 `disable-model-invocation: true` has one `near` query and no `load`. A query must not start with
 `/`, and must not occur twice in one file. A `near` entry must not name the skill of its own file.
-Another count or form exits 2.
+On another count or form, `harness skill-triggers` exits with status 2.
 
 `fixtures/` holds recorded `stream-json` output of Claude Code sessions, with the private content
 removed, and some streams written by hand. The cases of `harness test` read them to check how a

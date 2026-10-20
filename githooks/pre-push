@@ -13,8 +13,8 @@
 # session use. That divergence is the reason a test suite must not run concurrently with another
 # heavy Julia job over the same packages.
 #
-# If you kill this hook, kill its Julia child too: an orphaned test process survives, and nine of
-# them (4-8 days old) had accumulated by 2026-08-31. See ~/Research/Packages/CLAUDE.md.
+# If you kill this hook, kill its Julia child too: an orphaned test process survives, and such
+# processes accumulate over days.
 
 # No `set -u`: macOS ships bash 3.2, whose handling of unset expansions differs from bash 4+.
 set -o pipefail

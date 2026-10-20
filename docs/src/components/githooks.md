@@ -5,8 +5,9 @@ push. When the hook exits with a status other than 0, git refuses the commit or 
 GitHub Actions workflow is a file that tells GitHub which jobs to run on a push or a pull
 request.
 
-The files of this page are in `githooks/` and `githooks/workflows/`. They are templates for the
-Julia repositories of the research tree, and a few scripts beside them. Two verbs of the
+The files of this page are in `githooks/` and `githooks/workflows/`. Most of them are templates
+for the Julia repositories of the research tree; the others are scripts beside them. Two verbs of
+the
 `harness` command install the templates into every repository below `Packages/` and
 `Experiments/` (see
 [The verbs for the whole research tree](../daily-use.md#the-verbs-for-the-whole-research-tree)):
@@ -36,7 +37,7 @@ This repository has a pre-push hook of its own, `.githooks/pre-push`; it is not 
 
 Stages 1 to 3 run on the staged `.jl` files only. Stage 0 reads `.githooks/test-layout.jl`, which
 `harness githooks` installs beside the hook; a missing copy blocks the commit. Stage 0 checks the
-working tree, not the index. The lint only warns, because `fatou lint` gives false findings. The
+working tree, not the index. The lint only warns, because `fatou lint` reports false positives. The
 NFC stage does not change a file; run `nfc.jl --apply` to fix one. A commit with no
 staged `.jl` file and no change below `test/` passes with no check. `git commit --no-verify` skips
 the hook.
@@ -64,11 +65,12 @@ stop the hook, stop its Julia process too. `harness push-all` runs this hook in 
 `Environment`, `Tasks`, `Bibliography` and `Library`. `harness wiki-lint-hook --apply` installs it
 into each as `.githooks/pre-commit`, and sets `core.hooksPath`.
 
-The hook runs `scripts/wiki-lint.jl --quiet` from `$RESEARCH_ROOT/Harness`, else
-`~/Research/Harness`, over all five trees. An ERROR in any tree blocks the commit, also an ERROR
-in another repository: the trees link to each other, so an edit here can break a link there. A
-warning does not block. A missing lint script, or no `julia` on the `PATH`, blocks too. The run
-takes about three seconds. No Julia repository uses this hook; it uses `pre-commit`.
+The hook runs `scripts/wiki-lint.jl --quiet` from `$RESEARCH_ROOT/Harness`, or from
+`~/Research/Harness` if `RESEARCH_ROOT` is not set, over all five trees. An ERROR in any tree
+blocks the commit, even an ERROR in another repository: the trees link to each other, so an edit
+here can break a link there. A warning does not block. A missing lint script, or no `julia` on
+the `PATH`, blocks too. The run takes about three seconds. No Julia repository uses this hook; it
+uses `pre-commit`.
 
 ## `nfc.jl`
 
@@ -84,8 +86,8 @@ julia --startup-file=no nfc.jl --apply src/x.jl    # rewrite just this one
 ```
 
 With no path, it checks every tracked file of the repository in the current directory that is
-valid UTF-8. Exit 0 when each checked file is NFC; 1 when one is not, or when a named file is
-not valid UTF-8. With `--apply`, exit 0 after the rewrite.
+valid UTF-8. The exit status is 0 when each checked file is NFC, and 1 when one is not or when a
+named file is not valid UTF-8. With `--apply`, the exit status is 0 after the rewrite.
 
 Normalisation can change a string literal. Before `--apply`, check what reads such a literal, for
 example a doctest. The `pre-commit` hook has its own copy of the check, and names this script for
@@ -105,7 +107,8 @@ julia --project=<pkg> explicit-imports.jl <PkgName>
 It prints the implicit imports, the names that a `using` brings in without a name list. Then it
 runs four checks and prints `ok` or `FAIL` for each: stale explicit imports, explicit imports
 through their owner, self-qualified access, and qualified access through the owner. It changes no
-file. Run it on Julia 1.11 or later, because only there are the ownership checks authoritative.
+file. Run it on Julia 1.11 or later, because the ownership checks are reliable only on that
+version.
 No hook, skill or agent calls it.
 
 ## `format-tree.jl`
@@ -195,16 +198,17 @@ condition stops it on every other issue comment.
 `workflows/codecov.yml` is the Codecov configuration. `harness workflows` copies it to
 `codecov.yml` at the root of each repository.
 
-It sets a threshold of 1 % on both the project status and the patch status. Without it, Codecov
-fails a pull request for any decrease of the coverage. So a real regression still fails, and a
-small drift does not. The coverage comes from one entry of the matrix of `CI.yml`.
+It sets a threshold of 1 % on both the project status and the patch status. Without the
+threshold, Codecov fails a pull request for any decrease of the coverage. With it, a real
+regression still fails, but a small drift does not. The coverage comes from one entry of the
+matrix of `CI.yml`.
 
 ## `workflows/dependabot.yml`
 
 `workflows/dependabot.yml` is the Dependabot configuration. `harness workflows` copies it to
 `.github/dependabot.yml` of each repository.
 
-Dependabot proposes, each week, a raise of the `[compat]` entries of the root `Project.toml`. It
+Each week, Dependabot proposes to raise the `[compat]` bounds of the root `Project.toml`. It
 does not update `test/Project.toml`, `docs/Project.toml` or the GitHub actions. Change the version
 of an action in the templates, so that the copies stay identical. The configuration ignores the
 standard libraries, whose bound stays at "1".
@@ -229,7 +233,8 @@ It checks these points:
 5. Each `uses:` names the expected major version of its action.
 
 It also checks that a repository of `docs_additions` keeps the body of `Documenter.yml`. It
-reports the repositories whose `doctest` job skips itself. Exit 1 when a repository deviates. It
+reports the repositories whose `doctest` job skips itself. It exits with status 1 when a
+repository deviates. It
 reads the profile for `docs_exceptions` and `docs_additions`.
 
 Run it after `harness workflows --apply`, and before a change to CI. `harness ci-protection

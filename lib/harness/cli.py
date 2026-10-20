@@ -51,7 +51,8 @@ def cmd_test(args):
 
 
 def modules():
-    """MODULES with the adapters after `install`."""
+    """The modules that register a verb or hold test cases (MODULES), with each adapter after
+    `install`."""
     return [MODULES[0], *frontends.load(), *MODULES[1:]]
 
 
@@ -72,7 +73,10 @@ def main(argv=None):
         # A module with no verb of its own; its cases run in `harness test`.
         if module not in (frontmatter, docs, units, script_cases, network, providers):
             module.register(sub)
-    sub.add_parser("test", help="run the harness's own test cases").set_defaults(run=cmd_test)
+    sub.add_parser("test", help="run the harness's own test cases",
+                   description="Run the harness's own test cases: the cases of each module and adapter, the hook "
+                               "probe and the contract sweep. It prints `<n> cases, <w> wrong` and exits 1 when a "
+                               "case fails.").set_defaults(run=cmd_test)
     args = ap.parse_args(argv)
     try:
         return args.run(args)

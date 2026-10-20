@@ -3,17 +3,18 @@
 The harness works in a research tree: one directory that holds your repositories and your notes.
 This page describes one such tree, the tree of the harness's author, as an example of how a user
 organises work around the harness. The overview figure of the
-[Introduction](concepts.md#the-parts-of-the-harness) shows its six directories: a library, a store
-of knowledge, the packages, the experiments, the projects and the papers. Your tree can have other
-directories and other names.
+[Introduction](concepts.md#the-parts-of-the-harness) shows its six directories: a library, a
+knowledge base, the packages, the experiments, the projects and the papers. Your tree can have
+other directories and other names.
 
 In the example, the tree is `~/Research`. The verbs of the `harness` command that look for
-repositories of the tree read its path from `$RESEARCH_ROOT`, else they use `~/Research`.
+repositories of the tree read its path from `$RESEARCH_ROOT`, or use `~/Research` if it is not
+set.
 
 Each section below says three things about one directory:
 
 - **Holds:** what the directory holds.
-- **Served by:** the components of the harness that work on it. Each name links its section in
+- **Served by:** the components of the harness that work on it. Each name links to its section in
   *Components*. A component that serves more than one directory is in each of their sections.
   The components are [agents](concepts.md#agent), [skills](concepts.md#skill),
   [rules](concepts.md#rule), commands, git [hooks](concepts.md#hook), scripts and verbs of the
@@ -53,7 +54,7 @@ measurements, with links between the notes.
 - [`changelog-scribe`](components/agents.md#changelog-scribe) writes a dated entry in the vault's
   `CHANGELOG.md`, only for a change to what is established.
 - [`math-verify`](components/skills.md#math-verify) keeps the script of a mathematical check, and
-  a note of the vault links that script.
+  a note in the vault links to that script.
 - [`wait-what`](components/skills.md#wait-what) asks the agent to explain its work again in the
   words that the vault uses.
 
@@ -113,8 +114,8 @@ find the directory by its name, `Packages`, below the research tree.
 
 ## Experiments
 
-**Holds:** the numerical experiments, one git repository each: code whose results you can make
-again, with its tests and a `CHANGELOG.md`.
+**Holds:** the numerical experiments, one git repository each: code with reproducible results,
+with its tests and a `CHANGELOG.md`.
 
 **Served by:**
 
@@ -185,8 +186,8 @@ directory's own instruction file.
   its script.
 - [`literature-scout`](components/agents.md#literature-scout) finds the references that a
   manuscript needs.
-- [`changelog-scribe`](components/agents.md#changelog-scribe) writes a dated pass, not a release,
-  because a manuscript has no versions.
+- [`changelog-scribe`](components/agents.md#changelog-scribe) writes a dated entry for each
+  revision pass, not a release, because a manuscript has no versions.
 - [`julia-builder`](components/agents.md#julia-builder) builds a part of a plan here too, but the
   part ends in a commit to `main`, not in a pull request.
 - [`worker`](components/agents.md#worker) reads the directory's own instruction file before its
@@ -205,9 +206,9 @@ repository_roots = ["~/Research/Packages", "~/Research/Experiments"]
 tree_agents = "~/Research/Environment/Agents"
 ```
 
-- `repository_roots` holds the directories that hold the repositories of the tree. `harness leaks`
-  searches the harness for the name of each directory below them, so that no source of the
-  harness names one of your repositories.
+- `repository_roots` lists the directories that contain the repositories of the tree.
+  `harness leaks` searches the harness for the name of each directory below them, so that no
+  source of the harness names one of your repositories.
 - `tree_agents` holds the directory of your tree instructions. `harness install`
   installs them into `~/.claude/` beside the sources of the harness. In
   the example, this directory is in the tree but is not one of the six directories of the figure.

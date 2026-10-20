@@ -24,18 +24,26 @@ verbs `harness settings` and `harness trust`.
 
 The layer goes into `~/.claude/`. The five neutral directories install at their own path,
 `adapters/claude/` at the top, `hooks/` into `~/.claude/hooks/`, and the tree instructions at their
-own path. An agent and a `SKILL.md` get two values rewritten: the tier of `model:` becomes the
-model of the `[claude]` table of `models.toml`, and each `tools:` item its Claude Code name. A hook
-keeps its mode, and every other file is installed with mode 0644. The first file of the layer is
-`~/.claude/settings.json`: the adapter merges the sections `permissions`, `hooks`, `sandbox` and `modelSettings` of
-the settings template into it, adds each other key of the template and each variable of the
-template's `env` that the file lacks, keeps every other key and value, keeps the old file as a
-backup, and creates the file when it is missing. The dry run prints the difference of those sections after the file's
-line. After the layer, the adapter writes the stamp `~/.claude/.harness-install.json`. A path that
-two sources hold, a symlink, a source that holds `settings.json`, and a `settings.json` that is
-not a JSON object with an object in each of those sections exit 2 before anything is written. An
-installed file with no source is an EXTRA line with its removal command. The permission rules of
-the other settings files of the research tree are a warning.
+own path. An agent and a `SKILL.md` get two values rewritten: the model tier of `model:` becomes
+the model of the `[claude]` table of `models.toml`, and each `tools:` item its Claude Code name.
+A hook keeps its mode, and every other file is installed with mode 0644.
+
+The first file of the layer is `~/.claude/settings.json`. The adapter merges four sections of the
+settings template into this file: `permissions`, `hooks`, `sandbox` and `modelSettings`. It adds
+each other key of the template, and each `env` variable, that the file does not have. It keeps
+all other keys and values, keeps the old file as a backup, and creates the file if it is missing.
+The dry run prints the diff of those sections after the line of the file. After the layer, the
+adapter writes the stamp `~/.claude/.harness-install.json`.
+
+The adapter exits with status 2, before it writes a file, in these cases:
+
+- two sources hold the same path;
+- a source or an installed path is a symbolic link;
+- a source holds `settings.json`;
+- `settings.json` is not a JSON object, or one of the four sections in it is not an object.
+
+An installed file with no source is an EXTRA line with its removal command. The permission rules
+of the other settings files of the research tree are a warning.
 
 `harness settings` has four sub-verbs: `surface`, `compare`, `selftest` and `twins`.
 `surface` reads the session transcripts below `~/.claude/projects/` and counts the Bash commands
@@ -44,7 +52,8 @@ that reach a prompt.
 `~/.claude.json`. It skips `.worktrees/` and `.scratch/`. A session cannot read that file, so run
 it in your own terminal.
 
-`fixtures/` holds the expected Claude Code renders of two agents, which the cases compare.
+`fixtures/` holds the expected rendered output of two agents for Claude Code, which the cases
+compare.
 
 ## `claude/CLAUDE.md`
 
@@ -59,7 +68,7 @@ last from the tree instructions. The rest holds the mechanics of Claude Code onl
 - a workflow for fan-out over many repositories;
 - the wait for a long command: run the command that gives the answer in the background, never a
   `sleep`;
-- `git` and `gh` as the whole command, so that they run outside the sandbox;
+- `git` and `gh` as the whole command, so that they run outside the Claude Code sandbox;
 - the sandbox as the security boundary, and the deny list as protection against accidents.
 
 OpenCode and oh-my-pi do not read this file. They read `opencode/OPENCODE-DELTA.md` and
@@ -104,33 +113,34 @@ the line shows no values.
 The adapter of OpenCode. It writes OpenCode's part of `harness install`, and it gives the verb
 `harness permissions`.
 
-The install writes into `$OPENCODE_CONFIG_DIR`, else `~/.config/opencode`. The directory must
-exist. The adapter writes:
+The install writes into `$OPENCODE_CONFIG_DIR`, or `~/.config/opencode` if it is not set. The
+directory must exist. The adapter writes:
 
 - `opencode.jsonc`, rendered with the profile, with a backup of a file that it replaces;
 - `AGENTS.md`, from `OPENCODE-DELTA.md`;
 - `agents/<name>.md` for each agent of `agents/`;
 - the plugins `plugins/*.ts` and the rendered `plugins/guard-paths.json`;
 - its own copies of the files of the Claude Code layer that OpenCode reads: `RTK.md`,
-  `instructions/`, `rules/`, the guard scripts in `hooks/` and the skills in `skills/`.
+  `instructions/`, `rules/`, the guard hooks in `hooks/` and the skills in `skills/`.
 
-In each text but `AGENTS.md`, a path below `~/.claude/` names the same path in OpenCode's
+In each text except `AGENTS.md`, a path below `~/.claude/` names the same path in OpenCode's
 directory, so OpenCode reads its own copies. The install also removes the links in
 `~/.agents/skills/` that an earlier install wrote, because OpenCode reads that directory too.
 
-The port of an agent maps the tier through the model tables of `models.toml`, which OpenCode
-shares with oh-my-pi, with the keys of `[opencode]` over them. It turns `tools:`
-and `skills:` into a `permission:` block, and adds an "Under OpenCode" section before the body. A
-council copies an agent onto other models, and the description of a seat with `verify = true`
-says that it also judges each verify round. The install refuses to replace an `opencode.jsonc` that
+The port of an agent maps the model tier through the model tables of `models.toml`, which
+OpenCode shares with oh-my-pi, with the keys of `[opencode]` over them. It turns `tools:` and
+`skills:` into a `permission:` block, and adds an "Under OpenCode" section before the body. A
+council is a set of copies of an agent on other models, and a seat is one of these copies. The
+description of a seat with `verify = true` says that it also judges each verify round, a later
+critic round that checks only the fix. The install refuses to replace an `opencode.jsonc` that
 holds a literal `Authorization` value, unless you give `--force`.
 
 `harness permissions [--apply]` writes the permission block of `opencode.jsonc` and
 `plugins/guard-paths.json` from the `ask` and `deny` rules of the settings template. Its report
 shows that every rule is emitted or dropped with a reason.
 
-`fixtures/` holds the input agents, their expected renders, a settings file, and the expected
-permission block, path list and report. The cases compare the output with them.
+`fixtures/` holds the input agents, their expected rendered output, a settings file, and the
+expected permission block, path list and report. The cases compare the output with them.
 
 ## `opencode/opencode.jsonc`
 
@@ -143,11 +153,13 @@ file reference in an instruction file. The template names them below `~/.claude/
 install writes the paths of OpenCode's own copies. The `provider` entries come from
 `providers.toml` beside the profile, as [profile.md](../profile.md#the-providers) maps them.
 Before them, the install writes one entry for each provider of the `context_limits` of
-`models.toml`, with that limit. A provider in both stops the install with exit status 2. The `mcp` entry connects to the Kaimon server at
-`http://127.0.0.1:2828/`, which `launchagents/kaimon.plist` starts. The token comes from
-`~/.config/kaimon/opencode-token` when OpenCode reads the file, so no secret is in the repository.
-`experimental.subagent_depth` is 2, so that a builder that the dispatcher spawns can spawn
-`julia-branch-verifier` or a `reader`; OpenCode allows one level by default.
+`models.toml`, with that limit. When a provider is in both, the install stops with exit status 2.
+The `mcp` entry connects to the Kaimon server at `http://127.0.0.1:2828/`, which
+`launchagents/kaimon.plist` starts. The token comes from `~/.config/kaimon/opencode-token` when
+OpenCode reads the file, so no secret is in the repository. `experimental.subagent_depth` is 2,
+so that a builder that the dispatcher starts can start `julia-branch-verifier` or a `reader`.
+The dispatcher is the session that runs the `build-part` or `build-reviewed` skill. OpenCode
+allows one level by default.
 
 The `permission` block is generated. Do not edit it by hand: run `harness permissions --apply`,
 which writes it from the settings template. OpenCode takes the last rule that matches, so each
@@ -198,11 +210,13 @@ hook probe `hooks/probe.py` loads it under `node`, so it holds JavaScript syntax
 
 ## `opencode/plugins/guards.ts`
 
-The OpenCode plugin of the guard hooks. On every `shell` call it runs six guard scripts from
-`hooks/` in OpenCode's configuration directory, the install's copy: `no-blind-stage.py`, `no-shell-file-write.py`, `gh-api-writes.py`,
-`rm-scope.py`, `git-archive-output.py`, and `sandbox-semantics.py --work-tree`, its work-tree check alone. On every
+The OpenCode plugin of the guard hooks. It runs the install's copies in `hooks/` of OpenCode's
+configuration directory. On every `shell` call it runs the five shell guards, `no-blind-stage.py`,
+`no-shell-file-write.py`, `gh-api-writes.py`, `rm-scope.py` and `git-archive-output.py`, and the
+working-tree check of `sandbox-semantics.py`, as `sandbox-semantics.py --work-tree`. On every
 `kaimon_ex` and `kaimon_manage_repl` call it runs `kaimon-session.py`. It sends Claude Code's
-payload on standard input and reads the answer as Claude Code does. [The hooks](hooks.md) describes each script.
+payload on standard input and reads the answer as Claude Code does. [Guard hooks](hooks.md)
+describes each script.
 
 The plugin adds two checks. The path guard refuses a command that names a path of
 `guard-paths.json` beside the plugin, and of `$OPENCODE_CONFIG_DIR/guard-paths.json` when it
@@ -255,23 +269,18 @@ their names, so `guards.ts` checks a command before `rtk.ts` rewrites it.
 The adapter of oh-my-pi. It writes oh-my-pi's part of `harness install` and gives no verb of its
 own.
 
-The install writes into oh-my-pi's agent directory, `$PI_CODING_AGENT_DIR`, else `~/.omp/agent`:
+The install writes into oh-my-pi's agent directory, `$PI_CODING_AGENT_DIR`, or `~/.omp/agent` if
+it is not set:
 
-- `harness.yml`, an overlay over oh-my-pi's own `config.yml`, which the install never writes: the
-  approval mode `yolo`, the `eval` tool denied, and the Bash rules of the settings template as
-  `bash.patterns`: every `deny`, then every `ask` as `prompt`, then every `allow`, then a `prompt`
-  for `gh pr create*`, which `yolo` would otherwise run unasked when it names no repository.
-  oh-my-pi reads it when `PI_CONFIG_FILES` in `~/.omp/agent/.env` names it, and the install warns
-  until it does. oh-my-pi has no `env` setting either, so the install also warns, with the lines,
-  until the `.env` or the environment sets each variable of the template's `env` but the
-  `CLAUDE_CODE_*` ones;
+- `harness.yml`, an overlay over oh-my-pi's own `config.yml`, which the install never writes (see
+  below);
 - `modelRoles.default` in `harness.yml`, the `medium` model of the model tables, and an empty
   `retry.fallbackChains` entry for each model of an agent or a council seat, so that a provider
   error does not move an agent to another model. A model whose chain in `config.yml` names only
   the same model through another provider keeps that chain;
 - `models.yml`, after a backup: the providers of `providers.toml` beside the profile, and each
-  model of the `context_limits` of `models.toml` with its limit as `contextWindow`; a limit on a
-  provider of `providers.toml` stops the install with exit status 2;
+  model of the `context_limits` of `models.toml` with its limit as `contextWindow`. The
+  install stops with exit status 2 when a limit is on a provider of `providers.toml`;
 - `extensions/guards.ts` and the path list `extensions/guard-paths.json`;
 - `AGENTS.md`, from `OMP-DELTA.md`;
 - `rules/<name>.md` for each rule that the Claude Code layer installs, with `paths` written as
@@ -280,15 +289,24 @@ The install writes into oh-my-pi's agent directory, `$PI_CODING_AGENT_DIR`, else
   move of a slow eval to the background;
 - `agents/<name>.md` for each agent of `agents/`, with its model and its `thinking-level` from the
   model tables and the section of `UNDER-OMP.md`, and a copy for each seat of its council;
-- its own copies of `RTK.md`, `instructions/`, the guard scripts in `hooks/` and the skills in
-  `skills/`. In each text but `AGENTS.md`, a path below `~/.claude/` names the same path in
+- its own copies of `RTK.md`, `instructions/`, the guard hooks in `hooks/` and the skills in
+  `skills/`. In each text except `AGENTS.md`, a path below `~/.claude/` names the same path in
   oh-my-pi's directory.
+
+`harness.yml` sets the approval mode `yolo` and denies the `eval` tool. It writes the Bash rules
+of the settings template as `bash.patterns`: every `deny`, then every `ask` as `prompt`, then
+every `allow`, then a `prompt` for `gh pr create*`, which `yolo` would otherwise run without a
+prompt when it names no repository. oh-my-pi reads the file when `PI_CONFIG_FILES` in
+`~/.omp/agent/.env` names it, and the install warns until it does. oh-my-pi has no `env` setting
+either, so the install also warns, with the lines, until the `.env` or the environment sets each
+variable of the template's `env` except the `CLAUDE_CODE_*` variables.
 
 oh-my-pi takes the first pattern that matches, so this order keeps the precedence of Claude Code.
 The model tables are the ones that OpenCode reads, with the keys of `[omp]` over them, so the
-agents of both frontends run on the same models. A rule source outside the grammar of
-`render_rule`, or in a subdirectory of `rules/`, exits 2. A tool that the table `TOOLS` does not
-map exits 2 too. An installed rule, agent or skill with no source is an EXTRA line.
+agents of both frontends run on the same models. The install exits with status 2 when a rule
+source is outside the grammar of `render_rule` or in a subdirectory of `rules/`, and when the
+table `TOOLS` does not map a tool. An installed rule, agent or skill with no source is an EXTRA
+line.
 
 The adapter has no `fixtures/` directory. Its cases run the install on a scratch `HOME`.
 
@@ -309,8 +327,8 @@ It states the facts of oh-my-pi:
 - read a rule through `rule://<name>` before work on a file that its globs match;
 - the skills are oh-my-pi's copies in `~/.omp/agent/skills/`, read through `skill://<name>`;
 - each agent's model is in its frontmatter, and a council seat needs its provider's credentials;
-- the dispatcher continues an agent by a new spawn, never by a write to `agent://`, and runs a
-  command that a sub-agent returns for approval;
+- the dispatcher continues an agent by starting a new one, never by a write to `agent://`, and
+  runs a command that a sub-agent returns for approval;
 - the council of critics of `build-part`.
 
 The cases check that the file is no larger than `OPENCODE-DELTA.md`.
@@ -329,17 +347,17 @@ builder return `gh pr create` to its caller. In
 `skills`, `{skills}` becomes the names of the agent's skills. An agent that uses none of these
 mechanisms gets no section.
 
-Edit this file to change what every ported agent reads under oh-my-pi. A section that the adapter
-needs and does not find exits 2.
+Edit this file to change what every ported agent reads under oh-my-pi. When a section that the
+adapter needs is missing, the install exits with status 2.
 
 ## `omp/guards.ts`
 
 The guard extension of oh-my-pi. `harness install` copies it to `extensions/guards.ts` in
 oh-my-pi's agent directory. It checks each tool call that a glob of `bash.patterns` cannot check:
 
-- `bash`: the five shell guard scripts of `~/.omp/agent/hooks/` and `sandbox-semantics.py
-  --work-tree`, which it runs with `python3`, and the path list on the words of the command and on
-  its working directory;
+- `bash`: the five shell guards of `~/.omp/agent/hooks/` and the working-tree check of
+  `sandbox-semantics.py`, which it runs with `python3`, and the path list on the words of the
+  command and on its working directory;
 - `mcp__kaimon_ex` and `mcp__kaimon_manage_repl`: `kaimon-session.py`;
 - `read` and `grep`: the `deny` list on the path;
 - `edit` and `write`: the `edit` list, then the `ask` list, on each path that the call names;

@@ -10,7 +10,7 @@ query that should not and the skill it belongs to (a skill name, or `none`). A s
 limits the dry run and `--apply` to the query files of the skills it names.
 
 The dry run prints the counts per skill and the number of sessions an `--apply` starts. `--apply`
-runs each query as one `claude -p` session of 3 turns on the model it names, in the research root,
+runs each query as one `claude -p` session of 3 turns on the model it names, in the research tree,
 without `Edit`, `Write`, `NotebookEdit`, `Agent` and `Bash`, and reads its `stream-json` output: a
 query loads skill s when the first `Skill` call in the first 3 top-level assistant messages names
 s. A query whose verdict fails its expectation runs twice more, and the majority of the three
@@ -107,7 +107,7 @@ def verdict(stream):
     or UNKNOWN; the `result` event, or None).
 
     An assistant message is every top-level assistant event with one `message.id`, because Claude
-    Code prints one event per content block; an event of a subagent, with a `parent_tool_use_id`,
+    Code prints one event per content block; an event of a sub-agent, with a `parent_tool_use_id`,
     belongs to none. The skill is that of the first `Skill` call in the first MESSAGES messages, in
     the order of the stream. A stream with a line that is not JSON, with no `result` event, with an
     error result, or with no assistant message is UNKNOWN; a result of `error_max_turns` is the
@@ -184,7 +184,7 @@ def session(query, model, root, claude, timeout):
     """One `claude -p` session on `query`: (its verdict, its `result` event or None). The query
     goes in on stdin, so a query that starts with `-` is no flag; `--output-format stream-json`
     under `-p` needs `--verbose`. The session has MESSAGES turns, and lacks `Edit`, `Write`,
-    `NotebookEdit`, `Agent` and `Bash`, so it runs nothing in the research root."""
+    `NotebookEdit`, `Agent` and `Bash`, so it runs nothing in the research tree."""
     command = [claude, "-p", "--verbose", "--output-format", "stream-json", "--max-turns", str(MESSAGES),
                "--disallowedTools", "Edit", "Write", "NotebookEdit", "Agent", "Bash", "--model", model]
     try:
@@ -309,7 +309,7 @@ SKILL_MD = '---\nname: {name}\ndescription: "A fixture skill."\n{extra}---\n\nBo
 
 
 def selftest():
-    """The parser, the verdict, the majority, the pass rule and the verb: (cases, wrong)."""
+    """The parser, the verdict, the majority, the pass rule and the verb: (number of cases, number wrong)."""
     import contextlib
     import io
     import sys
@@ -590,7 +590,7 @@ def selftest():
 
 def apply_skill_case(check, harness):
     """The verb's --apply with --skill, run as `harness`, on the fake `claude` in PATH and a fixture
-    research root: one session, the near query of wait-what. A query file that read_queries refuses
+    research tree: one session, the near query of wait-what. A query file that read_queries refuses
     is a wrong case that names the refusal."""
     import sys
 
@@ -621,7 +621,13 @@ def apply_skill_case(check, harness):
 
 
 def register(sub):
-    p = changing(sub.add_parser("skill-triggers", help="test whether each skill loads on its queries, with claude -p"))
+    p = changing(sub.add_parser("skill-triggers", help="test whether each skill loads on its queries, with claude -p",
+                                description="Test whether each skill loads on the queries of "
+                                            "tests/skill-triggers/<skill>.toml. Without --apply it prints the counts "
+                                            "per skill and the number of sessions, and exits 1; --apply --model ALIAS "
+                                            "runs one `claude -p` session per query, at the user's cost, and writes "
+                                            "the report below .scratch/skill-triggers/ of the research tree."),
+                 help="run the sessions and write the report; without it, print the counts")
     p.add_argument("--model", metavar="ALIAS", help="the model of the sessions; --apply needs it")
     p.add_argument("--skill", metavar="NAME", action="append",
                    help="only the query file of this skill; can repeat")

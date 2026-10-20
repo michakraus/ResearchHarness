@@ -31,27 +31,15 @@
 #       `from` in the file as the mutant's earlier edits leave it; then `from` may occur more than
 #       once, and the edit replaces the one at `at`. mutants.jl writes every mutant with `at`.
 #   julia --startup-file=no mutate.jl <package> --warm <mutants.toml> [--jobs <n>] [--only <verdict>] [<unit> ...]
-#       Run the list in warm worker processes (mutate-worker.jl), one copy each: each mutant is
-#       included into its module, tested with failfast, fastest unit first, and restored. The
-#       baseline runs again every 20 mutants and after the last; when it fails, every verdict
-#       since the last baseline that passed is UNKNOWN. A mutant that passes its time limit,
-#       max(60 s, 10 × the baseline) or MUTATE_TIME_LIMIT, is UNKNOWN, and a new worker goes on.
-#       Every SURVIVED runs again cold, and the cold verdict counts; so do 10 of the CAUGHT, at
-#       even steps, and if one of those is not caught cold, every other warm kill is UNKNOWN. A
-#       mutant of several files, of a file that defines a module, or that deletes a top-level
-#       statement, runs cold, because an include cannot remove a definition; so does one that
-#       changes a struct, an abstract or primitive type or an @enum, because an include of it makes
-#       a new type that the other files' methods do not name. A list with 20 warm mutants or fewer
-#       (MUTATE_WARM_MIN) runs every mutant cold, n at a time, after the smoke mutant; the quality files of
-#       the units run only in the cold runs. `--jobs <n>` deals the mutants out to n workers and
-#       runs the cold runs n at a time, each process with one thread and one BLAS thread; one
-#       worker by default. First each unit runs once with `--code-coverage`: a mutant runs only
-#       the units that reach its lines, and a mutant whose lines the coverage lists but no unit
-#       runs is NO-COVERAGE, a finding as SURVIVED is, and does not run. A mutant whose lines the
-#       coverage does not list (a method that no unit compiles, a signature, a top-level
-#       statement) runs every unit. Before the mutants, one smoke mutant runs cold: an `error`
-#       call at the start of each function that a mutant changes. If it is not CAUGHT, the units
-#       reach none of those functions, and every mutant is UNKNOWN.
+#       Run the list in warm worker processes (mutate-worker.jl), one copy each. `--jobs <n>` deals
+#       the mutants out to n workers and runs the cold runs n at a time; one worker by default.
+#       Every SURVIVED runs again cold, and the cold verdict counts. Warm mode adds two verdicts:
+#         UNKNOWN      the baseline failed after the mutant, the mutant passed its time limit, a
+#                      sampled warm kill was not caught cold (then every other warm kill), or the
+#                      smoke mutant was not CAUGHT (then every mutant)
+#         NO-COVERAGE  the coverage lists the lines of the mutant, but no unit runs them; a
+#                      finding, as SURVIVED is
+#       The docstring of `run_warm` states the rules of warm mode.
 #
 #   Both list modes write the verdicts to a result file under ~/Research/.scratch/mutants/, named
 #   <package directory>-<list name>-<hash of the list's path>.result.json, and print its path on
@@ -471,16 +459,14 @@ const WORKER = joinpath(@__DIR__, "mutate-worker.jl")
 const COLD_SAMPLE = 10
 
 """
-The most warm mutants that run cold instead: 20, or MUTATE_WARM_MIN. On the round-1 heads of the
-loop benchmark, 4–9 named mutants took 386–553 s warm, of which the warm phase took about 30 s and
-the coverage runs about 240 s; cold they take about 16 s each.
+The most warm mutants that run cold instead: 20, or MUTATE_WARM_MIN. Up to this count, the
+coverage runs of warm mode cost more than running each mutant cold.
 """
 warm_min() = parse(Int, get(ENV, "MUTATE_WARM_MIN", "20"))
 
 """
 The number of top-level statements of a file. An `include` of a mutated file cannot remove a
-definition that the original made, so a mutant with fewer statements runs cold: in the check on
-l13 of the loop benchmark, all 38 wrong warm verdicts were such deletions.
+definition that the original made, so a mutant with fewer statements runs cold.
 """
 function statements(text)
     c = JuliaSyntax.children(JuliaSyntax.parseall(JuliaSyntax.SyntaxNode, text; ignore_errors = true))
@@ -490,8 +476,7 @@ end
 """
 The source text of each type definition of a file: `struct`, `abstract type`, `primitive type` and
 `@enum`. Since Julia 1.12 an `include` that changes one makes a new type, and the restore another,
-so the methods of the other files, whose signatures name the first type, no longer apply: on l14
-of the loop benchmark, one deleted field made the next baseline fail in three workers.
+so the methods of the other files, whose signatures name the first type, no longer apply.
 """
 function type_definitions(text)
     out = String[]
@@ -721,10 +706,31 @@ end
 
 """
 Run the mutants of `file` in `n` warm worker processes, each on a copy of its own, and every
-survivor and a sample of the kills again cold, `n` at a time. A mutant of several files, of a
-file that defines a module, or that deletes a top-level statement or changes a type definition
-runs cold. The quality files of
-`units` do not run in the workers, because the methods that the tests define stay in a process.
+survivor and a sample of the kills again cold, `n` at a time. The rules:
+
+  * First each unit runs once with `--code-coverage`. A mutant runs only the units that reach
+    its lines. A mutant whose lines the coverage lists but no unit runs is NO-COVERAGE and does
+    not run. A mutant whose lines the coverage does not list (a method that no unit compiles, a
+    signature, a top-level statement) runs every unit.
+  * Before the mutants, one smoke mutant runs cold: an `error` call at the start of each
+    function that a mutant changes. If it is not CAUGHT, the units reach none of those
+    functions, and every mutant is UNKNOWN.
+  * In a worker, each mutant is included into its module, tested with failfast, fastest unit
+    first, and restored. The baseline runs again every 20 mutants and after the last. When it
+    fails, every verdict since the last baseline that passed is UNKNOWN.
+  * A mutant that passes its time limit, max(60 s, 10 × the baseline) or MUTATE_TIME_LIMIT, is
+    UNKNOWN, and a new worker goes on.
+  * Every SURVIVED runs again cold, and the cold verdict counts. So do COLD_SAMPLE (10) of the
+    CAUGHT, at even steps. If one of those is not caught cold, every other warm kill is UNKNOWN.
+  * A mutant of several files, of a file that defines a module, or that deletes a top-level
+    statement runs cold, because an include cannot remove a definition. So does one that
+    changes a struct, an abstract or primitive type or an @enum, because an include of it makes
+    a new type that the methods of the other files do not name.
+  * A list with 20 warm mutants or fewer (MUTATE_WARM_MIN) runs every mutant cold, `n` at a
+    time, after the smoke mutant.
+  * The quality files of `units` run only in the cold runs, because the methods that the tests
+    define stay in a process.
+  * Each worker and each cold run is a process with one thread and one BLAS thread.
 """
 function run_warm(pkg, file, units; n = 1, only = nothing)
     list = read_list(file)

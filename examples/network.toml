@@ -1,7 +1,7 @@
-# The overlay of the network lists of the Claude Code settings: copy it to network.toml beside the
+# An overlay of the network lists of the Claude Code settings: copy it to network.toml beside the
 # profile. It has the keys of settings/network.toml, each optional, and adds its entries to that
 # file's. An entry is a host, not a URL. A deny entry wins over an allow or infrastructure entry
-# of either file. Without this file, the harness list applies alone.
+# of either file. Without this file, the lists of settings/network.toml apply alone.
 
 # Hosts that the WebFetch tool and a sandboxed command can reach, such as the institution's
 # library resolver. Write the host; the install adds `*.X` for a registrable domain.
@@ -13,7 +13,7 @@ infrastructure = []
 # Hosts that neither can reach. `*`, `*.X` and `X:port` are allowed.
 deny = ["tracker.example.net"]
 
-# The reason that Claude Code shows the model when the sandbox refuses a deny entry, keyed by the
-# exact entry.
+# The reason that Claude Code shows the model when the sandbox blocks a host that a deny entry
+# names, keyed by the exact entry.
 [deny_reasons]
 "tracker.example.net" = "This host is blocked on this machine; do not retry it."

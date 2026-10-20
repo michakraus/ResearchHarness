@@ -1,9 +1,9 @@
 # Typical use
 
-This page describes the work that comes back again and again after the setup. The
-[tutorial](tutorial.md) shows the first time of most of it, step by step; this page is the
-reference. [harness-command.md](harness-command.md) describes the contract of every verb: a verb
-that changes something prints its plan, and `--apply` makes the change.
+This page describes the recurring tasks after the setup. The [tutorial](tutorial.md) shows most
+of them once, step by step; this page is the reference. [harness-command.md](harness-command.md)
+describes the contract of every verb: a verb that changes something prints its plan, and
+`--apply` makes the change.
 
 ## Change an agent, a skill, a rule or an instruction
 
@@ -35,15 +35,15 @@ it once from the start to the end.
 
 The settings template `settings/settings.proposal.json` is the source of the sections
 `permissions`, `hooks`, `sandbox` and `modelSettings` of `~/.claude/settings.json`. Edit the
-template, then read the difference and install it, in your own terminal. The dry run prints the
-difference of the four sections after the line of `~/.claude/settings.json`:
+template, then read the diff and install it, in your own terminal. The dry run prints the diff
+of the four sections after the line of `~/.claude/settings.json`:
 
 ```bash
 harness install
 harness install --apply
 ```
 
-A grant that names you, your institution or your machine goes into the
+A permission rule that names you, your institution or your machine goes into the
 [profile](concepts.md#profile), not into the
 template. Commit the template when you install a change: the commit is the record of the
 installed sections. To undo a change, revert the commit of the template and install again. Run
@@ -95,13 +95,14 @@ harness leaks
 ```
 
 It searches every tracked file, its path and the templates rendered with the example profile.
-Change the text that holds a hit. [development.md](development.md#the-pre-push-hook) describes
+Remove the matched string from the file. [development.md](development.md#the-pre-push-hook) describes
 both checks.
 
 ## The verbs for the whole research tree
 
 Six verbs act on every repository of the research tree. The research tree is the directory
-`$RESEARCH_ROOT`, else `~/Research`. Each verb is a dry run first, and `--apply` makes the change.
+`$RESEARCH_ROOT`, or `~/Research` if it is not set. Each verb is a dry run first, and `--apply`
+makes the change.
 
 | verb | what it does |
 |:--|:--|
@@ -118,7 +119,7 @@ the command for each repository. `push-all` runs the pre-push hook of each repos
 that runs a full test suite can take a long time.
 
 The copies of `githooks` and `workflows` are tracked files in each repository. Read the
-difference, then commit each copied file by name.
+diff, then commit each copied file by name.
 
 ```bash
 harness githooks

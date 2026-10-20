@@ -8,12 +8,13 @@ back and deletes classic protection only in a repository whose ruleset passes ev
 branch is never left unprotected. Both read the current state first: a repository whose ruleset
 and flags are right is not written, so a run with nothing to do changes nothing.
 
-RUN THIS YOURSELF, NOT FROM AN AGENT SHELL. In the agent sandbox only the first `gh` call of a
-process succeeds; every later one dies with `x509: OSStatus -26276`, a keychain XPC failure, not a
-certificate problem. A call that fails that way is retried four times.
+Where to run it. Run this yourself, not from an agent shell. In the agent sandbox only the first
+`gh` call of a process succeeds; every later one dies with `x509: OSStatus -26276`, a keychain
+XPC failure, not a certificate problem. A call that fails that way is retried four times.
 
-ONE STATIC LIST OF REQUIRED CHECKS. CI.yml is byte-identical in every repository, its matrix is
-`version: [min, 1]` rather than version numbers, and its job names carry no event suffix. `min`
+Required checks. There is one static list of required checks. CI.yml is byte-identical in every
+repository, its matrix is `version: [min, 1]` rather than version numbers, and its job names
+carry no event suffix. `min`
 resolves each package's own `[compat] julia` floor, so one matrix tests the right versions
 everywhere, and the check names never change. A required check that never reports leaves every
 pull request pending, unmergeable, with no error anywhere; so the list is correct only while the
@@ -22,17 +23,17 @@ workflows are canonical, and the verb refuses to run unless `verify-workflows.jl
 `pre` and `nightly` are not required: they are `experimental: true`, and requiring them would block
 merges whenever an unreleased Julia breaks upstream.
 
-ONE RULESET PER REPOSITORY, named `main`, matched by name and updated in place; one that matches
-no branch is repaired, not duplicated. More than one named `main` is an error; rulesets of other
+Rulesets. Each repository has one ruleset, named `main`, matched by name and updated in place;
+one that matches no branch is repaired, not duplicated. More than one named `main` is an error; rulesets of other
 names are left alone. Rulesets need a public repository on the Free plan, and organisation-level
 rulesets need the Team plan, which a free organisation does not have.
 
-THE ADMIN BYPASS IS LOAD-BEARING. `bypass_actors` gives the repository-admin role (actor_id 5)
-the `always` mode, so the owner can push the narrow direct-to-main commits: a release commit, a
-typo fix, a sync of the shared git hooks. No review rule: in a single-author tree a required review
-is self-review.
+Admin bypass. The admin bypass is load-bearing. `bypass_actors` gives the repository-admin role
+(actor_id 5) the `always` mode, so the owner can push the narrow direct-to-main commits: a release
+commit, a typo fix, a sync of the shared git hooks. No review rule: in a single-author tree a
+required review is self-review.
 
-CLASSIC PROTECTION AND RULESETS HAVE SEPARATE ENDPOINTS, AND EACH HIDES THE OTHER.
+Classic protection and rulesets. The two have separate endpoints, and each hides the other.
 `repos/<slug>/branches/<branch>/protection` answers 404 `Branch not protected` when only a ruleset
 guards the branch, and `repos/<slug>/rules/branches/<branch>` answers `[]` when only classic
 protection does. An `enforcement: active` ruleset whose `conditions.ref_name.include` is empty
@@ -40,10 +41,11 @@ matches no branch. For a repository the account does not own, GraphQL returns em
 than an error, so an empty answer means unknown. Until `--remove-classic` runs, both mechanisms
 apply, and the stricter rule of each wins.
 
-The slug is resolved through the API, not taken from `origin`. A STALE REMOTE IS INVISIBLE UNTIL
-A WRITE: after a rename or a move, GitHub redirects reads and pushes, but the REST write endpoint
-for protection does not follow the redirect. PROTECTION NEEDS ADMIN AND, on a free plan, A PUBLIC
-REPOSITORY. Both are per-run facts: a repository skipped today is not skipped forever.
+Stale remotes. The slug is resolved through the API, not taken from `origin`. A stale remote is
+invisible until a write: after a rename or a move, GitHub redirects reads and pushes, but the
+REST write endpoint for protection does not follow the redirect. Protection needs admin rights
+and, on a free plan, a public repository. Both are per-run facts: a repository skipped today is
+not skipped forever.
 """
 
 import json
@@ -280,7 +282,12 @@ def selftest():
 
 
 def register(sub):
-    p = changing(sub.add_parser("ci-protection", help="protect every default branch with a ruleset"))
+    p = changing(sub.add_parser("ci-protection", help="protect every default branch with a ruleset",
+                                description="Protect the default branch of each repository that has a CI.yml with a "
+                                            "GitHub ruleset named `main`, and turn on auto-merge and the deletion of "
+                                            "merged branches. Without --apply it prints what would change and exits 1 "
+                                            "when something would; --apply writes through `gh api`. It refuses unless "
+                                            "verify-workflows.jl passes; run it in your own terminal."))
     p.add_argument("--remove-classic", action="store_true",
                    help="delete classic branch protection where the ruleset is right")
     p.set_defaults(run=cmd_ci_protection)

@@ -2,16 +2,15 @@
 # once. Copy this file to providers.toml beside the profile, ~/.config/research-harness/, and fill
 # it in; without it, neither frontend gets a provider of its own. `harness install` writes each
 # provider into the `provider` object of OpenCode's opencode.jsonc and into oh-my-pi's models.yml;
-# lib/harness/providers.py documents each key. The comments here stay here; the generated files
-# hold none.
+# lib/harness/providers.py documents each key. The generated files hold none of these comments.
 #
 # A table is one provider, named as models.toml names it in `<provider>/<model>`. A model id with
 # `.`, `/` or `:` is a quoted key, such as `models."org/model:7b"`.
 
 # An account of a cloud service with the Anthropic API. `url` ends in /v1, as OpenCode's client
-# wants it; oh-my-pi gets it without. `key` names the environment variable that holds the key, so
-# that no key is in the file: OpenCode reads it from its environment, oh-my-pi from
-# ~/.omp/agent/.env.
+# requires it; the install removes `/v1` for oh-my-pi. `key` names the environment variable that
+# holds the key, so that no key is in the file: OpenCode reads it from its environment, oh-my-pi
+# from ~/.omp/agent/.env.
 [example-cloud]
 api = "anthropic"
 url = "https://example-resource.example.org/anthropic/v1"

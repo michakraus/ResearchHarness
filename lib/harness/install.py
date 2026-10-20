@@ -16,9 +16,10 @@ What it installs:
 
 It loads the profile and the model tables, `--models F`, else $RESEARCH_HARNESS_MODELS, else
 models.toml beside the profile; examples/models.toml shows them. Then it plans each frontend, in
-the order of FRONTENDS. A plan writes nothing, so each refusal that exits 2 at once does
-so before anything is written. So does `check_files`, which then checks every target of the Julia
-environment and of each plan: a symlink or a directory at a target exits 2. A target with a change
+the order of FRONTENDS. Planning writes nothing, so each refusal that stops the install at once,
+with exit status 2, comes before anything is written. `check_files` then checks every target of
+the Julia environment and of each plan, and refuses a symbolic link or a directory at a target,
+also before anything is written. A target with a change
 that cannot be written exits 2 there under `--apply`; a dry run prints its whole plan and count
 line first, then that refusal, and exits 2. Then it installs the Julia environment and the files
 of each plan in that order, prints the warnings, and runs the steps of each plan that follow the
@@ -471,6 +472,10 @@ def load_cases(check, tmp):
 
 
 def register(sub):
-    p = changing(sub.add_parser("install", help="install the configuration of each frontend"))
+    p = changing(sub.add_parser("install", help="install the configuration of each frontend",
+                                description="Install the Julia environment of the scripts and the configuration "
+                                            "of each frontend: Claude Code, OpenCode and oh-my-pi. Without --apply "
+                                            "it prints the plan and exits 1 when a file would change, 0 when none "
+                                            "would; --apply installs. A refusal exits with status 2."))
     p.add_argument("--force", action="store_true", help="replace a file that the install refuses to replace")
     p.set_defaults(run=cmd_install)

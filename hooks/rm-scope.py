@@ -6,19 +6,21 @@ working directory through each `cd` in the command, and resolves every operand.
 
   * **`rm`** — exit 0, no output, when every operand lies strictly below a worktree,
     `~/Research/.worktrees/<name>/`, or strictly below `~/Research/.scratch/`. Exit 2 for a
-    **recursive** `rm` of any other path under `/Users`, or of `/` or `/Users` themselves:
-    a worktree root, `.worktrees`, `.scratch`, a package checkout, `~/.julia`. A worktree
+    **recursive** `rm` of any other path under the parent of the home directory (`/Users` on
+    macOS, `/home` on Linux), or of `/` or that parent itself: a worktree root, `.worktrees`,
+    `.scratch`, a package checkout, `~/.julia`. A worktree
     goes through `git worktree remove`. A plain `rm` outside the zones, and an operand the
     hook cannot resolve — a variable other than `$HOME`, a command substitution — get no
     decision: the sandbox and the rules decide, as they do without the hook.
   * **`git rm`** — no output when the working directory lies in a worktree and no
-    `-f`/`--force` is given. Else "ask". Without `-f`, `git rm` refuses a file with local
+    `-f`/`--force` is given; otherwise "ask". Without `-f`, `git rm` refuses a file with local
     changes, so what it removes is recoverable from `HEAD`.
 
 No `permissions` rule can state this. The matcher expands no `~`, cannot see the working
 directory, and its `*` crosses `..`. So `Bash(rm -rf /Users*)` refuses a worktree's
-`build/` by its absolute path and lets `rm -rf ../Packages` through. This hook supersedes
-the twelve `rm` denies over `/Users*` and `~/*`; the denies of exact `/` and `~` stay.
+`build/` by its absolute path and lets `rm -rf ../Packages` through. This hook replaces the
+`rm` denies over `/Users*` and `~/*`. The settings keep only the denies of the exact paths
+`/` and `~`.
 
 **It fails closed, to a prompt.** A command that mentions `rm` and cannot be read gets
 "ask". Claude Code treats a crashed hook as non-blocking, so a crash loses the refusal; the

@@ -1,12 +1,13 @@
-"""Run githooks/format-tree.jl until it completes, surviving files that crash JuliaFormatter.
+"""Run githooks/format-tree.jl until it completes, and skip each file on which JuliaFormatter
+crashes.
 
     harness format [--apply]
 
 JuliaFormatter can take the whole Julia process down on a pathological file — not a catchable
 exception. format-tree.jl records the file it is about to touch in a marker; when the process
-dies, this moves that file into the skiplist and resumes. What is left in the skiplist at the end
-is the set of files JuliaFormatter cannot handle in this tree, which is worth keeping. The marker,
-the skiplist and the log go to $FMT_OUT, else $TMPDIR.
+dies, this moves that file into the skip list and resumes. The skip list that remains at the end
+names the files that JuliaFormatter cannot format, which is worth keeping. The marker,
+the skip list and the log go to $FMT_OUT, else $TMPDIR.
 
 The dry run counts the files that format-tree.jl would reformat, from its summary line.
 """
@@ -61,5 +62,9 @@ def cmd_format(args):
 
 
 def register(sub):
-    changing(sub.add_parser("format", help="run JuliaFormatter over every tracked .jl file of the tree")
+    changing(sub.add_parser("format", help="run JuliaFormatter over the tracked .jl files of Packages/ and Experiments/",
+                            description="Run JuliaFormatter over the tracked .jl files of Packages/ and "
+                                        "Experiments/, and skip each file on which JuliaFormatter crashes. Without "
+                                        "--apply it counts the files that would change and exits 1 when there is "
+                                        "one; --apply rewrites them.")
              ).set_defaults(run=cmd_format)

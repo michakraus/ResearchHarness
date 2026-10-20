@@ -2,7 +2,7 @@
 
     harness githooks [--apply]          # pre-commit, pre-push, test-layout.jl into every
                                         # repository under Packages/ and Experiments/
-    harness wiki-lint-hook [--apply]    # pre-commit-wiki into the five prose repositories
+    harness wiki-lint-hook [--apply]    # pre-commit-wiki into the prose repositories
     harness workflows [--apply]         # the canonical workflows from githooks/workflows/
 
 Every copy is byte-identical in every repository: a hook reads the package name from
@@ -196,9 +196,23 @@ def cmd_workflows(args):
 
 
 def register(sub):
-    changing(sub.add_parser("githooks", help="install the shared git hooks into every package and experiment")
+    changing(sub.add_parser("githooks", help="install the shared git hooks into every package and experiment",
+                            description="Copy githooks/pre-commit, githooks/pre-push and scripts/test-layout.jl "
+                                        "into .githooks/ of each git repository below Packages/ and Experiments/, "
+                                        "and set core.hooksPath. Without --apply it prints what would change and "
+                                        "exits 1 when something would; --apply copies the files and sets the path. "
+                                        "A path that cannot be set is printed with its command, and the verb exits "
+                                        "with status 2.")
              ).set_defaults(run=cmd_githooks)
-    changing(sub.add_parser("wiki-lint-hook", help="install the wiki-lint hook into the prose repositories")
+    changing(sub.add_parser("wiki-lint-hook", help="install the wiki-lint hook into the prose repositories",
+                            description="Copy githooks/pre-commit-wiki as .githooks/pre-commit into each prose "
+                                        "repository of the research tree, and set core.hooksPath. Without --apply "
+                                        "it prints what would change and exits 1 when something would; --apply "
+                                        "copies the file and sets the path.")
              ).set_defaults(run=cmd_wiki_lint_hook)
-    changing(sub.add_parser("workflows", help="install the canonical GitHub workflows")
+    changing(sub.add_parser("workflows", help="install the canonical GitHub workflows",
+                            description="Copy the canonical files of githooks/workflows/ into each package and "
+                                        "experiment that has a Project.toml, and remove the retired CompatHelper.yml. "
+                                        "Without --apply it prints what would change and exits 1 when something "
+                                        "would; --apply writes and removes the files.")
              ).set_defaults(run=cmd_workflows)
