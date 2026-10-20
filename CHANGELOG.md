@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- **`glab auth status --hostname <host>` runs without a prompt, and the forms that print the
+  token are refused.** Only the bare `glab auth status` was allowed, so a check of one GitLab
+  instance asked. `glab auth status --show-token`, `-t` and `-at` print the token, so `deny`
+  holds `glab auth status *--show-token*`, `*-t*` and `*-at*`; a host name that contains `-t`
+  is refused too. The permission block of `opencode.jsonc` carries the three `deny` rules.
+
 - **A fix round runs only the mutants that its fix touches.** Round 1 still runs the full set.
   On 2026-10-19 the second fix round of the oh-my-pi part M5 (GeometricMachineLearning) spent
   about 76 of its 103 minutes on mutant runs: its builder ran all 36 mutants of the earlier
