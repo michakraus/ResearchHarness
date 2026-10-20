@@ -15,7 +15,7 @@
   user to trust a clone that was deleted after its merge. The rule now names both directories.
 
 - **A fix round runs only the mutants that its fix touches.** Round 1 still runs the full set.
-  On 2026-10-19 the second fix round of the oh-my-pi part M5 (GeometricMachineLearning) spent
+  On 2026-10-19 the second fix round of the oh-my-pi part M5 (the learning package) spent
   about 76 of its 103 minutes on mutant runs: its builder ran all 36 mutants of the earlier
   rounds again, in six lists of 20 or fewer, so each mutant ran cold, at about a minute each, with
   a smoke run per list; that one run took 37 minutes. The fix changed three test files and no source file, so none of the 36
