@@ -33,6 +33,17 @@ harness render launchagents/kaimon.plist
 
 Both verbs read every key that they name.
 
+## The home directory and `~`
+
+The key `home` is optional. Without it, `home` is the home directory of the user who runs
+`harness`. A given `home` must be an absolute path without `~`; else the verb stops, and the
+message names the key. A trailing slash is removed.
+
+A string value that is `~`, or that starts with `~/`, means `home`: `~` becomes `home`, and
+`~/Research` becomes `home` followed by `/Research`. The same holds for each such item of a list.
+Any other `~` stays as written, `a~b` and `~name/x` too. So `examples/profile.toml` works as
+copied, on every machine.
+
 ## The keys of the profile
 
 The table names each key of `examples/profile.toml` and the verbs that read it, beside
@@ -40,9 +51,9 @@ The table names each key of `examples/profile.toml` and the verbs that read it, 
 
 | key | what it holds | read by |
 |:--|:--|:--|
-| `home` | the home directory, an absolute path | `install` and `settings` |
+| `home` | the home directory, an absolute path. Optional: without it, the home directory of the user who runs `harness` | `install` and `settings` |
 | `harness` | the path of the checkout of this repository | `install`, in the OpenCode configuration |
-| `memory_project` | the name of the project directory of the research tree below `~/.claude/projects/`, which holds the memory | `install` and `settings`, in the settings template |
+| `memory_project` | a label, not a path: the settings set `autoMemoryDirectory` to `~/.claude/projects/<memory_project>/memory`, so Claude Code keeps the tree's memory there, whatever the tree's path is. The same value on every machine that shares one memory pool, such as Claude Code's name of the tree's project on the first machine (its path with each `/` replaced by `-`); it need not match the path on another machine | `install` and `settings`, in the settings template |
 | `tree_agents` | the directory of the [tree instructions](concepts.md#tree-instructions) | `install`, which [installs](concepts.md#install) them into `~/.claude/` |
 | `launchd_prefix` | the prefix of the labels of the launchd jobs in `launchagents/` | `render` of the `launchagents/` templates; the update job `scripts/julia-update.jl` |
 | `autocommit_branch` | the branch of the `origin` of `~/.claude` that `claude-autocommit` pushes to: `main` on the machine whose memory is the template, a branch of its own on each other machine. Optional: `render` gives `main` without it | `render` of `launchagents/claude-autocommit.plist` and `systemd/claude-autocommit.service` |
@@ -56,8 +67,9 @@ The table names each key of `examples/profile.toml` and the verbs that read it, 
 `install` reads the settings template too, because it writes the permission layer of oh-my-pi
 from it. So each key of the settings template is a key that `install` reads.
 
-`leaks` also renders every template of the repository, but with `examples/profile.toml`, not
-with your profile. From your profile it reads only `leak`, `org` and `repository_roots`.
+`leaks` also renders every template of the repository, but with `examples/profile.toml` and the
+home `/home/example`, not with your profile. From your profile it reads only `leak`, `org` and
+`repository_roots`.
 
 ## The tables of the model tables
 

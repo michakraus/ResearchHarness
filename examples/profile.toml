@@ -1,23 +1,30 @@
 # The private profile of a ResearchHarness installation: every value that names a person, an
 # institution or a machine. Copy this file to ~/.config/research-harness/profile.toml and fill
 # it in. A template names a key as {key}; lib/harness/profile.py documents the render.
+#
+# A value that is `~`, or starts with `~/`, means the home directory, and so does such an item of
+# a list. A `~` anywhere else stays as written. With the paths below, the file works as copied.
 
-# The home directory, as an absolute path without a trailing slash.
-home = "/home/example"
+# The home directory, as an absolute path. Optional: without it, the home directory of the user
+# who runs `harness`. Set it only to use another directory as `~`.
+# home = "/home/example"
 
-# The checkout of this repository, as an absolute path without a trailing slash.
-harness = "/home/example/Research/Harness"
+# The checkout of this repository.
+harness = "~/Research/Harness"
 
-# The directory name Claude Code gives the project of the research tree under
-# ~/.claude/projects/: the tree's absolute path with every `/` replaced by `-`. Keep one value
-# on every machine, so that every machine shares one memory pool.
+# A label, not a path. The settings set `autoMemoryDirectory` to
+# ~/.claude/projects/<memory_project>/memory, so Claude Code keeps the memory of the research
+# tree there, whatever the tree's path is. Use the same value on every machine that shares one
+# memory pool. A good value is the name that Claude Code gives the tree's project on the first
+# machine: the tree's path with each `/` replaced by `-`. It need not match the tree's path on any
+# other machine.
 memory_project = "-home-example-Research"
 
 # The tree instructions: a directory of private instruction text about the research tree, which
 # `harness install` installs into ~/.claude/ beside the repository's sources. It mirrors the
 # layout of ~/.claude/. Its README.md is not installed, and neither is a file below its agents/
 # or hooks/: agents and hooks install from the repository only.
-tree_agents = "/home/example/Research/Environment/Agents"
+tree_agents = "~/Research/Environment/Agents"
 
 # The reverse-domain prefix of the LaunchAgent labels: `<launchd_prefix>.kaimon` and the others
 # in launchagents/.
@@ -32,10 +39,10 @@ autocommit_branch = "main"
 # or an issue and comment on one without a prompt.
 org = ["example-org", "example-user"]
 
-# The directories that hold the research tree's repositories, as absolute paths.
+# The directories that hold the research tree's repositories.
 # `harness leaks` searches the harness for each directory name below them, so that no
 # source names a repository of the tree.
-repository_roots = ["/home/example/Research/Packages", "/home/example/Research/Experiments"]
+repository_roots = ["~/Research/Packages", "~/Research/Experiments"]
 
 # The repositories that keep their own documentation workflow, a multi-job pipeline that
 # githooks/workflows/Documenter.yml does not describe: the installer skips them, and
@@ -52,7 +59,7 @@ protected_dir = ["Nextcloud"]
 
 # Strings that must never appear in the repository: `harness leaks` searches every tracked file
 # for each. The home path, the user name, the institution's hosts, internal addresses.
-leak = ["/home/example", "example-user"]
+leak = ["~", "example-user"]
 
 # The model servers and accounts of OpenCode and oh-my-pi are in providers.toml beside this file,
 # which examples/providers.toml shows.

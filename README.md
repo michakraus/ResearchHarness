@@ -59,8 +59,9 @@ all the steps.
    touch ~/Research/Environment/Agents/instructions/research-tree.md
    ```
 
-4. In `~/.config/research-harness/profile.toml`, replace the example path `/home/example` with
-   your home directory, for example `/Users/me`, in each value.
+4. In `~/.config/research-harness/profile.toml`, fill in the keys that name a person or an
+   organisation: `org`, `leak`, `launchd_prefix` and `memory_project`. The paths start with `~/`
+   and work as copied; `harness get home` must print your home directory.
 
 5. Install. `harness install` prints the plan and exits 1, because it would change files.
    `--apply` makes the change; the first one also downloads the Julia packages of the scripts.

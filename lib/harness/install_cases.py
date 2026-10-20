@@ -2,6 +2,7 @@
 the helpers of its cases.
 """
 
+import json
 import os
 import pathlib
 import re
@@ -18,12 +19,14 @@ RULE_HEAD = '---\npaths: ["**/*.x"]\ndescription: A rule of the scratch tree.\n-
 
 
 def scratch_profile(path, tree, raw=None):
-    """The dummy profile with `harness` set to this checkout, so that the `SessionStart` hook reads
-    the sources that the stamp names, and `tree_agents` set to `tree`, or without the key for None;
-    `raw` is the key's TOML value as written, in place of `tree`. examples/providers.toml goes
-    beside it."""
+    """The dummy profile with `home` set to `profile_module.DUMMY_HOME`, so that a load in this
+    process and one under the scratch HOME give the same values, `harness` set to this checkout,
+    so that the `SessionStart` hook reads the sources that the stamp names, and `tree_agents` set
+    to `tree`, or without the key for None; `raw` is the key's TOML value as written, in place of
+    `tree`. examples/providers.toml goes beside it."""
     line = f"tree_agents = {raw}" if raw is not None else "" if tree is None else f'tree_agents = "{tree}"'
-    text = re.sub(r"(?m)^harness = .*$", lambda _: f'harness = "{REPO}"', profile_module.DUMMY.read_text())
+    text = f"home = {json.dumps(profile_module.DUMMY_HOME)}\n" + re.sub(
+        r"(?m)^harness = .*$", lambda _: f'harness = "{REPO}"', profile_module.DUMMY.read_text())
     path.write_text(re.sub(r"(?m)^tree_agents = .*$", line, text))
     (path.parent / "providers.toml").write_bytes((REPO / "examples" / "providers.toml").read_bytes())
     return path

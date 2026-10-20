@@ -89,7 +89,8 @@ GIT = {"GIT_CONFIG_GLOBAL": "/dev/null", "GIT_CONFIG_NOSYSTEM": "1",
 
 
 def make_fixture(home, env):
-    """The fixture below `home`; the dummy profile and model tables rendered for it."""
+    """The fixture below `home`; the dummy profile and model tables copied as they are, so that
+    each `~` of the profile is `home`."""
     research = home / "Research"
     for directory in (".claude/agents", ".claude/skills", ".config/opencode", ".config/research-harness",
                       "Research/Packages/Example", "Research/Experiments", "Research/Knowledge",
@@ -99,8 +100,7 @@ def make_fixture(home, env):
     (home / ".claude.json").write_text("{}\n")
     for name, source in (("profile.toml", DUMMY), ("models.toml", REPO / "examples" / "models.toml"),
                          ("providers.toml", REPO / "examples" / "providers.toml")):
-        text = source.read_text().replace("/home/example", str(home))
-        (home / ".config" / "research-harness" / name).write_text(text)
+        (home / ".config" / "research-harness" / name).write_bytes(source.read_bytes())
     package = research / "Packages" / "Example"
     (package / "Project.toml").write_text('name = "Example"\n')
     for repository, files in ((package, ["Project.toml"]), (research / "Knowledge", [])):

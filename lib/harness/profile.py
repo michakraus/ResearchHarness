@@ -8,7 +8,9 @@
 
 The profile is a TOML file of every value that names a person, an institution or a machine:
 `harness --profile F`, else $RESEARCH_HARNESS_PROFILE, else ~/.config/research-harness/profile.toml.
-`examples/profile.toml` is a dummy that shows every key.
+`examples/profile.toml` is a dummy that shows every key. `home` is optional: the running user's
+home directory without it. A string value that is `~` or starts with `~/`, an item of a list
+too, means `home` (`expand_home`).
 
 A placeholder is `{name}`: lower case, digits and `_`, no colon, so OpenCode's `{env:…}` and
 `{file:…}` pass through. `name` is a profile key. A string value substitutes. A list value
@@ -48,11 +50,16 @@ import subprocess
 import sys
 import tempfile
 import tomllib
+from unittest import mock
 
 from . import REPO, HarnessError, frontends, frontmatter, network
 
 DEFAULT = pathlib.Path.home() / ".config" / "research-harness" / "profile.toml"
 DUMMY = REPO / "examples" / "profile.toml"
+# A home directory of the dummy that is not the running user's: `leaks` renders the templates
+# with the dummy under it, because the user's `leak` list names the running user's home, and the
+# scratch profiles of the install cases set it.
+DUMMY_HOME = "/home/example"
 
 PLACEHOLDER = re.compile(r"\{([a-z][a-z0-9_]*)\}")
 # A line that holds one placeholder alone, after its indentation.
@@ -82,17 +89,53 @@ def location(path=None):
     return pathlib.Path(path or os.environ.get("RESEARCH_HARNESS_PROFILE") or DEFAULT)
 
 
-def load(path=None):
-    """The profile at `path`, else the environment's, else the default path."""
+def load(path=None, home=None):
+    """The profile at `path`, else the environment's, else the default path, with `~` expanded
+    (`expand_home`); `home` is the home directory of a profile that names none, the running
+    user's by default."""
     path = location(path)
     if not path.is_file():
         raise HarnessError(f"no profile at {path} — copy examples/profile.toml there and fill it in")
     try:
-        return tomllib.loads(path.read_bytes().decode("utf-8"))
+        data = tomllib.loads(path.read_bytes().decode("utf-8"))
     except UnicodeDecodeError:
         raise HarnessError(f"{path} is not UTF-8") from None
     except tomllib.TOMLDecodeError as e:
         raise HarnessError(f"{path} is not TOML: {e}") from None
+    return expand_home(data, path, home)
+
+
+def expand_home(data, path, home=None):
+    """`data` with `home` set and `~` expanded. `home` is the profile's own, else `home`, else
+    `pathlib.Path.home()`; it must be an absolute path with no `~`, and loses a trailing slash, so
+    that `~/x` never gives `//x`. A string that is exactly `~`, or starts with `~/`, at the top
+    level or as an item of a top-level list, becomes `home`, or `home` and the rest. Any other
+    `~` stays, `~name/x` too, and so does every value inside a table or a nested list:
+    examples/profile.toml has none. A profile at `path` that breaks a rule of `home` exits 2."""
+    given = "home" in data
+    if given:
+        home = data["home"]
+    elif home is None:
+        try:
+            home = str(pathlib.Path.home())
+        except RuntimeError:
+            home = None
+    if not (isinstance(home, str) and "~" not in home and pathlib.PurePath(home).is_absolute()):
+        if given:
+            raise HarnessError(f"{path}: `home` is {home!r}, not an absolute path without `~`")
+        raise HarnessError(f"{path}: the home directory is not known ({home!r}); set `home` to an absolute path")
+    home = home.rstrip("/") or "/"
+
+    def expanded(v):
+        if v == "~":
+            return home
+        if isinstance(v, str) and v.startswith("~/"):
+            return home.rstrip("/") + v[1:]
+        return v
+
+    out = {k: [expanded(x) for x in v] if isinstance(v, list) else expanded(v) for k, v in data.items()}
+    out["home"] = home
+    return out
 
 
 def value(name, profile, where):
@@ -513,7 +556,7 @@ def cmd_leaks(args, repo=REPO):
         raise HarnessError("the profile's `leak` list is empty — nothing to check against")
     names = tree_names(profile)
     pattern, allowed = name_pattern(names), own_repository(repo)
-    dummy = DEFAULTS | load(DUMMY)
+    dummy = DEFAULTS | load(DUMMY, home=DUMMY_HOME)
     files = subprocess.run(
         ["git", "ls-files", "-z"], cwd=repo, capture_output=True, text=True, check=True
     ).stdout.split("\0")
@@ -715,6 +758,18 @@ def commit_cases():
             ok = got == status and all(line in out.getvalue().splitlines() for line in lines)
             wrong += not ok
             print(f"{'ok ' if ok else 'BAD'}  leaks: {label} -> exit {got}")
+        # The home directory as a leak string, `~` in the profile: the templates render with the
+        # dummy under a home that is not the running user's, so they hold no hit.
+        (pathlib.Path(tmp) / "profile-home.toml").write_text(
+            f"leak = [\"~\"]\norg = []\nrepository_roots = [{json.dumps(str(pathlib.Path(tmp) / 'roots'))}]\n")
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out), mock.patch.dict(os.environ, HOME=str(pathlib.Path(tmp) / "roots")):
+            got = cmd_leaks(argparse.Namespace(profile=pathlib.Path(tmp) / "profile-home.toml", commits=None), repo)
+        summary = out.getvalue().splitlines()[-1]
+        ok = got == 0 and summary.endswith(", 0 hits")
+        wrong += not ok
+        print(f"{'ok ' if ok else 'BAD'}  leaks: the running user's home as the leak string, and the templates "
+              f"rendered with the dummy -> exit {got}, {summary.strip()!r}")
         # The templates that `harness leaks` renders: TEMPLATES and each adapter's. The leak string is
         # the suffix of a rendered template's name, so each template it renders is one hit on line 0.
         (pathlib.Path(tmp) / "profile-templates.toml").write_text(
@@ -812,7 +867,7 @@ def commit_cases():
         wrong += not ok
         print(f"{'ok ' if ok else 'BAD'}  leaks --commits: the own owner/name of a repository whose origin is not "
               f"this checkout's -> exit {status}, {summary.strip()!r}")
-    return len(cases) + 3 + len(message_cases) + len(runs) + 1 + len(limits) + len(place_cases) + 1, wrong
+    return len(cases) + 3 + len(message_cases) + len(runs) + 2 + len(limits) + len(place_cases) + 1, wrong
 
 
 # The tools that `.githooks/pre-push` starts from the PATH in `prepush_case`, besides the stubs.
@@ -970,9 +1025,100 @@ def prepush_branch_cases():
     return len(cases), wrong
 
 
+def home_cases():
+    """The cases of `home` and of `~` in a value, each through `load` of a profile in a scratch
+    directory whose `HOME` is set inside this process, and `harness get` on an unedited copy of
+    examples/profile.toml: (number of cases, number wrong)."""
+    wrong, n = 0, 0
+
+    def check(ok, label):
+        nonlocal wrong, n
+        n += 1
+        wrong += not ok
+        print(f"{'ok ' if ok else 'BAD'}  profile: {label}")
+
+    with tempfile.TemporaryDirectory(prefix="harness-home-") as tmp:
+        tmp = pathlib.Path(tmp).resolve()
+        user = tmp / "user"
+        user.mkdir()
+
+        def loaded(text, home_env=str(user), **kwargs):
+            """`load` of the profile `text`, under `HOME` = `home_env`; a HarnessError's message
+            in place of the profile."""
+            (tmp / "profile.toml").write_text(text)
+            with mock.patch.dict(os.environ, HOME=home_env):
+                try:
+                    return load(tmp / "profile.toml", **kwargs)
+                except HarnessError as e:
+                    return f"error: {e}"
+
+        def refused(got):
+            return isinstance(got, str) and got.startswith("error: ") and "`home`" in got
+
+        got = loaded('x = "~/a"\n')
+        check(isinstance(got, dict) and got.get("home") == str(user) and got.get("x") == f"{user}/a",
+              f"no `home`: the running user's home, and `~/a` below it -> {got}")
+        got = loaded('x = "~/a"\n', home_env=str(user) + "/")
+        check(isinstance(got, dict) and got.get("home") == str(user),
+              f"no `home`, $HOME with a trailing slash: none in `home` -> {got}")
+        got = loaded('home = "/h"\nx = "~/a"\n')
+        check(isinstance(got, dict) and got.get("home") == "/h" and got.get("x") == "/h/a",
+              f"a given `home` -> {got}")
+        got = loaded('home = "/h/"\nx = "~/a"\ny = "~"\n')
+        check(isinstance(got, dict) and got.get("home") == "/h" and got.get("x") == "/h/a" and got.get("y") == "/h",
+              f"a given `home` with a trailing slash: removed, so no `//` -> {got}")
+        got = loaded('home = "/"\nx = "~/a"\ny = "~"\n')
+        check(isinstance(got, dict) and got.get("home") == "/" and got.get("x") == "/a" and got.get("y") == "/",
+              f"`home` the root directory -> {got}")
+        for text, label in (('home = "h"\n', "a relative `home`"), ('home = ""\n', "an empty `home`"),
+                            ('home = "~"\n', "`home` = `~`"), ('home = "~/h"\n', "`home` below `~`"),
+                            ('home = "/h/~x"\n', "`home` with a `~` inside"), ("home = 1\n", "a number as `home`"),
+                            ('home = ["/h"]\n', "a list as `home`")):
+            got = loaded(text)
+            check(refused(got), f"{label} is refused, naming the key -> {got}")
+        got = loaded('x = "~"\n', home_env="relative")
+        check(refused(got), f"no `home` and a relative $HOME: refused, naming the key -> {got}")
+        with mock.patch.object(pathlib.Path, "home", mock.Mock(side_effect=RuntimeError("no home"))):
+            got = loaded('x = "~"\n')
+        check(refused(got), f"no `home` and no home directory: refused, naming the key -> {got}")
+        got = loaded('x = "~"\n', home="/fallback")
+        check(isinstance(got, dict) and got.get("home") == "/fallback" and got.get("x") == "/fallback",
+              f"no `home`, and the caller's home -> {got}")
+        got = loaded('home = "/h"\nx = "~"\n', home="/fallback")
+        check(isinstance(got, dict) and got.get("home") == "/h", f"a given `home` over the caller's home -> {got}")
+        text = ('home = "/h"\nalone = "~"\nbelow = "~/x/y"\nlist = ["~/a", "b", "~", "a~b"]\nmid = "a~b"\n'
+                'tail = "a/~"\nslashless = "~x"\nuser = "~name/x"\nnumber = 3\nflag = true\n'
+                'nested = [["~/n"]]\n[table]\nk = "~/t"\n')
+        got = loaded(text)
+        expected = {"home": "/h", "alone": "/h", "below": "/h/x/y", "list": ["/h/a", "b", "/h", "a~b"], "mid": "a~b",
+                    "tail": "a/~", "slashless": "~x", "user": "~name/x", "number": 3, "flag": True,
+                    "nested": [["~/n"]], "table": {"k": "~/t"}}
+        for key, value in expected.items():
+            check(isinstance(got, dict) and got.get(key) == value,
+                  f"{key} -> {got.get(key) if isinstance(got, dict) else got!r}, expected {value!r}")
+        # examples/profile.toml as copied: `harness get` under the scratch HOME.
+        copy = tmp / "copy.toml"
+        copy.write_bytes(DUMMY.read_bytes())
+        env = {**os.environ, "HOME": str(user)}
+        env.pop("RESEARCH_HARNESS_PROFILE", None)
+        for key, expected in (("home", str(user)), ("harness", f"{user}/Research/Harness"),
+                              ("tree_agents", f"{user}/Research/Environment/Agents"),
+                              ("repository_roots", f"{user}/Research/Packages\n{user}/Research/Experiments")):
+            p = subprocess.run([sys.executable, str(REPO / "bin" / "harness"), "--profile", str(copy), "get", key],
+                               env=env, capture_output=True, text=True)
+            check(p.returncode == 0 and p.stdout.strip() == expected,
+                  f"examples/profile.toml as copied: harness get {key} -> exit {p.returncode}, {p.stdout.strip()!r}")
+        dummy = tomllib.loads(DUMMY.read_text())
+        check("home" not in dummy and dummy["leak"][0] == "~",
+              f"examples/profile.toml: no `home` key, and `~` as the home entry of `leak` -> "
+              f"{'home' in dummy}, {dummy['leak']}")
+    return n, wrong
+
+
 def selftest():
-    """The render's cases, the tree-name cases, the cases of `--commits`, and the `origin` case and
-    the branch cases of the pre-push hook: (number of cases, number wrong)."""
+    """The render's cases, the tree-name cases, the cases of `home` and `~`, the cases of
+    `--commits`, and the `origin` case and the branch cases of the pre-push hook: (number of
+    cases, number wrong)."""
     wrong = 0
     for template, profile, expected in CASES:
         try:
@@ -986,7 +1132,9 @@ def selftest():
         got = name_hits(line, pattern, "org/Repo")
         wrong += got != expected
         print(f"{'ok ' if got == expected else 'BAD'}  {line!r} -> {got!r}")
+    n0, w0 = home_cases()
     n, w = commit_cases()
+    n, w = n + n0, w + w0
     n2, w2 = prepush_case()
     # As inside a git hook: git's exec path first on the PATH.
     exec_path = subprocess.run(["git", "--exec-path"], capture_output=True, text=True, check=True).stdout.strip()
