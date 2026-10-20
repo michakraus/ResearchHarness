@@ -3,7 +3,7 @@
 This page explains the ideas behind Research Harness. It is for a reader who has not used the
 harness and is fairly new to [coding agents](#coding-agent). You need no Julia to read it. Each
 section ends with a note on how its idea carries to another language. The [glossary](#glossary)
-at the end of the page gives a short entry for each word that the other pages use.
+at the end of the page gives a short entry for each term that the other pages use.
 
 ## What a coding agent is
 

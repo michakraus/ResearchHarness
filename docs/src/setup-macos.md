@@ -8,7 +8,7 @@ The commands use Homebrew. The package names and the versions that this page giv
 on macOS 27 on Apple silicon (`arm64`) only. On an Intel Mac, Homebrew is in `/usr/local` in place
 of `/opt/homebrew`, and the `PATH` of the launchd jobs of [The jobs](#the-jobs) names
 `/opt/homebrew/bin` only; that case is not checked. The steps use `~/Research/Harness` as the path
-of the checkout. [Introduction](concepts.md) explains the words that this page uses, and the
+of the checkout. [Introduction](concepts.md) explains the terms that this page uses, and the
 glossary there has an entry for each.
 
 **Without Julia code.** If you write no Julia, you can skip the steps and lines that this page

@@ -8,7 +8,8 @@
   steps of the tutorial. Both sections are gone. *Features* now also names the builder-critic
   loop, the tools for Julia packages and for papers, one profile for every machine and
   `harness doctor`; *Getting started* links the two setup pages, the tutorial and the
-  introduction.
+  introduction. The README, the setup pages, the tutorial and the introduction call the entries
+  of the glossary terms, not words.
 
 - **The two setup pages have the same steps in the same order, and the docs match the code
   again.** *Setup on macOS* gained the steps that only *Setup on Linux* had: *Check the machine*,

@@ -51,7 +51,7 @@ shows the harness and its layers, and the way from its sources to the frontends,
   each step from a clean machine to a working harness, with the check of each step.
 - [Tutorial: a first session](docs/src/tutorial.md) starts your first session and shows the
   guard hooks and the drift warning at work.
-- [Introduction](docs/src/concepts.md) explains the ideas and the words of the harness.
+- [Introduction](docs/src/concepts.md) explains the ideas and the terminology of the harness.
 
 ## Documentation
 

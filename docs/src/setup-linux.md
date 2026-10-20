@@ -9,7 +9,7 @@ The commands are for Debian and Ubuntu, with `apt-get`. The package names and th
 this page gives are checked on Ubuntu 26.04 only; other distributions and releases are not
 checked. The commands run on the two architectures `x86_64` and `aarch64` (64-bit Arm). The steps
 use `~/Research/Harness` as the path of the checkout. [Introduction](concepts.md) explains the
-words that this page uses, and the glossary there has an entry for each.
+terms that this page uses, and the glossary there has an entry for each.
 
 **Without Julia code.** If you write no Julia, you can skip the steps and lines that this page
 marks. You still need Julia itself, because the [install](concepts.md#install) runs it once.
