@@ -9,6 +9,12 @@
 
 using Test
 
+# Run as a script, the file runs again inside one test set, so that it prints one summary table.
+if abspath(PROGRAM_FILE) == @__FILE__() && Test.get_testset_depth() == 0
+    @testset "test-layout-test.jl" verbose = true include(@__FILE__)
+    exit()
+end
+
 const SCRIPT = joinpath(@__DIR__, "test-layout.jl")
 
 const RUNTESTS = """
