@@ -512,3 +512,7 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   harness reports VALID and CAUGHT, but the kill is the `UndefVarError`, not the defect the mutant
   names. Read the failed assertion's message, and spell the mutant so its only change is the
   defect (M5, *Simplify the optimiser package and the learning package for 0.9*)
+- a round-off tolerance given as a constant relative factor with no derivation (`1e-9·n`): it
+  accepts a real fraction at the domain's own scale (a stride of 100) and a whole step at 10⁹.
+  Derive the bound from the roundings of the computed value, and test one input inside the bound
+  and one outside (P38b verify 2, *Rewrite the reduced basis packages*)
