@@ -4,7 +4,7 @@
 
 - **A new guard hook, `git-archive-output.py`, refuses `git archive -o` and names the read that
   needs no prompt.** Agents wrote an archive of a commit to read its unmodified tree, usually the
-  base of their branch: the permission log holds 37 such prompts from 2026-10-04 to 2026-10-19,
+  base of their branch: the permission log holds 35 such prompts from 2026-10-04 to 2026-10-19,
   from critics, builders, shepherds, reviewers and main sessions. `-o` writes outside the sandbox,
   so the `ask` rules on it prompted for what is a read. The hook exits 2, and its message gives
   `scripts/base-tree.jl` for the tree or some paths of it, `git show` for one file and
