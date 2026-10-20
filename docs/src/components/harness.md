@@ -22,6 +22,7 @@ contract sweep. Three verbs live in the adapters: `settings` and `trust` in
 | `ci-protection` | `protection.py` |
 | `format` | `fmt.py` |
 | `skill-triggers` | `skill_triggers.py` |
+| `doctor` | `doctor.py` |
 | `test` | `cli.py` |
 
 `frontmatter.py`, `docs.py` and `sweep.py` have no verb. Their cases run only in `harness test`.
@@ -69,7 +70,8 @@ of the modules and the adapters. A `HarnessError` of a verb prints one line,
 `harness test` runs the cases in this order:
 
 1. the `selftest` of `install.py`, then of each adapter, then of `frontmatter.py`,
-   `protection.py`, `profile.py`, `skill_triggers.py` and `docs.py`;
+   `protection.py`, `profile.py`, `skill_triggers.py`, `docs.py`, `units.py`, `script_cases.py`,
+   `network.py`, `providers.py` and `doctor.py`;
 2. the hook probe `hooks/probe.py`, in a process of its own;
 3. the contract sweep of `sweep.py`.
 
@@ -252,6 +254,49 @@ The report goes to `.scratch/skill-triggers/` below the research root. Every ses
 
 Its cases run the parser, the verdict, the majority and the pass rule, and run `--apply` on a fake
 `claude`. [Typical use](../daily-use.md) shows the commands.
+
+## `doctor.py`
+
+The verb `harness doctor [--full]`, the check that a machine's setup works. It is read-only, so
+it takes no `--apply`. It prints one line for each check: `PASS`, `WARN`, `FAIL` or `SKIP`, the
+name of the check and a detail, such as a version, a path or the reason. A `FAIL` line also names
+the section of the setup page that fixes it. The verb exits 1 when a check fails, else 0; a `WARN`
+or a `SKIP` does not count. A usage error exits 2.
+
+It checks, in this order:
+
+- the machine: the system and the architecture. On Linux also the two kernel settings for user
+  namespaces, the sandbox check `bwrap --ro-bind / / --dev /dev --unshare-user --unshare-pid true`,
+  and `socat`.
+- the tools of [Dependencies](../dependencies.md): each required tool is on the `PATH`, and each
+  tool with a minimum on that page is at or above it; below it, or missing, is a `FAIL`. A missing
+  tool that serves one frontend, one job or a push to the harness (the frontends, RTK, jq,
+  juliaup, iTerm2 and gitleaks) is a `WARN` that says what stops without it. A version that the
+  verb cannot read is a `WARN` with the tool's own text. The minimums are in
+  `MINIMUMS`, and a case compares each with the page. The six Julia packages are read from the
+  `Manifest.toml` of the Julia environment of the scripts.
+- the profile: it loads, the `tree_agents` directory and the OpenCode configuration directory
+  exist, and the line `autocommit_branch` prints the value.
+- the install: the dry run of `harness install` reports `0 change(s)`, else a `FAIL` with the
+  count. Each warning of the dry run is a `WARN` line.
+- the jobs: Kaimon, `~/.julia/bin/kaimon`; its server and the update job, with `systemctl --user`
+  on Linux and `launchctl list` with the profile's `launchd_prefix` on macOS; linger on Linux.
+  When the autocommit job is enabled, `~/.claude` must be the top of its own git repository, with
+  an `origin`. The Kaimon token file must exist, with mode 600, and not be empty. Without Kaimon,
+  its jobs and the token are `SKIP`, and so is the token without OpenCode and oh-my-pi, which read
+  it.
+- with `--full`, `harness test` and `julia -e 'using Revise'`. Without `--full`, both are `SKIP`.
+
+The verb writes no file, starts no service and runs no `--apply`. It prints no secret: it reads
+only the existence, the mode and the size of the token file, and does not print the URL of the
+`origin` of `~/.claude`. A session's sandbox refuses some of the commands, such as `launchctl`, and
+denies the read of the token file. There, these checks are `SKIP` with the reason, so run the
+verb in a plain terminal for its real verdict.
+
+Its cases run each status of each check on a fixture: a scratch `HOME` and stub commands on the
+`PATH` that print what each tool prints on Linux and on macOS. They also check the exit status,
+the minimums against the page, that no token reaches the output, and one run of the verb on the
+fixture of the contract sweep, which changes no file.
 
 ## `units.py`
 
