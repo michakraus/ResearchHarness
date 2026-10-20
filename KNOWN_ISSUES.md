@@ -242,3 +242,23 @@
   no home path in the renders.
 - kind: defect
 - found: 2026-10-20
+
+### K82 · `harness doctor` reads an unreadable `unprivileged_userns_clone` as absent.
+
+- location: `lib/harness/doctor.py:541`
+- evidence: `read()` returns None on any `OSError`, a `PermissionError` too, and `namespaces()`
+  (`lib/harness/doctor.py:234-239`) reads None as a missing key. So a file that holds `0` and
+  cannot be read gives `PASS  userns clone  absent: no limit`, not the `FAIL` of a file that
+  holds `0`. procfs makes the file mode 0644, so no real machine is known to give this input.
+- kind: defect
+- found: 2026-10-20
+
+### K83 · `harness doctor` counts a pre-release as its release.
+
+- location: `lib/harness/doctor.py:112`
+- evidence: `VERSION` reads the numbers only, and `tool()` (`lib/harness/doctor.py:286`) compares
+  them with the minimum. `meets(numbers_of('julia version 1.13.0-rc1'), ('1.13',))` and
+  `meets(numbers_of('8.21.0-rc1'), ('8.21',))` both give `True`, so a release candidate passes
+  Julia ≥ 1.13 and gitleaks ≥ 8.21.
+- kind: defect
+- found: 2026-10-20

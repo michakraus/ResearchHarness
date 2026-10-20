@@ -26,8 +26,8 @@ It changes nothing: it reads files, and runs the version flags of the tools, the
 for its existence, mode and size, and of `~/.claude`'s `origin` only whether it exists, since a
 remote URL can hold a credential.
 
-A session's sandbox, known by $SANDBOX_RUNTIME, can refuse `bwrap`, `systemctl`, `loginctl` and
-`launchctl`, and deny a file. There, such a check that does not get its answer is SKIP with the
+A session's sandbox, known by $SANDBOX_RUNTIME, can refuse `bwrap`, `systemctl`, `loginctl`,
+`launchctl` and the version flag of a tool, and deny a file. There, such a check that does not get its answer is SKIP with the
 reason; run the verb in a plain terminal for its real verdict.
 """
 
@@ -268,6 +268,10 @@ class Doctor:
         return out + self.packages()
 
     def tool(self, name, command, flags, without):
+        """A tool of TOOLS: missing, or a version flag that exits non-zero, is a FAIL for a required
+        tool (`without` None) and a WARN for an optional one; a non-zero exit is a SKIP in a
+        session's sandbox, which can refuse the flag. A version below its minimum is a FAIL, and
+        output with no version a WARN."""
         path = shutil.which(command)
         if path is None:
             if without is None:
@@ -276,7 +280,9 @@ class Doctor:
         r = run([path, *flags])
         call = " ".join([command, *flags])
         if r is None or r[0] != 0:
-            return Result("WARN", name, said(call, r))
+            if without is None or sandboxed():
+                return self.refused(name, said(call, r), "tools")
+            return Result("WARN", name, f"{said(call, r)}: {without}")
         m = VERSION.search(r[1] + r[2])
         if m is None:
             return Result("WARN", name, f"cannot read a version from {call}: {first(r[1] + r[2])!r}")
@@ -864,10 +870,23 @@ def status_cases(check, root, system_name):
         case(f"{command} prints no version", {name: "WARN"},
              lambda f, c=command, a=flags: f.tool(c, (" ".join(a), "command-line tool, no number here\n", "", 0)),
              ("tools",), **one)
-        # As gh in a session's sandbox: the version on stdout, a warning on stderr, exit 1.
-        case(f"{command} exits 1", {name: "WARN"},
-             lambda f, c=command, a=flags: f.tool(c, (" ".join(a), printed[c][0][1], "warning: failed to load config\n",
-                                                      1)), ("tools",), **one)
+        # A version flag that exits non-zero: FAIL for a required tool, WARN for an optional one,
+        # and SKIP in a session's sandbox, where gh prints its version, a warning and exits 1.
+        exits = lambda f, c=command, a=flags: f.tool(c, (" ".join(a), printed[c][0][1],
+                                                         "warning: failed to load config\n", 1))
+        got, _ = case(f"{command} exits 1", {name: status}, exits, ("tools",), **one)
+        check(f"{' '.join([command, *flags])} exits 1" in got[name].detail,
+              f"{system_name}: {command} exits 1 names the exit -> {got[name].detail!r}")
+        got, _ = case(f"{command} exits 1 in a session's sandbox", {name: "SKIP"}, exits, ("tools",), sandbox=True,
+                      **one)
+        check("sandbox" in got[name].detail, f"{system_name}: the SKIP names the sandbox -> {got[name].detail!r}")
+        case(f"{command} exits 127", {name: status},
+             lambda f, c=command, a=flags: f.tool(c, (" ".join(a), "", "error while loading shared libraries: "
+                                                      "libfoo.so.1: cannot open shared object file\n", 127)),
+             ("tools",), **one)
+        case(f"{command} prints no version in a session's sandbox", {name: "WARN"},
+             lambda f, c=command, a=flags: f.tool(c, (" ".join(a), "command-line tool, no number here\n", "", 0)),
+             ("tools",), sandbox=True, **one)
         for floor in MINIMUMS.get(name, ()):
             out = printed[command][0][1]
             at = VERSION.search(out).group(0)

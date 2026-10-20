@@ -271,8 +271,10 @@ It checks, in this order:
 - the tools of [Dependencies](../dependencies.md): each required tool is on the `PATH`, and each
   tool with a minimum on that page is at or above it; below it, or missing, is a `FAIL`. A missing
   tool that serves one frontend, one job or a push to the harness (the frontends, RTK, jq,
-  juliaup, iTerm2 and gitleaks) is a `WARN` that says what stops without it. A version that the
-  verb cannot read is a `WARN` with the tool's own text. The minimums are in
+  juliaup, iTerm2 and gitleaks) is a `WARN` that says what stops without it. A version flag that
+  exits non-zero is a `FAIL` for a required tool and a `WARN` for an optional one, and a `SKIP` in
+  a session's sandbox, which can refuse it. A version that the verb cannot read from the output of
+  a flag that exits 0 is a `WARN` with the tool's own text. The minimums are in
   `MINIMUMS`, and a case compares each with the page. The six Julia packages are read from the
   `Manifest.toml` of the Julia environment of the scripts.
 - the profile: it loads, the `tree_agents` directory and the OpenCode configuration directory
