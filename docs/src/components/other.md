@@ -30,7 +30,8 @@ them. `harness render launchagents/<name>` prints the rendered plist.
 pushes the local `main` to the branch of `origin` that `CLAUDE_AUTOCOMMIT_BRANCH` names, `main`
 when the variable is unset. The plist and the unit set it from the profile key
 `autocommit_branch`: `main` on the machine whose memory is the template, a branch of its own on
-each other machine. It stages each path by name and commits with a pathspec, so a file that
+each other machine. Without that key, the profile key `template_host` gives it:
+[One profile for every machine](../profile.md#one-profile-for-every-machine). It stages each path by name and commits with a pathspec, so a file that
 another session staged stays staged. It skips a file that changed in the last 5 minutes, and refuses
 a rename or more than 20 deletions.
 

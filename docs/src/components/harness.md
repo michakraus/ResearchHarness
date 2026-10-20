@@ -151,9 +151,11 @@ harness leaks [--commits F]
 `render` prints a template with each placeholder `{key}` replaced by its profile value. A list
 value repeats the line, or the JSON list element, once for each item. A table value renders only
 on a line that holds the placeholder alone, as the members of a JSON object. A placeholder that the
-profile does not have exits 2, except `autocommit_branch`, which `render` gives the value `main`.
+profile does not have exits 2. `autocommit_branch` is never missing: without it, every verb reads
+`main` on the machine whose short host name is the profile's `template_host` or without
+`template_host`, and `memory/<short host name>` on every other machine.
 `get` prints one value, one line for each item of a list; a key that the profile does not have
-exits 2, `autocommit_branch` too. `render` of the settings template also adds its network rules
+exits 2. `render` of the settings template also adds its network rules
 (`network.py`).
 
 `leaks` searches every tracked file and its path for each string of the profile's `leak` list, and
@@ -262,7 +264,8 @@ line. Every element of the `PATH` must be an absolute directory that the setting
 out of a session's writes, or a system directory; an empty element, the working directory, is a
 problem. Its cases also apply a mutant to the rendered templates, such as a removed restart, an
 extra trigger or a session-writable directory on the `PATH`, and expect a problem, and check that
-`render` gives `autocommit_branch` the value `main` when the profile has no such key. [Jobs and configuration](other.md) describes the units.
+`render` gives `autocommit_branch` its default when the profile has no such key: `main`, and
+`memory/<short host name>` on a host that is not `template_host`. [Jobs and configuration](other.md) describes the units.
 
 ## `script_cases.py`
 

@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+- **One profile for every machine, and the findings of a test of *Setup on Linux*.** The
+  profile needed one edit per machine: `autocommit_branch` is `main` on the machine whose memory
+  is the template and a branch of its own on each other. A new optional key, `template_host`,
+  names the template machine by its short host name (up to the first `.`, as `hostname -s`
+  prints it). Without `autocommit_branch`, every verb now reads `main` without `template_host` or
+  on that machine, and `memory/<short host name>` on every other; a given `autocommit_branch`
+  still wins, and `harness get autocommit_branch` prints the value. A `template_host` that is
+  empty, holds a `.` or is not a string exits 2. `examples/profile.toml` sets `template_host` and
+  no `autocommit_branch`, and `harness leaks` renders it under the host name `example-other`. Both
+  setup pages say to write the profile once and copy it to each machine. *Setup on Linux* names
+  `~/.bashrc` and `~/.zshrc` for each `export` line, says that the juliaup installer stops over an
+  earlier juliaup, gives the `.env` lines of oh-my-pi as a command with a check, adds *The Kaimon
+  token* (the first key of Kaimon's `config.json` into `~/.config/kaimon/opencode-token`), checks
+  that `~/.claude` is the top of its own git repository before it enables the autocommit timer,
+  gives the administrator's linger command with the account name in a line of its own, and shows
+  the login of Claude Code with `claude setup-token` and `CLAUDE_CODE_OAUTH_TOKEN` read from a
+  file under `~/.config/api-keys/`. *Setup on macOS* names both start files too.
+
 - **The profile takes `~`, and `home` is optional.** `examples/profile.toml` held the home path
   `/home/example` in five keys, and a reader had to replace every occurrence. `harness` now reads
   the profile with `home` set to the home directory of the user who runs it when the profile names

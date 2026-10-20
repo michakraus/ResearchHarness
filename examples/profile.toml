@@ -30,10 +30,15 @@ tree_agents = "~/Research/Environment/Agents"
 # in launchagents/.
 launchd_prefix = "org.example"
 
-# The branch of the ~/.claude repository's origin that claude-autocommit pushes to: `main` on the
-# machine whose memory is the template, a branch of its own, such as `memory/<host>`, on each
-# other machine. `harness render` gives `main` when the profile has no such key.
-autocommit_branch = "main"
+# The short host name of the machine whose memory is the template: the host name up to its first
+# `.`, as `hostname -s` prints it. Optional.
+template_host = "example-host"
+
+# The branch of the ~/.claude repository's origin that claude-autocommit pushes to. Optional:
+# without it, `main` on the machine whose short host name is `template_host`, and
+# `memory/<short host name>` on each other machine; `main` everywhere without `template_host`.
+# So this file works unedited on every machine. A value set here is the branch on every machine.
+# autocommit_branch = "main"
 
 # The GitHub accounts, organisations and the user's own, where a session may open a pull request
 # or an issue and comment on one without a prompt.

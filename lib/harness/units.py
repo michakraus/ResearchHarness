@@ -311,7 +311,7 @@ def selftest():
             return text
         return read
 
-    home = dummy["home"]
+    home, branch = dummy["home"], dummy["autocommit_branch"]
     kaimon_path = f"{home}/.juliaup/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin"
     autocommit_timer, update_timer = "systemd/claude-autocommit.timer", "systemd/julia-update.timer"
     update_service = "systemd/julia-update.service"
@@ -348,8 +348,8 @@ def selftest():
         ("a continued ExecStart line in julia-update.service",
          [(update_service, "julia-update.jl\n", "julia-update.jl \\\n  --extra\n")]),
         ("an [Install] section in claude-autocommit.service",
-         [("systemd/claude-autocommit.service", "Environment=CLAUDE_AUTOCOMMIT_BRANCH=main\n",
-           "Environment=CLAUDE_AUTOCOMMIT_BRANCH=main\n[Install]\nWantedBy=default.target\n")]),
+         [("systemd/claude-autocommit.service", f"Environment=CLAUDE_AUTOCOMMIT_BRANCH={branch}\n",
+           f"Environment=CLAUDE_AUTOCOMMIT_BRANCH={branch}\n[Install]\nWantedBy=default.target\n")]),
         ("julia-update.timer wanted by no timers.target",
          [(update_timer, "WantedBy=timers.target", "WantedBy=default.target")]),
         ("a section the check does not read in kaimon.service",
@@ -398,12 +398,16 @@ def selftest():
             got = path_problems(element, {"allowWrite": [], "denyWrite": []}, "/h")
         check(got == [element], f"PATH {element} below the real path of a symlinked TMPDIR -> session-writable {got}")
 
-    # autocommit_branch: the profile's value, `main` without it; a missing `home` is the running
-    # user's, and a relative one exits 2.
+    # autocommit_branch: the profile's value, else `memory/<short host name>` on a host that is
+    # not `template_host`, else `main`; a missing `home` is the running user's, and a relative one
+    # exits 2.
     base = 'home = "/h"\nlaunchd_prefix = "org.x"\n'
     for template in ("systemd/claude-autocommit.service", "launchagents/claude-autocommit.plist"):
-        for text, branch in [(base, "main"), (base + 'autocommit_branch = "memory/host"\n', "memory/host")]:
-            got = render_default(template, text)
+        for text, branch in [(base, "main"), (base + 'autocommit_branch = "memory/host"\n', "memory/host"),
+                             (base + 'template_host = "alpha"\n', "memory/beta"),
+                             (base + 'template_host = "beta"\n', "main")]:
+            with mock.patch("socket.gethostname", return_value="beta.example.org"):
+                got = render_default(template, text)
             want = (f"CLAUDE_AUTOCOMMIT_BRANCH={branch}\n" if template.endswith(".service")
                     else f"<string>{branch}</string>")
             check(got is not None and want in got, f"{template} renders branch {branch!r}")
