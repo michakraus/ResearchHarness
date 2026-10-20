@@ -880,9 +880,99 @@ def prepush_case(path=None):
     return 1, int(not ok)
 
 
+def prepush_branch_cases():
+    """`.githooks/pre-push` for a push of a topic branch, on a fixture checkout whose
+    `refs/remotes/origin/main` holds a commit that adds the leak string and one that removes it.
+    The stub of `bin/harness leaks` searches the tree at HEAD and each commit of `--commits` for
+    the string. A clean branch passes, so the commits of origin/main are not sent; a branch whose
+    new commit adds the string and whose next commit removes it is refused; a branch on the
+    commit with the string is refused for its tree. No case runs the suite. (number of cases,
+    number wrong)"""
+    search = os.pathsep.join(d for d in os.environ.get("PATH", "").split(os.pathsep)
+                             if pathlib.PurePath(d).name != "git-core")
+    env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+    env.update(GIT_CONFIG_GLOBAL="/dev/null", GIT_CONFIG_NOSYSTEM="1",
+               GIT_AUTHOR_NAME="leaks", GIT_AUTHOR_EMAIL="leaks@example.org",
+               GIT_COMMITTER_NAME="leaks", GIT_COMMITTER_EMAIL="leaks@example.org")
+    url = "https://github.com/owner/fixture.git"
+    with tempfile.TemporaryDirectory(prefix="harness-pre-push-") as tmp:
+        tmp = pathlib.Path(tmp)
+        tools, repo = tmp / "bin", tmp / "repo"
+        tools.mkdir()
+        missing = [tool for tool in PREPUSH_TOOLS if shutil.which(tool, path=search) is None]
+        if missing:
+            print(f"BAD  pre-push: the branch cases need {', '.join(missing)} on the PATH; they do not run")
+            return 1, 1
+        for tool in PREPUSH_TOOLS:
+            (tools / tool).symlink_to(shutil.which(tool, path=search))
+        (tools / "python3").symlink_to(sys.executable)
+        (repo / "bin").mkdir(parents=True)
+        # The stub holds the leak string split, so its own tree does not hit.
+        (repo / "bin" / "harness").write_text(
+            "import subprocess, sys\n"
+            "if sys.argv[1] != 'leaks':\n"
+            "    print('the suite ran'); sys.exit(1)\n"
+            "word = 'LE' + 'AK'\n"
+            "hit = subprocess.run(['git', 'grep', '-q', word, 'HEAD']).returncode == 0\n"
+            "for sha in open(sys.argv[3]).read().split():\n"
+            "    hit |= word in subprocess.run(['git', 'show', sha], capture_output=True, text=True).stdout\n"
+            "print('1 hit' if hit else '0 hits')\n"
+            "sys.exit(int(hit))\n")
+
+        def git(*args):
+            return subprocess.run(["git", *args], cwd=repo, env=env, check=True, capture_output=True,
+                                  text=True).stdout.strip()
+
+        def commit(name, content=None):
+            if content is None:
+                git("rm", "-q", "--", name)
+            else:
+                (repo / name).write_text(content)
+                git("add", "--", name)
+            git("commit", "-q", "-m", f"change {name}")
+            return git("rev-parse", "HEAD")
+
+        git("init", "-q", "-b", "main")
+        git("add", "--", "bin/harness")
+        git("commit", "-q", "-m", "fixture")
+        git("remote", "add", "origin", url)
+        with_leak = commit("a.txt", "LEAK\n")
+        main = commit("a.txt")
+        git("update-ref", "refs/remotes/origin/main", main)
+        clean = commit("clean.txt", "clean\n")
+        git("checkout", "-q", "--detach", main)
+        commit("x.txt", "LEAK\n")
+        removed = commit("x.txt")
+        git("checkout", "-q", "--detach", with_leak)
+        on_leak = commit("y.txt", "clean\n")
+        cases = [
+            ("a clean new branch on origin/main passes, and the commits of origin/main are not sent",
+             clean, 0, "the leak check of the branches passed"),
+            ("a branch whose new commit adds the leak string, removed by the next commit, is refused",
+             removed, 1, "found a leak"),
+            ("a branch whose tree holds the leak string of an earlier commit is refused",
+             on_leak, 1, "found a leak"),
+        ]
+        wrong = 0
+        for label, sha, expected, marker in cases:
+            try:
+                p = subprocess.run([str(REPO / ".githooks" / "pre-push"), "origin", url],
+                                   input=f"refs/heads/topic {sha} refs/heads/topic {'0' * 40}\n", cwd=repo,
+                                   env={**env, "PATH": str(tools), "TMPDIR": str(tmp)},
+                                   capture_output=True, text=True, timeout=60)
+                code, text = p.returncode, p.stdout + p.stderr
+            except subprocess.TimeoutExpired:
+                code, text = None, "TIMEOUT"
+            last = (text.strip().splitlines() or ["no output"])[-1]
+            ok = code == expected and marker in last and "the suite ran" not in text
+            wrong += not ok
+            print(f"{'ok ' if ok else 'BAD'}  pre-push: {label} -> exit {code}, {last!r}")
+    return len(cases), wrong
+
+
 def selftest():
-    """The render's cases, the tree-name cases, the cases of `--commits` and the `origin` case of
-    the pre-push hook: (number of cases, number wrong)."""
+    """The render's cases, the tree-name cases, the cases of `--commits`, and the `origin` case and
+    the branch cases of the pre-push hook: (number of cases, number wrong)."""
     wrong = 0
     for template, profile, expected in CASES:
         try:
@@ -901,7 +991,8 @@ def selftest():
     # As inside a git hook: git's exec path first on the PATH.
     exec_path = subprocess.run(["git", "--exec-path"], capture_output=True, text=True, check=True).stdout.strip()
     n3, w3 = prepush_case(exec_path + os.pathsep + os.environ.get("PATH", ""))
-    return len(CASES) + len(NAME_CASES) + n + n2 + n3, wrong + w + w2 + w3
+    n4, w4 = prepush_branch_cases()
+    return len(CASES) + len(NAME_CASES) + n + n2 + n3 + n4, wrong + w + w2 + w3 + w4
 
 
 def register(sub):
