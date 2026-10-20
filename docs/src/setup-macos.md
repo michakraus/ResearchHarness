@@ -305,3 +305,16 @@ At the start of each new Claude Code session, a hook compares `~/.claude/` with 
 session that starts with no warning has the installed layer of the sources. When a source changed
 after the last install, the session starts with a warning about [drift](concepts.md#drift).
 The [tutorial](tutorial.md) starts your first session.
+
+Then check the whole machine in one command. `harness doctor` checks the tools, the profile, the
+install and the jobs, read-only, and prints one line for each check: `PASS`, `WARN`, `FAIL` or
+`SKIP`, the name and a detail. A `FAIL` line names the section that fixes it: a section of this
+page, the section of a launch agent in [Jobs and configuration](components/other.md), or
+[The Kaimon token](setup-linux.md#the-kaimon-token). It exits 0 when no check fails, and 1 when
+one fails. A `WARN` counts as no failure, for example a missing optional tool or a warning of the
+install. Run it in a plain terminal: in a Claude Code session, the sandbox refuses some of its
+commands, and those checks are `SKIP`. `--full` also runs `harness test`.
+
+```bash
+harness doctor
+```

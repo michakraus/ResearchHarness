@@ -5,9 +5,10 @@
 `harness test` runs three sets of cases and prints one summary line; it exits 1 when any case
 is wrong. First each module's own cases; then the hook probe, `hooks/probe.py`, which runs every
 Python hook with the same interpreter on a fixture `HOME`; then the contract sweep,
-`lib/harness/sweep.py`, which runs the dry run of every verb except `format`, `ci-protection` and
-`skill-triggers` on a fixture `HOME` and research root; the cases of `skill-triggers` run its
-dry run and its `--apply` on a fake `claude`. The sweep checks the contract of
+`lib/harness/sweep.py`, which runs the dry run of every verb except `format`, `ci-protection`,
+`skill-triggers` and `doctor` on a fixture `HOME` and research root; the cases of `skill-triggers`
+run its dry run and its `--apply` on a fake `claude`, and the cases of `doctor` run it on the
+sweep's fixture with stub commands. The sweep checks the contract of
 [the `harness` command](harness-command.md): a dry run changes no
 file, a missing precondition exits 2 with one line, and for the five verbs it applies, a dry run
 after `--apply` has nothing to do. Each fixture lives in a temporary directory, so the cases need

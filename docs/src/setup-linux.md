@@ -706,6 +706,18 @@ session that starts with no warning has the installed layer of the sources. When
 after the last install, the session starts with a warning about [drift](concepts.md#drift).
 The [tutorial](tutorial.md) starts your first session.
 
+Then check the whole machine in one command. `harness doctor` checks the machine, the tools, the
+profile, the install and the jobs, read-only, and prints one line for each check: `PASS`, `WARN`,
+`FAIL` or `SKIP`, the name and a detail. A `FAIL` line names the section of this page that fixes
+it. It exits 0 when no check fails, and 1 when one fails. A `WARN` counts as no failure, for
+example a missing optional tool or a warning of the install. Run it in a plain terminal: in a
+Claude Code session, the sandbox refuses some of its commands, and those checks are `SKIP`.
+`--full` also runs `harness test`.
+
+```bash
+harness doctor
+```
+
 ## A machine reached over SSH
 
 In an SSH session, no Secret Service answers, so `gh` and `glab` cannot keep their tokens in a

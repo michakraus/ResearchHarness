@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+- **`harness doctor` checks a machine's setup in one command.** The checks of the setup pages ran
+  one by one, by hand, on each machine. The new read-only verb prints one line per check, `PASS`,
+  `WARN`, `FAIL` or `SKIP` with a detail, and a `FAIL` line names the section that fixes it: the
+  system and, on Linux, the user-namespace settings, the `bwrap` sandbox and `socat`; each tool of
+  `docs/src/dependencies.md` against its minimum, which a case compares with the page, and the Julia
+  packages of the scripts' environment; the profile, the `tree_agents` and OpenCode directories,
+  and `autocommit_branch`; the dry run of `harness install` and each of its warnings; Kaimon, its
+  jobs under `systemd --user` or launchd, linger, `~/.claude` as a repository with an `origin`
+  when the autocommit job is enabled, and the Kaimon token by its mode and size only. `--full`
+  adds `harness test` and `julia -e 'using Revise'`. It exits 1 when a check fails, else 0. In a
+  session's sandbox, a command or a file that the sandbox refuses gives `SKIP`, so the verb runs
+  in a plain terminal for its real verdict. *The check that it worked* of both setup pages ends
+  with it.
+
 - **One profile for every machine, and the findings of a test of *Setup on Linux*.** The
   profile needed one edit per machine: `autocommit_branch` is `main` on the machine whose memory
   is the template and a branch of its own on each other. A new optional key, `template_host`,
