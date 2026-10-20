@@ -220,3 +220,25 @@
   systemd/<name>`, with no working directory.
 - kind: defect
 - found: 2026-10-19
+
+### K80 · A profile with no `home` key, loaded with `HOME` set to the empty string, gets `home = "/"`.
+
+- location: `lib/harness/profile.py:120`
+- evidence: `expand_home` takes the default of `home` from `pathlib.Path.home()`, which gives
+  `/` for an empty `HOME`, and `/` is an absolute path, so the profile loads and a `~/…` value
+  loses its home directory. A profile `x = "~/a"` loaded with `HOME=""` gives
+  `{'x': '/a', 'home': '/'}`, with no error.
+- kind: defect
+- found: 2026-10-20
+
+### K81 · The `home-path` rule of `.gitleaks.toml` finds a macOS home path but no Linux home path.
+
+- location: `.gitleaks.toml:13`
+- evidence: the regex names both `/Users` and `/home`, but with gitleaks 8.30.1 and this config,
+  `gitleaks dir` over a one-line file `/Users/<name>/x` reports `leaks found: 1`, and over a
+  one-line file `/home/<name>/x` reports `no leaks found` (with the same user name in both). So
+  the Linux branch of the rule finds nothing. The CI step *gitleaks over the templates rendered
+  with examples/profile.toml* renders under the runner's Linux home directory, so this step finds
+  no home path in the renders.
+- kind: defect
+- found: 2026-10-20

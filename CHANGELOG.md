@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+- **The profile takes `~`, and `home` is optional.** `examples/profile.toml` held the home path
+  `/home/example` in five keys, and a reader had to replace every occurrence. `harness` now reads
+  the profile with `home` set to the home directory of the user who runs it when the profile names
+  none; a given `home` must be an absolute path without `~`, else the verb exits 2 and names the
+  key, and a trailing slash is removed. A string value that is `~` or starts with `~/`, at the top
+  level or as an item of a list, becomes `home` or `home` with the rest; any other `~` stays.
+  `get`, `render`, `install`, `leaks` and the other verbs read these values. The example writes
+  `harness`, `tree_agents`, `repository_roots` and the home entry of `leak` with `~`, has `home`
+  as a comment, and works as copied: CI's `systemd-analyze verify` job renders the units with it
+  unchanged, and the contract sweep copies it unchanged. `harness leaks` renders the templates
+  with the example under the home `/home/example`, so that the running user's home in `leak`
+  matches no rendered path. The comment of `memory_project` and its row in `profile.md` say that
+  the value is a label, not a path, and that it must be the same on every machine that shares one
+  memory pool. The profile sections of *Setup on macOS* and *Setup on Linux* no longer ask the
+  reader to replace the example path.
+
 - **Setup on Linux installs the frontends and covers `aarch64`.** The page gave no command for
   Claude Code, OpenCode or oh-my-pi, nor for RTK, jq or Kaimon, its release file names were for
   `x86_64` only, and its juliaup line asked questions. It now starts with *Check the machine*,

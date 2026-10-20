@@ -373,9 +373,12 @@ cp ~/Research/Harness/examples/profile.toml ~/.config/research-harness/profile.t
 cp ~/Research/Harness/examples/models.toml ~/.config/research-harness/models.toml
 ```
 
-Then open `~/.config/research-harness/profile.toml` in an editor. Replace the example path
-`/home/example` with your home directory, for example `/home/me`, in each value. The key `harness`
-then holds the absolute path of the checkout, for example `/home/me/Research/Harness`.
+The example profile works as copied. Its paths start with `~/`, which means your home directory,
+and without the key `home` the profile takes the home directory of the user who runs `harness`.
+Then open `~/.config/research-harness/profile.toml` in an editor and fill in the keys that name a
+person or an organisation: `org`, your GitHub accounts and organisations; `leak`, the strings that
+must never be in the repository, such as your user name; `launchd_prefix`, the reverse-domain
+prefix of the job labels; and `memory_project`, the label of the memory of your tree.
 [profile.md](profile.md) names each key and table, and the comments in the two files say what each
 value is.
 
@@ -395,8 +398,8 @@ gives the command that copies its example.
 repository holds none. The model tables give the model of each [tier](concepts.md#tier) for each
 frontend.
 
-**Check.** `harness get` prints the value of one key. It must print your home directory, not
-`/home/example`.
+**Check.** `harness get` prints the value of one key. `harness get home` must print your home
+directory.
 
 ```bash
 harness get home

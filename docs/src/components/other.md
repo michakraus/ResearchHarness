@@ -186,8 +186,8 @@ names a person, an institution or a machine, for example the home directory, the
 and the strings that must never be in the repository. A template names a key as `{key}`.
 
 Copy the file to `~/.config/research-harness/profile.toml`, and write your values into the copy.
-`harness --profile F` and `$RESEARCH_HARNESS_PROFILE` name another path. The example uses the home
-`/home/example`.
+`harness --profile F` and `$RESEARCH_HARNESS_PROFILE` name another path. The example has no `home`
+and writes its paths with `~/`, so it takes the home directory of the user who runs `harness`.
 
 The harness uses the example too. `harness leaks` renders every template with it, and the test
 cases use it as their dummy profile. So it must name every key that a template uses.

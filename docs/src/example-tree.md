@@ -197,12 +197,12 @@ directory's own instruction file.
 
 ## The profile values of the tree
 
-A tree such as this one sets two values of the profile. `examples/profile.toml` has them with an
-example home directory:
+A tree such as this one sets two values of the profile. `examples/profile.toml` has them below the
+home directory, `~`:
 
 ```toml
-repository_roots = ["/home/example/Research/Packages", "/home/example/Research/Experiments"]
-tree_agents = "/home/example/Research/Environment/Agents"
+repository_roots = ["~/Research/Packages", "~/Research/Experiments"]
+tree_agents = "~/Research/Environment/Agents"
 ```
 
 - `repository_roots` holds the directories that hold the repositories of the tree. `harness leaks`

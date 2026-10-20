@@ -40,7 +40,6 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: render each unit and verify it
         run: |
-          sed "s|^home = .*|home = \"$HOME\"|" examples/profile.toml > "$RUNNER_TEMP/profile.toml"
           for program in .julia/bin/kaimon .juliaup/bin/julia .local/bin/claude-autocommit; do
             mkdir -p "$HOME/$(dirname "$program")"
             printf '#!/bin/sh\nexit 0\n' > "$HOME/$program"
@@ -50,7 +49,7 @@ jobs:
           units="$RUNNER_TEMP/units"
           mkdir "$units"
           for f in systemd/*; do
-            python3 bin/harness --profile "$RUNNER_TEMP/profile.toml" render "$f" > "$units/$(basename "$f")"
+            python3 bin/harness --profile examples/profile.toml render "$f" > "$units/$(basename "$f")"
             echo "rendered $f"
           done
           systemd-analyze --version | head -n 1

@@ -398,7 +398,8 @@ def selftest():
             got = path_problems(element, {"allowWrite": [], "denyWrite": []}, "/h")
         check(got == [element], f"PATH {element} below the real path of a symlinked TMPDIR -> session-writable {got}")
 
-    # autocommit_branch: the profile's value, `main` without it; a missing `home` exits 2.
+    # autocommit_branch: the profile's value, `main` without it; a missing `home` is the running
+    # user's, and a relative one exits 2.
     base = 'home = "/h"\nlaunchd_prefix = "org.x"\n'
     for template in ("systemd/claude-autocommit.service", "launchagents/claude-autocommit.plist"):
         for text, branch in [(base, "main"), (base + 'autocommit_branch = "memory/host"\n', "memory/host")]:
@@ -406,6 +407,10 @@ def selftest():
             want = (f"CLAUDE_AUTOCOMMIT_BRANCH={branch}\n" if template.endswith(".service")
                     else f"<string>{branch}</string>")
             check(got is not None and want in got, f"{template} renders branch {branch!r}")
-        check(render_default(template, 'launchd_prefix = "org.x"\n') is None,
-              f"{template} with no home exits 2")
+        with mock.patch.dict(os.environ, HOME="/running/user"):
+            got = render_default(template, 'launchd_prefix = "org.x"\n')
+        check(got is not None and "/running/user/" in got and "{home}" not in got,
+              f"{template} with no home renders the running user's home")
+        check(render_default(template, 'home = "h"\nlaunchd_prefix = "org.x"\n') is None,
+              f"{template} with a relative home exits 2")
     return n, wrong
