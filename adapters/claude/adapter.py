@@ -575,9 +575,11 @@ def settings_file(root, profile, overlay):
 
     Each key of OWNED is replaced from the rendered template, or removed when the template lacks
     it. Each other key of the template that the file lacks is added after the file's keys, with
-    the template's value; every other key keeps its value and its place, the file keeps its indent
+    the template's value, and so is each variable of the template's `env` that the file's `env`
+    object lacks; every other key keeps its value and its place, the file keeps its indent
     (`indent_of`), and no character but a lone surrogate is escaped. Owned sections equal to the
-    template's, in a file that holds every key of the template, leave the file as it is. A missing
+    template's, in a file that holds every key and `env` variable of the template, leave the file
+    as it is. A missing
     file is created with the keys of the template, indented by 2, mode 0644. Exits 2, before
     anything is written, on a file that is a symlink, is not a
     regular file, cannot be read, is not UTF-8 or JSON (`json_object`), is not a JSON object, or
@@ -617,8 +619,16 @@ def settings_file(root, profile, overlay):
         indent = indent_of(text)
     template = settings_template(profile, overlay)
     added =[k for k in template if k not in OWNED and k not in cfg]
-    a, b = (dumps({k: c.get(k) for k in [*OWNED, *added]}, indent=2, sort_keys=True).splitlines()
-            for c in (cfg, template))
+    env = cfg.get("env")
+    env_added = [k for k in template.get("env", {}) if k not in env] if isinstance(env, dict) else []
+
+    def section(c):
+        """The owned sections, the added keys and the added `env` variables of `c`."""
+        s = {k: c.get(k) for k in [*OWNED, *added]}
+        if env_added:
+            s["env"] = {k: c["env"][k] for k in env_added if k in c["env"]}
+        return s
+    a, b = (dumps(section(c), indent=2, sort_keys=True).splitlines() for c in (cfg, template))
     diff = list(difflib.unified_diff(a, b, "~/.claude/settings.json", "settings/settings.proposal.json", lineterm=""))
     if diff or old is None:
         rewritten = rewritten_numbers(text, OWNED) if old is not None else []
@@ -633,6 +643,8 @@ def settings_file(root, profile, overlay):
                 cfg.pop(key, None)
         for key in added:
             cfg[key] = template[key]
+        for key in env_added:
+            cfg["env"][key] = template["env"][key]
         data = (dumps(cfg, indent=indent) + "\n").encode("utf-8")
     else:
         data = old
@@ -1452,14 +1464,15 @@ def layer_cases(check, tmp):
     code, text = run(base, "--apply")
     merged = json.loads((claude / "settings.json").read_text())
     backups = sorted(claude.glob("settings.json.bak-*"))
-    expected = {"model": "opus", "permissions": owned["permissions"], "env": {"X": "{home} — é"},
+    expected = {"model": "opus", "permissions": owned["permissions"], "env": {"X": "{home} — é", **others["env"]},
                 "statusLine": {"type": "command", "command": "x"}, "hooks": owned["hooks"],
                 "someFutureKey": [1, {"a": None}], "sandbox": owned["sandbox"],
                 "modelSettings": owned["modelSettings"], **lacked(live)}
     case(lambda: code == 0 and merged == expected and list(merged) == list(expected) and len(lacked(live)) > 5
          and (claude / "settings.json").read_text() == json.dumps(expected, indent=4, ensure_ascii=False) + "\n",
          f"--apply replaces the owned sections from the rendered template, adds the template's other keys that the "
-         f"file lacks after its keys, keeps every other key, its value and its order, and the live file's indent "
+         f"file lacks after its keys and the template's `env` variables that its `env` lacks after its variables, "
+         f"keeps every other key, its value and its order, and the live file's indent "
          f"of 4: {code}, {list(merged)}, {tail(text)}")
     case(lambda: len(backups) == 1 and backups[0].read_text() == old,
          f"--apply keeps the old settings.json as a backup: {[b.name for b in backups]}")
@@ -1516,6 +1529,19 @@ def layer_cases(check, tmp):
          == owned["modelSettings"],
          f"a modelSettings entry that the UI wrote is in the dry run's diff, and --apply replaces the section "
          f"with the template's: {dry}, {code}, {tail(text)}")
+
+    # An `env` variable that the file sets keeps its value; one that the file lacks is added.
+    base, claude, tree = fresh()
+    first = next(iter(others["env"]))
+    (claude / "settings.json").write_text(json.dumps({**owned, **others, "env": {first: "own"}}, indent=2) + "\n")
+    dry, text = run(base)
+    code, _ = run(base, "--apply")
+    again, _ = run(base)
+    env = json.loads((claude / "settings.json").read_text())["env"]
+    case(lambda: dry == 1 and code == 0 and again == 0 and len(others["env"]) > 1
+         and env == {first: "own", **{k: v for k, v in others["env"].items() if k != first}} and list(env)[0] == first,
+         f"--apply adds the template's `env` variables that the file lacks and keeps the file's value of {first}; "
+         f"the next dry run has nothing to do: {dry}, {code}, {again}, {env}, {tail(text)}")
 
     # A missing settings.json is created with the keys of the template, indented by 2, mode 0644.
     base, claude, tree = fresh()
@@ -1586,8 +1612,9 @@ def layer_cases(check, tmp):
         (claude / "settings.json").write_text(data)
         code, text = run(base, "--apply")
         written = (claude / "settings.json").read_text()
-        expected = json.dumps({**json.loads(data), **owned, **lacked(json.loads(data))}, indent=indent,
-                              ensure_ascii=False) + "\n"
+        cfg = json.loads(data)
+        expected = json.dumps({**cfg, "env": {**cfg["env"], **others["env"]}, **owned, **lacked(cfg)},
+                              indent=indent, ensure_ascii=False) + "\n"
         case(lambda: code == 0 and written == expected and written.count("\n") == (1 if indent is None else
                                                                                    expected.count("\n")),
              f"a {label} settings.json is written in the same form: {code}, {written[:60]!r}, {tail(text)}")

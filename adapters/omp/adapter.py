@@ -92,7 +92,8 @@ config.yml and over it, and never writes one (`config/settings.ts`); it loads th
 directory's `.env` into the environment before (`utils/src/env.ts`). So `PI_CONFIG_FILES` in that
 `.env` names harness.yml, and the harness's keys hold over what oh-my-pi writes. The install warns
 when neither the environment nor the `.env` names it; it never writes the `.env`, which holds the
-user's keys. harness.yml is JSON below a comment header: JSON is YAML, and the cases read it back
+user's keys. oh-my-pi has no `env` setting either, so the install warns, with the lines, when
+neither sets a shell variable of the settings template's `env` (`env_warning`). harness.yml is JSON below a comment header: JSON is YAML, and the cases read it back
 with the standard library.
 """
 
@@ -570,7 +571,8 @@ def plan(ctx):
               for d in sorted((agent / "skills").glob("*")) if d.is_dir() and install.fold(f"skills/{d.name}") not in skills]
     # models.yml can hold the user's own providers, so a replaced one is backed up first.
     return frontends.Plan(files=[(agent / rel, data, mode, f"omp/{rel}", rel == "models.yml")
-                                 for rel, data, mode in files], extra=extra, warnings=overlay_warning(agent))
+                                 for rel, data, mode in files], extra=extra,
+                          warnings=overlay_warning(agent) + env_warning(agent))
 
 
 def overlay_warning(agent):
@@ -601,6 +603,30 @@ def overlay_warning(agent):
              f"  PI_CONFIG_FILES={frontends.home_form(want)}",
              "Without it, oh-my-pi runs with config.yml alone: its own approval mode, no bash patterns, "
              "and its own default model.")]
+
+
+def env_warning(agent):
+    """[(line, …)]: a warning when a variable of the settings template's `env`, but one that
+    configures Claude Code itself (`CLAUDE_CODE_*`), is set neither in the environment of the install
+    nor in the `.env` of the agent directory `agent`, with the lines that the `.env` needs; [] when
+    each is set. oh-my-pi has no `env` setting, and its `bash` calls inherit the environment into
+    which it loads the `.env`. The `.env` is read for those keys, and no value of it is printed."""
+    env = agent / ".env"
+    want = {k: v for k, v in json.loads(SETTINGS.read_text())["env"].items() if not k.startswith("CLAUDE_CODE_")}
+    try:
+        text = env.read_text(encoding="utf-8", errors="replace")
+    except FileNotFoundError:
+        text = ""
+    except OSError as e:
+        return [(f"{env} cannot be checked for {', '.join(want)}: {e.strerror}.",)]
+    found = {m.group(1) for line in text.splitlines()
+             if (m := re.fullmatch(r"\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=.*", line))}
+    missing = [k for k in want if k not in os.environ and k not in found]
+    if not missing:
+        return []
+    return [(f"oh-my-pi's bash calls lack {', '.join(missing)}: add these lines to {env}:",
+             *(f"  {k}={want[k]}" for k in missing),
+             "Claude Code sets them from the `env` of its settings, and OpenCode from plugins/env.ts.")]
 
 
 def register(sub):
@@ -714,6 +740,32 @@ def omp_cases(case, fresh, run):
             os.environ.pop("PI_CONFIG_FILES")
         else:
             os.environ["PI_CONFIG_FILES"] = saved
+    # The template's shell variables: a warning with the .env lines until the .env or the
+    # environment sets each; the variables of Claude Code itself are not asked for.
+    shell = {k: v for k, v in json.loads(SETTINGS.read_text())["env"].items() if not k.startswith("CLAUDE_CODE_")}
+    saved = {k: os.environ.pop(k) for k in list(shell) if k in os.environ}
+    try:
+        warned = env_warning(agent)
+        case(lambda: len(warned) == 1 and {"JULIA_NUM_THREADS", "OPENBLAS_NUM_THREADS"} <= set(shell)
+             and all(f"  {k}={v}" in warned[0] for k, v in shell.items())
+             and not any("CLAUDE_CODE_" in line for line in warned[0]),
+             f"with no .env, a warning gives one .env line per shell variable of the template: {warned}")
+        (agent / ".env").write_text("AZURE_X=secret-value\n"
+                                    + "".join(f'export {k}="{v}"\n' for k, v in shell.items()))
+        code, text = run(base)
+        case(lambda: env_warning(agent) == [] and "lack" not in text and "secret-value" not in text,
+             f"a .env that sets each, with `export` and quotes, ends the warning: {tail(text)}")
+        (agent / ".env").write_text("".join(f"{k}={v}\n" for k, v in list(shell.items())[1:]))
+        first = next(iter(shell))
+        case(lambda: [line.strip() for line in env_warning(agent)[0][1:-1]] == [f"{first}={shell[first]}"],
+             f"a .env that lacks {first} gives that one line: {env_warning(agent)}")
+        (agent / ".env").unlink()
+        os.environ.update(shell)
+        case(lambda: env_warning(agent) == [], "an environment that sets each gives no warning")
+    finally:
+        for k in shell:
+            os.environ.pop(k, None)
+        os.environ.update(saved)
     (agent / "config.yml").unlink()
     permissions = json.loads(profile_module.render_file(REPO / "settings" / "settings.proposal.json",
                                                         profile))["permissions"]

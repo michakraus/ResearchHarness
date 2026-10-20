@@ -272,8 +272,9 @@ Claude Code session.
 
 The install writes the oh-my-pi configuration as on macOS, which
 [setup-macos.md](setup-macos.md#oh-my-pi) describes. oh-my-pi reads `harness.yml` only when the
-line `PI_CONFIG_FILES=~/.omp/agent/harness.yml` is in `~/.omp/agent/.env`, so add that line once;
-the install warns until it is there.
+line `PI_CONFIG_FILES=~/.omp/agent/harness.yml` is in `~/.omp/agent/.env`, and its shell commands
+get the variables of the settings template's `env` from the same file. So add the four lines that
+[setup-macos.md](setup-macos.md#oh-my-pi) gives once; the install warns until they are there.
 
 ## The jobs
 

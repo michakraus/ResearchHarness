@@ -2,7 +2,9 @@
   "$schema": "https://json.schemastore.org/claude-code-settings.json",
   "env": {
     "CLAUDE_CODE_MAX_OUTPUT_TOKENS": "128000",
-    "JULIA_PKG_USE_CLI_GIT": "true"
+    "JULIA_PKG_USE_CLI_GIT": "true",
+    "JULIA_NUM_THREADS": "2",
+    "OPENBLAS_NUM_THREADS": "2"
   },
   "permissions": {
     "allow": [

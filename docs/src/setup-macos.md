@@ -250,11 +250,15 @@ the skills. It removes the links in `~/.agents/skills/` that an earlier install 
 default model, `models.yml`, the guard extension, `AGENTS.md`, the rules, the agents, `mcp.json`,
 and oh-my-pi's own copies of the instructions, the guard scripts and the skills. It never writes
 oh-my-pi's own `config.yml`. oh-my-pi reads `harness.yml` over `config.yml` only when
-`PI_CONFIG_FILES` names it, so add this line to `~/.omp/agent/.env` once; the install warns until
-it is there:
+`PI_CONFIG_FILES` names it. oh-my-pi has no `env` setting, so its shell commands get the
+variables of the settings template's `env` from the same file. Add these lines to
+`~/.omp/agent/.env` once; the install warns until they are there:
 
 ```text
 PI_CONFIG_FILES=~/.omp/agent/harness.yml
+JULIA_PKG_USE_CLI_GIT=true
+JULIA_NUM_THREADS=2
+OPENBLAS_NUM_THREADS=2
 ```
 
 [architecture.md](architecture.md#the-opencode-and-oh-my-pi-adapters) describes the adapter.

@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+- **Agent shell commands run Julia with two threads and two BLAS threads.** A part runs up to
+  three critics and a suite at the same time, and an unset `OPENBLAS_NUM_THREADS` gives each Julia
+  process one BLAS thread per core. On 2026-10-19 two oh-my-pi parts that ran together held the
+  load average at 160–240 for almost two hours, and the 3600 s job deadline killed a full suite
+  run. The settings template's `env` now sets `JULIA_NUM_THREADS=2` and `OPENBLAS_NUM_THREADS=2`,
+  and OpenCode's `plugins/env.ts` sets both. `harness install` now adds each variable of the
+  template's `env` that `~/.claude/settings.json` lacks, and keeps a value that the file sets;
+  before, it added a missing top-level key only, so a new variable never reached an existing
+  file. oh-my-pi has no `env` setting, so the install warns, with the lines, until
+  `~/.omp/agent/.env` or the environment sets each variable of the template's `env` but the
+  `CLAUDE_CODE_*` ones. This also covers `JULIA_PKG_USE_CLI_GIT`, which oh-my-pi's shell commands
+  did not get. A `-t` flag on a command still sets its Julia threads, and a script can still call
+  `BLAS.set_num_threads`.
+
 - **Setup on Linux gives all the steps.** Before, `docs/src/setup-linux.md` gave the dependencies
   only and said the other steps were coming. It now has the sections of `setup-macos.md`, each
   with what it does, why and its check, for Debian and Ubuntu, with the package names and versions
