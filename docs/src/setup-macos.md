@@ -275,7 +275,8 @@ cd ~/Research/Harness
 git config core.hooksPath .githooks
 ```
 
-**Why.** The pre-push hook runs the leak checks and the tests before a push to `main`.
+**Why.** The pre-push hook runs the leak checks and the tests before a push to `main`, and
+`harness leaks` before a push of any other branch.
 [development.md](development.md#the-pre-push-hook) describes the hook.
 
 **Check.** `git config core.hooksPath` in the checkout prints `.githooks`.

@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+- **The pre-push hook runs `harness leaks` on a push of a topic branch.** It gated a push to
+  `main` only, and CI cannot run `harness leaks`, because the leak list is in the user's profile.
+  So a changelog entry of #53 named a private repository, passed CI, merged on GitHub, and the
+  next push of `main` was refused for a leak it did not add. A push of any ref other than `main`
+  now gets `harness leaks --commits` over the tree at the pushed SHA and the commits that the
+  push sends (remote..local, or the commits that `origin/main` lacks for a new branch), in a
+  `git clone --shared` at that SHA, and a hit or a failure refuses the push with one line. A
+  branch runs no gitleaks check and no suite; CI runs them. The path for `main` does not change.
+  Three cases of `harness test` push a fixture branch: a clean branch passes, a branch whose new
+  commit adds the leak string is refused although its next commit removes it, and a branch whose
+  tree holds the string of an earlier commit is refused. `development.md` and `setup-macos.md`
+  describe the branch check.
+
 - **`glab auth status --hostname <host>` runs without a prompt, and the forms that print the
   token are refused.** Only the bare `glab auth status` was allowed, so a check of one GitLab
   instance asked. `glab auth status --show-token`, `-t` and `-at` print the token, so `deny`

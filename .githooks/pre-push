@@ -4,9 +4,14 @@
 #
 #   git config core.hooksPath .githooks
 #
-# It gates a push to main only; a branch goes to CI. It tests the pushed commit, never the
-# working tree: a `git clone --shared` of this repository in a temporary directory under
-# $TMPDIR, at the pushed SHA, removed on exit. First the leak checks: gitleaks over the commits
+# It tests the pushed commit, never the working tree: a `git clone --shared` of this repository in
+# a temporary directory under $TMPDIR, at the pushed SHA, removed on exit. A push of any ref other
+# than main gets `harness leaks --commits` only, over the tree at its SHA and the commits that the
+# push sends (remote..local, or the commits that origin/main lacks for a new branch), so a PR
+# branch cannot bring a private string to main; its gitleaks checks and its suite run in CI. A
+# hit, no Python of 3.11 or later, or a check that fails refuses the push with one line.
+#
+# A push to main gets the full gate. First the leak checks: gitleaks over the commits
 # that the push sends, gitleaks stdin over their messages, which gitleaks git does not read,
 # gitleaks over the tree at the SHA, and `harness leaks --commits` over both, messages included.
 # They fail closed: no gitleaks of 8.21 or later, no profile, an empty `leak` list or a check that
@@ -26,15 +31,21 @@ unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY G
 # git feeds "<local ref> <local sha> <remote ref> <remote sha>" on stdin, one line per ref.
 sha=
 old=
+branches=()
 while read -r _local_ref local_sha remote_ref remote_sha; do
-    [ "$remote_ref" = refs/heads/main ] || continue
     case "$local_sha" in
-        *[!0]*) sha=$local_sha; old=$remote_sha ;;
-        *) ;; # a deleted ref: nothing to test
+        *[!0]*) ;;
+        *) continue ;; # a deleted ref: nothing to test
     esac
+    if [ "$remote_ref" = refs/heads/main ]; then
+        sha=$local_sha
+        old=$remote_sha
+    else
+        branches+=("$remote_ref $local_sha $remote_sha")
+    fi
 done
-if [ -z "$sha" ]; then
-    echo "pre-push: no commit pushed to main, nothing to test"
+if [ -z "$sha" ] && [ "${#branches[@]}" -eq 0 ]; then
+    echo "pre-push: no commit pushed, nothing to test"
     exit 0
 fi
 
@@ -42,6 +53,76 @@ refuse() {
     echo "pre-push: refused, $1"
     exit 1
 }
+
+tmp=$(mktemp -d "${TMPDIR:-/tmp}/harness-pre-push.XXXXXX") || exit 1
+trap 'rm -rf "$tmp"' EXIT
+
+# Each check that finds a leak (exit 1) or fails (any other exit) prints its output and refuses the
+# push with one line; every check runs, so the output names every check that refuses.
+leaks=0
+leak_check() {
+    local name=$1 status
+    shift
+    echo "$name"
+    "$@" >"$tmp/leaks.log" 2>&1
+    status=$?
+    case "$status" in
+        0) tail -n 1 "$tmp/leaks.log" ;;
+        1) cat "$tmp/leaks.log"; echo "pre-push: refused, $name found a leak"; leaks=1 ;;
+        *) cat "$tmp/leaks.log"; echo "pre-push: refused, $name failed with exit $status"; leaks=1 ;;
+    esac
+}
+
+# A Homebrew upgrade can drop the unversioned python3 link, which leaves the system's 3.9 first.
+find_python() {
+    python=
+    for candidate in python3 python3.14 python3.13 python3.12 python3.11; do
+        if command -v "$candidate" >/dev/null &&
+            "$candidate" -c 'import sys; sys.exit(sys.version_info < (3, 11))' 2>/dev/null; then
+            python=$candidate
+            break
+        fi
+    done
+    [ -n "$python" ] || refuse "no python3 of 3.11 or later"
+}
+
+# A branch gets `harness leaks` only; gitleaks and the suite run in CI. The commits that the push
+# sends are remote..local, or, for a new branch or a remote SHA that the checkout lacks, the
+# commits that origin/main does not hold, the whole history without one.
+if [ "${#branches[@]}" -gt 0 ]; then
+    find_python
+    origin_url=$(git remote get-url origin) || refuse "the checkout has no origin remote"
+    n=0
+    for entry in "${branches[@]}"; do
+        read -r ref local_sha remote_sha <<<"$entry"
+        n=$((n + 1))
+        exclude=
+        case "$remote_sha" in
+            *[!0]*) git cat-file -e "$remote_sha^{commit}" 2>/dev/null && exclude=$remote_sha ;;
+        esac
+        if [ -z "$exclude" ] && git rev-parse -q --verify refs/remotes/origin/main >/dev/null; then
+            exclude=refs/remotes/origin/main
+        fi
+        if [ -n "$exclude" ]; then
+            git rev-list "$local_sha" --not "$exclude" >"$tmp/branch-$n.commits"
+        else
+            git rev-list "$local_sha" >"$tmp/branch-$n.commits"
+        fi || refuse "git rev-list of the commits pushed to $ref failed"
+        git clone --shared --quiet --no-checkout "$root" "$tmp/branch-$n" || exit 1
+        cd "$tmp/branch-$n" || exit 1
+        git checkout --quiet --detach "$local_sha" || exit 1
+        # The clone's origin is the checkout; `harness leaks` allows the owner/name of the real one.
+        git remote set-url origin "$origin_url" || exit 1
+        leak_check "harness leaks, the tree at $(git rev-parse --short HEAD) and the commits that the push sends to $ref" \
+            "$python" bin/harness leaks --commits "$tmp/branch-$n.commits"
+        cd "$root" || exit 1
+    done
+    [ "$leaks" -eq 0 ] || exit 1
+fi
+if [ -z "$sha" ]; then
+    echo "pre-push: no commit pushed to main; the leak check of the branches passed"
+    exit 0
+fi
 
 # gitleaks 8.19 added the `git`, `dir` and `stdin` commands; 8.21 is the first with
 # `[[rules.allowlists]]`, which `.gitleaks.toml` uses.
@@ -55,19 +136,8 @@ minor=${BASH_REMATCH[2]}
 if [ "$major" -lt 8 ] || { [ "$major" -eq 8 ] && [ "$minor" -lt 21 ]; }; then
     refuse "gitleaks $gitleaks_version is older than 8.21"
 fi
-# A Homebrew upgrade can drop the unversioned python3 link, which leaves the system's 3.9 first.
-python=
-for candidate in python3 python3.14 python3.13 python3.12 python3.11; do
-    if command -v "$candidate" >/dev/null &&
-        "$candidate" -c 'import sys; sys.exit(sys.version_info < (3, 11))' 2>/dev/null; then
-        python=$candidate
-        break
-    fi
-done
-[ -n "$python" ] || refuse "no python3 of 3.11 or later"
+find_python
 
-tmp=$(mktemp -d "${TMPDIR:-/tmp}/harness-pre-push.XXXXXX") || exit 1
-trap 'rm -rf "$tmp"' EXIT
 # The commits that the push brings to main: old..sha, as CI scans them. A commit that a branch of
 # origin already holds is scanned too, because main has not seen it. A forced push sends the
 # rewritten commits, and a new main, or an old main that the checkout lacks, the whole history.
@@ -82,22 +152,7 @@ cd "$tmp/repo" || exit 1
 git checkout --quiet --detach "$sha" || exit 1
 echo "pre-push: testing $(git rev-parse --short HEAD) for main, in a clone under $tmp"
 
-# The leak checks, before the suite, so a refused push costs seconds. Each check that finds a
-# leak (exit 1) or fails (any other exit) prints its output and refuses the push with one line;
-# all four run, so the output names every check that refuses.
-leaks=0
-leak_check() {
-    local name=$1 status
-    shift
-    echo "$name"
-    "$@" >"$tmp/leaks.log" 2>&1
-    status=$?
-    case "$status" in
-        0) tail -n 1 "$tmp/leaks.log" ;;
-        1) cat "$tmp/leaks.log"; echo "pre-push: refused, $name found a leak"; leaks=1 ;;
-        *) cat "$tmp/leaks.log"; echo "pre-push: refused, $name failed with exit $status"; leaks=1 ;;
-    esac
-}
+# The leak checks, before the suite, so a refused push costs seconds; all four run.
 # The config of the pushed commit; a `gitleaks:allow` comment has no effect.
 gitleaks_flags=(--config "$tmp/repo/.gitleaks.toml" --redact --ignore-gitleaks-allow --no-banner --no-color --verbose)
 leak_check "gitleaks git, the commits that the push brings to main" \

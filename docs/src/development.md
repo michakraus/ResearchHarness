@@ -23,10 +23,13 @@ fixture task file; they need no Julia.
 
 ## The pre-push hook
 
-`.githooks/pre-push` gates a push to `main`; a push to any other branch runs nothing and goes to
-CI. The hook tests the pushed commit, never the working tree: it clones the repository with
-`git clone --shared` into a temporary directory under `$TMPDIR`, checks out the pushed commit
-and runs there.
+`.githooks/pre-push` gates a push to `main` with the leak checks and the suite. A push of any
+other ref gets `harness leaks --commits` only, over the tree at the pushed commit and the commits
+that the push sends (`<remote sha>..<sha>`, or the commits that `origin/main` lacks for a new
+branch), so a pull request cannot bring a private string to `main`; its gitleaks checks and its
+suite run in CI. The hook tests the pushed commit, never the working tree: it clones the
+repository with `git clone --shared` into a temporary directory under `$TMPDIR`, checks out the
+pushed commit and runs there.
 
 First come the two leak checks, before the suite, so a refused push costs seconds. They check
 the tree at the pushed commit and every commit that the push brings to `main`
