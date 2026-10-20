@@ -3,8 +3,6 @@
 This page gives each step from a clean Mac to a working harness. For each step it says what the
 step does, why the harness needs it, and how you see that it worked.
 [setup-linux.md](setup-linux.md) is the page for Linux, with the same steps in the same order.
-[Installation](https://github.com/michakraus/ResearchHarness#installation) in the README gives the
-short form.
 
 The commands use Homebrew. The package names and the versions that this page gives are checked
 on macOS 27 on Apple silicon (`arm64`) only. On an Intel Mac, Homebrew is in `/usr/local` in place

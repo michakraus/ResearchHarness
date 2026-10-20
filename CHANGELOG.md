@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- **The README describes the harness and links the setup pages.** Its short *Installation* left
+  out the frontends, Kaimon and the jobs, so a reader who followed it had no frontend for the
+  next section, and it drifted from the setup pages. Its *A first session* repeated the first
+  steps of the tutorial. Both sections are gone. *Features* now also names the builder-critic
+  loop, the tools for Julia packages and for papers, one profile for every machine and
+  `harness doctor`; *Getting started* links the two setup pages, the tutorial and the
+  introduction.
+
 - **The two setup pages have the same steps in the same order, and the docs match the code
   again.** *Setup on macOS* gained the steps that only *Setup on Linux* had: *Check the machine*,
   the frontends (Claude Code by its installer, OpenCode 2 and oh-my-pi by their Homebrew taps),
