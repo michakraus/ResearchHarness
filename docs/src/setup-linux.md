@@ -60,9 +60,11 @@ A line that fails prints its error, and the next line runs.
   [The sandbox of Claude Code](#the-sandbox-of-claude-code) can fail, and Claude Code does not
   start. A key that does not exist sets no limit. The fix is the administrator's: a change of the
   settings of the kernel or of AppArmor.
-- `$SHELL` and the shell in the `getent` line are your login shell. The installers of juliaup and
-  OpenCode write their `PATH` lines into the start files of that shell, for example `~/.bashrc`
-  for bash and `~/.zshrc` for zsh.
+- `$SHELL` and the shell in the `getent` line are your login shell. The installer of OpenCode
+  writes its `PATH` lines into the first start file of that shell that exists, for example
+  `~/.bashrc` for bash or `~/.zshrc` for zsh, when its directory is not on the `PATH`. The
+  installer of juliaup writes its `PATH` block into each of `~/.bashrc`, `~/.profile`,
+  `~/.bash_profile`, `~/.bash_login` and `~/.zshrc` that exists, whatever the login shell.
 - `systemctl --user is-system-running` prints `running` when the user manager of systemd runs,
   or `degraded` when it runs and a unit failed; [The jobs](#the-jobs) need it. `Linger=no` means
   that the user manager stops at your last logout.
