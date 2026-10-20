@@ -62,7 +62,7 @@ def Plan(**fields):
 # The guard scripts that OpenCode's plugin and oh-my-pi's extension run: the first five on each
 # shell call, `sandbox-semantics.py` with `--work-tree` only, and `kaimon-session.py` on a Kaimon
 # `ex` or `manage_repl` call.
-GUARDS = ("no-blind-stage.py", "no-shell-file-write.py", "gh-api-writes.py", "rm-scope.py",
+GUARDS = ("no-blind-stage.py", "no-shell-file-write.py", "gh-api-writes.py", "rm-scope.py", "git-archive-output.py",
           "sandbox-semantics.py", "kaimon-session.py")
 # The paths below ~/.claude that a text can name and that each frontend holds a copy of, with the
 # first frontend's spelling; `relocate` rewrites them.

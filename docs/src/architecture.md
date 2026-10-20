@@ -104,7 +104,7 @@ takes the first rule that matches. oh-my-pi's own `config.yml`, which its setup 
 panel write, is never written: oh-my-pi reads `harness.yml` over it when `PI_CONFIG_FILES` in the
 agent directory's `.env` names it, and the install warns until it does. Beside it go
 `extensions/guards.ts`, from `adapters/omp/guards.ts`, and the rendered path list
-`extensions/guard-paths.json`. The extension runs four of the guard hooks, from oh-my-pi's own
+`extensions/guard-paths.json`. The extension runs five of the guard hooks, from oh-my-pi's own
 copy in `hooks/`, on every `bash` call, `rm-scope.py` among them, the template's read denies on
 `read`, `grep` and `bash`, and its Edit denies on `edit` and `write`, with `~/.omp/**` added to
 both, except that its copies of the skills, the rules and the instructions stay readable; it

@@ -11,8 +11,8 @@ events of a session.
 The sources are in `hooks/`. `harness install --apply` copies them to `~/.claude/hooks/`.
 Claude Code calls them through the `hooks` section of its settings, which
 `harness install --apply` writes from `settings/settings.proposal.json`. oh-my-pi calls
-six of them through its guard extension `adapters/omp/guards.ts`, and OpenCode calls the same
-six through its plugin `adapters/opencode/plugins/guards.ts`: four shell guards, the work-tree check
+seven of them through its guard extension `adapters/omp/guards.ts`, and OpenCode calls the same
+seven through its plugin `adapters/opencode/plugins/guards.ts`: five shell guards, the work-tree check
 of `sandbox-semantics.py`, and `kaimon-session.py`. Each of the two runs its own copy
 of the scripts, which `harness install` writes to `hooks/` in its directory:
 `~/.omp/agent/hooks/` and `~/.config/opencode/hooks/`. Each hook still has one source. `hooks/probe.py` holds the test cases of the
@@ -20,7 +20,7 @@ hooks, and `harness test` runs it.
 
 The hooks prevent accidents. They are not a security boundary: each one reads the text of a
 command. [The security model](../security.md) says what they stop and what they do not stop. The
-page groups the hooks: first the five shell guards, then the hooks of the directory and Kaimon
+page groups the hooks: first the six shell guards, then the hooks of the directory and Kaimon
 tools and of the worktree tools, then the session hooks, and last the probe.
 
 ## `no-blind-stage.py`
@@ -128,6 +128,30 @@ it:
 
 ```bash
 echo '{"tool_input":{"command":"rm -rf ../x"},"cwd":"/Users/me/Research/Packages/A"}' | ./rm-scope.py
+```
+
+## `git-archive-output.py`
+
+This hook refuses a `git archive` that writes its file with `-o` or `--output`, and names the
+commands that read the tree of a commit with no prompt. Claude Code runs it as a `PreToolUse` hook
+on the `Bash` matcher. oh-my-pi and OpenCode run it on each shell call.
+
+An agent writes the archive to read the unmodified tree of a commit, usually the base of its
+branch. `git` runs outside the sandbox, so `-o` can write any path, and the `ask` rules on it
+prompt for a read. The hook exits 2, and its message gives `scripts/base-tree.jl` for the tree or
+some paths of it in a new directory, `git show <rev>:<path>` for one file and
+`git ls-tree -r --name-only <rev>` for the list of files. A tar file that is itself the result
+goes to the user.
+
+It finds each top-level `git … archive` call, after global options such as `-C`, and reads the
+option in each spelling that git takes: `-o <file>`, `-o<file>`, behind other short options as in
+`-vo <file>`, `--output`, `--output=<file>`, and any prefix of `--output`. An argument after `--`
+is a path. A `git archive` to stdout passes.
+
+It fails open. Test it:
+
+```bash
+echo '{"tool_input":{"command":"git archive -o base.tar origin/main"}}' | ./git-archive-output.py
 ```
 
 ## `directory-scope.py`

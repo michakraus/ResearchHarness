@@ -19,6 +19,7 @@
 //     gh-api-writes.py        a `gh api` write, and a `glab api` DELETE
 //     rm-scope.py             a recursive `rm` outside the scratch zones, and a `git rm` outside a
 //                             worktree
+//     git-archive-output.py   a `git archive` that writes its file with `-o` or `--output`
 //     sandbox-semantics.py    with `--work-tree`: a `git init` or `git clone` inside a work tree
 //
 // The scripts run from oh-my-pi's own copy in hooks/ beside extensions/, which `harness install`
@@ -77,7 +78,7 @@ import { fileURLToPath } from 'node:url';
 
 const HOME = homedir();
 const HOOKS = join(dirname(fileURLToPath(import.meta.url)), '..', 'hooks');
-const GUARDS = ['no-blind-stage.py', 'no-shell-file-write.py', 'gh-api-writes.py', 'rm-scope.py'];
+const GUARDS = ['no-blind-stage.py', 'no-shell-file-write.py', 'gh-api-writes.py', 'rm-scope.py', 'git-archive-output.py'];
 // The work-tree check of sandbox-semantics.py alone: oh-my-pi has no sandbox for its other shapes.
 const WORK_TREE = 'sandbox-semantics.py';
 // The Kaimon calls that name a session, and the script that refuses one without its key.
