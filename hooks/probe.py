@@ -1254,7 +1254,7 @@ def oc_cases():
     event = {"command": "true", "cwd": CWD, "timeout": 0, "shell": "/bin/zsh", "env": {"A": "1"}}
     answer = drive(good, "env", event, kind="shell", name="create.before")
     got = answer if isinstance(answer, str) else answer["event"]["env"]
-    expected = {"A": "1", "JULIA_PKG_USE_CLI_GIT": "true"}
+    expected = {"A": "1", "JULIA_PKG_USE_CLI_GIT": "true", "JULIA_NUM_THREADS": "2", "OPENBLAS_NUM_THREADS": "2"}
     report(got == expected, f"exp {expected} got {got}  [oc-env   ]  create.before")
     return total, wrong
 

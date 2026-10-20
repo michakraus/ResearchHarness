@@ -28,8 +28,9 @@ own path. An agent and a `SKILL.md` get two values rewritten: the tier of `model
 model of the `[claude]` table of `models.toml`, and each `tools:` item its Claude Code name. A hook
 keeps its mode, and every other file is installed with mode 0644. The first file of the layer is
 `~/.claude/settings.json`: the adapter merges the sections `permissions`, `hooks`, `sandbox` and `modelSettings` of
-the settings template into it, keeps every other key, keeps the old file as a backup, and creates
-the file when it is missing. The dry run prints the difference of those sections after the file's
+the settings template into it, adds each other key of the template and each variable of the
+template's `env` that the file lacks, keeps every other key and value, keeps the old file as a
+backup, and creates the file when it is missing. The dry run prints the difference of those sections after the file's
 line. After the layer, the adapter writes the stamp `~/.claude/.harness-install.json`. A path that
 two sources hold, a symlink, a source that holds `settings.json`, and a `settings.json` that is
 not a JSON object with an object in each of those sections exit 2 before anything is written. An
@@ -180,13 +181,17 @@ bytes.
 
 ## `opencode/plugins/env.ts`
 
-An OpenCode plugin that sets an environment variable for every shell command. OpenCode has no
-`env` key in its configuration, so the plugin sets the variable in the hook `create.before` of the
-shell.
+An OpenCode plugin that sets environment variables for every shell command. OpenCode has no
+`env` key in its configuration, so the plugin sets the variables in the hook `create.before` of
+the shell.
 
-It sets `JULIA_PKG_USE_CLI_GIT=true`, as the `env` of the Claude Code settings does. Pkg then uses
-the `git` program and not libgit2. It does not port `CLAUDE_CODE_MAX_OUTPUT_TOKENS`, which has no
-meaning for OpenCode.
+It sets the variables of the `env` of the Claude Code settings:
+
+- `JULIA_PKG_USE_CLI_GIT=true`: Pkg uses the `git` program and not libgit2.
+- `JULIA_NUM_THREADS=2` and `OPENBLAS_NUM_THREADS=2`: a part runs up to three critics and a suite
+  at the same time, and without a limit each Julia process starts one BLAS thread per core.
+
+It does not port `CLAUDE_CODE_MAX_OUTPUT_TOKENS`, which has no meaning for OpenCode.
 
 `harness install` copies the plugin to `plugins/env.ts` in OpenCode's configuration directory. The
 hook probe `hooks/probe.py` loads it under `node`, so it holds JavaScript syntax only.
@@ -257,7 +262,9 @@ The install writes into oh-my-pi's agent directory, `$PI_CODING_AGENT_DIR`, else
   `bash.patterns`: every `deny`, then every `ask` as `prompt`, then every `allow`, then a `prompt`
   for `gh pr create*`, which `yolo` would otherwise run unasked when it names no repository.
   oh-my-pi reads it when `PI_CONFIG_FILES` in `~/.omp/agent/.env` names it, and the install warns
-  until it does;
+  until it does. oh-my-pi has no `env` setting either, so the install also warns, with the lines,
+  until the `.env` or the environment sets each variable of the template's `env` but the
+  `CLAUDE_CODE_*` ones;
 - `modelRoles.default` in `harness.yml`, the `medium` model of the model tables, and an empty
   `retry.fallbackChains` entry for each model of an agent or a council seat, so that a provider
   error does not move an agent to another model. A model whose chain in `config.yml` names only
