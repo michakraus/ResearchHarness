@@ -1,5 +1,5 @@
 ---
-description: Review a pull request on a Julia package in this tree, fix its findings and bring CI to green; with `nofix`, only review. Usage — /review-pr <Package> <PR number> [nofix]
+description: Review a pull request on a Julia package in this tree, fix its findings and push, then wait for its CI; with `nofix`, only review. Usage — /review-pr <Package> <PR number> [nofix]
 argument-hint: <Package> <PR number> [nofix]
 disable-model-invocation: true
 ---
@@ -18,8 +18,10 @@ Then delegate, from that directory:
 
 - **The last argument is `nofix` or `[nofix]`** → `julia-pr-reviewer`: review and post the
   review. It changes nothing.
-- **Otherwise** → `julia-pr-shepherd`: review, post the review, fix the findings, push, and bring
-  the required checks to green. It stops at green and never merges.
+- **Otherwise** → `julia-pr-shepherd`: review, post the review, fix the findings and push. It
+  names the CI runs of its push and the required checks, does not wait for them, and never merges.
 
 Give the agent `<owner>/<repo>`, the PR number and the state from step 3, and nothing about what
-the change is meant to do: the reviewer reviews blind. Report its verdict and the review URL.
+the change is meant to do: the reviewer reviews blind. When the shepherd names CI runs, background
+`gh run watch <run-id> -R <owner>/<repo> --exit-status` for each. Report its verdict, the review
+URL and the result of each run.

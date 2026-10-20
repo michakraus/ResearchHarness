@@ -241,13 +241,14 @@ a file that every session reads. A fact about your own work goes into your tree 
    harness install
    ```
 
-   **What you should see:** among the lines of the plan are these two, and the last line gives
+   **What you should see:** among the lines of the plan are these two. OpenCode and oh-my-pi
+   keep their own copies of the instruction files, so the plan also replaces
+   `instructions/research-tree.md` and `omp/instructions/research-tree.md`. The last line gives
    the number of changes. The dry run exits 1, which means that it would change files.
 
    ```text
    ~/.claude/instructions/research-tree.md REPLACE
    ~/.claude/.harness-install.json    REPLACE
-   2 change(s) to make.
    ```
 
    Then install the change:
@@ -256,7 +257,8 @@ a file that every session reads. A fact about your own work goes into your tree 
    harness install --apply
    ```
 
-   **What you should see:** the last line of the output is this one:
+   **What you should see:** after the number of changes, one line for each frontend whose files
+   changed. The first is this one:
 
    ```text
    Restart Claude Code: its installed files changed, and a running session keeps the files it has read.

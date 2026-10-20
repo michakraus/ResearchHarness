@@ -92,7 +92,7 @@ input with `jq`. It prints one line: the model, the effort, the input and output
 use of the five-hour and the weekly rate limits. A use below 50 % is green, below 80 % yellow, and
 from 80 % red. The five-hour limit also shows the time until it resets.
 
-`harness install` copies the script to `~/.claude/statusline-command.sh` and keeps its mode. The
+`harness install` copies the script to `~/.claude/statusline-command.sh`, with mode 0644. The
 settings template does not name the script. Point the status line setting of Claude Code at the
 installed copy.
 
@@ -337,7 +337,7 @@ needs and does not find exits 2.
 The guard extension of oh-my-pi. `harness install` copies it to `extensions/guards.ts` in
 oh-my-pi's agent directory. It checks each tool call that a glob of `bash.patterns` cannot check:
 
-- `bash`: the four shell guard scripts of `~/.omp/agent/hooks/` and `sandbox-semantics.py
+- `bash`: the five shell guard scripts of `~/.omp/agent/hooks/` and `sandbox-semantics.py
   --work-tree`, which it runs with `python3`, and the path list on the words of the command and on
   its working directory;
 - `mcp__kaimon_ex` and `mcp__kaimon_manage_repl`: `kaimon-session.py`;

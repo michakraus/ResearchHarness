@@ -151,8 +151,8 @@ The template has the sections `permissions`, `hooks`, `sandbox` and `modelSettin
 keys of `settings.json`. These components read it:
 
 - `harness install` merges `permissions`, `hooks`, `sandbox` and `modelSettings` into
-  `~/.claude/settings.json`. It keeps every other key of that file, and does not install the other
-  keys of the template;
+  `~/.claude/settings.json`. It keeps every other key of that file, and adds each other key of the
+  template that the file does not have;
 - `harness settings surface`, `compare` and `twins` measure and check it;
 - `harness permissions` writes the OpenCode permission block from its `ask` and `deny` rules;
 - `harness install` writes the `bash.patterns` and the path list of oh-my-pi from it;

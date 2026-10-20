@@ -12,12 +12,12 @@ have `disable-model-invocation: true`. A command is a fixed sequence of steps fo
 its inputs as arguments.
 
 The two commands act on one pull request of a Julia package in the research tree. `review-pr`
-reviews it and brings its checks to green. `merge-pr` merges it after the review and cleans up.
+reviews it, fixes it and waits for its CI. `merge-pr` merges it after the review and cleans up.
 
 ## `review-pr`
 
-`review-pr` reviews a pull request of a Julia package, fixes its findings and brings the required
-checks to green. With `nofix`, it only reviews. The usage is:
+`review-pr` reviews a pull request of a Julia package, fixes its findings, pushes, and waits for
+the CI runs of the push. With `nofix`, it only reviews. The usage is:
 
 ```
 /review-pr <Package> <PR number> [nofix]
@@ -29,7 +29,8 @@ it reads the state of the pull request with `gh pr view`.
 
 It delegates from that directory. With `nofix` as the last argument, the `julia-pr-reviewer` agent
 reviews and posts the review, and changes nothing. Otherwise the `julia-pr-shepherd` agent reviews,
-posts the review, fixes the findings, pushes, and brings the required checks to green. The agent
+posts the review, fixes the findings, pushes, and names the CI runs of the push; the command's
+session waits for those runs with `gh run watch`, because the agent does not wait. The agent
 gets the repository, the number and the state, but nothing about the purpose of the change, so the
 review is blind. The command reports the verdict and the review URL. It never merges; use
 `merge-pr` for that.

@@ -55,8 +55,8 @@ the installed template. A later version can behave differently.
 
 ## Check a change of the settings
 
-Before `harness install --apply`, read the difference of the sections `permissions`, `hooks` and
-`sandbox` that the dry run prints after the line of `~/.claude/settings.json`. After the
+Before `harness install --apply`, read the difference of the sections `permissions`, `hooks`,
+`sandbox` and `modelSettings` that the dry run prints after the line of `~/.claude/settings.json`. After the
 `--apply`, run the dry run again. It must print `already identical` for `~/.claude/settings.json`
 and exit 0.
 

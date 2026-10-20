@@ -361,7 +361,7 @@ Markdown code in a sentence, for the text that the adapters generate.
 The strict parser of the frontmatter of an agent or a skill, the block between the first two `---`
 lines. It has no verb. Its cases run in `harness test`.
 
-The parser accepts ten keys, each once. A value is plain or in double quotes, and `tools` and
+The parser accepts eleven keys, each once. A value is plain or in double quotes, and `tools` and
 `skills` take a block list. It refuses each other form, such as a flow list, a comment, an unknown
 key or a control character, with the file and the line, and `harness` exits 2.
 
@@ -386,7 +386,7 @@ files that the verbs read, and a research root with one package and one prose re
 - it runs `--apply` of `githooks`, `wiki-lint-hook`, `workflows` and `trust`, and checks that the
   dry run after it exits 0.
 
-It does not run `format`, `ci-protection` or `skill-triggers`.
+It does not run `format`, `ci-protection`, `skill-triggers`, `doctor` or `test`.
 [Development](../development.md) describes the tests.
 
 ## `docs.py`

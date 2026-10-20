@@ -49,19 +49,21 @@ all the steps.
    export PATH="$HOME/Research/Harness/bin:$PATH"
    ```
 
-3. Copy the example profile and model tables, and make the directories and the settings file
-   that they and the install need.
+3. Copy the example profile and model tables, and make the directories and the file that they
+   and the install need.
 
    ```bash
-   mkdir -p ~/.config/research-harness ~/.claude/skills ~/.config/opencode
+   mkdir -p ~/.config/research-harness ~/.config/opencode
    cp ~/Research/Harness/examples/{profile,models}.toml ~/.config/research-harness/
    mkdir -p ~/Research/Environment/Agents/instructions ~/Research/Packages ~/Research/Experiments
    touch ~/Research/Environment/Agents/instructions/research-tree.md
    ```
 
-4. In `~/.config/research-harness/profile.toml`, fill in the keys that name a person or an
-   organisation: `org`, `leak`, `launchd_prefix` and `memory_project`. The paths start with `~/`
-   and work as copied; `harness get home` must print your home directory.
+4. In `~/.config/research-harness/profile.toml`, fill in the keys that name a person, an
+   organisation or a machine: `org`, `leak`, `launchd_prefix`, `memory_project` and
+   `template_host`. The paths start with `~/` and work as copied; `harness get home` must print
+   your home directory. In `models.toml`, replace the example models of OpenCode and oh-my-pi
+   with your own.
 
 5. Install. `harness install` prints the plan and exits 1, because it would change files.
    `--apply` makes the change; the first one also downloads the Julia packages of the scripts.

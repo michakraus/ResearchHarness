@@ -23,8 +23,7 @@ Each box shows three facts:
   the session, and its box says "the session's effort". Where a caller sets a different effort for
   one spawn, the arrow says so: "at high effort".
 
-The figures show Claude Code. The agents that only OpenCode has, and the councils of OpenCode, are
-not drawn.
+The figures show Claude Code. The councils of OpenCode and oh-my-pi are not drawn.
 
 The arrows come from one file, `docs/figures/calls.toml`. It has one entry for each spawn, with
 the `file:line` of the instruction that spawns. `harness test` checks each entry against the
@@ -67,7 +66,7 @@ desc: The build-reviewed skill spawns part-builder, part-critic and julia-test-r
 ```
 
 A part of tier `reviewed` is small, with a fast gate. You start `build-reviewed` in a session on
-the large model. It spawns one `part-builder` and keeps it for the whole part. When the builder
+the large model. It spawns one `part-builder`, and a new one for each later round. When the builder
 is ready, the skill spawns one `part-critic`, which judges the work once and blind. A run longer
 than five minutes goes to `julia-test-runner`. Before the pull request, the builder spawns
 `julia-branch-verifier`.
@@ -78,7 +77,7 @@ finish, so it is the second reviewer.
 <WalkThrough name="build-reviewed" />
 
 *From a task to a pull request with build-reviewed.* The skill spawns one `part-builder`, and one
-`part-critic` judges its work. After a FAIL, the same builder fixes the findings, and your session
+`part-critic` judges its work. After a FAIL, a new builder fixes the findings, and your session
 checks the fix before it sends the finish. With a PASS, your session reads the result, and then
 it sends the finish.
 

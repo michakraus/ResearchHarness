@@ -41,7 +41,7 @@ catch), *Files*, *Not in this part*, and *Traps*. Before a spec is final, one `r
 part measures each fact that the spec states, with the brief `premise-check.md`, and the planner
 fixes each fact that it finds false. The skill runs on the `large` tier.
 
-It does not run anything and it does not merge. Use `build-part` or `build-reviewed` to build a
+It runs nothing but its premise check and `spec-gate.py`, and it does not merge. Use `build-part` or `build-reviewed` to build a
 part.
 
 ## `build-part`

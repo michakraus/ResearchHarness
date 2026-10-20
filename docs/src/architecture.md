@@ -146,16 +146,18 @@ frontend either: `hooks/` holds the guard scripts that Claude Code and oh-my-pi 
 |:--|:--|
 | `agents/`, `skills/`, `rules/`, `instructions/`, `commands/` | the neutral sources: the agents, skills, rules, the core instruction file and the commands, which `harness install` copies into `~/.claude/` at the same path, and from which it renders the OpenCode and oh-my-pi agents and the oh-my-pi rules |
 | `adapters/claude/` | Claude Code's own: `CLAUDE.md`, `RTK.md` and the status line script, which `harness install` copies to the top of `~/.claude/` |
-| `adapters/opencode/` | the OpenCode configuration, plugins, global instruction file, and the agents that have no Claude Code source |
+| `adapters/opencode/` | the OpenCode configuration, plugins and global instruction file |
 | `adapters/omp/` | the oh-my-pi guard extension, global instruction file and agent text |
 | `bin/`, `lib/harness/` | the `harness` command |
 | `adapters/<frontend>/adapter.py` | each frontend's part of the `harness` command, which `lib/harness/frontends.py` loads: the Claude Code layer, the settings and the trust; the generators of the OpenCode agents and permission block; the generator of oh-my-pi's `harness.yml`, `models.yml`, rules, agents and `mcp.json` |
-| `hooks/` | the shared guard scripts: Claude Code `PreToolUse` hooks that refuse unsafe shell commands, which oh-my-pi's `guards.ts` calls too, the `SessionStart` hook that warns when `~/.claude/` is behind its sources, and their test cases (`probe.py`) |
+| `hooks/` | the shared guard scripts: Claude Code `PreToolUse` hooks that refuse unsafe shell commands, which oh-my-pi's `guards.ts` calls too, the `SessionStart` hook that warns when `~/.claude/` is behind its sources, the other hooks of Claude Code, such as `worktree.py` and `prompt-log.py`, and their test cases (`probe.py`) |
 | `settings/` | the permission and sandbox settings template, the policy source of all three frontends, and `network.toml`, the hosts from which the install generates the network rules of Claude Code |
-| `githooks/` | git hooks and GitHub Actions workflow templates for Julia packages, and their installers |
+| `githooks/` | git hooks and GitHub Actions workflow templates for Julia packages, and the Julia scripts that check them; `lib/harness/githooks.py` installs them |
 | `scripts/` | Julia test, mutation, and code-structure tools; transcript and lint tools |
 | `launchagents/` | macOS launchd job templates |
+| `systemd/` | the `systemd --user` unit templates of the same jobs, for Linux |
+| `tests/` | the queries of the triggering test of the skills |
 | `ast-grep/`, `fatou.toml` | linter configuration |
 | `agent-workflows/` | workflow scripts for fan-out over many repositories |
-| `examples/` | the example profile, model tables and network overlay |
+| `examples/` | the example profile, model tables, providers and network overlay |
 | `docs/` | the pages of the documentation site in `docs/src/`, and its VitePress build |

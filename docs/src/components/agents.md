@@ -9,8 +9,8 @@ Each source is a Markdown file in `agents/`. Its frontmatter holds `name`, the n
 uses; `description`, the text from which the frontend selects the agent for a request; `tools`,
 the neutral tools that the agent can call; and `model`, a tier (`large`, `medium` or `small`). An
 agent with no `model` uses the model of its caller. Some agents also set `effort`, `skills` (the
-skills that load at the start), `isolation: worktree` or `omitClaudeMd: true` (the agent does not
-load `CLAUDE.md`). The body is the instruction text of the agent. Most bodies prescribe the exact
+skills that load at the start), `isolation: worktree`, `omitClaudeMd: true` (the agent does not
+load `CLAUDE.md`), `permissionMode: plan` or `cacheTtl: 1h`. The body is the instruction text of the agent. Most bodies prescribe the exact
 shape of the report.
 
 `harness install` copies each agent to `~/.claude/agents/` for Claude Code, with the tier and the

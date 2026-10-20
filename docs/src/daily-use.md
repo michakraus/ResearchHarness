@@ -86,7 +86,7 @@ The hook only warns. It blocks nothing, and the session continues with the old i
 The pre-push hook of this repository runs two leak checks before a push to `main`: gitleaks finds
 secrets and home paths, and `harness leaks --commits` finds the strings of the profile's `leak`
 list and the names of your research tree. A hit refuses the push. A push to another branch runs
-no check in the hook, and CI runs gitleaks on it.
+only `harness leaks --commits` in the hook, and CI runs gitleaks on it.
 
 Run the check yourself before a commit, too:
 
@@ -100,7 +100,7 @@ both checks.
 
 ## The verbs for the whole research tree
 
-Five verbs act on every repository of the research tree. The research tree is the directory
+Six verbs act on every repository of the research tree. The research tree is the directory
 `$RESEARCH_ROOT`, else `~/Research`. Each verb is a dry run first, and `--apply` makes the change.
 
 | verb | what it does |
@@ -109,6 +109,7 @@ Five verbs act on every repository of the research tree. The research tree is th
 | `workflows` | copies the canonical files of `githooks/workflows/` into each git repository directly below `Packages/` and `Experiments/` that has a `Project.toml`: the CI workflow, `dependabot.yml` and `codecov.yml` into each, and the TagBot workflow into each package. It copies the documentation workflow only where a tracked `docs/make.jl` exists, and never into a repository that the profile key `docs_exceptions` or `docs_additions` names. It deletes the retired `CompatHelper.yml` |
 | `trust` | marks the research tree and each git repository below it as trusted in Claude Code's `~/.claude.json` |
 | `push-all` | pushes each git repository directly below `Packages/` and `Experiments/` whose branch is ahead of its upstream, one at a time. It skips a repository with no upstream, one that is also behind its upstream, and one on a branch that is not the default branch, unless you give `--include-topic-branches` |
+| `ci-protection` | protects the default branch on GitHub of each git repository directly below `Packages/` and `Experiments/` that has a `CI.yml`, with a ruleset that requires the status checks of the canonical `CI.yml`. It first checks that the workflows are canonical, and skips a private repository and one where you are not an admin |
 | `format` | runs JuliaFormatter over each tracked `.jl` file of the repositories below `Packages/` and `Experiments/`; it skips a repository that has no `.JuliaFormatter.toml` |
 
 Run each one in your own terminal, not from a session. The settings refuse a session's write to

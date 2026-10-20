@@ -2,7 +2,8 @@
 
 This page gives each step from a clean Linux machine to a working harness. For each step it says
 what the step does, why the harness needs it, and how you see that it worked.
-[setup-macos.md](setup-macos.md) is the page for macOS.
+[setup-macos.md](setup-macos.md) is the page for macOS, with the same steps in the same order.
+This page adds one section at its end, [A machine reached over SSH](#a-machine-reached-over-ssh).
 
 The commands are for Debian and Ubuntu, with `apt-get`. The package names and the versions that
 this page gives are checked on Ubuntu 26.04 only; other distributions and releases are not
@@ -386,12 +387,19 @@ The example profile works as copied. Its paths start with `~/`, which means your
 and without the key `home` the profile takes the home directory of the user who runs `harness`.
 Then open `~/.config/research-harness/profile.toml` in an editor and fill in the keys that name a
 person, an organisation or a machine: `org`, your GitHub accounts and organisations; `leak`, the
-strings that must never be in the repository, such as your user name; `launchd_prefix`, the
-reverse-domain prefix of the job labels; `memory_project`, the label of the memory of your tree; and
-`template_host`, the output of `hostname -s` on the machine whose memory is the template. With the
-example value of `template_host`, the autocommit of no machine pushes to `main`.
-[profile.md](profile.md) names each key and table, and the comments in the two files say what each
-value is.
+strings that must never be in the repository, such as your user name; `memory_project`, the label
+of the memory of your tree; and `template_host`, the output of `hostname -s` on the machine whose
+memory is the template. With the example value of `template_host`, the autocommit of no machine
+pushes to `main`. `launchd_prefix` names the launchd jobs of macOS, and nothing on Linux reads
+it: fill it in when the same profile also serves a Mac. [profile.md](profile.md) names each key
+and table, and the comments in the two files say what each value is.
+
+Then open `~/.config/research-harness/models.toml`, and write the models that you use into it.
+The example names the Claude Code models of the three [tiers](concepts.md#tier) in `[claude]`,
+and these work as copied. The tables for OpenCode and oh-my-pi name example providers, such as
+`provider-a/large-model`, which no frontend knows: replace them with your own models before you
+use OpenCode or oh-my-pi. [The tables of the model tables](profile.md#the-tables-of-the-model-tables)
+says what each table holds.
 
 **On several machines**, the profile is the same on each of them: no key needs an edit per
 machine. The branch that the autocommit pushes to differs per machine, and the key
@@ -406,14 +414,27 @@ tree. Each entry must be a directory. With the example values, this command make
 mkdir -p ~/Research/Packages ~/Research/Experiments
 ```
 
-The [providers](profile.md#the-providers) and the
-[network overlay](profile.md#the-network-overlay) are optional.
-[setup-macos.md](setup-macos.md#the-profile-and-the-model-tables) says when you need each, and
-gives the command that copies its example.
+The [providers](profile.md#the-providers) are optional. Copy them only when OpenCode or oh-my-pi
+uses a model server or an account beyond its built-in providers:
+
+```bash
+cp ~/Research/Harness/examples/providers.toml ~/.config/research-harness/providers.toml
+```
+
+Then replace the example providers with your own.
+
+The [network overlay](profile.md#the-network-overlay) is optional. Copy it only when Claude Code
+must reach a host that `settings/network.toml` does not name, such as the library resolver of your
+institution, or must not reach a host:
+
+```bash
+cp ~/Research/Harness/examples/network.toml ~/.config/research-harness/network.toml
+```
+
+Then replace the example hosts with your own, or empty the arrays.
 
 **Why.** The profile holds every value that names a person, an institution or a machine, so the
-repository holds none. The model tables give the model of each [tier](concepts.md#tier) for each
-frontend.
+repository holds none. The model tables give the model of each tier for each frontend.
 
 **Check.** `harness get` prints the value of one key. `harness get home` must print your home
 directory.
@@ -435,6 +456,8 @@ touch ~/Research/Environment/Agents/instructions/research-tree.md
 
 **Why.** The tree instructions hold your own instruction text about your research tree.
 `harness install` installs them into `~/.claude/` beside the sources of the harness. The directory
+has the layout of `~/.claude/`. `adapters/claude/CLAUDE.md` imports
+`instructions/research-tree.md`, so put the facts about your tree into that file. The directory
 must exist, else `harness install` stops with exit 2, an error.
 [architecture.md](architecture.md#the-three-layers) says how the tree instructions relate to the
 harness and the profile.
@@ -492,27 +515,61 @@ harness install
 
 ### Claude Code
 
-The install writes the same Claude Code layer as on macOS, which
-[setup-macos.md](setup-macos.md#claude-code) describes: the four sections of
-`~/.claude/settings.json` from the settings template, and the files of the layer. Read the
-difference of the sections in the dry run before each `--apply`. On Linux, the `sandbox` section
-needs the tools of [The sandbox of Claude Code](#the-sandbox-of-claude-code).
+`harness install` writes the Claude Code layer into `~/.claude/`. Its first file is
+`~/.claude/settings.json`: the install writes the sections `permissions`, `hooks`, `sandbox` and
+`modelSettings` of the file from the settings template `settings/settings.proposal.json`, rendered
+with the profile. It keeps every other key of the file, such as the model that you choose in
+Claude Code, and it keeps the old file as a backup, `settings.json.bak-<date>-<time>`. If the file
+does not exist, the install makes it, with these four sections only. Then it writes the
+instruction files, the agents, the skills, the rules, the commands and the hooks, and last the
+stamp `~/.claude/.harness-install.json`.
+
+These sections are the permission settings, the hooks, the [sandbox](concepts.md#sandbox) of
+Claude Code, and the [effort](concepts.md#effort) and auto-compact window of each model. Without
+them, Claude Code runs with its own defaults: no guard hook refuses a command, and no sandbox
+limits a shell command. On Linux, the `sandbox` section needs the tools of
+[The sandbox of Claude Code](#the-sandbox-of-claude-code). An `/effort` or `/autocompact` that you
+type holds until the next install, which replaces it. The settings come first, so that a new deny
+rule is in place before the files that it protects. The dry run prints the difference of the four
+sections after the line of the file, for example:
+
+```text
+~/.claude/settings.json            REPLACE (backup: settings.json.bak-20261010-175004)
+--- ~/.claude/settings.json
++++ settings/settings.proposal.json
+```
+
+Read this difference before each `--apply`. [security.md](security.md) describes what the settings
+stop, and how to check a change of them. The installed settings refuse an edit of
+`~/.claude/settings.json` from a [session](concepts.md#session), so you run the install yourself,
+in your own terminal. The install reads the file when it makes its plan, so do not change the
+model of a running session while `--apply` runs: Claude Code writes the file then, and that change
+is lost.
+
+If `~/.claude/settings.json` is not a JSON object, is a symlink, or holds one of the four sections
+as a value that is not an object, the install stops with exit 2, an error, and writes no file.
 
 ### OpenCode
 
-The install writes the OpenCode configuration as on macOS, which
-[setup-macos.md](setup-macos.md#opencode) describes. The settings template keeps `~/.opencode/bin`,
-where the installer of OpenCode puts the program, and `~/.local/bin` out of the writes of a
-Claude Code session.
+`harness install` writes the OpenCode configuration into the OpenCode configuration directory:
+`opencode.jsonc` with its permission block, the plugins, the global instruction file `AGENTS.md`
+and the agents, and OpenCode's own copies of the instructions, the rules, the guard scripts and
+the skills. It removes the links in `~/.agents/skills/` that an earlier install wrote.
+[architecture.md](architecture.md#the-opencode-and-oh-my-pi-adapters) describes the adapter. The
+settings template keeps `~/.opencode/bin`, where the installer of OpenCode puts the program, and
+`~/.local/bin` out of the writes of a Claude Code session.
 
 ### oh-my-pi
 
-The install writes the oh-my-pi configuration as on macOS, which
-[setup-macos.md](setup-macos.md#oh-my-pi) describes. oh-my-pi reads `harness.yml` only when the
-line `PI_CONFIG_FILES=~/.omp/agent/harness.yml` is in `~/.omp/agent/.env`, and its shell commands
-get the variables of the settings template's `env` from the same file. The install warns until
-the lines are there. This block adds the four lines to the end of `~/.omp/agent/.env`. Run it
-once: a second run adds the lines again.
+`harness install` writes the oh-my-pi configuration into its agent directory,
+`$PI_CODING_AGENT_DIR`, else `~/.omp/agent/`: `harness.yml` with the permission layer and the
+default model, `models.yml`, the guard extension, `AGENTS.md`, the rules, the agents, `mcp.json`,
+and oh-my-pi's own copies of the instructions, the guard scripts and the skills. It never writes
+oh-my-pi's own `config.yml`. oh-my-pi reads `harness.yml` over `config.yml` only when the line
+`PI_CONFIG_FILES=~/.omp/agent/harness.yml` is in `~/.omp/agent/.env`. oh-my-pi has no `env`
+setting, so its shell commands get the variables of the settings template's `env` from the same
+file. The install warns until the lines are there. This block adds the four lines to the end of
+`~/.omp/agent/.env`. Run it once: a second run adds the lines again.
 
 ```bash
 mkdir -p ~/.omp/agent
@@ -523,6 +580,8 @@ JULIA_NUM_THREADS=2
 OPENBLAS_NUM_THREADS=2
 EOF
 ```
+
+[architecture.md](architecture.md#the-opencode-and-oh-my-pi-adapters) describes the adapter.
 
 **Check.** Run the dry run again. It prints no warning that starts with
 `WARNING: oh-my-pi does not load` or with `WARNING: oh-my-pi's bash calls lack`:
@@ -687,8 +746,8 @@ cd ~/Research/Harness
 git config core.hooksPath .githooks
 ```
 
-**Why.** The pre-push hook runs the leak checks and the tests before a push to `main`. Its leak
-checks run gitleaks. [development.md](development.md#the-pre-push-hook) describes the hook.
+**Why.** The pre-push hook runs the leak checks and the tests before a push to `main`, and
+`harness leaks` before a push of any other branch. Its leak checks run gitleaks. [development.md](development.md#the-pre-push-hook) describes the hook.
 
 **Check.** `git config core.hooksPath` in the checkout prints `.githooks`.
 

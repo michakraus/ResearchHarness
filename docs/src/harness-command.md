@@ -6,7 +6,8 @@ the standard library. Put `bin/` on the `PATH`, as
 
 Every verb keeps one contract. A verb that changes something is dry by default: it prints its
 plan and exits 1 when something would change, 0 when nothing would. `--apply` makes the change.
-Exit 2 is a usage error or a failure. `harness --profile F` names the private profile, else
+Exit 2 is a usage error or a failure. The two checks differ: `harness test` exits 1 when a case
+is wrong, and `harness doctor` exits 1 when a check fails. `harness --profile F` names the private profile, else
 `$RESEARCH_HARNESS_PROFILE`, else `~/.config/research-harness/profile.toml`; `examples/profile.toml`
 shows every key. `harness --help` and `harness <verb> --help` describe each verb.
 `harness --models F` names the model tables, which map each tier to its Claude Code, OpenCode and
@@ -22,7 +23,7 @@ oh-my-pi model, and an agent to its own model, else `$RESEARCH_HARNESS_MODELS`, 
 | `push-all`, `ci-protection` | push every repository ahead of its upstream; protect every default branch |
 | `format` | JuliaFormatter over every tracked `.jl` file of the tree |
 | `trust` | Claude Code workspace trust for every repository of the tree |
-| `doctor` | check the setup of this machine, read-only: the tools, the profile, the install and the jobs; `--full` adds `harness test`. In a session's sandbox some checks are `SKIP`, so run it in a plain terminal |
+| `doctor` | check the setup of this machine, read-only: the tools, the profile, the install and the jobs; `--full` adds `harness test` and a load of Revise. In a session's sandbox some checks are `SKIP`, so run it in a plain terminal |
 | `render`, `get`, `leaks`, `test` | render a template with the profile, read a profile value, search for personal strings, run the tool's own cases |
 | `skill-triggers` | the triggering test of the skills: whether each skill loads on the queries of `tests/skill-triggers/<skill>.toml`; `--skill <name>`, which can repeat, limits it to those skills; `--apply --model <alias>` runs one `claude -p` session of 3 turns per query, at the user's cost |
 
