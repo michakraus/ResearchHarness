@@ -90,9 +90,9 @@ cp ~/Research/Harness/examples/models.toml ~/.config/research-harness/models.tom
 The example profile works as copied. Its paths start with `~/`, which means your home directory,
 and without the key `home` the profile takes the home directory of the user who runs `harness`.
 Then open `~/.config/research-harness/profile.toml` in an editor and fill in the keys that name a
-person or an organisation: `org`, your GitHub accounts and organisations; `leak`, the strings that
-must never be in the repository, such as your user name; `launchd_prefix`, the reverse-domain
-prefix of the job labels; `memory_project`, the label of the memory of your tree; and
+person, an organisation or a machine: `org`, your GitHub accounts and organisations; `leak`, the
+strings that must never be in the repository, such as your user name; `launchd_prefix`, the
+reverse-domain prefix of the job labels; `memory_project`, the label of the memory of your tree; and
 `template_host`, the output of `hostname -s` on the machine whose memory is the template. With the
 example value of `template_host`, the autocommit of no machine pushes to `main`.
 [profile.md](profile.md) names each key and table, and the comments in the two files say what each
