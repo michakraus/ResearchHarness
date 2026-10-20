@@ -198,9 +198,9 @@ hook probe `hooks/probe.py` loads it under `node`, so it holds JavaScript syntax
 
 ## `opencode/plugins/guards.ts`
 
-The OpenCode plugin of the guard hooks. On every `shell` call it runs five guard scripts from
+The OpenCode plugin of the guard hooks. On every `shell` call it runs six guard scripts from
 `hooks/` in OpenCode's configuration directory, the install's copy: `no-blind-stage.py`, `no-shell-file-write.py`, `gh-api-writes.py`,
-`rm-scope.py`, and `sandbox-semantics.py --work-tree`, its work-tree check alone. On every
+`rm-scope.py`, `git-archive-output.py`, and `sandbox-semantics.py --work-tree`, its work-tree check alone. On every
 `kaimon_ex` and `kaimon_manage_repl` call it runs `kaimon-session.py`. It sends Claude Code's
 payload on standard input and reads the answer as Claude Code does. [The hooks](hooks.md) describes each script.
 

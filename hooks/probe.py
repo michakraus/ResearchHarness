@@ -57,6 +57,7 @@ STAGE = HOOKS + "no-blind-stage.py"
 WORKTREE = HOOKS + "worktree.py"
 GHAPI = HOOKS + "gh-api-writes.py"
 DIRSCOPE = HOOKS + "directory-scope.py"
+ARCHIVE = HOOKS + "git-archive-output.py"
 
 CASES = [
     (WRITE, "echo 'x = 1' > src/Foo.jl", 2),
@@ -214,6 +215,28 @@ CASES = [
     (STAGE, "git status\ngit add -nA", 2),
     (STAGE, "(git add -nA)", 2),
     (STAGE, "git add -nA; echo \"it's", 2),
+
+    (ARCHIVE, "git archive -o base.tar origin/main", 2),
+    (ARCHIVE, "git archive --format=tar --prefix=base/ origin/main -o " + q(R + "/.scratch/base.tar"), 2),
+    (ARCHIVE, "git archive --output=" + q(R + "/.scratch/base.tar") + " origin/main", 2),
+    (ARCHIVE, "git archive --output " + q(R + "/.scratch/base.tar") + " origin/main", 2),
+    (ARCHIVE, "git archive --out=base.tar HEAD", 2),
+    (ARCHIVE, "git archive -obase.tar HEAD", 2),
+    (ARCHIVE, "git archive -vo base.tar HEAD", 2),
+    (ARCHIVE, "git archive -9o base.tar HEAD", 2),
+    (ARCHIVE, "git -C " + q(WT) + " archive -o base.tar HEAD", 2),
+    (ARCHIVE, "GIT_PAGER=cat git archive -o base.tar HEAD", 2),
+    (ARCHIVE, "/usr/bin/git archive -o base.tar HEAD", 2),
+    (ARCHIVE, "mkdir -p base && cd " + q(WT) + " && git archive -o ../base.tar origin/main && tar -xf ../base.tar", 2),
+    (ARCHIVE, "git archive origin/main | tar -x -C base", 0),
+    (ARCHIVE, "git archive --format=tar --prefix=pkg/ HEAD -- src", 0),
+    (ARCHIVE, "git archive HEAD -- docs/-o.md", 0),
+    (ARCHIVE, "git archive HEAD -- -o", 0),
+    (ARCHIVE, "git archive -l", 0),
+    (ARCHIVE, "git archive --remote=origin HEAD", 0),
+    (ARCHIVE, "git log -o x", 0),
+    (ARCHIVE, "git commit -m 'git archive -o x.tar HEAD'", 0),
+    (ARCHIVE, "tar -cf archive.tar -o src", 0),
 ]
 
 # `kaimon-session.py`: (payload, expected exit). An `ex` without `ses` and a `manage_repl` without
@@ -520,7 +543,7 @@ STAMP = ".harness-install.json"
 # extension API: the driver hands its `tool_call` handler one event, and the case reads the answer,
 # "block" or "pass". The extension is copied into the fixture as `guards.mjs`, so that a `node`
 # with no TypeScript support loads it too; `guards.ts` therefore holds JavaScript syntax only. Its
-# guard scripts are the six of `OC_SCRIPTS`, linked into the fixture's `~/.claude/hooks/`, and
+# guard scripts are the seven of `OC_SCRIPTS`, linked into the fixture's `~/.claude/hooks/`, and
 # its path list is the one `harness install` writes, `omp.guard_paths`, rendered with the dummy
 # profile and the fixture's home. A case runs in the probe's work tree, in the fixture home `~`, or
 # in `~/Research` below it, so that a relative path reaches the home. A fail-closed case gets a
@@ -714,6 +737,9 @@ OMP_REASON_CASES = [
      "outside the zones where a recursive `rm` runs"),
     ("bash", {"command": "rm -rf ~/Research/.scratch/x"}, "~/Research", "pass", None),
     ("bash", {"command": "git rm f"}, "~/Research/P", "block", ASK_USER),
+    # git-archive-output.py: `git archive -o` is refused with the commands that read the tree instead.
+    ("bash", {"command": "git archive -o base.tar origin/main"}, "~/Research/P", "block", "base-tree.jl"),
+    ("bash", {"command": "git archive origin/main -- src"}, "~/Research/P", "pass", None),
     # The template's Edit asks: refused, and the model is told to ask in chat. Every path form of
     # an edit or a write goes through the ask list too.
     ("edit", {"path": "~/Research/P/.githooks/pre-commit", "old_string": "a", "new_string": "b"}, "~/Research",
@@ -958,7 +984,7 @@ def omp_cases():
 # session's directory, and an empty directory leaves `location` out of the stub context. A hook that
 # throws refuses the call, and the driver prints the reason, the
 # event after the hooks, the plugin's exports and its id. Each plugin is copied into a fixture home
-# as `<name>.mjs`, so the plugins hold JavaScript syntax only. The guard scripts are the six of
+# as `<name>.mjs`, so the plugins hold JavaScript syntax only. The guard scripts are the seven of
 # `OC_SCRIPTS`, linked into the fixture's `~/.claude/hooks/`, each run through its own shebang as the
 # plugin runs it, and the path list is `guard-paths.json` rendered with the dummy profile and the
 # fixture's home. A fail-closed case gets a home of its own, with one guard script replaced or the
@@ -992,7 +1018,7 @@ try {
 out.event = ev;
 process.stdout.write(JSON.stringify(out));
 """
-OC_SCRIPTS = ("no-blind-stage.py", "no-shell-file-write.py", "gh-api-writes.py", "rm-scope.py",
+OC_SCRIPTS = ("no-blind-stage.py", "no-shell-file-write.py", "gh-api-writes.py", "rm-scope.py", "git-archive-output.py",
               "sandbox-semantics.py", "kaimon-session.py")
 OC_PLUGINS = {"guards": "research-harness.guards", "rtk": "research-harness.rtk", "env": "research-harness.env"}
 OC_GUARD = "research-harness.guards"  # each refusal of a guard that cannot answer names the plugin
@@ -1177,6 +1203,8 @@ def oc_cases():
     for label, event, directory, process_cwd, expected, want in [
         ("gh-api-writes.py asks", oc_event("gh api -X POST repos/o/r/issues"), CWD, None, "refuse", asked),
         ("rm-scope.py asks", oc_event("git rm f"), pkg, wt, "refuse", asked),
+        ("git-archive-output.py refuses", oc_event("git archive -o base.tar origin/main"), wt, wt, "refuse",
+         "base-tree.jl"),
         ("no-shell-file-write.py refuses", oc_event("echo x > f"), PKG, scratch, "refuse", "git working tree"),
         ("workdir", oc_event("echo x > f", workdir=PKG), scratch, scratch, "refuse", "git working tree"),
         ("session directory", oc_event("rm -rf build"), wt, pkg, "pass", None),
@@ -1547,7 +1575,7 @@ def cases():
     wrong += logged != 2
     print(f"{'ok ' if logged == 2 else 'BAD'} exp 2 got {logged}  [prompt-lo]  lines logged")
     for payload in FAIL_OPEN:
-        for script in (WRITE, SANDBOX, STAGE, GHAPI):
+        for script in (WRITE, SANDBOX, STAGE, GHAPI, ARCHIVE):
             got = run(script, payload)
             total += 1
             wrong += got != 0

@@ -15,7 +15,8 @@ carried inside a string argument, so treat every command as unconfined. Where a 
 a mistake survivable, ask. A rule that exists only because of Claude Code's sandbox or its
 permission matcher does not bind here: the unsandboxed programs, a `git` alone on its line, no
 `cd … &&`, no `git -C`, no `$?`, and a failed `ps` read as a refusal. A compound command and a
-`git -C` still cost a prompt, because an `allow` pattern matches only a whole command. The network
+`git -C` run without a prompt: under `yolo` only a `prompt` pattern asks, and a `prompt` or `deny`
+pattern matches each part of a compound command as well as the whole. The network
 lists of `network.toml` apply to Claude Code only; here no list limits the hosts a command reaches.
 
 oh-my-pi runs no RTK rewrite: a command runs as typed, so the rewrite facts of `RTK.md` do not
@@ -27,8 +28,8 @@ pattern refuses or a `prompt` pattern asks for; in `omp -p` a `prompt` pattern r
 
 ## The guard extension
 
-`extensions/guards.ts` runs `no-blind-stage.py`, `no-shell-file-write.py`, `gh-api-writes.py` and
-`rm-scope.py` from `~/.omp/agent/hooks/` on each `bash` call. It refuses a sub-agent's write to
+`extensions/guards.ts` runs `no-blind-stage.py`, `no-shell-file-write.py`, `gh-api-writes.py`,
+`rm-scope.py` and `git-archive-output.py` from `~/.omp/agent/hooks/` on each `bash` call. It refuses a sub-agent's write to
 `agent://`. It refuses a path that the `read`
 tool may not read, such as a credential file or oh-my-pi's own directory, in `read`, `grep` and
 `bash`; the copies of the skills, the rules and the instructions below `~/.omp/agent/` stay

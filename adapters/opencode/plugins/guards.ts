@@ -8,6 +8,7 @@
 //     gh-api-writes.py        a `gh api` write, and a `glab api` DELETE
 //     rm-scope.py             a recursive `rm` outside a worktree and `~/Research/.scratch/`,
 //                             and a `git rm` outside a worktree or with `--force`
+//     git-archive-output.py   a `git archive` that writes its file with `-o` or `--output`
 //     sandbox-semantics.py    with `--work-tree` alone: a `git init` or `git clone` inside a work
 //                             tree
 //
@@ -74,7 +75,7 @@ const { fileURLToPath } = process.getBuiltinModule('node:url');
 
 const ID = 'research-harness.guards';
 const HOOKS = join(dirname(fileURLToPath(import.meta.url)), '..', 'hooks');
-const GUARDS = ['no-blind-stage.py', 'no-shell-file-write.py', 'gh-api-writes.py', 'rm-scope.py'];
+const GUARDS = ['no-blind-stage.py', 'no-shell-file-write.py', 'gh-api-writes.py', 'rm-scope.py', 'git-archive-output.py'];
 // The work-tree check of sandbox-semantics.py alone: OpenCode has no sandbox for its other shapes.
 const WORK_TREE = 'sandbox-semantics.py';
 // The Kaimon calls that name a session, and the script that refuses one without its key.

@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+- **A new guard hook, `git-archive-output.py`, refuses `git archive -o` and names the read that
+  needs no prompt.** Agents wrote an archive of a commit to read its unmodified tree, usually the
+  base of their branch: the permission log holds 35 such prompts from 2026-10-04 to 2026-10-19,
+  from critics, builders, shepherds, reviewers and main sessions. `-o` writes outside the sandbox,
+  so the `ask` rules on it prompted for what is a read. The hook exits 2, and its message gives
+  `scripts/base-tree.jl` for the tree or some paths of it, `git show` for one file and
+  `git ls-tree` for the list of files; a tar file that is itself the result goes to the user. It
+  reads the option in every spelling git takes, which no glob states: behind other short options
+  (`-vo`), with the value attached (`-oout.tar`), as a prefix of `--output`, and after global
+  options. Claude Code runs it on `PreToolUse`/`Bash`, and the guards of oh-my-pi and OpenCode run
+  it on each shell call. It starts in about 18 ms, as `gh-api-writes.py` does. `hooks/probe.py`
+  holds 29 cases for it. The `ask` rules stay for a call that reaches git another way.
+
+- **`OMP-DELTA.md` says that a compound command and a `git -C` run without a prompt.** It said
+  they cost a prompt. Under `yolo` only a `prompt` pattern asks; a probe in an interactive
+  oh-my-pi session ran `git -C <repo> status` and `cd <repo> && git log` unasked, and
+  `cd <repo> && gh pr create --help` asked.
+
 - **The pre-push hook runs `harness leaks` on a push of a topic branch.** It gated a push to
   `main` only, and CI cannot run `harness leaks`, because the leak list is in the user's profile.
   So a changelog entry of #53 named a private repository, passed CI, merged on GitHub, and the
