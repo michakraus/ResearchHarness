@@ -162,8 +162,8 @@ Some work goes to two agents that check each other. In the builder-critic loop o
 `build-part`, one agent builds a change and a second agent judges it. The critic has not seen how
 the builder worked, so it reads the result with fresh eyes.
 
-Each agent names a tier, `large`, `medium` or `small`, and the model tables choose the model of
-each tier. A larger model is better at hard work and costs more. An agent can also name an
+An agent names a tier, `large`, `medium` or `small`, and the model tables choose the model of
+each tier; an agent with no tier runs on the model of its caller. A larger model is better at hard work and costs more. An agent can also name an
 [effort](#effort): how long the model thinks before it answers. [Agents at work](agents-at-work.md)
 shows which agents start which, with their models and efforts.
 

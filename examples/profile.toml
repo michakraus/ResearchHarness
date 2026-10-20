@@ -27,7 +27,7 @@ memory_project = "-home-example-Research"
 tree_agents = "~/Research/Environment/Agents"
 
 # The reverse-domain prefix of the LaunchAgent labels: `<launchd_prefix>.kaimon` and the others
-# in launchagents/.
+# in launchagents/. macOS only: nothing on Linux reads it.
 launchd_prefix = "org.example"
 
 # The short host name of the machine whose memory is the template: the host name up to its first
@@ -59,11 +59,13 @@ docs_exceptions = ["ExampleBook"]
 # survives in their copy.
 docs_additions = ["ExampleFigures"]
 
-# Directories below `home` that no session may edit, such as a synchronised share.
+# Directories below `home` that no session may edit, such as a synchronised share, each relative
+# to `home`.
 protected_dir = ["Nextcloud"]
 
 # Strings that must never appear in the repository: `harness leaks` searches every tracked file
-# for each. The home path, the user name, the institution's hosts, internal addresses.
+# for each. The home path, the user name, the institution's hosts, internal addresses. The item
+# `~` is the path of the home directory.
 leak = ["~", "example-user"]
 
 # The model servers and accounts of OpenCode and oh-my-pi are in providers.toml beside this file,

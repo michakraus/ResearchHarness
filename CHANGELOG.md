@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+- **The two setup pages have the same steps in the same order, and the docs match the code
+  again.** *Setup on macOS* gained the steps that only *Setup on Linux* had: *Check the machine*,
+  the frontends (Claude Code by its installer, OpenCode 2 and oh-my-pi by their Homebrew taps),
+  the Seatbelt sandbox, Kaimon, the launch agents with `launchctl bootstrap`, and the Kaimon
+  token. It no longer makes `~/.claude/skills`, which the install does not need; the README's
+  short form dropped it too and names `template_host`. Each page holds its own text for the
+  install's three frontend sections, the providers and the network overlay. `harness doctor`
+  names `setup-macos.md` for each `FAIL` on macOS. *Adapting the profile* opens with a table of
+  the four files in `~/.config/research-harness/`, and says that `launchd_prefix` is for macOS
+  only, that `protected_dir` is relative to `home` and that the `leak` item `~` is the home path.
+  `/review-pr` waits for the CI runs that `julia-pr-shepherd` names, since the agent does not
+  wait. Corrected stale statements: the frontmatter keys (eleven), the five shell guards of
+  oh-my-pi, the settings keys that the install adds, the users of `parts-table.awk`, the tutorial's
+  dry run, the branch push of the pre-push hook, the counts of the Julia test files and the
+  applied verbs, the new builder per round of `build-reviewed`, `ci-protection` and `format` among
+  the tree verbs, and the layout table of *Architecture*.
+
 - **`harness doctor` checks a machine's setup in one command.** The checks of the setup pages ran
   one by one, by hand, on each machine. The new read-only verb prints one line per check, `PASS`,
   `WARN`, `FAIL` or `SKIP` with a detail, and a `FAIL` line names the section that fixes it: the

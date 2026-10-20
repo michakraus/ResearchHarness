@@ -226,8 +226,8 @@ Your tree can have other directories. Adapt the two values to it:
 Some verbs do not take their directories from the profile. They find them by a fixed name below
 the research tree, `$RESEARCH_ROOT` or `~/Research`:
 
-- `harness githooks`, `harness workflows`, `harness push-all` and `harness ci-protection` look in
-  `Packages` and `Experiments`.
+- `harness githooks`, `harness workflows`, `harness push-all`, `harness ci-protection` and
+  `harness format` look in `Packages` and `Experiments`.
 - `harness wiki-lint-hook` looks for the prose repositories, `Knowledge` and `Library` among
   them. The script `wiki-lint.jl` reads the same names.
 

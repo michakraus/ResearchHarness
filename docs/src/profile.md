@@ -1,22 +1,19 @@
 # Adapting the profile
 
-Two private files adapt the harness to one user and one machine. Neither is in the repository.
+Four private files adapt the harness to one user and one machine. None of them is in the
+repository. They are in `~/.config/research-harness/`, and `examples/` holds an example of each,
+with a comment on every key that says what its value is.
 
-- **The [profile](concepts.md#profile)** holds every value that names a person, an institution or
-  a machine. Its path is `harness --profile F`, else `$RESEARCH_HARNESS_PROFILE`, else
-  `~/.config/research-harness/profile.toml`.
-- **The model tables** hold the model of each [tier](concepts.md#tier) for each
-  [frontend](concepts.md#frontend). Their path is
-  `harness --models F`, else `$RESEARCH_HARNESS_MODELS`, else `models.toml` beside the profile.
+| file | what it holds | required | its path | read by |
+|:--|:--|:--|:--|:--|
+| `profile.toml`, the [profile](concepts.md#profile) | every value that names a person, an institution or a machine | yes | `harness --profile F`, else `$RESEARCH_HARNESS_PROFILE`, else `~/.config/research-harness/profile.toml` | the verbs that [The keys of the profile](#the-keys-of-the-profile) names for each key |
+| `models.toml`, the model tables | the model of each [tier](concepts.md#tier) for each [frontend](concepts.md#frontend) | for `install` | `harness --models F`, else `$RESEARCH_HARNESS_MODELS`, else beside the profile | `install` only |
+| [`providers.toml`](#the-providers) | the model servers and accounts of OpenCode and oh-my-pi | no | beside the profile | `install` only |
+| [`network.toml`](#the-network-overlay), the network overlay | your own hosts for the network lists of Claude Code | no | beside the profile | `install`, `render` of the settings template, `settings` |
 
-Two more private files beside the profile are optional. [`providers.toml`](#the-providers) holds
-the model servers and accounts of OpenCode and oh-my-pi. The
-[network overlay](#the-network-overlay), `network.toml`, adds hosts to the network lists of
-Claude Code.
-
-`examples/profile.toml` and `examples/models.toml` show every key and every table, each with a
-comment that says what the value is. Copy them and write your values into the copies, as
-[setup-macos.md](setup-macos.md#the-profile-and-the-model-tables) shows. A template of the
+Copy each example that you need and write your values into the copy, as the step
+*The profile and the model tables* of [setup-macos.md](setup-macos.md#the-profile-and-the-model-tables)
+and [setup-linux.md](setup-linux.md#the-profile-and-the-model-tables) shows. A template of the
 repository names a profile key as `{key}`, and a verb renders the template with the profile
 before it uses it. A template that names a key that the profile does not have stops the verb,
 and the message names the key.
@@ -74,15 +71,15 @@ The table names each key of `examples/profile.toml` and the verbs that read it, 
 | `harness` | the path of the checkout of this repository | `install`, in the OpenCode configuration |
 | `memory_project` | a label, not a path: the settings set `autoMemoryDirectory` to `~/.claude/projects/<memory_project>/memory`, so Claude Code keeps the tree's memory there, whatever the tree's path is. The same value on every machine that shares one memory pool, such as Claude Code's name of the tree's project on the first machine (its path with each `/` replaced by `-`); it need not match the path on another machine | `install` and `settings`, in the settings template |
 | `tree_agents` | the directory of the [tree instructions](concepts.md#tree-instructions) | `install`, which [installs](concepts.md#install) them into `~/.claude/` |
-| `launchd_prefix` | the prefix of the labels of the launchd jobs in `launchagents/` | `render` of the `launchagents/` templates; the update job `scripts/julia-update.jl` |
+| `launchd_prefix` | the reverse-domain prefix of the labels of the launchd jobs in `launchagents/`, such as `org.example`: the label of the Kaimon server is `<launchd_prefix>.kaimon`. macOS only; nothing on Linux reads it | `render` of the `launchagents/` templates; `doctor`; the update job `scripts/julia-update.jl` on macOS |
 | `template_host` | the short host name of the machine whose memory is the template. Optional | every verb that reads the profile, for the value of `autocommit_branch` |
 | `autocommit_branch` | the branch of the `origin` of `~/.claude` that `claude-autocommit` pushes to: `main` on the machine whose memory is the template, a branch of its own on each other machine. Optional: without it, `main` on the machine of `template_host` or without `template_host`, else `memory/<short host name>`, as [One profile for every machine](#one-profile-for-every-machine) says | `render` of `launchagents/claude-autocommit.plist` and `systemd/claude-autocommit.service` |
 | `org` | the GitHub accounts and organisations where a [session](concepts.md#session) can open and comment on a pull request or an issue with no prompt | `install` and `settings`, in the settings template; `leaks`, which also searches for each of them |
 | `repository_roots` | the directories that hold the repositories of the research tree | `leaks`, which searches for the name of each directory below them |
 | `docs_exceptions` | the repositories that keep a documentation workflow of their own | `workflows`; `ci-protection`, through `githooks/verify-workflows.jl` |
 | `docs_additions` | the repositories that add steps to the canonical documentation workflow | `workflows`; `ci-protection`, through `githooks/verify-workflows.jl` |
-| `protected_dir` | the directories below `home` that no session can edit | `install`, in the settings template and the OpenCode configuration; `settings` |
-| `leak` | the strings that must never appear in the repository | `leaks` |
+| `protected_dir` | the directories below `home` that no session can edit, each as a path relative to `home`, such as `Nextcloud` | `install`, in the settings template and the OpenCode configuration; `settings` |
+| `leak` | the strings that must never appear in the repository, such as your user name and the hosts of your institution. The item `~` stands for the path of your home directory, as each `~` of the profile does | `leaks` |
 
 `install` reads the settings template too, because it writes the permission layer of oh-my-pi
 from it. So each key of the settings template is a key that `install` reads.

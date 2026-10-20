@@ -277,8 +277,9 @@ It reads the columns by name, not by position. A column that the table does not 
 empty cell. A file with no `## Parts` section gives no output: the task has no parts. The script
 does not change the file.
 
-The skills `build-part`, `build-reviewed` and `plan-parts` and the agents `advisor`,
-`arbitrator`, `julia-builder`, `julia-critic`, `part-builder` and `part-critic` use it.
+The skills `build-part` and `build-reviewed` and the agents `advisor`, `arbitrator`,
+`julia-critic` and `part-critic` run it; `julia-builder` and `part-builder` get its output from
+their caller.
 `spec-gate.py` calls it.
 
 ## `spec-gate.py`

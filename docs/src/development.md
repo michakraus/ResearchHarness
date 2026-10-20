@@ -10,7 +10,7 @@ Python hook with the same interpreter on a fixture `HOME`; then the contract swe
 run its dry run and its `--apply` on a fake `claude`, and the cases of `doctor` run it on the
 sweep's fixture with stub commands. The sweep checks the contract of
 [the `harness` command](harness-command.md): a dry run changes no
-file, a missing precondition exits 2 with one line, and for the five verbs it applies, a dry run
+file, a missing precondition exits 2 with one line, and for the four verbs it applies, a dry run
 after `--apply` has nothing to do. Each fixture lives in a temporary directory, so the cases need
 nothing from the machine's own `HOME`.
 
@@ -55,7 +55,7 @@ Then it runs `bin/harness test` on `python3` and on `python3.11`, the compile ch
 `python3.11 -m compileall -q lib hooks scripts adapters`, and `shellcheck -S warning` over the
 shell files.
 Then it runs the Julia test files that the changed paths of the pushed range select: a change
-to `scripts/mutate.jl` selects `scripts/run-tests-test.jl`, a change to `Project.toml` all five,
+to `scripts/mutate.jl` selects `scripts/run-tests-test.jl`, a change to `Project.toml` all ten,
 and a change to `README.md` none. It prints each file's name and its usual time before it runs
 it; `scripts/run-tests-test.jl` is silent for about 11 minutes. No `python3` of 3.11 or later
 refuses the push. A missing `python3.11`, `shellcheck` or `julia` prints one `skip` line, because
@@ -76,8 +76,9 @@ scans the pushed range (`before..sha`; for a new branch `origin/main..sha`, for 
 the whole history; for a pull request `base..head`), the messages of that range through
 `gitleaks stdin`, the checkout, and the templates rendered
 with `examples/profile.toml`. CI has no profile, so the private strings are the hook's alone.
-`.github/workflows/julia.yml` runs the five Julia test files on Julia 1.13 when a
-`.jl` file, `Project.toml` or the workflow itself changes.
+`.github/workflows/julia.yml` runs the ten Julia test files on Julia 1.13 when a
+`.jl` file, `Project.toml`, a file of `launchagents/`, `githooks/pre-commit` or the workflow
+itself changes.
 `.github/workflows/docs.yml` builds the documentation site with VitePress when a file under
 `docs/`, `agents/`, `skills/`, `examples/models.toml` or the workflow itself changes.
 VitePress fails the build on a broken local link. On a push to `main`, the workflow also deploys

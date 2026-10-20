@@ -95,16 +95,16 @@ TOOLS = [
 ]
 # The section that fixes a FAIL, {topic: (on Linux, on macOS)}.
 FIX = {
-    "machine": ("setup-linux.md, Check the machine", None),
-    "sandbox": ("setup-linux.md, The sandbox of Claude Code", None),
+    "machine": ("setup-linux.md, Check the machine", "setup-macos.md, Check the machine"),
+    "sandbox": ("setup-linux.md, The sandbox of Claude Code", "setup-macos.md, The sandbox of Claude Code"),
     "tools": ("setup-linux.md, The dependencies", "setup-macos.md, The dependencies"),
     "profile": ("setup-linux.md, The profile and the model tables", "setup-macos.md, The profile and the model tables"),
     "tree": ("setup-linux.md, The tree instructions", "setup-macos.md, The tree instructions"),
     "install": ("setup-linux.md, `harness install --apply`", "setup-macos.md, `harness install --apply`"),
-    "kaimon job": ("setup-linux.md, The jobs", "components/other.md, `kaimon.plist`"),
-    "update job": ("setup-linux.md, The jobs", "components/other.md, `julia-update.plist`"),
-    "autocommit": ("setup-linux.md, The jobs", "components/other.md, `claude-autocommit`"),
-    "token": ("setup-linux.md, The Kaimon token", "setup-linux.md, The Kaimon token"),
+    "kaimon job": ("setup-linux.md, The jobs", "setup-macos.md, The jobs"),
+    "update job": ("setup-linux.md, The jobs", "setup-macos.md, The jobs"),
+    "autocommit": ("setup-linux.md, The jobs", "setup-macos.md, The jobs"),
+    "token": ("setup-linux.md, The Kaimon token", "setup-macos.md, The Kaimon token"),
     "test": ("setup-linux.md, The check that it worked", "setup-macos.md, The check that it worked"),
 }
 # The answers of `systemctl is-active`; any other output is no answer.
