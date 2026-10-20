@@ -29,7 +29,8 @@ workspace trust on the repository root, a trusted parent does not cover it, and 
 write `~/.claude.json`. After a `git clone` or a `gh repo clone`, put this command in the report,
 in its own `bash` block, for the user to run:
 `harness trust --apply`. A worktree
-uses its main checkout's trust and needs no entry.
+uses its main checkout's trust and needs no entry. A clone under `.worktrees/` or `.scratch/` gets
+no entry either: `harness trust` skips both, so leave the command out of the report.
 
 ## Workflows
 

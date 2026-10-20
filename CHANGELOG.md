@@ -8,6 +8,12 @@
   holds `glab auth status *--show-token*`, `*-t*` and `*-at*`; a host name that contains `-t`
   is refused too. The permission block of `opencode.jsonc` carries the three `deny` rules.
 
+- **A clone under `.worktrees/` or `.scratch/` gets no trust command in the report.** The global
+  `CLAUDE.md` told a session to give `harness trust --apply` after every clone under
+  `~/Research`, and named only a worktree as an exception. `harness trust` skips `.worktrees/` and
+  `.scratch/`, so for a temporary clone there the command adds no entry, and the report asked the
+  user to trust a clone that was deleted after its merge. The rule now names both directories.
+
 - **A fix round runs only the mutants that its fix touches.** Round 1 still runs the full set.
   On 2026-10-19 the second fix round of the oh-my-pi part M5 (GeometricMachineLearning) spent
   about 76 of its 103 minutes on mutant runs: its builder ran all 36 mutants of the earlier
