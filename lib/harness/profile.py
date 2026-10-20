@@ -21,8 +21,10 @@ alone: the members of a JSON object, at that line's indentation, with no comma a
 More than one list placeholder in one element or line is an error, and so is
 a placeholder that the profile does not define: a template that renders with a hole in it is a
 grant or a deny that silently matches nothing. The one exception is a key of DEFAULTS, which
-`render` and `leaks` fill with its default where the profile has none: `autocommit_branch` renders
-`main`, and `providers`, which `harness install` fills from providers.toml, no provider.
+`render` and `leaks` fill with its default where the profile has none: `providers`, which
+`harness install` fills from providers.toml, renders no provider. `autocommit_branch` is never
+missing: without it, `load` gives `main` on the machine whose short host name is `template_host`
+or without `template_host`, and `memory/<short host name>` on every other (`branch_default`).
 `render` of the settings template also generates its network rules from `settings/network.toml`
 and the overlay `network.toml` beside the profile (`network.py`).
 
@@ -46,6 +48,7 @@ import os
 import pathlib
 import re
 import shutil
+import socket
 import subprocess
 import sys
 import tempfile
@@ -60,6 +63,9 @@ DUMMY = REPO / "examples" / "profile.toml"
 # with the dummy under it, because the user's `leak` list names the running user's home, and the
 # scratch profiles of the install cases set it.
 DUMMY_HOME = "/home/example"
+# The host name under which `leaks` renders the dummy, for the same reason: the dummy's
+# `autocommit_branch` names the host, and the user's `leak` list may name the running one.
+DUMMY_HOST = "example-other"
 
 PLACEHOLDER = re.compile(r"\{([a-z][a-z0-9_]*)\}")
 # A line that holds one placeholder alone, after its indentation.
@@ -80,8 +86,8 @@ TEMPLATES = [
 ]
 
 # The keys that `render` and `leaks` give a value when the profile has none. `harness install`
-# fills `providers` from providers.toml.
-DEFAULTS = {"autocommit_branch": "main", "providers": {}}
+# fills `providers` from providers.toml. `load` sets `autocommit_branch` (`branch_default`).
+DEFAULTS = {"providers": {}}
 
 
 def location(path=None):
@@ -89,10 +95,11 @@ def location(path=None):
     return pathlib.Path(path or os.environ.get("RESEARCH_HARNESS_PROFILE") or DEFAULT)
 
 
-def load(path=None, home=None):
+def load(path=None, home=None, host=None):
     """The profile at `path`, else the environment's, else the default path, with `~` expanded
-    (`expand_home`); `home` is the home directory of a profile that names none, the running
-    user's by default."""
+    (`expand_home`) and `autocommit_branch` set (`branch_default`); `home` is the home directory
+    of a profile that names none, the running user's by default, and `host` the host name, the
+    running machine's by default."""
     path = location(path)
     if not path.is_file():
         raise HarnessError(f"no profile at {path} — copy examples/profile.toml there and fill it in")
@@ -102,7 +109,24 @@ def load(path=None, home=None):
         raise HarnessError(f"{path} is not UTF-8") from None
     except tomllib.TOMLDecodeError as e:
         raise HarnessError(f"{path} is not TOML: {e}") from None
-    return expand_home(data, path, home)
+    return branch_default(expand_home(data, path, home), path, host)
+
+
+def branch_default(data, path, host=None):
+    """`data` with `autocommit_branch` set: the profile's own, else `main` without `template_host`
+    or on the machine whose short host name is `template_host`, else `memory/<short host name>`.
+    The short host name is `host`, else `socket.gethostname()`, up to its first `.`, as
+    `hostname -s` prints it; it compares exactly, and an empty one gives `main`. So one profile
+    works unedited on every machine. A `template_host` that is not a short host name, a string
+    that is not empty and holds no `.`, exits 2."""
+    template = data.get("template_host")
+    if template is not None and not (isinstance(template, str) and template and "." not in template):
+        raise HarnessError(f"{path}: `template_host` is {template!r}, not a short host name without a `.`")
+    if "autocommit_branch" in data:
+        return data
+    short = (socket.gethostname() if host is None else host).split(".")[0]
+    branch = "main" if template is None or not short or short == template else f"memory/{short}"
+    return {**data, "autocommit_branch": branch}
 
 
 def expand_home(data, path, home=None):
@@ -556,7 +580,7 @@ def cmd_leaks(args, repo=REPO):
         raise HarnessError("the profile's `leak` list is empty — nothing to check against")
     names = tree_names(profile)
     pattern, allowed = name_pattern(names), own_repository(repo)
-    dummy = DEFAULTS | load(DUMMY, home=DUMMY_HOME)
+    dummy = DEFAULTS | load(DUMMY, home=DUMMY_HOME, host=DUMMY_HOST)
     files = subprocess.run(
         ["git", "ls-files", "-z"], cwd=repo, capture_output=True, text=True, check=True
     ).stdout.split("\0")
@@ -770,6 +794,18 @@ def commit_cases():
         wrong += not ok
         print(f"{'ok ' if ok else 'BAD'}  leaks: the running user's home as the leak string, and the templates "
               f"rendered with the dummy -> exit {got}, {summary.strip()!r}")
+        # The running host's name as a leak string: the dummy's `autocommit_branch` renders under a
+        # host name that is not the running one, so the templates hold no hit.
+        (pathlib.Path(tmp) / "profile-host.toml").write_text(
+            f"leak = [\"leakhost\"]\norg = []\nrepository_roots = [{json.dumps(str(pathlib.Path(tmp) / 'roots'))}]\n")
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out), mock.patch("socket.gethostname", return_value="leakhost.example.org"):
+            got = cmd_leaks(argparse.Namespace(profile=pathlib.Path(tmp) / "profile-host.toml", commits=None), repo)
+        summary = out.getvalue().splitlines()[-1]
+        ok = got == 0 and summary.endswith(", 0 hits")
+        wrong += not ok
+        print(f"{'ok ' if ok else 'BAD'}  leaks: the running host's name as the leak string, and the templates "
+              f"rendered with the dummy -> exit {got}, {summary.strip()!r}")
         # The templates that `harness leaks` renders: TEMPLATES and each adapter's. The leak string is
         # the suffix of a rendered template's name, so each template it renders is one hit on line 0.
         (pathlib.Path(tmp) / "profile-templates.toml").write_text(
@@ -867,7 +903,7 @@ def commit_cases():
         wrong += not ok
         print(f"{'ok ' if ok else 'BAD'}  leaks --commits: the own owner/name of a repository whose origin is not "
               f"this checkout's -> exit {status}, {summary.strip()!r}")
-    return len(cases) + 3 + len(message_cases) + len(runs) + 2 + len(limits) + len(place_cases) + 1, wrong
+    return len(cases) + 3 + len(message_cases) + len(runs) + 3 + len(limits) + len(place_cases) + 1, wrong
 
 
 # The tools that `.githooks/pre-push` starts from the PATH in `prepush_case`, besides the stubs.
@@ -1115,6 +1151,74 @@ def home_cases():
     return n, wrong
 
 
+def branch_cases():
+    """The cases of the default of `autocommit_branch`, each through `load` of a profile in a
+    scratch directory under a host name that `socket.gethostname` gives inside this process, and
+    `harness get autocommit_branch`: (number of cases, number wrong)."""
+    wrong, n = 0, 0
+
+    def check(ok, label):
+        nonlocal wrong, n
+        n += 1
+        wrong += not ok
+        print(f"{'ok ' if ok else 'BAD'}  profile: autocommit_branch: {label}")
+
+    with tempfile.TemporaryDirectory(prefix="harness-branch-") as tmp:
+        tmp = pathlib.Path(tmp)
+
+        def branch(text, host):
+            """`autocommit_branch` of the profile `text` loaded on the host `host`; a HarnessError's
+            message in its place."""
+            (tmp / "profile.toml").write_text('home = "/h"\n' + text)
+            with mock.patch("socket.gethostname", return_value=host):
+                try:
+                    return load(tmp / "profile.toml").get("autocommit_branch")
+                except HarnessError as e:
+                    return f"error: {e}"
+
+        # (label, profile text, host name, expected branch)
+        for label, text, host, expected in [
+            ("no `template_host` -> main", "", "beta", "main"),
+            ("`template_host` is this host -> main", 'template_host = "alpha"\n', "alpha", "main"),
+            ("another host -> memory/<host>", 'template_host = "alpha"\n', "beta", "memory/beta"),
+            ("a given branch with `template_host`, on another host", 'template_host = "alpha"\n'
+             'autocommit_branch = "own"\n', "beta", "own"),
+            ("a given branch with `template_host`, on the template host", 'template_host = "alpha"\n'
+             'autocommit_branch = "own"\n', "alpha", "own"),
+            ("a given branch without `template_host`", 'autocommit_branch = "own"\n', "beta", "own"),
+            ("a host name with a domain part, another host", 'template_host = "alpha"\n', "beta.example.org",
+             "memory/beta"),
+            ("a host name with a domain part, the template host", 'template_host = "alpha"\n',
+             "alpha.example.org", "main"),
+            ("an empty host name -> main", 'template_host = "alpha"\n', "", "main"),
+            ("a host name that differs in case only is another host", 'template_host = "alpha"\n', "Alpha",
+             "memory/Alpha"),
+        ]:
+            got = branch(text, host)
+            check(got == expected, f"{label} -> {got!r}")
+        for text, label in (('template_host = ""\n', "an empty `template_host`"),
+                            ('template_host = "alpha.example.org"\n', "a `template_host` with a domain part"),
+                            ("template_host = 1\n", "a number as `template_host`")):
+            got = branch(text, "beta")
+            check(isinstance(got, str) and got.startswith("error: ") and "`template_host`" in got,
+                  f"{label} is refused, naming the key -> {got!r}")
+        # `harness get autocommit_branch` prints the default.
+        (tmp / "profile.toml").write_text('home = "/h"\ntemplate_host = "alpha"\n')
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out), mock.patch("socket.gethostname", return_value="beta.example.org"):
+            try:
+                status = cmd_get(argparse.Namespace(profile=tmp / "profile.toml", key="autocommit_branch"))
+            except HarnessError as e:
+                status = f"error: {e}"
+        check(status == 0 and out.getvalue() == "memory/beta\n",
+              f"harness get prints the default -> {status}, {out.getvalue()!r}")
+        dummy = tomllib.loads(DUMMY.read_text())
+        check(isinstance(dummy.get("template_host"), str) and "autocommit_branch" not in dummy,
+              f"examples/profile.toml sets `template_host` and no `autocommit_branch` -> "
+              f"{dummy.get('template_host')!r}, {dummy.get('autocommit_branch')!r}")
+    return n, wrong
+
+
 def selftest():
     """The render's cases, the tree-name cases, the cases of `home` and `~`, the cases of
     `--commits`, and the `origin` case and the branch cases of the pre-push hook: (number of
@@ -1133,8 +1237,9 @@ def selftest():
         wrong += got != expected
         print(f"{'ok ' if got == expected else 'BAD'}  {line!r} -> {got!r}")
     n0, w0 = home_cases()
+    n1, w1 = branch_cases()
     n, w = commit_cases()
-    n, w = n + n0, w + w0
+    n, w = n + n0 + n1, w + w0 + w1
     n2, w2 = prepush_case()
     # As inside a git hook: git's exec path first on the PATH.
     exec_path = subprocess.run(["git", "--exec-path"], capture_output=True, text=True, check=True).stdout.strip()
