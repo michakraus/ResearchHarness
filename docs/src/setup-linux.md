@@ -73,8 +73,9 @@ A line that fails prints its error, and the next line runs.
   lines of this page that start with `sudo`.
 - The `command -v`, `exists` and `grep` lines show what an earlier install left: a
   [frontend](concepts.md#frontend), a Julia, a directory of a frontend, or a `PATH` line in a
-  start file. Each step below installs over it or adds to it; read the output before you
-  continue.
+  start file. Each step below installs over it or adds to it, except the installer of juliaup,
+  which stops when juliaup is installed already; [The dependencies](#the-dependencies) says what
+  to do then. Read the output before you continue.
 - The `apt-cache` line gives the version that `apt-get` installs, under `Candidate`, and the
   version that is there, under `Installed`. Compare each with the minimum of
   [Dependencies](dependencies.md).
@@ -104,8 +105,8 @@ mkdir -p ~/.local/bin
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
-Add the `export` line to your shell's start file too, for example `~/.bashrc`, so that each new
-shell finds the tools.
+Add the `export` line to your shell's start file too, `~/.bashrc` for bash or `~/.zshrc` for zsh,
+so that each new shell finds the tools.
 
 gitleaks and RTK come from their releases, which have one file for each architecture. This block
 sets the names of the two files for the architecture of the machine. On an architecture other
@@ -133,9 +134,9 @@ grep " $rt\$" checksums.txt | sha256sum -c - && tar -xzf "$rt" rtk && install -m
 cd ~
 ```
 
-**Only to push to the harness**, install gitleaks: on your machine, only the pre-push
-[hook](concepts.md#hook) of the harness runs it, before a push to the harness. A user who only
-installs the harness skips these lines. They download the release 8.30.1 and its checksum file
+**Only to push to the harness**, install gitleaks. Only the pre-push [hook](concepts.md#hook) of
+the harness runs gitleaks, before a push to the harness. A user who only installs the harness
+skips these lines. They download the release 8.30.1 and its checksum file
 `gitleaks_8.30.1_checksums.txt`, check the release against the checksum, and only then install
 `gitleaks` into `~/.local/bin`:
 
@@ -170,7 +171,15 @@ launcher into `~/.juliaup/bin`, and the current Julia release below `~/.julia`. 
 `~/.juliaup/bin` to the `PATH` in a block between the lines `# >>> juliaup initialize >>>` and
 `# <<< juliaup initialize <<<`, in each of `~/.bashrc`, `~/.profile`, `~/.bash_profile`,
 `~/.bash_login` and `~/.zshrc` that exists. The `export` line puts `~/.juliaup/bin` on the `PATH`
-of the shell that you are in. The six Julia packages of
+of the shell that you are in.
+
+**With juliaup installed already**, its installer stops with the message `It seems that Juliaup
+is already installed on this system. Please remove the previous installation of Juliaup before
+you try to install a new version.` and installs nothing. So when `juliaup --version` prints a
+version, skip the `install.julialang.org` line, or run `juliaup self update` in its place. Run the
+`export` line and the **Check** below either way.
+
+The six Julia packages of
 [Dependencies](dependencies.md#julia-and-its-packages) need no command: the first install adds
 them.
 
@@ -341,16 +350,16 @@ bwrap --ro-bind / / --dev /dev --unshare-user --unshare-pid true && echo BWRAP-O
 
 ## The clone
 
-**What it does.** These commands clone the repository and put its `bin/` directory on the `PATH`,
-so that your shell finds the command `harness`.
+**What it does.** These commands clone the harness repository and put its `bin/` directory on the
+`PATH`, so that your shell finds the command `harness`.
 
 ```bash
 git clone https://github.com/michakraus/ResearchHarness.git ~/Research/Harness
 export PATH="$HOME/Research/Harness/bin:$PATH"
 ```
 
-Add the `export` line to your shell's start file too, for example `~/.bashrc`, so that each new
-shell finds `harness`.
+Add the `export` line to your shell's start file too, `~/.bashrc` for bash or `~/.zshrc` for zsh,
+so that each new shell finds `harness`.
 
 **Why.** Every step after this one uses `harness`, and the installed configuration names files of
 the checkout.
@@ -381,6 +390,12 @@ must never be in the repository, such as your user name; `launchd_prefix`, the r
 prefix of the job labels; and `memory_project`, the label of the memory of your tree.
 [profile.md](profile.md) names each key and table, and the comments in the two files say what each
 value is.
+
+**On several machines**, the profile is the same on each of them: no key needs an edit per
+machine. The branch that the autocommit pushes to differs per machine, and the key
+`template_host` gives it on each machine by itself, as
+[profile.md](profile.md#one-profile-for-every-machine) says. So write the profile once, keep it in
+a private place, such as a private repository or a dotfiles manager, and copy it to each machine.
 
 The key `repository_roots` names the directories that hold the repositories of your research
 tree. Each entry must be a directory. With the example values, this command makes them:
@@ -462,7 +477,9 @@ copies each [agent](concepts.md#agent), [skill](concepts.md#skill), [rule](conce
 [instruction file](concepts.md#instruction-file) to the place where its frontend reads it. The
 first `--apply` also instantiates the Julia environment of the scripts, so it downloads the Julia
 packages of `Project.toml`. The warnings after the plan name what the install does not do for
-you. For example, the Kaimon entry needs a token file.
+you. For example, the Kaimon entry of OpenCode needs the token file
+`~/.config/kaimon/opencode-token`. Kaimon makes its key at its first start, so that warning stays
+until [The Kaimon token](#the-kaimon-token), after [The jobs](#the-jobs).
 
 **Check.** Run the dry run again. Its last line is `0 change(s) to make.`, and it exits 0, which
 means that the installed files are the files of the sources.
@@ -491,8 +508,26 @@ Claude Code session.
 The install writes the oh-my-pi configuration as on macOS, which
 [setup-macos.md](setup-macos.md#oh-my-pi) describes. oh-my-pi reads `harness.yml` only when the
 line `PI_CONFIG_FILES=~/.omp/agent/harness.yml` is in `~/.omp/agent/.env`, and its shell commands
-get the variables of the settings template's `env` from the same file. So add the four lines that
-[setup-macos.md](setup-macos.md#oh-my-pi) gives once; the install warns until they are there.
+get the variables of the settings template's `env` from the same file. The install warns until
+the lines are there. This block adds the four lines to the end of `~/.omp/agent/.env`. Run it
+once: a second run adds the lines again.
+
+```bash
+mkdir -p ~/.omp/agent
+cat >> ~/.omp/agent/.env <<'EOF'
+PI_CONFIG_FILES=~/.omp/agent/harness.yml
+JULIA_PKG_USE_CLI_GIT=true
+JULIA_NUM_THREADS=2
+OPENBLAS_NUM_THREADS=2
+EOF
+```
+
+**Check.** Run the dry run again. It prints no warning that starts with
+`oh-my-pi does not load` or with `oh-my-pi's bash calls lack`:
+
+```bash
+harness install
+```
 
 ## Kaimon
 
@@ -508,8 +543,8 @@ julia -e 'using Pkg; Pkg.Apps.add("Kaimon")'
 export PATH="$HOME/.julia/bin:$PATH"
 ```
 
-Add the `export` line to your shell's start file too, for example `~/.bashrc`, so that each new
-shell finds `kaimon`.
+Add the `export` line to your shell's start file too, `~/.bashrc` for bash or `~/.zshrc` for zsh,
+so that each new shell finds `kaimon`.
 
 **Why.** The Kaimon server of [The jobs](#the-jobs) runs `~/.julia/bin/kaimon`, and the update job
 updates Kaimon.
@@ -535,16 +570,30 @@ install -m 755 ~/Research/Harness/launchagents/claude-autocommit ~/.local/bin/
 install -m 755 ~/Research/Harness/scripts/julia-update.jl ~/.local/bin/
 ```
 
-After you change one of the two scripts in the checkout, run its line again. The autocommit
-commits in `~/.claude/`, which must be a git repository.
+After you change one of the two scripts in the checkout, run its line again.
 
-These commands render each unit with the profile into `~/.config/systemd/user/`, and enable the
-timer of the autocommit:
+These commands render each unit with the profile into `~/.config/systemd/user/`:
 
 ```bash
 mkdir -p ~/.config/systemd/user
 for u in kaimon.service julia-update.service julia-update.timer claude-autocommit.service claude-autocommit.timer; do harness render ~/Research/Harness/systemd/"$u" > ~/.config/systemd/user/"$u"; done
 systemctl --user daemon-reload
+```
+
+**With a git repository in `~/.claude` only.** The autocommit commits in `~/.claude/` and pushes
+to the `origin` of that repository, so `~/.claude` must be a git repository with a remote
+`origin`. No step of this page makes it one. These commands print `.git` and the URL of the
+remote when it is one:
+
+```bash
+git -C ~/.claude rev-parse --git-dir
+git -C ~/.claude remote get-url origin
+```
+
+When a line prints an error, skip the next command: the timer would start the autocommit, and
+the autocommit would fail. Else this command enables the timer of the autocommit:
+
+```bash
 systemctl --user enable --now claude-autocommit.timer
 ```
 
@@ -556,21 +605,28 @@ enables the server and the timer of the update job:
 systemctl --user enable --now kaimon.service julia-update.timer
 ```
 
-Then an administrator turns on linger for your account:
+Then an administrator turns on linger for your account. When your account may run `sudo`, run
+this line in your own account:
 
 ```bash
 sudo loginctl enable-linger "$USER"
 ```
 
-In an account that may not run `sudo`, an administrator runs this line in the administrator's own
-account, with the name of your account in place of `"$USER"`.
+When your account may not run `sudo`, an administrator runs this block in the administrator's own
+account, where `$USER` names the administrator. First edit the line `account=me`: replace `me`
+with the name of your account, which `id -un` prints in your account.
+
+```bash
+account=me
+sudo loginctl enable-linger "$account"
+```
 
 **Why.** Without linger, the user manager of systemd starts at your first login and stops at your
 last logout, and the units stop with it. Linger keeps the server and the timers running when no
 one is logged in.
 
-**Check.** The first command prints `Linger=yes`, and the second lists the timer of the
-autocommit:
+**Check.** The first command prints `Linger=yes`. The second lists the timer of the autocommit
+when you enabled it, and prints nothing when you skipped it:
 
 ```bash
 loginctl show-user "$USER" -p Linger
@@ -582,6 +638,35 @@ With Kaimon, the first command prints `active`, and the second lists the timer o
 ```bash
 systemctl --user is-active kaimon.service
 systemctl --user list-timers --no-pager | grep julia-update
+```
+
+## The Kaimon token
+
+**With Kaimon and OpenCode only.** Skip this step without one of them.
+
+**What it does.** In its strict mode, Kaimon refuses a request that does not carry one of its API
+keys. Kaimon keeps its mode and its keys in `~/.config/kaimon/config.json`, and writes that file
+at its first start: the server of [The jobs](#the-jobs) starts with `--headless`, and then Kaimon
+writes a configuration in the strict mode with one new key, `kaimon_` followed by 40 hexadecimal
+digits. `kaimon` started in a terminal asks the questions of its setup wizard instead. The Kaimon
+entry of OpenCode sends a key in the header `Authorization: Bearer`, and it reads the key from the
+file `~/.config/kaimon/opencode-token`. These commands write the first key of the configuration
+into that file, the key alone, with mode 600:
+
+```bash
+(umask 077; python3 -c 'import json, os; print(json.load(open(os.path.expanduser("~/.config/kaimon/config.json")))["api_keys"][0], end="")' > ~/.config/kaimon/opencode-token)
+chmod 600 ~/.config/kaimon/opencode-token
+```
+
+**Why.** Without the file, OpenCode sends no key, and Kaimon answers each request with 401. The
+settings deny a session the read of both files.
+
+**Check.** The first command prints `600 47`: the mode, and the 47 characters of the key. The dry
+run prints no warning about `~/.config/kaimon/opencode-token`:
+
+```bash
+stat -c '%a %s' ~/.config/kaimon/opencode-token
+harness install
 ```
 
 ## `git config core.hooksPath .githooks`
@@ -632,6 +717,45 @@ gh auth login --hostname github.com --git-protocol https
 
 In Claude Code, `/login` prints a URL. Open it on another machine, and paste the code that it
 gives back into Claude Code.
+
+Claude Code can also log in with a token. `claude setup-token`, with no argument, runs the same
+login in a browser as `/login`, then prints a token and does not save it. The token is valid for
+one year, and it needs a Pro, Max, Team or Enterprise plan. Run it where you can open its URL,
+for example on a machine with a browser:
+
+```bash
+claude setup-token
+```
+
+Keep the token in a file under `~/.config/api-keys/`, the token alone, with mode 600: the settings
+deny a session that directory. These commands make the file. The `read` line waits for the
+token: paste it, and press Enter.
+
+```bash
+mkdir -p ~/.config/api-keys
+(umask 077; read -r token; printf '%s' "$token" > ~/.config/api-keys/claude-code-oauth-token)
+chmod 600 ~/.config/api-keys/claude-code-oauth-token
+```
+
+Then add this line to your shell's start file, `~/.bashrc` for bash or `~/.zshrc` for zsh, so
+that Claude Code reads the token in each new shell. The start file holds the path, not the token.
+
+```bash
+export CLAUDE_CODE_OAUTH_TOKEN="$(cat ~/.config/api-keys/claude-code-oauth-token)"
+```
+
+`CLAUDE_CODE_OAUTH_TOKEN` takes precedence over a login that Claude Code keeps. The documentation
+of Claude Code does not say that Claude Code removes the variable from the environment of the
+shell commands of a [session](concepts.md#session), so they may see it. With
+`CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1`, Claude Code removes credentials from the environments of the
+programs that it starts.
+
+**Check.** The first command prints `600`, and in a new shell the second prints `TOKEN-SET`:
+
+```bash
+stat -c '%a' ~/.config/api-keys/claude-code-oauth-token
+test -n "$CLAUDE_CODE_OAUTH_TOKEN" && echo TOKEN-SET
+```
 
 A desktop session has a Secret Service, so there `gh` and `glab` keep their tokens in it. The read
 denies of the settings stay either way.

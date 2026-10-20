@@ -44,6 +44,25 @@ A string value that is `~`, or that starts with `~/`, means `home`: `~` becomes 
 Any other `~` stays as written, `a~b` and `~name/x` too. So `examples/profile.toml` works as
 copied, on every machine.
 
+## One profile for every machine
+
+The key `autocommit_branch` names the branch of the `origin` of `~/.claude` that
+`claude-autocommit` pushes to: `main` on the machine whose memory is the template, and a branch of
+its own on each other machine. The optional key `template_host` names the machine whose memory is
+the template, by its short host name: the host name up to its first `.`, as `hostname -s` prints
+it. Without `autocommit_branch` in the profile, its value is:
+
+- `main` when the profile has no `template_host`;
+- `main` on the machine whose short host name is `template_host`;
+- `memory/<short host name>` on every other machine.
+
+The comparison is exact, so `Alpha` and `alpha` are two machines, and an empty host name gives
+`main`. A given `autocommit_branch` is the branch on every machine. A `template_host` that is
+empty, holds a `.` or is not a string stops the verb, and the message names the key. Every verb
+reads the same value, and `harness get autocommit_branch` prints it. So with `template_host` and
+no `autocommit_branch`, one profile works unedited on every machine of one user: write it once,
+keep it in a private place, and copy it to each machine.
+
 ## The keys of the profile
 
 The table names each key of `examples/profile.toml` and the verbs that read it, beside
@@ -56,7 +75,8 @@ The table names each key of `examples/profile.toml` and the verbs that read it, 
 | `memory_project` | a label, not a path: the settings set `autoMemoryDirectory` to `~/.claude/projects/<memory_project>/memory`, so Claude Code keeps the tree's memory there, whatever the tree's path is. The same value on every machine that shares one memory pool, such as Claude Code's name of the tree's project on the first machine (its path with each `/` replaced by `-`); it need not match the path on another machine | `install` and `settings`, in the settings template |
 | `tree_agents` | the directory of the [tree instructions](concepts.md#tree-instructions) | `install`, which [installs](concepts.md#install) them into `~/.claude/` |
 | `launchd_prefix` | the prefix of the labels of the launchd jobs in `launchagents/` | `render` of the `launchagents/` templates; the update job `scripts/julia-update.jl` |
-| `autocommit_branch` | the branch of the `origin` of `~/.claude` that `claude-autocommit` pushes to: `main` on the machine whose memory is the template, a branch of its own on each other machine. Optional: `render` gives `main` without it | `render` of `launchagents/claude-autocommit.plist` and `systemd/claude-autocommit.service` |
+| `template_host` | the short host name of the machine whose memory is the template. Optional | every verb that reads the profile, for the value of `autocommit_branch` |
+| `autocommit_branch` | the branch of the `origin` of `~/.claude` that `claude-autocommit` pushes to: `main` on the machine whose memory is the template, a branch of its own on each other machine. Optional: without it, `main` on the machine of `template_host` or without `template_host`, else `memory/<short host name>`, as [One profile for every machine](#one-profile-for-every-machine) says | `render` of `launchagents/claude-autocommit.plist` and `systemd/claude-autocommit.service` |
 | `org` | the GitHub accounts and organisations where a [session](concepts.md#session) can open and comment on a pull request or an issue with no prompt | `install` and `settings`, in the settings template; `leaks`, which also searches for each of them |
 | `repository_roots` | the directories that hold the repositories of the research tree | `leaks`, which searches for the name of each directory below them |
 | `docs_exceptions` | the repositories that keep a documentation workflow of their own | `workflows`; `ci-protection`, through `githooks/verify-workflows.jl` |
@@ -67,8 +87,8 @@ The table names each key of `examples/profile.toml` and the verbs that read it, 
 `install` reads the settings template too, because it writes the permission layer of oh-my-pi
 from it. So each key of the settings template is a key that `install` reads.
 
-`leaks` also renders every template of the repository, but with `examples/profile.toml` and the
-home `/home/example`, not with your profile. From your profile it reads only `leak`, `org` and
+`leaks` also renders every template of the repository, but with `examples/profile.toml`, the
+home `/home/example` and the host name `example-other`, not with your profile. From your profile it reads only `leak`, `org` and
 `repository_roots`.
 
 ## The tables of the model tables

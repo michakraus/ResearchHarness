@@ -63,8 +63,8 @@ git clone https://github.com/michakraus/ResearchHarness.git ~/Research/Harness
 export PATH="$HOME/Research/Harness/bin:$PATH"
 ```
 
-Add the `export` line to your shell's start file too, for example `~/.zshrc`, so that each new
-shell finds `harness`.
+Add the `export` line to your shell's start file too, `~/.bashrc` for bash or `~/.zshrc` for zsh,
+so that each new shell finds `harness`.
 
 **Why.** Every step after this one uses `harness`, and the installed configuration names files of
 the checkout.
@@ -95,6 +95,12 @@ must never be in the repository, such as your user name; `launchd_prefix`, the r
 prefix of the job labels; and `memory_project`, the label of the memory of your tree.
 [profile.md](profile.md) names each key and table, and the comments in the two files say what each
 value is.
+
+**On several machines**, the profile is the same on each of them: no key needs an edit per
+machine. The branch that the autocommit pushes to differs per machine, and the key
+`template_host` gives it on each machine by itself, as
+[profile.md](profile.md#one-profile-for-every-machine) says. So write the profile once, keep it in
+a private place, such as a private repository or a dotfiles manager, and copy it to each machine.
 
 The key `repository_roots` names the directories that hold the repositories of your research
 tree. Each entry must be a directory. With the example values, these commands make them:
