@@ -15,7 +15,8 @@
   `~/.bashrc` and `~/.zshrc` for each `export` line, says that the juliaup installer stops over an
   earlier juliaup, gives the `.env` lines of oh-my-pi as a command with a check, adds *The Kaimon
   token* (the first key of Kaimon's `config.json` into `~/.config/kaimon/opencode-token`), checks
-  that `~/.claude` is a git repository before it enables the autocommit timer, gives the
+  that `~/.claude` is the top of its own git repository before it enables the autocommit timer,
+  gives the
   administrator's linger command with the account name in a line of its own, and shows the login
   of Claude Code with `claude setup-token` and `CLAUDE_CODE_OAUTH_TOKEN` read from a file under
   `~/.config/api-keys/`. *Setup on macOS* names both start files too.

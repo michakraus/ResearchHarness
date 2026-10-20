@@ -387,7 +387,9 @@ and without the key `home` the profile takes the home directory of the user who 
 Then open `~/.config/research-harness/profile.toml` in an editor and fill in the keys that name a
 person or an organisation: `org`, your GitHub accounts and organisations; `leak`, the strings that
 must never be in the repository, such as your user name; `launchd_prefix`, the reverse-domain
-prefix of the job labels; and `memory_project`, the label of the memory of your tree.
+prefix of the job labels; `memory_project`, the label of the memory of your tree; and
+`template_host`, the output of `hostname -s` on the machine whose memory is the template. With the
+example value of `template_host`, the autocommit of no machine pushes to `main`.
 [profile.md](profile.md) names each key and table, and the comments in the two files say what each
 value is.
 
@@ -523,7 +525,7 @@ EOF
 ```
 
 **Check.** Run the dry run again. It prints no warning that starts with
-`oh-my-pi does not load` or with `oh-my-pi's bash calls lack`:
+`WARNING: oh-my-pi does not load` or with `WARNING: oh-my-pi's bash calls lack`:
 
 ```bash
 harness install
@@ -582,16 +584,18 @@ systemctl --user daemon-reload
 
 **With a git repository in `~/.claude` only.** The autocommit commits in `~/.claude/` and pushes
 to the `origin` of that repository, so `~/.claude` must be a git repository with a remote
-`origin`. No step of this page makes it one. These commands print `.git` and the URL of the
-remote when it is one:
+`origin`. No step of this page makes it one. The first command prints `REPOSITORY-OK` when
+`~/.claude` is the top directory of its own repository, not a directory inside another repository.
+The second prints the URL of the remote:
 
 ```bash
-git -C ~/.claude rev-parse --git-dir
+test "$(git -C ~/.claude rev-parse --show-toplevel)" = "$HOME/.claude" && echo REPOSITORY-OK
 git -C ~/.claude remote get-url origin
 ```
 
-When a line prints an error, skip the next command: the timer would start the autocommit, and
-the autocommit would fail. Else this command enables the timer of the autocommit:
+When the first prints no `REPOSITORY-OK`, or the second prints an error, skip the next command:
+the timer would start the autocommit, and the autocommit would fail. Else this command enables the
+timer of the autocommit:
 
 ```bash
 systemctl --user enable --now claude-autocommit.timer
@@ -651,11 +655,13 @@ writes a configuration in the strict mode with one new key, `kaimon_` followed b
 digits. `kaimon` started in a terminal asks the questions of its setup wizard instead. The Kaimon
 entry of OpenCode sends a key in the header `Authorization: Bearer`, and it reads the key from the
 file `~/.config/kaimon/opencode-token`. These commands write the first key of the configuration
-into that file, the key alone, with mode 600:
+into that file, the key alone, with mode 600. They write a temporary file first, and move it into
+place only when the key is not empty. Without `config.json`, or without a key in it, they leave no
+token file, and the dry run keeps its warning:
 
 ```bash
-(umask 077; python3 -c 'import json, os; print(json.load(open(os.path.expanduser("~/.config/kaimon/config.json")))["api_keys"][0], end="")' > ~/.config/kaimon/opencode-token)
-chmod 600 ~/.config/kaimon/opencode-token
+(umask 077; python3 -c 'import json, os; print(json.load(open(os.path.expanduser("~/.config/kaimon/config.json")))["api_keys"][0], end="")' > ~/.config/kaimon/opencode-token.new) && test -s ~/.config/kaimon/opencode-token.new && mv ~/.config/kaimon/opencode-token.new ~/.config/kaimon/opencode-token
+rm -f ~/.config/kaimon/opencode-token.new
 ```
 
 **Why.** Without the file, OpenCode sends no key, and Kaimon answers each request with 401. The
