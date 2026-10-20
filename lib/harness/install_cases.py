@@ -300,7 +300,7 @@ def target_cases(check, tmp):
         except (HarnessError, OSError) as e:  # an OSError is the defect that the case looks for
             raised = e
     case(lambda: isinstance(raised, HarnessError) and str(target) in str(raised)
-         and "No space left on device" in str(raised) and out.getvalue() == f"{'x.md':<34} INSTALL\n",
+         and "No space left on device" in str(raised) and out.getvalue() == f"{'x.md':<{install.WIDTH}}  INSTALL\n",
          f"an OSError in the write is a HarnessError that names the target, after the plan line: "
          f"{raised!r}, {out.getvalue()!r}")
 

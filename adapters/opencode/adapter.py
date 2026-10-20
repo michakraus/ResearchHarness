@@ -625,7 +625,7 @@ def plan(ctx):
     def links(apply):
         changes = 0
         for name, status, change in skill_links(pathlib.Path.home(), apply):
-            print(f"{'skills/' + name:<34} {status}")
+            print(f"{'skills/' + name:<{install.WIDTH}}  {status}")
             changes += change
         return changes
 

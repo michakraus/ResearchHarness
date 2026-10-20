@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- **The output of `harness install` and of the Julia test files is in columns.** The install
+  padded each label to 34 characters, so a longer label pushed its status out of the column. The
+  label column now has the width of the longest label of the install, and two spaces separate it
+  from the status. `gate-test.jl`, `mutants-test.jl`, `run-tests-test.jl` and
+  `test-layout-test.jl` printed one summary table per top-level test set, each with its own
+  widths. Run as a script, each file now runs its test sets inside one verbose test set and prints
+  one table. A failure no longer stops the file at the end of its test set: the other test sets
+  run, and the file exits non-zero at the end.
+
 - **The two setup pages have the same steps in the same order, and the docs match the code
   again.** *Setup on macOS* gained the steps that only *Setup on Linux* had: *Check the machine*,
   the frontends (Claude Code by its installer, OpenCode 2 and oh-my-pi by their Homebrew taps),
