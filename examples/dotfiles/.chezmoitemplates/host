@@ -1,0 +1,7 @@
+{{- /* The host data of .chezmoidata/machines.toml for this machine, as JSON. Use it as
+       {{- $host := includeTemplate "host" . | fromJson -}}
+     It stops with chezmoi's fail on a hostname that machines.toml does not list. */ -}}
+{{- if not (hasKey .machines .chezmoi.hostname) -}}
+{{-   fail (printf "the host %q is not in .chezmoidata/machines.toml; add its entry there" .chezmoi.hostname) -}}
+{{- end -}}
+{{- index .machines .chezmoi.hostname | toJson -}}

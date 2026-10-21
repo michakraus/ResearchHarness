@@ -1,0 +1,3 @@
+{{- /* The lines of .chezmoiignore that belong to this source alone, which the end of
+       .chezmoiignore includes: a target that a host must not receive, one pattern per line, as
+       chezmoi reads .chezmoiignore. This file is a placeholder with no line. */ -}}

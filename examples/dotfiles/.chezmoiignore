@@ -1,0 +1,15 @@
+{{- $host := includeTemplate "host" . | fromJson -}}
+# The repository's own files reach no machine.
+README.md
+CHANGELOG.md
+kit.toml
+tests
+tests/**
+
+# dotfiles-merge only on the template host, the one host that signs.
+{{ if ne .chezmoi.hostname .template_host -}}
+.local/bin/dotfiles-merge
+{{ end -}}
+
+# The lines of this source alone.
+{{ template "chezmoiignore.local" . }}

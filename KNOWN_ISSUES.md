@@ -261,3 +261,34 @@
   Julia ≥ 1.13 and gitleaks ≥ 8.21.
 - kind: defect
 - found: 2026-10-20
+
+### K84 · No branch case of the pre-push hook has a stub chezmoi on its `PATH`.
+
+- location: `lib/harness/profile.py:1001`
+- evidence: `prepush_branch_cases` puts no `chezmoi` on the `PATH` of its cases. So a hook that
+  moves the kit step above the branch exit at `.githooks/pre-push:124-127` passes every case. A
+  removed `exit 0` is still caught, because the stub suite prints "the suite ran"
+  (`lib/harness/profile.py:1032`, `1085`).
+- kind: missing test
+- found: #67
+
+### K85 · With chezmoi and without shellcheck, the pre-push hook refuses a push to `main` while its own shellcheck step prints `skip`.
+
+- location: `.githooks/pre-push:239`
+- evidence: with chezmoi and without shellcheck, the kit tests exit 1 with "<test>: shellcheck is
+  not on the PATH" (`examples/dotfiles/tests/update-check.py:920-923`,
+  `examples/dotfiles/tests/check-check.py:949-952`, `examples/dotfiles/tests/driver-check.py:141`).
+  The hook then refuses the push, but its own shellcheck step prints `skip`. This is what clause 8
+  of the kit's update path and K8 of the kit's plan ("The kit's tests run in a CI job of their
+  own") decide. The other choice is a K8 change for the user.
+- kind: defect
+- found: #67
+
+### K86 · A `signing_key` that is not a string stops the render of `dotfiles-merge`.
+
+- location: `examples/dotfiles/dot_local/bin/executable_dotfiles-merge.tmpl:18`
+- evidence: the template pipes `get $host "signing_key"` into `shellQuote`. With chezmoi 2.73.2,
+  a `.chezmoidata` file `signing_key = 5` and the template `{{ .signing_key | shellQuote }}` give
+  `wrong type for value; expected string; got int64`, and exit 1.
+- kind: found late
+- found: #67

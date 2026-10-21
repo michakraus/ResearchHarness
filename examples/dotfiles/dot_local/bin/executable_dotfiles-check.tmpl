@@ -1,0 +1,240 @@
+{{- $host := includeTemplate "host" . | fromJson -}}
+{{- $gpuPackages := dict "metal" "Metal" "cuda" "CUDA" "amdgpu" "AMDGPU" "none" "" -}}
+{{- if not (hasKey $gpuPackages $host.gpu) -}}
+{{-   fail (printf "the host %q has gpu %q; machines.toml allows metal, cuda, amdgpu or none" .chezmoi.hostname $host.gpu) -}}
+{{- end -}}
+{{- /* Only the X.Y channels are checked, as only they get packages. */ -}}
+{{- $xyChannels := list -}}
+{{- range $host.julia_channels -}}
+{{-   if regexMatch "^[0-9]+\\.[0-9]+$" . -}}
+{{-     $xyChannels = append $xyChannels . -}}
+{{-   end -}}
+{{- end -}}
+#!/bin/bash
+# dotfiles-check [--full]: check this machine's setup, one line per check in the form of
+# `harness doctor`, then a count line. It runs `harness doctor` (with --full when it is given)
+# and passes its lines through; then `chezmoi verify` and `chezmoi diff`, both without the
+# scripts; the signature of the head of the chezmoi source by the applied allowed_signers, and
+# the head against origin/main as the last fetch saw it; the Harness checkout against
+# harness_commit; and each code file of the kit against the harness at harness_commit, where a
+# file that differs is a WARN, because a machine on an older pin has an older kit. With --full it
+# also loads Revise on each X.Y Julia channel and asks the GPU package whether it is functional.
+#
+# It is read-only: it needs no terminal, asks nothing, fetches nothing and writes no file; with
+# --full, Julia can still precompile a stale package into its depot. It exits 1 when a line is
+# FAIL, else 0, and 2 on a usage error. In a session's sandbox
+# ($SANDBOX_RUNTIME set), a chezmoi or julia command that does not pass is SKIP with its reason,
+# as in `harness doctor`; run it in a plain terminal for its real verdict. The GPU line's reason
+# is julia's exit status and the last line of its standard output; its standard error is
+# discarded.
+#
+#   host            {{ .chezmoi.hostname }}
+#   harness_commit  {{ .harness_commit }}
+#   template host   {{ eq .chezmoi.hostname .template_host }}
+set -uo pipefail
+
+{{ template "dotfiles-signature.sh" . }}
+
+PIN="{{ .harness_commit }}"
+HARNESS="$HOME/Research/Harness"
+JULIA="$HOME/.juliaup/bin/julia"
+CHANNELS="{{ join " " $xyChannels }}"
+DEFAULT="{{ $host.julia_default }}"
+GPU="{{ get $gpuPackages $host.gpu }}"
+
+if [ $# -gt 1 ] || { [ $# -eq 1 ] && [ "$1" != --full ]; }; then
+    echo "usage: dotfiles-check [--full]" >&2
+    exit 2
+fi
+full=${1:-}
+
+pass=0 warn=0 failed=0 skip=0
+
+# count <status>: count one line.
+count() {
+    case $1 in
+        PASS) pass=$((pass + 1)) ;;
+        WARN) warn=$((warn + 1)) ;;
+        FAIL) failed=$((failed + 1)) ;;
+        SKIP) skip=$((skip + 1)) ;;
+    esac
+}
+
+# line <status> <name> <detail>: print one line in the form of `harness doctor`, and count it.
+line() {
+    printf '%-4s  %-24s  %s\n' "$1" "$2" "$3"
+    count "$1"
+}
+
+# refused <name> <detail>: a command that does not pass is SKIP in a session's sandbox, which can
+# refuse it, else FAIL.
+refused() {
+    if [ -n "${SANDBOX_RUNTIME:-}" ]; then
+        line SKIP "$1" "$2; the session's sandbox can refuse it: run in a plain terminal"
+    else
+        line FAIL "$1" "$2"
+    fi
+}
+
+# last <text>: the last line of <text> that is not empty.
+last() {
+    printf '%s\n' "$1" | grep -v '^[[:space:]]*$' | tail -n 1
+}
+
+# harness doctor: only its check lines pass through and count; its empty line and count line do
+# not. A non-zero exit with no FAIL line among them is a FAIL line of its own.
+if ! command -v harness >/dev/null; then
+    line FAIL "harness doctor" "harness not found on the PATH"
+else
+    # PYTHONDONTWRITEBYTECODE: Python writes no __pycache__ below the Harness checkout.
+    doctor=$(PYTHONDONTWRITEBYTECODE=1 harness doctor ${full:+"$full"} </dev/null)
+    code=$?
+    before=$failed
+    while IFS= read -r text; do
+        case $text in
+            "PASS  "* | "WARN  "* | "FAIL  "* | "SKIP  "*)
+                printf '%s\n' "$text"
+                count "${text%%  *}"
+                ;;
+        esac
+    done <<<"$doctor"
+    if [ "$code" -ne 0 ] && [ "$failed" -eq "$before" ]; then
+        line FAIL "harness doctor" "harness doctor exits $code with no FAIL line: $(last "$doctor")"
+    fi
+fi
+
+# chezmoi: verify exits non-zero and prints nothing when a managed file differs; an error prints
+# its reason. The diff must be empty.
+if ! command -v chezmoi >/dev/null; then
+    line FAIL "chezmoi verify" "chezmoi not found on the PATH"
+    line FAIL "chezmoi diff" "chezmoi not found on the PATH"
+else
+    out=$(chezmoi --no-tty verify --exclude=scripts </dev/null 2>&1)
+    code=$?
+    if [ "$code" -eq 0 ]; then
+        line PASS "chezmoi verify" "every managed file is as the source makes it"
+    elif [ -z "$out" ]; then
+        line FAIL "chezmoi verify" "a managed file differs from the source: read chezmoi diff"
+    else
+        refused "chezmoi verify" "chezmoi verify exits $code: $(last "$out")"
+    fi
+    out=$(chezmoi --no-tty --no-pager diff --exclude=scripts </dev/null 2>&1)
+    code=$?
+    if [ "$code" -ne 0 ]; then
+        refused "chezmoi diff" "chezmoi diff exits $code: $(last "$out")"
+    elif [ -z "$out" ]; then
+        line PASS "chezmoi diff" "empty"
+    else
+        line FAIL "chezmoi diff" "$(printf '%s\n' "$out" | wc -l | tr -d ' ') lines: read chezmoi diff, then apply or change the source"
+    fi
+fi
+
+# The source: its head carries a good signature by a principal of the applied allowed_signers,
+# and is origin/main as the last fetch saw it. Nothing is fetched.
+if ! head=$(git -C "$DOTFILES_SOURCE" rev-parse --verify --quiet 'HEAD^{commit}' 2>/dev/null); then
+    line FAIL "source signature" "$DOTFILES_SOURCE is not a git repository with a commit"
+    line FAIL "source origin/main" "$DOTFILES_SOURCE is not a git repository with a commit"
+else
+    verdict=""
+    if ! dotfiles_signers_listed; then
+        line FAIL "source signature" "$DOTFILES_SIGNERS is missing or lists no key; the head is not verified"
+    elif verdict=$(cd "$DOTFILES_SOURCE" && dotfiles_signature "$head") && dotfiles_good "$verdict"; then
+        line PASS "source signature" "${head:0:7} G ${verdict#* }"
+    else
+        line FAIL "source signature" "${head:0:7} has no good signature by a key of $DOTFILES_SIGNERS (%G? = ${verdict%% *})"
+    fi
+    if ! origin=$(git -C "$DOTFILES_SOURCE" rev-parse --verify --quiet 'refs/remotes/origin/main^{commit}'); then
+        line FAIL "source origin/main" "$DOTFILES_SOURCE has no origin/main"
+    elif [ "$head" = "$origin" ]; then
+        line PASS "source origin/main" "HEAD is origin/main at ${origin:0:7}, as the last fetch saw it"
+    elif git -C "$DOTFILES_SOURCE" merge-base --is-ancestor "$head" "$origin"; then
+        behind=$(git -C "$DOTFILES_SOURCE" rev-list --count "$head..$origin")
+        line WARN "source origin/main" "HEAD ${head:0:7} is $behind commit(s) behind origin/main ${origin:0:7}, as the last fetch saw it: run dotfiles-update"
+    else
+        line FAIL "source origin/main" "HEAD ${head:0:7} is neither origin/main ${origin:0:7} nor behind it"
+    fi
+fi
+
+# The Harness checkout. On the template host it is the development checkout and must contain
+# harness_commit; every other host checks out harness_commit itself.
+if ! harness_head=$(git -C "$HARNESS" rev-parse --verify --quiet 'HEAD^{commit}' 2>/dev/null); then
+    line FAIL "Harness checkout" "$HARNESS is not a git repository with a commit"
+{{- if eq .chezmoi.hostname .template_host }}
+elif git -C "$HARNESS" merge-base --is-ancestor "$PIN" HEAD 2>/dev/null; then
+    line PASS "Harness checkout" "HEAD ${harness_head:0:7} contains harness_commit ${PIN:0:7}"
+else
+    line FAIL "Harness checkout" "HEAD ${harness_head:0:7} does not contain harness_commit ${PIN:0:7}"
+{{- else }}
+elif [ "$harness_head" = "$PIN" ]; then
+    line PASS "Harness checkout" "HEAD is harness_commit ${PIN:0:7}"
+else
+    line FAIL "Harness checkout" "HEAD ${harness_head:0:7} is not harness_commit ${PIN:0:7}"
+{{- end }}
+fi
+
+# The kit: each code file of examples/dotfiles/kit.toml at harness_commit, which has one
+# `"<path>" = "code"` line per code file, equals the source's copy of it. A kit.toml with no such
+# line is a WARN, because the check then compares nothing.
+if ! git -C "$HARNESS" cat-file -e "$PIN^{commit}" 2>/dev/null; then
+    line SKIP "kit" "$HARNESS lacks harness_commit ${PIN:0:7}"
+elif ! kit=$(git -C "$HARNESS" show "$PIN:examples/dotfiles/kit.toml" 2>/dev/null); then
+    line SKIP "kit" "harness_commit ${PIN:0:7} has no examples/dotfiles/kit.toml"
+elif codes=$(printf '%s\n' "$kit" | sed -n 's/^"\([^"]*\)" = "code"$/\1/p') && [ -z "$codes" ]; then
+    line WARN "kit" "examples/dotfiles/kit.toml at harness_commit ${PIN:0:7} has no line \"<path>\" = \"code\"; nothing is compared"
+else
+    differ=()
+    while IFS= read -r path; do
+        if [ ! -f "$DOTFILES_SOURCE/$path" ]; then
+            differ+=("$path (missing)")
+        elif ! git -C "$HARNESS" cat-file blob "$PIN:examples/dotfiles/$path" 2>/dev/null |
+            cmp -s - "$DOTFILES_SOURCE/$path"; then
+            differ+=("$path")
+        fi
+    done <<<"$codes"
+    if [ ${#differ[@]} -eq 0 ]; then
+        line PASS "kit" "every code file equals the kit at harness_commit ${PIN:0:7}"
+    else
+        line WARN "kit" "not as the kit at harness_commit ${PIN:0:7}: $(printf '%s, ' "${differ[@]}" | sed 's/, $//')"
+    fi
+fi
+
+# Julia, with --full: Revise loads on each X.Y channel, and the GPU package is functional on the
+# default channel.
+for channel in $CHANNELS; do
+    if [ -z "$full" ]; then
+        line SKIP "Revise +$channel" "run with --full"
+    elif [ ! -x "$JULIA" ]; then
+        line FAIL "Revise +$channel" "$JULIA not found"
+    else
+        out=$("$JULIA" +"$channel" -e 'using Revise' </dev/null 2>&1)
+        code=$?
+        if [ "$code" -eq 0 ]; then
+            line PASS "Revise +$channel" "julia +$channel -e 'using Revise' loads it"
+        else
+            refused "Revise +$channel" "julia +$channel -e 'using Revise' exits $code: $(last "$out")"
+        fi
+    fi
+done
+if [ -z "$GPU" ]; then
+    line SKIP "GPU" "machines.toml gives this host gpu none"
+elif [ -z "$full" ]; then
+    line SKIP "GPU" "run with --full"
+elif [ ! -x "$JULIA" ]; then
+    line FAIL "GPU" "$JULIA not found"
+else
+    # The answer is the last line on standard output; a warning on standard error is no answer.
+    out=$("$JULIA" +"$DEFAULT" -e "using $GPU; println($GPU.functional())" </dev/null 2>/dev/null)
+    code=$?
+    if [ "$code" -eq 0 ] && [ "$(last "$out")" = true ]; then
+        line PASS "GPU" "$GPU.functional() is true on julia +$DEFAULT"
+    else
+        refused "GPU" "$GPU.functional() on julia +$DEFAULT exits $code: $(last "$out")"
+    fi
+fi
+
+echo
+echo "$pass PASS, $warn WARN, $failed FAIL, $skip SKIP"
+if [ "$failed" -gt 0 ]; then
+    exit 1
+fi
+exit 0

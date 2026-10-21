@@ -17,9 +17,11 @@
 # They fail closed: no gitleaks of 8.21 or later, no profile, an empty `leak` list or a check that
 # fails each refuse the push with one line. Then it runs `bin/harness test` on the first Python of
 # 3.11 or later among python3, python3.14, python3.13, python3.12 and python3.11, and on
-# python3.11, the compile check on python3.11, shellcheck over the shell files, and the Julia test
-# files that the changed paths of the pushed range select. A missing python3.11, shellcheck or
-# julia prints one skip line, because CI runs them; no Python of 3.11 or later refuses the push.
+# python3.11, the compile check on python3.11, shellcheck over the shell files, the kit's tests
+# examples/dotfiles/tests/{update-check,check-check,driver-check}.py on that first Python, and the
+# Julia test files that the changed paths of the pushed range select. A missing tool among
+# python3.11, shellcheck, chezmoi and julia prints one skip line, because CI runs them; no Python
+# of 3.11 or later refuses the push.
 
 # No `set -u`: macOS ships bash 3.2, whose handling of unset expansions differs from bash 4+.
 set -o pipefail
@@ -230,6 +232,25 @@ fi
 if [ "$fail" -ne 0 ]; then
     echo "pre-push: refused; fix the commit, because the hook tests the commit and not the working tree"
     exit 1
+fi
+
+# The kit's tests need chezmoi; CI runs them in the job `dotfiles`. All three run, and each that
+# fails prints the end of its output.
+if command -v chezmoi >/dev/null; then
+    kit_failed=
+    for kit_test in update-check check-check driver-check; do
+        file=examples/dotfiles/tests/$kit_test.py
+        echo "$python $file"
+        if "$python" "$file" >"$tmp/$kit_test.log" 2>&1; then
+            tail -n 1 "$tmp/$kit_test.log"
+        else
+            tail -n 20 "$tmp/$kit_test.log"
+            kit_failed="$kit_failed $file"
+        fi
+    done
+    [ -z "$kit_failed" ] || refuse "the kit's tests failed:$kit_failed"
+else
+    echo "skip  chezmoi: not found; CI runs the kit's tests"
 fi
 
 # The Julia selection: the test files that the changed paths select.

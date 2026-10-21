@@ -61,6 +61,32 @@ jobs:
             exit 1
           fi
 
+  # The tests of the dotfiles kit, examples/dotfiles/tests/, with chezmoi from its release tarball.
+  # The tests render the kit with their own --config, --source, --destination and
+  # --persistent-state, and run the scripts in scratch homes under $TMPDIR.
+  dotfiles:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: install chezmoi
+        env:
+          VERSION: 2.73.2
+          SHA256: 4d7bd8072f15373d5f5c801209bac218527452c8e54f9ae46ba6c5bd4a6eca41
+        run: |
+          curl -sSfL -o "$RUNNER_TEMP/chezmoi.tar.gz" \
+            "https://github.com/twpayne/chezmoi/releases/download/v${VERSION}/chezmoi_${VERSION}_linux_amd64.tar.gz"
+          echo "${SHA256}  $RUNNER_TEMP/chezmoi.tar.gz" | sha256sum -c -
+          mkdir "$RUNNER_TEMP/bin"
+          tar -xzf "$RUNNER_TEMP/chezmoi.tar.gz" -C "$RUNNER_TEMP/bin" chezmoi
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+      - name: the kit's tests
+        run: |
+          chezmoi --version
+          python3 --version
+          python3 examples/dotfiles/tests/update-check.py
+          python3 examples/dotfiles/tests/check-check.py
+          python3 examples/dotfiles/tests/driver-check.py
+
   lint:
     runs-on: ubuntu-latest
     steps:

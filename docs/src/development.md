@@ -57,12 +57,16 @@ the first release with several allowlists per rule, `[[rules.allowlists]]`.
 Then it runs `bin/harness test` on `python3` and on `python3.11`, the compile check
 `python3.11 -m compileall -q lib hooks scripts adapters`, and `shellcheck -S warning` over the
 shell files.
+Then, when `chezmoi` is on the `PATH`, it runs the kit's tests on the Python that ran
+`bin/harness test` first: `examples/dotfiles/tests/update-check.py`, `check-check.py` and
+`driver-check.py`. All three run, and when one fails the hook refuses the push with one line that
+names it. Without `chezmoi` it prints `skip  chezmoi: not found; CI runs the kit's tests`.
 Then it runs the Julia test files that the changed paths of the pushed range select: a change
 to `scripts/mutate.jl` selects `scripts/run-tests-test.jl`, a change to `Project.toml` all ten,
 and a change to `README.md` none. It prints each file's name and its usual time before it runs
 it; `scripts/run-tests-test.jl` is silent for about 11 minutes. Without a `python3` of 3.11 or
-later, the hook refuses the push. A missing `python3.11`, `shellcheck` or `julia` prints one
-`skip` line, because CI runs them. Enable the hook once per checkout:
+later, the hook refuses the push. A missing `python3.11`, `shellcheck`, `chezmoi` or `julia`
+prints one `skip` line, because CI runs them. Enable the hook once per checkout:
 
 ```bash
 git config core.hooksPath .githooks
