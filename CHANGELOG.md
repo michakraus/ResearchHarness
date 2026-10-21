@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+- **The landing page, the README and the Introduction list the same six features, in the same
+  order.** The features are: one configuration for three frontends, private data across
+  machines, the sandbox and safety in layers, a directory tree for research work, research memory,
+  and agentic software engineering. Each tile of the landing page links its page. The tiles
+  *Instructions that load when they apply*, *Long work goes to a sub-agent* and *Ideas for any
+  language* are gone; a line below the tiles says that most ideas apply to any language. The
+  hero tagline names the configuration, the safety settings and the working environment. The
+  README keeps one more feature, the tools for Julia packages and papers, and names
+  `harness doctor` under the first one. In the Introduction, *What a harness adds* becomes *What
+  the harness does*, with the six features. The overview figure is now *The research tree, the
+  components and the frontends*, so that "layers" names only the three layers of an install and
+  the layers of control. The glossary gains *Research tree*, and each newcomer page links its
+  first use.
+
 - **The documentation site has a page for each main feature of the harness.** Three pages are new:
   *The research tree* (`research-tree.md`, under *Use*) replaces *An example tree*. It says why
   the work is one tree, gives the example layout in one table, says how to adapt it, and names the

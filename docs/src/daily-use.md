@@ -9,7 +9,8 @@ and `--apply` makes the change.
 
 Edit the source in this repository, never its installed copy in `~/.claude/`. The sources are in
 the neutral directories `agents/`, `skills/`, `rules/`, `instructions/` and `commands/`, and in
-`adapters/claude/` for `CLAUDE.md` and `RTK.md`. A fact about your own research tree goes into the
+`adapters/claude/` for `CLAUDE.md` and `RTK.md`. A fact about your own
+[research tree](concepts.md#research-tree) goes into the
 [tree instructions](concepts.md#tree-instructions). The next `harness install --apply` overwrites
 an edit of an installed copy, and the installed settings refuse such an edit from a
 [session](concepts.md#session).

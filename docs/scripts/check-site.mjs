@@ -135,8 +135,8 @@ for (const [page, text] of built) {
 // The figures of the site, in the HTML of each page: the SVG that the build renders. The pages
 // below have these figures, by their <title>, and no other page has one.
 const FIGURES = {
-  'index.md': ['The harness and its three layers', 'From the sources to the frontends'],
-  'concepts.md': ['The harness and its three layers', 'The harness, the profile and the tree instructions', 'The layers of control around one tool call'],
+  'index.md': ['The research tree, the components and the frontends', 'From the sources to the frontends'],
+  'concepts.md': ['The research tree, the components and the frontends', 'The harness, the profile and the tree instructions', 'The layers of control around one tool call'],
   'agentic-engineering.md': [
     'The calls of build-part', 'From a task to a pull request with build-part',
     'The calls of build-reviewed', 'From a task to a pull request with build-reviewed',

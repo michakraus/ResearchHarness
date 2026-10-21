@@ -18,7 +18,7 @@ import { fileURLToPath } from 'node:url'
 export const TERMS = [
   'coding agent', 'frontend', 'session', 'context', 'tool call', 'permission prompt', 'sandbox',
   'instruction file', 'rule', 'skill', 'agent', 'sub-agent', 'hook', 'tier', 'effort', 'profile',
-  'tree instructions', 'install', 'drift'
+  'research tree', 'tree instructions', 'install', 'drift'
 ]
 /** The newcomer pages, below docs/src/. */
 export const NEWCOMER = [

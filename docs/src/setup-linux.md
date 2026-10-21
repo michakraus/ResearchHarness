@@ -388,8 +388,8 @@ and without the key `home` the harness uses the home directory of the user who r
 Then open `~/.config/research-harness/profile.toml` in an editor and fill in the keys that name a
 person, an organisation or a machine: `org`, your GitHub accounts and organisations; `leak`, the
 strings that must never be in the repository, such as your user name; `memory_project`, the label
-of the Claude Code memory of your research tree; and `template_host`, the output of `hostname -s`
-on the template host. The template host is the machine whose Claude Code memory is the template
+of the Claude Code memory of your [research tree](concepts.md#research-tree); and
+`template_host`, the output of `hostname -s` on the template host. The template host is the machine whose Claude Code memory is the template
 for the other machines. With the example value of `template_host`, the autocommit job of no
 machine pushes to `main`. `launchd_prefix` names the launchd jobs of macOS, and nothing on Linux
 reads it: fill it in when the same profile also serves a Mac. [profile.md](profile.md) names each

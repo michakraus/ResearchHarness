@@ -276,8 +276,9 @@ a rule of the harness goes into its source in the checkout in the same way.
 
 ## Next steps
 
-- [Typical use](daily-use.md): a change of the settings, the leak check and the subcommands for the
-  whole research tree.
+- [Typical use](daily-use.md): a change of the settings, the drift warning and the leak check.
+- [The research tree](research-tree.md): the layout of the
+  [research tree](concepts.md#research-tree), and the subcommands for all its repositories.
 - [Introduction](concepts.md): the ideas behind each step of this tutorial.
 - [The security model](security.md): what each layer of control stops, and what it does not.
 - [Agentic software engineering](agentic-engineering.md): how agents plan, build and judge a

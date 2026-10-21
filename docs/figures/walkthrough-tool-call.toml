@@ -87,7 +87,7 @@ from = "instructions"
 to = "session"
 route = ["right", "left"]
 label = "read"
-at = "docs/src/concepts.md:128"
+at = "docs/src/concepts.md:143"
 
 [[edge]]
 from = "session"
@@ -115,18 +115,18 @@ from = "checks"
 to = "sandbox"
 route = ["bottom", "top"]
 label = "allow"
-at = "docs/src/concepts.md:126"
+at = "docs/src/concepts.md:141"
 
 [[edge]]
 from = "you"
 to = "sandbox"
 route = ["bottom", "y 2", "right"]
 label = "yes"
-at = "docs/src/concepts.md:204"
+at = "docs/src/concepts.md:219"
 
 [[edge]]
 from = "sandbox"
 to = "result"
 route = ["bottom", "top"]
 label = "runs"
-at = "docs/src/concepts.md:139"
+at = "docs/src/concepts.md:154"

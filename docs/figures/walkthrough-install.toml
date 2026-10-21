@@ -129,21 +129,21 @@ from = "you"
 to = "dry-run"
 route = ["left", "right"]
 label = "run"
-at = "docs/src/daily-use.md:70"
+at = "docs/src/daily-use.md:71"
 
 [[edge]]
 from = "dry-run"
 to = "apply"
 route = ["bottom", "top"]
 label = "read the plan, then apply"
-at = "docs/src/daily-use.md:73"
+at = "docs/src/daily-use.md:74"
 
 [[edge]]
 from = "apply"
 to = "layer"
 route = ["bottom-40", "top"]
 label = "writes"
-at = "docs/src/daily-use.md:61"
+at = "docs/src/daily-use.md:62"
 
 [[edge]]
 from = "layer"
