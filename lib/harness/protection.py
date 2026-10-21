@@ -18,7 +18,7 @@ carry no event suffix. `min`
 resolves each package's own `[compat] julia` floor, so one matrix tests the right versions
 everywhere, and the check names never change. A required check that never reports leaves every
 pull request pending, unmergeable, with no error anywhere; so the list is correct only while the
-workflows are canonical, and the verb refuses to run unless `verify-workflows.jl` passes.
+workflows are canonical, and the subcommand refuses to run unless `verify-workflows.jl` passes.
 
 `pre` and `nightly` are not required: they are `experimental: true`, and requiring them would block
 merges whenever an unreleased Julia breaks upstream.

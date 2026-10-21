@@ -7,7 +7,7 @@ organises work around the harness. The overview figure of the
 knowledge base, the packages, the experiments, the projects and the papers. Your tree can have
 other directories and other names.
 
-In the example, the tree is `~/Research`. The verbs of the `harness` command that look for
+In the example, the tree is `~/Research`. The subcommands of the `harness` command that look for
 repositories of the tree read its path from `$RESEARCH_ROOT`, or use `~/Research` if it is not
 set.
 
@@ -17,9 +17,9 @@ Each section below says three things about one directory:
 - **Served by:** the components of the harness that work on it. Each name links to its section in
   *Components*. A component that serves more than one directory is in each of their sections.
   The components are [agents](concepts.md#agent), [skills](concepts.md#skill),
-  [rules](concepts.md#rule), commands, git [hooks](concepts.md#hook), scripts and verbs of the
-  `harness` command.
-- **Named by:** the key of the [profile](concepts.md#profile), the verb, or the
+  [rules](concepts.md#rule), commands, git [hooks](concepts.md#hook), scripts and subcommands of
+  the `harness` command.
+- **Named by:** the key of the [profile](concepts.md#profile), the subcommand, or the
   [tree instructions](concepts.md#tree-instructions) that give the directory's name.
 
 ## Library
@@ -36,9 +36,9 @@ its file and a short Markdown description.
 - [`pre-commit-wiki`](components/githooks.md#pre-commit-wiki) runs `wiki-lint.jl` before each
   commit in the library. `harness wiki-lint-hook --apply` [installs](concepts.md#install) it.
 
-**Named by:** no profile key. The verb `harness wiki-lint-hook` and the script `wiki-lint.jl` find
-the library by its name, `Library`, below the research tree. In the example, the tree
-instructions name the directory's own [instruction file](concepts.md#instruction-file).
+**Named by:** no profile key. The subcommand `harness wiki-lint-hook` and the script
+`wiki-lint.jl` find the library by its name, `Library`, below the research tree. In the example,
+the tree instructions name the directory's own [instruction file](concepts.md#instruction-file).
 
 ## Knowledge
 
@@ -58,10 +58,10 @@ measurements, with links between the notes.
 - [`wait-what`](components/skills.md#wait-what) asks the agent to explain its work again in the
   words that the vault uses.
 
-**Named by:** no profile key. The verb `harness wiki-lint-hook` and the script `wiki-lint.jl` find
-the vault by its name, `Knowledge`, below the research tree. In the example, the tree
-instructions name it among the directories where a change goes to `main` directly, with no pull
-request.
+**Named by:** no profile key. The subcommand `harness wiki-lint-hook` and the script
+`wiki-lint.jl` find the vault by its name, `Knowledge`, below the research tree. In the example,
+the tree instructions name it among the directories where a change goes to `main` directly, with
+no pull request.
 
 ## Packages
 
@@ -104,13 +104,14 @@ and a `CHANGELOG.md`. In the example, they are Julia packages.
   [`known-issues`](components/rules.md#known-issues).
 - The shared git hooks [`pre-commit`](components/githooks.md#pre-commit-and-pre-commit-test-jl) and
   [`pre-push`](components/githooks.md#pre-push), and the workflows such as
-  [`workflows/CI.yml`](components/githooks.md#workflows-ci-yml). The verbs `harness githooks`,
-  `harness push-all` and `harness ci-protection` work on every git repository of this directory.
+  [`workflows/CI.yml`](components/githooks.md#workflows-ci-yml). The subcommands
+  `harness githooks`, `harness push-all` and `harness ci-protection` work on every git repository
+  of this directory.
   `harness workflows` works on each of them that has a `Project.toml`.
 
 **Named by:** the profile key `repository_roots`, which holds the path of this directory. The
-keys `docs_exceptions` and `docs_additions` name single repositories in it. The four verbs above
-find the directory by its name, `Packages`, below the research tree.
+keys `docs_exceptions` and `docs_additions` name single repositories in it. The four subcommands
+above find the directory by its name, `Packages`, below the research tree.
 
 ## Experiments
 
@@ -146,12 +147,12 @@ with its tests and a `CHANGELOG.md`.
   [`julia-tests`](components/rules.md#julia-tests) and
   [`changelog`](components/rules.md#changelog).
 - The git hooks [`pre-commit`](components/githooks.md#pre-commit-and-pre-commit-test-jl) and
-  [`pre-push`](components/githooks.md#pre-push), and the same four verbs as in
+  [`pre-push`](components/githooks.md#pre-push), and the same four subcommands as in
   [Packages](#packages).
 
 **Named by:** the profile key `repository_roots`, which holds the path of this directory beside
-the packages. The four verbs find the directory by its name, `Experiments`, below the research
-tree.
+the packages. The four subcommands find the directory by its name, `Experiments`, below the
+research tree.
 
 ## Projects
 
@@ -169,7 +170,7 @@ what was tried and what it showed.
 - [`worker`](components/agents.md#worker) reads the directory's own instruction file before its
   first edit here.
 
-**Named by:** no profile key and no verb. In the example, the tree instructions name the
+**Named by:** no profile key and no subcommand. In the example, the tree instructions name the
 directory's own instruction file.
 
 ## Papers
@@ -193,7 +194,7 @@ directory's own instruction file.
 - [`worker`](components/agents.md#worker) reads the directory's own instruction file before its
   first edit here.
 
-**Named by:** no profile key and no verb. In the example, the tree instructions name the
+**Named by:** no profile key and no subcommand. In the example, the tree instructions name the
 directory's own instruction file.
 
 ## The profile values of the tree
@@ -224,14 +225,14 @@ Your tree can have other directories. Adapt the two values to it:
 2. Put the path of your tree instructions into `tree_agents`. The directory can be anywhere.
 3. Write your own directories, and the instruction file of each, into your tree instructions.
 
-Some verbs do not take their directories from the profile. They find them by a fixed name below
-the research tree, `$RESEARCH_ROOT` or `~/Research`:
+Some subcommands do not take their directories from the profile. They find them by a fixed name
+below the research tree, `$RESEARCH_ROOT` or `~/Research`:
 
 - `harness githooks`, `harness workflows`, `harness push-all`, `harness ci-protection` and
   `harness format` look in `Packages` and `Experiments`.
 - `harness wiki-lint-hook` looks for the prose repositories, `Knowledge` and `Library` among
   them. The script `wiki-lint.jl` reads the same names.
 
-A verb that finds no directory with its name skips it and changes nothing there. To use these
-verbs, keep the two names for the directories of your repositories, or set `$RESEARCH_ROOT` to a
-tree that has them.
+A subcommand that finds no directory with its name skips it and changes nothing there. To use
+these subcommands, keep the two names for the directories of your repositories, or set
+`$RESEARCH_ROOT` to a tree that has them.

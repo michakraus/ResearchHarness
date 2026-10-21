@@ -1,9 +1,9 @@
 """The network lists of the Claude Code settings, generated from `settings/network.toml`.
 
 The settings template holds no host. `harness install`, `harness render` of the template and the
-`harness settings` verbs generate its network rules from two files with one schema: the harness
-list `settings/network.toml`, and the overlay `network.toml` beside the profile, which may be
-missing. Each file has the top-level arrays `allow`, `infrastructure` and `deny`, each optional,
+subcommands of `harness settings` generate its network rules from two files with one schema: the
+harness list `settings/network.toml`, and the overlay `network.toml` beside the profile, which may
+be missing. Each file has the top-level arrays `allow`, `infrastructure` and `deny`, each optional,
 and an optional table `[deny_reasons]`, keyed by a `deny` entry; nothing else. An entry is a host,
 never a URL.
 
@@ -34,7 +34,7 @@ and a settings template that holds a network rule of its own or has no
 
 The other frontends read the template, not these lists: the lists are Claude Code's alone.
 
-The module has no verb; its cases run in `harness test`.
+The module has no subcommand; its cases run in `harness test`.
 """
 
 import json
@@ -355,7 +355,7 @@ def selftest():
             case(lambda: message is not None and str(TEMPLATE) in message,
                  f"a settings template with {label} exits 2 and names the template: {message!r}")
 
-        # The verbs that render the template: `harness render`, and `harness settings` through
+        # The subcommands that render the template: `harness render`, and `harness settings` through
         # read_settings. A bad overlay exits 2 with one line.
         scratch = Scratch(check, tmp / "scratch")
         scratch.tmp.mkdir()

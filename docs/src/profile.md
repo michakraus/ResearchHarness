@@ -6,7 +6,7 @@ with a comment on every key that says what its value is.
 
 | file | what it holds | required | its path | read by |
 |:--|:--|:--|:--|:--|
-| `profile.toml`, the [profile](concepts.md#profile) | every value that names a person, an institution or a machine | yes | `harness --profile F`, otherwise `$RESEARCH_HARNESS_PROFILE`, otherwise `~/.config/research-harness/profile.toml` | the verbs that [The keys of the profile](#the-keys-of-the-profile) names for each key |
+| `profile.toml`, the [profile](concepts.md#profile) | every value that names a person, an institution or a machine | yes | `harness --profile F`, otherwise `$RESEARCH_HARNESS_PROFILE`, otherwise `~/.config/research-harness/profile.toml` | the subcommands that [The keys of the profile](#the-keys-of-the-profile) names for each key |
 | `models.toml`, the model tables | the model of each [tier](concepts.md#tier) for each [frontend](concepts.md#frontend) | for `install` | `harness --models F`, otherwise `$RESEARCH_HARNESS_MODELS`, otherwise beside the profile | `install` only |
 | [`providers.toml`](#the-providers) | the model servers and accounts of OpenCode and oh-my-pi | no | beside the profile | `install` only |
 | [`network.toml`](#the-network-overlay), the network overlay | your own hosts for the network lists of Claude Code | no | beside the profile | `install`, `render` of the settings template, `settings` |
@@ -14,9 +14,9 @@ with a comment on every key that says what its value is.
 Copy each example that you need and write your values into the copy, as the step
 *The profile and the model tables* of [setup-macos.md](setup-macos.md#the-profile-and-the-model-tables)
 and [setup-linux.md](setup-linux.md#the-profile-and-the-model-tables) shows. A template of the
-repository names a profile key as `{key}`, and a verb renders the template with the profile
-before it uses it. A template that names a key that the profile does not have stops the verb,
-and the message names the key.
+repository names a profile key as `{key}`, and a subcommand renders the template with the profile
+before it uses it. A template that names a key that the profile does not have stops the
+subcommand, and the message names the key.
 
 ## Read a value
 
@@ -28,13 +28,13 @@ harness get repository_roots
 harness render launchagents/kaimon.plist
 ```
 
-Both verbs read every key that they name.
+Both subcommands read every key that they name.
 
 ## The home directory and `~`
 
 The key `home` is optional. Without it, `home` is the home directory of the user who runs
-`harness`. A given `home` must be an absolute path without `~`; otherwise the verb stops, and
-the message names the key. A trailing slash is removed.
+`harness`. A given `home` must be an absolute path without `~`; otherwise the subcommand stops,
+and the message names the key. A trailing slash is removed.
 
 A string value that is `~`, or that starts with `~/`, means `home`: `~` becomes `home`, and
 `~/Research` becomes `home` followed by `/Research`. The same holds for each such item of a list.
@@ -56,15 +56,15 @@ profile, its value is:
 
 The comparison is exact, so `Alpha` and `alpha` are two machines, and an empty host name gives
 `main`. A given `autocommit_branch` is the branch on every machine. A `template_host` that is
-empty, holds a `.` or is not a string stops the verb, and the message names the key. Every verb
-reads the same value, and `harness get autocommit_branch` prints it. So with `template_host` and
-no `autocommit_branch`, one profile works unedited on every machine of one user: write it once,
-keep it in a private place, and copy it to each machine.
+empty, holds a `.` or is not a string stops the subcommand, and the message names the key. Every
+subcommand reads the same value, and `harness get autocommit_branch` prints it. So with
+`template_host` and no `autocommit_branch`, one profile works unedited on every machine of one
+user: write it once, keep it in a private place, and copy it to each machine.
 
 ## The keys of the profile
 
-The table names each key of `examples/profile.toml` and the verbs that read it, in addition to
-`harness get` and `harness render`.
+The table names each key of `examples/profile.toml` and the subcommands that read it, in addition
+to `harness get` and `harness render`.
 
 | key | what it holds | read by |
 |:--|:--|:--|
@@ -73,7 +73,7 @@ The table names each key of `examples/profile.toml` and the verbs that read it, 
 | `memory_project` | a label, not a path: the settings set `autoMemoryDirectory` to `~/.claude/projects/<memory_project>/memory`, so Claude Code keeps the tree's memory there, whatever the tree's path is. The same value on every machine that shares one memory pool, such as Claude Code's name of the tree's project on the first machine (its path with each `/` replaced by `-`); it need not match the path on another machine | `install` and `settings`, in the settings template |
 | `tree_agents` | the directory of the [tree instructions](concepts.md#tree-instructions) | `install`, which [installs](concepts.md#install) them into `~/.claude/` |
 | `launchd_prefix` | the reverse-domain prefix of the labels of the launchd jobs in `launchagents/`, such as `org.example`: the label of the Kaimon server is `<launchd_prefix>.kaimon`. macOS only; nothing on Linux reads it | `render` of the `launchagents/` templates; `doctor`; the update job `scripts/julia-update.jl` on macOS |
-| `template_host` | the short host name of the template host. Optional | every verb that reads the profile, for the value of `autocommit_branch` |
+| `template_host` | the short host name of the template host. Optional | every subcommand that reads the profile, for the value of `autocommit_branch` |
 | `autocommit_branch` | the branch of the `origin` of `~/.claude` that `claude-autocommit` pushes to: `main` on the template host, a branch of its own on each other machine. Optional: without it, `main` on the machine of `template_host` or without `template_host`, otherwise `memory/<short host name>`, as [One profile for every machine](#one-profile-for-every-machine) says | `render` of `launchagents/claude-autocommit.plist` and `systemd/claude-autocommit.service` |
 | `org` | the GitHub accounts and organisations where a [session](concepts.md#session) can open and comment on a pull request or an issue with no prompt | `install` and `settings`, in the settings template; `leaks`, which also searches for each of them |
 | `repository_roots` | the directories that hold the repositories of the research tree | `leaks`, which searches for the name of each directory below them |
@@ -156,7 +156,7 @@ allow lists. A `deny` entry with a port leaves the host on the allow lists. The 
 host that no list names, with no prompt, because the template sets `strictAllowlist`. A `WebFetch`
 of such a host is on no list either, so it asks in the default permission mode.
 
-These cases stop the verb with exit status 2:
+These cases stop the subcommand with exit status 2:
 
 - an entry that is a URL;
 - an entry with a port outside `deny`;

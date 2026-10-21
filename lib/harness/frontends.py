@@ -7,7 +7,7 @@ adapter defines:
 
   NAME               the frontend, as FRONTENDS names it; the label of its cases
   TEMPLATES          its templates, relative to the repository, that `harness leaks` renders
-  register(sub)      its own verbs
+  register(sub)      its own subcommands
   plan(ctx)          its part of `harness install`, a Plan; it reads the files and writes nothing
   selftest()         its cases, (number of cases, number wrong), each labelled with NAME
   RESTART            the one line, naming the frontend and what to restart, that `harness install`
@@ -19,8 +19,8 @@ profile; `models`, the path of the model tables; `agents`, the directory of the 
 `plans`, the Plan of each frontend planned before this one, by NAME.
 
 An adapter that fails to load exits 2, with its path, its line and the exception's last line,
-before any verb runs; so does one that lacks a member of MEMBERS, with its path. No adapter is
-skipped.
+before any subcommand runs; so does one that lacks a member of MEMBERS, with its path. No adapter
+is skipped.
 """
 
 import importlib.util

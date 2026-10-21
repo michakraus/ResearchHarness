@@ -1,4 +1,5 @@
-"""The cases of scripts in scripts/ that need no Julia. No verb of its own; `harness test` runs them.
+"""The cases of scripts in scripts/ that need no Julia. No subcommand of its own; `harness test`
+runs them.
 
 - The two package copies, the critic's copy in skills/build-part/evidence.md and `copy_command` in
   scripts/run-tests.jl: each is read from its source file and run with rsync on a fixture tree

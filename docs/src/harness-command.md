@@ -4,21 +4,21 @@
 the standard library. Put `bin/` on the `PATH`, as the step *The clone*
 of [setup-macos.md](setup-macos.md#the-clone) and [setup-linux.md](setup-linux.md#the-clone) shows.
 
-A verb is a subcommand of `harness`, such as `install` or `doctor`. Every verb keeps one
-contract. A verb that changes something is dry by default: it prints its plan and exits 1 when
-something would change, 0 when nothing would. `--apply` makes the change. Exit 2 is a usage error
-or a failure. The two checks differ: `harness test` exits 1 when a test case fails, and
-`harness doctor` exits 1 when a check fails. `harness --profile F` names the private profile. If
-it is not given, the profile is `$RESEARCH_HARNESS_PROFILE`, or
-`~/.config/research-harness/profile.toml` if that is not set; `examples/profile.toml` shows every
-key. `harness --help` and `harness <verb> --help` describe each verb.
+Each subcommand of `harness`, such as `install` or `doctor`, keeps one contract. A subcommand
+that changes something is dry by default: it prints its plan and exits 1 when something would
+change, 0 when nothing would. `--apply` makes the change. Exit 2 is a usage error or a failure.
+The two checks differ: `harness test` exits 1 when a test case fails, and `harness doctor` exits 1
+when a check fails. `harness --profile F` names the private profile. If it is not given, the
+profile is `$RESEARCH_HARNESS_PROFILE`, or `~/.config/research-harness/profile.toml` if that is
+not set; `examples/profile.toml` shows every key. `harness --help` and
+`harness <subcommand> --help` describe each subcommand.
 
 `harness --models F` names the model tables. They map each model tier to its Claude Code,
 OpenCode and oh-my-pi model, and an agent to its own model. If the flag is not given, the model
 tables are `$RESEARCH_HARNESS_MODELS`, or `models.toml` beside the profile if that is not set;
 `examples/models.toml` shows the layout.
 
-| verb | does |
+| subcommand | does |
 |:--|:--|
 | `install` | installs the Julia environment of the scripts, the Claude Code layer with the sections `permissions`, `hooks`, `sandbox` and `modelSettings` of `settings.json`, the OpenCode configuration, and the oh-my-pi permission layer, instructions, rules, agents, models and MCP entry |
 | `permissions` | generates the OpenCode permission block and path-guard list, from the settings template |

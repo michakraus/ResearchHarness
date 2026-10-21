@@ -8,15 +8,15 @@ case fails. The three sets run in this order:
 1. Each module's own cases.
 2. The hook probe, `hooks/probe.py`, which runs every Python hook with the same interpreter on a
    fixture `HOME`.
-3. The contract sweep, `lib/harness/sweep.py`, which runs the dry run of every verb except
+3. The contract sweep, `lib/harness/sweep.py`, which runs the dry run of every subcommand except
    `format`, `ci-protection`, `skill-triggers` and `doctor` on a fixture `HOME` and research tree.
    The cases of `skill-triggers` run its dry run and its `--apply` on a fake `claude`, and the
    cases of `doctor` run it on the sweep's fixture with stub commands.
 
 The sweep checks the contract of [the `harness` command](harness-command.md): a dry run changes
-no file, a verb with a missing precondition exits with status 2 and prints one line, and for the
-four verbs that it applies, a dry run after `--apply` has nothing to do. Each fixture lives in a
-temporary directory, so the cases need nothing from the machine's own `HOME`.
+no file, a subcommand with a missing precondition exits with status 2 and prints one line, and for
+the four subcommands that it applies, a dry run after `--apply` has nothing to do. Each fixture
+lives in a temporary directory, so the cases need nothing from the machine's own `HOME`.
 
 `harness test` passes wherever the checkout lies, below `/tmp/` or `$TMPDIR` too. The hook probe
 loads `adapters/omp/guards.ts` and the OpenCode plugins `adapters/opencode/plugins/*.ts` under

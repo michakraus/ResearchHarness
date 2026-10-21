@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- **"Subcommand" in place of "verb".** The docs, the help and the docstrings called `install`,
+  `doctor` and the others the verbs of `harness`. "Subcommand" is the term that a reader of a
+  command-line tool knows, and "command" has three meanings here already: a shell command, a
+  slash command and the `harness` command itself. The usage line of `harness --help` now reads
+  `<subcommand>`, and the heading *The subcommands for the whole research tree* of
+  `daily-use.md` replaces *The verbs for the whole research tree*. The identifiers, such as
+  `VERBS` and `args.verb`, stay.
+
 - **The docs, the README and the docstrings use one set of standard terms, and every verb has
   its help.** A review of the language found word-for-word phrases where a standard term exists
   ("the installer of Claude Code", "the user manager of systemd", "start file"), long sentences

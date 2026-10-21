@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# The front door of the harness tooling: `harness --help` lists the verbs. The version check
+# The front door of the harness tooling: `harness --help` lists the subcommands. The version check
 # comes first and uses no syntax newer than Python 3.0, so an old interpreter prints the version
 # it found and the one it needs instead of a syntax error.
 

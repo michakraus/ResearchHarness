@@ -2,8 +2,8 @@
 
 This page describes the recurring tasks after the setup. The [tutorial](tutorial.md) shows most
 of them once, step by step; this page is the reference. [harness-command.md](harness-command.md)
-describes the contract of every verb: a verb that changes something prints its plan, and
-`--apply` makes the change.
+describes the contract of every subcommand: a subcommand that changes something prints its plan,
+and `--apply` makes the change.
 
 ## Change an agent, a skill, a rule or an instruction
 
@@ -21,7 +21,7 @@ harness install
 harness install --apply
 ```
 
-A running session keeps the files that it has read. After an `--apply`, the verb prints one
+A running session keeps the files that it has read. After an `--apply`, the subcommand prints one
 line for each [frontend](concepts.md#frontend) whose files changed, which tells you to restart
 that frontend.
 
@@ -98,13 +98,13 @@ It searches every tracked file, its path and the templates rendered with the exa
 Remove the matched string from the file. [development.md](development.md#the-pre-push-hook) describes
 both checks.
 
-## The verbs for the whole research tree
+## The subcommands for the whole research tree
 
-Six verbs act on every repository of the research tree. The research tree is the directory
-`$RESEARCH_ROOT`, or `~/Research` if it is not set. Each verb is a dry run first, and `--apply`
-makes the change.
+Six subcommands act on every repository of the research tree. The research tree is the directory
+`$RESEARCH_ROOT`, or `~/Research` if it is not set. Each subcommand is a dry run first, and
+`--apply` makes the change.
 
-| verb | what it does |
+| subcommand | what it does |
 |:--|:--|
 | `githooks` | copies the shared git hooks of `githooks/` into `.githooks/` of each git repository directly below `Packages/` and `Experiments/`, and sets `core.hooksPath` there |
 | `workflows` | copies the canonical files of `githooks/workflows/` into each git repository directly below `Packages/` and `Experiments/` that has a `Project.toml`: the CI workflow, `dependabot.yml` and `codecov.yml` into each, and the TagBot workflow into each package. It copies the documentation workflow only where a tracked `docs/make.jl` exists, and never into a repository that the profile key `docs_exceptions` or `docs_additions` names. It deletes the retired `CompatHelper.yml` |

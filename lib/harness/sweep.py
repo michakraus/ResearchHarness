@@ -1,9 +1,9 @@
-"""The contract sweep of `harness test`: every verb's dry run, on a fixture `HOME`.
+"""The contract sweep of `harness test`: every subcommand's dry run, on a fixture `HOME`.
 
 The fixture is one temporary directory: a `HOME` with the dummy profile and model tables
-rendered for it, the files the verbs read below `~/.claude` and `~/.config`, and a research root,
-$RESEARCH_ROOT, with one package, one prose repository and the tree instructions. For each verb
-of `VERBS`:
+rendered for it, the files the subcommands read below `~/.claude` and `~/.config`, and a research
+root, $RESEARCH_ROOT, with one package, one prose repository and the tree instructions. For each
+subcommand of `VERBS`:
 
   * with its preconditions met, the dry run exits 0 or 1, prints no traceback, and changes no
     file below the fixture — a hash of every file, `.git/` excluded, before and after;
@@ -12,15 +12,15 @@ of `VERBS`:
 
 `settings twins` gives each of the two messages of `read_settings` once: with no settings file,
 and with one of mode 000. A settings file that is not JSON, not UTF-8, JSON but not an object,
-nested deeper than the parser reads, or an object whose `permissions` is a list makes each `settings` verb that reads
-it exit 2 with one line that names it; so does such a `~/.claude.json`, or one whose `projects` is
-a list, for `trust`.
+nested deeper than the parser reads, or an object whose `permissions` is a list makes each
+subcommand of `settings` that reads it exit 2 with one line that names it; so does such a
+`~/.claude.json`, or one whose `projects` is a list, for `trust`.
 
-For each verb of `APPLY`, `--apply` and then the dry run again: the second run exits 0.
+For each subcommand of `APPLY`, `--apply` and then the dry run again: the second run exits 0.
 
-A verb's run that takes more than `TIMEOUT` seconds exits `timeout`, a wrong case; one case runs the
-runner on a child that outlives a timeout of 1 s and passes the result through each check of the
-sweep: `dry_run_ok`, `refused_ok` and `applied_ok`.
+A subcommand's run that takes more than `TIMEOUT` seconds exits `timeout`, a wrong case; one case
+runs the runner on a child that outlives a timeout of 1 s and passes the result through each check
+of the sweep: `dry_run_ok`, `refused_ok` and `applied_ok`.
 
 Not swept: `format` runs Julia over the tree, `ci-protection` needs `gh` with a login, and
 `skill-triggers` runs its dry run and its `--apply` in its own cases.
@@ -41,7 +41,7 @@ from .profile import DUMMY
 HARNESS = [sys.executable, str(REPO / "bin" / "harness")]
 PROPOSAL = str(REPO / "settings" / "settings.proposal.json")
 
-# (verb, its arguments); `{live}` is the fixture's ~/.claude/settings.json.
+# (subcommand, its arguments); `{live}` is the fixture's ~/.claude/settings.json.
 VERBS = [
     ("install", ["install"]),
     ("permissions", ["permissions"]),
@@ -59,8 +59,9 @@ VERBS = [
     ("leaks", ["leaks"]),
 ]
 
-# (precondition, its path below the fixture HOME, the verbs that need it). The profile is a
-# precondition of every verb that reads it; `settings compare` reads it to render the proposal.
+# (precondition, its path below the fixture HOME, the subcommands that need it). The profile is
+# a precondition of every subcommand that reads it; `settings compare` reads it to render the
+# proposal.
 PRECONDITIONS = [
     ("the profile file", ".config/research-harness/profile.toml",
      ["install", "settings compare", "workflows", "render", "get", "leaks"]),
@@ -75,7 +76,7 @@ PRECONDITIONS = [
 
 APPLY = ["githooks", "wiki-lint-hook", "workflows", "trust"]
 
-# The variables that would point a verb past the fixture.
+# The variables that would point a subcommand past the fixture.
 UNSET = ["RESEARCH_HARNESS_PROFILE", "RESEARCH_HARNESS_MODELS", "RESEARCH_HARNESS_JULIA",
          "OPENCODE_CONFIG_DIR", "PI_CODING_AGENT_DIR", "FMT_OUT"]
 
@@ -128,7 +129,7 @@ def digest(root):
     return h.hexdigest()
 
 
-# The seconds that one verb's run of the sweep may take.
+# The seconds that one subcommand's run of the sweep may take.
 TIMEOUT = 120
 
 
@@ -176,7 +177,8 @@ def selftest():
                 for verb, args in VERBS}
 
         def harness(args):
-            """One verb's run; a verb that hangs exits `timeout`, which is a wrong case."""
+            """One subcommand's run; a subcommand that hangs exits `timeout`, which is a wrong
+            case."""
             return run(HARNESS + args, env, tmp)
 
         # The runner on a child that outlives a timeout of 1 s: the run ends at the timeout, and each
@@ -224,7 +226,7 @@ def selftest():
                 aside.rename(path)
 
         # The two messages of `read_settings`: a settings file that is missing, and one that the
-        # verb cannot read.
+        # subcommand cannot read.
         live = home / ".claude" / "settings.json"
         for label, expect in (("missing", f"no settings file at {live}"),
                               ("mode 000", f"cannot read {live}: Permission denied")):
@@ -245,8 +247,8 @@ def selftest():
 
         # A settings file, and ~/.claude.json, that is not JSON, not UTF-8, JSON but not an object,
         # nested deeper than the parser's recursion limit, or an object whose `permissions` or
-        # `projects` is not an object: each verb that reads it exits 2 with one line that names the
-        # file and what it is.
+        # `projects` is not an object: each subcommand that reads it exits 2 with one line that
+        # names the file and what it is.
         settings_verbs = ["settings surface", "settings compare", "settings twins"]
         # Python 3.11 stops at its recursion limit, 3.12 and later at a stack of 16 MB: 400000 levels
         # are past both.

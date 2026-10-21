@@ -34,7 +34,7 @@ A frontend's own table merges table by table; any other value replaces the gener
 other key, a value of the wrong type, and a profile that still holds `opencode_providers` or
 `omp_providers`, exit 2 and name the file.
 
-The module has no verb; its cases run in `harness test`.
+The module has no subcommand; its cases run in `harness test`.
 """
 
 import pathlib
