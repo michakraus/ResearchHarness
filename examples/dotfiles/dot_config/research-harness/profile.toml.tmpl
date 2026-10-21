@@ -1,0 +1,28 @@
+# The private profile of this ResearchHarness installation. Install it as
+# ~/.config/research-harness/profile.toml; the schema is examples/profile.toml in the harness. The
+# values here are placeholders: replace them with your own.
+
+home = "{{ .chezmoi.homeDir }}"
+
+harness = "{{ .chezmoi.homeDir }}/Research/Harness"
+tree_agents = "{{ .chezmoi.homeDir }}/Research/Environment/Agents"
+
+memory_project = "-home-example-Research"{{ if ne .chezmoi.hostname .template_host }}
+autocommit_branch = "memory/{{ .chezmoi.hostname }}"{{ end }}
+
+launchd_prefix = "org.example"
+
+org = ["example-org", "example-user"]
+
+repository_roots = ["{{ .chezmoi.homeDir }}/Research/Packages", "{{ .chezmoi.homeDir }}/Research/Experiments"]
+
+docs_exceptions = ["ExampleBook"]
+
+docs_additions = ["ExampleFigures"]
+
+protected_dir = ["Nextcloud"]
+
+leak = [
+    "{{ .chezmoi.homeDir }}",
+    "example-user",
+]

@@ -61,9 +61,10 @@ jobs:
             exit 1
           fi
 
-  # The tests of the dotfiles kit, examples/dotfiles/tests/, with chezmoi from its release tarball.
-  # The tests render the kit with their own --config, --source, --destination and
-  # --persistent-state, and run the scripts in scratch homes under $TMPDIR.
+  # The five tests of the dotfiles kit in examples/dotfiles/, with chezmoi from its release
+  # tarball. The tests render the kit with their own --config, --source, --destination and
+  # --persistent-state, and run the scripts in scratch homes under $TMPDIR. script-check.py
+  # renders the units and plists with this checkout at its HEAD as harness_commit.
   dotfiles:
     runs-on: ubuntu-latest
     steps:
@@ -86,6 +87,8 @@ jobs:
           python3 examples/dotfiles/tests/update-check.py
           python3 examples/dotfiles/tests/check-check.py
           python3 examples/dotfiles/tests/driver-check.py
+          python3 examples/dotfiles/tests/render-check.py
+          python3 examples/dotfiles/tests/script-check.py
 
   lint:
     runs-on: ubuntu-latest

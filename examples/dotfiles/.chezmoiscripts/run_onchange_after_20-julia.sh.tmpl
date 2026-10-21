@@ -1,0 +1,112 @@
+{{- $host := includeTemplate "host" . | fromJson -}}
+{{- $gpuPackages := dict "metal" "Metal" "cuda" "CUDA" "amdgpu" "AMDGPU" "none" "" -}}
+{{- if not (hasKey $gpuPackages $host.gpu) -}}
+{{-   fail (printf "the host %q has gpu %q; machines.toml allows metal, cuda, amdgpu or none" .chezmoi.hostname $host.gpu) -}}
+{{- end -}}
+{{- $gpuPackage := get $gpuPackages $host.gpu -}}
+{{- range $name, $minimum := .julia_packages -}}
+{{-   if or (not (kindIs "string" $minimum)) (not (regexMatch "^[0-9]+\\.[0-9]+$" $minimum)) -}}
+{{-     fail (printf "the package %s has the minimum channel %v in .chezmoidata/julia.toml; a minimum is a string X.Y, such as \"1.10\"" $name $minimum) -}}
+{{-   end -}}
+{{- end -}}
+{{- /* Only the X.Y channels get packages; semverCompare fails on a channel such as nightly. */ -}}
+{{- $xyChannels := list -}}
+{{- range $host.julia_channels -}}
+{{-   if regexMatch "^[0-9]+\\.[0-9]+$" . -}}
+{{-     $xyChannels = append $xyChannels . -}}
+{{-   end -}}
+{{- end -}}
+#!/bin/bash
+# Julia: the juliaup channels of this host, the packages of .chezmoidata/julia.toml and the GPU
+# package in the global environment of each X.Y channel, and the Kaimon app. chezmoi runs this
+# script again when the channels, the GPU package or the package set below change. Each step
+# checks its state first, so a second run adds nothing.
+#
+#   host      {{ .chezmoi.hostname }}
+#   channels  {{ join " " $host.julia_channels }} (default {{ $host.julia_default }})
+#   gpu       {{ $host.gpu }}
+set -eu
+
+CHANNELS="{{ join " " $host.julia_channels }}"
+DEFAULT="{{ $host.julia_default }}"
+
+# The units and julia-update.jl run the juliaup launcher at this path, so it must be there.
+JULIAUP="$HOME/.juliaup/bin/juliaup"
+JULIA="$HOME/.juliaup/bin/julia"
+for program in "$JULIAUP" "$JULIA"; do
+    if [ ! -x "$program" ]; then
+        echo "chezmoi: $program does not exist; install juliaup into ~/.juliaup (see the bootstrap)." >&2
+        exit 1
+    fi
+done
+
+# The channels that juliaup has installed, from its own record.
+installed=$(python3 -c '
+import json, os, sys
+path = os.path.expanduser("~/.julia/juliaup/juliaup.json")
+if os.path.exists(path):
+    with open(path) as handle:
+        print(" ".join(json.load(handle).get("InstalledChannels", {})))
+')
+
+for channel in $CHANNELS; do
+    case " $installed " in
+        *" $channel "*) echo "chezmoi: the Julia channel $channel is installed; skipped." ;;
+        *) "$JULIAUP" add "$channel" ;;
+    esac
+done
+"$JULIAUP" default "$DEFAULT"
+
+# add_missing CHANNEL PACKAGE...: one Pkg.add of the packages that the [deps] table of the
+# channel's global Project.toml lacks; a name under [compat] or in a comment does not count. A
+# missing Project.toml lacks every package, and Pkg.add creates it. No package is removed, pinned
+# or updated.
+add_missing() {
+    channel=$1
+    shift
+    project="$HOME/.julia/environments/v$channel/Project.toml"
+    missing=$(python3 -c '
+import os, sys, tomllib
+path, wanted = sys.argv[1], sys.argv[2:]
+deps = {}
+if os.path.exists(path):
+    with open(path, "rb") as handle:
+        deps = tomllib.load(handle).get("deps", {})
+print(" ".join(name for name in wanted if name not in deps))
+' "$project" "$@")
+    if [ -z "$missing" ]; then
+        echo "chezmoi: the global environment of Julia $channel holds every package; skipped."
+        return
+    fi
+    list=""
+    for package in $missing; do
+        list="$list${list:+, }\"$package\""
+    done
+    if ! "$JULIA" "+$channel" --startup-file=no -e "using Pkg; Pkg.add([$list])"; then
+        echo "chezmoi: Pkg.add failed in the global environment of Julia $channel." >&2
+        exit 1
+    fi
+}
+
+# Each X.Y channel gets the packages whose minimum channel is at most the channel, and the GPU
+# package; a channel such as nightly or release gets none.
+{{ range $channel := $xyChannels -}}
+{{-   $wanted := list -}}
+{{-   range $name, $minimum := $.julia_packages -}}
+{{-     if semverCompare (printf ">=%s" $minimum) $channel -}}
+{{-       $wanted = append $wanted $name -}}
+{{-     else -}}
+echo "chezmoi: {{ $name }} needs Julia {{ $minimum }}; skipped on Julia {{ $channel }}."
+{{      end -}}
+{{-   end -}}
+{{-   if $gpuPackage -}}
+{{-     $wanted = append $wanted $gpuPackage -}}
+{{-   end -}}
+add_missing {{ $channel }} {{ join " " $wanted }}
+{{ end }}
+# The Kaimon app, as Pkg installs it: ~/.julia/bin/kaimon, from ~/.julia/environments/apps/Kaimon.
+if [ -x "$HOME/.julia/bin/kaimon" ] && [ -d "$HOME/.julia/environments/apps/Kaimon" ]; then
+    echo "chezmoi: the Kaimon app is installed; skipped."
+else
+    "$JULIA" "+$DEFAULT" --startup-file=no -e 'using Pkg; Pkg.Apps.add("Kaimon")'
+fi

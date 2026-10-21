@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+- **The dotfiles kit gains its setup scripts and the files of `~/.config/research-harness/`.**
+  `examples/dotfiles/.chezmoiscripts/` holds the five scripts that set up a machine: the tool
+  check, the clones, Julia, the harness at its pin, and the services. The seeds are
+  `.chezmoidata/julia.toml`, the Julia packages of every host, and the five files of
+  `dot_config/research-harness/`, with the placeholder values of `examples/profile.toml`,
+  `models.toml`, `network.toml`, `providers.toml` and `repositories.toml`. The profile keeps two
+  template actions: the home directory, and `autocommit_branch` `memory/<host>` on every host but
+  the template host. The clone script reads its four remotes, the harness's among them, from a
+  new `[remotes]` table of `.chezmoidata/machines.toml`, which also gains a placeholder Linux
+  host, `example-linux`. The services script loads the three jobs of the harness and no personal
+  job. Two new tests come with the scripts: `render-check.py` renders the kit for each host,
+  checks the kit's targets only and allows any other target, and `script-check.py` runs each
+  script in scratch homes with stub programs. When the kit is `examples/dotfiles/` of a harness
+  checkout, `script-check.py` renders the services with that checkout at its HEAD; otherwise it
+  uses `~/Research/Harness` at `harness_commit`. Both run in the CI job `dotfiles` and in the
+  pre-push hook beside the three tests of the update path.
+
 - **The dotfiles kit, `examples/dotfiles/`, starts with its update path.** The scripts that keep
   a chezmoi source signed and applied lived only in a private dotfiles repository, with its
   private values written into them. The kit ships them as a chezmoi source with placeholder data:

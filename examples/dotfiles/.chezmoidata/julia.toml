@@ -1,0 +1,20 @@
+# The Julia packages of the global environment of every host, beside the GPU package of
+# machines.toml. .chezmoiscripts/run_onchange_after_20-julia.sh.tmpl adds each package to each
+# X.Y juliaup channel whose version is at least the package's minimum channel, the value below,
+# when the channel's Project.toml lacks it in [deps]. The script removes, pins and updates no
+# package. A minimum is a string "X.Y"; any other value stops the render.
+[julia_packages]
+Adapt = "1.10"
+Aqua = "1.10"
+Cthulhu = "1.10"
+DocumenterTools = "1.10"
+ExplicitImports = "1.10"
+JET = "1.10"
+JSON = "1.10"
+JuliaFormatter = "1.10"
+JuliaSyntax = "1.10"
+KaimonGate = "1.12"
+PkgTemplates = "1.10"
+Revise = "1.10"
+TestEnv = "1.10"
+YAML = "1.10"

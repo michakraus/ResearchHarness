@@ -12,13 +12,23 @@
 #                   /usr/lib/ssh-keychain.dylib for a key in the Secure Enclave of a Mac; empty
 #                   for a key that needs none
 
-# The commit of the harness for every machine: dotfiles-check checks ~/Research/Harness and the
-# code files of the kit against it. A machine moves to a new harness only through a reviewed
-# change of this line.
+# The commit of the harness for every machine: the harness script of .chezmoiscripts/ checks it
+# out in ~/Research/Harness and installs it (on the template host, it installs a HEAD that
+# contains it), and dotfiles-check checks that checkout and the code files of the kit against it.
+# A machine moves to a new harness only through a reviewed change of this line.
 harness_commit = "0000000000000000000000000000000000000000"
 
 # The one machine that signs: only it receives dotfiles-merge and user.signingkey.
 template_host = "example-host"
+
+# The remotes of the four clones of .chezmoiscripts/run_once_after_10-clones.sh.tmpl: ~/.claude,
+# ~/Research/Environment, ~/Research/Harness, and the meta repository, whose work tree is
+# ~/Research. harness is the remote of the harness itself.
+[remotes]
+claude = "https://git.example.org/example/claude.git"
+environment = "https://git.example.org/example/environment.git"
+harness = "https://git.example.org/example/ResearchHarness.git"
+meta = "https://git.example.org/example/research.git"
 
 [machines.example-host]
 os = "darwin"
@@ -28,3 +38,10 @@ julia_channels = ["1.12", "release"]
 julia_default = "1.12"
 signing_key = "~/.ssh/id_ed25519_dotfiles_signing"
 sk_provider = ""
+
+[machines.example-linux]
+os = "linux"
+arch = "x86_64"
+gpu = "none"
+julia_channels = ["1.12", "release"]
+julia_default = "1.12"
