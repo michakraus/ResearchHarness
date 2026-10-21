@@ -1768,8 +1768,8 @@ def layer_cases(check, tmp):
     # `settings` that measure stay. The network lists are generated, so no command checks a mirror of them.
     p = subprocess.run([sys.executable, str(REPO / "bin" / "harness"), "settings", "--help"], capture_output=True,
                        text=True)
-    gone = [subprocess.run([sys.executable, str(REPO / "bin" / "harness"), "settings", verb],
-                           capture_output=True, text=True) for verb in ("install", "domains")]
+    gone = [subprocess.run([sys.executable, str(REPO / "bin" / "harness"), "settings", subcommand],
+                           capture_output=True, text=True) for subcommand in ("install", "domains")]
     case(lambda: p.returncode == 0 and "install" not in p.stdout and "domains" not in p.stdout
          and all(g.returncode == 2 for g in gone)
          and all(s in p.stdout for s in ["surface", "compare", "selftest", "twins"]),

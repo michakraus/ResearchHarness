@@ -68,7 +68,7 @@ def main(argv=None):
     )
     ap.add_argument("--profile", metavar="F", help="the private profile, instead of the default path")
     ap.add_argument("--models", metavar="F", help="the model tables, instead of models.toml beside the profile")
-    sub = ap.add_subparsers(dest="verb", metavar="<subcommand>", required=True)
+    sub = ap.add_subparsers(dest="subcommand", metavar="<subcommand>", required=True)
     for module in modules():
         # A module with no subcommand of its own; its cases run in `harness test`.
         if module not in (frontmatter, docs, units, script_cases, network, providers):
@@ -81,5 +81,5 @@ def main(argv=None):
     try:
         return args.run(args)
     except HarnessError as e:
-        print(f"harness {args.verb}: {e}", file=sys.stderr)
+        print(f"harness {args.subcommand}: {e}", file=sys.stderr)
         return 2

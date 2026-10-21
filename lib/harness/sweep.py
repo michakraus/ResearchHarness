@@ -3,7 +3,7 @@
 The fixture is one temporary directory: a `HOME` with the dummy profile and model tables
 rendered for it, the files the subcommands read below `~/.claude` and `~/.config`, and a research
 root, $RESEARCH_ROOT, with one package, one prose repository and the tree instructions. For each
-subcommand of `VERBS`:
+subcommand of `SUBCOMMANDS`:
 
   * with its preconditions met, the dry run exits 0 or 1, prints no traceback, and changes no
     file below the fixture — a hash of every file, `.git/` excluded, before and after;
@@ -42,7 +42,7 @@ HARNESS = [sys.executable, str(REPO / "bin" / "harness")]
 PROPOSAL = str(REPO / "settings" / "settings.proposal.json")
 
 # (subcommand, its arguments); `{live}` is the fixture's ~/.claude/settings.json.
-VERBS = [
+SUBCOMMANDS = [
     ("install", ["install"]),
     ("permissions", ["permissions"]),
     ("settings surface", ["settings", "surface"]),
@@ -173,8 +173,8 @@ def selftest():
         env = {k: v for k, v in os.environ.items() if k not in UNSET and not k.startswith("GIT_")}
         env.update(GIT, HOME=str(home), RESEARCH_ROOT=str(home / "Research"))
         make_fixture(home, env)
-        argv = {verb: [a.replace("{live}", str(home / ".claude" / "settings.json")) for a in args]
-                for verb, args in VERBS}
+        argv = {subcommand: [a.replace("{live}", str(home / ".claude" / "settings.json")) for a in args]
+                for subcommand, args in SUBCOMMANDS}
 
         def harness(args):
             """One subcommand's run; a subcommand that hangs exits `timeout`, which is a wrong
@@ -202,25 +202,25 @@ def selftest():
               f"checks accept it: {verdicts}, and the exits of good runs: {controls}; the sweep's own timeout "
               f"is {TIMEOUT} s")
 
-        for verb, _ in VERBS:
+        for subcommand, _ in SUBCOMMANDS:
             before = digest(tmp)
-            p = harness(argv[verb])
+            p = harness(argv[subcommand])
             changed = digest(tmp) != before
             traceback = "Traceback" in p.stdout + p.stderr
             check(dry_run_ok(p, changed),
-                  f"{verb}: dry run exits {p.returncode}, traceback {traceback}, a file changed {changed}"
+                  f"{subcommand}: dry run exits {p.returncode}, traceback {traceback}, a file changed {changed}"
                   + (f": {p.stderr.strip()[-300:]!r}" if p.returncode not in (0, 1) or traceback else ""))
 
-        for precondition, rel, verbs in PRECONDITIONS:
+        for precondition, rel, subcommands in PRECONDITIONS:
             path = home / rel
             aside = path.with_name(path.name + ".removed")
             path.rename(aside)
             try:
-                for verb in verbs:
-                    p = harness(argv[verb])
+                for subcommand in subcommands:
+                    p = harness(argv[subcommand])
                     lines = p.stderr.strip().splitlines()
                     check(refused_ok(p),
-                          f"{verb} without {precondition}: exit {p.returncode}, {len(lines)} stderr line(s)"
+                          f"{subcommand} without {precondition}: exit {p.returncode}, {len(lines)} stderr line(s)"
                           + (f": {lines[-1]!r}" if lines else ""))
             finally:
                 aside.rename(path)
@@ -249,7 +249,7 @@ def selftest():
         # nested deeper than the parser's recursion limit, or an object whose `permissions` or
         # `projects` is not an object: each subcommand that reads it exits 2 with one line that
         # names the file and what it is.
-        settings_verbs = ["settings surface", "settings compare", "settings twins"]
+        settings_subcommands = ["settings surface", "settings compare", "settings twins"]
         # Python 3.11 stops at its recursion limit, 3.12 and later at a stack of 16 MB: 400000 levels
         # are past both.
         depth = 400000
@@ -262,26 +262,26 @@ def selftest():
                  "both"),
                 ("an object whose permissions is a list", b'{"permissions": []}\n', "permissions", "settings"),
                 ("an object whose projects is a list", b'{"projects": []}\n', "projects", "trust")):
-            for path, verbs in ((live, settings_verbs if files != "trust" else []),
-                                (home / ".claude.json", ["trust"] if files != "settings" else [])):
-                if not verbs:
+            for path, subcommands in ((live, settings_subcommands if files != "trust" else []),
+                                      (home / ".claude.json", ["trust"] if files != "settings" else [])):
+                if not subcommands:
                     continue
                 old = path.read_bytes()
                 path.write_bytes(data)
                 try:
-                    runs = [(verb, harness(argv[verb])) for verb in verbs]
+                    runs = [(subcommand, harness(argv[subcommand])) for subcommand in subcommands]
                 finally:
                     path.write_bytes(old)
-                for verb, p in runs:
+                for subcommand, p in runs:
                     lines = p.stderr.strip().splitlines()
                     check(refused_ok(p) and str(path) in lines[0] and reason in lines[0],
-                          f"{verb}, {path.name} {label}: exit {p.returncode}, {len(lines)} stderr line(s)"
+                          f"{subcommand}, {path.name} {label}: exit {p.returncode}, {len(lines)} stderr line(s)"
                           + (f": {lines[-1][-300:]!r}" if lines else ""))
 
-        for verb in APPLY:
-            applied = harness(argv[verb] + ["--apply"])
-            again = harness(argv[verb])
+        for subcommand in APPLY:
+            applied = harness(argv[subcommand] + ["--apply"])
+            again = harness(argv[subcommand])
             check(applied_ok(applied, again),
-                  f"{verb} --apply exits {applied.returncode}, the dry run after it {again.returncode}"
+                  f"{subcommand} --apply exits {applied.returncode}, the dry run after it {again.returncode}"
                   + (f": {(applied.stderr + again.stderr).strip()[-300:]!r}" if applied.stderr + again.stderr else ""))
     return total, wrong
