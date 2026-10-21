@@ -65,6 +65,7 @@ import os
 import pathlib
 import subprocess
 import tomllib
+import unicodedata
 from urllib.parse import urlparse
 
 from . import HarnessError, changing, outcome
@@ -159,7 +160,9 @@ def entries(args, selection, default):
     path = table_path(args)
     rows = load_table(path) if path.is_file() else []
     found = [Entry(name, url, True) for key, name, url in rows if key in chosen]
-    listed = {e.name for e in found}
+    # A file system can store a name decomposed (macOS keeps é as e and a combining accent), so
+    # names compare in NFC.
+    listed = {unicodedata.normalize("NFC", e.name) for e in found}
     for key in chosen:
         if key in FIXED:
             if directory(key) not in listed and is_clone(research_root() / directory(key)):
@@ -169,7 +172,7 @@ def entries(args, selection, default):
         if base.is_dir():
             for d in sorted(base.iterdir()):
                 name = f"{directory(key)}/{d.name}"
-                if d.is_dir() and is_clone(d) and name not in listed:
+                if d.is_dir() and is_clone(d) and unicodedata.normalize("NFC", name) not in listed:
                     found.append(Entry(name, None, bool(rows)))
     return found
 
@@ -616,6 +619,12 @@ def selftest():
         check(code == 1, "--include-topic-branches plans the topic branch")
         check("Knowledge" not in [e.name for e in entries(args(), [], PUSH_DEFAULT)],
               "push and sync default to the packages and experiments")
+
+        composed, decomposed = "Poincaré", "Poincaré"
+        table.write_text(body + f'\n[projects]\n"{composed}" = "{urls["paper"]}"\n')
+        run("git", "init", "-q", str(root / "Projects" / decomposed))
+        names = [e.name for e in entries(args(), ["projects"], GROUPS)]
+        check(names == [f"Projects/{composed}"], f"a decomposed directory name is the table's composed one: {names}")
 
         calls = []
         with mock.patch.object(subprocess, "run", lambda c, **kw: calls.append(c) or
