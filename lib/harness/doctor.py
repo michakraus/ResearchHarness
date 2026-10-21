@@ -137,8 +137,8 @@ def environment():
 
 def run(command, timeout=None):
     """(exit status, stdout, stderr) of `command`, or None when its program is not found. A
-    program that cannot be started gives 126 and the reason, and a run that outlives `timeout`,
-    else TIMEOUT, gives "timeout"."""
+    program that cannot be started gives 126 and the reason, and a run longer than `timeout`
+    (default TIMEOUT) gives "timeout"."""
     timeout = timeout or TIMEOUT
     try:
         p = subprocess.run(command, capture_output=True, text=True, errors="replace", timeout=timeout,
@@ -418,8 +418,8 @@ class Doctor:
     # gives no answer.
 
     def systemd(self):
-        """The `ask` of `systemd --user`: `is-active` of kaimon.service, and the list of the timers
-        for the other two jobs, which it reads once."""
+        """The status query of the systemd user units: `is-active` of kaimon.service, and the list
+        of the timers for the other two jobs, which it reads once."""
         systemctl = shutil.which("systemctl")
         timers = []
 
@@ -1032,7 +1032,7 @@ def status_cases(check, root, system_name):
                                   env=environment() | GIT_ENV), ("jobs",))
 
     def inside(f):
-        """~/.claude a plain directory in a repository of the home, which has an origin."""
+        """Make ~/.claude a plain directory in a repository of the home, which has an origin."""
         shutil.rmtree(f.home / ".claude" / ".git")
         for command in (["init", "-q", str(f.home)],
                         ["-C", str(f.home), "remote", "add", "origin", "https://example.org/h.git"]):
@@ -1213,7 +1213,7 @@ def selftest():
 
 
 def register(sub):
-    p = sub.add_parser("doctor", help="check this machine's setup, read-only; a session's sandbox makes some checks "
+    p = sub.add_parser("doctor", help="check the setup of this machine, read-only; a session's sandbox makes some checks "
                                       "SKIP, so run it in a plain terminal",
                        description="Check this machine's setup, read-only: one line per check, PASS, WARN, FAIL or "
                                    "SKIP; exit 1 when one fails. A session's sandbox refuses some of the commands, "

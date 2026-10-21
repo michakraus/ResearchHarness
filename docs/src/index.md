@@ -30,7 +30,7 @@ features:
     link: /security
   - icon: workflow
     title: Long work goes to a sub-agent
-    details: A test run or a review runs in its own context and returns a short report, so your session keeps its context for the work.
+    details: A test run or a review runs in its own context and returns a short report, so the context of your session stays free for the main work.
     link: /agents-at-work
   - icon: private
     title: Private values stay private
@@ -38,7 +38,7 @@ features:
     link: /profile
   - icon: code
     title: Ideas for any language
-    details: Its own tools are for Julia code, but most of its ideas transfer to any language. The dependencies page says what needs Julia.
+    details: The harness's own tools are for Julia code, but most of its ideas transfer to any language. The dependencies page says what needs Julia.
     link: /dependencies
 ---
 

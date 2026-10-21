@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+- **The docs, the README and the docstrings use one set of standard terms, and every verb has
+  its help.** A review of the language found word-for-word phrases where a standard term exists
+  ("the installer of Claude Code", "the user manager of systemd", "start file"), long sentences
+  with a file or a condition as the subject of "exits 2", internal words used before any
+  definition (dispatcher, council, verify round, §V and §L), and terms with several meanings.
+  The pages now say "shell startup file", "the systemd user manager", "lingering", "the Claude
+  Code sandbox", "working tree", "sub-agent", "diff", "private strings" and "the template host",
+  define the internal words at first use, and split the long sentences. `harness-command.md`
+  defines a verb as a subcommand of `harness`. The docstrings lose the private paths, the dated
+  incidents, the round numbers and the benchmark labels, and keep each mechanism. Eight
+  docstrings and help strings that were false against the code are corrected; among them the
+  `--apply` help of `skill-triggers`, which runs paid `claude -p` sessions, and the `format` help,
+  which skips some directories. `harness <verb> --help` now prints a description for every verb
+  and every `settings` sub-verb, and every option and argument has help. K73 lists four files
+  in place of six.
+
 - **The README describes the harness and links the setup pages.** Its short *Installation* left
   out the frontends, Kaimon and the jobs, so a reader who followed it had no frontend for the
   next section, and it drifted from the setup pages. Its *A first session* repeated the first

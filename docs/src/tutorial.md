@@ -13,7 +13,7 @@ step differs.
 
 ## The terms
 
-The tutorial uses the terms below. Each term links its entry in the glossary of
+The tutorial uses the terms below. Each term links to its entry in the glossary of
 [Introduction](concepts.md#glossary), which also explains the ideas behind them.
 
 - **At work:** [coding agent](concepts.md#coding-agent),
@@ -50,7 +50,7 @@ claude
 **Without a Julia package**, go to your git repository in its place.
 
 **What you should see.** The first time in a directory, Claude Code asks whether you trust the
-folder. Answer yes. Then it shows an input field, and no warning of the harness.
+folder. Answer yes. Then it shows an input field, and no warning from the harness.
 
 At the start, Claude Code reads the installed `~/.claude/CLAUDE.md`. That file imports the core
 working rules, `instructions/core.md`, and your tree instructions,
@@ -74,7 +74,7 @@ What does this package export? Give each name with the file that defines it.
 most.`
 
 **What you should see.** The agent answers with tool calls before it writes its answer. It reads
-files, for example `src/Example.jl`, and it searches for each name. Each tool call shows in the
+files, for example `src/Example.jl`, and it searches for each name. Each tool call appears in the
 session with its input and a short output. The output of each call goes into the context of the
 session.
 
@@ -91,8 +91,8 @@ Add the line "<!-- tutorial -->" at the end of README.md.
 
 **What you should see.** The agent calls its edit tool. Before the edit, Claude Code shows the
 change and asks whether to allow it. Read the change, then answer yes. The settings of the harness
-decide which tool calls run with no prompt, which ask, and which Claude Code refuses. An edit of a
-file asks, because no rule of the settings allows it. Answer no when you do not understand a
+decide which tool calls run with no prompt, which ask, and which Claude Code refuses. A file edit
+shows a prompt, because no rule in the settings allows it. Answer no when you do not understand a
 call, and tell the agent why.
 
 **When it does not happen.** If the edit runs with no prompt, the session is in a mode that
@@ -158,8 +158,8 @@ in a fresh Julia process, with the right tools, and with the traps that give a w
 Type `/julia-performance` and then the question: a skill also loads by its name.
 [Skills](components/skills.md) lists each skill and the kind of request that loads it.
 
-**Without a Julia package**, use the skill `wait-what`. It loads only by its name. After an answer
-of the agent that you do not follow, type `/wait-what`. The agent then gives the answer again, with
+**Without a Julia package**, use the skill `wait-what`. It loads only by its name. When you do not
+understand an answer of the agent, type `/wait-what`. The agent then gives the answer again, with
 more context and in short sentences.
 
 ## Step 6: give a long job to a sub-agent
@@ -187,7 +187,7 @@ sub-agent searches and reads, and returns only the list.
 ## Step 7: review a change
 
 Steps 3 and 4 changed `README.md`. Review the change before you keep it. In your own terminal, in
-the repository, show the difference:
+the repository, show the diff:
 
 ```bash
 git diff
@@ -235,7 +235,7 @@ a file that every session reads. A fact about your own work goes into your tree 
    The installed copy is behind its source: this is drift. The warning blocks nothing; the
    session uses the old installed files. End it with `/exit`.
 
-4. Run the dry run of the install, and read its plan:
+4. Run `harness install` as a dry run, and read its plan:
 
    ```bash
    harness install
@@ -272,7 +272,7 @@ a file that every session reads. A fact about your own work goes into your tree 
 edited the source and not the installed copy in `~/.claude/`; the settings refuse an edit of an
 installed copy from a session, and the next install overwrites it. A change of an agent, a skill or
 a rule of the harness goes into its source in the checkout in the same way.
-[Typical use](daily-use.md) describes this and the other work that comes back again and again.
+[Typical use](daily-use.md) describes this and the other recurring tasks after the setup.
 
 ## Next steps
 

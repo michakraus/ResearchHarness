@@ -4,22 +4,23 @@
 
 Research Harness is a configuration for coding agents that work on research software. A coding
 agent is a language model that reads your files, runs commands and edits code in your terminal.
-The harness gives three of them, Claude Code, OpenCode and oh-my-pi, one set of instructions,
-skills, sub-agents, permission settings and guard hooks. One command, `harness`, installs this
-configuration and checks it.
+The harness gives three coding agents, Claude Code, OpenCode and oh-my-pi, one shared set of
+instructions, skills, sub-agents, permission settings and guard hooks. One command, `harness`,
+installs this configuration and checks it.
 
 The harness is for a researcher who wants a coding agent to keep the same rules in every
 repository of a research tree: the packages, the experiments, the papers. Its own tools are for
 Julia code, but most of its ideas transfer to any language. [Dependencies](docs/src/dependencies.md#julia-and-its-packages)
 says what needs Julia. The [documentation site](https://michakraus.github.io/ResearchHarness/)
-shows the harness and its layers, and the way from its sources to the frontends, in two figures.
+has two figures. The first shows the harness and its layers. The second shows how the install
+turns the sources into the configuration of each frontend.
 
 ## Features
 
 - **One set of sources for three frontends.** The agents, skills, rules, commands and instruction
   files are neutral sources in this repository. `harness install` writes the configuration of
-  each frontend from them, with the model of each tier that your model tables give. You edit a
-  source, never its installed copy.
+  each frontend from them, and gives each agent the model that your model tables set for its
+  tier. You edit a source, never its installed copy.
 - **Instructions that load when they apply.** The core instructions load in every session. A rule
   loads when the agent reads a matching file, and a skill when your request matches its
   description. Your own instructions about your research tree install beside them.
@@ -28,10 +29,12 @@ shows the harness and its layers, and the way from its sources to the frontends,
   unsafe shell commands before they run, such as a file edit through `sed -i` or a `git add -A`.
   A hook at session start warns when the installed configuration is behind its sources.
 - **Long work goes to a sub-agent.** A test run, a review or a literature search runs in its own
-  context and returns a short report, so your session keeps its room for the work.
-- **A builder and a critic for each change.** A plan is split into parts, each one pull request.
-  A builder writes the tests and the code of a part, and a critic that has not seen the builder's
-  reasoning judges it against the part's done-condition, with mutants that a good test must catch.
+  context and returns a short report, so the context of your session stays free for the main
+  work.
+- **A builder and a critic for each change.** A plan is split into parts, and each part becomes
+  one pull request. A builder writes the tests and the code of a part. A critic that has not seen
+  the builder's reasoning judges it against the part's acceptance criteria, and checks the tests
+  with mutants: altered copies of the code that a good test must catch.
   The skills `plan-parts`, `build-part` and `build-reviewed` run the loop.
 - **Tools for Julia packages.** Agents run the tests, measure allocations and timings, find why a
   package does not load, and review and fix pull requests. Kaimon gives an agent a live Julia

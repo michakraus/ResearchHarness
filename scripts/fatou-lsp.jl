@@ -7,7 +7,7 @@
 # a module-qualified definition such as `Base.length(x::Problem) = …`. It never runs Julia, so it
 # works on a package that does not load.
 #
-# Two things about driving it that cost an afternoon each:
+# Two pitfalls when driving it:
 #
 #   * LSP headers end with CRLF and `readline` strips only the LF, so the blank separator line
 #     arrives as "\r". A bare `isempty` test never fires, the reader eats the body as headers, and
@@ -15,11 +15,10 @@
 #   * Stopping the server needs the LSP `shutdown`/`exit` handshake, and **`kill` is not a
 #     substitute**. An npm install puts a node wrapper on `PATH` that spawns the real binary as a
 #     grandchild (`fatou_binary` finds the binary itself): `close` leaves both running, and
-#     `kill` reaches the wrapper while orphaning the binary. Sixteen accumulated at about 1 GB
-#     during one afternoon, and the "fix" that followed was verified with an unguarded
-#     `ps | grep -c` — which reports 0 when `ps` itself fails, so it read as clean while eight more
-#     piled up. `lsp_close` returns whether it worked; do not ignore it, and never treat a failed
-#     `ps` as a zero.
+#     `kill` reaches the wrapper while orphaning the binary. Orphaned servers accumulate and
+#     hold their memory. An unguarded `ps | grep -c` reports 0 when `ps` itself fails, so it
+#     cannot show that none is left. `lsp_close` returns whether it worked; do not ignore it, and
+#     never treat a failed `ps` as a zero.
 
 # The harness's Julia environment, which `harness install --apply` instantiates from
 # Project.toml; first in LOAD_PATH, so no caller needs `--project`.
@@ -84,8 +83,6 @@ The npm package `fatou-cli` instead puts a node script on `PATH`, which spawns t
 as a child. Driving the wrapper means the LSP server is a *grandchild*: `process_running` then
 watches the wrapper, which exits on cue whatever the server does, and `kill` reaches the wrapper
 while orphaning the server.
-Measured 2026-09-15 — five servers leaked from one probe run while it reported all five stopped,
-because the report could not see them.
 
 Spawning the binary directly makes `io` the server itself, so both of those become truthful.
 `FATOU_LSP_BIN` overrides the search.

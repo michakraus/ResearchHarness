@@ -32,8 +32,9 @@ The installed opencode.jsonc can hold a secret that the repository's copy must n
 it holds a literal `Authorization` value, the install refuses to replace it, unless `--force`,
 and exits 2: replacing it would remove a working credential.
 
-`harness install` renders the agents on every run; nothing of them is committed. The permission block and `plugins/guard-paths.json` hold no profile value, so they
-stay committed, and `harness permissions` regenerates them from the settings template.
+`harness install` renders the agents on every run; none of them is committed. The permission
+block and `plugins/guard-paths.json` hold no profile value, so they stay committed, and
+`harness permissions` regenerates them from the settings template.
 
 THE AGENTS. Each agent of agents/ becomes an OpenCode agent; a rendered
 copy has one source, so it cannot drift from it. What changes in the port, and nothing else does:
@@ -43,7 +44,7 @@ copy has one source, so it cannot drift from it. What changes in the port, and n
    `permissionMode:` have no OpenCode key, so all three become `permission:`. The tier of `model:`
    maps through `models` of the model tables (`models.toml`), unless `model_overrides`
    names the agent; an agent
-   with no `model:` inherits its caller's model in both harnesses. `councils` adds copies of an
+   with no `model:` inherits its caller's model in both frontends. `councils` adds copies of an
    agent on other models; the description of a seat with `verify = true` says that it also judges
    each verify round. `effort:`, `omitClaudeMd:`, `cacheTtl:` and `isolation:` have no
    OpenCode equivalent and are dropped; the last one becomes a rule in the preamble.
@@ -58,14 +59,15 @@ hand-copied list is where a typo becomes a silent hole, so the translation round
 input rule is emitted or listed in the report with the reason it was dropped, and the counts add
 up. Three semantic differences:
 
-1. Claude resolves by category (deny beats ask beats allow) and ignores order; OpenCode takes the
-   last matching rule within one object. So `ask` is emitted first and `deny` after it.
-2. Claude's `allow` list is not ported. Under Claude Code `autoAllowBashIfSandboxed` approves any
-   sandboxed command, so most of that list is inert; OpenCode has no sandbox and defaults to
-   allow, so porting it would add untested patterns that can only produce false prompts.
-3. Claude writes `Bash(cmd *)`, `Read(//abs/path)` and `mcp__server__tool`. OpenCode keys by tool
-   name, and MCP tools are `<server>_<tool>`. The `//` prefix of Claude's absolute paths is
-   reduced to one slash.
+1. Claude Code resolves by category (deny beats ask beats allow) and ignores order; OpenCode
+   takes the last matching rule within one object. So `ask` is emitted first and `deny` after it.
+2. The `allow` list of Claude Code is not ported. Under Claude Code `autoAllowBashIfSandboxed`
+   approves any sandboxed command, so most of that list is inert; OpenCode has no sandbox and
+   defaults to allow, so porting it would add untested patterns that can only produce false
+   prompts.
+3. Claude Code writes `Bash(cmd *)`, `Read(//abs/path)` and `mcp__server__tool`. OpenCode keys
+   by tool name, and MCP tools are `<server>_<tool>`. The `//` prefix of the absolute paths of
+   Claude Code is reduced to one slash.
 """
 
 import argparse
@@ -143,8 +145,9 @@ CLAUDE_TO_OPENCODE_TOOL = {
 # installed OpenCode configuration, the installed Julia package sources, and /tmp. Edits there
 # stay gated: ~/.config/** and the installed agents, skills and rules are denied, other skills
 # ask, and ~/.julia/packages/** is denied, because no other rule gates an edit there. Its first
-# rule denies every other path: v2's built-in rule set starts with an allow of everything, and the
-# last matching rule wins, so without it a path outside the allow entries is allowed.
+# rule denies every other path: the built-in rule set of OpenCode 2 starts with an allow of
+# everything, and the last matching rule wins, so without it a path outside the allow entries is
+# allowed.
 OPENCODE_ONLY_RULES = [
     ("read", [("{home}/.local/share/opencode/**", "deny")]),
     ("bash", [("kill *", "ask"), ("pkill *", "ask")]),
@@ -378,8 +381,8 @@ def collect_rules(settings=SETTINGS):
 
 def with_root_forms(rules):
     """`rules` with each `**/X` rule followed by `X`, the same rule for a file of the project root.
-    v2 matches a pattern against the path relative to the project root, turns `*` into `.*` and
-    anchors both ends, so `**/.env` needs a `/` before `.env` and misses `.env` itself."""
+    OpenCode 2 matches a pattern against the path relative to the project root, turns `*` into
+    `.*` and anchors both ends, so `**/.env` needs a `/` before `.env` and misses `.env` itself."""
     return [r for p, a in rules for r in [(p, a)] + ([(p[3:], a)] if p.startswith("**/") else [])]
 
 
@@ -1050,5 +1053,10 @@ def install_cases(check, tmp):
 
 
 def register(sub):
-    p = changing(sub.add_parser("permissions", help="regenerate the OpenCode permission block and guard list"))
+    p = changing(sub.add_parser("permissions", help="regenerate the OpenCode permission block and guard list",
+                                description="Regenerate the permission block of adapters/opencode/opencode.jsonc "
+                                            "and adapters/opencode/plugins/guard-paths.json in this repository from "
+                                            "the `deny` and `ask` rules of the settings template. Without --apply it "
+                                            "prints the report and the diff, and exits 1 when a file would change; "
+                                            "--apply writes the files."))
     p.set_defaults(run=cmd_permissions)

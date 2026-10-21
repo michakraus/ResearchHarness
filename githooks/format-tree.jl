@@ -1,6 +1,8 @@
 #!/usr/bin/env julia
 #
-# Run JuliaFormatter over every *tracked* .jl file in Packages/ and Experiments/.
+# Run JuliaFormatter over every *tracked* .jl file in Packages/ and Experiments/, except the
+# files below a directory of EXCLUDED_DIRS (`prototyping/`, `legacy/`, `obsolete/`). A
+# repository with no .JuliaFormatter.toml is skipped.
 #
 #   julia format-tree.jl            # report only, changes nothing
 #   julia format-tree.jl --apply    # rewrite files in place

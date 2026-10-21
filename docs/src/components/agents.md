@@ -7,40 +7,45 @@ or another agent can also start a sub-agent.
 
 Each source is a Markdown file in `agents/`. Its frontmatter holds `name`, the name that a caller
 uses; `description`, the text from which the frontend selects the agent for a request; `tools`,
-the neutral tools that the agent can call; and `model`, a tier (`large`, `medium` or `small`). An
-agent with no `model` uses the model of its caller. Some agents also set `effort`, `skills` (the
-skills that load at the start), `isolation: worktree`, `omitClaudeMd: true` (the agent does not
-load `CLAUDE.md`), `permissionMode: plan` or `cacheTtl: 1h`. The body is the instruction text of the agent. Most bodies prescribe the exact
-shape of the report.
+the neutral tools that the agent can call; and `model`, a model tier (`large`, `medium` or
+`small`). An agent with no `model` uses the model of its caller. Some agents also set `effort`,
+`skills` (the skills that load at the start), `isolation: worktree`, `omitClaudeMd: true` (the
+agent does not load `CLAUDE.md`), `permissionMode: plan` or `cacheTtl: 1h`. The body is the
+instruction text of the agent. Most bodies prescribe the exact shape of the report.
 
-`harness install` copies each agent to `~/.claude/agents/` for Claude Code, with the tier and the
-tools written as Claude Code names them. It renders each agent for OpenCode, with an "Under
+`harness install` copies each agent to `~/.claude/agents/` for Claude Code, with the model tier and
+the tools written as Claude Code names them. It renders each agent for OpenCode, with an "Under
 OpenCode" section before the body, and for oh-my-pi. [Architecture](../architecture.md) gives the
-map of the tools and tiers. The sections below come in five groups: the
+map of the tools and model tiers. The sections below come in five groups: the
 builder-critic loop, pull requests and CI, Julia diagnosis and tests, research, and the
 general-purpose agents.
 
 ## `julia-builder`
 
-The builder of the builder-critic loop. It builds one part of a task file: a plan that is split
-into parts, where each part is one pull request. The `build-part` skill starts it and runs the
-loop. Call it directly only for a part that you have already chosen.
+The builder of the builder-critic loop. A task file holds a plan that is split into parts, and
+each part is one pull request. The builder builds one part. The `build-part` skill starts it and
+runs the loop. Call it directly only for a part that you have already chosen.
 
 The builder reads the rows of the parts table and the sections of its own part, never the whole
-task file. It works in a worktree that its caller makes. It writes the tests first, then the code,
-and verifies each clause of the part's *Done when*. It writes and runs one mutant per guard,
-branch, comparison and decided edge of its change, and closes or justifies each survivor; its
-report lists every mutant with its verdict. As the last step of every round, it rereads each
-comment, docstring, message, `CHANGELOG.md`, `KNOWN_ISSUES.md` and docs line that its diff adds,
-changes or makes false, checks each claim, and fixes the false ones; its report lists the lines
-that it checked and fixed. Then it commits and returns `Verdict: ready for critic`. After each
-critic round, the caller starts a new builder on the same worktree. After a FAIL, it fixes the
-blocking defects and records other defects in the repository's `KNOWN_ISSUES.md`. After a PASS,
-it rereads the text of the whole branch, runs `julia-branch-verifier` and opens the pull request.
+task file. It works in a worktree that its caller creates. It writes the tests first, then the
+code, and verifies each clause of the part's *Done when*, the part's acceptance criteria. It
+writes and runs one mutant for each guard, branch, comparison and decided edge case of its change.
+It closes each surviving mutant, or gives a reason to keep it. Its report lists every mutant with
+its verdict.
+
+As the last step of every round, it rereads each line of text that its diff adds or changes, or
+that the diff makes false: comments, docstrings, messages, `CHANGELOG.md`, `KNOWN_ISSUES.md` and
+the docs. It checks each claim and fixes the false ones. Its report lists the lines that it
+checked and fixed. Then it commits and returns `Verdict: ready for critic`. After each critic
+round, the caller starts a new builder on the same worktree. After a FAIL, the new builder fixes
+the blocking defects and records other defects in the repository's `KNOWN_ISSUES.md`. After a
+PASS, it rereads the text of the whole branch, runs `julia-branch-verifier` and opens the pull
+request.
 
 It runs no command longer than 5 minutes. A longer run goes to its caller under *Left for the
-dispatcher*. It never merges, and it does not edit the task file. Use `julia-pr-shepherd` to take
-the pull request to green CI.
+dispatcher*. The dispatcher is the session that runs the `build-part` or `build-reviewed` skill.
+The builder never merges, and it does not edit the task file. Use `julia-pr-shepherd` to take the
+pull request to green CI.
 
 ## `julia-critic`
 
@@ -48,11 +53,12 @@ The critic of the builder-critic loop. It judges one built part against the part
 and returns `Verdict: PASS` or `FAIL`, with the defects. The `build-part` skill starts it. It
 edits nothing in the worktree.
 
-In round 1, two critics judge the whole part apart, and neither sees the builder's report. A
-critic writes its own evidence table and runs every check itself. It runs the new tests on the
-base, runs each named mutant, and probes the edges of each clause. It writes its probes only to a
-scratch directory for its round. A verify round judges only the fix diff, against the earlier
-blocking defects and their reproducers.
+In round 1, the first critic round, two critics judge the whole part independently, and neither
+sees the builder's report. A critic writes its own evidence table and runs every check itself. It
+runs the new tests on the base, runs each named mutant, and probes the edges of each clause. It
+writes its probes only to a scratch directory for its round. A verify round is a later critic
+round that checks only the fix: it judges only the fix diff, against the earlier blocking defects
+and their reproducers.
 
 Each blocking defect has a reproducer and one cause, for example `wrong result`, `spec` or
 `fix regression`. The dispatcher uses the cause to decide whether the loop continues. The critic
@@ -92,33 +98,35 @@ converges.
 
 ## `part-builder`
 
-The builder for a part whose tier cell is `reviewed`, in any language. The `build-reviewed` skill
-starts it, and starts a new one for each later round: the fix after the critic and the finish,
-with the last builder's report as the handoff note.
+The builder for a part whose part-tier cell is `reviewed`, in any language. The `build-reviewed`
+skill starts it, and starts a new one for each later round: the fix after the critic, and the
+finish, the last builder round, which opens the pull request. Each new builder gets the last
+builder's report as the handoff note.
 
-It reads its part's sections and the plan's §V and §L, which name the gate: the suite and the
-checks that the change must pass. It writes the tests first, then the code, and verifies each
-clause. Like `julia-builder`, it runs a mutant per guard, branch, comparison and decided edge of
-its change, and lists each one with its verdict, and it rereads the text of its change as the last
-step of every round. It commits and returns `Verdict: ready for critic`. After the critic's
-report, it fixes the blocking defects and records other defects. On `Round: finish` it does what §L says. In a
-package repository, it runs `julia-branch-verifier` and opens the pull request.
+It reads its part's sections and the plan's §V and §L, the plan's verification and loop sections,
+which name the gate: the suite and the checks that the change must pass. It writes the tests
+first, then the code, and verifies each clause. Like `julia-builder`, it runs a mutant for each
+guard, branch, comparison and decided edge case of its change, and lists each one with its
+verdict. It also rereads the text of its change as the last step of every round. It commits and
+returns `Verdict: ready for critic`. After the critic's report, it fixes the blocking defects and
+records other defects. On `Round: finish` it does what §L says. In a package repository, it runs
+`julia-branch-verifier` and opens the pull request.
 
 It runs no command longer than 5 minutes and does not edit the task file. Use `julia-builder` for
-a part of tier `build`, and `worker` for a task with no part and no critic.
+a part of part tier `build`, and `worker` for a task with no part and no critic.
 
 ## `part-critic`
 
-The critic for a part of tier `reviewed`. The `build-reviewed` skill starts it once per part. It
-judges the part blind against its *Done when* and returns `PASS` or `FAIL`.
+The critic for a part of part tier `reviewed`. The `build-reviewed` skill starts it once per
+part. It judges the part blind against its *Done when* and returns `PASS` or `FAIL`.
 
 It writes its own evidence table, runs the gate that §V and §L name, breaks each named mutant in a
 copy, and probes each clause's domain. It writes probes only under a scratch directory. A defect
 blocks only when it is a failure inside a clause's domain, a test that cannot fail, a surviving
 named mutant, or a hidden failure. Every other defect goes into the report for the record.
 
-It edits nothing in the work's directory and does not start a sub-agent. Use `julia-critic` for a
-part of tier `build`, and `julia-pr-reviewer` for a pull request that exists.
+It edits nothing in the directory of the work and does not start a sub-agent. Use `julia-critic`
+for a part of part tier `build`, and `julia-pr-reviewer` for a pull request that exists.
 
 ## `julia-pr-shepherd`
 
@@ -126,12 +134,13 @@ The shepherd takes a pull request on a Julia package from review to a pushed fix
 request such as "review and fix PR #NN" or "take PR #NN all the way". Start it from a directory
 in the package's checkout; it then works in a worktree of its own.
 
-It checks first that the pull request is open, is no draft, and accepts a push. Then it starts
+It checks first that the pull request is open, is not a draft, and accepts a push. Then it starts
 `julia-pr-reviewer`, which posts the review. It fixes the findings of severity `blocker`, `bug`
 and `correctness-risk`, and starts `changelog-scribe` for a changelog entry. It commits the paths
 by name, pushes, and posts one comment that answers each finding. It does not wait for CI: its
 report names the runs of the push and the `gh run watch` command for each, and its caller waits.
-A sub-agent's cache lives 5 minutes, so a wait for CI inside it writes its whole context again.
+The prompt cache of a sub-agent expires after 5 minutes, so a sub-agent that waits for CI must
+write its whole context to the cache again.
 
 It never merges and never approves. It makes one fix round only, and it stops on a design
 decision. Use `julia-pr-reviewer` when you want only a review.
@@ -144,9 +153,9 @@ such as "review PR #NN", "is this PR ready to merge" or "why is CI red on this P
 
 It works in a worktree of its own at the head of the pull request. It takes the file list from
 `git diff`, because `gh pr view --json files` stops at 100 files. It reads the CI jobs, not only
-the workflow result, and measures again each figure that the pull request claims. It reviews
-blind: the account of the change is a claim to check. It writes only the review body and its
-probes, under a scratch directory, and posts the review with `gh`.
+the workflow result, and measures each figure that the pull request claims once more. It reviews
+blind: it treats the author's description of the change as a claim to check. It writes only the
+review body and its probes, under a scratch directory, and posts the review with `gh`.
 
 It returns a findings table with `file:line` and evidence, and the CI verdict. It does not edit
 code. Use `julia-pr-shepherd` to fix the findings, and the `julia-package-audit` skill for a sweep
@@ -174,8 +183,8 @@ This agent reads the GitHub Actions results of one or more repositories. It sepa
 regressions from failures that are already known. Use it with a request such as "why is CI red"
 or "check CI across the packages". `julia-pr-shepherd` also starts it.
 
-It reads with `gh` and with the jobs of each run, not only the run's result. Its source lists many
-traps, for example a check that is missing instead of failed, or a cache that went bad on one
+It uses `gh` and reads the jobs of each run, not only the run's result. Its source lists many
+traps, for example a check that is missing instead of failed, or a corrupted cache on one
 operating system. It never reports green for a repository that it could not read.
 
 It returns one verdict per repository: `green`, `FAIL`, `expected red`, `no runs` or `drift`. An
@@ -192,7 +201,7 @@ It decides between three cases. A `pre-commit` stage blocked the commit; a `pre-
 real test failure; or a push to `main` is silent because `pre-push` runs the full suite. In the
 last case it checks the remote branch with `git ls-remote` and reports that nothing is wrong. It
 also compares the hook with the source in the harness, to find drift, and checks
-`core.hooksPath`. [Git hooks](githooks.md) describes the hooks.
+`core.hooksPath`. [Git hooks and workflows](githooks.md) describes the hooks.
 
 It does not edit a hook and never proposes `--no-verify`. When the load test of `pre-commit`
 fails, it hands over to `julia-load-doctor`. Use `ci-triage` for GitHub Actions.
@@ -237,7 +246,7 @@ figure from that PR". It follows the `julia-performance` skill, which it loads.
 It first reproduces the reported number. If the number does not reproduce, it reports that and
 stops. It measures each variant in a fresh process, after a warm-up, with the median over repeats.
 It uses `--check-bounds=auto` and prints the resolved package versions next to each reading. Then
-it changes only the change under test, and only after that looks for the cause.
+it applies only the change under test, and only after that looks for the cause.
 
 It returns a table of allocations and times, the method, the cause with `file:line`, and a
 conclusion. "Not reproducible" is a complete answer. Use the `julia-package-audit` skill for a
@@ -280,10 +289,11 @@ model of its caller.
 
 It loads no `CLAUDE.md`, memory or skill list, so it starts with a small context. It runs only
 read-only shell commands. It cites each fact as `path:line`, separates what it read from what it
-infers, and says what it did not search. A truncated search is no negative for it.
+infers, and says what it did not search. It does not treat a truncated search as a negative
+result.
 
-It changes nothing. Use `exhaustive-auditor` for an all, none or absence claim that you publish,
-and `worker` when files change.
+It changes nothing. Use `exhaustive-auditor` when you publish a claim about every instance, about
+no instance, or about the absence of something. Use `worker` when files change.
 
 ## `worker`
 

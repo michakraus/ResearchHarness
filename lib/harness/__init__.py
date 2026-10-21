@@ -14,12 +14,13 @@ class HarnessError(Exception):
     """A failure the verb reports in one line; `harness` exits 2."""
 
 
-def changing(parser):
-    """Give a verb that changes something its `--apply` flag."""
-    parser.add_argument("--apply", action="store_true", help="make the change; without it, print the plan")
+def changing(parser, help="make the change; without it, print the plan"):
+    """Give a verb that changes something its `--apply` flag, with `help` as its help."""
+    parser.add_argument("--apply", action="store_true", help=help)
     return parser
 
 
 def outcome(args, changes):
-    """The exit status of a changing verb that planned or made `changes` changes."""
+    """The exit status of a verb that changes files, given its number of `changes`, planned or
+    made."""
     return 0 if args.apply or not changes else 1

@@ -2,8 +2,8 @@
 
 The fixture is one temporary directory: a `HOME` with the dummy profile and model tables
 rendered for it, the files the verbs read below `~/.claude` and `~/.config`, and a research root,
-$RESEARCH_ROOT, with one package, one prose repository and the tree instructions,
-`Environment/Agents`. For each verb of `VERBS`:
+$RESEARCH_ROOT, with one package, one prose repository and the tree instructions. For each verb
+of `VERBS`:
 
   * with its preconditions met, the dry run exits 0 or 1, prints no traceback, and changes no
     file below the fixture — a hash of every file, `.git/` excluded, before and after;

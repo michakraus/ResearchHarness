@@ -30,7 +30,7 @@
 #     its call sites as live.
 #
 # So a `dead` verdict from this script means "nothing loaded calls it", never "nothing calls it".
-# For the second claim, sweep the text of all 38 repositories as well.
+# For the second claim, sweep the text of every repository as well.
 
 """
     methods_defined_in(targets) -> Vector{Method}

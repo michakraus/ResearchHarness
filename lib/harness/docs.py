@@ -1,37 +1,40 @@
 """The coverage of the component pages of the documentation site.
 
-Each page of `docs/src/components/` describes one kind of component. After the title and the
-introduction, the page has one level-2 section per component, and the heading names it in
-backticks: "## `advisor`", or "## `gate.jl` and `gate-test.jl`" for a script and its test. KINDS
-says which tracked files are the components of each page and how each is named. `harness test`
-checks both directions: every component has a heading on its page, and every name in backticks
-in a level-2 heading is a component of that page, so a removed component leaves no stale section.
-It also checks `docs/src/dependencies.md`: its three tables, under the level-2 headings of
-TABLES, with the columns `tool`, `minimum` and `used for`, and below them one level-3 heading per
-description, which names its tools, "Python" or "JSON, YAML and TestEnv". Every tool of the
-tables is named by a heading, and every name in a heading is a tool of the tables.
+Component pages. Each page of `docs/src/components/` describes one kind of component. After the
+title and the introduction, the page has one level-2 section per component, and the heading
+names it in backticks: "## `advisor`", or "## `gate.jl` and `gate-test.jl`" for a script and its
+test. KINDS says which tracked files are the components of each page and how each is named.
+`harness test` checks both directions: every component has a heading on its page, and every name
+in backticks in a level-2 heading is a component of that page. So a removed component leaves no
+stale section.
 
-The call graphs of `docs/src/agents-at-work.md` are drawn from `docs/figures/calls.toml`, one
-`[[call]]` entry per spawn: `caller`, `callee`, `at` (the `file:line` of the instruction that
-spawns), and optionally `effort`, where the caller sets one other than the callee's own, and
-`label`, the text on the edge. `harness test` checks that every caller and callee is an agent of
-`agents/` or a skill of `skills/`, that `at` is a line of the caller's own source that names the
-callee, and that every source with the tool `agent`, and each skill of SPAWNING_SKILLS, is the
-caller of at least one entry.
+Dependencies. `harness test` checks that `docs/src/dependencies.md` has three tables, under the
+level-2 headings of TABLES, with the columns `tool`, `minimum` and `used for`. Below them, one
+level-3 heading per description names its tools, "Python" or "JSON, YAML and TestEnv". Every
+tool of the tables is named by a heading, and every name in a heading is a tool of the tables.
 
-Each animated walk-through of the site is drawn from one file `docs/figures/walkthrough-<name>.toml`:
-its `title`, `subtitle` and `steps` (the edges in the order in which the token runs along them, each
-by its `id`, else as "from -> to"), its `[[box]]` and `[[group]]` entries, and its `[[edge]]`
-entries, each with `at`,
-the `file:line` that states the step. `harness test` reads every such file on disk, tracked or not,
-as the site's data loader does, and checks that each box of the kind `agent` or
-`skill` shows an agent of `agents/` or a skill of `skills/`, that each `at` is a line of a file of
-the repository and not a blank one, that the edges and the steps name boxes and edges of the file, and that a box
-with `effort`, the effort of its spawn, shows an agent that an entry of calls.toml spawns at it,
+Call graphs. The call graphs of `docs/src/agents-at-work.md` are drawn from
+`docs/figures/calls.toml`, one `[[call]]` entry per place where a caller starts a callee:
+`caller`, `callee`, `at` (the `file:line` of the instruction that starts it), and optionally
+`effort`, where the caller sets one other than the callee's own, and `label`, the text on the
+edge. `harness test` checks that every caller and callee is an agent of `agents/` or a skill of
+`skills/`. Each `at` is a line of the caller's own source that names the callee. Every source
+with the tool `agent`, and each skill of SPAWNING_SKILLS, is the caller of at least one entry.
+
+Walk-throughs. Each animated walk-through of the site is drawn from one file
+`docs/figures/walkthrough-<name>.toml`: its `title`, `subtitle` and `steps` (the edges in the
+order in which the token runs along them, each by its `id`, otherwise as "from -> to"), its
+`[[box]]` and `[[group]]` entries, and its `[[edge]]` entries, each with `at`, the `file:line`
+that states the step. `harness test` reads every such file on disk, tracked or not, as the data
+loader of the site does, and checks the file. Each box of the kind `agent` or `skill` shows an
+agent of `agents/` or a skill of `skills/`. Each `at` is a line of a file of the repository, and
+not a blank one. The edges and the steps name boxes and edges of the file. A box with `effort`,
+the effort with which it is started, shows an agent that an entry of calls.toml starts at it,
 from a caller that a skill or agent box of the same walk-through shows.
 
-On `docs/src/example-tree.md`, each code span that has the shape of a component's name
-(COMPONENT_SHAPE) names a component of some page, unless NOT_COMPONENTS lists it.
+Example tree. `harness test` checks that, on `docs/src/example-tree.md`, each code span that has
+the shape of a component's name (COMPONENT_SHAPE) names a component of some page, unless
+NOT_COMPONENTS lists it.
 """
 
 import pathlib

@@ -2,25 +2,27 @@
 
 ## Tests
 
-`harness test` runs three sets of cases and prints one summary line; it exits 1 when any case
-is wrong. First each module's own cases; then the hook probe, `hooks/probe.py`, which runs every
-Python hook with the same interpreter on a fixture `HOME`; then the contract sweep,
-`lib/harness/sweep.py`, which runs the dry run of every verb except `format`, `ci-protection`,
-`skill-triggers` and `doctor` on a fixture `HOME` and research root; the cases of `skill-triggers`
-run its dry run and its `--apply` on a fake `claude`, and the cases of `doctor` run it on the
-sweep's fixture with stub commands. The sweep checks the contract of
-[the `harness` command](harness-command.md): a dry run changes no
-file, a missing precondition exits 2 with one line, and for the four verbs it applies, a dry run
-after `--apply` has nothing to do. Each fixture lives in a temporary directory, so the cases need
-nothing from the machine's own `HOME`.
+`harness test` runs three sets of test cases and prints one summary line. It exits 1 when a test
+case fails. The three sets run in this order:
 
-`harness test` runs the Python cases: each module's own cases, the hook probe and the contract
-sweep, as described above. It needs nothing from the machine's own `HOME`, and it passes wherever
-the checkout lies, below `/tmp/` or `$TMPDIR` too. The hook probe loads `adapters/omp/guards.ts`
-and the OpenCode plugins `adapters/opencode/plugins/*.ts` under `node`, so `node` must be on
-`PATH`; a missing `node` is a wrong case. The cases of `lib/harness/script_cases.py` run the
-package copies of `run-tests.jl` and the critic with `rsync`, and `scripts/spec-gate.py` on a
-fixture task file; they need no Julia.
+1. Each module's own cases.
+2. The hook probe, `hooks/probe.py`, which runs every Python hook with the same interpreter on a
+   fixture `HOME`.
+3. The contract sweep, `lib/harness/sweep.py`, which runs the dry run of every verb except
+   `format`, `ci-protection`, `skill-triggers` and `doctor` on a fixture `HOME` and research tree.
+   The cases of `skill-triggers` run its dry run and its `--apply` on a fake `claude`, and the
+   cases of `doctor` run it on the sweep's fixture with stub commands.
+
+The sweep checks the contract of [the `harness` command](harness-command.md): a dry run changes
+no file, a verb with a missing precondition exits with status 2 and prints one line, and for the
+four verbs that it applies, a dry run after `--apply` has nothing to do. Each fixture lives in a
+temporary directory, so the cases need nothing from the machine's own `HOME`.
+
+`harness test` passes wherever the checkout lies, below `/tmp/` or `$TMPDIR` too. The hook probe
+loads `adapters/omp/guards.ts` and the OpenCode plugins `adapters/opencode/plugins/*.ts` under
+`node`, so `node` must be on `PATH`; a missing `node` makes a test case fail. The cases of
+`lib/harness/script_cases.py` run the package copies of `run-tests.jl` and the critic with
+`rsync`, and `scripts/spec-gate.py` on a fixture task file; they need no Julia.
 
 ## The pre-push hook
 
@@ -34,22 +36,23 @@ pushed commit and runs there.
 
 First come the two leak checks, before the suite, so a refused push costs seconds. They check
 the tree at the pushed commit and every commit that the push brings to `main`
-(`git rev-list <old>..<sha>`, as CI scans them; the whole history for a new `main`), so a leak
-that a later commit removes or renames away still refuses the push, also when a branch on
-`origin` already holds the commit. `gitleaks` finds the public shapes, tokens, keys and home
-paths, with `.gitleaks.toml`: gitleaks' default rules and a `home-path` rule that allows only
-`/Users/me` and `/home/example`. `harness leaks --commits` finds the private strings of the profile's `leak` list and the names
-of the research tree, in the files and their paths. Both also search the message of each commit
-that the push sends, its subject and body: `gitleaks git` reads no message, so the hook pipes
-the messages (`git log --no-walk --format=%B`) into `gitleaks stdin`, and `harness leaks
---commits` reports a hit there as `<sha12> message:<n>`. The author and committer, a tag message
-and `git notes` are not searched. Each gitleaks call passes `--redact` and
-`--ignore-gitleaks-allow`, so a `gitleaks:allow` comment has no effect; a false positive is
-fixed in the text. The checks fail closed: no `gitleaks` on `PATH`, a `gitleaks` older than 8.21
-or a version it cannot read, no profile, an empty `leak` list, or a check that fails each refuse
-the push with one line. None is a skip. **gitleaks 8.21 or later is a required local tool**
-(`brew install gitleaks`); 8.19 added the `git`, `dir` and `stdin` commands, and 8.21 is the
-first release with several allowlists per rule, `[[rules.allowlists]]`.
+(`git rev-list <old>..<sha>`, as CI scans them; the whole history for a new `main`). So a leak
+that a later commit deletes or renames still refuses the push. This is also true when a branch
+on `origin` already holds the commit. `gitleaks` finds known secret patterns, such as tokens and
+keys, and home paths, with `.gitleaks.toml`: gitleaks' default rules and a `home-path` rule that
+allows only `/Users/me` and `/home/example`. `harness leaks --commits` finds the private strings
+of the profile's `leak` list and the names of the research tree, in the files and their paths.
+Both also search the message of each commit that the push sends, its subject and body:
+`gitleaks git` reads no message, so the hook pipes the messages
+(`git log --no-walk --format=%B`) into `gitleaks stdin`, and `harness leaks --commits` reports a
+hit there as `<sha12> message:<n>`. The author and committer, a tag message and `git notes` are
+not searched. Each gitleaks call passes `--redact` and `--ignore-gitleaks-allow`, so a
+`gitleaks:allow` comment has no effect; a false positive is fixed in the text. The checks fail
+closed. Each of these refuses the push with a one-line message: no `gitleaks` on `PATH`, a
+`gitleaks` older than 8.21 or a version that it cannot read, no profile, an empty `leak` list, or
+a check that fails; the hook skips none of them. **gitleaks 8.21 or later is a required local
+tool** (`brew install gitleaks`); 8.19 added the `git`, `dir` and `stdin` commands, and 8.21 is
+the first release with several allowlists per rule, `[[rules.allowlists]]`.
 
 Then it runs `bin/harness test` on `python3` and on `python3.11`, the compile check
 `python3.11 -m compileall -q lib hooks scripts adapters`, and `shellcheck -S warning` over the
@@ -57,9 +60,9 @@ shell files.
 Then it runs the Julia test files that the changed paths of the pushed range select: a change
 to `scripts/mutate.jl` selects `scripts/run-tests-test.jl`, a change to `Project.toml` all ten,
 and a change to `README.md` none. It prints each file's name and its usual time before it runs
-it; `scripts/run-tests-test.jl` is silent for about 11 minutes. No `python3` of 3.11 or later
-refuses the push. A missing `python3.11`, `shellcheck` or `julia` prints one `skip` line, because
-CI runs them. Enable the hook once per checkout:
+it; `scripts/run-tests-test.jl` is silent for about 11 minutes. Without a `python3` of 3.11 or
+later, the hook refuses the push. A missing `python3.11`, `shellcheck` or `julia` prints one
+`skip` line, because CI runs them. Enable the hook once per checkout:
 
 ```bash
 git config core.hooksPath .githooks
@@ -111,9 +114,9 @@ a value for the dark theme. It finds the four walk-throughs by their titles, and
 animated figure: its SVG parses as XML, it holds no script, it loops, it stops under
 `prefers-reduced-motion`, and its token and its steps keep their timing. It first runs the cases
 of `docs/scripts/figures.test.mjs` and `docs/scripts/newcomer.test.mjs`. Last,
-`docs/scripts/newcomer.mjs` checks the newcomer pages that it names: the glossary of
-`concepts.md` has one entry for each of its terms, the first use of a term on each newcomer page
-links its entry, and no newcomer page holds a `file:line`.
+`docs/scripts/newcomer.mjs` checks the introductory pages for new readers, which it lists: the
+glossary of `concepts.md` has one entry for each of its terms, the first use of a term on each of
+these pages links to its entry, and none of these pages holds a `file:line`.
 
 The figures are Vue components in `docs/.vitepress/theme/figures/`, which the build renders to
 inline SVG, so a page shows them with JavaScript off. `FigCard`, `FigPanel` and `FigArrow` draw a

@@ -7,7 +7,7 @@ them. `harness githooks --apply` copies one, `test-layout.jl`, into each reposit
 ends in `-test.jl` holds the tests of the script beside it. `.githooks/pre-push` of this
 repository runs these test files, as [Development](../development.md) describes.
 
-The Julia scripts load their packages from the environment that `harness install --apply` makes
+The Julia scripts load their packages from the environment that `harness install --apply` creates
 in `~/.local/share/research-harness/julia/` (see
 [The Julia environment](../harness-command.md#the-julia-environment)). The variable
 `RESEARCH_HARNESS_JULIA` names another location. So no caller gives `--project`. Always give
@@ -28,9 +28,10 @@ julia --startup-file=no test-layout.jl --check <repository> ...
 ```
 
 It prints one line per violation, `<repository>: [<rule>] <what>`, and exits 1 when it finds
-one. A repository in the convention gives no output and exit 0. It does not check D6, the 60 s
-limit of a `core` file; `run-tests.jl <repository> core` reports that. It does not check the JET
-half of D4 either.
+one. A repository in the convention gives no output and exit status 0. It does not check rule D6,
+the 60 s limit of a `core` file; `run-tests.jl <repository> core` reports that. Nor does it check
+the JET part of rule D4, the quality files: `test/quality/jet.jl` where the package has a hot or
+kernel path.
 
 `harness githooks --apply` copies the script into `.githooks/` of each repository. The
 `pre-commit` hook (see [Git hooks and workflows](githooks.md)) runs that copy on a commit that
@@ -149,7 +150,7 @@ the base. The run uses a copy under `~/Research/.scratch/mutants/`: the tree of 
 `src/` and `ext/` of the base. A `<unit>` is as for `run-tests.jl`. Without units, the script
 runs the units that the diff against `origin/main` reaches.
 
-The verdict is one for all units: PINS when every unit passes, FAILS when one fails. For a
+The script gives one verdict for all units: PINS when every unit passes, FAILS when one fails. For a
 verdict per test file, give one unit per call. An exit of `run-tests.jl` other than 0 or 1 gives
 UNKNOWN.
 
@@ -175,8 +176,8 @@ The skill `build-part` names it for the agents `julia-builder` and `julia-critic
 
 ## `gate.jl` and `gate-test.jl`
 
-`gate.jl` runs the checks that a script can run before a critic reads a head, and writes one
-short report, `<out-dir>/gate.md`.
+`gate.jl` runs the checks that a script can run before a critic reviews the head of the branch,
+and writes one short report, `<out-dir>/gate.md`.
 
 ```bash
 julia --startup-file=no gate.jl <package> <out-dir> [--base <ref>] [--named <list>]... [--jobs <n>] [--no-sweep]
@@ -192,8 +193,9 @@ The steps run in this order, each with its full log under `<out-dir>`:
    this step.
 4. `format`: JuliaFormatter on the `.jl` files that the diff against `<base>` adds or changes.
 
-Exit 0: each step that can fail passes. 1: a step fails. 2: bad arguments. 3: a step gave no
-verdict, and no other step failed. No skill or agent in this repository calls it by name.
+The exit status is 0 when each step that can fail passes, 1 when a step fails, 2 on bad
+arguments, and 3 when a step gave no verdict and no other step failed. No skill or agent in this
+repository calls it by name.
 
 `gate-test.jl` checks each step on given outputs, and the refusal of bad arguments
 (`julia --startup-file=no gate-test.jl`). It does not run the whole gate.
@@ -211,7 +213,8 @@ julia --startup-file=no julia-methods.jl <package-dir> --all
 
 The first argument is a path. The script asks the language server of `fatou` for the symbols of
 each file, through `fatou-lsp.jl`. It reports definitions only. It does not say which method a
-call dispatches to, and it does not find callers. An empty result exits 1 and is not a negative.
+call dispatches to, and it does not find callers. On an empty result, the script exits with
+status 1; an empty result is not a negative result.
 
 The skill `julia-structure`, the rule `julia-code` and the agents `exhaustive-auditor`,
 `julia-branch-verifier`, `julia-critic` and `julia-load-doctor` use it. For dispatch, use
@@ -298,12 +301,13 @@ declined, done or in review is not open. A named part is checked in any state. A
 
 It also checks that the **Files** of each checked part other than a `direct` one lie in one
 repository. An isolated builder cannot write outside its worktree, so a file in another
-repository is a step of the dispatcher.
+repository is a step of the dispatcher, the session that runs the `build-part` or
+`build-reviewed` skill.
 
 It prints one line per part: PASS, MISSING with the labels, SPANS with the repositories, or EXEMPT
-with the reason. Exit 0: each checked part passes or is exempt. 1: a part misses a label or spans
-two repositories. 3: the script failed. It reads the parts table through `parts-table.awk`. The
-skills `build-part`, `build-reviewed` and `plan-parts` run it.
+with the reason. The exit status is 0 when each checked part passes or is exempt, 1 when a part
+misses a label or spans two repositories, and 3 when the script failed. It reads the parts table
+through `parts-table.awk`. The skills `build-part`, `build-reviewed` and `plan-parts` run it.
 
 ## `known-issues-similar.py`
 
@@ -321,16 +325,17 @@ computes the cosine of each pair of entries. A `--pair` names a known pair; the 
 rank to stderr. `--threshold` and `--out` go together: the script then writes each pair at or
 above the threshold, with both texts, to the file.
 
-It only proposes. A person decides whether a pair is one issue. Exit 1 when Ollama fails, the
-model is missing, or a `--pair` needle does not match exactly one entry; it then writes nothing.
+It only proposes. A person decides whether a pair is one issue. The script exits with status 1
+when Ollama fails, the model is missing, or a `--pair` needle does not match exactly one entry;
+it then writes nothing.
 No skill or agent calls it.
 
 ## `wiki-lint.jl`
 
 `wiki-lint.jl` checks the structure of the Markdown in the prose repositories of the research
 tree: the vaults `Knowledge/` and `Environment/`, and the reference trees `Tasks/`,
-`Bibliography/` and `Library/`. It finds a sentence that the tree made false, for example a
-broken link, a path that does not exist, or a line citation past the end of its file.
+`Bibliography/` and `Library/`. It finds text that a later change of the tree made false, for
+example a broken link, a path that does not exist, or a line citation past the end of its file.
 
 ```bash
 julia --startup-file=no wiki-lint.jl
@@ -343,9 +348,10 @@ Without a name, the script checks every tree.
 
 A vault gets every check. A reference tree gets the checks of paths and line citations; `Tasks/`
 gets the schema of the task board too. The script skips each `CHANGELOG.md`. A finding is an
-ERROR or a WARN. Exit 0: no ERROR, and with `--strict` no WARN. 1: a finding at the failing
-level. 2: the lint could not run. It reads only the working tree: no model, no index, no
-network. The research root is `$RESEARCH_ROOT`, else `~/Research`.
+ERROR or a WARN. The exit status is 0 when there is no ERROR, and with `--strict` no WARN; 1 on a
+finding at the failing level; and 2 when the lint could not run. It reads only the working tree:
+no model, no index, no network. The research root is `$RESEARCH_ROOT`, or `~/Research` if it is
+not set.
 
 The hook `pre-commit-wiki` (see [Git hooks and workflows](githooks.md)) runs it with `--quiet`
 before each commit in a prose repository.
@@ -362,7 +368,7 @@ python3 startup-tokens.py --days 30
 
 For each transcript it takes the usage of the first API call: the total input, the cache read
 and the cache write. That call includes the first prompt. It groups main sessions by entry point,
-and subagents by agent type and entry point, and prints the medians. It changes no file. No
+and sub-agents by agent type and entry point, and prints the medians. It changes no file. No
 skill or agent calls it. For the token use after the start, use `session-tokens.py`.
 
 ## `session-tokens.py`
@@ -380,7 +386,7 @@ It prints four reports:
 1. The size of the context per API call, in bands, with its cost in input-token equivalents.
 2. The tool results by tool, with the cost that each result carries in the later calls.
 3. Waste patterns: a whole-file read of a file that the session read before and did not edit; a
-   shell command again with the same output; a call repeated after an error; a run of errors.
+   shell command repeated with the same output; a call repeated after an error; a run of errors.
 4. The compactions.
 
 It estimates the tokens of a tool result at 3.5 characters per token. The usage figures come from
@@ -411,16 +417,17 @@ julia --startup-file=no scripts/audit/tense-lint.jl instructions.tsv --kind agen
   rewrites after a pause. It also writes the tool calls per run, the 500 largest tool results, and
   the prompt and report of each run of a loop agent. Only records with a timestamp in the window
   count.
-- `report.jl` reads those tables and writes the reports: tokens per part and tier, critic rounds
-  to a PASS, the advisor and arbitrator calls, the largest tool results, the first-call context per
-  agent type, and the cache rewrites. It also writes a GraphQL query for the loop's pull requests.
-  `gh` reads a token that the sandbox denies to a script, so the query runs as a command of its own,
-  and its output goes into `prs.tsv`; the script's header gives the command. With `prs.tsv`, the
+- `report.jl` reads those tables and writes the reports: tokens per part and part tier, critic
+  rounds to a PASS, the advisor and arbitrator calls, the largest tool results, the first-call
+  context per agent type, and the cache rewrites. It also writes a GraphQL query for the loop's
+  pull requests. `gh` reads a token that the Claude Code sandbox denies to a script, so the query
+  runs as a command of its own, and its output goes into `prs.tsv`; the script's header gives the
+  command. With `prs.tsv`, the
   reports add the state, the commits after opening and the failing checks of each pull request.
 - `sample.jl` draws a sample of parts, seeded by a SHA-256 hash, so the draw does not depend on the
   Julia version. It writes one dossier per part for a reader.
-- `taxonomy.jl` counts the failure lines that the readers return, by class, stage, preventing file
-  and reason.
+- `taxonomy.jl` counts the failure lines that the readers return: by class, by stage, by the file
+  that could prevent the failure, and by reason.
 - `crosscheck.sh` computes two totals of `transcripts.jl` again with `jq`, on a path that shares
   no code with it: all context tokens, and the cache reads of the `julia-builder` runs.
 - `instructions.jl` writes `instructions.tsv`, one row per instruction file: the agents, skills,
@@ -479,7 +486,7 @@ On macOS the script reads the profile key `launchd_prefix` for the label of the 
 shows a notification. Without the notifier on the `PATH`, the log line is the only report. When
 no `lsof` is on the `PATH`, the server check fails and the job restarts nothing. A restart that
 fails is a failure, with its output in the log, and so is a restart with no service manager on
-the `PATH`. Exit 1 when a step fails.
+the `PATH`. The script exits with status 1 when a step fails.
 
 `julia-update-test.jl` runs the script on a fixture home with stubs of every tool it calls, on the
 system it runs on (`julia --startup-file=no julia-update-test.jl`). CI runs it on Linux.

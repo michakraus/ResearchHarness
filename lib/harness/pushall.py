@@ -2,20 +2,21 @@
 
     harness push-all [--apply] [--skip-hooks] [--include-topic-branches]
 
-RUN THIS YOURSELF, IN YOUR OWN TERMINAL, AND EXPECT IT TO TAKE HOURS. Not from an agent session:
-a tool call is capped at ten minutes, and the pre-push hook runs a full suite per repository — a
-few minutes in most, 10–30 in the large packages. Killing it mid-test orphans the Julia child,
-which then invalidates precompile caches for days.
+Where to run it. Run this yourself, in your own terminal, and expect it to take hours. Not from
+an agent session: a tool call is capped at ten minutes, and the pre-push hook runs a full suite
+per repository — a few minutes in most, 10–30 in the large packages. Killing it mid-test orphans
+the Julia child, which then invalidates precompile caches for days.
 
-SEQUENTIAL, NEVER PARALLEL. The packages depend on each other, and two test runs that load the same
-package with different CacheFlags invalidate each other's precompiled images. The failure reads
-as a cascade of MethodErrors that look exactly like broken code. "Different repository" is not
-"disjoint packages".
+One push at a time. The pushes run in sequence, never in parallel. The packages depend on each
+other, and two test runs that load the same package with different CacheFlags invalidate each
+other's precompiled images. The failure reads
+as a cascade of MethodErrors that look exactly like broken code. Two repositories can still share
+packages.
 
-WHEN --skip-hooks IS HONEST. The pre-push hook runs the full suite when pushing to main or master:
+When to use --skip-hooks. The pre-push hook runs the full suite when pushing to main or master:
 the right gate for a source change. For a change that touches no Julia source — a workflow, a
 README, a CHANGELOG — the suite says nothing about the change, and CI runs on the push anyway. It
-is NOT honest when the push contains Julia source or a [compat] change. The dry run names the
+is NOT appropriate when the push contains Julia source or a [compat] change. The dry run names the
 `.jl` files of each push. A repository whose main does not load cannot pass its suite, and
 without --skip-hooks its push is refused.
 
@@ -87,7 +88,11 @@ def cmd_push_all(args):
 
 
 def register(sub):
-    p = changing(sub.add_parser("push-all", help="push every package and experiment ahead of its upstream"))
+    p = changing(sub.add_parser("push-all", help="push every package and experiment ahead of its upstream",
+                                description="Push each git repository below Packages/ and Experiments/ whose branch "
+                                            "is ahead of its upstream, one at a time. Without --apply it lists the "
+                                            "pushes and exits 1 when there is one; --apply pushes. The pre-push hook "
+                                            "can run a full suite per repository, so run it in your own terminal."))
     p.add_argument("--skip-hooks", action="store_true", help="push with --no-verify: no pre-push suite")
     p.add_argument("--include-topic-branches", action="store_true", help="also push a repository on a topic branch")
     p.set_defaults(run=cmd_push_all)

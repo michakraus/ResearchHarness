@@ -1,12 +1,12 @@
 # Agents at work
 
-An agent can start another agent. Claude Code calls this a *spawn*: the first agent gives a task
+An agent can start another agent. This page calls this a *spawn*: the first agent gives a task
 to a new agent, the new agent works in a context of its own, and it returns one report. Some
 skills spawn agents too. A skill runs in the session that loads it, so the session does the spawn.
 
 This page shows who spawns whom. Each figure is a call graph: a box is an agent or a skill, and an
 arrow goes from the caller to the agent that it spawns. The text on an arrow says when or why the
-caller spawns.
+caller spawns the agent.
 
 ## How to read a figure
 
@@ -14,7 +14,7 @@ Each box shows three facts:
 
 - **The name**, in bold. A blue box is an agent of `agents/`. A yellow box is a skill of
   `skills/`.
-- **The model.** The source names a tier, `large`, `medium` or `small`, and the `[claude]` table
+- **The model.** The source names a model tier, `large`, `medium` or `small`, and the `[claude]` table
   of `examples/models.toml` gives the model of each tier: `opus`, `sonnet` and `haiku`. Your own
   `models.toml` changes these models (see [profile.md](profile.md)). A source with no `model:`
   runs on the model of its caller, and its box says "the caller's model". A skill runs in the
@@ -23,10 +23,11 @@ Each box shows three facts:
   the session, and its box says "the session's effort". Where a caller sets a different effort for
   one spawn, the arrow says so: "at high effort".
 
-The figures show Claude Code. The councils of OpenCode and oh-my-pi are not drawn.
+The figures show Claude Code. OpenCode and oh-my-pi can run a council: copies of an agent on
+other models, each copy a seat. The figures do not draw the councils.
 
 The arrows come from one file, `docs/figures/calls.toml`. It has one entry for each spawn, with
-the `file:line` of the instruction that spawns. `harness test` checks each entry against the
+the `file:line` of the instruction that spawns the agent. `harness test` checks each entry against the
 sources, and the docs build draws the figures from it. So a figure changes when an agent changes.
 
 ## The builder-critic loop: `build-part`
@@ -36,23 +37,25 @@ title: The calls of build-part
 desc: The build-part skill spawns julia-builder, julia-critic in round 1 at high effort and in each verify round at its own effort, julia-test-runner, advisor and arbitrator. julia-builder spawns julia-branch-verifier and changelog-scribe.
 ```
 
-You start `build-part` in your session when a part of a task file is ready to build. The skill
-does not write code. It spawns `julia-builder` to build the part, and then a new `julia-critic`
-to judge the result. In round 1, two critics judge at high effort, and each one sees only the
-branch, never the builder's report. The critic that judges a fix sees only the fix. Beside each
+A part is one pull request of a plan. You start `build-part` in your session when a part is ready
+to build. The skill does not write code. It spawns `julia-builder` to build the part, and then a
+new `julia-critic` to judge the result. In the first critic round, two critics judge at high
+effort, and each one sees only the branch, never the builder's report. In each later verify
+round, which checks only the fix, the critic sees only the fix. Beside each
 critic, `julia-test-runner` runs the full test suite. A question inside the loop goes to the
 `advisor`, and a loop that does not converge goes to the `arbitrator`. Before the pull request,
 the builder spawns `julia-branch-verifier`, and it can spawn `changelog-scribe` for a fix of the
 CHANGELOG.
 
 The work is split because a context that wrote the code does not judge it well. A fresh critic
-with no knowledge of the builder's reasons finds more defects. A long suite run goes to a small
-agent, so that the large contexts of the builder and the critic do not wait on it.
+with no knowledge of the builder's reasons finds more defects. A long test run goes to an agent
+on a small model, so that the large contexts of the builder and the critic do not wait on it.
 
 <WalkThrough name="build-part" />
 
-*From a task to a pull request with build-part.* `plan-parts` writes the parts table, and
-`build-part` runs one part. In round 1, two critics judge the work at high effort beside a run of
+*From a task to a pull request with build-part.* The `plan-parts` skill writes the parts table,
+the list of the parts of a plan, and `build-part` runs one part. In the first critic round, two
+critics judge the work at high effort beside a run of
 the full suite. After a FAIL, a new builder fixes the work, and one critic judges the fix. The
 second FAIL goes to the arbitrator. After a PASS, a new builder finishes the part and opens the
 pull request. The figure shows the default models of Claude Code. Your `models.toml` can add a
@@ -67,19 +70,21 @@ desc: The build-reviewed skill spawns part-builder, part-critic and julia-test-r
 
 A part of tier `reviewed` is small, with a fast gate. You start `build-reviewed` in a session on
 the large model. It spawns one `part-builder`, and a new one for each later round. When the builder
-is ready, the skill spawns one `part-critic`, which judges the work once and blind. A run longer
+is ready, the skill spawns one `part-critic`, which judges the work once, without seeing the
+builder's report. A run longer
 than five minutes goes to `julia-test-runner`. Before the pull request, the builder spawns
 `julia-branch-verifier`.
 
 The split is smaller here: one builder, one critic. Your session reads the result before the
-finish, so it is the second reviewer.
+finish, the last builder round, which opens the pull request. So your session is the second
+reviewer.
 
 <WalkThrough name="build-reviewed" />
 
 *From a task to a pull request with build-reviewed.* The skill spawns one `part-builder`, and one
 `part-critic` judges its work. After a FAIL, a new builder fixes the findings, and your session
-checks the fix before it sends the finish. With a PASS, your session reads the result, and then
-it sends the finish.
+checks the fix before it tells the builder to finish the part. With a PASS, your session reads
+the result, and then it tells the builder to finish the part.
 
 ## From review to green CI: `julia-pr-shepherd`
 
@@ -107,6 +112,6 @@ desc: Every edge of calls.toml: the build-part, build-reviewed, plan-parts and j
 This figure shows every entry of `calls.toml`. It adds two skills: `plan-parts` sends each part's
 spec to a `reader` that measures its facts, and `julia-structure` sends a claim that nothing uses
 a name to `exhaustive-auditor`. An agent that is not in this figure is spawned
-only from your session. Only the agents with the tool `agent` can spawn: `julia-builder`,
-`part-builder` and `julia-pr-shepherd`. Each spawn costs a new context, so an agent spawns only
-where a fresh context or a smaller model does the work better.
+only from your session. Only the agents with the tool `agent` can spawn another agent:
+`julia-builder`, `part-builder` and `julia-pr-shepherd`. Each spawn costs a new context, so an
+agent spawns another only where a fresh context or a smaller model does the work better.

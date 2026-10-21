@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Ask before a session leaves `~/Research`, or removes a worktree through the harness.
+"""Ask before a session leaves `~/Research`, or removes a worktree through Claude Code.
 
 A `PreToolUse` hook on the matcher `mcp__ccd_directory__.*|EnterWorktree|ExitWorktree`:
-the app's `change_directory` and `request_directory`, and the two worktree tools. All four
-are in `allow`, and this hook carves out the calls the `allow` must not cover.
+the `change_directory` and `request_directory` tools of the Claude desktop app, and the two
+worktree tools of Claude Code. All four are in `allow`, and this hook carves out the calls the
+`allow` must not cover.
 
   * **`change_directory`, `request_directory`, `EnterWorktree` with a `path`** — no output
     when the path resolves inside `~/Research`, after `~`, `..` and symlinks. Else "ask".

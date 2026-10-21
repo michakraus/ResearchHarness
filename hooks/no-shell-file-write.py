@@ -26,7 +26,8 @@ passes first, whatever is below it: `$TMPDIR`, `/tmp/`, `/private/tmp/`, `/var/f
 
   * **in a git working tree** — a `.git` at or above it — every file is refused, whatever
     its suffix, unless `git check-ignore` says git ignores it: a log under `runs/` passes;
-  * **outside one** — `Talks/`, `Notes/`, and the files of the bare meta repository — a file
+  * **outside one** — for example a prose directory of the research tree, or the files of
+    the bare meta repository — a file
     with a source suffix is refused, and so is a relative one whose directory is unknown.
 
 A `>&2`-style duplication writes no file. An in-place edit passes when its last operand is

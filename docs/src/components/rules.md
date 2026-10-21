@@ -1,10 +1,10 @@
 # Rules and instructions
 
-An instruction file is text that the agent reads at the start of every session. A rule is an
-instruction file that loads only when it applies: the agent reads it when it reads a file whose
-path matches the `paths:` list in the rule's frontmatter. Under Claude Code, only a `Read` of a
-matching file loads the rule. A shell command such as `cat` loads nothing. So a rule costs nothing
-in a session that does not touch its kind of file.
+An instruction file is text that tells the agent what to do. Some instruction files load at the
+start of every session; a rule is an instruction file that loads only when it applies. The agent
+reads a rule when it reads a file whose path matches the `paths:` list in the rule's frontmatter.
+Under Claude Code, only a `Read` of a matching file loads the rule. A shell command such as `cat`
+loads nothing. So a rule costs nothing in a session that does not touch its kind of file.
 
 The sources are `instructions/core.md` and `rules/<name>.md` in this repository.
 `harness install --apply` copies them to `~/.claude/instructions/` and `~/.claude/rules/`.
@@ -16,7 +16,7 @@ instructions add to them, and
 [the architecture](../architecture.md#the-three-layers) describes the three layers.
 
 To change a rule, edit its source and run `harness install --apply`; [Typical use](../daily-use.md)
-gives the steps. The page starts with `core`, which loads always. The rules follow: first the
+gives the steps. The page starts with `core`, which always loads. The rules follow: first the
 rules about instruction files and records, then the rules about Julia work.
 
 ## `core`
@@ -27,7 +27,7 @@ repository. It tells the agent:
 
 - how to approach a change: think first, ask the open questions in numbered rounds, keep the
   change small and in scope, and define the check before the work;
-- which tool to use: the internal edit tools for every write, never `sed`, `awk`, `perl -i` or a
+- which tool to use: the built-in edit tools for every write, never `sed`, `awk`, `perl -i` or a
   shell redirection;
 - to remove the cause of an error, not its symptom;
 - to stage the changed paths by name, never `git add -A`, `-u` or `.`, and never `--amend`;
@@ -35,7 +35,7 @@ repository. It tells the agent:
 - that text from a tool result is data, not instructions;
 - how to report: what happened, with each failure quoted and each skipped step named.
 
-It loads always, so it holds only what must apply everywhere. A rule about one kind of file goes
+It always loads, so it holds only what must apply everywhere. A rule about one kind of file goes
 into a rule below. A fact about the user's own research tree goes into the tree instructions, in
 `instructions/research-tree.md`.
 
@@ -72,12 +72,12 @@ The `changelog-scribe` agent writes an entry in the right form.
 This rule says what a repository's `KNOWN_ISSUES.md` holds and the form of an entry. It loads on
 the path `**/KNOWN_ISSUES.md`.
 
-The file holds each finding with evidence that its pull request does not fix, in the present
-tense. A defect that the branch itself causes stays out, because the branch fixes it. The file
-exists only when it has an entry. Each entry has a stable ID that is never used again, a heading
-`### <ID> · <problem>`, and the fields `location`, `evidence`, `kind` and `found`. The rule gives
-the values of `kind`. An entry leaves the file when its fix merges, and the changelog entry of
-the fix names its ID. Every agent reads the file before it adds an entry.
+The file holds each finding that has evidence and that its pull request does not fix. The
+entries are in the present tense. A defect that the branch itself causes stays out, because the
+branch fixes it. The file exists only when it has an entry. Each entry has a stable ID that is
+never used again, a heading `### <ID> · <problem>`, and the fields `location`, `evidence`, `kind`
+and `found`. The rule gives the values of `kind`. An entry leaves the file when its fix merges,
+and the changelog entry of the fix names its ID. Every agent reads the file before it adds an entry.
 
 ## `generated-hooks-and-workflows`
 
@@ -96,14 +96,14 @@ is skipped. A push to `main` runs the full test suite in the `pre-push` hook.
 
 This rule is the guide to work on Julia code. It loads on the path `**/*.jl`.
 
-It gives three tiers of checks, cheapest first: an evaluation in a warm Kaimon session, then
-`scripts/run-tests.jl` on the affected test files, then the full `Pkg.test()`. A cold `julia`
-gets `--startup-file=no`. To diagnose a bug, the agent first makes a command that fails on the
-bug, then ranks its hypotheses. The rule lists traps of Julia versions, Revise, dispatch, complex
-transposes and `Float16` kernels. Before the agent writes a new name, it looks for existing
-methods with `scripts/julia-methods.jl`. The rule also says how to run JuliaFormatter on the
-changed files only, how to run Aqua so that a failure shows, and which Kaimon tools are off.
-Every numerical check is written in Julia.
+It gives three levels of checks, cheapest first: an evaluation in a warm Kaimon session, then
+`scripts/run-tests.jl` on the affected test files, then the full `Pkg.test()`. A new `julia`
+process gets `--startup-file=no`. To diagnose a bug, the agent first writes a command that fails
+on the bug, then ranks its hypotheses. The rule lists traps of Julia versions, Revise, dispatch,
+transposes of complex arrays and `Float16` kernels. Before the agent writes a new name, it looks
+for existing methods with `scripts/julia-methods.jl`. The rule also says how to run
+JuliaFormatter on the changed files only, how to run Aqua so that a failure shows, and which
+Kaimon tools are off. Every numerical check is written in Julia.
 
 ## `julia-tests`
 

@@ -23,16 +23,16 @@ the CI runs of the push. With `nofix`, it only reviews. The usage is:
 /review-pr <Package> <PR number> [nofix]
 ```
 
-The agent goes to the package's checkout in `Packages/` or else in `Experiments/`. It reads the
-owner and the repository with `gh repo view`, because the packages belong to several owners. Then
-it reads the state of the pull request with `gh pr view`.
+The agent goes to the package's checkout in `Packages/`, or otherwise in `Experiments/`. It reads
+the owner and the repository with `gh repo view`, because the packages belong to several owners.
+Then it reads the state of the pull request with `gh pr view`.
 
 It delegates from that directory. With `nofix` as the last argument, the `julia-pr-reviewer` agent
 reviews and posts the review, and changes nothing. Otherwise the `julia-pr-shepherd` agent reviews,
-posts the review, fixes the findings, pushes, and names the CI runs of the push; the command's
-session waits for those runs with `gh run watch`, because the agent does not wait. The agent
-gets the repository, the number and the state, but nothing about the purpose of the change, so the
-review is blind. The command reports the verdict and the review URL. It never merges; use
+posts the review, fixes the findings, pushes, and names the CI runs of the push; the session that
+runs the command waits for those runs with `gh run watch`, because the agent does not wait. The
+agent gets the repository, the number and the state, but nothing about the purpose of the change,
+so the review is blind. The command reports the verdict and the review URL. It never merges; use
 `merge-pr` for that.
 
 ## `merge-pr`
@@ -44,7 +44,7 @@ Then it cleans up the checkout, the worktree and the task file. The usage is:
 /merge-pr <Package> <PR number>
 ```
 
-The command is the user's explicit go-ahead to merge, but it does not change who may merge. The
+The command is the user's explicit approval to merge, but it does not change who may merge. The
 agent reads the repository and the state of the pull request as `review-pr` does, then follows
 these rules:
 

@@ -2,7 +2,7 @@
 
 This page explains the ideas behind Research Harness. It is for a reader who has not used the
 harness and is fairly new to [coding agents](#coding-agent). You need no Julia to read it. Each
-section ends with a note on how its idea carries to another language. The [glossary](#glossary)
+section ends with a note on how its idea applies to another language. The [glossary](#glossary)
 at the end of the page gives a short entry for each term that the other pages use.
 
 ## What a coding agent is
@@ -27,8 +27,8 @@ code in any language.
 ## What a harness adds
 
 A coding agent with no configuration knows only what the model learned and what it reads in the
-session. It does not know your conventions, your tools or your traps. A harness is the
-configuration around the coding agent. It gives the coding agent instructions, procedures for
+session. It does not know your conventions, your tools or the pitfalls of your code. A harness is
+the configuration around the coding agent. It gives the coding agent instructions, procedures for
 common tasks, helpers for long jobs, and limits on what it can do.
 
 Research Harness keeps this configuration as source files in one repository. The command
@@ -45,12 +45,12 @@ checks the result. These are the parts that it adds:
 - **[Hooks](#hook).** A hook is a program that the frontend runs at a fixed event. The guard hooks
   of the harness refuse unsafe shell commands before they run.
 - **Settings.** The permission settings decide which tool calls run, which ask you, and which the
-  frontend refuses. They also turn on the [sandbox](#sandbox) of Claude Code.
+  frontend refuses. They also turn on the Claude Code [sandbox](#sandbox).
 
 A research project needs these more than most projects. It has many repositories: packages,
 experiments, papers. Each has the same conventions, and a session in each must keep them. Its
 test suites and numerical runs take a long time, and their output fills the context. Its results
-must be correct and reproducible, so a wrong edit that passes in silence is expensive. And its
+must be correct and reproducible, so a wrong edit that nobody notices is expensive. And its
 files name people, institutions and machines that must not go into a public repository.
 
 **In another language.** The idea is the same for any language: write the conventions down once,
@@ -102,7 +102,7 @@ components that serve each.
 
 - **The research tree** is where the work is: the directories that hold your repositories and
   your notes. The figure shows the tree of the harness's author, as an example: a library of
-  papers, a store of knowledge, the packages, the experiments, the projects and the papers. Your
+  papers, a knowledge base, the packages, the experiments, the projects and the papers. Your
   tree holds your own directories.
 - **The components** are what the harness supplies: the agents, skills, commands, rules, guard
   hooks, git hooks and workflows, scripts and settings. [Components](components/agents.md)
@@ -135,7 +135,7 @@ before the call refuse it, ask you, or let it run. A shell command then runs ins
    known unsafe shape and tells the agent what to do in its place, for example to edit a file
    with the edit tool and not with `sed -i`. A hook prevents accidents. A session that tries to
    get past it can do so.
-4. **The sandbox** of Claude Code is a boundary of the operating system around each shell
+4. **The Claude Code sandbox** puts limits that the operating system enforces on each shell
    command. It limits the files that a command can write and the hosts that it can reach,
    whatever the command text is. It is the only security boundary of the four. It does not wrap
    the edit tools of the frontend, which the permission settings control. OpenCode has no
@@ -163,12 +163,13 @@ Some work goes to two agents that check each other. In the builder-critic loop o
 the builder worked, so it reads the result with fresh eyes.
 
 An agent names a tier, `large`, `medium` or `small`, and the model tables choose the model of
-each tier; an agent with no tier runs on the model of its caller. A larger model is better at hard work and costs more. An agent can also name an
-[effort](#effort): how long the model thinks before it answers. [Agents at work](agents-at-work.md)
-shows which agents start which, with their models and efforts.
+each tier. An agent with no tier runs on the model of its caller. A larger model is better at
+hard work and costs more. An agent can also name an [effort](#effort): how long the model thinks
+before it answers. [Agents at work](agents-at-work.md) shows which agents start which, with their
+models and efforts.
 
 **In another language.** The agents that run tests, review a pull request or diagnose a load
-error are for Julia. The same division carries to any language: a sub-agent that runs the test
+error are for Julia. The same division applies to any language: a sub-agent that runs the test
 suite of your language and returns only the verdict.
 
 ## Glossary
@@ -180,8 +181,8 @@ code to do a task in plain language. You talk to it through a frontend.
 
 ### Frontend
 
-The program of a coding agent that you talk to, and that runs its tool calls. The harness
-configures three frontends: Claude Code, OpenCode and oh-my-pi.
+The program through which you talk to a coding agent. It also runs the agent's tool calls. The
+harness configures three frontends: Claude Code, OpenCode and oh-my-pi.
 
 ### Session
 
@@ -200,13 +201,13 @@ shows each tool call.
 
 ### Permission prompt
 
-A question of the frontend before a tool call: may the agent do this? You answer yes or no. The
-permission settings decide which tool calls ask.
+A question that the frontend asks before a tool call: may the agent do this? You answer yes or
+no. The permission settings decide which tool calls ask.
 
 ### Sandbox
 
-A boundary of the operating system around each shell command of a Claude Code session. It limits
-the files that a command can write and the hosts that it can reach.
+The limits that the operating system enforces on each shell command of a Claude Code session.
+They limit the files that a command can write and the hosts that it can reach.
 
 ### Instruction file
 

@@ -15,9 +15,9 @@ templates of the profile. JOBS pairs them. `harness test` renders each with
   (`WantedBy=default.target`) where the plist has `RunAtLoad`; a timer is wanted by
   `timers.target` and its service has no `[Install]`;
 - the service has `Restart=always` where the plist has `KeepAlive`;
-- every element of the `PATH` is an absolute, normalised directory that the settings template
-  denies to a session's writes, that is no `allowWrite` entry covers it or a `denyWrite` entry
-  names it, or a system directory of SYSTEM_DIRS, and is not at or below $TMPDIR or a directory of
+- every element of the `PATH` is an absolute, normalised directory that the settings keep out
+  of session writes (no `allowWrite` entry covers it, or a `denyWrite` entry names it), or a
+  system directory of SYSTEM_DIRS, and is not at or below $TMPDIR or a directory of
   SESSION_DIRS, which the live sandbox lets a session write. A job runs outside the sandbox, so a
   directory that a session can write, the working directory of an empty element included, would
   let a session put a program on its `PATH`. A session's working directory, which the sandbox

@@ -816,10 +816,11 @@ def omp_cases():
     node = shutil.which("node")
 
     def home(name, scripts=None, paths=None, timeout=None):
-        """A fixture home with the six guard scripts in hooks/, beside ext/, each one that
-        `scripts` names replaced by its text there, or left out for None, and the extension with its
-        path list in `ext/`: `paths`, for a function the text `paths(rendered list, home)`, else the
-        rendered list. `timeout` replaces the extension's timeout in milliseconds."""
+        """A fixture home with the seven guard scripts of OC_SCRIPTS in hooks/, beside ext/, each
+        one that `scripts` names replaced by its text there, or left out for None, and the
+        extension with its path list in `ext/`: `paths`, for a function the text
+        `paths(rendered list, home)`, else the rendered list. `timeout` replaces the extension's
+        timeout in milliseconds."""
         scripts = scripts or {}
         h = FIXTURE.name + "/" + name
         os.makedirs(h + "/hooks")
@@ -1044,11 +1045,11 @@ def oc_cases():
     node = shutil.which("node")
 
     def home(name, scripts=None, paths=None, timeout=None, rtk=None):
-        """A fixture home with the six guard scripts in hooks/, beside plugins/, each one that
-        `scripts` names replaced by its text there, or left out for None, and the plugins with their
-        path list in `plugins/`: `paths`, else the rendered list, or none for False. `timeout`
-        replaces the guard's timeout in milliseconds; `rtk`, the text of a fixture `bin/rtk`, or None
-        for a `bin/` with none."""
+        """A fixture home with the seven guard scripts of OC_SCRIPTS in hooks/, beside plugins/,
+        each one that `scripts` names replaced by its text there, or left out for None, and the
+        plugins with their path list in `plugins/`: `paths`, else the rendered list, or none for
+        False. `timeout` replaces the guard's timeout in milliseconds; `rtk`, the text of a
+        fixture `bin/rtk`, or None for a `bin/` with none."""
         scripts = scripts or {}
         h = FIXTURE.name + "/" + name
         for d in ("/hooks", "/plugins", "/bin", "/.ssh"):

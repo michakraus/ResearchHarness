@@ -26,12 +26,13 @@ memory_project = "-home-example-Research"
 # or hooks/: agents and hooks install from the repository only.
 tree_agents = "~/Research/Environment/Agents"
 
-# The reverse-domain prefix of the LaunchAgent labels: `<launchd_prefix>.kaimon` and the others
+# The reverse-domain prefix of the launch agent labels: `<launchd_prefix>.kaimon` and the others
 # in launchagents/. macOS only: nothing on Linux reads it.
 launchd_prefix = "org.example"
 
-# The short host name of the machine whose memory is the template: the host name up to its first
-# `.`, as `hostname -s` prints it. Optional.
+# The short host name of the template host, the machine whose Claude Code memory is the template
+# for the other machines: the host name up to its first `.`, as `hostname -s` prints it.
+# Optional.
 template_host = "example-host"
 
 # The branch of the ~/.claude repository's origin that claude-autocommit pushes to. Optional:
@@ -40,8 +41,8 @@ template_host = "example-host"
 # So this file works unedited on every machine. A value set here is the branch on every machine.
 # autocommit_branch = "main"
 
-# The GitHub accounts, organisations and the user's own, where a session may open a pull request
-# or an issue and comment on one without a prompt.
+# The GitHub accounts and organisations, the user's own included, where a session may open a pull
+# request or an issue and comment on one without a prompt.
 org = ["example-org", "example-user"]
 
 # The directories that hold the research tree's repositories.

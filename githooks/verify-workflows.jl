@@ -25,7 +25,7 @@
 #      repository, so it is asserted against a literal rather than derived.
 #   3. No Register.yml, no register.yml, no Documentation.yml, no Documentation.yaml, no
 #      CompatHelper.yml, in the working tree and on the default branch. Register.yml is removed on
-#      purpose (see Packages/CLAUDE.md - dispatching it burns a version number); the Documentation
+#      purpose (dispatching it uses up a version number); the Documentation
 #      spellings are the old names of Documenter.yml; CompatHelper.yml would open every [compat]
 #      bump a second time beside dependabot.yml.
 #   4. Every `uses:` in every workflow is pinned to the expected major. An action left a major

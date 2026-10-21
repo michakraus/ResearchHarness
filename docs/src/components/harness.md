@@ -31,41 +31,43 @@ point and the parser, then the verbs, then the shared modules, then the modules 
 
 ## `harness`
 
-The executable script `bin/harness`, the front door of the tooling. Put `bin/` on the `PATH`, then
+The executable script `bin/harness`, the entry point of the harness. Put `bin/` on the `PATH`, then
 run `harness --help` for the list of verbs, or `harness <verb> --help` for one verb.
 
 The script first checks the version of Python. It needs Python 3.11 or later, because the profile
 and the model tables are TOML and `tomllib` came into the standard library with 3.11. An older
 interpreter prints the version that it found and the version that it needs, and the script exits
-2. The check uses no new syntax, so an old interpreter reads it without a syntax error.
+with status 2. The check uses no new syntax, so an old interpreter reads it without a syntax
+error.
 
-Then the script adds `lib/` to the module path and calls `main` of `cli.py`. It follows a symlink
-to find `lib/`, so a link to the script in another directory also works.
+Then the script adds `lib/` to the module path and calls `main` of `cli.py`. It follows a symbolic
+link to find `lib/`, so a link to the script in another directory also works.
 
 ## `__init__.py`
 
 The package file of `lib/harness/`. Its docstring is the contract of every verb, and
-`harness --help` prints it: a verb that changes something is dry by default, exits 1 when
-something would change and 0 when nothing would, and `--apply` makes the change. Exit 2 is a usage
-error or a failure.
+`harness --help` prints it: a verb that changes something does a dry run by default, exits with
+status 1 when something would change and 0 when nothing would, and `--apply` makes the change.
+Exit status 2 is a usage error or a failure.
 
 It defines what the other modules share:
 
 - `REPO`, the path of the checkout;
-- `HarnessError`, a failure that the verb reports in one line, after which `harness` exits 2;
+- `HarnessError`, a failure that the verb reports in one line, after which `harness` exits with
+  status 2;
 - `changing(parser)`, which gives a verb its `--apply` flag;
-- `outcome(args, changes)`, the exit status of a changing verb: 0 after `--apply` or with no
-  change, else 1.
+- `outcome(args, changes)`, the exit status of a verb that changes something: 0 after `--apply`
+  or with no change, otherwise 1.
 
 A new verb that changes something uses `changing` and `outcome`, so that it keeps the contract.
 
 ## `cli.py`
 
 The argument parser of `harness`, and the verb `harness test`. `main` loads the three adapters
-through `frontends.py` first. An adapter that fails to load exits 2 before any verb runs. Then
-`main` adds the global options `--profile F` and `--models F`, and one sub-command for each verb
-of the modules and the adapters. A `HarnessError` of a verb prints one line,
-`harness <verb>: <message>`, and exits 2.
+through `frontends.py` first. When an adapter fails to load, `harness` exits with status 2 before
+any verb runs. Then `main` adds the global options `--profile F` and `--models F`, and one
+sub-command for each verb of the modules and the adapters. On a `HarnessError` of a verb,
+`harness` prints one line, `harness <verb>: <message>`, and exits with status 2.
 
 `harness test` runs the cases in this order:
 
@@ -75,9 +77,9 @@ of the modules and the adapters. A `HarnessError` of a verb prints one line,
 2. the hook probe `hooks/probe.py`, in a process of its own;
 3. the contract sweep of `sweep.py`.
 
-It prints one summary line, `<n> cases, <w> wrong`, and exits 1 when a case is wrong. A probe
-that prints no summary line, or whose exit status does not agree with it, counts as one more wrong
-case.
+It prints one summary line, `<n> cases, <w> wrong`, and exits with status 1 when a case fails. A
+probe that prints no summary line, or whose exit status does not agree with it, counts as one more
+failed case.
 
 ## `frontends.py`
 
@@ -85,8 +87,9 @@ The list of the frontends, `claude`, `opencode` and `omp`, and the loader of the
 `load` imports each `adapters/<frontend>/adapter.py` by its path, in that order, once.
 
 Each adapter must define six members: `NAME`, `TEMPLATES`, `register`, `plan`, `selftest` and
-`RESTART`. An adapter that fails to import exits 2 with its path, its line and the last line of
-the exception. An adapter that lacks a member exits 2 with its path. No adapter is skipped.
+`RESTART`. When an adapter fails to import, `harness` exits with status 2 and prints its path,
+its line and the last line of the exception. When an adapter lacks a member, `harness` exits with
+status 2 and prints its path. No adapter is skipped.
 
 The module also defines `Plan`, the part of `harness install` that one frontend returns: the
 files to install, the warnings, the installed files with no source, the refused files with their
@@ -98,39 +101,40 @@ The adapters are described in [the adapters](adapters.md).
 ## `install.py`
 
 The verb `harness install [--apply] [--force]`. It reads the profile and the model tables, and asks
-each adapter for its plan, in the order of `frontends.py`. A plan writes nothing, so a refusal
-exits 2 before any file is written.
+each adapter for its plan, in the order of `frontends.py`. A plan writes nothing, so on a refusal
+the verb exits with status 2 before any file is written.
 
 Before it writes, the verb checks every target of the Julia environment and of each plan
-(`check_files`). A symlink, a directory or an entry that is no readable file at a target, or a
-symlink or a file in the place of a directory above it, exits 2 at once. A target that the install
-changes and cannot write, or whose mode it cannot change, exits 2 before anything is written under
-`--apply`. A dry run prints its whole plan and count line first, then that refusal, and exits 2.
+(`check_files`). The verb exits with status 2 at once if a target is a symbolic link, a directory
+or a file that cannot be read, or if a directory above a target is a symbolic link or a file.
+Under `--apply`, it also exits with status 2 before anything is written if the install changes a
+target that it cannot write, or whose mode it cannot change. A dry run prints its whole plan and
+count line first, then that refusal, and exits with status 2.
 
 Then the verb installs the Julia environment of the scripts: it copies `Project.toml` to
 `~/.local/share/research-harness/julia/`, or to `$RESEARCH_HARNESS_JULIA`, and instantiates it.
 Then it installs the files of each plan, prints the warnings, and runs the steps after the files.
-One warning is its own: `behind_origin` warns when the checkout is behind its local
+The verb adds one warning of its own: `behind_origin` warns when the checkout is behind its local
 `origin/main`. It fetches nothing.
 It prints the count line, and after `--apply` the restart line of each frontend whose files
 changed. A file that differs in its bytes or its mode is a change. `--force` replaces a file that
 an adapter refuses to replace.
 
-The module also holds the helpers of a layer that mirrors its sources: `source_files`,
+The module also holds the helpers of a layer that copies its sources one to one: `source_files`,
 `check_targets` and `stamp_bytes`, the stamp that the `SessionStart` hook `hooks/install-drift.py`
 computes again.
 
-Its cases check that a broken profile or `models.toml` exits 2 with the file name, and that an
-adapter that fails to load exits 2 and writes nothing. They also run the restart cases of
-`install_cases.py`, and `behind_origin` on a scratch repository whose `origin/main` is ahead of,
-level with and behind its `HEAD`.
+Its cases check that the install exits with status 2 and names the file on a broken profile or
+`models.toml`, and that it exits with status 2 and writes nothing when an adapter fails to load.
+They also run the restart cases of `install_cases.py`, and `behind_origin` on a scratch
+repository whose `origin/main` is ahead of, level with and behind its `HEAD`.
 
 ## `install_cases.py`
 
 The helpers for the test cases that run `harness install` end to end. It has no verb and no
 `selftest` of its own.
 
-`Scratch` makes a scratch `HOME` below a temporary directory: `~/.claude/skills/`, an OpenCode
+`Scratch` creates a scratch `HOME` below a temporary directory: `~/.claude/skills/`, an OpenCode
 directory, a Julia directory with a copy of `Project.toml`, the tree instructions, and the dummy
 profile with `tree_agents` set. `Scratch.run` runs `harness install` in a process of its own, with
 `HOME`, `OPENCODE_CONFIG_DIR`, `RESEARCH_HARNESS_JULIA` and `PI_CODING_AGENT_DIR` in the scratch
@@ -142,7 +146,7 @@ follow the count line. `install.py` calls it, and the adapters use `Scratch` in 
 
 ## `profile.py`
 
-The private profile and the render of a template. It gives three verbs:
+The private profile and the rendered output of a template. It gives three verbs:
 
 ```
 harness render TEMPLATE
@@ -152,29 +156,32 @@ harness leaks [--commits F]
 
 `render` prints a template with each placeholder `{key}` replaced by its profile value. A list
 value repeats the line, or the JSON list element, once for each item. A table value renders only
-on a line that holds the placeholder alone, as the members of a JSON object. A placeholder that the
-profile does not have exits 2. `autocommit_branch` is never missing: without it, every verb reads
-`main` on the machine whose short host name is the profile's `template_host` or without
-`template_host`, and `memory/<short host name>` on every other machine.
-`get` prints one value, one line for each item of a list; a key that the profile does not have
-exits 2. `render` of the settings template also adds its network rules
+on a line that holds the placeholder alone, as the members of a JSON object. On a placeholder that
+the profile does not have, the verb exits with status 2. Every verb reads a value of
+`autocommit_branch`. If the key is missing, the default is `main` on the template host, or on
+every machine when `template_host` is not set, and `memory/<short host name>` on every other
+machine. The template
+host is the machine whose Claude Code memory is the template for the other machines; the profile
+key `template_host` names it by its short host name.
+`get` prints one value, one line for each item of a list; on a key that the profile does not
+have, it exits with status 2. `render` of the settings template also adds its network rules
 (`network.py`).
 
-`leaks` searches every tracked file and its path for each string of the profile's `leak` list, and
-for the name of each directory below a `repository_roots` entry and each `org` entry. The
-repository's own `owner/name` and the host of its GitHub Pages site, `owner.github.io`, are no
-hit. It also
-renders each template with `examples/profile.toml` and searches the result. With `--commits F` it
-also searches the paths, the added lines and the message of each commit that `F` names. The
-pre-push hook calls it so. The verb exits 1 on a hit.
+`leaks` searches every tracked file and its path for each of the private strings (the profile's
+`leak` list), and for the name of each directory below a `repository_roots` entry and each `org`
+entry. The repository's own `owner/name` and the host of its GitHub Pages site,
+`owner.github.io`, do not count as a hit. It also renders each template with
+`examples/profile.toml` and searches the result. With `--commits F` it also searches the paths,
+the added lines and the message of each commit that `F` names. The pre-push hook calls it in
+this way. The verb exits with status 1 on a hit.
 
-The module also reads the model tables for the adapters. A table that names a tier by an old name
-exits 2. [Adapting the profile](../profile.md) describes the keys.
+The module also reads the model tables for the adapters. On a table that names a model tier by an
+old name, the verb exits with status 2. [Adapting the profile](../profile.md) describes the keys.
 
 ## `githooks.py`
 
 Three verbs that copy shared files into the repositories of the research tree. The research root
-is `$RESEARCH_ROOT`, else `~/Research`.
+is `$RESEARCH_ROOT`, or `~/Research` if it is not set.
 
 ```
 harness githooks [--apply]
@@ -189,9 +196,9 @@ prose repositories that `WIKI_REPOSITORIES` names. `workflows` copies the canoni
 `githooks/workflows/` and deletes the retired `CompatHelper.yml`.
 
 A session cannot write `.git/config`. So a run that cannot set `core.hooksPath` prints the command
-for each repository, and exits 2. The module also gives `research_root`, `repositories` and `git`
-to other modules. It has no `selftest`; the sweep runs its dry runs and its `--apply`.
-[The git hooks](githooks.md) describes the copied files.
+for each repository, and exits with status 2. The module also gives `research_root`,
+`repositories` and `git` to other modules. It has no `selftest`; the sweep runs its dry runs and
+its `--apply`. [Git hooks and workflows](githooks.md) describes the copied files.
 
 ## `pushall.py`
 
@@ -233,8 +240,8 @@ over each tracked `.jl` file of the tree.
 JuliaFormatter can stop the whole Julia process on some files. `format-tree.jl` records the file
 that it is about to format in a marker. When the process stops, the verb moves that file into a
 skip list and runs the script again, at most 40 times. At the end it prints the files that
-JuliaFormatter cannot handle. The marker, the skip list and the log go to `$FMT_OUT`, else
-`$TMPDIR`.
+JuliaFormatter cannot handle. The marker, the skip list and the log go to `$FMT_OUT`, or to
+`$TMPDIR` if it is not set.
 
 The dry run counts the files that the script would format, from its summary line. The module has
 no `selftest`, and the sweep does not run it, because it runs Julia over the tree.
@@ -260,8 +267,9 @@ Its cases run the parser, the verdict, the majority and the pass rule, and run `
 The verb `harness doctor [--full]`, the check that a machine's setup works. It is read-only, so
 it takes no `--apply`. It prints one line for each check: `PASS`, `WARN`, `FAIL` or `SKIP`, the
 name of the check and a detail, such as a version, a path or the reason. A `FAIL` line also names
-the section of the setup page that fixes it. The verb exits 1 when a check fails, else 0; a `WARN`
-or a `SKIP` does not count. A usage error exits 2.
+the section of the setup page that fixes it. The verb exits with status 1 when a check fails,
+otherwise with status 0; a `WARN` or a `SKIP` does not count. On a usage error, it exits with
+status 2.
 
 It checks, in this order:
 
@@ -271,18 +279,19 @@ It checks, in this order:
 - the tools of [Dependencies](../dependencies.md): each required tool is on the `PATH`, and each
   tool with a minimum on that page is at or above it; below it, or missing, is a `FAIL`. A missing
   tool that serves one frontend, one job or a push to the harness (the frontends, RTK, jq,
-  juliaup, iTerm2 and gitleaks) is a `WARN` that says what stops without it. A version flag that
-  exits non-zero is a `FAIL` for a required tool and a `WARN` for an optional one, and a `SKIP` in
-  a session's sandbox, which can refuse it. A version that the verb cannot read from the output of
-  a flag that exits 0 is a `WARN` with the tool's own text. The minimums are in
+  juliaup, iTerm2 and gitleaks) is a `WARN` that says what stops without it. When the version flag
+  of a tool exits with a status other than 0, the check is a `FAIL` for a required tool and a
+  `WARN` for an optional one. In a session's sandbox, which can refuse the flag, the check is a
+  `SKIP`. When the flag exits with status 0 but the verb cannot read a version from its output,
+  the check is a `WARN` with the tool's own text. The minimums are in
   `MINIMUMS`, and a case compares each with the page. The six Julia packages are read from the
   `Manifest.toml` of the Julia environment of the scripts.
 - the profile: it loads, the `tree_agents` directory and the OpenCode configuration directory
   exist, and the line `autocommit_branch` prints the value.
-- the install: the dry run of `harness install` reports `0 change(s)`, else a `FAIL` with the
-  count. Each warning of the dry run is a `WARN` line.
+- the install: the dry run of `harness install` reports `0 change(s)`, otherwise a `FAIL` with
+  the count. Each warning of the dry run is a `WARN` line.
 - the jobs: Kaimon, `~/.julia/bin/kaimon`; its server and the update job, with `systemctl --user`
-  on Linux and `launchctl list` with the profile's `launchd_prefix` on macOS; linger on Linux.
+  on Linux and `launchctl list` with the profile's `launchd_prefix` on macOS; lingering on Linux.
   When the autocommit job is enabled, `~/.claude` must be the top of its own git repository, with
   an `origin`. The Kaimon token file must exist, with mode 600, and not be empty. Without Kaimon,
   its jobs and the token are `SKIP`, and so is the token without OpenCode and oh-my-pi, which read
@@ -303,16 +312,18 @@ fixture of the contract sweep, which changes no file.
 ## `units.py`
 
 The cases of the `systemd --user` units in `systemd/`. The module has no verb. It renders each
-unit and its plist in `launchagents/` with `examples/profile.toml` and checks that both describe
-one job: the program and its arguments, the working directory, the environment and its `PATH`,
-the timer's triggers, the start at login, and `Restart=always` where the plist has `KeepAlive`. A
-section, a key or a repeated key that the check does not read is a problem, and so is a continued
-line. Every element of the `PATH` must be an absolute directory that the settings template keeps
-out of a session's writes, or a system directory; an empty element, the working directory, is a
-problem. Its cases also apply a mutant to the rendered templates, such as a removed restart, an
-extra trigger or a session-writable directory on the `PATH`, and expect a problem, and check that
-`render` gives `autocommit_branch` its default when the profile has no such key: `main`, and
-`memory/<short host name>` on a host that is not `template_host`. [Jobs and configuration](other.md) describes the units.
+unit and its plist in `launchagents/` with `examples/profile.toml`. Then it checks that both
+describe one job: the program and its arguments, the working directory, the environment and its
+`PATH`, the timer's triggers, the start at login, and `Restart=always` where the plist has
+`KeepAlive`. A section, a key or a repeated key that the check does not read is a problem. A
+continued line is a problem too. Every element of the `PATH` must be an absolute directory that
+the settings template keeps out of a session's writes, or a system directory. An empty element,
+which means the working directory, is a problem. The cases also apply a mutant to the rendered
+templates and expect a problem: for example a removed restart, an extra trigger or a
+session-writable directory on the `PATH`. Last, they check that `render` gives
+`autocommit_branch` its default when the profile has no such key: `main`, and
+`memory/<short host name>` on a host that is not the template host.
+[Jobs and configuration](other.md) describes the units.
 
 ## `script_cases.py`
 
@@ -321,7 +332,8 @@ critic's `rsync` copy from `skills/build-part/evidence.md` and `copy_command` fr
 `scripts/run-tests.jl`, runs each on a fixture tree with a `.env`, a `.env.ts`, a `.git` and a
 `.claude`, and checks that the copy holds none of them. A control copy with no flag must hold the
 `.env.ts`. Then it runs `scripts/spec-gate.py` on a fixture task file and checks the verdict of
-each part: a part whose *Files* lie in two repositories is `SPANS`, unless its tier is `direct`.
+each part: a part whose *Files* lie in two repositories is `SPANS`, unless its part tier is
+`direct`.
 
 ## `network.py`
 
@@ -330,9 +342,10 @@ The network rules of the Claude Code settings. The module has no verb. It reads
 rendered settings template the `WebFetch(domain:…)` rules of `permissions.allow` and
 `permissions.deny` and the lists `allowedDomains`, `deniedDomains` and `deniedDomainReasons` of
 `sandbox.network`. A `deny` entry removes each `allow` and `infrastructure` host that it matches.
-`install`, `render` of the settings template and `settings` call it. A file that breaks the schema,
-a profile with the key `extra_domain`, and a template that holds a host of its own exit 2. Its cases
-check each rule, each exit 2, and that an overlay changes no file of OpenCode or oh-my-pi.
+`install`, `render` of the settings template and `settings` call it. The module exits with status
+2 in three cases: a file breaks the schema, the profile has the key `extra_domain`, or the
+template holds a host of its own. Its cases check each rule, each of these exits, and that an
+overlay changes no file of OpenCode or oh-my-pi.
 [Adapting the profile](../profile.md#the-network-overlay) describes the keys.
 
 ## `providers.py`
@@ -340,15 +353,16 @@ check each rule, each exit 2, and that an overlay changes no file of OpenCode or
 The model providers of OpenCode and oh-my-pi. The module has no verb. It reads `providers.toml`
 beside the profile, which may be missing, and gives each frontend its entries: the `provider`
 object of `opencode.jsonc` and the providers of oh-my-pi's `models.yml`. The OpenCode and oh-my-pi
-adapters call it in `install`. A literal key, an unknown key, a value of the wrong type, and a
-profile with the key `opencode_providers` or `omp_providers` exit 2. Its cases check the mapping
-of each key, the merge of a frontend's own keys, and each exit 2.
+adapters call it in `install`. The module exits with status 2 on a literal key, an unknown key or
+a value of the wrong type, and on a profile with the key `opencode_providers` or `omp_providers`.
+Its cases check the mapping of each key, the merge of a frontend's own keys, and each of these
+exits.
 [Adapting the profile](../profile.md#the-providers) describes the keys.
 
 ## `sources.py`
 
 The names of the neutral sources: the five directories `agents/`, `skills/`, `rules/`,
-`instructions/` and `commands/`, which belong to no one frontend. Each adapter reads them from
+`instructions/` and `commands/`, which belong to no single frontend. Each adapter reads them from
 here. The module has no verb and no cases.
 
 `curated_skills` lists the curated skills below a directory: each subdirectory with a `SKILL.md`,
@@ -363,9 +377,9 @@ lines. It has no verb. Its cases run in `harness test`.
 
 The parser accepts eleven keys, each once. A value is plain or in double quotes, and `tools` and
 `skills` take a block list. It refuses each other form, such as a flow list, a comment, an unknown
-key or a control character, with the file and the line, and `harness` exits 2.
+key or a control character, with the file and the line, and `harness` exits with status 2.
 
-`parse_file` also checks the neutral vocabulary. `model` must be a tier: `large`, `medium` or
+`parse_file` also checks the neutral vocabulary. `model` must be a model tier: `large`, `medium` or
 `small`. Each `tools` item must be a neutral tool or `mcp/kaimon/<tool>`. The `description` of a
 skill has at most 1,024 characters and no `<` or `>`.
 
@@ -376,15 +390,16 @@ curated skill of `skills/`.
 
 The contract sweep, the last set of cases of `harness test`. It has no verb.
 
-The sweep makes a fixture `HOME` in a temporary directory: the dummy profile and model tables, the
-files that the verbs read, and a research root with one package and one prose repository. Then:
+The sweep creates a fixture `HOME` in a temporary directory: the dummy profile and model tables,
+the files that the verbs read, and a research root with one package and one prose repository.
+Then:
 
-- it runs the dry run of each verb and checks that it exits 0 or 1, prints no traceback and
-  changes no file;
+- it runs the dry run of each verb and checks that it exits with status 0 or 1, prints no
+  traceback and changes no file;
 - it removes each precondition alone, such as the profile or `~/.claude.json`, and checks that each
-  verb that needs it exits 2 with one line;
+  verb that needs it exits with status 2 and one line;
 - it runs `--apply` of `githooks`, `wiki-lint-hook`, `workflows` and `trust`, and checks that the
-  dry run after it exits 0.
+  dry run after it exits with status 0.
 
 It does not run `format`, `ci-protection`, `skill-triggers`, `doctor` or `test`.
 [Development](../development.md) describes the tests.
@@ -397,7 +412,7 @@ no verb.
 The table `KINDS` maps each page of `docs/src/components/` to the tracked files that are its
 components, and to the name of each. The check reads the level-2 headings of each page and the
 names in backticks in them. It fails when a component has no heading on its page. It also fails
-when a heading names something that is no component of its page, so a removed component leaves no
+when a heading names something that is not a component of its page, so a removed component leaves no
 old section.
 
 It also checks `docs/src/dependencies.md`: its three tables, and one level-3 heading below them

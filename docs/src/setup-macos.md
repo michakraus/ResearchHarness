@@ -1,33 +1,32 @@
 # Setup on macOS
 
 This page gives each step from a clean Mac to a working harness. For each step it says what the
-step does, why the harness needs it, and how you see that it worked.
+step does, why the harness needs it, and how to check that it worked.
 [setup-linux.md](setup-linux.md) is the page for Linux, with the same steps in the same order.
 
 The commands use Homebrew. The package names and the versions that this page gives are checked
 on macOS 27 on Apple silicon (`arm64`) only. On an Intel Mac, Homebrew is in `/usr/local` in place
-of `/opt/homebrew`, and the `PATH` of the launchd jobs of [The jobs](#the-jobs) names
-`/opt/homebrew/bin` only; that case is not checked. The steps use `~/Research/Harness` as the path
+of `/opt/homebrew`, and the launchd jobs of [The jobs](#the-jobs) put only `/opt/homebrew/bin`
+on their `PATH`; that case is not checked. The steps use `~/Research/Harness` as the path
 of the checkout. [Introduction](concepts.md) explains the terms that this page uses, and the
 glossary there has an entry for each.
 
 **Without Julia code.** If you write no Julia, you can skip the steps and lines that this page
 marks. You still need Julia itself, because the [install](concepts.md#install) runs it once.
 
-**Without an administrator.** The installer of Homebrew needs an administrator, a user who may
-run `sudo`, once. After it, every step installs without one.
+**Without an administrator.** The Homebrew installer needs an administrator, once. After it,
+every step installs without one.
 
-**The exit codes.** Each verb of `harness` ends with an exit code, which your shell keeps in
-`$?`. Exit 0 means that nothing would change or that the verb succeeded, exit 1 that a dry run
-found something to change, and exit 2 an error. Each step below names the code that it expects,
-with its meaning.
+**The exit codes.** Each `harness` verb ends with an exit status. Exit status 0 means that
+nothing would change or that the verb succeeded, 1 that a dry run found something to change, and
+2 an error. Each step below names the status that it expects, with its meaning.
 
 ## Check the machine
 
 **What it does.** These commands change nothing. They print the facts of the machine that the
 later steps depend on: the system, the architecture, your login shell, the groups of your
-account, the tools and directories that are already there, and the `PATH` lines of your start
-files.
+account, the tools and directories that are already there, and the `PATH` lines of your shell
+startup files.
 
 ```bash
 sw_vers
@@ -48,17 +47,18 @@ A line that fails prints its error, and the next line runs.
 - `sw_vers` and `uname -m` give the system and the architecture. This page covers Apple silicon,
   where `uname -m` prints `arm64`.
 - `$SHELL` and the `UserShell` of `dscl` are your login shell. On macOS it is zsh unless you
-  changed it, and its start files are `~/.zprofile`, `~/.zshenv` and `~/.zshrc`. This page puts
-  each `export` line into `~/.zshrc`; with bash, use `~/.bash_profile`.
+  changed it, and its shell startup files are `~/.zprofile`, `~/.zshenv` and `~/.zshrc`. This
+  page puts each `export` line into `~/.zshrc`; with bash, use `~/.bash_profile`.
 - `id -Gn` lists the groups of your account. A member of the group `admin` is an administrator.
   Without `admin` in the list, ask an administrator to install Homebrew.
 - `xcode-select -p` prints the directory of the Command Line Tools, which hold `git`, `make` and
-  the compiler. Without them, it prints an error, and the installer of Homebrew installs them.
+  the compiler. Without them, it prints an error, and the Homebrew installer installs them.
 - The `command -v`, `exists` and `grep` lines show what an earlier install left: Homebrew, a
   [frontend](concepts.md#frontend), a Julia, a directory of a frontend, or a `PATH` line in a
-  start file. Each step below installs over it or adds to it, except the installer of juliaup,
-  which stops when juliaup is installed already; [The dependencies](#the-dependencies) says what
-  to do then. Read the output before you continue.
+  shell startup file. Each step below installs over it or adds to it, except the juliaup
+  installer, which stops when juliaup is installed already;
+  [The dependencies](#the-dependencies) says what to do then. Read the output before you
+  continue.
 
 **Check.** `sw_vers` names the system, for example `ProductName: macOS` and
 `ProductVersion: 27.0.1`, and `uname -m` prints `arm64`.
@@ -66,7 +66,7 @@ A line that fails prints its error, and the next line runs.
 ## The dependencies
 
 **What it does.** These commands install every required tool that the harness calls, and the
-optional tools jq and RTK. Homebrew installs all of them but Julia; the installer of `juliaup`
+optional tools jq and RTK. Homebrew installs all of them but Julia; the juliaup installer
 installs Julia. [Dependencies](dependencies.md) lists each tool, its minimum version and what the
 harness uses it for.
 
@@ -83,7 +83,7 @@ eval "$(/opt/homebrew/bin/brew shellenv)"
 Add the `eval` line to `~/.zprofile` too, as the installer says, so that each new shell finds
 `brew`.
 
-The installer of Claude Code puts its launcher into `~/.local/bin`. Put that directory on the
+The Claude Code installer puts its launcher into `~/.local/bin`. Put that directory on the
 `PATH`:
 
 ```bash
@@ -100,8 +100,8 @@ brew install python python@3.11 git gh node shellcheck actionlint coreutils rsyn
 ```
 
 **Optional: jq and RTK.** Leave `jq` or `rtk` out of the line if you do not want it. RTK shortens
-the output of shell commands: the OpenCode plugin of the harness asks `rtk` for the rewrite of
-each shell command, and without RTK, the plugin passes each command unchanged.
+the output of shell commands: the OpenCode plugin of the harness asks `rtk` to rewrite each shell
+command, and without RTK, the plugin passes each command unchanged.
 
 **Only to push to the harness**, install gitleaks. Only the pre-push [hook](concepts.md#hook) of
 the harness runs gitleaks, before a push to the harness. A user who only installs the harness
@@ -111,7 +111,7 @@ skips this line:
 brew install gitleaks
 ```
 
-fatou comes from the tap of its author, and Julia from the installer of `juliaup`:
+fatou comes from the tap of its author, and Julia from the juliaup installer:
 
 ```bash
 brew install jolars/tap/fatou
@@ -121,10 +121,10 @@ export PATH="$HOME/.juliaup/bin:$PATH"
 
 **Without Julia code**, skip the fatou line: fatou checks Julia code only.
 
-The installer of `juliaup` asks no question with `--yes`: with its default settings, it installs
+The juliaup installer asks no question with `--yes`: with its default settings, it installs
 `juliaup` and the `julia` launcher into `~/.juliaup/bin`, and the current Julia release below
 `~/.julia`. It adds `~/.juliaup/bin` to the `PATH` in a block between the lines
-`# >>> juliaup initialize >>>` and `# <<< juliaup initialize <<<`, in each start file of a shell
+`# >>> juliaup initialize >>>` and `# <<< juliaup initialize <<<`, in each shell startup file
 that exists. The `export` line puts `~/.juliaup/bin` on the `PATH` of the shell that you are in.
 
 **With juliaup installed already**, its installer stops with the message `It seems that Juliaup
@@ -139,7 +139,8 @@ the first install adds them.
 **Why.** Each tool has the job that [Dependencies](dependencies.md#what-each-tool-does)
 describes. `harness` runs on the `python3` of the `PATH`, which must be 3.11 or later. `python`
 supplies a current `python3`, and `python@3.11` supplies `python3.11`, which the pre-push hook
-also runs; where it is missing, the hook prints one skip line, because CI runs it. `coreutils`
+also runs; where `python3.11` is missing, the hook skips that run with one line, because CI runs
+it. `coreutils`
 supplies `timeout`, which macOS does not have. Homebrew's `rsync` replaces the `rsync` of macOS
 on the `PATH`. jq is optional: the status line of Claude Code reads its data with jq, and without
 it, the status line shows no values. You need Julia even if you write no Julia code: the first
@@ -176,16 +177,16 @@ gitleaks version
 **What it does.** These steps install the three [frontends](concepts.md#frontend) that the
 harness configures: Claude Code, OpenCode 2 and oh-my-pi. Each frontend is optional, as
 [Dependencies](dependencies.md#optional) says. Skip the subsection of each frontend that you do
-not use. `harness install` writes the configuration of all three either way. Of the directories
-of the frontends, it needs only the configuration directory of OpenCode, which the `mkdir` line
-of [`harness install --apply`](#harness-install-apply) makes.
+not use. `harness install` writes the configuration of all three either way. Of the frontend
+directories, it needs only the OpenCode configuration directory, which the `mkdir` line of
+[`harness install --apply`](#harness-install-apply) creates.
 
 **Why.** Each frontend reads the configuration that `harness install` writes; a frontend that is
 not installed reads nothing.
 
 ### Install Claude Code
 
-This command runs the installer of Claude Code:
+This command runs the Claude Code installer:
 
 ```bash
 curl -fsSL https://claude.ai/install.sh | bash
@@ -193,8 +194,8 @@ curl -fsSL https://claude.ai/install.sh | bash
 
 The installer puts the launcher at `~/.local/bin/claude`, a symbolic link to the current version
 in `~/.local/share/claude/versions/`. Claude Code updates itself in the background, and
-`claude update` updates it at once. The installer changes no start file: it needs `~/.local/bin`
-on the `PATH`, which [The dependencies](#the-dependencies) puts there.
+`claude update` updates it at once. The installer changes no shell startup file: it needs
+`~/.local/bin` on the `PATH`, which [The dependencies](#the-dependencies) puts there.
 
 **Check.** The command prints the version, for example `2.1.304 (Claude Code)`:
 
@@ -240,10 +241,10 @@ omp --version
 ## The sandbox of Claude Code
 
 **What it does.** On macOS, Claude Code runs the shell commands of a
-[session](concepts.md#session) in a [sandbox](concepts.md#sandbox) of Seatbelt, the sandbox of macOS, through
+[session](concepts.md#session) in a Seatbelt [sandbox](concepts.md#sandbox), through
 `sandbox-exec`. macOS supplies it, so this step installs nothing. The settings template of the
 harness sets `sandbox.enabled` and `failIfUnavailable: true`. So without a working sandbox, Claude
-Code does not start, rather than run the commands without one.
+Code does not start, instead of running the commands without a sandbox.
 
 **Why.** The check shows that macOS lets your account make a sandbox, before the first session
 depends on it.
@@ -271,7 +272,7 @@ Add the `export` line to `~/.zshrc` too, so that each new shell finds `harness`.
 the checkout.
 
 **Check.** `harness --help` lists the verbs. A Python older than 3.11 makes `harness` stop with
-exit 2, an error, and the message names the version that it found.
+exit status 2, an error, and the message names the version that it found.
 
 ```bash
 harness --help
@@ -289,21 +290,22 @@ cp ~/Research/Harness/examples/models.toml ~/.config/research-harness/models.tom
 ```
 
 The example profile works as copied. Its paths start with `~/`, which means your home directory,
-and without the key `home` the profile takes the home directory of the user who runs `harness`.
+and without the key `home` the harness uses the home directory of the user who runs `harness`.
 Then open `~/.config/research-harness/profile.toml` in an editor and fill in the keys that name a
 person, an organisation or a machine: `org`, your GitHub accounts and organisations; `leak`, the
 strings that must never be in the repository, such as your user name; `launchd_prefix`, the
-reverse-domain prefix of the labels of the launchd jobs of [The jobs](#the-jobs);
-`memory_project`, the label of the memory of your tree; and `template_host`, the output of
-`hostname -s` on the machine whose memory is the template. With the example value of
-`template_host`, the autocommit of no machine pushes to `main`. [profile.md](profile.md) names
-each key and table, and the comments in the two files say what each value is.
+reverse-domain prefix of the job labels of [The jobs](#the-jobs); `memory_project`, the label of
+the Claude Code memory of your research tree; and `template_host`, the output of `hostname -s` on
+the template host. The template host is the machine whose Claude Code memory is the template for
+the other machines. With the example value of `template_host`, the autocommit job of no machine
+pushes to `main`. [profile.md](profile.md) names each key and table, and the comments in the two
+files say what each value is.
 
 Then open `~/.config/research-harness/models.toml`, and write the models that you use into it.
 The example names the Claude Code models of the three [tiers](concepts.md#tier) in `[claude]`,
 and these work as copied. The tables for OpenCode and oh-my-pi name example providers, such as
 `provider-a/large-model`, which no frontend knows: replace them with your own models before you
-use OpenCode or oh-my-pi. [The tables of the model tables](profile.md#the-tables-of-the-model-tables)
+use OpenCode or oh-my-pi. [The tables of `models.toml`](profile.md#the-tables-of-the-model-tables)
 says what each table holds.
 
 **On several machines**, the profile is the same on each of them: no key needs an edit per
@@ -313,13 +315,13 @@ machine. The branch that the autocommit pushes to differs per machine, and the k
 a private place, such as a private repository or a dotfiles manager, and copy it to each machine.
 
 The key `repository_roots` names the directories that hold the repositories of your research
-tree. Each entry must be a directory. With the example values, this command makes them:
+tree. Each entry must be a directory. With the example values, this command creates them:
 
 ```bash
 mkdir -p ~/Research/Packages ~/Research/Experiments
 ```
 
-The [providers](profile.md#the-providers) are optional. Copy them only when OpenCode or oh-my-pi
+The [providers](profile.md#the-providers) file is optional. Copy it only when OpenCode or oh-my-pi
 uses a model server or an account beyond its built-in providers:
 
 ```bash
@@ -330,7 +332,7 @@ Then replace the example providers with your own.
 
 The [network overlay](profile.md#the-network-overlay) is optional. Copy it only when Claude Code
 must reach a host that `settings/network.toml` does not name, such as the library resolver of your
-institution, or must not reach a host:
+institution, or must not reach a given host:
 
 ```bash
 cp ~/Research/Harness/examples/network.toml ~/.config/research-harness/network.toml
@@ -350,7 +352,7 @@ harness get home
 
 ## The tree instructions
 
-**What it does.** These commands make the directory of the
+**What it does.** These commands create the directory of the
 [tree instructions](concepts.md#tree-instructions), with one empty file in it. The profile key
 `tree_agents` gives the path of the directory; the commands use the example value.
 
@@ -363,7 +365,7 @@ touch ~/Research/Environment/Agents/instructions/research-tree.md
 `harness install` installs them into `~/.claude/` beside the sources of the harness. The directory
 has the layout of `~/.claude/`. `adapters/claude/CLAUDE.md` imports
 `instructions/research-tree.md`, so put the facts about your tree into that file. The directory
-must exist, else `harness install` stops with exit 2, an error.
+must exist; otherwise `harness install` stops with exit status 2, an error.
 [architecture.md](architecture.md#the-three-layers) says how the tree instructions relate to the
 harness and the profile.
 
@@ -378,19 +380,19 @@ ls ~/Research/Environment/Agents/instructions
 ## `harness install --apply`
 
 **What it does.** `harness install` writes the configuration of each frontend from the sources of
-the harness, the profile and the tree instructions. It needs two directories, else it stops with
-exit 2, an error: the directory of the tree instructions, which the profile key `tree_agents`
-names, and the configuration directory of OpenCode, `$OPENCODE_CONFIG_DIR`, else
-`~/.config/opencode/`. It needs the directory of OpenCode also when you do not use OpenCode. It
-makes `~/.claude/` and `~/.omp/agent/` itself. On a new machine, make the two directories before
-the first install; the command uses the example value of `tree_agents`:
+the harness, the profile and the tree instructions. It needs two directories: the directory of the
+tree instructions, which the profile key `tree_agents` names, and the OpenCode configuration
+directory, `$OPENCODE_CONFIG_DIR`, or `~/.config/opencode/` if that variable is not set. Without
+either, it stops with exit status 2, an error. It needs the OpenCode directory even if you do not
+use OpenCode. It creates `~/.claude/` and `~/.omp/agent/` itself. On a new machine, create the two
+directories before the first install; the command uses the example value of `tree_agents`:
 
 ```bash
 mkdir -p ~/Research/Environment/Agents/instructions ~/.config/opencode
 ```
 
-Then run the dry run. It prints each file that it would install, and it exits 1, which means that
-it would change files:
+Then run `harness install` as a dry run. It prints each file that it would install, and it exits
+with status 1, which means that it would change files:
 
 ```bash
 harness install
@@ -411,8 +413,8 @@ you. For example, the Kaimon entry of OpenCode needs the token file
 `~/.config/kaimon/opencode-token`. Kaimon makes its key at its first start, so that warning stays
 until [The Kaimon token](#the-kaimon-token), after [The jobs](#the-jobs).
 
-**Check.** Run the dry run again. Its last line is `0 change(s) to make.`, and it exits 0, which
-means that the installed files are the files of the sources.
+**Check.** Run `harness install` again. Its last line is `0 change(s) to make.`, and it exits
+with status 0, which means that the installed files are the files of the sources.
 
 ```bash
 harness install
@@ -425,17 +427,17 @@ harness install
 `modelSettings` of the file from the settings template `settings/settings.proposal.json`, rendered
 with the profile. It keeps every other key of the file, such as the model that you choose in
 Claude Code, and it keeps the old file as a backup, `settings.json.bak-<date>-<time>`. If the file
-does not exist, the install makes it, with these four sections only. Then it writes the
+does not exist, the install creates it, with these four sections only. Then it writes the
 instruction files, the agents, the skills, the rules, the commands and the hooks, and last the
 stamp `~/.claude/.harness-install.json`.
 
-These sections are the permission settings, the hooks, the [sandbox](concepts.md#sandbox) of
-Claude Code, and the [effort](concepts.md#effort) and auto-compact window of each model. Without
+These sections are the permission settings, the hooks, the [sandbox](concepts.md#sandbox), and
+the [effort](concepts.md#effort) and auto-compact window of each model. Without
 them, Claude Code runs with its own defaults: no guard hook refuses a command, and no sandbox
 limits a shell command. An `/effort` or `/autocompact` that you type holds until the next install,
 which replaces it. The settings come first, so that a new deny rule is in place before the files
-that it protects. The dry run prints the difference of the four sections after the line of the
-file, for example:
+that it protects. The dry run prints the diff of the four sections after the line of the file,
+for example:
 
 ```text
 ~/.claude/settings.json            REPLACE (backup: settings.json.bak-20261010-175004)
@@ -443,31 +445,33 @@ file, for example:
 +++ settings/settings.proposal.json
 ```
 
-Read this difference before each `--apply`. [security.md](security.md) describes what the settings
+Read this diff before each `--apply`. [security.md](security.md) describes what the settings
 stop, and how to check a change of them. The installed settings refuse an edit of
 `~/.claude/settings.json` from a [session](concepts.md#session), so you run the install yourself,
 in your own terminal. The install reads the file when it makes its plan, so do not change the
 model of a running session while `--apply` runs: Claude Code writes the file then, and that change
 is lost.
 
-If `~/.claude/settings.json` is not a JSON object, is a symlink, or holds one of the four sections
-as a value that is not an object, the install stops with exit 2, an error, and writes no file.
+If `~/.claude/settings.json` is not a JSON object, is a symbolic link, or holds one of the four
+sections as a value that is not an object, the install stops with exit status 2, an error, and
+writes no file.
 
 ### OpenCode
 
 `harness install` writes the OpenCode configuration into the OpenCode configuration directory:
 `opencode.jsonc` with its permission block, the plugins, the global instruction file `AGENTS.md`
-and the agents, and OpenCode's own copies of the instructions, the rules, the guard scripts and
+and the agents, and OpenCode's own copies of the instructions, the rules, the guard hooks and
 the skills. It removes the links in `~/.agents/skills/` that an earlier install wrote.
 [architecture.md](architecture.md#the-opencode-and-oh-my-pi-adapters) describes the adapter.
 
 ### oh-my-pi
 
 `harness install` writes the oh-my-pi configuration into its agent directory,
-`$PI_CODING_AGENT_DIR`, else `~/.omp/agent/`: `harness.yml` with the permission layer and the
-default model, `models.yml`, the guard extension, `AGENTS.md`, the rules, the agents, `mcp.json`,
-and oh-my-pi's own copies of the instructions, the guard scripts and the skills. It never writes
-oh-my-pi's own `config.yml`. oh-my-pi reads `harness.yml` over `config.yml` only when the line
+`$PI_CODING_AGENT_DIR`, or `~/.omp/agent/` if that variable is not set: `harness.yml` with the
+permission layer and the default model, `models.yml`, the guard extension, `AGENTS.md`, the rules,
+the agents, `mcp.json`, and oh-my-pi's own copies of the instructions, the guard hooks and the
+skills. It never writes oh-my-pi's own `config.yml`. oh-my-pi lets `harness.yml` override
+`config.yml` only when the line
 `PI_CONFIG_FILES=~/.omp/agent/harness.yml` is in `~/.omp/agent/.env`. oh-my-pi has no `env`
 setting, so its shell commands get the variables of the settings template's `env` from the same
 file. The install warns until the lines are there. This block adds the four lines to the end of
@@ -485,7 +489,7 @@ EOF
 
 [architecture.md](architecture.md#the-opencode-and-oh-my-pi-adapters) describes the adapter.
 
-**Check.** Run the dry run again. It prints no warning that starts with
+**Check.** Run `harness install` again. It prints no warning that starts with
 `WARNING: oh-my-pi does not load` or with `WARNING: oh-my-pi's bash calls lack`:
 
 ```bash
@@ -508,8 +512,8 @@ export PATH="$HOME/.julia/bin:$PATH"
 
 Add the `export` line to `~/.zshrc` too, so that each new shell finds `kaimon`.
 
-**Why.** The Kaimon server of [The jobs](#the-jobs) runs `~/.julia/bin/kaimon`, and the update job
-updates Kaimon.
+**Why.** The Kaimon server of [The jobs](#the-jobs) runs `~/.julia/bin/kaimon`, and the Julia
+update job updates Kaimon.
 
 **Check.** The command prints `KAIMON-OK`:
 
@@ -519,13 +523,13 @@ test -x ~/.julia/bin/kaimon && echo KAIMON-OK
 
 ## The jobs
 
-**What it does.** The launch agents of the harness run three jobs: the Kaimon server, the update
-job of Julia and the autocommit of `~/.claude`. A launch agent is a job that launchd, the service
-manager of macOS, runs for your account while you are logged in.
+**What it does.** The launch agents of the harness run three jobs: the Kaimon server, the Julia
+update job and the autocommit job of `~/.claude`. A launch agent is a job that launchd, the
+service manager of macOS, runs for your account while you are logged in.
 [components/other.md](components/other.md) says what each launch agent runs.
 
-The launch agents of the update job and the autocommit run the installed copies of two scripts of
-the checkout in `~/.local/bin`, not the copies in the checkout: a session cannot write
+The launch agents of the update job and the autocommit job run installed copies of two scripts of
+the checkout, in `~/.local/bin`, not the scripts in the checkout: a session cannot write
 `~/.local/bin`, and the jobs run outside the sandbox. These commands install the two copies:
 
 ```bash
@@ -536,7 +540,7 @@ install -m 755 ~/Research/Harness/scripts/julia-update.jl ~/.local/bin/
 After you change one of the two scripts in the checkout, run its line again.
 
 These commands render each launch agent with the profile into `~/Library/LaunchAgents/`, under
-its label, and make the directories of the logs of the jobs. `p` holds the profile key
+its label, and create the log directories of the jobs. `p` holds the profile key
 `launchd_prefix`; the commands of this step after it use `p` too, so run them in the same shell:
 
 ```bash
@@ -548,8 +552,8 @@ plutil -lint ~/Library/LaunchAgents/"$p".*.plist
 
 `plutil -lint` prints `OK` after the path of each file.
 
-**With a git repository in `~/.claude` only.** The autocommit commits in `~/.claude/` and pushes
-to the `origin` of that repository, so `~/.claude` must be a git repository with a remote
+**With a git repository in `~/.claude` only.** The autocommit job commits in `~/.claude/` and
+pushes to the `origin` of that repository, so `~/.claude` must be a git repository with a remote
 `origin`. No step of this page makes it one. The first command prints `REPOSITORY-OK` when
 `~/.claude` is the top directory of its own repository, not a directory inside another repository.
 The second prints the URL of the remote:
@@ -560,8 +564,8 @@ git -C ~/.claude remote get-url origin
 ```
 
 When the first prints no `REPOSITORY-OK`, or the second prints an error, skip the next command:
-launchd would start the autocommit, and the autocommit would fail. Else this command loads the
-launch agent of the autocommit:
+launchd would start the autocommit job, and the job would fail. Otherwise, this command loads the
+launch agent of the autocommit job:
 
 ```bash
 launchctl bootstrap "gui/$(id -u)" ~/Library/LaunchAgents/"$p".claude-autocommit.plist
@@ -586,10 +590,11 @@ launchctl bootstrap "gui/$(id -u)" ~/Library/LaunchAgents/"$p".kaimon.plist
 
 **Why.** launchd loads each launch agent of `~/Library/LaunchAgents/` again at each login, so the
 jobs need this step only once. The server must run before the agents of OpenCode and oh-my-pi can
-use Kaimon. macOS has no linger: a launch agent runs while you are logged in.
+use Kaimon. launchd has no equivalent of lingering: a launch agent runs only while you are logged
+in.
 
-**Check.** The command prints `LOADED` when the launch agent of the autocommit is loaded, and an
-error when you skipped it:
+**Check.** The command prints `LOADED` when the launch agent of the autocommit job is loaded, and
+an error when you skipped it:
 
 ```bash
 launchctl list "$p".claude-autocommit >/dev/null && echo LOADED
@@ -623,7 +628,7 @@ rm -f ~/.config/kaimon/opencode-token.new
 ```
 
 **Why.** Without the file, OpenCode sends no key, and Kaimon answers each request with 401. The
-settings deny a session the read of both files.
+settings do not let a session read either file.
 
 **Check.** The first command prints `600 47`: the mode, and the 47 characters of the key. The dry
 run prints no warning about `~/.config/kaimon/opencode-token`:
@@ -668,11 +673,11 @@ The [tutorial](tutorial.md) starts your first session.
 Then check the whole machine in one command. `harness doctor` checks the machine, the tools, the
 profile, the install and the jobs, read-only, and prints one line for each check: `PASS`, `WARN`,
 `FAIL` or `SKIP`, the name and a detail. A `FAIL` line names the section of this page that fixes
-it. It exits 0 when no check fails, and 1 when one fails. A `WARN` counts as no failure, for
-example a missing optional tool or a warning of the install. On macOS, it also checks for iTerm2,
-which the hook `cc-status` uses, and gives a `WARN` without it. Run it in a plain terminal: in a
-Claude Code session, the sandbox refuses some of its commands, and those checks are `SKIP`.
-`--full` also runs `harness test`.
+it. It exits with status 0 when no check fails, and 1 when one fails. A `WARN`, for example for a
+missing optional tool or a warning of the install, does not count as a failure. On macOS, it
+also checks for iTerm2, which the hook `cc-status` uses, and gives a `WARN` without it. Run it in
+a plain terminal: in a Claude Code session, the sandbox refuses some of its commands, and those
+checks are `SKIP`. `--full` also runs `harness test`.
 
 ```bash
 harness doctor
