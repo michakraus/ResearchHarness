@@ -780,6 +780,26 @@ checks are `SKIP`. `--full` also runs `harness test`.
 harness doctor
 ```
 
+## Dotfiles (optional)
+
+**Only for several machines.** A user who sets up one machine, or who keeps the profile in a
+place of their own, skips this step. The rest of the setup works without it.
+
+**What it does.** The dotfiles kit of the harness, `examples/dotfiles/`, is a chezmoi source with
+placeholder data. You copy it into a private repository with `harness dotfiles-kit`, and chezmoi
+applies that repository on each machine. It keeps the profile, the model tables and the commit of
+the harness the same on each machine, and each machine applies a change only when your key
+signed it. [The `dotfiles` command](dotfiles-command.md) gives the steps, from the private copy
+to a new machine.
+
+**Why.** On several machines, the profile is the same on each of them, as
+[The profile and the model tables](#the-profile-and-the-model-tables) says, and a copy by hand
+can differ. The kit applies one reviewed source on each machine.
+
+The kit needs chezmoi. Install it as the documentation of chezmoi shows for your distribution.
+
+**Check.** `dotfiles check`, in a plain terminal, ends with a count line that says `0 FAIL`.
+
 ## A machine reached over SSH
 
 In an SSH session, no Secret Service provider, such as GNOME Keyring, is available, so `gh` and

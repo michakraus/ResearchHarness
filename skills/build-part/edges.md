@@ -330,6 +330,13 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
 - a case for "the checks count this result as wrong" that restates the accepted values in the
   test: a check that starts to accept the result survives; pass the result through the checks'
   own code (P3 round 1, *Publish the harness as ResearchHarness*)
+- a refusal of one directory compared by path, even resolved: a case variant on a file system
+  that ignores case, and the macOS firmlink below `/System/Volumes/Data`, name the same directory
+  and pass; compare by device and inode (C round 1, *Ship the dotfiles kit in the harness*)
+- a write to a path that holds something other than a regular file or a link: `write_bytes` on a
+  FIFO blocks for ever, and a file that cannot be read raises `PermissionError`, a traceback that
+  exits 1; check the kind before the open, and turn each `OSError` into the contract's exit 2
+  (C round 1, *Ship the dotfiles kit in the harness*)
 
 ## A step that runs a user's script
 

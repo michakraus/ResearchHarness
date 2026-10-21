@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+- **The documentation site gains the manual page of the dotfiles kit, `dotfiles-command.md`.** It
+  gives the synopsis, the exit status, the files and where to run each of `dotfiles update`,
+  `dotfiles check [--full]` and `dotfiles merge <number | branch>`; the update path and its trust
+  model, in which a machine applies only commits signed by a key of its applied `allowed_signers`;
+  the steps of a new machine and of the first signed commit; the data keys of
+  `.chezmoidata/machines.toml`; and how to start a private copy with `harness dotfiles-kit`. The
+  page is in the sidebar, under *Use*, and in the menu of the site check. The two setup pages
+  gain a section *Dotfiles (optional)* that links it, the CI section of `development.md` names the
+  job `dotfiles`, the `examples/` row of `architecture.md` names the kit, and the sections of
+  `harness dotfiles-kit` link the page. The edge catalogue of `build-part` gains two edges of a
+  tool that reads files or a tree: a refusal of a directory compared by path, and a write to a
+  path that holds a FIFO or a file that cannot be read.
+
 - **`harness dotfiles-kit [--apply] DEST` copies the dotfiles kit into a chezmoi source.** It
   reads `examples/dotfiles/kit.toml` and lists each code file of `DEST` that is missing or
   differs from the kit in its bytes or its execute bit, and each seed file that `DEST` lacks; the
