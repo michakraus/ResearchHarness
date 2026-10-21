@@ -1,0 +1,32 @@
+{{- /* No shebang on the first line of the template, so that a shellcheck of the files with a
+       shell shebang skips it: tests/script-check.py checks the render. */ -}}
+#!/bin/bash
+# The tool check. chezmoi runs it before every apply, before any file changes. It exits 1 and names
+# every missing tool; it installs nothing, because a package install needs root and stays a step
+# of the bootstrap that the owner runs by hand.
+set -eu
+
+tools="git zsh curl python3 lsof rtk juliaup gh glab"
+{{- if eq .chezmoi.os "linux" }}
+tools="$tools bwrap socat secret-tool"
+{{- end }}
+
+missing=""
+for tool in $tools; do
+    if ! command -v "$tool" >/dev/null 2>&1; then
+        missing="$missing $tool"
+    fi
+done
+
+# python3 must be 3.11 or later: the harness needs tomllib.
+if command -v python3 >/dev/null 2>&1; then
+    if ! python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 11) else 1)' >/dev/null 2>&1; then
+        missing="$missing python3>=3.11"
+    fi
+fi
+
+if [ -n "$missing" ]; then
+    echo "chezmoi: missing tools:$missing" >&2
+    echo "chezmoi: install them (see the bootstrap), then run chezmoi apply again." >&2
+    exit 1
+fi

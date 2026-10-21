@@ -1,0 +1,72 @@
+{{- $host := includeTemplate "host" . | fromJson -}}
+#!/bin/bash
+# The services: the copies of julia-update.jl and claude-autocommit in ~/.local/bin, then the
+# launch agents (macOS) or the systemd --user units (Linux), rendered by `harness render` from the
+# harness at its pin and the profile.
+#
+# chezmoi runs this script again when one of the inputs of the rendered units or plists changes:
+#   harness_commit  {{ .harness_commit }}
+#   profile         {{ includeTemplate "dot_config/research-harness/profile.toml.tmpl" . | sha256sum }}
+#   os              {{ $host.os }}
+set -eu
+
+HARNESS="$HOME/Research/Harness"
+harness() { "$HARNESS/bin/harness" "$@"; }
+
+# render TEMPLATE TARGET: write the rendered template to TARGET, whole or not at all.
+render() {
+    harness render "$HARNESS/$1" > "$2.new"
+    mv "$2.new" "$2"
+}
+
+# The jobs run the installed copies, never the checkout, which a session can write.
+mkdir -p "$HOME/.local/bin"
+install -m 755 "$HARNESS/launchagents/claude-autocommit" "$HOME/.local/bin/claude-autocommit"
+install -m 644 "$HARNESS/scripts/julia-update.jl" "$HOME/.local/bin/julia-update.jl"
+{{- if eq $host.os "darwin" }}
+
+prefix=$(harness get launchd_prefix)
+domain="gui/$(id -u)"
+agents="$HOME/Library/LaunchAgents"
+mkdir -p "$agents"
+
+# load LABEL PLIST: boot the job out when launchd has it, then bootstrap it from PLIST.
+# bootout returns before launchd has removed the job, and a bootstrap in that window fails and
+# leaves the job unloaded: wait up to 10 s for `launchctl print` to fail, and try a failed
+# bootstrap once more after 1 s.
+load() {
+    if launchctl print "$domain/$1" >/dev/null 2>&1; then
+        launchctl bootout "$domain/$1"
+        tries=0
+        while launchctl print "$domain/$1" >/dev/null 2>&1 && [ "$tries" -lt 100 ]; do
+            sleep 0.1
+            tries=$((tries + 1))
+        done
+    fi
+    if ! message=$(launchctl bootstrap "$domain" "$2" 2>&1); then
+        sleep 1
+        if ! message=$(launchctl bootstrap "$domain" "$2" 2>&1); then
+            echo "chezmoi: launchctl bootstrap of $1 failed: $message" >&2
+            exit 1
+        fi
+    fi
+}
+
+for job in kaimon julia-update claude-autocommit; do
+    mkdir -p "$HOME/Library/Logs/$job"
+    render "launchagents/$job.plist" "$agents/$prefix.$job.plist"
+    load "$prefix.$job" "$agents/$prefix.$job.plist"
+done
+{{- else }}
+
+units="$HOME/.config/systemd/user"
+mkdir -p "$units"
+for unit in kaimon.service julia-update.service julia-update.timer \
+    claude-autocommit.service claude-autocommit.timer; do
+    render "systemd/$unit" "$units/$unit"
+done
+systemctl --user daemon-reload
+systemctl --user enable --now kaimon.service julia-update.timer claude-autocommit.timer
+# A changed unit takes effect only at a restart, as bootout and bootstrap do on macOS.
+systemctl --user restart kaimon.service julia-update.timer claude-autocommit.timer
+{{- end }}

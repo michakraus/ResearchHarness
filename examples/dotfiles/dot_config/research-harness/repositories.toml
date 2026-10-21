@@ -1,0 +1,32 @@
+# The repositories of a research tree, for `harness clone` and `harness repos`. Copy this file to
+# ~/.config/research-harness/repositories.toml, beside the profile, and fill it in; or set
+# $RESEARCH_HARNESS_REPOSITORIES to its path. lib/harness/repos.py documents the form.
+#
+# The table is optional. Without it, `harness clone` has nothing to clone, and `harness repos`
+# takes each git repository that it finds in the directories below.
+
+# The fixed repositories: knowledge, environment, tasks, bibliography and library. Each key is
+# the directory in title case below the research root: `knowledge` is ~/Research/Knowledge.
+knowledge = "https://git.example.org/example/knowledge.git"
+environment = "https://git.example.org/example/environment.git"
+tasks = "https://git.example.org/example/tasks.git"
+bibliography = "https://git.example.org/example/bibliography.git"
+library = "https://git.example.org/example/library.git"
+
+# The groups: packages, experiments, papers, books, talks and projects. Each table is the group's
+# directory in title case, and each key in it a directory there; quote a key with spaces.
+[packages]
+Example = "https://github.com/example/Example.jl.git"
+
+[experiments]
+ExampleBenchmark = "https://github.com/example/ExampleBenchmark.jl.git"
+
+[papers]
+"A Paper Title" = "https://git.example.org/example/papers/a-paper.git"
+
+[books]
+
+[talks]
+
+[projects]
+"A Project" = "https://git.example.org/example/projects/a-project.git"

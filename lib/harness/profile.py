@@ -910,7 +910,7 @@ def commit_cases():
 PREPUSH_TOOLS = ["bash", "sh", "git", "mktemp", "rm", "cat", "tail", "head", "grep", "awk"]
 
 
-KIT_TESTS = ["update-check", "check-check", "driver-check"]
+KIT_TESTS = ["update-check", "check-check", "driver-check", "render-check", "script-check"]
 KIT_SKIP = "skip  chezmoi: not found; CI runs the kit's tests"
 
 
@@ -919,8 +919,8 @@ def prepush_case(path=None, kit_fails=None):
     main, with stubs of gitleaks and of `bin/harness` and no python3.11, shellcheck, julia or
     chezmoi on the PATH: `harness leaks` runs in the hook's clone with that URL as its `origin`,
     not the path of the checkout, and the kit's tests are skipped with one line. With `kit_fails`,
-    the name of one of KIT_TESTS, a stub of chezmoi is on the PATH and the fixture holds the three
-    kit tests, of which that one exits 1: the hook runs all three and refuses the push with one
+    the name of one of KIT_TESTS, a stub of chezmoi is on the PATH and the fixture holds the five
+    kit tests, of which that one exits 1: the hook runs all five and refuses the push with one
     line that names it. The tools are linked from `path`, this process's PATH by default, without a
     directory named `git-core`: git puts its exec path first in a hook's PATH, and a `git` started
     from a link to that copy looks for `git-upload-pack` beside the link. (number of cases, number

@@ -1,0 +1,43 @@
+# The model servers and accounts of OpenCode and oh-my-pi beyond their built-in providers, each
+# once. Copy this file to providers.toml beside the profile, ~/.config/research-harness/, and fill
+# it in; without it, neither frontend gets a provider of its own. `harness install` writes each
+# provider into the `provider` object of OpenCode's opencode.jsonc and into oh-my-pi's models.yml;
+# lib/harness/providers.py documents each key. The generated files hold none of these comments.
+#
+# A table is one provider, named as models.toml names it in `<provider>/<model>`. A model id with
+# `.`, `/` or `:` is a quoted key, such as `models."org/model:7b"`.
+
+# An account of a cloud service with the Anthropic API. `url` ends in /v1, as OpenCode's client
+# requires it; the install removes `/v1` for oh-my-pi. `key` names the environment variable that
+# holds the key, so that no key is in the file: OpenCode reads it from its environment, oh-my-pi
+# from ~/.omp/agent/.env.
+[example-cloud]
+api = "anthropic"
+url = "https://example-resource.example.org/anthropic/v1"
+name = "Example cloud"
+key = "{env:EXAMPLE_CLOUD_API_KEY}"
+
+# `context` and `output` are the tokens that the model holds and writes: OpenCode's `limit`,
+# oh-my-pi's `contextWindow` and `maxTokens`.
+[example-cloud.models.example-model]
+name = "Example model"
+reasoning = true
+context = 200000
+output = 32000
+
+# A local server with the OpenAI API, for OpenCode alone. `key = "{file:~/path}"` would read the key
+# from a file of its own. `effort` is the reasoning effort that the model always gets, whatever the
+# agent asks for. `opencode` and `omp` hold a frontend's own keys, of a provider or a model, merged
+# over the rest: here OpenCode's `tool_call`, which oh-my-pi has no key for.
+[local]
+api = "openai-compatible"
+url = "http://127.0.0.1:8080/v1"
+name = "a local server"
+frontends = ["opencode"]
+
+[local.models.example-model]
+name = "Example model"
+context = 131072
+output = 32768
+effort = "none"
+opencode = { tool_call = false }
