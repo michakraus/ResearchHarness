@@ -201,7 +201,10 @@ exists. A file of `DEST` that `kit.toml` does not name is not listed and not cha
 
 `DEST` is a clone of your dotfiles repository. `dotfiles-kit` refuses the source that chezmoi
 applies, `~/.local/share/chezmoi`, and each directory below it, also through a symbolic link or
-`..`. A change of the applied source goes through a branch and a merge request.
+`..`. A change of the applied source goes through a branch and a merge request. Every file that
+`dotfiles-kit` lists or writes stays inside `DEST`: when the directory of a file of `kit.toml`
+links out of `DEST`, the dry run and `--apply` stop before the first write and name the file. A
+symbolic link at a code file's own path is replaced by the file.
 
 | option | meaning |
 |:--|:--|
@@ -209,8 +212,8 @@ applies, `~/.local/share/chezmoi`, and each directory below it, also through a s
 
 **Exit status:** 0 when nothing would change, or after `--apply`; 1 when the dry run lists a file;
 2 when `DEST` is not a directory or is the applied source, when `kit.toml` cannot be read or
-names a file that the harness lacks or a class other than `code` and `seed`, and when a file
-cannot be written.
+names a file that the harness lacks or a class other than `code` and `seed`, when the directory of
+a file resolves outside `DEST`, and when a file cannot be written.
 
 **Where to run it:** where you can write `DEST`. Commit the change on a branch of the clone.
 

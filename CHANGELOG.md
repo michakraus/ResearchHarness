@@ -9,8 +9,10 @@
   exists; a file that `kit.toml` does not name stays as it is. It refuses, with exit 2, a `DEST`
   that is not a directory, and the applied source `~/.local/share/chezmoi` or a directory below
   it, by resolved path: the copy goes into a clone, on a branch, and through a merge request. A
-  `kit.toml` entry whose file the harness lacks exits 2 with one line that names it. The contract
-  sweep gains the argument `{kit}`, an empty fixture directory, and runs the dry run on it.
+  `kit.toml` entry whose file the harness lacks exits 2 with one line that names it, and so does a
+  file whose directory resolves outside `DEST` through a symbolic link, before the first write;
+  a link at a code file's own path is replaced. The contract sweep gains the argument `{kit}`, an
+  empty fixture directory, and runs the dry run on it.
 
 - **The dotfiles kit gains its setup scripts and the files of `~/.config/research-harness/`.**
   `examples/dotfiles/.chezmoiscripts/` holds the five scripts that set up a machine: the tool

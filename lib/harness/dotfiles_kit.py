@@ -10,7 +10,10 @@ there is one; `--apply` writes them.
 
 `DEST` is a clone of the chezmoi source, not the source that chezmoi applies: the subcommand
 refuses `~/.local/share/chezmoi` and each directory below it, compared as resolved paths, because
-a change of the applied source goes through a branch and a merge request.
+a change of the applied source goes through a branch and a merge request. Each file of `kit.toml`
+stays inside the resolved `DEST`: a file whose directory resolves outside it, through a symbolic
+link, stops the dry run and `--apply` before the first write. A link at a code file's own path
+is replaced, not followed.
 """
 
 import os
@@ -63,10 +66,27 @@ def executable(path):
     return bool(path.stat().st_mode & stat.S_IXUSR)
 
 
+def check_targets(rels, dest):
+    """Refuse each path of `rels` below `dest` whose parent directory resolves outside the resolved
+    `dest`, through a symbolic link or `..`, or does not resolve, through a loop of links: a read or
+    a write there leaves `dest`. A link at the path itself is not followed here."""
+    root = pathlib.Path(os.path.realpath(dest))
+    for rel in rels:
+        target = dest / rel
+        parent = pathlib.Path(os.path.realpath(target.parent))
+        if any(p.is_symlink() for p in (parent, *parent.parents)):
+            raise HarnessError(f"{target}: its directory {target.parent} does not resolve: a loop of symbolic links")
+        if parent != root and root not in parent.parents:
+            raise HarnessError(f"{target}: its directory {target.parent} resolves to {parent}, outside {root}")
+
+
 def plan(kit, dest):
-    """[(path, class, status)] of each change: `MISSING`, `DIFFERS` or `MODE`."""
+    """[(path, class, status)] of each change: `MISSING`, `DIFFERS` or `MODE`. Each file of
+    `kit.toml` is checked to stay inside `dest` before the first is compared."""
+    entries = read_kit(kit)
+    check_targets([rel for rel, _ in entries], dest)
     changes = []
-    for rel, cls in read_kit(kit):
+    for rel, cls in entries:
         src, dst = kit / rel, dest / rel
         if not os.path.lexists(dst):
             changes.append((rel, cls, "MISSING"))
@@ -245,6 +265,61 @@ def selftest():
         code, out, _ = attempt(dest, kit, home, apply=True)
         check(code == 0 and listed(out) == set() and not (tmp / "nowhere").exists(),
               f"a seed file that is a link with no target is left as it is: exit {code}, listed {sorted(listed(out))}")
+
+        # A directory of DEST that is a symbolic link out of DEST: the dry run and --apply exit 2
+        # with one line that names the file, before the first write. The seed directory comes after
+        # the code files, so a check made file by file would write the code files first.
+        outdir = tmp / "outdir"
+        outdir.mkdir()
+        (tmp / "pre-x" / "code").mkdir(parents=True)
+        (tmp / "deep" / "d").mkdir(parents=True)
+        for name, link, to, word in (("out-code", "code", outdir, "code/"),
+                                     ("out-seed", "seed", outdir, "seed/"),
+                                     ("out-dangling", "code", tmp / "nowhere-dir", "code/"),
+                                     ("out-dotdot", "code", "..", "code/"),
+                                     ("pre", "code", tmp / "pre-x" / "code", "code/"),
+                                     ("out-loop", "code", "code", "code/")):
+            d = tmp / name
+            d.mkdir()
+            (d / link).symlink_to(to)
+            for apply in (False, True):
+                before = tree(tmp)
+                code, out, error = attempt(d, kit, home, apply=apply)
+                check(code == 2 and word in error and "\n" not in error and listed(out) == set() and tree(tmp) == before
+                      and not (tmp / "nowhere-dir").exists(),
+                      f"{'--apply' if apply else 'the dry run'} on {name}, whose {link} links to {to}, exits 2 with one "
+                      f"line that names the file and writes nothing: exit {code}, {error!r}, listed {sorted(listed(out))}")
+        bad = tmp / "deep" / "kit"
+        (bad / "code").mkdir(parents=True)
+        (bad / "code" / "b").write_bytes(b"b\n")
+        (tmp / "deep" / "escape").write_bytes(b"e\n")
+        (bad / "kit.toml").write_text('[files]\n"code/b" = "code"\n"../escape" = "code"\n')
+        code, out, error = attempt(tmp / "deep" / "d", bad, home, apply=True)
+        check(code == 2 and "escape" in error and not any((tmp / "deep" / "d").iterdir()),
+              f"a kit.toml entry with .. out of DEST exits 2 and writes nothing: exit {code}, {error!r}")
+        nest = tmp / "nest"
+        (nest / "n" / "m").mkdir(parents=True)
+        (nest / "n" / "m" / "f").write_bytes(b"f\n")
+        (nest / "kit.toml").write_text('[files]\n"n/m/f" = "code"\n')
+        d = tmp / "out-nest"
+        d.mkdir()
+        (d / "n").symlink_to("n")
+        code, out, error = attempt(d, nest, home, apply=True)
+        check(code == 2 and "n/m/f" in error and "loop" in error and "\n" not in error,
+              f"a loop of links two directories above a file exits 2 with one line that names the file: exit {code}, "
+              f"{error!r}")
+        # A directory that links inside DEST, and a DEST that is itself a link: the files stay inside.
+        d = tmp / "inner"
+        (d / "real").mkdir(parents=True)
+        (d / "code").symlink_to("real")
+        code, out, _ = attempt(d, kit, home)
+        check(code == 1 and listed(out) == set(files), f"a directory that links inside DEST is no refusal: exit {code}")
+        code, out, _ = attempt(d, kit, home, apply=True)
+        check(code == 0 and (d / "real" / "a.sh").read_bytes() == b"echo a\n",
+              f"--apply writes through a directory that links inside DEST: exit {code}")
+        (tmp / "dest-link").symlink_to(dest)
+        code, out, error = attempt(tmp / "dest-link", kit, home)
+        check(code == 0, f"a DEST that is a link to a directory: the files stay inside its target: exit {code}, {error!r}")
 
         # The refusals of DEST, each before any write: not a directory, or the applied source by
         # its resolved path.
