@@ -18,6 +18,12 @@
   `--no-verify`, with the old name as an alias. The push now fetches first, so it sees a commit
   behind on the remote; it no longer prints the one-off hint to run `ci-protection`.
 
+- **`harness-command.md` is a manual page.** It gave one table row per subcommand and left the
+  options, the exit status and the place to run each subcommand to `--help` and other pages. It
+  now has a synopsis, the global options, a section for each subcommand with its options, exit
+  status, files, where to run it and examples, and tables of the environment variables, the files
+  and the exit status.
+
 - **"Subcommand" in place of "verb".** The docs, the help, the docstrings, the code and the
   `build-part` skill called `install`, `doctor` and the others the verbs of `harness`.
   "Subcommand" is the term that a reader of a command-line tool knows, and "command" has three
