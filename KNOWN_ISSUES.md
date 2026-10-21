@@ -279,8 +279,8 @@
   not on the PATH" (`examples/dotfiles/tests/update-check.py:920-923`,
   `examples/dotfiles/tests/check-check.py:949-952`, `examples/dotfiles/tests/driver-check.py:141`).
   The hook then refuses the push, but its own shellcheck step prints `skip`. This is what clause 8
-  of the kit's update path and K8 of its decisions decide. The other choice is a K8 change for the
-  user.
+  of the kit's update path and K8 of the kit's plan ("The kit's tests run in a CI job of their
+  own") decide. The other choice is a K8 change for the user.
 - kind: defect
 - found: #67
 
