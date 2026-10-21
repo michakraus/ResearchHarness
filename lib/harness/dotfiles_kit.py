@@ -165,7 +165,10 @@ def register(sub):
                                    "examples/dotfiles/kit.toml: list each code file that is missing or differs, "
                                    "and each seed file that is missing; exit 1 when there is one. --apply copies "
                                    "them. A seed file that exists is never written. DEST must be a directory, "
-                                   "and not the applied source ~/.local/share/chezmoi.")
+                                   "and not the applied source ~/.local/share/chezmoi. Exit 2 also when a "
+                                   "directory of DEST that holds a file of the kit does not resolve inside DEST, when "
+                                   "a code file of DEST cannot be read, and, with --apply, when a code file's "
+                                   "path holds something that is not a regular file or a link.")
     p.add_argument("dest", metavar="DEST", help="the chezmoi source to copy the kit into: a clone, on a branch")
     changing(p, help="copy the files; without it, print the list").set_defaults(run=cmd_dotfiles_kit)
 
