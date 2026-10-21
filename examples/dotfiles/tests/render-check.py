@@ -13,16 +13,16 @@ home directory; it reads the live files only to compare them with the render of 
 The checks read the targets of the kit alone, KIT_TARGETS and dotfiles-merge: a source that
 copies the kit may render more targets, and the check allows them.
 
-Checks, per host:
+Checks, per host, numbered as the comments that open each check in the code:
   1. `chezmoi managed` lists every target of the kit for the host, and they render;
      dotfiles-merge only on template_host.
   2. The render of the machine that runs the check equals its live files, for the kit's targets.
   3. A Linux render of a kit target holds no "/Users/" and no "/opt/homebrew"; a macOS render
      holds no "/home/".
-  6. The rendered profile.toml, models.toml, network.toml, providers.toml and repositories.toml
+  4. The rendered profile.toml, models.toml, network.toml, providers.toml and repositories.toml
      parse with tomllib, and the profile names autocommit_branch `memory/<host>` on every host
      but template_host, which names none.
-  8. SSH_SK_PROVIDER appears in no rendered kit target but .local/bin/dotfiles-merge, which only
+  5. SSH_SK_PROVIDER appears in no rendered kit target but .local/bin/dotfiles-merge, which only
      template_host receives; the scripts in .local/bin are executable.
 And: template_host is a host of machines.toml.
 And: a hostname that machines.toml does not list makes chezmoi fail with a message that names it,
@@ -128,7 +128,7 @@ def check_host(root, host, os_name, home, live_home, template_host):
         fail(f"{host}: chezmoi apply exited {applied.returncode}: {applied.stderr.strip()}")
         return
 
-    # Clause 1: the managed targets of the kit. A target outside the kit is allowed.
+    # Check 1: the managed targets of the kit. A target outside the kit is allowed.
     managed = chezmoi(work, ["managed"], data)
     if managed.returncode != 0:
         fail(f"{host}: chezmoi managed exited {managed.returncode}: {managed.stderr.strip()}")
@@ -149,7 +149,7 @@ def check_host(root, host, os_name, home, live_home, template_host):
         if not (dest / f).is_file():
             fail(f"{host}: {f} is not rendered")
 
-    # Clause 3: no path of the other OS.
+    # Check 3: no path of the other OS.
     hits = []
     for f in files:
         path = dest / f
@@ -164,7 +164,7 @@ def check_host(root, host, os_name, home, live_home, template_host):
     else:
         print(f"  no {' or '.join(FORBIDDEN[os_name])} in the kit's targets")
 
-    # Clause 6: the TOML files parse.
+    # Check 4: the TOML files parse.
     parsed = {}
     for f in TOML_TARGETS:
         try:
@@ -185,7 +185,7 @@ def check_host(root, host, os_name, home, live_home, template_host):
         else:
             print(f"  autocommit_branch: {got or 'none, so main'}")
 
-    # Clause 8: SSH_SK_PROVIDER only in dotfiles-merge; the scripts are executable.
+    # Check 5: SSH_SK_PROVIDER only in dotfiles-merge; the scripts are executable.
     provider = [f for f in files
                 if (dest / f).is_file() and SK_PROVIDER in (dest / f).read_text(errors="replace")]
     want_provider = [MERGE_SCRIPT] if host == template_host else []
@@ -197,7 +197,7 @@ def check_host(root, host, os_name, home, live_home, template_host):
         if f.startswith(".local/bin/") and (dest / f).is_file() and not os.access(dest / f, os.X_OK):
             fail(f"{host}: {f} is not executable")
 
-    # Clause 2: the render of this machine equals its live files. Read-only on the live side.
+    # Check 2: the render of this machine equals its live files. Read-only on the live side.
     if live_home is None:
         return
     before = len(failures)

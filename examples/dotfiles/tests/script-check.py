@@ -9,15 +9,16 @@ It needs chezmoi, git, bash and shellcheck. Each script is rendered with `chezmo
 execute-template` (its own --config, --source, --destination and --persistent-state under
 $TMPDIR) for a host, and run with /bin/bash in a process whose HOME is a scratch directory.
 Besides each host of .chezmoidata/machines.toml, the cases name template_host, the first Linux
-host there that is not template_host, and hosts of the test's own, added as data. The remotes are scratch repositories that a scratch git
-configuration puts in place of the URLs of [remotes] in machines.toml (`url.<path>.insteadOf`).
+host there that is not template_host, and hosts of the test's own, added as data. The remotes
+are scratch repositories that a scratch git configuration puts in place of the URLs of [remotes]
+in machines.toml (`url.<path>.insteadOf`).
 launchctl, systemctl, juliaup, julia, chsh, curl and sudo are stubs that log their arguments; the
 stubs come first on the PATH. The services test runs the real `harness render` of a scratch clone
 of a harness checkout (read-only): when this source is examples/dotfiles/ of a harness checkout,
 as in CI, that checkout at its HEAD, which the test renders as harness_commit; otherwise
 ~/Research/Harness at the harness_commit of machines.toml.
 
-Checks:
+Checks, numbered as the section banners and the `== check N` lines of the output:
   1. The tool check exits 1 and names exactly the missing tools, for each tool alone and for all
      at once, on darwin and on linux; python3 older than 3.11 counts as missing; it installs
      nothing.
@@ -39,12 +40,12 @@ Checks:
      [compat] or in a comment counts as missing); nightly, release, lts and 1.13.1 get none; with
      every package present no Pkg.add runs; the Kaimon app is installed; a failing julia stops
      the run at its channel and names it; a minimum that is not X.Y fails the render.
-  6. The services: the copies in ~/.local/bin; on linux the five units, each equal to `harness
+  5. The services: the copies in ~/.local/bin; on linux the five units, each equal to `harness
      render`, then daemon-reload and enable --now; on macOS the plists, each equal to `harness
      render`, bootout of a loaded job and bootstrap of each; a bootout that finishes late and a
      failed first bootstrap still load every job, and a mutant with no wait stops; the script's
      text changes with the pin and with the profile.
-  7. Every script, rendered for every host of machines.toml, passes `bash -n` and `shellcheck`;
+  6. Every script, rendered for every host of machines.toml, passes `bash -n` and `shellcheck`;
      no script names sudo, a pipe into a shell, or a key file.
 """
 
@@ -319,10 +320,10 @@ def missing_named(stderr):
     return None
 
 
-# ---------------------------------------------------------------- clause 1 ----
+# ----------------------------------------------------------------- check 1 ----
 
 def test_tool_check():
-    print("\n== clause 1: the tool check")
+    print("\n== check 1: the tool check")
     home = scratch("home")
     for os_name in ("darwin", "linux"):
         text = rendered(TOOL_CHECK, TEMPLATE_HOST, os_name, home)
@@ -364,7 +365,7 @@ def test_tool_check():
             check(result.returncode == 0, "darwin: bwrap, socat, secret-tool not required")
 
 
-# ---------------------------------------------------------------- clause 2 ----
+# ----------------------------------------------------------------- check 2 ----
 
 def clone_urls():
     """Each clone's directory below HOME and its remote, from the [remotes] table."""
@@ -398,7 +399,7 @@ def clone_home(rewrites):
 
 
 def test_clones():
-    print("\n== clause 2: the clones")
+    print("\n== check 2: the clones")
     _, heads, rewrites = clone_fixture()
     text = rendered(CLONES, LINUX_HOST, "linux", "/home/example")
 
@@ -478,10 +479,10 @@ def test_clones():
           f"no remote: exit {result.returncode}, no clone")
 
 
-# ---------------------------------------------------------------- clause 3 ----
+# ----------------------------------------------------------------- check 3 ----
 
 def test_harness():
-    print("\n== clause 3: the harness at its pin")
+    print("\n== check 3: the harness at its pin")
     harness_stub = '#!/bin/sh\necho "$*" >> "$HOME/harness.log"\n'
 
     def fixture():
@@ -571,7 +572,7 @@ def test_harness():
           f"no remote: exit {result.returncode}, no checkout, no install")
 
 
-# ---------------------------------------------------------------- clause 4 ----
+# ----------------------------------------------------------------- check 4 ----
 
 # The package set of .chezmoidata/julia.toml, written out here so that the check does not take
 # the set from the file it checks: each package and its minimum channel.
@@ -683,7 +684,7 @@ def check_julia_run(label, result, home, channels, default, package, present=Non
 
 
 def test_julia_packages_file():
-    print("\n== clause 4: the package set of .chezmoidata/julia.toml")
+    print("\n== check 4: the package set of .chezmoidata/julia.toml")
     path = SOURCE / ".chezmoidata" / "julia.toml"
     with open(path, "rb") as handle:
         data = tomllib.load(handle)
@@ -696,7 +697,7 @@ def test_julia_packages_file():
 
 
 def test_julia():
-    print("\n== clause 4: Julia")
+    print("\n== check 4: Julia")
     five = ["1.10", "1.11", "1.12", "1.13", "nightly"]
     hosts = {f"test-julia-{gpu}": {"os": "linux", "arch": "x86_64", "gpu": gpu,
                                    "julia_channels": five, "julia_default": "1.13"}
@@ -808,7 +809,7 @@ def test_julia():
               f"{err.strip()!r}")
 
 
-# ---------------------------------------------------------------- clause 6 ----
+# ----------------------------------------------------------------- check 5 ----
 
 def harness_clone(home, env, checkout, pin):
     """A scratch clone of the harness checkout `checkout` at `pin`."""
@@ -880,7 +881,7 @@ def check_copies(home, harness, label):
 
 
 def test_services():
-    print("\n== clause 6: the services")
+    print("\n== check 5: the services")
     checkout, pin = harness_source()
     if not (checkout / ".git").exists():
         fail(f"{checkout} is not a clone; the services test needs it (read-only)")
@@ -996,10 +997,10 @@ def test_services():
           "the services script's text changes with harness_commit and with the profile")
 
 
-# ---------------------------------------------------------------- clause 7 ----
+# ----------------------------------------------------------------- check 6 ----
 
 def test_lint():
-    print("\n== clause 7: bash -n and shellcheck on every script, for every host")
+    print("\n== check 6: bash -n and shellcheck on every script, for every host")
     scripts = sorted(p.name for p in SCRIPTS.iterdir())
     check(scripts == sorted([TOOL_CHECK, CLONES, JULIA, HARNESS, SERVICES]),
           f"the scripts are the five of the kit: {scripts}")
