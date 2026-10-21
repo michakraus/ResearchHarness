@@ -1,0 +1,7 @@
+# The SSH keys whose signatures dotfiles-update, dotfiles-merge and dotfiles-check accept, one
+# line per key, in the form of the ALLOWED SIGNERS section of ssh-keygen(1):
+#
+#   owner@example.org namespaces="git" ssh-ed25519 <the public key>
+#
+# This file is a placeholder: add the public half of your signing key. While it lists no key,
+# dotfiles-update merges nothing and dotfiles-check reports the source signature as FAIL.

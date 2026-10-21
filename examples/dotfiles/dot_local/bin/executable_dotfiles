@@ -1,0 +1,68 @@
+#!/bin/bash
+# dotfiles <subcommand> [arguments]: the one front door to the dotfiles scripts. It runs the
+# script dotfiles-<subcommand> beside it, which does the work and asks its own questions:
+#
+#   dotfiles update                    dotfiles-update, on every host
+#   dotfiles check [--full]            dotfiles-check, on every host
+#   dotfiles merge <number | branch>   dotfiles-merge, on the template host only
+#
+# A merge argument of digits only is a pull request or merge request of the source's origin: gh
+# names its branch for an origin on github.com, glab for any other host, and it must be open.
+# Any other argument is a branch name.
+set -euo pipefail
+
+DOTFILES_SOURCE="$HOME/.local/share/chezmoi"
+here=$(cd "$(dirname "$0")" && pwd)
+
+usage() {
+    echo "usage: dotfiles update | dotfiles check [--full] | dotfiles merge <pull or merge request number | branch>" >&2
+    exit 2
+}
+
+[ $# -ge 1 ] || usage
+subcommand=$1
+shift
+case "$subcommand" in
+    update | check)
+        exec "$here/dotfiles-$subcommand" "$@"
+        ;;
+    merge)
+        [ $# -eq 1 ] && [ -n "$1" ] || usage
+        if [ ! -x "$here/dotfiles-merge" ]; then
+            echo "dotfiles merge: this host has no dotfiles-merge; only the template host merges." >&2
+            exit 1
+        fi
+        branch=$1
+        if [[ "$branch" =~ ^[0-9]+$ ]]; then
+            project=$(git -C "$DOTFILES_SOURCE" remote get-url origin)
+            # The host and the path of the origin, as a URL or as host:path.
+            case $project in
+                *://*) rest=${project#*://} host=${rest%%/*} path=${rest#*/} ;;
+                *) host=${project%%:*} path=${project#*:} ;;
+            esac
+            host=${host##*@} host=${host%%:*} path=${path%.git}
+            # "<state> <branch>" of the pull request or merge request; nothing when it is not
+            # found.
+            if [ "$host" = github.com ]; then
+                request="pull request #$1" open=OPEN
+                answer=$(gh pr view "$1" -R "github.com/$path" --json state,headRefName --jq '.state + " " + .headRefName') || answer=""
+            else
+                request="merge request !$1" open=opened
+                answer=$(glab mr view "$1" -R "$project" -F json --jq '.state + " " + .source_branch') || answer=""
+            fi
+            read -r state branch <<<"$answer"
+            if [ "$state" != "$open" ] || [ -z "$branch" ]; then
+                echo "dotfiles merge: $request is ${state:-not found}, not open; nothing is merged." >&2
+                exit 1
+            fi
+            echo "dotfiles merge: $request is the branch $branch."
+        fi
+        exec "$here/dotfiles-merge" "$branch"
+        ;;
+    -h | --help)
+        sed -n '2,11p' "$0" | cut -c3-
+        ;;
+    *)
+        usage
+        ;;
+esac

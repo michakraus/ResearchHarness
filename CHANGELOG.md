@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+- **The dotfiles kit, `examples/dotfiles/`, starts with its update path.** The scripts that keep
+  a chezmoi source signed and applied lived only in a private dotfiles repository, with its
+  private values written into them. The kit ships them as a chezmoi source with placeholder data:
+  the driver `dotfiles`, `dotfiles-update`, `dotfiles-merge` and `dotfiles-check`, the templates
+  that they share, the signing settings of git as `.chezmoitemplates/gitconfig-signing`, and the
+  seeds `.chezmoidata/machines.toml`, `dot_config/git/allowed_signers` and
+  `.chezmoitemplates/chezmoiignore.local`, which `.chezmoiignore` includes at its end.
+  `examples/dotfiles/kit.toml` names each file as code, which a copy keeps byte-identical, or
+  seed, which a copy owns once it has it. Three changes come with the move. `dotfiles-merge` signs
+  with the `signing_key` of the host data, sets `SSH_SK_PROVIDER` only from a non-empty
+  `sk_provider`, and stops before the fetch when the host has no `signing_key`. `dotfiles-check`
+  prints a `kit` line: WARN that names each code file of `kit.toml` that differs from the harness
+  at `harness_commit` or that the source lacks, and SKIP when that commit has no kit or the
+  harness checkout lacks it. `dotfiles merge <number>` asks `gh` for an origin on github.com and
+  `glab` for any other host, and stops with "not found" when that program cannot read it. The
+  tests `update-check.py`, `check-check.py` and `driver-check.py` run in a new CI job `dotfiles`,
+  with chezmoi 2.73.2 from its release tarball, checked by its SHA256.
+
 - **`harness clone`, `harness repos` and `harness update`.** A second machine had no way to clone
   the research tree, no command pulled every repository, and no command showed which
   repositories were ahead, behind or had open pull requests. `harness clone [SELECTION ...]`

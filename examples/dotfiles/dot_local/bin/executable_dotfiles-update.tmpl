@@ -1,0 +1,30 @@
+{{- /* This comment, not the shebang, starts the template, so a lint of each file that starts
+       with a shebang skips it; tests/update-check.py lints the rendered script. */ -}}
+#!/bin/bash
+# dotfiles-update: bring the chezmoi source ~/.local/share/chezmoi to origin/main and apply it,
+# only when every commit on the first-parent path from HEAD to origin/main carries a good
+# signature by a key of the applied ~/.config/git/allowed_signers. It replaces `chezmoi update`
+# on every host.
+#
+# It stops when standard input is not a terminal, fetches, checks, merges --ff-only, shows
+# `chezmoi diff`, and applies after the answer y. A check that fails leaves HEAD where it was.
+set -euo pipefail
+
+{{ template "dotfiles-update-steps.sh" . }}
+
+dotfiles_require_terminal dotfiles-update
+cd "$DOTFILES_SOURCE"
+git fetch origin
+
+base=$(git rev-parse HEAD)
+tip=$(git rev-parse refs/remotes/origin/main)
+if [ "$base" = "$tip" ]; then
+    echo "dotfiles-update: nothing new; HEAD is origin/main at ${tip:0:7}."
+    exit 0
+fi
+if ! dotfiles_check dotfiles-update "$base" "$tip"; then
+    echo "dotfiles-update: nothing merged, nothing applied; HEAD stays at ${base:0:7}." >&2
+    exit 1
+fi
+git merge --ff-only --quiet "$tip"
+dotfiles_review_apply dotfiles-update

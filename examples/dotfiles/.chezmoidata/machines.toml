@@ -1,0 +1,30 @@
+# The machines this source configures, keyed by chezmoi's .chezmoi.hostname (`hostname -s`).
+# Every template that reads this table stops with chezmoi's `fail` on a hostname it does not
+# list: there is no default host. The values here are placeholders: replace them with your own.
+#
+#   os              darwin or linux
+#   arch            the machine's `uname -m`
+#   gpu             metal, cuda, amdgpu or none
+#   julia_channels  the juliaup channels to install; julia_default is the default among them
+#   signing_key     the key that signs the merges of dotfiles-merge, as git's user.signingkey
+#                   reads it; only the template host reads it
+#   sk_provider     the SSH_SK_PROVIDER that the signing key needs, such as
+#                   /usr/lib/ssh-keychain.dylib for a key in the Secure Enclave of a Mac; empty
+#                   for a key that needs none
+
+# The commit of the harness for every machine: dotfiles-check checks ~/Research/Harness and the
+# code files of the kit against it. A machine moves to a new harness only through a reviewed
+# change of this line.
+harness_commit = "0000000000000000000000000000000000000000"
+
+# The one machine that signs: only it receives dotfiles-merge and user.signingkey.
+template_host = "example-host"
+
+[machines.example-host]
+os = "darwin"
+arch = "arm64"
+gpu = "metal"
+julia_channels = ["1.12", "release"]
+julia_default = "1.12"
+signing_key = "~/.ssh/id_ed25519_dotfiles_signing"
+sk_provider = ""

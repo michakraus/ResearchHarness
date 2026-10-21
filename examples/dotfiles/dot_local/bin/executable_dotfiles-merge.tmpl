@@ -1,0 +1,87 @@
+{{- $host := includeTemplate "host" . | fromJson -}}
+#!/bin/bash
+# dotfiles-merge <branch>: merge origin/<branch> into main of the chezmoi source
+# ~/.local/share/chezmoi with a --no-ff merge signed by the signing_key of the host data, push
+# main, and apply it with the same steps as dotfiles-update. Only the template host receives it.
+#
+# It stops without a terminal, without a signing_key in the host data, when the source has local
+# changes, and when HEAD is not main at origin/main. It prints the branch's log and diff and asks;
+# nothing is merged or pushed before the answer y. The merge is checked as dotfiles-update checks
+# it before it is pushed.
+set -euo pipefail
+
+{{ template "dotfiles-update-steps.sh" . }}
+
+# git expands a leading ~ of the key's path itself, as it does for user.signingkey.
+# shellcheck disable=SC2088
+SIGNING_KEY="{{ get $host "signing_key" }}"
+SK_PROVIDER="{{ get $host "sk_provider" }}"
+
+if [ $# -ne 1 ] || [ -z "$1" ]; then
+    echo "usage: dotfiles-merge <branch>" >&2
+    exit 2
+fi
+branch=$1
+
+dotfiles_require_terminal dotfiles-merge
+if [ -z "$SIGNING_KEY" ]; then
+    echo "dotfiles-merge: .chezmoidata/machines.toml gives {{ .chezmoi.hostname }} no signing_key; nothing is merged." >&2
+    exit 1
+fi
+cd "$DOTFILES_SOURCE"
+git fetch --prune origin
+
+# Untracked files count as local changes too: the merge must hold only what was reviewed.
+changes=$(git status --porcelain)
+if [ -n "$changes" ]; then
+    echo "dotfiles-merge: $DOTFILES_SOURCE has local changes; nothing is merged:" >&2
+    echo "$changes" >&2
+    exit 1
+fi
+base=$(git rev-parse HEAD)
+current=$(git symbolic-ref -q --short HEAD || true)
+if [ "$current" != main ] || [ "$base" != "$(git rev-parse refs/remotes/origin/main)" ]; then
+    echo "dotfiles-merge: HEAD (${current:-detached} at ${base:0:7}) is not main at origin/main; run dotfiles-update first. Nothing is merged." >&2
+    exit 1
+fi
+if ! git rev-parse --verify --quiet "refs/remotes/origin/$branch^{commit}" >/dev/null; then
+    echo "dotfiles-merge: the remote has no branch $branch; nothing is merged." >&2
+    exit 1
+fi
+if git merge-base --is-ancestor "refs/remotes/origin/$branch" HEAD; then
+    echo "dotfiles-merge: main already contains $branch; nothing to merge."
+    exit 0
+fi
+
+git log --first-parent "main..origin/$branch"
+git diff "main...origin/$branch"
+if ! dotfiles_confirm "dotfiles-merge: merge origin/$branch into main, signed, and push main?"; then
+    echo "dotfiles-merge: nothing merged, nothing pushed."
+    exit 0
+fi
+
+# A key that needs a provider, such as a key in the Secure Enclave of a Mac, gets it from the
+# host's sk_provider, here and in no other file, so a git commit -S that a session starts finds no
+# provider and cannot sign with it. An empty sk_provider leaves SSH_SK_PROVIDER unset.
+# The prompt of such a key (Touch ID on macOS) cannot name the signature that it is for; this
+# line names it.
+echo "dotfiles-merge: $SIGNING_KEY now signs the merge of origin/$branch ($(git rev-parse --short "refs/remotes/origin/$branch")) into main."
+if ! env ${SK_PROVIDER:+"SSH_SK_PROVIDER=$SK_PROVIDER"} \
+    git merge --no-ff --gpg-sign="$SIGNING_KEY" -m "Merge branch '$branch'" "origin/$branch"; then
+    if git rev-parse -q --verify MERGE_HEAD >/dev/null; then
+        git merge --abort
+    fi
+    echo "dotfiles-merge: the merge or its signature failed; nothing is merged, nothing pushed." >&2
+    exit 1
+fi
+merge=$(git rev-parse HEAD)
+if ! dotfiles_check dotfiles-merge "$base" "$merge"; then
+    git reset --quiet --keep "$base"
+    echo "dotfiles-merge: the merge is undone; nothing pushed." >&2
+    exit 1
+fi
+if ! git push origin main; then
+    echo "dotfiles-merge: the push of main was refused; the merge $merge stays in $DOTFILES_SOURCE, not pushed and not applied." >&2
+    exit 1
+fi
+dotfiles_review_apply dotfiles-merge

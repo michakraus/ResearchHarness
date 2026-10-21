@@ -1,0 +1,24 @@
+# The files of the dotfiles kit, each with its class:
+#
+#   code  stays byte-identical in a chezmoi source that copies the kit; dotfiles-check names each
+#         code file that differs from the kit at harness_commit
+#   seed  is copied once, when the copy lacks it, and then belongs to the copy
+#
+# One line per file, `"<path>" = "<class>"`, with the path relative to examples/dotfiles/:
+# dotfiles-check reads the code lines in this form, without a TOML parser.
+[files]
+".chezmoiignore" = "code"
+".chezmoitemplates/dotfiles-signature.sh" = "code"
+".chezmoitemplates/dotfiles-update-steps.sh" = "code"
+".chezmoitemplates/gitconfig-signing" = "code"
+".chezmoitemplates/host" = "code"
+"dot_local/bin/executable_dotfiles" = "code"
+"dot_local/bin/executable_dotfiles-check.tmpl" = "code"
+"dot_local/bin/executable_dotfiles-merge.tmpl" = "code"
+"dot_local/bin/executable_dotfiles-update.tmpl" = "code"
+"tests/check-check.py" = "code"
+"tests/driver-check.py" = "code"
+"tests/update-check.py" = "code"
+".chezmoidata/machines.toml" = "seed"
+".chezmoitemplates/chezmoiignore.local" = "seed"
+"dot_config/git/allowed_signers" = "seed"

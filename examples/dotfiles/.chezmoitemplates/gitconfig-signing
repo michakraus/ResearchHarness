@@ -1,0 +1,14 @@
+{{- /* The signing settings of git, for a source's own .gitconfig template to include with
+       {{ template "gitconfig-signing" . }}: every host verifies SSH signatures by the applied
+       allowed_signers, and the template host gets the signing_key of its host data as
+       user.signingkey. No host sets commit.gpgsign, so a commit is signed only with an explicit
+       -S; dotfiles-merge sets the key's SSH_SK_PROVIDER for its own merge. */ -}}
+{{- $host := includeTemplate "host" . | fromJson -}}
+[gpg]
+	format = ssh
+[gpg "ssh"]
+	allowedSignersFile = ~/.config/git/allowed_signers
+{{- if and (eq .chezmoi.hostname .template_host) (get $host "signing_key") }}
+[user]
+	signingkey = {{ get $host "signing_key" }}
+{{- end }}
