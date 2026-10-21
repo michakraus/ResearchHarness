@@ -14,11 +14,13 @@
   with the `signing_key` of the host data, sets `SSH_SK_PROVIDER` only from a non-empty
   `sk_provider`, and stops before the fetch when the host has no `signing_key`. `dotfiles-check`
   prints a `kit` line: WARN that names each code file of `kit.toml` that differs from the harness
-  at `harness_commit` or that the source lacks, and SKIP when that commit has no kit or the
-  harness checkout lacks it. `dotfiles merge <number>` asks `gh` for an origin on github.com and
-  `glab` for any other host, and stops with "not found" when that program cannot read it. The
-  tests `update-check.py`, `check-check.py` and `driver-check.py` run in a new CI job `dotfiles`,
-  with chezmoi 2.73.2 from its release tarball, checked by its SHA256.
+  at `harness_commit` or that the source lacks, WARN when that `kit.toml` has no code line in the
+  form `"<path>" = "code"`, and SKIP when that commit has no kit or the harness checkout lacks it.
+  `dotfiles merge <number>` asks `gh` for an origin on github.com and `glab` for any other host,
+  as `harness repos status` reads the origin, and stops with "not found" when that program cannot
+  read it. The tests `update-check.py`, `check-check.py` and `driver-check.py` run in a new CI job
+  `dotfiles`, with chezmoi 2.73.2 from its release tarball, checked by its SHA256, and in the
+  pre-push hook on a push to `main` when `chezmoi` is on the `PATH`.
 
 - **`harness clone`, `harness repos` and `harness update`.** A second machine had no way to clone
   the research tree, no command pulled every repository, and no command showed which

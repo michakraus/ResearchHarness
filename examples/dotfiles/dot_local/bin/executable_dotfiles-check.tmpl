@@ -173,11 +173,14 @@ else
 fi
 
 # The kit: each code file of examples/dotfiles/kit.toml at harness_commit, which has one
-# `"<path>" = "code"` line per code file, equals the source's copy of it.
+# `"<path>" = "code"` line per code file, equals the source's copy of it. A kit.toml with no such
+# line is a WARN, because the check then compares nothing.
 if ! git -C "$HARNESS" cat-file -e "$PIN^{commit}" 2>/dev/null; then
     line SKIP "kit" "$HARNESS lacks harness_commit ${PIN:0:7}"
 elif ! kit=$(git -C "$HARNESS" show "$PIN:examples/dotfiles/kit.toml" 2>/dev/null); then
     line SKIP "kit" "harness_commit ${PIN:0:7} has no examples/dotfiles/kit.toml"
+elif codes=$(printf '%s\n' "$kit" | sed -n 's/^"\([^"]*\)" = "code"$/\1/p') && [ -z "$codes" ]; then
+    line WARN "kit" "examples/dotfiles/kit.toml at harness_commit ${PIN:0:7} has no line \"<path>\" = \"code\"; nothing is compared"
 else
     differ=()
     while IFS= read -r path; do
@@ -187,7 +190,7 @@ else
             cmp -s - "$DOTFILES_SOURCE/$path"; then
             differ+=("$path")
         fi
-    done < <(printf '%s\n' "$kit" | sed -n 's/^"\([^"]*\)" = "code"$/\1/p')
+    done <<<"$codes"
     if [ ${#differ[@]} -eq 0 ]; then
         line PASS "kit" "every code file equals the kit at harness_commit ${PIN:0:7}"
     else

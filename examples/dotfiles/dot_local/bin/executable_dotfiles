@@ -27,7 +27,9 @@ case "$subcommand" in
         exec "$here/dotfiles-$subcommand" "$@"
         ;;
     merge)
-        [ $# -eq 1 ] && [ -n "$1" ] || usage
+        if [ $# -ne 1 ] || [ -z "$1" ]; then
+            usage
+        fi
         if [ ! -x "$here/dotfiles-merge" ]; then
             echo "dotfiles merge: this host has no dotfiles-merge; only the template host merges." >&2
             exit 1
@@ -35,12 +37,18 @@ case "$subcommand" in
         branch=$1
         if [[ "$branch" =~ ^[0-9]+$ ]]; then
             project=$(git -C "$DOTFILES_SOURCE" remote get-url origin)
-            # The host and the path of the origin, as a URL or as host:path.
+            # The host and the path of the origin, as a URL or as host:path, read as
+            # `harness repos status` reads them: the host in lower case and without user and port,
+            # the path without the slashes around it and without .git.
             case $project in
                 *://*) rest=${project#*://} host=${rest%%/*} path=${rest#*/} ;;
                 *) host=${project%%:*} path=${project#*:} ;;
             esac
-            host=${host##*@} host=${host%%:*} path=${path%.git}
+            host=${host##*@} host=${host%%:*}
+            host=$(printf '%s' "$host" | tr '[:upper:]' '[:lower:]')
+            while [ "${path%/}" != "$path" ]; do path=${path%/}; done
+            while [ "${path#/}" != "$path" ]; do path=${path#/}; done
+            path=${path%.git}
             # "<state> <branch>" of the pull request or merge request; nothing when it is not
             # found.
             if [ "$host" = github.com ]; then

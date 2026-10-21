@@ -12,10 +12,11 @@ set -euo pipefail
 
 {{ template "dotfiles-update-steps.sh" . }}
 
-# git expands a leading ~ of the key's path itself, as it does for user.signingkey.
+# git expands a leading ~ of the key's path itself, as it does for user.signingkey. The values
+# are quoted for the shell, so a quote or a $ in them stays text.
 # shellcheck disable=SC2088
-SIGNING_KEY="{{ get $host "signing_key" }}"
-SK_PROVIDER="{{ get $host "sk_provider" }}"
+SIGNING_KEY={{ get $host "signing_key" | shellQuote }}
+SK_PROVIDER={{ get $host "sk_provider" | shellQuote }}
 
 if [ $# -ne 1 ] || [ -z "$1" ]; then
     echo "usage: dotfiles-merge <branch>" >&2
@@ -62,7 +63,7 @@ fi
 
 # A key that needs a provider, such as a key in the Secure Enclave of a Mac, gets it from the
 # host's sk_provider, here and in no other file, so a git commit -S that a session starts finds no
-# provider and cannot sign with it. An empty sk_provider leaves SSH_SK_PROVIDER unset.
+# provider and cannot sign with it. An empty sk_provider does not set SSH_SK_PROVIDER.
 # The prompt of such a key (Touch ID on macOS) cannot name the signature that it is for; this
 # line names it.
 echo "dotfiles-merge: $SIGNING_KEY now signs the merge of origin/$branch ($(git rev-parse --short "refs/remotes/origin/$branch")) into main."

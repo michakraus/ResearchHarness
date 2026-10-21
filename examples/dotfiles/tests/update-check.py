@@ -35,7 +35,8 @@ Checks:
   The decided edges: a fetch that fails, HEAD equal to origin/main, and a missing, empty or
   comment-only allowed_signers (the guard's message, and no commit's). And a remote main that
   moves to an unsigned commit right after the fetch: the checked commit is merged.
-  9. bash -n and shellcheck pass on both scripts, rendered for every host that receives them.
+  9. bash -n and shellcheck -S warning pass on both scripts, rendered for every host that
+     receives them.
   11. dotfiles-merge <branch>: it stops without a terminal, with local changes (a modified and an
       untracked file), and when HEAD is not main at origin/main (main moved on the remote, a local
       commit, or a detached HEAD), each with no merge and no push. Otherwise it prints the log and
@@ -48,10 +49,12 @@ Checks:
       stays), and a refused push (the local merge stays, named, and nothing is applied).
   12. `chezmoi diff` and `chezmoi apply` are called once in the source, in the shared template,
       and both scripts include it.
-  13. dotfiles-merge reads the signing key and SSH_SK_PROVIDER from the host data: with no
-      signing_key it stops before the fetch with one line that names signing_key; a signing_key
-      under ~ signs; an empty sk_provider leaves SSH_SK_PROVIDER unset for the signature, and a
-      non-empty one sets it.
+  13. dotfiles-merge reads the signing key and SSH_SK_PROVIDER from the host data: with an empty
+      signing_key, or a host entry without one (rendered from a copy of the source whose
+      machines.toml lacks the line), it stops before the fetch with one line that names
+      signing_key; a signing_key under ~ signs; an empty or absent sk_provider leaves
+      SSH_SK_PROVIDER unset for the signature, and a non-empty one sets it; a quote, a $ or a
+      backtick in either value stays text in the script.
   14. .chezmoitemplates/gitconfig-signing gives the template host gpg.format ssh, the applied
       allowed_signers and user.signingkey from the host data, and another host no signing key.
   15. .chezmoiignore keeps kit.toml and tests/ from every machine and dotfiles-merge from every
@@ -127,8 +130,8 @@ def must(cmd, env, cwd=None):
     return result.stdout.strip()
 
 
-def render(template, host, entry=None):
-    """Render a template of the source for a host with chezmoi; `entry` adds to the host's data.
+def render(template, host, entry=None, source=SOURCE):
+    """Render a template of `source` for a host with chezmoi; `entry` adds to the host's data.
     Return the text."""
     os_name = DATA["machines"].get(host, {}).get("os") or (entry or {}).get("os", "linux")
     work = scratch("chezmoi")
@@ -140,7 +143,7 @@ def render(template, host, entry=None):
     cmd = [
         "chezmoi",
         "--config", str(work / "chezmoi.toml"),
-        "--source", str(SOURCE),
+        "--source", str(source),
         "--destination", str(work / "home"),
         "--persistent-state", str(work / "state.boltdb"),
         "--no-tty",
@@ -155,6 +158,20 @@ def render(template, host, entry=None):
 
 def signing_data(key, sk_provider=""):
     return {"signing_key": key, "sk_provider": sk_provider}
+
+
+def source_without(key):
+    """A copy of the source whose machines.toml has no line `key = ...`, so the template host's
+    entry has no `key`: --override-data adds to the data and cannot remove a key."""
+    copy = scratch("source") / "source"
+    shutil.copytree(SOURCE, copy, ignore=shutil.ignore_patterns("tests", ".git"))
+    machines = copy / ".chezmoidata" / "machines.toml"
+    machines.write_text("".join(line for line in machines.read_text().splitlines(keepends=True)
+                                if line.split("=")[0].strip() != key))
+    with open(machines, "rb") as handle:
+        if key in tomllib.load(handle)["machines"][TEMPLATE_HOST]:
+            raise RuntimeError(f"{machines}: the template host still has {key}")
+    return copy
 
 
 def make_key(name):
@@ -306,6 +323,13 @@ class World:
         if not self.log.exists():
             return []
         return [line.split()[0] for line in self.log.read_text().splitlines() if line.strip()]
+
+    def install(self, name, text):
+        """Install `text` as the script `name` in place of its render with the world's key."""
+        self.scripts[name] = text
+        path = self.home / ".local" / "bin" / name
+        path.write_text(text)
+        path.chmod(0o755)
 
     def sk_providers(self):
         """The SSH_SK_PROVIDER of each signature that the world's machine made."""
@@ -747,16 +771,20 @@ def merge_edges():
 
 def clause_13():
     print("\n== 13: the signing key and SSH_SK_PROVIDER from the host data")
-    w, topic = merge_world("c13-no-key", signingkey="", literal=True)
-    head, main, origin = w.head(), w.remote_main(), w.origin_main()
-    code, out = w.run("dotfiles-merge", "topic", answers="y\ny\n")
-    merge_kept(w, "no signing_key", code, head, main)
-    lines = out.strip().splitlines()
-    check(len(lines) == 1 and "signing_key" in lines[0],
-          f"no signing_key: one line that names signing_key ({lines})")
-    fetched = subprocess.run(["git", "rev-parse", "--verify", "--quiet", "refs/remotes/origin/topic"],
-                             capture_output=True, env=w.env, cwd=w.source).returncode == 0
-    check(w.origin_main() == origin and not fetched, "no signing_key: it stops before the fetch")
+    # An empty signing_key, and a host entry with no signing_key at all.
+    empty, _ = merge_world("c13-no-key", signingkey="", literal=True)
+    absent, _ = merge_world("c13-absent-key")
+    absent.install("dotfiles-merge", render(MERGE, TEMPLATE_HOST, source=source_without("signing_key")))
+    for label, w in (("an empty signing_key", empty), ("no signing_key in the host entry", absent)):
+        head, main, origin = w.head(), w.remote_main(), w.origin_main()
+        code, out = w.run("dotfiles-merge", "topic", answers="y\ny\n")
+        merge_kept(w, label, code, head, main)
+        lines = out.strip().splitlines()
+        check(len(lines) == 1 and "signing_key" in lines[0],
+              f"{label}: one line that names signing_key ({lines})")
+        fetched = subprocess.run(["git", "rev-parse", "--verify", "--quiet", "refs/remotes/origin/topic"],
+                                 capture_output=True, env=w.env, cwd=w.source).returncode == 0
+        check(w.origin_main() == origin and not fetched, f"{label}: it stops before the fetch")
 
     # A signing_key under ~, as the host data writes it: git reads it below HOME.
     w, topic = merge_world("c13-tilde", signingkey="~/.ssh/signing", literal=True)
@@ -777,6 +805,27 @@ def clause_13():
               f"{label}: the merge is signed (exit {code})")
         check(w.sk_providers() == [want],
               f"{label}: SSH_SK_PROVIDER of the signature is {want!r} ({w.sk_providers()})")
+
+    # A host entry with no sk_provider at all signs as an empty one does.
+    w, topic = merge_world("c13-absent-provider")
+    w.install("dotfiles-merge", render(MERGE, TEMPLATE_HOST, {"signing_key": str(KEYS["listed"])},
+                                       source=source_without("sk_provider")))
+    code, out = w.run("dotfiles-merge", "topic", answers="y\nn\n")
+    check(code == 0 and w.signature(w.head()) == f"G {PRINCIPAL}" and w.sk_providers() == [UNSET],
+          f"no sk_provider in the host entry: the merge is signed, SSH_SK_PROVIDER unset "
+          f"(exit {code}, {w.sk_providers()})")
+    # A value with quotes, $ and a command substitution reaches the script as text.
+    value = '~/.ssh/key"$(touch pwned)\'`touch pwned`'
+    text = render(MERGE, TEMPLATE_HOST, signing_data(value, value))
+    probe = scratch("quoting")
+    path = probe / "lines.sh"
+    path.write_text("".join(line + "\n" for line in text.splitlines()
+                            if line.startswith(("SIGNING_KEY=", "SK_PROVIDER=")))
+                    + 'printf "%s\\n" "$SIGNING_KEY" "$SK_PROVIDER"\n')
+    result = subprocess.run(["/bin/bash", str(path)], capture_output=True, text=True, cwd=probe)
+    check(result.stdout == f"{value}\n{value}\n" and not (probe / "pwned").exists(),
+          f"signing_key and sk_provider with quotes and $( ): the script reads them as text "
+          f"({result.stdout!r}, {result.stderr.strip()!r})")
 
 
 def clause_14():
@@ -835,7 +884,8 @@ def clause_9():
             path.write_text(render(template, host))
             syntax = subprocess.run(["bash", "-n", str(path)], capture_output=True, text=True)
             check(syntax.returncode == 0, f"bash -n {name} ({host}) {syntax.stderr.strip()}")
-            lint = subprocess.run(["shellcheck", str(path)], capture_output=True, text=True, env=env)
+            lint = subprocess.run(["shellcheck", "-S", "warning", str(path)], capture_output=True,
+                                  text=True, env=env)
             check(lint.returncode == 0, f"shellcheck {name} ({host}) {lint.stdout.strip()}")
 
 

@@ -910,11 +910,18 @@ def commit_cases():
 PREPUSH_TOOLS = ["bash", "sh", "git", "mktemp", "rm", "cat", "tail", "head", "grep", "awk"]
 
 
-def prepush_case(path=None):
+KIT_TESTS = ["update-check", "check-check", "driver-check"]
+KIT_SKIP = "skip  chezmoi: not found; CI runs the kit's tests"
+
+
+def prepush_case(path=None, kit_fails=None):
     """`.githooks/pre-push` on a fixture checkout whose `origin` is a GitHub URL, for a push to
-    main, with stubs of gitleaks and of `bin/harness` and no python3.11, shellcheck or julia on the
-    PATH: `harness leaks` runs in the hook's clone with that URL as its `origin`, not the path of
-    the checkout. The tools are linked from `path`, this process's PATH by default, without a
+    main, with stubs of gitleaks and of `bin/harness` and no python3.11, shellcheck, julia or
+    chezmoi on the PATH: `harness leaks` runs in the hook's clone with that URL as its `origin`,
+    not the path of the checkout, and the kit's tests are skipped with one line. With `kit_fails`,
+    the name of one of KIT_TESTS, a stub of chezmoi is on the PATH and the fixture holds the three
+    kit tests, of which that one exits 1: the hook runs all three and refuses the push with one
+    line that names it. The tools are linked from `path`, this process's PATH by default, without a
     directory named `git-core`: git puts its exec path first in a hook's PATH, and a `git` started
     from a link to that copy looks for `git-upload-pack` beside the link. (number of cases, number
     wrong)"""
@@ -946,28 +953,48 @@ def prepush_case(path=None):
             "    url = subprocess.run(['git', 'remote', 'get-url', 'origin'], capture_output=True, text=True).stdout\n"
             "    open(os.environ['ORIGIN_SEEN'], 'w').write(url.strip())\n"
             "print('0 cases, 0 wrong')\n")
+        ran = tmp / "kit-ran"
+        if kit_fails:
+            (tools / "chezmoi").write_text("#!/bin/sh\nexit 0\n")
+            (tools / "chezmoi").chmod(0o755)
+            (repo / "examples" / "dotfiles" / "tests").mkdir(parents=True)
+            for name in KIT_TESTS:
+                (repo / "examples" / "dotfiles" / "tests" / f"{name}.py").write_text(
+                    "import os, sys\n"
+                    f"open(os.environ['KIT_RAN'], 'a').write({name!r} + '\\n')\n"
+                    f"sys.exit({int(name == kit_fails)})\n")
 
         def git(*args):
             return subprocess.run(["git", *args], cwd=repo, env=env, check=True, capture_output=True,
                                   text=True).stdout.strip()
 
         git("init", "-q", "-b", "main")
-        git("add", "--", "bin/harness")
+        git("add", "--", ".")
         git("commit", "-q", "-m", "fixture")
         git("remote", "add", "origin", url)
         sha = git("rev-parse", "HEAD")
         try:
             p = subprocess.run([str(REPO / ".githooks" / "pre-push"), "origin", url],
                                input=f"refs/heads/main {sha} refs/heads/main {'0' * 40}\n", cwd=repo,
-                               env={**env, "PATH": str(tools), "ORIGIN_SEEN": str(seen), "TMPDIR": str(tmp)},
+                               env={**env, "PATH": str(tools), "ORIGIN_SEEN": str(seen), "TMPDIR": str(tmp),
+                                    "KIT_RAN": str(ran)},
                                capture_output=True, text=True, timeout=60)
             code, text = p.returncode, p.stdout + p.stderr
         except subprocess.TimeoutExpired:
             code, text = None, "TIMEOUT"
         got = seen.read_text() if seen.exists() else None
-    ok = code == 0 and got == url
-    print(f"{'ok ' if ok else 'BAD'}  pre-push: harness leaks runs in the clone with the checkout's origin URL "
-          f"-> exit {code}, origin {got!r}, {(text.strip().splitlines() or ['no output'])[-1]!r}")
+        tests = ran.read_text().split() if ran.exists() else []
+    lines = text.strip().splitlines() or ["no output"]
+    if kit_fails:
+        refusal = f"pre-push: refused, the kit's tests failed: examples/dotfiles/tests/{kit_fails}.py"
+        ok = code == 1 and got == url and tests == KIT_TESTS and lines[-1] == refusal
+        print(f"{'ok ' if ok else 'BAD'}  pre-push: with chezmoi on the PATH, the kit's tests run and "
+              f"{kit_fails}.py exiting 1 refuses the push -> exit {code}, ran {tests}, {lines[-1]!r}")
+        return 1, int(not ok)
+    ok = code == 0 and got == url and KIT_SKIP in lines and tests == []
+    print(f"{'ok ' if ok else 'BAD'}  pre-push: harness leaks runs in the clone with the checkout's "
+          f"origin URL, and without chezmoi the kit's tests skip with one line "
+          f"-> exit {code}, origin {got!r}, skip line {KIT_SKIP in lines}, {lines[-1]!r}")
     return 1, int(not ok)
 
 
@@ -1221,8 +1248,8 @@ def branch_cases():
 
 def selftest():
     """The render's cases, the tree-name cases, the cases of `home` and `~`, the cases of
-    `--commits`, and the `origin` case and the branch cases of the pre-push hook: (number of
-    cases, number wrong)."""
+    `--commits`, and the `origin` case, the kit case and the branch cases of the pre-push hook:
+    (number of cases, number wrong)."""
     wrong = 0
     for template, profile, expected in CASES:
         try:
@@ -1245,7 +1272,8 @@ def selftest():
     exec_path = subprocess.run(["git", "--exec-path"], capture_output=True, text=True, check=True).stdout.strip()
     n3, w3 = prepush_case(exec_path + os.pathsep + os.environ.get("PATH", ""))
     n4, w4 = prepush_branch_cases()
-    return len(CASES) + len(NAME_CASES) + n + n2 + n3 + n4, wrong + w + w2 + w3 + w4
+    n5, w5 = prepush_case(kit_fails="update-check")
+    return len(CASES) + len(NAME_CASES) + n + n2 + n3 + n4 + n5, wrong + w + w2 + w3 + w4 + w5
 
 
 def register(sub):

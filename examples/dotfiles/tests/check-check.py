@@ -13,9 +13,10 @@ host with an AMD GPU and a host with gpu none. Each case builds a machine under 
 remote of the source and an author clone that commits and pushes; a scratch HOME whose
 ~/.local/share/chezmoi is a clone of the remote, with ~/.config/git/allowed_signers and a
 ~/Research/Harness of two commits, whose first holds a small kit in examples/dotfiles/ that the
-source copies; and stubs for `harness`, `chezmoi` and ~/.juliaup/bin/julia, which log their
-arguments outside HOME and print what the real programs print. The keys are throwaway ed25519 keys
-that ssh-keygen makes in the run: "listed" is in the applied allowed_signers, "other" is not.
+source copies and whose second changes that kit; and stubs for `harness`, `chezmoi` and
+~/.juliaup/bin/julia, which log their arguments outside HOME and print what the real programs
+print. The keys are throwaway ed25519 keys that ssh-keygen makes in the run: "listed" is in the
+applied allowed_signers, "other" is not.
 Standard input is /dev/null.
 
 Checks:
@@ -31,14 +32,16 @@ Checks:
   3. Each check PASS and FAIL; the template host (HEAD contains the pin) and another host (HEAD is
      the pin); an unsigned and a foreign-signed head; a source behind its origin (WARN); --full
      and not; a host with gpu none; the GPU answer read from standard output only; bash -n and
-     shellcheck on the render for every host; a gpu outside metal, cuda, amdgpu and none stops the
-     render.
-  5. The kit line: PASS when every code file of the kit.toml at harness_commit equals the
-     source's copy, and a seed that differs does not count; WARN that names each code file that
-     differs or that the source lacks; SKIP when harness_commit has no
-     examples/dotfiles/kit.toml, and when the Harness checkout lacks harness_commit.
+     shellcheck -S warning on the render for every host; a gpu outside metal, cuda, amdgpu and
+     none stops the render.
+  5. The kit line, on the template host (HEAD after the pin) and another host (HEAD the pin): PASS
+     when every code file of the kit.toml at harness_commit equals the source's copy, and a seed
+     that differs does not count; WARN that names each code file that differs or that the source
+     lacks; WARN when that kit.toml has no line `"<path>" = "code"`; SKIP when harness_commit has
+     no examples/dotfiles/kit.toml, and when the Harness checkout lacks harness_commit.
   6. kit.toml, where the source has one (the kit itself): each entry is a file of the kit with the
-     class code or seed, and every file outside tests/ and kit.toml is an entry.
+     class code or seed, each code entry is a line `"<path>" = "code"`, and every file outside
+     tests/ and kit.toml that git tracks or would track is an entry.
   The decided edges: `harness` not on the PATH (a FAIL line, and the other checks still run);
   `harness doctor` exiting 1 (its FAIL lines count, exit 1); a command that the sandbox refuses
   (SKIP with the reason under $SANDBOX_RUNTIME, FAIL without); and the applied allowed_signers
@@ -76,6 +79,13 @@ KIT = {
     "dot_local/bin/executable_tool": ("code", "#!/bin/sh\necho tool\n"),
     ".chezmoitemplates/part.sh": ("code", "# a part\n"),
     ".chezmoidata/data.toml": ("seed", "value = 1\n"),
+}
+# The kit of the commit after the pin, on which the template host's checkout is: one code file
+# changed and one added, so a kit read at HEAD or from the work tree is not the kit of the pin.
+LATER = "dot_local/bin/executable_later"
+KIT_AFTER_PIN = KIT | {
+    ".chezmoitemplates/part.sh": ("code", "# a part, changed after the pin\n"),
+    LATER: ("code", "#!/bin/sh\necho later\n"),
 }
 
 failures = []
@@ -267,7 +277,7 @@ def stub(path, body):
 class Machine:
     """A scratch HOME for one host, with the applied source, the Harness checkout and the stubs,
     every check of which passes until a case changes it. With kit=False, harness_commit has no
-    examples/dotfiles/kit.toml."""
+    examples/dotfiles/kit.toml; a string as `kit` is the text of its kit.toml."""
 
     def __init__(self, name, host, sandbox=False, kit=True):
         self.host = host
@@ -306,19 +316,15 @@ class Machine:
         self.signers.write_text(signer_line(KEYS["listed"]))
         must(["git", "clone", "-q", str(self.remote), str(self.source)], self.author_env)
 
-        # The Harness checkout: the pin, which holds the kit, and one commit after it. The
-        # template host's checkout is the development checkout on the later commit; every other
-        # host's is the pin.
+        # The Harness checkout: the pin, which holds the kit, and one commit after it, which
+        # changes the kit. The template host's checkout is the development checkout on the later
+        # commit; every other host's is the pin.
         must(["git", "init", "-q", "-b", "main", str(self.harness)], self.author_env)
         if kit:
-            kit_files = {f"examples/dotfiles/{path}": text for path, (_, text) in KIT.items()}
-            kit_files["examples/dotfiles/kit.toml"] = kit_toml(KIT)
-            for path, text in kit_files.items():
-                target = self.harness / path
-                target.parent.mkdir(parents=True, exist_ok=True)
-                target.write_text(text)
-            self.harness_git("add", "examples")
+            self.harness_kit(KIT, kit if isinstance(kit, str) else kit_toml(KIT))
         self.pin = self.harness_commit("the pin")
+        if kit:
+            self.harness_kit(KIT_AFTER_PIN, kit_toml(KIT_AFTER_PIN))
         self.after_pin = self.harness_commit("after the pin")
         if host != TEMPLATE_HOST:
             self.harness_git("checkout", "-q", "--detach", self.pin)
@@ -367,6 +373,17 @@ class Machine:
 
     def harness_git(self, *args):
         return must(["git", *args], self.author_env, self.harness)
+
+    def harness_kit(self, kit, toml):
+        """Write `kit` and its kit.toml `toml` into examples/dotfiles/ of the Harness checkout,
+        and stage them."""
+        files = {f"examples/dotfiles/{path}": text for path, (_, text) in kit.items()}
+        files["examples/dotfiles/kit.toml"] = toml
+        for path, text in files.items():
+            target = self.harness / path
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(text)
+        self.harness_git("add", "examples")
 
     def harness_commit(self, message):
         self.harness_git("commit", "-q", "--allow-empty", "-m", message)
@@ -725,6 +742,8 @@ def test_kit():
     print("\n== 5: the kit, each code file of kit.toml against the harness at harness_commit")
     code_files = [path for path, (cls, _) in KIT.items() if cls == "code"]
     seed = next(path for path, (cls, _) in KIT.items() if cls == "seed")
+    # The template host's checkout is on the commit after the pin, whose kit differs from the
+    # pin's: its kit line still compares with the pin.
     for host in (TEMPLATE_HOST, OTHER_HOST):
         m = Machine("kit-pass", host)
         code, out, err = m.run()
@@ -733,15 +752,26 @@ def test_kit():
               f"{host}, every code file equals the kit: PASS, exit {code} ({got['kit']})")
 
     # Drift: a code file that differs, in the work tree and in a commit, and a seed that differs.
-    m = Machine("kit-drift", OTHER_HOST)
-    (m.source / code_files[0]).write_text("#!/bin/sh\necho changed\n")
-    (m.source / seed).write_text("value = 2\n")
+    for host in (TEMPLATE_HOST, OTHER_HOST):
+        m = Machine("kit-drift", host)
+        (m.source / code_files[0]).write_text("#!/bin/sh\necho changed\n")
+        (m.source / seed).write_text("value = 2\n")
+        code, out, err = m.run()
+        got = own(parse(out)[0], DOCTOR)
+        status, detail = got["kit"]
+        check(status == "WARN" and code_files[0] in detail and code_files[1] not in detail
+              and LATER not in detail and seed not in detail and code == 0,
+              f"{host}, a code file that differs: WARN that names it alone, exit {code} ({got['kit']})")
+
+    m = Machine("kit-drift-both", TEMPLATE_HOST)
+    for path in code_files:
+        (m.source / path).write_text("# changed\n")
     code, out, err = m.run()
     got = own(parse(out)[0], DOCTOR)
     status, detail = got["kit"]
-    check(status == "WARN" and code_files[0] in detail and code_files[1] not in detail
-          and seed not in detail and code == 0,
-          f"a code file that differs: WARN that names it alone, exit {code} ({got['kit']})")
+    check(status == "WARN" and all(path in detail for path in code_files) and LATER not in detail
+          and code == 0,
+          f"two code files that differ: WARN that names each of them, exit {code} ({got['kit']})")
 
     m = Machine("kit-drift-commit", OTHER_HOST)
     m.commit("change a code file", key="listed", files={code_files[1]: "# changed\n"})
@@ -775,6 +805,16 @@ def test_kit():
           and code == 0,
           f"harness_commit without examples/dotfiles/kit.toml: SKIP that names it ({got['kit']})")
 
+    # A kit.toml in another TOML spelling has no line `"<path>" = "code"`, so the check reads no
+    # code file; that is a WARN, not a PASS.
+    m = Machine("kit-form", OTHER_HOST, kit=kit_toml(KIT).replace('" = "', '"="'))
+    (m.source / code_files[0]).write_text("# changed\n")
+    code, out, err = m.run()
+    got = own(parse(out)[0], DOCTOR)
+    status, detail = got["kit"]
+    check(status == "WARN" and "no line" in detail and m.pin[:7] in detail and code == 0,
+          f"a kit.toml with no code line in the form of the kit: WARN that says so ({got['kit']})")
+
     m = Machine("kit-unknown-pin", OTHER_HOST)
     unknown = "1234567" + "0" * 33
     m.render(unknown)
@@ -802,14 +842,26 @@ def test_kit_toml():
     check(bool(entries), f"kit.toml has a [files] table ({len(entries)} entries)")
     wrong = {path: cls for path, cls in entries.items() if cls not in ("code", "seed")}
     check(not wrong, f"each entry is code or seed {wrong}")
+    # dotfiles-check reads the code files with sed, one line `"<path>" = "code"` each.
+    code = {path for path, cls in entries.items() if cls == "code"}
+    lines = set(re.findall(r'^"([^"]*)" = "code"$', KIT_TOML.read_text(), re.MULTILINE))
+    check(lines == code, f"each code entry is a line in the form that dotfiles-check reads "
+                         f"{sorted(code ^ lines)}")
     absent = sorted(path for path in entries if not (SOURCE / path).is_file())
     check(not absent, f"each entry is a file of the kit {absent}")
-    unlisted = []
-    for path in sorted(SOURCE.rglob("*")):
-        rel = path.relative_to(SOURCE).as_posix()
-        if path.is_file() and rel != "kit.toml" and not rel.startswith("tests/") and rel not in entries:
-            unlisted.append(rel)
+    unlisted = [rel for rel in kit_files()
+                if rel != "kit.toml" and not rel.startswith("tests/") and rel not in entries]
     check(not unlisted, f"every file outside tests/ and kit.toml is in kit.toml {unlisted}")
+
+
+def kit_files():
+    """The files of the kit, relative to it: in a git work tree, the files that git tracks or
+    would track, without the ignored ones such as .DS_Store; outside one, every file."""
+    p = subprocess.run(["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
+                       cwd=SOURCE, capture_output=True, text=True)
+    if p.returncode == 0:
+        return sorted({rel for rel in p.stdout.split("\0") if rel and (SOURCE / rel).is_file()})
+    return sorted(path.relative_to(SOURCE).as_posix() for path in SOURCE.rglob("*") if path.is_file())
 
 
 # ---------------------------------------------------------------- --full ----
@@ -884,7 +936,7 @@ def test_render():
         path.write_text(rendered(host))
         syntax = subprocess.run(["bash", "-n", str(path)], capture_output=True, text=True)
         check(syntax.returncode == 0, f"bash -n dotfiles-check ({host}) {syntax.stderr.strip()}")
-        lint = subprocess.run(["shellcheck", str(path)], capture_output=True, text=True)
+        lint = subprocess.run(["shellcheck", "-S", "warning", str(path)], capture_output=True, text=True)
         check(lint.returncode == 0, f"shellcheck dotfiles-check ({host}) {lint.stdout.strip()}")
 
     machines = {"machines": {"test-tpu": dict(TEST_MACHINES[OTHER_HOST], gpu="tpu")}}

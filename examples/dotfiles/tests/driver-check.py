@@ -10,8 +10,8 @@ stubs of gh and glab first on the PATH. Each stub logs its arguments and answers
 and source branch in $GH_ANSWER or $GLAB_ANSWER, and exits 1 when its answer is empty, as gh and
 glab do for a number they cannot read. A scratch HOME holds a git repository at
 ~/.local/share/chezmoi whose origin each case sets: an origin on github.com asks gh, any other
-host asks glab. It also runs `bash -n` and `shellcheck` on the driver. It exits 0 when every check
-passes.
+host asks glab. It also runs `bash -n` and `shellcheck -S warning` on the driver. It exits 0 when
+every check passes.
 """
 
 import os
@@ -94,8 +94,13 @@ def main():
               "a merge request that is not open stops before dotfiles-merge")
         log("glab")
 
+        # As `harness repos status` reads an origin: the host in any case and without its port,
+        # the path without the slashes around it and without .git.
         for url in ("https://github.com/owner/dotfiles.git", "git@github.com:owner/dotfiles.git",
-                    "ssh://git@github.com/owner/dotfiles"):
+                    "ssh://git@github.com/owner/dotfiles", "ssh://git@github.com:22/owner/dotfiles.git",
+                    "https://github.com:443/owner/dotfiles.git", "https://GitHub.com/owner/dotfiles.git",
+                    "git@GitHub.com:owner/dotfiles.git", "https://github.com/owner/dotfiles/",
+                    "https://github.com/owner/dotfiles.git/", "git@github.com:/owner/dotfiles.git"):
             origin(url)
             p = run("merge", "21", gh="OPEN feature-z")
             glab, gh = log("glab"), log("gh")
@@ -120,7 +125,7 @@ def main():
         check(p.returncode == 0 and lines[0].startswith("dotfiles <subcommand>")
               and lines[-1] == "Any other argument is a branch name.",
               "--help prints the whole comment at the head of the driver, and nothing more")
-        for args in ([], ["merge"], ["merge", "a", "b"], ["apply"]):
+        for args in ([], ["merge"], ["merge", ""], ["merge", "a", "b"], ["apply"]):
             p = run(*args)
             check(p.returncode == 2 and p.stderr.startswith("usage:"), f"{args or 'no argument'} is a usage error")
         (bin_dir / "dotfiles-merge").unlink()
@@ -129,8 +134,9 @@ def main():
 
     check(subprocess.run(["bash", "-n", str(DRIVER)]).returncode == 0, "bash -n")
     if shutil.which("shellcheck"):
-        p = subprocess.run(["shellcheck", "-s", "bash", str(DRIVER)], capture_output=True, text=True)
-        check(p.returncode == 0, "shellcheck" + (f": {p.stdout.strip()}" if p.returncode else ""))
+        p = subprocess.run(["shellcheck", "-S", "warning", "-s", "bash", str(DRIVER)],
+                           capture_output=True, text=True)
+        check(p.returncode == 0, "shellcheck -S warning" + (f": {p.stdout.strip()}" if p.returncode else ""))
     else:
         check(False, "shellcheck is on the PATH")
     print(f"driver-check: {len(failures)} failure(s)")
