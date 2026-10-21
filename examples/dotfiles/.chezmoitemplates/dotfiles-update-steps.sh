@@ -45,10 +45,42 @@ dotfiles_check() {
     return "$bad"
 }
 
-# dotfiles_review_apply <name>: show `chezmoi diff` for the source as it is, ask, and apply only
-# after the answer y.
+# The review commands write into a pipe, so they colour their output only when standard output is
+# a terminal, as they do when they page it themselves.
+DOTFILES_COLOR=""
+if [ -t 1 ]; then
+    DOTFILES_COLOR=1
+fi
+
+# dotfiles_review <name> <stop> <command>...: show the output of <command> in git's pager, with
+# LESS and LV as git sets them. A pager that quits before <command> has written all of its output
+# breaks the pipe, and <command> exits 141: that stops the script with exit 1 and the line
+# "<name>: you quit the review early; <stop>". Any other failure stops it with that status.
+# chezmoi diff writes into its own pager through a pipe that it never closes, and hangs when the
+# pager quits early, so no review uses the pager of git or chezmoi.
+dotfiles_review() {
+    local name=$1 stop=$2 pager status
+    shift 2
+    pager=$(git var GIT_PAGER)
+    if "$@" | LESS=${LESS-FRX} LV=${LV--c} sh -c "$pager"; then
+        return 0
+    fi
+    status=("${PIPESTATUS[@]}")
+    if [ "${status[1]}" -ne 0 ]; then
+        exit "${status[1]}"
+    fi
+    if [ "${status[0]}" -eq 141 ]; then
+        echo "$name: you quit the review early; $stop" >&2
+        exit 1
+    fi
+    exit "${status[0]}"
+}
+
+# dotfiles_review_apply <name> <state>: show `chezmoi diff` for the source as it is, ask, and apply
+# only after the answer y. <state> says what is true of the source when the review is cut short.
 dotfiles_review_apply() {
-    chezmoi diff
+    dotfiles_review "$1" "$2 Run chezmoi diff, read it to its end, then run chezmoi apply." \
+        chezmoi diff --no-pager ${DOTFILES_COLOR:+"--color=true"}
     if dotfiles_confirm "$1: apply this diff to the home directory?"; then
         chezmoi apply
     else

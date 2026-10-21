@@ -7,7 +7,8 @@
 # on every host.
 #
 # It stops when standard input is not a terminal, fetches, checks, merges --ff-only, shows
-# `chezmoi diff`, and applies after the answer y. A check that fails leaves HEAD where it was.
+# `chezmoi diff`, and applies after the answer y. A check that fails leaves HEAD where it was. A
+# pager that quits before the end of `chezmoi diff` stops it, with nothing applied.
 set -euo pipefail
 
 {{ template "dotfiles-update-steps.sh" . }}
@@ -27,4 +28,5 @@ if ! dotfiles_check dotfiles-update "$base" "$tip"; then
     exit 1
 fi
 git merge --ff-only --quiet "$tip"
-dotfiles_review_apply dotfiles-update
+# HEAD is origin/main from here, so a second dotfiles-update finds nothing new.
+dotfiles_review_apply dotfiles-update "the source is at ${tip:0:7} and nothing is applied."

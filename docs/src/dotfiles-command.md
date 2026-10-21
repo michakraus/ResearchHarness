@@ -63,10 +63,18 @@ An answer other than `y` or `Y` applies nothing, and the source stays at the mer
 the next `dotfiles update` finds nothing new. To review the change again, run `chezmoi diff` and
 then `chezmoi apply` yourself.
 
+[The review](#the-review) must be read to its end. When you quit the pager early, it stops before
+the question, applies nothing, and prints one line:
+
+```text
+dotfiles-update: you quit the review early; the source is at <commit> and nothing is applied. Run chezmoi diff, read it to its end, then run chezmoi apply.
+```
+
 **Exit status:** 0 when nothing is new, or after the question, whatever the answer; 1 when
-standard input is not a terminal, or when the check fails: a commit without a good signature by a
+standard input is not a terminal, when the check fails: a commit without a good signature by a
 listed key, an `origin/main` that is not a fast-forward of `HEAD`, or an `allowed_signers` that is
-missing or lists no key. When `git` or `chezmoi` fails, it stops with the status of that command.
+missing or lists no key, and when you quit the review early. When `git`, `chezmoi` or the pager
+fails, it stops with the status of that command.
 
 **Reads:** `~/.config/git/allowed_signers` as it is applied. **Writes:** the source
 `~/.local/share/chezmoi`, and, after `y`, the files that chezmoi applies.
@@ -134,11 +142,21 @@ Then it shows `chezmoi diff`, asks again, and applies on `y`.
 A conflict or a failed signature leaves no merge. A merge that fails the check is undone. A
 refused push leaves the local merge, names it, and applies nothing.
 
+Each part of [the review](#the-review) must be read to its end. When you quit the pager of the log
+or the diff early, it stops before the first question, and nothing is merged, signed or pushed.
+When you quit the pager of `chezmoi diff` early, the merge is already pushed, and nothing is
+applied. Each stop prints one line:
+
+```text
+dotfiles-merge: you quit the review early; nothing is merged. Run dotfiles merge <branch> again and read the review to its end.
+dotfiles-merge: you quit the review early; the merge <commit> is pushed and nothing is applied. Run chezmoi diff, read it to its end, then run chezmoi apply.
+```
+
 **Exit status:** 0 when `main` already contains the branch, when the answer to the first question
 is not `y`, or after the second question, whatever the answer; 1 when a stop above applies, on a
 host without `dotfiles-merge`, when the request is not open or not found, when the remote has no
-such branch, when the merge, its signature or its check fails, and when the push is refused; 2 on
-a usage error.
+such branch, when the merge, its signature or its check fails, when the push is refused, and when
+you quit the review early; 2 on a usage error.
 
 **Reads:** `~/.config/git/allowed_signers`, and the `signing_key` and `sk_provider` of the host
 data, which chezmoi writes into the script when it applies it. **Writes:** the source, the branch
@@ -152,6 +170,19 @@ request or the merge request. A signing key in hardware asks for a touch: touch 
 dotfiles merge 12              # pull request or merge request 12 of the origin
 dotfiles merge kit-update      # the branch kit-update
 ```
+
+## The review
+
+`dotfiles update` and `dotfiles merge` show each part of the review, the log, the diff and
+`chezmoi diff`, in git's pager: `GIT_PAGER`, then `core.pager`, then `PAGER`, then `less`, with
+`LESS=FRX` and `LV=-c` when they are not set, as git runs it. The pager setting of chezmoi does
+not count here.
+
+A pager that quits before the command has written all of its output breaks the pipe, and the
+script stops with the line that the subcommand names. A review that fits in the pipe's buffer,
+about 64 KB, is written before you quit, so quitting it early does not stop the script. With
+`LESS=FRX`, `less` quits by itself at the end of a review that fits on one screen; a `LESS`
+without `F`, such as the `-R` that oh-my-zsh sets, waits for `q` at the end.
 
 ## The update path
 

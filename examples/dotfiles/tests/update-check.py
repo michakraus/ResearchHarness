@@ -59,6 +59,14 @@ Checks:
       allowed_signers and user.signingkey from the host data, and another host no signing key.
   15. .chezmoiignore keeps kit.toml and tests/ from every machine and dotfiles-merge from every
       host but the template host, and ends with the lines of .chezmoitemplates/chezmoiignore.local.
+  16. A review cut short, with GIT_PAGER set to a pager that quits after one line of a review
+      larger than a pipe's 64 KB: dotfiles-merge on its log and diff prints the line "you quit
+      the review early; nothing is merged" and exits 1, with no question, no signature, no merge,
+      no push and no chezmoi call; dotfiles-merge on `chezmoi diff` after the push, and
+      dotfiles-update on `chezmoi diff`, print the line that names chezmoi diff and chezmoi apply
+      and exit 1 with no apply. A pager that reads to the end reaches the question; a `chezmoi
+      diff` that fails stops dotfiles-update with its own status and no such line. A mutant that
+      drops the line, and one that turns the stop into a pass, fail each case of the cut review.
 """
 
 import json
@@ -866,6 +874,146 @@ def clause_15():
               f"{host}: the lines of chezmoiignore.local end it ({len(own)} lines)")
 
 
+# ---------------------------------------------------------------- a review cut short ----
+
+QUIT_PAGER = "head -n 1 >/dev/null\n"  # reads one line, then quits
+READ_PAGER = "cat >/dev/null\n"  # reads to the end
+# Quits after the first line of the stub's large `chezmoi diff`, and reads any other review to
+# its end.
+BIG_PAGER = 'IFS= read -r line\n[ "$line" = big ] && exit 0\ncat >/dev/null\n'
+BIG = 200_000  # the bytes of a large review: more than the 64 KB of a pipe's buffer
+QUIT_LINE = 'echo "$name: you quit the review early; $stop" >&2\n'
+APPLY_HINT = "Run chezmoi diff, read it to its end, then run chezmoi apply."
+
+
+def use_pager(w, name, body):
+    path = w.root / name
+    path.write_text("#!/bin/sh\n" + body)
+    path.chmod(0o755)
+    w.env["GIT_PAGER"] = str(path)
+
+
+def big_chezmoi_diff(w, status=None):
+    """The chezmoi stub, whose `diff` writes BIG bytes that start with the line `big`; a broken
+    pipe ends it with 141, as it ends chezmoi. With `status`, `diff` writes one line and exits
+    with it."""
+    big = w.root / "big-diff"
+    big.write_text("big\n" + ("x" * 79 + "\n") * (BIG // 80))
+    diff = f"echo big; exit {status}" if status is not None else f'exec cat "{big}"'
+    (w.bindir / "chezmoi").write_text(
+        f'#!/bin/sh\necho "$*" >> "{w.log}"\nif [ "$1" = diff ]; then {diff}; fi\nexit 0\n')
+
+
+def large_topic(name):
+    w, topic = merge_world(name)
+    w.author_git("switch", "-q", "topic")
+    w.commit("a large change", files={"dot_large": ("z" * 79 + "\n") * (BIG // 80)})
+    w.push("topic")
+    w.author_git("switch", "-q", "main")
+    return w
+
+
+def no_line(text):
+    if text.count(QUIT_LINE) != 1:
+        raise RuntimeError(f"the line {QUIT_LINE!r} is not in the script once")
+    return text.replace(QUIT_LINE, "")
+
+
+def no_stop(text):
+    stop = QUIT_LINE + "        exit 1\n"
+    if text.count(stop) != 1:
+        raise RuntimeError(f"the stop {stop!r} is not in the script once")
+    return text.replace(stop, QUIT_LINE + "        return 0\n")
+
+
+def cut_merge_review(mutate):
+    w = large_topic("c16-merge")
+    use_pager(w, "quit-pager", QUIT_PAGER)
+    w.install("dotfiles-merge", mutate(w.scripts["dotfiles-merge"]))
+    head, main = w.head(), w.remote_main()
+    code, out = w.run("dotfiles-merge", "topic", answers="y\ny\n")
+    line = ("dotfiles-merge: you quit the review early; nothing is merged. Run dotfiles merge "
+            "topic again and read the review to its end.")
+    return [(code == 1, f"exit {code}, 1"), (line in out, f"the line {line!r}"),
+            ("[y/N]" not in out, "no question"), (w.sk_providers() == [], "no signature"),
+            (w.head() == head, "no merge"), (w.remote_main() == main, "no push"),
+            (w.calls() == [], f"no chezmoi call ({w.calls()})")]
+
+
+def cut_merge_apply(mutate):
+    w, topic = merge_world("c16-merge-apply")
+    use_pager(w, "big-pager", BIG_PAGER)
+    big_chezmoi_diff(w)
+    w.install("dotfiles-merge", mutate(w.scripts["dotfiles-merge"]))
+    main = w.remote_main()
+    code, out = w.run("dotfiles-merge", "topic", answers="y\ny\n")
+    merge = w.head()
+    line = (f"dotfiles-merge: you quit the review early; the merge {merge[:7]} is pushed and "
+            f"nothing is applied. {APPLY_HINT}")
+    return [(code == 1, f"exit {code}, 1"), (line in out, f"the line {line!r}"),
+            (merge != main and w.remote_main() == merge, "the merge is pushed"),
+            (out.count("[y/N]") == 1, "the second question is not asked"),
+            (w.calls() == ["diff"], f"chezmoi diff only ({w.calls()})")]
+
+
+def cut_update(mutate):
+    w = World("c16-update")
+    tip = w.commit("signed", key="listed")
+    w.push()
+    use_pager(w, "quit-pager", QUIT_PAGER)
+    big_chezmoi_diff(w)
+    w.install("dotfiles-update", mutate(w.scripts["dotfiles-update"]))
+    code, out = w.run("dotfiles-update", answers="y\n")
+    line = (f"dotfiles-update: you quit the review early; the source is at {tip[:7]} and nothing "
+            f"is applied. {APPLY_HINT}")
+    return [(code == 1, f"exit {code}, 1"), (line in out, f"the line {line!r}"),
+            ("[y/N]" not in out, "no question"), (w.head() == tip, "HEAD is origin/main"),
+            (w.calls() == ["diff"], f"chezmoi diff only ({w.calls()})")]
+
+
+def clause_16():
+    print("\n== 16: a review cut short")
+    cases = (("dotfiles-merge, the log and the diff", cut_merge_review),
+             ("dotfiles-merge, chezmoi diff after the push", cut_merge_apply),
+             ("dotfiles-update, chezmoi diff", cut_update))
+    for label, case in cases:
+        for result, message in case(lambda text: text):
+            check(result, f"{label}: {message}")
+    for label, case in cases:
+        for mutant, mutate in (("drops the line", no_line), ("turns the stop into a pass", no_stop)):
+            missed = [message for result, message in case(mutate) if not result]
+            check(missed != [], f"{label}: a mutant that {mutant} fails the case ({missed})")
+
+    w = large_topic("c16-merge-read")
+    use_pager(w, "read-pager", READ_PAGER)
+    head, main = w.head(), w.remote_main()
+    code, out = w.run("dotfiles-merge", "topic", answers="n\n")
+    check(code == 0 and "[y/N]" in out and "quit the review" not in out,
+          f"dotfiles-merge, a pager that reads to the end: the question is asked (exit {code})")
+    merge_kept(w, "dotfiles-merge, a pager that reads to the end, answer n", code, head, main,
+               want_zero=True)
+
+    w = World("c16-update-read")
+    tip = w.commit("signed", key="listed")
+    w.push()
+    use_pager(w, "read-pager", READ_PAGER)
+    big_chezmoi_diff(w)
+    code, out = w.run("dotfiles-update", answers="y\n")
+    check(code == 0 and w.calls() == ["diff", "apply"] and "quit the review" not in out,
+          f"dotfiles-update, a pager that reads to the end: y applies (exit {code}, "
+          f"calls {w.calls()})")
+
+    w = World("c16-update-fails")
+    w.commit("signed", key="listed")
+    w.push()
+    use_pager(w, "quit-pager", QUIT_PAGER)
+    big_chezmoi_diff(w, status=3)
+    code, out = w.run("dotfiles-update", answers="y\n")
+    check(code == 3 and w.calls() == ["diff"] and "quit the review" not in out
+          and "[y/N]" not in out,
+          f"dotfiles-update, a chezmoi diff that fails: exit {code}, 3, no line, no question")
+
+
 # ---------------------------------------------------------------- static checks ----
 
 def receivers(name):
@@ -934,7 +1082,7 @@ def main():
             return 1
         for case in (clause_1, clause_2, clause_2_backends, clause_3, clause_4, clause_5, clause_6,
                      clause_7, update_edges, clause_9, clause_11, merge_edges, clause_12,
-                     clause_13, clause_14, clause_15):
+                     clause_13, clause_14, clause_15, clause_16):
             try:
                 case()
             except (RuntimeError, subprocess.TimeoutExpired) as error:
