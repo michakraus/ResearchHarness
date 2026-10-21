@@ -114,48 +114,12 @@ It searches every tracked file, its path and the templates rendered with the exa
 Remove the matched string from the file. [development.md](development.md#the-pre-push-hook) describes
 both checks.
 
-## The subcommands for the whole research tree
+## Keep the research tree in sync
 
-These subcommands act on every repository of the research tree. The research tree is the
-directory `$RESEARCH_ROOT`, or `~/Research` if it is not set. Each subcommand that changes
-something is a dry run first, and `--apply` makes the change.
-
-| subcommand | what it does |
-|:--|:--|
-| `githooks` | copies the shared git hooks of `githooks/` into `.githooks/` of each git repository directly below `Packages/` and `Experiments/`, and sets `core.hooksPath` there |
-| `workflows` | copies the canonical files of `githooks/workflows/` into each git repository directly below `Packages/` and `Experiments/` that has a `Project.toml`: the CI workflow, `dependabot.yml` and `codecov.yml` into each, and the TagBot workflow into each package. It copies the documentation workflow only where a tracked `docs/make.jl` exists, and never into a repository that the profile key `docs_exceptions` or `docs_additions` names. It deletes the retired `CompatHelper.yml` |
-| `trust` | marks the research tree and each git repository below it as trusted in Claude Code's `~/.claude.json` |
-| `clone` | clones each repository of the repository table (see [The `harness` command](harness-command.md)) that has no directory yet. A selection such as `packages` or `knowledge` limits it to one group or one fixed repository. A directory that is in the way stops the run before the first clone. After the clones, run `githooks`, `wiki-lint-hook` and `trust` with `--apply` |
-| `repos status` | fetches every repository, then prints its branch, its commits ahead of and behind its upstream, its changed tracked files and its open pull requests, with `gh` for GitHub and `glab` for GitLab. It also names a repository of the table that is not cloned, a clone that the table does not list, and a repository with no origin. It is read-only, and takes no `--apply` |
-| `repos pull` | fetches, then fast-forwards each branch that is behind its upstream. It skips a branch that has diverged, and one whose incoming commits change a file with local changes |
-| `repos push` | pushes each git repository below `Packages/` and `Experiments/` whose branch is ahead of its upstream, one at a time. It skips a repository with no upstream, one that is also behind its upstream, and one on a branch that is not the default branch, unless you give `--include-topic-branches`. `--no-verify` skips the pre-push suite |
-| `repos sync` | runs `repos pull`, then `repos push` |
-| `ci-protection` | protects the default branch on GitHub of each git repository directly below `Packages/` and `Experiments/` that has a `CI.yml`, with a ruleset that requires the status checks of the canonical `CI.yml`. It first checks that the workflows are canonical, and skips a private repository and one where you are not an admin |
-| `format` | runs JuliaFormatter over each tracked `.jl` file of the repositories below `Packages/` and `Experiments/`; it skips a repository that has no `.JuliaFormatter.toml` |
-
-Run each one in your own terminal, not from a session. The settings refuse a session's write to
-`.git/config` and to `~/.claude.json`. A `githooks` run that cannot set `core.hooksPath` prints
-the command for each repository. `repos push` and `repos sync` run the pre-push hook of each
-repository, and a hook that runs a full test suite can take a long time.
-
-`status`, `pull` and `clone` take every group (`packages`, `experiments`, `papers`, `books`,
-`talks`, `projects`) and every fixed repository (`knowledge`, `environment`, `tasks`,
-`bibliography`, `library`) when you name none; `push` and `sync` take `packages` and
-`experiments`.
-
-The copies of `githooks` and `workflows` are tracked files in each repository. Read the
-diff, then commit each copied file by name.
-
-```bash
-harness githooks
-harness githooks --apply
-harness workflows --apply
-harness trust --apply
-harness repos status
-harness repos pull --apply
-harness repos push
-harness format
-```
+Some subcommands act on every repository of the research tree: they clone it, pull and push it,
+and give each repository the same git hooks and workflows.
+[The research tree](research-tree.md#clone-sync-and-trust) describes each of them and the order in
+which to run them.
 
 ## The triggering test of the skills
 

@@ -2,14 +2,13 @@
 //
 // - each page of the menu is a link of the sidebar on every page, and its HTML file exists;
 // - the sidebar starts with Home, a top-level link, and then the group Getting started with the
-//   introduction, the dependencies page, the two setup pages, the tutorial and the example tree,
-//   in this order;
+//   introduction, the dependencies page, the two setup pages and the tutorial, in this order;
 // - each link of a page's text to a heading of the site finds that heading, which VitePress's
 //   check of dead links does not test;
 // - the home page, whose home layout has no doc footer, has its own edit link;
 // - each page has as many table rows as its Markdown source;
-// - the home page has its two figures, the introduction its three and the page agents-at-work
-//   its four call graphs, each found by its <title> and with a <desc>;
+// - the home page has its two figures, the introduction its three and the page
+//   agentic-engineering its four call graphs, each found by its <title> and with a <desc>;
 // - in every figure of the site, no edge crosses another edge or passes through a box that is
 //   not its end (scripts/figures.mjs), and no figure loads a file from another host;
 // - in every figure, each label of an edge is on its own edge, no other edge passes through it,
@@ -35,9 +34,9 @@ const BASE = '/ResearchHarness/'
 // The menu of the site: every page of docs/src/.
 const MENU = [
   'index.md', 'concepts.md', 'dependencies.md', 'setup-macos.md', 'setup-linux.md', 'tutorial.md',
-  'example-tree.md', 'daily-use.md', 'profile.md',
-  'harness-command.md', 'dotfiles-command.md', 'agents-at-work.md', 'security.md',
-  'architecture.md', 'components/agents.md', 'components/skills.md', 'components/commands.md',
+  'daily-use.md', 'research-tree.md', 'harness-command.md', 'dotfiles-command.md', 'profile.md',
+  'architecture.md', 'private-data.md', 'security.md', 'memory.md', 'agentic-engineering.md',
+  'components/agents.md', 'components/skills.md', 'components/commands.md',
   'components/rules.md', 'components/hooks.md', 'components/githooks.md',
   'components/scripts.md', 'components/adapters.md', 'components/harness.md',
   'components/other.md', 'development.md'
@@ -45,8 +44,7 @@ const MENU = [
 
 // The start of the sidebar: Home, then the group Getting started in this order.
 const START = [
-  'index.md', 'concepts.md', 'dependencies.md', 'setup-macos.md', 'setup-linux.md', 'tutorial.md',
-  'example-tree.md'
+  'index.md', 'concepts.md', 'dependencies.md', 'setup-macos.md', 'setup-linux.md', 'tutorial.md'
 ]
 
 const problems = []
@@ -139,7 +137,7 @@ for (const [page, text] of built) {
 const FIGURES = {
   'index.md': ['The harness and its three layers', 'From the sources to the frontends'],
   'concepts.md': ['The harness and its three layers', 'The harness, the profile and the tree instructions', 'The layers of control around one tool call'],
-  'agents-at-work.md': [
+  'agentic-engineering.md': [
     'The calls of build-part', 'From a task to a pull request with build-part',
     'The calls of build-reviewed', 'From a task to a pull request with build-reviewed',
     'The calls of julia-pr-shepherd', 'Every spawn'

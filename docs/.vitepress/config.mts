@@ -66,25 +66,27 @@ export default defineConfig({
           { text: 'Dependencies', link: '/dependencies' },
           { text: 'Setup on macOS', link: '/setup-macos' },
           { text: 'Setup on Linux', link: '/setup-linux' },
-          { text: 'Tutorial', link: '/tutorial' },
-          { text: 'An example tree', link: '/example-tree' }
+          { text: 'Tutorial', link: '/tutorial' }
         ]
       },
       {
         text: 'Use',
         items: [
           { text: 'Typical use', link: '/daily-use' },
-          { text: 'Adapting the profile', link: '/profile' },
+          { text: 'The research tree', link: '/research-tree' },
           { text: 'The <code>harness</code> command', link: '/harness-command' },
-          { text: 'The <code>dotfiles</code> command', link: '/dotfiles-command' }
+          { text: 'The <code>dotfiles</code> command', link: '/dotfiles-command' },
+          { text: 'Adapting the profile', link: '/profile' }
         ]
       },
       {
         text: 'Background',
         items: [
-          { text: 'Agents at work', link: '/agents-at-work' },
+          { text: 'Architecture', link: '/architecture' },
+          { text: 'Private data across machines', link: '/private-data' },
           { text: 'The security model', link: '/security' },
-          { text: 'Architecture', link: '/architecture' }
+          { text: 'Research memory', link: '/memory' },
+          { text: 'Agentic software engineering', link: '/agentic-engineering' }
         ]
       },
       {

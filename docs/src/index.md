@@ -31,7 +31,7 @@ features:
   - icon: workflow
     title: Long work goes to a sub-agent
     details: A test run or a review runs in its own context and returns a short report, so the context of your session stays free for the main work.
-    link: /agents-at-work
+    link: /agentic-engineering
   - icon: private
     title: Private values stay private
     details: A private profile holds every value that names a person, an institution or a machine, and a check keeps them out of the repository.
@@ -49,8 +49,8 @@ features:
 *The harness and its three layers.* The research tree is where the work is, the components are
 what the harness supplies, and the frontends are the agents that read them. The research-tree
 layer shows the tree of the harness's author, as an example; your tree holds your own directories.
-[An example tree](example-tree.md) describes the six directories and the components that serve
-each.
+[The research tree](research-tree.md) describes the six directories and the components that
+serve each.
 
 <FlowFigure />
 

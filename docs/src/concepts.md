@@ -97,7 +97,7 @@ supplies, and which programs read it.
 <OverviewFigure />
 
 *The harness and its three layers.* These are not the three layers of the section above.
-[An example tree](example-tree.md) describes the six directories of the research tree and the
+[The research tree](research-tree.md) describes the six directories of the research tree and the
 components that serve each.
 
 - **The research tree** is where the work is: the directories that hold your repositories and
@@ -165,8 +165,8 @@ the builder worked, so it reads the result with fresh eyes.
 An agent names a tier, `large`, `medium` or `small`, and the model tables choose the model of
 each tier. An agent with no tier runs on the model of its caller. A larger model is better at
 hard work and costs more. An agent can also name an [effort](#effort): how long the model thinks
-before it answers. [Agents at work](agents-at-work.md) shows which agents start which, with their
-models and efforts.
+before it answers. [Agentic software engineering](agentic-engineering.md) shows which agents start
+which, with their models and efforts.
 
 **In another language.** The agents that run tests, review a pull request or diagnose a load
 error are for Julia. The same division applies to any language: a sub-agent that runs the test

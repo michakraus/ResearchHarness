@@ -1,14 +1,95 @@
-# Agents at work
+# Agentic software engineering
+
+Research software must be correct, and a wrong result that nobody notices is expensive. A coding
+agent writes code fast, but it also judges its own work too kindly, and a long test run fills its
+context. The harness therefore divides the work of a change among several agents. A plan states
+what done means before the work starts, one agent builds, another agent judges, and the long runs
+go to agents of their own.
+
+## Sub-agents
+
+A session can start a sub-agent for one job. The sub-agent works in a context of its own and
+returns one short report, so the output of its job never fills the context of the session. The
+harness gives sub-agents three kinds of jobs:
+
+- **A long job**, such as a test suite: [`julia-test-runner`](components/agents.md#julia-test-runner)
+  runs it and returns pass or fail per testset, with the failures.
+- **A wide job**, such as a change across many repositories: one sub-agent for each repository, and
+  one verdict for each.
+- **A bounded diagnosis**, such as a package that does not load:
+  [`julia-load-doctor`](components/agents.md#julia-load-doctor) returns the cause and the smallest
+  fix.
+
+A sub-agent costs a new context, so a session starts one only where a fresh context or a smaller
+model does the work better. [`reader`](components/agents.md#reader) and
+[`worker`](components/agents.md#worker) load no `CLAUDE.md`, so they start with a small context.
+
+## From a plan to a pull request
+
+A change that needs more than a few edits goes through a plan:
+
+1. **Plan the parts.** [`plan-parts`](components/skills.md#plan-parts) splits the task into parts,
+   and each part is one pull request. Each part gets a spec: its *Done when*, which states the
+   acceptance criteria as checks; the edge cases decided in advance; the mutants that its tests
+   must catch; and its files. A collision map shows which parts touch the same files, and so which
+   parts can run at the same time. The plan is a task file.
+2. **Choose the tier of each part.** A `decision` part waits for you. A `build` part runs the full
+   builder-critic loop of [`build-part`](components/skills.md#build-part). A `reviewed` part is
+   small, with a fast gate, and runs [`build-reviewed`](components/skills.md#build-reviewed): one
+   builder and one critic. A `direct` part is a mechanical change whose every check is a command, such as
+   a rename across many repositories; the session or a workflow makes it, with no critic.
+3. **Build.** A builder writes the tests first, then the code, in a worktree of its own. For each
+   guard, branch and comparison of its change, it writes a mutant: a copy of the code with one
+   deliberate defect, which a good test must catch.
+4. **Judge.** A critic that has not seen the builder's report or reasoning judges the result
+   against the *Done when*. It runs the checks itself, runs each named mutant, and probes the
+   edges of each clause. A FAIL goes back to a new builder, which fixes the blocking defects.
+5. **Open the pull request.** After a PASS, a builder opens the pull request. In `build-part`, a
+   question inside the loop goes to the [`advisor`](components/agents.md#advisor), and a loop that
+   does not converge goes to the [`arbitrator`](components/agents.md#arbitrator), not to you.
+
+The critic is blind for a reason: a context that wrote the code does not judge it well. A fresh
+context, with no knowledge of the builder's reasons, finds more defects.
+
+## One worktree for each part
+
+Each part is built in a worktree: a second checkout of the repository on its own branch, below
+`~/Research/.worktrees/`. The main checkout stays on `main`, and two parts can be built at the same
+time in two worktrees. Each new builder and critic of the same part works on the same worktree.
+[The research tree](research-tree.md#temporary-work) says where the worktrees are.
+
+## Pull requests
+
+Three agents work on a pull request of a Julia package:
+
+- [`julia-branch-verifier`](components/agents.md#julia-branch-verifier) checks and fixes the branch
+  before the pull request opens, on the diff only.
+- [`julia-pr-reviewer`](components/agents.md#julia-pr-reviewer) reviews the pull request blind,
+  posts the review, and reads the CI jobs.
+- [`julia-pr-shepherd`](components/agents.md#julia-pr-shepherd) has the review done, fixes the
+  findings and pushes the fix.
+
+No agent merges a pull request that its own session opened. The command
+[`merge-pr`](components/commands.md#merge-pr) merges only a pull request that its session did not
+open or push to, once the required checks are green.
+
+## Models and efforts
+
+An agent names a [tier](concepts.md#tier): `large`, `medium` or `small`. The model tables of the
+profile give the model of each tier for each frontend. A builder and a critic need a large model; a
+test run needs only a small one, so the large contexts do not wait on it. An agent can also name an
+[effort](concepts.md#effort). The figures below show the model and the effort of each agent.
+
+## Who spawns whom
 
 An agent can start another agent. This page calls this a *spawn*: the first agent gives a task
 to a new agent, the new agent works in a context of its own, and it returns one report. Some
 skills spawn agents too. A skill runs in the session that loads it, so the session does the spawn.
 
-This page shows who spawns whom. Each figure is a call graph: a box is an agent or a skill, and an
-arrow goes from the caller to the agent that it spawns. The text on an arrow says when or why the
-caller spawns the agent.
+Each figure below is a call graph: a box is an agent or a skill, and an arrow goes from the caller
+to the agent that it spawns. The text on an arrow says when or why the caller spawns the agent.
 
-## How to read a figure
+### How to read a figure
 
 Each box shows three facts:
 
@@ -30,7 +111,7 @@ The arrows come from one file, `docs/figures/calls.toml`. It has one entry for e
 the `file:line` of the instruction that spawns the agent. `harness test` checks each entry against the
 sources, and the docs build draws the figures from it. So a figure changes when an agent changes.
 
-## The builder-critic loop: `build-part`
+### The builder-critic loop: `build-part`
 
 ```calls build-part
 title: The calls of build-part
@@ -61,7 +142,7 @@ second FAIL goes to the arbitrator. After a PASS, a new builder finishes the par
 pull request. The figure shows the default models of Claude Code. Your `models.toml` can add a
 council of critics on other models for OpenCode.
 
-## A smaller loop: `build-reviewed`
+### A smaller loop: `build-reviewed`
 
 ```calls build-reviewed
 title: The calls of build-reviewed
@@ -86,7 +167,7 @@ reviewer.
 checks the fix before it tells the builder to finish the part. With a PASS, your session reads
 the result, and then it tells the builder to finish the part.
 
-## From review to green CI: `julia-pr-shepherd`
+### From review to green CI: `julia-pr-shepherd`
 
 ```calls julia-pr-shepherd
 title: The calls of julia-pr-shepherd
@@ -102,7 +183,7 @@ ones.
 The review comes from a context that has not decided how to fix anything. So the findings are
 not shaped by the fix.
 
-## Every spawn
+### Every spawn
 
 ```calls
 title: Every spawn
