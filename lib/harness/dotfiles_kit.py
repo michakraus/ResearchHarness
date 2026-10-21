@@ -9,11 +9,12 @@ file is a change only when `DEST` lacks it, and a seed file that exists stays as
 there is one; `--apply` writes them.
 
 `DEST` is a clone of the chezmoi source, not the source that chezmoi applies: the subcommand
-refuses `~/.local/share/chezmoi` and each directory below it, compared as resolved paths, because
-a change of the applied source goes through a branch and a merge request. Each file of `kit.toml`
-stays inside the resolved `DEST`: a file whose directory resolves outside it, through a symbolic
-link, stops the dry run and `--apply` before the first write. A link at a code file's own path
-is replaced, not followed.
+refuses `~/.local/share/chezmoi` and each directory below it, compared by device and inode,
+because a change of the applied source goes through a branch and a merge request. Each file of
+`kit.toml` stays inside the resolved `DEST`: a file whose directory resolves outside it, through
+a symbolic link, stops the dry run and `--apply` before the first write. A link at a code file's
+own path is replaced, not followed; anything else there that is not a regular file stops
+`--apply`.
 """
 
 import os
@@ -33,12 +34,18 @@ def applied_source(home):
 
 
 def check_dest(dest, home):
-    """Refuse a `dest` that is not a directory, or is the applied source or below it."""
+    """Refuse a `dest` that is not a directory, or is the applied source or below it. The resolved
+    `dest` and each of its parents are compared with the applied source by device and inode, so a
+    second spelling of the same directory, a case variant or a firmlink, is refused too."""
     if not dest.is_dir():
         raise HarnessError(f"{dest} is not a directory")
     applied = applied_source(home).resolve()
-    resolved = dest.resolve()
-    if resolved == applied or applied in resolved.parents:
+    try:
+        ident = applied.stat()
+    except OSError:
+        return
+    resolved = pathlib.Path(os.path.realpath(dest))
+    if any(os.path.samestat(ident, p.stat()) for p in (resolved, *resolved.parents)):
         raise HarnessError(f"{dest} is the applied chezmoi source {applied}: copy the kit into a clone of it, "
                            "on a branch, and merge it through a merge request")
 
@@ -80,6 +87,15 @@ def check_targets(rels, dest):
             raise HarnessError(f"{target}: its directory {target.parent} resolves to {parent}, outside {root}")
 
 
+def differs(src, dst):
+    """Whether the bytes of the regular files `src` and `dst` differ; a file that cannot be read is
+    a `HarnessError` that names it."""
+    try:
+        return dst.read_bytes() != src.read_bytes()
+    except OSError as e:
+        raise HarnessError(f"{e.filename or dst} cannot be read: {e.strerror or e}") from None
+
+
 def plan(kit, dest):
     """[(path, class, status)] of each change: `MISSING`, `DIFFERS` or `MODE`. Each file of
     `kit.toml` is checked to stay inside `dest` before the first is compared."""
@@ -92,7 +108,7 @@ def plan(kit, dest):
             changes.append((rel, cls, "MISSING"))
         elif cls == "seed":
             continue
-        elif dst.is_symlink() or not dst.is_file() or dst.read_bytes() != src.read_bytes():
+        elif dst.is_symlink() or not dst.is_file() or differs(src, dst):
             changes.append((rel, cls, "DIFFERS"))
         elif executable(dst) != executable(src):
             changes.append((rel, cls, "MODE"))
@@ -102,10 +118,13 @@ def plan(kit, dest):
 def copy(src, dst):
     """Write the bytes of `src` to `dst` where they differ, then give `dst` the execute bit of
     `src`: set where `dst` is readable, or cleared everywhere. A link at `dst` is replaced, not
-    followed."""
+    followed. Anything else at `dst` that is not a regular file, such as a directory or a FIFO, is
+    refused before an open, which would block on a FIFO."""
     try:
         if dst.is_symlink():
             dst.unlink()
+        elif os.path.lexists(dst) and not dst.is_file():
+            raise HarnessError(f"{dst} cannot be written: it is not a regular file")
         dst.parent.mkdir(parents=True, exist_ok=True)
         data = src.read_bytes()
         if not dst.is_file() or dst.read_bytes() != data:
@@ -259,6 +278,42 @@ def selftest():
               f"--apply on a directory at a code file's path exits 2 with one line that names it: {code}, {error!r}")
         (dest / "code" / "b").rmdir()
         (dest / "code" / "b").write_bytes(b"b\n")
+        # A FIFO at a code file's path: a change, which --apply refuses rather than open it. Each run
+        # is a process of its own with a timeout, so that a write that blocks fails the case and
+        # does not stop the selftest.
+        os.mkfifo(dest / "code" / "b.fifo")
+        (dest / "code" / "b").unlink()
+        (dest / "code" / "b.fifo").rename(dest / "code" / "b")
+        for apply in (False, True):
+            try:
+                p = subprocess.run([sys.executable, "-c", "import sys; sys.path.insert(0, sys.argv[1]); "
+                                    "import argparse, pathlib; from harness import HarnessError, dotfiles_kit as d\n"
+                                    "try: sys.exit(d.dotfiles_kit(argparse.Namespace(dest=sys.argv[2], "
+                                    "apply=sys.argv[3] == '1'), kit=pathlib.Path(sys.argv[4]), "
+                                    "home=pathlib.Path(sys.argv[5])))\n"
+                                    "except HarnessError as e: print(e, file=sys.stderr); sys.exit(2)",
+                                    str(REPO / "lib"), str(dest), "1" if apply else "0", str(kit), str(home)],
+                                   capture_output=True, text=True, timeout=20)
+                code, out, error = p.returncode, p.stdout, p.stderr.strip()
+            except subprocess.TimeoutExpired:
+                code, out, error = None, "", "a hang of 20 s"
+            want = (code == 2 and "code/b" in error and "\n" not in error) if apply else \
+                   (code == 1 and listed(out) == {"code/b"})
+            check(want and stat.S_ISFIFO((dest / "code" / "b").lstat().st_mode),
+                  f"{'--apply' if apply else 'the dry run'} on a FIFO at a code file's path "
+                  f"{'exits 2 with one line that names it' if apply else 'lists it'} and leaves it: "
+                  f"exit {code}, {error!r}")
+        (dest / "code" / "b").unlink()
+        (dest / "code" / "b").write_bytes(b"b\n")
+        # A code file that cannot be read: the dry run and --apply exit 2 with one line that names it.
+        (dest / "code" / "x.sh").chmod(0o000)
+        if not os.access(dest / "code" / "x.sh", os.R_OK):
+            for apply in (False, True):
+                code, out, error = attempt(dest, kit, home, apply=apply)
+                check(code == 2 and "code/x.sh" in error and "\n" not in error,
+                      f"{'--apply' if apply else 'the dry run'} on a code file that cannot be read exits 2 with one "
+                      f"line that names it: exit {code}, {error!r}")
+        (dest / "code" / "x.sh").chmod(0o755)
         # A seed file that is a link with no target exists: --apply writes neither it nor its target.
         (dest / "seed" / "new.toml").unlink()
         (dest / "seed" / "new.toml").symlink_to(tmp / "nowhere")
@@ -326,10 +381,12 @@ def selftest():
         applied = applied_source(home)
         (applied / "sub").mkdir(parents=True)
         (tmp / "link").symlink_to(applied)
+        (tmp / "link-sub").symlink_to(applied / "sub")
         (tmp / "file").write_text("x\n")
         for label, target in (("a missing DEST", tmp / "missing"), ("a DEST that is a file", tmp / "file"),
                               ("the applied source", applied), ("a directory below the applied source", applied / "sub"),
                               ("a link to the applied source", tmp / "link"),
+                              ("a link to a directory below the applied source", tmp / "link-sub"),
                               ("the applied source through ..", applied / "sub" / ".."),
                               ("the applied source as a relative path", os.path.relpath(applied))):
             for apply in (False, True):
@@ -338,6 +395,18 @@ def selftest():
                 check(code == 2 and error and "\n" not in error and tree(tmp) == before,
                       f"{'--apply' if apply else 'the dry run'} on {label} exits 2 with one line and writes nothing: "
                       f"exit {code}, {error!r}")
+        # Another spelling of the applied source that names the same directory: a case variant on a
+        # file system that ignores case, and the macOS firmlink below /System/Volumes/Data.
+        spellings = [(applied.parent / "CHEZMOI", "a case variant of the applied source")]
+        realtmp = pathlib.Path(os.path.realpath(applied))
+        spellings.append((pathlib.Path("/System/Volumes/Data" + str(realtmp)), "the applied source by its firmlink"))
+        for target, label in spellings:
+            if not target.is_dir():
+                continue
+            for sub in (target, target / "sub"):
+                code, out, error = attempt(sub, kit, home)
+                check(code == 2 and "applied" in error,
+                      f"{label}{' and below it' if sub != target else ''} exits 2: exit {code}, {error!r}")
         (tmp / "home-link").symlink_to(home)
         code, out, error = attempt(applied, kit, tmp / "home-link")
         check(code == 2, f"the applied source, with a home directory that is a link, exits 2: exit {code}, {error!r}")

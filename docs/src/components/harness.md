@@ -251,14 +251,18 @@ kit. A code file that is missing, or that differs in its bytes or in its execute
 A seed file is a change only when it is missing. `--apply` copies each change, and replaces a
 symbolic link at a code file's path rather than write through it. The subcommand refuses a `DEST`
 that is not a directory, and the applied source `~/.local/share/chezmoi` or a directory below it;
-it compares the resolved paths. Before it compares the first file, it checks that the directory of
-each file of `kit.toml` resolves inside the resolved `DEST`, and exits 2 on one that resolves
-outside it, or that does not resolve because of a loop of symbolic links.
+it compares the resolved `DEST` and each of its parents with the applied source by device and
+inode, so a case variant or a firmlink of the applied source is refused too. Before it compares the
+first file, it checks that the directory of each file of `kit.toml` resolves inside the resolved
+`DEST`, and exits 2 on one that resolves outside it, or that does not resolve because of a loop of
+symbolic links. A code file that cannot be read exits 2, and `--apply` exits 2 on anything at a
+code file's path that is not a regular file or a link, such as a directory or a FIFO.
 
 The `selftest` runs it on a scratch kit with its own `kit.toml`: the dry run's list, `--apply` and
 the dry run after it, a seed file that exists, each refusal of `DEST`, each directory that links
 out of `DEST`, and each malformed `kit.toml`. Then it runs the command on an empty directory and
-checks that the list holds every file of the harness's `kit.toml`. The sweep runs the dry run on an empty fixture directory.
+checks that the list holds every file of the harness's `kit.toml`. The sweep runs the dry run on
+an empty fixture directory.
 
 ## `protection.py`
 
