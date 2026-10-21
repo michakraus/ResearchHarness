@@ -24,7 +24,8 @@ of the sweep: `dry_run_ok`, `refused_ok` and `applied_ok`.
 
 Not swept: `format` runs Julia over the tree, `ci-protection` needs `gh` with a login, and
 `skill-triggers` runs its dry run and its `--apply` in its own cases.
-`install --apply` instantiates a Julia environment, and `push-all --apply` pushes.
+`install --apply` instantiates a Julia environment, `clone --apply` clones and `repos push --apply`
+pushes. `update` fetches the harness checkout itself; its own cases run it on a scratch remote.
 """
 
 import hashlib
@@ -52,7 +53,11 @@ SUBCOMMANDS = [
     ("githooks", ["githooks"]),
     ("wiki-lint-hook", ["wiki-lint-hook"]),
     ("workflows", ["workflows"]),
-    ("push-all", ["push-all"]),
+    ("clone", ["clone"]),
+    ("repos status", ["repos", "status", "--no-prs"]),
+    ("repos pull", ["repos", "pull"]),
+    ("repos push", ["repos", "push"]),
+    ("repos sync", ["repos", "sync"]),
     ("trust", ["trust"]),
     ("render", ["render", PROPOSAL]),
     ("get", ["get", "home"]),
@@ -72,12 +77,13 @@ PRECONDITIONS = [
     ("~/.claude/settings.json", ".claude/settings.json",
      ["settings surface", "settings twins"]),
     ("a repository_roots entry", "Research/Experiments", ["leaks"]),
+    ("the repository table", ".config/research-harness/repositories.toml", ["clone"]),
 ]
 
 APPLY = ["githooks", "wiki-lint-hook", "workflows", "trust"]
 
 # The variables that would point a subcommand past the fixture.
-UNSET = ["RESEARCH_HARNESS_PROFILE", "RESEARCH_HARNESS_MODELS", "RESEARCH_HARNESS_JULIA",
+UNSET = ["RESEARCH_HARNESS_PROFILE", "RESEARCH_HARNESS_MODELS", "RESEARCH_HARNESS_JULIA", "RESEARCH_HARNESS_REPOSITORIES",
          "OPENCODE_CONFIG_DIR", "PI_CODING_AGENT_DIR", "FMT_OUT"]
 
 
@@ -102,6 +108,9 @@ def make_fixture(home, env):
     for name, source in (("profile.toml", DUMMY), ("models.toml", REPO / "examples" / "models.toml"),
                          ("providers.toml", REPO / "examples" / "providers.toml")):
         (home / ".config" / "research-harness" / name).write_bytes(source.read_bytes())
+    # One repository to clone, at a URL that the dry run never reaches.
+    (home / ".config" / "research-harness" / "repositories.toml").write_text(
+        '[packages]\nOther = "https://example.org/Other.jl.git"\n')
     package = research / "Packages" / "Example"
     (package / "Project.toml").write_text('name = "Example"\n')
     for repository, files in ((package, ["Project.toml"]), (research / "Knowledge", [])):

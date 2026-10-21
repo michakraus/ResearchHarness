@@ -105,7 +105,7 @@ and a `CHANGELOG.md`. In the example, they are Julia packages.
 - The shared git hooks [`pre-commit`](components/githooks.md#pre-commit-and-pre-commit-test-jl) and
   [`pre-push`](components/githooks.md#pre-push), and the workflows such as
   [`workflows/CI.yml`](components/githooks.md#workflows-ci-yml). The subcommands
-  `harness githooks`, `harness push-all` and `harness ci-protection` work on every git repository
+  `harness githooks`, `harness repos push` and `harness ci-protection` work on every git repository
   of this directory.
   `harness workflows` works on each of them that has a `Project.toml`.
 
@@ -228,8 +228,12 @@ Your tree can have other directories. Adapt the two values to it:
 Some subcommands do not take their directories from the profile. They find them by a fixed name
 below the research tree, `$RESEARCH_ROOT` or `~/Research`:
 
-- `harness githooks`, `harness workflows`, `harness push-all`, `harness ci-protection` and
-  `harness format` look in `Packages` and `Experiments`.
+- `harness githooks`, `harness workflows`, `harness ci-protection` and `harness format` look in
+  `Packages` and `Experiments`.
+- `harness clone` and `harness repos` look in the group directories `Packages`, `Experiments`,
+  `Papers`, `Books`, `Talks` and `Projects`, and for the fixed repositories `Knowledge`,
+  `Environment`, `Tasks`, `Bibliography` and `Library`. The repository table names each
+  repository and its URL.
 - `harness wiki-lint-hook` looks for the prose repositories, `Knowledge` and `Library` among
   them. The script `wiki-lint.jl` reads the same names.
 

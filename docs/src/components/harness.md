@@ -18,7 +18,8 @@ then the contract sweep. Three subcommands live in the adapters: `settings` and 
 | `install` | `install.py` |
 | `render`, `get`, `leaks` | `profile.py` |
 | `githooks`, `wiki-lint-hook`, `workflows` | `githooks.py` |
-| `push-all` | `pushall.py` |
+| `clone`, `repos` | `repos.py` |
+| `update` | `update.py` |
 | `ci-protection` | `protection.py` |
 | `format` | `fmt.py` |
 | `skill-triggers` | `skill_triggers.py` |
@@ -206,21 +207,40 @@ for each repository, and exits with status 2. The module also gives `research_ro
 `repositories` and `git` to other modules. It has no `selftest`; the sweep runs its dry runs and
 its `--apply`. [Git hooks and workflows](githooks.md) describes the copied files.
 
-## `pushall.py`
+## `repos.py`
 
-The subcommand `harness push-all [--apply] [--skip-hooks] [--include-topic-branches]`. It pushes
-each git repository directly below `Packages/` and `Experiments/` whose branch is ahead of its
-upstream, one at a time.
+The subcommands `harness clone [SELECTION ...] [--apply]` and
+`harness repos status|pull|push|sync [SELECTION ...]`. They read the repository table,
+`repositories.toml` beside the profile or `$RESEARCH_HARNESS_REPOSITORIES`. A top-level key
+names a fixed repository (`knowledge`, `environment`, `tasks`, `bibliography`, `library`), and a
+table names a group (`packages`, `experiments`, `papers`, `books`, `talks`, `projects`); each
+directory is the key in title case below the research root. `load_table` refuses an unknown key
+and a directory name that has a `/` or starts with `.`. Without a table, `repos` takes each git
+repository that it finds, and `clone` stops.
 
-It skips a repository with no upstream, one that is also behind its upstream, and one on a branch
-that is not the default branch, unless `--include-topic-branches`. The dry run names the `.jl`
-files of each push. `--skip-hooks` pushes with `--no-verify`, so the pre-push suite does not run.
-Use it only for a push with no Julia source and no `[compat]` change. After a push, the subcommand
-compares the local commit with the remote branch, as `git ls-remote` reports it.
+`clone` refuses the whole run when a directory is in the way, before the first clone. `status`,
+`pull`, `push` and `sync` fetch in parallel, eight at a time, and `status` asks `gh` or `glab`
+for the open pull requests, also in parallel. `pull` merges `--ff-only`, and skips a branch whose
+incoming commits change a file with local changes. `push` pushes one repository at a time and
+skips a branch that is also behind, and a branch that is not the default branch unless
+`--include-topic-branches`. The dry run names the `.jl` files of each push. `--no-verify` (or
+`--skip-hooks`) skips the pre-push suite; use it only for a push with no Julia source and no
+`[compat]` change. After a push, the subcommand compares the local commit with the remote branch,
+as `git ls-remote` reports it.
 
-Run it in your own terminal. The pre-push hook of each repository can run a full test suite, so
-the subcommand can take hours, and a tool call of a session stops after ten minutes. The module
-has no `selftest`; the sweep runs its dry run.
+Run `push` and `sync` in your own terminal. The pre-push hook of each repository can run a full
+test suite, so the subcommand can take hours, and a tool call of a session stops after ten
+minutes. The `selftest` runs each subcommand on scratch remotes below a temporary directory, and
+the query for pull requests on a stub of `gh` and `glab`; the sweep runs the dry runs.
+
+## `update.py`
+
+The subcommand `harness update [--apply]`. It works on the checkout that runs it, when its branch
+is `main` with the upstream `origin/main`. It fetches, prints the new commits and their files,
+and exits 1 when there is one. `--apply` needs a terminal: it shows the whole diff, asks `y/N`,
+merges `--ff-only` and runs `harness install --apply` in a process of its own, from the merged
+checkout. It stops at a detached HEAD, a pinned checkout, at changes to tracked files, and at
+commits that `origin/main` lacks. The `selftest` runs it on a scratch remote and its clone.
 
 ## `protection.py`
 

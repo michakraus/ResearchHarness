@@ -56,7 +56,7 @@ with no package name, it runs `test/runtests.jl`. With neither, it runs nothing 
 failure refuses the push.
 
 The suite takes 10 to 30 minutes and prints nothing until it ends. That is not a hang. When you
-stop the hook, stop its Julia process too. `harness push-all` runs this hook in each repository.
+stop the hook, stop its Julia process too. `harness repos push` runs this hook in each repository.
 
 ## `pre-commit-wiki`
 

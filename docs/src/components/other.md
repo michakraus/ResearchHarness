@@ -225,6 +225,19 @@ Copy the file to `providers.toml` beside the profile, and write your providers i
 file is optional. The test cases copy the example beside their scratch profile.
 [Adapting the profile](../profile.md#the-providers) maps each key to each frontend.
 
+## `repositories.toml`
+
+The example of the repository table, `examples/repositories.toml`: the repositories of the
+research tree and their clone URLs, for `harness clone` and `harness repos`. A top-level key is a
+fixed repository, `knowledge`, `environment`, `tasks`, `bibliography` or `library`; a table is a
+group, `packages`, `experiments`, `papers`, `books`, `talks` or `projects`, and each key in it a
+directory of that group. Each directory is its key in title case below the research root.
+
+Copy the file to `repositories.toml` beside the profile, or name it with
+`$RESEARCH_HARNESS_REPOSITORIES`, and write your repositories into the copy. The file is optional:
+without it, `harness repos` takes each git repository that it finds, and `harness clone` stops.
+The contract sweep writes a table of its own into its fixture.
+
 ## `Project.toml`
 
 The Julia environment of the scripts of the harness. It names the six packages that the scripts
