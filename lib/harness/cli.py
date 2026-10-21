@@ -6,11 +6,11 @@ import subprocess
 import sys
 
 from . import REPO, HarnessError, __doc__ as CONTRACT
-from . import docs, fmt, frontends, frontmatter, githooks, install, network, profile, protection, pushall, sweep
-from . import doctor, providers, script_cases, skill_triggers, units
+from . import docs, fmt, frontends, frontmatter, githooks, install, network, profile, protection, repos, sweep
+from . import doctor, providers, script_cases, skill_triggers, units, update
 
 # The modules of lib/harness/; the adapters of lib/harness/frontends.py follow `install`.
-MODULES = [install, frontmatter, githooks, pushall, protection, fmt, profile]
+MODULES = [install, update, frontmatter, githooks, repos, protection, fmt, profile]
 MODULES.append(skill_triggers)
 MODULES.append(docs)
 MODULES.append(units)

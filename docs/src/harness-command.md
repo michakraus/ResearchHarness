@@ -18,13 +18,22 @@ OpenCode and oh-my-pi model, and an agent to its own model. If the flag is not g
 tables are `$RESEARCH_HARNESS_MODELS`, or `models.toml` beside the profile if that is not set;
 `examples/models.toml` shows the layout.
 
+The repository table names each repository of the research tree and its clone URL, for
+`harness clone` and `harness repos`. It is `$RESEARCH_HARNESS_REPOSITORIES`, or
+`repositories.toml` beside the profile if that is not set; `examples/repositories.toml` shows the
+layout. The table is optional: without it, `harness repos` takes each git repository that it
+finds below the group directories, and `harness clone` stops.
+
 | subcommand | does |
 |:--|:--|
 | `install` | installs the Julia environment of the scripts, the Claude Code layer with the sections `permissions`, `hooks`, `sandbox` and `modelSettings` of `settings.json`, the OpenCode configuration, and the oh-my-pi permission layer, instructions, rules, agents, models and MCP entry |
 | `permissions` | generates the OpenCode permission block and path-guard list, from the settings template |
 | `settings <sub>` | measures and checks the Claude Code settings: `surface`, `compare`, `twins`, `selftest` |
 | `githooks`, `wiki-lint-hook`, `workflows` | install the shared git hooks and GitHub workflows into every repository of the research tree |
-| `push-all`, `ci-protection` | push every repository ahead of its upstream; protect every default branch |
+| `clone` | clones each repository of the repository table that has no directory yet |
+| `repos <action>` | works on the repositories of the tree as one set: `status` reports each branch, its commits ahead and behind, its changed files and its open pull requests; `pull` fast-forwards, `push` pushes one repository at a time, `sync` does both |
+| `ci-protection` | protects every default branch |
+| `update` | brings the harness checkout up to `origin/main`: the dry run lists the new commits; `--apply` shows the diff, asks, merges and runs `harness install --apply`. It does not move a checkout that is pinned to a commit |
 | `format` | runs JuliaFormatter over every tracked `.jl` file of the tree |
 | `trust` | sets Claude Code workspace trust for every repository of the tree |
 | `doctor` | checks the setup of this machine, read-only: the tools, the profile, the install and the jobs; `--full` adds `harness test` and checks that Revise loads. In the Claude Code sandbox, some checks report `SKIP`, so run it in a plain terminal |

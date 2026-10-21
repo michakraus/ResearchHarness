@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+- **`harness clone`, `harness repos` and `harness update`.** A second machine had no way to clone
+  the research tree, no command pulled every repository, and no command showed which
+  repositories were ahead, behind or had open pull requests. `harness clone [SELECTION ...]`
+  clones each repository of a new repository table, `repositories.toml` beside the profile
+  (`examples/repositories.toml` shows the form), and refuses the whole run when a directory is in
+  the way. `harness repos status` fetches every repository in parallel and prints its branch, its
+  commits ahead and behind, its changed files and its open pull requests, from `gh` or `glab`,
+  and names each drift from the table. `harness repos pull` fast-forwards, `harness repos push`
+  pushes one repository at a time, and `harness repos sync` does both. A selection such as
+  `papers` or `knowledge` limits each to one group or one fixed repository. `harness update`
+  brings the harness checkout on `main` up to `origin/main`: it shows the diff, asks, merges
+  `--ff-only` and runs `harness install --apply`, and it does not move a pinned checkout at a
+  detached HEAD. **`harness push-all` is now `harness repos push`**: the flag `--skip-hooks` is
+  `--no-verify`, with the old name as an alias. The push now fetches first, so it sees a commit
+  behind on the remote; it no longer prints the one-off hint to run `ci-protection`.
+
 - **"Subcommand" in place of "verb".** The docs, the help, the docstrings, the code and the
   `build-part` skill called `install`, `doctor` and the others the verbs of `harness`.
   "Subcommand" is the term that a reader of a command-line tool knows, and "command" has three
