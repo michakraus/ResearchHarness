@@ -230,8 +230,8 @@ harness dotfiles-kit --apply ~/src/dotfiles    # copy
 ## The repositories of the research tree
 
 These subcommands find the research tree at `$RESEARCH_ROOT`, or `~/Research` if it is not set.
-[daily-use.md](daily-use.md#the-subcommands-for-the-whole-research-tree) shows them in the order
-of a working day.
+[The research tree](research-tree.md#clone-sync-and-trust) shows them in the order of a working
+day.
 
 ### The repository table
 

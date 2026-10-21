@@ -1,4 +1,4 @@
-// The call graphs of docs/src/agents-at-work.md, laid out at build time. A VitePress data loader:
+// The call graphs of docs/src/agentic-engineering.md, laid out at build time. A VitePress data loader:
 // every build reads the sources again, so a figure changes when a source changes.
 //
 // The edges come from docs/figures/calls.toml: one entry for each spawn. The kind of each node

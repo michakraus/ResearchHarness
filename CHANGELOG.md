@@ -2,6 +2,25 @@
 
 ## Unreleased
 
+- **The documentation site has a page for each main feature of the harness.** Three pages are new:
+  *The research tree* (`research-tree.md`, under *Use*) replaces *An example tree*. It says why
+  the work is one tree, gives the example layout in one table, says how to adapt it, and names the
+  places of the worktrees and of `.scratch/`. It also states that the settings template and the
+  guard hooks name `~/Research` itself, whatever `$RESEARCH_ROOT` says. The section on the
+  subcommands for the whole tree moves to it from *Typical use*. *Private data across machines*
+  (`private-data.md`) says what is private, how `harness leaks` and gitleaks keep it out of the
+  repository, and how the dotfiles kit, `claude-autocommit` and git carry it to each machine.
+  *Research memory* (`memory.md`) lists the kinds of memory, with who writes each one and when a
+  session reads it, says where a fact belongs, and names the checks that keep the memory correct;
+  it is marked as in development. *Agents at work* becomes *Agentic software engineering*
+  (`agentic-engineering.md`). It gains sections on sub-agents, on the path from a plan to a pull
+  request, on worktrees, on pull requests and on models, and its call graphs are under *Who spawns
+  whom*. The sidebar lists *Use* as Typical use, The research tree, the two commands and the
+  profile, and *Background* in the order of the features: architecture, private data, security,
+  memory and agentic software engineering. `check-site.mjs`, `newcomer.mjs` and the docs check of
+  `harness test` follow the new file names; the code-span check of the research-tree page accepts
+  the path `docs/make.jl`.
+
 - **`dotfiles-merge` and `dotfiles-update` of the dotfiles kit say why they stop when you quit
   the review early.** A pager that quits before the log, the diff or `chezmoi diff` is written to
   its end made git exit 141 and `set -e` end the script with no message, and made `chezmoi diff`

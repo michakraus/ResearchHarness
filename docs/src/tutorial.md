@@ -280,4 +280,5 @@ a rule of the harness goes into its source in the checkout in the same way.
   whole research tree.
 - [Introduction](concepts.md): the ideas behind each step of this tutorial.
 - [The security model](security.md): what each layer of control stops, and what it does not.
-- [Agents at work](agents-at-work.md): which agents start which sub-agents.
+- [Agentic software engineering](agentic-engineering.md): how agents plan, build and judge a
+  change, and which agents start which sub-agents.

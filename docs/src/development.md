@@ -115,7 +115,7 @@ heading's anchor: `[text](setup-macos.md#harness-install-apply)`. An anchor is t
 case, with each run of spaces and punctuation as one `-`. VitePress does not check an anchor, but
 `npm run docs:check` does. It also checks that every page of the menu is in the sidebar, that each
 page has the table rows of its source, that the home page has its two figures, the introduction
-its three and the page `agents-at-work` its four call graphs, that no edge of a figure crosses
+its three and the page `agentic-engineering` its four call graphs, that no edge of a figure crosses
 another edge or passes through a box that is not its end, and that every colour of the figures has
 a value for the dark theme. It finds the four walk-throughs by their titles, and checks each
 animated figure: its SVG parses as XML, it holds no script, it loops, it stops under
@@ -133,7 +133,7 @@ and the line widths are custom properties in `docs/.vitepress/theme/figures.css`
 the light and the dark theme; a component names no colour itself. The overview and the flow figure
 of the home page, and the two figures of the introduction, have a fixed layout in their components.
 
-The call graphs of `agents-at-work.md` are generated. A block with the info string
+The call graphs of `agentic-engineering.md` are generated. A block with the info string
 `calls <caller>`, or `calls` for every edge, holds the graph's `title:` and `desc:`, and the build
 draws the graph there. `docs/.vitepress/theme/figures/calls.data.ts` reads
 `docs/figures/calls.toml`, the frontmatter of `agents/` and `skills/`, and `examples/models.toml`

@@ -13,7 +13,7 @@ level-2 headings of TABLES, with the columns `tool`, `minimum` and `used for`. B
 level-3 heading per description names its tools, "Python" or "JSON, YAML and TestEnv". Every
 tool of the tables is named by a heading, and every name in a heading is a tool of the tables.
 
-Call graphs. The call graphs of `docs/src/agents-at-work.md` are drawn from
+Call graphs. The call graphs of `docs/src/agentic-engineering.md` are drawn from
 `docs/figures/calls.toml`, one `[[call]]` entry per place where a caller starts a callee:
 `caller`, `callee`, `at` (the `file:line` of the instruction that starts it), and optionally
 `effort`, where the caller sets one other than the callee's own, and `label`, the text on the
@@ -32,7 +32,7 @@ not a blank one. The edges and the steps name boxes and edges of the file. A box
 the effort with which it is started, shows an agent that an entry of calls.toml starts at it,
 from a caller that a skill or agent box of the same walk-through shows.
 
-Example tree. `harness test` checks that, on `docs/src/example-tree.md`, each code span that has
+Research tree. `harness test` checks that, on `docs/src/research-tree.md`, each code span that has
 the shape of a component's name (COMPONENT_SHAPE) names a component of some page, unless
 NOT_COMPONENTS lists it.
 """
@@ -53,12 +53,12 @@ CALLS = REPO / "docs" / "figures" / "calls.toml"
 # step with no agent, an outcome.
 WALKTHROUGH = "docs/figures/walkthrough-*.toml"
 BOX_KINDS = ("you", "skill", "agent", "step", "outcome")
-# The page of the example tree, the shape of a component's name in one of its code spans (a script,
-# or a lowercase word of letters, digits and hyphens with a hyphen), and the spans of that shape that
-# name no component: none on today's page.
-EXAMPLE_TREE = REPO / "docs" / "src" / "example-tree.md"
+# The page of the research tree, the shape of a component's name in one of its code spans (a
+# script, or a lowercase word of letters, digits and hyphens with a hyphen), and the spans of that
+# shape that name no component: the file of a package's documentation build.
+RESEARCH_TREE = REPO / "docs" / "src" / "research-tree.md"
 COMPONENT_SHAPE = re.compile(r".+\.(?:jl|py|js|mjs|ts|sh)|[a-z0-9]+(?:-[a-z0-9]+)+")
-NOT_COMPONENTS = set()
+NOT_COMPONENTS = {"docs/make.jl"}
 
 # The keys of a `[[call]]` entry, the ones it must have, and the values of `effort`.
 CALL_KEYS = {"caller", "callee", "at", "effort", "label"}
@@ -400,7 +400,7 @@ def selftest():
         for name in sorted(inside - names):
             check(False, f"components/{page}: {name!r} in a heading is no component of the page")
 
-    # The code spans of example-tree.md that have the shape of a component's name: on fixed inputs,
+    # The code spans of research-tree.md that have the shape of a component's name: on fixed inputs,
     # then on the page of this checkout, each is a component of some page.
     check(code_spans("`a` and ``b`c``\n```\n`d`\n```\n` e `\n") == ["a", "b`c", "e"],
           "code_spans reads each code span outside code fences")
@@ -408,8 +408,8 @@ def selftest():
     found = shaped_spans(sample, {"julia-builder", "wiki-lint.jl"})
     check(found == ["julia-bilder", "gate.sh"], f"shaped_spans names a script and a hyphenated name that are no component: {found}")
     names = set().union(*components(tracked()).values())
-    found = shaped_spans(EXAMPLE_TREE.read_text(), names) if EXAMPLE_TREE.is_file() else ["the page does not exist"]
-    check(not found, "docs/src/example-tree.md: every code span of a component's shape names a component"
+    found = shaped_spans(RESEARCH_TREE.read_text(), names) if RESEARCH_TREE.is_file() else ["the page does not exist"]
+    check(not found, "docs/src/research-tree.md: every code span of a component's shape names a component"
           + (f": not {', '.join(found)}" if found else ""))
 
     # The rules of the dependencies page on fixed inputs, then the page of this checkout.
