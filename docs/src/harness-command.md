@@ -48,6 +48,7 @@ These options come before the subcommand.
 | [`update`](#update) | brings the harness checkout up to `origin/main`, then runs `install --apply`. It does not move a checkout that is pinned to a commit | yes |
 | [`doctor`](#doctor) | checks the setup of this machine: the tools, the profile, the install and the jobs | no |
 | [`trust`](#trust) | sets Claude Code workspace trust for every repository of the tree | yes |
+| [`dotfiles-kit`](#dotfiles-kit) | copies the dotfiles kit of the harness into a chezmoi source | yes |
 | [`clone`](#clone) | clones each repository of the repository table that has no directory yet | yes |
 | [`repos status`](#repos-status) | reports each repository: its branch, its commits ahead and behind, its changed files and its open pull requests | no |
 | [`repos pull`](#repos-pull) | fast-forwards each repository that is behind its upstream | yes |
@@ -184,6 +185,45 @@ untrusted root; 2 when `~/.claude.json` cannot be read or is not a JSON object.
 
 **Where to run it:** in your own terminal. A session cannot read `~/.claude.json`. Run it again
 after `clone`: a new clone is not trusted.
+
+### `dotfiles-kit`
+
+```text
+harness dotfiles-kit [--apply] DEST
+```
+
+Compares the chezmoi source `DEST` with the dotfiles kit of the harness, `examples/dotfiles/`.
+The file `examples/dotfiles/kit.toml` names each file of the kit and its class. A *code* file
+stays identical to the kit, so the dry run lists each code file that is missing from `DEST`, or
+differs in its bytes or in its execute bit. A *seed* file belongs to `DEST` once it is there, so
+the dry run lists each seed file that is missing, and `--apply` never writes a seed file that
+exists. A file of `DEST` that `kit.toml` does not name is not listed and not changed.
+
+`DEST` is a clone of your dotfiles repository. `dotfiles-kit` refuses the source that chezmoi
+applies, `~/.local/share/chezmoi`, and each directory below it, under any name of the same
+directory: a symbolic link, `..`, a case variant or a firmlink. A change of the applied source
+goes through a branch and a merge request. Every file that `dotfiles-kit` lists or writes stays
+inside `DEST`: when the directory of a file of `kit.toml` links out of `DEST`, the dry run and
+`--apply` stop before the first write and name the file. A symbolic link at a code file's own path
+is replaced by the file; anything else there that is not a regular file, such as a directory or
+a FIFO, stops `--apply`.
+
+| option | meaning |
+|:--|:--|
+| `--apply` | copy the listed files; without it, print the list |
+
+**Exit status:** 0 when nothing would change, or after `--apply`; 1 when the dry run lists a file;
+2 when `DEST` is not a directory or is the applied source, when `kit.toml` cannot be read or
+names a file that the harness lacks or a class other than `code` and `seed`, when the directory of
+a file resolves outside `DEST`, when a code file of `DEST` cannot be read, and when a file cannot
+be written.
+
+**Where to run it:** where you can write `DEST`. Commit the change on a branch of the clone.
+
+```bash
+harness dotfiles-kit ~/src/dotfiles            # the list
+harness dotfiles-kit --apply ~/src/dotfiles    # copy
+```
 
 ## The repositories of the research tree
 

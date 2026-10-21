@@ -42,7 +42,8 @@ from .profile import DUMMY
 HARNESS = [sys.executable, str(REPO / "bin" / "harness")]
 PROPOSAL = str(REPO / "settings" / "settings.proposal.json")
 
-# (subcommand, its arguments); `{live}` is the fixture's ~/.claude/settings.json.
+# (subcommand, its arguments); the argument `{live}` is the fixture's ~/.claude/settings.json, and
+# `{kit}` its chezmoi source ~/dotfiles, an empty directory.
 SUBCOMMANDS = [
     ("install", ["install"]),
     ("permissions", ["permissions"]),
@@ -62,6 +63,7 @@ SUBCOMMANDS = [
     ("render", ["render", PROPOSAL]),
     ("get", ["get", "home"]),
     ("leaks", ["leaks"]),
+    ("dotfiles-kit", ["dotfiles-kit", "{kit}"]),
 ]
 
 # (precondition, its path below the fixture HOME, the subcommands that need it). The profile is
@@ -78,6 +80,7 @@ PRECONDITIONS = [
      ["settings surface", "settings twins"]),
     ("a repository_roots entry", "Research/Experiments", ["leaks"]),
     ("the repository table", ".config/research-harness/repositories.toml", ["clone"]),
+    ("the chezmoi source", "dotfiles", ["dotfiles-kit"]),
 ]
 
 APPLY = ["githooks", "wiki-lint-hook", "workflows", "trust"]
@@ -99,7 +102,7 @@ def make_fixture(home, env):
     """The fixture below `home`; the dummy profile and model tables copied as they are, so that
     each `~` of the profile is `home`."""
     research = home / "Research"
-    for directory in (".claude/agents", ".claude/skills", ".config/opencode", ".config/research-harness",
+    for directory in (".claude/agents", ".claude/skills", ".config/opencode", ".config/research-harness", "dotfiles",
                       "Research/Packages/Example", "Research/Experiments", "Research/Knowledge",
                       "Research/Environment/Agents"):
         (home / directory).mkdir(parents=True)
@@ -182,8 +185,8 @@ def selftest():
         env = {k: v for k, v in os.environ.items() if k not in UNSET and not k.startswith("GIT_")}
         env.update(GIT, HOME=str(home), RESEARCH_ROOT=str(home / "Research"))
         make_fixture(home, env)
-        argv = {subcommand: [a.replace("{live}", str(home / ".claude" / "settings.json")) for a in args]
-                for subcommand, args in SUBCOMMANDS}
+        placeholders = {"{live}": str(home / ".claude" / "settings.json"), "{kit}": str(home / "dotfiles")}
+        argv = {subcommand: [placeholders.get(a, a) for a in args] for subcommand, args in SUBCOMMANDS}
 
         def harness(args):
             """One subcommand's run; a subcommand that hangs exits `timeout`, which is a wrong
