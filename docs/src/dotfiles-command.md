@@ -194,6 +194,20 @@ owner@example.org namespaces="git" ssh-ed25519 <the public key>
 Compare its fingerprint with the fingerprint that the README of your private copy names. On the
 template host, `ssh-keygen -l -f` of the key's `.pub` file prints it.
 
+`chezmoi init` clones your private repository before chezmoi applies any `~/.gitconfig`, and the
+first apply clones the remotes of `[remotes]`. So git needs credentials for each of their hosts
+first: an SSH key that the host accepts, for an SSH URL, or a credential helper, for an HTTPS URL.
+A helper goes into `~/.gitconfig`, such as `gh auth login` and then `gh auth setup-git` for a host
+of `gh`, or, for a host of `glab`:
+
+```sh
+glab auth login --hostname <host>
+git config --global credential.https://<host>.helper '!glab auth git-credential'
+```
+
+When your `.gitconfig` template writes the same helper, the first `chezmoi diff` shows
+`~/.gitconfig` as replaced.
+
 Then run `chezmoi init <repository>` without `--apply`, and check the head of the source. No
 `~/.gitconfig` names `allowed_signers` before the first apply, so the command names it:
 
@@ -205,7 +219,10 @@ git -C ~/.local/share/chezmoi -c gpg.ssh.allowedSignersFile="$HOME/.config/git/a
 It must print `G` and the principal, such as `G owner@example.org`. Then read the whole
 `chezmoi diff`, and run `chezmoi apply`. Before any file changes, the apply runs the tool check
 of the kit: when a tool is missing, it names the tool and stops the apply; it installs nothing.
-From then on, the machine updates with `dotfiles update` only.
+It requires `git`, `zsh`, `curl`, `python3` 3.11 or later, `lsof`, `rtk`, `juliaup`, `gh` and
+`glab` on every host, and `bwrap`, `socat` and `secret-tool` on Linux. So a host needs `glab` even
+when all its remotes are on GitHub, and `gh` even when none is: install both, or the first apply
+stops. From then on, the machine updates with `dotfiles update` only.
 
 ### The first signed commit
 
@@ -279,7 +296,10 @@ minimum channel.
 3. Write your own values into the seed files: your machines, `template_host`, the remotes and
    `harness_commit` in `.chezmoidata/machines.toml`; the public key of your signing key in
    `dot_config/git/allowed_signers`; and your profile and model tables in
-   `dot_config/research-harness/`.
+   `dot_config/research-harness/`. Write a `README.md` that names the fingerprint of the signing
+   key, which `ssh-keygen -l -f` of the key's `.pub` file prints, and links this page: each
+   [new machine](#a-new-machine) compares with it. The kit's `.chezmoiignore` keeps `README.md`
+   off the machines.
 4. Add your own files beside the kit's. The kit does not own `~/.gitconfig`: your own
    `dot_gitconfig.tmpl` includes the signing settings of git with this line:
 
