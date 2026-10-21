@@ -32,7 +32,7 @@ WHAT `workflows` DOES NOT INSTALL, AND WHY.
                    a tag-watching workflow there has nothing to watch.
   extra workflows  a repository that needs a job the canonical CI.yml does not have gets its own
                    file, such as Metal.yml for a GPU job. Never a local edit to CI.yml: that is
-                   the drift this verb exists to prevent.
+                   the drift this subcommand exists to prevent.
 
 RETIRED lists files the template set no longer covers. Copying alone never removes a file, so
 `--apply` deletes each one that is present. CompatHelper.yml is there because dependabot.yml opens
@@ -201,8 +201,8 @@ def register(sub):
                                         "into .githooks/ of each git repository below Packages/ and Experiments/, "
                                         "and set core.hooksPath. Without --apply it prints what would change and "
                                         "exits 1 when something would; --apply copies the files and sets the path. "
-                                        "A path that cannot be set is printed with its command, and the verb exits "
-                                        "with status 2.")
+                                        "A path that cannot be set is printed with its command, and the subcommand "
+                                        "exits with status 2.")
              ).set_defaults(run=cmd_githooks)
     changing(sub.add_parser("wiki-lint-hook", help="install the wiki-lint hook into the prose repositories",
                             description="Copy githooks/pre-commit-wiki as .githooks/pre-commit into each prose "

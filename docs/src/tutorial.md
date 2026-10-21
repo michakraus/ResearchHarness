@@ -276,8 +276,8 @@ a rule of the harness goes into its source in the checkout in the same way.
 
 ## Next steps
 
-- [Typical use](daily-use.md): a change of the settings, the leak check and the verbs for the whole
-  research tree.
+- [Typical use](daily-use.md): a change of the settings, the leak check and the subcommands for the
+  whole research tree.
 - [Introduction](concepts.md): the ideas behind each step of this tutorial.
 - [The security model](security.md): what each layer of control stops, and what it does not.
 - [Agents at work](agents-at-work.md): which agents start which sub-agents.

@@ -17,9 +17,9 @@ marks. You still need Julia itself, because the [install](concepts.md#install) r
 **Without an administrator.** The `apt-get` lines and the lingering of [The jobs](#the-jobs)
 need an administrator. Every tool that goes into `~/.local/bin` installs without one.
 
-**The exit codes.** Each `harness` verb ends with an exit status. Exit status 0 means that
-nothing would change or that the verb succeeded, 1 that a dry run found something to change, and
-2 an error. Each step below names the status that it expects, with its meaning.
+**The exit codes.** Each `harness` subcommand ends with an exit status. Exit status 0 means
+that nothing would change or that the subcommand succeeded, 1 that a dry run found something to
+change, and 2 an error. Each step below names the status that it expects, with its meaning.
 
 ## Check the machine
 
@@ -365,8 +365,8 @@ zsh, so that each new shell finds `harness`.
 **Why.** Every step after this one uses `harness`, and the installed configuration names files of
 the checkout.
 
-**Check.** `harness --help` lists the verbs. A Python older than 3.11 makes `harness` stop with
-exit status 2, an error, and the message names the version that it found.
+**Check.** `harness --help` lists the subcommands. A Python older than 3.11 makes `harness` stop
+with exit status 2, an error, and the message names the version that it found.
 
 ```bash
 harness --help

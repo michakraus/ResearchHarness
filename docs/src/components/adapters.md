@@ -7,12 +7,13 @@ The sources of an adapter are below `adapters/<frontend>/`: `adapters/claude/` f
 `adapters/opencode/` for OpenCode and `adapters/omp/` for oh-my-pi.
 
 Each adapter has one Python module, `adapter.py`. `lib/harness/frontends.py` loads the three
-modules by path, in the order Claude Code, OpenCode, oh-my-pi. Each module gives its own verbs, its
-part of `harness install`, its test cases for `harness test`, and the restart line that the install
-prints after a change. The other files of an adapter are instruction text, configuration and
-extension code. `harness install --apply` copies or renders them into the configuration directory
-of the frontend. [The architecture](../architecture.md#the-opencode-and-oh-my-pi-adapters)
-describes what each frontend receives, and [the harness command](harness.md) describes the loader.
+modules by path, in the order Claude Code, OpenCode, oh-my-pi. Each module gives its own
+subcommands, its part of `harness install`, its test cases for `harness test`, and the restart line
+that the install prints after a change. The other files of an adapter are instruction text,
+configuration and extension code. `harness install --apply` copies or renders them into the
+configuration directory of the frontend.
+[The architecture](../architecture.md#the-opencode-and-oh-my-pi-adapters) describes what each
+frontend receives, and [the harness command](harness.md) describes the loader.
 
 The sections follow the three frontends: first Claude Code, then OpenCode, then oh-my-pi. In each
 group, the module `adapter.py` comes first, then the files that it installs.
@@ -20,7 +21,7 @@ group, the module `adapter.py` comes first, then the files that it installs.
 ## `claude/adapter.py`
 
 The adapter of Claude Code. It writes the Claude Code layer of `harness install`, and it gives the
-verbs `harness settings` and `harness trust`.
+subcommands `harness settings` and `harness trust`.
 
 The layer goes into `~/.claude/`. The five neutral directories install at their own path,
 `adapters/claude/` at the top, `hooks/` into `~/.claude/hooks/`, and the tree instructions at their
@@ -45,7 +46,7 @@ The adapter exits with status 2, before it writes a file, in these cases:
 An installed file with no source is an EXTRA line with its removal command. The permission rules
 of the other settings files of the research tree are a warning.
 
-`harness settings` has four sub-verbs: `surface`, `compare`, `selftest` and `twins`.
+`harness settings` has four subcommands: `surface`, `compare`, `selftest` and `twins`.
 `surface` reads the session transcripts below `~/.claude/projects/` and counts the Bash commands
 that reach a prompt.
 `harness trust` marks the research root and each git repository below it as trusted in
@@ -110,8 +111,8 @@ the line shows no values.
 
 ## `opencode/adapter.py`
 
-The adapter of OpenCode. It writes OpenCode's part of `harness install`, and it gives the verb
-`harness permissions`.
+The adapter of OpenCode. It writes OpenCode's part of `harness install`, and it gives the
+subcommand `harness permissions`.
 
 The install writes into `$OPENCODE_CONFIG_DIR`, or `~/.config/opencode` if it is not set. The
 directory must exist. The adapter writes:
@@ -266,8 +267,8 @@ their names, so `guards.ts` checks a command before `rtk.ts` rewrites it.
 
 ## `omp/adapter.py`
 
-The adapter of oh-my-pi. It writes oh-my-pi's part of `harness install` and gives no verb of its
-own.
+The adapter of oh-my-pi. It writes oh-my-pi's part of `harness install` and gives no subcommand
+of its own.
 
 The install writes into oh-my-pi's agent directory, `$PI_CODING_AGENT_DIR`, or `~/.omp/agent` if
 it is not set:

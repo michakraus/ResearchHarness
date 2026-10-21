@@ -23,7 +23,7 @@ templates of the profile. JOBS pairs them. `harness test` renders each with
   let a session put a program on its `PATH`. A session's working directory, which the sandbox
   lets it write too, has no fixed value, and the check does not place it.
 
-The module has no verb; its cases run in `harness test`.
+The module has no subcommand; its cases run in `harness test`.
 """
 
 import contextlib

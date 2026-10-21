@@ -79,13 +79,13 @@ repository. A trusted parent folder does not cover a git repository nested insid
 repository raises its own trust dialog. A worktree uses the trust of its main checkout, so
 `.worktrees/` needs no entry. A clone under `.scratch/` is a throwaway probe, so it gets no entry
 either. No setting pre-trusts a tree; the documented route is
-`projects["<root>"].hasTrustDialogAccepted = true`. The user runs the verb, because a session
-cannot read or write `~/.claude.json`. Run it after a clone: a new repository is untrusted until
-then. A running Claude Code writes the file too. So run `harness trust` again after `--apply`,
-and if keys are missing again, quit the app and apply again.
+`projects["<root>"].hasTrustDialogAccepted = true`. The user runs the subcommand, because a
+session cannot read or write `~/.claude.json`. Run it after a clone: a new repository is
+untrusted until then. A running Claude Code writes the file too. So run `harness trust` again
+after `--apply`, and if keys are missing again, quit the app and apply again.
 
-THE SETTINGS. The `settings` verbs measure ~/.claude/settings.json against real traffic. They
-count the permission prompts that a settings file causes, per command.
+THE SETTINGS. The subcommands of `settings` measure ~/.claude/settings.json against real
+traffic. They count the permission prompts that a settings file causes, per command.
 
 They read the session transcripts under ~/.claude/projects/. They split each Bash command into
 the segments that the permission matcher evaluates. They classify each segment as Claude Code
@@ -97,7 +97,7 @@ does: deny, then ask, then allow, then the sandbox auto-allow.
     harness settings twins [--settings F] [--list allow|ask|deny]
 
 The proposal is a template: `{home}`, `{org}` and the other placeholders take their values
-from the private profile (`harness --profile F`). Every verb renders a file that holds a
+from the private profile (`harness --profile F`). Every subcommand renders a file that holds a
 placeholder before it reads it. It generates the network rules from settings/network.toml and
 the overlay beside the profile.
 
@@ -697,7 +697,7 @@ def stray_warnings():
 
 
 def run(args):
-    """Set the profile for `read_settings`, then run the settings sub-command."""
+    """Set the profile for `read_settings`, then run the subcommand of `settings`."""
     global PROFILE
     PROFILE = args.profile
     return args.func(args)
@@ -716,8 +716,8 @@ def register(sub):
 def register_settings(sub):
     top = sub.add_parser("settings", help="measure and check the Claude Code settings",
                          description="Measure and check the Claude Code settings against the Bash commands of the "
-                                     "recent session transcripts in ~/.claude/projects/. Each sub-verb is read-only: "
-                                     "it prints a report and changes no file.")
+                                     "recent session transcripts in ~/.claude/projects/. Each subcommand of "
+                                     "`settings` is read-only: it prints a report and changes no file.")
     top.set_defaults(run=run)
     sub = top.add_subparsers(dest="cmd", metavar="<sub>", required=True)
 
@@ -1764,12 +1764,12 @@ def layer_cases(check, tmp):
          f"a settings.json whose stat is denied exits 2 with one line that names it, and no file changes: "
          f"{code}, {lines[-3:]}")
 
-    # `harness settings install` and `harness settings domains` are gone; the settings sub-commands
-    # that measure stay. The network lists are generated, so no command checks a mirror of them.
+    # `harness settings install` and `harness settings domains` are gone; the subcommands of
+    # `settings` that measure stay. The network lists are generated, so no command checks a mirror of them.
     p = subprocess.run([sys.executable, str(REPO / "bin" / "harness"), "settings", "--help"], capture_output=True,
                        text=True)
-    gone = [subprocess.run([sys.executable, str(REPO / "bin" / "harness"), "settings", verb],
-                           capture_output=True, text=True) for verb in ("install", "domains")]
+    gone = [subprocess.run([sys.executable, str(REPO / "bin" / "harness"), "settings", subcommand],
+                           capture_output=True, text=True) for subcommand in ("install", "domains")]
     case(lambda: p.returncode == 0 and "install" not in p.stdout and "domains" not in p.stdout
          and all(g.returncode == 2 for g in gone)
          and all(s in p.stdout for s in ["surface", "compare", "selftest", "twins"]),

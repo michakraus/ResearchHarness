@@ -22,8 +22,8 @@ The sections follow the purpose of the files:
 A macOS launch agent is a job that launchd, the service manager of macOS, runs for one user: on a
 schedule, at login, or as a server that it keeps alive. Each job is a plist file in
 `~/Library/LaunchAgents/`. The plists in `launchagents/` are templates: their label starts with the
-profile key `launchd_prefix`, and their paths hold `{home}`. The harness has no verb that installs
-them. `harness render launchagents/<name>` prints the rendered plist.
+profile key `launchd_prefix`, and their paths hold `{home}`. The harness has no subcommand that
+installs them. `harness render launchagents/<name>` prints the rendered plist.
 
 `claude-autocommit` is a bash script that commits the plan files and the project memories of
 `~/.claude/`, which must be a git repository. It commits `plans/` and `projects/*/memory/` only, and
@@ -90,7 +90,7 @@ OpenCode and oh-my-pi connect to this server at `http://127.0.0.1:2828/`. The up
 
 The `systemd --user` units in `systemd/` run the three jobs of the plists on Linux. Like the
 plists, they are templates of the profile: `harness render systemd/<name>` prints a rendered unit,
-and the harness has no verb that installs them. Copy each rendered unit into
+and the harness has no subcommand that installs them. Copy each rendered unit into
 `~/.config/systemd/user/`, run `systemctl --user daemon-reload`, and enable the server and the two
 timers:
 
@@ -195,7 +195,7 @@ and writes its paths with `~/`, so it takes the home directory of the user who r
 
 The harness uses the example too. `harness leaks` renders every template with it, and the test
 cases use it as their dummy profile. So it must name every key that a template uses.
-[Adapting the profile](../profile.md) names each key and the verbs that read it.
+[Adapting the profile](../profile.md) names each key and the subcommands that read it.
 
 ## `models.toml`
 

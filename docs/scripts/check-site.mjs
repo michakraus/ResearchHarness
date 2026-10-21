@@ -165,7 +165,7 @@ const MAX_GRAPH_WIDTH = 765
 const WIDE_GRAPHS = ['Every spawn']
 // In the flow figure, harness install is a group that holds a card for each of its steps, from top
 // to bottom in the order in which lib/harness/install.py runs them; the settings are the first file
-// of the Claude Code plan. No box is the removed verb harness settings install.
+// of the Claude Code plan. No box is the removed subcommand harness settings install.
 const FLOW = 'From the sources to the frontends'
 const INSTALL_STEPS = [
   'Read the profile', 'Render the sources', 'Install Julia packages', 'Merge the settings',

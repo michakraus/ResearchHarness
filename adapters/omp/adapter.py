@@ -1,6 +1,6 @@
 """The adapter of oh-my-pi: its configuration overlay harness.yml, its models.yml, its guard
 extension, its AGENTS.md, its rules, its agents, its mcp.json, and its own copies of the shared
-files. oh-my-pi has no verb of its own.
+files. oh-my-pi has no subcommand of its own.
 
 `harness install` writes these files into oh-my-pi's agent directory, $PI_CODING_AGENT_DIR, else
 ~/.omp/agent, after the Claude Code layer is planned, whose rules and shared files it copies. An
@@ -630,7 +630,7 @@ def env_warning(agent):
 
 
 def register(sub):
-    """oh-my-pi has no verb of its own."""
+    """oh-my-pi has no subcommand of its own."""
 
 
 # ---------------------------------------------------------------------------------------------

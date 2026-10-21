@@ -6,11 +6,10 @@ GitHub Actions workflow is a file that tells GitHub which jobs to run on a push 
 request.
 
 The files of this page are in `githooks/` and `githooks/workflows/`. Most of them are templates
-for the Julia repositories of the research tree; the others are scripts beside them. Two verbs of
-the
-`harness` command install the templates into every repository below `Packages/` and
-`Experiments/` (see
-[The verbs for the whole research tree](../daily-use.md#the-verbs-for-the-whole-research-tree)):
+for the Julia repositories of the research tree; the others are scripts beside them. Two
+subcommands of the `harness` command install the templates into every repository below
+`Packages/` and `Experiments/` (see
+[The subcommands for the whole research tree](../daily-use.md#the-subcommands-for-the-whole-research-tree)):
 
 - `harness githooks --apply` copies `pre-commit`, `pre-push` and `scripts/test-layout.jl` into
   `.githooks/` of each repository, and sets `core.hooksPath` there.

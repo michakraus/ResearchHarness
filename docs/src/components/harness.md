@@ -1,19 +1,19 @@
 # The harness command
 
 `harness` is the one command of the harness. [The `harness` command](../harness-command.md)
-describes its verbs and their contract for a user: a verb that changes something prints its plan,
-and `--apply` makes the change. This page describes the code: which module implements which verb,
-and which modules have only test cases.
+describes its subcommands and their contract for a user: a subcommand that changes something
+prints its plan, and `--apply` makes the change. This page describes the code: which module
+implements which subcommand, and which modules have only test cases.
 
 The entry point is `bin/harness`. The code is the Python package `lib/harness/`, which uses the
-standard library only. Each module that owns a verb has a function `register`, which adds its
-verb to the argument parser. Most modules also have a function `selftest`, which runs their own
-test cases. `harness test` runs every `selftest`, then the hook probe `hooks/probe.py`, then the
-contract sweep. Three verbs live in the adapters: `settings` and `trust` in
+standard library only. Each module that owns a subcommand has a function `register`, which adds
+its subcommand to the argument parser. Most modules also have a function `selftest`, which runs
+their own test cases. `harness test` runs every `selftest`, then the hook probe `hooks/probe.py`,
+then the contract sweep. Three subcommands live in the adapters: `settings` and `trust` in
 `adapters/claude/adapter.py`, and `permissions` in `adapters/opencode/adapter.py`.
 [The adapters](adapters.md) describes them.
 
-| verb | module |
+| subcommand | module |
 |:--|:--|
 | `install` | `install.py` |
 | `render`, `get`, `leaks` | `profile.py` |
@@ -25,14 +25,16 @@ contract sweep. Three verbs live in the adapters: `settings` and `trust` in
 | `doctor` | `doctor.py` |
 | `test` | `cli.py` |
 
-`frontmatter.py`, `docs.py` and `sweep.py` have no verb. Their cases run only in `harness test`.
-`install_cases.py` holds helpers for the cases of other modules. The sections start with the entry
-point and the parser, then the verbs, then the shared modules, then the modules of the tests.
+`frontmatter.py`, `docs.py` and `sweep.py` have no subcommand. Their cases run only in
+`harness test`. `install_cases.py` holds helpers for the cases of other modules. The sections
+start with the entry point and the parser, then the subcommands, then the shared modules, then the
+modules of the tests.
 
 ## `harness`
 
 The executable script `bin/harness`, the entry point of the harness. Put `bin/` on the `PATH`, then
-run `harness --help` for the list of verbs, or `harness <verb> --help` for one verb.
+run `harness --help` for the list of subcommands, or `harness <subcommand> --help` for one
+subcommand.
 
 The script first checks the version of Python. It needs Python 3.11 or later, because the profile
 and the model tables are TOML and `tomllib` came into the standard library with 3.11. An older
@@ -45,29 +47,31 @@ link to find `lib/`, so a link to the script in another directory also works.
 
 ## `__init__.py`
 
-The package file of `lib/harness/`. Its docstring is the contract of every verb, and
-`harness --help` prints it: a verb that changes something does a dry run by default, exits with
-status 1 when something would change and 0 when nothing would, and `--apply` makes the change.
+The package file of `lib/harness/`. Its docstring is the contract of every subcommand, and
+`harness --help` prints it: a subcommand that changes something does a dry run by default, exits
+with status 1 when something would change and 0 when nothing would, and `--apply` makes the
+change.
 Exit status 2 is a usage error or a failure.
 
 It defines what the other modules share:
 
 - `REPO`, the path of the checkout;
-- `HarnessError`, a failure that the verb reports in one line, after which `harness` exits with
-  status 2;
-- `changing(parser)`, which gives a verb its `--apply` flag;
-- `outcome(args, changes)`, the exit status of a verb that changes something: 0 after `--apply`
-  or with no change, otherwise 1.
+- `HarnessError`, a failure that the subcommand reports in one line, after which `harness` exits
+  with status 2;
+- `changing(parser)`, which gives a subcommand its `--apply` flag;
+- `outcome(args, changes)`, the exit status of a subcommand that changes something: 0 after
+  `--apply` or with no change, otherwise 1.
 
-A new verb that changes something uses `changing` and `outcome`, so that it keeps the contract.
+A new subcommand that changes something uses `changing` and `outcome`, so that it keeps the
+contract.
 
 ## `cli.py`
 
-The argument parser of `harness`, and the verb `harness test`. `main` loads the three adapters
-through `frontends.py` first. When an adapter fails to load, `harness` exits with status 2 before
-any verb runs. Then `main` adds the global options `--profile F` and `--models F`, and one
-sub-command for each verb of the modules and the adapters. On a `HarnessError` of a verb,
-`harness` prints one line, `harness <verb>: <message>`, and exits with status 2.
+The argument parser of `harness`, and the subcommand `harness test`. `main` loads the three
+adapters through `frontends.py` first. When an adapter fails to load, `harness` exits with status
+2 before any subcommand runs. Then `main` adds the global options `--profile F` and `--models F`,
+and each subcommand of the modules and the adapters. On a `HarnessError` of a subcommand,
+`harness` prints one line, `harness <subcommand>: <message>`, and exits with status 2.
 
 `harness test` runs the cases in this order:
 
@@ -100,22 +104,23 @@ The adapters are described in [the adapters](adapters.md).
 
 ## `install.py`
 
-The verb `harness install [--apply] [--force]`. It reads the profile and the model tables, and asks
-each adapter for its plan, in the order of `frontends.py`. A plan writes nothing, so on a refusal
-the verb exits with status 2 before any file is written.
+The subcommand `harness install [--apply] [--force]`. It reads the profile and the model tables,
+and asks each adapter for its plan, in the order of `frontends.py`. A plan writes nothing, so on a
+refusal the subcommand exits with status 2 before any file is written.
 
-Before it writes, the verb checks every target of the Julia environment and of each plan
-(`check_files`). The verb exits with status 2 at once if a target is a symbolic link, a directory
-or a file that cannot be read, or if a directory above a target is a symbolic link or a file.
+Before it writes, the subcommand checks every target of the Julia environment and of each plan
+(`check_files`). The subcommand exits with status 2 at once if a target is a symbolic link, a
+directory or a file that cannot be read, or if a directory above a target is a symbolic link or a
+file.
 Under `--apply`, it also exits with status 2 before anything is written if the install changes a
 target that it cannot write, or whose mode it cannot change. A dry run prints its whole plan and
 count line first, then that refusal, and exits with status 2.
 
-Then the verb installs the Julia environment of the scripts: it copies `Project.toml` to
+Then the subcommand installs the Julia environment of the scripts: it copies `Project.toml` to
 `~/.local/share/research-harness/julia/`, or to `$RESEARCH_HARNESS_JULIA`, and instantiates it.
 Then it installs the files of each plan, prints the warnings, and runs the steps after the files.
-The verb adds one warning of its own: `behind_origin` warns when the checkout is behind its local
-`origin/main`. It fetches nothing.
+The subcommand adds one warning of its own: `behind_origin` warns when the checkout is behind its
+local `origin/main`. It fetches nothing.
 It prints the count line, and after `--apply` the restart line of each frontend whose files
 changed. A file that differs in its bytes or its mode is a change. `--force` replaces a file that
 an adapter refuses to replace.
@@ -131,8 +136,8 @@ repository whose `origin/main` is ahead of, level with and behind its `HEAD`.
 
 ## `install_cases.py`
 
-The helpers for the test cases that run `harness install` end to end. It has no verb and no
-`selftest` of its own.
+The helpers for the test cases that run `harness install` end to end. It has no subcommand and
+no `selftest` of its own.
 
 `Scratch` creates a scratch `HOME` below a temporary directory: `~/.claude/skills/`, an OpenCode
 directory, a Julia directory with a copy of `Project.toml`, the tree instructions, and the dummy
@@ -146,7 +151,7 @@ follow the count line. `install.py` calls it, and the adapters use `Scratch` in 
 
 ## `profile.py`
 
-The private profile and the rendered output of a template. It gives three verbs:
+The private profile and the rendered output of a template. It gives three subcommands:
 
 ```
 harness render TEMPLATE
@@ -157,7 +162,7 @@ harness leaks [--commits F]
 `render` prints a template with each placeholder `{key}` replaced by its profile value. A list
 value repeats the line, or the JSON list element, once for each item. A table value renders only
 on a line that holds the placeholder alone, as the members of a JSON object. On a placeholder that
-the profile does not have, the verb exits with status 2. Every verb reads a value of
+the profile does not have, the subcommand exits with status 2. Every subcommand reads a value of
 `autocommit_branch`. If the key is missing, the default is `main` on the template host, or on
 every machine when `template_host` is not set, and `memory/<short host name>` on every other
 machine. The template
@@ -173,15 +178,16 @@ entry. The repository's own `owner/name` and the host of its GitHub Pages site,
 `owner.github.io`, do not count as a hit. It also renders each template with
 `examples/profile.toml` and searches the result. With `--commits F` it also searches the paths,
 the added lines and the message of each commit that `F` names. The pre-push hook calls it in
-this way. The verb exits with status 1 on a hit.
+this way. The subcommand exits with status 1 on a hit.
 
 The module also reads the model tables for the adapters. On a table that names a model tier by an
-old name, the verb exits with status 2. [Adapting the profile](../profile.md) describes the keys.
+old name, the subcommand exits with status 2. [Adapting the profile](../profile.md) describes the
+keys.
 
 ## `githooks.py`
 
-Three verbs that copy shared files into the repositories of the research tree. The research root
-is `$RESEARCH_ROOT`, or `~/Research` if it is not set.
+Three subcommands that copy shared files into the repositories of the research tree. The research
+root is `$RESEARCH_ROOT`, or `~/Research` if it is not set.
 
 ```
 harness githooks [--apply]
@@ -202,44 +208,44 @@ its `--apply`. [Git hooks and workflows](githooks.md) describes the copied files
 
 ## `pushall.py`
 
-The verb `harness push-all [--apply] [--skip-hooks] [--include-topic-branches]`. It pushes each git
-repository directly below `Packages/` and `Experiments/` whose branch is ahead of its upstream, one
-at a time.
+The subcommand `harness push-all [--apply] [--skip-hooks] [--include-topic-branches]`. It pushes
+each git repository directly below `Packages/` and `Experiments/` whose branch is ahead of its
+upstream, one at a time.
 
 It skips a repository with no upstream, one that is also behind its upstream, and one on a branch
 that is not the default branch, unless `--include-topic-branches`. The dry run names the `.jl`
 files of each push. `--skip-hooks` pushes with `--no-verify`, so the pre-push suite does not run.
-Use it only for a push with no Julia source and no `[compat]` change. After a push, the verb
+Use it only for a push with no Julia source and no `[compat]` change. After a push, the subcommand
 compares the local commit with the remote branch, as `git ls-remote` reports it.
 
 Run it in your own terminal. The pre-push hook of each repository can run a full test suite, so
-the verb can take hours, and a tool call of a session stops after ten minutes. The module has no
-`selftest`; the sweep runs its dry run.
+the subcommand can take hours, and a tool call of a session stops after ten minutes. The module
+has no `selftest`; the sweep runs its dry run.
 
 ## `protection.py`
 
-The verb `harness ci-protection [--remove-classic] [--apply]`. It protects the default branch of
-each repository with a GitHub ruleset named `main`: no deletion, no force push, and the required
-status checks of the canonical `CI.yml`. It also turns on auto-merge and the deletion of merged
-branches. `--remove-classic` deletes the classic branch protection, but only where the ruleset
-passes every check.
+The subcommand `harness ci-protection [--remove-classic] [--apply]`. It protects the default
+branch of each repository with a GitHub ruleset named `main`: no deletion, no force push, and the
+required status checks of the canonical `CI.yml`. It also turns on auto-merge and the deletion of
+merged branches. `--remove-classic` deletes the classic branch protection, but only where the
+ruleset passes every check.
 
-The verb first runs `githooks/verify-workflows.jl`, and refuses when the workflows are not
+The subcommand first runs `githooks/verify-workflows.jl`, and refuses when the workflows are not
 canonical, because the list of required checks depends on them. It calls `gh api` for each
 repository, and skips a repository that is private or where the user is not an admin. Run it in
 your own terminal: in a sandboxed session, only the first `gh` call of a process succeeds.
 
 Its cases check `ruleset_problem` against the ruleset as GitHub returns it, and against one break
-of each check. The sweep does not run this verb, because it needs `gh` with a login.
+of each check. The sweep does not run this subcommand, because it needs `gh` with a login.
 
 ## `fmt.py`
 
-The verb `harness format [--apply]`. It runs `githooks/format-tree.jl`, which runs JuliaFormatter
-over each tracked `.jl` file of the tree.
+The subcommand `harness format [--apply]`. It runs `githooks/format-tree.jl`, which runs
+JuliaFormatter over each tracked `.jl` file of the tree.
 
 JuliaFormatter can stop the whole Julia process on some files. `format-tree.jl` records the file
-that it is about to format in a marker. When the process stops, the verb moves that file into a
-skip list and runs the script again, at most 40 times. At the end it prints the files that
+that it is about to format in a marker. When the process stops, the subcommand moves that file
+into a skip list and runs the script again, at most 40 times. At the end it prints the files that
 JuliaFormatter cannot handle. The marker, the skip list and the log go to `$FMT_OUT`, or to
 `$TMPDIR` if it is not set.
 
@@ -248,8 +254,8 @@ no `selftest`, and the sweep does not run it, because it runs Julia over the tre
 
 ## `skill_triggers.py`
 
-The verb `harness skill-triggers [--skill <name> …] [--apply --model <alias>]`, the test of whether
-each skill loads on the right queries.
+The subcommand `harness skill-triggers [--skill <name> …] [--apply --model <alias>]`, the test of
+whether each skill loads on the right queries.
 
 It reads `tests/skill-triggers/<skill>.toml` for each skill of `skills/`. The dry run prints the
 number of queries per skill and the number of sessions that `--apply` starts. `--apply` runs each
@@ -264,12 +270,12 @@ Its cases run the parser, the verdict, the majority and the pass rule, and run `
 
 ## `doctor.py`
 
-The verb `harness doctor [--full]`, the check that a machine's setup works. It is read-only, so
-it takes no `--apply`. It prints one line for each check: `PASS`, `WARN`, `FAIL` or `SKIP`, the
+The subcommand `harness doctor [--full]`, the check that a machine's setup works. It is read-only,
+so it takes no `--apply`. It prints one line for each check: `PASS`, `WARN`, `FAIL` or `SKIP`, the
 name of the check and a detail, such as a version, a path or the reason. A `FAIL` line also names
-the section of the setup page that fixes it. The verb exits with status 1 when a check fails,
-otherwise with status 0; a `WARN` or a `SKIP` does not count. On a usage error, it exits with
-status 2.
+the section of the setup page that fixes it. The subcommand exits with status 1 when a check
+fails, otherwise with status 0; a `WARN` or a `SKIP` does not count. On a usage error, it exits
+with status 2.
 
 It checks, in this order:
 
@@ -282,8 +288,8 @@ It checks, in this order:
   juliaup, iTerm2 and gitleaks) is a `WARN` that says what stops without it. When the version flag
   of a tool exits with a status other than 0, the check is a `FAIL` for a required tool and a
   `WARN` for an optional one. In a session's sandbox, which can refuse the flag, the check is a
-  `SKIP`. When the flag exits with status 0 but the verb cannot read a version from its output,
-  the check is a `WARN` with the tool's own text. The minimums are in
+  `SKIP`. When the flag exits with status 0 but the subcommand cannot read a version from its
+  output, the check is a `WARN` with the tool's own text. The minimums are in
   `MINIMUMS`, and a case compares each with the page. The six Julia packages are read from the
   `Manifest.toml` of the Julia environment of the scripts.
 - the profile: it loads, the `tree_agents` directory and the OpenCode configuration directory
@@ -298,21 +304,21 @@ It checks, in this order:
   it.
 - with `--full`, `harness test` and `julia -e 'using Revise'`. Without `--full`, both are `SKIP`.
 
-The verb writes no file, starts no service and runs no `--apply`. It prints no secret: it reads
-only the existence, the mode and the size of the token file, and does not print the URL of the
-`origin` of `~/.claude`. A session's sandbox refuses some of the commands, such as `launchctl`, and
-denies the read of the token file. There, these checks are `SKIP` with the reason, so run the
-verb in a plain terminal for its real verdict.
+The subcommand writes no file, starts no service and runs no `--apply`. It prints no secret: it
+reads only the existence, the mode and the size of the token file, and does not print the URL of
+the `origin` of `~/.claude`. A session's sandbox refuses some of the commands, such as
+`launchctl`, and denies the read of the token file. There, these checks are `SKIP` with the
+reason, so run the subcommand in a plain terminal for its real verdict.
 
 Its cases run each status of each check on a fixture: a scratch `HOME` and stub commands on the
 `PATH` that print what each tool prints on Linux and on macOS. They also check the exit status,
-the minimums against the page, that no token reaches the output, and one run of the verb on the
-fixture of the contract sweep, which changes no file.
+the minimums against the page, that no token reaches the output, and one run of the subcommand on
+the fixture of the contract sweep, which changes no file.
 
 ## `units.py`
 
-The cases of the `systemd --user` units in `systemd/`. The module has no verb. It renders each
-unit and its plist in `launchagents/` with `examples/profile.toml`. Then it checks that both
+The cases of the `systemd --user` units in `systemd/`. The module has no subcommand. It renders
+each unit and its plist in `launchagents/` with `examples/profile.toml`. Then it checks that both
 describe one job: the program and its arguments, the working directory, the environment and its
 `PATH`, the timer's triggers, the start at login, and `Restart=always` where the plist has
 `KeepAlive`. A section, a key or a repeated key that the check does not read is a problem. A
@@ -327,8 +333,8 @@ session-writable directory on the `PATH`. Last, they check that `render` gives
 
 ## `script_cases.py`
 
-The cases of scripts in `scripts/` that need no Julia. The module has no verb. It reads the
-critic's `rsync` copy from `skills/build-part/evidence.md` and `copy_command` from
+The cases of scripts in `scripts/` that need no Julia. The module has no subcommand. It reads
+the critic's `rsync` copy from `skills/build-part/evidence.md` and `copy_command` from
 `scripts/run-tests.jl`, runs each on a fixture tree with a `.env`, a `.env.ts`, a `.git` and a
 `.claude`, and checks that the copy holds none of them. A control copy with no flag must hold the
 `.env.ts`. Then it runs `scripts/spec-gate.py` on a fixture task file and checks the verdict of
@@ -337,7 +343,7 @@ each part: a part whose *Files* lie in two repositories is `SPANS`, unless its p
 
 ## `network.py`
 
-The network rules of the Claude Code settings. The module has no verb. It reads
+The network rules of the Claude Code settings. The module has no subcommand. It reads
 `settings/network.toml` and the overlay `network.toml` beside the profile, and writes into the
 rendered settings template the `WebFetch(domain:…)` rules of `permissions.allow` and
 `permissions.deny` and the lists `allowedDomains`, `deniedDomains` and `deniedDomainReasons` of
@@ -350,20 +356,20 @@ overlay changes no file of OpenCode or oh-my-pi.
 
 ## `providers.py`
 
-The model providers of OpenCode and oh-my-pi. The module has no verb. It reads `providers.toml`
-beside the profile, which may be missing, and gives each frontend its entries: the `provider`
-object of `opencode.jsonc` and the providers of oh-my-pi's `models.yml`. The OpenCode and oh-my-pi
-adapters call it in `install`. The module exits with status 2 on a literal key, an unknown key or
-a value of the wrong type, and on a profile with the key `opencode_providers` or `omp_providers`.
-Its cases check the mapping of each key, the merge of a frontend's own keys, and each of these
-exits.
+The model providers of OpenCode and oh-my-pi. The module has no subcommand. It reads
+`providers.toml` beside the profile, which may be missing, and gives each frontend its entries:
+the `provider` object of `opencode.jsonc` and the providers of oh-my-pi's `models.yml`. The
+OpenCode and oh-my-pi adapters call it in `install`. The module exits with status 2 on a literal
+key, an unknown key or a value of the wrong type, and on a profile with the key
+`opencode_providers` or `omp_providers`. Its cases check the mapping of each key, the merge of a
+frontend's own keys, and each of these exits.
 [Adapting the profile](../profile.md#the-providers) describes the keys.
 
 ## `sources.py`
 
 The names of the neutral sources: the five directories `agents/`, `skills/`, `rules/`,
 `instructions/` and `commands/`, which belong to no single frontend. Each adapter reads them from
-here. The module has no verb and no cases.
+here. The module has no subcommand and no cases.
 
 `curated_skills` lists the curated skills below a directory: each subdirectory with a `SKILL.md`,
 except a hidden one and the directories of `EXCLUDED_SKILLS`. `listing` gives the agents of
@@ -373,7 +379,7 @@ Markdown code in a sentence, for the text that the adapters generate.
 ## `frontmatter.py`
 
 The strict parser of the frontmatter of an agent or a skill, the block between the first two `---`
-lines. It has no verb. Its cases run in `harness test`.
+lines. It has no subcommand. Its cases run in `harness test`.
 
 The parser accepts eleven keys, each once. A value is plain or in double quotes, and `tools` and
 `skills` take a block list. It refuses each other form, such as a flow list, a comment, an unknown
@@ -388,16 +394,16 @@ curated skill of `skills/`.
 
 ## `sweep.py`
 
-The contract sweep, the last set of cases of `harness test`. It has no verb.
+The contract sweep, the last set of cases of `harness test`. It has no subcommand.
 
 The sweep creates a fixture `HOME` in a temporary directory: the dummy profile and model tables,
-the files that the verbs read, and a research root with one package and one prose repository.
-Then:
+the files that the subcommands read, and a research root with one package and one prose
+repository. Then:
 
-- it runs the dry run of each verb and checks that it exits with status 0 or 1, prints no
+- it runs the dry run of each subcommand and checks that it exits with status 0 or 1, prints no
   traceback and changes no file;
 - it removes each precondition alone, such as the profile or `~/.claude.json`, and checks that each
-  verb that needs it exits with status 2 and one line;
+  subcommand that needs it exits with status 2 and one line;
 - it runs `--apply` of `githooks`, `wiki-lint-hook`, `workflows` and `trust`, and checks that the
   dry run after it exits with status 0.
 
@@ -407,7 +413,7 @@ It does not run `format`, `ci-protection`, `skill-triggers`, `doctor` or `test`.
 ## `docs.py`
 
 The check of the component pages of the documentation site, which runs in `harness test`. It has
-no verb.
+no subcommand.
 
 The table `KINDS` maps each page of `docs/src/components/` to the tracked files that are its
 components, and to the name of each. The check reads the level-2 headings of each page and the

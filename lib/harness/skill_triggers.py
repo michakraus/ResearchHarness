@@ -309,7 +309,8 @@ SKILL_MD = '---\nname: {name}\ndescription: "A fixture skill."\n{extra}---\n\nBo
 
 
 def selftest():
-    """The parser, the verdict, the majority, the pass rule and the verb: (number of cases, number wrong)."""
+    """The parser, the verdict, the majority, the pass rule and the subcommand: (number of cases,
+    number wrong)."""
     import contextlib
     import io
     import sys
@@ -481,7 +482,8 @@ def selftest():
         got = skill_verdict(*counts)
         check(got == expected, f"pass rule on {counts}: {got!r}, expected {expected!r}")
 
-    # The verb's exits: the dry run exits 1 and counts the sessions; --apply without --model exits 2.
+    # The subcommand's exits: the dry run exits 1 and counts the sessions; --apply without --model
+    # exits 2.
     harness = [sys.executable, str(REPO / "bin" / "harness"), "skill-triggers"]
     p = subprocess.run(harness, capture_output=True, text=True)
     check(p.returncode == 1 and "152 sessions" in p.stdout and "Traceback" not in p.stderr,
@@ -589,9 +591,9 @@ def selftest():
 
 
 def apply_skill_case(check, harness):
-    """The verb's --apply with --skill, run as `harness`, on the fake `claude` in PATH and a fixture
-    research tree: one session, the near query of wait-what. A query file that read_queries refuses
-    is a wrong case that names the refusal."""
+    """The subcommand's --apply with --skill, run as `harness`, on the fake `claude` in PATH and a
+    fixture research tree: one session, the near query of wait-what. A query file that read_queries
+    refuses is a wrong case that names the refusal."""
     import sys
 
     with tempfile.TemporaryDirectory(prefix="harness-skill-triggers-") as tmp:

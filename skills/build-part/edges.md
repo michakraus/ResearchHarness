@@ -258,8 +258,8 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   C1 or line-separator character, or a space or tab at the edge of a value, which YAML reads
   differently and the port accepts (D1 verify 2, verify 3 and the verifier, *Unify the agent
   configuration*)
-- a malformed configuration file or one that is not UTF-8: a traceback exits 1, which the verb
-  contract reserves for "changes to make" (D1 round 1, *Unify the agent configuration*)
+- a malformed configuration file or one that is not UTF-8: a traceback exits 1, which the
+  subcommand contract reserves for "changes to make" (D1 round 1, *Unify the agent configuration*)
 - a well-formed file with a value of the wrong type, such as a list or a table where a string is
   expected: a membership test raises `TypeError`, a traceback that exits 1; check the type before
   the value (Q round 1, *Unify the agent configuration*)
@@ -437,17 +437,19 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   the new pages in the old text, lists every new block (F2, *Publish the harness as
   ResearchHarness*)
 - a table column whose cells follow two rules, such as a *read by* column where one row counts
-  a verb that reads the example profile and the other rows do not: trace what each verb reads,
-  per source, and compare every row (F3, *Publish the harness as ResearchHarness*)
-- a page that says what a verb does from its name, not its code: the skip conditions, the extra
-  files it writes and the files it deletes are missing. Read the verb's body, not its help line
+  a subcommand that reads the example profile and the other rows do not: trace what each
+  subcommand reads, per source, and compare every row (F3, *Publish the harness as
+  ResearchHarness*)
+- a page that says what a subcommand does from its name, not its code: the skip conditions, the
+  extra files it writes and the files it deletes are missing. Read the subcommand's body, not its
+  help line
   (F3, *Publish the harness as ResearchHarness*)
 - a security page that says a mechanism stops a write, while a command outside the sandbox, an
   excluded command, bypasses every list of the sandbox; and a rule for "outside the sandbox"
   that leaves out a condition, such as no redirection to a file (F3, *Publish the harness as
   ResearchHarness*)
-- a command block of a setup page that calls a verb with a relative path, such as `harness render
-  systemd/<unit>`: it works only from the checkout, and with a redirect it writes an empty file
+- a command block of a setup page that calls a subcommand with a relative path, such as `harness
+  render systemd/<unit>`: it works only from the checkout, and with a redirect it writes an empty file
   from any other directory. Follow the page from its top and run each block in the directory that
   the steps before it leave (F4, *Synchronise the machines with chezmoi*)
 - a clause that expects a framework feature, such as an edit link, on a layout that drops it,

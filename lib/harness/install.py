@@ -6,8 +6,8 @@ environment of the scripts.
 `--force` replaces a file that a plan refuses to replace; the adapter that refuses says which.
 
 The installed configuration is deny-write from a session on purpose. The canonical copies therefore
-live in this repository, and this verb installs them — the same arrangement as githooks/ and
-launchagents/.
+live in this repository, and this subcommand installs them — the same arrangement as githooks/
+and launchagents/.
 
 What it installs:
   Project.toml                     -> ~/.local/share/research-harness/julia/ ($RESEARCH_HARNESS_JULIA),

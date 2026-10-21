@@ -1,4 +1,4 @@
-"""The argument parser of `harness`: one sub-command per verb."""
+"""The argument parser of `harness`: one subparser per subcommand."""
 
 import argparse
 import re
@@ -51,13 +51,13 @@ def cmd_test(args):
 
 
 def modules():
-    """The modules that register a verb or hold test cases (MODULES), with each adapter after
-    `install`."""
+    """The modules that register a subcommand or hold test cases (MODULES), with each adapter
+    after `install`."""
     return [MODULES[0], *frontends.load(), *MODULES[1:]]
 
 
 def main(argv=None):
-    # An adapter that fails to load exits 2 before any verb runs.
+    # An adapter that fails to load exits 2 before any subcommand runs.
     try:
         frontends.load()
     except HarnessError as e:
@@ -68,9 +68,9 @@ def main(argv=None):
     )
     ap.add_argument("--profile", metavar="F", help="the private profile, instead of the default path")
     ap.add_argument("--models", metavar="F", help="the model tables, instead of models.toml beside the profile")
-    sub = ap.add_subparsers(dest="verb", metavar="<verb>", required=True)
+    sub = ap.add_subparsers(dest="subcommand", metavar="<subcommand>", required=True)
     for module in modules():
-        # A module with no verb of its own; its cases run in `harness test`.
+        # A module with no subcommand of its own; its cases run in `harness test`.
         if module not in (frontmatter, docs, units, script_cases, network, providers):
             module.register(sub)
     sub.add_parser("test", help="run the harness's own test cases",
@@ -81,5 +81,5 @@ def main(argv=None):
     try:
         return args.run(args)
     except HarnessError as e:
-        print(f"harness {args.verb}: {e}", file=sys.stderr)
+        print(f"harness {args.subcommand}: {e}", file=sys.stderr)
         return 2

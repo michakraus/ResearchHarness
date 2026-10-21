@@ -1,12 +1,11 @@
 # Dependencies
 
-The harness calls the tools below. A tool is required when a verb, a [hook](concepts.md#hook), the
-pre-push hook, CI or an installed git hook calls it. An optional tool serves one
-[frontend](concepts.md#frontend) or one job; the `used for`
-column also says what stops without it. Each minimum comes from one source, which the cell
-names: a check in the code, a CI pin, a `[compat]` entry, or the release note of a feature that
-the code uses. Where no minimum exists, the cell gives the version that the harness is tested
-with.
+The harness calls the tools below. A tool is required when a subcommand, a
+[hook](concepts.md#hook), the pre-push hook, CI or an installed git hook calls it. An optional
+tool serves one [frontend](concepts.md#frontend) or one job; the `used for` column also says what
+stops without it. Each minimum comes from one source, which the cell names: a check in the code, a
+CI pin, a `[compat]` entry, or the release note of a feature that the code uses. Where no minimum
+exists, the cell gives the version that the harness is tested with.
 
 The tools are in three tables. *Generic tools* are the required tools that serve any language.
 *Julia and its packages* are the tools that only Julia code needs; in this table, Kaimon and
@@ -86,7 +85,7 @@ The sections follow the order of the tables.
 Python is the language of the `harness` command, the guard hooks and the hook probe. The
 command uses the standard library only, so no package must be installed.
 
-Every verb runs on Python. The pre-push hook runs `bin/harness test` on `python3` and on
+Every subcommand runs on Python. The pre-push hook runs `bin/harness test` on `python3` and on
 `python3.11`, and CI runs it on Python 3.11 and the latest 3.x. The guard hooks are Python
 scripts, which Claude Code, OpenCode and oh-my-pi call before a [tool call](concepts.md#tool-call).
 
@@ -95,7 +94,7 @@ tables are TOML, and
 `tomllib` is in the standard library from 3.11. A shell script cannot parse TOML or JSON safely,
 and a compiled tool needs a build step on each machine.
 
-Call sites: every verb (`bin/harness`); the pre-push hook (`.githooks/pre-push`, also for
+Call sites: every subcommand (`bin/harness`); the pre-push hook (`.githooks/pre-push`, also for
 `python3.11`, which the hook skips when it is missing, because the CI job `python` runs Python
 3.11);
 the guard hooks, which oh-my-pi calls (`adapters/omp/guards.ts`).
@@ -104,7 +103,7 @@ the guard hooks, which oh-my-pi calls (`adapters/omp/guards.ts`).
 
 git is the version control system. Each repository of the research tree is a git repository.
 
-The verbs that work across the tree use git: `harness githooks` reads each repository's
+The subcommands that work across the tree use git: `harness githooks` reads each repository's
 configuration, `harness push-all` pushes each repository, and `harness leaks --commits` reads the
 commits of a push. The hook `hooks/worktree.py` makes the worktrees of Claude Code, and the
 pre-push hook clones the pushed commit and tests it.
@@ -112,7 +111,7 @@ pre-push hook clones the pushed commit and tests it.
 The harness needs git because its work is on git repositories: the hooks, the commits and the
 pushes are git concepts. No other tool reads them.
 
-Call sites: the verbs (`lib/harness/githooks.py`, `lib/harness/profile.py`); the hook
+Call sites: the subcommands (`lib/harness/githooks.py`, `lib/harness/profile.py`); the hook
 `hooks/worktree.py`; the pre-push hook (`.githooks/pre-push`).
 
 ### gh

@@ -1,4 +1,4 @@
-"""The read-only verb `harness doctor`: one line for each check of this machine's setup.
+"""The read-only subcommand `harness doctor`: one line for each check of this machine's setup.
 
     harness doctor [--full]
 
@@ -18,8 +18,8 @@ The checks, in this order:
 - with `--full`, `harness test` and `julia -e 'using Revise'`; without it, both are SKIP.
 
 Each line is `PASS`, `WARN`, `FAIL` or `SKIP`, the name of the check and a detail. A FAIL line
-also names the section of the setup page that fixes it (FIX). The verb exits 1 when a check fails,
-else 0; a WARN or a SKIP does not count.
+also names the section of the setup page that fixes it (FIX). The subcommand exits 1 when a check
+fails, else 0; a WARN or a SKIP does not count.
 
 It changes nothing: it reads files, and runs the version flags of the tools, the dry run of
 `harness install` and the status commands of the jobs. It reads no secret: the Kaimon token only
@@ -28,7 +28,8 @@ remote URL can hold a credential.
 
 A session's sandbox, known by $SANDBOX_RUNTIME, can refuse `bwrap`, `systemctl`, `loginctl`,
 `launchctl` and the version flag of a tool, and deny a file. There, such a check that does not
-get its answer is SKIP with the reason; run the verb in a plain terminal for its real verdict.
+get its answer is SKIP with the reason; run the subcommand in a plain terminal for its real
+verdict.
 """
 
 import contextlib
@@ -125,7 +126,7 @@ def machine():
 
 
 def sandboxed():
-    """Whether the verb runs in a session's sandbox."""
+    """Whether the subcommand runs in a session's sandbox."""
     return bool(os.environ.get(SANDBOX))
 
 
