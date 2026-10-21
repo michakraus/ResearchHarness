@@ -24,7 +24,7 @@ asks you first: this is a [permission prompt](#permission-prompt).
 **In another language.** Nothing in this section depends on Julia. The three frontends work on
 code in any language.
 
-## What a harness adds
+## What the harness does
 
 A coding agent with no configuration knows only what the model learned and what it reads in the
 session. It does not know your conventions, your tools or the pitfalls of your code. A harness is
@@ -33,19 +33,34 @@ common tasks, helpers for long jobs, and limits on what it can do.
 
 Research Harness keeps this configuration as source files in one repository. The command
 `harness` [installs](#install) the sources into the configuration directory of each frontend, and
-checks the result. These are the parts that it adds:
+checks the result. The harness does six things:
 
-- **Instructions.** An [instruction file](#instruction-file) loads at the start of every session.
-  A [rule](#rule) loads only when the coding agent reads a matching file, for example a Julia
-  source.
-- **[Skills](#skill).** A skill is a procedure for one kind of task, for example a performance
-  measurement. It loads when your request matches its description.
-- **[Agents](#agent).** An agent of the harness is a helper with its own task, model and tools.
-  The session starts it as a [sub-agent](#sub-agent) for a long or a wide job.
-- **[Hooks](#hook).** A hook is a program that the frontend runs at a fixed event. The guard hooks
-  of the harness refuse unsafe shell commands before they run.
-- **Settings.** The permission settings decide which tool calls run, which ask you, and which the
-  frontend refuses. They also turn on the Claude Code [sandbox](#sandbox).
+1. **One configuration for three frontends.** Claude Code, OpenCode and oh-my-pi read one set of
+   sources. An [instruction file](#instruction-file) loads at the start of every session. A
+   [rule](#rule) loads only when the coding agent reads a matching file, for example a Julia
+   source. A [skill](#skill) is a procedure for one kind of task, for example a performance
+   measurement, and it loads when your request matches its description. An [agent](#agent) of the
+   harness is a helper with its own task, model and tools.
+   [Architecture](architecture.md) describes the sources and what each frontend receives.
+2. **Private data across machines.** A private [profile](#profile) holds every value that names a
+   person, an institution or a machine, and a leak check keeps these values out of the repository.
+   Signed dotfiles and git carry the private data to each of your machines.
+   [Private data across machines](private-data.md) describes both.
+3. **[Sandbox](#sandbox) and safety in layers.** The permission settings decide which tool calls
+   run, which ask you, and which the frontend refuses. They also turn on the Claude Code sandbox,
+   which limits what a shell command can write and reach. A [hook](#hook) is a program that the
+   frontend runs at a fixed event, and the guard hooks of the harness refuse unsafe shell commands
+   before they run. [The layers of control](#the-layers-of-control) below introduce them.
+4. **A directory tree for research work.** The [research tree](#research-tree) is one directory
+   that holds all your research work, each part in its own repository. The harness clones and
+   syncs the repositories, and each directory gets the rules and agents for its kind of work.
+   [The research tree](research-tree.md) describes the layout.
+5. **Research memory.** A session forgets everything when it ends. Instruction files, task files,
+   a knowledge base and project memory carry what earlier sessions learned into the next one.
+   [Research memory](memory.md) describes each kind.
+6. **Agentic software engineering.** The session starts an agent as a [sub-agent](#sub-agent) for
+   a long or a wide job. For a planned change, one agent builds and another agent judges.
+   [The division of work among agents](#the-division-of-work-among-agents) below introduces it.
 
 A research project needs these more than most projects. It has many repositories: packages,
 experiments, papers. Each has the same conventions, and a session in each must keep them. Its
@@ -96,7 +111,7 @@ supplies, and which programs read it.
 
 <OverviewFigure />
 
-*The harness and its three layers.* These are not the three layers of the section above.
+*The research tree, the components and the frontends.*
 [The research tree](research-tree.md) describes the six directories of the research tree and the
 components that serve each.
 
@@ -253,6 +268,12 @@ field, it gets the effort of the session.
 
 The private file of your values: your home directory, your accounts and the strings that must not
 go into the repository. Its default path is `~/.config/research-harness/profile.toml`.
+
+### Research tree
+
+The one directory that holds all your research work: the packages, the experiments, the papers,
+the notes and the literature, each in its own git repository. The settings and the guard hooks of
+the harness expect it at `~/Research`.
 
 ### Tree instructions
 

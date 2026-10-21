@@ -101,7 +101,8 @@ the guard hooks, which oh-my-pi calls (`adapters/omp/guards.ts`).
 
 ### git
 
-git is the version control system. Each repository of the research tree is a git repository.
+git is the version control system. Each repository of the
+[research tree](concepts.md#research-tree) is a git repository.
 
 The subcommands that work across the tree use git: `harness githooks` reads each repository's
 configuration, `harness clone` and `harness repos` clone, fetch, pull and push each repository, and `harness leaks --commits` reads the

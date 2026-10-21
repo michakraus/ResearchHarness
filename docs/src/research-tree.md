@@ -1,7 +1,7 @@
 # The research tree
 
-The research tree is one directory that holds all your research work: the packages, the
-experiments, the papers, the notes and the literature. Each part of the work is a git repository
+The [research tree](concepts.md#research-tree) is one directory that holds all your research
+work: the packages, the experiments, the papers, the notes and the literature. Each part of the work is a git repository
 of its own, in a directory that says what kind of work it is. The harness knows this layout. It
 clones and syncs the repositories, it gives each of them the same checks and workflows, and each
 directory gets the [rules](concepts.md#rule) and the [agents](concepts.md#agent) for its kind of

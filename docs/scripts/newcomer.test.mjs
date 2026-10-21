@@ -7,9 +7,10 @@ import { NEWCOMER, TERMS, entryProblems, fileLineProblems, firstUseProblems } fr
 const G = 'concepts.md'
 const uses = (page, text) => firstUseProblems(page, text, page === G)
 
-test('the set of terms is the nineteen terms of clause 2', () => {
-  assert.equal(TERMS.length, 19)
-  assert.equal(new Set(TERMS).size, 19)
+test('the set of terms is the nineteen terms of clause 2 and the research tree', () => {
+  assert.equal(TERMS.length, 20)
+  assert.equal(new Set(TERMS).size, 20)
+  assert.ok(TERMS.includes('research tree'))
 })
 
 test('both setup pages, for macOS and for Linux, are newcomer pages', () => {
