@@ -6,8 +6,8 @@
 #
 # It stops without a terminal, without a signing_key in the host data, when the source has local
 # changes, and when HEAD is not main at origin/main. It prints the branch's log and diff and asks;
-# nothing is merged or pushed before the answer y. The merge is checked as dotfiles-update checks
-# it before it is pushed.
+# nothing is merged or pushed before the answer y, and a pager that quits before the end of the
+# review stops it. The merge is checked as dotfiles-update checks it before it is pushed.
 set -euo pipefail
 
 {{ template "dotfiles-update-steps.sh" . }}
@@ -54,8 +54,11 @@ if git merge-base --is-ancestor "refs/remotes/origin/$branch" HEAD; then
     exit 0
 fi
 
-git log --first-parent "main..origin/$branch"
-git diff "main...origin/$branch"
+stop="nothing is merged. Run dotfiles merge $branch again and read the review to its end."
+dotfiles_review dotfiles-merge "$stop" \
+    git log ${DOTFILES_COLOR:+"--color=always"} --first-parent "main..origin/$branch"
+dotfiles_review dotfiles-merge "$stop" \
+    git diff ${DOTFILES_COLOR:+"--color=always"} "main...origin/$branch"
 if ! dotfiles_confirm "dotfiles-merge: merge origin/$branch into main, signed, and push main?"; then
     echo "dotfiles-merge: nothing merged, nothing pushed."
     exit 0
@@ -85,4 +88,4 @@ if ! git push origin main; then
     echo "dotfiles-merge: the push of main was refused; the merge $merge stays in $DOTFILES_SOURCE, not pushed and not applied." >&2
     exit 1
 fi
-dotfiles_review_apply dotfiles-merge
+dotfiles_review_apply dotfiles-merge "the merge ${merge:0:7} is pushed and nothing is applied."

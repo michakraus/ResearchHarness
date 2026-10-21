@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- **`dotfiles-merge` and `dotfiles-update` of the dotfiles kit say why they stop when you quit
+  the review early.** A pager that quits before the log, the diff or `chezmoi diff` is written to
+  its end made git exit 141 and `set -e` end the script with no message, and made `chezmoi diff`
+  hang. Each part of the review now goes through git's pager in a pipe of the script's own. A
+  broken pipe prints one line on standard error, such as `dotfiles-merge: you quit the review
+  early; nothing is merged. Run dotfiles merge <branch> again and read the review to its end.`,
+  and exits 1. After the merge is pushed, or in `dotfiles-update`, the line says that nothing is
+  applied, and names `chezmoi diff` and then `chezmoi apply`. Any other failure stops the script
+  with its own status. Clause 16 of `tests/update-check.py` covers the stops, a pager that reads
+  to the end, and two mutants; the manual page gains the section *The review*.
+
 - **The documentation site gains the manual page of the dotfiles kit, `dotfiles-command.md`.** It
   gives the synopsis, the exit status, the files and where to run each of `dotfiles update`,
   `dotfiles check [--full]` and `dotfiles merge <number | branch>`; the update path and its trust
