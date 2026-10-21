@@ -20,6 +20,7 @@ then the contract sweep. Three subcommands live in the adapters: `settings` and 
 | `githooks`, `wiki-lint-hook`, `workflows` | `githooks.py` |
 | `clone`, `repos` | `repos.py` |
 | `update` | `update.py` |
+| `dotfiles-kit` | `dotfiles_kit.py` |
 | `ci-protection` | `protection.py` |
 | `format` | `fmt.py` |
 | `skill-triggers` | `skill_triggers.py` |
@@ -241,6 +242,21 @@ and exits 1 when there is one. `--apply` needs a terminal: it shows the whole di
 merges `--ff-only` and runs `harness install --apply` in a process of its own, from the merged
 checkout. It stops at a detached HEAD, a pinned checkout, at changes to tracked files, and at
 commits that `origin/main` lacks. The `selftest` runs it on a scratch remote and its clone.
+
+## `dotfiles_kit.py`
+
+The subcommand `harness dotfiles-kit [--apply] DEST`. It reads `examples/dotfiles/kit.toml`, which
+names each file of the dotfiles kit and its class, and compares the chezmoi source `DEST` with the
+kit. A code file that is missing, or that differs in its bytes or in its execute bit, is a change.
+A seed file is a change only when it is missing. `--apply` copies each change, and replaces a
+symbolic link at a code file's path rather than write through it. The subcommand refuses a `DEST`
+that is not a directory, and the applied source `~/.local/share/chezmoi` or a directory below it;
+it compares the resolved paths.
+
+The `selftest` runs it on a scratch kit with its own `kit.toml`: the dry run's list, `--apply` and
+the dry run after it, a seed file that exists, each refusal of `DEST`, and each malformed
+`kit.toml`. Then it runs the command on an empty directory and checks that the list holds every
+file of the harness's `kit.toml`. The sweep runs the dry run on an empty fixture directory.
 
 ## `protection.py`
 

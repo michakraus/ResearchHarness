@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- **`harness dotfiles-kit [--apply] DEST` copies the dotfiles kit into a chezmoi source.** It
+  reads `examples/dotfiles/kit.toml` and lists each code file of `DEST` that is missing or
+  differs from the kit in its bytes or its execute bit, and each seed file that `DEST` lacks; the
+  dry run exits 1 when it lists one. `--apply` copies them and never writes a seed file that
+  exists; a file that `kit.toml` does not name stays as it is. It refuses, with exit 2, a `DEST`
+  that is not a directory, and the applied source `~/.local/share/chezmoi` or a directory below
+  it, by resolved path: the copy goes into a clone, on a branch, and through a merge request. A
+  `kit.toml` entry whose file the harness lacks exits 2 with one line that names it. The contract
+  sweep gains the argument `{kit}`, an empty fixture directory, and runs the dry run on it.
+
 - **The dotfiles kit gains its setup scripts and the files of `~/.config/research-harness/`.**
   `examples/dotfiles/.chezmoiscripts/` holds the five scripts that set up a machine: the tool
   check, the clones, Julia, the harness at its pin, and the services. The seeds are
