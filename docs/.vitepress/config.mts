@@ -75,7 +75,8 @@ export default defineConfig({
         items: [
           { text: 'Typical use', link: '/daily-use' },
           { text: 'Adapting the profile', link: '/profile' },
-          { text: 'The <code>harness</code> command', link: '/harness-command' }
+          { text: 'The <code>harness</code> command', link: '/harness-command' },
+          { text: 'The <code>dotfiles</code> command', link: '/dotfiles-command' }
         ]
       },
       {

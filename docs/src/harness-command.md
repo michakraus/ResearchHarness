@@ -219,6 +219,8 @@ a file resolves outside `DEST`, when a code file of `DEST` cannot be read, and w
 be written.
 
 **Where to run it:** where you can write `DEST`. Commit the change on a branch of the clone.
+[The `dotfiles` command](dotfiles-command.md#start-a-private-copy) gives the steps of a private
+copy, and the scripts that the kit installs.
 
 ```bash
 harness dotfiles-kit ~/src/dotfiles            # the list

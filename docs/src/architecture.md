@@ -176,5 +176,5 @@ frontend either: `hooks/` holds the guard hooks that Claude Code and oh-my-pi bo
 | `tests/` | the queries of the skill-trigger test |
 | `ast-grep/`, `fatou.toml` | linter configuration |
 | `agent-workflows/` | workflow scripts that run one task over many repositories in parallel |
-| `examples/` | the example profile, model tables, providers and network overlay |
+| `examples/` | the example profile, model tables, providers and network overlay, and the dotfiles kit `examples/dotfiles/`, a chezmoi source with placeholder data that [`dotfiles-command.md`](dotfiles-command.md) describes |
 | `docs/` | the pages of the documentation site in `docs/src/`, and its VitePress build |

@@ -36,8 +36,8 @@ const BASE = '/ResearchHarness/'
 const MENU = [
   'index.md', 'concepts.md', 'dependencies.md', 'setup-macos.md', 'setup-linux.md', 'tutorial.md',
   'example-tree.md', 'daily-use.md', 'profile.md',
-  'harness-command.md', 'agents-at-work.md', 'security.md', 'architecture.md',
-  'components/agents.md', 'components/skills.md', 'components/commands.md',
+  'harness-command.md', 'dotfiles-command.md', 'agents-at-work.md', 'security.md',
+  'architecture.md', 'components/agents.md', 'components/skills.md', 'components/commands.md',
   'components/rules.md', 'components/hooks.md', 'components/githooks.md',
   'components/scripts.md', 'components/adapters.md', 'components/harness.md',
   'components/other.md', 'development.md'

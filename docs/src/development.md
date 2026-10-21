@@ -84,6 +84,8 @@ scans the pushed range (`before..sha`; for a new branch `origin/main..sha`, for 
 the whole history; for a pull request `base..head`), the messages of that range through
 `gitleaks stdin`, the checkout, and the templates rendered
 with `examples/profile.toml`. CI has no profile, so the private strings are the hook's alone.
+Its `dotfiles` job installs chezmoi 2.73.2 from its release tarball, checked by its SHA256, and
+runs the five tests of the [dotfiles kit](dotfiles-command.md) in `examples/dotfiles/tests/`.
 `.github/workflows/julia.yml` runs the ten Julia test files on Julia 1.13 when a
 `.jl` file, `Project.toml`, a file of `launchagents/`, `githooks/pre-commit` or the workflow
 itself changes.

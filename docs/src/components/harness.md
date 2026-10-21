@@ -257,6 +257,8 @@ first file, it checks that the directory of each file of `kit.toml` resolves ins
 `DEST`, and exits 2 on one that resolves outside it, or that does not resolve because of a loop of
 symbolic links. A code file that cannot be read exits 2, and `--apply` exits 2 on anything at a
 code file's path that is not a regular file or a link, such as a directory or a FIFO.
+[The `dotfiles` command](../dotfiles-command.md) describes the kit and the scripts that it
+installs.
 
 The `selftest` runs it on a scratch kit with its own `kit.toml`: the dry run's list, `--apply` and
 the dry run after it, a seed file that exists, each refusal of `DEST`, each directory that links
