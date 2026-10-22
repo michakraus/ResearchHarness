@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+- **A builder and a critic read one spec bundle per part, not line ranges of the task file.** The
+  new `scripts/spec-bundle.py` writes the part's rows, the sections its `sections` cell names, §V,
+  §L and the sections that §L's lines *The builder also reads* and *The critic also reads* name
+  (`§6`, `*Traps*`, the preamble of a section) into one file, with a hash and the line range of
+  each section; a name that matches nothing is printed as `unresolved` and exits 1. The
+  `build-part` skill writes it before every spawn of a builder or a critic and passes its path, so
+  a decision written into the task file reaches the next spawn; an unresolved name holds the part
+  back. `julia-builder` and `julia-critic` read the bundle whole and nothing else of the task file,
+  and name its hash in their reports. `plan-parts` writes each part's bundle before a plan is done
+  and treats an unresolved name, or a needed section that the bundle lacks, as a defect of the
+  plan; its §L template names sections by key or heading. Before, a builder read the sections of
+  its cell and found the rest by `grep -n`: most builders and fixers of six measured builds skipped
+  the *Traps* or the working rules that §L named only for the critic, and a fixer often read a
+  pointer to one decision and nothing else. The bundle leaves out the narration of the state cell
+  and any handover filed below §L. `part-builder`, `part-critic`, `advisor` and `arbitrator` still
+  read the task file by line range.
+
 - **The landing page, the README and the Introduction list the same six features, in the same
   order.** The features are: one configuration for three frontends, private data across
   machines, the sandbox and safety in layers, a directory tree for research work, research memory,

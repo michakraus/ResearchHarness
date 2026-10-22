@@ -26,8 +26,9 @@ The builder of the builder-critic loop. A task file holds a plan that is split i
 each part is one pull request. The builder builds one part. The `build-part` skill starts it and
 runs the loop. Call it directly only for a part that you have already chosen.
 
-The builder reads the rows of the parts table and the sections of its own part, never the whole
-task file. It works in a worktree that its caller creates. It writes the tests first, then the
+The builder reads its part's spec bundle, which its caller writes with `spec-bundle.py`: the
+part's rows and sections, the plan's §V and §L, and the sections that §L names. It reads nothing
+else of the task file. It works in a worktree that its caller creates. It writes the tests first, then the
 code, and verifies each clause of the part's *Done when*, the part's acceptance criteria. It
 writes and runs one mutant for each guard, branch, comparison and decided edge case of its change.
 It closes each surviving mutant, or gives a reason to keep it. Its report lists every mutant with
@@ -51,7 +52,7 @@ pull request to green CI.
 
 The critic of the builder-critic loop. It judges one built part against the part's *Done when*
 and returns `Verdict: PASS` or `FAIL`, with the defects. The `build-part` skill starts it. It
-edits nothing in the worktree.
+reads the same spec bundle as the builder, and edits nothing in the worktree.
 
 In round 1, the first critic round, two critics judge the whole part independently, and neither
 sees the builder's report. A critic writes its own evidence table and runs every check itself. It

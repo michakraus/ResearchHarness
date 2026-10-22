@@ -1,7 +1,9 @@
 # The §V and §L sections of a plan
 
 Write both sections into the plan, after the collision map. Replace each `<…>`, and delete a line
-that does not apply. `julia-builder` and `julia-critic` find these sections by their headings.
+that does not apply. `spec-bundle.py` finds these sections by their headings and copies each into
+every part's bundle, up to the next heading: keep a section's text above its first subheading, and
+file no handover below §L.
 
 The generic rules are not repeated here: the build steps are in `julia-builder`, the judging rules
 in `julia-critic`, the evidence table and its rules in `~/.claude/skills/build-part/evidence.md`,
@@ -26,8 +28,9 @@ the plan's rule holds for this plan.
 
 Every part runs through the builder-critic loop of the `build-part` skill.
 
-- **The builder also reads:** <sections, or "nothing more">.
-- **The critic also reads:** <the preamble of §<n>, the traps section, or "nothing more">.
+- **The builder also reads:** <keys such as §6, headings in italics such as *Traps*, or "nothing
+  more">.
+- **The critic also reads:** <the same, the preamble of §<n>, or "nothing more">.
 - **This plan changes the loop:** <a draft pull request in place of a pull request, for example,
   or "not at all">.
 - **Generated mutants:** <"none" | "a sweep of the diff before round 1", for a part whose tests are

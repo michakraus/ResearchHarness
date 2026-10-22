@@ -16,38 +16,38 @@
 [[call]]
 caller = "build-part"
 callee = "julia-builder"
-at = "skills/build-part/SKILL.md:118"
+at = "skills/build-part/SKILL.md:136"
 label = "build, fix, finish"
 
 [[call]]
 caller = "build-part"
 callee = "julia-critic"
-at = "skills/build-part/SKILL.md:161"
+at = "skills/build-part/SKILL.md:179"
 effort = "high"
 label = "round 1, two critics"
 
 [[call]]
 caller = "build-part"
 callee = "julia-critic"
-at = "skills/build-part/SKILL.md:81"
+at = "skills/build-part/SKILL.md:94"
 label = "verify round"
 
 [[call]]
 caller = "build-part"
 callee = "julia-test-runner"
-at = "skills/build-part/SKILL.md:178"
+at = "skills/build-part/SKILL.md:196"
 label = "full suite"
 
 [[call]]
 caller = "build-part"
 callee = "advisor"
-at = "skills/build-part/SKILL.md:275"
+at = "skills/build-part/SKILL.md:294"
 label = "a question"
 
 [[call]]
 caller = "build-part"
 callee = "arbitrator"
-at = "skills/build-part/SKILL.md:213"
+at = "skills/build-part/SKILL.md:232"
 label = "no convergence"
 
 [[call]]
@@ -71,13 +71,13 @@ label = "a long run"
 [[call]]
 caller = "julia-builder"
 callee = "julia-branch-verifier"
-at = "agents/julia-builder.md:266"
+at = "agents/julia-builder.md:264"
 label = "before the pull request"
 
 [[call]]
 caller = "julia-builder"
 callee = "changelog-scribe"
-at = "agents/julia-builder.md:278"
+at = "agents/julia-builder.md:276"
 label = "a CHANGELOG fix"
 
 [[call]]
@@ -107,7 +107,7 @@ label = "red CI"
 [[call]]
 caller = "plan-parts"
 callee = "reader"
-at = "skills/plan-parts/SKILL.md:220"
+at = "skills/plan-parts/SKILL.md:237"
 label = "premise check, one per part"
 
 [[call]]

@@ -151,38 +151,38 @@ from = "dispatch"
 to = "builder"
 route = ["bottom", "top"]
 label = "build"
-at = "skills/build-part/SKILL.md:118"
+at = "skills/build-part/SKILL.md:136"
 
 [[edge]]
 from = "builder"
 to = "round-1"
 route = ["left", "right"]
-at = "skills/build-part/SKILL.md:161"
+at = "skills/build-part/SKILL.md:179"
 
 [[edge]]
 from = "round-1"
 to = "verdict-1"
 route = ["left", "right"]
-at = "skills/build-part/SKILL.md:183"
+at = "skills/build-part/SKILL.md:201"
 
 [[edge]]
 from = "verdict-1"
 to = "fixer"
 route = ["bottom", "top"]
 label = "FAIL: a fix round"
-at = "skills/build-part/SKILL.md:193"
+at = "skills/build-part/SKILL.md:211"
 
 [[edge]]
 from = "fixer"
 to = "verify"
 route = ["right", "left"]
-at = "skills/build-part/SKILL.md:173"
+at = "skills/build-part/SKILL.md:191"
 
 [[edge]]
 from = "verify"
 to = "verdict-2"
 route = ["right", "left"]
-at = "skills/build-part/SKILL.md:183"
+at = "skills/build-part/SKILL.md:201"
 
 [[edge]]
 from = "verdict-2"
@@ -190,25 +190,25 @@ to = "arbitrator"
 route = ["left+20", "x 1.5", "y 3", "right"]
 label = "second FAIL"
 label_at = 0.6
-at = "skills/build-part/SKILL.md:213"
+at = "skills/build-part/SKILL.md:232"
 
 [[edge]]
 from = "arbitrator"
 to = "fixer"
 route = ["left", "x 0", "bottom"]
 label = "a ruling, then a fix"
-at = "skills/build-part/SKILL.md:231"
+at = "skills/build-part/SKILL.md:250"
 
 [[edge]]
 from = "verdict-2"
 to = "finisher"
 route = ["bottom", "top"]
 label = "PASS: the finish"
-at = "skills/build-part/SKILL.md:203"
+at = "skills/build-part/SKILL.md:222"
 
 [[edge]]
 from = "finisher"
 to = "pr"
 route = ["bottom", "top"]
 label = "the pull request"
-at = "skills/build-part/SKILL.md:205"
+at = "skills/build-part/SKILL.md:224"

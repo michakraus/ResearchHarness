@@ -7,6 +7,10 @@ runs them.
   a temporary file that no one can remove; each copy leaves them out.
 - scripts/spec-gate.py on a fixture task file: a part whose **Files** span two repositories is
   SPANS, and one whose files lie in its repository is not.
+- scripts/spec-bundle.py on a fixture task file: the bundle holds the part's sections, its
+  T-number row, §V, §L without the handovers filed below it, and what §L's *also reads* lines
+  name; it leaves out the other parts and the state cell's narration; a name that matches nothing
+  is unresolved, with exit status 1.
 - The fix round's mutants: skills/build-part/evidence.md defines them in one section, with its
   four rules, and both builders and both build skills point at it.
 """
@@ -24,6 +28,67 @@ from . import REPO
 EVIDENCE = REPO / "skills" / "build-part" / "evidence.md"
 RUN_TESTS = REPO / "scripts" / "run-tests.jl"
 SPEC_GATE = REPO / "scripts" / "spec-gate.py"
+SPEC_BUNDLE = REPO / "scripts" / "spec-bundle.py"
+
+# The fixture task file of the spec bundle. Part P names a T-number row and its section; §L names
+# §6, *Traps* and the preamble of §9, and one relative phrase. A handover filed below §L, part Q's
+# section, §9's subsection and the state cell's narration stay out.
+BUNDLE_PLAN = """# Plan
+
+## Parts
+
+| part | repository | sections | what it is | tier | state |
+|:--|:--|:--|:--|:--|:--|
+| **P** | `Example` | T1.2, §5V.P, §V, §L | The part. | build | open — NARRATION OF EARLIER BUILDS |
+| **Q** | `Example` | §5V.Q, §V, §L | Another part. | build | open |
+
+## §V · Plan rules
+
+V-RULE.
+
+## §L · The loop for this plan
+
+- **The builder also reads:** the part's T-numbers in §5, §6 and *Traps*.
+- **The critic also reads:** the preamble of §9, and §6.
+
+### 0.9 Handover — 2026-10-17
+
+HANDOVER-TEXT.
+
+## 5 · The work
+
+| id | goal | verification |
+|:--|:--|:--|
+| **T1.1** | other goal | x |
+| **T1.2** | P-GOAL | x |
+
+### 5V.P · Part P
+
+P-SECTION. **Decided (advisor, 2026-10-20, high):** P-DECISION.
+
+### 5V.Q · Part Q
+
+Q-SECTION.
+
+## 6 · Working rules
+
+SIX-RULE.
+
+## 9 · Background
+
+NINE-PREAMBLE.
+
+### 9.1 Detail
+
+NINE-DETAIL.
+
+## Traps
+
+TRAP-TEXT.
+"""
+BUNDLE_IN = ["P-GOAL", "P-SECTION", "P-DECISION", "V-RULE", "builder also reads", "SIX-RULE",
+             "NINE-PREAMBLE", "TRAP-TEXT", "| id | goal | verification |"]
+BUNDLE_OUT = ["HANDOVER-TEXT", "Q-SECTION", "other goal", "NINE-DETAIL", "NARRATION"]
 
 # The fixture tree of the copies: what each copy holds, and what it leaves out.
 KEPT = ["src/A.jl", "test/runtests.jl", "env.jl"]
@@ -108,6 +173,16 @@ def spec_gate(tmp):
     return {part: rest.split("\t")[0] for part, rest in lines.items()}, p.returncode, p.stderr
 
 
+def spec_bundle(tmp, plan):
+    """Run spec-bundle.py for part P on `plan`: (the bundle's text, stderr, exit status)."""
+    task = pathlib.Path(tmp) / "plan.md"
+    task.write_text(plan)
+    out = pathlib.Path(tmp) / "bundle.md"
+    p = subprocess.run([sys.executable, str(SPEC_BUNDLE), str(task), "P", "--out", str(out)],
+                       capture_output=True, text=True)
+    return (out.read_text() if out.exists() else ""), p.stderr, p.returncode
+
+
 def selftest():
     """The copies leave out `.env` and `.env.*`, and the spec gate refuses a part that spans
     repositories: (number of cases, number wrong)."""
@@ -141,6 +216,17 @@ def selftest():
                 # the line names each repository of the expected pair
                 ok = all(name in got for name in expected.split()[1].split("-"))
             check(ok, f"part {part} ({tier}) with {files}: expected {expected} -> {got}")
+    with tempfile.TemporaryDirectory(prefix="harness-spec-bundle-") as tmp:
+        text, stderr, status = spec_bundle(tmp, BUNDLE_PLAN)
+        check(status == 0, f"spec-bundle.py exits 0 when every name resolves -> {status} {stderr.strip()}")
+        missing = [s for s in BUNDLE_IN if s not in text]
+        check(not missing, f"the bundle holds the part's sections, §V, §L and what §L names -> missing {missing}")
+        leaked = [s for s in BUNDLE_OUT if s in text]
+        check(not leaked, f"the bundle leaves out other parts, handovers and the state's narration -> {leaked}")
+        # the control: a heading that §L names and the file lacks is unresolved
+        text, stderr, status = spec_bundle(tmp, BUNDLE_PLAN.replace("## Traps", "## Pitfalls"))
+        check(status == 1 and "unresolved: *Traps*" in stderr,
+              f"a name that matches nothing is unresolved, exit 1 -> {status} {stderr.strip()}")
     problems = fix_round_mutants(lambda path: (REPO / path).read_text())
     check(not problems, f"a fix round runs only the mutants that its fix touches -> {problems or 'holds'}")
     # the control: without the section, the case finds the gap

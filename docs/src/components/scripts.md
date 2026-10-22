@@ -280,10 +280,9 @@ It reads the columns by name, not by position. A column that the table does not 
 empty cell. A file with no `## Parts` section gives no output: the task has no parts. The script
 does not change the file.
 
-The skills `build-part` and `build-reviewed` and the agents `advisor`, `arbitrator`,
-`julia-critic` and `part-critic` run it; `julia-builder` and `part-builder` get its output from
-their caller.
-`spec-gate.py` calls it.
+The skills `build-part` and `build-reviewed` and the agents `advisor`, `arbitrator` and
+`part-critic` run it; `part-builder` gets its output from its caller. `spec-gate.py` and
+`spec-bundle.py` call it.
 
 ## `spec-gate.py`
 
@@ -308,6 +307,32 @@ It prints one line per part: PASS, MISSING with the labels, SPANS with the repos
 with the reason. The exit status is 0 when each checked part passes or is exempt, 1 when a part
 misses a label or spans two repositories, and 3 when the script failed. It reads the parts table
 through `parts-table.awk`. The skills `build-part`, `build-reviewed` and `plan-parts` run it.
+
+## `spec-bundle.py`
+
+`spec-bundle.py` writes the spec bundle of one part: every text of the task file that the part's
+builder and critics read, in one file. `julia-builder` and `julia-critic` read the bundle and
+nothing else of the task file, so a rule reaches them only through it.
+
+```bash
+python3 spec-bundle.py "<task file>" <part> [--out <file>]
+```
+
+The bundle holds the part's `PART` row and the `COLLISION` rows that name it, the sections that
+its `sections` cell names, §V and §L, and the sections that §L's two lines **The builder also
+reads:** and **The critic also reads:** name. A key such as `§6` names a section, a heading in
+italics such as `*Traps*` names a section by its title, and `the preamble of §<key>` names a
+section's text up to its first subheading. A key with no heading, such as a T-number, gives each
+table row whose first cell is the key, under its table's header. §V and §L end at their next
+heading, so a handover filed below §L stays out, and the `PART` row keeps only the state, not the
+narration that a state cell gathers over the builds.
+
+The header lists each section with its line range in the task file, the task file's commit, and
+a SHA-256 of the body, which a report names. It prints the path, the line count and the hash, and
+one `unresolved: <name>` line on stderr for each name that matches nothing. The exit status is 0
+when every name resolves, 1 when one does not or the part is not in the table, and 3 when the
+script failed. The skill `build-part` runs it before every spawn of a builder or a critic, and
+`plan-parts` runs it on each part before a plan is done.
 
 ## `known-issues-similar.py`
 
