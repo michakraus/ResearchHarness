@@ -41,9 +41,11 @@ The part-tier cell holds `decision`, `build`, `reviewed` or `direct`, with the r
 Each spec holds *Done when*, *Decided at the edges*, *Tests catch* (the mutants that the tests
 must catch), *Files*, *Not in this part*, and *Traps*. Before a spec is final, one `reader` agent
 per part measures each fact that the spec states, with the brief `premise-check.md`, and the
-planner fixes each fact that it finds false. The skill runs on the `large` model tier.
+planner fixes each fact that it finds false. It writes each part's spec bundle with
+`spec-bundle.py`, and fixes the cell or §L where a section the part needs is missing or a name
+does not resolve. The skill runs on the `large` model tier.
 
-It runs nothing but its premise check and `spec-gate.py`, and it does not merge. Use `build-part`
+It runs nothing but its premise check, `spec-gate.py` and `spec-bundle.py`, and it does not merge. Use `build-part`
 or `build-reviewed` to build a part.
 
 ## `build-part`
@@ -56,7 +58,9 @@ It loads on requests such as "build the next part", "build part D" or "run the o
 reads the parts table with `scripts/parts-table.awk`, not the whole task file. It checks each open
 pull request with `gh` and chooses a part that is open, unblocked and free of file collisions. A
 part of part tier `build` in `Packages/` or `Experiments/` starts only after
-`scripts/spec-gate.py` passes. The frontmatter model tier `medium` does not apply when the user
+`scripts/spec-gate.py` passes. Before every spawn of a builder or a critic, it writes the part's
+spec bundle with `scripts/spec-bundle.py` and passes its path; a name that the bundle cannot
+resolve holds the part back. The frontmatter model tier `medium` does not apply when the user
 types `/build-part`, so run the loop in a session on the medium model.
 
 In round 1, the first critic round, two `julia-critic` agents judge the part beside a full-suite

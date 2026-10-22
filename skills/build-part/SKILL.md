@@ -48,6 +48,19 @@ COLLISION  repository  file  parts
 Empty output means the file carries no parts table. Say so, and offer the `plan-parts`
 skill. Do not decompose it here.
 
+**Every builder and critic reads the part's spec bundle, not the task file.** Write it with
+`spec-bundle.py`, which copies the part's rows, its sections, §V, §L and every section that §L's
+*also reads* lines name into one file:
+
+```bash
+cd ~/Research && python3 Harness/scripts/spec-bundle.py "Tasks/<file>.md" <part> --out ~/Research/.scratch/spec-bundles/<file>/<part>.md
+```
+
+It prints the path, the line count and the body's hash, and one `unresolved: <name>` line on
+stderr for each name of the cell or of §L that matches no heading and no table row; then it exits 1.
+**Write the bundle again before every spawn of a builder or a critic**, so that a decision written
+into the task file since the last spawn is in it. Pass its path on the spawn.
+
 ## Choose the part
 
 **Check every cell that names a pull request against GitHub first.** The user merges in silence,
@@ -113,11 +126,16 @@ advisor* says: **Parks: no** writes the heading into the section, marked
 `(advisor, <date>, <confidence>)`, commits the task file, and starts the loop; **Parks: yes** sets
 the state to `waiting for the user`.
 
+**Then write the bundle.** An `unresolved` name holds the part back as a missing label does: the
+builder would never read that section. Where the name is a heading that was renamed, correct the
+cell or the §L line, commit the task file, and write the bundle again. Where the section does not
+exist, set the state to `waiting for the user — the bundle lacks <name>`.
+
 ## The loop
 
-**1 · Spawn the builder.** Pass `julia-builder` the task file, the part, and the part's `PART` row
-and the `COLLISION` rows that name it, verbatim from the extractor. Pass nothing else. It reads its
-own sections. It cannot run the extractor: it runs in a worktree, and the worktree guard refuses
+**1 · Spawn the builder.** Pass `julia-builder` the task file, the part, and the path of the
+part's spec bundle. Pass nothing else: the bundle holds the rows and every section the builder
+reads. It cannot write the bundle itself: it runs in a worktree, and the worktree guard refuses
 `awk -f`.
 
 **A part in `Packages/` or `Experiments/` is spawned with `isolation: "worktree"`, from its
@@ -166,9 +184,9 @@ report.
 
 - **Round 1** judges the whole part, blind, with **two critics** in one message. One draw of a
   critic misses defects that a second finds, and round 1 is the only broad search; at high effort
-  each critic finds more of them. Pass each five
-  things and nothing else: the task file, the part, the worktree, the branch head, and
-  `Round: 1a` or `Round: 1b`. Neither sees the other's report. The round fails when either
+  each critic finds more of them. Pass each six
+  things and nothing else: the task file, the part, the path of its spec bundle, the worktree, the
+  branch head, and `Round: 1a` or `Round: 1b`. Neither sees the other's report. The round fails when either
   critic fails, and its findings are the union of both reports.
 - **A verify round** — round 2 and round 3 — judges only the fix. Pass it the same, with
   `Round: verify <N>`, and add: `Previous head:` the head that the previous critic judged; every
@@ -186,9 +204,9 @@ or the critic's context writes that context again in full after every 5 minutes 
 resumed builder writes its whole context again (456–458 k tokens in round 4), and a new one starts from
 the reports: in the C1 replay it cost a quarter to a half as much, with fewer blocking defects left.
 First `cd <worktree>` as a Bash call of its own,
-then the `Agent` call, without isolation. Pass the task file, the part, its rows as in 1, the
-worktree, the branch, the base, the head that the critic judged, and the last builder's report as
-the handoff note. From here on, *the builder* is the `julia-builder` of the current round.
+then the `Agent` call, without isolation. Pass the task file, the part, the path of its spec
+bundle, written again, the worktree, the branch, the base, the head that the critic judged, and the
+last builder's report as the handoff note. From here on, *the builder* is the `julia-builder` of the current round.
 
 - **FAIL** — spawn it with `Round: fix <N>`, and add the critic's *Blocking defects*, *Other
   defects* and *Fix first*, verbatim — both critics' in round 1 — every failing testset of the
@@ -196,7 +214,8 @@ the handoff note. From here on, *the builder* is the `julia-builder` of the curr
   blocking defects and the other defects that its branch causes, records the rest
   (`~/.claude/rules/known-issues.md`; `julia-builder`), and rereads the text that its fix adds,
   changes or makes false. **Add no instruction of your own.** A
-  decision goes into the task file first, by the advisor's route, and your prompt names its line.
+  decision goes into the task file first, by the advisor's route, then into the bundle you write
+  again, and your prompt names its line.
   Where the builder returns `Paths to stage:`, commit them in the worktree. When it returns
   `ready for critic`, go to 3 for the next round. Read each blocking defect's cause before the
   spawn: step 5 can send the round to the arbitrator first.
@@ -276,8 +295,9 @@ means:
    evidence verbatim: the builder's or the critic's words with their commands and outputs. Never
    the builder's reasoning.
 2. **Parks: no** — write the decision verbatim into the part's section, as
-   `**Decided (advisor, <date>, <confidence>):** <decision>`, and commit the task file. Then
-   `SendMessage` the builder: the section and the line of the decision, and nothing else.
+   `**Decided (advisor, <date>, <confidence>):** <decision>`, commit the task file, and write the
+   bundle again. Then `SendMessage` the builder: the bundle's path and the line of the decision,
+   and nothing else.
 3. **Parks: yes** — write the recommendation into the section in the same form, with
    `**Recommendation**` in place of `**Decided**`, set the state to
    `waiting for the user — <question>`, and go on with the next available part.

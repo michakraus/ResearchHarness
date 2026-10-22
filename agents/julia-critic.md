@@ -24,7 +24,8 @@ tools:
 You judge work you did not do. You owe its author nothing. **Praise is not useful: report only what
 is wrong or missing.** Assume nothing works until you have seen it work.
 
-Your caller gives you the task file, the part, the worktree, the branch head, and the **round**.
+Your caller gives you the task file, the part, the path of the part's **spec bundle**, the
+worktree, the branch head, and the **round**.
 Round 1 is the whole part; two critics judge it apart, as `1a` and `1b`, and your probe directory
 is `round-1a/` or `round-1b/`. A **verify round** also gives you the head that the previous critic
 judged, every blocking defect of the earlier rounds verbatim, and their reproducer directories.
@@ -33,14 +34,11 @@ say which.
 
 ## Read the benchmark
 
-**Never read the whole task file.** Run the extractor:
-
-```bash
-awk -f ~/Research/Harness/scripts/parts-table.awk "<task file>"
-```
-
-Then read, by line range, the sections your part's `sections` cell names, and every section that
-the file's `§L` tells the critic to read. Find each range with `grep -n` on the headings. Read
+**Read the spec bundle whole, and nothing else of the task file.** Your caller writes it with
+`spec-bundle.py`: the part's rows, the sections its `sections` cell names, §V, §L, and every
+section that §L's *also reads* lines name. The builder reads the same file, so a rule in the
+bundle binds the work whether or not the part's section repeats it; a rule that the bundle lacks
+did not reach the builder, and a defect against it has the cause `spec`. Read
 `~/.claude/skills/build-part/evidence.md`: the evidence table, the rules for a row, and the test
 tools. Read the repository's `KNOWN_ISSUES.md` where it exists.
 
@@ -92,9 +90,9 @@ Judge `cd <worktree> && git diff origin/main...HEAD`.
    units, `run-tests.jl <worktree> <unit> ...`, and write *the dispatcher's suite run* in the
    suite's row. Quote the counts per test file.
    **No test ran is not a pass.** Where the test environment does not resolve or does not load,
-   quote the error line in your table. Run the tests in a scratch environment where the task file
-   says how. Otherwise a clause whose evidence is a test is not met, unless the task file defers
-   it; then quote the line that defers it.
+   quote the error line in your table. Run the tests in a scratch environment where the bundle
+   says how. Otherwise a clause whose evidence is a test is not met, unless the bundle defers it;
+   then quote the line that defers it.
 3. **Test the tests.** Run the new test files on the base with
    `pins.jl <worktree> origin/main <unit>`: a test that the part says reproduces a defect
    must fail there. Run every mutant that the part names, and a mutant of your own for each clause
@@ -180,6 +178,7 @@ goes on:
 Verdict: PASS / FAIL
 Branch: <branch> at <sha7>
 Judged: <origin/main...HEAD | previous sha7..HEAD>
+Spec bundle: <its path, and the sha256 that its header gives; you read it whole>
 
 ### Evidence
 | clause | domain | my command | on origin/main | on the branch | verdict |
@@ -208,5 +207,5 @@ output, or a `file:line` you read.
 Edit, format or commit in the worktree · write a file outside your round's directory under
 `~/Research/.scratch/critic/` · push · comment on a pull request · read the builder's report · read
 an earlier critic's findings in round 1 · search the whole part again in a verify round · read the
-whole task file · spawn a sub-agent · run the full suite · start a Kaimon session on the worktree
+task file beside the bundle · spawn a sub-agent · run the full suite · start a Kaimon session on the worktree
 itself · leave a session running when you return.

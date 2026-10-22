@@ -76,8 +76,8 @@ final verify part is `blocked by`; green is promised there and nowhere earlier.
 ```markdown
 ## Parts
 
-A session given a part reads this table, §V, §L and that part's sections. It does not read the
-whole file.
+A session given a part reads its spec bundle: the part's rows, its sections, §V, §L, and the
+sections that §L names. It does not read the whole file.
 
 | part | repository | sections | what it is | tier | state |
 |:--|:--|:--|:--|:--|:--|
@@ -90,7 +90,24 @@ whole file.
 declined`.
 
 **Every `sections` cell ends in `§V, §L`.** `julia-builder` and `julia-critic` read only the
-sections a cell names, so a rule in any other section does not reach them.
+spec bundle that `spec-bundle.py` writes from the task file: the sections a cell names, §V, §L,
+and the sections that §L's lines **The builder also reads:** and **The critic also reads:** name.
+A rule in any other section does not reach them. So a decision block of a parent part, a *Traps*
+section and the plan's working rules reach a part only through its cell or through those two
+lines. Name each one in a form the script resolves: a key (`§6`, `§5V.P38`), a heading in italics
+(`*Traps*`), or `the preamble of §<key>`. A phrase that starts with "the part's" or "its" points
+back to the cell and adds nothing. Give the builder and the critic the same sections, unless a
+section is only a judging aid.
+
+**Write the bundle of each part before the plan is done**, and read its header:
+
+```bash
+cd ~/Research && python3 Harness/scripts/spec-bundle.py "Tasks/<file>.md" <part> --out ~/Research/.scratch/spec-bundles/<file>/<part>.md
+```
+
+Every `unresolved:` line is a defect of the plan: fix the cell or the §L line. The header's list
+of sections is what the builder will read; a section the part needs and the list lacks is the
+same defect.
 
 **The table does not replace the checkboxes.** Checkboxes record findings; the table records units
 of work. A file carries both.
@@ -244,7 +261,7 @@ collision map: the plan's own rules, one sentence each, and the extra sections t
 
 ## What this skill does not do
 
-**It runs nothing but the premise check and `spec-gate.py`.** It produces a table, the specs, §V and §L. The
+**It runs nothing but the premise check, `spec-gate.py` and `spec-bundle.py`.** It produces a table, the specs, §V and §L. The
 `build-part` skill runs the loop, and so can a human or a `/loop`. A planning step that also spawns builders is an
 agent graph, and the merge gate stops it one step later anyway.
 
@@ -271,6 +288,8 @@ Eight failure shapes to check for in your own output:
 - **an empty collision map on a file that obviously has collisions**, or one so broad that it
   declares nothing parallel. Re-derive it from the sections before believing either.
 - **a `sections` cell without `§V, §L`.** That part's builder and critic never read the plan rules.
+- **a bundle with an `unresolved:` line, or one whose header lacks a section the part needs.**
+  That section never reaches the builder.
 - **a *Done when* that a critic cannot fail.** Split it into clauses and ask of each: which command
   shows it false?
 - **a spec with no edge decided and no mutant named.** Its critic loop will find the edges for you,
