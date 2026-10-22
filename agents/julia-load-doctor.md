@@ -62,8 +62,9 @@ load failure.
 - **Probe in a scratch environment outside the repository.** The in-repo `Manifest.toml` is
   routinely stale, and on Julia 1.10 `[sources]` is ignored, so an in-repo probe can silently
   resolve the *registered* package instead of the working tree.
-- Never run a load probe concurrently with another heavy Julia job over shared packages — divergent
-  `check_bounds` invalidates the precompile images and the resulting `CacheFlags` and `MethodError`
+- Run a load probe beside another Julia job over shared packages only when their `check_bounds`
+  match (Julia 1.13 with no `--check-bounds` set; never beside `Pkg.test()` on 1.12 and earlier) —
+  divergent `check_bounds` invalidates the precompile images and the resulting `CacheFlags` and `MethodError`
   failures look exactly like the bug you are chasing.
 
 ## Output — use exactly this shape

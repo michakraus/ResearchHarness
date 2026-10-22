@@ -348,10 +348,12 @@ review.
 `CHANGELOG.md` collides in almost every table. It is one entry per pull request, so it does not
 serialise the parts; it is the one collision the builders resolve by rebasing.
 
-**One full suite at a time over an overlapping dependency set.** The round's own suite and its
-critic run together: both run with the same `--check-bounds`, so they share the precompile images.
-Two full suites of different parts over shared packages do not; start the second when the first
-returns.
+**Julia jobs over an overlapping dependency set run together when their `CacheFlags` match**
+(*The concurrency rule* in `julia-test-runner`). The round's own suite and its critic run with the
+same `--check-bounds`, so they share the precompile images. On Julia 1.13 with no `--check-bounds`
+set, every suite, critic and builder of every part matches, so parts run their suites together. Up
+to Julia 1.12 a suite runs with `yes` and a builder's own probes with `auto`, so a suite of one part
+collides with the builder of another: start the second part when the first part's suite returns.
 
 ## Stop, and say why
 

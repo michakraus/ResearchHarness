@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- **Julia jobs over shared packages run together when their `CacheFlags` match.** The concurrency
+  rule of `julia-test-runner`, `build-part`, `julia-package-audit` and `julia-load-doctor` states
+  the condition, not a ban: on Julia 1.13 with no `--check-bounds` set, `Pkg.test()` and
+  `run-tests.jl` pass the session's own setting, so a suite and another job are safe together; up
+  to 1.12, or in a session started with a `--check-bounds` flag, they are not. `julia-test-runner`
+  gives the cases as a table and keeps the advice to suspect a concurrent job before the code on a
+  `CacheFlags` or extension `MethodError` failure. `build-part` lets two parts run their suites
+  together on 1.13. Before, each file forbade a suite beside any other heavy Julia job over shared
+  packages, which ruled out safe parallel builds.
+
 - **A builder and a critic read one spec bundle per part, not line ranges of the task file.** The
   new `scripts/spec-bundle.py` writes the part's rows, the sections its `sections` cell names, §V,
   §L and the sections that §L's lines *The builder also reads* and *The critic also reads* name
