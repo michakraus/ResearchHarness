@@ -109,11 +109,11 @@ syntax `f(; max_iter)`. Test exception **types** or user-facing messages, not in
 - **The floor is the package's `[compat] julia`** — 1.11 in most packages, 1.10 in a few; CI runs
   from it to `^1.13.0-0` and nightly.
 - **Doctests are not run by `Pkg.test()`** — only `docs/make.jl` executes `jldoctest` blocks.
-- **Do not run a test suite concurrently with another heavy Julia job over shared packages.**
-  `Pkg.test()` on Julia 1.12 and earlier uses `--check-bounds=yes` while everything else uses
-  `auto`; the divergent
-  `CacheFlags` invalidate shared precompile images, producing `CacheFlags`/`MethodError`
-  failures that look like real bugs. Disjoint packages or matching flags are fine.
+- **Run a test suite beside another Julia job over shared packages only when their `CacheFlags`
+  match.** `Pkg.test()` on Julia 1.12 and earlier uses `--check-bounds=yes` while everything else
+  uses `auto`; the divergent `CacheFlags` invalidate shared precompile images, producing
+  `CacheFlags`/`MethodError` failures that look like real bugs. On Julia 1.13 with no
+  `--check-bounds` set the flags match, and so do the jobs on disjoint packages.
 
 ## Report format
 

@@ -105,14 +105,22 @@ something it cannot support.
 
 ## The concurrency rule
 
-**Never start a suite while another heavy Julia job is running over shared packages.** The
-divergent `check_bounds` setting invalidates the shared precompile images, and the resulting
-`CacheFlags` and `MethodError` failures look exactly like real bugs.
+**A suite and another Julia job over shared packages run together only when their `CacheFlags`
+match.** Two processes that load one package with different `CacheFlags` invalidate each other's
+precompile images, and the resulting `CacheFlags` and `MethodError` failures look exactly like real
+bugs. The flag that differs is nearly always `check_bounds`:
+
+| verdict | case |
+|:--|:--|
+| **safe** | Julia 1.13 with no `--check-bounds` set: `Pkg.test()` and `run-tests.jl` pass the session's own setting, so every job matches |
+| **unsafe** | Julia 1.12 and earlier: `Pkg.test()` and `run-tests.jl` force `--check-bounds=yes`, and every other job uses `auto` |
+| **unsafe** | any session started with a `--check-bounds` flag, beside a job without it |
 
 "A different repository" is **not** "disjoint packages". The packages here share base
-packages and their dependencies. If you cannot establish that nothing else is running,
-say so and run anyway only if the caller asked for it — but flag it, because a failure under those
-conditions is not evidence.
+packages and their dependencies. If a `CacheFlags` failure or an extension `MethodError` appears,
+suspect a concurrent job before the code. If the run is unsafe by this table and you cannot
+establish that nothing else is running, say so and run anyway only if the caller asked for it — but
+flag it, because a failure under those conditions is not evidence.
 
 `ps` fails intermittently in the sandbox, and `pgrep` fails. A top-level `ps` works more often than a
 piped one, because the pipe puts `ps` back in the sandbox. `lsof -c julia -t` lists Julia PIDs
