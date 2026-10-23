@@ -4,10 +4,11 @@ An adapter is the part of the harness that belongs to one frontend. The neutral 
 `agents/`, `skills/`, `rules/`, `instructions/` and `commands/` name no frontend. Each adapter
 turns them into the configuration of its frontend, and adds the files that only its frontend reads.
 The sources of an adapter are below `adapters/<frontend>/`: `adapters/claude/` for Claude Code,
-`adapters/opencode/` for OpenCode and `adapters/omp/` for oh-my-pi.
+`adapters/opencode/` for OpenCode, `adapters/omp/` for oh-my-pi and `adapters/antigravity/` for
+Antigravity.
 
-Each adapter has one Python module, `adapter.py`. `lib/harness/frontends.py` loads the three
-modules by path, in the order Claude Code, OpenCode, oh-my-pi. Each module gives its own
+Each adapter has one Python module, `adapter.py`. `lib/harness/frontends.py` loads the four
+modules by path, in the order Claude Code, OpenCode, oh-my-pi, Antigravity. Each module gives its own
 subcommands, its part of `harness install`, its test cases for `harness test`, and the restart line
 that the install prints after a change. The other files of an adapter are instruction text,
 configuration and extension code. `harness install --apply` copies or renders them into the
@@ -15,7 +16,7 @@ configuration directory of the frontend.
 [The architecture](../architecture.md#the-opencode-and-oh-my-pi-adapters) describes what each
 frontend receives, and [the harness command](harness.md) describes the loader.
 
-The sections follow the three frontends: first Claude Code, then OpenCode, then oh-my-pi. In each
+The sections follow the four frontends: Claude Code, OpenCode, oh-my-pi, then Antigravity. In each
 group, the module `adapter.py` comes first, then the files that it installs.
 
 ## `claude/adapter.py`
@@ -377,3 +378,27 @@ call, and tell the model to ask the user in chat.
 The extension fails closed: a guard that cannot run, fails or times out blocks the call, and so
 does a missing path list. It checks text only. A path that a command builds at run time passes,
 and the `find` and `ast_grep` tools are not checked.
+
+## `antigravity/adapter.py`
+
+The adapter of Antigravity. It writes the permission layer of Antigravity below `~/.gemini/`, once
+Antigravity has made that directory; without it, the plan holds no file and one warning. It writes
+`config/hooks.json`, which runs `guard.py` on every tool call, `guard.py` and the seven guard
+scripts in `config/hooks/`, the path list `config/guard-paths.json`, and three keys of the CLI's
+`antigravity-cli/settings.json`: `permissions`, `toolPermission` and `enableTerminalSandbox`. The
+merge keeps every other key of that file and backs up the file it replaces.
+
+The permission rules are the settings template's: a Bash entry becomes a `command(…)` rule, a Read
+or Edit path a `read_file(…)` or `write_file(…)` rule, and an allow host of the network lists a
+`read_url(…)` rule. A path with a glob that Antigravity cannot express is dropped. It installs no
+instruction, skill or agent for Antigravity.
+
+## `antigravity/guard.py`
+
+The `PreToolUse` hook of Antigravity. It gets each tool call and answers with a decision. It runs
+the five shell guards and the working-tree check of `sandbox-semantics.py` on `run_command`,
+`kaimon-session.py` on a Kaimon `ex` or `manage_repl` call, and the `deny` list of
+`guard-paths.json` on each path argument and each word of a command. A refusal of a guard becomes
+`deny`, an "ask" answer `force_ask`, and a pass `ask`, which leaves Antigravity's own rules in
+force. It fails closed: a guard that cannot run, fails, prints no answer it can read or times out
+gives `deny`.

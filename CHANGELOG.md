@@ -2,6 +2,25 @@
 
 ## Unreleased
 
+- **`harness install` writes the permission layer of Antigravity**, below `~/.gemini/`, once
+  Antigravity has made that directory; without it the plan holds no file and one warning. The new
+  adapter `adapters/antigravity/` writes `config/hooks.json`, one hook that runs
+  `config/hooks/guard.py` on every tool call, the seven guard scripts beside it,
+  `config/guard-paths.json`, and three keys of the CLI's `antigravity-cli/settings.json`:
+  `permissions`, `toolPermission: "proceed-in-sandbox"` and `enableTerminalSandbox: true`. The
+  merge keeps every other key and backs up the file it replaces; a file that is not a JSON object
+  exits 2 before any write. `guard.py` gives the guard scripts Claude Code's payload, from the
+  `CommandLine` and the `Cwd` or first workspace path of a shell call and the `Arguments` of a
+  Kaimon `ex` or `manage_repl` call, and refuses a path of the path list in any path argument or
+  any word of a command; the path list adds `~/.gemini/config/mcp_config.json`. A pass answers
+  `ask`, which leaves Antigravity's own rules in force, and any failure of a guard answers `deny`.
+  The rules are the settings template's: each Bash entry a `command(…)` rule, each Read and Edit
+  path a `read_file(…)` or `write_file(…)` rule, each allow host a `read_url(…)` rule. A path with
+  a glob that Antigravity cannot express is dropped from the rules: the seven `Read(**/X)` denies,
+  which the path list of `guard.py` still covers, seven Edit denies and two Edit asks. No
+  instruction, skill or agent is installed for Antigravity. `hooks/probe.py` runs `guard.py` on a
+  fixture home, with cases for its refusals and for each way in which it fails closed.
+
 - **The settings template allows the four read-only Zotero tools** `mcp__zotero__ping`,
   `search_items`, `get_item` and `list_attachments`. Before, they were allowed only in a
   `settings.local.json`, which `harness settings` does not measure and the installer warns about.

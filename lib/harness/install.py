@@ -474,7 +474,8 @@ def load_cases(check, tmp):
 def register(sub):
     p = changing(sub.add_parser("install", help="install the configuration of each frontend",
                                 description="Install the Julia environment of the scripts and the configuration "
-                                            "of each frontend: Claude Code, OpenCode and oh-my-pi. Without --apply "
+                                            "of each frontend: Claude Code, OpenCode, oh-my-pi and Antigravity. "
+                                            "Without --apply "
                                             "it prints the plan and exits 1 when a file would change, 0 when none "
                                             "would; --apply installs. A refusal exits with status 2."))
     p.add_argument("--force", action="store_true", help="replace a file that the install refuses to replace")

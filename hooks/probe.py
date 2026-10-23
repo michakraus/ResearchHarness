@@ -1288,6 +1288,239 @@ def oc_cases():
     return total, wrong
 
 
+# Antigravity's guard hook, `adapters/antigravity/guard.py`, runs with this interpreter in a fixture
+# home's `.gemini/config/`, where `hooks.json` runs it, as hooks/guard.py beside the seven guard scripts of
+# OC_SCRIPTS, linked from this directory, and with `guard-paths.json` rendered with the dummy
+# profile and the fixture's home. It gets the payload that Antigravity sends, `toolCall` and
+# `workspacePaths`, and its verdict is the `decision` it prints. The working directory of the
+# process is the fixture's `.gemini/config/`, which is no git work tree, as the real one is not;
+# the call's working directory is CWD, the probe's work tree, through `workspacePaths` or `Cwd`.
+# A bash command also gets the verdict of the rendered `permissions` rules, deny before ask
+# before allow, read with the adapter's `rule_matches`.
+AGY_SSH = "~/.ssh/id_ed25519"
+# (tool, args, the hook's decision, the permission rules' verdict for a run_command)
+AGY_CASES = [
+    ("run_command", {"CommandLine": "git push --force origin x"}, "ask", "deny"),
+    ("run_command", {"CommandLine": "sed -i s/a/b/ f"}, "deny", "deny"),
+    ("run_command", {"CommandLine": "git add -A"}, "deny", None),
+    ("run_command", {"CommandLine": "cat ~/.config/gh/hosts.yml"}, "deny", None),
+    ("run_command", {"CommandLine": "cat ~/.gemini/config/mcp_config.json"}, "deny", None),
+    ("run_command", {"CommandLine": "cat .env"}, "deny", None),
+    ("run_command", {"CommandLine": "git status"}, "ask", "allow"),
+    ("run_command", {"CommandLine": "gh api -X POST repos/a/b/issues"}, "force_ask", None),
+    ("run_command", {"CommandLine": "ls -la", "Cwd": "~/.ssh"}, "deny", None),
+    ("run_command", {"CommandLine": "sed -i s/a/b/ f", "Cwd": CWD}, "deny", None),
+    ("run_command", {"CommandLine": "env KEY=~/.netrc true"}, "deny", None),
+    ("run_command", {"CommandLine": "cat " + AGY_SSH + ' "'}, "deny", None),
+    ("run_command", {"CommandLine": "gh api -X POST repos/a/b/issues && git add -A"}, "deny", None),
+    # sandbox-semantics.py runs with `--work-tree` alone: the work-tree check refuses, the other
+    # shapes pass.
+    ("run_command", {"CommandLine": "git init sub"}, "deny", None),
+    ("run_command", {"CommandLine": "echo $(gh run view 1)"}, "ask", None),
+    ("read_file", {"Path": AGY_SSH}, "deny", None),
+    ("read_file", {"Path": "~/.SSH/ID_ED25519"}, "deny", None),
+    ("read_file", {"Path": "~/.gemini/config/mcp_config.json"}, "deny", None),
+    ("read_file", {"Path": "src/Foo.jl"}, "ask", None),
+    ("view_file", {"AbsolutePath": AGY_SSH}, "deny", None),
+    ("write_to_file", {"TargetFile": "~/.aws/credentials", "CodeContent": "x"}, "deny", None),
+    ("replace_file_content", {"TargetFile": "~/.netrc", "TargetContent": "a", "ReplacementContent": "b"}, "deny",
+     None),
+    ("grep_search", {"Query": "token", "SearchPath": "~/.gnupg"}, "deny", None),
+    ("find_by_name", {"Pattern": "*", "SearchDirectory": "~/.ssh"}, "deny", None),
+    ("list_dir", {"DirectoryPath": "~/.config/api-keys"}, "deny", None),
+    ("write_file", {"Path": "notes.md", "Content": "x"}, "ask", None),
+    ("send_message", {"Message": "done", "Recipient": "main"}, "ask", None),
+    ("call_mcp_tool", {"ServerName": "kaimon", "ToolName": "ex", "Arguments": {"e": "1"}}, "deny", None),
+    ("call_mcp_tool", {"ServerName": "kaimon", "ToolName": "ex", "Arguments": {"e": "1", "ses": "abcd1234"}}, "ask",
+     None),
+    ("call_mcp_tool", {"ServerName": "kaimon", "ToolName": "manage_repl", "Arguments": {"command": "restart"}},
+     "deny", None),
+    ("call_mcp_tool", {"ServerName": "kaimon", "ToolName": "ex", "Arguments": '{"e": "1"}'}, "deny", None),
+    ("call_mcp_tool", {"ServerName": "kaimon", "ToolName": "ping", "Arguments": {}}, "ask", None),
+    ("call_mcp_tool", {"ServerName": "zotero", "ToolName": "ex", "Arguments": {}}, "ask", None),
+]
+
+
+def agy_cases():
+    """The cases of Antigravity's guard hook: (number of cases, number wrong)."""
+    total = wrong = 0
+
+    def report(ok, line):
+        nonlocal total, wrong
+        total, wrong = total + 1, wrong + (not ok)
+        print(f"{'ok ' if ok else 'BAD'} {line}")
+
+    def home(name, scripts=None, paths=None, timeout=None):
+        """A fixture home with guard.py and the seven guard scripts of OC_SCRIPTS in
+        .gemini/config/hooks/, each one that `scripts` names replaced by its text there, or left
+        out for None, and the path list `paths`, else the rendered one, or none for False.
+        `timeout` replaces guard.py's TIMEOUT in seconds."""
+        scripts = scripts or {}
+        h = FIXTURE.name + "/" + name
+        config = h + "/.gemini/config"
+        os.makedirs(config + "/hooks")
+        for script in OC_SCRIPTS:
+            if script not in scripts:
+                os.symlink(HOOKS + script, config + "/hooks/" + script)
+            elif scripts[script] is not None:
+                with open(config + "/hooks/" + script, "w") as f:
+                    f.write(scripts[script])
+        with open(REPO + "/adapters/antigravity/guard.py") as f:
+            source = f.read()
+        if timeout is not None:
+            line = "TIMEOUT = 10\n"
+            if line not in source:
+                raise OSError(f"adapters/antigravity/guard.py holds no line {line!r}, which the timeout case replaces")
+            source = source.replace(line, f"TIMEOUT = {timeout}\n")
+        with open(config + "/hooks/guard.py", "w") as f:
+            f.write(source)
+        if paths is not False:
+            with open(config + "/guard-paths.json", "w") as f:
+                f.write(paths if paths is not None else agy.guard_paths({**dummy, "home": h}))
+        return h
+
+    def verdict(h, tool=None, args=None, workspace=CWD, raw=None, env=None, argv=None):
+        """The decision of the hook in home `h` on a call of `tool` with `args`, or on the payload
+        text `raw`; what went wrong when it prints no decision, or `{}`."""
+        payload = raw if raw is not None else json.dumps({
+            "conversationId": "probe", "modelName": "probe", "stepIdx": 1,
+            "toolCall": {"name": tool, "args": args}, "workspacePaths": [workspace]})
+        config = h + "/.gemini/config"
+        try:
+            p = subprocess.run(argv or [sys.executable, config + "/hooks/guard.py"], input=payload,
+                               capture_output=True, text=True, timeout=TIMEOUT, cwd=config,
+                               env=env or {**CLEAN, "HOME": "/" + h})
+        except subprocess.TimeoutExpired:
+            return "timeout", ""
+        try:
+            answer = json.loads(p.stdout)
+        except ValueError:
+            return f"exit {p.returncode}, unreadable output {p.stdout[-80:]!r}", p.stderr
+        if p.returncode != 0 or not isinstance(answer, dict) or not answer.get("decision"):
+            return f"exit {p.returncode}, answer {answer!r}", p.stderr
+        if answer["decision"] != "ask" and not answer.get("reason"):
+            return f"{answer['decision']} without a reason", ""
+        return answer["decision"], answer.get("reason", "")
+
+    def permission(command):
+        for kind in ("deny", "ask", "allow"):
+            if any(agy.rule_matches(r, command) for r in rules[kind]):
+                return kind
+        return "none"
+
+    try:
+        sys.path.insert(0, REPO + "/lib")
+        from harness import frontends, profile
+
+        agy = frontends.adapter("antigravity")
+        dummy = profile.load(REPO + "/examples/profile.toml")
+        cfg = frontends.adapter("claude").settings_template(dummy, FIXTURE.name + "/no-network.toml")
+        rules, _ = agy.render_permissions(cfg, dummy)
+    except Exception as e:  # the case reports it as wrong, and the probe goes on to its summary
+        report(False, f"exp render got {type(e).__name__}  [agy-guard]  {e}")
+        return total, wrong
+    exit_with = "import sys\nsys.exit({})\n".format
+    try:
+        good = home("agy-home")
+        fail = {label: home("agy-home-" + str(i), **kw) for i, (label, kw) in enumerate([
+            ("a guard script is replaced by exit 7", {"scripts": {"no-blind-stage.py": exit_with(7)}}),
+            ("a guard script is missing", {"scripts": {"rm-scope.py": None}}),
+            ("a guard prints output that is not JSON", {"scripts": {"gh-api-writes.py": "print('hello')\n"}}),
+            ("a guard takes longer than the timeout",
+             {"scripts": {"git-archive-output.py": "import time\ntime.sleep(5)\n"}, "timeout": 1}),
+            ("the Kaimon guard exits 1", {"scripts": {"kaimon-session.py": exit_with(1)}}),
+            ("the path list is missing", {"paths": False}),
+            ("the deny list is not a list", {"paths": '{"deny": "x"}'}),
+            ("the path list is not JSON", {"paths": "{"}),
+        ])}
+    except OSError as e:
+        report(False, f"exp fixture got {type(e).__name__}  [agy-guard]  {e}")
+        return total, wrong
+    for tool, args, expected, pattern in AGY_CASES:
+        got, _ = verdict(good, tool, args)
+        report(got == expected, f"exp {expected} got {got}  [agy-guard]  {tool} {args}")
+        if pattern is not None:
+            got = permission(args["CommandLine"])
+            report(got == pattern, f"exp {pattern} got {got}  [agy-perms]  {args['CommandLine']}")
+    # The working directory of a call is its `Cwd`, else the first of `workspacePaths`: the `sed -i`
+    # runs in the work tree only through one of them.
+    elsewhere = FIXTURE.name
+    for args, workspace, expected in [
+        ({"CommandLine": "sed -i s/a/b/ f"}, elsewhere, "ask"),
+        ({"CommandLine": "sed -i s/a/b/ f", "Cwd": CWD}, elsewhere, "deny"),
+        ({"CommandLine": "sed -i s/a/b/ f", "Cwd": elsewhere}, CWD, "ask"),
+    ]:
+        got, _ = verdict(good, "run_command", args, workspace=workspace)
+        report(got == expected, f"exp {expected} got {got}  [agy-guard]  {args} with workspacePaths [{workspace}]")
+    # The Kaimon guard runs on `ex` and `manage_repl` alone: with it broken, `ping` still passes.
+    got, _ = verdict(fail["the Kaimon guard exits 1"], "call_mcp_tool",
+                     {"ServerName": "kaimon", "ToolName": "ping", "Arguments": {}})
+    report(got == "ask", f"exp ask got {got}  [agy-guard]  kaimon ping with the Kaimon guard broken")
+    # A relative word is a path below the call's working directory.
+    got, _ = verdict(good, "run_command", {"CommandLine": "cat .netrc", "Cwd": good})
+    report(got == "deny", f"exp deny got {got}  [agy-guard]  cat .netrc with Cwd the home")
+    # A payload with no workspace path still gets an answer.
+    got, _ = verdict(good, raw=json.dumps({"toolCall": {"name": "run_command", "args": {"CommandLine": "git status"}},
+                                           "workspacePaths": []}))
+    report(got == "ask", f"exp ask got {got}  [agy-guard]  git status with no workspacePaths")
+    # A guard's refusal reaches the model with the guard's own reason.
+    got, reason = verdict(good, "run_command", {"CommandLine": "git add -A"})
+    ok = got == "deny" and reason.strip() != "" and "fails closed" not in reason
+    report(ok, f"exp deny got {got}  [agy-guard]  git add -A with no-blind-stage.py's own reason: {reason[:80]!r}")
+    # A guard that cannot start denies: guard.py loaded in this process, with a `subprocess.run`
+    # that raises as a missing interpreter does.
+    try:
+        import importlib.util
+        from unittest import mock
+
+        spec = importlib.util.spec_from_file_location("agy_guard", good + "/.gemini/config/hooks/guard.py")
+        shim = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(shim)
+        with mock.patch.object(shim.subprocess, "run", side_effect=FileNotFoundError(2, "No such file")):
+            got = shim.run("no-blind-stage.py", "{}")
+    except Exception as e:  # the case reports it as wrong
+        got = (type(e).__name__, str(e))
+    report(got[0] == "deny" and "could not start" in str(got[1]),
+           f"exp deny got {got[0]}  [agy-guard]  fail-closed, a guard that cannot start: {str(got[1])[:80]!r}")
+    # It fails closed: each of these denies `git status`, or the Kaimon call, with its reason.
+    status = {"CommandLine": "git status"}
+    for label, h, tool, args, raw, want in [
+        *[(label, fail[label], "run_command", status, None, want) for label, want in [
+            ("a guard script is replaced by exit 7", "exited with status 7"),
+            ("a guard script is missing", "is missing"),
+            ("a guard prints output that is not JSON", "not a JSON answer"),
+            ("a guard takes longer than the timeout", "did not answer"),
+            ("the path list is missing", "cannot be used"),
+            ("the deny list is not a list", "no list of strings"),
+            ("the path list is not JSON", "cannot be used"),
+        ]],
+        ("the Kaimon guard exits 1", fail["the Kaimon guard exits 1"], "call_mcp_tool",
+         {"ServerName": "kaimon", "ToolName": "ex", "Arguments": {"e": "1", "ses": "abcd1234"}}, None,
+         "exited with status 1"),
+        ("the path list is missing", fail["the path list is missing"], "send_message", {"Message": "x"}, None,
+         "cannot be used"),
+        ("the payload is not JSON", good, None, None, "not json", "failed"),
+        ("the payload has no toolCall", good, None, None, '{"workspacePaths": []}', "failed"),
+        ("the tool call has no name", good, None, None, '{"toolCall": {"args": {}}}', "failed"),
+        ("the args are a list", good, "read_file", [], None, "not one that the guard hook can read"),
+        ("the tool name is not a string", good, None, None, '{"toolCall": {"name": 5, "args": {}}}',
+         "not one that the guard hook can read"),
+        ("a run_command has no CommandLine", good, "run_command", {}, None, "no CommandLine"),
+    ]:
+        got, reason = verdict(h, tool, args, raw=raw)
+        ok = got == "deny" and want in reason
+        report(ok, f"exp deny got {got}  [agy-guard]  fail-closed, {label}: {tool} {args}"
+                   f"{'' if ok else ' ' + repr(reason[:160])}")
+    # With no python3 on the PATH, the handler of hooks.json fails and prints nothing, which
+    # Antigravity reads as a block.
+    p = subprocess.run(["/bin/sh", "-c", "python3 hooks/guard.py"], input="{}", capture_output=True, text=True,
+                       cwd=good + "/.gemini/config", env={**CLEAN, "HOME": "/" + good, "PATH": "/nonexistent"},
+                       timeout=TIMEOUT)
+    report(p.returncode != 0 and p.stdout == "",
+           f"exp exit!=0 got {p.returncode}  [agy-guard]  fail-closed, python3 is not on PATH: no output {p.stdout!r}")
+    return total, wrong
+
+
 FAIL_OPEN = [
     "not json at all",
     "",
@@ -1595,6 +1828,8 @@ def cases():
     n, bad = omp_cases()
     total, wrong = total + n, wrong + bad
     n, bad = oc_cases()
+    total, wrong = total + n, wrong + bad
+    n, bad = agy_cases()
     total, wrong = total + n, wrong + bad
     print(f"\n{total} cases, {wrong} wrong")
     return 1 if wrong else 0
