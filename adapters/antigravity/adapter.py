@@ -109,7 +109,7 @@ def render_hooks(root):
 
 
 def guard_paths(profile):
-    """The text of guard-paths.json, rendered with `profile`: under `deny` the `read` denies of
+    """The text of guard-paths.json, rendered with `profile`: under `deny` the `deny` list of
     OpenCode's path list, then MCP_CONFIG and LAYER; under `edit` every `Edit` deny of the
     settings template, and under `ask` every `Edit` ask, each with a leading `//` as `/`; under
     `bash_deny` and `bash_ask` the body of every `Bash` deny and ask of the template."""
@@ -156,7 +156,8 @@ def path_rule(action, body):
 def render_permissions(cfg, profile):
     """({list: [rule]}, [(list, entry, reason)]) of the `permissions` of `cfg`, the rendered
     settings template: the Antigravity rules in the template's lists and order, MCP_CONFIG as a
-    `read_file` deny after them, and each entry that has no rule, with its reason."""
+    `read_file` deny and LAYER and MCP_CONFIG as `write_file` denies after them, and each entry that
+    has no rule, with its reason."""
     rules, dropped = {key: [] for key in LISTS}, []
     for key in LISTS:
         for entry in cfg["permissions"].get(key, []):

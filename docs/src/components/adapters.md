@@ -8,9 +8,9 @@ The sources of an adapter are below `adapters/<frontend>/`: `adapters/claude/` f
 Antigravity.
 
 Each adapter has one Python module, `adapter.py`. `lib/harness/frontends.py` loads the four
-modules by path, in the order Claude Code, OpenCode, oh-my-pi, Antigravity. Each module gives its own
-subcommands, its part of `harness install`, its test cases for `harness test`, and the restart line
-that the install prints after a change. The other files of an adapter are instruction text,
+modules by path, in the order Claude Code, OpenCode, oh-my-pi, Antigravity. Each module gives its
+own subcommands, its part of `harness install`, its test cases for `harness test`, and the restart
+line that the install prints after a change. The other files of an adapter are instruction text,
 configuration and extension code. `harness install --apply` copies or renders them into the
 configuration directory of the frontend.
 [The architecture](../architecture.md#the-opencode-and-oh-my-pi-adapters) describes what each
@@ -387,8 +387,8 @@ Antigravity has made that directory; without it, the plan holds no file and one 
 the seven guard scripts in `config/hooks/`, the path list `config/guard-paths.json`, and three keys
 of the CLI's `antigravity-cli/settings.json`: `permissions`, `toolPermission` and
 `enableTerminalSandbox`. The merge keeps every other key of that file and its indent, and backs up
-the file it replaces. A file that is not a regular file or not a JSON
-object exits 2 before any write.
+the file it replaces. A file that is not a regular file or not a JSON object exits 2 before any
+write.
 
 The permission rules are the settings template's: a Bash entry becomes a `command(…)` rule, a Read
 or Edit path a `read_file(…)` or `write_file(…)` rule, and an allow host of the network lists a
@@ -410,7 +410,6 @@ asks, from the lists `bash_deny` and `bash_ask`, to each segment of the command,
 an assignment, a wrapper such as `env` or a keyword such as `then` before the command does not
 hide it, and a quoted word is one word. On a tool that writes a file, it also applies the `edit`
 list, the template's Edit denies, and the `ask` list, its Edit asks. The `deny` list holds the
-files of the layer itself. A refusal of a guard becomes
-`deny`, an "ask" answer `force_ask`, and a pass `ask`, which leaves Antigravity's own rules in
-force. It fails closed: a guard that cannot run, fails, prints no answer it can read or times out
-gives `deny`.
+files of the layer itself. A refusal of a guard becomes `deny`, an "ask" answer `force_ask`, and a
+pass `ask`, which leaves Antigravity's own rules in force. It fails closed: a guard that cannot
+run, fails, prints no answer it can read or times out gives `deny`.

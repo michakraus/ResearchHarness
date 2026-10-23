@@ -19,18 +19,17 @@
   the template's Bash denies and asks to each segment of the command, the bodies of `$(…)`,
   backticks and `( … )` included, on the words of the segment from any word, so that the desktop
   app, which reads no `permissions`, still refuses `git push --force`, also after `FOO=1`, `env`
-  or `then`. On a tool that writes a file, it also refuses a path of the `edit` list,
-  every Edit deny of the template, and asks for a path of the `ask` list, every Edit ask. A pass
-  answers `ask`, which leaves Antigravity's own rules in force, and any failure of a guard answers
-  `deny`. The rules are the settings template's: each Bash entry a `command(…)` rule, whose `*`
-  in an allow rule matches no text across a segment, each Read and Edit path a `read_file(…)` or
+  or `then`. On a tool that writes a file, it also refuses a path of the `edit` list, every Edit
+  deny of the template, and asks for a path of the `ask` list, every Edit ask. A pass answers
+  `ask`, which leaves Antigravity's own rules in force, and any failure of a guard answers `deny`.
+  The rules are the settings template's: each Bash entry a `command(…)` rule, whose `*` in an
+  allow rule matches no text across a segment, each Read and Edit path a `read_file(…)` or
   `write_file(…)` rule, each allow host a `read_url(…)` rule, and `write_file(…)` denies for
-  `mcp_config.json` and the files of the layer. A path with a glob that
-  Antigravity cannot express is dropped from the rules, and `guard.py` still covers it: the seven
-  `Read(**/X)` denies in its `deny` list, seven Edit denies and two Edit asks in its `edit` and
-  `ask` lists. No
-  instruction, skill or agent is installed for Antigravity. `hooks/probe.py` runs `guard.py` on a
-  fixture home, with cases for its refusals and for each way in which it fails closed.
+  `mcp_config.json` and the files of the layer. A path with a glob that Antigravity cannot express
+  is dropped from the rules, and `guard.py` still covers it: the seven `Read(**/X)` denies in its
+  `deny` list, seven Edit denies and two Edit asks in its `edit` and `ask` lists. No instruction,
+  skill or agent is installed for Antigravity. `hooks/probe.py` runs `guard.py` on a fixture home,
+  with cases for its refusals and for each way in which it fails closed.
 - **A new plan specifies each part in the spec-delta format.** `plan-parts` writes the spec of a
   part of tier `build` or `reviewed` as a file, `Tasks/Evidence/<plan>/<part>/spec.md` with its
   `checks/`, after `skills/plan-parts/spec-format.md`: a living spec whose premises run on the

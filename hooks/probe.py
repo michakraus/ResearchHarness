@@ -1419,8 +1419,8 @@ AGY_CASES = [
     ("run_command", {"CommandLine": "git -C sub add .gitignore"}, "ask", None),
     ("run_command", {"CommandLine": 'git commit -m "git push --force"'}, "ask", None),
     ("run_command", {"CommandLine": 'git commit -m "x --amend"'}, "ask", None),
-    # A rule that asks does not override a guard that refuses: the template has no rule for
-    # `git init`, which sandbox-semantics.py refuses.
+    # A rule that asks does not override a guard that refuses: no deny or ask rule of the template
+    # matches `git init sub`, which sandbox-semantics.py refuses.
     ("run_command", {"CommandLine": "gh pr merge 1 && git init sub"}, "deny", None),
 ]
 
