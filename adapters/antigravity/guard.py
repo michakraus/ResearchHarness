@@ -204,7 +204,8 @@ def refused_command(command, cwd, rules):
 def segments(line):
     """The segments of the command line `line`, as Claude Code checks a Bash rule on them: the line
     split at `;`, `&&`, `||`, `|`, `&` and a newline outside quotes, and the body of each `$(…)`,
-    backtick and `( … )` a segment of its own, split the same way; each stripped, none empty."""
+    backtick and `( … )` a segment of its own, split the same way; a backslash-newline outside
+    single quotes dropped; each stripped, none empty."""
     found = []
 
     def scan(i, close):
@@ -212,8 +213,8 @@ def segments(line):
         seg, quoted = "", False
         while i < len(line):
             c = line[i]
-            if c == "\\":
-                seg, i = seg + line[i:i + 2], i + 2
+            if c == "\\":  # a backslash-newline joins two lines, as in the shell
+                seg, i = seg + ("" if line.startswith("\n", i + 1) else line[i:i + 2]), i + 2
             elif c == "'" and not quoted:
                 j = line.find("'", i + 1)
                 j = len(line) if j < 0 else j + 1
@@ -239,28 +240,53 @@ def segments(line):
 
 
 def bash_rules(key):
-    """[(body, matcher)] of the Bash bodies under `key` of the path list, where `matcher(words)`
-    says whether `Bash(body)` matches a segment with the words `words` (segment_words), from any of
-    its words, so that an assignment, a wrapper such as `env` or a keyword such as `then` before
-    the command does not hide it: `Bash(x *)` when the words of `x` are a run of `words`, any
-    other body when it matches the words from one of them to the last, with `*` as any text and a
-    trailing ` *` as no text too; a string, the reason to deny, when the list cannot be used. A
-    blank of the body matches only the boundary between two words (WORD_BREAK), so that a quoted
-    word such as the message of `git commit -m "git push --force"` matches no rule."""
+    """[(body, bash_matcher(body))] of the Bash bodies under `key` of the path list; a string, the
+    reason to deny, when the list cannot be used."""
     bodies = listed(key)
-    if isinstance(bodies, str):
-        return bodies
-    rules = []
-    for body in bodies:
-        if m := re.fullmatch(r"([^*]*[^*\s]) \*", body, re.S):
-            x = m.group(1).split()
-            rules.append((body, lambda w, x=x: any(w[i:i + len(x)] == x for i in range(len(w)))))
-        else:
-            head, tail = (body[:-2], f"(?:{WORD_BREAK}.*)?") if body.endswith(" *") else (body, "")
-            literal = (WORD_BREAK.join(map(re.escape, re.split(r"\s+", part))) for part in head.split("*"))
-            pattern = re.compile(".*".join(literal) + tail, re.S)
-            rules.append((body, lambda w, p=pattern: any(p.fullmatch(WORD_BREAK.join(w[i:])) for i in range(len(w)))))
-    return rules
+    return bodies if isinstance(bodies, str) else [(body, bash_matcher(body)) for body in bodies]
+
+
+def bash_matcher(body):
+    """`matches(words, text)`: whether `Bash(body)` matches a segment with the words `words`
+    (segment_words), `text` being those words joined by WORD_BREAK, from any of its words, so that
+    an assignment, a wrapper such as `env` or a keyword such as `then` before the command does not
+    hide it: `Bash(x *)` when the words of `x` are a run of `words`, any other body when it matches
+    the words from one of them to the last, with `*` as any text and a trailing ` *` as no text
+    too. A blank of the body matches only the boundary between two words, so that a quoted word
+    such as the message of `git commit -m "git push --force"` matches no rule. The cost is linear
+    in the length of `text`."""
+    if m := re.fullmatch(r"([^*]*[^*\s]) \*", body, re.S):
+        x = m.group(1).split()
+        return lambda w, text: any(w[i:i + len(x)] == x for i in range(len(w)))
+    trailing = body.endswith(" *")
+    parts = [WORD_BREAK.join(re.split(r"\s+", part)) for part in (body[:-2] if trailing else body).split("*")]
+    return lambda w, text: placed(parts, trailing, text)
+
+
+def placed(parts, trailing, text):
+    """Whether the literal parts `parts` of a Bash body, with a `*` between each two, match `text`
+    from one of its word starts to its end: the first part at a word start (the start of `text`, or
+    just after a WORD_BREAK), each later part after the one before it, and the last part at the end
+    of `text`, or, when the body has a `trailing` ` *`, also before a WORD_BREAK. Each part takes
+    the earliest place that it can: a `*` matches any text, so an earlier place leaves the later
+    parts all the text that a later place leaves them, and one `str.find` for each part decides."""
+    if len(parts) == 1:
+        if trailing:
+            return (WORD_BREAK + text + WORD_BREAK).find(WORD_BREAK + parts[0] + WORD_BREAK) >= 0
+        return (WORD_BREAK + text).endswith(WORD_BREAK + parts[0])
+    first, *middle, last = parts
+    at = (WORD_BREAK + text).find(WORD_BREAK + first)
+    if at < 0:
+        return False
+    at += len(first)
+    for part in middle:
+        at = text.find(part, at)
+        if at < 0:
+            return False
+        at += len(part)
+    if text.endswith(last) and len(text) - len(last) >= at:
+        return True
+    return trailing and text.find(last + WORD_BREAK, at) >= 0
 
 
 def segment_words(segment):
@@ -274,8 +300,8 @@ def segment_words(segment):
 
 def matched(rules, parts):
     """The body of the first of `rules` that matches a segment of `parts`, or None."""
-    split = [segment_words(s) for s in parts]
-    return next((body for body, matches in rules for w in split if matches(w)), None)
+    split = [(w, WORD_BREAK.join(w)) for w in map(segment_words, parts)]
+    return next((body for body, matches in rules for w, text in split if matches(w, text)), None)
 
 
 def run(script, payload, args=()):

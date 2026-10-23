@@ -1397,6 +1397,9 @@ AGY_CASES = [
     ("run_command", {"CommandLine": "git status & git push --force origin x"}, "deny", None),
     ("run_command", {"CommandLine": "git status\ngit push --force origin x"}, "deny", None),
     ("run_command", {"CommandLine": "echo \\'; git push --force origin x"}, "deny", None),
+    ("run_command", {"CommandLine": 'echo "a \\" ; git push --force origin x"'}, "ask", None),
+    ("run_command", {"CommandLine": "git push \\\n--force origin x"}, "deny", None),
+    ("run_command", {"CommandLine": "git push --force\\\n origin x"}, "deny", None),
     ("run_command", {"CommandLine": 'echo "a; git push --force origin x"'}, "ask", None),
     ("run_command", {"CommandLine": 'git "push" --force origin x'}, "deny", None),
     ("run_command", {"CommandLine": "git push --force origin x '"}, "deny", None),
@@ -1413,6 +1416,7 @@ AGY_CASES = [
     ("run_command", {"CommandLine": "echo `date` git push --force origin x"}, "deny", None),
     ("run_command", {"CommandLine": 'git -C . "reset" --hard'}, "deny", None),
     ("run_command", {"CommandLine": "FOO=1 git -C . reset --hard"}, "deny", None),
+    ("run_command", {"CommandLine": "git -C sub add .gitignore"}, "ask", None),
     ("run_command", {"CommandLine": 'git commit -m "git push --force"'}, "ask", None),
     ("run_command", {"CommandLine": 'git commit -m "x --amend"'}, "ask", None),
     # A rule that asks does not override a guard that refuses: the template has no rule for
@@ -1461,16 +1465,16 @@ def agy_cases():
                 f.write(paths(rendered) if callable(paths) else paths if paths is not None else rendered)
         return h
 
-    def verdict(h, tool=None, args=None, workspace=CWD, raw=None, env=None, argv=None):
+    def verdict(h, tool=None, args=None, workspace=CWD, raw=None, env=None, argv=None, limit=TIMEOUT):
         """The decision of the hook in home `h` on a call of `tool` with `args`, or on the payload
-        text `raw`; what went wrong when it prints no decision, or `{}`."""
+        text `raw`, within `limit` seconds; what went wrong when it prints no decision, or `{}`."""
         payload = raw if raw is not None else json.dumps({
             "conversationId": "probe", "modelName": "probe", "stepIdx": 1,
             "toolCall": {"name": tool, "args": args}, "workspacePaths": [workspace]})
         config = h + "/.gemini/config"
         try:
             p = subprocess.run(argv or [sys.executable, config + "/hooks/guard.py"], input=payload,
-                               capture_output=True, text=True, timeout=TIMEOUT, cwd=config,
+                               capture_output=True, text=True, timeout=limit, cwd=config,
                                env=env or {**CLEAN, "HOME": "/" + h})
         except subprocess.TimeoutExpired:
             return "timeout", ""
@@ -1541,6 +1545,11 @@ def agy_cases():
         if pattern is not None:
             got = permission(args["CommandLine"])
             report(got == pattern, f"exp {pattern} got {got}  [agy-perms]  {args['CommandLine']}")
+    # A line of many words gets its answer within the timeout that hooks.json gives the hook.
+    for line in ["echo " + "git push " * 10000, "echo " + "a " * 20000]:
+        got, _ = verdict(good, "run_command", {"CommandLine": line}, limit=agy.HOOK_TIMEOUT)
+        report(got == "ask", f"exp ask got {got}  [agy-guard]  {line[:20]!r}…, {len(line.split())} words, "
+                             f"within {agy.HOOK_TIMEOUT} s")
     # The working directory of a call is its `Cwd`, resolved against the first of `workspacePaths`,
     # else that path: the `sed -i` runs in the work tree only through one of them. The template's
     # rules are left out of these homes, so that the shell guards decide the `sed -i`.

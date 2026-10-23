@@ -58,6 +58,7 @@ not reach it; guard.py applies the Bash denies and asks to each segment of the l
 import json
 import os
 import pathlib
+import random
 import re
 import shlex
 import stat
@@ -469,6 +470,70 @@ def rule_cases(case):
          and not rule_matches(branch, "git branch $(rm -rf ~/x) -f") and rule_matches(sed, "sed -i 's/a;b/c/' f")
          and rule_matches(command_rule("git -C * reset --hard *"), "git -C . reset --hard"),
          "an allow regex rule stays in one segment, a deny regex rule does not, and a trailing * matches nothing too")
+    lists = json.loads(guard_paths(profile))
+    # `git push  *` is a body of one literal part with a trailing ` *`, a form that no template body
+    # has: each such body is a prefix body.
+    matcher_cases(case, [*lists["bash_deny"], *lists["bash_ask"], "git push  *"])
+
+
+def reference_matcher(body, word_break):
+    """The matcher of `Bash(body)` that the cases hold guard.py's against, a regular expression:
+    `Bash(x *)` when the words of `x` are a run of the words, any other body when its pattern
+    full-matches the words from one of them to the last, joined by `word_break`, with `*` as any
+    text and a trailing ` *` as no text too. Its cost grows with the square of the number of words,
+    so the cases give it short lists only."""
+    if m := re.fullmatch(r"([^*]*[^*\s]) \*", body, re.S):
+        x = m.group(1).split()
+        return lambda w: any(w[i:i + len(x)] == x for i in range(len(w)))
+    head, tail = (body[:-2], f"(?:{word_break}.*)?") if body.endswith(" *") else (body, "")
+    literal = (word_break.join(map(re.escape, re.split(r"\s+", part))) for part in head.split("*"))
+    pattern = re.compile(".*".join(literal) + tail, re.S)
+    return lambda w: any(pattern.fullmatch(word_break.join(w[i:])) for i in range(len(w)))
+
+
+def matcher_cases(case, bodies):
+    """guard.py's matcher of each Bash body against reference_matcher, on a fixed set of word lists
+    of up to 8 words for each body: the body with each `*` filled by nothing, `x`, `zz` or one of
+    the body's own literal words, with up to two words put before it and after it and at times one
+    word replaced; and lists drawn from the body's literal words, each also with `zz` before or
+    after it, `x`, `zz` and the empty word."""
+    try:
+        total, matching, differ = compare_matchers(bodies)
+    except Exception as e:  # a case that crashes is BAD, and the next case still runs
+        case(lambda: False, f"guard.py's matcher of each Bash deny and ask runs: {type(e).__name__}: {e}")
+        return
+    case(lambda: not differ and 0 < matching < total,
+         f"guard.py's matcher of each Bash deny and ask decides as the reference regex on each of {total} word "
+         f"lists, {matching} of them matching: {differ[:3]}")
+
+
+def compare_matchers(bodies):
+    """(lists, lists that match, [(body, words, the reference's answer)] where guard.py's matcher
+    differs) of matcher_cases."""
+    guard = _guard_module()
+    total = matching = 0
+    differ = []
+    for body in bodies:
+        rng = random.Random(body)
+        pieces = [p for p in re.split(r"[\s*]+", body) if p]
+        tokens = sorted({*pieces, *(p + "zz" for p in pieces), *("zz" + p for p in pieces), "x", "zz", ""})
+        fills = ["", "x", "zz", " x ", " zz ", *(f" {p} " for p in pieces)]
+        lists = [body.replace("*", "zz").split(), body.replace("*", "").split()]
+        for _ in range(300):
+            w = re.sub(r"\*", lambda _: rng.choice(fills), body).split()
+            w = [rng.choice(tokens) for _ in range(rng.randint(0, 2))] + w
+            w += [rng.choice(tokens) for _ in range(rng.randint(0, 2))]
+            if rng.random() < 0.3:
+                w[rng.randrange(len(w))] = rng.choice(tokens)
+            lists.append(w)
+        lists += [[rng.choice(tokens) for _ in range(rng.randint(1, 8))] for _ in range(100)]
+        new, old = guard.bash_matcher(body), reference_matcher(body, guard.WORD_BREAK)
+        for w in (w for w in lists if len(w) <= 8):
+            want = old(w)
+            total, matching = total + 1, matching + want
+            if new(w, guard.WORD_BREAK.join(w)) != want:
+                differ.append((body, w, want))
+    return total, matching, differ
 
 
 # The characters that a regular expression reads as special, but `*`, written out here so that the

@@ -27,6 +27,21 @@
 - kind: defect
 - found: 2026-10-06
 
+### K88 · The Antigravity guard applies no Bash rule to a command that a string argument, ANSI-C or locale quoting, or a variable or substitution holds.
+
+- location: `adapters/antigravity/guard.py:249`
+- evidence: `guard.py` matches the template's Bash denies and asks on the words of each segment as
+  the line writes them, and does not run the shell's expansions. On a fixture home it answers
+  `deny` to `git push --force origin x` and `ask` to each of these lines, which run the same push:
+  `bash -c 'git push --force origin x'`, the same with `sh -c` and `zsh -c`,
+  `eval 'git push --force origin x'`, `git push $'--force' origin x`,
+  `git push $"--force" origin x`, `g=git; $g push --force origin x` and
+  `$(echo git) push --force origin x`. In the desktop app, which reads no `permissions`, such a
+  push then runs unless the app's own settings refuse it. The user decided to land the guard with
+  this limit of a text-pattern rule; the sandbox stays the containment.
+- kind: defect
+- found: 2026-10-23
+
 ### K22 · Under OpenCode, a verify critic carries the round-1 rule of the council.
 
 - location: `adapters/opencode/adapter.py:291-297`
