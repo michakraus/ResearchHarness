@@ -16,8 +16,11 @@ every machine and in CI. Each Python hook runs with this interpreter, `sys.execu
 with its shebang, and each call has a timeout.
 """
 
+import getpass
 import json
 import os
+import pathlib
+import pwd
 import re
 import shlex
 import shutil
@@ -1300,7 +1303,7 @@ def oc_cases():
 AGY_SSH = "~/.ssh/id_ed25519"
 # (tool, args, the hook's decision, the permission rules' verdict for a run_command)
 AGY_CASES = [
-    ("run_command", {"CommandLine": "git push --force origin x"}, "ask", "deny"),
+    ("run_command", {"CommandLine": "git push --force origin x"}, "deny", "deny"),
     ("run_command", {"CommandLine": "sed -i s/a/b/ f"}, "deny", "deny"),
     ("run_command", {"CommandLine": "git add -A"}, "deny", None),
     ("run_command", {"CommandLine": "cat ~/.config/gh/hosts.yml"}, "deny", None),
@@ -1355,6 +1358,53 @@ AGY_CASES = [
     ("run_command", {"CommandLine": "echo {} > ~/.gemini/config/guard-paths.json"}, "deny", None),
     ("run_command", {"CommandLine": "cat ~/.gemini/config/guard-paths.json"}, "deny", None),
     ("run_command", {"CommandLine": "rm ~/.gemini/config/hooks/guard.py"}, "deny", None),
+    # A home path in each form of the shell.
+    ("run_command", {"CommandLine": "cat $HOME/.netrc"}, "deny", None),
+    ("run_command", {"CommandLine": "cat ${HOME}/.netrc"}, "deny", None),
+    ("call_mcp_tool", {"ServerName": "kaimon", "ToolName": "ex", "Arguments": '{"e": "1", "ses": "abcd1234"}'}, "ask",
+     None),
+    # A glob is checked as written and cut to its directory, which is wide; a recursive command, a
+    # `cd`, a `Cwd` and a `SearchPath` make a path wide; a wide path that holds a deny path is refused.
+    ("run_command", {"CommandLine": "cat ~/.gemini/config/mcp_conf*.json"}, "deny", None),
+    ("run_command", {"CommandLine": "cat ~/.gemini/config/*"}, "deny", None),
+    ("run_command", {"CommandLine": "cat ~/.netr[c]"}, "deny", None),
+    ("run_command", {"CommandLine": "cat ~/.config/gh/{hosts.yml,x}"}, "deny", None),
+    ("run_command", {"CommandLine": "grep -r Bearer ~/.gemini/config"}, "deny", None),
+    ("run_command", {"CommandLine": "cd ~/.gemini/config && cat mcp_config.json"}, "deny", None),
+    ("run_command", {"CommandLine": "rg Bearer", "Cwd": "~/.gemini/config"}, "deny", None),
+    ("grep_search", {"Query": "Bearer", "SearchPath": "~/.gemini/config"}, "deny", None),
+    ("run_command", {"CommandLine": "cat ~/.gemini/config/skills/x/SKILL.md"}, "ask", None),
+    ("run_command", {"CommandLine": "cat ~/.gemini/config/skills/*/SKILL.md"}, "ask", None),
+    ("run_command", {"CommandLine": "ls ~/.gemini/config"}, "ask", None),
+    ("run_command", {"CommandLine": "ls src/*.jl"}, "ask", None),
+    ("run_command", {"CommandLine": "grep -r foo src"}, "ask", None),
+    ("run_command", {"CommandLine": "cd ~/Research && git status"}, "ask", None),
+    ("run_command", {"CommandLine": "grep -r Bearer ~/.GEMINI/config"}, "deny", None),
+    ("run_command", {"CommandLine": "cat /*"}, "deny", None),
+    ("run_command", {"CommandLine": "ls /"}, "ask", None),
+    # The template's Bash denies and asks, on each segment of the line.
+    ("run_command", {"CommandLine": "echo $(git push --force origin x)"}, "deny", None),
+    ("run_command", {"CommandLine": "echo `git push --force origin x`"}, "deny", None),
+    ("run_command", {"CommandLine": "(git push --force origin x)"}, "deny", None),
+    ("run_command", {"CommandLine": "git status && git push --force origin x"}, "deny", None),
+    ("run_command", {"CommandLine": "git status | git push --force origin x"}, "deny", None),
+    ("run_command", {"CommandLine": "gh pr merge 1"}, "force_ask", None),
+    ("run_command", {"CommandLine": "sed -i 's/a;b/c/' f"}, "deny", None),
+    ("run_command", {"CommandLine": "echo 'a; git push --force origin x'"}, "ask", None),
+    ("run_command", {"CommandLine": "git push origin main && ls -f"}, "ask", None),
+    ("run_command", {"CommandLine": "git -C . reset --hard"}, "deny", None),
+    ("run_command", {"CommandLine": "git status; git push --force origin x"}, "deny", None),
+    ("run_command", {"CommandLine": "git status & git push --force origin x"}, "deny", None),
+    ("run_command", {"CommandLine": "git status\ngit push --force origin x"}, "deny", None),
+    ("run_command", {"CommandLine": "echo \\'; git push --force origin x"}, "deny", None),
+    ("run_command", {"CommandLine": 'echo "a; git push --force origin x"'}, "ask", None),
+    ("run_command", {"CommandLine": 'git "push" --force origin x'}, "deny", None),
+    ("run_command", {"CommandLine": "git push --force origin x '"}, "deny", None),
+    ("run_command", {"CommandLine": "echo `date` git push --force origin x"}, "ask", None),
+    ("run_command", {"CommandLine": "pushd ~/.gemini/config && cat mcp_config.json"}, "deny", None),
+    # A rule that asks does not override a guard that refuses: the template has no rule for
+    # `git init`, which sandbox-semantics.py refuses.
+    ("run_command", {"CommandLine": "gh pr merge 1 && git init sub"}, "deny", None),
 ]
 
 
@@ -1367,12 +1417,12 @@ def agy_cases():
         total, wrong = total + 1, wrong + (not ok)
         print(f"{'ok ' if ok else 'BAD'} {line}")
 
-    def home(name, scripts=None, paths=None, timeout=None):
+    def home(name, scripts=None, paths=None, timeout=None, rendered_for=None):
         """A fixture home with guard.py and the seven guard scripts of OC_SCRIPTS in
         .gemini/config/hooks/, each one that `scripts` names replaced by its text there, or left
         out for None, and the path list `paths`, for a function the text `paths(rendered list)`, else
-        the rendered one, or none for False.
-        `timeout` replaces guard.py's TIMEOUT in seconds."""
+        the rendered one, or none for False. The list is rendered for the home `rendered_for`, else
+        the fixture home. `timeout` replaces guard.py's TIMEOUT in seconds."""
         scripts = scripts or {}
         h = FIXTURE.name + "/" + name
         config = h + "/.gemini/config"
@@ -1393,7 +1443,7 @@ def agy_cases():
         with open(config + "/hooks/guard.py", "w") as f:
             f.write(source)
         if paths is not False:
-            rendered = agy.guard_paths({**dummy, "home": h})
+            rendered = agy.guard_paths({**dummy, "home": rendered_for or h})
             with open(config + "/guard-paths.json", "w") as f:
                 f.write(paths(rendered) if callable(paths) else paths if paths is not None else rendered)
         return h
@@ -1454,7 +1504,21 @@ def agy_cases():
             ("the edit list is missing", {"paths": lambda text: json.dumps(
                 {k: v for k, v in json.loads(text).items() if k != "edit"})}),
             ("the ask list is not a list", {"paths": lambda text: json.dumps({**json.loads(text), "ask": "x"})}),
+            ("the bash_deny list is not a list",
+             {"paths": lambda text: json.dumps({**json.loads(text), "bash_deny": "x"})}),
+            ("the bash_ask list is missing", {"paths": lambda text: json.dumps(
+                {k: v for k, v in json.loads(text).items() if k != "bash_ask"})}),
         ])}
+        # A home whose name holds a space, and a home whose list is rendered for the user's own
+        # home, which `~<user>` names.
+        spaced = home("agy home")
+        user = getpass.getuser()
+        own = home("agy-home-own", rendered_for=pwd.getpwnam(user).pw_dir)
+        elsewhere = FIXTURE.name + "/agy-elsewhere"
+        os.makedirs(elsewhere + "/sub")
+        # A home without the template's rules, where the shell guards alone decide a `sed -i`.
+        bare = home("agy-home-no-bash", paths=lambda text: json.dumps(
+            {**json.loads(text), "bash_deny": [], "bash_ask": []}))
     except OSError as e:
         report(False, f"exp fixture got {type(e).__name__}  [agy-guard]  {e}")
         return total, wrong
@@ -1464,16 +1528,28 @@ def agy_cases():
         if pattern is not None:
             got = permission(args["CommandLine"])
             report(got == pattern, f"exp {pattern} got {got}  [agy-perms]  {args['CommandLine']}")
-    # The working directory of a call is its `Cwd`, else the first of `workspacePaths`: the `sed -i`
-    # runs in the work tree only through one of them.
-    elsewhere = FIXTURE.name
-    for args, workspace, expected in [
-        ({"CommandLine": "sed -i s/a/b/ f"}, elsewhere, "ask"),
-        ({"CommandLine": "sed -i s/a/b/ f", "Cwd": CWD}, elsewhere, "deny"),
-        ({"CommandLine": "sed -i s/a/b/ f", "Cwd": elsewhere}, CWD, "ask"),
+    # The working directory of a call is its `Cwd`, resolved against the first of `workspacePaths`,
+    # else that path: the `sed -i` runs in the work tree only through one of them. The template's
+    # rules are left out of these homes, so that the shell guards decide the `sed -i`.
+    for h, args, workspace, expected in [
+        (bare, {"CommandLine": "sed -i s/a/b/ f"}, elsewhere, "ask"),
+        (bare, {"CommandLine": "sed -i s/a/b/ f", "Cwd": CWD}, elsewhere, "deny"),
+        (bare, {"CommandLine": "sed -i s/a/b/ f", "Cwd": elsewhere}, CWD, "ask"),
+        (bare, {"CommandLine": "sed -i s/a/b/ f", "Cwd": "."}, CWD, "deny"),
+        (good, {"CommandLine": "cat ../.netrc", "Cwd": "."}, good + "/sub", "deny"),
+        (good, {"CommandLine": "cat .netrc", "Cwd": "~"}, elsewhere, "deny"),
+        (good, {"CommandLine": "cat .ne*"}, good, "deny"),
     ]:
-        got, _ = verdict(good, "run_command", args, workspace=workspace)
+        got, _ = verdict(h, "run_command", args, workspace=workspace)
         report(got == expected, f"exp {expected} got {got}  [agy-guard]  {args} with workspacePaths [{workspace}]")
+    # `~<user>` is the home of that user, as the shell expands it.
+    got, _ = verdict(own, "run_command", {"CommandLine": f"cat ~{user}/.netrc"})
+    report(got == "deny", f"exp deny got {got}  [agy-guard]  cat ~{user}/.netrc")
+    # A Kaimon call whose `Arguments` are not an object.
+    for arguments in [None, "null", "[1]", "{"]:
+        args = {"ServerName": "kaimon", "ToolName": "ex"} | ({} if arguments is None else {"Arguments": arguments})
+        got, _ = verdict(good, "call_mcp_tool", args)
+        report(got == "deny", f"exp deny got {got}  [agy-guard]  fail-closed, Kaimon Arguments {arguments!r}")
     # The Kaimon guard runs on `ex` and `manage_repl` alone: with it broken, `ping` still passes.
     got, _ = verdict(fail["the Kaimon guard exits 1"], "call_mcp_tool",
                      {"ServerName": "kaimon", "ToolName": "ping", "Arguments": {}})
@@ -1518,6 +1594,8 @@ def agy_cases():
             ("the path list is missing", "cannot be used"),
             ("the deny list is not a list", "no list of strings"),
             ("the path list is not JSON", "cannot be used"),
+            ("the bash_deny list is not a list", "no list of strings"),
+            ("the bash_ask list is missing", "cannot be used"),
         ]],
         ("the Kaimon guard exits 1", fail["the Kaimon guard exits 1"], "call_mcp_tool",
          {"ServerName": "kaimon", "ToolName": "ex", "Arguments": {"e": "1", "ses": "abcd1234"}}, None,
@@ -1540,11 +1618,20 @@ def agy_cases():
         ok = got == "deny" and want in reason
         report(ok, f"exp deny got {got}  [agy-guard]  fail-closed, {label}: {tool} {args}"
                    f"{'' if ok else ' ' + repr(reason[:160])}")
-    # With no python3 on the PATH, the handler of hooks.json fails and prints nothing, which
-    # Antigravity reads as a block.
-    p = subprocess.run(["/bin/sh", "-c", "python3 hooks/guard.py"], input="{}", capture_output=True, text=True,
-                       cwd=good + "/.gemini/config", env={**CLEAN, "HOME": "/" + good, "PATH": "/nonexistent"},
-                       timeout=TIMEOUT)
+    # The handler of hooks.json, rendered for a home whose name holds a space, runs guard.py from
+    # any working directory.
+    handler = json.loads(agy.render_hooks(pathlib.Path(spaced) / ".gemini"))[agy.HOOK]["PreToolUse"][0]["hooks"][0]
+    status_call = json.dumps({"toolCall": {"name": "run_command", "args": {"CommandLine": "git status"}},
+                              "workspacePaths": [CWD]})
+    p = subprocess.run(["/bin/sh", "-c", handler["command"]], input=status_call, capture_output=True, text=True,
+                       cwd=elsewhere, env={**CLEAN, "HOME": spaced}, timeout=TIMEOUT)
+    got = p.stdout.strip()
+    report(got == '{"decision": "ask"}',
+           f"exp ask got {got!r}  [agy-guard]  the handler {handler['command']} from another directory")
+    # With no python3 on the PATH, the handler fails and prints nothing, which Antigravity reads as
+    # a block.
+    p = subprocess.run(["/bin/sh", "-c", handler["command"]], input="{}", capture_output=True, text=True,
+                       cwd=elsewhere, env={**CLEAN, "HOME": spaced, "PATH": "/nonexistent"}, timeout=TIMEOUT)
     report(p.returncode != 0 and p.stdout == "",
            f"exp exit!=0 got {p.returncode}  [agy-guard]  fail-closed, python3 is not on PATH: no output {p.stdout!r}")
     return total, wrong

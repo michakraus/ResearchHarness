@@ -292,3 +292,15 @@
   `wrong type for value; expected string; got int64`, and exit 1.
 - kind: found late
 - found: #67
+
+### K87 · A `multi_replace_file_content` call passes the `edit` and `ask` lists of the Antigravity guard.
+
+- location: `adapters/antigravity/guard.py:84`
+- evidence: `WRITE_TOOLS` names the four write tools that the G0 probe of Antigravity saw:
+  `write_file`, `edit_file`, `write_to_file` and `replace_file_content`. The binary also names
+  `multi_replace_file_content`, which the probe did not see, and its `TargetFile` meets only the
+  `deny` list. So `multi_replace_file_content` {`TargetFile`: `<repo>/.git/config`} gets `ask`,
+  where `write_to_file` with the same path gets `deny`. A probe of the tool's arguments decides
+  whether it joins `WRITE_TOOLS`.
+- kind: found late
+- found: 2026-10-23

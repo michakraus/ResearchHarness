@@ -6,9 +6,10 @@ whose guard scripts it copies. With no ~/.gemini/, Antigravity's directory, the 
 and one warning:
 
   config/hooks.json              one named hook, `harness-guards`, with one `PreToolUse` group,
-                                 matcher `*`, which runs hooks/guard.py with a timeout of 15 s
-                                 (render_hooks); the matcher names no tool, so no tool is missed,
-                                 and guard.py decides by the name of the tool
+                                 matcher `*`, which runs config/hooks/guard.py by its absolute
+                                 path with a timeout of 15 s (render_hooks); the matcher names no
+                                 tool, so no tool is missed, and guard.py decides by the name of
+                                 the tool
   config/hooks/guard.py          adapters/antigravity/guard.py, byte for byte: the guard scripts
                                  and the path list on every tool call, failing closed
   config/hooks/<script>          the guard scripts of frontends.GUARDS, copies of the Claude Code
@@ -17,11 +18,14 @@ and one warning:
                                  adapters/opencode/plugins/guard-paths.json, MCP_CONFIG and the
                                  files of this layer, LAYER; under `edit` and `ask` the template's
                                  Edit denies and asks, which guard.py applies to the tools that
-                                 write
+                                 write; under `bash_deny` and `bash_ask` the bodies of its Bash
+                                 denies and asks, which guard.py applies to each segment of a
+                                 command
   antigravity-cli/settings.json  the keys `permissions`, `toolPermission` and
                                  `enableTerminalSandbox` of the CLI's settings, set in the file
                                  as it is, every other key kept, after a backup (merge_settings);
-                                 a file that is not a JSON object exits 2 before any write
+                                 a file that is not a regular file or not a JSON object exits 2
+                                 before any write
 
 THE POSTURE is Claude Code's: the terminal sandbox on, and `toolPermission` `proceed-in-sandbox`,
 the counterpart of `autoAllowBashIfSandboxed`. `allowNonWorkspaceAccess` is not written, so it
@@ -33,8 +37,10 @@ Code's settings are (render_permissions); each stays in its list, `deny`, `ask` 
 template's order:
 
   Bash(x *)              command(x): a prefix matches word by word
-  Bash(…) any other form command(regex:^…$), each `*` as `.*` and the rest literal, which matches
-                         the lines that the entry matches
+  Bash(…) any other form command(regex:^…$), each `*` as `.*` and the rest literal, a trailing
+                         ` *` as no text too, which matches the lines that the entry matches; in
+                         `allow`, a `*` as SEGMENT_TEXT, so that the rule matches no line that
+                         crosses a segment
   Read(p), Edit(p)       read_file(p), write_file(p): a leading `//` as `/`, and a trailing `/**`
                          removed, because a path covers its subtree. A path with any other glob,
                          `**/X` among them, has no form in Antigravity and is dropped
@@ -44,12 +50,17 @@ MCP_CONFIG is a `read_file` deny after the template's, and LAYER and MCP_CONFIG 
 denies after that. Every other entry is dropped, with its reason. A dropped `Read(**/X)` deny is
 still in the `deny` list of guard.py, and a dropped Edit entry in its `edit` or `ask` list. A
 command with `$(…)` or a backtick matches only a full-line rule in Antigravity, so a `deny` does
-not reach it; guard.py still reads the whole line, and is the boundary.
+not reach it; guard.py applies the Bash denies and asks to each segment of the line, the bodies of
+`$(…)` and backticks included, and is the boundary. The desktop app reads no `permissions`, so
+there guard.py alone applies them.
 """
 
 import json
+import os
 import pathlib
 import re
+import shlex
+import stat
 import tempfile
 
 from harness import REPO, HarnessError, frontends
@@ -73,6 +84,9 @@ POSTURE = {"toolPermission": "proceed-in-sandbox", "enableTerminalSandbox": True
 # The lists of the template's `permissions` and of Antigravity's, in the order the rules render.
 LISTS = ("deny", "ask", "allow")
 REGEX_SPECIAL = re.compile(r"[\\.^$|?*+()\[\]{}]")
+# The text of a `*` in an `allow` regex rule: no character that ends a segment, opens a
+# substitution or redirects, so that an allow rule never matches across a segment.
+SEGMENT_TEXT = r"[^;&|\n`$()<>]*"
 
 
 def gemini_dir():
@@ -80,32 +94,47 @@ def gemini_dir():
     return pathlib.Path.home() / ".gemini"
 
 
-def render_hooks():
-    """The text of hooks.json: the hook HOOK, which runs guard.py on every tool call."""
-    handler = {"type": "command", "command": "python3 hooks/guard.py", "timeout": HOOK_TIMEOUT}
+def render(path, profile):
+    """The path template `path` rendered with `profile`."""
+    return profile_module.render_line(path, profile)
+
+
+def render_hooks(root):
+    """The text of hooks.json for Antigravity's directory `root`: the hook HOOK, which runs
+    guard.py on every tool call by its absolute path, so that it runs from any directory."""
+    handler = {"type": "command", "command": "python3 " + shlex.quote(str(root / "config" / "hooks" / "guard.py")),
+               "timeout": HOOK_TIMEOUT}
     return json.dumps({HOOK: {"PreToolUse": [{"matcher": "*", "hooks": [handler]}]}}, indent=2) + "\n"
 
 
 def guard_paths(profile):
     """The text of guard-paths.json, rendered with `profile`: under `deny` the `read` denies of
     OpenCode's path list, then MCP_CONFIG and LAYER; under `edit` every `Edit` deny of the
-    settings template, and under `ask` every `Edit` ask, each with a leading `//` as `/`."""
-    render = lambda path: profile_module.render_line(path, profile)  # noqa: E731
+    settings template, and under `ask` every `Edit` ask, each with a leading `//` as `/`; under
+    `bash_deny` and `bash_ask` the body of every `Bash` deny and ask of the template."""
     deny = json.loads(profile_module.render_file(GUARD_PATHS, profile))["deny"]
     permissions = json.loads(profile_module.render_file(SETTINGS, profile))["permissions"]
-    edits = {key: [re.sub(r"^//+", "/", m.group(1)) for e in permissions.get(key, [])
-                   if (m := re.fullmatch(r"Edit\((.*)\)", e, re.S))] for key in ("deny", "ask")}
-    return json.dumps({"deny": [*deny, render(MCP_CONFIG), *map(render, LAYER)], "edit": edits["deny"],
-                       "ask": edits["ask"]}, indent=2, ensure_ascii=False) + "\n"
+    bodies = {(tool, key): [m.group(1) for e in permissions.get(key, [])
+                            if (m := re.fullmatch(rf"{tool}\((.*)\)", e, re.S))]
+              for tool in ("Edit", "Bash") for key in ("deny", "ask")}
+    return json.dumps({"deny": [*deny, render(MCP_CONFIG, profile), *(render(p, profile) for p in LAYER)],
+                       "edit": [re.sub(r"^//+", "/", p) for p in bodies["Edit", "deny"]],
+                       "ask": [re.sub(r"^//+", "/", p) for p in bodies["Edit", "ask"]],
+                       "bash_deny": bodies["Bash", "deny"], "bash_ask": bodies["Bash", "ask"]},
+                      indent=2, ensure_ascii=False) + "\n"
 
 
-def command_rule(body):
-    """The Antigravity rule of the Claude Code rule `Bash(body)`."""
+def command_rule(body, allow=False):
+    """The Antigravity rule of the Claude Code rule `Bash(body)`, in the list `allow` or another.
+    A regex rule matches a trailing ` *` with no text, as the prefix rule does; in an `allow` rule a
+    `*` matches no text that ends a segment (SEGMENT_TEXT)."""
     m = re.fullmatch(r"([^*]*[^*\s]) \*", body)
     if m:
         return f"command({m.group(1)})"
-    return "command(regex:^" + ".*".join(REGEX_SPECIAL.sub(lambda c: "\\" + c.group(0), part)
-                                         for part in body.split("*")) + "$)"
+    star = SEGMENT_TEXT if allow else ".*"
+    head, tail = (body[:-2], f"(?: {star})?") if body.endswith(" *") else (body, "")
+    return "command(regex:^" + star.join(REGEX_SPECIAL.sub(lambda c: "\\" + c.group(0), part)
+                                         for part in head.split("*")) + tail + "$)"
 
 
 def path_rule(action, body):
@@ -132,7 +161,7 @@ def render_permissions(cfg, profile):
         for entry in cfg["permissions"].get(key, []):
             rule, reason = None, None
             if m := re.fullmatch(r"Bash\((.*)\)", entry, re.S):
-                rule = command_rule(m.group(1))
+                rule = command_rule(m.group(1), key == "allow")
             elif m := re.fullmatch(r"(Read|Edit)\((.*)\)", entry, re.S):
                 rule, reason = path_rule({"Read": "read_file", "Edit": "write_file"}[m.group(1)], m.group(2))
             elif (m := re.fullmatch(r"WebFetch\(domain:(.*)\)", entry)) and key == "allow":
@@ -144,33 +173,47 @@ def render_permissions(cfg, profile):
                 dropped.append((key, entry, reason))
             else:
                 rules[key].append(rule)
-    render = lambda path: profile_module.render_line(path, profile)  # noqa: E731
-    rules["deny"] += [f"read_file({render(MCP_CONFIG)})",
-                      *(f"write_file({render(p).removesuffix('/**')})" for p in (*LAYER, MCP_CONFIG))]
+    rules["deny"] += [f"read_file({render(MCP_CONFIG, profile)})",
+                      *(f"write_file({render(p, profile).removesuffix('/**')})" for p in (*LAYER, MCP_CONFIG))]
     return rules, dropped
 
 
 def merge_settings(path, rules):
     """The bytes of the CLI's settings at `path` with `permissions` set to `rules` and the keys of
-    POSTURE set, every other key kept in its place; a missing file holds no key. A file that cannot
-    be read, or is not a JSON object, exits 2."""
+    POSTURE set, every other key kept in its place, with the file's indent and with no character
+    escaped but a lone surrogate, as Claude Code's merge writes them; a missing file holds no key.
+    Exits 2, before anything is written, on a file that is not a regular file, cannot be read, is
+    not UTF-8, is not a JSON object (`json_object`), is nested deeper than json writes, or holds a
+    number outside the three keys that json writes in other text (`rewritten_numbers`)."""
+    claude = frontends.adapter("claude")
+    refused = "; the install sets three keys of a JSON object in a regular file there, and writes nothing"
+    # One lstat, so that a link, a FIFO or a directory is refused before it is opened.
     try:
-        text = path.read_bytes().decode("utf-8")
+        st = os.lstat(path)
     except FileNotFoundError:
-        settings = {}
-    except (OSError, UnicodeDecodeError) as e:
-        raise HarnessError(f"{path} cannot be read: {getattr(e, 'strerror', None) or e}") from None
-    else:
+        st = None
+    except OSError as e:
+        raise HarnessError(f"{path} cannot be read: {e.strerror}") from None
+    settings, indent = {}, 2
+    if st is not None:
+        if not stat.S_ISREG(st.st_mode):
+            raise HarnessError(f"{path} is not a regular file{refused}")
         try:
-            settings = json.loads(text)
-        except ValueError as e:
-            raise HarnessError(f"{path} is not JSON ({e}); the install sets three keys of a JSON object there, "
-                               "and writes nothing") from None
-        if not isinstance(settings, dict):
-            raise HarnessError(f"{path} holds JSON that is not an object; the install sets three keys of a JSON "
-                               "object there, and writes nothing")
+            text = path.read_bytes().decode("utf-8")
+        except OSError as e:
+            raise HarnessError(f"{path} cannot be read: {e.strerror}") from None
+        except UnicodeDecodeError as e:
+            raise HarnessError(f"{path} is not UTF-8: {e.reason} at byte {e.start}{refused}") from None
+        settings, indent = claude.json_object(path, text), claude.indent_of(text)
+        numbers = claude.rewritten_numbers(text, ("permissions", *POSTURE))
+        if numbers:
+            raise HarnessError(f"{path} holds numbers that JSON would write in other text: "
+                               f"{', '.join(f'{k}: {old} as {new}' for k, old, new in numbers)}{refused}")
     settings.update(permissions=rules, **POSTURE)
-    return (json.dumps(settings, indent=2, ensure_ascii=False) + "\n").encode()
+    try:
+        return (claude.dumps(settings, indent=indent) + "\n").encode()
+    except RecursionError:  # a nesting that json.loads reads and json.dumps cannot write
+        raise HarnessError(f"{path} is JSON nested too deep to write again{refused}") from None
 
 
 def plan(ctx):
@@ -178,13 +221,14 @@ def plan(ctx):
     scripts are those of the Claude Code layer's plan in `ctx.plans`."""
     root = gemini_dir()
     if not root.is_dir():
-        return frontends.Plan(warnings=[(f"{root} does not exist, so the Antigravity layer is not installed.",
+        state = "is not a directory" if root.exists() else "does not exist"
+        return frontends.Plan(warnings=[(f"{root} {state}, so the Antigravity layer is not installed.",
                                          "Install Antigravity, then run `harness install` again.")])
     claude = frontends.adapter("claude")
     cfg = claude.settings_template(ctx.profile, profile_module.network_path(ctx.args.profile))
     rules, _ = render_permissions(cfg, ctx.profile)
     scripts = {f"hooks/{g}" for g in frontends.GUARDS}
-    files = [("config/hooks.json", render_hooks().encode(), None),
+    files = [("config/hooks.json", render_hooks(root).encode(), None),
              ("config/hooks/guard.py", (SOURCE / "guard.py").read_bytes(), None),
              *((f"config/{dst}", data, mode) for dst, data, mode in ctx.plans["claude"].shared if dst in scripts),
              ("config/guard-paths.json", guard_paths(ctx.profile).encode(), None)]
@@ -250,6 +294,13 @@ def layer_cases(scratch):
          f"directory: {code}, {line.findall(dry)}, {warned}")
 
     base, claude, _ = scratch.fresh()
+    (base / "home" / ".gemini").write_text("x")
+    code, dry = run(base)
+    warned = [w for w in dry.split("WARNING: ")[1:] if ".gemini" in w]
+    case(lambda: line.findall(dry) == [] and len(warned) == 1 and "is not a directory" in warned[0],
+         f"with a file at ~/.gemini, the one warning says that it is not a directory: {warned}")
+
+    base, claude, _ = scratch.fresh()
     gemini = base / "home" / ".gemini"
     gemini.mkdir()
     code, dry = run(base)
@@ -267,11 +318,12 @@ def layer_cases(scratch):
     case(lambda: installed == want, f"--apply installs those files below ~/.gemini/, and nothing else: {installed}")
     config = gemini / "config"
     hooks = (config / "hooks.json").read_text() if (config / "hooks.json").is_file() else None
+    handler = "python3 " + shlex.quote(str(config / "hooks" / "guard.py"))
     case(lambda: json.loads(hooks)
-         == {HOOK: {"PreToolUse": [{"matcher": "*", "hooks": [{"type": "command", "command": "python3 hooks/guard.py",
+         == {HOOK: {"PreToolUse": [{"matcher": "*", "hooks": [{"type": "command", "command": handler,
                                                                 "timeout": 15}]}]}},
-         f"hooks.json holds the one hook {HOOK}: one PreToolUse group, matcher *, guard.py with a timeout of 15 s: "
-         f"{hooks!r}")
+         f"hooks.json holds the one hook {HOOK}: one PreToolUse group, matcher *, guard.py by its absolute path "
+         f"with a timeout of 15 s: {hooks!r}")
     case(lambda: (config / "hooks" / "guard.py").read_bytes() == (SOURCE / "guard.py").read_bytes()
          and all((config / "hooks" / g).read_bytes() == (claude / "hooks" / g).read_bytes() for g in frontends.GUARDS),
          "hooks/guard.py is adapters/antigravity/guard.py, and each guard script is the Claude Code layer's copy")
@@ -283,16 +335,19 @@ def layer_cases(scratch):
     template = json.loads(profile_module.render_file(SETTINGS, profile))["permissions"]
     edits = {key: [re.sub(r"^//+", "/", e[len("Edit("):-1]) for e in template[key] if e.startswith("Edit(")]
              for key in ("deny", "ask")}
+    bash = {key: [e[len("Bash("):-1] for e in template[key] if e.startswith("Bash(")] for key in ("deny", "ask")}
     lists = config / "guard-paths.json"
     written = json.loads(lists.read_text()) if lists.is_file() else {}
     case(lambda: written == {"deny": [*opencode, f"{h}/.gemini/config/mcp_config.json", f"{h}/.gemini/config/hooks.json",
                                       f"{h}/.gemini/config/hooks/**", f"{h}/.gemini/config/guard-paths.json",
                                       f"{h}/.gemini/antigravity-cli/settings.json"],
-                             "edit": edits["deny"], "ask": edits["ask"]}
-         and len(edits["deny"]) >= 54 and len(edits["ask"]) >= 4,
+                             "edit": edits["deny"], "ask": edits["ask"],
+                             "bash_deny": bash["deny"], "bash_ask": bash["ask"]}
+         and len(edits["deny"]) >= 54 and len(edits["ask"]) >= 4
+         and len(bash["deny"]) >= 187 and len(bash["ask"]) >= 105,
          f"guard-paths.json is OpenCode's deny list, then mcp_config.json and the files of the layer; `edit` is "
-         f"every Edit deny of the template and `ask` every Edit ask, entry by entry: "
-         f"{ {k: len(v) for k, v in written.items()} }")
+         f"every Edit deny of the template and `ask` every Edit ask; `bash_deny` and `bash_ask` are the bodies "
+         f"of every Bash deny and ask, entry by entry: { {k: len(v) for k, v in written.items()} }")
     new = gemini / "antigravity-cli" / "settings.json"
     settings = json.loads(new.read_text()) if new.is_file() else {}
     case(lambda: settings["toolPermission"] == "proceed-in-sandbox" and settings["enableTerminalSandbox"] is True
@@ -345,6 +400,8 @@ def rule_cases(case):
                     ok = ok and got == f"command({p.group(1)})"
                 elif "*" not in body:
                     ok = ok and not rule_matches(got, sample + " zz")
+                if got is not None and got.startswith("command(regex:"):
+                    ok = ok and bash_rule_cases(key, body, got)
             elif m := re.fullmatch(r"(Read|Edit)\((.*)\)", entry, re.S):
                 path = re.sub(r"^//+", "/", m.group(2)).removesuffix("/**")
                 ok = got == f"{'read_file' if m.group(1) == 'Read' else 'write_file'}({path})"
@@ -394,16 +451,42 @@ def rule_cases(case):
          and [e for _, e, _ in got[1]] == ["WebFetch(domain:x.org)", "Read(src/x)", "Edit(//a/*.py)", "mcp__k__ping"],
          f"a WebFetch deny, a relative path, a glob in a path and an MCP tool are dropped; an allow host is a "
          f"read_url rule: {got}")
-    examples = {("deny", "Bash(sed -i* *)"): r"command(regex:^sed -i.* .*$)",
+    examples = {("deny", "Bash(sed -i* *)"): r"command(regex:^sed -i.*(?: .*)?$)",
                 ("deny", "Bash(git push * -f)"): r"command(regex:^git push .* -f$)",
+                ("deny", "Bash(git -C * add .)"): r"command(regex:^git -C .* add \.$)",
                 ("allow", "Bash(git status)"): r"command(regex:^git status$)",
-                ("allow", "Bash(git log *)"): "command(git log)"}
-    case(lambda: all(command_rule(e[len("Bash("):-1]) == want for (_, e), want in examples.items()),
-         f"the decided forms: {[(e, command_rule(e[len('Bash('):-1])) for (_, e) in examples]}")
+                ("allow", "Bash(git log *)"): "command(git log)",
+                ("allow", "Bash(git branch * -f)"): r"command(regex:^git branch [^;&|\n`$()<>]* -f$)"}
+    case(lambda: all(command_rule(e[len("Bash("):-1], key == "allow") == want for (key, e), want in examples.items()),
+         f"the decided forms: {[(e, command_rule(e[len('Bash('):-1], key == 'allow')) for (key, e) in examples]}")
     case(lambda: rule_matches("command(git push --force)", "git push --force origin x")
          and not rule_matches("command(git push --force)", "git push --force-with-lease")
          and rule_matches(command_rule("git push --force*"), "git push --force-with-lease"),
          "a prefix rule matches whole words, and a regex rule any text in place of a *")
+    branch, sed = command_rule("git branch * -f", allow=True), command_rule("sed -i* *")
+    case(lambda: rule_matches(branch, "git branch topic -f") and not rule_matches(branch, "git branch x -f; rm -rf ~/y")
+         and not rule_matches(branch, "git branch $(rm -rf ~/x) -f") and rule_matches(sed, "sed -i 's/a;b/c/' f")
+         and rule_matches(command_rule("git -C * reset --hard *"), "git -C . reset --hard"),
+         "an allow regex rule stays in one segment, a deny regex rule does not, and a trailing * matches nothing too")
+
+
+def bash_rule_cases(key, body, rule):
+    """Whether the regex rule `rule` of the Bash entry `body` in the list `key` matches as the
+    entry does: with nothing in place of a trailing ` *`, never with another character in place of
+    a literal special character, and, in `allow`, never across a segment; in `deny` and `ask`
+    across one."""
+    head = body[:-2] if body.endswith(" *") else None
+    if head is not None and (not rule_matches(rule, head.replace("*", "zz"))
+                             or not head.endswith("*") and rule_matches(rule, head.replace("*", "zz") + "zz")):
+        return False
+    for i, c in enumerate(body):
+        other = (body[:i] + "Q" + body[i + 1:]).replace("*", "zz")
+        if c != "*" and REGEX_SPECIAL.match(c) and rule_matches(rule, other):
+            return False
+    if "*" in body:
+        crossing = body.replace("*", "zz; rm x", 1).replace("*", "zz")
+        return rule_matches(rule, crossing) == (key != "allow")
+    return True
 
 
 def merge_cases(scratch):
@@ -429,15 +512,42 @@ def merge_cases(scratch):
          f"{tail(text)}")
     case(lambda: len(backups) == 1 and backups[0].read_bytes() == before,
          f"--apply keeps a backup of the file it replaces, with its bytes: {backups}")
-    for data, label in [(b"[1, 2]\n", "a JSON array"), (b"not json\n", "text that is not JSON"),
-                        (b'"x"\n', "a JSON string"), (b"\xff\n", "bytes that are not UTF-8")]:
+    text = settings.read_text()
+    case(lambda: text.split("\n")[1].startswith('    "theme"'),
+         f"--apply keeps the file's indent of 4: {text.split(chr(10))[1]!r}")
+
+    base, _, _ = scratch.fresh()
+    cli = base / "home" / ".gemini" / "antigravity-cli"
+    cli.mkdir(parents=True)
+    (cli / "settings.json").write_text('{"name": "\\ud800", "dash": "—"}\n', encoding="utf-8")
+    code, text = run(base, "--apply")
+    written = (cli / "settings.json").read_text(encoding="utf-8")
+    case(lambda: code == 0 and '"name": "\\ud800"' in written and '"dash": "—"' in written,
+         f"a lone surrogate stays an escape, and a non-ASCII character stays as it is: {code}, {tail(text)!r}")
+
+    def fifo(path):
+        os.mkfifo(path)
+
+    def link(path):
+        (path.parent / "real.json").write_text("{}\n")
+        path.symlink_to("real.json")
+
+    for data, label in [(b"[1, 2]\n", "holds a JSON array"), (b"not json\n", "holds text that is not JSON"),
+                        (b'"x"\n', "holds a JSON string"), (b"\xff\n", "holds bytes that are not UTF-8"),
+                        (b"[" * 100000 + b"]" * 100000, "holds a JSON array nested 100000 deep"),
+                        (b'{"a": ' * 100000 + b"1" + b"}" * 100000, "holds a JSON object nested 100000 deep"),
+                        (b'{"limit": 1e400}\n', "holds a number that JSON writes in other text"),
+                        (fifo, "is a FIFO"), (link, "is a symlink"), (os.mkdir, "is a directory")]:
         base, _, _ = scratch.fresh()
         cli = base / "home" / ".gemini" / "antigravity-cli"
         cli.mkdir(parents=True)
-        (cli / "settings.json").write_bytes(data)
+        if callable(data):
+            data(cli / "settings.json")
+        else:
+            (cli / "settings.json").write_bytes(data)
         snapshot = scratch.snapshot(base)
         code, text = run(base, "--apply")
         case(lambda: scratch.refused(code, text) and str(cli / "settings.json") in text
              and scratch.snapshot(base) == snapshot,
-             f"a settings.json that holds {label} exits 2, names the file, and nothing is written: {code}, "
+             f"a settings.json that {label} exits 2, names the file, and nothing is written: {code}, "
              f"{tail(text)!r}")

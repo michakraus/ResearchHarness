@@ -5,20 +5,26 @@
 - **`harness install` writes the permission layer of Antigravity**, below `~/.gemini/`, once
   Antigravity has made that directory; without it the plan holds no file and one warning. The new
   adapter `adapters/antigravity/` writes `config/hooks.json`, one hook that runs
-  `config/hooks/guard.py` on every tool call, the seven guard scripts beside it,
-  `config/guard-paths.json`, and three keys of the CLI's `antigravity-cli/settings.json`:
+  `config/hooks/guard.py` by its absolute path on every tool call, the seven guard scripts beside
+  it, `config/guard-paths.json`, and three keys of the CLI's `antigravity-cli/settings.json`:
   `permissions`, `toolPermission: "proceed-in-sandbox"` and `enableTerminalSandbox: true`. The
-  merge keeps every other key and backs up the file it replaces; a file that is not a JSON object
-  exits 2 before any write. `guard.py` gives the guard scripts Claude Code's payload, from the
-  `CommandLine` and the `Cwd` or first workspace path of a shell call and the `Arguments` of a
-  Kaimon `ex` or `manage_repl` call. It refuses a path of the `deny` list in any path argument or
-  any word of a command; that list adds `~/.gemini/config/mcp_config.json` and the files of the
-  layer itself. On a tool that writes a file, it also refuses a path of the `edit` list, every
-  Edit deny of the template, and asks for a path of the `ask` list, every Edit ask. A pass answers
-  `ask`, which leaves Antigravity's own rules in force, and any failure of a guard answers `deny`.
-  The rules are the settings template's: each Bash entry a `command(…)` rule, each Read and Edit
-  path a `read_file(…)` or `write_file(…)` rule, each allow host a `read_url(…)` rule, and
-  `write_file(…)` denies for `mcp_config.json` and the files of the layer. A path with a glob that
+  merge keeps every other key and the file's indent, and backs up the file it replaces; a file that
+  is not a regular file or not a JSON object exits 2 before any write. `guard.py` gives the guard
+  scripts Claude Code's payload, from the `CommandLine` and the resolved `Cwd` or first workspace
+  path of a shell call and the `Arguments` of a Kaimon `ex` or `manage_repl` call. It refuses a
+  path of the `deny` list in any path argument or any word of a command; that list adds
+  `~/.gemini/config/mcp_config.json` and the files of the layer itself. As OpenCode's guard does,
+  it also refuses a directory that holds such a path when a word globs into it, the command
+  recurses or `cd`s into it, or it is the call's `Cwd` or `SearchPath`. On a shell call it applies
+  the template's Bash denies and asks to each segment of the command, the bodies of `$(…)` and
+  backticks included, so that the desktop app, which reads no `permissions`, still refuses
+  `git push --force`. On a tool that writes a file, it also refuses a path of the `edit` list,
+  every Edit deny of the template, and asks for a path of the `ask` list, every Edit ask. A pass
+  answers `ask`, which leaves Antigravity's own rules in force, and any failure of a guard answers
+  `deny`. The rules are the settings template's: each Bash entry a `command(…)` rule, whose `*`
+  in an allow rule matches no text across a segment, each Read and Edit path a `read_file(…)` or
+  `write_file(…)` rule, each allow host a `read_url(…)` rule, and `write_file(…)` denies for
+  `mcp_config.json` and the files of the layer. A path with a glob that
   Antigravity cannot express is dropped from the rules, and `guard.py` still covers it: the seven
   `Read(**/X)` denies in its `deny` list, seven Edit denies and two Edit asks in its `edit` and
   `ask` lists. No
