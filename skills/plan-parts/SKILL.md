@@ -84,6 +84,7 @@ sections that §L names. It does not read the whole file.
 | **A** | `Example` | §1–§4, §V, §L | Wrong answers and unreachable API. No design decision. | build | open |
 | **B** | `Example` | §5–§7, §V, §L | What `periodicity` returns. Changes the public answer. | decision | open |
 | **C** | `ExampleTools` | §11, §V, §L | The accessor loops. Mechanical. | build | blocked by B |
+| **D** | `Example` | spec, §V, §L | The new solver option. A spec in the spec-delta format. | build | open |
 ```
 
 `state` is one of `open · in progress · waiting for the user · PR #NN in review · merged ·
@@ -97,7 +98,8 @@ section and the plan's working rules reach a part only through its cell or throu
 lines. Name each one in a form the script resolves: a key (`§6`, `§5V.P38`), a heading in italics
 (`*Traps*`), or `the preamble of §<key>`. A phrase that starts with "the part's" or "its" points
 back to the cell and adds nothing. Give the builder and the critic the same sections, unless a
-section is only a judging aid.
+section is only a judging aid. The key `spec` names the part's spec in the spec-delta format
+(§6).
 
 **Write the bundle of each part before the plan is done**, and read its header:
 
@@ -193,6 +195,14 @@ Three dependencies are easy to miss:
 
 ## 6 · Each part's section is its spec
 
+**In a new plan, the spec of a part of tier `build` or `reviewed` is a file in the spec-delta
+format**, written as `spec-format.md` beside this skill says, and its cell is `spec, §V, §L`. Each
+block below has its place there: the *Done when* and the decided edges are the delta's scenarios,
+*Tests catch* is their `catches:` lines and §4's mutant table, *Files* and *Not in this part* are in
+the change proposal, and *Traps* in §4. The rules of the blocks hold for it. **Planning ends when
+`spec-validate.py` passes the spec**, its premises run on the base. A plan whose parts already have
+their spec sections keeps them, and a new part of that plan gets a section too.
+
 The part's own section opens with its spec, in this order. Keep it out of the table: the table
 stays scannable, and a done-condition that fits in a cell is usually too weak.
 
@@ -240,7 +250,7 @@ scratch directory as its inputs. It lists each fact that the section states, and
 another section that the clauses rest on — what a tool does, a count, a `file:line`, a version,
 what a file holds, an identity, never a requirement — and marks each one `holds`, `false` or
 `cannot`, with the command or the file it read. Fix every `false` fact in the spec before the
-build; a `cannot` stays as it is. A `reader` in its own context, not the planner, does the check,
+build, and give every convention it marks `no premise` a premise in §1; a `cannot` stays as it is. A `reader` in its own context, not the planner, does the check,
 because the planner reads its own facts as true, and the measurements stay out of the planning
 context. It costs about $1 per spec.
 
@@ -261,7 +271,7 @@ collision map: the plan's own rules, one sentence each, and the extra sections t
 
 ## What this skill does not do
 
-**It runs nothing but the premise check, `spec-gate.py` and `spec-bundle.py`.** It produces a table, the specs, §V and §L. The
+**It runs nothing but the premise check, `spec-validate.py`, `spec-gate.py` and `spec-bundle.py`.** It produces a table, the specs, §V and §L. The
 `build-part` skill runs the loop, and so can a human or a `/loop`. A planning step that also spawns builders is an
 agent graph, and the merge gate stops it one step later anyway.
 
@@ -281,7 +291,7 @@ and costs more tokens doing it.
 
 ## Grading a table you produced
 
-Eight failure shapes to check for in your own output:
+The failure shapes to check for in your own output:
 
 - **parts that mirror the section numbering.** One part per finding is a renumbering.
 - **a tier column with one value throughout.** It has stopped carrying information.
@@ -298,3 +308,5 @@ Eight failure shapes to check for in your own output:
   `false`.
 - **a part whose *Files* span two repositories.** Its builder meets a guard on the first write
   outside its worktree; `spec-gate.py` reports it as `SPANS`.
+- **a spec in the spec-delta format that `spec-validate.py` does not pass**, or one with a clause
+  that rests on an API convention no premise reads, or a reference with no domain.

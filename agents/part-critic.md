@@ -26,6 +26,10 @@ the part's `sections` cell names, and the file's §V and §L:
 awk -f ~/Research/Harness/scripts/parts-table.awk "<task file>"
 ```
 
+**Where the `sections` cell names `spec`**, your caller gives you the path of the part's spec
+bundle: read it whole in place of the sections, as *A spec in the spec-delta format* in
+`~/.claude/skills/build-part/evidence.md` says.
+
 **The benchmark is the part's *Done when***, with the plan rules of §V. Split it into clauses
 yourself, before you look at the diff. **Each clause has a domain**: the set it names, the decided
 edges, the named mutants, the examples of the section. A clause that names no set has the domain

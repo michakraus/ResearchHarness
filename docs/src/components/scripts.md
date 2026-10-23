@@ -303,9 +303,15 @@ repository. An isolated builder cannot write outside its worktree, so a file in 
 repository is a step of the dispatcher, the session that runs the `build-part` or
 `build-reviewed` skill.
 
-It prints one line per part: PASS, MISSING with the labels, SPANS with the repositories, or EXEMPT
-with the reason. The exit status is 0 when each checked part passes or is exempt, 1 when a part
-misses a label or spans two repositories, and 3 when the script failed. It reads the parts table
+A part whose `sections` cell names `spec` has its spec in the spec-delta format, in
+`Evidence/<task file's name>/<part>/spec.md` beside the task file. For such a part, in any
+repository, the gate runs `spec-validate.py` on the spec, with the premises on the base commit of
+the repository's main checkout. `--no-run` checks the structure only.
+
+It prints one line per part: PASS, MISSING with the labels, INVALID with the number of errors and
+the validator's lines below it, SPANS with the repositories, or EXEMPT with the reason. The exit
+status is 0 when each checked part passes or is exempt, 1 when a part misses a label, is invalid
+or spans two repositories, and 3 when the script failed. It reads the parts table
 through `parts-table.awk`. The skills `build-part`, `build-reviewed` and `plan-parts` run it.
 
 ## `spec-bundle.py`
@@ -325,7 +331,8 @@ italics such as `*Traps*` names a section by its title, and `the preamble of §<
 section's text up to its first subheading. A key with no heading, such as a T-number, gives each
 table row whose first cell is the key, under its table's header. §V and §L end at their next
 heading, so a handover filed below §L stays out, and the `PART` row keeps only the state, not the
-narration that a state cell gathers over the builds.
+narration that a state cell gathers over the builds. The key `spec` gives the part's spec in the
+spec-delta format, whole, and the header names the spec's directory as `$SPEC`.
 
 The header lists each section with its line range in the task file, the task file's commit, and
 a SHA-256 of the body, which a report names. It prints the path, the line count and the hash, and
@@ -333,6 +340,27 @@ one `unresolved: <name>` line on stderr for each name that matches nothing. The 
 when every name resolves, 1 when one does not or the part is not in the table, and 3 when the
 script failed. The skill `build-part` runs it before every spawn of a builder or a critic, and
 `plan-parts` runs it on each part before a plan is done.
+
+## `spec-validate.py`
+
+`spec-validate.py` is the strict validator of a part spec in the spec-delta format, which
+`skills/plan-parts/spec-format.md` defines: a living spec of the base, a change proposal, a delta
+of requirements with WHEN/THEN scenarios, and what stays from the plan.
+
+```bash
+python3 spec-validate.py <spec.md> [--repo <checkout> | --base <tree>] [--no-run] [--env NAME=VALUE ...]
+python3 spec-validate.py <spec.md> --head <tree> --out <dir> [--env NAME=VALUE ...]
+```
+
+It checks the structure by headings, not by substrings: the four sections, SHALL or MUST in each
+requirement, a WHEN, a THEN, a `check:` and a `catches:` in each scenario, no block that refers to
+another, the files under `$SPEC/`, the mutant table against the `catches:` lines, the base commit,
+and a `domain:` in each scenario of a requirement that names a reference. Then it runs each
+premise of the living spec on the base: `--repo` exports the base commit with `git archive`. With
+`--head`, it runs each `check:` of the delta on a head instead, and fails a check that changes the
+head's `git status`. The exit status is 0 on a pass, 1 on a fail, and 3 when the script failed.
+`spec-gate.py` runs it in planning and before a build; the skills `build-part` and
+`build-reviewed` run its `--head` form in the gate of every round.
 
 ## `known-issues-similar.py`
 

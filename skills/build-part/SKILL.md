@@ -61,6 +61,12 @@ stderr for each name of the cell or of §L that matches no heading and no table 
 **Write the bundle again before every spawn of a builder or a critic**, so that a decision written
 into the task file since the last spawn is in it. Pass its path on the spawn.
 
+**A part whose `sections` cell names `spec` has its spec in the spec-delta format**, at
+`Tasks/Evidence/<file>/<part>/spec.md`, and the bundle holds it whole. For such a part, *the part's
+section* in this skill is that spec's `## Decisions`, below its four sections: write every decision
+and the loop's record there, and commit it with the task file. The state cell stays in the task
+file. Its gate adds the spec's checks and CI (*The gate of a spec-delta part*, in the loop).
+
 ## Choose the part
 
 **Check every cell that names a pull request against GitHub first.** The user merges in silence,
@@ -115,7 +121,11 @@ A `build` part in `Packages/` or `Experiments/` starts only when its sections ho
 cd ~/Research && python3 Harness/scripts/spec-gate.py "Tasks/<file>.md" <part>
 ```
 
-It prints `PASS`, `EXEMPT`, `MISSING <labels>` or `SPANS <repositories>`, and exits 0, 0, 1 or 1.
+It prints `PASS`, `EXEMPT`, `MISSING <labels>`, `INVALID <n> errors` or `SPANS <repositories>`, and
+exits 0, 0, 1, 1 or 1. A part whose cell names `spec` passes when `spec-validate.py` passes its spec,
+with every premise run on the base. **An `INVALID` part does not start**: its spec or a premise of
+its plan is false, and planning, not the loop, fixes that. Set the state to
+`waiting for the user — the spec fails spec-validate.py: <the first error line>`, and go on.
 For a `SPANS`, move each file of the other repository out of the part's *Files* into a step of
 your own after the merge, name that step in the part, and run the gate again. A section key it prints as
 `unresolved` matches no heading: read that section by hand for the labels. Where a label is
@@ -198,7 +208,31 @@ every command under the builder's *Left for the dispatcher* except the generated
 the diff reaches; the whole suite is this run's, because a suite of 20–100 minutes in the builder's
 or the critic's context writes that context again in full after every 5 minutes of waiting.
 
-**4 · Read both verdicts.** The round passes only when the critic says PASS and the suite is green.
+**The gate of a spec-delta part.** For a part whose cell names `spec`, each round also runs the
+spec's checks and CI, so that a mechanical failure blocks the round whatever the critic finds:
+
+- **The checks.** The same `julia-test-runner` runs, after the suite and never beside it,
+  `python3 ~/Research/Harness/scripts/spec-validate.py <spec> --head <worktree> --out ~/Research/.scratch/gate/<Repository>-<part>/round-<N>/`,
+  and returns the totals and every failure, verbatim. It runs every `check:` of the delta on the
+  head, and fails a check that writes into the worktree.
+- **CI.** Before the spawns of step 3, `cd <worktree>` as a Bash call of its own and push the
+  branch: `git push -u origin <branch>`. Outside the user's own organisations the push needs the
+  user's approval, as a builder's does. Then `gh run list -R <owner>/<repo> --commit <head>`. Where
+  no run started for the head, start each workflow that runs on a pull request:
+  `gh workflow run <workflow> -R <owner>/<repo> --ref <branch>`. Background
+  `gh run watch <id> -R <owner>/<repo> --exit-status` for each run, and read each job with
+  `gh run view <id> -R <owner>/<repo> --json jobs`, not only the run's conclusion. A job that also
+  fails on the latest run of `main` is not the part's: name it in the round's record.
+
+The force-push is denied, so a branch whose history the fix rewrites goes to a new branch,
+`<branch>-recut`, and the old one stays.
+
+**4 · Read both verdicts.** The round passes only when the critic says PASS and the suite is green,
+and, for a spec-delta part, every check passes and every CI job of the head passes.
+A failed check and a failed CI job go to the fix builder as blocking defects of the round, verbatim,
+beside the critics' defects. Where the finish builder commits a change of code after the PASS, run
+the gate again on the pull request's head; a failure goes to the arbitrator with the trigger
+`stop after PASS`.
 
 **After each critic round, spawn a new `julia-builder`; never `SendMessage` the last one.** A
 resumed builder writes its whole context again (456–458 k tokens in round 4), and a new one starts from

@@ -11,6 +11,10 @@ runs them.
   T-number row, §V, §L without the handovers filed below it, and what §L's *also reads* lines
   name; it leaves out the other parts and the state cell's narration; a name that matches nothing
   is unresolved, with exit status 1.
+- scripts/spec-validate.py on a fixture spec in the spec-delta format: it passes, and a missing
+  domain, a failing premise and a mutant with no row each fail; with `--head`, a failing check and
+  a check that writes into the head fail the gate. spec-gate.py validates a part whose cell names
+  `spec` and finds a missing spec, and spec-bundle.py copies the spec and names `$SPEC`.
 - The fix round's mutants: skills/build-part/evidence.md defines them in one section, with its
   four rules, and both builders and both build skills point at it.
 """
@@ -29,6 +33,7 @@ EVIDENCE = REPO / "skills" / "build-part" / "evidence.md"
 RUN_TESTS = REPO / "scripts" / "run-tests.jl"
 SPEC_GATE = REPO / "scripts" / "spec-gate.py"
 SPEC_BUNDLE = REPO / "scripts" / "spec-bundle.py"
+SPEC_VALIDATE = REPO / "scripts" / "spec-validate.py"
 
 # The fixture task file of the spec bundle. Part P names a T-number row and its section; §L names
 # §6, *Traps* and the preamble of §9, and one relative phrase. A handover filed below §L, part Q's
@@ -89,6 +94,67 @@ TRAP-TEXT.
 BUNDLE_IN = ["P-GOAL", "P-SECTION", "P-DECISION", "V-RULE", "builder also reads", "SIX-RULE",
              "NINE-PREAMBLE", "TRAP-TEXT", "| id | goal | verification |"]
 BUNDLE_OUT = ["HANDOVER-TEXT", "Q-SECTION", "other goal", "NINE-DETAIL", "NARRATION"]
+
+# The fixture spec in the spec-delta format: one premise, one MODIFIED and one ADDED requirement,
+# the second with a reference, and its mutant table. `{premise}`, `{domain}` and `{check}` vary.
+SPEC_MD = """# S · The fixture part
+
+**Base.** Example `1234567`.
+
+## 1 · Living spec — Example at `1234567`
+
+### Requirement: The answer
+
+`answer()` SHALL return 41 on the base.
+
+#### Scenario: the call
+
+- WHEN `answer()` is called
+- THEN it returns 41
+- check: `{premise}`
+- catches: none — a premise of the base
+
+## 2 · Change proposal
+
+**Why.** The answer is wrong.
+
+**Files.** `src/answer.jl`, `test/answer.jl`.
+
+## 3 · Delta
+
+### MODIFIED Requirements
+
+### Requirement: The answer
+
+`answer()` SHALL return 42.
+
+#### Scenario: the call
+
+- WHEN `answer()` is called
+- THEN it returns 42
+- check: `{check}`
+- catches: MU1, the old 41 back in `src/answer.jl`
+
+### ADDED Requirements
+
+### Requirement: The answer's sign (reference: the book, page 1)
+
+The answer SHALL be positive, as the book's is.
+
+#### Scenario: the sign
+
+- WHEN `answer()` is called
+- THEN it is positive
+{domain}- check: `test -f "$SPEC"/checks/sign.sh`
+- catches: none — the check is the command
+
+## 4 · What stays from the plan
+
+| mutant | change | kept test |
+|:--|:--|:--|
+| MU1 | the old 41 | `test/answer.jl` |
+"""
+SPEC_OK = {"premise": "true", "domain": "- domain: the default call, with no argument\n", "check": "true"}
 
 # The fixture tree of the copies: what each copy holds, and what it leaves out.
 KEPT = ["src/A.jl", "test/runtests.jl", "env.jl"]
@@ -183,6 +249,78 @@ def spec_bundle(tmp, plan):
     return (out.read_text() if out.exists() else ""), p.stderr, p.returncode
 
 
+def write_spec(directory, **fields):
+    """Write the fixture spec with `fields` over SPEC_OK, and its check, into `directory`."""
+    directory = pathlib.Path(directory)
+    (directory / "checks").mkdir(parents=True, exist_ok=True)
+    (directory / "checks" / "sign.sh").write_text("true\n")
+    spec = directory / "spec.md"
+    spec.write_text(SPEC_MD.format(**{**SPEC_OK, **fields}))
+    return spec
+
+
+def spec_validate(spec, *args):
+    """Run spec-validate.py: (stdout, exit status)."""
+    p = subprocess.run([sys.executable, str(SPEC_VALIDATE), str(spec), *args], capture_output=True, text=True)
+    return p.stdout + p.stderr, p.returncode
+
+
+def spec_format(check):
+    """The cases of a spec in the spec-delta format: the validator, the gate and the bundle."""
+    with tempfile.TemporaryDirectory(prefix="harness-spec-format-") as tmp:
+        tmp = pathlib.Path(tmp)
+        base = tmp / "base"
+        base.mkdir()
+        out, status = spec_validate(write_spec(tmp / "ok"), "--base", str(base))
+        check(status == 0 and "premise: pass" in out, f"spec-validate.py passes the fixture spec -> {status} {out}")
+        out, status = spec_validate(write_spec(tmp / "nodomain", domain=""), "--no-run")
+        check(status == 1 and "rule 8" in out,
+              f"a scenario that enforces a reference with no domain fails rule 8 -> {status} {out}")
+        out, status = spec_validate(write_spec(tmp / "premise", premise="false"), "--base", str(base))
+        check(status == 1 and "rule 9" in out, f"a premise that fails on the base fails rule 9 -> {status} {out}")
+        spec = write_spec(tmp / "mutant")
+        spec.write_text(spec.read_text().replace("| MU1 |", "| MU2 |"))
+        out, status = spec_validate(spec, "--no-run")
+        check(status == 1 and "rule 6" in out, f"a mutant with no row of §4 fails rule 6 -> {status} {out}")
+
+        # the gate: the delta's checks run on a head; a failure, or a write into the head, fails it
+        head = tmp / "head"
+        head.mkdir()
+        out, status = spec_validate(write_spec(tmp / "gate"), "--head", str(head), "--out", str(tmp / "out"))
+        check(status == 0 and out.count("check: pass") == 2, f"the gate runs the delta's two checks -> {status} {out}")
+        out, status = spec_validate(write_spec(tmp / "gate-fail", check="false"), "--head", str(head),
+                                    "--out", str(tmp / "out"))
+        check(status == 1 and "gate:" in out, f"a check that fails on the head fails the gate -> {status} {out}")
+        subprocess.run(["git", "init", "-q", str(head)], check=True)
+        out, status = spec_validate(write_spec(tmp / "gate-write", check="touch written"), "--head", str(head),
+                                    "--out", str(tmp / "out"))
+        check(status == 1 and "changed `git status" in out,
+              f"a check that writes into the head fails the gate -> {status} {out}")
+
+        # spec-gate.py and spec-bundle.py on a part whose cell names `spec`
+        root = tmp / "Research"
+        (root / "Packages" / "Example").mkdir(parents=True)
+        (root / "Tasks").mkdir()
+        task = root / "Tasks" / "plan.md"
+        task.write_text("# Plan\n\n## Parts\n\n| part | repository | sections | what it is | tier | state |\n"
+                        "|:--|:--|:--|:--|:--|:--|\n| **S** | `Example` | spec, §V, §L | x | build | open |\n"
+                        "| **T** | `Example` | spec, §V, §L | x | build | open |\n\n"
+                        "## §V · Plan rules\n\nV-RULE.\n\n## §L · The loop\n\n- **The builder also reads:** nothing more.\n")
+        write_spec(root / "Tasks" / "Evidence" / "plan" / "S")
+        env = {**os.environ, "RESEARCH_ROOT": str(root), "HOME": str(tmp)}
+        p = subprocess.run([sys.executable, str(SPEC_GATE), str(task), "S", "T", "--no-run"],
+                           capture_output=True, text=True, env=env)
+        lines = dict(line.split("\t")[:2] for line in p.stdout.splitlines() if "\t" in line)
+        check(lines.get("S") == "PASS" and lines.get("T") == "MISSING spec" and p.returncode == 1,
+              f"spec-gate.py validates S and finds T's spec missing -> {lines} {p.returncode} {p.stderr.strip()}")
+        out = tmp / "bundle.md"
+        p = subprocess.run([sys.executable, str(SPEC_BUNDLE), str(task), "S", "--out", str(out)],
+                           capture_output=True, text=True)
+        text = out.read_text() if out.exists() else ""
+        check(p.returncode == 0 and "## 3 · Delta" in text and "V-RULE" in text and "**$SPEC:**" in text,
+              f"the bundle of S holds its spec, §V and $SPEC -> {p.returncode} {p.stderr.strip()}")
+
+
 def selftest():
     """The copies leave out `.env` and `.env.*`, and the spec gate refuses a part that spans
     repositories: (number of cases, number wrong)."""
@@ -227,6 +365,7 @@ def selftest():
         text, stderr, status = spec_bundle(tmp, BUNDLE_PLAN.replace("## Traps", "## Pitfalls"))
         check(status == 1 and "unresolved: *Traps*" in stderr,
               f"a name that matches nothing is unresolved, exit 1 -> {status} {stderr.strip()}")
+    spec_format(check)
     problems = fix_round_mutants(lambda path: (REPO / path).read_text())
     check(not problems, f"a fix round runs only the mutants that its fix touches -> {problems or 'holds'}")
     # the control: without the section, the case finds the gap

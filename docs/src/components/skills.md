@@ -38,14 +38,17 @@ entry paths. On the forward path, it writes the table and the specs while the pl
 backward path, it adds them to a finished task file and changes nothing else.
 
 The part-tier cell holds `decision`, `build`, `reviewed` or `direct`, with the reason beside it.
-Each spec holds *Done when*, *Decided at the edges*, *Tests catch* (the mutants that the tests
+In a new plan, the spec of a part of tier `build` or `reviewed` is a file in the spec-delta format,
+`spec-format.md` in the skill directory, and planning ends when `spec-validate.py` passes it. A plan
+whose parts already have spec sections keeps them. Each spec holds *Done when*, *Decided at the edges*, *Tests catch* (the mutants that the tests
 must catch), *Files*, *Not in this part*, and *Traps*. Before a spec is final, one `reader` agent
 per part measures each fact that the spec states, with the brief `premise-check.md`, and the
 planner fixes each fact that it finds false. It writes each part's spec bundle with
 `spec-bundle.py`, and fixes the cell or §L where a section the part needs is missing or a name
 does not resolve. The skill runs on the `large` model tier.
 
-It runs nothing but its premise check, `spec-gate.py` and `spec-bundle.py`, and it does not merge. Use `build-part`
+It runs nothing but its premise check, `spec-validate.py`, `spec-gate.py` and `spec-bundle.py`,
+and it does not merge. Use `build-part`
 or `build-reviewed` to build a part.
 
 ## `build-part`
@@ -66,8 +69,10 @@ types `/build-part`, so run the loop in a session on the medium model.
 In round 1, the first critic round, two `julia-critic` agents judge the part beside a full-suite
 run. After each round, a fresh `julia-builder` fixes the blocking defects. A question inside the
 loop goes to the `advisor` agent, not to the user. A loop that does not converge goes to the
-`arbitrator` agent. At the end, a
-builder opens the pull request. The skill writes only the `state` cell of the task file and the
+`arbitrator` agent. For a part whose spec is in the spec-delta format, each round also pushes the
+branch, waits for its CI jobs, and runs every `check:` of the delta with `spec-validate.py --head`;
+a failed check or CI job blocks the round. At the end, a builder opens the pull request, whose body
+lists every decision taken without the user and every clause the head does not meet as written. The skill writes only the `state` cell of the task file and the
 lines that record the loop.
 
 Two other files belong to the skill. `edges.md` is the catalogue of edge cases by kind of part.

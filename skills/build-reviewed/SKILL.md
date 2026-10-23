@@ -32,6 +32,12 @@ whose clauses a command can check, and §V or §L must name the gate.** A part i
 section yourself, marked `(dispatcher, <date>)`, and commit the task file. An edge that changes a
 public answer or picks between designs is the user's: ask, and go on with the next part.
 
+**A part whose `sections` cell names `spec` has its spec in the spec-delta format**, and
+`spec-gate.py` checks it wherever it lies. An `INVALID` spec does not start: set the state to
+`waiting for the user — the spec fails spec-validate.py: <the first error line>`. For such a part,
+write its bundle as `build-part` says, pass the bundle's path to every builder and the critic, and
+write each decision and the loop's line into the spec's `## Decisions`, not the task file.
+
 Set the state cell to `in progress`.
 
 ## 2 · Spawn the builder
@@ -75,7 +81,9 @@ that its diff adds, changes or makes false, and fixes the false ones. Spawn a ne
 
 When the builder returns `ready for critic`, spawn **one** `part-critic`, without isolation. Pass the task file, the part, the builder's directory, the
 base and the head. **Never pass the builder's report.** For a part whose gate runs longer than 5
-minutes, spawn `julia-test-runner` on the head in the same message.
+minutes, spawn `julia-test-runner` on the head in the same message. **The gate of a spec-delta
+part** adds the spec's checks after the gate, and CI on the pushed branch, as *The gate of a
+spec-delta part* in `build-part` says; a failed check or CI job fails the gate.
 
 The critic's report is finished when it holds `Verdict:` and its evidence table. Otherwise spawn a
 new critic once.
