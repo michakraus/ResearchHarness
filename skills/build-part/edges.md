@@ -141,6 +141,10 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   sizes and the scales: it reads as universal, while elimination overflows outside them. Name the
   tested sizes and scales in the contract, and where it fails (M4, *Simplify the optimiser
   package and the learning package for 0.9*)
+- a docstring signature rewritten when the type alias it named goes away: the new spelling can be
+  wider than the methods it documents, as `DataLoader(data::NamedTuple{(:q, :p)})` was for methods
+  that require one array type. Compare each rewritten docstring signature with the `methods` it
+  heads (B1, *Move the Hamiltonian and Lagrangian networks out of the learning package*)
 - a bit-for-bit pin recorded from the parent commit whose value passes through a LAPACK
   factorisation of a seeded draw, such as the QR of a `StiefelManifold` initialisation: OpenBLAS
   0.3.29 (Julia 1.12.7) and 0.3.30 (1.13.2) give the same `randn` and different last bits of the
