@@ -16,74 +16,74 @@
 [[call]]
 caller = "build-part"
 callee = "julia-builder"
-at = "skills/build-part/SKILL.md:136"
+at = "skills/build-part/SKILL.md:146"
 label = "build, fix, finish"
 
 [[call]]
 caller = "build-part"
 callee = "julia-critic"
-at = "skills/build-part/SKILL.md:179"
+at = "skills/build-part/SKILL.md:189"
 effort = "high"
 label = "round 1, two critics"
 
 [[call]]
 caller = "build-part"
 callee = "julia-critic"
-at = "skills/build-part/SKILL.md:94"
+at = "skills/build-part/SKILL.md:100"
 label = "verify round"
 
 [[call]]
 caller = "build-part"
 callee = "julia-test-runner"
-at = "skills/build-part/SKILL.md:196"
+at = "skills/build-part/SKILL.md:206"
 label = "full suite"
 
 [[call]]
 caller = "build-part"
 callee = "advisor"
-at = "skills/build-part/SKILL.md:294"
+at = "skills/build-part/SKILL.md:328"
 label = "a question"
 
 [[call]]
 caller = "build-part"
 callee = "arbitrator"
-at = "skills/build-part/SKILL.md:232"
+at = "skills/build-part/SKILL.md:266"
 label = "no convergence"
 
 [[call]]
 caller = "build-reviewed"
 callee = "part-builder"
-at = "skills/build-reviewed/SKILL.md:39"
+at = "skills/build-reviewed/SKILL.md:45"
 label = "build, fix, finish"
 
 [[call]]
 caller = "build-reviewed"
 callee = "part-critic"
-at = "skills/build-reviewed/SKILL.md:76"
+at = "skills/build-reviewed/SKILL.md:82"
 label = "one critic"
 
 [[call]]
 caller = "build-reviewed"
 callee = "julia-test-runner"
-at = "skills/build-reviewed/SKILL.md:62"
+at = "skills/build-reviewed/SKILL.md:68"
 label = "a long run"
 
 [[call]]
 caller = "julia-builder"
 callee = "julia-branch-verifier"
-at = "agents/julia-builder.md:264"
+at = "agents/julia-builder.md:266"
 label = "before the pull request"
 
 [[call]]
 caller = "julia-builder"
 callee = "changelog-scribe"
-at = "agents/julia-builder.md:276"
+at = "agents/julia-builder.md:278"
 label = "a CHANGELOG fix"
 
 [[call]]
 caller = "part-builder"
 callee = "julia-branch-verifier"
-at = "agents/part-builder.md:141"
+at = "agents/part-builder.md:144"
 label = "before the pull request"
 
 [[call]]
@@ -107,7 +107,7 @@ label = "red CI"
 [[call]]
 caller = "plan-parts"
 callee = "reader"
-at = "skills/plan-parts/SKILL.md:237"
+at = "skills/plan-parts/SKILL.md:247"
 label = "premise check, one per part"
 
 [[call]]

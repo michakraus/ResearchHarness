@@ -8,7 +8,9 @@ The bundle holds, in this order:
 1. the part's `PART` row and the `COLLISION` rows that name it, from `parts-table.awk`;
 2. each section that the part's `sections` cell names, by its heading key (`§M5`, `§5V.P38b`,
    `§6`), and for a key with no heading, such as a T-number, each table row whose first cell is
-   the key, under its table's header;
+   the key, under its table's header; for the key `spec`, the part's spec in the spec-delta format,
+   `Evidence/<task file's name>/<part>/spec.md` beside the task file, whole, and the header names
+   its directory as `$SPEC`;
 3. §V and §L;
 4. each section that §L's two lines **The builder also reads:** and **The critic also reads:**
    name: a key (`§6`), a heading in italics (`*Traps*`), or the preamble of a key (`the preamble
@@ -147,12 +149,13 @@ def bundle(path, part):
     state = STATE.match(row[5].strip())
     mine = ["\t".join(row[:5] + [state.group(1).strip() if state else row[5][:80]])]
     cell = row[3]
-    unresolved, ranges, labels = [], [], []
+    unresolved, ranges, labels, sources = [], [], [], []
 
-    def add(rng, label):
-        if rng not in ranges:
+    def add(rng, label, source=None):
+        if (rng, source) not in zip(ranges, sources):
             ranges.append(rng)
             labels.append(label)
+            sources.append(source)
 
     def section(key, preamble=False, label=None):
         j = by_key(heads, key)
@@ -166,6 +169,13 @@ def bundle(path, part):
 
     keys = [k.strip().lstrip("§").split()[0] for k in cell.split(",") if k.strip()]
     for key in [k for k in keys if k not in ("V", "L")]:
+        if key == "spec":
+            spec = spec_gate.spec_path(path, part)
+            if os.path.isfile(spec):
+                add((0, len(open(spec, encoding="utf-8").read().split("\n"))), "spec", spec)
+            else:
+                unresolved.append(f"spec ({os.path.relpath(spec, os.path.dirname(os.path.abspath(path)))})")
+            continue
         if not section(key):
             unresolved.append(f"§{key} (sections cell)")
     # §V and §L end at their next heading: a plan can file dated handovers below §L.
@@ -183,14 +193,18 @@ def bundle(path, part):
                 add(span(heads, t, len(lines)), f"*{name}*")
         elif not section(name, preamble=(kind == "preamble")):
             unresolved.append(f"§{name} (§L)")
-    return (lines, mine + collisions, ranges, labels, skipped), unresolved
+    return (lines, mine + collisions, ranges, labels, sources, skipped), unresolved
 
 
-def render(path, part, lines, rows, ranges, labels, skipped):
+def render(path, part, lines, rows, ranges, labels, sources, skipped):
     body = []
-    for (start, end), label in zip(ranges, labels):
-        body.append(f"<!-- {label}: lines {start + 1}–{end} -->")
-        body.extend(lines[start:end])
+    for (start, end), label, source in zip(ranges, labels, sources):
+        if source:
+            body.append(f"<!-- {label}: {source} -->")
+            body.extend(open(source, encoding="utf-8").read().split("\n")[start:end])
+        else:
+            body.append(f"<!-- {label}: lines {start + 1}–{end} -->")
+            body.extend(lines[start:end])
         body.append("")
     text = "\n".join(body)
     digest = hashlib.sha256(text.encode()).hexdigest()[:16]
@@ -200,7 +214,10 @@ def render(path, part, lines, rows, ranges, labels, skipped):
             f"- **Task file:** `{path}` at commit `{commit or 'unknown'}`",
             f"- **Body:** {text.count(chr(10)) + 1} lines, {len(text.split())} words, sha256 `{digest}`",
             "- **Rows:**", "", "```", *rows, "```", "",
-            "- **Sections:** " + "; ".join(f"{l} ({s + 1}–{e})" for (s, e), l in zip(ranges, labels)),
+            "- **Sections:** " + "; ".join(f"{l} ({src if src else f'{s + 1}–{e}'})"
+                                           for (s, e), l, src in zip(ranges, labels, sources)),
+            *[f"- **$SPEC:** `{os.path.dirname(src)}`, the directory of the spec's checks"
+              for src in sources if src],
             "- **§L phrases that add nothing here:** " + ("; ".join(skipped) if skipped else "none"),
             "", "---", ""]
     return "\n".join(head) + text, digest

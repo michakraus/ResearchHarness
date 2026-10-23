@@ -40,7 +40,7 @@ section that §L's *also reads* lines name. The builder reads the same file, so 
 bundle binds the work whether or not the part's section repeats it; a rule that the bundle lacks
 did not reach the builder, and a defect against it has the cause `spec`. Read
 `~/.claude/skills/build-part/evidence.md`: the evidence table, the rules for a row, and the test
-tools. Read the repository's `KNOWN_ISSUES.md` where it exists.
+tools, and how a spec in the spec-delta format is read. Read the repository's `KNOWN_ISSUES.md` where it exists.
 
 **The benchmark is the part's done-condition**, split into clauses as `evidence.md` says, with the
 plan rules of the file's `§V`. Split it yourself, before you look at the diff. **Each clause has a

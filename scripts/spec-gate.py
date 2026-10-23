@@ -1,11 +1,17 @@
 """The spec gate of the build-part skill: does a build part carry its edges and its mutants?
 
-    python3 spec-gate.py "<task file>" [<part> ...]
+    python3 spec-gate.py "<task file>" [<part> ...] [--no-run]
 
 A `build` part in `Packages/` or `Experiments/` passes when the sections that its `sections` cell
 names hold a **Decided at the edges** and a **Tests catch**. With no part named, every open `build`
 part of the file is checked: not merged, declined, done or in review. A named part is checked
 whatever its state. A part elsewhere — `Environment`, `Library`, the instruction files — is exempt.
+
+A part whose `sections` cell names `spec` has a spec in the spec-delta format, at
+`Evidence/<task file's name>/<part>/spec.md` beside the task file, and is checked wherever it
+lies: it passes when `spec-validate.py` passes it, with its premises run on the base commit of its
+repository's main checkout (`--no-run`: the structure only). Otherwise it is MISSING spec, or
+INVALID <n> errors, with the validator's lines below it, indented.
 
 Every checked part, exempt or not, has its **Files** in one repository: a path in the **Files**
 of its sections that lies in another repository of the tree (`Tasks/…`, `Harness/…`,
@@ -14,10 +20,11 @@ outside its own worktree, so such a file is a dispatcher step of its own, named 
 `direct` part runs in the main session or a workflow, with no isolated builder, and is not checked
 for it. A section that several parts name gives each of them its **Files**.
 
-One line per part: PASS, MISSING <labels>, SPANS <repositories>, or EXEMPT <why>. A section key
+One line per part: PASS, MISSING <labels>, INVALID <n> errors, SPANS <repositories>, or
+EXEMPT <why>. A section key
 that matches no heading is printed as unresolved, because its text cannot be searched. The exit
-status is 0 when every checked part passes or is exempt, 1 when one misses a label or spans
-repositories, and 3 when this script fails. The parts table comes from `parts-table.awk`, beside
+status is 0 when every checked part passes or is exempt, 1 when one misses a label, is invalid
+or spans repositories, and 3 when this script fails. The parts table comes from `parts-table.awk`, beside
 this script. The research root is $RESEARCH_ROOT, else ~/Research.
 """
 import os
@@ -30,7 +37,7 @@ RESEARCH = os.environ.get("RESEARCH_ROOT") or os.path.expanduser("~/Research")
 # The trees whose directories are each a repository; any other top-level directory is one.
 TREES = ("Packages", "Experiments", "Papers", "Books", "Projects")
 # A **Files** label, up to the next numbered or bold label, or the next heading.
-FILES = re.compile(r"\*\*Files:?\*\*:?(.*?)(?=\n\s*\d+\.\s+\*\*|\n\s*\*\*|\n#|\Z)", re.DOTALL)
+FILES = re.compile(r"\*\*Files[:.]?\*\*:?(.*?)(?=\n\s*\d+\.\s+\*\*|\n\s*\*\*|\n#|\Z)", re.DOTALL)
 PATH = re.compile(r"`([^`\s]*/[^`\s]*)`")
 LABELS = ("Decided at the edges", "Tests catch")
 CLOSED = re.compile(r"merged|declined|done|PR #")
@@ -110,7 +117,29 @@ def spans(body, own):
     return sorted(keys) if len(keys) > 1 else []
 
 
+def spec_path(path, part):
+    """The spec of a part in the spec-delta format: Evidence/<task file's name>/<part>/spec.md."""
+    stem = os.path.splitext(os.path.basename(path))[0]
+    return os.path.join(os.path.dirname(os.path.abspath(path)), "Evidence", stem, part, "spec.md")
+
+
+def validate(spec, own, no_run):
+    """Run spec-validate.py on a spec: (passed, its error lines)."""
+    checkout = os.path.join(RESEARCH, own)
+    where = ["--no-run"] if no_run or not os.path.isdir(checkout) else ["--repo", checkout]
+    p = subprocess.run([sys.executable, os.path.join(HERE, "spec-validate.py"), spec, *where],
+                       capture_output=True, text=True)
+    if p.returncode not in (0, 1):
+        raise RuntimeError(f"spec-validate.py exits {p.returncode}: {p.stderr.strip()}")
+    lines = [l for l in p.stdout.splitlines() if not l.startswith(("premise: pass", "PASS", "FAIL"))]
+    if where == ["--no-run"] and not no_run:
+        lines.append(f"premises not run: no checkout at {checkout}")
+    return p.returncode == 0, lines
+
+
 def main(argv):
+    no_run = "--no-run" in argv
+    argv = [a for a in argv if a != "--no-run"]
     if not argv:
         print(__doc__.strip().splitlines()[2].strip())
         return 3
@@ -125,12 +154,26 @@ def main(argv):
         seen.add(part)
         keys = [k.strip().lstrip("§") for k in cell.split(",")]
         keys = [k.split()[0] for k in keys if k and k.split()[0] not in ("V", "L")]
+        spec = spec_path(path, part) if "spec" in keys else None
+        keys = [k for k in keys if k != "spec"]
+        if spec and not os.path.isfile(spec):
+            print(f"{part}\tMISSING spec\t{os.path.relpath(spec, os.path.dirname(os.path.abspath(path)))}")
+            failed = True
+            continue
         found = [k for k in keys if k in text]
-        body = "\n".join(text[k] for k in found)
+        body = "\n".join([text[k] for k in found] + ([open(spec, encoding="utf-8").read()] if spec else []))
         across = spans(body, home(repository)) if tier != "direct" else []
         if across:
             print(f"{part}\tSPANS {', '.join(across)}\ta file in another repository is a dispatcher step of its own")
             failed = True
+            continue
+        if spec:
+            ok, lines = validate(spec, home(repository), no_run)
+            errors = [l for l in lines if l.startswith("rule ")]
+            print(f"{part}\t{'PASS' if ok else f'INVALID {len(errors)} errors'}")
+            for line in lines:
+                print("  " + line)
+            failed |= not ok
             continue
         gate, note = applies(repository)
         if not gate:

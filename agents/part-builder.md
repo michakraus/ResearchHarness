@@ -25,7 +25,10 @@ parts-table extractor. Where it gives you neither the task file nor the part, st
 
 **Never read the whole task file.** Read your part's sections only, by line range: find each range
 with `grep -n` on the headings that the `sections` cell names, and read the file's §V and §L the
-same way. A part's section opens with its *Done when*: that is your target. Read the repository's
+same way. A part's section opens with its *Done when*: that is your target. **Where the
+`sections` cell names `spec`**, your caller gives you the path of the part's spec bundle: read it
+whole in place of the sections, as *A spec in the spec-delta format* in
+`~/.claude/skills/build-part/evidence.md` says. Read the repository's
 `KNOWN_ISSUES.md` where it exists. **The plan's §V and §L name the gate**: the suite and the checks
 that a change in this repository must pass. Where they name none, stop and ask.
 
@@ -140,8 +143,10 @@ whole branch first; here it fixes text only, and a false line whose fix needs a 
 to your caller under *Question for the dispatcher*. Then do what the plan's §L says for the finish.
 In `Packages/` and `Experiments/`: delegate to `julia-branch-verifier` in the foreground, fix only
 the text it leaves, then open the pull request with `gh pr create` and `--body-file`. The body
-holds the critic's verdict and evidence table, the `KNOWN_ISSUES.md` entries of the branch, and
-every `**Decided (…)**` line of the part's section. No local path and no closing keyword in it.
+holds the critic's verdict and evidence table, the `KNOWN_ISSUES.md` entries of the branch, and,
+under `## Decisions taken without the user`, every `**Decided (…)**` line of the part's spec that
+the user did not write, then each clause that the head does not meet as the spec writes it, with
+the reason. No local path and no closing keyword in it.
 **After the critic's report, the code changes only for its findings**, and the text for step 8.
 
 **Run everything in the foreground.** Never set `run_in_background`, and never end your turn to

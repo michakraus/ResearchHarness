@@ -31,6 +31,29 @@
   `ask` lists. No
   instruction, skill or agent is installed for Antigravity. `hooks/probe.py` runs `guard.py` on a
   fixture home, with cases for its refusals and for each way in which it fails closed.
+- **A new plan specifies each part in the spec-delta format.** `plan-parts` writes the spec of a
+  part of tier `build` or `reviewed` as a file, `Tasks/Evidence/<plan>/<part>/spec.md` with its
+  `checks/`, after `skills/plan-parts/spec-format.md`: a living spec whose premises run on the
+  base, a change proposal, a delta of requirements with WHEN/THEN scenarios, a `check:` and a
+  `catches:` each, and the mutant table. Two rules come from the P38b pilot: a premise for each
+  API convention a clause depends on, and a `domain:` for each scenario that enforces a reference.
+  The premise check marks a convention with no premise. The part's cell is `spec, §V, §L`. A plan
+  whose parts have spec sections keeps them.
+- **`scripts/spec-validate.py` is the strict validator of such a spec**, ported from the pilot's
+  `validate.py`: headings, not substrings, nine rules, and the premises run on the base commit,
+  which `--repo` exports with `git archive`. `spec-gate.py` runs it in place of its label test for
+  a part whose cell names `spec`, and prints `INVALID` or `MISSING spec`; `build-part` and
+  `build-reviewed` start no invalid part. `spec-bundle.py` copies the spec into the bundle whole
+  and names `$SPEC`, and `evidence.md` says how a builder and a critic read it.
+- **The gate of a spec-delta part runs the spec's checks and CI in every round** (B5).
+  `julia-test-runner` runs `spec-validate.py --head` on the worktree after the suite, which fails a
+  check that writes into the head; the dispatcher pushes the branch and reads every CI job. A
+  failed check or job blocks the round. The pilot's gate found a broken commit order and a Windows
+  path bug that no critic had judged.
+- **The pull-request body lists every decision taken without the user** (B9): each advisor and
+  arbitrator line and each clause the head does not meet as the spec writes it, under
+  `## Decisions taken without the user`, in `julia-builder` and `part-builder`. Before, only the
+  advisor's lines were listed.
 
 - **The settings template allows the four read-only Zotero tools** `mcp__zotero__ping`,
   `search_items`, `get_item` and `list_attachments`. Before, they were allowed only in a

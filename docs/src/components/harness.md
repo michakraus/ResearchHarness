@@ -383,7 +383,10 @@ the critic's `rsync` copy from `skills/build-part/evidence.md` and `copy_command
 `.claude`, and checks that the copy holds none of them. A control copy with no flag must hold the
 `.env.ts`. Then it runs `scripts/spec-gate.py` on a fixture task file and checks the verdict of
 each part: a part whose *Files* lie in two repositories is `SPANS`, unless its part tier is
-`direct`.
+`direct`. It runs `scripts/spec-validate.py` on a fixture spec in the spec-delta format, with a
+control for each of a missing domain, a failing premise, a mutant with no row, a failing check on a
+head and a check that writes into the head; and it checks that `spec-gate.py` and `spec-bundle.py`
+take a part whose cell names `spec`.
 
 ## `network.py`
 

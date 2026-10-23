@@ -7,7 +7,8 @@ this brief to one `reader` agent per part.
 
 The prompt names them:
 
-- `PLAN`: the task file. Your part is the one that `PART` names.
+- `PLAN`: the task file. Your part is the one that `PART` names. Where its `sections` cell names
+  `spec`, its spec is `Evidence/<task file's name>/<PART>/spec.md` beside the task file.
 - `PART`: the part's key.
 - `REPO`: the main checkout of the part's repository.
 - `BASE`: the commit the build starts from, `origin/main` after the planner's fetch.
@@ -36,12 +37,19 @@ For each fact, measure it: run the tool, count, read the line. Then give a verdi
 - `false`: it does not. Say what you found instead.
 - `cannot`: no measurement is possible here; say why in one phrase.
 
+**In a spec of the spec-delta format**, the validator runs the premises of `## 1 · Living spec`;
+measure the facts of the other sections. Also list each **API convention** that a clause of
+`## 3 · Delta` depends on — an argument's meaning (an order or a degree, a size or a count), an
+index base, a unit, a sign or a scaling — with the kind `convention`. Measure it in the code of
+the base, and give the verdict `no premise` where no check of §1 reads it.
+
 ## What to return
 
 One line per fact, fields separated by " | ":
 
 ```
-<n> | <the fact, at most 15 words quoted> | <PLAN line> | <tool, count, line, version, content, identity, other> | <the command or the file read> | <the result> | <holds, false, cannot>
+<n> | <the fact, at most 15 words quoted> | <PLAN or spec line> | <tool, count, line, version, content, identity, convention, other> | <the command or the file read> | <the result> | <holds, false, cannot, no premise>
 ```
 
-Then the facts you found false, one sentence each. Nothing else.
+Then the facts you found false and the conventions with no premise, one sentence each. Nothing
+else.

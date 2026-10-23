@@ -49,7 +49,9 @@ section repeats it.
 
 A part's own section opens with its `Done when`; that is your target. §V holds the plan's own
 rules for building and verifying, and §L what the plan changes in the loop. Every decision of
-the part (`**Decided (…)**`) is a line of its section, and so of the bundle.
+the part (`**Decided (…)**`) is a line of its section, and so of the bundle. A part whose spec is
+in the spec-delta format has its decisions under the spec's `## Decisions`, and you read the spec
+as `evidence.md` says.
 
 **Read nothing else of the task file.** The largest is about 33 000 tokens, and most of it is
 the history of other parts. Read `~/.claude/skills/build-part/evidence.md` too: the evidence
@@ -307,8 +309,10 @@ Seven rules for the pull-request text:
 - The verifier's block goes in under `## Pre-PR verification`.
 - The last critic's verdict and evidence table go in under `## Critic`.
 - The entries this branch adds to `KNOWN_ISSUES.md` go in under `## Known issues added`, by ID.
-- Every `**Decided (advisor, …)**` line of the part's section goes in under
-  `## Advisor decisions`, verbatim, so the user reviews them.
+- Under `## Decisions taken without the user`, so that the user confirms or rejects each: every
+  `**Decided (advisor, …)**` and `**Decided (arbitrator, …)**` line of the bundle, verbatim; then
+  each clause that the head does not meet as the spec writes it, with the reason. Where there is
+  none, write `none`.
 
 **A part outside `Packages/` and `Experiments/` is not a pull request.** `Projects/`, `Papers/`,
 `Tasks/` and the rest commit to `main` directly. Then there is no branch and no worktree, and your

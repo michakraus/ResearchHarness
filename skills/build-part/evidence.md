@@ -30,6 +30,19 @@ recorded and not blocking.
 | clause | test or command | on the unmodified tree | on the branch | verdict |
 |:--|:--|:--|:--|:--|
 
+**A spec in the spec-delta format** (`~/.claude/skills/plan-parts/spec-format.md`) is read so:
+
+- each scenario of `## 3 · Delta` is a clause, its `check:` commands are the clause's commands, and
+  its `domain:`, where it has one, is the clause's domain;
+- its `catches:` lines and the table of `## 4` are the part's *Tests catch*: each mutant is killed
+  by the kept test that the table names;
+- the change proposal's **Files** and **Out of scope** are the part's *Files* and *Not in this part*,
+  and the *Traps* of `## 4` its traps;
+- `## 1 · Living spec` holds the facts of the base that the change relies on. A premise that no
+  longer holds is a stale premise: a question for the dispatcher, not a clause;
+- `$SPEC` is the directory that the bundle's header names; run a check with it set, from the root
+  of your tree, and with `OUT` a new directory under your scratch directory.
+
 ## Rules for a row
 
 - **A test that reproduces a defect FAILS on the unmodified tree.** One that passes there PINS
