@@ -283,6 +283,26 @@ def spec_format(check):
         out, status = spec_validate(spec, "--no-run")
         check(status == 1 and "rule 6" in out, f"a mutant with no row of §4 fails rule 6 -> {status} {out}")
 
+        # a premise that needs a device runs only where --devices names it; elsewhere it is
+        # unmeasured (exit 2), never a pass
+        spec = write_spec(tmp / "device", premise="false")
+        spec.write_text(spec.read_text().replace("- check: `false`", "- check: `false` (device: metal)"))
+        out, status = spec_validate(spec, "--base", str(base))
+        check(status == 2 and "not run (needs metal)" in out and "UNMEASURED" in out,
+              f"a device premise with no --devices is unmeasured, exit 2 -> {status} {out}")
+        out, status = spec_validate(spec, "--base", str(base), "--devices", "metal")
+        check(status == 1 and "rule 9" in out, f"with --devices metal the device premise runs -> {status} {out}")
+
+        # rule 10: a `git grep` without -P that uses \b in a check script fails; with -P it passes
+        spec = write_spec(tmp / "escape")
+        (spec.parent / "checks" / "names.sh").write_text("git grep -nE '\\bfoo\\b' -- src/\n")
+        out, status = spec_validate(spec, "--no-run")
+        check(status == 1 and "rule 10: checks/names.sh:1" in out,
+              f"a git grep -E with \\b in a check script fails rule 10 -> {status} {out}")
+        (spec.parent / "checks" / "names.sh").write_text("git grep -nP '\\bfoo\\b' -- src/\n")
+        out, status = spec_validate(spec, "--no-run")
+        check(status == 0, f"the same pattern with -P passes -> {status} {out}")
+
         # the gate: the delta's checks run on a head; a failure, or a write into the head, fails it
         head = tmp / "head"
         head.mkdir()
@@ -313,6 +333,28 @@ def spec_format(check):
         lines = dict(line.split("\t")[:2] for line in p.stdout.splitlines() if "\t" in line)
         check(lines.get("S") == "PASS" and lines.get("T") == "MISSING spec" and p.returncode == 1,
               f"spec-gate.py validates S and finds T's spec missing -> {lines} {p.returncode} {p.stderr.strip()}")
+        # a part whose device premise did not run is UNMEASURED, exit 2; the premises run on a
+        # base exported from a git checkout of the fixture repository
+        repo = root / "Packages" / "Example"
+        for cmd in (["init", "-q"], ["-c", "user.name=x", "-c", "user.email=x@x", "commit", "-q",
+                                     "--allow-empty", "-m", "base"]):
+            subprocess.run(["git", *cmd], cwd=repo, check=True, capture_output=True)
+        commit = subprocess.run(["git", "rev-parse", "--short=7", "HEAD"], cwd=repo, capture_output=True,
+                                text=True, check=True).stdout.strip()
+        spec = root / "Tasks" / "Evidence" / "plan" / "S" / "spec.md"
+        spec.write_text(spec.read_text().replace("1234567", commit)
+                        .replace("- check: `true`\n- catches: none — a premise",
+                                 "- check: `true` (device: metal)\n- catches: none — a premise"))
+        p = subprocess.run([sys.executable, str(SPEC_GATE), str(task), "S"], capture_output=True, text=True, env=env)
+        lines = dict(line.split("\t")[:2] for line in p.stdout.splitlines() if "\t" in line)
+        check(lines.get("S") == "UNMEASURED metal" and p.returncode == 2,
+              f"spec-gate.py reports a device premise not run as UNMEASURED, exit 2 -> {lines} {p.returncode} "
+              f"{p.stdout.strip()} {p.stderr.strip()}")
+        p = subprocess.run([sys.executable, str(SPEC_GATE), str(task), "S", "--devices", "metal"],
+                           capture_output=True, text=True, env=env)
+        lines = dict(line.split("\t")[:2] for line in p.stdout.splitlines() if "\t" in line)
+        check(lines.get("S") == "PASS" and p.returncode == 0,
+              f"with --devices metal the gate runs it and passes -> {lines} {p.returncode} {p.stdout.strip()}")
         out = tmp / "bundle.md"
         p = subprocess.run([sys.executable, str(SPEC_BUNDLE), str(task), "S", "--out", str(out)],
                            capture_output=True, text=True)

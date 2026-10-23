@@ -1,6 +1,6 @@
 """The spec gate of the build-part skill: does a build part carry its edges and its mutants?
 
-    python3 spec-gate.py "<task file>" [<part> ...] [--no-run]
+    python3 spec-gate.py "<task file>" [<part> ...] [--no-run] [--devices <d,…>]
 
 A `build` part in `Packages/` or `Experiments/` passes when the sections that its `sections` cell
 names hold a **Decided at the edges** and a **Tests catch**. With no part named, every open `build`
@@ -11,7 +11,10 @@ A part whose `sections` cell names `spec` has a spec in the spec-delta format, a
 `Evidence/<task file's name>/<part>/spec.md` beside the task file, and is checked wherever it
 lies: it passes when `spec-validate.py` passes it, with its premises run on the base commit of its
 repository's main checkout (`--no-run`: the structure only). Otherwise it is MISSING spec, or
-INVALID <n> errors, with the validator's lines below it, indented.
+INVALID <n> errors, with the validator's lines below it, indented. A premise that needs a device
+(`(device: metal)`) runs only where `--devices` names it; where it does not, the part is
+UNMEASURED <devices>, which is no pass: run the gate again from a Kaimon session, which has the
+GPU, with `--devices`.
 
 Every checked part, exempt or not, has its **Files** in one repository: a path in the **Files**
 of its sections that lies in another repository of the tree (`Tasks/…`, `Harness/…`,
@@ -20,11 +23,12 @@ outside its own worktree, so such a file is a dispatcher step of its own, named 
 `direct` part runs in the main session or a workflow, with no isolated builder, and is not checked
 for it. A section that several parts name gives each of them its **Files**.
 
-One line per part: PASS, MISSING <labels>, INVALID <n> errors, SPANS <repositories>, or
-EXEMPT <why>. A section key
+One line per part: PASS, MISSING <labels>, INVALID <n> errors, UNMEASURED <devices>,
+SPANS <repositories>, or EXEMPT <why>. A section key
 that matches no heading is printed as unresolved, because its text cannot be searched. The exit
 status is 0 when every checked part passes or is exempt, 1 when one misses a label, is invalid
-or spans repositories, and 3 when this script fails. The parts table comes from `parts-table.awk`, beside
+or spans repositories, 2 when none of those holds and a part is unmeasured, and 3 when this
+script fails. The parts table comes from `parts-table.awk`, beside
 this script. The research root is $RESEARCH_ROOT, else ~/Research.
 """
 import os
@@ -123,29 +127,34 @@ def spec_path(path, part):
     return os.path.join(os.path.dirname(os.path.abspath(path)), "Evidence", stem, part, "spec.md")
 
 
-def validate(spec, own, no_run):
-    """Run spec-validate.py on a spec: (passed, its error lines)."""
+def validate(spec, own, no_run, devices):
+    """Run spec-validate.py on a spec: (its exit status, 0, 1 or 2, and its lines)."""
     checkout = os.path.join(RESEARCH, own)
     where = ["--no-run"] if no_run or not os.path.isdir(checkout) else ["--repo", checkout]
-    p = subprocess.run([sys.executable, os.path.join(HERE, "spec-validate.py"), spec, *where],
-                       capture_output=True, text=True)
-    if p.returncode not in (0, 1):
+    p = subprocess.run([sys.executable, os.path.join(HERE, "spec-validate.py"), spec, *where,
+                        "--devices", devices], capture_output=True, text=True)
+    if p.returncode not in (0, 1, 2):
         raise RuntimeError(f"spec-validate.py exits {p.returncode}: {p.stderr.strip()}")
-    lines = [l for l in p.stdout.splitlines() if not l.startswith(("premise: pass", "PASS", "FAIL"))]
+    lines = [l for l in p.stdout.splitlines()
+             if not l.startswith(("premise: pass", "PASS", "FAIL", "UNMEASURED"))]
     if where == ["--no-run"] and not no_run:
         lines.append(f"premises not run: no checkout at {checkout}")
-    return p.returncode == 0, lines
+    return p.returncode, lines
 
 
 def main(argv):
     no_run = "--no-run" in argv
     argv = [a for a in argv if a != "--no-run"]
+    devices = ""
+    if "--devices" in argv:
+        k = argv.index("--devices")
+        devices, argv = argv[k + 1], argv[:k] + argv[k + 2:]
     if not argv:
         print(__doc__.strip().splitlines()[2].strip())
         return 3
     path, wanted = argv[0], set(argv[1:])
     text = sections(open(path, encoding="utf-8").read().split("\n"))
-    seen, failed = set(), False
+    seen, failed, unmeasured = set(), False, False
     for part, repository, cell, tier, state in parts(path):
         if wanted and part not in wanted:
             continue
@@ -168,12 +177,16 @@ def main(argv):
             failed = True
             continue
         if spec:
-            ok, lines = validate(spec, home(repository), no_run)
+            code, lines = validate(spec, home(repository), no_run, devices)
             errors = [l for l in lines if l.startswith("rule ")]
-            print(f"{part}\t{'PASS' if ok else f'INVALID {len(errors)} errors'}")
+            needs = sorted({d.strip() for l in lines if (m := re.search(r"not run \(needs ([^)]*)\)", l))
+                            for d in m.group(1).split(",")})
+            verdict = {0: "PASS", 1: f"INVALID {len(errors)} errors", 2: f"UNMEASURED {', '.join(needs)}"}
+            print(f"{part}\t{verdict[code]}")
             for line in lines:
                 print("  " + line)
-            failed |= not ok
+            failed |= code == 1
+            unmeasured |= code == 2
             continue
         gate, note = applies(repository)
         if not gate:
@@ -189,7 +202,7 @@ def main(argv):
     for part in sorted(wanted - seen):
         print(f"{part}\tNOT FOUND in the parts table")
         failed = True
-    return 1 if failed else 0
+    return 1 if failed else 2 if unmeasured else 0
 
 
 if __name__ == "__main__":

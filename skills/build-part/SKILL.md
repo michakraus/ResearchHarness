@@ -121,8 +121,11 @@ A `build` part in `Packages/` or `Experiments/` starts only when its sections ho
 cd ~/Research && python3 Harness/scripts/spec-gate.py "Tasks/<file>.md" <part>
 ```
 
-It prints `PASS`, `EXEMPT`, `MISSING <labels>`, `INVALID <n> errors` or `SPANS <repositories>`, and
-exits 0, 0, 1, 1 or 1. A part whose cell names `spec` passes when `spec-validate.py` passes its spec,
+It prints `PASS`, `EXEMPT`, `MISSING <labels>`, `INVALID <n> errors`, `UNMEASURED <devices>` or
+`SPANS <repositories>`, and exits 0, 0, 1, 1, 2 or 1. **`UNMEASURED` is no pass**: a premise needs a
+device that the Bash sandbox lacks. Run the gate again from a Kaimon session with `--devices`, as
+*A device check runs from a Kaimon session* in `~/.claude/skills/plan-parts/spec-format.md` says,
+and act on that verdict. A part whose cell names `spec` passes when `spec-validate.py` passes its spec,
 with every premise run on the base. **An `INVALID` part does not start**: its spec or a premise of
 its plan is false, and planning, not the loop, fixes that. Set the state to
 `waiting for the user — the spec fails spec-validate.py: <the first error line>`, and go on.
@@ -214,7 +217,10 @@ spec's checks and CI, so that a mechanical failure blocks the round whatever the
 - **The checks.** The same `julia-test-runner` runs, after the suite and never beside it,
   `python3 ~/Research/Harness/scripts/spec-validate.py <spec> --head <worktree> --out ~/Research/.scratch/gate/<Repository>-<part>/round-<N>/`,
   and returns the totals and every failure, verbatim. It runs every `check:` of the delta on the
-  head, and fails a check that writes into the worktree.
+  head, and fails a check that writes into the worktree. A check tagged `(device: metal)` does not
+  run there and makes the run `UNMEASURED`: run the same command with `--devices metal` from a
+  Kaimon session yourself (`spec-format.md`, *A device check runs from a Kaimon session*). A
+  device check counts only from that run.
 - **CI.** Before the spawns of step 3, `cd <worktree>` as a Bash call of its own and push the
   branch: `git push -u origin <branch>`. Outside the user's own organisations the push needs the
   user's approval, as a builder's does. Then `gh run list -R <owner>/<repo> --commit <head>`. Where

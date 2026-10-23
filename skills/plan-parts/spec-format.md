@@ -71,6 +71,30 @@ A requirement and its scenarios:
   there. The delta's checks run in the order of the file and share one `$OUT`, so a check that
   produces the outputs comes before the checks that read them.
 - **A check that reads another repository** pins its commit itself, from `$RESEARCH_ROOT`.
+- **A grep that asserts an absence finds its target first.** Each pattern of a check that must
+  find nothing on the head also runs as a premise on the base, where it must find the hits the
+  change removes, with their count. A pattern that matches nothing on the base cannot fail on the
+  head. `git grep` on this Mac ignores `\b`, `\s`, `\w` and `\d` without `-P`; the validator's rule
+  10 refuses such a pattern. Use `git grep -P`, or `[[:space:]]` and explicit boundaries.
+- **A check that needs a device ends its bullet with `(device: metal)`.** The Bash sandbox has no
+  GPU, so the validator runs such a command only with `--devices metal`, and reports it as
+  `not run` and the spec as `UNMEASURED` otherwise, never as a pass.
+
+## A device check runs from a Kaimon session
+
+A Kaimon session runs outside the Bash sandbox and has the GPU. Start one on the part's repository
+(`start_session(project_path = <checkout>, private = true)`; Kaimon accepts any project path), and
+send `ex(e = "1 + 1")` until it answers: a session that gets a command while it still starts can
+stall, and then only `shutdown` and a new session help. Launch the validator from it as a detached
+process that writes a log, because a call that prints nothing for 10 minutes times out:
+
+```julia
+run(Cmd(`bash -c 'python3 Harness/scripts/spec-validate.py "<spec>" --repo <checkout> --devices metal > <log> 2>&1; echo "EXIT=$?" >> <log>'`; dir = expanduser("~/Research")); wait = false)
+```
+
+Read the log from Bash; its last lines are the verdict and `EXIT=<n>`. The same route runs
+`spec-gate.py … --devices metal` and the gate's `spec-validate.py --head … --devices metal`. Shut
+the session down after the run.
 
 ## The decisions and the loop
 
@@ -85,5 +109,6 @@ cd ~/Research && python3 Harness/scripts/spec-validate.py "Tasks/Evidence/<file>
 ```
 
 Its header lists the rules. **Planning ends when it passes**: the structure, and every premise run
-on the base commit. A failing premise is a false fact of the plan: fix the spec, or ask the user.
+on the base commit, the device premises included. `UNMEASURED` is not a pass: run it again from a
+Kaimon session with `--devices`. A failing premise is a false fact of the plan: fix the spec, or ask the user.
 `spec-gate.py` runs the same check for every part whose cell names `spec`.
