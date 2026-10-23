@@ -538,3 +538,7 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   accepts a real fraction at the domain's own scale (a stride of 100) and a whole step at 10⁹.
   Derive the bound from the roundings of the computed value, and test one input inside the bound
   and one outside (P38b verify 2, *Rewrite the reduced basis packages*)
+- a moved test that gains a `Float32` run while its "must fail" guard keeps an absolute
+  threshold: `> 1e-3` lay below the `Float32` pass bound `100 eps(T)/Δt ≈ 0.012`, so the guard no
+  longer proved the pass check non-vacuous. Give the guard the pass bound of the same `T` (C1,
+  *Move the Hamiltonian and Lagrangian networks out of the learning package*)
