@@ -51,7 +51,9 @@ passes, and a misformatted file, a file that does not load and a change below `t
 but only on a push to `main` or `master`. A push to another branch passes at once, and CI tests
 it.
 
-For a package, the hook runs `Pkg.test("<package>")` with `--check-bounds=auto`. For a repository
+For a package, the hook runs `Pkg.test("<package>")` with `--check-bounds=auto`, and passes the
+flag to the test process through `julia_args`: up to Julia 1.12, `Pkg.test` gives the test
+process `--check-bounds=yes` whatever the calling process uses. For a repository
 with no package name, it runs `test/runtests.jl`. With neither, it runs nothing and passes. A
 failure refuses the push.
 

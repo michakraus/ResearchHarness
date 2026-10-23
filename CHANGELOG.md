@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- **`pre-push` passes `--check-bounds=auto` to the test process through `Pkg.test`'s
+  `julia_args`.** Up to Julia 1.12, `Pkg.test` gives the test process `--check-bounds=yes` whatever
+  the calling process uses, so on a 1.12 default the hook ran the suite with `yes` and recompiled
+  every dependency into a separate cache. A probe package reports `check_bounds` 1 in its test
+  process on 1.12 without the keyword and 0 with it; on 1.13 it reports 0 either way.
 - **A spec check that needs a device is tagged `(device: metal)`, and runs from a Kaimon session.**
   The Bash sandbox has no GPU, so a Metal premise failed there and `spec-gate.py` reported the spec
   `INVALID`. `spec-validate.py` runs a tagged command only with `--devices metal`; elsewhere it
