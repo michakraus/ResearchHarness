@@ -12,6 +12,10 @@ is destructive.
 
 ## The preamble block
 
+A shared preamble that the document inputs may define this block already, with the colours
+below. Then the document adds only the dated comment of the pass, and a new colour where a pass
+needs one; a second definition stops LaTeX with `Command \fixed already defined`.
+
 ```latex
 % Verification pass <date>: corrections and additions are colour-marked.
 % Set \markchangesfalse to typeset the document clean.

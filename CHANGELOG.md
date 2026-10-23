@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- **`latex-revision` allows for a shared preamble that already defines the marking block.** A
+  document that inputs one adds only the dated comment of its pass and any new colour; defining
+  the block a second time stops LaTeX with `Command \fixed already defined`.
+
 - **Julia jobs over shared packages run together when their `CacheFlags` match.** The concurrency
   rule of `julia-test-runner`, `build-part`, `julia-package-audit` and `julia-load-doctor` states
   the condition, not a ban: on Julia 1.13 with no `--check-bounds` set, `Pkg.test()` and
