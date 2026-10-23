@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- **The settings template allows the four read-only Zotero tools** `mcp__zotero__ping`,
+  `search_items`, `get_item` and `list_attachments`. Before, they were allowed only in a
+  `settings.local.json`, which `harness settings` does not measure and the installer warns about.
+
 - **`latex-revision` allows for a shared preamble that already defines the marking block.** A
   document that inputs one adds only the dated comment of its pass and any new colour; defining
   the block a second time stops LaTeX with `Command \fixed already defined`.
