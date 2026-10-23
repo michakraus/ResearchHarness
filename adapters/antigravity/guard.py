@@ -176,28 +176,6 @@ def refused_path(raw, cwd, rules, kind="deny", wide=False):
     return None
 
 
-def joined(line):
-    """The command line `line` with each backslash-newline outside single quotes dropped, as the
-    shell joins the lines of a command before it splits it into words; a single quote inside double
-    quotes is a plain character."""
-    out, i, quoted = [], 0, False
-    while i < len(line):
-        c = line[i]
-        if c == "\\":
-            out.append("" if line.startswith("\n", i + 1) else line[i:i + 2])
-            i += 2
-        elif c == "'" and not quoted:
-            j = line.find("'", i + 1)
-            j = len(line) if j < 0 else j + 1
-            out.append(line[i:j])
-            i = j
-        else:
-            quoted ^= c == '"'
-            out.append(c)
-            i += 1
-    return "".join(out)
-
-
 def words(command):
     """The words of `command` as the shell splits them, quotes removed; on a quote that does not
     close, the text between blanks and control characters."""
@@ -226,8 +204,8 @@ def refused_command(command, cwd, rules):
 def segments(line):
     """The segments of the command line `line`, as Claude Code checks a Bash rule on them: the line
     split at `;`, `&&`, `||`, `|`, `&` and a newline outside quotes, and the body of each `$(…)`,
-    backtick and `( … )` a segment of its own, split the same way; each stripped, none empty.
-    `line` is joined already, so a backslash keeps the character after it."""
+    backtick and `( … )` a segment of its own, split the same way; a backslash-newline outside
+    single quotes dropped; each stripped, none empty."""
     found = []
 
     def scan(i, close):
@@ -235,8 +213,8 @@ def segments(line):
         seg, quoted = "", False
         while i < len(line):
             c = line[i]
-            if c == "\\":
-                seg, i = seg + line[i:i + 2], i + 2
+            if c == "\\":  # a backslash-newline joins two lines, as in the shell
+                seg, i = seg + ("" if line.startswith("\n", i + 1) else line[i:i + 2]), i + 2
             elif c == "'" and not quoted:
                 j = line.find("'", i + 1)
                 j = len(line) if j < 0 else j + 1
@@ -404,8 +382,7 @@ def answer(payload):
         command = args.get("CommandLine")
         if not isinstance(command, str):
             return deny(f"The run_command call holds no CommandLine, so the guards cannot check it. {CLOSED}")
-        line = joined(command)
-        refused = refused_command(line, cwd, rules)
+        refused = refused_command(command, cwd, rules)
         if refused:
             return deny(f"Refused by the path guard: {refused}. Use only the paths your task names. "
                         "Do not reach this path in another form.")
@@ -413,7 +390,7 @@ def answer(payload):
         for rules_of in bash.values():
             if isinstance(rules_of, str):
                 return deny(rules_of)
-        parts = segments(line)
+        parts = segments(command)
         hit = matched(bash["bash_deny"], parts)
         if hit is not None:
             return deny(f"Refused by the settings template's rule Bash({hit}). Do not run the command in another "

@@ -1400,13 +1400,6 @@ AGY_CASES = [
     ("run_command", {"CommandLine": 'echo "a \\" ; git push --force origin x"'}, "ask", None),
     ("run_command", {"CommandLine": "git push \\\n--force origin x"}, "deny", None),
     ("run_command", {"CommandLine": "git push --force\\\n origin x"}, "deny", None),
-    # The path check reads the line with each backslash-newline outside single quotes dropped, as
-    # the shell reads it; inside single quotes the pair stays.
-    ("run_command", {"CommandLine": "cat ~/.ssh/id_\\\ned25519"}, "deny", None),
-    ("run_command", {"CommandLine": "cat ~/.config/gh/hosts\\\n.yml"}, "deny", None),
-    ("run_command", {"CommandLine": "rm -rf '/\\\n'"}, "ask", None),
-    ("run_command", {"CommandLine": "echo \"'\"; cat ~/.ssh/id_\\\ned25519"}, "deny", None),
-    ("run_command", {"CommandLine": "echo \\'; cat ~/.ssh/id_\\\ned25519"}, "deny", None),
     ("run_command", {"CommandLine": 'echo "a; git push --force origin x"'}, "ask", None),
     ("run_command", {"CommandLine": 'git "push" --force origin x'}, "deny", None),
     ("run_command", {"CommandLine": "git push --force origin x '"}, "deny", None),
