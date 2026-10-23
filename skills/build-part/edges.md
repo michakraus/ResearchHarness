@@ -75,6 +75,15 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   an SSH one, and `log.showSignature = true` puts text before the format. Pin the backend and the
   options on the call (`-c gpg.openpgp.program=false`, `--no-show-signature`), and test each
   backend the host can hold (E1 round 1, *Synchronise the machines with chezmoi*)
+- a matcher fix that tries every start and rebuilds the text for each start: the cost grows with
+  the square of the word count, and a long line passes a hook's timeout, so a legitimate command
+  fails or a padded line gets through. Build the text once and place each literal part with one
+  search; add a case that runs the hook as a process with its own timeout on a line of many
+  thousand words (G1 verify 3, *Add the Antigravity frontend*)
+- a shell line continuation, a backslash-newline, that the word split keeps inside a word: `sh`
+  joins `push \<NL>--force` into `push --force`, and a check on the raw word misses it. Drop the
+  pair outside single quotes once, before every split that the guard makes (G1 verify 3 and
+  verify 4, *Add the Antigravity frontend*)
 
 ## A numerical method
 
@@ -529,3 +538,7 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   accepts a real fraction at the domain's own scale (a stride of 100) and a whole step at 10⁹.
   Derive the bound from the roundings of the computed value, and test one input inside the bound
   and one outside (P38b verify 2, *Rewrite the reduced basis packages*)
+- a moved test that gains a `Float32` run while its "must fail" guard keeps an absolute
+  threshold: `> 1e-3` lay below the `Float32` pass bound `100 eps(T)/Δt ≈ 0.012`, so the guard no
+  longer proved the pass check non-vacuous. Give the guard the pass bound of the same `T` (C1,
+  *Move the Hamiltonian and Lagrangian networks out of the learning package*)

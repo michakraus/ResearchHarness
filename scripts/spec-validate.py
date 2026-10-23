@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""The strict validator of a part spec in the spec-delta format.
+r"""The strict validator of a part spec in the spec-delta format.
 
-    python3 spec-validate.py <spec.md> [--repo <checkout> | --base <tree>] [--no-run] [--env NAME=VALUE ...]
-    python3 spec-validate.py <spec.md> --head <tree> --out <dir> [--env NAME=VALUE ...]
+    python3 spec-validate.py <spec.md> [--repo <checkout> | --base <tree>] [--no-run] [--devices <d,…>] [--env NAME=VALUE ...]
+    python3 spec-validate.py <spec.md> --head <tree> --out <dir> [--devices <d,…>] [--env NAME=VALUE ...]
 
 The format is in `skills/plan-parts/spec-format.md`. Planning ends when the first form passes.
 The second form is the gate of the build: it runs every `check:` of the delta on a head.
@@ -27,18 +27,28 @@ Structural rules, each an error:
    another block: the inputs and parameters where the reference's property holds.
 9. Every command of §1 exits 0 on the base (not with `--no-run`). `--repo` exports the commit of
    rule 7 from that checkout with `git archive`; `--base` names a tree that holds it already.
+10. No `git grep` without `-P`, in a command or in a file under `$SPEC/checks/`, uses `\b`, `\s`,
+    `\w` or `\d` (or their capitals): Apple Git's `git grep` ignores them, so the pattern matches
+    nothing and the check cannot fail. Use `-P`, or `[[:space:]]` and explicit boundaries.
 
-With `--head`, rules 1–8 hold, and then every command of §3 runs on the head, in the order of the
-file, each once, whichever scenarios name it: a failure is an error. A check writes only under
-`$OUT`: where the head is a git tree, a change of `git status --porcelain --ignored` across the
-checks is an error too.
+With `--head`, rules 1–8 and 10 hold, and then every command of §3 runs on the head, in the order
+of the file, each once, whichever scenarios name it: a failure is an error. A check writes only
+under `$OUT`: where the head is a git tree, a change of `git status --porcelain --ignored` across
+the checks is an error too.
+
+A `- check:` bullet that ends in `(device: <name>[, <name>…])` needs that device, such as `metal`.
+Its commands run only where `--devices` names every device the bullet needs; elsewhere each prints
+`not run (needs <names>)` and counts as unmeasured, never as a pass. The Bash sandbox has no GPU,
+so a device command runs from a Kaimon session (`skills/plan-parts/spec-format.md`).
 
 Each command runs in bash from the root of the tree, with `SPEC` the directory of the spec, `OUT`
 the `--out` directory (with `--head`) or a new temporary one, `BASE` the commit of rule 7,
 `RESEARCH_ROOT` ($RESEARCH_ROOT, else ~/Research), each `--env` pair, and `JULIA_PROJECT` empty.
 
-One line per command run (`premise:` or `check:`, then `pass` or `exit <n>`), one line per error,
-then `PASS` or `FAIL (<n> errors)`. Exit 0 on a pass, 1 on a fail, and 3 when this script fails.
+One line per command (`premise:` or `check:`, then `pass`, `exit <n>` or `not run (needs …)`), one
+line per error, then `PASS`, `UNMEASURED (<n> commands need <devices>)` or `FAIL (<n> errors)`.
+Exit 0 on a pass, 2 when every command that ran passed and a device command did not run, 1 on a
+fail, and 3 when this script fails.
 """
 import argparse
 import os
@@ -55,6 +65,23 @@ NOTE = re.compile(r"as in §|\bunchanged\b|\bsee\b", re.I)
 MUTANT = re.compile(r"\bMU\d+\b")
 BASE = re.compile(r"\*\*Base\.\*\*.*?`([0-9a-f]{7,40})`")
 REFERENCE = re.compile(r"\breference:", re.I)
+DEVICE = re.compile(r"\(device:\s*([A-Za-z0-9_]+(?:\s*,\s*[A-Za-z0-9_]+)*)\)\s*$")
+GIT_GREP = re.compile(r"\bgit\s+grep\b")
+PERL = re.compile(r"(?:^|\s)(?:-[A-Za-z]*P[A-Za-z]*|--perl-regexp)(?:\s|$)")
+ESCAPE = re.compile(r"\\[bBsSwWdD]")
+
+
+def grep_escape(line):
+    """Rule 10: a line, not a comment, with a `git grep` that has no `-P` and uses an escape that
+    Apple Git ignores. Each command of a pipeline or a list is read on its own, so a `\\s` in the
+    `grep` after a pipe does not count."""
+    if line.lstrip().startswith("#"):
+        return False
+    return any(GIT_GREP.search(seg) and not PERL.search(seg) and ESCAPE.search(seg)
+               for seg in re.split(r"\||;|&&", line))
+
+
+RULE10 = "`git grep` without -P uses `\\b`, `\\s`, `\\w` or `\\d`, which this Git ignores"
 
 
 def sections(lines):
@@ -120,7 +147,8 @@ def commands(check):
 
 
 def structure(spec, lines):
-    """Rules 1–8: (errors, the premise commands, the delta's commands, the base commit)."""
+    """Rules 1–8 and 10: (errors, the premise commands, the delta's commands, the base commit);
+    each command maps to the set of devices it needs."""
     errors = []
     err = errors.append
     secs = sections(lines)
@@ -139,7 +167,8 @@ def structure(spec, lines):
     delta = requirements(lines, *secs[SECTIONS[2]])
 
     used_mutants = set()
-    premise_cmds, delta_cmds = [], []
+    # each command, in the order of the file, with the devices its bullets need
+    premise_cmds, delta_cmds = {}, {}
     for r in living + delta:
         where = f"line {r['line']}, requirement `{r['name']}`"
         if not re.search(r"\b(SHALL|MUST)\b", r["statement"]):
@@ -155,7 +184,10 @@ def structure(spec, lines):
                     err(f"rule 3: {w} has no `- {key}`")
                 elif NOTE.search(t):
                     err(f"rule 3: {w}: `- {key}` refers to another block: {t.splitlines()[0]}")
-            cmds = commands(bullet(body, "check:"))
+            check = bullet(body, "check:")
+            cmds = commands(check)
+            tag = DEVICE.search(check or "")
+            devices = {d.strip().lower() for d in tag.group(1).split(",")} if tag else set()
             if not cmds:
                 err(f"rule 3: {w} has no `- check:` with a command in backticks")
             catches = bullet(body, "catches:")
@@ -177,9 +209,10 @@ def structure(spec, lines):
                 for f in re.findall(r'"?\$SPEC"?/([^\s"]+)', c):
                     if not (spec.parent / f).exists():
                         err(f"rule 5: {w}: `$SPEC/{f}` does not exist")
+                if grep_escape(c):
+                    err(f"rule 10: {w}: {RULE10}: {c}")
                 into = premise_cmds if r["kind"] == "living" else delta_cmds
-                if c not in into:
-                    into.append(c)
+                into.setdefault(c, set()).update(devices)
 
     # a living name may end in its capability, `(`field-and-march`)`, which the delta omits
     def bare(name):
@@ -204,6 +237,16 @@ def structure(spec, lines):
         err(f"rule 6: `{m}` is named by a `catches:` and is no row of §4's table")
     for m in sorted(table - used_mutants):
         err(f"rule 6: `{m}` is a row of §4's table and no `catches:` of the delta names it")
+
+    checks = spec.parent / "checks"
+    for f in sorted(p for p in checks.rglob("*") if p.is_file()) if checks.is_dir() else []:
+        try:
+            text = f.read_text(encoding="utf-8")
+        except UnicodeDecodeError:
+            continue
+        for n, line in enumerate(text.splitlines(), 1):
+            if grep_escape(line):
+                err(f"rule 10: {f.relative_to(spec.parent)}:{n}: {RULE10}: {line.strip()}")
     return errors, premise_cmds, delta_cmds, base
 
 
@@ -213,9 +256,15 @@ def status(tree):
     return p.stdout if p.returncode == 0 else None
 
 
-def run(cmds, tree, env, label, errors, rule, on):
-    """Run each command from `tree`; an error with the last 20 lines of each failure."""
-    for c in cmds:
+def run(cmds, tree, env, label, errors, rule, on, devices, unmeasured):
+    """Run each command from `tree`; an error with the last 20 lines of each failure. A command
+    that needs a device `devices` lacks is not run, and goes to `unmeasured`."""
+    for c, needs in cmds.items():
+        missing = sorted(needs - devices)
+        if missing:
+            print(f"{label}: not run (needs {', '.join(missing)}): {c}")
+            unmeasured.append((c, missing))
+            continue
         p = subprocess.run(["bash", "-c", c], cwd=tree, env=env, capture_output=True, text=True)
         print(f"{label}: {'pass' if p.returncode == 0 else f'exit {p.returncode}'}: {c}")
         if p.returncode != 0:
@@ -232,6 +281,7 @@ def main():
     where.add_argument("--head", help="a tree at the head: run the delta's checks")
     ap.add_argument("--out", help="the directory of $OUT, with --head")
     ap.add_argument("--no-run", action="store_true")
+    ap.add_argument("--devices", default="", help="the devices present, such as metal")
     ap.add_argument("--env", action="append", default=[], metavar="NAME=VALUE")
     a = ap.parse_args()
     if a.head and not a.out:
@@ -243,6 +293,8 @@ def main():
     errors, premises, checks, base = structure(spec, spec.read_text(encoding="utf-8").splitlines())
     research = os.environ.get("RESEARCH_ROOT") or os.path.expanduser("~/Research")
     extra = dict(pair.split("=", 1) for pair in a.env)
+    devices = {d.strip().lower() for d in a.devices.split(",") if d.strip()}
+    unmeasured = []
 
     if not errors and not a.no_run:
         with tempfile.TemporaryDirectory(prefix="spec-validate-") as tmp:
@@ -253,7 +305,7 @@ def main():
             if a.head:
                 tree = str(Path(a.head).resolve())
                 before = status(tree)
-                run(checks, tree, env, "check", errors, "gate", "head")
+                run(checks, tree, env, "check", errors, "gate", "head", devices, unmeasured)
                 after = status(tree)
                 if before != after:
                     errors.append("gate: the checks changed `git status --porcelain --ignored` of the head")
@@ -269,12 +321,19 @@ def main():
                     else:
                         subprocess.run(["tar", "-x", "-C", tree], input=archive.stdout, check=True)
                 if not errors:
-                    run(premises, tree, env, "premise", errors, "rule 9", "base")
+                    run(premises, tree, env, "premise", errors, "rule 9", "base", devices, unmeasured)
 
     for x in errors:
         print(x)
-    print("PASS" if not errors else f"FAIL ({len(errors)} errors)")
-    return 0 if not errors else 1
+    if errors:
+        print(f"FAIL ({len(errors)} errors)")
+        return 1
+    if unmeasured:
+        needed = sorted({d for _, missing in unmeasured for d in missing})
+        print(f"UNMEASURED ({len(unmeasured)} commands need {', '.join(needed)})")
+        return 2
+    print("PASS")
+    return 0
 
 
 if __name__ == "__main__":

@@ -33,7 +33,8 @@ section yourself, marked `(dispatcher, <date>)`, and commit the task file. An ed
 public answer or picks between designs is the user's: ask, and go on with the next part.
 
 **A part whose `sections` cell names `spec` has its spec in the spec-delta format**, and
-`spec-gate.py` checks it wherever it lies. An `INVALID` spec does not start: set the state to
+`spec-gate.py` checks it wherever it lies. An `UNMEASURED` spec needs its device premises run from
+a Kaimon session first, as `build-part`'s spec gate says. An `INVALID` spec does not start: set the state to
 `waiting for the user — the spec fails spec-validate.py: <the first error line>`. For such a part,
 write its bundle as `build-part` says, pass the bundle's path to every builder and the critic, and
 write each decision and the loop's line into the spec's `## Decisions`, not the task file.

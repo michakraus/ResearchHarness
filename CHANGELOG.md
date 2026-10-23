@@ -31,6 +31,19 @@
   `edit` and `ask` lists. No instruction, skill or agent is installed for Antigravity.
   `hooks/probe.py` runs `guard.py` on a fixture home, with cases for its refusals and for each way
   in which it fails closed.
+- **A spec check that needs a device is tagged `(device: metal)`, and runs from a Kaimon session.**
+  The Bash sandbox has no GPU, so a Metal premise failed there and `spec-gate.py` reported the spec
+  `INVALID`. `spec-validate.py` runs a tagged command only with `--devices metal`; elsewhere it
+  prints `not run (needs metal)` and ends `UNMEASURED` with exit status 2, never a pass.
+  `spec-gate.py` passes `--devices` through and prints `UNMEASURED <devices>`. `spec-format.md`
+  gives the Kaimon route, a detached run that writes a log, and `build-part` and `build-reviewed`
+  rerun an unmeasured gate that way.
+- **`spec-validate.py`'s rule 10 refuses a `git grep` without `-P` that uses `\b`, `\s`, `\w` or
+  `\d`**, in a command or in a file of the spec's `checks/`. Apple Git ignores those escapes, so
+  the pattern matches nothing and an absence check cannot fail; the first draft of a converted spec
+  had three such checks. `spec-format.md` also requires each absence grep to find its target on
+  the base as a premise.
+
 - **A new plan specifies each part in the spec-delta format.** `plan-parts` writes the spec of a
   part of tier `build` or `reviewed` as a file, `Tasks/Evidence/<plan>/<part>/spec.md` with its
   `checks/`, after `skills/plan-parts/spec-format.md`: a living spec whose premises run on the

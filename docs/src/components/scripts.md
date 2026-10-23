@@ -306,7 +306,8 @@ repository is a step of the dispatcher, the session that runs the `build-part` o
 A part whose `sections` cell names `spec` has its spec in the spec-delta format, in
 `Evidence/<task file's name>/<part>/spec.md` beside the task file. For such a part, in any
 repository, the gate runs `spec-validate.py` on the spec, with the premises on the base commit of
-the repository's main checkout. `--no-run` checks the structure only.
+the repository's main checkout. `--no-run` checks the structure only. A premise that needs a
+device runs only with `--devices`; without it, the part is `UNMEASURED`, with exit status 2.
 
 It prints one line per part: PASS, MISSING with the labels, INVALID with the number of errors and
 the validator's lines below it, SPANS with the repositories, or EXEMPT with the reason. The exit
@@ -355,10 +356,14 @@ python3 spec-validate.py <spec.md> --head <tree> --out <dir> [--env NAME=VALUE .
 It checks the structure by headings, not by substrings: the four sections, SHALL or MUST in each
 requirement, a WHEN, a THEN, a `check:` and a `catches:` in each scenario, no block that refers to
 another, the files under `$SPEC/`, the mutant table against the `catches:` lines, the base commit,
-and a `domain:` in each scenario of a requirement that names a reference. Then it runs each
+a `domain:` in each scenario of a requirement that names a reference, and no `git grep` without
+`-P` that uses `\b`, `\s`, `\w` or `\d`, which Apple Git ignores. Then it runs each
 premise of the living spec on the base: `--repo` exports the base commit with `git archive`. With
 `--head`, it runs each `check:` of the delta on a head instead, and fails a check that changes the
-head's `git status`. The exit status is 0 on a pass, 1 on a fail, and 3 when the script failed.
+head's `git status`. A check bullet that ends in `(device: metal)` runs only with
+`--devices metal`, from a Kaimon session, which has the GPU that the Bash sandbox lacks; elsewhere
+it is `not run` and the result `UNMEASURED`. The exit status is 0 on a pass, 2 when a device
+command did not run and everything else passed, 1 on a fail, and 3 when the script failed.
 `spec-gate.py` runs it in planning and before a build; the skills `build-part` and
 `build-reviewed` run its `--head` form in the gate of every round.
 
