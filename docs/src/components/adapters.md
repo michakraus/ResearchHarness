@@ -412,4 +412,4 @@ hide it, and a quoted word is one word. On a tool that writes a file, it also ap
 list, the template's Edit denies, and the `ask` list, its Edit asks. The `deny` list holds the
 files of the layer itself. A refusal of a guard becomes `deny`, an "ask" answer `force_ask`, and a
 pass `ask`, which leaves Antigravity's own rules in force. It fails closed: a guard that cannot
-run, fails, prints no answer it can read or times out gives `deny`.
+run, fails, prints output that is not a JSON answer or times out gives `deny`.

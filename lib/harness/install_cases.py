@@ -392,9 +392,9 @@ def setup_guard_cases(check, tmp):
 def restart_cases(check, tmp):
     """The restart lines of `harness install`, one case per row: only the Claude Code layer
     changes, only the OpenCode files, only an OpenCode step, only the oh-my-pi files, only the
-    Antigravity files, only the Julia environment, nothing, a refused file, a first --apply, and a dry run with changes
-    pending. Each case checks the exact lines after the count line: the RESTART of each adapter
-    whose files or steps changed something, in the order of FRONTENDS."""
+    Antigravity files, only the Julia environment, nothing, a refused file, a first --apply, and a
+    dry run with changes pending. Each case checks the exact lines after the count line: the
+    RESTART of each adapter whose files or steps changed something, in the order of FRONTENDS."""
     from . import frontends
 
     scratch = Scratch(check, tmp / "restart")

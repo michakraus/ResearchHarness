@@ -1292,9 +1292,9 @@ def oc_cases():
 
 
 # Antigravity's guard hook, `adapters/antigravity/guard.py`, runs with this interpreter in a fixture
-# home's `.gemini/config/`, where `hooks.json` runs it, as hooks/guard.py beside the seven guard scripts of
-# OC_SCRIPTS, linked from this directory, and with `guard-paths.json` rendered with the dummy
-# profile and the fixture's home. It gets the payload that Antigravity sends, `toolCall` and
+# home's `.gemini/config/`, where `hooks.json` runs it, as hooks/guard.py beside the seven guard
+# scripts of OC_SCRIPTS, linked from this directory, and with `guard-paths.json` rendered with the
+# dummy profile and the fixture's home. It gets the payload that Antigravity sends, `toolCall` and
 # `workspacePaths`, and its verdict is the `decision` it prints. The working directory of the
 # process is the fixture's `.gemini/config/`, which is no git work tree, as the real one is not;
 # the call's working directory is CWD, the probe's work tree, through `workspacePaths` or `Cwd`.
