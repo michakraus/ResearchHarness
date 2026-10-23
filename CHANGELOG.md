@@ -16,9 +16,10 @@
   `~/.gemini/config/mcp_config.json` and the files of the layer itself. As OpenCode's guard does,
   it also refuses a directory that holds such a path when a word globs into it, the command
   recurses or `cd`s into it, or it is the call's `Cwd` or `SearchPath`. On a shell call it applies
-  the template's Bash denies and asks to each segment of the command, the bodies of `$(…)` and
-  backticks included, so that the desktop app, which reads no `permissions`, still refuses
-  `git push --force`. On a tool that writes a file, it also refuses a path of the `edit` list,
+  the template's Bash denies and asks to each segment of the command, the bodies of `$(…)`,
+  backticks and `( … )` included, on the words of the segment from any word, so that the desktop
+  app, which reads no `permissions`, still refuses `git push --force`, also after `FOO=1`, `env`
+  or `then`. On a tool that writes a file, it also refuses a path of the `edit` list,
   every Edit deny of the template, and asks for a path of the `ask` list, every Edit ask. A pass
   answers `ask`, which leaves Antigravity's own rules in force, and any failure of a guard answers
   `deny`. The rules are the settings template's: each Bash entry a `command(…)` rule, whose `*`

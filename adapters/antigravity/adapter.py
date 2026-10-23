@@ -51,8 +51,8 @@ denies after that. Every other entry is dropped, with its reason. A dropped `Rea
 still in the `deny` list of guard.py, and a dropped Edit entry in its `edit` or `ask` list. A
 command with `$(…)` or a backtick matches only a full-line rule in Antigravity, so a `deny` does
 not reach it; guard.py applies the Bash denies and asks to each segment of the line, the bodies of
-`$(…)` and backticks included, and is the boundary. The desktop app reads no `permissions`, so
-there guard.py alone applies them.
+`$(…)`, backticks and `( … )` included, and is the boundary. The desktop app reads no
+`permissions`, so there guard.py alone applies them.
 """
 
 import json
@@ -456,7 +456,8 @@ def rule_cases(case):
                 ("deny", "Bash(git -C * add .)"): r"command(regex:^git -C .* add \.$)",
                 ("allow", "Bash(git status)"): r"command(regex:^git status$)",
                 ("allow", "Bash(git log *)"): "command(git log)",
-                ("allow", "Bash(git branch * -f)"): r"command(regex:^git branch [^;&|\n`$()<>]* -f$)"}
+                ("allow", "Bash(git branch * -f)"): r"command(regex:^git branch [^;&|\n`$()<>]* -f$)",
+                ("deny", r"Bash(x * \.^$|?+()[]{} *)"): r"command(regex:^x .* \\\.\^\$\|\?\+\(\)\[\]\{\}(?: .*)?$)"}
     case(lambda: all(command_rule(e[len("Bash("):-1], key == "allow") == want for (key, e), want in examples.items()),
          f"the decided forms: {[(e, command_rule(e[len('Bash('):-1], key == 'allow')) for (key, e) in examples]}")
     case(lambda: rule_matches("command(git push --force)", "git push --force origin x")
@@ -470,18 +471,35 @@ def rule_cases(case):
          "an allow regex rule stays in one segment, a deny regex rule does not, and a trailing * matches nothing too")
 
 
+# The characters that a regular expression reads as special, but `*`, written out here so that the
+# cases do not take them from the code that they check.
+SPECIAL = "\\.^$|?+()[]{}"
+
+
+def escaped_rule(key, body):
+    """The regex rule of the Bash entry `body` in the list `key`, built from SPECIAL: each literal
+    part with every character of SPECIAL escaped, the parts joined by `.*`, or in `allow` by the
+    class of SEGMENT_TEXT, written out, and a trailing ` *` as an optional space and text."""
+    star = r"[^;&|\n`$()<>]*" if key == "allow" else ".*"
+    head, tail = (body[:-2], f"(?: {star})?") if body.endswith(" *") else (body, "")
+    parts = ("".join("\\" + c if c in SPECIAL else c for c in part) for part in head.split("*"))
+    return f"command(regex:^{star.join(parts)}{tail}$)"
+
+
 def bash_rule_cases(key, body, rule):
-    """Whether the regex rule `rule` of the Bash entry `body` in the list `key` matches as the
-    entry does: with nothing in place of a trailing ` *`, never with another character in place of
-    a literal special character, and, in `allow`, never across a segment; in `deny` and `ask`
-    across one."""
+    """Whether the regex rule `rule` of the Bash entry `body` in the list `key` is the text that
+    escaped_rule gives, and matches as the entry does: with nothing in place of a trailing ` *`,
+    never with another character in place of a character of SPECIAL, and, in `allow`, never across
+    a segment; in `deny` and `ask` across one."""
+    if rule != escaped_rule(key, body):
+        return False
     head = body[:-2] if body.endswith(" *") else None
     if head is not None and (not rule_matches(rule, head.replace("*", "zz"))
                              or not head.endswith("*") and rule_matches(rule, head.replace("*", "zz") + "zz")):
         return False
     for i, c in enumerate(body):
         other = (body[:i] + "Q" + body[i + 1:]).replace("*", "zz")
-        if c != "*" and REGEX_SPECIAL.match(c) and rule_matches(rule, other):
+        if c in SPECIAL and rule_matches(rule, other):
             return False
     if "*" in body:
         crossing = body.replace("*", "zz; rm x", 1).replace("*", "zz")

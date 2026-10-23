@@ -90,6 +90,9 @@ RECURSIVE = re.compile(r"\b(?:find|rg|tree|du|tar|zip|rsync|walkdir|readdir)\b"
                        r"|\b(?:grep|egrep|ls|cp|chmod|chown)\b[^|;&\n]*\s(?:--recursive\b|-[A-Za-z]*[rR])")
 # The characters of a shell glob or a brace expansion.
 GLOB = re.compile(r"[*?\[{]")
+# The text between two words of a segment when a Bash rule matches them: a NUL, which no argument
+# of a command can hold, so that a blank inside a quoted word is no boundary.
+WORD_BREAK = "\0"
 # Seconds that each script may take. The scripts of one call run at once, so the call takes about as
 # long; `hooks.json` gives the hook 15 s.
 TIMEOUT = 10
@@ -236,21 +239,27 @@ def segments(line):
 
 
 def bash_rules(key):
-    """[(body, matcher)] of the Bash bodies under `key` of the path list, where `matcher(segment)`
-    says whether `Bash(body)` matches the segment: `Bash(x *)` when the words of the segment begin
-    with the words of `x`, any other body when it matches the whole segment, with `*` as any text
-    and a trailing ` *` as no text too; a string, the reason to deny, when the list cannot be used."""
+    """[(body, matcher)] of the Bash bodies under `key` of the path list, where `matcher(words)`
+    says whether `Bash(body)` matches a segment with the words `words` (segment_words), from any of
+    its words, so that an assignment, a wrapper such as `env` or a keyword such as `then` before
+    the command does not hide it: `Bash(x *)` when the words of `x` are a run of `words`, any
+    other body when it matches the words from one of them to the last, with `*` as any text and a
+    trailing ` *` as no text too; a string, the reason to deny, when the list cannot be used. A
+    blank of the body matches only the boundary between two words (WORD_BREAK), so that a quoted
+    word such as the message of `git commit -m "git push --force"` matches no rule."""
     bodies = listed(key)
     if isinstance(bodies, str):
         return bodies
     rules = []
     for body in bodies:
         if m := re.fullmatch(r"([^*]*[^*\s]) \*", body, re.S):
-            rules.append((body, lambda s, x=m.group(1).split(): segment_words(s)[:len(x)] == x))
+            x = m.group(1).split()
+            rules.append((body, lambda w, x=x: any(w[i:i + len(x)] == x for i in range(len(w)))))
         else:
-            head, tail = (body[:-2], r"(?: .*)?") if body.endswith(" *") else (body, "")
-            pattern = re.compile(".*".join(map(re.escape, head.split("*"))) + tail, re.S)
-            rules.append((body, lambda s, p=pattern: p.fullmatch(s) is not None))
+            head, tail = (body[:-2], f"(?:{WORD_BREAK}.*)?") if body.endswith(" *") else (body, "")
+            literal = (WORD_BREAK.join(map(re.escape, re.split(r"\s+", part))) for part in head.split("*"))
+            pattern = re.compile(".*".join(literal) + tail, re.S)
+            rules.append((body, lambda w, p=pattern: any(p.fullmatch(WORD_BREAK.join(w[i:])) for i in range(len(w)))))
     return rules
 
 
@@ -265,7 +274,8 @@ def segment_words(segment):
 
 def matched(rules, parts):
     """The body of the first of `rules` that matches a segment of `parts`, or None."""
-    return next((body for body, matches in rules for s in parts if matches(s)), None)
+    split = [segment_words(s) for s in parts]
+    return next((body for body, matches in rules for w in split if matches(w)), None)
 
 
 def run(script, payload, args=()):
@@ -324,7 +334,8 @@ def answer(payload):
         return deny(rules)
     for key in PATH_KEYS:
         if isinstance(args.get(key), str):
-            refused = refused_path(args[key], cwd, rules, wide=key in WIDE_KEYS)
+            # `cwd` is `Cwd` resolved already, and joining `Cwd` to it again would name another path.
+            refused = refused_path(cwd if key == "Cwd" else args[key], cwd, rules, wide=key in WIDE_KEYS)
             if refused:
                 return deny(f"Refused by the path guard: {refused}. Use only the paths your task names. "
                             "Do not reach this path in another form.")

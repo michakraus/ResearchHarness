@@ -406,9 +406,11 @@ the five shell guards and the working-tree check of `sandbox-semantics.py` on `r
 command, a `cd`, the `Cwd` of a call and the `SearchPath` of `grep_search` also refuse a
 directory that holds a path of the list. On `run_command` it applies the template's Bash denies and
 asks, from the lists `bash_deny` and `bash_ask`, to each segment of the command, the bodies of
-`$(…)` and backticks included. On a tool that writes a file, it also applies the `edit` list, the
-template's Edit denies, and the `ask` list, its Edit asks. The `deny` list holds the files of the
-layer itself. A refusal of a guard becomes
+`$(…)`, backticks and `( … )` included. A rule matches the words of a segment from any word, so
+an assignment, a wrapper such as `env` or a keyword such as `then` before the command does not
+hide it, and a quoted word is one word. On a tool that writes a file, it also applies the `edit`
+list, the template's Edit denies, and the `ask` list, its Edit asks. The `deny` list holds the
+files of the layer itself. A refusal of a guard becomes
 `deny`, an "ask" answer `force_ask`, and a pass `ask`, which leaves Antigravity's own rules in
 force. It fails closed: a guard that cannot run, fails, prints no answer it can read or times out
 gives `deny`.

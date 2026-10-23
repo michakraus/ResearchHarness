@@ -1400,8 +1400,21 @@ AGY_CASES = [
     ("run_command", {"CommandLine": 'echo "a; git push --force origin x"'}, "ask", None),
     ("run_command", {"CommandLine": 'git "push" --force origin x'}, "deny", None),
     ("run_command", {"CommandLine": "git push --force origin x '"}, "deny", None),
-    ("run_command", {"CommandLine": "echo `date` git push --force origin x"}, "ask", None),
     ("run_command", {"CommandLine": "pushd ~/.gemini/config && cat mcp_config.json"}, "deny", None),
+    # A rule matches the words of a segment from any word: an assignment, a wrapper or a keyword
+    # before the command does not hide it, and a quoted word is one word.
+    ("run_command", {"CommandLine": "FOO=1 git push --force origin x"}, "deny", None),
+    ("run_command", {"CommandLine": "env git push --force origin x"}, "deny", None),
+    ("run_command", {"CommandLine": "command git push --force origin x"}, "deny", None),
+    ("run_command", {"CommandLine": "time git push --force origin x"}, "deny", None),
+    ("run_command", {"CommandLine": "! git push --force origin x"}, "deny", None),
+    ("run_command", {"CommandLine": "{ git push --force origin x; }"}, "deny", None),
+    ("run_command", {"CommandLine": "if true; then git push --force origin x; fi"}, "deny", None),
+    ("run_command", {"CommandLine": "echo `date` git push --force origin x"}, "deny", None),
+    ("run_command", {"CommandLine": 'git -C . "reset" --hard'}, "deny", None),
+    ("run_command", {"CommandLine": "FOO=1 git -C . reset --hard"}, "deny", None),
+    ("run_command", {"CommandLine": 'git commit -m "git push --force"'}, "ask", None),
+    ("run_command", {"CommandLine": 'git commit -m "x --amend"'}, "ask", None),
     # A rule that asks does not override a guard that refuses: the template has no rule for
     # `git init`, which sandbox-semantics.py refuses.
     ("run_command", {"CommandLine": "gh pr merge 1 && git init sub"}, "deny", None),
@@ -1539,6 +1552,10 @@ def agy_cases():
         (good, {"CommandLine": "cat ../.netrc", "Cwd": "."}, good + "/sub", "deny"),
         (good, {"CommandLine": "cat .netrc", "Cwd": "~"}, elsewhere, "deny"),
         (good, {"CommandLine": "cat .ne*"}, good, "deny"),
+        # A relative `Cwd` that goes down into a directory that holds a deny path is that directory.
+        (good, {"CommandLine": "rg Bearer", "Cwd": "../.gemini/config"}, good + "/Research", "deny"),
+        (good, {"CommandLine": "rg Bearer", "Cwd": ".gemini/config"}, good, "deny"),
+        (good, {"CommandLine": "rg Bearer", "Cwd": "config"}, good + "/.gemini", "deny"),
     ]:
         got, _ = verdict(h, "run_command", args, workspace=workspace)
         report(got == expected, f"exp {expected} got {got}  [agy-guard]  {args} with workspacePaths [{workspace}]")
