@@ -42,6 +42,58 @@
 - kind: defect
 - found: 2026-10-23
 
+### K89 · The path check of the Antigravity guard keeps a backslash-newline inside a word.
+
+- location: `adapters/antigravity/guard.py:179`
+- evidence: `words()` splits the line with `shlex`, which keeps the newline of a backslash-newline
+  in the word (`~/.ssh/id_\ned25519`), where the shell joins the two lines. On a fixture home the
+  guard answers `deny` to `cat ~/.ssh/id_ed25519` and `ask` to `cat ~/.ssh/id_\<NL>ed25519` and
+  to `cat ~/.config/gh/hosts\<NL>.yml` (`<NL>` a newline), which read the same files.
+- kind: defect
+- found: 2026-10-23, PR #76
+
+### K90 · The path check of the Antigravity guard reads a `#` inside a word as a comment.
+
+- location: `adapters/antigravity/guard.py:182`
+- evidence: `shlex` starts a comment at a `#` inside a word, and the shell starts one only at the
+  start of a word. On a fixture home the guard answers `deny` to `cat ~/.netrc` and `ask` to
+  `cat x# ~/.netrc`, which reads `~/.netrc` (`bash -c 'echo x# ~/.netrc'` prints the expanded
+  path).
+- kind: defect
+- found: 2026-10-23, PR #76
+
+### K91 · A comment that ends in a backslash-newline hides the next line from the Bash rules of the Antigravity guard.
+
+- location: `adapters/antigravity/guard.py:216`
+- evidence: `segments()` reads no comment and drops the backslash-newline, so the first word of the
+  next line joins the comment's word (`#git`), and no rule sees the command word. The shell ends
+  the comment at the newline and runs the next line. On a fixture home the guard answers `deny`
+  to `git push --force origin x` and `ask` to `echo #\<NL>git push --force origin x` (`<NL>` a
+  newline), which runs the push.
+- kind: defect
+- found: 2026-10-23, PR #76
+
+### K92 · The path check of the Antigravity guard reads no string argument and no substitution.
+
+- location: `adapters/antigravity/guard.py:190`
+- evidence: `refused_command()` checks the words of the line as it writes them. On a fixture home
+  the guard answers `deny` to `cat ~/.netrc` and `ask` to `bash -c 'cat ~/.netrc'`, to
+  `sh -c "cat ~/.config/gh/hosts.yml"` and to `cat $(printf ~/.ne)trc`, which read the denied
+  files.
+- kind: defect
+- found: 2026-10-23, PR #76; the same class as K88
+
+### K93 · No case covers the "outside single quotes" condition of the backslash-newline drop in `segments()` of the Antigravity guard.
+
+- location: `adapters/antigravity/guard.py:216`
+- evidence: the mutant that drops a backslash-newline inside single quotes too (`line[i:j]` →
+  `line[i:j].replace("\\\n", "")` at `guard.py:221`) passes the adapter selftest and the `agy`
+  cases of `hooks/probe.py`: "TOTAL 182 cases, 0 wrong". The mutant fails closed: it answers
+  `deny` to `rm -rf '/\<NL>'` (`<NL>` a newline), where the head answers `ask`. A case
+  `rm -rf '/\<NL>'` → `ask` closes the gap.
+- kind: missing test
+- found: 2026-10-23, PR #76
+
 ### K22 · Under OpenCode, a verify critic carries the round-1 rule of the council.
 
 - location: `adapters/opencode/adapter.py:291-297`
