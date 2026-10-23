@@ -1338,6 +1338,23 @@ AGY_CASES = [
     ("call_mcp_tool", {"ServerName": "kaimon", "ToolName": "ex", "Arguments": '{"e": "1"}'}, "deny", None),
     ("call_mcp_tool", {"ServerName": "kaimon", "ToolName": "ping", "Arguments": {}}, "ask", None),
     ("call_mcp_tool", {"ServerName": "zotero", "ToolName": "ex", "Arguments": {}}, "ask", None),
+    # The `edit` and `ask` lists, on the tools that write: a template Edit deny gives deny, an Edit
+    # ask gives force_ask, a path under both gives deny; a read and a command word pass them.
+    ("write_to_file", {"TargetFile": TOOL + "/.git/config", "CodeContent": "x"}, "deny", None),
+    ("write_file", {"Path": "~/.julia/juliaup/julia-1.11.5+0.aarch64.apple.darwin14/bin/julia", "Content": "x"},
+     "deny", None),
+    ("view_file", {"AbsolutePath": TOOL + "/.git/config"}, "ask", None),
+    ("run_command", {"CommandLine": "cat .git/HEAD"}, "ask", None),
+    ("replace_file_content", {"TargetFile": "~/Research/X/.github/workflows/ci.yml", "TargetContent": "a",
+                              "ReplacementContent": "b"}, "force_ask", None),
+    ("edit_file", {"Path": "~/.claude/skills/build-part/SKILL.md", "Target": "a", "Replacement": "b"}, "deny", None),
+    # The files of the layer itself.
+    ("write_to_file", {"TargetFile": "~/.gemini/config/hooks.json", "CodeContent": "{}"}, "deny", None),
+    ("edit_file", {"Path": "~/.gemini/antigravity-cli/settings.json", "Target": "a", "Replacement": "b"}, "deny",
+     None),
+    ("run_command", {"CommandLine": "echo {} > ~/.gemini/config/guard-paths.json"}, "deny", None),
+    ("run_command", {"CommandLine": "cat ~/.gemini/config/guard-paths.json"}, "deny", None),
+    ("run_command", {"CommandLine": "rm ~/.gemini/config/hooks/guard.py"}, "deny", None),
 ]
 
 
@@ -1353,7 +1370,8 @@ def agy_cases():
     def home(name, scripts=None, paths=None, timeout=None):
         """A fixture home with guard.py and the seven guard scripts of OC_SCRIPTS in
         .gemini/config/hooks/, each one that `scripts` names replaced by its text there, or left
-        out for None, and the path list `paths`, else the rendered one, or none for False.
+        out for None, and the path list `paths`, for a function the text `paths(rendered list)`, else
+        the rendered one, or none for False.
         `timeout` replaces guard.py's TIMEOUT in seconds."""
         scripts = scripts or {}
         h = FIXTURE.name + "/" + name
@@ -1375,8 +1393,9 @@ def agy_cases():
         with open(config + "/hooks/guard.py", "w") as f:
             f.write(source)
         if paths is not False:
+            rendered = agy.guard_paths({**dummy, "home": h})
             with open(config + "/guard-paths.json", "w") as f:
-                f.write(paths if paths is not None else agy.guard_paths({**dummy, "home": h}))
+                f.write(paths(rendered) if callable(paths) else paths if paths is not None else rendered)
         return h
 
     def verdict(h, tool=None, args=None, workspace=CWD, raw=None, env=None, argv=None):
@@ -1432,6 +1451,9 @@ def agy_cases():
             ("the path list is missing", {"paths": False}),
             ("the deny list is not a list", {"paths": '{"deny": "x"}'}),
             ("the path list is not JSON", {"paths": "{"}),
+            ("the edit list is missing", {"paths": lambda text: json.dumps(
+                {k: v for k, v in json.loads(text).items() if k != "edit"})}),
+            ("the ask list is not a list", {"paths": lambda text: json.dumps({**json.loads(text), "ask": "x"})}),
         ])}
     except OSError as e:
         report(False, f"exp fixture got {type(e).__name__}  [agy-guard]  {e}")
@@ -1456,6 +1478,9 @@ def agy_cases():
     got, _ = verdict(fail["the Kaimon guard exits 1"], "call_mcp_tool",
                      {"ServerName": "kaimon", "ToolName": "ping", "Arguments": {}})
     report(got == "ask", f"exp ask got {got}  [agy-guard]  kaimon ping with the Kaimon guard broken")
+    # A missing `edit` list leaves the tools that do not write to the `deny` list.
+    got, _ = verdict(fail["the edit list is missing"], "read_file", {"Path": "src/Foo.jl"})
+    report(got == "ask", f"exp ask got {got}  [agy-guard]  the edit list is missing: read_file src/Foo.jl")
     # A relative word is a path below the call's working directory.
     got, _ = verdict(good, "run_command", {"CommandLine": "cat .netrc", "Cwd": good})
     report(got == "deny", f"exp deny got {got}  [agy-guard]  cat .netrc with Cwd the home")
@@ -1499,6 +1524,10 @@ def agy_cases():
          "exited with status 1"),
         ("the path list is missing", fail["the path list is missing"], "send_message", {"Message": "x"}, None,
          "cannot be used"),
+        ("the edit list is missing", fail["the edit list is missing"], "write_file",
+         {"Path": "notes.md", "Content": "x"}, None, "cannot be used"),
+        ("the ask list is not a list", fail["the ask list is not a list"], "write_to_file",
+         {"TargetFile": "notes.md", "CodeContent": "x"}, None, "no list of strings"),
         ("the payload is not JSON", good, None, None, "not json", "failed"),
         ("the payload has no toolCall", good, None, None, '{"workspacePaths": []}', "failed"),
         ("the tool call has no name", good, None, None, '{"toolCall": {"args": {}}}', "failed"),

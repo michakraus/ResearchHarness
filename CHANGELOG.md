@@ -11,13 +11,17 @@
   merge keeps every other key and backs up the file it replaces; a file that is not a JSON object
   exits 2 before any write. `guard.py` gives the guard scripts Claude Code's payload, from the
   `CommandLine` and the `Cwd` or first workspace path of a shell call and the `Arguments` of a
-  Kaimon `ex` or `manage_repl` call, and refuses a path of the path list in any path argument or
-  any word of a command; the path list adds `~/.gemini/config/mcp_config.json`. A pass answers
+  Kaimon `ex` or `manage_repl` call. It refuses a path of the `deny` list in any path argument or
+  any word of a command; that list adds `~/.gemini/config/mcp_config.json` and the files of the
+  layer itself. On a tool that writes a file, it also refuses a path of the `edit` list, every
+  Edit deny of the template, and asks for a path of the `ask` list, every Edit ask. A pass answers
   `ask`, which leaves Antigravity's own rules in force, and any failure of a guard answers `deny`.
   The rules are the settings template's: each Bash entry a `command(…)` rule, each Read and Edit
-  path a `read_file(…)` or `write_file(…)` rule, each allow host a `read_url(…)` rule. A path with
-  a glob that Antigravity cannot express is dropped from the rules: the seven `Read(**/X)` denies,
-  which the path list of `guard.py` still covers, seven Edit denies and two Edit asks. No
+  path a `read_file(…)` or `write_file(…)` rule, each allow host a `read_url(…)` rule, and
+  `write_file(…)` denies for `mcp_config.json` and the files of the layer. A path with a glob that
+  Antigravity cannot express is dropped from the rules, and `guard.py` still covers it: the seven
+  `Read(**/X)` denies in its `deny` list, seven Edit denies and two Edit asks in its `edit` and
+  `ask` lists. No
   instruction, skill or agent is installed for Antigravity. `hooks/probe.py` runs `guard.py` on a
   fixture home, with cases for its refusals and for each way in which it fails closed.
 

@@ -6,7 +6,7 @@ of `hooks.json`, and gives it the call as JSON on stdin: `toolCall.name`, `toolC
 `workspacePaths`. It answers with one JSON object on stdout:
 
     {"decision": "deny", "reason": …}       a guard or the path list refuses the call
-    {"decision": "force_ask", "reason": …}  a guard asks the user
+    {"decision": "force_ask", "reason": …}  a guard, or the `ask` list, asks the user
     {"decision": "ask"}                     every check passes
 
 `ask` leaves Antigravity's own policy in force: its permission rules and its preset decide, as with
@@ -14,8 +14,10 @@ no hook. It never answers `{}`, which Antigravity reads as a deny with an empty 
 
 THE CHECKS, by the name of the tool:
 
-    every tool     the path list on each argument of PATH_KEYS
-    run_command    the path list on each word of `CommandLine`, then the five shell guards of
+    every tool     the `deny` list on each argument of PATH_KEYS
+    WRITE_TOOLS    then the `edit` list, whose match gives `deny`, and the `ask` list, whose match
+                   gives `force_ask`, on the path that the tool writes
+    run_command    the `deny` list on each word of `CommandLine`, then the five shell guards of
                    SHELL and `sandbox-semantics.py --work-tree`
     call_mcp_tool  with `ServerName` kaimon and `ToolName` ex or manage_repl: kaimon-session.py,
                    with `Arguments` as the tool input
@@ -33,11 +35,14 @@ refuses or asks.
 
 IT FAILS CLOSED. A script that is missing or cannot start, exits with another status than 0 or 2,
 prints output that is not JSON, or takes longer than TIMEOUT gives `deny`; so does a payload that
-this hook cannot read, a path list that is missing or holds no list of strings under `deny`, and
-an error of this hook itself. When `python3` itself is missing, `sh -c` fails, and Antigravity
-blocks a call whose hook fails.
+this hook cannot read, a path list that is missing or holds no list of strings under `deny`, one
+that holds none under `edit` or `ask` for a tool of WRITE_TOOLS, and an error of this hook
+itself. When `python3` itself is missing, `sh -c` fails, and Antigravity blocks a call whose hook
+fails.
 
-THE PATH LIST is guard-paths.json beside hooks/, as `harness install` renders it. Its globs are
+THE PATH LIST is guard-paths.json beside hooks/, as `harness install` renders it: `deny` for
+every tool, `edit` and `ask` for the tools that write. A path that `edit` and `ask` both match
+gets `deny`. Its globs are
 OpenCode's: `**` any depth, `*` and `?` within one segment; `X/**` covers X too; the match ignores
 case. A path is checked as an absolute path: a leading `~`, `$HOME` or `${HOME}` expanded, a
 relative path joined to the working directory of the call. A command is split into words as the
@@ -67,6 +72,9 @@ KAIMON_TOOLS = ("ex", "manage_repl")
 # `read_file`, `write_file` and `edit_file`, and a subagent's `view_file`, `write_to_file`,
 # `replace_file_content`, `grep_search`, `find_by_name` and `list_dir`; `Cwd` of `run_command`.
 PATH_KEYS = ("Path", "AbsolutePath", "TargetFile", "SearchPath", "SearchDirectory", "DirectoryPath", "Cwd")
+# The tools that write a file, of both families, and the argument that names the file.
+WRITE_TOOLS = {"write_file": "Path", "edit_file": "Path", "write_to_file": "TargetFile",
+               "replace_file_content": "TargetFile"}
 # Seconds that each script may take. The scripts of one call run at once, so the call takes about as
 # long; `hooks.json` gives the hook 15 s.
 TIMEOUT = 10
@@ -93,15 +101,15 @@ def rule(glob):
     return re.compile(out, re.I)
 
 
-def path_rules():
-    """[(glob, pattern)] of the `deny` of the path list; a string, the reason to deny, when the
+def path_rules(key="deny"):
+    """[(glob, pattern)] of the list `key` of the path list; a string, the reason to deny, when the
     list cannot be used."""
     try:
-        globs = json.loads(LIST.read_text(encoding="utf-8"))["deny"]
+        globs = json.loads(LIST.read_text(encoding="utf-8"))[key]
     except (OSError, ValueError, KeyError, TypeError) as e:
         return f"The path list {LIST} cannot be used ({type(e).__name__}: {e}), so the call is blocked. {CLOSED}"
     if not isinstance(globs, list) or not all(isinstance(g, str) for g in globs):
-        return f"The path list {LIST} holds no list of strings under \"deny\", so the call is blocked. {CLOSED}"
+        return f"The path list {LIST} holds no list of strings under \"{key}\", so the call is blocked. {CLOSED}"
     return [(g, rule(g)) for g in globs]
 
 
@@ -113,12 +121,12 @@ def absolute(raw, cwd):
     return re.sub(r"^/+", "/", os.path.normpath(path))
 
 
-def refused_path(raw, cwd, rules):
-    """The reason that `rules` refuse the path `raw`, or None."""
+def refused_path(raw, cwd, rules, kind="deny"):
+    """The reason that `rules`, the list `kind`, refuse the path `raw`, or None."""
     path = absolute(raw, cwd)
     for glob, pattern in rules:
         if pattern.fullmatch(path):
-            return f"{path} matches the deny rule {glob}"
+            return f"{path} matches the {kind} rule {glob}"
     return None
 
 
@@ -201,6 +209,19 @@ def answer(payload):
             if refused:
                 return deny(f"Refused by the path guard: {refused}. Use only the paths your task names. "
                             "Do not reach this path in another form.")
+    if name in WRITE_TOOLS:
+        edit, ask = path_rules("edit"), path_rules("ask")
+        for rules_of in (edit, ask):
+            if isinstance(rules_of, str):
+                return deny(rules_of)
+        target = args.get(WRITE_TOOLS[name])
+        if isinstance(target, str):
+            refused = refused_path(target, cwd, edit, "edit")
+            if refused:
+                return deny(f"Refused by the path guard: {refused}. Do not make the change in another form.")
+            asked = refused_path(target, cwd, ask, "ask")
+            if asked:
+                return {"decision": "force_ask", "reason": f"The path guard asks the user: {asked}."}
     if name == "run_command":
         command = args.get("CommandLine")
         if not isinstance(command, str):

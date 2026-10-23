@@ -390,7 +390,8 @@ merge keeps every other key of that file and backs up the file it replaces.
 
 The permission rules are the settings template's: a Bash entry becomes a `command(…)` rule, a Read
 or Edit path a `read_file(…)` or `write_file(…)` rule, and an allow host of the network lists a
-`read_url(…)` rule. A path with a glob that Antigravity cannot express is dropped. It installs no
+`read_url(…)` rule. A path with a glob that Antigravity cannot express is dropped, and the path
+lists of `guard.py` cover it. It installs no
 instruction, skill or agent for Antigravity.
 
 ## `antigravity/guard.py`
@@ -398,7 +399,9 @@ instruction, skill or agent for Antigravity.
 The `PreToolUse` hook of Antigravity. It gets each tool call and answers with a decision. It runs
 the five shell guards and the working-tree check of `sandbox-semantics.py` on `run_command`,
 `kaimon-session.py` on a Kaimon `ex` or `manage_repl` call, and the `deny` list of
-`guard-paths.json` on each path argument and each word of a command. A refusal of a guard becomes
+`guard-paths.json` on each path argument and each word of a command. On a tool that writes a file,
+it also applies the `edit` list, the template's Edit denies, and the `ask` list, its Edit asks.
+The `deny` list holds the files of the layer itself. A refusal of a guard becomes
 `deny`, an "ask" answer `force_ask`, and a pass `ask`, which leaves Antigravity's own rules in
 force. It fails closed: a guard that cannot run, fails, prints no answer it can read or times out
 gives `deny`.

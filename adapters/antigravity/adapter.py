@@ -13,8 +13,11 @@ and one warning:
                                  and the path list on every tool call, failing closed
   config/hooks/<script>          the guard scripts of frontends.GUARDS, copies of the Claude Code
                                  layer's
-  config/guard-paths.json        the path list of guard.py (guard_paths): the `deny` of
-                                 adapters/opencode/plugins/guard-paths.json, and MCP_CONFIG
+  config/guard-paths.json        the path list of guard.py (guard_paths): under `deny` that of
+                                 adapters/opencode/plugins/guard-paths.json, MCP_CONFIG and the
+                                 files of this layer, LAYER; under `edit` and `ask` the template's
+                                 Edit denies and asks, which guard.py applies to the tools that
+                                 write
   antigravity-cli/settings.json  the keys `permissions`, `toolPermission` and
                                  `enableTerminalSandbox` of the CLI's settings, set in the file
                                  as it is, every other key kept, after a backup (merge_settings);
@@ -37,9 +40,11 @@ template's order:
                          `**/X` among them, has no form in Antigravity and is dropped
   WebFetch(domain:X)     read_url(X), for each allow host of settings/network.toml and its overlay
 
-MCP_CONFIG is a `read_file` deny after the template's. Every other entry is dropped, with its
-reason. A command with `$(…)` or a backtick matches only a full-line rule in Antigravity, so a
-`deny` does not reach it; guard.py still reads the whole line, and is the boundary.
+MCP_CONFIG is a `read_file` deny after the template's, and LAYER and MCP_CONFIG are `write_file`
+denies after that. Every other entry is dropped, with its reason. A dropped `Read(**/X)` deny is
+still in the `deny` list of guard.py, and a dropped Edit entry in its `edit` or `ask` list. A
+command with `$(…)` or a backtick matches only a full-line rule in Antigravity, so a `deny` does
+not reach it; guard.py still reads the whole line, and is the boundary.
 """
 
 import json
@@ -60,6 +65,10 @@ HOOK = "harness-guards"
 HOOK_TIMEOUT = 15
 # The MCP configuration of Antigravity, which holds the Kaimon token in plain text.
 MCP_CONFIG = "{home}/.gemini/config/mcp_config.json"
+# The files of this layer, which an agent that rewrites them could use to switch off its guard.
+LAYER = ("{home}/.gemini/config/hooks.json", "{home}/.gemini/config/hooks/**", "{home}/.gemini/config/guard-paths.json",
+         "{home}/.gemini/antigravity-cli/settings.json")
+SETTINGS = REPO / "settings" / "settings.proposal.json"
 POSTURE = {"toolPermission": "proceed-in-sandbox", "enableTerminalSandbox": True}
 # The lists of the template's `permissions` and of Antigravity's, in the order the rules render.
 LISTS = ("deny", "ask", "allow")
@@ -79,10 +88,15 @@ def render_hooks():
 
 def guard_paths(profile):
     """The text of guard-paths.json, rendered with `profile`: under `deny` the `read` denies of
-    OpenCode's path list, then MCP_CONFIG."""
+    OpenCode's path list, then MCP_CONFIG and LAYER; under `edit` every `Edit` deny of the
+    settings template, and under `ask` every `Edit` ask, each with a leading `//` as `/`."""
+    render = lambda path: profile_module.render_line(path, profile)  # noqa: E731
     deny = json.loads(profile_module.render_file(GUARD_PATHS, profile))["deny"]
-    return json.dumps({"deny": [*deny, profile_module.render_line(MCP_CONFIG, profile)]}, indent=2,
-                      ensure_ascii=False) + "\n"
+    permissions = json.loads(profile_module.render_file(SETTINGS, profile))["permissions"]
+    edits = {key: [re.sub(r"^//+", "/", m.group(1)) for e in permissions.get(key, [])
+                   if (m := re.fullmatch(r"Edit\((.*)\)", e, re.S))] for key in ("deny", "ask")}
+    return json.dumps({"deny": [*deny, render(MCP_CONFIG), *map(render, LAYER)], "edit": edits["deny"],
+                       "ask": edits["ask"]}, indent=2, ensure_ascii=False) + "\n"
 
 
 def command_rule(body):
@@ -130,7 +144,9 @@ def render_permissions(cfg, profile):
                 dropped.append((key, entry, reason))
             else:
                 rules[key].append(rule)
-    rules["deny"].append(f"read_file({profile_module.render_line(MCP_CONFIG, profile)})")
+    render = lambda path: profile_module.render_line(path, profile)  # noqa: E731
+    rules["deny"] += [f"read_file({render(MCP_CONFIG)})",
+                      *(f"write_file({render(p).removesuffix('/**')})" for p in (*LAYER, MCP_CONFIG))]
     return rules, dropped
 
 
@@ -263,9 +279,20 @@ def layer_cases(scratch):
          f"guard.py runs the scripts of frontends.GUARDS, in its order: {frontends.GUARDS}")
     profile = profile_module.load(base / "profile.toml")
     opencode = json.loads(profile_module.render_file(GUARD_PATHS, profile))["deny"]
-    case(lambda: json.loads((config / "guard-paths.json").read_text())
-         == {"deny": [*opencode, f"{profile['home']}/.gemini/config/mcp_config.json"]},
-         "guard-paths.json is OpenCode's deny list, then ~/.gemini/config/mcp_config.json")
+    h = profile["home"]
+    template = json.loads(profile_module.render_file(SETTINGS, profile))["permissions"]
+    edits = {key: [re.sub(r"^//+", "/", e[len("Edit("):-1]) for e in template[key] if e.startswith("Edit(")]
+             for key in ("deny", "ask")}
+    lists = config / "guard-paths.json"
+    written = json.loads(lists.read_text()) if lists.is_file() else {}
+    case(lambda: written == {"deny": [*opencode, f"{h}/.gemini/config/mcp_config.json", f"{h}/.gemini/config/hooks.json",
+                                      f"{h}/.gemini/config/hooks/**", f"{h}/.gemini/config/guard-paths.json",
+                                      f"{h}/.gemini/antigravity-cli/settings.json"],
+                             "edit": edits["deny"], "ask": edits["ask"]}
+         and len(edits["deny"]) >= 54 and len(edits["ask"]) >= 4,
+         f"guard-paths.json is OpenCode's deny list, then mcp_config.json and the files of the layer; `edit` is "
+         f"every Edit deny of the template and `ask` every Edit ask, entry by entry: "
+         f"{ {k: len(v) for k, v in written.items()} }")
     new = gemini / "antigravity-cli" / "settings.json"
     settings = json.loads(new.read_text()) if new.is_file() else {}
     case(lambda: settings["toolPermission"] == "proceed-in-sandbox" and settings["enableTerminalSandbox"] is True
@@ -298,6 +325,11 @@ def rule_cases(case):
         cfg = claude.settings_template(profile, pathlib.Path(tmp) / "network.toml")
     rules, dropped = render_permissions(cfg, profile)
     reasons = {(key, entry): reason for key, entry, reason in dropped}
+    h = profile["home"]
+    extras = [f"read_file({h}/.gemini/config/mcp_config.json)", f"write_file({h}/.gemini/config/hooks.json)",
+              f"write_file({h}/.gemini/config/hooks)", f"write_file({h}/.gemini/config/guard-paths.json)",
+              f"write_file({h}/.gemini/antigravity-cli/settings.json)",
+              f"write_file({h}/.gemini/config/mcp_config.json)"]
     wrong = []
     for key in LISTS:
         out = iter(rules[key])
@@ -322,11 +354,12 @@ def rule_cases(case):
             if not ok:
                 wrong.append((key, entry, got))
         rest = list(out)
-        if rest != ([f"read_file({profile['home']}/.gemini/config/mcp_config.json)"] if key == "deny" else []):
+        if rest != (extras if key == "deny" else []):
             wrong.append((key, "after the template's entries", rest))
     case(lambda: not wrong and rules["allow"] and rules["ask"] and rules["deny"],
          f"each Bash, Read and Edit entry and each allow host is one rule in its list, in order, that matches the "
-         f"entry's lines or names its path, and mcp_config.json is a read_file deny after them: {wrong[:5]}")
+         f"entry's lines or names its path; after them, mcp_config.json is a read_file deny, and the files of the "
+         f"layer and mcp_config.json are write_file denies: {wrong[:5]}")
     bash = {key: [e for e in cfg["permissions"][key] if e.startswith("Bash(")] for key in LISTS}
     case(lambda: not [d for d in dropped if d[1].startswith("Bash(")]
          and all(sum(r.startswith("command(") for r in rules[key]) == len(bash[key]) for key in LISTS),
@@ -336,6 +369,12 @@ def rule_cases(case):
     paths = json.loads(guard_paths(profile))["deny"]
     case(lambda: recursive and all(e[len("Read("):-1] in paths for e in recursive),
          f"each dropped Read(**/X) deny is in the path list of guard.py: {recursive}")
+    lists = json.loads(guard_paths(profile))
+    covered = [(key, e) for key, e, _ in dropped if e.startswith("Edit(")
+               and re.sub(r"^//+", "/", e[len("Edit("):-1]) not in lists["edit" if key == "deny" else "ask"]]
+    case(lambda: not covered and any(e.startswith("Edit(") for _, e, _ in dropped),
+         f"each dropped Edit deny is in the `edit` list of guard.py, and each dropped Edit ask in its `ask` list: "
+         f"{covered}")
     others = [(key, e) for key, e, _ in dropped if not re.match(r"(Bash|Read|Edit)\(", e)]
     case(lambda: all(not re.fullmatch(r"WebFetch\(domain:.*\)", e) or key != "allow" for key, e in others)
          and all(reasons[d] for d in reasons),
@@ -351,9 +390,7 @@ def rule_cases(case):
     small = {"permissions": {"deny": ["WebFetch(domain:x.org)", "Read(src/x)", "Edit(//a/*.py)", "Edit(//a/b/**)"],
                              "allow": ["WebFetch(domain:y.org)", "mcp__k__ping"]}}
     got = render_permissions(small, profile)
-    case(lambda: got[0] == {"deny": ["write_file(/a/b)",
-                                     f"read_file({profile['home']}/.gemini/config/mcp_config.json)"],
-                            "ask": [], "allow": ["read_url(y.org)"]}
+    case(lambda: got[0] == {"deny": ["write_file(/a/b)", *extras], "ask": [], "allow": ["read_url(y.org)"]}
          and [e for _, e, _ in got[1]] == ["WebFetch(domain:x.org)", "Read(src/x)", "Edit(//a/*.py)", "mcp__k__ping"],
          f"a WebFetch deny, a relative path, a glob in a path and an MCP tool are dropped; an allow host is a "
          f"read_url rule: {got}")
