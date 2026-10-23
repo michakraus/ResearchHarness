@@ -81,9 +81,12 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   search; add a case that runs the hook as a process with its own timeout on a line of many
   thousand words (G1 verify 3, *Add the Antigravity frontend*)
 - a shell line continuation, a backslash-newline, that the word split keeps inside a word: `sh`
-  joins `push \<NL>--force` into `push --force`, and a check on the raw word misses it. Drop the
-  pair outside single quotes once, before every split that the guard makes (G1 verify 3 and
-  verify 4, *Add the Antigravity frontend*)
+  joins `push \<NL>--force` into `push --force`, and a check on the raw word misses it. A join of
+  the pair must keep the shell's comment rule: a `#` at a word start ends at the newline, so
+  `echo a #\<NL>cat ~/.ssh/id_ed25519` still runs line 2, and a join that ignores this hides the
+  line from the check; a `#` inside a word is no comment. Check the raw line and the joined line,
+  and refuse when either reading refuses: the union fails closed, where one emulated reading misses
+  the forms it does not copy (G1 verify 3 to verify 5, *Add the Antigravity frontend*)
 
 ## A numerical method
 
