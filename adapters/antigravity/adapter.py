@@ -551,9 +551,9 @@ def merge_mcp(path, kaimon):
     key. Exits 2, before anything is written and without the file's text, on a file that is not a
     regular file, cannot be read, is not UTF-8, is not a JSON object, has a `mcpServers` that is
     not an object, holds a key twice in one object outside the Kaimon entry, is nested deeper than
-    json writes, or holds a number outside the Kaimon entry that json writes in other text. The
-    error names each such key and each such number by its path, a JSON list of the keys and
-    indices from the top, and prints no value."""
+    json reads or writes, or holds a number outside the Kaimon entry that json writes in other
+    text. The error names each such key and each such number by its path, a JSON list of the keys
+    and indices from the top, and prints no value."""
     claude = frontends.adapter("claude")
     refused = "; the install sets mcpServers.kaimon of a JSON object in a regular file there, and writes nothing"
     text = read_regular(path, refused)
@@ -571,7 +571,10 @@ def merge_mcp(path, kaimon):
                 keys = [k for k, _ in items]
                 self.twice = {k for k in keys if keys.count(k) > 1}
 
-        tree = json.loads(text, object_pairs_hook=Pairs, parse_int=claude.Number, parse_float=claude.Number)
+        try:
+            tree = json.loads(text, object_pairs_hook=Pairs, parse_int=claude.Number, parse_float=claude.Number)
+        except RecursionError:  # with its hooks, this parse can run out of stack at a depth that the first reads
+            raise HarnessError(f"{path} is JSON nested too deep for the parser{refused}") from None
         if "mcpServers" in tree:
             tree["mcpServers"].pop("kaimon", None)
             tree["mcpServers"].twice.discard("kaimon")
@@ -1712,6 +1715,35 @@ def kaimon_cases(scratch):
     code, out = run(base, "--apply")
     case(lambda: scratch.refused(code, out) and '["mcpServers", "a", "url"]' in out and "secret-" not in out,
          f"a key twice in a server exits 2, names the key by its path and prints no value: {code}, {tail(out)!r}")
+    # The depth at which the second parse runs out of stack depends on the interpreter, so a child
+    # process makes that parse raise RecursionError at any depth, and the case holds on each Python.
+    import subprocess
+    import sys
+    deep = ("import json, runpy, sys\n"
+            "loads = json.loads\n"
+            "def deep(*args, **kwargs):\n"
+            "    if 'object_pairs_hook' in kwargs:\n"
+            "        raise RecursionError('maximum recursion depth exceeded')\n"
+            "    return loads(*args, **kwargs)\n"
+            "json.loads = deep\n"
+            "try:\n"
+            "    sys.argv = sys.argv[1:]\n"
+            "    runpy.run_path(sys.argv[0], run_name='__main__')\n"
+            "finally:\n"
+            "    json.loads = loads\n")
+    base, config = fresh()
+    config.write_bytes(b'{"mcpServers": {"other": {"command": "x"}}}\n')
+    config.chmod(0o644)
+    snapshot = scratch.snapshot(base)
+    p = subprocess.run([sys.executable, "-c", deep, str(REPO / "bin" / "harness"),
+                        "--profile", str(base / "profile.toml"),
+                        "--models", str(REPO / "examples" / "models.toml"), "install", "--apply"],
+                       capture_output=True, text=True, env=scratch.env(base), cwd=base, timeout=60)
+    code, out = p.returncode, p.stdout + p.stderr
+    case(lambda: scratch.refused(code, out) and "nested too deep" in out and str(config) in out
+         and scratch.snapshot(base) == snapshot,
+         f"a RecursionError of the parse that keeps the keys of each object exits 2, and nothing is written: "
+         f"{code}, {tail(out)!r}")
     truncated = b'{"mcpServers": {"kaimon": {"headers": {"Authorization": "Bearer fake-old'
     for label, make in [("holds a JSON array", lambda p: p.write_bytes(b"[]\n")),
                         ("holds a JSON string", lambda p: p.write_bytes(b'"x"\n')),
