@@ -422,6 +422,16 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   Aqua's 30 s persistent-tasks limit while a Makie extension precompiles on 1.11: run the quality
   tests on the new floor itself, not only on the newest Julia (W3, *Make the base package's stubs
   public*)
+- a removal of code from a package: a helper whose only callers the removal deletes stays behind
+  as dead code, such as a script utility's functions. Grep each function of every file that lost
+  a caller, with `git grep -w` (E finish, *Move the Hamiltonian and Lagrangian networks*)
+- a removal checked by a name grep: a sentence that still claims the removed thing through a
+  citation key alone, such as `[greydanus2019hamiltonian](@cite)` among the package's
+  architectures, which no name pattern matches (E round 1, *Move the Hamiltonian and Lagrangian
+  networks*)
+- a *Tests catch* item that names a check outside the mutant's domain, such as a reachability
+  test that walks only `test/` named for a file left in `src/`: run the named mutant against the
+  named check while the spec is written (E round 1, *Move the Hamiltonian and Lagrangian networks*)
 - a floor raise that moves the CI `min` job onto a Julia whose LLVM crashes on an architecture the
   local machine lacks, such as LLVM 16 on x86_64 aborting on a vectorised `BFloat16` conversion on
   1.11 while every aarch64 run passes: a local suite on the floor cannot show it, so the PR's `min`
