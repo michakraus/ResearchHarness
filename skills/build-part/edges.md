@@ -407,6 +407,10 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
 
 ## A migration of tests or of text
 
+- a set of lines that the spec defines by greps: the same fact also stands as a code literal
+  (`claude`, `opencode` and `omp`), in another word order ("OpenCode and oh-my-pi" alone), and
+  across a line break, and no grep sees those; read each page for the fact itself (G4 round 1,
+  *Add the Antigravity frontend*)
 - doctests in the manual pages, not only in the docstrings
 - a tolerance or an API that answers on the session's Julia and not on the `[compat]` floor:
   `eps(::Type{ComplexF32})` returns a value on 1.13 and raises a `MethodError` on 1.11, so a device
