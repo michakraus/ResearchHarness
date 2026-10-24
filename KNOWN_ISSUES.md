@@ -412,13 +412,14 @@
 - kind: docs
 - found: #78
 
-### K98 · `gh pr review` from an Antigravity subagent may need a permission prompt, which a subagent does not show.
+### K98 · `gh pr review` from an Antigravity subagent may need a permission prompt.
 
 - location: `agents/julia-pr-reviewer.md:68`
 - evidence: `julia-pr-reviewer` posts its review with `gh pr review <n> --comment --body-file <f>`.
   `julia-pr-shepherd` spawns it (`agents/julia-pr-shepherd.md:99`) and posts with
-  `gh pr comment` itself (line 215). A subagent of Antigravity shows no prompt, so a command that
-  needs one is refused. No run of either agent under Antigravity has measured it.
+  `gh pr comment` itself (line 215). In the app, a subagent's call of Kaimon's `ping` showed the
+  app's dialog, as a call of the main agent does. No run of either
+  agent under Antigravity has measured `gh pr review`.
 - kind: not verified
 - found: #78
 
@@ -444,3 +445,51 @@
   Claude Code's own merge calls the same helper at `adapters/claude/adapter.py:638`.
 - kind: defect
 - found: #78
+
+### K101 · A `config.json` with a key twice in one object loses the first value when the install merges the app's grants.
+
+- location: `adapters/antigravity/adapter.py:462`
+- evidence: `merge_grants` reads the file with `json_object`, which keeps the last value of a key.
+  On `{"userSettings": {"theme": "dark", "theme": "light"}}` it returns
+  `{"userSettings": {"theme": "light", "globalPermissionGrants": {…}}}` and raises no error, so
+  the install exits 0. `merge_settings` of the CLI's `settings.json` does the same, and
+  `merge_mcp` refuses a key twice in one object of `mcp_config.json` with exit 2.
+- kind: defect
+- found: #80
+
+### K102 · A minified `config.json` comes back with spaces after each separator, so every install replaces it.
+
+- location: `adapters/antigravity/adapter.py:480`
+- evidence: `merge_grants` writes the file with `claude.dumps` and the file's indent, which is none
+  for a file on one line, and `json` then writes `", "` and `": "`. On
+  `{"a":1,"userSettings":{"globalPermissionGrants":{"allow":["command(git status)"],"deny":[],"ask":[]}}}`
+  with that rule already in `allow`, it returns the same object with the spaces and a final
+  newline added, so the
+  bytes differ and the install lists the file as REPLACE and keeps a backup each time. Whether
+  the app writes its `config.json` minified is not measured.
+- kind: defect
+- found: #80
+
+### K103 · The Antigravity guard answers `ask`, not `deny`, to a command or a `multi_replace_file_content` call that writes `config.json` or an installed agent.
+
+- location: `adapters/antigravity/adapter.py:331`
+- evidence: `guard_paths` puts `~/.gemini/config/config.json` and `~/.gemini/config/agents/**` in
+  the `edit` list, which the guard applies to the write tools only, not to the words of a command
+  (`hooks/probe.py:1345`: "a read and a command word pass them"). On a fixture home the guard
+  answers `deny` to `write_to_file` {`TargetFile`: `~/.gemini/config/config.json`} and `ask` to
+  `run_command` {`CommandLine`: `cp /tmp/x ~/.gemini/config/config.json`}, to the same with
+  `~/.gemini/config/agents/julia-critic.md`, and to `multi_replace_file_content` {`TargetFile`:
+  either path}. The `multi_replace_file_content` half is K87.
+- kind: defect
+- found: #80; K87 for `multi_replace_file_content`
+
+### K104 · A rule that the install once wrote into the Antigravity grants stays after the settings template drops it.
+
+- location: `adapters/antigravity/adapter.py:446`
+- evidence: `merge_grants` adds each rendered rule that a list lacks and removes no entry, because
+  it cannot tell its own rules from the user's. A Kaimon tool or a command that the template moves
+  from `allow` to `ask` or drops therefore stays in `config.json`'s `allow` list. The CLI's
+  `settings.json` does not keep it: `merge_settings` sets its `permissions` to the rendered rules.
+  Deny > Ask > Allow still applies a rule that moves to `deny` or `ask`.
+- kind: defect
+- found: #80

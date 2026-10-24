@@ -19,7 +19,8 @@
   `config.json`, so an agent cannot widen its own grants. The setup pages and the adapter page
   say that the install writes the app's grants, and the delta states that in the app a
   subagent's call that needs a grant shows the app's dialog, where it said that a subagent shows
-  no prompt.
+  no prompt; the agents' rule that the caller opens the pull request no longer gives that as its
+  reason.
 
 - **The documentation names Antigravity as the fourth frontend.** The README, the home page, the
   introduction, the architecture, the dependencies, the command page and the component pages count

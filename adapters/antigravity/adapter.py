@@ -447,11 +447,12 @@ def merge_grants(path, rules):
     """The bytes of the app's settings at `path` with each rule of `rules` added once to its list,
     `allow`, `deny` or `ask`, of `userSettings.globalPermissionGrants`, after the entries that the
     list holds: every other key and every entry stays in its place, and a missing key is created;
-    the file's indent is kept, as merge_settings keeps it. A missing file holds no key. Exits 2, before anything is
-    written, on a file that is not a regular file, cannot be read, is not UTF-8, is not a JSON
-    object, has a `userSettings` or a `globalPermissionGrants` that is not an object or one of the
-    three lists that is not a list, is nested deeper than json writes, or holds a number that json
-    writes in other text. The install removes no entry, so a rule that it wrote once stays."""
+    the file's indent is kept, as merge_settings keeps it. A missing file holds no key. Exits 2,
+    before anything is written, on a file that is not a regular file, cannot be read, is not UTF-8,
+    is not a JSON object, has a `userSettings` or a `globalPermissionGrants` that is not an object
+    or one of the three lists that is not a list, is nested deeper than json writes, or holds a
+    number that json writes in other text. The install removes no entry, so a rule that it wrote
+    once stays."""
     claude = frontends.adapter("claude")
     refused = ("; the install adds its rules to userSettings.globalPermissionGrants of a JSON object in a regular "
                "file there, and writes nothing")
@@ -530,7 +531,7 @@ def under_antigravity(meta, body, text=None):
         ("agent", "agent" in tools),
         ("background", "run_in_background" in body),
         ("mcp", any(t.startswith(frontmatter.MCP) for t in tools)),
-        # A subagent shows no prompt, and `gh pr create` can need one.
+        # `gh pr create` can need a grant, so the caller runs it.
         ("pr", re.search(r"(?i)open (?:the|a) pull request", body) is not None)] if uses]
     if not used:
         return ""
