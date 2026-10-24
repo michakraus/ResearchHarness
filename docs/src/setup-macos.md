@@ -546,22 +546,17 @@ harness install
 ```
 
 **The permission settings of the app.** The desktop app reads no permission rule from the CLI's
-`settings.json`. It keeps its grants under **General → Tool Permissions** in its settings, not in
-a file, so you set them there yourself. Allow the Kaimon tools there with the entry `kaimon/*`.
-The app's entry is not the CLI's rule form `mcp(kaimon/*)`, which the install writes into the
-CLI's `settings.json`: with `mcp(kaimon/*)` in the app, a subagent's Kaimon call shows the dialog
-"Allow using this MCP tool? `kaimon/ping`". The install leaves `allowNonWorkspaceAccess` at its
-default, `false`, so a workspace below `~/Research` asks once for read access to each parent
-`CLAUDE.md` that `GEMINI.md` has the model read. Approve each of these requests once.
+`settings.json`. It keeps its grants under **General → Tool Permissions** in its settings, and
+writes them to `~/.gemini/config/config.json`. A wildcard grant for Kaimon has no effect there,
+neither `kaimon/*` nor `mcp(kaimon/*)`: each Kaimon tool needs its own grant. So approve each
+Kaimon tool once, when the app asks with the dialog "Allow using this MCP tool?" and the name of
+the tool, such as `kaimon/ping`. The install leaves `allowNonWorkspaceAccess` at its default,
+`false`, so a workspace below `~/Research` asks once for read access to each parent `CLAUDE.md`
+that `GEMINI.md` has the model read. Approve each of these requests once.
 
-**Check.** The first command prints `1`: the CLI's settings hold the rule `mcp(kaimon/*)`. Then
-start a conversation in the app, in a workspace below `~/Research`, and paste this prompt. Approve
-each request for a `CLAUDE.md`. The reply holds Kaimon's answer. A dialog for `kaimon/ping` means
-that the app has no entry `kaimon/*`:
-
-```bash
-grep -F -c 'mcp(kaimon/*)' ~/.gemini/antigravity-cli/settings.json
-```
+**Check.** Start a conversation in the app, in a workspace below `~/Research`, and paste this
+prompt. Approve the request for `kaimon/ping` and each request for a `CLAUDE.md`. The reply holds
+Kaimon's answer, and **General → Tool Permissions** lists the grant for `kaimon/ping`:
 
 ```text
 Start the subagent reader with the prompt "Call the tool ping of the MCP server kaimon, and report its reply verbatim". Report its reply verbatim.

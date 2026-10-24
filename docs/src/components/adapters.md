@@ -419,7 +419,7 @@ or Edit path a `read_file(…)` or `write_file(…)` rule, and an allow host of 
 the rule never matches across `;`, `|`, `&`, a substitution or a redirection. A path with a glob
 that Antigravity cannot express is dropped, and the path lists of `guard.py` cover it. The last
 `allow` rule is `mcp(kaimon/*)`. Only `agy` reads these rules; the desktop app keeps its own
-grants in its settings.
+grants in `config/config.json`, which the install does not write.
 
 The install exits with status 2, before it writes a file, in these cases among others:
 

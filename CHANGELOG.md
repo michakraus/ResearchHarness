@@ -13,10 +13,10 @@
   then `guard.py`, `ANTIGRAVITY-DELTA.md` with its facts, and `UNDER-ANTIGRAVITY.md`. The setup
   pages for macOS and Linux gain the install of the app, the step that adds `[antigravity]` to an
   older `models.toml`, and the app's permission settings, each with its check: the app keeps its
-  grants under **General → Tool Permissions**, not in a file, and its entry for Kaimon is
-  `kaimon/*`, while the CLI's `settings.json` keeps `mcp(kaimon/*)`; a workspace below
-  `~/Research` asks once for read access to each parent `CLAUDE.md`. The Kaimon token step names
-  Antigravity, whose `mcp_config.json` holds the token itself.
+  grants under **General → Tool Permissions**, which writes them to `~/.gemini/config/config.json`;
+  no wildcard grant for Kaimon works there, so the user approves each Kaimon tool once; a
+  workspace below `~/Research` asks once for read access to each parent `CLAUDE.md`. The Kaimon
+  token step names Antigravity, whose `mcp_config.json` holds the token itself.
 
 - **`harness install` writes the agents and Kaimon for Antigravity.** `models.toml` gains a table
   `[antigravity]`, beside `[claude]`, which maps the tiers `large`, `medium` and `small` to
