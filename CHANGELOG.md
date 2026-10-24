@@ -21,11 +21,12 @@
   `~/.gemini/config/mcp_config.json` gains the server `kaimon`, with the token of
   `~/.config/kaimon/opencode-token` written out, mode 600 and no backup, and the dry run never
   prints it; every other server and key of the file stays as it is, an empty file holds none, and
-  a file that is not a JSON object, or whose `mcpServers` is not one, exits 2 before any write.
-  With no token, the file is neither read nor written, and one warning says so. The CLI's `permissions` allow
-  `mcp(kaimon/*)`, because a subagent shows no prompt, and the guard hook refuses a write to the
-  installed agents. A file of `config/agents/` with no source is listed as EXTRA. The delta states
-  the agents' tiers and that round 1 of `build-part` runs two critics on the session model.
+  a file that is not a JSON object, whose `mcpServers` is not one, or that holds a key twice in
+  one object exits 2 before any write. With no token, the file is neither read nor written, and
+  one warning says so. The CLI's `permissions` allow `mcp(kaimon/*)`, because a subagent shows no
+  prompt, and the guard hook refuses a write to the installed agents. A file of `config/agents/`
+  with no source is listed as EXTRA. The delta states the agents' tiers and that round 1 of
+  `build-part` runs two critics on the session model.
 
 - **`harness install` writes Antigravity's instructions, rules and skills**, below
   `~/.gemini/config/`. The global instruction file `GEMINI.md` is the new

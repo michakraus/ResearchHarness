@@ -4,7 +4,7 @@ This agent is ported from Claude Code. Where the text below names a Claude Code 
 
 ## skills
 
-**Activate the {skills} before you start.** Claude Code loads them for you; Antigravity does not. You may activate no other skill.
+**Activate the {skills} before you start.** Claude Code preloads an agent's skills; Antigravity does not. You may activate no other skill.
 
 ## worktree
 
@@ -24,4 +24,4 @@ The `Agent` tool is `invoke_subagent` here, with the agent's name as `TypeName` 
 
 ## pr
 
-**Your caller opens the pull request.** A subagent shows no prompt, and `gh pr create` can need one. Where the text below says to open the pull request, do everything before it: stage, commit, push the branch, and write the body file. Then return the `gh pr create` command, with `--repo <owner>/<repo>` first and `--body-file` with the body file's absolute path, to your caller in your report, name `gh pr create for the caller` as the blocker of your verdict, and stop. The caller runs it.
+**Your caller opens the pull request.** A subagent shows no prompt, and `gh pr create` can need one. Where the text below says to open a pull request, do everything before it: stage, commit, push the branch, and write the body file. Then return the `gh pr create` command, with `--repo <owner>/<repo>` first and `--body-file` with the body file's absolute path, to your caller in your report, name `gh pr create for the caller` as the blocker of your verdict, and stop. The caller runs it.

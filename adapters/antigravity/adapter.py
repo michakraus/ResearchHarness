@@ -45,7 +45,8 @@ whose guard scripts, install-drift.py, instructions, rules and skills it copies.
                                  ~/.config/kaimon/opencode-token written out, every other server
                                  and key kept, mode 600 and no backup (render_mcp, merge_mcp); a
                                  file that is not a JSON object exits 2 before any write. With no
-                                 token, the file is neither read nor written, and one warning
+                                 token, the file is neither read nor written, and one warning says
+                                 so
 
 Each .md file but GEMINI.md names Antigravity's copies, not Claude Code's, RTK.md and the files of
 instructions/ in config/rules/ (relocate). A path of two sources, compared as `install.fold`
@@ -63,9 +64,10 @@ antigravity/, config.json and plugins/ among them, is neither listed nor touched
                                  of the files that frontends.SHARED_ROOTS names (relocate), and
                                  under `edit` the global instruction files that Antigravity loads,
                                  config/GEMINI.md, config/AGENTS.md and ~/.gemini/GEMINI.md, and
-                                 the installed agents, config/agents/; guard.py applies `edit` and `ask` to the tools that write; under
-                                 `bash_deny` and `bash_ask` the bodies of its Bash denies and
-                                 asks, which guard.py applies to each segment of a command
+                                 the installed agents, config/agents/; guard.py applies `edit`
+                                 and `ask` to the tools that write; under `bash_deny` and
+                                 `bash_ask` the bodies of its Bash denies and asks, which guard.py
+                                 applies to each segment of a command
   antigravity-cli/settings.json  the keys `permissions`, `toolPermission` and
                                  `enableTerminalSandbox` of the CLI's settings, set in the file
                                  as it is, every other key kept, after a backup (merge_settings);
@@ -93,12 +95,12 @@ template's order:
 
 MCP_CONFIG is a `read_file` deny after the template's, and LAYER and MCP_CONFIG are `write_file`
 denies after that. `mcp(kaimon/*)` is the last `allow` rule: a subagent shows no prompt, so a
-Kaimon call that needs one is refused there. Every other entry is dropped, with its reason. A dropped `Read(**/X)` deny is
-still in the `deny` list of guard.py, and a dropped Edit entry in its `edit` or `ask` list. A
-command with `$(…)` or a backtick matches only a full-line rule in Antigravity, so a `deny` does
-not reach it; guard.py applies the Bash denies and asks to each segment of the line, the bodies of
-`$(…)`, backticks and `( … )` included, and is the boundary. The desktop app reads no
-`permissions`, so there guard.py alone applies them.
+Kaimon call that needs one is refused there. Every other entry is dropped, with its reason. A
+dropped `Read(**/X)` deny is still in the `deny` list of guard.py, and a dropped Edit entry in its
+`edit` or `ask` list. A command with `$(…)` or a backtick matches only a full-line rule in
+Antigravity, so a `deny` does not reach it; guard.py applies the Bash denies and asks to each
+segment of the line, the bodies of `$(…)`, backticks and `( … )` included, and is the boundary.
+The desktop app reads no `permissions`, so there guard.py alone applies them.
 """
 
 import json
@@ -376,6 +378,26 @@ def render_permissions(cfg, profile):
     return rules, dropped
 
 
+def read_regular(path, refused):
+    """The text of the file at `path`, None when it does not exist. Exits 2 on a file that is not a
+    regular file, cannot be read, or is not UTF-8, its message ended by `refused`. One lstat, so
+    that a link, a FIFO or a directory is refused before it is opened."""
+    try:
+        st = os.lstat(path)
+    except FileNotFoundError:
+        return None
+    except OSError as e:
+        raise HarnessError(f"{path} cannot be read: {e.strerror}") from None
+    if not stat.S_ISREG(st.st_mode):
+        raise HarnessError(f"{path} is not a regular file{refused}")
+    try:
+        return path.read_bytes().decode("utf-8")
+    except OSError as e:
+        raise HarnessError(f"{path} cannot be read: {e.strerror}") from None
+    except UnicodeDecodeError as e:
+        raise HarnessError(f"{path} is not UTF-8: {e.reason} at byte {e.start}{refused}") from None
+
+
 def merge_settings(path, rules):
     """The bytes of the CLI's settings at `path` with `permissions` set to `rules` and the keys of
     POSTURE set, every other key kept in its place, with the file's indent and with no character
@@ -385,23 +407,9 @@ def merge_settings(path, rules):
     number outside the three keys that json writes in other text (`rewritten_numbers`)."""
     claude = frontends.adapter("claude")
     refused = "; the install sets three keys of a JSON object in a regular file there, and writes nothing"
-    # One lstat, so that a link, a FIFO or a directory is refused before it is opened.
-    try:
-        st = os.lstat(path)
-    except FileNotFoundError:
-        st = None
-    except OSError as e:
-        raise HarnessError(f"{path} cannot be read: {e.strerror}") from None
+    text = read_regular(path, refused)
     settings, indent = {}, 2
-    if st is not None:
-        if not stat.S_ISREG(st.st_mode):
-            raise HarnessError(f"{path} is not a regular file{refused}")
-        try:
-            text = path.read_bytes().decode("utf-8")
-        except OSError as e:
-            raise HarnessError(f"{path} cannot be read: {e.strerror}") from None
-        except UnicodeDecodeError as e:
-            raise HarnessError(f"{path} is not UTF-8: {e.reason} at byte {e.start}{refused}") from None
+    if text is not None:
         settings, indent = claude.json_object(path, text), claude.indent_of(text)
         numbers = claude.rewritten_numbers(text, ("permissions", *POSTURE))
         if numbers:
@@ -444,22 +452,27 @@ def load_models(path, agents):
     return {t: table[t] for t in tiers}, dict(overrides)
 
 
+def sections(text):
+    """{name: text} of each level-2 section `## <name>` of `text`, its text stripped."""
+    return {m.group(1): m.group(2).strip() for m in re.finditer(r"(?m)^## (\w+)\n(.*?)(?=^## |\Z)", text, re.S)}
+
+
 def under_antigravity(meta, body, text=None):
     """The "Under Antigravity" section of an agent with frontmatter `meta` and `body`: the intro and
     the rule of `text`, UNDER's text by default, for each Claude Code mechanism that it uses — a
-    preloaded skill, worktree isolation, the `Agent` tool, a background run, a Kaimon tool, the pull
-    request; "" when it uses none. A section that it needs and that `text` lacks exits 2."""
-    text = UNDER.read_text() if text is None else text
-    rules = {m.group(1): m.group(2).strip() for m in re.finditer(r"(?m)^## (\w+)\n(.*?)(?=^## |\Z)", text, re.S)}
+    preloaded skill, worktree isolation (`isolation: worktree` in its frontmatter or its body), the
+    `Agent` tool, a background run, a Kaimon tool, opening a pull request; "" when it uses none. A
+    section that it needs and that `text` lacks exits 2."""
+    rules = sections(UNDER.read_text() if text is None else text)
     tools, skills = meta.get("tools", []), meta.get("skills", [])
     used = [key for key, uses in [
         ("skills", bool(skills)),
-        ("worktree", meta.get("isolation") == "worktree" or "isolation" in body),
+        ("worktree", meta.get("isolation") == "worktree" or re.search(r'isolation: "?worktree', body) is not None),
         ("agent", "agent" in tools),
         ("background", "run_in_background" in body),
         ("mcp", any(t.startswith(frontmatter.MCP) for t in tools)),
         # A subagent shows no prompt, and `gh pr create` can need one.
-        ("pr", re.search(r"(?i)open the pull request", body) is not None)] if uses]
+        ("pr", re.search(r"(?i)open (?:the|a) pull request", body) is not None)] if uses]
     if not used:
         return ""
     if missing := [k for k in ["intro", *used] if k not in rules]:
@@ -537,35 +550,42 @@ def merge_mcp(path, kaimon):
     merge_settings writes a file. A missing file, an empty one, or one of whitespace only holds no
     key. Exits 2, before anything is written and without the file's text, on a file that is not a
     regular file, cannot be read, is not UTF-8, is not a JSON object, has a `mcpServers` that is
-    not an object, is nested deeper than json writes, or holds a number outside the Kaimon entry
-    that json writes in other text."""
+    not an object, holds a key twice in one object, is nested deeper than json writes, or holds a
+    number outside the Kaimon entry that json writes in other text. The error of a number names
+    its key by its path, a JSON list of the keys and indices from the top."""
     claude = frontends.adapter("claude")
     refused = "; the install sets mcpServers.kaimon of a JSON object in a regular file there, and writes nothing"
-    try:
-        st = os.lstat(path)
-    except FileNotFoundError:
-        st = None
-    except OSError as e:
-        raise HarnessError(f"{path} cannot be read: {e.strerror}") from None
+    text = read_regular(path, refused)
     cfg, indent = {}, 2
-    if st is not None:
-        if not stat.S_ISREG(st.st_mode):
-            raise HarnessError(f"{path} is not a regular file{refused}")
-        try:
-            text = path.read_bytes().decode("utf-8")
-        except OSError as e:
-            raise HarnessError(f"{path} cannot be read: {e.strerror}") from None
-        except UnicodeDecodeError as e:
-            raise HarnessError(f"{path} is not UTF-8: {e.reason} at byte {e.start}{refused}") from None
-        if text.strip():
-            cfg, indent = claude.json_object(path, text), claude.indent_of(text)
-            if not isinstance(cfg.get("mcpServers", {}), dict):
-                raise HarnessError(f"{path}: its mcpServers is not a JSON object{refused}")
-            numbers = [n for n in claude.rewritten_numbers(text, ())
-                       if not re.match(r"mcpServers\.kaimon(?:$|[.\[])", n[0])]
-            if numbers:
-                raise HarnessError(f"{path} holds numbers that JSON would write in other text, at "
-                                   f"{', '.join(k for k, _, _ in numbers)}{refused}")
+    if text is not None and text.strip():
+        cfg, indent = claude.json_object(path, text), claude.indent_of(text)
+        if not isinstance(cfg.get("mcpServers", {}), dict):
+            raise HarnessError(f"{path}: its mcpServers is not a JSON object{refused}")
+        # A second parse finds each key that an object holds twice, whose earlier values the merge
+        # would drop, and keeps the text of each number, to compare it with the text json writes.
+        twice = []
+
+        def pairs(items):
+            keys = [k for k, _ in items]
+            twice.extend(sorted({k for k in keys if keys.count(k) > 1}))
+            return dict(items)
+
+        tree = json.loads(text, object_pairs_hook=pairs, parse_int=claude.Number, parse_float=claude.Number)
+        if twice:
+            raise HarnessError(f"{path} holds a key twice in one object: {json.dumps(twice)}{refused}")
+        tree.get("mcpServers", {}).pop("kaimon", None)
+        numbers, stack = [], [([k], v) for k, v in tree.items()]
+        while stack:
+            key, value = stack.pop()
+            if isinstance(value, dict):
+                stack += [([*key, k], v) for k, v in value.items()]
+            elif isinstance(value, list):
+                stack += [([*key, i], v) for i, v in enumerate(value)]
+            elif isinstance(value, claude.Number) and json.dumps(json.loads(value.text)) != value.text:
+                numbers.append(json.dumps(key))
+        if numbers:
+            raise HarnessError(f"{path} holds numbers that JSON would write in other text, at "
+                               f"{', '.join(sorted(numbers))}{refused}")
     cfg.setdefault("mcpServers", {})["kaimon"] = kaimon
     try:
         return (claude.dumps(cfg, indent=indent) + "\n").encode()
@@ -1300,7 +1320,8 @@ def merge_cases(scratch):
         (path.parent / "real.json").write_text("{}\n")
         path.symlink_to("real.json")
 
-    for data, label in [(b"[1, 2]\n", "holds a JSON array"), (b"not json\n", "holds text that is not JSON"),
+    for data, label in [(b"", "is empty"), (b"[1, 2]\n", "holds a JSON array"),
+                        (b"not json\n", "holds text that is not JSON"),
                         (b'"x"\n', "holds a JSON string"), (b"\xff\n", "holds bytes that are not UTF-8"),
                         (b"[" * 100000 + b"]" * 100000, "holds a JSON array nested 100000 deep"),
                         (b'{"a": ' * 100000 + b"1" + b"}" * 100000, "holds a JSON object nested 100000 deep"),
@@ -1355,6 +1376,8 @@ def model_cases(scratch):
     refusals = [
         ("no table [antigravity]", models_text(), ["[antigravity]"]),
         ("a key antigravity that is no table", 'antigravity = "inherit"\n' + models_text(), ["[antigravity]"]),
+        ("a key antigravity that is a list of the tiers",
+         'antigravity = ["large", "medium", "small"]\n' + models_text(), ["[antigravity]"]),
         ("no tier small", models_text('large = "inherit"\nmedium = "flash"\n'), ["[antigravity]", "small"]),
         ("a model name as a tier", models_text(tiers.replace('"inherit"', '"gemini-4-argon"')),
          ["[antigravity]", "large", "gemini-4-argon"]),
@@ -1415,8 +1438,8 @@ def model_cases(scratch):
          f"it: {[c for c, _ in installed]}, {[{k: len(v) for k, v in t.items()} for _, t in installed]}")
 
 
-# The names that a subagent's `tools:` took in G0's round 5, both families, written out here so that
-# the cases do not take them from TOOLS.
+# The names that Antigravity accepts in a subagent's `tools:`, both families, written out here so
+# that the cases do not take them from TOOLS.
 ROUND5 = {"read_file", "write_file", "edit_file", "view_file", "write_to_file", "replace_file_content",
           "grep_search", "find_by_name", "list_dir", "run_command", "search_web", "read_url_content"}
 
@@ -1516,22 +1539,22 @@ def agent_cases(scratch):
          f"neutral ones: {missing!r}, {unknown!r}")
 
     text = UNDER.read_text()
-    rules = {m.group(1): m.group(2).strip() for m in re.finditer(r"(?m)^## (\w+)\n(.*?)(?=^## |\Z)", text, re.S)}
+    rules = sections(text)
     mechanisms = {"skills": ("skills:\n  - build-part\n", "Do the work.\n"),
                   "worktree": ("isolation: worktree\n", "Do the work.\n"),
                   "agent": ("tools:\n  - agent\n", "Do the work.\n"),
                   "background": ("", "Never set `run_in_background`.\n"),
                   "mcp": ("tools:\n  - mcp/kaimon/ping\n", "Do the work.\n"),
                   "pr": ("", "Then open the pull request.\n")}
-    sections = {}
+    parts = {}
     for key, (head, body) in mechanisms.items():
         data = attempt(lambda: render_agent(agent(f"uses-{key}", head, body), EXAMPLE_TIERS, {}))
-        sections[key] = data.decode().split("## Under Antigravity\n\n", 1)[-1].split("\n\n") if isinstance(
+        parts[key] = data.decode().split("## Under Antigravity\n\n", 1)[-1].split("\n\n") if isinstance(
             data, bytes) else data
     filled = {k: rules.get(k, "").replace("{skills}", "`build-part` skill") for k in mechanisms}
-    case(lambda: all(sections[k][:2] == [rules["intro"], "- " + filled[k]] for k in mechanisms),
+    case(lambda: all(parts[k][:2] == [rules["intro"], "- " + filled[k]] for k in mechanisms),
          f"an agent that uses one mechanism gets the intro and that mechanism's rule of UNDER-ANTIGRAVITY.md: "
-         f"{ {k: v if isinstance(v, HarnessError) else v[:2] for k, v in sections.items()} }")
+         f"{ {k: v if isinstance(v, HarnessError) else v[:2] for k, v in parts.items()} }")
     combined = attempt(lambda: render_agent(builder, EXAMPLE_TIERS, {}))
     order = [k for k in mechanisms if isinstance(combined, bytes) and "- " + rules[k].split("{")[0][:40]
              in combined.decode()]
@@ -1542,6 +1565,17 @@ def agent_cases(scratch):
     case(lambda: all(isinstance(e, HarnessError) and "UNDER-ANTIGRAVITY.md" in str(e) and f"## {k}" in str(e)
                      for k, e in gone),
          f"a section of UNDER-ANTIGRAVITY.md that an agent needs and that is missing exits 2, naming it: {gone}")
+    worker = attempt(lambda: render_agent(REPO / "agents" / "worker.md", EXAMPLE_TIERS, {}))
+    case(lambda: isinstance(worker, bytes) and ("- " + rules["pr"]).encode() in worker,
+         f"worker, whose body names opening a pull request, gets the rule of `pr`: {worker[:300]!r}")
+    got = {body: [k for k in mechanisms if "- " + filled[k] in under_antigravity({}, body)]
+           for body in ("Open a pull request when the prompt says so.\n",
+                        'Spawn it with `isolation: "worktree"`.\n', "Spawn it with isolation: worktree.\n",
+                        "This agent needs no isolation of any kind.\n", "It reads the pull request.\n")}
+    case(lambda: list(got.values()) == [["pr"], ["worktree"], ["worktree"], [], []],
+         f"a body that says to open a pull request gets the rule of `pr`, one that names `isolation: worktree`, "
+         f"quoted or not, the rule of `worktree`, and the bare word isolation or a pull request that is not "
+         f"opened gets no rule: {got}")
 
     delta = DELTA.read_text()
     case(lambda: "two critics" in delta and "build-part" in delta and "session model" in delta
@@ -1657,6 +1691,18 @@ def kaimon_cases(scratch):
                         ("is cut off inside a token", lambda p: p.write_bytes(truncated)),
                         ("holds a number that JSON writes in other text",
                          lambda p: p.write_bytes(b'{"mcpServers": {"other": {"timeout": 1e400}}}\n')),
+                        ("holds such a number in a list of a server",
+                         lambda p: p.write_bytes(b'{"mcpServers": {"other": {"args": ["x", 1.10]}}}\n')),
+                        ("holds such a number in a server named kaimon.x",
+                         lambda p: p.write_bytes(b'{"mcpServers": {"kaimon.x": {"timeout": 1e400}}}\n')),
+                        ("holds such a number in a server named kaimon[0]",
+                         lambda p: p.write_bytes(b'{"mcpServers": {"kaimon[0]": {"timeout": 1.10}}}\n')),
+                        ("holds such a number in a top-level key named mcpServers.kaimon",
+                         lambda p: p.write_bytes(b'{"mcpServers.kaimon": 1e400, "mcpServers": {}}\n')),
+                        ("holds the key mcpServers twice",
+                         lambda p: p.write_bytes(b'{"mcpServers": {"a": {"url": "u"}}, "mcpServers": {"b": {}}}\n')),
+                        ("holds a key of a server twice",
+                         lambda p: p.write_bytes(b'{"mcpServers": {"a": {"url": "u", "url": "v"}}}\n')),
                         ("is not UTF-8", lambda p: p.write_bytes(b"\xff\n")),
                         ("is a directory", lambda p: p.mkdir()), ("is a FIFO", os.mkfifo)]:
         base, config = fresh()

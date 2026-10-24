@@ -410,7 +410,7 @@ The text of the "Under Antigravity" section that the Antigravity adapter puts be
 an agent. The file has one level-2 section for each mechanism: `intro`, `skills`, `worktree`,
 `agent`, `background`, `mcp` and `pr`. `render_agent` takes `intro`, then the section of each
 mechanism that the agent uses: preloaded skills, worktree isolation, the `Agent` tool, a
-`run_in_background` in the body, a Kaimon tool, or a body that opens the pull request. In
+`run_in_background` in the body, a Kaimon tool, or a body that says to open a pull request. In
 `skills`, `{skills}` becomes the names of the agent's skills. An agent that uses none of these
 mechanisms gets no section. When a section that the adapter needs is missing, the install exits
 with status 2.
