@@ -12,12 +12,12 @@
   installs goes to `rules/` too, its `paths` as `trigger: glob` and `globs`, and a rule with no
   `paths` as `trigger: always_on`; Antigravity does not load a global glob rule, so the model
   reads the rule that the delta names. Each skill goes to `skills/<name>/` with its own files and
-  their modes, its `SKILL.md` without `model:`. Every text but `GEMINI.md` names
+  their modes, its `SKILL.md` without `model:`. Every Markdown file but `GEMINI.md` names
   `~/.gemini/config/` where it named a copied path below `~/.claude/`: `RTK.md` and the files of
   `instructions/` in `rules/`, where the always-on files are, and `hooks/`, `rules/` and
   `skills/` at the same path. The install exits 2 before any write when an instruction file or a
   rule holds an include, `@[label](path)`, whose expanded size it cannot measure, or has 24,000
-  bytes or more, the size at which Antigravity cuts it, or when all of them have 80,000 bytes or
+  bytes or more, the size at which Antigravity cuts it, or when together they have 80,000 bytes or
   more, Antigravity's 20,000-token rules budget at 4 bytes a token; and when two sources give one
   rule path. A rule or a `SKILL.md` with CRLF line ends gets the frontmatter keys of one with LF
   ends. A file below `config/rules/`, `config/skills/` or `config/hooks/` with no source is listed

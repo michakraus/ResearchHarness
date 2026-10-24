@@ -66,8 +66,8 @@ you start that kind of work:
 | `meta-repository.md` | a `CLAUDE.md` |
 | `instruction-files.md` | a `CLAUDE.md`, `SKILL.md`, `AGENTS.md`, or a `.md` file of an `agents/` or `rules/` directory |
 
-The rule keeps the mechanism that the instructions only name: the formatter call, the Aqua
-wrapper, the NFC characters with no precomposed form.
+The rule keeps the mechanism that the instructions only name, such as the formatter call and the
+Aqua wrapper.
 
 ## Skills
 

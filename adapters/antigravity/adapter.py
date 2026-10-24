@@ -34,7 +34,7 @@ whose guard scripts, install-drift.py, instructions, rules and skills it copies.
   config/skills/<name>/<file>    each file of the Claude Code layer's skills, with its mode; a
                                  SKILL.md without `model:` (render_skill)
 
-Every text but GEMINI.md names Antigravity's copies, not Claude Code's, RTK.md and the files of
+Each .md file but GEMINI.md names Antigravity's copies, not Claude Code's, RTK.md and the files of
 instructions/ in config/rules/ (relocate). A path of two sources, compared as `install.fold`
 compares names, exits 2; so does an instruction file or a rule that holds an include,
 `@[label](path)`, or of FILE_CAP bytes or more, and a set of them of BUDGET bytes or more
@@ -218,8 +218,8 @@ def render_skill(data):
 
 def check_sizes(texts):
     """Exit 2 when a text of `texts`, [(label, bytes)], holds an include, `@[label](path)`, whose
-    expanded size is not known here; when one has FILE_CAP bytes or more; or when all of them have
-    BUDGET bytes or more: Antigravity would cut the file, or demote rules to path pointers."""
+    expanded size is not known here; when one has FILE_CAP bytes or more; or when together they
+    have BUDGET bytes or more: Antigravity would cut the file, or demote rules to path pointers."""
     included = [label for label, data in texts if INCLUDE.search(data)]
     if included:
         raise HarnessError(f"{', '.join(included)} holds an include, `@[…](…)`, which Antigravity expands before it "
@@ -379,7 +379,8 @@ def merge_settings(path, rules):
 
 def plan(ctx):
     """Antigravity's part of `harness install`, as the docstring of this module says; the guard
-    scripts are those of the Claude Code layer's plan in `ctx.plans`."""
+    scripts, install-drift.py, the instruction files, the rules and the skills are those of the
+    Claude Code layer's plan in `ctx.plans`."""
     root = gemini_dir()
     if not root.is_dir():
         state = "is not a directory" if root.exists() else "does not exist"
