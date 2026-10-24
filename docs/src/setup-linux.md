@@ -620,9 +620,10 @@ file `GEMINI.md`, the always-on rules and the rules, the skills, the agents, the
 
 **The tiers.** An Antigravity agent names a tier, never a model, so the table `[antigravity]` of
 `models.toml` gives each tier of the harness one of Antigravity's tiers: `inherit`, the session
-model, `flash`, `flash_lite` or `pro`. Without the table, the install stops with exit status 2, an
-error. A copy of `examples/models.toml` has it. To an older copy, this block adds the table of the
-example. Run it once: a second table stops the install too.
+model, `flash`, `flash_lite` or `pro`. Select "Gemini 4 Argon (Medium)" in the model menu of the
+app: with `large = "inherit"`, an agent of tier `large` inherits it. Without the table, the
+install stops with exit status 2, an error. A copy of `examples/models.toml` has it. To an older
+copy, this block adds the table of the example. Run it once: a second table stops the install too.
 
 ```bash
 cat >> ~/.config/research-harness/models.toml <<'EOF'
@@ -656,7 +657,7 @@ prompt. Approve the request for `kaimon/ping` and each request for a `CLAUDE.md`
 Kaimon's answer, and **General → Tool Permissions** lists the grant for `kaimon/ping`:
 
 ```text
-Start the subagent reader with the prompt "Call the tool ping of the MCP server kaimon, and report its reply verbatim". Report its reply verbatim.
+Start the subagent julia-critic with the prompt "Call the tool ping of the MCP server kaimon, and report its reply verbatim". Report its reply verbatim.
 ```
 
 ## Kaimon

@@ -82,8 +82,8 @@ restart waits at least 60 s, so a second server that cannot use the port does no
 times a second. `JULIA_APPS_JULIA_CMD` names the juliaup launcher, so the job does not depend on one
 Julia release. `KAIMON_QDRANT_MANAGED=off` stops the background index.
 
-OpenCode and oh-my-pi connect to this server at `http://127.0.0.1:2828/`. The update job
-`julia-update.plist` restarts it when its Julia release is deleted. Render the plist with
+OpenCode, oh-my-pi and Antigravity connect to this server at `http://127.0.0.1:2828/`. The update
+job `julia-update.plist` restarts it when its Julia release is deleted. Render the plist with
 `harness render launchagents/kaimon.plist`.
 
 ## `kaimon.service`, `julia-update.service`, `julia-update.timer`, `claude-autocommit.service` and `claude-autocommit.timer`

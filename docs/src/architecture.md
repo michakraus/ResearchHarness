@@ -168,7 +168,7 @@ frontend either: `hooks/` holds the guard hooks that Claude Code and oh-my-pi bo
 
 | directory | holds |
 |:--|:--|
-| `agents/`, `skills/`, `rules/`, `instructions/`, `commands/` | the neutral sources: the agents, skills, rules, the core instruction file and the commands, which `harness install` copies into `~/.claude/` at the same path, and from which it renders the OpenCode and oh-my-pi agents and the oh-my-pi rules |
+| `agents/`, `skills/`, `rules/`, `instructions/`, `commands/` | the neutral sources: the agents, skills, rules, the core instruction file and the commands, which `harness install` copies into `~/.claude/` at the same path, and from which it renders the OpenCode, oh-my-pi and Antigravity agents, the oh-my-pi and Antigravity rules and the Antigravity skills |
 | `adapters/claude/` | Claude Code's own: `CLAUDE.md`, `RTK.md` and the status line script, which `harness install` copies to the top of `~/.claude/` |
 | `adapters/opencode/` | the OpenCode configuration, plugins and global instruction file |
 | `adapters/omp/` | the oh-my-pi guard extension, global instruction file and agent text |

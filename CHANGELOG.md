@@ -15,8 +15,11 @@
   older `models.toml`, and the app's permission settings, each with its check: the app keeps its
   grants under **General → Tool Permissions**, which writes them to `~/.gemini/config/config.json`;
   no wildcard grant for Kaimon works there, so the user approves each Kaimon tool once; a
-  workspace below `~/Research` asks once for read access to each parent `CLAUDE.md`. The Kaimon
-  token step names Antigravity, whose `mcp_config.json` holds the token itself.
+  workspace below `~/Research` asks once for read access to each parent `CLAUDE.md`. The tier step
+  has the user select "Gemini 4 Argon (Medium)" in the app's model menu, which an agent of tier
+  `large` inherits, and the Kaimon check starts `julia-critic`. The Kaimon token step names
+  Antigravity, whose `mcp_config.json` holds the token itself. The pages on rules, Kaimon, the tree
+  instructions and `frontends.py` name Antigravity beside OpenCode and oh-my-pi.
 
 - **`harness install` writes the agents and Kaimon for Antigravity.** `models.toml` gains a table
   `[antigravity]`, beside `[claude]`, which maps the tiers `large`, `medium` and `small` to

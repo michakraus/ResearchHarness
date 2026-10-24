@@ -73,9 +73,9 @@ last from the tree instructions. The rest holds the mechanics of Claude Code onl
 - `git` and `gh` as the whole command, so that they run outside the Claude Code sandbox;
 - the sandbox as the security boundary, and the deny list as protection against accidents.
 
-OpenCode and oh-my-pi do not read this file. They read `opencode/OPENCODE-DELTA.md` and
-`omp/OMP-DELTA.md` in its place. A rule for every frontend goes into `instructions/core.md`, not
-here.
+OpenCode, oh-my-pi and Antigravity do not read this file. They read `opencode/OPENCODE-DELTA.md`,
+`omp/OMP-DELTA.md` and `antigravity/ANTIGRAVITY-DELTA.md` in its place. A rule for every frontend
+goes into `instructions/core.md`, not here.
 
 ## `claude/RTK.md`
 

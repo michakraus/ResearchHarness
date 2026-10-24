@@ -8,8 +8,10 @@ loads nothing. So a rule costs nothing in a session that does not touch its kind
 
 The sources are `instructions/core.md` and `rules/<name>.md` in this repository.
 `harness install --apply` copies them to `~/.claude/instructions/` and `~/.claude/rules/`.
-`CLAUDE.md` imports `instructions/core.md`, and OpenCode and oh-my-pi read it too.
+`CLAUDE.md` imports `instructions/core.md`, and OpenCode, oh-my-pi and Antigravity read it too.
 oh-my-pi gets each rule in its own `rules/` directory, with the `paths:` list as its globs.
+Antigravity gets each rule in `~/.gemini/config/rules/`, with the `paths:` list as its globs; a
+rule with no `paths:` loads always.
 OpenCode loads no rule by itself: its global instruction file tells the agent which rule to
 read before which kind of work. These files are the harness layer. The profile and the tree
 instructions add to them, and
