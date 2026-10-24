@@ -520,12 +520,16 @@ class Number:
         self.text = text
 
 
-def rewritten_numbers(text, skip):
+def rewritten_numbers(text, skip, path="the JSON text"):
     """[(key, source text, emitted text)] of each number in the JSON object `text`, outside its
     top-level keys `skip`, whose text json.dumps writes otherwise for its parsed value: `1.10` as
-    `1.1`, `1e400` as `Infinity`. A key is named as a path, `env.list[1]`."""
-    found, stack = [], [(k, v) for k, v in reversed(json.loads(text, parse_int=Number, parse_float=Number).items())
-                        if k not in skip]
+    `1.1`, `1e400` as `Infinity`. A key is named as a path, `env.list[1]`. Exits 2, naming `path`,
+    the file of `text`, when this parse runs out of stack at a depth that `json_object` reads."""
+    try:
+        cfg = json.loads(text, parse_int=Number, parse_float=Number)
+    except RecursionError:  # Python 3.11's recursion limit, or the stack limit of 3.12 and later
+        raise HarnessError(f"{path} is JSON nested too deep for the parser") from None
+    found, stack = [], [(k, v) for k, v in reversed(cfg.items()) if k not in skip]
     while stack:
         key, value = stack.pop()
         if isinstance(value, dict):
@@ -635,7 +639,7 @@ def settings_file(root, profile, overlay):
     a, b = (dumps(section(c), indent=2, sort_keys=True).splitlines() for c in (cfg, template))
     diff = list(difflib.unified_diff(a, b, "~/.claude/settings.json", "settings/settings.proposal.json", lineterm=""))
     if diff or old is None:
-        rewritten = rewritten_numbers(text, OWNED) if old is not None else []
+        rewritten = rewritten_numbers(text, OWNED, live) if old is not None else []
         if rewritten:
             raise HarnessError(f"{live}: the merge would rewrite " + ", ".join(
                 f"the number `{source}` of `{key}` as `{emitted}`" for key, source, emitted in rewritten)
@@ -1763,6 +1767,31 @@ def layer_cases(check, tmp):
          and snapshot(base) == before,
          f"a settings.json whose stat is denied exits 2 with one line that names it, and no file changes: "
          f"{code}, {lines[-3:]}")
+
+    # The second parse, which keeps the text of each number, can run out of stack at a depth that
+    # json_object reads; the depth depends on the interpreter, so json.loads raises RecursionError
+    # for that parse at any depth, and the case holds on each Python.
+    base, claude, tree = fresh(["rules/x.md"])
+    live = claude / "settings.json"
+    live.write_text('{"model": "opus", "env": {"X": "1"}}\n')
+    before = snapshot(base)
+    loads = json.loads
+
+    def deep(*args, **kwargs):
+        if "parse_int" in kwargs or "parse_float" in kwargs:
+            raise RecursionError("maximum recursion depth exceeded")
+        return loads(*args, **kwargs)
+
+    json.loads = deep
+    try:
+        code, text = inproc(base, None, apply=True)
+    finally:
+        json.loads = loads
+    lines = text.strip().splitlines()
+    case(lambda: code == 2 and len(lines) == 1 and str(live) in lines[0] and "nested too deep" in lines[0]
+         and snapshot(base) == before,
+         f"a RecursionError of the parse that keeps the text of each number exits 2 with one line that names "
+         f"settings.json, and no file changes: {code}, {lines[-3:]}")
 
     # `harness settings install` and `harness settings domains` are gone; the subcommands of
     # `settings` that measure stay. The network lists are generated, so no command checks a mirror of them.

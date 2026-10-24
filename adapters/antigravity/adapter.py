@@ -411,7 +411,7 @@ def merge_settings(path, rules):
     settings, indent = {}, 2
     if text is not None:
         settings, indent = claude.json_object(path, text), claude.indent_of(text)
-        numbers = claude.rewritten_numbers(text, ("permissions", *POSTURE))
+        numbers = claude.rewritten_numbers(text, ("permissions", *POSTURE), path)
         if numbers:
             raise HarnessError(f"{path} holds numbers that JSON would write in other text: "
                                f"{', '.join(f'{k}: {old} as {new}' for k, old, new in numbers)}{refused}")
