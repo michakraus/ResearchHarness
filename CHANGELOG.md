@@ -31,11 +31,18 @@
   `edit` and `ask` lists. No instruction, skill or agent is installed for Antigravity.
   `hooks/probe.py` runs `guard.py` on a fixture home, with cases for its refusals and for each way
   in which it fails closed.
+
+- **`verify-workflows.jl` knows the majors of `docker/setup-buildx-action` (v4),
+  `docker/login-action` (v4) and `docker/build-push-action` (v7).** A package with an extra
+  workflow that builds a Docker image made the check report those actions as unknown and fail,
+  so `harness ci-protection` refused to run.
+
 - **`pre-push` passes `--check-bounds=auto` to the test process through `Pkg.test`'s
   `julia_args`.** Up to Julia 1.12, `Pkg.test` gives the test process `--check-bounds=yes` whatever
   the calling process uses, so on a 1.12 default the hook ran the suite with `yes` and recompiled
   every dependency into a separate cache. A probe package reports `check_bounds` 1 in its test
   process on 1.12 without the keyword and 0 with it; on 1.13 it reports 0 either way.
+
 - **A spec check that needs a device is tagged `(device: metal)`, and runs from a Kaimon session.**
   The Bash sandbox has no GPU, so a Metal premise failed there and `spec-gate.py` reported the spec
   `INVALID`. `spec-validate.py` runs a tagged command only with `--devices metal`; elsewhere it
@@ -43,6 +50,7 @@
   `spec-gate.py` passes `--devices` through and prints `UNMEASURED <devices>`. `spec-format.md`
   gives the Kaimon route, a detached run that writes a log, and `build-part` and `build-reviewed`
   rerun an unmeasured gate that way.
+
 - **`spec-validate.py`'s rule 10 refuses a `git grep` without `-P` that uses `\b`, `\s`, `\w` or
   `\d`**, in a command or in a file of the spec's `checks/`. Apple Git ignores those escapes, so
   the pattern matches nothing and an absence check cannot fail; the first draft of a converted spec
@@ -57,17 +65,20 @@
   API convention a clause depends on, and a `domain:` for each scenario that enforces a reference.
   The premise check marks a convention with no premise. The part's cell is `spec, §V, §L`. A plan
   whose parts have spec sections keeps them.
+
 - **`scripts/spec-validate.py` is the strict validator of such a spec**, ported from the pilot's
   `validate.py`: headings, not substrings, nine rules, and the premises run on the base commit,
   which `--repo` exports with `git archive`. `spec-gate.py` runs it in place of its label test for
   a part whose cell names `spec`, and prints `INVALID` or `MISSING spec`; `build-part` and
   `build-reviewed` start no invalid part. `spec-bundle.py` copies the spec into the bundle whole
   and names `$SPEC`, and `evidence.md` says how a builder and a critic read it.
+
 - **The gate of a spec-delta part runs the spec's checks and CI in every round** (B5).
   `julia-test-runner` runs `spec-validate.py --head` on the worktree after the suite, which fails a
   check that writes into the head; the dispatcher pushes the branch and reads every CI job. A
   failed check or job blocks the round. The pilot's gate found a broken commit order and a Windows
   path bug that no critic had judged.
+
 - **The pull-request body lists every decision taken without the user** (B9): each advisor and
   arbitrator line and each clause the head does not meet as the spec writes it, under
   `## Decisions taken without the user`, in `julia-builder` and `part-builder`. Before, only the

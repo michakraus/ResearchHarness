@@ -63,8 +63,8 @@ required_checks() = vcat(
 )
 
 # Expected major version of every action used anywhere in the tree. Queried from GitHub on
-# 2026-08-31; julia-actions/julia-processcoverage publishes no GitHub release, but its `v1` tag
-# tracks v1.2.2.
+# 2026-08-31, the docker/* actions on 2026-10-24; julia-actions/julia-processcoverage publishes no
+# GitHub release, but its `v1` tag tracks v1.2.2.
 const ACTION_MAJORS = Dict(
     "actions/checkout" => "v7",
     "actions/upload-artifact" => "v7",
@@ -80,6 +80,9 @@ const ACTION_MAJORS = Dict(
     "julia-actions/julia-downgrade-compat" => "v2",
     "JuliaRegistries/TagBot" => "v1",
     "peter-evans/create-pull-request" => "v8",
+    "docker/setup-buildx-action" => "v4",
+    "docker/login-action" => "v4",
+    "docker/build-push-action" => "v7",
 )
 
 # Workflow file names that must not exist. Register.yml is removed on purpose; the Documentation
