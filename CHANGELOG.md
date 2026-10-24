@@ -3,13 +3,14 @@
 ## Unreleased
 
 - **A settings file nested just deeper than the second parse reads exits 2, not with a traceback:
-  K100 leaves `KNOWN_ISSUES.md`.** `rewritten_numbers`, which parses a settings file a second time
-  to keep the text of each number, turns a `RecursionError` of that parse into "… is JSON nested
-  too deep for the parser", naming the file, as `json_object` does for the first parse. On Python
-  3.11 a settings object nested 990 or 991 deep passed the first parse and stopped
-  `harness install` with a traceback and exit 1, in Claude Code's settings merge and in the
-  Antigravity `merge_settings`; both now exit 2 before anything is written. A new case of the
-  Claude adapter makes that parse raise `RecursionError` at any depth, so it holds on each Python.
+  K100 and K105 leave `KNOWN_ISSUES.md`.** `rewritten_numbers`, which parses a settings file a
+  second time to keep the text of each number, turns a `RecursionError` of that parse into "… is
+  JSON nested too deep for the parser", naming the file, as `json_object` does for the first
+  parse. On Python 3.11 a settings object nested 990 or 991 deep passed the first parse and
+  stopped `harness install` with a traceback and exit 1, in Claude Code's settings merge, in the
+  Antigravity `merge_settings` and in `merge_grants` of the app's `config.json`; all three now
+  exit 2 before anything is written. A new case of the Claude adapter and one of `merge_grants`
+  make that parse raise `RecursionError` at any depth, so they hold on each Python.
 
 - **The dotfiles kit's test of a review cut short no longer depends on GNU `cat`.** In
   `examples/dotfiles/tests/update-check.py`, the chezmoi stub's large `diff` ran `exec cat`, and
