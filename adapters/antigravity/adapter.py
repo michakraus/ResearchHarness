@@ -79,8 +79,9 @@ listed nor touched. The other files:
                                  `allow`, `deny` or `ask`, of `userSettings.globalPermissionGrants`,
                                  after the entries there, every other key and entry kept in its
                                  place, after a backup (merge_grants); a file that is not a regular
-                                 file or not a JSON object, or a key of those of the wrong type,
-                                 exits 2 before any write
+                                 file or not a JSON object, or a `userSettings`,
+                                 `globalPermissionGrants` or list there of the wrong type, exits 2
+                                 before any write
 
 THE POSTURE is Claude Code's: the terminal sandbox on, and `toolPermission` `proceed-in-sandbox`,
 the counterpart of `autoAllowBashIfSandboxed`. `allowNonWorkspaceAccess` is not written, so it
@@ -445,8 +446,8 @@ def merge_settings(path, rules):
 def merge_grants(path, rules):
     """The bytes of the app's settings at `path` with each rule of `rules` added once to its list,
     `allow`, `deny` or `ask`, of `userSettings.globalPermissionGrants`, after the entries that the
-    list holds: every other key and every entry stays in its place, and a missing key is created,
-    as merge_settings writes a file. A missing file holds no key. Exits 2, before anything is
+    list holds: every other key and every entry stays in its place, and a missing key is created;
+    the file's indent is kept, as merge_settings keeps it. A missing file holds no key. Exits 2, before anything is
     written, on a file that is not a regular file, cannot be read, is not UTF-8, is not a JSON
     object, has a `userSettings` or a `globalPermissionGrants` that is not an object or one of the
     three lists that is not a list, is nested deeper than json writes, or holds a number that json

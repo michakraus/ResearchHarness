@@ -552,7 +552,7 @@ harness install
 writes them to `~/.gemini/config/config.json`. `harness install` writes the permission rules of
 `agy` into that file too, in `userSettings.globalPermissionGrants`, and keeps each grant that you
 added. A wildcard grant for Kaimon has no effect there, neither `kaimon/*` nor `mcp(kaimon/*)`:
-each Kaimon tool needs its own grant, so the install writes one for each Kaimon tool that the
+each Kaimon tool needs its own grant, so the install writes a rule for each Kaimon tool that the
 settings template names. For a Kaimon tool that the template does not name, the app asks with the
 dialog "Allow using this MCP tool?" and the name of the tool. The install leaves
 `allowNonWorkspaceAccess` at its default, `false`, so a workspace below `~/Research` asks once for
