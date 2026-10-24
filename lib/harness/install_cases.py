@@ -392,9 +392,9 @@ def setup_guard_cases(check, tmp):
 def restart_cases(check, tmp):
     """The restart lines of `harness install`, one case per row: only the Claude Code layer
     changes, only the OpenCode files, only an OpenCode step, only the oh-my-pi files, only the
-    Julia environment, nothing, a refused file, a first --apply, and a dry run with changes
-    pending. Each case checks the exact lines after the count line: the RESTART of each adapter
-    whose files or steps changed something, in the order of FRONTENDS."""
+    Antigravity files, only the Julia environment, nothing, a refused file, a first --apply, and a
+    dry run with changes pending. Each case checks the exact lines after the count line: the
+    RESTART of each adapter whose files or steps changed something, in the order of FRONTENDS."""
     from . import frontends
 
     scratch = Scratch(check, tmp / "restart")
@@ -414,6 +414,8 @@ def restart_cases(check, tmp):
 
     base, claude, _ = scratch.fresh()
     home, opencode, omp = base / "home", base / "opencode", base / "omp"
+    # Antigravity's layer is planned only where its directory exists.
+    (home / ".gemini").mkdir()
     code, text = run(base)
     case(lambda: expect(code, text, set(), status=1) and COUNT_LINE.search(text).group(1) == "to make",
          f"a dry run with changes pending prints no restart line: {code}, {after_count(text)}")
@@ -455,6 +457,11 @@ def restart_cases(check, tmp):
     code, text = run(base, "--apply")
     case(lambda: expect(code, text, {"omp"}) and "\n1 change(s) made." in text,
          f"only the oh-my-pi files change: only its restart line: {code}, {after_count(text)}")
+
+    (home / ".gemini" / "config" / "hooks.json").write_text("{}\n")
+    code, text = run(base, "--apply")
+    case(lambda: expect(code, text, {"antigravity"}) and "\n1 change(s) made." in text,
+         f"only the Antigravity files change: only its restart line: {code}, {after_count(text)}")
 
     # The Julia environment belongs to no frontend; a stub `julia` stands in for Pkg.instantiate.
     stub = base / "bin" / "julia"

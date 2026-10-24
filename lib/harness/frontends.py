@@ -31,7 +31,7 @@ import types
 
 from . import REPO, HarnessError
 
-FRONTENDS = ("claude", "opencode", "omp")
+FRONTENDS = ("claude", "opencode", "omp", "antigravity")
 MEMBERS = ("NAME", "TEMPLATES", "register", "plan", "selftest", "RESTART")
 
 
@@ -55,25 +55,26 @@ def Plan(**fields):
     A plan may hold more fields, which the install does not read and a later frontend reads
     through `ctx.plans`: `rules`, [(installed path, source, bytes)] of each file that the plan
     installs below rules/; `shared`, [(installed path, bytes, mode)] of each file that `shared` names,
-    which each later frontend installs into its own directory.
+    which a later frontend installs, whole or in part, into its own directory.
     """
     return types.SimpleNamespace(**{"files": [], "warnings": [], "extra": [], "refused": [], "after": [], **fields})
 
 
-# The guard scripts that OpenCode's plugin and oh-my-pi's extension run: the first five on each
-# shell call, `sandbox-semantics.py` with `--work-tree` only, and `kaimon-session.py` on a Kaimon
-# `ex` or `manage_repl` call.
+# The guard scripts that OpenCode's plugin, oh-my-pi's extension and Antigravity's guard.py run: the
+# first five on each shell call, `sandbox-semantics.py` with `--work-tree` only, and
+# `kaimon-session.py` on a Kaimon `ex` or `manage_repl` call.
 GUARDS = ("no-blind-stage.py", "no-shell-file-write.py", "gh-api-writes.py", "rm-scope.py", "git-archive-output.py",
           "sandbox-semantics.py", "kaimon-session.py")
-# The paths below ~/.claude that a text can name and that each frontend holds a copy of, with the
-# first frontend's spelling; `relocate` rewrites them.
+# The paths below ~/.claude that a text can name and that OpenCode and oh-my-pi hold a copy of,
+# with the first frontend's spelling; `relocate` rewrites them.
 SHARED_ROOTS = ("~/.claude/RTK.md", "~/.claude/instructions/", "~/.claude/hooks/", "~/.claude/rules/",
                 "~/.claude/skills/")
 
 
 def shared(dst):
-    """Whether the Claude Code layer's file at `dst`, relative to ~/.claude, is one that every
-    frontend holds a copy of: RTK.md, an instruction file, a guard script, or a file of a skill."""
+    """Whether the Claude Code layer's file at `dst`, relative to ~/.claude, is one that OpenCode
+    and oh-my-pi hold a copy of: RTK.md, an instruction file, a guard script, or a file of a
+    skill. Antigravity copies only the guard scripts."""
     return (dst == "RTK.md" or dst.startswith(("instructions/", "skills/"))
             or dst in (f"hooks/{g}" for g in GUARDS))
 
