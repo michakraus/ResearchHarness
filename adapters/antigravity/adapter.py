@@ -1,5 +1,6 @@
 """The adapter of Antigravity: its permission layer, the guard hook, the CLI's permission
-settings, and the instructions, rules and skills. Antigravity has no subcommand of its own.
+settings, the instructions, rules and skills, the agents and Kaimon. Antigravity has no subcommand
+of its own.
 
 `harness install` writes these files below ~/.gemini/, after the Claude Code layer is planned,
 whose guard scripts, install-drift.py, instructions, rules and skills it copies. With no
@@ -33,15 +34,26 @@ whose guard scripts, install-drift.py, instructions, rules and skills it copies.
                                  it
   config/skills/<name>/<file>    each file of the Claude Code layer's skills, with its mode; a
                                  SKILL.md without `model:` (render_skill)
+  config/agents/<name>.md        each agent of agents/, its `model` the word that the table
+                                 [antigravity] of models.toml gives its tier, its tools mapped by
+                                 TOOLS, and an "Under Antigravity" section from
+                                 adapters/antigravity/UNDER-ANTIGRAVITY.md (render_agent); the
+                                 table is checked first (load_models). A council of models.toml
+                                 is one warning for each agent it names, and writes no seat
+                                 (council_warnings)
+  config/mcp_config.json         Kaimon alone, with the token of
+                                 ~/.config/kaimon/opencode-token written out, mode 600 and no
+                                 backup (render_mcp); with no token, no file and one warning. The
+                                 file replaces any other server that the file held
 
 Each .md file but GEMINI.md names Antigravity's copies, not Claude Code's, RTK.md and the files of
 instructions/ in config/rules/ (relocate). A path of two sources, compared as `install.fold`
 compares names, exits 2; so does an instruction file or a rule that holds an include,
 `@[label](path)`, or of FILE_CAP bytes or more, and a set of them of BUDGET bytes or more
 (check_sizes): Antigravity would cut the file, or demote rules to path pointers. An installed
-file with no source below config/rules/, config/skills/ and config/hooks/ is EXTRA, with its
-removal command (extras); every other file below ~/.gemini/, Antigravity's own antigravity/,
-config.json and plugins/ among them, is neither listed nor touched. The other files:
+file with no source below config/rules/, config/skills/, config/hooks/ and config/agents/ is
+EXTRA, with its removal command (extras); every other file below ~/.gemini/, Antigravity's own
+antigravity/, config.json and plugins/ among them, is neither listed nor touched. The other files:
 
   config/guard-paths.json        the path list of guard.py (guard_paths): under `deny` that of
                                  adapters/opencode/plugins/guard-paths.json, MCP_CONFIG and the
@@ -49,8 +61,8 @@ config.json and plugins/ among them, is neither listed nor touched. The other fi
                                  Edit denies and asks, then the same rules for this layer's copies
                                  of the files that frontends.SHARED_ROOTS names (relocate), and
                                  under `edit` the global instruction files that Antigravity loads,
-                                 config/GEMINI.md, config/AGENTS.md and ~/.gemini/GEMINI.md;
-                                 guard.py applies `edit` and `ask` to the tools that write; under
+                                 config/GEMINI.md, config/AGENTS.md and ~/.gemini/GEMINI.md, and
+                                 the installed agents, config/agents/; guard.py applies `edit` and `ask` to the tools that write; under
                                  `bash_deny` and `bash_ask` the bodies of its Bash denies and
                                  asks, which guard.py applies to each segment of a command
   antigravity-cli/settings.json  the keys `permissions`, `toolPermission` and
@@ -79,7 +91,8 @@ template's order:
   WebFetch(domain:X)     read_url(X), for each allow host of settings/network.toml and its overlay
 
 MCP_CONFIG is a `read_file` deny after the template's, and LAYER and MCP_CONFIG are `write_file`
-denies after that. Every other entry is dropped, with its reason. A dropped `Read(**/X)` deny is
+denies after that. `mcp(kaimon/*)` is the last `allow` rule: a subagent shows no prompt, so a
+Kaimon call that needs one is refused there. Every other entry is dropped, with its reason. A dropped `Read(**/X)` deny is
 still in the `deny` list of guard.py, and a dropped Edit entry in its `edit` or `ask` list. A
 command with `$(…)` or a backtick matches only a full-line rule in Antigravity, so a `deny` does
 not reach it; guard.py applies the Bash denies and asks to each segment of the line, the bodies of
@@ -96,7 +109,7 @@ import shlex
 import stat
 import tempfile
 
-from harness import REPO, HarnessError, frontends, install
+from harness import REPO, HarnessError, frontends, frontmatter, install, sources
 from harness import profile as profile_module
 
 NAME = "antigravity"
@@ -146,6 +159,27 @@ except Exception as e:
     m = f"{path} failed ({type(e).__name__}: {e}); the installation is not checked."
 print(json.dumps({"injectSteps": [{"systemMessage": {"systemMessage": m}}]} if m else {}))
 """
+FIXTURES = SOURCE / "fixtures"
+# The rules of the "Under Antigravity" section of an agent, one `## <mechanism>` section each.
+UNDER = SOURCE / "UNDER-ANTIGRAVITY.md"
+# The values of an agent's `model`: Antigravity's tiers. `inherit` runs a subagent on the session
+# model.
+WORDS = ("inherit", "flash", "flash_lite", "pro")
+# The Antigravity names of each neutral tool of frontmatter.TOOLS: the family of a subagent's
+# default set, so that an agent keeps the tools that Antigravity gives a subagent by itself. A
+# `tools:` list only restricts an agent. Kaimon is reached through `call_mcp_tool`, which every
+# agent has and `tools:` refuses, so a Kaimon tool gives `inheritMcp: true` and no name.
+TOOLS = {"read": ("view_file", "list_dir"), "edit": ("replace_file_content",), "write": ("write_to_file",),
+         "grep": ("grep_search",), "glob": ("find_by_name",), "shell": ("run_command",),
+         "agent": ("invoke_subagent",), "web_search": ("search_web",), "web_fetch": ("read_url_content",)}
+KAIMON_URL = "http://127.0.0.1:2828/"
+# Kaimon's bearer token, below the home directory. Antigravity expands no shell form in a header,
+# so mcp_config.json holds the token itself.
+KAIMON_TOKEN = pathlib.Path(".config", "kaimon", "opencode-token")
+# The installed agents, which an agent that rewrites them could use to widen its own tools.
+AGENTS = "{home}/.gemini/config/agents/**"
+# The permission rule that allows every Kaimon tool.
+MCP_ALLOW = "mcp(kaimon/*)"
 
 
 def gemini_dir():
@@ -237,17 +271,17 @@ def check_sizes(texts):
 
 
 def extras(root, files):
-    """The text of each installed file with no source below config/rules/, config/skills/ and
-    config/hooks/ of `root`, as `files`, [(path relative to `root`, …)], holds them, with its
-    removal command: a directory of skills/ with no file of `files` as one, every other file on
-    its own. A hidden name is not listed, and nothing outside those directories is."""
+    """The text of each installed file with no source below config/rules/, config/skills/,
+    config/hooks/ and config/agents/ of `root`, as `files`, [(path relative to `root`, …)], holds
+    them, with its removal command: a directory of skills/ with no file of `files` as one, every
+    other file on its own. A hidden name is not listed, and nothing outside those directories is."""
     config = root / "config"
     ours = {install.fold(rel) for rel, *_ in files}
     found = [(d, "rm -r") for d in (sorted(p for p in (config / "skills").iterdir() if p.is_dir())
                                     if (config / "skills").is_dir() else [])
              if not install.hidden(d.name)
              and not any(o.startswith(install.fold(f"config/skills/{d.name}/")) for o in ours)]
-    for top in ("rules", "skills", "hooks"):
+    for top in ("rules", "skills", "hooks", "agents"):
         for path, dirs, names in os.walk(config / top, onerror=install.unreadable) if (config / top).is_dir() else []:
             dirs[:] = sorted(d for d in dirs if not install.hidden(d) and (pathlib.Path(path, d), "rm -r") not in found)
             found += [(pathlib.Path(path, n), "rm") for n in sorted(names) if not install.hidden(n)
@@ -263,8 +297,8 @@ def guard_paths(profile):
     path of this layer's copy (relocate) of each such path below a root of frontends.SHARED_ROOTS,
     and `edit` then the global instruction files that Antigravity loads: config/GEMINI.md, the
     counterpart of ~/.claude/CLAUDE.md, config/AGENTS.md and ~/.gemini/GEMINI.md, which the install
-    does not write; under `bash_deny` and `bash_ask` the body of every `Bash` deny and ask of the
-    template."""
+    does not write; then the installed agents, AGENTS; under `bash_deny` and `bash_ask` the body of
+    every `Bash` deny and ask of the template."""
     deny = json.loads(profile_module.render_file(GUARD_PATHS, profile))["deny"]
     permissions = json.loads(profile_module.render_file(SETTINGS, profile))["permissions"]
     bodies = {(tool, key): [m.group(1) for e in permissions.get(key, [])
@@ -276,7 +310,7 @@ def guard_paths(profile):
     copies = {key: [home + relocate(("~" + p[len(home):]).encode(), "~/.gemini/config").decode()[1:]
                     for p in paths if p.startswith(roots)] for key, paths in edits.items()}
     globals_ = [render(p, profile) for p in ("{home}/.gemini/config/GEMINI.md", "{home}/.gemini/config/AGENTS.md",
-                                             "{home}/.gemini/GEMINI.md")]
+                                             "{home}/.gemini/GEMINI.md", AGENTS)]
     return json.dumps({"deny": [*deny, render(MCP_CONFIG, profile), *(render(p, profile) for p in LAYER)],
                        "edit": [*edits["deny"], *copies["deny"], *globals_],
                        "ask": [*edits["ask"], *copies["ask"]],
@@ -315,8 +349,8 @@ def path_rule(action, body):
 def render_permissions(cfg, profile):
     """({list: [rule]}, [(list, entry, reason)]) of the `permissions` of `cfg`, the rendered
     settings template: the Antigravity rules in the template's lists and order, MCP_CONFIG as a
-    `read_file` deny and LAYER and MCP_CONFIG as `write_file` denies after them, and each entry that
-    has no rule, with its reason."""
+    `read_file` deny and LAYER and MCP_CONFIG as `write_file` denies after them, MCP_ALLOW last in
+    `allow`, and each entry that has no rule, with its reason."""
     rules, dropped = {key: [] for key in LISTS}, []
     for key in LISTS:
         for entry in cfg["permissions"].get(key, []):
@@ -336,6 +370,8 @@ def render_permissions(cfg, profile):
                 rules[key].append(rule)
     rules["deny"] += [f"read_file({render(MCP_CONFIG, profile)})",
                       *(f"write_file({render(p, profile).removesuffix('/**')})" for p in (*LAYER, MCP_CONFIG))]
+    # A subagent shows no prompt, so a Kaimon call that needs one is refused there.
+    rules["allow"].append(MCP_ALLOW)
     return rules, dropped
 
 
@@ -377,6 +413,133 @@ def merge_settings(path, rules):
         raise HarnessError(f"{path} is JSON nested too deep to write again{refused}") from None
 
 
+def load_models(path, agents):
+    """({tier: word}, {agent: word}) of the table [antigravity] of the model tables at `path`: the
+    tiers of frontmatter.TIERS, each one of WORDS, and its optional sub-table `model_overrides`,
+    each key an agent of the directory `agents` and each value one of WORDS. The table is read on
+    its own, as [claude] is, and its overrides are not merged with the shared [model_overrides],
+    whose values are provider models. A missing table or tier, any other key, and any other value
+    exit 2, naming the table and the key."""
+    table = profile_module.read_models(path).get("antigravity")
+    tiers, words = frontmatter.TIERS, ", ".join(WORDS)
+    if not isinstance(table, dict):
+        raise HarnessError(f"{path} has no [antigravity] table, which maps the tiers {', '.join(tiers)} to "
+                           f"Antigravity's tiers {words} — examples/models.toml shows it")
+    missing, unknown = [t for t in tiers if t not in table], sorted(set(table) - {*tiers, "model_overrides"})
+    if missing or unknown:
+        raise HarnessError(f"{path}: [antigravity] holds the tiers {', '.join(tiers)} and model_overrides; "
+                           + "; ".join([f"it has no {', '.join(missing)}"] * bool(missing)
+                                       + [f"{', '.join(unknown)} is no key of it"] * bool(unknown)))
+    overrides = table.get("model_overrides", {})
+    if not isinstance(overrides, dict):
+        raise HarnessError(f"{path}: [antigravity.model_overrides] is not a table of agent = tier")
+    wrong =[f"[antigravity] {t} = {table[t]!r}" for t in tiers if table[t] not in WORDS] + [
+        f"[antigravity.model_overrides] {a} = {v!r}" for a, v in overrides.items() if v not in WORDS]
+    if wrong:
+        raise HarnessError(f"{path}: {'; '.join(wrong)} is not an Antigravity tier; a tier is {words}")
+    names = {p.stem for p in pathlib.Path(agents).glob("*.md")}
+    if strangers := sorted(set(overrides) - names):
+        raise HarnessError(f"{path}: [antigravity.model_overrides] {', '.join(strangers)} is no agent of {agents}")
+    return {t: table[t] for t in tiers}, dict(overrides)
+
+
+def under_antigravity(meta, body, text=None):
+    """The "Under Antigravity" section of an agent with frontmatter `meta` and `body`: the intro and
+    the rule of `text`, UNDER's text by default, for each Claude Code mechanism that it uses — a
+    preloaded skill, worktree isolation, the `Agent` tool, a background run, a Kaimon tool, the pull
+    request; "" when it uses none. A section that it needs and that `text` lacks exits 2."""
+    text = UNDER.read_text() if text is None else text
+    rules = {m.group(1): m.group(2).strip() for m in re.finditer(r"(?m)^## (\w+)\n(.*?)(?=^## |\Z)", text, re.S)}
+    tools, skills = meta.get("tools", []), meta.get("skills", [])
+    used = [key for key, uses in [
+        ("skills", bool(skills)),
+        ("worktree", meta.get("isolation") == "worktree" or "isolation" in body),
+        ("agent", "agent" in tools),
+        ("background", "run_in_background" in body),
+        ("mcp", any(t.startswith(frontmatter.MCP) for t in tools)),
+        # A subagent shows no prompt, and `gh pr create` can need one.
+        ("pr", re.search(r"(?i)open the pull request", body) is not None)] if uses]
+    if not used:
+        return ""
+    if missing := [k for k in ["intro", *used] if k not in rules]:
+        raise HarnessError(f"{UNDER}: no section `## {missing[0]}`")
+    named =f"{sources.code_list(skills)} skill{'s' * (len(skills) > 1)}" if skills else ""
+    lines = [rules[k].replace("{skills}", named) for k in used]
+    return "## Under Antigravity\n\n" + rules["intro"] + "\n\n" + "\n".join("- " + line for line in lines) + "\n"
+
+
+def render_agent(path, tiers, overrides, root="~/.gemini/config"):
+    """The bytes of the Antigravity agent of the agent at `path`, with `tiers` and `overrides` of
+    load_models: the frontmatter `name`, `description`, `model` (its override, else the word of its
+    tier, else `inherit`), `tools` (each neutral tool by TOOLS, `[]` for none), `subagent: true`,
+    and `inheritMcp: true` for an agent with a Kaimon tool, each value as JSON, which YAML reads as
+    the same value; then the generated-by comment, the "Under Antigravity" section and the body,
+    its shared paths relocated to `root` (relocate). `effort`, `isolation` and `skills` are not
+    written: no agent sets an effort here, and the section replaces the other two. A tool that
+    TOOLS does not map, no description, and a `name:` that is not the file name exit 2."""
+    path = pathlib.Path(path)
+    name = path.name.removesuffix(".md")
+    fm = frontmatter.parse_file(path)
+    meta = fm.meta
+    if meta.get("name", name) != name:
+        raise HarnessError(f"{path}: the name {meta['name']!r} is not the file name {name!r}")
+    if "description" not in meta:
+        raise HarnessError(f"{path}: no `description:` line")
+    tools = []
+    for tool in meta.get("tools", []):
+        if tool.startswith(frontmatter.MCP):
+            continue
+        if tool not in TOOLS:
+            raise HarnessError(f"{path}: the tool {tool!r} has no Antigravity name; TOOLS of "
+                               f"adapters/antigravity/adapter.py maps {', '.join(TOOLS)} and Kaimon's tools")
+        tools += [n for n in TOOLS[tool] if n not in tools]
+    model = overrides.get(name, tiers[meta["model"]] if "model" in meta else "inherit")
+    head = {"name": name, "description": meta["description"], "model": model, "tools": tools, "subagent": True}
+    if any(t.startswith(frontmatter.MCP) for t in meta.get("tools", [])):
+        head["inheritMcp"] = True
+    section = under_antigravity(meta, fm.body)
+    rest = (f"<!-- Generated by `harness install` from agents/{name}.md of the harness repository. Do not "
+            "edit this file: edit the source and run `harness install --apply`. -->\n\n"
+            + (section + "\n" if section else "") + fm.body.lstrip("\n"))
+    return (("---\n" + "".join(f"{k}: {json.dumps(v, ensure_ascii=False)}\n" for k, v in head.items()) + "---\n\n")
+            .encode() + relocate(rest.encode(), root))
+
+
+def render_mcp(home):
+    """(the bytes of mcp_config.json, None), its one server Kaimon at KAIMON_URL with the token of
+    KAIMON_TOKEN below `home` as its bearer; or (None, a warning) when that file does not exist, is
+    not a regular file, cannot be read, is not UTF-8, or holds no token."""
+    path = home / KAIMON_TOKEN
+    none = "; the install writes no Kaimon entry into ~/.gemini/config/mcp_config.json"
+    try:
+        # A FIFO would block the read, so the file's type is checked first.
+        if not stat.S_ISREG(path.stat().st_mode):
+            return None, (f"{path} is not a regular file{none}.", "Make it a file, mode 600, with Kaimon's token alone.")
+        token = path.read_bytes().decode("utf-8").strip()
+    except FileNotFoundError:
+        return None, (f"{path} does not exist{none}.", "Create it, mode 600, with Kaimon's token alone.")
+    except OSError as e:
+        return None, (f"{path} cannot be read: {e.strerror}{none}.",)
+    except UnicodeDecodeError:
+        return None, (f"{path} is not UTF-8{none}.",)
+    if not token:
+        return None, (f"{path} is empty{none}.", "Write Kaimon's token into it.")
+    kaimon = {"url": KAIMON_URL, "headers": {"Authorization": f"Bearer {token}"}}
+    return (json.dumps({"mcpServers": {"kaimon": kaimon}}, indent=2) + "\n").encode(), None
+
+
+def council_warnings(path):
+    """[(line, …)]: one warning for each agent that a council of the model tables at `path` names,
+    in [councils] or in [<frontend>.councils] of a frontend of profile.SHARING. Antigravity runs
+    the agent alone and writes no seat."""
+    data = profile_module.read_models(path)
+    tables = [data.get("councils"), *(data[f].get("councils") if isinstance(data.get(f), dict) else None
+                                      for f in profile_module.SHARING)]
+    agents = sorted({a for t in tables if isinstance(t, dict) for a in t})
+    return [(f"{path} gives {a} a council. Antigravity runs {a} alone, on its own tier, and writes no seat.",)
+            for a in agents]
+
+
 def plan(ctx):
     """Antigravity's part of `harness install`, as the docstring of this module says; the guard
     scripts, install-drift.py, the instruction files, the rules and the skills are those of the
@@ -386,6 +549,7 @@ def plan(ctx):
         state = "is not a directory" if root.exists() else "does not exist"
         return frontends.Plan(warnings=[(f"{root} {state}, so the Antigravity layer is not installed.",
                                          "Install Antigravity, then run `harness install` again.")])
+    tiers, overrides = load_models(ctx.models, ctx.agents)
     claude = frontends.adapter("claude")
     cfg = claude.settings_template(ctx.profile, profile_module.network_path(ctx.args.profile))
     rules, _ = render_permissions(cfg, ctx.profile)
@@ -414,12 +578,21 @@ def plan(ctx):
     files += [(f"config/{dst}", relocate(render_skill(data) if re.fullmatch(r"skills/[^/]+/SKILL\.md", dst)
                                          else data, home) if dst.endswith(".md") else data, mode)
               for dst, data, mode in layer.shared if dst.startswith("skills/")]
+    files += [(f"config/agents/{p.name}", render_agent(p, tiers, overrides, home), None)
+              for p in sorted(pathlib.Path(ctx.agents).glob("*.md"))]
+    warnings = council_warnings(ctx.models)
+    # The file holds the token, so it is written with mode 600 and never backed up.
+    mcp, warning = render_mcp(pathlib.Path.home())
+    if mcp is None:
+        warnings.append(warning)
+    else:
+        files.append(("config/mcp_config.json", mcp, 0o600))
     settings = root / "antigravity-cli" / "settings.json"
     # The CLI's settings hold the user's own keys, so a replaced file is backed up first.
     return frontends.Plan(files=[*((root / rel, data, mode, f"antigravity/{rel}") for rel, data, mode in files),
                                  (settings, merge_settings(settings, rules), None,
                                   "antigravity/antigravity-cli/settings.json", True)],
-                          extra=extras(root, files))
+                          extra=extras(root, files), warnings=warnings)
 
 
 def register(sub):
@@ -459,6 +632,10 @@ def selftest():
         instruction_cases(scratch)
         rule_cases(scratch.case)
         merge_cases(scratch)
+        model_cases(scratch)
+        agent_cases(scratch)
+        council_cases(scratch)
+        kaimon_cases(scratch)
     return total, wrong
 
 
@@ -468,7 +645,8 @@ def layer_cases(scratch):
     line = re.compile(r"^antigravity/(\S+)\s+(\S+)", re.M)
     rules = sorted([*(p.name for p in (REPO / "rules").glob("*.md")), "meta-repository.md"])
     texts = ["config/GEMINI.md", *(f"config/rules/{n}" for n in ["RTK.md", "core.md", "research-tree.md", *rules]),
-             *(f"config/skills/{f}" for f in skills_files())]
+             *(f"config/skills/{f}" for f in skills_files()),
+             *(f"config/agents/{p.name}" for p in (REPO / "agents").glob("*.md"))]
     want = sorted(["config/hooks.json", "config/guard-paths.json", "config/hooks/guard.py",
                    *(f"config/hooks/{g}" for g in frontends.GUARDS), "config/hooks/install-drift.py",
                    "antigravity-cli/settings.json", *texts])
@@ -496,8 +674,9 @@ def layer_cases(scratch):
     case(lambda: sorted(listed) == want and set(listed.values()) == {"INSTALL"}
          and sorted(p.relative_to(gemini).as_posix() for p in gemini.rglob("*")) == [],
          f"the dry run lists hooks.json, guard-paths.json, hooks/guard.py, the seven scripts of frontends.GUARDS, "
-         f"hooks/install-drift.py, antigravity-cli/settings.json and the instruction files, rules and skills, each "
-         f"INSTALL, and writes nothing: {code}, {sorted(set(listed) ^ set(want))}")
+         f"hooks/install-drift.py, antigravity-cli/settings.json, the instruction files, rules and skills, and one "
+         f"agents/<name>.md for each agent of agents/, each INSTALL, and writes nothing: {code}, "
+         f"{sorted(set(listed) ^ set(want))}")
     planned = {p.split("/")[2] for p in listed if p.startswith("config/skills/")}
     case(lambda: "config/GEMINI.md" in listed
          and sorted(p for p in listed if re.fullmatch(r"config/rules/(RTK|core|research-tree)\.md", p))
@@ -554,7 +733,8 @@ def layer_cases(scratch):
 
     copies = {key: [moved(p) for p in edits[key] if p.startswith(tuple(f"{h}/.claude/{c}" for c in copied))]
               for key in ("deny", "ask")}
-    globals_ = [f"{h}/.gemini/config/GEMINI.md", f"{h}/.gemini/config/AGENTS.md", f"{h}/.gemini/GEMINI.md"]
+    globals_ = [f"{h}/.gemini/config/GEMINI.md", f"{h}/.gemini/config/AGENTS.md", f"{h}/.gemini/GEMINI.md",
+                f"{h}/.gemini/config/agents/**"]
     lists = config / "guard-paths.json"
     written = json.loads(lists.read_text()) if lists.is_file() else {}
     case(lambda: written["edit"][len(edits["deny"]):] == [*copies["deny"], *globals_]
@@ -566,7 +746,7 @@ def layer_cases(scratch):
          and copies["ask"] == [f"{h}/.gemini/config/skills/**"],
          f"after the template's Edit rules, `edit` holds each Edit deny of a copied path below ~/.claude/ as "
          f"the path of its copy below ~/.gemini/config/, RTK.md and instructions/ in rules/, then GEMINI.md, "
-         f"AGENTS.md and ~/.gemini/GEMINI.md, and `ask` each such Edit ask: "
+         f"AGENTS.md, ~/.gemini/GEMINI.md and the installed agents, and `ask` each such Edit ask: "
          f"{written.get('edit', [])[len(edits['deny']):]}, {written.get('ask', [])[len(edits['ask']):]}")
     case(lambda: written == {"deny": [*opencode, f"{h}/.gemini/config/mcp_config.json", f"{h}/.gemini/config/hooks.json",
                                       f"{h}/.gemini/config/hooks/**", f"{h}/.gemini/config/guard-paths.json",
@@ -692,7 +872,8 @@ def instruction_cases(scratch):
     # An installed file with no source below the paths that the layer owns is EXTRA; Antigravity's
     # own files are neither listed nor touched.
     strays = [config / "rules" / "stray.md", config / "skills" / "gone" / "SKILL.md",
-              config / "skills" / "build-part" / "old.md", config / "hooks" / "old.py", config / "skills" / "loose.md"]
+              config / "skills" / "build-part" / "old.md", config / "hooks" / "old.py", config / "skills" / "loose.md",
+              config / "agents" / "gone.md"]
     theirs = [gemini / "antigravity" / "x.json", config / "config.json", config / "plugins" / "p" / "x.md",
               config / "rules" / ".DS_Store"]
     for p in strays + theirs:
@@ -705,9 +886,10 @@ def instruction_cases(scratch):
         (str(config / "skills" / "gone"), f"rm -r '{config / 'skills' / 'gone'}'"),
         (str(config / "skills" / "build-part" / "old.md"), f"rm '{config / 'skills' / 'build-part' / 'old.md'}'"),
         (str(config / "hooks" / "old.py"), f"rm '{config / 'hooks' / 'old.py'}'"),
-        (str(config / "skills" / "loose.md"), f"rm '{config / 'skills' / 'loose.md'}'")])
+        (str(config / "skills" / "loose.md"), f"rm '{config / 'skills' / 'loose.md'}'"),
+        (str(config / "agents" / "gone.md"), f"rm '{config / 'agents' / 'gone.md'}'")])
          and all(p.read_text() == "x\n" for p in strays + theirs),
-         f"a file with no source below rules/, skills/ or hooks/ is EXTRA with its removal command, and "
+         f"a file with no source below rules/, skills/, hooks/ or agents/ is EXTRA with its removal command, and "
          f"antigravity/, config.json, plugins/ and a hidden file are not listed: {code}, {extra}")
     case(lambda: render_skill(b"---\nname: s\nmodel: large\n---\n\nmodel: kept\n")
          == b"---\nname: s\n---\n\nmodel: kept\n"
@@ -868,12 +1050,12 @@ def rule_cases(case):
             if not ok:
                 wrong.append((key, entry, got))
         rest = list(out)
-        if rest != (extras if key == "deny" else []):
+        if rest != {"deny": extras, "allow": ["mcp(kaimon/*)"]}.get(key, []):
             wrong.append((key, "after the template's entries", rest))
     case(lambda: not wrong and rules["allow"] and rules["ask"] and rules["deny"],
          f"each Bash, Read and Edit entry and each allow host is one rule in its list, in order, that matches the "
-         f"entry's lines or names its path; after them, mcp_config.json is a read_file deny, and the files of the "
-         f"layer and mcp_config.json are write_file denies: {wrong[:5]}")
+         f"entry's lines or names its path; after them, mcp_config.json is a read_file deny, the files of the "
+         f"layer and mcp_config.json are write_file denies, and every Kaimon tool is an mcp allow: {wrong[:5]}")
     bash = {key: [e for e in cfg["permissions"][key] if e.startswith("Bash(")] for key in LISTS}
     case(lambda: not [d for d in dropped if d[1].startswith("Bash(")]
          and all(sum(r.startswith("command(") for r in rules[key]) == len(bash[key]) for key in LISTS),
@@ -904,7 +1086,8 @@ def rule_cases(case):
     small = {"permissions": {"deny": ["WebFetch(domain:x.org)", "Read(src/x)", "Edit(//a/*.py)", "Edit(//a/b/**)"],
                              "allow": ["WebFetch(domain:y.org)", "mcp__k__ping"]}}
     got = render_permissions(small, profile)
-    case(lambda: got[0] == {"deny": ["write_file(/a/b)", *extras], "ask": [], "allow": ["read_url(y.org)"]}
+    case(lambda: got[0] == {"deny": ["write_file(/a/b)", *extras], "ask": [],
+                            "allow": ["read_url(y.org)", "mcp(kaimon/*)"]}
          and [e for _, e, _ in got[1]] == ["WebFetch(domain:x.org)", "Read(src/x)", "Edit(//a/*.py)", "mcp__k__ping"],
          f"a WebFetch deny, a relative path, a glob in a path and an MCP tool are dropped; an allow host is a "
          f"read_url rule: {got}")
@@ -1090,3 +1273,301 @@ def merge_cases(scratch):
              and scratch.snapshot(base) == snapshot,
              f"a settings.json that {label} exits 2, names the file, and nothing is written: {code}, "
              f"{tail(text)!r}")
+
+
+# The tiers of [antigravity] in examples/models.toml, written out here.
+EXAMPLE_TIERS = {"large": "inherit", "medium": "flash", "small": "flash_lite"}
+# The table [antigravity] and its sub-tables in a models.toml text, up to the next table.
+ANTIGRAVITY_TABLE = re.compile(r"(?ms)^\[antigravity(?:\.[A-Za-z_]+)?\]\n.*?(?=^\[|\Z)")
+
+
+def models_text(tiers=None, extra=""):
+    """examples/models.toml with its [antigravity] table replaced by `tiers`, the lines of the
+    table, or with none for None, then the text `extra`."""
+    text = ANTIGRAVITY_TABLE.sub("", (REPO / "examples" / "models.toml").read_text())
+    return text + ("" if tiers is None else "\n[antigravity]\n" + tiers) + extra
+
+
+def model_cases(scratch):
+    """The table [antigravity] of models.toml: each refusal exits 2 before any write, naming the
+    table and the key; the four words; its overrides, read on their own; and the plans of OpenCode
+    and oh-my-pi of a models file with the table, which are those of the same file without it."""
+    import tomllib
+
+    case, run, tail = scratch.case, scratch.run, scratch.tail
+    example = tomllib.loads((REPO / "examples" / "models.toml").read_text())
+    case(lambda: example["antigravity"] == EXAMPLE_TIERS and "antigravity" not in tomllib.loads(models_text()),
+         f"examples/models.toml holds [antigravity] with large = inherit, medium = flash, small = flash_lite: "
+         f"{example.get('antigravity')}")
+    tiers = 'large = "inherit"\nmedium = "flash"\nsmall = "flash_lite"\n'
+
+    def written(name, text):
+        path = scratch.tmp / f"models-{name}.toml"
+        path.write_text(text)
+        return path
+
+    refusals = [
+        ("no table [antigravity]", models_text(), ["[antigravity]"]),
+        ("a key antigravity that is no table", 'antigravity = "inherit"\n' + models_text(), ["[antigravity]"]),
+        ("no tier small", models_text('large = "inherit"\nmedium = "flash"\n'), ["[antigravity]", "small"]),
+        ("a model name as a tier", models_text(tiers.replace('"inherit"', '"gemini-4-argon"')),
+         ["[antigravity]", "large", "gemini-4-argon"]),
+        ("a number as a tier", models_text(tiers.replace('"flash"', "1")), ["[antigravity]", "medium"]),
+        ("a key that is no tier", models_text(tiers + 'effort = "high"\n'), ["[antigravity]", "effort"]),
+        ("an override outside the four words", models_text(tiers, '\n[antigravity.model_overrides]\nreader = "fast"\n'),
+         ["[antigravity.model_overrides]", "reader", "fast"]),
+        ("an override of no agent", models_text(tiers, '\n[antigravity.model_overrides]\nnosuch = "flash"\n'),
+         ["[antigravity.model_overrides]", "nosuch"]),
+        ("overrides that are no table", models_text(tiers + 'model_overrides = "flash"\n'),
+         ["[antigravity.model_overrides]"])]
+    for i, (label, text, words) in enumerate(refusals):
+        base, _, _ = scratch.fresh()
+        (base / "home" / ".gemini").mkdir()
+        snapshot = scratch.snapshot(base)
+        code, out = run(base, "--apply", models=written(f"refused-{i}", text))
+        case(lambda: scratch.refused(code, out) and all(w in out for w in words) and scratch.snapshot(base) == snapshot,
+             f"with ~/.gemini/, {label} exits 2 before any write and names {words}: {code}, {tail(out)!r}")
+    base, _, _ = scratch.fresh()
+    code, out = run(base, models=written("no-table", models_text()))
+    case(lambda: code in (0, 1) and "[antigravity]" not in out,
+         f"with no ~/.gemini/, a models file with no [antigravity] installs the other layers: {code}, {tail(out)!r}")
+
+    words = written("words", models_text('large = "pro"\nmedium = "flash_lite"\nsmall = "inherit"\n',
+                                         '\n[antigravity.model_overrides]\njulia-builder = "flash"\n'))
+    try:
+        got = load_models(words, REPO / "agents")
+    except HarnessError as e:
+        got = str(e)
+    case(lambda: got == ({"large": "pro", "medium": "flash_lite", "small": "inherit"}, {"julia-builder": "flash"}),
+         f"each of the four words is a tier, and an override names an agent of agents/: {got}")
+    case(lambda: all(profile_module.model_tables(words, f)["model_overrides"] == {"builder": "provider-b/medium-model"}
+                     for f in profile_module.SHARING),
+         "the overrides of [antigravity.model_overrides] are not merged with the shared [model_overrides]")
+    base, _, _ = scratch.fresh()
+    (base / "home" / ".gemini").mkdir()
+    code, out = run(base, "--apply", models=words)
+    agents = base / "home" / ".gemini" / "config" / "agents"
+    got = {n: rendered_head((agents / f"{n}.md").read_bytes())["model"] if (agents / f"{n}.md").is_file() else None
+           for n in ("julia-builder", "julia-critic", "changelog-scribe", "reader")}
+    case(lambda: code == 0 and got == {"julia-builder": "flash", "julia-critic": "pro", "changelog-scribe": "inherit",
+                                       "reader": "inherit"},
+         f"--apply installs each agent on the word of its tier, its override over it: {code}, {got}, {tail(out)!r}")
+
+    # The OpenCode and oh-my-pi layers that an install writes with the table and without it.
+    def tree(base, top):
+        return {p[len(str(base)):]: (m, d.replace(str(base).encode(), b"BASE") if isinstance(d, bytes) else d)
+                for p, (m, d) in scratch.snapshot(base / top).items()}
+
+    installed = []
+    for name, text in [("with", models_text(tiers)), ("without", models_text())]:
+        base, _, _ = scratch.fresh()
+        code, out = run(base, "--apply", models=written(f"plans-{name}", text))
+        installed.append((code, {top: tree(base, top) for top in ("opencode", "omp")}))
+    case(lambda: installed[0][0] == installed[1][0] == 0 and installed[0][1] == installed[1][1]
+         and all(installed[0][1].values()),
+         f"the OpenCode and oh-my-pi layers of a models file with [antigravity] are those of the same file without "
+         f"it: {[c for c, _ in installed]}, {[{k: len(v) for k, v in t.items()} for _, t in installed]}")
+
+
+# The names that a subagent's `tools:` took in G0's round 5, both families, written out here so that
+# the cases do not take them from TOOLS.
+ROUND5 = {"read_file", "write_file", "edit_file", "view_file", "write_to_file", "replace_file_content",
+          "grep_search", "find_by_name", "list_dir", "run_command", "search_web", "read_url_content"}
+
+
+def rendered_head(data):
+    """{key: value} of the frontmatter of the rendered agent `data`, each value read as JSON."""
+    lines = data.decode().split("\n---\n", 1)[0].split("\n")[1:]
+    return dict((k, json.loads(v)) for k, v in (line.split(": ", 1) for line in lines))
+
+
+def agent_cases(scratch):
+    """The rendered agents: four against their fixtures, every agent's frontmatter, the tool names,
+    the overrides, an agent with no `tools:`, and the "Under Antigravity" section of each
+    mechanism."""
+    case = scratch.case
+    want_tools = {"read": ["view_file", "list_dir"], "edit": ["replace_file_content"], "write": ["write_to_file"],
+                  "grep": ["grep_search"], "glob": ["find_by_name"], "shell": ["run_command"],
+                  "agent": ["invoke_subagent"], "web_search": ["search_web"], "web_fetch": ["read_url_content"]}
+    case(lambda: {k: list(v) for k, v in TOOLS.items()} == want_tools,
+         f"TOOLS maps each neutral tool to the names of a subagent's default family: {TOOLS}")
+
+    def attempt(f):
+        try:
+            return f()
+        except HarnessError as e:
+            return e
+
+    for name in ("julia-builder", "julia-critic", "reader", "changelog-scribe"):
+        src = REPO / "agents" / f"{name}.md"
+        got = attempt(lambda: render_agent(src, EXAMPLE_TIERS, {}))
+        body = relocate(frontmatter.parse_file(src).body.lstrip("\n").encode(), "~/.gemini/config")
+        want = (FIXTURES / f"{name}.md").read_bytes() + body
+        case(lambda: got == want,
+             f"agents/{name}.md renders as fixtures/{name}.md, then its body: "
+             f"{got[:len(want) - len(body)].decode() if isinstance(got, bytes) else got!r}")
+
+    heads, wrong = {}, []
+    for src in sorted((REPO / "agents").glob("*.md")):
+        meta = frontmatter.parse_file(src).meta
+        head = rendered_head(render_agent(src, EXAMPLE_TIERS, {}))
+        heads[src.stem] = head
+        kaimon = any(t.startswith(frontmatter.MCP) for t in meta["tools"])
+        tools = list(dict.fromkeys(n for t in meta["tools"] if t in want_tools for n in want_tools[t]))
+        if (list(head) != ["name", "description", "model", "tools", "subagent", *["inheritMcp"] * kaimon]
+                or head["name"] != src.stem or head["description"] != meta["description"]
+                or head["model"] != EXAMPLE_TIERS.get(meta.get("model"), "inherit") or head["tools"] != tools
+                or head["subagent"] is not True or head.get("inheritMcp", True) is not True):
+            wrong.append((src.stem, head))
+    case(lambda: heads and not wrong,
+         f"each agent of agents/ renders name, description, its tier's model or inherit, its tools by TOOLS, "
+         f"subagent: true, and inheritMcp: true with a Kaimon tool; no effort, no isolation: {wrong[:2]}")
+    names = {n for h in heads.values() for n in h["tools"]}
+    case(lambda: names <= ROUND5 | {"invoke_subagent"} and "call_mcp_tool" not in names
+         and all("tools" in h for h in heads.values()),
+         f"every rendered tool name is one of round 5 or invoke_subagent, none is call_mcp_tool, and every agent "
+         f"has a tools key: {sorted(names - ROUND5)}")
+    builder = REPO / "agents" / "julia-builder.md"
+    reader = REPO / "agents" / "reader.md"
+    got = [rendered_head(render_agent(builder, EXAMPLE_TIERS, {"julia-builder": "flash"}))["model"],
+           rendered_head(render_agent(reader, EXAMPLE_TIERS, {"reader": "pro"}))["model"],
+           rendered_head(render_agent(builder, {**EXAMPLE_TIERS, "large": "pro"}, {}))["model"]]
+    case(lambda: got == ["flash", "pro", "pro"],
+         f"an override replaces the tier of an agent, with a `model:` or without one, and the tier follows the "
+         f"table: {got}")
+
+    agents = scratch.tmp / "g3-agents"
+    agents.mkdir()
+
+    def agent(name, head="", body="Do the work.\n"):
+        path = agents / f"{name}.md"
+        path.write_text(f"---\nname: {name}\ndescription: An agent of the cases.\n{head}---\n\n{body}")
+        return path
+
+    bare = attempt(lambda: render_agent(agent("bare"), EXAMPLE_TIERS, {}))
+    case(lambda: isinstance(bare, bytes) and rendered_head(bare)["tools"] == [] and b"Under Antigravity" not in bare,
+         f"an agent with no tools: renders tools: [], and with no mechanism no section: {bare!r}")
+    twice = attempt(lambda: render_agent(agent("twice", "tools:\n  - read\n  - read\n"), EXAMPLE_TIERS, {}))
+    case(lambda: rendered_head(twice)["tools"] == ["view_file", "list_dir"],
+         f"a tool listed twice renders its names once: {twice!r}")
+    saved = TOOLS.pop("web_fetch")
+    try:
+        missing = attempt(lambda: render_agent(agent("fetch", "tools:\n  - web_fetch\n"), EXAMPLE_TIERS, {}))
+    finally:
+        TOOLS["web_fetch"] = saved
+    renamed = agents / "renamed.md"
+    renamed.write_text("---\nname: other\ndescription: An agent of the cases.\n---\n\nDo the work.\n")
+    blank = agents / "blank.md"
+    blank.write_text("---\nname: blank\n---\n\nDo the work.\n")
+    refused = [attempt(lambda: render_agent(p, EXAMPLE_TIERS, {})) for p in (renamed, blank)]
+    case(lambda: all(isinstance(e, HarnessError) for e in refused) and "'other'" in str(refused[0])
+         and "description" in str(refused[1]),
+         f"an agent whose name: is not its file name, and one with no description, exit 2: {refused}")
+    unknown = attempt(lambda: render_agent(agent("odd", "tools:\n  - telepathy\n"), EXAMPLE_TIERS, {}))
+    case(lambda: isinstance(missing, HarnessError) and "web_fetch" in str(missing) and "fetch.md" in str(missing)
+         and isinstance(unknown, HarnessError) and "telepathy" in str(unknown),
+         f"a neutral tool outside TOOLS exits 2, naming the tool and the file, and so does a tool outside the "
+         f"neutral ones: {missing!r}, {unknown!r}")
+
+    text = UNDER.read_text()
+    rules = {m.group(1): m.group(2).strip() for m in re.finditer(r"(?m)^## (\w+)\n(.*?)(?=^## |\Z)", text, re.S)}
+    mechanisms = {"skills": ("skills:\n  - build-part\n", "Do the work.\n"),
+                  "worktree": ("isolation: worktree\n", "Do the work.\n"),
+                  "agent": ("tools:\n  - agent\n", "Do the work.\n"),
+                  "background": ("", "Never set `run_in_background`.\n"),
+                  "mcp": ("tools:\n  - mcp/kaimon/ping\n", "Do the work.\n"),
+                  "pr": ("", "Then open the pull request.\n")}
+    sections = {}
+    for key, (head, body) in mechanisms.items():
+        data = attempt(lambda: render_agent(agent(f"uses-{key}", head, body), EXAMPLE_TIERS, {}))
+        sections[key] = data.decode().split("## Under Antigravity\n\n", 1)[-1].split("\n\n") if isinstance(
+            data, bytes) else data
+    filled = {k: rules.get(k, "").replace("{skills}", "`build-part` skill") for k in mechanisms}
+    case(lambda: all(sections[k][:2] == [rules["intro"], "- " + filled[k]] for k in mechanisms),
+         f"an agent that uses one mechanism gets the intro and that mechanism's rule of UNDER-ANTIGRAVITY.md: "
+         f"{ {k: v if isinstance(v, HarnessError) else v[:2] for k, v in sections.items()} }")
+    combined = attempt(lambda: render_agent(builder, EXAMPLE_TIERS, {}))
+    order = [k for k in mechanisms if isinstance(combined, bytes) and "- " + rules[k].split("{")[0][:40]
+             in combined.decode()]
+    case(lambda: order == list(mechanisms),
+         f"julia-builder, which uses each mechanism, gets each rule: {order}")
+    gone = [(k, attempt(lambda: under_antigravity({}, "Then open the pull request.\n",
+                                                  text.replace(f"## {k}\n", "## nothing\n")))) for k in ("pr", "intro")]
+    case(lambda: all(isinstance(e, HarnessError) and "UNDER-ANTIGRAVITY.md" in str(e) and f"## {k}" in str(e)
+                     for k, e in gone),
+         f"a section of UNDER-ANTIGRAVITY.md that an agent needs and that is missing exits 2, naming it: {gone}")
+
+    delta = DELTA.read_text()
+    case(lambda: "two critics" in delta and "build-part" in delta and "session model" in delta
+         and all(w in delta for w in ("`inherit`", "`flash`", "`flash_lite`", "[antigravity]")),
+         "ANTIGRAVITY-DELTA.md states that round 1 of build-part runs two critics on the session model, and the "
+         "agents' tiers")
+
+
+def council_cases(scratch):
+    """A council of [councils] or of a frontend's [<frontend>.councils] gives one warning for each
+    agent it names, and no seat file."""
+    case, run, tail = scratch.case, scratch.run, scratch.tail
+    path = scratch.tmp / "models-councils.toml"
+    path.write_text(models_text('large = "inherit"\nmedium = "flash"\nsmall = "flash_lite"\n',
+                                '\n[opencode.councils]\njulia-critic = [{ name = "critic-x", model = "provider-c/other-model" }]\n'
+                                'reader = [{ name = "reader-b", model = "provider-c/other-model" }]\n'))
+    base, _, _ = scratch.fresh()
+    (base / "home" / ".gemini").mkdir()
+    code, text = run(base, models=path)
+    warned = [w for w in text.split("WARNING: ")[1:] if "council" in w and "Antigravity" in w]
+    listed = re.findall(r"^antigravity/config/agents/(\S+)\s", text, re.M)
+    case(lambda: code in (0, 1) and len(warned) == 2 and sum("julia-critic" in w for w in warned) == 1
+         and sum("reader" in w for w in warned) == 1
+         and not {"critic-b.md", "critic-c.md", "critic-x.md", "reader-b.md"} & set(listed)
+         and "julia-critic.md" in listed,
+         f"julia-critic, in [councils] and [opencode.councils], and reader, in [opencode.councils], give one "
+         f"warning each, and no seat file is listed: {code}, {warned}, {tail(text)!r}")
+
+
+def kaimon_cases(scratch):
+    """mcp_config.json: the Kaimon entry with the token of the token file, mode 600, the token never
+    in the output; no entry and one warning with no token; and the permission allow of Kaimon."""
+    case, run, tail = scratch.case, scratch.run, scratch.tail
+    line = re.compile(r"^antigravity/config/mcp_config\.json\s+(\S+)", re.M)
+    base, _, _ = scratch.fresh()
+    home = base / "home"
+    (home / ".gemini").mkdir()
+    token = home / ".config" / "kaimon" / "opencode-token"
+    token.parent.mkdir(parents=True)
+    token.write_text("fake-token-of-the-cases\n")
+    token.chmod(0o600)
+    code, dry = run(base)
+    case(lambda: line.findall(dry) == ["INSTALL"] and "fake-token-of-the-cases" not in dry,
+         f"with a token file, the dry run lists mcp_config.json and never prints the token: {line.findall(dry)}")
+    config = home / ".gemini" / "config" / "mcp_config.json"
+
+    def entry(value):
+        return {"mcpServers": {"kaimon": {"url": "http://127.0.0.1:2828/",
+                                          "headers": {"Authorization": f"Bearer {value}"}}}}
+
+    code, out = run(base, "--apply")
+    got = json.loads(config.read_text()) if config.is_file() else None
+    case(lambda: code == 0 and got == entry("fake-token-of-the-cases") and scratch.mode(config) == 0o600
+         and "fake-token-of-the-cases" not in out,
+         f"--apply writes the Kaimon entry with the token of the file, mode 600: {code}, {got}, {tail(out)!r}")
+    token.write_text("another-token\n")
+    code, out = run(base, "--apply")
+    got = json.loads(config.read_text()) if config.is_file() else None
+    case(lambda: code == 0 and got == entry("another-token") and scratch.mode(config) == 0o600
+         and not list(config.parent.glob("mcp_config.json.bak-*")),
+         f"a new token in the file is the token of the entry, and no backup holds the old one: {code}, {got}")
+
+    for label, make in [("does not exist", lambda p: None), ("is empty", lambda p: p.write_text("\n")),
+                        ("is a directory", lambda p: p.mkdir()), ("is a FIFO", os.mkfifo),
+                        ("is not UTF-8", lambda p: p.write_bytes(b"\xff\n"))]:
+        base, _, _ = scratch.fresh()
+        (base / "home" / ".gemini").mkdir()
+        token = base / "home" / ".config" / "kaimon" / "opencode-token"
+        token.parent.mkdir(parents=True)
+        make(token)
+        code, text = run(base, "--apply")
+        warned = [w for w in text.split("WARNING: ")[1:] if "writes no Kaimon entry" in w]
+        case(lambda: code == 0 and line.findall(text) == [] and len(warned) == 1 and "opencode-token" in warned[0]
+             and not (base / "home" / ".gemini" / "config" / "mcp_config.json").exists(),
+             f"a token file that {label} writes no Kaimon entry and gives one warning: {code}, {warned}")

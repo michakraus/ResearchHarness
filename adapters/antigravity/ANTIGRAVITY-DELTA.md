@@ -43,6 +43,11 @@ new `invoke_subagent` call with its last report as the handoff. A subagent repli
 `send_message`. No agent sets an effort: an instruction that names an effort for a spawn does not
 apply.
 
+An agent of `~/.gemini/config/agents/` runs on the Antigravity tier that `[antigravity]` of
+`models.toml` gives its tier, or its override: `inherit`, the session model, `flash`, `flash_lite`
+or `pro`. A council has no seat here: round 1 of `build-part` runs two critics, each on the session model, as
+under Claude Code.
+
 ## Read a directory's `CLAUDE.md` yourself
 
 Antigravity reads `GEMINI.md` and `AGENTS.md` files, never a `CLAUDE.md`. Before you work in a

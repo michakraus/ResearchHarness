@@ -4,10 +4,11 @@
 # beside the profile that `--profile` or the default names. No template names these keys, and
 # `harness render` does not read this file.
 #
-# An agent's `model:` names a tier, `large`, `medium` or `small`. Claude Code has its own table of
-# the tiers, [claude]. OpenCode and oh-my-pi share every other table, so that their agents run on
-# the same models; [opencode] and [omp] hold only the keys where one of them differs. A table
-# with a tier's old name, `opus`, `sonnet` or `haiku`, stops the install and names the rename.
+# An agent's `model:` names a tier, `large`, `medium` or `small`. Claude Code and Antigravity each
+# have their own table of the tiers, [claude] and [antigravity]. OpenCode and oh-my-pi share every
+# other table, so that their agents run on the same models; [opencode] and [omp] hold only the
+# keys where one of them differs. A table with a tier's old name, `opus`, `sonnet` or `haiku`,
+# stops the install and names the rename.
 
 # The Claude Code model of each tier, written as the `model:` of the installed agent or skill.
 # All three tiers are required. Write a model name that starts with a letter and holds only
@@ -18,6 +19,15 @@
 large = "opus"
 medium = "sonnet"
 small = "haiku"
+
+# The Antigravity tier of each tier, written as the `model:` of the installed agent: `inherit`, the
+# session model, `flash`, `flash_lite` or `pro`; no other value. All three tiers are required once
+# ~/.gemini/ exists. An optional [antigravity.model_overrides] maps an agent of agents/ to its own
+# tier, for example `julia-builder = "flash"`. Antigravity reads none of the tables below.
+[antigravity]
+large = "inherit"
+medium = "flash"
+small = "flash_lite"
 
 # --- The tables of OpenCode and oh-my-pi ---------------------------------------------------------
 

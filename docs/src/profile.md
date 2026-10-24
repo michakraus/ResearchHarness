@@ -107,8 +107,8 @@ the model of each frontend.
 | `[context_limits]` | the input tokens that a model of a built-in provider may hold: a provider entry in `opencode.jsonc`, `contextWindow` in oh-my-pi's `models.yml`. A provider of `providers.toml` stops `install` with exit status 2: its model holds the limit as `context` | `install` |
 | `[opencode]`, `[omp]` | the same sub-tables, such as `[omp.models]`; each key replaces the shared key for that frontend alone | `install` |
 
-OpenCode and oh-my-pi share every table but `[claude]`, so that their agents run on the same
-models.
+OpenCode and oh-my-pi share every table but `[claude]` and `[antigravity]`, Antigravity's table of
+the tiers, so that their agents run on the same models.
 
 A table that names a tier by an old name, `opus`, `sonnet` or `haiku`, stops `harness install`
 with exit status 2, an error, and the message names the rename.

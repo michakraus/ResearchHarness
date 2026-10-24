@@ -2,6 +2,29 @@
 
 ## Unreleased
 
+- **`harness install` writes the agents and Kaimon for Antigravity.** `models.toml` gains a table
+  `[antigravity]`, beside `[claude]`, which maps the tiers `large`, `medium` and `small` to
+  Antigravity's tiers `inherit` (the session model), `flash`, `flash_lite` or `pro`, with an
+  optional `[antigravity.model_overrides]` of agent to tier; `examples/models.toml` holds
+  `inherit`, `flash` and `flash_lite`. Once `~/.gemini/` exists, a missing table or tier, another
+  key, another value, or an override of no agent of `agents/` exits 2 before any write, naming the
+  table and the key. The table is read on its own, and the plans of OpenCode and oh-my-pi stay as
+  they are. Each agent of `agents/` goes to `~/.gemini/config/agents/<name>.md` with `name`,
+  `description`, its tier's `model`, its tools in the family of a subagent's default set
+  (`view_file`, `list_dir`, `replace_file_content`, `write_to_file`, `grep_search`,
+  `find_by_name`, `run_command`, `invoke_subagent`, `search_web`, `read_url_content`; `[]` for an
+  agent with none), `subagent: true`, and `inheritMcp: true` for an agent with a Kaimon tool; no
+  effort and no isolation. An "Under Antigravity" section from the new
+  `adapters/antigravity/UNDER-ANTIGRAVITY.md` replaces each Claude Code mechanism that the agent
+  uses: a preloaded skill, worktree isolation, the `Agent` tool, a background run, a Kaimon tool,
+  the pull request. A council gives one warning for each agent that it names, and no seat file.
+  `~/.gemini/config/mcp_config.json` holds Kaimon, with the token of
+  `~/.config/kaimon/opencode-token` written out, mode 600 and no backup, and the dry run never
+  prints it; with no token there is no entry and one warning. The CLI's `permissions` allow
+  `mcp(kaimon/*)`, because a subagent shows no prompt, and the guard hook refuses a write to the
+  installed agents. A file of `config/agents/` with no source is listed as EXTRA. The delta states
+  the agents' tiers and that round 1 of `build-part` runs two critics on the session model.
+
 - **`harness install` writes Antigravity's instructions, rules and skills**, below
   `~/.gemini/config/`. The global instruction file `GEMINI.md` is the new
   `adapters/antigravity/ANTIGRAVITY-DELTA.md`: the sandbox and the guard hook as the controls, no

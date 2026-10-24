@@ -1373,6 +1373,9 @@ AGY_CASES = [
     ("write_file", {"Path": "~/.gemini/config/AGENTS.md", "Content": "x"}, "deny", None),
     ("edit_file", {"Path": "~/.gemini/GEMINI.md", "Target": "a", "Replacement": "b"}, "deny", None),
     ("view_file", {"AbsolutePath": "~/.gemini/GEMINI.md"}, "ask", None),
+    # The installed agents.
+    ("write_file", {"Path": "~/.gemini/config/agents/julia-critic.md", "Content": "x"}, "deny", None),
+    ("view_file", {"AbsolutePath": "~/.gemini/config/agents/julia-critic.md"}, "ask", None),
     # A home path in each form of the shell.
     ("run_command", {"CommandLine": "cat $HOME/.netrc"}, "deny", None),
     ("run_command", {"CommandLine": "cat ${HOME}/.netrc"}, "deny", None),

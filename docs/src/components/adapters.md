@@ -394,8 +394,9 @@ The permission rules are the settings template's: a Bash entry becomes a `comman
 or Edit path a `read_file(…)` or `write_file(…)` rule, and an allow host of the network lists a
 `read_url(…)` rule. A `*` of an allow rule in regex form matches no text that ends a segment, so
 the rule never matches across `;`, `|`, `&`, a substitution or a redirection. A path with a glob
-that Antigravity cannot express is dropped, and the path lists of `guard.py` cover it. It installs
-no agent for Antigravity.
+that Antigravity cannot express is dropped, and the path lists of `guard.py` cover it. It also
+writes each agent to `config/agents/`, its model from the table `[antigravity]` of `models.toml`,
+and Kaimon to `config/mcp_config.json`.
 
 ## `antigravity/ANTIGRAVITY-DELTA.md`
 
