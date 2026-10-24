@@ -395,7 +395,7 @@ or Edit path a `read_file(…)` or `write_file(…)` rule, and an allow host of 
 `read_url(…)` rule. A `*` of an allow rule in regex form matches no text that ends a segment, so
 the rule never matches across `;`, `|`, `&`, a substitution or a redirection. A path with a glob
 that Antigravity cannot express is dropped, and the path lists of `guard.py` cover it. It installs
-no instruction, skill or agent for Antigravity.
+no agent for Antigravity.
 
 ## `antigravity/guard.py`
 

@@ -2,6 +2,27 @@
 
 ## Unreleased
 
+- **`harness install` writes Antigravity's instructions, rules and skills**, below
+  `~/.gemini/config/`. The global instruction file `GEMINI.md` is the new
+  `adapters/antigravity/ANTIGRAVITY-DELTA.md`: the sandbox and the guard hook as the controls, no
+  RTK rewrite, a worktree made with `git worktree add` in `~/Research/.worktrees/`,
+  `invoke_subagent` for the `Agent` tool, no effort per agent, each scoped `CLAUDE.md` read by the
+  model itself, and the path rules with their scopes. `RTK.md`, the core and the tree
+  instructions are each a rule of `rules/` with `trigger: always_on`. Each rule that Claude Code
+  installs goes to `rules/` too, its `paths` as `trigger: glob` and `globs`, and a rule with no
+  `paths` as `trigger: always_on`; Antigravity does not load a global glob rule, so the model
+  reads the rule that the delta names. Each skill goes to `skills/<name>/` with its own files and
+  their modes, its `SKILL.md` without `model:`. Every text but `GEMINI.md` names
+  `~/.gemini/config/` where it named a copied path below `~/.claude/`. The install exits 2 before
+  any write when an instruction file or a rule has 24,000 bytes or more, the size at which
+  Antigravity cuts it, or when all of them have 80,000 bytes or more, Antigravity's 20,000-token
+  rules budget at 4 bytes a token; and when two sources give one rule path. A file below
+  `config/rules/`, `config/skills/` or `config/hooks/` with no source is listed as EXTRA with its
+  removal command. `hooks.json` gains a `SessionStart` handler that runs a copy of
+  `install-drift.py` and gives its warning as an `injectSteps` system message, and `{}` when the
+  install is current; `hooks/probe.py` checks that it gives the verdict and the text of
+  `install-drift.py` on each drift case.
+
 - **`harness install` writes the permission layer of Antigravity**, below `~/.gemini/`, once
   Antigravity has made that directory; without it the plan holds no file and one warning. The new
   adapter `adapters/antigravity/` writes `config/hooks.json`, one hook that runs
@@ -28,7 +49,7 @@
   `mcp_config.json`, and `write_file(…)` denies for it and the files of the layer. A path with a
   glob that Antigravity cannot express is dropped from the rules, and `guard.py` still covers it:
   the seven `Read(**/X)` denies in its `deny` list, seven Edit denies and two Edit asks in its
-  `edit` and `ask` lists. No instruction, skill or agent is installed for Antigravity.
+  `edit` and `ask` lists. No agent is installed for Antigravity.
   `hooks/probe.py` runs `guard.py` on a fixture home, with cases for its refusals and for each way
   in which it fails closed.
 
