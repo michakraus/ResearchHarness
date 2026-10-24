@@ -361,6 +361,17 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   misses the `---\r` that the first renderer keeps from a CRLF source, and the whole install
   raises; read the first renderer's parsed values, or accept both fences (G2 round 1, *Add the
   Antigravity frontend*)
+- an exemption of one entry of a JSON file matched on a joined path string: keys are joined
+  unescaped, so a sibling key `kaimon.x` or a top-level key `a.kaimon` matches the prefix too;
+  exempt by the entry's place in the parsed object (G3 round 1, *Add the Antigravity frontend*)
+- a merge into a JSON file that the user also edits: `json.loads` keeps the last of two equal keys,
+  so the merge drops the earlier value in silence; collect the keys of each object while it is
+  parsed, and exempt the entry that the merge replaces anyway (G3 verify 2 and after it, *Add the
+  Antigravity frontend*)
+- a second parse of the same text for another purpose: the guard of the first parse
+  (`RecursionError` → exit 2) does not cover it, and a hook that builds objects lowers the depth
+  at which it fails; guard each parse, and test it with the parse patched to raise (G3 verify 3,
+  *Add the Antigravity frontend*)
 
 ## A step that runs a user's script
 
