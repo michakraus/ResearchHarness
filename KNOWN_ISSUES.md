@@ -479,18 +479,6 @@
 - kind: defect
 - found: #80
 
-### K105 · A `config.json` nested 992–993 deep stops `harness install` with a traceback on Python 3.11.
-
-- location: `adapters/antigravity/adapter.py:463`
-- evidence: `merge_grants` calls `rewritten_numbers` (`adapters/claude/adapter.py:527`), whose
-  second parse no `RecursionError` guard holds, and its own guard covers only the write. On
-  Python 3.11, `merge_grants` on `{"d": {"a": {"a": … 1 …}}}` with 992 or 993 objects raises
-  `RecursionError` at `adapters/antigravity/adapter.py:463` <- `adapters/claude/adapter.py:527`,
-  where the docstring promises exit 2; 990 and 991 are written, and 994 exits 2 as "nested too
-  deep". A guard at `adapters/claude/adapter.py:527` closes this entry and K100.
-- kind: defect
-- found: #80; K100
-
 ### K106 · `render_permissions` checks no entry of `sandbox.excludedCommands`, so a malformed one stops the install or renders a rule that allows every command.
 
 - location: `adapters/antigravity/adapter.py:409`
