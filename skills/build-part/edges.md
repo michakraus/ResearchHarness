@@ -353,6 +353,14 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   FIFO blocks for ever, and a file that cannot be read raises `PermissionError`, a traceback that
   exits 1; check the kind before the open, and turn each `OSError` into the contract's exit 2
   (C round 1, *Ship the dotfiles kit in the harness*)
+- a check run as the first stage of a shell pipe: the pipe's status is the last stage's, so a
+  translator that reads no output as "all is well" turns a missing or failing check into a pass;
+  run the check from the translator and turn its exit status into the answer (G2 round 1, *Add
+  the Antigravity frontend*)
+- a renderer that splits the output of another renderer again: a fence matched as exactly `---`
+  misses the `---\r` that the first renderer keeps from a CRLF source, and the whole install
+  raises; read the first renderer's parsed values, or accept both fences (G2 round 1, *Add the
+  Antigravity frontend*)
 
 ## A step that runs a user's script
 
