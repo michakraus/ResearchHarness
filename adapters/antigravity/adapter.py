@@ -446,7 +446,7 @@ def merge_settings(path, rules):
     settings, indent = {}, 2
     if text is not None:
         settings, indent = claude.json_object(path, text), claude.indent_of(text)
-        numbers = claude.rewritten_numbers(text, ("permissions", *POSTURE))
+        numbers = claude.rewritten_numbers(text, ("permissions", *POSTURE), path)
         if numbers:
             raise HarnessError(f"{path} holds numbers that JSON would write in other text: "
                                f"{', '.join(f'{k}: {old} as {new}' for k, old, new in numbers)}{refused}")
@@ -474,7 +474,7 @@ def merge_grants(path, rules):
     settings, indent = {}, 2
     if text is not None:
         settings, indent = claude.json_object(path, text), claude.indent_of(text)
-        numbers = claude.rewritten_numbers(text, ())
+        numbers = claude.rewritten_numbers(text, (), path)
         if numbers:
             raise HarnessError(f"{path} holds numbers that JSON would write in other text: "
                                f"{', '.join(f'{k}: {old} as {new}' for k, old, new in numbers)}{refused}")
@@ -1599,6 +1599,37 @@ def grants_cases(scratch):
         case(lambda: scratch.refused(code, text) and str(config / "config.json") in text
              and scratch.snapshot(base) == snapshot,
              f"a config.json that {label} exits 2, names the file, and nothing is written: {code}, {tail(text)!r}")
+    # The second parse, which keeps the text of each number, can run out of stack at a depth that
+    # json_object reads; the depth depends on the interpreter, so a child process makes that parse
+    # raise RecursionError at any depth, and the case holds on each Python.
+    import subprocess
+    import sys
+    deep = ("import json, runpy, sys\n"
+            "loads = json.loads\n"
+            "def deep(*args, **kwargs):\n"
+            "    if 'parse_int' in kwargs or 'parse_float' in kwargs:\n"
+            "        raise RecursionError('maximum recursion depth exceeded')\n"
+            "    return loads(*args, **kwargs)\n"
+            "json.loads = deep\n"
+            "try:\n"
+            "    sys.argv = sys.argv[1:]\n"
+            "    runpy.run_path(sys.argv[0], run_name='__main__')\n"
+            "finally:\n"
+            "    json.loads = loads\n")
+    base, _, _ = scratch.fresh()
+    config = base / "home" / ".gemini" / "config"
+    config.mkdir(parents=True)
+    (config / "config.json").write_bytes(b'{"userSettings": {"theme": "dark"}}\n')
+    snapshot = scratch.snapshot(base)
+    p = subprocess.run([sys.executable, "-c", deep, str(REPO / "bin" / "harness"),
+                        "--profile", str(base / "profile.toml"),
+                        "--models", str(REPO / "examples" / "models.toml"), "install", "--apply"],
+                       capture_output=True, text=True, env=scratch.env(base), cwd=base, timeout=60)
+    code, text = p.returncode, p.stdout + p.stderr
+    case(lambda: scratch.refused(code, text) and "nested too deep" in text and str(config / "config.json") in text
+         and scratch.snapshot(base) == snapshot,
+         f"a RecursionError of the parse that keeps the text of each number exits 2, names config.json, and "
+         f"nothing is written: {code}, {tail(text)!r}")
 
 
 # The tiers of [antigravity] in examples/models.toml, written out here.
