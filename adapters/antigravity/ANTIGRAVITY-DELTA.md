@@ -12,10 +12,8 @@ The CLI `agy` runs a command in its terminal sandbox, and the permission rules o
 guard scripts on each `run_command`, refuses a path that the path list denies in any tool, and
 applies the settings template's Bash denies and asks to each segment of a command. A refusal is
 final for that path or command: do not reach it in another form. The hook fails closed: a guard
-that cannot run refuses the call. A rule that exists only because of Claude Code's sandbox or its
-permission matcher does not bind here: a `git` alone on its line, no `cd … &&`, no `git -C`, no
-`$?`, and a failed `ps` read as a refusal. Change a file with the edit tool, never with `sed -i`
-or `perl -pi`.
+that cannot run refuses the call. Change a file with the edit tool, never with `sed -i` or
+`perl -pi`.
 
 A subagent shows no prompt: a call that needs one is refused there. Run such a call yourself, or
 give the user the command.

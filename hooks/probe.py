@@ -1369,6 +1369,10 @@ AGY_CASES = [
      None),
     ("view_file", {"AbsolutePath": "~/.gemini/config/GEMINI.md"}, "ask", None),
     ("run_command", {"CommandLine": "cat ~/.gemini/config/rules/julia-code.md"}, "ask", None),
+    # The other global instruction files that Antigravity loads, which the install does not write.
+    ("write_file", {"Path": "~/.gemini/config/AGENTS.md", "Content": "x"}, "deny", None),
+    ("edit_file", {"Path": "~/.gemini/GEMINI.md", "Target": "a", "Replacement": "b"}, "deny", None),
+    ("view_file", {"AbsolutePath": "~/.gemini/GEMINI.md"}, "ask", None),
     # A home path in each form of the shell.
     ("run_command", {"CommandLine": "cat $HOME/.netrc"}, "deny", None),
     ("run_command", {"CommandLine": "cat ${HOME}/.netrc"}, "deny", None),
@@ -1912,7 +1916,7 @@ def drift_cases(install=install):
         except SetupFailed as e:  # the cases after it would read files that the install did not write
             total, wrong = total + 1, wrong + 1
             print(f"BAD exp {expected} got {e}  [inst-drif]  {label}; the cases after it do not run")
-            break
+            return total, wrong
         except Exception as e:  # a case that crashes is wrong, and the next case still runs
             got, message = f"raised {type(e).__name__}", str(e)
         ok = got == expected and text in message
@@ -1928,6 +1932,31 @@ def drift_cases(install=install):
         wrong += not ok
         print(f"{'ok ' if ok else 'BAD'} exp {expected} got {agy}  [agy-drift]  {label}, the same text as "
               f"install-drift.py's: {agy_message[:160]!r}")
+    # Antigravity's handler warns, and never answers `{}`, when its copy of install-drift.py gives no
+    # answer: the warning names the copy and what went wrong.
+    copy = home + "/.gemini/config/hooks/install-drift.py"
+    failures = [("install-drift.py exits 1", "import sys; sys.stderr.write('boom'); sys.exit(1)\n", "exit 1: boom"),
+                ("install-drift.py prints text that is not JSON", "print('not json')\n", "JSONDecodeError"),
+                ("install-drift.py prints JSON that is no object", "print('[1]')\n", "TypeError"),
+                ("install-drift.py prints an object with no systemMessage", "print('{}')\n", "KeyError"),
+                ("install-drift.py prints a systemMessage that is no text", "print('{\"systemMessage\": 1}')\n",
+                 "TypeError"),
+                ("install-drift.py is missing", None, "exit 2: ")]
+    for label, source, text in failures:
+        try:
+            if source is None:
+                os.remove(copy)
+            else:
+                with open(copy, "w") as f:
+                    f.write(source)
+            agy, agy_message = agy_drift(env)
+        except Exception as e:  # a case that crashes is wrong, and the next case still runs
+            agy, agy_message = f"raised {type(e).__name__}", str(e)
+        ok = agy == "warn" and copy in agy_message and text in agy_message
+        total += 1
+        wrong += not ok
+        print(f"{'ok ' if ok else 'BAD'} exp warn got {agy}  [agy-drift]  {label}: a warning that names the copy "
+              f"and {text!r}: {agy_message[:200]!r}")
     return total, wrong
 
 

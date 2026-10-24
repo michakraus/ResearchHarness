@@ -7,8 +7,10 @@ whose guard scripts, install-drift.py, instructions, rules and skills it copies.
 
   config/hooks.json              one named hook, `harness-guards`, with one `SessionStart`
                                  handler, which runs config/hooks/install-drift.py and gives its
-                                 warning as an `injectSteps` system message, and `{}` when the
-                                 install is current (TRANSLATE); and one `PreToolUse` group,
+                                 warning as an `injectSteps` system message, `{}` when the install
+                                 is current, and a warning that names the script when it exits
+                                 with an error or gives no warning text (TRANSLATE); and one
+                                 `PreToolUse` group,
                                  matcher `*`, which runs config/hooks/guard.py; each by its
                                  absolute path with a timeout of 15 s (render_hooks). The matcher
                                  names no tool, so no tool is missed, and guard.py decides by the
@@ -33,9 +35,10 @@ whose guard scripts, install-drift.py, instructions, rules and skills it copies.
   config/skills/<name>/<file>    each file of the Claude Code layer's skills, with its mode; a
                                  SKILL.md without `model:` (render_skill)
 
-Every text but GEMINI.md names Antigravity's copies, not Claude Code's (frontends.relocate). A
-path of two sources, compared as `install.fold` compares names, exits 2; so does an instruction
-file or a rule of FILE_CAP bytes or more, and a set of them of BUDGET bytes or more
+Every text but GEMINI.md names Antigravity's copies, not Claude Code's, RTK.md and the files of
+instructions/ in config/rules/ (relocate). A path of two sources, compared as `install.fold`
+compares names, exits 2; so does an instruction file or a rule that holds an include,
+`@[label](path)`, or of FILE_CAP bytes or more, and a set of them of BUDGET bytes or more
 (check_sizes): Antigravity would cut the file, or demote rules to path pointers. An installed
 file with no source below config/rules/, config/skills/ and config/hooks/ is EXTRA, with its
 removal command (extras); every other file below ~/.gemini/, Antigravity's own antigravity/,
@@ -45,8 +48,10 @@ config.json and plugins/ among them, is neither listed nor touched. The other fi
                                  adapters/opencode/plugins/guard-paths.json, MCP_CONFIG and the
                                  files of this layer, LAYER; under `edit` and `ask` the template's
                                  Edit denies and asks, then the same rules for this layer's copies
-                                 of the files that frontends.SHARED_ROOTS names, and under `edit`
-                                 GEMINI.md, which guard.py applies to the tools that write; under
+                                 of the files that frontends.SHARED_ROOTS names (relocate), and
+                                 under `edit` the global instruction files that Antigravity loads,
+                                 config/GEMINI.md, config/AGENTS.md and ~/.gemini/GEMINI.md; guard.py
+                                 applies `edit` and `ask` to the tools that write; under
                                  `bash_deny` and `bash_ask` the bodies of its Bash
                                  denies and asks, which guard.py applies to each segment of a
                                  command
@@ -122,11 +127,26 @@ DELTA = SOURCE / "ANTIGRAVITY-DELTA.md"
 # always-on and global rules share 20,000 tokens, counted here at 4 bytes a token.
 FILE_CAP = 24000
 BUDGET = 20000 * 4
-# The `SessionStart` handler's second command: the JSON of install-drift.py on stdin, Claude Code's
-# form, becomes Antigravity's: its `systemMessage` as one `injectSteps` system message, and no
-# output as `{}`.
-TRANSLATE = ('import json, sys; t = sys.stdin.read().strip(); m = json.loads(t)["systemMessage"] if t else None; '
-             'print(json.dumps({"injectSteps": [{"systemMessage": {"systemMessage": m}}]} if m else {}))')
+# Antigravity's include of another file, `@[label](path)`.
+INCLUDE = re.compile(rb"@\[[^\]\n]*\]\(")
+# The `SessionStart` handler: it runs install-drift.py, its path the first argument, and turns its
+# JSON, Claude Code's form, into Antigravity's: the `systemMessage` as one `injectSteps` system
+# message, and no output as `{}`. An exit other than 0, or output with no `systemMessage` text, is a
+# warning that names the script, so that a check that did not run never reads as a current install.
+TRANSLATE = """import json, subprocess, sys
+path = sys.argv[1]
+try:
+    p = subprocess.run([sys.executable, path], capture_output=True, text=True)
+    if p.returncode != 0:
+        raise RuntimeError(f"exit {p.returncode}: {p.stderr.strip()[-300:]}")
+    t = p.stdout.strip()
+    m = json.loads(t)["systemMessage"] if t else None
+    if t and not isinstance(m, str):
+        raise TypeError("its systemMessage is no text")
+except Exception as e:
+    m = f"{path} failed ({type(e).__name__}: {e}); the installation is not checked."
+print(json.dumps({"injectSteps": [{"systemMessage": {"systemMessage": m}}]} if m else {}))
+"""
 
 
 def gemini_dir():
@@ -148,10 +168,20 @@ def render_hooks(root):
     def handler(command):
         return {"type": "command", "command": command, "timeout": HOOK_TIMEOUT}
 
-    start = "python3 " + shlex.quote(str(hooks / "install-drift.py")) + " | python3 -c " + shlex.quote(TRANSLATE)
+    start = "python3 -c " + shlex.quote(TRANSLATE) + " " + shlex.quote(str(hooks / "install-drift.py"))
     return json.dumps({HOOK: {"SessionStart": [handler(start)],
                               "PreToolUse": [{"matcher": "*", "hooks": [handler(
                                   "python3 " + shlex.quote(str(hooks / "guard.py")))]}]}}, indent=2) + "\n"
+
+
+def relocate(data, root):
+    """`data` with each path below ~/.claude/ that this layer copies rewritten to its copy below
+    `root`, Antigravity's config directory in its home form: ~/.claude/RTK.md and the files of
+    ~/.claude/instructions/ to rules/, where the always-on files load, and the other roots of
+    frontends.SHARED_ROOTS to the same path (frontends.relocate)."""
+    data = data.replace(b"~/.claude/RTK.md", f"{root}/rules/RTK.md".encode())
+    data = data.replace(b"~/.claude/instructions/", f"{root}/rules/".encode())
+    return frontends.relocate(data, root)
 
 
 def always_on(data):
@@ -163,9 +193,10 @@ def render_rule(src, data):
     """The Antigravity rule of `data`, the Claude Code rule from the source `src`: `trigger: glob`
     and its `paths` as `globs:`, joined by `, `, when it has `paths`, else `trigger: always_on`, as
     Claude Code loads a rule with no `paths` at the start; then its `description` and its body.
-    oh-my-pi's render_rule reads the frontmatter, and exits 2 on one outside its grammar."""
+    oh-my-pi's render_rule reads the frontmatter, and exits 2 on one outside its grammar; it keeps
+    the source's closing line, `---` or `---\\r`."""
     lines = frontends.adapter("omp").render_rule(src, data).split(b"\n")
-    end = lines.index(b"---", 1)
+    end = next(i for i, line in enumerate(lines) if i and line in (b"---", b"---\r"))
     fields = dict(line.split(b": ", 1) for line in lines[1:end])
     if b"globs" in fields:
         globs = ", ".join(json.loads(fields[b"globs"]))
@@ -177,17 +208,24 @@ def render_rule(src, data):
 
 def render_skill(data):
     """The SKILL.md `data` without the `model:` lines of its frontmatter: a skill runs on the
-    session model. A text with no frontmatter stays as it is."""
+    session model. A text with no frontmatter stays as it is. A line may end in `\\r\\n`."""
     lines = data.split(b"\n")
-    if lines[0] != b"---" or b"---" not in lines[1:]:
+    fences = [i for i, line in enumerate(lines) if line in (b"---", b"---\r")]
+    if fences[:1] != [0] or len(fences) < 2:
         return data
-    end = lines.index(b"---", 1)
+    end = fences[1]
     return b"\n".join(line for i, line in enumerate(lines) if not (0 < i < end and line.startswith(b"model:")))
 
 
 def check_sizes(texts):
-    """Exit 2 when a text of `texts`, [(label, bytes)], has FILE_CAP bytes or more, or all of them
+    """Exit 2 when a text of `texts`, [(label, bytes)], holds an include, `@[label](path)`, whose
+    expanded size is not known here; when one has FILE_CAP bytes or more; or when all of them have
     BUDGET bytes or more: Antigravity would cut the file, or demote rules to path pointers."""
+    included = [label for label, data in texts if INCLUDE.search(data)]
+    if included:
+        raise HarnessError(f"{', '.join(included)} holds an include, `@[…](…)`, which Antigravity expands before it "
+                           "cuts the file at 24,000 bytes; the install measures no expanded size, so it writes no "
+                           "include")
     over = [f"{label}: {len(data)} bytes" for label, data in texts if len(data) >= FILE_CAP]
     if over:
         raise HarnessError(f"{'; '.join(over)}. Antigravity cuts an instruction file or a rule at 24,000 bytes, so "
@@ -223,20 +261,25 @@ def guard_paths(profile):
     """The text of guard-paths.json, rendered with `profile`: under `deny` the `deny` list of
     OpenCode's path list, then MCP_CONFIG and LAYER; under `edit` every `Edit` deny of the
     settings template, and under `ask` every `Edit` ask, each with a leading `//` as `/`, then the
-    same path below ~/.gemini/config/ of each such path below a root of frontends.SHARED_ROOTS,
-    which this layer copies, and `edit` then GEMINI.md, the counterpart of ~/.claude/CLAUDE.md; under
-    `bash_deny` and `bash_ask` the body of every `Bash` deny and ask of the template."""
+    path of this layer's copy (relocate) of each such path below a root of frontends.SHARED_ROOTS,
+    and `edit` then the global instruction files that Antigravity loads: config/GEMINI.md, the
+    counterpart of ~/.claude/CLAUDE.md, config/AGENTS.md and ~/.gemini/GEMINI.md, which the install
+    does not write; under `bash_deny` and `bash_ask` the body of every `Bash` deny and ask of the
+    template."""
     deny = json.loads(profile_module.render_file(GUARD_PATHS, profile))["deny"]
     permissions = json.loads(profile_module.render_file(SETTINGS, profile))["permissions"]
     bodies = {(tool, key): [m.group(1) for e in permissions.get(key, [])
                             if (m := re.fullmatch(rf"{tool}\((.*)\)", e, re.S))]
               for tool in ("Edit", "Bash") for key in ("deny", "ask")}
-    claude, config = render("{home}/.claude", profile), render("{home}/.gemini/config", profile)
-    roots = tuple(claude + root.removeprefix("~/.claude") for root in frontends.SHARED_ROOTS)
+    home = render("{home}", profile)
+    roots = tuple(home + root.removeprefix("~") for root in frontends.SHARED_ROOTS)
     edits = {key: [re.sub(r"^//+", "/", p) for p in bodies["Edit", key]] for key in ("deny", "ask")}
-    copies = {key: [config + p[len(claude):] for p in paths if p.startswith(roots)] for key, paths in edits.items()}
+    copies = {key: [home + relocate(("~" + p[len(home):]).encode(), "~/.gemini/config").decode()[1:]
+                    for p in paths if p.startswith(roots)] for key, paths in edits.items()}
+    globals_ = [render(p, profile) for p in ("{home}/.gemini/config/GEMINI.md", "{home}/.gemini/config/AGENTS.md",
+                                             "{home}/.gemini/GEMINI.md")]
     return json.dumps({"deny": [*deny, render(MCP_CONFIG, profile), *(render(p, profile) for p in LAYER)],
-                       "edit": [*edits["deny"], *copies["deny"], config + "/GEMINI.md"],
+                       "edit": [*edits["deny"], *copies["deny"], *globals_],
                        "ask": [*edits["ask"], *copies["ask"]],
                        "bash_deny": bodies["Bash", "deny"], "bash_ask": bodies["Bash", "ask"]},
                       indent=2, ensure_ascii=False) + "\n"
@@ -357,9 +400,9 @@ def plan(ctx):
     # The texts name Antigravity's copies, not Claude Code's; the global file names them itself.
     home = frontends.home_form(root / "config")
     texts = [("config/GEMINI.md", DELTA.read_bytes(), DELTA),
-             *((f"config/rules/{dst.split('/')[-1]}", always_on(frontends.relocate(data, home)), f"~/.claude/{dst}")
+             *((f"config/rules/{dst.split('/')[-1]}", always_on(relocate(data, home)), f"~/.claude/{dst}")
                for dst, data, _ in layer.shared if re.fullmatch(r"RTK\.md|instructions/[^/]+\.md", dst)),
-             *((f"config/rules/{dst.split('/')[-1]}", render_rule(src, frontends.relocate(data, home)), src)
+             *((f"config/rules/{dst.split('/')[-1]}", render_rule(src, relocate(data, home)), src)
                for dst, src, data in layer.rules if re.fullmatch(r"rules/[^/]+\.md", dst))]
     owner = {}
     for rel, _, src in texts:
@@ -368,8 +411,8 @@ def plan(ctx):
         owner[install.fold(rel)] = src
     check_sizes([(f"~/.gemini/{rel}", data) for rel, data, _ in texts])
     files += [(rel, data, None) for rel, data, _ in texts]
-    files += [(f"config/{dst}", frontends.relocate(render_skill(data) if re.fullmatch(r"skills/[^/]+/SKILL\.md", dst)
-                                                   else data, home) if dst.endswith(".md") else data, mode)
+    files += [(f"config/{dst}", relocate(render_skill(data) if re.fullmatch(r"skills/[^/]+/SKILL\.md", dst)
+                                         else data, home) if dst.endswith(".md") else data, mode)
               for dst, data, mode in layer.shared if dst.startswith("skills/")]
     settings = root / "antigravity-cli" / "settings.json"
     # The CLI's settings hold the user's own keys, so a replaced file is backed up first.
@@ -461,8 +504,8 @@ def layer_cases(scratch):
          == ["config/rules/RTK.md", "config/rules/core.md", "config/rules/research-tree.md"]
          and sorted(p.removeprefix("config/rules/") for p in listed if p.startswith("config/rules/")
                     and p not in ("config/rules/RTK.md", "config/rules/core.md", "config/rules/research-tree.md"))
-         == rules and len(rules) == 8
-         and planned == {p.name for p in (REPO / "skills").iterdir() if p.is_dir()} and len(planned) == 12,
+         == rules
+         and planned == {p.name for p in (REPO / "skills").iterdir() if p.is_dir()},
          f"the dry run lists the global file, the three always-on files, one rule file for each of the {len(rules)} "
          f"rules and one skills/<name>/ for each of the {len(planned)} skills: {sorted(listed)}")
     code, text = run(base, "--apply")
@@ -475,9 +518,7 @@ def layer_cases(scratch):
     config = gemini / "config"
     hooks = (config / "hooks.json").read_text() if (config / "hooks.json").is_file() else None
     handler = "python3 " + shlex.quote(str(config / "hooks" / "guard.py"))
-    start = "python3 " + shlex.quote(str(config / "hooks" / "install-drift.py")) + " | python3 -c " + shlex.quote(
-        'import json, sys; t = sys.stdin.read().strip(); m = json.loads(t)["systemMessage"] if t else None; '
-        'print(json.dumps({"injectSteps": [{"systemMessage": {"systemMessage": m}}]} if m else {}))')
+    start = "python3 -c " + shlex.quote(TRANSLATE) + " " + shlex.quote(str(config / "hooks" / "install-drift.py"))
     case(lambda: json.loads(hooks)
          == {HOOK: {"SessionStart": [{"type": "command", "command": start, "timeout": 15}],
                     "PreToolUse": [{"matcher": "*", "hooks": [{"type": "command", "command": handler,
@@ -501,25 +542,36 @@ def layer_cases(scratch):
     edits = {key: [re.sub(r"^//+", "/", e[len("Edit("):-1]) for e in template[key] if e.startswith("Edit(")]
              for key in ("deny", "ask")}
     bash = {key: [e[len("Bash("):-1] for e in template[key] if e.startswith("Bash(")] for key in ("deny", "ask")}
-    # The Edit rules of Claude Code's copied files, below Antigravity's copies, written out.
+    # The Edit rules of Claude Code's copied files, below Antigravity's copies, written out: RTK.md and
+    # the files of instructions/ are in rules/, the other roots at the same path.
     copied = ("RTK.md", "instructions/", "hooks/", "rules/", "skills/")
-    copies = {key: [f"{h}/.gemini/config/{p[len(h + '/.claude/'):]}" for p in edits[key]
-                    if p.startswith(tuple(f"{h}/.claude/{c}" for c in copied))] for key in ("deny", "ask")}
+
+    def moved(p):
+        rest = p[len(h + "/.claude/"):]
+        rest = ("rules/RTK.md" if rest == "RTK.md" else "rules/" + rest.removeprefix("instructions/")
+                if rest.startswith("instructions/") else rest)
+        return f"{h}/.gemini/config/{rest}"
+
+    copies = {key: [moved(p) for p in edits[key] if p.startswith(tuple(f"{h}/.claude/{c}" for c in copied))]
+              for key in ("deny", "ask")}
+    globals_ = [f"{h}/.gemini/config/GEMINI.md", f"{h}/.gemini/config/AGENTS.md", f"{h}/.gemini/GEMINI.md"]
     lists = config / "guard-paths.json"
     written = json.loads(lists.read_text()) if lists.is_file() else {}
-    case(lambda: written["edit"][len(edits["deny"]):]
-         == [*copies["deny"], f"{h}/.gemini/config/GEMINI.md"]
+    case(lambda: written["edit"][len(edits["deny"]):] == [*copies["deny"], *globals_]
          and written["ask"][len(edits["ask"]):] == copies["ask"]
-         and {f"{h}/.gemini/config/RTK.md", f"{h}/.gemini/config/instructions/**", f"{h}/.gemini/config/rules/**",
+         and {f"{h}/.gemini/config/rules/RTK.md", f"{h}/.gemini/config/rules/**",
               f"{h}/.gemini/config/skills/build-part/**", f"{h}/.gemini/config/hooks/**"} <= set(copies["deny"])
+         and len([p for p in edits["deny"] if p in (f"{h}/.claude/RTK.md", f"{h}/.claude/instructions/**")]) == 2
+         and not {f"{h}/.gemini/config/RTK.md", f"{h}/.gemini/config/instructions/**"} & set(written["edit"])
          and copies["ask"] == [f"{h}/.gemini/config/skills/**"],
-         f"after the template's Edit rules, `edit` holds each Edit deny of a copied path below "
-         f"~/.claude/ as the same path below ~/.gemini/config/, then GEMINI.md, and `ask` each such Edit ask: "
+         f"after the template's Edit rules, `edit` holds each Edit deny of a copied path below ~/.claude/ as "
+         f"the path of its copy below ~/.gemini/config/, RTK.md and instructions/ in rules/, then GEMINI.md, "
+         f"AGENTS.md and ~/.gemini/GEMINI.md, and `ask` each such Edit ask: "
          f"{written.get('edit', [])[len(edits['deny']):]}, {written.get('ask', [])[len(edits['ask']):]}")
     case(lambda: written == {"deny": [*opencode, f"{h}/.gemini/config/mcp_config.json", f"{h}/.gemini/config/hooks.json",
                                       f"{h}/.gemini/config/hooks/**", f"{h}/.gemini/config/guard-paths.json",
                                       f"{h}/.gemini/antigravity-cli/settings.json"],
-                             "edit": [*edits["deny"], *copies["deny"], f"{h}/.gemini/config/GEMINI.md"],
+                             "edit": [*edits["deny"], *copies["deny"], *globals_],
                              "ask": [*edits["ask"], *copies["ask"]],
                              "bash_deny": bash["deny"], "bash_ask": bash["ask"]}
          and len(edits["deny"]) >= 54 and len(edits["ask"]) >= 4
@@ -549,7 +601,13 @@ def instruction_cases(scratch):
     base, claude, tree = scratch.fresh(["instructions/research-tree.md", "rules/meta-repository.md"])
     gemini = base / "home" / ".gemini"
     gemini.mkdir()
-    code, text = run(base, "--apply")
+    # Under a umask of 077 a file written with no mode is 0600, where the Claude Code layer writes its
+    # skill files 0644, so the mode case below sees a mode that the plan drops.
+    umask = os.umask(0o077)
+    try:
+        code, text = run(base, "--apply")
+    finally:
+        os.umask(umask)
     if code != 0:
         case(lambda: False, f"the setup install --apply of the Antigravity instruction cases exits {code}: "
                             f"{tail(text)!r}; the cases after it do not run")
@@ -561,7 +619,8 @@ def instruction_cases(scratch):
         return
     rules = sorted((config / "rules").glob("*.md"))
     sizes = {p.name: len(p.read_bytes()) for p in [config / "GEMINI.md", *rules]}
-    case(lambda: len(sizes) == 12 and max(sizes.values()) < 24000 and sum(sizes.values()) < 20000 * 4
+    case(lambda: len(sizes) == 5 + len(list((REPO / "rules").glob("*.md")))
+         and max(sizes.values()) < 24000 and sum(sizes.values()) < 20000 * 4
          and not [n for n in sizes if b"@[" in (config / "rules" / n if n != "GEMINI.md" else config / n).read_bytes()],
          f"each installed instruction file and rule is below 24,000 bytes, holds no include, and their sum is below "
          f"20,000 tokens at 4 bytes a token: {sum(sizes.values())} bytes, {sizes}")
@@ -584,7 +643,7 @@ def instruction_cases(scratch):
     description = re.search(rb"^description: (.*)$", source[:end], re.M).group(1).decode()
     installed = (config / "rules" / "julia-code.md").read_bytes()
     case(lambda: installed == (f'---\ntrigger: glob\nglobs: "**/*.jl"\ndescription: {json.dumps(description)}'
-                               .encode() + frontends.relocate(source[end:], "~/.gemini/config")),
+                               .encode() + relocate(source[end:], "~/.gemini/config")),
          f"rules/julia-code.md reads back as trigger: glob, globs **/*.jl, its description and its body: "
          f"{installed[:120]!r}")
     several = (config / "rules" / "instruction-files.md").read_text().split("\n")[:3]
@@ -596,7 +655,7 @@ def instruction_cases(scratch):
     case(lambda: not unlisted and "| `meta-repository.md` |" in delta and "~/.gemini/config/rules/" in delta,
          f"ANTIGRAVITY-DELTA.md lists each rule of rules/ and meta-repository.md with its scope: {unlisted}")
     core = (config / "rules" / "core.md").read_bytes()
-    case(lambda: core == b"---\ntrigger: always_on\n---\n\n" + frontends.relocate(
+    case(lambda: core == b"---\ntrigger: always_on\n---\n\n" + relocate(
         (REPO / "instructions" / "core.md").read_bytes(), "~/.gemini/config")
          and (config / "rules" / "RTK.md").read_bytes().startswith(b"---\ntrigger: always_on\n---\n\n# RTK")
          and (config / "rules" / "research-tree.md").read_bytes()
@@ -610,12 +669,13 @@ def instruction_cases(scratch):
     case(lambda: keys == ["name", "description"] and head[0] == "name: build-part",
          f"skills/build-part/SKILL.md keeps name and description and drops model: {keys}")
     heads = {p.parent.name: p.read_text().split("\n---\n", 1)[0] for p in (config / "skills").glob("*/SKILL.md")}
-    case(lambda: len(heads) == 12 and all(re.search(r"(?m)^name: ", h) and re.search(r"(?m)^description: ", h)
-                                          and not re.search(r"(?m)^model:", h) for h in heads.values())
+    case(lambda: sorted(heads) == sorted(p.name for p in (REPO / "skills").iterdir() if p.is_dir())
+         and all(re.search(r"(?m)^name: ", h) and re.search(r"(?m)^description: ", h)
+                 and not re.search(r"(?m)^model:", h) for h in heads.values())
          and "disable-model-invocation: true" in heads["wait-what"],
          f"every SKILL.md keeps name and description, drops model, and keeps every other key: {sorted(heads)}")
     own = [f for f in skills_files() if not f.endswith("/SKILL.md")]
-    case(lambda: own and all((config / "skills" / f).read_bytes() == frontends.relocate(
+    case(lambda: own and all((config / "skills" / f).read_bytes() == relocate(
         (claude / "skills" / f).read_bytes(), "~/.gemini/config")
                              and mode(config / "skills" / f) == mode(claude / "skills" / f) for f in own),
          f"a skill's own files install beside its SKILL.md, with their modes: {own}")
@@ -653,19 +713,50 @@ def instruction_cases(scratch):
          == b"---\nname: s\n---\n\nmodel: kept\n"
          and render_skill(b"no frontmatter\nmodel: kept\n") == b"no frontmatter\nmodel: kept\n",
          "render_skill drops a `model:` line of the frontmatter only, and leaves a text with no frontmatter")
+    case(lambda: render_skill(b"---\r\nname: s\r\nmodel: large\r\n---\r\n\r\nmodel: kept\r\n")
+         == b"---\r\nname: s\r\n---\r\n\r\nmodel: kept\r\n"
+         and render_skill(b"---\nmodel: kept\n") == b"---\nmodel: kept\n"
+         and render_skill(b"x\n---\nmodel: kept\n---\n") == b"x\n---\nmodel: kept\n---\n",
+         "render_skill drops the `model:` line of a SKILL.md with CRLF line ends too, and leaves a text whose "
+         "frontmatter does not close or does not open on line 1")
+    crlf = [("glob", b'---\r\npaths: ["**/*.jl"]\r\ndescription: A CRLF rule.\r\n---\r\n\r\nbody\r\n'),
+            ("always", b"---\r\ndescription: A CRLF rule.\r\n---\r\n\r\nbody\r\n")]
+    case(lambda: [render_rule(pathlib.Path(f"{name}.md"), data) for name, data in crlf]
+         == [b'---\ntrigger: glob\nglobs: "**/*.jl"\ndescription: "A CRLF rule."\n---\r\n\r\nbody\r\n',
+             b'---\ntrigger: always_on\ndescription: "A CRLF rule."\n---\r\n\r\nbody\r\n'],
+         "a rule with CRLF line ends, which oh-my-pi's grammar accepts, renders with the trigger of one with LF "
+         "and keeps its closing line and body")
+    # RTK.md and the files of instructions/ are rules of rules/, so a text names them there.
+    case(lambda: relocate(b"~/.claude/RTK.md ~/.claude/instructions/core.md ~/.claude/rules/x.md "
+                          b"~/.claude/skills/a/SKILL.md", "~/.gemini/config")
+         == b"~/.gemini/config/rules/RTK.md ~/.gemini/config/rules/core.md ~/.gemini/config/rules/x.md "
+            b"~/.gemini/config/skills/a/SKILL.md",
+         "relocate names RTK.md and a file of instructions/ in rules/, and the other roots at the same path")
+    base, claude, tree = scratch.fresh(["rules/names.md", "instructions/names-too.md"])
+    named = "see ~/.claude/RTK.md and ~/.claude/instructions/core.md\n"
+    (tree / "rules" / "names.md").write_text(RULE_HEAD + named)
+    (tree / "instructions" / "names-too.md").write_text(named)
+    (base / "home" / ".gemini").mkdir()
+    code, text = run(base, "--apply")
+    out = base / "home" / ".gemini" / "config" / "rules"
+    got = [(out / n).read_text() if (out / n).is_file() else None for n in ("names.md", "names-too.md")]
+    case(lambda: code == 0 and all(g is not None and g.endswith(
+        "see ~/.gemini/config/rules/RTK.md and ~/.gemini/config/rules/core.md\n") for g in got),
+         f"an installed rule and an always-on file name RTK.md and instructions/core.md in rules/: {code}, {got}")
     # A skill of the tree instructions: its SKILL.md loses `model:`, its other files keep their
     # frontmatter, and a text that is no `.md` keeps its ~/.claude/ paths.
     base, claude, tree = scratch.fresh(["skills/s/SKILL.md", "skills/s/notes.md", "skills/s/run.sh"])
     (tree / "skills" / "s" / "SKILL.md").write_text("---\nname: s\nmodel: large\ndescription: d\n---\n"
                                                     "~/.claude/rules/x.md\n")
-    (tree / "skills" / "s" / "notes.md").write_text("---\nmodel: kept\n---\n~/.claude/rules/x.md\n")
+    (tree / "skills" / "s" / "notes.md").write_text("---\nmodel: kept\n---\n~/.claude/rules/x.md ~/.claude/RTK.md\n")
     (tree / "skills" / "s" / "run.sh").write_text("cat ~/.claude/rules/x.md\n")
     (base / "home" / ".gemini").mkdir()
     code, text = run(base, "--apply")
     s = base / "home" / ".gemini" / "config" / "skills" / "s"
     got = [(s / n).read_text() if (s / n).is_file() else None for n in ("SKILL.md", "notes.md", "run.sh")]
     case(lambda: code == 0 and got == ["---\nname: s\ndescription: d\n---\n~/.gemini/config/rules/x.md\n",
-                                       "---\nmodel: kept\n---\n~/.gemini/config/rules/x.md\n",
+                                       "---\nmodel: kept\n---\n~/.gemini/config/rules/x.md "
+                                       "~/.gemini/config/rules/RTK.md\n",
                                        "cat ~/.claude/rules/x.md\n"],
          f"a tree skill's SKILL.md drops model:, its own .md file keeps its frontmatter, each .md names "
          f"Antigravity's copies, and a script stays as it is: {code}, {got}")
@@ -713,11 +804,12 @@ def instruction_cases(scratch):
 
     cases = [([("a", b"x" * 23999)], None), ([("a", b"x" * 24000)], "a: 24000 bytes"),
              ([(str(i), b"x" * 19999) for i in range(4)] + [("e", b"x" * 3)], None),
-             ([(str(i), b"x" * 20000) for i in range(4)], "80000 bytes")]
+             ([(str(i), b"x" * 20000) for i in range(4)], "80000 bytes"),
+             ([("a", b"x @[label](path) y")], "a holds an include"), ([("a", b"x @[label] (path) y")], None)]
     got = [refused(t) for t, _ in cases]
     case(lambda: all((g is None) if w is None else (g is not None and w in g) for g, (_, w) in zip(got, cases)),
          f"a file of 23,999 bytes passes and one of 24,000 exits 2; a sum of 79,999 bytes passes and one of 80,000 "
-         f"exits 2: {got}")
+         f"exits 2; a text with an include `@[…](…)` exits 2, and one with `@[…]` alone passes: {got}")
 
 
 def skills_files():
