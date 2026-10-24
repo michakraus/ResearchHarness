@@ -504,3 +504,14 @@
   deep". A guard at `adapters/claude/adapter.py:527` closes this entry and K100.
 - kind: defect
 - found: #80; K100
+
+### K106 · `render_permissions` checks no entry of `sandbox.excludedCommands`, so a malformed one stops the install or renders a rule that allows every command.
+
+- location: `adapters/antigravity/adapter.py:409`
+- evidence: the loop takes `command.split()[0]` of each entry of
+  `cfg.get("sandbox", {}).get("excludedCommands", [])` and checks nothing. An entry `""` raises
+  `IndexError`, `excludedCommands: null` a `TypeError` and `sandbox: null` an `AttributeError`,
+  each a traceback with exit 1. An entry `"*"` renders `command(*)`, and the app's documented rule
+  syntax reads `*` as every command. The settings template holds none of them.
+- kind: defect
+- found: #84
