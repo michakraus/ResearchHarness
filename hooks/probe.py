@@ -1358,6 +1358,21 @@ AGY_CASES = [
     ("run_command", {"CommandLine": "echo {} > ~/.gemini/config/guard-paths.json"}, "deny", None),
     ("run_command", {"CommandLine": "cat ~/.gemini/config/guard-paths.json"}, "deny", None),
     ("run_command", {"CommandLine": "rm ~/.gemini/config/hooks/guard.py"}, "deny", None),
+    # The installed instructions, rules and skills: the template's Edit rules of Claude Code's copies
+    # hold for Antigravity's, on the tools that write; a read and a command pass them.
+    ("write_file", {"Path": "~/.gemini/config/GEMINI.md", "Content": "x"}, "deny", None),
+    ("replace_file_content", {"TargetFile": "~/.gemini/config/rules/julia-code.md", "TargetContent": "a",
+                              "ReplacementContent": "b"}, "deny", None),
+    ("edit_file", {"Path": "~/.gemini/config/skills/build-part/SKILL.md", "Target": "a", "Replacement": "b"}, "deny",
+     None),
+    ("write_to_file", {"TargetFile": "~/.gemini/config/skills/new-skill/SKILL.md", "CodeContent": "x"}, "force_ask",
+     None),
+    ("view_file", {"AbsolutePath": "~/.gemini/config/GEMINI.md"}, "ask", None),
+    ("run_command", {"CommandLine": "cat ~/.gemini/config/rules/julia-code.md"}, "ask", None),
+    # The other global instruction files that Antigravity loads, which the install does not write.
+    ("write_file", {"Path": "~/.gemini/config/AGENTS.md", "Content": "x"}, "deny", None),
+    ("edit_file", {"Path": "~/.gemini/GEMINI.md", "Target": "a", "Replacement": "b"}, "deny", None),
+    ("view_file", {"AbsolutePath": "~/.gemini/GEMINI.md"}, "ask", None),
     # A home path in each form of the shell.
     ("run_command", {"CommandLine": "cat $HOME/.netrc"}, "deny", None),
     ("run_command", {"CommandLine": "cat ${HOME}/.netrc"}, "deny", None),
@@ -1753,6 +1768,36 @@ def drift(env, payload="{}"):
         else ("unreadable output", proc.stdout[-200:])
 
 
+def agy_drift(env, payload="{}"):
+    """('quiet', '') or ('warn', message) for the `SessionStart` handler of the `hooks.json` that
+    `harness install` wrote below the `HOME` of `env`, run as Antigravity runs it, by `sh -c` in the
+    directory of `hooks.json`: `{}` is quiet, and one `injectSteps` system message is a warning; any
+    other answer is its exit and its output."""
+    config = env["HOME"] + "/.gemini/config"
+    with open(config + "/hooks.json") as f:
+        handlers = [h for hook in json.load(f).values() for h in hook.get("SessionStart", [])]
+    if len(handlers) != 1:
+        return f"{len(handlers)} SessionStart handlers", ""
+    try:
+        p = subprocess.run(["/bin/sh", "-c", handlers[0]["command"]], input=payload, capture_output=True, text=True,
+                           cwd=config, env=env, timeout=TIMEOUT)
+    except subprocess.TimeoutExpired:
+        return "timeout", ""
+    try:
+        out = json.loads(p.stdout)
+    except ValueError:
+        return f"exit {p.returncode}, unreadable output", (p.stdout + p.stderr)[-200:]
+    if p.returncode == 0 and out == {}:
+        return "quiet", ""
+    try:
+        [step] = out["injectSteps"]
+        message = step["systemMessage"]["systemMessage"]
+    except (KeyError, TypeError, ValueError):
+        return f"exit {p.returncode}, unreadable output", p.stdout[-200:]
+    return ("warn", message) if p.returncode == 0 and list(out) == ["injectSteps"] and isinstance(message, str) \
+        else (f"exit {p.returncode}, unreadable output", p.stdout[-200:])
+
+
 class SetupFailed(Exception):
     """A `harness install --apply` of the drift cases that exits with another status than 0."""
 
@@ -1770,13 +1815,15 @@ def drift_cases(install=install):
 
     `install` runs `harness install --apply` into a fixture `HOME`, from this repository and from
     tree instructions in the fixture. Each case changes the fixture and expects the hook to be
-    quiet, or to warn with a text that names what it found. The cases read the files that the
-    install writes, so a failed install is one wrong case with its exit status and last line, and
-    the cases after it do not run."""
+    quiet, or to warn with a text that names what it found. Antigravity's `SessionStart` handler,
+    which the install writes into the fixture's `~/.gemini/config/hooks.json`, gets the same verdict
+    and the same text in each case. The cases read the files that the install writes, so a failed
+    install is one wrong case with its exit status and last line, and the cases after it do not run."""
     base = os.path.join(FIXTURE.name, "drift")
     home, tree = base + "/home", base + "/Agents"
     claude = home + "/.claude"
     os.makedirs(claude + "/skills")
+    os.makedirs(home + "/.gemini")
     os.makedirs(base + "/opencode")
     os.makedirs(base + "/julia")
     with open(REPO + "/Project.toml", "rb") as f, open(base + "/julia/Project.toml", "wb") as g:
@@ -1861,20 +1908,55 @@ def drift_cases(install=install):
     ]
     total = wrong = 0
     for label, change, expected, text in steps:
+        payload = "not json at all" if label.startswith("a payload") else "{}"
         try:
             if change is not None:
                 change()
-            got, message = drift(env, "not json at all" if label.startswith("a payload") else "{}")
+            got, message = drift(env, payload)
         except SetupFailed as e:  # the cases after it would read files that the install did not write
             total, wrong = total + 1, wrong + 1
             print(f"BAD exp {expected} got {e}  [inst-drif]  {label}; the cases after it do not run")
-            break
+            return total, wrong
         except Exception as e:  # a case that crashes is wrong, and the next case still runs
             got, message = f"raised {type(e).__name__}", str(e)
         ok = got == expected and text in message
         total += 1
         wrong += not ok
         print(f"{'ok ' if ok else 'BAD'} exp {expected} got {got}  [inst-drif]  {label}: {message[:160]!r}")
+        try:
+            agy, agy_message = agy_drift(env, payload)
+        except Exception as e:  # a case that crashes is wrong, and the next case still runs
+            agy, agy_message = f"raised {type(e).__name__}", str(e)
+        ok = agy == expected and agy_message == message
+        total += 1
+        wrong += not ok
+        print(f"{'ok ' if ok else 'BAD'} exp {expected} got {agy}  [agy-drift]  {label}, the same text as "
+              f"install-drift.py's: {agy_message[:160]!r}")
+    # Antigravity's handler warns, and never answers `{}`, when its copy of install-drift.py gives no
+    # answer: the warning names the copy and what went wrong.
+    copy = home + "/.gemini/config/hooks/install-drift.py"
+    failures = [("install-drift.py exits 1", "import sys; sys.stderr.write('boom'); sys.exit(1)\n", "exit 1: boom"),
+                ("install-drift.py prints text that is not JSON", "print('not json')\n", "JSONDecodeError"),
+                ("install-drift.py prints JSON that is no object", "print('[1]')\n", "TypeError"),
+                ("install-drift.py prints an object with no systemMessage", "print('{}')\n", "KeyError"),
+                ("install-drift.py prints a systemMessage that is no text", "print('{\"systemMessage\": 1}')\n",
+                 "TypeError"),
+                ("install-drift.py is missing", None, "exit 2: ")]
+    for label, source, text in failures:
+        try:
+            if source is None:
+                os.remove(copy)
+            else:
+                with open(copy, "w") as f:
+                    f.write(source)
+            agy, agy_message = agy_drift(env)
+        except Exception as e:  # a case that crashes is wrong, and the next case still runs
+            agy, agy_message = f"raised {type(e).__name__}", str(e)
+        ok = agy == "warn" and copy in agy_message and text in agy_message
+        total += 1
+        wrong += not ok
+        print(f"{'ok ' if ok else 'BAD'} exp warn got {agy}  [agy-drift]  {label}: a warning that names the copy "
+              f"and {text!r}: {agy_message[:200]!r}")
     return total, wrong
 
 

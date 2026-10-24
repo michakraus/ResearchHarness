@@ -952,9 +952,9 @@ def render_source(src, data, models):
 
 def plan(ctx):
     """The Claude Code layer of `harness install`, as the docstring of this module says. Its
-    `rules` are [(installed path, source, bytes)] of each planned file below rules/, for oh-my-pi,
-    and its `shared` the [(installed path, rendered bytes, mode)] of each file that
-    frontends.shared names, which OpenCode and oh-my-pi copy.
+    `rules` are [(installed path, source, bytes)] of each planned file below rules/, for OpenCode,
+    oh-my-pi and Antigravity, and its `shared` the [(installed path, rendered bytes, mode)] of each
+    file that frontends.shared names, which OpenCode, oh-my-pi and Antigravity copy.
 
     Exits 2 before anything is written: on a missing `tree_agents` key, or a value that is not
     the absolute path of a directory; on a source that holds the Claude Code settings, a symbolic

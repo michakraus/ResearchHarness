@@ -65,16 +65,16 @@ def Plan(**fields):
 # `kaimon-session.py` on a Kaimon `ex` or `manage_repl` call.
 GUARDS = ("no-blind-stage.py", "no-shell-file-write.py", "gh-api-writes.py", "rm-scope.py", "git-archive-output.py",
           "sandbox-semantics.py", "kaimon-session.py")
-# The paths below ~/.claude that a text can name and that OpenCode and oh-my-pi hold a copy of,
-# with the first frontend's spelling; `relocate` rewrites them.
+# The paths below ~/.claude that a text can name and that OpenCode, oh-my-pi and Antigravity hold a
+# copy of, with the first frontend's spelling; `relocate` rewrites them.
 SHARED_ROOTS = ("~/.claude/RTK.md", "~/.claude/instructions/", "~/.claude/hooks/", "~/.claude/rules/",
                 "~/.claude/skills/")
 
 
 def shared(dst):
-    """Whether the Claude Code layer's file at `dst`, relative to ~/.claude, is one that OpenCode
-    and oh-my-pi hold a copy of: RTK.md, an instruction file, a guard script, or a file of a
-    skill. Antigravity copies only the guard scripts."""
+    """Whether the Claude Code layer's file at `dst`, relative to ~/.claude, is one that OpenCode,
+    oh-my-pi and Antigravity hold a copy of: RTK.md, an instruction file, a guard script, or a file
+    of a skill."""
     return (dst == "RTK.md" or dst.startswith(("instructions/", "skills/"))
             or dst in (f"hooks/{g}" for g in GUARDS))
 

@@ -395,7 +395,13 @@ or Edit path a `read_file(…)` or `write_file(…)` rule, and an allow host of 
 `read_url(…)` rule. A `*` of an allow rule in regex form matches no text that ends a segment, so
 the rule never matches across `;`, `|`, `&`, a substitution or a redirection. A path with a glob
 that Antigravity cannot express is dropped, and the path lists of `guard.py` cover it. It installs
-no instruction, skill or agent for Antigravity.
+no agent for Antigravity.
+
+## `antigravity/ANTIGRAVITY-DELTA.md`
+
+The global instruction file of Antigravity. `harness install` writes it as
+`~/.gemini/config/GEMINI.md`, in place of `~/.claude/CLAUDE.md`. It states the facts of
+Antigravity's tools, and names the rule file to read before each kind of work.
 
 ## `antigravity/guard.py`
 
