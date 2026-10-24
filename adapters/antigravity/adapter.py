@@ -489,8 +489,8 @@ def render_agent(path, tiers, overrides, root="~/.gemini/config"):
     and `inheritMcp: true` for an agent with a Kaimon tool, each value as JSON, which YAML reads as
     the same value; then the generated-by comment, the "Under Antigravity" section and the body,
     its shared paths relocated to `root` (relocate). `effort`, `isolation` and `skills` are not
-    written: no agent sets an effort here, and the section replaces the other two. A tool that
-    TOOLS does not map, no description, and a `name:` that is not the file name exit 2."""
+    written: no agent sets an effort under Antigravity, and the section replaces the other two. A
+    tool that TOOLS does not map, no description, and a `name:` that is not the file name exit 2."""
     path = pathlib.Path(path)
     name = path.name.removesuffix(".md")
     fm = frontmatter.parse_file(path)
