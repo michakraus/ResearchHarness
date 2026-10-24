@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- **The dotfiles kit's test of a review cut short no longer depends on GNU `cat`.** In
+  `examples/dotfiles/tests/update-check.py`, the chezmoi stub's large `diff` ran `exec cat`, and
+  the test relied on that `cat` dying of SIGPIPE, with 141, when the pager quits early, as the real
+  chezmoi does. Ubuntu 26.04 ships the `cat` of uutils, which ignores SIGPIPE, so the `dotfiles` job
+  failed the 8 `chezmoi diff` cases of section 16 on `ubuntu-latest` once it moved to that image.
+  The stub now writes through a Python writer that restores the default SIGPIPE action, which dies
+  of SIGPIPE on any system. The kit itself is unchanged: chezmoi, a Go program, dies of SIGPIPE on a
+  broken standard output. The `dotfiles` job gains a step that prints the runner's `cat --version`
+  and the exit status of `cat` on a broken pipe.
+
 - **The documentation names Antigravity as the fourth frontend.** The README, the home page, the
   introduction, the architecture, the dependencies, the command page and the component pages count
   four frontends where they counted three, and list Antigravity where they listed Claude Code,

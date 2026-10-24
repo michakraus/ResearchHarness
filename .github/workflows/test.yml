@@ -80,6 +80,14 @@ jobs:
           mkdir "$RUNNER_TEMP/bin"
           tar -xzf "$RUNNER_TEMP/chezmoi.tar.gz" -C "$RUNNER_TEMP/bin" chezmoi
           echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+      # Diagnostic: the cat of the runner and its exit status on a broken pipe (141 for GNU cat).
+      - name: cat on a broken pipe
+        shell: bash
+        run: |
+          cat --version | head -n 1
+          set +e
+          head -c 200000 /dev/zero | cat | head -c 1 >/dev/null
+          echo "cat status ${PIPESTATUS[1]}"
       - name: the kit's tests
         run: |
           chezmoi --version

@@ -884,6 +884,10 @@ BIG_PAGER = 'IFS= read -r line\n[ "$line" = big ] && exit 0\ncat >/dev/null\n'
 BIG = 200_000  # the bytes of a large review: more than the 64 KB of a pipe's buffer
 QUIT_LINE = 'echo "$name: you quit the review early; $stop" >&2\n'
 APPLY_HINT = "Run chezmoi diff, read it to its end, then run chezmoi apply."
+# Copies the file argv[1] to standard output with SIGPIPE at its default, so that a broken pipe
+# kills it: the shell sees 141, as it does for chezmoi, a Go program.
+SIGPIPE_WRITER = ('import shutil, signal, sys; signal.signal(signal.SIGPIPE, signal.SIG_DFL); '
+                  'shutil.copyfileobj(open(sys.argv[1], "rb"), sys.stdout.buffer)')
 
 
 def use_pager(w, name, body):
@@ -895,11 +899,13 @@ def use_pager(w, name, body):
 
 def big_chezmoi_diff(w, status=None):
     """The chezmoi stub, whose `diff` writes BIG bytes that start with the line `big`; a broken
-    pipe ends it with 141, as it ends chezmoi. With `status`, `diff` writes one line and exits
-    with it."""
+    pipe ends it with 141, as it ends chezmoi. The writer is SIGPIPE_WRITER, not `cat`: the `cat`
+    of uutils, the coreutils of Ubuntu 26.04, ignores SIGPIPE and does not exit 141 on a broken
+    pipe. With `status`, `diff` writes one line and exits with it."""
     big = w.root / "big-diff"
     big.write_text("big\n" + ("x" * 79 + "\n") * (BIG // 80))
-    diff = f"echo big; exit {status}" if status is not None else f'exec cat "{big}"'
+    writer = f'exec "{sys.executable}" -c \'{SIGPIPE_WRITER}\' "{big}"'
+    diff = f"echo big; exit {status}" if status is not None else writer
     (w.bindir / "chezmoi").write_text(
         f'#!/bin/sh\necho "$*" >> "{w.log}"\nif [ "$1" = diff ]; then {diff}; fi\nexit 0\n')
 
