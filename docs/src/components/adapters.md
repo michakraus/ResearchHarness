@@ -407,7 +407,12 @@ directory `~/.gemini/config/`. The adapter writes:
   file as it is and gives one warning;
 - three keys of the CLI's `antigravity-cli/settings.json`: `permissions`, `toolPermission` and
   `enableTerminalSandbox`. The merge keeps every other key of that file and its indent, and backs
-  up the file it replaces.
+  up the file it replaces;
+- the same permission rules in the desktop app's grants, `userSettings.globalPermissionGrants` of
+  `config/config.json`: each rule once in its list, `allow`, `deny` or `ask`, after the entries
+  there. The merge keeps every other key and every grant of the user in its place, removes no
+  entry, and backs up the file it replaces. The app's grants per project, in `config/projects/`,
+  stay as they are.
 
 In each text except `GEMINI.md`, a path below `~/.claude/` names Antigravity's copy, and
 `RTK.md` and the files of `instructions/` are in `config/rules/`. Antigravity loads no glob rule
@@ -417,13 +422,18 @@ The permission rules are the settings template's: a Bash entry becomes a `comman
 or Edit path a `read_file(…)` or `write_file(…)` rule, and an allow host of the network lists a
 `read_url(…)` rule. A `*` of an allow rule in regex form matches no text that ends a segment, so
 the rule never matches across `;`, `|`, `&`, a substitution or a redirection. A path with a glob
-that Antigravity cannot express is dropped, and the path lists of `guard.py` cover it. The last
-`allow` rule is `mcp(kaimon/*)`. Only `agy` reads these rules; the desktop app keeps its own
-grants in `config/config.json`, which the install does not write.
+that Antigravity cannot express is dropped, and the path lists of `guard.py` cover it. Each Kaimon
+tool of the template, `mcp__kaimon__<tool>`, becomes `mcp(kaimon/<tool>)` at the end of its list:
+the app needs one grant per Kaimon tool, and the wildcard `mcp(kaimon/*)` has no effect there. A
+Kaimon tool that the template does not name gets no rule, and the app asks for it. The path list
+of `guard.py` refuses a write to `config/config.json`, so an agent cannot widen its own grants.
 
 The install exits with status 2, before it writes a file, in these cases among others:
 
-- the CLI's `settings.json` or `mcp_config.json` is not a regular file or not a JSON object;
+- the CLI's `settings.json`, the app's `config.json` or `mcp_config.json` is not a regular file or
+  not a JSON object;
+- the app's `userSettings` or `globalPermissionGrants` is not an object, or its `allow`, `deny` or
+  `ask` is not a list;
 - two sources hold the same path;
 - an instruction file or a rule holds an include `@[…](…)` or has 24,000 bytes or more, or all of
   them together reach the budget that Antigravity's rules share;
@@ -464,7 +474,8 @@ It states the facts of Antigravity:
 
 - the two controls: the terminal sandbox of `agy`, with the rules of its `settings.json`, and the
   guard hook on every tool call, in the app and in `agy`;
-- a subagent shows no prompt, so a call that needs one is refused there;
+- in the app, a call of a subagent that needs a grant shows the app's dialog, as a call of the
+  main agent does;
 - Antigravity runs no RTK rewrite, so a command runs as typed;
 - there is no worktree hook: make the worktree with `git worktree add`;
 - the `Agent` tool is `invoke_subagent`, a subagent replies through `send_message`, and no agent
