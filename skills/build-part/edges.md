@@ -372,6 +372,10 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   (`RecursionError` → exit 2) does not cover it, and a hook that builds objects lowers the depth
   at which it fails; guard each parse, and test it with the parse patched to raise (G3 verify 3,
   *Add the Antigravity frontend*)
+- a merge into a file that another program writes, dumped again with the merger's own separators:
+  a file that the other program writes minified changes its bytes on every merge, so each install
+  reports a change and makes a backup; test a merge of a file that already holds every rule (G5
+  round 1, *Add the Antigravity frontend*)
 
 ## A step that runs a user's script
 
