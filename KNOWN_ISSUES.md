@@ -384,7 +384,7 @@
 
 ### K95 · The worktree rule of the Antigravity agents matches only `isolation: worktree`, with or without double quotes.
 
-- location: `adapters/antigravity/adapter.py:470`
+- location: `adapters/antigravity/adapter.py:530`
 - evidence: `under_antigravity` uses the worktree rule when the frontmatter has `isolation:
   worktree` or the body matches `isolation: "?worktree`. `re.search(r'isolation: "?worktree', s)`
   is true for `isolation: worktree` and `isolation: "worktree"`, and false for
@@ -418,14 +418,14 @@
 - evidence: `julia-pr-reviewer` posts its review with `gh pr review <n> --comment --body-file <f>`.
   `julia-pr-shepherd` spawns it (`agents/julia-pr-shepherd.md:99`) and posts with
   `gh pr comment` itself (line 215). In the app, a subagent's call of Kaimon's `ping` showed the
-  app's dialog, as a call of the main agent does. No run of either
-  agent under Antigravity has measured `gh pr review`.
+  app's dialog, as a call of the main agent does. No run of either agent under Antigravity has
+  measured `gh pr review`, and no run has measured a subagent's prompt under `agy`.
 - kind: not verified
 - found: #78
 
 ### K99 · `sections()` of the Antigravity adapter repeats the section parser of the oh-my-pi adapter.
 
-- location: `adapters/antigravity/adapter.py:455`
+- location: `adapters/antigravity/adapter.py:515`
 - evidence: `sections(text)` returns `{m.group(1): m.group(2).strip() for m in
   re.finditer(r"(?m)^## (\w+)\n(.*?)(?=^## |\Z)", text, re.S)}`, the same expression that
   `adapters/omp/adapter.py:399` writes inline for `UNDER-OMP.md`.
@@ -440,7 +440,7 @@
   first and refuses a nesting of 993 as "nested too deep for the parser", but the second parse
   runs out of stack at 991 and 992. There, `merge_settings` of the Antigravity adapter on
   `{"d": {"a": {"a": … 1 …}}}` with 991 or 992 levels raises `RecursionError` at
-  `adapters/antigravity/adapter.py:414` <- `adapters/claude/adapter.py:527`, and exits 1 where
+  `adapters/antigravity/adapter.py:435` <- `adapters/claude/adapter.py:527`, and exits 1 where
   the contract is exit 2. A list of the same depth is written. Python 3.14 reads both depths.
   Claude Code's own merge calls the same helper at `adapters/claude/adapter.py:638`.
 - kind: defect
@@ -464,9 +464,8 @@
   for a file on one line, and `json` then writes `", "` and `": "`. On
   `{"a":1,"userSettings":{"globalPermissionGrants":{"allow":["command(git status)"],"deny":[],"ask":[]}}}`
   with that rule already in `allow`, it returns the same object with the spaces and a final
-  newline added, so the
-  bytes differ and the install lists the file as REPLACE and keeps a backup each time. Whether
-  the app writes its `config.json` minified is not measured.
+  newline added, so the bytes differ and the install lists the file as REPLACE and keeps a backup
+  each time. Whether the app writes its `config.json` minified is not measured.
 - kind: defect
 - found: #80
 
@@ -481,7 +480,7 @@
   `~/.gemini/config/agents/julia-critic.md`, and to `multi_replace_file_content` {`TargetFile`:
   either path}. The `multi_replace_file_content` half is K87.
 - kind: defect
-- found: #80; K87 for `multi_replace_file_content`
+- found: #80
 
 ### K104 · A rule that the install once wrote into the Antigravity grants stays after the settings template drops it.
 
@@ -493,3 +492,15 @@
   Deny > Ask > Allow still applies a rule that moves to `deny` or `ask`.
 - kind: defect
 - found: #80
+
+### K105 · A `config.json` nested 992–993 deep stops `harness install` with a traceback on Python 3.11.
+
+- location: `adapters/antigravity/adapter.py:463`
+- evidence: `merge_grants` calls `rewritten_numbers` (`adapters/claude/adapter.py:527`), whose
+  second parse no `RecursionError` guard holds, and its own guard covers only the write. On
+  Python 3.11, `merge_grants` on `{"d": {"a": {"a": … 1 …}}}` with 992 or 993 objects raises
+  `RecursionError` at `adapters/antigravity/adapter.py:463` <- `adapters/claude/adapter.py:527`,
+  where the docstring promises exit 2; 990 and 991 are written, and 994 exits 2 as "nested too
+  deep". A guard at `adapters/claude/adapter.py:527` closes this entry and K100.
+- kind: defect
+- found: #80; K100

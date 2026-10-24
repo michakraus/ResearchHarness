@@ -16,11 +16,13 @@
   file or not a JSON object, a `userSettings` or `globalPermissionGrants` that is not an object,
   or an `allow`, `deny` or `ask` that is not a list exits 2 before any write. The app's grants per
   project, in `config/projects/`, are not touched. The guard hook refuses a write to
-  `config.json`, so an agent cannot widen its own grants. The setup pages and the adapter page
-  say that the install writes the app's grants, and the delta states that in the app a
-  subagent's call that needs a grant shows the app's dialog, where it said that a subagent shows
-  no prompt; the agents' rule that the caller opens the pull request no longer gives that as its
-  reason.
+  `config.json` by a tool that writes a file, so an agent cannot widen its own grants with one; a
+  command or a `multi_replace_file_content` call that writes the file gets `ask` from the guard
+  (K103).
+  The setup pages and the adapter page say that the install writes the app's grants, and the
+  delta states that in the app a subagent's call that needs a grant shows the app's dialog, where
+  it said that a subagent shows no prompt; the agents' rule that the caller opens the pull request
+  no longer gives that as its reason.
 
 - **The documentation names Antigravity as the fourth frontend.** The README, the home page, the
   introduction, the architecture, the dependencies, the command page and the component pages count

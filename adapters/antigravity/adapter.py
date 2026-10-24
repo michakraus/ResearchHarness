@@ -101,7 +101,7 @@ template's order:
                          removed, because a path covers its subtree. A path with any other glob,
                          `**/X` among them, has no form in Antigravity and is dropped
   WebFetch(domain:X)     read_url(X), for each allow host of settings/network.toml and its overlay
-  mcp__kaimon__<tool>    mcp(kaimon/<tool>), at the end of its list, after the denies below
+  mcp__kaimon__<tool>    mcp(kaimon/<tool>), last in its list; in `deny`, after the denies below
 
 MCP_CONFIG is a `read_file` deny after the template's, and LAYER and MCP_CONFIG are `write_file`
 denies after that. The app needs one grant per Kaimon tool, and no wildcard covers them, so each

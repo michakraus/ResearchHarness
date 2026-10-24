@@ -426,7 +426,9 @@ that Antigravity cannot express is dropped, and the path lists of `guard.py` cov
 tool of the template, `mcp__kaimon__<tool>`, becomes `mcp(kaimon/<tool>)` at the end of its list:
 the app needs one grant per Kaimon tool, and the wildcard `mcp(kaimon/*)` has no effect there. A
 Kaimon tool that the template does not name gets no rule, and the app asks for it. The path list
-of `guard.py` refuses a write to `config/config.json`, so an agent cannot widen its own grants.
+of `guard.py` refuses a write to `config/config.json` by a tool that writes a file, so an agent
+cannot widen its own grants with one. A command or a `multi_replace_file_content` call that writes
+the file gets `ask` from the guard, not `deny`.
 
 The install exits with status 2, before it writes a file, in these cases among others:
 
