@@ -554,7 +554,12 @@ writes them to `~/.gemini/config/config.json`. `harness install` writes the perm
 added. A wildcard grant for Kaimon has no effect there, neither `kaimon/*` nor `mcp(kaimon/*)`:
 each Kaimon tool needs its own grant, so the install writes a rule for each Kaimon tool that the
 settings template names. For a Kaimon tool that the template does not name, the app asks with the
-dialog "Allow using this MCP tool?" and the name of the tool. The install leaves
+dialog "Allow using this MCP tool?" and the name of the tool. The install also writes the grants
+`command(gh)`, `command(git)`, `command(glab)` and `command(ps)`: the first words of
+`sandbox.excludedCommands` of the settings template, the commands that Claude Code runs outside
+its sandbox. With these grants, the app runs such a command with no prompt. The guard hook applies
+the template's Bash denies and asks first, so `git push --force` is still refused and
+`gh pr merge` still asks. The install leaves
 `allowNonWorkspaceAccess` at its default, `false`, so a workspace below `~/Research` asks once for
 read access to each parent `CLAUDE.md` that `GEMINI.md` has the model read. Approve each of these
 requests once.

@@ -12,10 +12,21 @@
   broken standard output. The `dotfiles` job gains a step that prints the runner's `cat --version`
   and the exit status of `cat` on a broken pipe.
 
+- **`harness install` allows `gh`, `git`, `glab` and `ps` in Antigravity, as Claude Code runs
+  them outside its sandbox.** The first word of each command of `sandbox.excludedCommands` in the
+  settings template becomes a `command(<word>)` rule at the end of the `allow` list, after the
+  Kaimon rules, once: `command(gh)`, `command(git)` and `command(glab)` are new, and
+  `command(ps)` was already there from `Bash(ps *)`. The CLI's `settings.json` and the app's
+  `config.json` get them, and a grant that the user already holds is not added again. Without
+  them the app asked before each `git`, `gh` and `glab` command. No `unsandboxed(…)` rule is
+  written. The guard hook applies the template's Bash denies and asks before the app's rules, so
+  `git push --force origin x` and `git add -A` are still refused and `gh pr merge 1` still asks;
+  the probe checks the three. The setup pages and the adapter page name the four rules.
+
 - **`harness install` writes the permission rules into the Antigravity app's grants, and grants
   each Kaimon tool on its own.** Each Kaimon tool of the settings template,
   `mcp__kaimon__<tool>`, becomes the rule `mcp(kaimon/<tool>)` in its list, `allow`, `deny` or
-  `ask` (27, 7 and 5 tools), at the end of the list, after the other rules; the wildcard
+  `ask` (27, 7 and 5 tools), after the other rules of the list; the wildcard
   `mcp(kaimon/*)` is no longer written, because the app asked for each Kaimon tool even with it
   set. The CLI's `settings.json` gets these rules in its `permissions`. The desktop app reads no
   rule from that file, and keeps its grants in `~/.gemini/config/config.json`, so the install now

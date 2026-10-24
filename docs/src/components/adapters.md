@@ -423,12 +423,17 @@ or Edit path a `read_file(…)` or `write_file(…)` rule, and an allow host of 
 `read_url(…)` rule. A `*` of an allow rule in regex form matches no text that ends a segment, so
 the rule never matches across `;`, `|`, `&`, a substitution or a redirection. A path with a glob
 that Antigravity cannot express is dropped, and the path lists of `guard.py` cover it. Each Kaimon
-tool of the template, `mcp__kaimon__<tool>`, becomes `mcp(kaimon/<tool>)` at the end of its list:
-the app needs one grant per Kaimon tool, and the wildcard `mcp(kaimon/*)` has no effect there. A
-Kaimon tool that the template does not name gets no rule, and the app asks for it. The path list
-of `guard.py` refuses a write to `config/config.json` by a tool that writes a file, so an agent
-cannot widen its own grants with one. A command or a `multi_replace_file_content` call that writes
-the file gets `ask` from the guard, not `deny`.
+tool of the template, `mcp__kaimon__<tool>`, becomes `mcp(kaimon/<tool>)` after the other rules
+of its list: the app needs one grant per Kaimon tool, and the wildcard `mcp(kaimon/*)` has no
+effect there. A Kaimon tool that the template does not name gets no rule, and the app asks for it.
+Last in `allow`, the first word of each command of the template's `sandbox.excludedCommands`,
+which Claude Code runs outside its sandbox, becomes a `command(<word>)` rule, unless the list
+holds it: `command(gh)`, `command(git)`, `command(glab)` and `command(ps)`, in the CLI's settings
+and in the app's grants. No `unsandboxed(…)` rule is written. `guard.py` applies the template's
+Bash denies and asks before these rules, so `git push --force` and `git add -A` are still refused,
+and `gh pr merge` still asks. The path list of `guard.py` refuses a write to `config/config.json`
+by a tool that writes a file, so an agent cannot widen its own grants with one. A command or a
+`multi_replace_file_content` call that writes the file gets `ask` from the guard, not `deny`.
 
 The install exits with status 2, before it writes a file, in these cases among others:
 

@@ -1566,6 +1566,15 @@ def agy_cases():
         if pattern is not None:
             got = permission(args["CommandLine"])
             report(got == pattern, f"exp {pattern} got {got}  [agy-perms]  {args['CommandLine']}")
+    # The rules of the template's excludedCommands allow each of these lines in the app's policy, and
+    # the guard, which runs before that policy, still refuses or asks.
+    for line, expected, grant in [("git push --force origin x", "deny", "command(git)"),
+                                  ("git add -A", "deny", "command(git)"),
+                                  ("gh pr merge 1", "force_ask", "command(gh)")]:
+        got, _ = verdict(good, "run_command", {"CommandLine": line})
+        granted = grant in rules["allow"] and agy.rule_matches(grant, line)
+        report(got == expected and granted,
+               f"exp {expected} got {got}  [agy-grant]  {line}, which the allow rule {grant} matches: {granted}")
     # A line of many words gets its answer within the timeout that hooks.json gives the hook.
     for line in ["echo " + "git push " * 10000, "echo " + "a " * 20000]:
         got, _ = verdict(good, "run_command", {"CommandLine": line}, limit=agy.HOOK_TIMEOUT)
