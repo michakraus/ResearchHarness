@@ -1376,6 +1376,9 @@ AGY_CASES = [
     # The installed agents.
     ("write_file", {"Path": "~/.gemini/config/agents/julia-critic.md", "Content": "x"}, "deny", None),
     ("view_file", {"AbsolutePath": "~/.gemini/config/agents/julia-critic.md"}, "ask", None),
+    # The app's grants, which an agent that rewrites them could use to widen its own; a read passes.
+    ("write_file", {"Path": "~/.gemini/config/config.json", "Content": "{}"}, "deny", None),
+    ("view_file", {"AbsolutePath": "~/.gemini/config/config.json"}, "ask", None),
     # A home path in each form of the shell.
     ("run_command", {"CommandLine": "cat $HOME/.netrc"}, "deny", None),
     ("run_command", {"CommandLine": "cat ${HOME}/.netrc"}, "deny", None),

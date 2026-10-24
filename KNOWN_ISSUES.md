@@ -384,7 +384,7 @@
 
 ### K95 · The worktree rule of the Antigravity agents matches only `isolation: worktree`, with or without double quotes.
 
-- location: `adapters/antigravity/adapter.py:470`
+- location: `adapters/antigravity/adapter.py:530`
 - evidence: `under_antigravity` uses the worktree rule when the frontmatter has `isolation:
   worktree` or the body matches `isolation: "?worktree`. `re.search(r'isolation: "?worktree', s)`
   is true for `isolation: worktree` and `isolation: "worktree"`, and false for
@@ -412,19 +412,20 @@
 - kind: docs
 - found: #78
 
-### K98 · `gh pr review` from an Antigravity subagent may need a permission prompt, which a subagent does not show.
+### K98 · `gh pr review` from an Antigravity subagent may need a permission prompt.
 
 - location: `agents/julia-pr-reviewer.md:68`
 - evidence: `julia-pr-reviewer` posts its review with `gh pr review <n> --comment --body-file <f>`.
   `julia-pr-shepherd` spawns it (`agents/julia-pr-shepherd.md:99`) and posts with
-  `gh pr comment` itself (line 215). A subagent of Antigravity shows no prompt, so a command that
-  needs one is refused. No run of either agent under Antigravity has measured it.
+  `gh pr comment` itself (line 215). In the app, a subagent's call of Kaimon's `ping` showed the
+  app's dialog, as a call of the main agent does. No run of either agent under Antigravity has
+  measured `gh pr review`, and no run has measured a subagent's prompt under `agy`.
 - kind: not verified
 - found: #78
 
 ### K99 · `sections()` of the Antigravity adapter repeats the section parser of the oh-my-pi adapter.
 
-- location: `adapters/antigravity/adapter.py:455`
+- location: `adapters/antigravity/adapter.py:515`
 - evidence: `sections(text)` returns `{m.group(1): m.group(2).strip() for m in
   re.finditer(r"(?m)^## (\w+)\n(.*?)(?=^## |\Z)", text, re.S)}`, the same expression that
   `adapters/omp/adapter.py:399` writes inline for `UNDER-OMP.md`.
@@ -439,8 +440,67 @@
   first and refuses a nesting of 993 as "nested too deep for the parser", but the second parse
   runs out of stack at 991 and 992. There, `merge_settings` of the Antigravity adapter on
   `{"d": {"a": {"a": … 1 …}}}` with 991 or 992 levels raises `RecursionError` at
-  `adapters/antigravity/adapter.py:414` <- `adapters/claude/adapter.py:527`, and exits 1 where
+  `adapters/antigravity/adapter.py:435` <- `adapters/claude/adapter.py:527`, and exits 1 where
   the contract is exit 2. A list of the same depth is written. Python 3.14 reads both depths.
   Claude Code's own merge calls the same helper at `adapters/claude/adapter.py:638`.
 - kind: defect
 - found: #78
+
+### K101 · A `config.json` with a key twice in one object loses the first value when the install merges the app's grants.
+
+- location: `adapters/antigravity/adapter.py:462`
+- evidence: `merge_grants` reads the file with `json_object`, which keeps the last value of a key.
+  On `{"userSettings": {"theme": "dark", "theme": "light"}}` it returns
+  `{"userSettings": {"theme": "light", "globalPermissionGrants": {…}}}` and raises no error, so
+  the install exits 0. `merge_settings` of the CLI's `settings.json` does the same, and
+  `merge_mcp` refuses a key twice in one object of `mcp_config.json` with exit 2.
+- kind: defect
+- found: #80
+
+### K102 · A minified `config.json` comes back with spaces after each separator, so every install replaces it.
+
+- location: `adapters/antigravity/adapter.py:480`
+- evidence: `merge_grants` writes the file with `claude.dumps` and the file's indent, which is none
+  for a file on one line, and `json` then writes `", "` and `": "`. On
+  `{"a":1,"userSettings":{"globalPermissionGrants":{"allow":["command(git status)"],"deny":[],"ask":[]}}}`
+  with that rule already in `allow`, it returns the same object with the spaces and a final
+  newline added, so the bytes differ and the install lists the file as REPLACE and keeps a backup
+  each time. Whether the app writes its `config.json` minified is not measured.
+- kind: defect
+- found: #80
+
+### K103 · The Antigravity guard answers `ask`, not `deny`, to a command or a `multi_replace_file_content` call that writes `config.json` or an installed agent.
+
+- location: `adapters/antigravity/adapter.py:331`
+- evidence: `guard_paths` puts `~/.gemini/config/config.json` and `~/.gemini/config/agents/**` in
+  the `edit` list, which the guard applies to the write tools only, not to the words of a command
+  (`hooks/probe.py:1345`: "a read and a command word pass them"). On a fixture home the guard
+  answers `deny` to `write_to_file` {`TargetFile`: `~/.gemini/config/config.json`} and `ask` to
+  `run_command` {`CommandLine`: `cp /tmp/x ~/.gemini/config/config.json`}, to the same with
+  `~/.gemini/config/agents/julia-critic.md`, and to `multi_replace_file_content` {`TargetFile`:
+  either path}. The `multi_replace_file_content` half is K87.
+- kind: defect
+- found: #80
+
+### K104 · A rule that the install once wrote into the Antigravity grants stays after the settings template drops it.
+
+- location: `adapters/antigravity/adapter.py:446`
+- evidence: `merge_grants` adds each rendered rule that a list lacks and removes no entry, because
+  it cannot tell its own rules from the user's. A Kaimon tool or a command that the template moves
+  from `allow` to `ask` or drops therefore stays in `config.json`'s `allow` list. The CLI's
+  `settings.json` does not keep it: `merge_settings` sets its `permissions` to the rendered rules.
+  Deny > Ask > Allow still applies a rule that moves to `deny` or `ask`.
+- kind: defect
+- found: #80
+
+### K105 · A `config.json` nested 992–993 deep stops `harness install` with a traceback on Python 3.11.
+
+- location: `adapters/antigravity/adapter.py:463`
+- evidence: `merge_grants` calls `rewritten_numbers` (`adapters/claude/adapter.py:527`), whose
+  second parse no `RecursionError` guard holds, and its own guard covers only the write. On
+  Python 3.11, `merge_grants` on `{"d": {"a": {"a": … 1 …}}}` with 992 or 993 objects raises
+  `RecursionError` at `adapters/antigravity/adapter.py:463` <- `adapters/claude/adapter.py:527`,
+  where the docstring promises exit 2; 990 and 991 are written, and 994 exits 2 as "nested too
+  deep". A guard at `adapters/claude/adapter.py:527` closes this entry and K100.
+- kind: defect
+- found: #80; K100

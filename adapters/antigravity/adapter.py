@@ -55,7 +55,8 @@ compares names, exits 2; so does an instruction file or a rule that holds an inc
 (check_sizes): Antigravity would cut the file, or demote rules to path pointers. An installed
 file with no source below config/rules/, config/skills/, config/hooks/ and config/agents/ is
 EXTRA, with its removal command (extras); every other file below ~/.gemini/, Antigravity's own
-antigravity/, config.json and plugins/ among them, is neither listed nor touched. The other files:
+antigravity/, the app's per-project grants in config/projects/ and plugins/ among them, is neither
+listed nor touched. The other files:
 
   config/guard-paths.json        the path list of guard.py (guard_paths): under `deny` that of
                                  adapters/opencode/plugins/guard-paths.json, MCP_CONFIG and the
@@ -63,8 +64,9 @@ antigravity/, config.json and plugins/ among them, is neither listed nor touched
                                  Edit denies and asks, then the same rules for this layer's copies
                                  of the files that frontends.SHARED_ROOTS names (relocate), and
                                  under `edit` the global instruction files that Antigravity loads,
-                                 config/GEMINI.md, config/AGENTS.md and ~/.gemini/GEMINI.md, and
-                                 the installed agents, config/agents/; guard.py applies `edit`
+                                 config/GEMINI.md, config/AGENTS.md and ~/.gemini/GEMINI.md, the
+                                 installed agents, config/agents/, and the app's grants,
+                                 config/config.json (APP_CONFIG); guard.py applies `edit`
                                  and `ask` to the tools that write; under `bash_deny` and
                                  `bash_ask` the bodies of its Bash denies and asks, which guard.py
                                  applies to each segment of a command
@@ -72,6 +74,13 @@ antigravity/, config.json and plugins/ among them, is neither listed nor touched
                                  `enableTerminalSandbox` of the CLI's settings, set in the file
                                  as it is, every other key kept, after a backup (merge_settings);
                                  a file that is not a regular file or not a JSON object exits 2
+                                 before any write
+  config/config.json             the desktop app's settings: each rule added once to its list,
+                                 `allow`, `deny` or `ask`, of `userSettings.globalPermissionGrants`,
+                                 after the entries there, every other key and entry kept in its
+                                 place, after a backup (merge_grants); a file that is not a regular
+                                 file or not a JSON object, or a `userSettings`,
+                                 `globalPermissionGrants` or list there of the wrong type, exits 2
                                  before any write
 
 THE POSTURE is Claude Code's: the terminal sandbox on, and `toolPermission` `proceed-in-sandbox`,
@@ -92,15 +101,17 @@ template's order:
                          removed, because a path covers its subtree. A path with any other glob,
                          `**/X` among them, has no form in Antigravity and is dropped
   WebFetch(domain:X)     read_url(X), for each allow host of settings/network.toml and its overlay
+  mcp__kaimon__<tool>    mcp(kaimon/<tool>), last in its list; in `deny`, after the denies below
 
 MCP_CONFIG is a `read_file` deny after the template's, and LAYER and MCP_CONFIG are `write_file`
-denies after that. `mcp(kaimon/*)` is the last `allow` rule: a subagent shows no prompt, so a
-Kaimon call that needs one is refused there. Every other entry is dropped, with its reason. A
+denies after that. The app needs one grant per Kaimon tool, and no wildcard covers them, so each
+Kaimon tool of the template is its own rule. Every other entry is dropped, with its reason. A
 dropped `Read(**/X)` deny is still in the `deny` list of guard.py, and a dropped Edit entry in its
 `edit` or `ask` list. A command with `$(…)` or a backtick matches only a full-line rule in
 Antigravity, so a `deny` does not reach it; guard.py applies the Bash denies and asks to each
 segment of the line, the bodies of `$(…)`, backticks and `( … )` included, and is the boundary.
-The desktop app reads no `permissions`, so there guard.py alone applies them.
+The desktop app reads no `permissions`; it keeps its grants in config/config.json, which gets the
+same rules.
 """
 
 import json
@@ -181,8 +192,11 @@ KAIMON_URL = "http://127.0.0.1:2828/"
 KAIMON_TOKEN = pathlib.Path(".config", "kaimon", "opencode-token")
 # The installed agents, which an agent that rewrites them could use to widen its own tools.
 AGENTS = "{home}/.gemini/config/agents/**"
-# The permission rule that allows every Kaimon tool.
-MCP_ALLOW = "mcp(kaimon/*)"
+# The desktop app's settings, whose userSettings.globalPermissionGrants holds its grants, in the
+# lists of LISTS and in the rule form of the CLI.
+APP_CONFIG = "{home}/.gemini/config/config.json"
+# A Kaimon tool of the settings template, `mcp__kaimon__<tool>`.
+KAIMON_TOOL = re.compile(r"mcp__kaimon__(\w+)")
 
 
 def gemini_dir():
@@ -300,8 +314,9 @@ def guard_paths(profile):
     path of this layer's copy (relocate) of each such path below a root of frontends.SHARED_ROOTS,
     and `edit` then the global instruction files that Antigravity loads: config/GEMINI.md, the
     counterpart of ~/.claude/CLAUDE.md, config/AGENTS.md and ~/.gemini/GEMINI.md, which the install
-    does not write; then the installed agents, AGENTS; under `bash_deny` and `bash_ask` the body of
-    every `Bash` deny and ask of the template."""
+    does not write; then the installed agents, AGENTS, and the app's settings, APP_CONFIG, whose
+    grants an agent could widen; under `bash_deny` and `bash_ask` the body of every `Bash` deny and
+    ask of the template."""
     deny = json.loads(profile_module.render_file(GUARD_PATHS, profile))["deny"]
     permissions = json.loads(profile_module.render_file(SETTINGS, profile))["permissions"]
     bodies = {(tool, key): [m.group(1) for e in permissions.get(key, [])
@@ -313,7 +328,7 @@ def guard_paths(profile):
     copies = {key: [home + relocate(("~" + p[len(home):]).encode(), "~/.gemini/config").decode()[1:]
                     for p in paths if p.startswith(roots)] for key, paths in edits.items()}
     globals_ = [render(p, profile) for p in ("{home}/.gemini/config/GEMINI.md", "{home}/.gemini/config/AGENTS.md",
-                                             "{home}/.gemini/GEMINI.md", AGENTS)]
+                                             "{home}/.gemini/GEMINI.md", AGENTS, APP_CONFIG)]
     return json.dumps({"deny": [*deny, render(MCP_CONFIG, profile), *(render(p, profile) for p in LAYER)],
                        "edit": [*edits["deny"], *copies["deny"], *globals_],
                        "ask": [*edits["ask"], *copies["ask"]],
@@ -352,12 +367,18 @@ def path_rule(action, body):
 def render_permissions(cfg, profile):
     """({list: [rule]}, [(list, entry, reason)]) of the `permissions` of `cfg`, the rendered
     settings template: the Antigravity rules in the template's lists and order, MCP_CONFIG as a
-    `read_file` deny and LAYER and MCP_CONFIG as `write_file` denies after them, MCP_ALLOW last in
-    `allow`, and each entry that has no rule, with its reason."""
+    `read_file` deny and LAYER and MCP_CONFIG as `write_file` denies after them, then each Kaimon
+    tool of a list (KAIMON_TOOL) as `mcp(kaimon/<tool>)` at its end, in the template's order, and
+    each entry that has no rule, with its reason. The app needs one grant per Kaimon tool, and no
+    wildcard covers them."""
     rules, dropped = {key: [] for key in LISTS}, []
+    kaimon = {key: [] for key in LISTS}
     for key in LISTS:
         for entry in cfg["permissions"].get(key, []):
             rule, reason = None, None
+            if m := KAIMON_TOOL.fullmatch(entry):
+                kaimon[key].append(f"mcp(kaimon/{m.group(1)})")
+                continue
             if m := re.fullmatch(r"Bash\((.*)\)", entry, re.S):
                 rule = command_rule(m.group(1), key == "allow")
             elif m := re.fullmatch(r"(Read|Edit)\((.*)\)", entry, re.S):
@@ -365,16 +386,16 @@ def render_permissions(cfg, profile):
             elif (m := re.fullmatch(r"WebFetch\(domain:(.*)\)", entry)) and key == "allow":
                 rule = f"read_url({m.group(1)})"
             else:
-                reason = "no Antigravity rule renders it: the rules come from the Bash, Read and Edit entries and " \
-                         "the allow hosts"
+                reason = "no Antigravity rule renders it: the rules come from the Bash, Read and Edit entries, " \
+                         "the allow hosts and the Kaimon tools"
             if rule is None:
                 dropped.append((key, entry, reason))
             else:
                 rules[key].append(rule)
     rules["deny"] += [f"read_file({render(MCP_CONFIG, profile)})",
                       *(f"write_file({render(p, profile).removesuffix('/**')})" for p in (*LAYER, MCP_CONFIG))]
-    # A subagent shows no prompt, so a Kaimon call that needs one is refused there.
-    rules["allow"].append(MCP_ALLOW)
+    for key in LISTS:
+        rules[key] += kaimon[key]
     return rules, dropped
 
 
@@ -416,6 +437,45 @@ def merge_settings(path, rules):
             raise HarnessError(f"{path} holds numbers that JSON would write in other text: "
                                f"{', '.join(f'{k}: {old} as {new}' for k, old, new in numbers)}{refused}")
     settings.update(permissions=rules, **POSTURE)
+    try:
+        return (claude.dumps(settings, indent=indent) + "\n").encode()
+    except RecursionError:  # a nesting that json.loads reads and json.dumps cannot write
+        raise HarnessError(f"{path} is JSON nested too deep to write again{refused}") from None
+
+
+def merge_grants(path, rules):
+    """The bytes of the app's settings at `path` with each rule of `rules` added once to its list,
+    `allow`, `deny` or `ask`, of `userSettings.globalPermissionGrants`, after the entries that the
+    list holds: every other key and every entry stays in its place, and a missing key is created;
+    the file's indent is kept, as merge_settings keeps it. A missing file holds no key. Exits 2,
+    before anything is written, on a file that is not a regular file, cannot be read, is not UTF-8,
+    is not a JSON object, has a `userSettings` or a `globalPermissionGrants` that is not an object
+    or one of the three lists that is not a list, is nested deeper than json writes, or holds a
+    number that json writes in other text. The install removes no entry, so a rule that it wrote
+    once stays."""
+    claude = frontends.adapter("claude")
+    refused = ("; the install adds its rules to userSettings.globalPermissionGrants of a JSON object in a regular "
+               "file there, and writes nothing")
+    text = read_regular(path, refused)
+    settings, indent = {}, 2
+    if text is not None:
+        settings, indent = claude.json_object(path, text), claude.indent_of(text)
+        numbers = claude.rewritten_numbers(text, ())
+        if numbers:
+            raise HarnessError(f"{path} holds numbers that JSON would write in other text: "
+                               f"{', '.join(f'{k}: {old} as {new}' for k, old, new in numbers)}{refused}")
+    node, where = settings, []
+    for key in ("userSettings", "globalPermissionGrants"):
+        node, where = node.setdefault(key, {}), [*where, key]
+        if not isinstance(node, dict):
+            raise HarnessError(f"{path}: its {'.'.join(where)} is not a JSON object{refused}")
+    for key in ("allow", "deny", "ask"):
+        entries = node.setdefault(key, [])
+        if not isinstance(entries, list):
+            raise HarnessError(f"{path}: its {'.'.join(where)}.{key} is not a JSON list{refused}")
+        for rule in rules[key]:
+            if rule not in entries:
+                entries.append(rule)
     try:
         return (claude.dumps(settings, indent=indent) + "\n").encode()
     except RecursionError:  # a nesting that json.loads reads and json.dumps cannot write
@@ -471,7 +531,7 @@ def under_antigravity(meta, body, text=None):
         ("agent", "agent" in tools),
         ("background", "run_in_background" in body),
         ("mcp", any(t.startswith(frontmatter.MCP) for t in tools)),
-        # A subagent shows no prompt, and `gh pr create` can need one.
+        # `gh pr create` can need a grant, so the caller runs it.
         ("pr", re.search(r"(?i)open (?:the|a) pull request", body) is not None)] if uses]
     if not used:
         return ""
@@ -659,11 +719,12 @@ def plan(ctx):
         warnings.append(warning)
     else:
         files.append(("config/mcp_config.json", mcp, 0o600))
-    settings = root / "antigravity-cli" / "settings.json"
-    # The CLI's settings hold the user's own keys, so a replaced file is backed up first.
+    settings, app = root / "antigravity-cli" / "settings.json", root / "config" / "config.json"
+    # The CLI's and the app's settings hold the user's own keys, so a replaced file is backed up first.
     return frontends.Plan(files=[*((root / rel, data, mode, f"antigravity/{rel}") for rel, data, mode in files),
                                  (settings, merge_settings(settings, rules), None,
-                                  "antigravity/antigravity-cli/settings.json", True)],
+                                  "antigravity/antigravity-cli/settings.json", True),
+                                 (app, merge_grants(app, rules), None, "antigravity/config/config.json", True)],
                           extra=extras(root, files), warnings=warnings)
 
 
@@ -704,6 +765,7 @@ def selftest():
         instruction_cases(scratch)
         rule_cases(scratch.case)
         merge_cases(scratch)
+        grants_cases(scratch)
         model_cases(scratch)
         agent_cases(scratch)
         council_cases(scratch)
@@ -721,7 +783,7 @@ def layer_cases(scratch):
              *(f"config/agents/{p.name}" for p in (REPO / "agents").glob("*.md"))]
     want = sorted(["config/hooks.json", "config/guard-paths.json", "config/hooks/guard.py",
                    *(f"config/hooks/{g}" for g in frontends.GUARDS), "config/hooks/install-drift.py",
-                   "antigravity-cli/settings.json", *texts])
+                   "antigravity-cli/settings.json", "config/config.json", *texts])
 
     base, claude, _ = scratch.fresh()
     code, dry = run(base)
@@ -746,7 +808,8 @@ def layer_cases(scratch):
     case(lambda: sorted(listed) == want and set(listed.values()) == {"INSTALL"}
          and sorted(p.relative_to(gemini).as_posix() for p in gemini.rglob("*")) == [],
          f"the dry run lists hooks.json, guard-paths.json, hooks/guard.py, the seven scripts of frontends.GUARDS, "
-         f"hooks/install-drift.py, antigravity-cli/settings.json, the instruction files, rules and skills, and one "
+         f"hooks/install-drift.py, antigravity-cli/settings.json, config/config.json, the instruction files, rules "
+         f"and skills, and one "
          f"agents/<name>.md for each agent of agents/, each INSTALL, and writes nothing: {code}, "
          f"{sorted(set(listed) ^ set(want))}")
     planned = {p.split("/")[2] for p in listed if p.startswith("config/skills/")}
@@ -806,7 +869,7 @@ def layer_cases(scratch):
     copies = {key: [moved(p) for p in edits[key] if p.startswith(tuple(f"{h}/.claude/{c}" for c in copied))]
               for key in ("deny", "ask")}
     globals_ = [f"{h}/.gemini/config/GEMINI.md", f"{h}/.gemini/config/AGENTS.md", f"{h}/.gemini/GEMINI.md",
-                f"{h}/.gemini/config/agents/**"]
+                f"{h}/.gemini/config/agents/**", f"{h}/.gemini/config/config.json"]
     lists = config / "guard-paths.json"
     written = json.loads(lists.read_text()) if lists.is_file() else {}
     case(lambda: written["edit"][len(edits["deny"]):] == [*copies["deny"], *globals_]
@@ -818,7 +881,8 @@ def layer_cases(scratch):
          and copies["ask"] == [f"{h}/.gemini/config/skills/**"],
          f"after the template's Edit rules, `edit` holds each Edit deny of a copied path below ~/.claude/ as "
          f"the path of its copy below ~/.gemini/config/, RTK.md and instructions/ in rules/, then GEMINI.md, "
-         f"AGENTS.md, ~/.gemini/GEMINI.md and the installed agents, and `ask` each such Edit ask: "
+         f"AGENTS.md, ~/.gemini/GEMINI.md, the installed agents and the app's config.json, and `ask` each such "
+         f"Edit ask: "
          f"{written.get('edit', [])[len(edits['deny']):]}, {written.get('ask', [])[len(edits['ask']):]}")
     case(lambda: written == {"deny": [*opencode, f"{h}/.gemini/config/mcp_config.json", f"{h}/.gemini/config/hooks.json",
                                       f"{h}/.gemini/config/hooks/**", f"{h}/.gemini/config/guard-paths.json",
@@ -838,9 +902,26 @@ def layer_cases(scratch):
          and "allowNonWorkspaceAccess" not in settings and sorted(settings) == sorted(["permissions", *POSTURE]),
          f"a new settings.json holds the three keys, with the sandbox on and proceed-in-sandbox, and no "
          f"allowNonWorkspaceAccess: {sorted(settings)}")
+    kaimon = {key: ["mcp(kaimon/" + e.removeprefix("mcp__kaimon__") + ")" for e in template[key]
+                    if e.startswith("mcp__kaimon__")] for key in LISTS}
+    cli = settings.get("permissions", {})
+    case(lambda: all(kaimon[key] and cli[key][-len(kaimon[key]):] == kaimon[key]
+                     and not [r for r in cli[key][:-len(kaimon[key])] if r.startswith("mcp(")] for key in LISTS)
+         and "mcp(kaimon/*)" not in cli["allow"],
+         f"the CLI's settings.json holds each Kaimon tool of the template as mcp(kaimon/<tool>) at the end of its "
+         f"list, after the other rules, and no mcp(kaimon/*): "
+         f"{ {key: cli.get(key, [])[-2:] for key in LISTS} }")
+    app = config / "config.json"
+    grants = json.loads(app.read_text()) if app.is_file() else {}
+    case(lambda: grants == {"userSettings": {"globalPermissionGrants": {k: cli[k] for k in ("allow", "deny", "ask")}}}
+         and list(grants["userSettings"]["globalPermissionGrants"]) == ["allow", "deny", "ask"]
+         and not list(config.glob("config.json.bak-*")),
+         f"a new config/config.json holds userSettings.globalPermissionGrants alone, its allow, deny and ask the "
+         f"rules of the CLI's permissions, and no backup is made: {list(grants)}")
     code, text = run(base, "--apply")
     case(lambda: code == 0 and dict(line.findall(text)) == {k: "already" for k in want}
-         and not list((gemini / "antigravity-cli").glob("settings.json.bak-*")),
+         and not list((gemini / "antigravity-cli").glob("settings.json.bak-*"))
+         and not list(config.glob("config.json.bak-*")),
          f"a second --apply finds every file identical and makes no backup: {code}, {dict(line.findall(text))}")
 
 
@@ -946,7 +1027,7 @@ def instruction_cases(scratch):
     strays = [config / "rules" / "stray.md", config / "skills" / "gone" / "SKILL.md",
               config / "skills" / "build-part" / "old.md", config / "hooks" / "old.py", config / "skills" / "loose.md",
               config / "agents" / "gone.md"]
-    theirs = [gemini / "antigravity" / "x.json", config / "config.json", config / "plugins" / "p" / "x.md",
+    theirs = [gemini / "antigravity" / "x.json", config / "projects" / "p.json", config / "plugins" / "p" / "x.md",
               config / "rules" / ".DS_Store"]
     for p in strays + theirs:
         p.parent.mkdir(parents=True, exist_ok=True)
@@ -962,7 +1043,7 @@ def instruction_cases(scratch):
         (str(config / "agents" / "gone.md"), f"rm '{config / 'agents' / 'gone.md'}'")])
          and all(p.read_text() == "x\n" for p in strays + theirs),
          f"a file with no source below rules/, skills/, hooks/ or agents/ is EXTRA with its removal command, and "
-         f"antigravity/, config.json, plugins/ and a hidden file are not listed: {code}, {extra}")
+         f"antigravity/, projects/, plugins/ and a hidden file are not listed: {code}, {extra}")
     case(lambda: render_skill(b"---\nname: s\nmodel: large\n---\n\nmodel: kept\n")
          == b"---\nname: s\n---\n\nmodel: kept\n"
          and render_skill(b"no frontmatter\nmodel: kept\n") == b"no frontmatter\nmodel: kept\n",
@@ -1096,11 +1177,14 @@ def rule_cases(case):
               f"write_file({h}/.gemini/config/hooks)", f"write_file({h}/.gemini/config/guard-paths.json)",
               f"write_file({h}/.gemini/antigravity-cli/settings.json)",
               f"write_file({h}/.gemini/config/mcp_config.json)"]
+    # Each Kaimon tool of the template, `mcp__kaimon__<tool>`, as the rule `mcp(kaimon/<tool>)`.
+    kaimon = {key: ["mcp(kaimon/" + e.removeprefix("mcp__kaimon__") + ")" for e in cfg["permissions"][key]
+                    if e.startswith("mcp__kaimon__")] for key in LISTS}
     wrong = []
     for key in LISTS:
         out = iter(rules[key])
         for entry in cfg["permissions"][key]:
-            if (key, entry) in reasons:
+            if (key, entry) in reasons or entry.startswith("mcp__kaimon__"):
                 continue
             got = next(out, None)
             if m := re.fullmatch(r"Bash\((.*)\)", entry, re.S):
@@ -1122,12 +1206,18 @@ def rule_cases(case):
             if not ok:
                 wrong.append((key, entry, got))
         rest = list(out)
-        if rest != {"deny": extras, "allow": ["mcp(kaimon/*)"]}.get(key, []):
+        if rest != [*{"deny": extras}.get(key, []), *kaimon[key]]:
             wrong.append((key, "after the template's entries", rest))
     case(lambda: not wrong and rules["allow"] and rules["ask"] and rules["deny"],
          f"each Bash, Read and Edit entry and each allow host is one rule in its list, in order, that matches the "
          f"entry's lines or names its path; after them, mcp_config.json is a read_file deny, the files of the "
-         f"layer and mcp_config.json are write_file denies, and every Kaimon tool is an mcp allow: {wrong[:5]}")
+         f"layer and mcp_config.json are write_file denies, and then each Kaimon tool of the list is its "
+         f"mcp(kaimon/<tool>) rule, in the template's order: {wrong[:5]}")
+    case(lambda: {key: len(kaimon[key]) for key in LISTS} == {"deny": 7, "ask": 5, "allow": 27}
+         and {"mcp(kaimon/ping)", "mcp(kaimon/ex)"} <= set(rules["allow"])
+         and not [r for key in LISTS for r in rules[key] if r.startswith("mcp(") and "*" in r],
+         f"the template's 27 Kaimon allows, 7 denies and 5 asks are rules, ping and ex among the allows, and no "
+         f"mcp rule is a wildcard: { {key: [r for r in rules[key] if r.startswith('mcp(')][:3] for key in LISTS} }")
     bash = {key: [e for e in cfg["permissions"][key] if e.startswith("Bash(")] for key in LISTS}
     case(lambda: not [d for d in dropped if d[1].startswith("Bash(")]
          and all(sum(r.startswith("command(") for r in rules[key]) == len(bash[key]) for key in LISTS),
@@ -1156,13 +1246,17 @@ def rule_cases(case):
     globbed = [r for key in LISTS for r in rules[key] if re.match(r"(read_file|write_file)\(.*[*?\[]", r)]
     case(lambda: not globbed, f"no read_file or write_file rule holds a glob: {globbed[:3]}")
     small = {"permissions": {"deny": ["WebFetch(domain:x.org)", "Read(src/x)", "Edit(//a/*.py)", "Edit(//a/b/**)"],
-                             "allow": ["WebFetch(domain:y.org)", "mcp__k__ping"]}}
+                             "allow": ["mcp__kaimon__ex", "WebFetch(domain:y.org)", "mcp__k__ping", "mcp__kaimon",
+                                       "mcp__kaimon__*"],
+                             "ask": ["mcp__kaimon__debug_eval"]}}
     got = render_permissions(small, profile)
-    case(lambda: got[0] == {"deny": ["write_file(/a/b)", *extras], "ask": [],
-                            "allow": ["read_url(y.org)", "mcp(kaimon/*)"]}
-         and [e for _, e, _ in got[1]] == ["WebFetch(domain:x.org)", "Read(src/x)", "Edit(//a/*.py)", "mcp__k__ping"],
-         f"a WebFetch deny, a relative path, a glob in a path and an MCP tool are dropped; an allow host is a "
-         f"read_url rule: {got}")
+    case(lambda: got[0] == {"deny": ["write_file(/a/b)", *extras], "ask": ["mcp(kaimon/debug_eval)"],
+                            "allow": ["read_url(y.org)", "mcp(kaimon/ex)"]}
+         and [e for _, e, _ in got[1]] == ["WebFetch(domain:x.org)", "Read(src/x)", "Edit(//a/*.py)", "mcp__k__ping",
+                                           "mcp__kaimon", "mcp__kaimon__*"],
+         f"a WebFetch deny, a relative path, a glob in a path, another server's MCP tool and a Kaimon entry that "
+         f"names no tool are dropped; an allow host is a read_url rule, and a Kaimon tool is its mcp rule after "
+         f"the others, in its list: {got}")
     examples = {("deny", "Bash(sed -i* *)"): r"command(regex:^sed -i.*(?: .*)?$)",
                 ("deny", "Bash(git push * -f)"): r"command(regex:^git push .* -f$)",
                 ("deny", "Bash(git -C * add .)"): r"command(regex:^git -C .* add \.$)",
@@ -1346,6 +1440,99 @@ def merge_cases(scratch):
              and scratch.snapshot(base) == snapshot,
              f"a settings.json that {label} exits 2, names the file, and nothing is written: {code}, "
              f"{tail(text)!r}")
+
+
+def grants_cases(scratch):
+    """The merge of the app's config.json: the rules added to userSettings.globalPermissionGrants
+    once, every other key and every entry of the user's kept in its place, a backup, and exit 2
+    before any write on a file or a key of the wrong type."""
+    case, run, tail = scratch.case, scratch.run, scratch.tail
+    base, _, _ = scratch.fresh()
+    config = base / "home" / ".gemini" / "config"
+    config.mkdir(parents=True)
+    app = config / "config.json"
+    own = {"permissionGrantsV2Migrated": True, "remoteControlHostname": "host—1",
+           "userSettings": {"theme": "dark",
+                            "globalPermissionGrants": {"allow": ["read_file(/u/notes)", "mcp(kaimon/*)",
+                                                                 "mcp(kaimon/ping)"],
+                                                       "deny": ["command(rm)"], "other": [1, 2]},
+                            "last": {"a": [1.5]}},
+           "sandboxEnabledAtV2Migration": False}
+    app.write_text(json.dumps(own, indent=4, ensure_ascii=False) + "\n", encoding="utf-8")
+    before = app.read_bytes()
+    code, dry = run(base)
+    listed = re.findall(r"^antigravity/config/config\.json\s+(\S+)", dry, re.M)
+    case(lambda: code in (0, 1) and listed == ["REPLACE"] and app.read_bytes() == before,
+         f"the dry run lists config/config.json as REPLACE and writes nothing: {code}, {listed}")
+    code, text = run(base, "--apply")
+    merged = json.loads(app.read_text(encoding="utf-8")) if app.is_file() else {}
+    cli = json.loads((base / "home" / ".gemini" / "antigravity-cli" / "settings.json").read_text())["permissions"]
+    grants = merged.get("userSettings", {}).get("globalPermissionGrants", {})
+    mine = own["userSettings"]["globalPermissionGrants"]
+
+    def added(key):
+        out = []
+        for rule in cli[key]:
+            if rule not in mine.get(key, []) and rule not in out:
+                out.append(rule)
+        return out
+
+    case(lambda: code == 0 and list(merged) == list(own)
+         and {k: v for k, v in merged.items() if k != "userSettings"} == {k: v for k, v in own.items()
+                                                                           if k != "userSettings"}
+         and list(merged["userSettings"]) == list(own["userSettings"])
+         and merged["userSettings"]["theme"] == "dark" and merged["userSettings"]["last"] == {"a": [1.5]}
+         and list(grants) == ["allow", "deny", "other", "ask"] and grants["other"] == [1, 2],
+         f"--apply keeps every other key of config.json, of userSettings and of globalPermissionGrants, in its "
+         f"place, and adds ask after them: {code}, {list(merged)}, {list(grants)}, {tail(text)!r}")
+    case(lambda: all(grants[key] == [*mine.get(key, []), *added(key)] for key in ("allow", "deny", "ask"))
+         and grants["allow"].count("mcp(kaimon/ping)") == 1 and "mcp(kaimon/ex)" in grants["allow"]
+         and set(cli["deny"]) <= set(grants["deny"]) and set(cli["ask"]) <= set(grants["ask"]),
+         f"each list keeps the user's entries first, mcp(kaimon/*) among them, then holds each rule of the "
+         f"CLI's permissions once: {[grants.get(k, [])[:4] for k in ('allow', 'deny', 'ask')]}")
+    backups = list(config.glob("config.json.bak-*"))
+    written = app.read_text(encoding="utf-8")
+    case(lambda: len(backups) == 1 and backups[0].read_bytes() == before
+         and written.split("\n")[1].startswith('    "permissionGrantsV2Migrated"') and '"host—1"' in written,
+         f"--apply keeps a backup of the file it replaces, with its bytes, and the file's indent of 4 and its "
+         f"characters: {backups}, {written.split(chr(10))[1]!r}")
+    after = app.read_bytes()
+    code, text = run(base, "--apply")
+    case(lambda: code == 0 and app.read_bytes() == after and len(list(config.glob("config.json.bak-*"))) == 1
+         and re.findall(r"^antigravity/config/config\.json\s+(\S+)", text, re.M) == ["already"],
+         f"a second --apply adds no rule again and makes no backup: {code}, {tail(text)!r}")
+
+    def fifo(path):
+        os.mkfifo(path)
+
+    def link(path):
+        (path.parent / "real.json").write_text("{}\n")
+        path.symlink_to("real.json")
+
+    for data, label in [(b"", "is empty"), (b"[1, 2]\n", "holds a JSON array"),
+                        (b"not json\n", "holds text that is not JSON"), (b"\xff\n", "holds bytes that are not UTF-8"),
+                        (b'{"a": ' * 100000 + b"1" + b"}" * 100000, "holds a JSON object nested 100000 deep"),
+                        (b'{"limit": 1e400}\n', "holds a number that JSON writes in other text"),
+                        (b'{"userSettings": []}\n', "has a userSettings that is a list"),
+                        (b'{"userSettings": {"globalPermissionGrants": "x"}}\n',
+                         "has a globalPermissionGrants that is a string"),
+                        (b'{"userSettings": {"globalPermissionGrants": {"allow": {}}}}\n', "has an allow that is an object"),
+                        (b'{"userSettings": {"globalPermissionGrants": {"deny": "command(rm)"}}}\n',
+                         "has a deny that is a string"),
+                        (b'{"userSettings": {"globalPermissionGrants": {"ask": null}}}\n', "has an ask that is null"),
+                        (fifo, "is a FIFO"), (link, "is a symlink"), (os.mkdir, "is a directory")]:
+        base, _, _ = scratch.fresh()
+        config = base / "home" / ".gemini" / "config"
+        config.mkdir(parents=True)
+        if callable(data):
+            data(config / "config.json")
+        else:
+            (config / "config.json").write_bytes(data)
+        snapshot = scratch.snapshot(base)
+        code, text = run(base, "--apply")
+        case(lambda: scratch.refused(code, text) and str(config / "config.json") in text
+             and scratch.snapshot(base) == snapshot,
+             f"a config.json that {label} exits 2, names the file, and nothing is written: {code}, {tail(text)!r}")
 
 
 # The tiers of [antigravity] in examples/models.toml, written out here.

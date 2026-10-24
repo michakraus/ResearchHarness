@@ -615,7 +615,8 @@ harness install
 file `GEMINI.md`, the always-on rules and the rules, the skills, the agents, the guard hook
 `hooks.json` with `guard.py` and the guard scripts, the path list, and the Kaimon entry of
 `mcp_config.json`. It also writes the permission rules into the settings of the CLI `agy`,
-`~/.gemini/antigravity-cli/settings.json`, after a backup.
+`~/.gemini/antigravity-cli/settings.json`, and into the grants of the desktop app,
+`~/.gemini/config/config.json`, each after a backup.
 [components/adapters.md](components/adapters.md) describes the adapter.
 
 **The tiers.** An Antigravity agent names a tier, never a model, so the table `[antigravity]` of
@@ -645,16 +646,19 @@ harness install
 
 **The permission settings of the app.** The desktop app reads no permission rule from the CLI's
 `settings.json`. It keeps its grants under **General → Tool Permissions** in its settings, and
-writes them to `~/.gemini/config/config.json`. A wildcard grant for Kaimon has no effect there,
-neither `kaimon/*` nor `mcp(kaimon/*)`: each Kaimon tool needs its own grant. So approve each
-Kaimon tool once, when the app asks with the dialog "Allow using this MCP tool?" and the name of
-the tool, such as `kaimon/ping`. The install leaves `allowNonWorkspaceAccess` at its default,
-`false`, so a workspace below `~/Research` asks once for read access to each parent `CLAUDE.md`
-that `GEMINI.md` has the model read. Approve each of these requests once.
+writes them to `~/.gemini/config/config.json`. `harness install` writes the permission rules of
+`agy` into that file too, in `userSettings.globalPermissionGrants`, and keeps each grant that you
+added. A wildcard grant for Kaimon has no effect there, neither `kaimon/*` nor `mcp(kaimon/*)`:
+each Kaimon tool needs its own grant, so the install writes a rule for each Kaimon tool that the
+settings template names. For a Kaimon tool that the template does not name, the app asks with the
+dialog "Allow using this MCP tool?" and the name of the tool. The install leaves
+`allowNonWorkspaceAccess` at its default, `false`, so a workspace below `~/Research` asks once for
+read access to each parent `CLAUDE.md` that `GEMINI.md` has the model read. Approve each of these
+requests once.
 
 **Check.** Start a conversation in the app, in a workspace below `~/Research`, and paste this
-prompt. Approve the request for `kaimon/ping` and each request for a `CLAUDE.md`. The reply holds
-Kaimon's answer, and **General → Tool Permissions** lists the grant for `kaimon/ping`:
+prompt. Approve each request for a `CLAUDE.md`. The app asks for no grant for `kaimon/ping`, and
+the reply holds Kaimon's answer:
 
 ```text
 Start the subagent julia-critic with the prompt "Call the tool ping of the MCP server kaimon, and report its reply verbatim". Report its reply verbatim.
