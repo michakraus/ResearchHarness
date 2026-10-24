@@ -20,18 +20,18 @@
   bytes or more, the size at which Antigravity cuts it, or when all of them have 80,000 bytes or
   more, Antigravity's 20,000-token rules budget at 4 bytes a token; and when two sources give one
   rule path. A rule or a `SKILL.md` with CRLF line ends gets the frontmatter keys of one with LF
-  ends. A file
-  below `config/rules/`, `config/skills/` or `config/hooks/` with no source is listed as EXTRA
-  with its removal command. The guard hook refuses a write to these copies as the settings
-  template refuses one to Claude Code's: `guard-paths.json` adds the copy of each Edit deny and
-  ask of the template on `~/.claude/RTK.md`, `instructions/`, `hooks/`, `rules/` or `skills/`,
-  and Edit denies for the global instruction files that Antigravity loads,
+  ends. A file below `config/rules/`, `config/skills/` or `config/hooks/` with no source is listed
+  as EXTRA with its removal command. The guard hook refuses a write to these copies as the
+  settings template refuses one to Claude Code's: `guard-paths.json` adds the copy of each Edit
+  deny and ask of the template on `~/.claude/RTK.md`, `instructions/`, `hooks/`, `rules/` or
+  `skills/`, and Edit denies for the global instruction files that Antigravity loads,
   `~/.gemini/config/GEMINI.md`, `~/.gemini/config/AGENTS.md` and `~/.gemini/GEMINI.md`; a read
   of them passes. `hooks.json` gains a `SessionStart` handler that runs a copy of
   `install-drift.py` and gives its warning as an `injectSteps` system message, `{}` when the
-  install is current, and a warning that names the copy when it exits with an error or gives
-  output with no warning text; `hooks/probe.py` checks that it gives the verdict and the text of
-  `install-drift.py` on each drift case, and a warning on each such failure.
+  install is current, and a warning that names the copy when it exits with an error or its
+  output is not a JSON object with a text `systemMessage`; `hooks/probe.py` checks that it gives
+  the verdict and the text of `install-drift.py` on each drift case, and a warning on each such
+  failure.
 
 - **`harness install` writes the permission layer of Antigravity**, below `~/.gemini/`, once
   Antigravity has made that directory; without it the plan holds no file and one warning. The new

@@ -40,8 +40,8 @@ caller made with this command. Report its path; your caller removes it.
 
 The `Agent` tool is `invoke_subagent` here. Where a text says to `SendMessage` an agent, make a
 new `invoke_subagent` call with its last report as the handoff. A subagent replies through
-`send_message`. No agent sets an
-effort: an instruction that names an effort for a spawn does not apply.
+`send_message`. No agent sets an effort: an instruction that names an effort for a spawn does not
+apply.
 
 ## Read a directory's `CLAUDE.md` yourself
 

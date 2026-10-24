@@ -9,12 +9,11 @@ whose guard scripts, install-drift.py, instructions, rules and skills it copies.
                                  handler, which runs config/hooks/install-drift.py and gives its
                                  warning as an `injectSteps` system message, `{}` when the install
                                  is current, and a warning that names the script when it exits
-                                 with an error or gives no warning text (TRANSLATE); and one
-                                 `PreToolUse` group,
-                                 matcher `*`, which runs config/hooks/guard.py; each by its
-                                 absolute path with a timeout of 15 s (render_hooks). The matcher
-                                 names no tool, so no tool is missed, and guard.py decides by the
-                                 name of the tool
+                                 with an error or its output is not a JSON object with a text
+                                 `systemMessage` (TRANSLATE); and one `PreToolUse` group, matcher
+                                 `*`, which runs config/hooks/guard.py; each by its absolute path
+                                 with a timeout of 15 s (render_hooks). The matcher names no tool,
+                                 so no tool is missed, and guard.py decides by the name of the tool
   config/hooks/guard.py          adapters/antigravity/guard.py, byte for byte: the guard scripts
                                  and the path list on every tool call, failing closed
   config/hooks/<script>          the guard scripts of frontends.GUARDS, copies of the Claude Code
@@ -50,11 +49,10 @@ config.json and plugins/ among them, is neither listed nor touched. The other fi
                                  Edit denies and asks, then the same rules for this layer's copies
                                  of the files that frontends.SHARED_ROOTS names (relocate), and
                                  under `edit` the global instruction files that Antigravity loads,
-                                 config/GEMINI.md, config/AGENTS.md and ~/.gemini/GEMINI.md; guard.py
-                                 applies `edit` and `ask` to the tools that write; under
-                                 `bash_deny` and `bash_ask` the bodies of its Bash
-                                 denies and asks, which guard.py applies to each segment of a
-                                 command
+                                 config/GEMINI.md, config/AGENTS.md and ~/.gemini/GEMINI.md;
+                                 guard.py applies `edit` and `ask` to the tools that write; under
+                                 `bash_deny` and `bash_ask` the bodies of its Bash denies and
+                                 asks, which guard.py applies to each segment of a command
   antigravity-cli/settings.json  the keys `permissions`, `toolPermission` and
                                  `enableTerminalSandbox` of the CLI's settings, set in the file
                                  as it is, every other key kept, after a backup (merge_settings);
@@ -131,8 +129,9 @@ BUDGET = 20000 * 4
 INCLUDE = re.compile(rb"@\[[^\]\n]*\]\(")
 # The `SessionStart` handler: it runs install-drift.py, its path the first argument, and turns its
 # JSON, Claude Code's form, into Antigravity's: the `systemMessage` as one `injectSteps` system
-# message, and no output as `{}`. An exit other than 0, or output with no `systemMessage` text, is a
-# warning that names the script, so that a check that did not run never reads as a current install.
+# message, and no output or an empty `systemMessage` as `{}`. An exit other than 0, or output that
+# is not a JSON object with a text `systemMessage`, is a warning that names the script, so that a
+# check that did not run never reads as a current install.
 TRANSLATE = """import json, subprocess, sys
 path = sys.argv[1]
 try:
