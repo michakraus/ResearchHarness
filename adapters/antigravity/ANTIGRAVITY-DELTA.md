@@ -45,8 +45,8 @@ apply.
 
 An agent of `~/.gemini/config/agents/` runs on the Antigravity tier that `[antigravity]` of
 `models.toml` gives its tier, or its override: `inherit`, the session model, `flash`, `flash_lite`
-or `pro`. A council has no seat here: round 1 of `build-part` runs two critics, each on the session model, as
-under Claude Code.
+or `pro`. A council has no seat here: round 1 of `build-part` runs two critics, each on the
+session model, as under Claude Code.
 
 ## Read a directory's `CLAUDE.md` yourself
 

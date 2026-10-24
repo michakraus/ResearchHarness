@@ -23,7 +23,8 @@ small = "haiku"
 # The Antigravity tier of each tier, written as the `model:` of the installed agent: `inherit`, the
 # session model, `flash`, `flash_lite` or `pro`; no other value. All three tiers are required once
 # ~/.gemini/ exists. An optional [antigravity.model_overrides] maps an agent of agents/ to its own
-# tier, for example `julia-builder = "flash"`. Antigravity reads none of the tables below.
+# tier, for example `julia-builder = "flash"`. No table below sets an Antigravity tier; a council
+# below gives one warning for its agent.
 [antigravity]
 large = "inherit"
 medium = "flash"

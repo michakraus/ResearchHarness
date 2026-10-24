@@ -259,7 +259,7 @@ def tier_table(path, name, frontend):
 # agent to its seats; `context_limits` a model to the input tokens it may hold. [opencode] and
 # [omp] may hold the same sub-tables, each key of which replaces the shared one for that frontend
 # alone. [claude] is Claude Code's table of the tiers, and [antigravity] Antigravity's; neither
-# frontend reads the shared tables.
+# frontend takes a model from the shared tables.
 MODEL_TABLES = ["models", "model_overrides", "model_variants", "variants", "reasoning_effort", "councils",
                 "context_limits"]
 # The frontends that read MODEL_TABLES, each with a table of its own overrides.
