@@ -432,20 +432,6 @@
 - kind: dead code
 - found: #78
 
-### K100 · A settings file nested 991–992 deep stops `harness install` with a traceback on Python 3.11.
-
-- location: `adapters/claude/adapter.py:527`
-- evidence: `rewritten_numbers` parses the file a second time, with `parse_int` and `parse_float`,
-  and no `RecursionError` guard holds that parse. On Python 3.11, `json_object` reads the file
-  first and refuses a nesting of 993 as "nested too deep for the parser", but the second parse
-  runs out of stack at 991 and 992. There, `merge_settings` of the Antigravity adapter on
-  `{"d": {"a": {"a": … 1 …}}}` with 991 or 992 levels raises `RecursionError` at
-  `adapters/antigravity/adapter.py:435` <- `adapters/claude/adapter.py:527`, and exits 1 where
-  the contract is exit 2. A list of the same depth is written. Python 3.14 reads both depths.
-  Claude Code's own merge calls the same helper at `adapters/claude/adapter.py:638`.
-- kind: defect
-- found: #78
-
 ### K101 · A `config.json` with a key twice in one object loses the first value when the install merges the app's grants.
 
 - location: `adapters/antigravity/adapter.py:462`
@@ -492,15 +478,3 @@
   Deny > Ask > Allow still applies a rule that moves to `deny` or `ask`.
 - kind: defect
 - found: #80
-
-### K105 · A `config.json` nested 992–993 deep stops `harness install` with a traceback on Python 3.11.
-
-- location: `adapters/antigravity/adapter.py:463`
-- evidence: `merge_grants` calls `rewritten_numbers` (`adapters/claude/adapter.py:527`), whose
-  second parse no `RecursionError` guard holds, and its own guard covers only the write. On
-  Python 3.11, `merge_grants` on `{"d": {"a": {"a": … 1 …}}}` with 992 or 993 objects raises
-  `RecursionError` at `adapters/antigravity/adapter.py:463` <- `adapters/claude/adapter.py:527`,
-  where the docstring promises exit 2; 990 and 991 are written, and 994 exits 2 as "nested too
-  deep". A guard at `adapters/claude/adapter.py:527` closes this entry and K100.
-- kind: defect
-- found: #80; K100
