@@ -404,6 +404,17 @@ The global instruction file of Antigravity. `harness install` writes it as
 `~/.gemini/config/GEMINI.md`, in place of `~/.claude/CLAUDE.md`. It states the facts of
 Antigravity's tools, and names the rule file to read before each kind of work.
 
+## `antigravity/UNDER-ANTIGRAVITY.md`
+
+The text of the "Under Antigravity" section that the Antigravity adapter puts before the body of
+an agent. The file has one level-2 section for each mechanism: `intro`, `skills`, `worktree`,
+`agent`, `background`, `mcp` and `pr`. `render_agent` takes `intro`, then the section of each
+mechanism that the agent uses: preloaded skills, worktree isolation, the `Agent` tool, a
+`run_in_background` in the body, a Kaimon tool, or a body that opens the pull request. In
+`skills`, `{skills}` becomes the names of the agent's skills. An agent that uses none of these
+mechanisms gets no section. When a section that the adapter needs is missing, the install exits
+with status 2.
+
 ## `antigravity/guard.py`
 
 The `PreToolUse` hook of Antigravity. It gets each tool call and answers with a decision. It runs

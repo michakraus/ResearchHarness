@@ -41,10 +41,11 @@ whose guard scripts, install-drift.py, instructions, rules and skills it copies.
                                  table is checked first (load_models). A council of models.toml
                                  is one warning for each agent it names, and writes no seat
                                  (council_warnings)
-  config/mcp_config.json         Kaimon alone, with the token of
-                                 ~/.config/kaimon/opencode-token written out, mode 600 and no
-                                 backup (render_mcp); with no token, no file and one warning. The
-                                 file replaces any other server that the file held
+  config/mcp_config.json         the file as it is with `mcpServers.kaimon` set, the token of
+                                 ~/.config/kaimon/opencode-token written out, every other server
+                                 and key kept, mode 600 and no backup (render_mcp, merge_mcp); a
+                                 file that is not a JSON object exits 2 before any write. With no
+                                 token, the file is neither read nor written, and one warning
 
 Each .md file but GEMINI.md names Antigravity's copies, not Claude Code's, RTK.md and the files of
 instructions/ in config/rules/ (relocate). A path of two sources, compared as `install.fold`
@@ -505,12 +506,14 @@ def render_agent(path, tiers, overrides, root="~/.gemini/config"):
             .encode() + relocate(rest.encode(), root))
 
 
-def render_mcp(home):
-    """(the bytes of mcp_config.json, None), its one server Kaimon at KAIMON_URL with the token of
-    KAIMON_TOKEN below `home` as its bearer; or (None, a warning) when that file does not exist, is
-    not a regular file, cannot be read, is not UTF-8, or holds no token."""
+def render_mcp(home, config):
+    """(the bytes of the MCP configuration at `config` with `mcpServers.kaimon` set to Kaimon at
+    KAIMON_URL, with the token of KAIMON_TOKEN below `home` as its bearer, None); or (None, a
+    warning) when the token file does not exist, is not a regular file, cannot be read, is not
+    UTF-8, or holds no token: the configuration is then neither read nor written. The token is read
+    first, and the configuration is merged as merge_mcp says."""
     path = home / KAIMON_TOKEN
-    none = "; the install writes no Kaimon entry into ~/.gemini/config/mcp_config.json"
+    none ="; the install writes no Kaimon entry and leaves ~/.gemini/config/mcp_config.json as it is"
     try:
         # A FIFO would block the read, so the file's type is checked first.
         if not stat.S_ISREG(path.stat().st_mode):
@@ -525,7 +528,49 @@ def render_mcp(home):
     if not token:
         return None, (f"{path} is empty{none}.", "Write Kaimon's token into it.")
     kaimon = {"url": KAIMON_URL, "headers": {"Authorization": f"Bearer {token}"}}
-    return (json.dumps({"mcpServers": {"kaimon": kaimon}}, indent=2) + "\n").encode(), None
+    return merge_mcp(config, kaimon), None
+
+
+def merge_mcp(path, kaimon):
+    """The bytes of the MCP configuration at `path` with `mcpServers.kaimon` set to `kaimon`, every
+    other server and every other top-level key kept in its place, with the file's indent, as
+    merge_settings writes a file. A missing file, an empty one, or one of whitespace only holds no
+    key. Exits 2, before anything is written and without the file's text, on a file that is not a
+    regular file, cannot be read, is not UTF-8, is not a JSON object, has a `mcpServers` that is
+    not an object, is nested deeper than json writes, or holds a number outside the Kaimon entry
+    that json writes in other text."""
+    claude = frontends.adapter("claude")
+    refused = "; the install sets mcpServers.kaimon of a JSON object in a regular file there, and writes nothing"
+    try:
+        st = os.lstat(path)
+    except FileNotFoundError:
+        st = None
+    except OSError as e:
+        raise HarnessError(f"{path} cannot be read: {e.strerror}") from None
+    cfg, indent = {}, 2
+    if st is not None:
+        if not stat.S_ISREG(st.st_mode):
+            raise HarnessError(f"{path} is not a regular file{refused}")
+        try:
+            text = path.read_bytes().decode("utf-8")
+        except OSError as e:
+            raise HarnessError(f"{path} cannot be read: {e.strerror}") from None
+        except UnicodeDecodeError as e:
+            raise HarnessError(f"{path} is not UTF-8: {e.reason} at byte {e.start}{refused}") from None
+        if text.strip():
+            cfg, indent = claude.json_object(path, text), claude.indent_of(text)
+            if not isinstance(cfg.get("mcpServers", {}), dict):
+                raise HarnessError(f"{path}: its mcpServers is not a JSON object{refused}")
+            numbers = [n for n in claude.rewritten_numbers(text, ())
+                       if not re.match(r"mcpServers\.kaimon(?:$|[.\[])", n[0])]
+            if numbers:
+                raise HarnessError(f"{path} holds numbers that JSON would write in other text, at "
+                                   f"{', '.join(k for k, _, _ in numbers)}{refused}")
+    cfg.setdefault("mcpServers", {})["kaimon"] = kaimon
+    try:
+        return (claude.dumps(cfg, indent=indent) + "\n").encode()
+    except RecursionError:  # a nesting that json.loads reads and json.dumps cannot write
+        raise HarnessError(f"{path} is JSON nested too deep to write again{refused}") from None
 
 
 def council_warnings(path):
@@ -581,8 +626,9 @@ def plan(ctx):
     files += [(f"config/agents/{p.name}", render_agent(p, tiers, overrides, home), None)
               for p in sorted(pathlib.Path(ctx.agents).glob("*.md"))]
     warnings = council_warnings(ctx.models)
-    # The file holds the token, so it is written with mode 600 and never backed up.
-    mcp, warning = render_mcp(pathlib.Path.home())
+    # The file holds the token, so it is written with mode 600 and never backed up: a backup beside
+    # it is outside the deny rules of MCP_CONFIG.
+    mcp, warning = render_mcp(pathlib.Path.home(), root / "config" / "mcp_config.json")
     if mcp is None:
         warnings.append(warning)
     else:
@@ -1557,6 +1603,85 @@ def kaimon_cases(scratch):
     case(lambda: code == 0 and got == entry("another-token") and scratch.mode(config) == 0o600
          and not list(config.parent.glob("mcp_config.json.bak-*")),
          f"a new token in the file is the token of the entry, and no backup holds the old one: {code}, {got}")
+
+    def fresh(token_text="fake-token-of-the-cases\n"):
+        base, _, _ = scratch.fresh()
+        token = base / "home" / ".config" / "kaimon" / "opencode-token"
+        token.parent.mkdir(parents=True)
+        if token_text is not None:
+            token.write_text(token_text)
+        config = base / "home" / ".gemini" / "config" / "mcp_config.json"
+        config.parent.mkdir(parents=True)
+        return base, config
+
+    # A file of the user's is merged: every other server and key stays, in its place, with its indent.
+    base, config = fresh()
+    config.write_text(json.dumps({"mcpServers": {"other": {"command": "x", "args": []}}, "extra": 1}, indent=4) + "\n")
+    code, out = run(base, "--apply")
+    text = config.read_text()
+    got = json.loads(text)
+    case(lambda: code == 0 and got == {"mcpServers": {"other": {"command": "x", "args": []},
+                                                      "kaimon": entry("fake-token-of-the-cases")["mcpServers"]["kaimon"]},
+                                       "extra": 1}
+         and list(got) == ["mcpServers", "extra"] and list(got["mcpServers"]) == ["other", "kaimon"]
+         and text.split("\n")[1].startswith('    "mcpServers"') and scratch.mode(config) == 0o600,
+         f"--apply adds kaimon to the user's mcpServers and keeps every other server and key, in place, with the "
+         f"file's indent, mode 600: {code}, {got}")
+    base, config = fresh("new-token\n")
+    other = {"command": "y", "args": ["z"], "env": {"K": "v"}}
+    config.write_text(json.dumps({"mcpServers": {"kaimon": entry("old-token")["mcpServers"]["kaimon"], "other": other}},
+                                 indent=2) + "\n")
+    code, out = run(base, "--apply")
+    got = json.loads(config.read_text())
+    case(lambda: code == 0 and got["mcpServers"] == {"kaimon": entry("new-token")["mcpServers"]["kaimon"], "other": other}
+         and not list(config.parent.glob("mcp_config.json.bak-*")) and "old-token" not in out,
+         f"--apply replaces a stale Kaimon token, keeps the other server, and makes no backup: {code}, {got}")
+    for label, data in [("is empty", b""), ("holds a newline only", b"\n")]:
+        base, config = fresh()
+        config.write_bytes(data)
+        code, out = run(base, "--apply")
+        got = config.read_text()
+        case(lambda: code == 0 and json.loads(got) == entry("fake-token-of-the-cases") and scratch.mode(config) == 0o600,
+             f"a mcp_config.json that {label} becomes Kaimon alone: {code}, {got!r}, {tail(out)!r}")
+    base, config = fresh()
+    config.write_text('{"mcpServers": {"kaimon": {"timeout": 1e400}, "other": {"timeout": 1.5}}}\n')
+    code, out = run(base, "--apply")
+    got = config.read_text()
+    case(lambda: code == 0 and json.loads(got)["mcpServers"] == {
+        "kaimon": entry("fake-token-of-the-cases")["mcpServers"]["kaimon"], "other": {"timeout": 1.5}},
+         f"a number of the Kaimon entry that the merge replaces stops nothing: {code}, {got!r}, {tail(out)!r}")
+    truncated = b'{"mcpServers": {"kaimon": {"headers": {"Authorization": "Bearer fake-old'
+    for label, make in [("holds a JSON array", lambda p: p.write_bytes(b"[]\n")),
+                        ("holds a JSON string", lambda p: p.write_bytes(b'"x"\n')),
+                        ("has an mcpServers that is a list", lambda p: p.write_bytes(b'{"mcpServers": []}\n')),
+                        ("is cut off inside a token", lambda p: p.write_bytes(truncated)),
+                        ("holds a number that JSON writes in other text",
+                         lambda p: p.write_bytes(b'{"mcpServers": {"other": {"timeout": 1e400}}}\n')),
+                        ("is not UTF-8", lambda p: p.write_bytes(b"\xff\n")),
+                        ("is a directory", lambda p: p.mkdir()), ("is a FIFO", os.mkfifo)]:
+        base, config = fresh()
+        make(config)
+        snapshot = scratch.snapshot(base)
+        code, out = run(base, "--apply")
+        case(lambda: scratch.refused(code, out) and str(config) in out and "fake-old" not in out
+             and scratch.snapshot(base) == snapshot,
+             f"a mcp_config.json that {label} exits 2, names the file, prints none of its text, and nothing is "
+             f"written: {code}, {tail(out)!r}")
+    for label, token_text, data in [
+            ("no token file, and a file with another server and a stale Kaimon entry", None,
+             json.dumps({"mcpServers": {"other": {"command": "x"}, "kaimon": {"url": "u"}}}) + "\n"),
+            ("an empty token file, and that file", "\n",
+             json.dumps({"mcpServers": {"other": {"command": "x"}, "kaimon": {"url": "u"}}}) + "\n"),
+            ("no token file, and a file that is not JSON", None, "not json\n")]:
+        base, config = fresh(token_text)
+        config.write_text(data)
+        config.chmod(0o644)
+        code, out = run(base, "--apply")
+        warned = [w for w in out.split("WARNING: ")[1:] if "writes no Kaimon entry" in w]
+        case(lambda: code == 0 and config.read_text() == data and scratch.mode(config) == 0o644 and len(warned) == 1
+             and line.findall(out) == [],
+             f"with {label}, --apply leaves the file as it is, with one warning and no line of it: {code}, "
+             f"{warned}, {tail(out)!r}")
 
     for label, make in [("does not exist", lambda p: None), ("is empty", lambda p: p.write_text("\n")),
                         ("is a directory", lambda p: p.mkdir()), ("is a FIFO", os.mkfifo),
