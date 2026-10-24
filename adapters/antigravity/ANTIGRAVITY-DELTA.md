@@ -15,8 +15,8 @@ final for that path or command: do not reach it in another form. The hook fails 
 that cannot run refuses the call. Change a file with the edit tool, never with `sed -i` or
 `perl -pi`.
 
-A subagent shows no prompt: a call that needs one is refused there. Run such a call yourself, or
-give the user the command.
+In the app, a call of a subagent that needs a grant shows the app's dialog, as a call of the main
+agent does.
 
 ## No RTK rewrite
 

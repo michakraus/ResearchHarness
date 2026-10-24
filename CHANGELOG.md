@@ -12,6 +12,28 @@
   broken standard output. The `dotfiles` job gains a step that prints the runner's `cat --version`
   and the exit status of `cat` on a broken pipe.
 
+- **`harness install` writes the permission rules into the Antigravity app's grants, and grants
+  each Kaimon tool on its own.** Each Kaimon tool of the settings template,
+  `mcp__kaimon__<tool>`, becomes the rule `mcp(kaimon/<tool>)` in its list, `allow`, `deny` or
+  `ask` (27, 7 and 5 tools), at the end of the list, after the other rules; the wildcard
+  `mcp(kaimon/*)` is no longer written, because the app asked for each Kaimon tool even with it
+  set. The CLI's `settings.json` gets these rules in its `permissions`. The desktop app reads no
+  rule from that file, and keeps its grants in `~/.gemini/config/config.json`, so the install now
+  merges the same rules, the command, path and host rules and the Kaimon rules, into
+  `userSettings.globalPermissionGrants` there: each rule once, after the entries of its list.
+  Every other key and every grant of the user stays in its place, the install removes no entry,
+  a missing file is created, and the file it replaces is backed up. A file that is not a regular
+  file or not a JSON object, a `userSettings` or `globalPermissionGrants` that is not an object,
+  or an `allow`, `deny` or `ask` that is not a list exits 2 before any write. The app's grants per
+  project, in `config/projects/`, are not touched. The guard hook refuses a write to
+  `config.json` by a tool that writes a file, so an agent cannot widen its own grants with one; a
+  command or a `multi_replace_file_content` call that writes the file gets `ask` from the guard
+  (K103).
+  The setup pages and the adapter page say that the install writes the app's grants, and the
+  delta states that in the app a subagent's call that needs a grant shows the app's dialog, where
+  it said that a subagent shows no prompt; the agents' rule that the caller opens the pull request
+  no longer gives that as its reason.
+
 - **The documentation names Antigravity as the fourth frontend.** The README, the home page, the
   introduction, the architecture, the dependencies, the command page and the component pages count
   four frontends where they counted three, and list Antigravity where they listed Claude Code,
@@ -24,8 +46,8 @@
   pages for macOS and Linux gain the install of the app, the step that adds `[antigravity]` to an
   older `models.toml`, and the app's permission settings, each with its check: the app keeps its
   grants under **General → Tool Permissions**, which writes them to `~/.gemini/config/config.json`;
-  no wildcard grant for Kaimon works there, so the user approves each Kaimon tool once; a
-  workspace below `~/Research` asks once for read access to each parent `CLAUDE.md`. The tier step
+  no wildcard grant for Kaimon works there; a workspace below `~/Research` asks once for read
+  access to each parent `CLAUDE.md`. The tier step
   has the user select "Gemini 4 Argon (Medium)" in the app's model menu, which an agent of tier
   `large` inherits, and the Kaimon check starts `julia-critic`. The Kaimon token step names
   Antigravity, whose `mcp_config.json` holds the token itself. The pages on rules, Kaimon, the tree
@@ -52,8 +74,7 @@
   prints it; every other server and key of the file stays as it is, an empty file holds none, and
   a file that is not a JSON object, whose `mcpServers` is not one, or that holds a key twice in
   one object outside its Kaimon entry exits 2 before any write. With no token, the file is
-  neither read nor written, and one warning says so. The CLI's `permissions` allow
-  `mcp(kaimon/*)`, because a subagent shows no prompt, and the guard hook refuses a write to the
+  neither read nor written, and one warning says so. The guard hook refuses a write to the
   installed agents. A file of `config/agents/` with no source is listed as EXTRA. The delta
   states the agents' tiers and that round 1 of `build-part` runs two critics on the session
   model.
