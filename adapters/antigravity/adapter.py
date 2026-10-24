@@ -101,7 +101,13 @@ template's order:
                          removed, because a path covers its subtree. A path with any other glob,
                          `**/X` among them, has no form in Antigravity and is dropped
   WebFetch(domain:X)     read_url(X), for each allow host of settings/network.toml and its overlay
-  mcp__kaimon__<tool>    mcp(kaimon/<tool>), last in its list; in `deny`, after the denies below
+  mcp__kaimon__<tool>    mcp(kaimon/<tool>), after the other rules of its list; in `deny`, after
+                         the denies below
+  sandbox.excludedCommands
+                         command(<first word>) in `allow`, after the Kaimon rules, unless the
+                         list holds it: Claude Code runs these commands outside its sandbox. No
+                         unsandboxed(…) rule is written: the CLI checks a command(…) rule as
+                         unsandboxed(…)
 
 MCP_CONFIG is a `read_file` deny after the template's, and LAYER and MCP_CONFIG are `write_file`
 denies after that. The app needs one grant per Kaimon tool, and no wildcard covers them, so each
@@ -368,9 +374,13 @@ def render_permissions(cfg, profile):
     """({list: [rule]}, [(list, entry, reason)]) of the `permissions` of `cfg`, the rendered
     settings template: the Antigravity rules in the template's lists and order, MCP_CONFIG as a
     `read_file` deny and LAYER and MCP_CONFIG as `write_file` denies after them, then each Kaimon
-    tool of a list (KAIMON_TOOL) as `mcp(kaimon/<tool>)` at its end, in the template's order, and
-    each entry that has no rule, with its reason. The app needs one grant per Kaimon tool, and no
-    wildcard covers them."""
+    tool of a list (KAIMON_TOOL) as `mcp(kaimon/<tool>)` after them, in the template's order, then
+    in `allow` the first word of each command of the template's `sandbox.excludedCommands` as
+    `command(<word>)`, each rule once; and each entry that has no rule, with its reason. The app
+    needs one grant per Kaimon tool, and no wildcard covers them. Claude Code runs the commands of
+    `excludedCommands` outside its sandbox, and these rules let Antigravity run them with no
+    prompt; guard.py applies the template's Bash denies and asks to each of them before
+    Antigravity's rules."""
     rules, dropped = {key: [] for key in LISTS}, []
     kaimon = {key: [] for key in LISTS}
     for key in LISTS:
@@ -396,6 +406,10 @@ def render_permissions(cfg, profile):
                       *(f"write_file({render(p, profile).removesuffix('/**')})" for p in (*LAYER, MCP_CONFIG))]
     for key in LISTS:
         rules[key] += kaimon[key]
+    for command in cfg.get("sandbox", {}).get("excludedCommands", []):
+        rule = f"command({command.split()[0]})"
+        if rule not in rules["allow"]:
+            rules["allow"].append(rule)
     return rules, dropped
 
 
@@ -905,14 +919,34 @@ def layer_cases(scratch):
     kaimon = {key: ["mcp(kaimon/" + e.removeprefix("mcp__kaimon__") + ")" for e in template[key]
                     if e.startswith("mcp__kaimon__")] for key in LISTS}
     cli = settings.get("permissions", {})
-    case(lambda: all(kaimon[key] and cli[key][-len(kaimon[key]):] == kaimon[key]
-                     and not [r for r in cli[key][:-len(kaimon[key])] if r.startswith("mcp(")] for key in LISTS)
+    excluded = json.loads(profile_module.render_file(SETTINGS, profile))["sandbox"]["excludedCommands"]
+    unsandboxed = [f"command({w})" for w in dict.fromkeys(e.split()[0] for e in excluded)]
+
+    def before_unsandboxed(key):
+        """The list `key` of the CLI's permissions up to the rules of excludedCommands at its end."""
+        rules = cli.get(key, [])
+        while key == "allow" and rules and rules[-1] in unsandboxed:
+            rules = rules[:-1]
+        return rules
+
+    case(lambda: all(kaimon[key] and before_unsandboxed(key)[-len(kaimon[key]):] == kaimon[key]
+                     and not [r for r in before_unsandboxed(key)[:-len(kaimon[key])] if r.startswith("mcp(")]
+                     for key in LISTS)
          and "mcp(kaimon/*)" not in cli["allow"],
-         f"the CLI's settings.json holds each Kaimon tool of the template as mcp(kaimon/<tool>) at the end of its "
-         f"list, after the other rules, and no mcp(kaimon/*): "
-         f"{ {key: cli.get(key, [])[-2:] for key in LISTS} }")
+         f"the CLI's settings.json holds each Kaimon tool of the template as mcp(kaimon/<tool>) after the other "
+         f"rules of its list, in `allow` before the rules of excludedCommands, and no mcp(kaimon/*): "
+         f"{ {key: before_unsandboxed(key)[-2:] for key in LISTS} }")
+    case(lambda: len(unsandboxed) >= 4
+         and cli["allow"][len(before_unsandboxed("allow")):] == [r for r in unsandboxed
+                                                                if r not in before_unsandboxed("allow")]
+         and all(cli["allow"].count(r) == 1 for r in unsandboxed),
+         f"the CLI's settings.json ends its allow list with each rule of excludedCommands, {unsandboxed}, that "
+         f"the list does not hold, and holds each once: {cli.get('allow', [])[-4:]}")
     app = config / "config.json"
     grants = json.loads(app.read_text()) if app.is_file() else {}
+    case(lambda: all(grants["userSettings"]["globalPermissionGrants"]["allow"].count(r) == 1 for r in unsandboxed),
+         f"the app's config.json holds each rule of excludedCommands once in its allow grants: "
+         f"{grants.get('userSettings', {}).get('globalPermissionGrants', {}).get('allow', [])[-4:]}")
     case(lambda: grants == {"userSettings": {"globalPermissionGrants": {k: cli[k] for k in ("allow", "deny", "ask")}}}
          and list(grants["userSettings"]["globalPermissionGrants"]) == ["allow", "deny", "ask"]
          and not list(config.glob("config.json.bak-*")),
@@ -1180,6 +1214,12 @@ def rule_cases(case):
     # Each Kaimon tool of the template, `mcp__kaimon__<tool>`, as the rule `mcp(kaimon/<tool>)`.
     kaimon = {key: ["mcp(kaimon/" + e.removeprefix("mcp__kaimon__") + ")" for e in cfg["permissions"][key]
                     if e.startswith("mcp__kaimon__")] for key in LISTS}
+    # The first word of each command that Claude Code runs outside its sandbox, once each, in the
+    # template's order, as a `command(<word>)` rule.
+    unsandboxed = []
+    for e in cfg["sandbox"]["excludedCommands"]:
+        if f"command({e.split()[0]})" not in unsandboxed:
+            unsandboxed.append(f"command({e.split()[0]})")
     wrong = []
     for key in LISTS:
         out = iter(rules[key])
@@ -1206,23 +1246,35 @@ def rule_cases(case):
             if not ok:
                 wrong.append((key, entry, got))
         rest = list(out)
-        if rest != [*{"deny": extras}.get(key, []), *kaimon[key]]:
+        held = rules[key][:len(rules[key]) - len(rest)]
+        after = [r for r in unsandboxed if r not in held] if key == "allow" else []
+        if rest != [*{"deny": extras}.get(key, []), *kaimon[key], *after]:
             wrong.append((key, "after the template's entries", rest))
     case(lambda: not wrong and rules["allow"] and rules["ask"] and rules["deny"],
          f"each Bash, Read and Edit entry and each allow host is one rule in its list, in order, that matches the "
          f"entry's lines or names its path; after them, mcp_config.json is a read_file deny, the files of the "
-         f"layer and mcp_config.json are write_file denies, and then each Kaimon tool of the list is its "
-         f"mcp(kaimon/<tool>) rule, in the template's order: {wrong[:5]}")
+         f"layer and mcp_config.json are write_file denies, then each Kaimon tool of the list is its "
+         f"mcp(kaimon/<tool>) rule, in the template's order, and last in `allow` each command(<word>) of the "
+         f"template's excludedCommands that the list does not hold: {wrong[:5]}")
+    case(lambda: unsandboxed[:3] == ["command(gh)", "command(git)", "command(glab)"]
+         and all(rules["allow"].count(r) == 1 for r in unsandboxed)
+         and not [r for key in ("deny", "ask") for r in rules[key] if r in unsandboxed]
+         and not [r for key in LISTS for r in rules[key] if r.startswith("unsandboxed(")],
+         f"each first word of the template's excludedCommands, {unsandboxed}, is one command(<word>) rule of "
+         f"`allow`, and no deny, ask or unsandboxed(…) rule: {rules['allow'][-6:]}")
     case(lambda: {key: len(kaimon[key]) for key in LISTS} == {"deny": 7, "ask": 5, "allow": 27}
          and {"mcp(kaimon/ping)", "mcp(kaimon/ex)"} <= set(rules["allow"])
          and not [r for key in LISTS for r in rules[key] if r.startswith("mcp(") and "*" in r],
          f"the template's 27 Kaimon allows, 7 denies and 5 asks are rules, ping and ex among the allows, and no "
          f"mcp rule is a wildcard: { {key: [r for r in rules[key] if r.startswith('mcp(')][:3] for key in LISTS} }")
     bash = {key: [e for e in cfg["permissions"][key] if e.startswith("Bash(")] for key in LISTS}
+    # The rules of excludedCommands that no Bash allow of the template, `Bash(<word> *)`, renders.
+    added = {"deny": 0, "ask": 0,
+             "allow": len([r for r in unsandboxed if f"Bash({r[len('command('):-1]} *)" not in bash["allow"]])}
     case(lambda: not [d for d in dropped if d[1].startswith("Bash(")]
-         and all(sum(r.startswith("command(") for r in rules[key]) == len(bash[key]) for key in LISTS),
-         f"every Bash entry becomes a command rule: "
-         f"{ {key: (len(bash[key]), sum(r.startswith('command(') for r in rules[key])) for key in LISTS} }")
+         and all(sum(r.startswith("command(") for r in rules[key]) == len(bash[key]) + added[key] for key in LISTS),
+         f"every Bash entry becomes a command rule, and `allow` holds the rules of excludedCommands besides: "
+         f"{ {key: (len(bash[key]), added[key], sum(r.startswith('command(') for r in rules[key])) for key in LISTS} }")
     recursive = [e for key, e, _ in dropped if key == "deny" and e.startswith("Read(**/")]
     paths = json.loads(guard_paths(profile))["deny"]
     case(lambda: recursive and all(e[len("Read("):-1] in paths for e in recursive),
@@ -1257,6 +1309,14 @@ def rule_cases(case):
          f"a WebFetch deny, a relative path, a glob in a path, another server's MCP tool and a Kaimon entry that "
          f"names no tool are dropped; an allow host is a read_url rule, and a Kaimon tool is its mcp rule after "
          f"the others, in its list: {got}")
+    allows = {"allow": ["Bash(ps *)", "mcp__kaimon__ex"]}
+    sandboxes = [({}, []), ({"sandbox": {}}, []), ({"sandbox": {"excludedCommands": []}}, []),
+                 ({"sandbox": {"excludedCommands": ["git *", "gh", "git", "ps", "ps *", "glab x"]}},
+                  ["command(git)", "command(gh)", "command(glab)"])]
+    got = [render_permissions({"permissions": allows, **extra}, profile)[0]["allow"] for extra, _ in sandboxes]
+    case(lambda: got == [["command(ps)", "mcp(kaimon/ex)", *after] for _, after in sandboxes],
+         f"with no sandbox, no excludedCommands or an empty one, `allow` gets no rule; else each first word once, "
+         f"in the order of excludedCommands, after the Kaimon rules, and none that the list holds: {got}")
     examples = {("deny", "Bash(sed -i* *)"): r"command(regex:^sed -i.*(?: .*)?$)",
                 ("deny", "Bash(git push * -f)"): r"command(regex:^git push .* -f$)",
                 ("deny", "Bash(git -C * add .)"): r"command(regex:^git -C .* add \.$)",
@@ -1454,7 +1514,7 @@ def grants_cases(scratch):
     own = {"permissionGrantsV2Migrated": True, "remoteControlHostname": "host—1",
            "userSettings": {"theme": "dark",
                             "globalPermissionGrants": {"allow": ["read_file(/u/notes)", "mcp(kaimon/*)",
-                                                                 "mcp(kaimon/ping)"],
+                                                                 "mcp(kaimon/ping)", "command(git)"],
                                                        "deny": ["command(rm)"], "other": [1, 2]},
                             "last": {"a": [1.5]}},
            "sandboxEnabledAtV2Migration": False}
@@ -1490,6 +1550,12 @@ def grants_cases(scratch):
          and set(cli["deny"]) <= set(grants["deny"]) and set(cli["ask"]) <= set(grants["ask"]),
          f"each list keeps the user's entries first, mcp(kaimon/*) among them, then holds each rule of the "
          f"CLI's permissions once: {[grants.get(k, [])[:4] for k in ('allow', 'deny', 'ask')]}")
+    case(lambda: grants["allow"].count("command(git)") == 1 and grants["allow"][3] == "command(git)"
+         and {"command(gh)", "command(git)", "command(glab)"} <= set(cli["allow"])
+         and all(grants["allow"].count(r) == 1 for r in ("command(gh)", "command(glab)", "command(ps)")),
+         f"the user's own command(git) stays in its place and is not added again, and command(gh), command(glab) "
+         f"and command(ps) are added once: {grants.get('allow', [])[:4]}, "
+         f"{[r for r in grants.get('allow', []) if r in ('command(gh)', 'command(git)', 'command(glab)')]}")
     backups = list(config.glob("config.json.bak-*"))
     written = app.read_text(encoding="utf-8")
     case(lambda: len(backups) == 1 and backups[0].read_bytes() == before
