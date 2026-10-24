@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- **`verify-workflows.jl` knows the majors of `docker/setup-buildx-action` (v4),
+  `docker/login-action` (v4) and `docker/build-push-action` (v7).** A package with an extra
+  workflow that builds a Docker image made the check report those actions as unknown and fail,
+  so `harness ci-protection` refused to run.
 - **`pre-push` passes `--check-bounds=auto` to the test process through `Pkg.test`'s
   `julia_args`.** Up to Julia 1.12, `Pkg.test` gives the test process `--check-bounds=yes` whatever
   the calling process uses, so on a 1.12 default the hook ran the suite with `yes` and recompiled
