@@ -85,7 +85,7 @@
   `mcp_config.json`, and `write_file(…)` denies for it and the files of the layer. A path with a
   glob that Antigravity cannot express is dropped from the rules, and `guard.py` still covers it:
   the seven `Read(**/X)` denies in its `deny` list, seven Edit denies and two Edit asks in its
-  `edit` and `ask` lists. No agent is installed for Antigravity.
+  `edit` and `ask` lists.
   `hooks/probe.py` runs `guard.py` on a fixture home, with cases for its refusals and for each way
   in which it fails closed.
 

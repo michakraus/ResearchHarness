@@ -442,7 +442,7 @@ def load_models(path, agents):
     overrides = table.get("model_overrides", {})
     if not isinstance(overrides, dict):
         raise HarnessError(f"{path}: [antigravity.model_overrides] is not a table of agent = tier")
-    wrong =[f"[antigravity] {t} = {table[t]!r}" for t in tiers if table[t] not in WORDS] + [
+    wrong = [f"[antigravity] {t} = {table[t]!r}" for t in tiers if table[t] not in WORDS] + [
         f"[antigravity.model_overrides] {a} = {v!r}" for a, v in overrides.items() if v not in WORDS]
     if wrong:
         raise HarnessError(f"{path}: {'; '.join(wrong)} is not an Antigravity tier; a tier is {words}")
@@ -477,7 +477,7 @@ def under_antigravity(meta, body, text=None):
         return ""
     if missing := [k for k in ["intro", *used] if k not in rules]:
         raise HarnessError(f"{UNDER}: no section `## {missing[0]}`")
-    named =f"{sources.code_list(skills)} skill{'s' * (len(skills) > 1)}" if skills else ""
+    named = f"{sources.code_list(skills)} skill{'s' * (len(skills) > 1)}" if skills else ""
     lines = [rules[k].replace("{skills}", named) for k in used]
     return "## Under Antigravity\n\n" + rules["intro"] + "\n\n" + "\n".join("- " + line for line in lines) + "\n"
 
@@ -526,7 +526,7 @@ def render_mcp(home, config):
     UTF-8, or holds no token: the configuration is then neither read nor written. The token is read
     first, and the configuration is merged as merge_mcp says."""
     path = home / KAIMON_TOKEN
-    none ="; the install writes no Kaimon entry and leaves ~/.gemini/config/mcp_config.json as it is"
+    none = "; the install writes no Kaimon entry and leaves ~/.gemini/config/mcp_config.json as it is"
     try:
         # A FIFO would block the read, so the file's type is checked first.
         if not stat.S_ISREG(path.stat().st_mode):
