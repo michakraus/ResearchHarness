@@ -389,6 +389,10 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   matches fewer members than the count: the block outside the glob keeps its copy, and the branch's
   CHANGELOG then claims the whole family went. Find the family by its interface — `<: Cache{`,
   `function Cache(` — not by the glob (P43, *Rewrite the reduced basis packages*)
+- a statement the section says stays, deleted with the guard it sat behind: a `@warn` or an
+  `@assert` on the right of `show_status && …` reads as diagnostic output, but the audit that names
+  it as a later part's defect makes it a thing to keep — the guard goes and the statement stays
+  (B, the plan that revives the multisymplectic package)
 
 ## A migration of tests or of text
 
