@@ -147,7 +147,7 @@ run `harness workflows` or `harness githooks`.
 
 ## `settings.proposal.json`
 
-The settings template, the policy source of all three frontends. It holds the Claude Code settings
+The settings template, the policy source of all four frontends. It holds the Claude Code settings
 with placeholders such as `{home}`, `{org}` and `{protected_dir}`, which the profile fills in.
 
 The template has the sections `permissions`, `hooks`, `sandbox` and `modelSettings`, and other
@@ -159,6 +159,8 @@ keys of `settings.json`. These components read it:
 - `harness settings surface`, `compare` and `twins` measure and check it;
 - `harness permissions` writes the OpenCode permission block from its `ask` and `deny` rules;
 - `harness install` writes the `bash.patterns` and the path list of oh-my-pi from it;
+- `harness install` writes the permission rules of Antigravity's CLI and the path list of its
+  guard hook from it;
 - `harness leaks` renders it with the example profile.
 
 Edit the template, never the installed `settings.json`, and commit it when you install it.
@@ -202,12 +204,14 @@ cases use it as their dummy profile. So it must name every key that a template u
 The example of the model tables, `examples/models.toml`. An agent or a skill names a tier in its
 `model:`: `large`, `medium` or `small`. The model tables map each tier to a model of each frontend.
 
-`[claude]` gives the Claude Code model of each tier. OpenCode and oh-my-pi share every other
-table, so that their agents run on the same models: the model of each tier, a model for one
-agent, the variants, the reasoning effort, the councils, which copy an agent onto other models,
-and the context limits. `[opencode]` and `[omp]` hold the same sub-tables, and each of their keys
-replaces the shared key for that frontend alone. When a table names a tier by an old name,
-`opus`, `sonnet` or `haiku`, `harness install` stops with exit status 2.
+`[claude]` gives the Claude Code model of each tier, and `[antigravity]` the Antigravity tier of
+each tier: `inherit`, `flash`, `flash_lite` or `pro`, because an Antigravity agent can name no
+model. OpenCode and oh-my-pi share every other table, so that their agents run on the same models:
+the model of each tier, a model for one agent, the variants, the reasoning effort, the councils,
+which copy an agent onto other models, and the context limits. `[opencode]` and `[omp]` hold the
+same sub-tables, and each of their keys replaces the shared key for that frontend alone. When a
+table names a tier by an old name, `opus`, `sonnet` or `haiku`, `harness install` stops with exit
+status 2.
 
 Copy the file to `models.toml` beside the profile. `harness --models F` and
 `$RESEARCH_HARNESS_MODELS` name another path. Only `harness install` reads it. The test cases use

@@ -17,8 +17,8 @@ hero:
 
 features:
   - icon: harness
-    title: One configuration for three frontends
-    details: Claude Code, OpenCode and oh-my-pi read one set of agents, skills, rules and instructions. <code>harness install</code> writes the configuration of each. A rule or a skill loads only when it applies.
+    title: One configuration for four frontends
+    details: Claude Code, OpenCode, oh-my-pi and Antigravity read one set of agents, skills, rules and instructions. <code>harness install</code> writes the configuration of each. A rule or a skill loads only when it applies.
     link: /architecture
   - icon: private
     title: Private data across machines

@@ -92,9 +92,10 @@ The file tells the agent:
 - `rtk grep` and `rtk rg` stop at a limit per file, so read the first and the last lines;
 - use the `Read` tool when the exact bytes matter.
 
-Three frontends read it, each its own copy. `CLAUDE.md` imports `~/.claude/RTK.md`. OpenCode
+Four frontends read it, each its own copy. `CLAUDE.md` imports `~/.claude/RTK.md`. OpenCode
 lists its copy in the `instructions` of `opencode.jsonc`. `OMP-DELTA.md` imports oh-my-pi's copy,
-but oh-my-pi runs no rewrite.
+but oh-my-pi runs no rewrite. Antigravity loads its copy, `~/.gemini/config/rules/RTK.md`, as a
+rule with `trigger: always_on`, and runs no rewrite either.
 
 ## `claude/statusline-command.sh`
 
@@ -381,39 +382,60 @@ and the `find` and `ast_grep` tools are not checked.
 
 ## `antigravity/adapter.py`
 
-The adapter of Antigravity. It writes the permission layer of Antigravity below `~/.gemini/`, once
-Antigravity has made that directory; without it, the plan holds no file and one warning. It writes
-`config/hooks.json`, which runs `guard.py` by its absolute path on every tool call, `guard.py` and
-the seven guard scripts in `config/hooks/`, the path list `config/guard-paths.json`, and three keys
-of the CLI's `antigravity-cli/settings.json`: `permissions`, `toolPermission` and
-`enableTerminalSandbox`. The merge keeps every other key of that file and its indent, and backs up
-the file it replaces. A file that is not a regular file or not a JSON object exits 2 before any
-write.
+The adapter of Antigravity. It writes Antigravity's part of `harness install` and gives no
+subcommand of its own.
+
+The install writes below `~/.gemini/`, once Antigravity has made that directory; without it, the
+plan holds no file and one warning. The desktop app, the IDE and the CLI `agy` read the one
+directory `~/.gemini/config/`. The adapter writes:
+
+- `config/hooks.json`, with one `SessionStart` handler, which runs `install-drift.py` and gives its
+  warning to the session, and one `PreToolUse` group with the matcher `*`, which runs `guard.py`
+  by its absolute path on every tool call;
+- `guard.py`, the seven guard scripts and `install-drift.py` in `config/hooks/`, and the path list
+  `config/guard-paths.json`;
+- `config/GEMINI.md`, from `ANTIGRAVITY-DELTA.md`;
+- `config/rules/<name>.md`: `RTK.md` and each file of `instructions/` as a rule with
+  `trigger: always_on`, and each rule of `rules/` with its `paths` as `trigger: glob`;
+- `config/skills/<name>/`, the skills, each `SKILL.md` without its `model:`;
+- `config/agents/<name>.md` for each agent of `agents/`, with its model from the table
+  `[antigravity]` of `models.toml`, its tools from the table `TOOLS`, and the section of
+  `UNDER-ANTIGRAVITY.md`;
+- `config/mcp_config.json`, with mode 600 and no backup: the file as it is, with the entry
+  `kaimon` set to Kaimon's URL and its token from `~/.config/kaimon/opencode-token` written out,
+  because Antigravity expands no shell form in a header. With no token, the install leaves the
+  file as it is and gives one warning;
+- three keys of the CLI's `antigravity-cli/settings.json`: `permissions`, `toolPermission` and
+  `enableTerminalSandbox`. The merge keeps every other key of that file and its indent, and backs
+  up the file it replaces.
+
+In each text except `GEMINI.md`, a path below `~/.claude/` names Antigravity's copy, and
+`RTK.md` and the files of `instructions/` are in `config/rules/`. Antigravity loads no glob rule
+of `config/rules/`, so the delta lists each rule with the files it applies to.
 
 The permission rules are the settings template's: a Bash entry becomes a `command(…)` rule, a Read
 or Edit path a `read_file(…)` or `write_file(…)` rule, and an allow host of the network lists a
 `read_url(…)` rule. A `*` of an allow rule in regex form matches no text that ends a segment, so
 the rule never matches across `;`, `|`, `&`, a substitution or a redirection. A path with a glob
-that Antigravity cannot express is dropped, and the path lists of `guard.py` cover it. It also
-writes each agent to `config/agents/`, its model from the table `[antigravity]` of `models.toml`,
-and Kaimon to `config/mcp_config.json`.
+that Antigravity cannot express is dropped, and the path lists of `guard.py` cover it. The last
+`allow` rule is `mcp(kaimon/*)`. Only `agy` reads these rules; the desktop app keeps its own
+grants in its settings.
 
-## `antigravity/ANTIGRAVITY-DELTA.md`
+The install exits with status 2, before it writes a file, in these cases among others:
 
-The global instruction file of Antigravity. `harness install` writes it as
-`~/.gemini/config/GEMINI.md`, in place of `~/.claude/CLAUDE.md`. It states the facts of
-Antigravity's tools, and names the rule file to read before each kind of work.
+- the CLI's `settings.json` or `mcp_config.json` is not a regular file or not a JSON object;
+- two sources hold the same path;
+- an instruction file or a rule holds an include `@[…](…)` or has 24,000 bytes or more, or all of
+  them together reach the budget that Antigravity's rules share;
+- `models.toml` has no `[antigravity]` table, or the table does not give each tier one of the
+  words `inherit`, `flash`, `flash_lite` and `pro`;
+- `TOOLS` does not map a tool of an agent.
 
-## `antigravity/UNDER-ANTIGRAVITY.md`
+A council of `models.toml` gives one warning for each agent that it names, and writes no seat. An
+installed rule, skill, hook or agent with no source is an EXTRA line.
 
-The text of the "Under Antigravity" section that the Antigravity adapter puts before the body of
-an agent. The file has one level-2 section for each mechanism: `intro`, `skills`, `worktree`,
-`agent`, `background`, `mcp` and `pr`. `render_agent` takes `intro`, then the section of each
-mechanism that the agent uses: preloaded skills, worktree isolation, the `Agent` tool, a
-`run_in_background` in the body, a Kaimon tool, or a body that says to open a pull request. In
-`skills`, `{skills}` becomes the names of the agent's skills. An agent that uses none of these
-mechanisms gets no section. When a section that the adapter needs is missing, the install exits
-with status 2.
+`fixtures/` holds the expected frontmatter and "Under Antigravity" section of four rendered agents,
+which the cases compare.
 
 ## `antigravity/guard.py`
 
@@ -431,3 +453,37 @@ list, the template's Edit denies, and the `ask` list, its Edit asks. The `deny` 
 files of the layer itself. A refusal of a guard becomes `deny`, an "ask" answer `force_ask`, and a
 pass `ask`, which leaves Antigravity's own rules in force. It fails closed: a guard that cannot
 run, fails, prints output that is not a JSON answer or times out gives `deny`.
+
+## `antigravity/ANTIGRAVITY-DELTA.md`
+
+The global instruction file of Antigravity. `harness install` writes it as
+`~/.gemini/config/GEMINI.md`, byte for byte, in place of `~/.claude/CLAUDE.md`. The core rules,
+`RTK.md` and the tree instructions load beside it as always-on rules.
+
+It states the facts of Antigravity:
+
+- the two controls: the terminal sandbox of `agy`, with the rules of its `settings.json`, and the
+  guard hook on every tool call, in the app and in `agy`;
+- a subagent shows no prompt, so a call that needs one is refused there;
+- Antigravity runs no RTK rewrite, so a command runs as typed;
+- there is no worktree hook: make the worktree with `git worktree add`;
+- the `Agent` tool is `invoke_subagent`, a subagent replies through `send_message`, and no agent
+  sets an effort;
+- each agent's model is the Antigravity tier of `[antigravity]`, and a council has no seat;
+- read each `CLAUDE.md` on the path to the working directory yourself, because Antigravity reads
+  none;
+- read a rule of `~/.gemini/config/rules/` before the work that it names, because none loads by
+  itself;
+- the skills are Antigravity's own copies in `~/.gemini/config/skills/`;
+- there is no session scratchpad.
+
+## `antigravity/UNDER-ANTIGRAVITY.md`
+
+The text of the "Under Antigravity" section that the Antigravity adapter puts before the body of
+an agent. The file has one level-2 section for each mechanism: `intro`, `skills`, `worktree`,
+`agent`, `background`, `mcp` and `pr`. `render_agent` takes `intro`, then the section of each
+mechanism that the agent uses: preloaded skills, worktree isolation, the `Agent` tool, a
+`run_in_background` in the body, a Kaimon tool, or a body that says to open a pull request. In
+`skills`, `{skills}` becomes the names of the agent's skills. An agent that uses none of these
+mechanisms gets no section. When a section that the adapter needs is missing, the install exits
+with status 2.

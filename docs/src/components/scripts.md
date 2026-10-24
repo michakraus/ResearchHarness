@@ -454,8 +454,8 @@ the API. No skill or agent calls it. For the context at the start, use `startup-
 
 The scripts in `scripts/audit/` measure the harness over a window of time: where the tokens go,
 how the builder-critic loop converges, and which failures it has. They read the transcripts of
-Claude Code, OpenCode and oh-my-pi, and change no source file. No skill or agent calls them. Run
-them from the directory that is to hold the tables.
+Claude Code, of OpenCode and of oh-my-pi, not those of Antigravity, and change no source file. No
+skill or agent calls them. Run them from the directory that is to hold the tables.
 
 ```bash
 julia --startup-file=no -t 8 scripts/audit/transcripts.jl . --from 2026-10-02T00:00:00Z --to 2026-10-16T00:00:00Z

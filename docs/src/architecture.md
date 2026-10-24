@@ -15,8 +15,8 @@ The sources of the instruction layer name no person, no repository of a research
 organisation. A value of that kind goes into the profile, and a template of the harness names its
 key. `harness leaks` checks the repository for the private strings of the profile. A rule or a fact
 about one research tree goes into the tree instructions. `adapters/claude/CLAUDE.md` imports
-their `instructions/research-tree.md`, and OpenCode and oh-my-pi read that file too. So a user
-adapts the harness without a change of the repository.
+their `instructions/research-tree.md`, and OpenCode, oh-my-pi and Antigravity read that file too.
+So a user adapts the harness without a change of the repository.
 
 ## The state in `~/.claude`
 
@@ -72,14 +72,21 @@ frontend. On a source with any other value, the install exits with status 2 and 
 it does the same on a wildcard such as `mcp/kaimon/*`. Every other frontmatter key keeps its name
 and its value, and the body keeps Claude Code's tool names.
 
-| neutral, in `agents/` and `skills/` | Claude Code | OpenCode | oh-my-pi |
-|:--|:--|:--|:--|
-| `model: large`, `medium`, `small` | the `[claude]` table: `opus`, `sonnet`, `haiku` | the shared `[models]` table, with `[opencode.models]` over it | the shared `[models]` table, with `[omp.models]` over it, as the literal `provider/model`; the `default` role takes the `medium` model |
-| `read`, `edit`, `write`, `grep`, `glob` | `Read`, `Edit`, `Write`, `Grep`, `Glob` | `read`, `edit`, `edit`, `grep`, `glob` | `read`, `edit`, `write`, `grep`, `glob` |
-| `shell` | `Bash` | `bash` | `bash` |
-| `agent` | `Agent` | `task` | `task` |
-| `web_search`, `web_fetch` | `WebSearch`, `WebFetch` | `websearch`, `webfetch` | `web_search`, `read` |
-| `mcp/kaimon/<tool>` | `mcp__kaimon__<tool>` | `kaimon_<tool>` | `mcp__kaimon_<tool>` |
+| neutral, in `agents/` and `skills/` | Claude Code | OpenCode | oh-my-pi | Antigravity |
+|:--|:--|:--|:--|:--|
+| `model: large`, `medium`, `small` | the `[claude]` table: `opus`, `sonnet`, `haiku` | the shared `[models]` table, with `[opencode.models]` over it | the shared `[models]` table, with `[omp.models]` over it, as the literal `provider/model`; the `default` role takes the `medium` model | the `[antigravity]` table, a tier of Antigravity: `inherit`, `flash`, `flash_lite` or `pro`; the example gives `inherit`, `flash`, `flash_lite` |
+| `read`, `edit`, `write`, `grep`, `glob` | `Read`, `Edit`, `Write`, `Grep`, `Glob` | `read`, `edit`, `edit`, `grep`, `glob` | `read`, `edit`, `write`, `grep`, `glob` | `view_file` and `list_dir`, `replace_file_content`, `write_to_file`, `grep_search`, `find_by_name` |
+| `shell` | `Bash` | `bash` | `bash` | `run_command` |
+| `agent` | `Agent` | `task` | `task` | `invoke_subagent` |
+| `web_search`, `web_fetch` | `WebSearch`, `WebFetch` | `websearch`, `webfetch` | `web_search`, `read` | `search_web`, `read_url_content` |
+| `mcp/kaimon/<tool>` | `mcp__kaimon__<tool>` | `kaimon_<tool>` | `mcp__kaimon_<tool>` | no name in `tools:`, which refuses `call_mcp_tool`; the agent gets `inheritMcp: true` and calls Kaimon through `call_mcp_tool` |
+
+An Antigravity agent can name a tier only, never a model: its `model:` is one of the four words
+`inherit`, `flash`, `flash_lite` and `pro`, and the account maps each word to a model. `inherit`
+runs a subagent on the session model, and no agent sets an effort. The install exits with status 2
+on any other word in `[antigravity]`. The file tools above are those of a subagent's default set,
+not the main agent's `read_file`, `edit_file` and `write_file`; `tools:` accepts both families. An
+agent with no tool gets `tools: []`.
 
 The Claude Code layer copies an agent or a skill with these two values rewritten in place and
 every other byte as it is. When a table of `models.toml` names a tier by its old name, `opus`,
@@ -157,7 +164,7 @@ file.
 The sources of the instruction layer are neutral: they belong to no one frontend. What is one
 frontend's own goes below `adapters/<frontend>/`. The other top-level directories belong to no
 frontend either: `hooks/` holds the guard hooks that Claude Code and oh-my-pi both call,
-`settings/` the policy source of all three frontends, and the rest the tools.
+`settings/` the policy source of all four frontends, and the rest the tools.
 
 | directory | holds |
 |:--|:--|
@@ -165,10 +172,11 @@ frontend either: `hooks/` holds the guard hooks that Claude Code and oh-my-pi bo
 | `adapters/claude/` | Claude Code's own: `CLAUDE.md`, `RTK.md` and the status line script, which `harness install` copies to the top of `~/.claude/` |
 | `adapters/opencode/` | the OpenCode configuration, plugins and global instruction file |
 | `adapters/omp/` | the oh-my-pi guard extension, global instruction file and agent text |
+| `adapters/antigravity/` | the Antigravity guard hook, global instruction file and agent text |
 | `bin/`, `lib/harness/` | the `harness` command |
-| `adapters/<frontend>/adapter.py` | each frontend's part of the `harness` command, which `lib/harness/frontends.py` loads: the Claude Code layer, the settings and the trust; the generators of the OpenCode agents and permission block; the generator of oh-my-pi's `harness.yml`, `models.yml`, rules, agents and `mcp.json` |
+| `adapters/<frontend>/adapter.py` | each frontend's part of the `harness` command, which `lib/harness/frontends.py` loads: the Claude Code layer, the settings and the trust; the generators of the OpenCode agents and permission block; the generator of oh-my-pi's `harness.yml`, `models.yml`, rules, agents and `mcp.json`; the generator of Antigravity's `hooks.json`, permission rules, rules, skills, agents and `mcp_config.json` |
 | `hooks/` | the shared hooks: the guard hooks, Claude Code `PreToolUse` hooks that refuse unsafe shell commands, which oh-my-pi's `guards.ts` calls too, the `SessionStart` hook that warns when `~/.claude/` is behind its sources, the other hooks of Claude Code, such as `worktree.py` and `prompt-log.py`, and their test cases (`probe.py`) |
-| `settings/` | the permission and sandbox settings template, the policy source of all three frontends, and `network.toml`, the hosts from which the install generates the network rules of Claude Code |
+| `settings/` | the permission and sandbox settings template, the policy source of all four frontends, and `network.toml`, the hosts from which the install generates the network rules of Claude Code |
 | `githooks/` | git hooks and GitHub Actions workflow templates for Julia packages, and the Julia scripts that check them; `lib/harness/githooks.py` installs them |
 | `scripts/` | Julia test, mutation, and code-structure tools; transcript and lint tools |
 | `launchagents/` | macOS launch agent templates |

@@ -15,9 +15,9 @@ instruction text of the agent. Most bodies prescribe the exact shape of the repo
 
 `harness install` copies each agent to `~/.claude/agents/` for Claude Code, with the model tier and
 the tools written as Claude Code names them. It renders each agent for OpenCode, with an "Under
-OpenCode" section before the body, and for oh-my-pi. [Architecture](../architecture.md) gives the
-map of the tools and model tiers. The sections below come in five groups: the
-builder-critic loop, pull requests and CI, Julia diagnosis and tests, research, and the
+OpenCode" section before the body, for oh-my-pi, and for Antigravity, with an Antigravity tier as
+its model. [Architecture](../architecture.md) gives the map of the tools and model tiers. The
+sections below come in five groups: the builder-critic loop, pull requests and CI, Julia diagnosis and tests, research, and the
 general-purpose agents.
 
 ## `julia-builder`

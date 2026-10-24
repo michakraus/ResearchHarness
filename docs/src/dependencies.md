@@ -87,7 +87,8 @@ command uses the standard library only, so no package must be installed.
 
 Every subcommand runs on Python. The pre-push hook runs `bin/harness test` on `python3` and on
 `python3.11`, and CI runs it on Python 3.11 and the latest 3.x. The guard hooks are Python
-scripts, which Claude Code, OpenCode and oh-my-pi call before a [tool call](concepts.md#tool-call).
+scripts, which Claude Code, OpenCode, oh-my-pi and Antigravity call before a
+[tool call](concepts.md#tool-call).
 
 The harness needs Python 3.11 or later because the [profile](concepts.md#profile) and the model
 tables are TOML, and
@@ -97,7 +98,8 @@ and a compiled tool needs a build step on each machine.
 Call sites: every subcommand (`bin/harness`); the pre-push hook (`.githooks/pre-push`, also for
 `python3.11`, which the hook skips when it is missing, because the CI job `python` runs Python
 3.11);
-the guard hooks, which oh-my-pi calls (`adapters/omp/guards.ts`).
+the guard hooks, which oh-my-pi calls (`adapters/omp/guards.ts`) and Antigravity's guard hook runs
+(`adapters/antigravity/guard.py`).
 
 ### git
 
@@ -288,7 +290,7 @@ Kaimon is an MCP server that gives an agent a Julia session and tools to search 
 code.
 
 The update job `julia-update.jl` updates Kaimon, checks that it loads, and reports when its
-server must restart. The oh-my-pi and OpenCode configurations hold its MCP entry.
+server must restart. The oh-my-pi, OpenCode and Antigravity configurations hold its MCP entry.
 
 The harness does not need Kaimon to run. Without it, the update job stops with an error, and an
 agent has no Julia session and no Kaimon tools.
@@ -310,7 +312,7 @@ Call site: the update job (`scripts/julia-update.jl`).
 ### Claude Code
 
 Claude Code is Anthropic's [coding agent](concepts.md#coding-agent) for the terminal. It is one
-of the three frontends that the harness configures.
+of the four frontends that the harness configures.
 
 `harness install` writes the Claude Code layer into `~/.claude/`: the agents, skills,
 [rules](concepts.md#rule),
@@ -324,7 +326,7 @@ Call site: `harness skill-triggers --apply` (`lib/harness/skill_triggers.py`).
 
 ### OpenCode
 
-OpenCode is an open-source coding agent for the terminal. It is one of the three frontends that
+OpenCode is an open-source coding agent for the terminal. It is one of the four frontends that
 the harness configures.
 
 `harness install` writes the OpenCode configuration into `~/.config/opencode/`: the permission
@@ -337,7 +339,7 @@ Call site: `harness install` (`adapters/opencode/adapter.py`).
 
 ### oh-my-pi
 
-oh-my-pi is a coding agent for the terminal. It is one of the three frontends that the harness
+oh-my-pi is a coding agent for the terminal. It is one of the four frontends that the harness
 configures.
 
 `harness install` writes the oh-my-pi configuration into `~/.omp/agent/`: the permission layer,
