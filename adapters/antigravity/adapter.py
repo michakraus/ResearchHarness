@@ -550,9 +550,10 @@ def merge_mcp(path, kaimon):
     merge_settings writes a file. A missing file, an empty one, or one of whitespace only holds no
     key. Exits 2, before anything is written and without the file's text, on a file that is not a
     regular file, cannot be read, is not UTF-8, is not a JSON object, has a `mcpServers` that is
-    not an object, holds a key twice in one object, is nested deeper than json writes, or holds a
-    number outside the Kaimon entry that json writes in other text. The error of a number names
-    its key by its path, a JSON list of the keys and indices from the top."""
+    not an object, holds a key twice in one object outside the Kaimon entry, is nested deeper than
+    json writes, or holds a number outside the Kaimon entry that json writes in other text. The
+    error names each such key and each such number by its path, a JSON list of the keys and
+    indices from the top, and prints no value."""
     claude = frontends.adapter("claude")
     refused = "; the install sets mcpServers.kaimon of a JSON object in a regular file there, and writes nothing"
     text = read_regular(path, refused)
@@ -561,31 +562,33 @@ def merge_mcp(path, kaimon):
         cfg, indent = claude.json_object(path, text), claude.indent_of(text)
         if not isinstance(cfg.get("mcpServers", {}), dict):
             raise HarnessError(f"{path}: its mcpServers is not a JSON object{refused}")
-        # A second parse finds each key that an object holds twice, whose earlier values the merge
-        # would drop, and keeps the text of each number, to compare it with the text json writes.
-        twice = []
+        # A second parse keeps, in each object, the keys that it holds twice, whose earlier values
+        # the merge would drop, and the text of each number, to compare it with the text json
+        # writes. The Kaimon entry is replaced as a whole, so its keys and numbers stop nothing.
+        class Pairs(dict):
+            def __init__(self, items):
+                super().__init__(items)
+                keys = [k for k, _ in items]
+                self.twice = {k for k in keys if keys.count(k) > 1}
 
-        def pairs(items):
-            keys = [k for k, _ in items]
-            twice.extend(sorted({k for k in keys if keys.count(k) > 1}))
-            return dict(items)
-
-        tree = json.loads(text, object_pairs_hook=pairs, parse_int=claude.Number, parse_float=claude.Number)
-        if twice:
-            raise HarnessError(f"{path} holds a key twice in one object: {json.dumps(twice)}{refused}")
-        tree.get("mcpServers", {}).pop("kaimon", None)
-        numbers, stack = [], [([k], v) for k, v in tree.items()]
+        tree = json.loads(text, object_pairs_hook=Pairs, parse_int=claude.Number, parse_float=claude.Number)
+        if "mcpServers" in tree:
+            tree["mcpServers"].pop("kaimon", None)
+            tree["mcpServers"].twice.discard("kaimon")
+        twice, numbers, stack = [], [], [([], tree)]
         while stack:
             key, value = stack.pop()
             if isinstance(value, dict):
+                twice += [json.dumps([*key, k]) for k in value.twice]
                 stack += [([*key, k], v) for k, v in value.items()]
             elif isinstance(value, list):
                 stack += [([*key, i], v) for i, v in enumerate(value)]
             elif isinstance(value, claude.Number) and json.dumps(json.loads(value.text)) != value.text:
                 numbers.append(json.dumps(key))
-        if numbers:
-            raise HarnessError(f"{path} holds numbers that JSON would write in other text, at "
-                               f"{', '.join(sorted(numbers))}{refused}")
+        found = [f"{what}, at {', '.join(sorted(paths))}" for what, paths in [
+            ("a key twice in one object", twice), ("numbers that JSON would write in other text", numbers)] if paths]
+        if found:
+            raise HarnessError(f"{path} holds {'; and '.join(found)}{refused}")
     cfg.setdefault("mcpServers", {})["kaimon"] = kaimon
     try:
         return (claude.dumps(cfg, indent=indent) + "\n").encode()
@@ -1684,6 +1687,31 @@ def kaimon_cases(scratch):
     case(lambda: code == 0 and json.loads(got)["mcpServers"] == {
         "kaimon": entry("fake-token-of-the-cases")["mcpServers"]["kaimon"], "other": {"timeout": 1.5}},
          f"a number of the Kaimon entry that the merge replaces stops nothing: {code}, {got!r}, {tail(out)!r}")
+    new = entry("fake-token-of-the-cases")["mcpServers"]["kaimon"]
+    base, config = fresh()
+    config.write_text('{"extra": {"u": 1}}\n')
+    code, out = run(base, "--apply")
+    got = config.read_text()
+    case(lambda: code == 0 and json.loads(got) == {"extra": {"u": 1}, "mcpServers": {"kaimon": new}},
+         f"a file with no mcpServers gains it, with Kaimon alone: {code}, {got!r}, {tail(out)!r}")
+    base, config = fresh()
+    config.write_text('{"mcpServers": {"kaimon": {"u": 1, "u": 2}, "other": {"command": "x"}}}\n')
+    code, out = run(base, "--apply")
+    got = config.read_text()
+    case(lambda: code == 0 and json.loads(got)["mcpServers"] == {"kaimon": new, "other": {"command": "x"}}
+         and json.dumps(json.loads(got)["mcpServers"]["other"]) == '{"command": "x"}',
+         f"a key twice in the Kaimon entry that the merge replaces stops nothing: {code}, {got!r}, {tail(out)!r}")
+    base, config = fresh()
+    config.write_text('{"mcpServers": {"kaimon": {"url": "a"}, "kaimon": {"url": "b"}}}\n')
+    code, out = run(base, "--apply")
+    got = config.read_text()
+    case(lambda: code == 0 and json.loads(got)["mcpServers"] == {"kaimon": new} and got.count('"kaimon"') == 1,
+         f"a Kaimon entry twice in mcpServers becomes one Kaimon entry: {code}, {got!r}, {tail(out)!r}")
+    base, config = fresh()
+    config.write_bytes(b'{"mcpServers": {"a": {"url": "secret-u", "url": "secret-v"}}}\n')
+    code, out = run(base, "--apply")
+    case(lambda: scratch.refused(code, out) and '["mcpServers", "a", "url"]' in out and "secret-" not in out,
+         f"a key twice in a server exits 2, names the key by its path and prints no value: {code}, {tail(out)!r}")
     truncated = b'{"mcpServers": {"kaimon": {"headers": {"Authorization": "Bearer fake-old'
     for label, make in [("holds a JSON array", lambda p: p.write_bytes(b"[]\n")),
                         ("holds a JSON string", lambda p: p.write_bytes(b'"x"\n')),
@@ -1703,6 +1731,12 @@ def kaimon_cases(scratch):
                          lambda p: p.write_bytes(b'{"mcpServers": {"a": {"url": "u"}}, "mcpServers": {"b": {}}}\n')),
                         ("holds a key of a server twice",
                          lambda p: p.write_bytes(b'{"mcpServers": {"a": {"url": "u", "url": "v"}}}\n')),
+                        ("holds a key twice in a top-level key named kaimon",
+                         lambda p: p.write_bytes(b'{"kaimon": {"u": 1, "u": 2}, "mcpServers": {}}\n')),
+                        ("holds a key twice in a server named kaimon.x",
+                         lambda p: p.write_bytes(b'{"mcpServers": {"kaimon.x": {"u": 1, "u": 2}}}\n')),
+                        ("holds a key twice in a key named kaimon of a server",
+                         lambda p: p.write_bytes(b'{"mcpServers": {"o": {"kaimon": {"u": 1, "u": 2}}}}\n')),
                         ("is not UTF-8", lambda p: p.write_bytes(b"\xff\n")),
                         ("is a directory", lambda p: p.mkdir()), ("is a FIFO", os.mkfifo)]:
         base, config = fresh()
