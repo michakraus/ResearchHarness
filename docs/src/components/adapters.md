@@ -397,6 +397,23 @@ the rule never matches across `;`, `|`, `&`, a substitution or a redirection. A 
 that Antigravity cannot express is dropped, and the path lists of `guard.py` cover it. It installs
 no agent for Antigravity.
 
+## `antigravity/ANTIGRAVITY-DELTA.md`
+
+The global instruction file of Antigravity. `harness install` writes it as
+`~/.gemini/config/GEMINI.md`. There it takes the place of `~/.claude/CLAUDE.md`. The core rules,
+`RTK.md` and the tree instructions load beside it as rules with `trigger: always_on`.
+
+It states the facts of Antigravity:
+
+- the terminal sandbox of the CLI and the guard hook are the controls;
+- there is no RTK rewrite;
+- there is no worktree hook, so the model makes a worktree with `git worktree add` in
+  `~/Research/.worktrees/`;
+- `invoke_subagent` takes the place of the `Agent` tool, and no agent sets an effort;
+- the model reads each directory-scoped `CLAUDE.md` itself, because Antigravity reads none;
+- which rule file to read before which kind of work, because no rule of the global directory
+  loads by itself.
+
 ## `antigravity/guard.py`
 
 The `PreToolUse` hook of Antigravity. It gets each tool call and answers with a decision. It runs

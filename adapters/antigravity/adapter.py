@@ -44,8 +44,10 @@ config.json and plugins/ among them, is neither listed nor touched. The other fi
   config/guard-paths.json        the path list of guard.py (guard_paths): under `deny` that of
                                  adapters/opencode/plugins/guard-paths.json, MCP_CONFIG and the
                                  files of this layer, LAYER; under `edit` and `ask` the template's
-                                 Edit denies and asks, which guard.py applies to the tools that
-                                 write; under `bash_deny` and `bash_ask` the bodies of its Bash
+                                 Edit denies and asks, then the same rules for this layer's copies
+                                 of the files that frontends.SHARED_ROOTS names, and under `edit`
+                                 GEMINI.md, which guard.py applies to the tools that write; under
+                                 `bash_deny` and `bash_ask` the bodies of its Bash
                                  denies and asks, which guard.py applies to each segment of a
                                  command
   antigravity-cli/settings.json  the keys `permissions`, `toolPermission` and
@@ -220,16 +222,22 @@ def extras(root, files):
 def guard_paths(profile):
     """The text of guard-paths.json, rendered with `profile`: under `deny` the `deny` list of
     OpenCode's path list, then MCP_CONFIG and LAYER; under `edit` every `Edit` deny of the
-    settings template, and under `ask` every `Edit` ask, each with a leading `//` as `/`; under
+    settings template, and under `ask` every `Edit` ask, each with a leading `//` as `/`, then the
+    same path below ~/.gemini/config/ of each such path below a root of frontends.SHARED_ROOTS,
+    which this layer copies, and `edit` then GEMINI.md, the counterpart of ~/.claude/CLAUDE.md; under
     `bash_deny` and `bash_ask` the body of every `Bash` deny and ask of the template."""
     deny = json.loads(profile_module.render_file(GUARD_PATHS, profile))["deny"]
     permissions = json.loads(profile_module.render_file(SETTINGS, profile))["permissions"]
     bodies = {(tool, key): [m.group(1) for e in permissions.get(key, [])
                             if (m := re.fullmatch(rf"{tool}\((.*)\)", e, re.S))]
               for tool in ("Edit", "Bash") for key in ("deny", "ask")}
+    claude, config = render("{home}/.claude", profile), render("{home}/.gemini/config", profile)
+    roots = tuple(claude + root.removeprefix("~/.claude") for root in frontends.SHARED_ROOTS)
+    edits = {key: [re.sub(r"^//+", "/", p) for p in bodies["Edit", key]] for key in ("deny", "ask")}
+    copies = {key: [config + p[len(claude):] for p in paths if p.startswith(roots)] for key, paths in edits.items()}
     return json.dumps({"deny": [*deny, render(MCP_CONFIG, profile), *(render(p, profile) for p in LAYER)],
-                       "edit": [re.sub(r"^//+", "/", p) for p in bodies["Edit", "deny"]],
-                       "ask": [re.sub(r"^//+", "/", p) for p in bodies["Edit", "ask"]],
+                       "edit": [*edits["deny"], *copies["deny"], config + "/GEMINI.md"],
+                       "ask": [*edits["ask"], *copies["ask"]],
                        "bash_deny": bodies["Bash", "deny"], "bash_ask": bodies["Bash", "ask"]},
                       indent=2, ensure_ascii=False) + "\n"
 
@@ -493,17 +501,32 @@ def layer_cases(scratch):
     edits = {key: [re.sub(r"^//+", "/", e[len("Edit("):-1]) for e in template[key] if e.startswith("Edit(")]
              for key in ("deny", "ask")}
     bash = {key: [e[len("Bash("):-1] for e in template[key] if e.startswith("Bash(")] for key in ("deny", "ask")}
+    # The Edit rules of Claude Code's copied files, below Antigravity's copies, written out.
+    copied = ("RTK.md", "instructions/", "hooks/", "rules/", "skills/")
+    copies = {key: [f"{h}/.gemini/config/{p[len(h + '/.claude/'):]}" for p in edits[key]
+                    if p.startswith(tuple(f"{h}/.claude/{c}" for c in copied))] for key in ("deny", "ask")}
     lists = config / "guard-paths.json"
     written = json.loads(lists.read_text()) if lists.is_file() else {}
+    case(lambda: written["edit"][len(edits["deny"]):]
+         == [*copies["deny"], f"{h}/.gemini/config/GEMINI.md"]
+         and written["ask"][len(edits["ask"]):] == copies["ask"]
+         and {f"{h}/.gemini/config/RTK.md", f"{h}/.gemini/config/instructions/**", f"{h}/.gemini/config/rules/**",
+              f"{h}/.gemini/config/skills/build-part/**", f"{h}/.gemini/config/hooks/**"} <= set(copies["deny"])
+         and copies["ask"] == [f"{h}/.gemini/config/skills/**"],
+         f"after the template's Edit rules, `edit` holds each Edit deny of a copied path below "
+         f"~/.claude/ as the same path below ~/.gemini/config/, then GEMINI.md, and `ask` each such Edit ask: "
+         f"{written.get('edit', [])[len(edits['deny']):]}, {written.get('ask', [])[len(edits['ask']):]}")
     case(lambda: written == {"deny": [*opencode, f"{h}/.gemini/config/mcp_config.json", f"{h}/.gemini/config/hooks.json",
                                       f"{h}/.gemini/config/hooks/**", f"{h}/.gemini/config/guard-paths.json",
                                       f"{h}/.gemini/antigravity-cli/settings.json"],
-                             "edit": edits["deny"], "ask": edits["ask"],
+                             "edit": [*edits["deny"], *copies["deny"], f"{h}/.gemini/config/GEMINI.md"],
+                             "ask": [*edits["ask"], *copies["ask"]],
                              "bash_deny": bash["deny"], "bash_ask": bash["ask"]}
          and len(edits["deny"]) >= 54 and len(edits["ask"]) >= 4
          and len(bash["deny"]) >= 187 and len(bash["ask"]) >= 105,
          f"guard-paths.json is OpenCode's deny list, then mcp_config.json and the files of the layer; `edit` is "
-         f"every Edit deny of the template and `ask` every Edit ask; `bash_deny` and `bash_ask` are the bodies "
+         f"every Edit deny of the template and `ask` every Edit ask, each then with Antigravity's copies; "
+         f"`bash_deny` and `bash_ask` are the bodies "
          f"of every Bash deny and ask, entry by entry: { {k: len(v) for k, v in written.items()} }")
     new = gemini / "antigravity-cli" / "settings.json"
     settings = json.loads(new.read_text()) if new.is_file() else {}

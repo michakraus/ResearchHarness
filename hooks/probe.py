@@ -1358,6 +1358,17 @@ AGY_CASES = [
     ("run_command", {"CommandLine": "echo {} > ~/.gemini/config/guard-paths.json"}, "deny", None),
     ("run_command", {"CommandLine": "cat ~/.gemini/config/guard-paths.json"}, "deny", None),
     ("run_command", {"CommandLine": "rm ~/.gemini/config/hooks/guard.py"}, "deny", None),
+    # The installed instructions, rules and skills: the template's Edit rules of Claude Code's copies
+    # hold for Antigravity's, on the tools that write; a read and a command pass them.
+    ("write_file", {"Path": "~/.gemini/config/GEMINI.md", "Content": "x"}, "deny", None),
+    ("replace_file_content", {"TargetFile": "~/.gemini/config/rules/julia-code.md", "TargetContent": "a",
+                              "ReplacementContent": "b"}, "deny", None),
+    ("edit_file", {"Path": "~/.gemini/config/skills/build-part/SKILL.md", "Target": "a", "Replacement": "b"}, "deny",
+     None),
+    ("write_to_file", {"TargetFile": "~/.gemini/config/skills/new-skill/SKILL.md", "CodeContent": "x"}, "force_ask",
+     None),
+    ("view_file", {"AbsolutePath": "~/.gemini/config/GEMINI.md"}, "ask", None),
+    ("run_command", {"CommandLine": "cat ~/.gemini/config/rules/julia-code.md"}, "ask", None),
     # A home path in each form of the shell.
     ("run_command", {"CommandLine": "cat $HOME/.netrc"}, "deny", None),
     ("run_command", {"CommandLine": "cat ${HOME}/.netrc"}, "deny", None),

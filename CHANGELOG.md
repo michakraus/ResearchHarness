@@ -18,7 +18,11 @@
   Antigravity cuts it, or when all of them have 80,000 bytes or more, Antigravity's 20,000-token
   rules budget at 4 bytes a token; and when two sources give one rule path. A file below
   `config/rules/`, `config/skills/` or `config/hooks/` with no source is listed as EXTRA with its
-  removal command. `hooks.json` gains a `SessionStart` handler that runs a copy of
+  removal command. The guard hook refuses a write to these copies as the settings template
+  refuses one to Claude Code's: `guard-paths.json` adds below `~/.gemini/config/` each Edit deny
+  and ask of the template on `~/.claude/RTK.md`, `instructions/`, `hooks/`, `rules/` or
+  `skills/`, and an Edit deny for `GEMINI.md`; a read of them passes. `hooks.json` gains a
+  `SessionStart` handler that runs a copy of
   `install-drift.py` and gives its warning as an `injectSteps` system message, and `{}` when the
   install is current; `hooks/probe.py` checks that it gives the verdict and the text of
   `install-drift.py` on each drift case.
