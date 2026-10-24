@@ -258,7 +258,8 @@ def tier_table(path, name, frontend):
 # `reasoning_effort` an agent or a council seat to its effort, over `model_variants`; `councils` an
 # agent to its seats; `context_limits` a model to the input tokens it may hold. [opencode] and
 # [omp] may hold the same sub-tables, each key of which replaces the shared one for that frontend
-# alone. [claude] is Claude Code's table of the tiers, which reads none of them.
+# alone. [claude] is Claude Code's table of the tiers, and [antigravity] Antigravity's; neither
+# frontend takes a model from the shared tables.
 MODEL_TABLES = ["models", "model_overrides", "model_variants", "variants", "reasoning_effort", "councils",
                 "context_limits"]
 # The frontends that read MODEL_TABLES, each with a table of its own overrides.
@@ -275,7 +276,7 @@ def model_tables(path, name):
     at the top level or in [`name`], exits 2."""
     path = pathlib.Path(path)
     data = read_models(path)
-    tops = ["claude", *MODEL_TABLES, *SHARING]
+    tops = ["claude", "antigravity", *MODEL_TABLES, *SHARING]
     if tiers := [t for t in frontmatter.TIERS if t in data]:
         raise HarnessError(f"{path}: the tiers {', '.join(tiers)} are at the top level; move them into [models]")
     if unknown := sorted(set(data) - set(tops)):

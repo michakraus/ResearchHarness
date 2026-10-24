@@ -371,3 +371,76 @@
   whether it joins `WRITE_TOOLS`.
 - kind: found late
 - found: 2026-10-23
+
+### K94 · A new `mcp_config.json` holds Kaimon's token under the umask mode for a short time.
+
+- location: `lib/harness/install.py:110`
+- evidence: `install_file` writes the bytes with `dst.write_bytes(data)` (line 111) and sets the
+  mode with `dst.chmod(mode)` (line 113) after it. A file that does not exist yet is created with
+  the mode of the umask, 644 under the usual umask 022, so between the two calls another user can
+  read the token that the Antigravity plan writes into `~/.gemini/config/mcp_config.json`.
+- kind: defect
+- found: #78
+
+### K95 · The worktree rule of the Antigravity agents matches only `isolation: worktree`, with or without double quotes.
+
+- location: `adapters/antigravity/adapter.py:470`
+- evidence: `under_antigravity` uses the worktree rule when the frontmatter has `isolation:
+  worktree` or the body matches `isolation: "?worktree`. `re.search(r'isolation: "?worktree', s)`
+  is true for `isolation: worktree` and `isolation: "worktree"`, and false for
+  `isolation: 'worktree'`, `isolation:worktree`, `"isolation": "worktree"` and the prose
+  "worktree isolation". No agent of `agents/` uses one of the four missed forms, so no rendered
+  agent changes.
+- kind: defect
+- found: #78
+
+### K96 · The worktree rule of the OpenCode and oh-my-pi agents fires on the bare word `isolation`.
+
+- location: `adapters/omp/adapter.py:406`
+- evidence: `"isolation" in body` is true for any body that holds the word, so an agent that says
+  "the caller spawned you without isolation" (`agents/julia-builder.md:86`) gets the worktree rule
+  of its "Under OpenCode" or "Under oh-my-pi" section. The same test is at
+  `adapters/omp/adapter.py:1171` and `adapters/opencode/adapter.py:240`.
+- kind: defect
+- found: #78
+
+### K97 · The OpenCode skill rule says "Claude Code loads them for you" for a single skill.
+
+- location: `adapters/opencode/adapter.py:238`
+- evidence: the rule writes "Claude Code loads them for you" whatever the number of skills.
+  `adapters/opencode/fixtures/expected/judge.md:23` shows it for the one skill `which-model`.
+- kind: docs
+- found: #78
+
+### K98 · `gh pr review` from an Antigravity subagent may need a permission prompt, which a subagent does not show.
+
+- location: `agents/julia-pr-reviewer.md:68`
+- evidence: `julia-pr-reviewer` posts its review with `gh pr review <n> --comment --body-file <f>`.
+  `julia-pr-shepherd` spawns it (`agents/julia-pr-shepherd.md:99`) and posts with
+  `gh pr comment` itself (line 215). A subagent of Antigravity shows no prompt, so a command that
+  needs one is refused. No run of either agent under Antigravity has measured it.
+- kind: not verified
+- found: #78
+
+### K99 · `sections()` of the Antigravity adapter repeats the section parser of the oh-my-pi adapter.
+
+- location: `adapters/antigravity/adapter.py:455`
+- evidence: `sections(text)` returns `{m.group(1): m.group(2).strip() for m in
+  re.finditer(r"(?m)^## (\w+)\n(.*?)(?=^## |\Z)", text, re.S)}`, the same expression that
+  `adapters/omp/adapter.py:399` writes inline for `UNDER-OMP.md`.
+- kind: dead code
+- found: #78
+
+### K100 · A settings file nested 991–992 deep stops `harness install` with a traceback on Python 3.11.
+
+- location: `adapters/claude/adapter.py:527`
+- evidence: `rewritten_numbers` parses the file a second time, with `parse_int` and `parse_float`,
+  and no `RecursionError` guard holds that parse. On Python 3.11, `json_object` reads the file
+  first and refuses a nesting of 993 as "nested too deep for the parser", but the second parse
+  runs out of stack at 991 and 992. There, `merge_settings` of the Antigravity adapter on
+  `{"d": {"a": {"a": … 1 …}}}` with 991 or 992 levels raises `RecursionError` at
+  `adapters/antigravity/adapter.py:414` <- `adapters/claude/adapter.py:527`, and exits 1 where
+  the contract is exit 2. A list of the same depth is written. Python 3.14 reads both depths.
+  Claude Code's own merge calls the same helper at `adapters/claude/adapter.py:638`.
+- kind: defect
+- found: #78
