@@ -222,11 +222,12 @@ gitleaks version
 
 ## The frontends
 
-**What it does.** These steps install the three [frontends](concepts.md#frontend) that the
-harness configures: Claude Code, OpenCode 2 and oh-my-pi. Each frontend is optional, as
-[Dependencies](dependencies.md#optional) says. Skip the subsection of each frontend that you do
-not use. `harness install` writes the configuration of all three either way. Of the frontend
-directories, it needs only the OpenCode configuration directory, which the `mkdir` line of
+**What it does.** These steps install the four [frontends](concepts.md#frontend) that the
+harness configures: Claude Code, OpenCode 2, oh-my-pi and Antigravity. Each frontend is optional,
+as [Dependencies](dependencies.md#optional) says. Skip the subsection of each frontend that you do
+not use. `harness install` writes the configuration of each frontend either way, except that of
+Antigravity, which it writes once `~/.gemini/` exists. Of the frontend directories, it needs only
+the OpenCode configuration directory, which the `mkdir` line of
 [`harness install --apply`](#harness-install-apply) creates.
 
 **Why.** Each frontend reads the configuration that `harness install` writes; a frontend that is
@@ -327,6 +328,19 @@ on the `PATH`, which [The dependencies](#the-dependencies) puts there. `omp upda
 omp --version
 ```
 
+### Install Antigravity
+
+Install the Antigravity desktop app from its site, <https://antigravity.google/>, and start it
+once. The app keeps its data in `~/.gemini/`, and the desktop app, the IDE and the CLI `agy` read
+one configuration directory, `~/.gemini/config/`. `harness install` writes the Antigravity layer
+only when `~/.gemini/` exists; without it, the install gives one warning and writes no file there.
+
+**Check.** The command prints `GEMINI-OK`:
+
+```bash
+test -d ~/.gemini && echo GEMINI-OK
+```
+
 ## The sandbox of Claude Code
 
 **What it does.** On Linux, Claude Code runs the shell commands of a
@@ -399,8 +413,10 @@ Then open `~/.config/research-harness/models.toml`, and write the models that yo
 The example names the Claude Code models of the three [tiers](concepts.md#tier) in `[claude]`,
 and these work as copied. The tables for OpenCode and oh-my-pi name example providers, such as
 `provider-a/large-model`, which no frontend knows: replace them with your own models before you
-use OpenCode or oh-my-pi. [The tables of `models.toml`](profile.md#the-tables-of-the-model-tables)
-says what each table holds.
+use OpenCode or oh-my-pi. The table `[antigravity]` gives the Antigravity tier of each tier, and
+works as copied; [Antigravity](#antigravity) below says how to add it to an older copy.
+[The tables of `models.toml`](profile.md#the-tables-of-the-model-tables) says what each table
+holds.
 
 **On several machines**, the profile is the same on each of them: no key needs an edit per
 machine. The branch that the autocommit pushes to differs per machine, and the key
@@ -593,6 +609,57 @@ EOF
 harness install
 ```
 
+### Antigravity
+
+`harness install` writes the Antigravity layer into `~/.gemini/config/`: the global instruction
+file `GEMINI.md`, the always-on rules and the rules, the skills, the agents, the guard hook
+`hooks.json` with `guard.py` and the guard scripts, the path list, and the Kaimon entry of
+`mcp_config.json`. It also writes the permission rules into the settings of the CLI `agy`,
+`~/.gemini/antigravity-cli/settings.json`, after a backup.
+[components/adapters.md](components/adapters.md) describes the adapter.
+
+**The tiers.** An Antigravity agent names a tier, never a model, so the table `[antigravity]` of
+`models.toml` gives each tier of the harness one of Antigravity's tiers: `inherit`, the session
+model, `flash`, `flash_lite` or `pro`. Select "Gemini 4 Argon (Medium)" in the model menu of the
+app: with `large = "inherit"`, an agent of tier `large` inherits it. Without the table, the
+install stops with exit status 2, an error. A copy of `examples/models.toml` has it. To an older
+copy, this block adds the table of the example. Run it once: a second table stops the install too.
+
+```bash
+cat >> ~/.config/research-harness/models.toml <<'EOF'
+
+[antigravity]
+large = "inherit"
+medium = "flash"
+small = "flash_lite"
+EOF
+```
+
+**Check.** The command prints `1`, and the dry run of `harness install` prints no error about
+`[antigravity]`:
+
+```bash
+grep -c '^\[antigravity\]' ~/.config/research-harness/models.toml
+harness install
+```
+
+**The permission settings of the app.** The desktop app reads no permission rule from the CLI's
+`settings.json`. It keeps its grants under **General → Tool Permissions** in its settings, and
+writes them to `~/.gemini/config/config.json`. A wildcard grant for Kaimon has no effect there,
+neither `kaimon/*` nor `mcp(kaimon/*)`: each Kaimon tool needs its own grant. So approve each
+Kaimon tool once, when the app asks with the dialog "Allow using this MCP tool?" and the name of
+the tool, such as `kaimon/ping`. The install leaves `allowNonWorkspaceAccess` at its default,
+`false`, so a workspace below `~/Research` asks once for read access to each parent `CLAUDE.md`
+that `GEMINI.md` has the model read. Approve each of these requests once.
+
+**Check.** Start a conversation in the app, in a workspace below `~/Research`, and paste this
+prompt. Approve the request for `kaimon/ping` and each request for a `CLAUDE.md`. The reply holds
+Kaimon's answer, and **General → Tool Permissions** lists the grant for `kaimon/ping`:
+
+```text
+Start the subagent julia-critic with the prompt "Call the tool ping of the MCP server kaimon, and report its reply verbatim". Report its reply verbatim.
+```
+
 ## Kaimon
 
 **With Kaimon only.** **Without Julia code, skip this step.** Kaimon gives an agent a Julia
@@ -708,7 +775,8 @@ systemctl --user list-timers --no-pager | grep julia-update
 
 ## The Kaimon token
 
-**With Kaimon and OpenCode only.** Skip this step without one of them.
+**With Kaimon and OpenCode or Antigravity only.** Skip this step without Kaimon, or without both
+frontends.
 
 **What it does.** In its strict mode, Kaimon refuses a request that does not carry one of its API
 keys. Kaimon keeps its mode and its keys in `~/.config/kaimon/config.json`, and writes that file
@@ -727,7 +795,10 @@ rm -f ~/.config/kaimon/opencode-token.new
 ```
 
 **Why.** Without the file, OpenCode sends no key, and Kaimon answers each request with 401. The
-settings do not let a session read either file.
+settings do not let a session read either file. Antigravity expands no shell form in its MCP
+configuration, so `harness install` writes the key itself into `~/.gemini/config/mcp_config.json`,
+with mode 600; without the file, the install writes no Kaimon entry there and warns. So with
+Antigravity, run `harness install --apply` once more after this step.
 
 **Check.** The first command prints `600 47`: the mode, and the 47 characters of the key. The dry
 run prints no warning about `~/.config/kaimon/opencode-token`:

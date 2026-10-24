@@ -2,6 +2,25 @@
 
 ## Unreleased
 
+- **The documentation names Antigravity as the fourth frontend.** The README, the home page, the
+  introduction, the architecture, the dependencies, the command page and the component pages count
+  four frontends where they counted three, and list Antigravity where they listed Claude Code,
+  OpenCode and oh-my-pi. The table of the neutral vocabulary in `architecture.md` gains an
+  Antigravity column: the `[antigravity]` table for `model:`, the tool names of `TOOLS`, and
+  `inheritMcp: true` with `call_mcp_tool` for a Kaimon tool; the text states that a tier is the
+  only model an Antigravity agent can name. `components/adapters.md` describes the Antigravity
+  group in the form of the other adapters: `adapter.py` with the files it writes and its exits,
+  then `guard.py`, `ANTIGRAVITY-DELTA.md` with its facts, and `UNDER-ANTIGRAVITY.md`. The setup
+  pages for macOS and Linux gain the install of the app, the step that adds `[antigravity]` to an
+  older `models.toml`, and the app's permission settings, each with its check: the app keeps its
+  grants under **General → Tool Permissions**, which writes them to `~/.gemini/config/config.json`;
+  no wildcard grant for Kaimon works there, so the user approves each Kaimon tool once; a
+  workspace below `~/Research` asks once for read access to each parent `CLAUDE.md`. The tier step
+  has the user select "Gemini 4 Argon (Medium)" in the app's model menu, which an agent of tier
+  `large` inherits, and the Kaimon check starts `julia-critic`. The Kaimon token step names
+  Antigravity, whose `mcp_config.json` holds the token itself. The pages on rules, Kaimon, the tree
+  instructions and `frontends.py` name Antigravity beside OpenCode and oh-my-pi.
+
 - **`harness install` writes the agents and Kaimon for Antigravity.** `models.toml` gains a table
   `[antigravity]`, beside `[claude]`, which maps the tiers `large`, `medium` and `small` to
   Antigravity's tiers `inherit` (the session model), `flash`, `flash_lite` or `pro`, with an

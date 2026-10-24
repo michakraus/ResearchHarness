@@ -5,9 +5,9 @@
 Research Harness is the configuration, the safety settings and the working environment for coding
 agents that work on research software. A coding agent is a language model that reads your files,
 runs commands and edits code in your terminal.
-The harness gives three coding agents, Claude Code, OpenCode and oh-my-pi, one shared set of
-instructions, skills, sub-agents, permission settings and guard hooks. One command, `harness`,
-installs this configuration and checks it.
+The harness gives four coding agents, Claude Code, OpenCode, oh-my-pi and Antigravity, one shared
+set of instructions, skills, sub-agents, permission settings and guard hooks. One command,
+`harness`, installs this configuration and checks it.
 
 The harness is for a researcher who wants a coding agent to keep the same rules in every
 repository of a research tree: the packages, the experiments, the papers. Its own tools are for
@@ -18,7 +18,7 @@ shows how the install turns the sources into the configuration of each frontend.
 
 ## Features
 
-- **[One configuration for three frontends.](docs/src/architecture.md)** The agents, skills,
+- **[One configuration for four frontends.](docs/src/architecture.md)** The agents, skills,
   rules, commands and instruction files are neutral sources in this repository. `harness install`
   writes the configuration of each frontend from them, and gives each agent the model that your
   model tables set for its tier. The core instructions load in every session, a rule when the

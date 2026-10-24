@@ -89,8 +89,8 @@ failed case.
 
 ## `frontends.py`
 
-The list of the frontends, `claude`, `opencode` and `omp`, and the loader of their adapters.
-`load` imports each `adapters/<frontend>/adapter.py` by its path, in that order, once.
+The list of the frontends, `claude`, `opencode`, `omp` and `antigravity`, and the loader of their
+adapters. `load` imports each `adapters/<frontend>/adapter.py` by its path, in that order, once.
 
 Each adapter must define six members: `NAME`, `TEMPLATES`, `register`, `plan`, `selftest` and
 `RESTART`. When an adapter fails to import, `harness` exits with status 2 and prints its path,

@@ -10,7 +10,7 @@ at the end of the page gives a short entry for each term that the other pages us
 A [coding agent](#coding-agent) is a language model that works in your files and your terminal.
 You give it a task in plain language. It reads files, runs commands and edits code to do the
 task, and then it reports what it did. The program that you talk to is the
-[frontend](#frontend): Claude Code, OpenCode and oh-my-pi are three frontends.
+[frontend](#frontend): Claude Code, OpenCode, oh-my-pi and Antigravity are four frontends.
 
 One conversation with the coding agent is a [session](#session). The coding agent holds all the
 text of a session in its [context](#context): its instructions, your messages, and the output of
@@ -21,7 +21,7 @@ Each action of the coding agent is a [tool call](#tool-call): read a file, edit 
 run a shell command. The frontend shows each tool call in the session. Before some tool calls, it
 asks you first: this is a [permission prompt](#permission-prompt).
 
-**In another language.** Nothing in this section depends on Julia. The three frontends work on
+**In another language.** Nothing in this section depends on Julia. The four frontends work on
 code in any language.
 
 ## What the harness does
@@ -35,10 +35,10 @@ Research Harness keeps this configuration as source files in one repository. The
 `harness` [installs](#install) the sources into the configuration directory of each frontend, and
 checks the result. The harness does six things:
 
-1. **One configuration for three frontends.** Claude Code, OpenCode and oh-my-pi read one set of
-   sources. An [instruction file](#instruction-file) loads at the start of every session. A
-   [rule](#rule) loads only when the coding agent reads a matching file, for example a Julia
-   source. A [skill](#skill) is a procedure for one kind of task, for example a performance
+1. **One configuration for four frontends.** Claude Code, OpenCode, oh-my-pi and Antigravity read
+   one set of sources. An [instruction file](#instruction-file) loads at the start of every
+   session. A [rule](#rule) loads only when the coding agent reads a matching file, for example a
+   Julia source. A [skill](#skill) is a procedure for one kind of task, for example a performance
    measurement, and it loads when your request matches its description. An [agent](#agent) of the
    harness is a helper with its own task, model and tools.
    [Architecture](architecture.md) describes the sources and what each frontend receives.
@@ -123,8 +123,8 @@ components that serve each.
   hooks, git hooks and workflows, scripts and settings. [Components](components/agents.md)
   describes each one.
 - **The frontends** read the components. Each frontend gets its own configuration directory:
-  `~/.claude/` for Claude Code, `~/.config/opencode/` for OpenCode and `~/.omp/agent/` for
-  oh-my-pi.
+  `~/.claude/` for Claude Code, `~/.config/opencode/` for OpenCode, `~/.omp/agent/` for
+  oh-my-pi and `~/.gemini/config/` for Antigravity.
 
 **In another language.** The components are the same for any language. Of the eight kinds, the
 git hooks, the workflows and most scripts are for Julia packages.
@@ -197,7 +197,7 @@ code to do a task in plain language. You talk to it through a frontend.
 ### Frontend
 
 The program through which you talk to a coding agent. It also runs the agent's tool calls. The
-harness configures three frontends: Claude Code, OpenCode and oh-my-pi.
+harness configures four frontends: Claude Code, OpenCode, oh-my-pi and Antigravity.
 
 ### Session
 

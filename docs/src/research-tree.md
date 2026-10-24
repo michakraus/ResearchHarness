@@ -93,7 +93,8 @@ template and the hooks.
 
 The tree instructions hold what is true of your tree and of no other: the names of your
 directories, the instruction file of each, and where a change goes. `adapters/claude/CLAUDE.md`
-imports their `instructions/research-tree.md`, and OpenCode and oh-my-pi read that file too.
+imports their `instructions/research-tree.md`, and OpenCode, oh-my-pi and Antigravity read that
+file too.
 [Architecture](architecture.md#the-three-layers) describes the layer.
 
 In the example, each directory of the figure has its own instruction file, `CLAUDE.md`, and the

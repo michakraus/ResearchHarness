@@ -37,14 +37,14 @@ These options come before the subcommand.
 | option | meaning |
 |:--|:--|
 | `--profile F` | the private profile. If it is not given, the profile is `$RESEARCH_HARNESS_PROFILE`, or `~/.config/research-harness/profile.toml` if that is not set. `examples/profile.toml` shows every key |
-| `--models F` | the model tables. They map each model tier to its Claude Code, OpenCode and oh-my-pi model, and an agent to its own model. If the option is not given, the model tables are `$RESEARCH_HARNESS_MODELS`, or `models.toml` beside the profile if that is not set. `examples/models.toml` shows the layout |
+| `--models F` | the model tables. They map each model tier to its model in each frontend, which is a tier of Antigravity's own in Antigravity, and an agent to its own model. If the option is not given, the model tables are `$RESEARCH_HARNESS_MODELS`, or `models.toml` beside the profile if that is not set. `examples/models.toml` shows the layout |
 | `-h`, `--help` | print the list of subcommands. `harness <subcommand> --help` prints the options of one subcommand |
 
 ## Subcommands
 
 | subcommand | does | changes something |
 |:--|:--|:--|
-| [`install`](#install) | installs the Julia environment of the scripts, the Claude Code layer with the sections `permissions`, `hooks`, `sandbox` and `modelSettings` of `settings.json`, the OpenCode configuration, and the oh-my-pi permission layer, instructions, rules, agents, models and MCP entry | yes |
+| [`install`](#install) | installs the Julia environment of the scripts, the Claude Code layer with the sections `permissions`, `hooks`, `sandbox` and `modelSettings` of `settings.json`, the OpenCode configuration, the oh-my-pi permission layer, instructions, rules, agents, models and MCP entry, and the Antigravity guard hook, permission rules, instructions, rules, skills, agents and MCP entry | yes |
 | [`update`](#update) | brings the harness checkout up to `origin/main`, then runs `install --apply`. It does not move a checkout that is pinned to a commit | yes |
 | [`doctor`](#doctor) | checks the setup of this machine: the tools, the profile, the install and the jobs | no |
 | [`trust`](#trust) | sets Claude Code workspace trust for every repository of the tree | yes |
@@ -81,10 +81,11 @@ harness install [--apply] [--force]
 ```
 
 Installs the Julia environment of the scripts and the configuration of each frontend: Claude
-Code, OpenCode and oh-my-pi. The installed configuration is not writable from a session, so the
-sources live in the harness repository, and `install` copies them into place. It plans every
-frontend first and writes nothing while it plans. So a refusal stops the install before the first
-write. After `--apply`, it prints the restart line of each frontend whose files changed.
+Code, OpenCode, oh-my-pi and Antigravity. The installed configuration is not writable from a
+session, so the sources live in the harness repository, and `install` copies them into place. It
+plans every frontend first and writes nothing while it plans. So a refusal stops the install
+before the first write. After `--apply`, it prints the restart line of each frontend whose files
+changed.
 
 | option | meaning |
 |:--|:--|
@@ -96,8 +97,9 @@ change; 2 when a plan refuses, or the profile or the model tables do not load.
 
 **Reads:** the profile, the model tables, `providers.toml` and `network.toml` beside the profile,
 the tree instructions (`tree_agents` of the profile), and the sources of the harness checkout.
-**Writes:** below `~/.claude/`, the OpenCode configuration directory, the oh-my-pi directory, and
-the Julia environment (see [The Julia environment](#the-julia-environment)). It writes the stamp
+**Writes:** below `~/.claude/`, the OpenCode configuration directory, the oh-my-pi directory,
+`~/.gemini/` when Antigravity has made it, and the Julia environment (see
+[The Julia environment](#the-julia-environment)). It writes the stamp
 `~/.claude/.harness-install.json`, which the drift warning at session start reads.
 
 **Where to run it:** in your own terminal. A session cannot write the installed files.
