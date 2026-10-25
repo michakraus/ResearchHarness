@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+- **Antigravity's sandbox keeps a command out of `.git/hooks` and `.git/config` of each repository
+  that exists at install time.** Claude Code's sandbox covers these paths in every repository, a
+  new one too. A probe in the app showed that a sandboxed command could write both in a repository
+  of the workspace; the guard lifts `git` out of the sandbox, where it would then run a planted hook
+  or alias. `harness install` now renders each entry of the settings template's
+  `sandbox.filesystem.denyWrite` at or below the research root as a `read_file(<path>)` deny in
+  the CLI's `permissions.deny` and the app's deny grants, after the other denies and each once. An
+  entry outside the research root renders nothing: the app's sandbox mounts only the workspace. A
+  probe showed that a `write_file(<path>)` deny hid much more of the sandbox than its path, while a
+  `read_file` deny of `<repo>/.git/hooks` and `<repo>/.git/config` blocked the read and both
+  writes there and left the rest of the workspace readable. The app honours no wildcard in a path,
+  so an entry `~/Research/**/<rest>` becomes one rule for each directory at or below the research
+  root that holds a `.git` directory, walked as `harness trust` walks it; a worktree is covered by
+  its main repository. Any other entry with a wildcard whose directory before the first wildcard
+  is the research root, above it or below it, gives a warning and no rule. One warning of the dry
+  run names the number of repositories covered, so a new clone shows as a change at the next
+  install.
+
 - **`scripts/julia-update-test.jl` runs on ubuntu-26.04.** Its stand-in for the Kaimon server was
   a copy of `sleep` named `julia`. On ubuntu-26.04 `/usr/bin/sleep` is a relative symlink to
   uutils' multi-call binary: the copied link dangled (`chmod` ENOENT), and a copy of the file, named
