@@ -252,6 +252,9 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
 - a path with a trailing `/`, and `.`
 - a nested file with the same name as a top-level one, both reached and not reached
 - a file or a `Project.toml` that is missing
+- a tool with several output paths whose guard checks only one: a missing second directory fails
+  the run after the first file is written, so a failed run still writes (A1 round 1, the move of
+  a generated bibliography)
 - a value read from `git` on the depth-1 checkout of `actions/checkout`, where `git log -- <path>`
   returns HEAD for every path; and the same code in a tree with no `.git` or no `git` (S, *Collect
   the TikZ figures in the figure repository*)
