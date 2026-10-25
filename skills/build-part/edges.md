@@ -87,6 +87,12 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   line from the check; a `#` inside a word is no comment. Check the raw line and the joined line,
   and refuse when either reading refuses: the union fails closed, where one emulated reading misses
   the forms it does not copy (G1 verify 3 to verify 5, *Add the Antigravity frontend*)
+- a fail-open reader reused as a security decision: a parser written to give advice, which lets a
+  line through when it cannot read it, decides what leaves a sandbox, so every line it reads
+  differently from the shell is an escape. A `#` comment and an ANSI-C quote `$'…'` each hid a
+  second command from shlex, and each fix screened one form. Gate the reader with a closed grammar
+  that every target shell reads the same way, and keep any other line inside (G7 round 1 to
+  verify 2, *Add the Antigravity frontend*)
 
 ## A numerical method
 
