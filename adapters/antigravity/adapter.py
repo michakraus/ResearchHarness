@@ -42,7 +42,7 @@ whose guard scripts, install-drift.py, instructions, rules and skills it copies.
                                  is one warning for each agent it names, and writes no seat
                                  (council_warnings)
   config/mcp_config.json         the file as it is with `mcpServers.kaimon` set, the token of
-                                 ~/.config/kaimon/opencode-token written out, every other server
+                                 ~/.config/kaimon/auth-token written out, every other server
                                  and key kept, mode 600 and no backup (render_mcp, merge_mcp); a
                                  file that is not a JSON object exits 2 before any write. With no
                                  token, the file is neither read nor written, and one warning says
@@ -195,7 +195,7 @@ TOOLS = {"read": ("view_file", "list_dir"), "edit": ("replace_file_content",), "
 KAIMON_URL = "http://127.0.0.1:2828/"
 # Kaimon's bearer token, below the home directory. Antigravity expands no shell form in a header,
 # so mcp_config.json holds the token itself.
-KAIMON_TOKEN = pathlib.Path(".config", "kaimon", "opencode-token")
+KAIMON_TOKEN = pathlib.Path(".config", "kaimon", "auth-token")
 # The installed agents, which an agent that rewrites them could use to widen its own tools.
 AGENTS = "{home}/.gemini/config/agents/**"
 # The desktop app's settings, whose userSettings.globalPermissionGrants holds its grants, in the
@@ -1903,7 +1903,7 @@ def kaimon_cases(scratch):
     base, _, _ = scratch.fresh()
     home = base / "home"
     (home / ".gemini").mkdir()
-    token = home / ".config" / "kaimon" / "opencode-token"
+    token = home / ".config" / "kaimon" / "auth-token"
     token.parent.mkdir(parents=True)
     token.write_text("fake-token-of-the-cases\n")
     token.chmod(0o600)
@@ -1930,7 +1930,7 @@ def kaimon_cases(scratch):
 
     def fresh(token_text="fake-token-of-the-cases\n"):
         base, _, _ = scratch.fresh()
-        token = base / "home" / ".config" / "kaimon" / "opencode-token"
+        token = base / "home" / ".config" / "kaimon" / "auth-token"
         token.parent.mkdir(parents=True)
         if token_text is not None:
             token.write_text(token_text)
@@ -2084,11 +2084,11 @@ def kaimon_cases(scratch):
                         ("is not UTF-8", lambda p: p.write_bytes(b"\xff\n"))]:
         base, _, _ = scratch.fresh()
         (base / "home" / ".gemini").mkdir()
-        token = base / "home" / ".config" / "kaimon" / "opencode-token"
+        token = base / "home" / ".config" / "kaimon" / "auth-token"
         token.parent.mkdir(parents=True)
         make(token)
         code, text = run(base, "--apply")
         warned = [w for w in text.split("WARNING: ")[1:] if "writes no Kaimon entry" in w]
-        case(lambda: code == 0 and line.findall(text) == [] and len(warned) == 1 and "opencode-token" in warned[0]
+        case(lambda: code == 0 and line.findall(text) == [] and len(warned) == 1 and "auth-token" in warned[0]
              and not (base / "home" / ".gemini" / "config" / "mcp_config.json").exists(),
              f"a token file that {label} writes no Kaimon entry and gives one warning: {code}, {warned}")

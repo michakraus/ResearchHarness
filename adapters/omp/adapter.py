@@ -142,7 +142,7 @@ TOOLS = {"read": "read", "edit": "edit", "write": "write", "grep": "grep", "glob
 # Kaimon is the one server of mcp.json, and oh-my-pi names its tool `mcp__<server>_<tool>`.
 MCP_PREFIX, OMP_MCP_PREFIX = frontmatter.MCP, "mcp__kaimon_"
 KAIMON_URL = "http://127.0.0.1:2828/"
-KAIMON_TOKEN = "~/.config/kaimon/opencode-token"
+KAIMON_TOKEN = "~/.config/kaimon/auth-token"
 # oh-my-pi cuts an MCP request after its server's `timeout` in milliseconds, 30 s when none is
 # set (`mcp/timeout.ts`; `OMP_MCP_TIMEOUT_MS` holds over both). Kaimon moves an eval that takes
 # longer than about 30 s to the background and answers with its id, so a call ends well inside
@@ -1259,7 +1259,7 @@ def omp_agent_cases(case, fresh, run, agent):
 
     # The MCP entry: Kaimon over HTTP, the token read by a command at connect time, no other
     # server, and no foreign configuration source opted in, so ~/.claude.json is not imported.
-    url, token = "http://127.0.0.1:2828/", "~/.config/kaimon/opencode-token"
+    url, token = "http://127.0.0.1:2828/", "~/.config/kaimon/auth-token"
     want = {"mcpServers": {"kaimon": {"type": "http", "url": url, "timeout": 120000, "headers": {
         "Authorization": f"!printf 'Bearer %s' \"$(cat {token})\""}}}}
     try:

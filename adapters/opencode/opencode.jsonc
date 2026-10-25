@@ -53,12 +53,12 @@
     // 200 text/event-stream. A wrong credential returns 401 on every path.
     //
     // THE TOKEN IS NOT IN THIS FILE. This file is under version control, thus it must
-    // contain no secret. Put the token alone in ~/.config/kaimon/opencode-token, with
+    // contain no secret. Put the token alone in ~/.config/kaimon/auth-token, with
     // mode 600. OpenCode substitutes {file:...} when it reads the configuration.
     "kaimon": {
       "type": "remote",
       "url": "http://127.0.0.1:2828/",
-      "headers": { "Authorization": "Bearer {file:~/.config/kaimon/opencode-token}" },
+      "headers": { "Authorization": "Bearer {file:~/.config/kaimon/auth-token}" },
       "enabled": true
     }
   },
@@ -110,7 +110,7 @@
       "{home}/.claude.json": "deny",
       "{home}/.claude/backups/**": "deny",
       "{home}/.config/kaimon/config.json": "deny",
-      "{home}/.config/kaimon/opencode-token": "deny",
+      "{home}/.config/kaimon/auth-token": "deny",
       "{home}/.config/api-keys/**": "deny",
       "{home}/.config/chezmoi/**": "deny",
       "{home}/.config/gh/hosts.yml": "deny",

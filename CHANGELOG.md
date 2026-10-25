@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- **Kaimon's bearer token lives in `~/.config/kaimon/auth-token`, not `opencode-token`.** OpenCode,
+  oh-my-pi and Antigravity all read the file, so its name no longer names one frontend. The three
+  adapters, `harness doctor`, the read and sandbox denies of the settings template, OpenCode's
+  `guard-paths.json` and permission denies, and the setup pages use the new path. An existing
+  install moves the file before its next `harness install --apply`:
+  `mv ~/.config/kaimon/opencode-token ~/.config/kaimon/auth-token`. An install applied before the
+  move leaves the old file with no deny that protects it, and the Kaimon entries with no token.
+
 - **Floating-point differences up to at least `8 ulp` never block, and the package compatibility
   floor is Julia 1.12.** `skills/build-part/evidence.md`, `skills/build-part/edges.md`,
   `agents/julia-critic.md`, `agents/part-critic.md`, `agents/julia-pr-reviewer.md`,

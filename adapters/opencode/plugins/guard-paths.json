@@ -7,7 +7,7 @@
     "{home}/.claude.json",
     "{home}/.claude/backups/**",
     "{home}/.config/kaimon/config.json",
-    "{home}/.config/kaimon/opencode-token",
+    "{home}/.config/kaimon/auth-token",
     "{home}/.config/api-keys/**",
     "{home}/.config/chezmoi/**",
     "{home}/.config/gh/hosts.yml",
