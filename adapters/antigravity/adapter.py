@@ -109,12 +109,15 @@ template's order:
                          unsandboxed(…) rule is written: the CLI checks a command(…) rule as
                          unsandboxed(…)
   sandbox.filesystem.denyWrite
-                         read_file(p) in `deny`, after every other deny, unless the list holds
-                         it, `~` the home directory (deny_write): a `write_file` deny hides far
-                         more of the app's sandbox than its path. An entry `<prefix>/**/<rest>`,
-                         its prefix at or below the research root, is one rule for each clone
-                         (clones) at or below the prefix; any other wildcard entry is a warning
-                         and no rule. One warning names the number of clones covered
+                         for an entry at or below the research root, read_file(p) in `deny`,
+                         after every other deny, unless the list holds it, `~` the home
+                         directory (deny_write): a `write_file` deny hides far more of the app's
+                         sandbox than its path. An entry outside the root renders nothing: the
+                         app's sandbox mounts only the workspace. An entry `<prefix>/**/<rest>`
+                         is one rule for each clone (clones) at or below the prefix; any other
+                         wildcard entry whose directory before the wildcard is the root, above
+                         it or below it, is a warning and no rule. One warning names the number
+                         of clones covered
 
 MCP_CONFIG is a `read_file` deny after the template's, and LAYER and MCP_CONFIG are `write_file`
 denies after that. The app needs one grant per Kaimon tool, and no wildcard covers them, so each
@@ -136,7 +139,7 @@ import shlex
 import stat
 import tempfile
 
-from harness import REPO, HarnessError, frontends, frontmatter, install, repos, sources, units
+from harness import REPO, HarnessError, frontends, frontmatter, install, sources, units
 from harness import profile as profile_module
 from harness.githooks import research_root
 
@@ -423,46 +426,59 @@ def render_permissions(cfg, profile):
 
 def deny_write(entries, home, root, found, taken=()):
     """([rule], [(line, …)]) of `entries`, the template's `sandbox.filesystem.denyWrite`: each
-    entry a `read_file(<path>)` deny, in the template's order, each rule once and none of the
-    rules `taken`, `~` the home directory `home`. A `read_file` deny keeps a sandboxed command
-    from reading and writing its path, and a `write_file` deny hides far more of the sandbox than
-    its path, so the deny is a `read_file` one. An entry `<prefix>/**/<rest>`, its prefix the
-    research root `root` or below it, is one rule `<clone>/<rest>` for each clone of `found` at or
-    below the prefix; a worktree's `.git` is a file, and its main repository's rules cover it. Any
-    other entry with a wildcard, and one that is not absolute, gives a warning that names it and
-    no rule. When an entry is expanded over the clones, a last warning names the number of clones
-    that the expanded entries cover."""
+    entry at or below the research root `root` a `read_file(<path>)` deny, in the template's order,
+    each rule once and none of the rules `taken`, `~` the home directory `home`. A `read_file` deny
+    keeps a sandboxed command from reading and writing its path, and a `write_file` deny hides far
+    more of the sandbox than its path, so the deny is a `read_file` one. An entry outside the root
+    renders nothing and no warning: the app's sandbox mounts only the workspace, so a sandboxed
+    command cannot write there. Paths are compared by their real paths, as the clones of `found`
+    are. An entry `<prefix>/**/<rest>`, its prefix the root or below it, is one rule
+    `<clone>/<rest>` for each clone of `found` at or below the prefix; a worktree's `.git` is a
+    file, and its main repository's rules cover it. Any other entry with a wildcard whose directory
+    before the first wildcard is the root, above it or below it, and one that is not absolute,
+    gives a warning that names it and no rule. When an entry is expanded over the clones, a last
+    warning names the number of clones that the expanded entries cover."""
     rules, warnings, covered, expanded = [], [], [], False
+    top = pathlib.Path(os.path.realpath(root))
     for entry in entries:
         path = units.expand(entry, home)
         if not path.startswith("/"):
             warnings.append((f"The settings template's `denyWrite` entry {entry} is not an absolute path, so it "
                              f"renders no Antigravity `read_file` deny.",))
             continue
-        if not re.search(r"[*?\[]", path):
+        head = re.match(r"[^*?\[]*", path).group(0)
+        if head == path:
+            if not pathlib.Path(os.path.realpath(path)).is_relative_to(top):
+                continue
             paths = [path]
-        elif (m := re.fullmatch(r"([^*?\[]*)/\*\*/([^*?\[]+)", path)) and pathlib.Path(m.group(1)).is_relative_to(root):
-            paths = [f"{c}/{m.group(2)}" for c in found if c.is_relative_to(m.group(1))]
-            covered += [c for c in found if c.is_relative_to(m.group(1)) and c not in covered]
-            expanded = True
         else:
-            warnings.append((f"The settings template's `denyWrite` entry {entry} has a wildcard that no "
-                             f"Antigravity rule expresses, so it renders no `read_file` deny.",))
-            continue
+            # The directory that every match of the entry lies in: the text before the first
+            # wildcard, up to its last `/`.
+            base = pathlib.Path(os.path.realpath(head[:head.rindex("/") + 1]))
+            if not base.is_relative_to(top) and not top.is_relative_to(base):
+                continue
+            if (m := re.fullmatch(r"[^*?\[]*/\*\*/([^*?\[]+)", path)) and base.is_relative_to(top):
+                paths = [f"{c}/{m.group(1)}" for c in found if c.is_relative_to(base)]
+                covered += [c for c in found if c.is_relative_to(base) and c not in covered]
+                expanded = True
+            else:
+                warnings.append((f"The settings template's `denyWrite` entry {entry} has a wildcard that no "
+                                 f"Antigravity rule expresses, so it renders no `read_file` deny.",))
+                continue
         rules += [r for r in (f"read_file({p})" for p in paths) if r not in rules and r not in taken]
     if expanded:
         n = len(covered)
         warnings.append((f"The `read_file` denies of the template's `denyWrite` entries with `**` cover {n} "
-                         f"{'repository' if n == 1 else 'repositories'}: each clone with a `.git` directory "
-                         f"that `harness repos status` lists.",
+                         f"{'repository' if n == 1 else 'repositories'}: each directory at or below the "
+                         f"research root that holds a `.git` directory.",
                          "A repository cloned later is covered at the next `harness install --apply`."))
     return rules, warnings
 
 
-def clones(args):
-    """The repositories that `harness repos status` lists, with the arguments `args`, whose `.git`
-    is a directory: a worktree's `.git` is a file."""
-    return [e.path for e in repos.entries(args, [], repos.GROUPS + repos.FIXED) if (e.path / ".git").is_dir()]
+def clones():
+    """Each directory at or below the research root that holds a `.git` directory, by its real
+    path, walked as `harness trust` walks it: a worktree's `.git` is a file."""
+    return [pathlib.Path(p) for p in frontends.adapter("claude").roots() if os.path.isdir(os.path.join(p, ".git"))]
 
 
 def read_regular(path, refused):
@@ -753,7 +769,7 @@ def plan(ctx):
     # Claude Code's sandbox keeps a command from writing these paths, and the guard lifts git out
     # of Antigravity's sandbox, where it would run a hook or an alias that a sandboxed command planted.
     denies, notes = deny_write(cfg.get("sandbox", {}).get("filesystem", {}).get("denyWrite", []),
-                               str(pathlib.Path.home()), research_root(), clones(ctx.args), rules["deny"])
+                               str(pathlib.Path.home()), research_root(), clones(), rules["deny"])
     rules["deny"] += denies
     layer = ctx.plans["claude"]
     scripts = {f"hooks/{g}" for g in frontends.GUARDS}
@@ -1694,9 +1710,10 @@ def grants_cases(scratch):
 
 
 def deny_write_cases(scratch):
-    """The `read_file` denies of the template's `sandbox.filesystem.denyWrite`: entry by entry, the
-    `**` entries expanded over the clones, a wildcard refused with a warning, the clones that
-    `harness repos status` lists, and both files read back after an install, with the count line."""
+    """The `read_file` denies of the template's `sandbox.filesystem.denyWrite`: the entries below the
+    research root, entry by entry, the `**` entries expanded over the clones, an entry outside the
+    root silent, any other wildcard refused with a warning, the clones that the walk of the research
+    root finds, and both files read back after an install, with the count line."""
     case, run, tail = scratch.case, scratch.run, scratch.tail
     template = json.loads(SETTINGS.read_text())["sandbox"]["filesystem"]["denyWrite"]
     home, root = "/h", pathlib.Path("/h/Research")
@@ -1704,96 +1721,105 @@ def deny_write_cases(scratch):
     got = deny_write(template, home, root, clones_)
     expected = []
     for entry in template:
-        if not re.search(r"[*?\[]", entry):
-            expected.append(f"read_file({home}{entry[1:]})")
-        elif entry.startswith("~/Research/**/"):
+        if entry.startswith("~/Research/**/"):
             expected += [f"read_file({c}/{entry[len('~/Research/**/'):]})" for c in clones_]
-    case(lambda: got[0] == expected and len(expected) >= 36,
-         f"each denyWrite entry of the template is a read_file deny, in the template's order, `~` the home "
-         f"directory, and each `~/Research/**/X` one rule per clone: {len(got[0])} of {len(expected)}, "
+        elif entry == "~/Research" or entry.startswith("~/Research/"):
+            expected.append(f"read_file({home}{entry[1:]})")
+    case(lambda: got[0] == expected and len(expected) >= 6 and not [r for r in got[0] if "*" in r or "~" in r],
+         f"each denyWrite entry of the template below the research root is a read_file deny, in the template's "
+         f"order, and each `~/Research/**/X` one rule per clone: {len(got[0])} of {len(expected)}, "
          f"{[r for r in got[0] if r not in expected][:3]}, {[r for r in expected if r not in got[0]][:3]}")
-    case(lambda: {"read_file(/h/.gitconfig)", "read_file(/h/.claude/.git/hooks)", "read_file(/h/.claude/.git/config)",
-                  "read_file(/h/Research/Packages/A.jl/.git/hooks)", "read_file(/h/Research/Packages/A.jl/.git/config)",
+    case(lambda: {"read_file(/h/Research/Packages/A.jl/.git/hooks)", "read_file(/h/Research/Packages/A.jl/.git/config)",
                   "read_file(/h/Research/Knowledge/.git/hooks)", "read_file(/h/Research/Knowledge/.git/config)"}
-         <= set(got[0]) and not [r for r in got[0] if "*" in r or "~" in r],
-         f"the rules hold ~/.gitconfig, the .git/hooks and .git/config of ~/.claude and of each clone, and no "
-         f"wildcard or `~`: {got[0][-6:]}")
-    wildcards = [e for e in template if re.search(r"[*?\[]", e) and not e.startswith("~/Research/**/")]
-    refused = [w for w in got[1] if "wildcard" in w[0]]
-    case(lambda: len(wildcards) >= 2 and len(refused) == len(wildcards)
-         and all(any(e in w[0] for w in refused) for e in wildcards)
-         and not [r for r in got[0] if "juliaup/julia-" in r or "versiondb-" in r],
-         f"each other wildcard entry of the template gives one warning that names it, and no rule: {wildcards}, "
-         f"{refused}")
+         <= set(got[0]) and all(r.startswith("read_file(/h/Research/") for r in got[0])
+         and [w for w in got[1] if " cover " not in w[0]] == [],
+         f"the rules hold the .git/hooks and .git/config of each clone, none outside the research root, and "
+         f"the template's entries outside it (~/.gitconfig, juliaup/julia-*) give no warning: {got}")
     counted = [w for w in got[1] if " cover " in w[0]]
     case(lambda: len(counted) == 1 and "cover 2 repositories" in counted[0][0],
          f"one warning names the number of clones that the rules cover: {counted}")
 
-    entries = ["/abs/p", "~/x", "~", "~/Research/**/.git/hooks", "~/Research/Packages/**/.git/config",
-               "~/Other/**/y", "~/Research/**/z*", "~/a/*.b", "~/Research/**", "~/Research/**/a/**/b",
-               "rel/p", "~user/p", "~/x", "~/a/b?", "~/a/[bc]"]
+    entries = ["/h/Research/abs", "~/Research/x", "~/x", "/abs/p", "~", "~/Research/**/.git/hooks",
+               "~/Research/Packages/**/.git/config", "~/Other/**/y", "~/.julia/juliaup/julia-*", "~/Research/**/z*",
+               "~/Research/**", "~/Research/**/a/**/b", "~/*/x", "~/Research*/x", "rel/p", "~user/p", "~/Research/x",
+               "~/Research/a/b?", "~/Research/a/[bc]", "~/Research", "/h/Researcher/y", "~/Res*/x", "~/**/q"]
     clones_ = [pathlib.Path("/h/Research/Packages/A.jl"), pathlib.Path("/h/Research/Packages2/B"),
                pathlib.Path("/h/Research/Knowledge")]
     rules, warnings = deny_write(entries, home, root, clones_)
-    case(lambda: rules == ["read_file(/abs/p)", "read_file(/h/x)", "read_file(/h)",
+    case(lambda: rules == ["read_file(/h/Research/abs)", "read_file(/h/Research/x)",
                            "read_file(/h/Research/Packages/A.jl/.git/hooks)",
                            "read_file(/h/Research/Packages2/B/.git/hooks)",
                            "read_file(/h/Research/Knowledge/.git/hooks)",
-                           "read_file(/h/Research/Packages/A.jl/.git/config)"],
-         f"an absolute path stays, `~` is the home directory, a `**` entry covers each clone at or below its "
-         f"prefix, a prefix is compared by path, not by text, and a rule repeats not: {rules}")
-    named = [e for e in ("~/Other/**/y", "~/Research/**/z*", "~/a/*.b", "~/Research/**", "~/Research/**/a/**/b",
-                         "rel/p", "~user/p", "~/a/b?", "~/a/[bc]") if [w for w in warnings if e in w[0]]]
-    case(lambda: len(named) == 9 and len(warnings) == 10 and "cover 3 repositories" in warnings[-1][0],
-         f"a `**` entry outside the research root, a wildcard after or beside `**`, a trailing `**`, two `**`, a "
-         f"relative path, `~user`, `?` and `[…]` each give one warning and no rule, and the count is the last: "
-         f"{warnings}")
-    case(lambda: deny_write(["~/x"], home, root, clones_)[1] == []
+                           "read_file(/h/Research/Packages/A.jl/.git/config)", "read_file(/h/Research)"],
+         f"an entry below the research root stays, `~` is the home directory, an entry outside the root renders "
+         f"nothing, a `**` entry covers each clone at or below its prefix, a prefix is compared by path, not by "
+         f"text, and a rule repeats not: {rules}")
+    named = [e for e in ("~/Research/**/z*", "~/Research/**", "~/Research/**/a/**/b", "~/*/x", "~/Research*/x",
+                         "rel/p", "~user/p", "~/Research/a/b?", "~/Research/a/[bc]", "~/Res*/x", "~/**/q")
+             if [w for w in warnings if e in w[0]]]
+    silent = [e for e in ("~/x", "/abs/p", "~/Other/", "julia-*", "/h/Researcher/y") if [w for w in warnings if e in w[0]]]
+    case(lambda: len(named) == 11 and len(warnings) == 12 and silent == [] and "cover 3 repositories" in warnings[-1][0],
+         f"below the research root a wildcard after or beside `**`, a trailing `**`, two `**`, `?` and `[…]`, a "
+         f"wildcard or a `**` whose prefix holds the root, a relative path and `~user` each give one warning and no "
+         f"rule; an entry outside the root gives none, and the count is the last: {warnings}")
+    case(lambda: deny_write(["~/Research/x"], home, root, clones_)[1] == []
          and "cover 1 repository:" in deny_write(["~/Research/**/c"], home, root, clones_[:1])[1][0][0]
          and "cover 1 repository:" in deny_write(["~/Research/Packages/**/c"], home, root, clones_)[1][0][0],
          "with no `**` entry, no count line; the count is of the clones that a `**` entry covers, and says "
          "`1 repository` for one")
+    case(lambda: deny_write(["~/Other/**/c", "~/x"], home, root, clones_) == ([], []),
+         "a `**` entry outside the research root expands over no clone and adds no count line")
 
-    import types
+    # The home is a symbolic link, as /tmp is on macOS: the walk gives the clones' real paths.
+    real = pathlib.Path(scratch.tmp, "deny-write-real")
+    (real / "Research" / "A").mkdir(parents=True)
+    link = pathlib.Path(scratch.tmp, "deny-write-link")
+    link.symlink_to(real)
+    case(lambda: deny_write(["~/Research/**/c", "~/Research/d"], str(link), link / "Research",
+                            [pathlib.Path(os.path.realpath(real / "Research" / "A"))])[0]
+         == [f"read_file({os.path.realpath(real)}/Research/A/c)", f"read_file({link}/Research/d)"],
+         "a home or research root reached through a symbolic link is compared by its real path")
+
     tree = pathlib.Path(scratch.tmp, "deny-write-tree")
-    for d in ("Packages/A.jl/.git", "Packages/plain", "Papers/P/.git", "Knowledge/.git", "Experiments/W"):
+    for d in ("Packages/A.jl/.git", "Packages/plain", "Papers/P/.git", "Papers/P/inner/.git", "Knowledge/.git",
+              "Harness/.git", "Experiments/W", ".scratch/S/.git", ".worktrees/T/.git", "Lib/node_modules/N/.git"):
         (tree / d).mkdir(parents=True)
     (tree / "Experiments" / "W" / ".git").write_text("gitdir: /elsewhere\n")
-    saved = {k: os.environ.get(k) for k in ("RESEARCH_ROOT", "RESEARCH_HARNESS_REPOSITORIES")}
-    os.environ.update(RESEARCH_ROOT=str(tree), RESEARCH_HARNESS_REPOSITORIES=str(tree / "none.toml"))
+    saved = os.environ.get("RESEARCH_ROOT")
+    os.environ["RESEARCH_ROOT"] = str(tree)
     try:
-        found = clones(types.SimpleNamespace(profile=None))
+        found = clones()
     except Exception as e:  # recorded, so that the environment is restored and the case reports it
         found = e
     finally:
-        for k, v in saved.items():
-            if v is None:
-                os.environ.pop(k, None)
-            else:
-                os.environ[k] = v
-    case(lambda: found == [tree / "Packages" / "A.jl", tree / "Papers" / "P", tree / "Knowledge"],
-         f"the clones are the repositories of every group and fixed name with a `.git` directory, a worktree's "
-         f"`.git` file and a directory with no `.git` left out: {found}")
+        if saved is None:
+            os.environ.pop("RESEARCH_ROOT", None)
+        else:
+            os.environ["RESEARCH_ROOT"] = saved
+    t = pathlib.Path(os.path.realpath(tree))
+    case(lambda: found == [t / "Harness", t / "Knowledge", t / "Packages" / "A.jl", t / "Papers" / "P",
+                           t / "Papers" / "P" / "inner"],
+         f"the clones are the directories below the research root with a `.git` directory, nested ones too; a "
+         f"worktree's `.git` file, a directory with no `.git`, .scratch, .worktrees and node_modules left out: "
+         f"{found}")
 
-    case(lambda: deny_write(["~/x", "~/y", "~/Research/**/z"], home, root, clones_[:1],
-                            ["read_file(/h/x)", "read_file(/h/Research/Packages/A.jl/z)"])[0] == ["read_file(/h/y)"],
+    case(lambda: deny_write(["~/Research/x", "~/Research/y", "~/Research/**/z"], home, root, clones_[:1],
+                            ["read_file(/h/Research/x)", "read_file(/h/Research/Packages/A.jl/z)"])[0]
+         == ["read_file(/h/Research/y)"],
          "a rule that the deny list already holds is not added again")
 
-    # The profile's home is the scratch HOME, so that the template's Read denies of ~/.ssh and
-    # ~/.claude.json render the paths that two entries of denyWrite render.
     base, _, _ = scratch.fresh()
     h = base / "home"
-    profile = base / "profile.toml"
-    profile.write_text(re.sub(r"(?m)^home = .*$", lambda _: f"home = {json.dumps(str(h))}", profile.read_text()))
     research = h / "Research"
     (research / "Packages" / "A.jl" / ".git").mkdir(parents=True)
     (research / "Packages" / "W").mkdir(parents=True)
     (research / "Packages" / "W" / ".git").write_text("gitdir: /elsewhere\n")
     config = h / ".gemini" / "config"
     config.mkdir(parents=True)
-    mine = f"read_file({h}/.gitconfig)"
+    a = pathlib.Path(os.path.realpath(research / "Packages" / "A.jl"))
+    mine = f"read_file({a}/.git/hooks)"
     (config / "config.json").write_text(json.dumps({"userSettings": {"globalPermissionGrants": {"deny": [mine]}}}))
-    env = {"RESEARCH_ROOT": None, "RESEARCH_HARNESS_REPOSITORIES": None}
+    env = {"RESEARCH_ROOT": None}
     code, dry = run(base, extra_env=env)
     count = [w for w in dry.split("WARNING: ")[1:] if "denyWrite" in w and " cover " in w]
     case(lambda: code in (0, 1) and len(count) == 1 and "cover 1 repository:" in count[0],
@@ -1801,15 +1827,15 @@ def deny_write_cases(scratch):
     code, text = run(base, "--apply", extra_env=env)
     cli = json.loads((h / ".gemini" / "antigravity-cli" / "settings.json").read_text())["permissions"]["deny"]
     grants = json.loads((config / "config.json").read_text())["userSettings"]["globalPermissionGrants"]["deny"]
-    ours = deny_write(template, str(h), research, [research / "Packages" / "A.jl"])[0]
+    ours = deny_write(template, str(h), research, [a])[0]
     after = max(i for i, r in enumerate(cli) if r.startswith("mcp(")) + 1
-    case(lambda: code == 0 and cli[after:] == [r for r in ours if r not in cli[:after]] and set(ours) <= set(cli)
-         and len(cli[after:]) >= 30 and not [r for r in cli if "/W/" in r]
-         and f"read_file({h}/.ssh)" in cli and len(cli) == len(set(cli)),
+    case(lambda: code == 0 and cli[after:] == ours and len(ours) == 3
+         and ours == [f"read_file({a}/.git/hooks)", f"read_file({a}/.git/config)", f"read_file({a}/.claude)"]
+         and not [r for r in cli if "/W/" in r] and len(cli) == len(set(cli)),
          f"--apply writes the rules into the CLI's permissions.deny after the other denies, each once, and none "
-         f"for the worktree: {code}, {cli[-3:]}, {[r for r in cli if cli.count(r) > 1][:2]}, {tail(text)!r}")
+         f"for the worktree: {code}, {cli[after:]}, {[r for r in cli if cli.count(r) > 1][:2]}, {tail(text)!r}")
     case(lambda: grants == [mine, *[r for r in cli if r != mine]] and grants.count(mine) == 1
-         and f"read_file({research}/Packages/A.jl/.git/hooks)" in grants,
+         and f"read_file({a}/.git/config)" in grants,
          f"--apply adds each rule once to the app's deny grants, after the user's own, which is not added again: "
          f"{grants[:2]}, {grants.count(mine)}")
     (research / "Knowledge" / ".git").mkdir(parents=True)
