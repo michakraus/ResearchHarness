@@ -9,8 +9,8 @@
   `"overwrite": {"BypassSandbox": …}`: true when `top_level` of the installed
   `sandbox-semantics.py`, Claude Code's rule for `sandbox.excludedCommands`, lifts the command
   (every part led by `git`, `gh`, `glab` or `ps`, and no file redirected) and none of the guard's
-  screens applies, false otherwise. The first screen lifts only a line whose reading is the same in
-  sh, bash and zsh: words of plain characters, single-quoted text and double-quoted text with no
+  screens applies, false otherwise. The first screen lifts only a line that sh, bash and zsh split
+  into the same parts: words of plain characters, single-quoted text and double-quoted text with no
   `$`, backtick, `\` or `!`, joined by `&&`, `||`, `;` or `|`, with `2>&1` as the one redirection.
   So a `$`, a backtick, a backslash, a glob, a brace, a non-ASCII character or a newline outside
   quotes keeps a `git` or `gh` line in the sandbox, and an ANSI-C quote `$'…'`, which the rule's

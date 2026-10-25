@@ -105,10 +105,11 @@ WORD_BREAK = "\0"
 # Seconds that each script may take. The scripts of one call run at once, so the call takes about as
 # long; `hooks.json` gives the hook 15 s.
 TIMEOUT = 10
-# A command line whose reading is the same in sh, bash and zsh: commands joined by `&&`, `||`, `;`
-# or `|`, each of words separated by blanks. A word is `2>&1`, or pieces: a character of the set
+# A command line that sh, bash and zsh split into the same commands: commands joined by `&&`, `||`,
+# `;` or `|`, each of words separated by blanks. A word is `2>&1`, or pieces: a character of the set
 # below, a single-quoted text with no `'`, or a double-quoted text with none of `"`, `$`, the
-# backtick, `\` and `!`. No piece holds a NUL or a character outside ASCII.
+# backtick, `\` and `!`. No piece holds a NUL or a character outside ASCII. A word can still expand
+# in one shell and not in another, as zsh's `=ls` and bash's `a=~/x` do.
 WORD = r"""(?:2>&1|(?:[A-Za-z0-9_./:@%+,=~^-]|'[^'\x00\x80-\U0010ffff]*'|"[^"$`\\!\x00\x80-\U0010ffff]*")+)"""
 COMMAND = rf"{WORD}(?:[ \t]+{WORD})*"
 PLAIN = re.compile(rf"[ \t]*{COMMAND}(?:[ \t]*(?:&&|\|\||;|\|)[ \t]*{COMMAND})*[ \t]*")
@@ -368,8 +369,10 @@ def lifted(command, cwd):
     parse stays inside.
 
     The first screen lifts only text whose reading is certain in sh, bash and zsh: the whole line
-    matches PLAIN, else it stays inside. So no quote, expansion or glob that the rule's shlex reads
-    in another way than a shell can hide a program from the rule.
+    matches PLAIN, else it stays inside. The three shells split such a line into the same commands,
+    though a word can still expand in one of them alone, as zsh's `=ls` does. So no quote,
+    expansion or glob that the rule's shlex reads in another way than a shell can hide a program
+    from the rule.
 
     The other screens keep inside a command that the rule lifts but whose program is not the one
     it reads: a `#`, which shlex reads as a comment up to the end of the line, so a next line joins
