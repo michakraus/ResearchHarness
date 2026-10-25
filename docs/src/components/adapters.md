@@ -471,8 +471,8 @@ files of the layer itself. A refusal of a guard becomes `deny`, an "ask" answer 
 pass `ask`, which leaves Antigravity's own rules in force. It fails closed: a guard that cannot
 run, fails, prints output that is not a JSON answer or times out gives `deny`. A `run_command`
 that it does not deny, a `force_ask` included, also gets `"overwrite": {"BypassSandbox": …}`: true
-exactly when `top_level` of `sandbox-semantics.py` lifts the command, else false; a deny and a call
-of any other tool carry no `overwrite`.
+only when `top_level` of `sandbox-semantics.py` lifts the command and none of the guard's screens
+applies, else false; a deny and a call of any other tool carry no `overwrite`.
 
 ## `antigravity/ANTIGRAVITY-DELTA.md`
 

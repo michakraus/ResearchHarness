@@ -8,13 +8,20 @@
   128. `adapters/antigravity/guard.py` now answers each `run_command` that it does not deny with
   `"overwrite": {"BypassSandbox": …}`: true when `top_level` of the installed
   `sandbox-semantics.py`, Claude Code's rule for `sandbox.excludedCommands`, lifts the command
-  (every part led by `git`, `gh`, `glab` or `ps`, and no file redirected), false otherwise. A probe
-  in the app showed that any command that an allow rule covers, `julia --version` among them,
-  leaves the sandbox with no dialog when the agent sets `BypassSandbox`; the guard therefore also
-  forces false on every other command. A deny and a call of another tool carry no `overwrite`.
-  `ANTIGRAVITY-DELTA.md` tells the agent not to set `BypassSandbox` itself. `hooks/probe.py` covers
-  the lifted and the sandboxed commands, the agent's own `BypassSandbox`, a deny, the other tools,
-  a rule read from the installed file, and no bytecode cache in the installed `hooks/`.
+  (every part led by `git`, `gh`, `glab` or `ps`, and no file redirected) and none of the guard's
+  screens applies, false otherwise. The screens keep in the sandbox a line with a `#`, which hides
+  the next line from the rule; a line with a NUL; a substitution behind `gh`; a `git` path argument
+  that `sandbox-semantics.py` screens; an assignment or a path in front of the program; and a `git`
+  option such as `-c` or `--git-dir`, which can run another program or name another repository.
+  `git -C` is lifted. A `git` or `gh` line that holds a `#`, such as
+  `gh pr create --title "Fix #12"`, therefore stays in the sandbox; keep the `#` in a file passed
+  with `--body-file` or `-F`. A probe in the app showed that any command that an allow rule covers,
+  `julia --version` among them, leaves the sandbox with no dialog when the agent sets
+  `BypassSandbox`; the guard therefore also forces false on every other command. A deny and a call
+  of another tool carry no `overwrite`. `ANTIGRAVITY-DELTA.md` tells the agent not to set
+  `BypassSandbox` itself. `hooks/probe.py` covers the lifted and the sandboxed commands, each
+  screen, a subagent's own `Cwd`, the agent's own `BypassSandbox`, a deny, the other tools, a rule
+  read from the installed file, and no bytecode cache in the installed `hooks/`.
 
 - **`scripts/julia-update-test.jl` runs on ubuntu-26.04.** There `/usr/bin/sleep` is a relative
   symlink, so the fixture's copy of it dangled and every case with a live server failed on

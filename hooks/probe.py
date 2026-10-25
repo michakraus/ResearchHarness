@@ -1445,12 +1445,32 @@ AGY_CASES = [
     ("run_command", {"CommandLine": "gh pr merge 1 && git init sub"}, "deny", None),
 ]
 # The sandbox of a run_command that the hook does not deny: (args, the hook's decision, the
-# `BypassSandbox` of its `overwrite`), in the probe's work tree. It is true exactly when `top_level`
-# of sandbox-semantics.py lifts the command, as Claude Code's `excludedCommands` does: every part
-# led by git, gh, glab or ps, and no file redirected. A line that does not parse stays in the
-# sandbox, and so does any other command, whatever `BypassSandbox` the agent sets. The rm-scope
-# guard asks on a line that does not parse and holds `rm`, as `--format` does.
+# `BypassSandbox` of its `overwrite`), in the probe's work tree. It is true only when `top_level`
+# of sandbox-semantics.py lifts the command, as Claude Code's `excludedCommands` does (every part
+# led by git, gh, glab or ps, and no file redirected), and none of the guard's screens applies. A
+# line that does not parse stays in the sandbox, and so does any other command, whatever
+# `BypassSandbox` the agent sets. The rm-scope guard asks on a line that does not parse and holds
+# `rm`, as `--format` does.
 AGY_BYPASS = [
+    # The screens: a `#`, which shlex reads as a comment that hides the next line; a substitution
+    # behind gh; a git option that runs a program or moves the repository; an assignment or a path
+    # in front of the program; a git path argument that sandbox-semantics.py screens; a NUL.
+    ({"CommandLine": "git status # x\njulia --version"}, "ask", False),
+    ({"CommandLine": "git status#x; julia --version"}, "ask", False),
+    ({"CommandLine": "gh pr view $(echo 1)"}, "ask", False),
+    ({"CommandLine": "git -c alias.x='!julia -e 1' x"}, "ask", False),
+    ({"CommandLine": "git --git-dir=x status"}, "ask", False),
+    ({"CommandLine": "git -C x -c a=b log"}, "ask", False),
+    ({"CommandLine": "git -C log -c a=b log"}, "ask", False),
+    ({"CommandLine": "git --config-env=a=B status"}, "ask", False),
+    ({"CommandLine": "FOO=1 git status"}, "ask", False),
+    ({"CommandLine": "./git status"}, "ask", False),
+    ({"CommandLine": "git clone https://example.com/r.git /tmp/r"}, "ask", False),
+    ({"CommandLine": "cd a\u0000b"}, "ask", False),
+    # A `cd` to the working directory is dropped whatever its form, and a screened git option
+    # screens git alone.
+    ({"CommandLine": f"/usr/bin/cd {CWD} && git status"}, "ask", True),
+    ({"CommandLine": "ps -c"}, "ask", True),
     ({"CommandLine": "git status"}, "ask", True),
     ({"CommandLine": "gh pr view 1"}, "ask", True),
     ({"CommandLine": "git -C x log"}, "ask", True),
@@ -1611,8 +1631,9 @@ def agy_cases():
         # `BypassSandbox` alone, as a bool.
         sandbox = overwrite_of(answer)
         want = "BypassSandbox" if tool == "run_command" and expected != "deny" else "none"
-        shape = "none" if sandbox == "none" else "BypassSandbox" if isinstance(sandbox, dict) and list(
-            sandbox) == ["BypassSandbox"] and isinstance(sandbox["BypassSandbox"], bool) else repr(sandbox)
+        alone = (isinstance(sandbox, dict) and set(sandbox) == {"BypassSandbox"}
+                 and type(sandbox["BypassSandbox"]) is bool)
+        shape = "BypassSandbox" if alone else "none" if sandbox == "none" else repr(sandbox)
         report(shape == want, f"exp {want} got {shape}  [agy-bypass]  the overwrite of {tool} {args}")
         if pattern is not None:
             got = permission(args["CommandLine"])
@@ -1642,6 +1663,13 @@ def agy_cases():
     got = failed[0] if failed else (answer["decision"], overwrite_of(answer))
     report(got == ("ask", {"BypassSandbox": False}),
            f"exp ('ask', {{'BypassSandbox': False}}) got {got}  [agy-bypass]  git status > f outside a work tree")
+    # A subagent's call carries its own Cwd, and a `cd` to that directory is dropped there, not at
+    # the workspace.
+    line = f"cd {elsewhere}/sub && git status"
+    answer, failed = reply(good, "run_command", {"CommandLine": line, "Cwd": elsewhere + "/sub"})
+    got = failed[0] if failed else (answer["decision"], overwrite_of(answer))
+    report(got == ("ask", {"BypassSandbox": True}),
+           f"exp ('ask', {{'BypassSandbox': True}}) got {got}  [agy-bypass]  {line} with that Cwd")
     # The rule is the installed sandbox-semantics.py's, not a copy in guard.py: a copy of it that
     # also lifts julia lifts `julia --version`.
     got = overwrite_of(reply(lifts_julia, "run_command", {"CommandLine": "julia --version"})[0])
@@ -1652,8 +1680,8 @@ def agy_cases():
     # allows one.
     reply(good, "run_command", {"CommandLine": "git status"},
           env={**{k: v for k, v in CLEAN.items() if k != "PYTHONDONTWRITEBYTECODE"}, "HOME": "/" + good})
-    cached = sorted(n for n in os.listdir(good + "/.gemini/config/hooks") if n == "__pycache__")
-    report(cached == [], f"exp [] got {cached}  [agy-bypass]  no __pycache__ in the hooks/ of guard.py")
+    cached = os.path.exists(good + "/.gemini/config/hooks/__pycache__")
+    report(not cached, f"exp False got {cached}  [agy-bypass]  a __pycache__ in the hooks/ of guard.py")
     # A line of many words gets its answer within the timeout that hooks.json gives the hook.
     for line in ["echo " + "git push " * 10000, "echo " + "a " * 20000]:
         got, _ = verdict(good, "run_command", {"CommandLine": line}, limit=agy.HOOK_TIMEOUT)

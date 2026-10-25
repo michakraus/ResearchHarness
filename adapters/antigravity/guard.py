@@ -13,11 +13,12 @@ path that `hooks.json` names, and gives it the call as JSON on stdin: `toolCall.
 no hook. It never answers `{}`, which Antigravity reads as a deny with an empty reason.
 
 A `run_command` that it does not deny also gets `"overwrite": {"BypassSandbox": …}`, which replaces
-that argument of the call: true when Claude Code would run the command outside its sandbox, by the
-rule `top_level` of the sandbox-semantics.py beside this file (every part led by git, gh, glab or
-ps, and no file redirected), else false. So the guard, not the agent, decides the sandbox of a
-command, as Claude Code's `sandbox.excludedCommands` does, and an agent's own `BypassSandbox` on any
-other command is dropped. A deny, and a call of any other tool, carries no `overwrite`.
+that argument of the call: true only when Claude Code would run the command outside its sandbox, by
+the rule `top_level` of the sandbox-semantics.py beside this file (every part led by git, gh, glab
+or ps, and no file redirected), and none of the guard's screens applies (`lifted`), else false. So
+the guard, not the agent, decides the sandbox of a command, as Claude Code's
+`sandbox.excludedCommands` does, and an agent's own `BypassSandbox` on any other command is
+dropped. A deny, and a call of any other tool, carries no `overwrite`.
 
 THE CHECKS, by the name of the tool:
 
@@ -354,15 +355,42 @@ def guards(runs):
 
 
 def lifted(command, cwd):
-    """Whether `command`, run in `cwd`, runs outside the sandbox: whether `top_level` of the
+    """Whether `command`, run in `cwd`, runs outside the sandbox: only when `top_level` of the
     sandbox-semantics.py beside this file, Claude Code's rule for `sandbox.excludedCommands`, finds
-    no reason to keep it inside. A command that it cannot parse stays inside."""
+    no reason to keep it inside, and none of the guard's screens applies. A command that it cannot
+    parse stays inside.
+
+    The screens keep inside a command that the rule lifts but whose program is not the one it
+    reads: a `#`, which shlex reads as a comment up to the end of the line, so a next line joins
+    the part before it; a NUL, which no shell runs and `os.path.realpath` refuses; a part that
+    `exposed` or `path_screened` refuses; an assignment or a path in front of a program; and a git
+    option before the subcommand that takes a value, `-C` aside, or `--config-env`, which can name
+    a program to run or another repository."""
     sys.dont_write_bytecode = True  # no __pycache__ in the installed hooks/
     spec = importlib.util.spec_from_file_location("sandbox_semantics", HOOKS / WORK_TREE)
     semantics = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(semantics)
+    if "#" in command or "\0" in command:
+        return False
     classified = semantics.top_level(command, cwd)
-    return classified is not None and classified[1] is None
+    if classified is None or classified[1] is not None:
+        return False
+    heads = classified[0]
+    if semantics.exposed(command, cwd) is not None or semantics.path_screened(heads) is not None:
+        return False
+    for tokens in semantics.parts(command)[0]:
+        head, arguments = semantics.part_head(tokens)
+        if tokens[0] != head and not semantics.into_cwd(head, arguments, cwd):
+            return False
+    valued = (semantics.TAKES_VALUE - {"-C"}) | {"--config-env"}
+    for head, arguments in heads:
+        index = 0
+        while head == "git" and index < len(arguments) and arguments[index].startswith("-"):
+            option = arguments[index]
+            if option in valued or option.startswith(tuple(name + "=" for name in valued)):
+                return False
+            index += 2 if option in semantics.TAKES_VALUE else 1
+    return True
 
 
 def answer(payload):
