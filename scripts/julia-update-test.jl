@@ -11,10 +11,10 @@
 # (launchctl, systemctl) and both notifiers (osascript, notify-send). Every stub appends its name
 # and arguments to a call log, so no case can reach the real ~/.juliaup or the real Kaimon server.
 #
-# The server is a real process: a copy of `sleep` named `julia`, which the test starts, then
-# deletes, rewrites or leaves alone, and whose pid the lsof stub prints. On Linux the script reads
-# its binary from /proc/<pid>/exe; on macOS from `ps`, whose stub prints the copy's path while the
-# process lives.
+# The server is a real process: a copy of `perl` named `julia` that sleeps, which the test starts,
+# then deletes, rewrites or leaves alone, and whose pid the lsof stub prints. On Linux the script
+# reads its binary from /proc/<pid>/exe; on macOS from `ps`, whose stub prints the copy's path while
+# the process lives.
 
 using Test
 
@@ -119,25 +119,20 @@ function fixture()
 end
 
 """
-Write a copy of `sleep` at `binary`. `/usr/bin/sleep` can be a relative symlink, as on
-ubuntu-26.04, so the copy follows it: a copied link would dangle.
+Write a copy of `perl` at `binary`. Not `sleep`: on ubuntu-26.04 it is uutils' multi-call
+binary, and a copy named `julia` exits at once. `perl` sleeps with a builtin, whatever its file is
+called. The copy follows a symlink, which would dangle at the new path.
 """
-function copy_sleep(binary)
-    cp(Sys.which("sleep"), binary; follow_symlinks = true)
+function copy_server(binary)
+    cp(Sys.which("perl"), binary; follow_symlinks = true)
     chmod(binary, 0o755)
     return binary
 end
 
-"""
-Start the server: a copy of `sleep` at `bindir/julia`. Returns the process and its binary.
-
-`bash`'s `exec -a` runs the copy with `argv[0]` set to `sleep`, because a multi-call coreutils
-binary, as uutils is on ubuntu-26.04, chooses its tool by `argv[0]`. The process's binary is still
-`bindir/julia`.
-"""
+"Start the server: a copy of `perl` at `bindir/julia` that sleeps. Returns the process and its binary."
 function start_server(fx::Fixture)
-    binary = copy_sleep(joinpath(fx.bindir, "julia"))
-    return run(`$(Sys.which("bash")) -c 'exec -a sleep "$0" 600' $binary`; wait = false), binary
+    binary = copy_server(joinpath(fx.bindir, "julia"))
+    return run(`$binary -e 'sleep 600'`; wait = false), binary
 end
 
 "Run the script; return the exit code, its output and the call log's lines."
@@ -165,7 +160,14 @@ function with_server(prepare, fx::Fixture, extra::Pair...)
     proc, binary = start_server(fx)
     try
         prepare(binary)
-        return run_script(fx, "STUB_PID" => string(getpid(proc)), "STUB_COMM" => comm(binary), extra...)
+        result = run_script(fx, "STUB_PID" => string(getpid(proc)), "STUB_COMM" => comm(binary), extra...)
+        # On Linux a server that died reads as "ended before its binary was read", which some cases
+        # accept. macOS kills a process whose binary file is removed, but there the ps stub stands
+        # for the process, so its death changes nothing.
+        LINUX && !process_running(proc) &&
+            error("the server stand-in $binary exited during the case: exit $(proc.exitcode), " *
+                  "signal $(proc.termsignal)")
+        return result
     finally
         kill(proc)
         wait(proc)
@@ -178,7 +180,7 @@ alerts(calls) = filter(l -> startswith(l, NOTIFIER * " "), calls)
 
 function rewrite(binary)
     rm(binary)
-    copy_sleep(binary)
+    copy_server(binary)
 end
 
 @testset "julia-update.jl on $(LINUX ? "Linux" : "macOS")" begin

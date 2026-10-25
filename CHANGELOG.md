@@ -2,12 +2,14 @@
 
 ## Unreleased
 
-- **`scripts/julia-update-test.jl` runs on ubuntu-26.04.** There `/usr/bin/sleep` is a relative
-  symlink, so the fixture's copy of it dangled and every case with a live server failed on
-  `chmod` (ENOENT). The fixture copies the file the link names, and starts it through `bash`'s
-  `exec -a sleep`, because a multi-call coreutils binary chooses its tool by `argv[0]`. A control
-  with a relative-symlink `sleep` first on the PATH fails the old fixture in 10 cases and passes
-  the new one, 55 of 55, on macOS.
+- **`scripts/julia-update-test.jl` runs on ubuntu-26.04.** Its stand-in for the Kaimon server was
+  a copy of `sleep` named `julia`. On ubuntu-26.04 `/usr/bin/sleep` is a relative symlink to
+  uutils' multi-call binary: the copied link dangled (`chmod` ENOENT), and a copy of the file, named
+  `julia`, exits at once, so the script saw a server that "ended before its binary was read". The
+  stand-in is a copy of `perl` that runs `sleep 600`, which does not depend on its file name. On
+  Linux, `with_server` fails a case whose stand-in died, because some cases accept "ended" as an
+  answer and passed by chance. On macOS the stand-in still dies when its file is removed (macOS
+  sends SIGKILL), which changes nothing there: the `ps` stub stands for the process.
 
 - **`bibliography` is no longer a fixed repository of the research tree.** The example tree keeps
   its citation keys and the tools that build the shared bibliography in `Library`, and the shared
