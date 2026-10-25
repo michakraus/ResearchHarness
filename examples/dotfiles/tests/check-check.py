@@ -213,7 +213,7 @@ DOCTOR = [
     doctor_line("PASS", "system", "macOS 27.0.1 arm64"),
     doctor_line("PASS", "git", "2.54.0 (/usr/bin/git)"),
     doctor_line("WARN", "install warning 1",
-                "/home/example/.config/kaimon/opencode-token does not exist"),
+                "/home/example/.config/kaimon/auth-token does not exist"),
     doctor_line("SKIP", "harness test", "run with --full"),
     doctor_line("SKIP", "Revise", "run with --full"),
 ]

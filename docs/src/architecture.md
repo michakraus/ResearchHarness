@@ -156,7 +156,7 @@ its own file. The model tables of
 `models.toml`, which OpenCode shares, give the model of each tier, `large`, `medium` and `small`;
 `harness.yml` holds `modelRoles.default`, the `medium` model.
 `mcp.json` holds Kaimon alone, over HTTP, with its token read from
-`~/.config/kaimon/opencode-token` by a command when oh-my-pi connects, so that no secret is in the
+`~/.config/kaimon/auth-token` by a command when oh-my-pi connects, so that no secret is in the
 file.
 
 ## Layout

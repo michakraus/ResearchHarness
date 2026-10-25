@@ -158,7 +158,7 @@ install writes the paths of OpenCode's own copies. The `provider` entries come f
 Before them, the install writes one entry for each provider of the `context_limits` of
 `models.toml`, with that limit. When a provider is in both, the install stops with exit status 2.
 The `mcp` entry connects to the Kaimon server at `http://127.0.0.1:2828/`, which
-`launchagents/kaimon.plist` starts. The token comes from `~/.config/kaimon/opencode-token` when
+`launchagents/kaimon.plist` starts. The token comes from `~/.config/kaimon/auth-token` when
 OpenCode reads the file, so no secret is in the repository. `experimental.subagent_depth` is 2,
 so that a builder that the dispatcher starts can start `julia-branch-verifier` or a `reader`.
 The dispatcher is the session that runs the `build-part` or `build-reviewed` skill. OpenCode
@@ -402,7 +402,7 @@ directory `~/.gemini/config/`. The adapter writes:
   `[antigravity]` of `models.toml`, its tools from the table `TOOLS`, and the section of
   `UNDER-ANTIGRAVITY.md`;
 - `config/mcp_config.json`, with mode 600 and no backup: the file as it is, with the entry
-  `kaimon` set to Kaimon's URL and its token from `~/.config/kaimon/opencode-token` written out,
+  `kaimon` set to Kaimon's URL and its token from `~/.config/kaimon/auth-token` written out,
   because Antigravity expands no shell form in a header. With no token, the install leaves the
   file as it is and gives one warning;
 - three keys of the CLI's `antigravity-cli/settings.json`: `permissions`, `toolPermission` and

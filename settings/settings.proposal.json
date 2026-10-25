@@ -379,7 +379,7 @@
       "Read(/{home}/.claude.json)",
       "Read(/{home}/.claude/backups/**)",
       "Read(/{home}/.config/kaimon/config.json)",
-      "Read(/{home}/.config/kaimon/opencode-token)",
+      "Read(/{home}/.config/kaimon/auth-token)",
       "Read(/{home}/.config/api-keys/**)",
       "Read(/{home}/.config/chezmoi/**)",
       "Read(/{home}/.config/gh/hosts.yml)",
@@ -944,7 +944,7 @@
         "~/.claude.json",
         "~/.claude/backups",
         "~/.config/kaimon/config.json",
-        "~/.config/kaimon/opencode-token",
+        "~/.config/kaimon/auth-token",
         "~/.config/api-keys",
         "~/.config/chezmoi",
         "~/.config/gh/hosts.yml",
@@ -981,7 +981,7 @@
           "mode": "deny"
         },
         {
-          "path": "~/.config/kaimon/opencode-token",
+          "path": "~/.config/kaimon/auth-token",
           "mode": "deny"
         },
         {

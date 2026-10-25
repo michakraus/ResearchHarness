@@ -426,7 +426,7 @@ copies each [agent](concepts.md#agent), [skill](concepts.md#skill), [rule](conce
 first `--apply` also instantiates the Julia environment of the scripts, so it downloads the Julia
 packages of `Project.toml`. The warnings after the plan name what the install does not do for
 you. For example, the Kaimon entry of OpenCode needs the token file
-`~/.config/kaimon/opencode-token`. Kaimon makes its key at its first start, so that warning stays
+`~/.config/kaimon/auth-token`. Kaimon makes its key at its first start, so that warning stays
 until [The Kaimon token](#the-kaimon-token), after [The jobs](#the-jobs).
 
 **Check.** Run `harness install` again. Its last line is `0 change(s) to make.`, and it exits
@@ -694,14 +694,14 @@ at its first start: the server of [The jobs](#the-jobs) starts with `--headless`
 writes a configuration in the strict mode with one new key, `kaimon_` followed by 40 hexadecimal
 digits. `kaimon` started in a terminal asks the questions of its setup wizard instead. The Kaimon
 entry of OpenCode sends a key in the header `Authorization: Bearer`, and it reads the key from the
-file `~/.config/kaimon/opencode-token`. These commands write the first key of the configuration
+file `~/.config/kaimon/auth-token`. These commands write the first key of the configuration
 into that file, the key alone, with mode 600. They write a temporary file first, and move it into
 place only when the key is not empty. Without `config.json`, or without a key in it, they leave no
 token file, and the dry run keeps its warning:
 
 ```bash
-(umask 077; python3 -c 'import json, os; print(json.load(open(os.path.expanduser("~/.config/kaimon/config.json")))["api_keys"][0], end="")' > ~/.config/kaimon/opencode-token.new) && test -s ~/.config/kaimon/opencode-token.new && mv ~/.config/kaimon/opencode-token.new ~/.config/kaimon/opencode-token
-rm -f ~/.config/kaimon/opencode-token.new
+(umask 077; python3 -c 'import json, os; print(json.load(open(os.path.expanduser("~/.config/kaimon/config.json")))["api_keys"][0], end="")' > ~/.config/kaimon/auth-token.new) && test -s ~/.config/kaimon/auth-token.new && mv ~/.config/kaimon/auth-token.new ~/.config/kaimon/auth-token
+rm -f ~/.config/kaimon/auth-token.new
 ```
 
 **Why.** Without the file, OpenCode sends no key, and Kaimon answers each request with 401. The
@@ -711,10 +711,10 @@ with mode 600; without the file, the install writes no Kaimon entry there and wa
 Antigravity, run `harness install --apply` once more after this step.
 
 **Check.** The first command prints `600 47`: the mode, and the 47 characters of the key. The dry
-run prints no warning about `~/.config/kaimon/opencode-token`:
+run prints no warning about `~/.config/kaimon/auth-token`:
 
 ```bash
-stat -f '%Lp %z' ~/.config/kaimon/opencode-token
+stat -f '%Lp %z' ~/.config/kaimon/auth-token
 harness install
 ```
 

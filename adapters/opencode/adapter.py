@@ -575,8 +575,8 @@ def plan(ctx):
         refused.append(("opencode.jsonc",
                         ["REFUSED — the installed file holds a literal Authorization",
                          "value, and replacing it would remove that credential. Move",
-                         "the token into ~/.config/kaimon/opencode-token, use",
-                         '"Authorization": "Bearer {file:~/.config/kaimon/opencode-token}",',
+                         "the token into ~/.config/kaimon/auth-token, use",
+                         '"Authorization": "Bearer {file:~/.config/kaimon/auth-token}",',
                          "then re-run; --force overwrites anyway, after a backup."],
                         "opencode.jsonc not replaced: the installed file holds a literal credential"))
     else:
@@ -605,7 +605,7 @@ def plan(ctx):
 
     # The token file must exist before Kaimon is enabled, or OpenCode sends an empty bearer and
     # every request is refused with 401.
-    token = pathlib.Path.home() / ".config" / "kaimon" / "opencode-token"
+    token = pathlib.Path.home() / ".config" / "kaimon" / "auth-token"
     if '"enabled": true' in (SOURCE / "opencode.jsonc").read_text():
         try:
             missing = not stat.S_ISREG(token.stat().st_mode)
@@ -616,7 +616,7 @@ def plan(ctx):
             warnings.append((f"{token} cannot be checked: {e}",
                              "The Kaimon entry is enabled; if the file does not exist, Kaimon will answer 401."))
         if missing:
-            warnings.append(("~/.config/kaimon/opencode-token does not exist, and the Kaimon entry is",
+            warnings.append(("~/.config/kaimon/auth-token does not exist, and the Kaimon entry is",
                              "enabled. Create it (mode 600, the token alone) or Kaimon will answer 401."))
 
     files += [(dest / "agents" / f"{name}.md", text.encode(), None, f"agents/{name}.md") for name, text in agents]
@@ -915,7 +915,7 @@ def install_cases(check, tmp):
     # A token that the sandbox denies: `stat` raises for that path only.
     home = tmp / "home"
     (home / ".claude" / "skills").mkdir(parents=True)
-    token = home / ".config" / "kaimon" / "opencode-token"
+    token = home / ".config" / "kaimon" / "auth-token"
     path_stat = pathlib.Path.stat
 
     def denied(self, **kwargs):
@@ -946,18 +946,18 @@ def install_cases(check, tmp):
           and re.search(r"^\d+ change\(s\) to make\.$", text, re.M) is not None,
           "a token that cannot be checked is a warning, and the run reaches its count line: " + last)
     text, last = dry_run()
-    check("opencode-token does not exist" in text and "cannot be checked" not in text,
+    check("auth-token does not exist" in text and "cannot be checked" not in text,
           "a token file that does not exist is missing, not unchecked: " + last)
     token.mkdir(parents=True)
     text, last = dry_run()
-    check("opencode-token does not exist" in text,
+    check("auth-token does not exist" in text,
           "a directory at the token path is missing: " + last)
     token.rmdir()
     token.write_text("token\n")
     text, last = dry_run()
     # The diff of the Claude Code settings names the token path in a deny rule, so the warnings are
     # looked for by their own text.
-    check("opencode-token does not exist" not in text and f"{token} cannot be checked" not in text
+    check("auth-token does not exist" not in text and f"{token} cannot be checked" not in text
           and re.search(r"^\d+ change\(s\) to make\.$", text, re.M) is not None,
           "a regular file at the token path is neither missing nor unchecked: " + last)
 

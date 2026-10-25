@@ -497,7 +497,7 @@ class Doctor:
             return Result("SKIP", "Kaimon token", "Kaimon is not installed")
         if shutil.which("opencode") is None and shutil.which("omp") is None:
             return Result("SKIP", "Kaimon token", "neither OpenCode nor oh-my-pi is installed, and only they read it")
-        path = self.home / ".config" / "kaimon" / "opencode-token"
+        path = self.home / ".config" / "kaimon" / "auth-token"
         try:
             st = os.stat(path)
         except FileNotFoundError:
@@ -641,7 +641,7 @@ MACOS = COMMON | {
 }
 # The dry run of `harness install` and `harness test`, as their lines end.
 INSTALL_OUT = ("julia/Project.toml                 already identical\n"
-               "\nWARNING: ~/.config/kaimon/opencode-token does not exist.\n"
+               "\nWARNING: ~/.config/kaimon/auth-token does not exist.\n"
                "         Create it (mode 600, the token alone).\n"
                "\n0 change(s) to make.\n")
 HARNESS_STUB = [("--profile * install", INSTALL_OUT, "", 0),
@@ -704,7 +704,7 @@ class Fixture:
         self.kaimon.parent.mkdir(parents=True)
         self.kaimon.write_text("#!/bin/sh\n")
         self.kaimon.chmod(0o755)
-        self.token = self.home / ".config" / "kaimon" / "opencode-token"
+        self.token = self.home / ".config" / "kaimon" / "auth-token"
         self.token.parent.mkdir(parents=True)
         self.token.write_text(TOKEN)
         self.token.chmod(0o600)
@@ -1019,7 +1019,7 @@ def status_cases(check, root, system_name):
         """A stat of the token that the sandbox denies."""
         real = os.stat
         f.patch = mock.patch(f"{__name__}.os.stat", lambda p, *a, **k: (_ for _ in ()).throw(
-            PermissionError(1, "Operation not permitted")) if str(p).endswith("opencode-token") else real(p, *a, **k))
+            PermissionError(1, "Operation not permitted")) if str(p).endswith("auth-token") else real(p, *a, **k))
     for sandbox, want in ((True, "SKIP"), (False, "FAIL")):
         f = fixture()
         denied(f)
