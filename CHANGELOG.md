@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- **`scripts/julia-update-test.jl` runs on ubuntu-26.04.** Its stand-in for the Kaimon server was
+  a copy of `sleep` named `julia`. On ubuntu-26.04 `/usr/bin/sleep` is a relative symlink to
+  uutils' multi-call binary: the copied link dangled (`chmod` ENOENT), and a copy of the file, named
+  `julia`, exits at once, so the script saw a server that "ended before its binary was read". The
+  stand-in is a copy of `perl` that runs `sleep 600`, which does not depend on its file name. On
+  Linux, `with_server` fails a case whose stand-in died, because some cases accept "ended" as an
+  answer and passed by chance. On macOS the stand-in still dies when its file is removed (macOS
+  sends SIGKILL), which changes nothing there: the `ps` stub stands for the process.
+
 - **Antigravity's guard hook decides the sandbox of each command, so `git` and `gh` work in the
   app.** An allow rule such as `command(git)` lets a command start with no dialog, but it still ran
   in the app's terminal sandbox, where `git` could not read `~/.gitconfig` and stopped with exit
