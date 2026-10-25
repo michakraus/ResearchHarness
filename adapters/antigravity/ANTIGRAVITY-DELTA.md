@@ -20,6 +20,14 @@ The guard hook decides the sandbox of each command (`BypassSandbox`); do not set
 In the app, a call of a subagent that needs a grant shows the app's dialog, as a call of the main
 agent does.
 
+## Julia runs through Kaimon
+
+The sandbox cannot start `julia`: the launcher and the depot are outside the workspace, and the
+guard keeps `julia` in the sandbox. Run Julia code through Kaimon's `ex`: `call_mcp_tool` with
+`ServerName` `kaimon`, `ToolName` `ex`, and the code as `e` with a session key `ses` from `ping`
+or `start_session`. Where a text runs `julia`, `run-tests.jl` or `testrunner` in the shell, run the
+same code through `ex`. When that is not possible, return the command to your caller.
+
 ## No RTK rewrite
 
 Antigravity runs no RTK hook: a command runs as typed, so the rewrite facts of `RTK.md` do not

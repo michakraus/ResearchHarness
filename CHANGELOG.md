@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- **Under Antigravity, Julia runs through Kaimon.** `ANTIGRAVITY-DELTA.md`, which the install
+  writes as Antigravity's global `GEMINI.md`, gains a section that says so. The app's sandbox
+  cannot start `julia`: its launcher and depot lie outside the workspace, and the guard keeps
+  `julia` in the sandbox. A probe in the app mounted `~/.juliaup` (read) and `~/.julia` (write):
+  julia then started only after the installed `write_file` deny of `~/.julia/juliaup/juliaup.json`
+  was removed, because in the app such a deny also hides the launcher's lock file beside it. So no
+  grant for `~/.julia` is rendered, and an agent runs Julia code through Kaimon's `ex`, or returns
+  the shell command to its caller. Shell `julia` under Antigravity waits for the outer sandbox.
+
 - **Antigravity's sandbox keeps a command out of `.git/hooks` and `.git/config` of each repository
   that exists at install time.** Claude Code's sandbox covers these paths in every repository, a
   new one too. A probe in the app showed that a sandboxed command could write both in a repository
