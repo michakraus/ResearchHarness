@@ -491,12 +491,15 @@ class Doctor:
         return Result("PASS", "~/.claude repository", f"{claude}, with an origin")
 
     def token(self, kaimon):
-        """The token file of the Kaimon entry of OpenCode and oh-my-pi: its existence, mode and size,
-        never its content."""
+        """The token file of the Kaimon entry of OpenCode, oh-my-pi and Antigravity: its existence,
+        mode and size, never its content. Antigravity is installed when ~/.gemini is a directory, as
+        its adapter decides."""
         if not kaimon:
             return Result("SKIP", "Kaimon token", "Kaimon is not installed")
-        if shutil.which("opencode") is None and shutil.which("omp") is None:
-            return Result("SKIP", "Kaimon token", "neither OpenCode nor oh-my-pi is installed, and only they read it")
+        if (shutil.which("opencode") is None and shutil.which("omp") is None
+                and not (self.home / ".gemini").is_dir()):
+            return Result("SKIP", "Kaimon token",
+                          "neither OpenCode, oh-my-pi nor Antigravity is installed, and only they read it")
         path = self.home / ".config" / "kaimon" / "auth-token"
         try:
             st = os.stat(path)
@@ -1006,6 +1009,16 @@ def status_cases(check, root, system_name):
     case("no oh-my-pi", {"Kaimon token": "PASS"}, lambda f: (f.bin / "omp").unlink(), ("jobs",))
     case("neither OpenCode nor oh-my-pi", {"Kaimon token": "SKIP"},
          lambda f: ((f.bin / "opencode").unlink(), (f.bin / "omp").unlink()), ("jobs",))
+    # Antigravity is installed when ~/.gemini is a directory, as its adapter decides.
+    case("Antigravity alone", {"Kaimon token": "PASS"},
+         lambda f: ((f.bin / "opencode").unlink(), (f.bin / "omp").unlink(), (f.home / ".gemini").mkdir()),
+         ("jobs",))
+    case("Antigravity alone, no token file", {"Kaimon token": "FAIL"},
+         lambda f: ((f.bin / "opencode").unlink(), (f.bin / "omp").unlink(), (f.home / ".gemini").mkdir(),
+                    f.token.unlink()), ("jobs",))
+    case("a ~/.gemini that is a file", {"Kaimon token": "SKIP"},
+         lambda f: ((f.bin / "opencode").unlink(), (f.bin / "omp").unlink(), (f.home / ".gemini").write_text("x")),
+         ("jobs",))
     case("no token file", {"Kaimon token": "FAIL"}, lambda f: f.token.unlink(), ("jobs",))
     case("a token of mode 644", {"Kaimon token": "FAIL"}, lambda f: f.token.chmod(0o644), ("jobs",))
     case("an empty token", {"Kaimon token": "FAIL"}, lambda f: f.token.write_text(""), ("jobs",))
