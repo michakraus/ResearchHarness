@@ -11,6 +11,39 @@
   answer and passed by chance. On macOS the stand-in still dies when its file is removed (macOS
   sends SIGKILL), which changes nothing there: the `ps` stub stands for the process.
 
+- **Antigravity's guard hook decides the sandbox of each command, so `git` and `gh` work in the
+  app.** An allow rule such as `command(git)` lets a command start with no dialog, but it still ran
+  in the app's terminal sandbox, where `git` could not read `~/.gitconfig` and stopped with exit
+  128. `adapters/antigravity/guard.py` now answers each `run_command` that it does not deny with
+  `"overwrite": {"BypassSandbox": …}`: true when `top_level` of the installed
+  `sandbox-semantics.py`, Claude Code's rule for `sandbox.excludedCommands`, lifts the command
+  (every part led by `git`, `gh`, `glab` or `ps`, and no file redirected) and none of the guard's
+  screens applies, false otherwise. The first screen lifts only a line that sh, bash and zsh split
+  into the same parts: words of plain characters, single-quoted text and double-quoted text with no
+  `$`, backtick, `\` or `!`, joined by `&&`, `||`, `;` or `|`, with `2>&1` as the one redirection.
+  So a `$`, a backtick, a backslash, a glob, a brace, a non-ASCII character or a newline outside
+  quotes keeps a `git` or `gh` line in the sandbox, and an ANSI-C quote `$'…'`, which the rule's
+  parser ends in another place than the shell, cannot hide a next command. The other screens keep
+  in the sandbox a line with a `#`, which hides the next line from the rule; a line with a NUL; a
+  substitution behind `gh`; a `git` path argument that `sandbox-semantics.py` screens; an
+  assignment or a path in front of the program; and a `git` option such as `-c` or `--git-dir`,
+  which can run another program or name another repository. `git -C` is lifted. A `git` or `gh`
+  line that holds a `#`, such as `gh pr create --title "Fix #12"`, therefore stays in the sandbox;
+  keep the `#` in a file passed with `--body-file` or `-F`. A probe in the app showed that any
+  command that an allow rule covers, `julia --version` among them, leaves the sandbox with no
+  dialog when the agent sets `BypassSandbox`; the guard therefore also forces false on every other
+  command. A deny and a call of another tool carry no `overwrite`. `ANTIGRAVITY-DELTA.md` tells the
+  agent not to set `BypassSandbox` itself. `hooks/probe.py` covers the lifted and the sandboxed
+  commands, each screen, a subagent's own `Cwd`, the agent's own `BypassSandbox`, a deny, the other
+  tools, a rule read from the installed file, and no bytecode cache in the installed `hooks/`.
+
+- **`scripts/julia-update-test.jl` runs on ubuntu-26.04.** There `/usr/bin/sleep` is a relative
+  symlink, so the fixture's copy of it dangled and every case with a live server failed on
+  `chmod` (ENOENT). The fixture copies the file the link names, and starts it through `bash`'s
+  `exec -a sleep`, because a multi-call coreutils binary chooses its tool by `argv[0]`. A control
+  with a relative-symlink `sleep` first on the PATH fails the old fixture in 10 cases and passes
+  the new one, 55 of 55, on macOS.
+
 - **`bibliography` is no longer a fixed repository of the research tree.** The example tree keeps
   its citation keys and the tools that build the shared bibliography in `Library`, and the shared
   `.bib` in `Latex`. `WIKI_REPOSITORIES`, and with it the fixed repositories of `harness clone` and

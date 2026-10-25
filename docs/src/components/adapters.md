@@ -469,7 +469,10 @@ hide it, and a quoted word is one word. On a tool that writes a file, it also ap
 list, the template's Edit denies, and the `ask` list, its Edit asks. The `deny` list holds the
 files of the layer itself. A refusal of a guard becomes `deny`, an "ask" answer `force_ask`, and a
 pass `ask`, which leaves Antigravity's own rules in force. It fails closed: a guard that cannot
-run, fails, prints output that is not a JSON answer or times out gives `deny`.
+run, fails, prints output that is not a JSON answer or times out gives `deny`. A `run_command`
+that it does not deny, a `force_ask` included, also gets `"overwrite": {"BypassSandbox": …}`: true
+only when `top_level` of `sandbox-semantics.py` lifts the command and none of the guard's screens
+applies, else false; a deny and a call of any other tool carry no `overwrite`.
 
 ## `antigravity/ANTIGRAVITY-DELTA.md`
 
@@ -481,6 +484,7 @@ It states the facts of Antigravity:
 
 - the two controls: the terminal sandbox of `agy`, with the rules of its `settings.json`, and the
   guard hook on every tool call, in the app and in `agy`;
+- the guard hook decides the sandbox of each command, so the agent does not set `BypassSandbox`;
 - in the app, a call of a subagent that needs a grant shows the app's dialog, as a call of the
   main agent does;
 - Antigravity runs no RTK rewrite, so a command runs as typed;

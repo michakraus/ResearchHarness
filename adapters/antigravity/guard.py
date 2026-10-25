@@ -12,6 +12,14 @@ path that `hooks.json` names, and gives it the call as JSON on stdin: `toolCall.
 `ask` leaves Antigravity's own policy in force: its permission rules and its preset decide, as with
 no hook. It never answers `{}`, which Antigravity reads as a deny with an empty reason.
 
+A `run_command` that it does not deny also gets `"overwrite": {"BypassSandbox": …}`, which replaces
+that argument of the call: true only when Claude Code would run the command outside its sandbox, by
+the rule `top_level` of the sandbox-semantics.py beside this file (every part led by git, gh, glab
+or ps, and no file redirected), and none of the guard's screens applies (`lifted`), else false. So
+the guard, not the agent, decides the sandbox of a command, as Claude Code's
+`sandbox.excludedCommands` does, and an agent's own `BypassSandbox` on any other command is
+dropped. A deny, and a call of any other tool, carries no `overwrite`.
+
 THE CHECKS, by the name of the tool:
 
     every tool     the `deny` list on each argument of PATH_KEYS
@@ -59,6 +67,7 @@ it.
 """
 
 import concurrent.futures
+import importlib.util
 import json
 import os
 import pathlib
@@ -96,6 +105,14 @@ WORD_BREAK = "\0"
 # Seconds that each script may take. The scripts of one call run at once, so the call takes about as
 # long; `hooks.json` gives the hook 15 s.
 TIMEOUT = 10
+# A command line that sh, bash and zsh split into the same commands: commands joined by `&&`, `||`,
+# `;` or `|`, each of words separated by blanks. A word is `2>&1`, or pieces: a character of the set
+# below, a single-quoted text with no `'`, or a double-quoted text with none of `"`, `$`, the
+# backtick, `\` and `!`. No piece holds a NUL or a character outside ASCII. A word can still expand
+# in one shell and not in another, as zsh's `=ls` and bash's `a=~/x` do.
+WORD = r"""(?:2>&1|(?:[A-Za-z0-9_./:@%+,=~^-]|'[^'\x00\x80-\U0010ffff]*'|"[^"$`\\!\x00\x80-\U0010ffff]*")+)"""
+COMMAND = rf"{WORD}(?:[ \t]+{WORD})*"
+PLAIN = re.compile(rf"[ \t]*{COMMAND}(?:[ \t]*(?:&&|\|\||;|\|)[ \t]*{COMMAND})*[ \t]*")
 CLOSED = "The guard hook fails closed. Tell the user, and do not run the call in another form."
 
 
@@ -345,6 +362,54 @@ def guards(runs):
     return {"decision": "ask"}
 
 
+def lifted(command, cwd):
+    """Whether `command`, run in `cwd`, runs outside the sandbox: only when `top_level` of the
+    sandbox-semantics.py beside this file, Claude Code's rule for `sandbox.excludedCommands`, finds
+    no reason to keep it inside, and none of the guard's screens applies. A command that it cannot
+    parse stays inside.
+
+    The first screen lifts only text whose reading is certain in sh, bash and zsh: the whole line
+    matches PLAIN, else it stays inside. The three shells split such a line into the same commands,
+    though a word can still expand in one of them alone, as zsh's `=ls` does. So no quote,
+    expansion or glob that the rule's shlex reads in another way than a shell can hide a program
+    from the rule, except a word in front of the program: zsh runs `ls` for `=ls git status`, where
+    the rule reads `git`, and the screen of an assignment below keeps that line inside.
+
+    The other screens keep inside a command that the rule lifts but whose program is not the one
+    it reads: a `#`, which shlex reads as a comment up to the end of the line, so a next line joins
+    the part before it; a NUL, which no shell runs and `os.path.realpath` refuses; a part that
+    `exposed` or `path_screened` refuses; an assignment or a path in front of a program; and a git
+    option before the subcommand that takes a value, `-C` aside, or `--config-env`, which can name
+    a program to run or another repository."""
+    sys.dont_write_bytecode = True  # no __pycache__ in the installed hooks/
+    spec = importlib.util.spec_from_file_location("sandbox_semantics", HOOKS / WORK_TREE)
+    semantics = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(semantics)
+    if PLAIN.fullmatch(command) is None:
+        return False
+    if "#" in command or "\0" in command:
+        return False
+    classified = semantics.top_level(command, cwd)
+    if classified is None or classified[1] is not None:
+        return False
+    heads = classified[0]
+    if semantics.exposed(command, cwd) is not None or semantics.path_screened(heads) is not None:
+        return False
+    for tokens in semantics.parts(command)[0]:
+        head, arguments = semantics.part_head(tokens)
+        if tokens[0] != head and not semantics.into_cwd(head, arguments, cwd):
+            return False
+    valued = (semantics.TAKES_VALUE - {"-C"}) | {"--config-env"}
+    for head, arguments in heads:
+        index = 0
+        while head == "git" and index < len(arguments) and arguments[index].startswith("-"):
+            option = arguments[index]
+            if option in valued or option.startswith(tuple(name + "=" for name in valued)):
+                return False
+            index += 2 if option in semantics.TAKES_VALUE else 1
+    return True
+
+
 def answer(payload):
     """The answer to the Antigravity hook payload `payload`, parsed."""
     call = payload["toolCall"]
@@ -398,9 +463,11 @@ def answer(payload):
         asked = matched(bash["bash_ask"], parts)
         shell = json.dumps({"tool_name": "Bash", "tool_input": {"command": command}, "cwd": cwd})
         result = guards([*((s, shell, ()) for s in SHELL), (WORK_TREE, shell, ("--work-tree",))])
-        if asked is not None and result["decision"] != "deny":
-            return {"decision": "force_ask", "reason": f"The settings template's rule Bash({asked}) asks the user."}
-        return result
+        if result["decision"] == "deny":
+            return result
+        if asked is not None:
+            result = {"decision": "force_ask", "reason": f"The settings template's rule Bash({asked}) asks the user."}
+        return {**result, "overwrite": {"BypassSandbox": lifted(command, cwd)}}
     if name == "call_mcp_tool" and args.get("ServerName") == KAIMON_SERVER and args.get("ToolName") in KAIMON_TOOLS:
         arguments = args.get("Arguments")
         if isinstance(arguments, str):
