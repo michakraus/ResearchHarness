@@ -372,7 +372,8 @@ def lifted(command, cwd):
     matches PLAIN, else it stays inside. The three shells split such a line into the same commands,
     though a word can still expand in one of them alone, as zsh's `=ls` does. So no quote,
     expansion or glob that the rule's shlex reads in another way than a shell can hide a program
-    from the rule.
+    from the rule, except a word in front of the program: zsh runs `ls` for `=ls git status`, where
+    the rule reads `git`, and the screen of an assignment below keeps that line inside.
 
     The other screens keep inside a command that the rule lifts but whose program is not the one
     it reads: a `#`, which shlex reads as a comment up to the end of the line, so a next line joins
