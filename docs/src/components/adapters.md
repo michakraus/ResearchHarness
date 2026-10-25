@@ -424,7 +424,7 @@ or Edit path a `read_file(…)` or `write_file(…)` rule, and an allow host of 
 the rule never matches across `;`, `|`, `&`, a substitution or a redirection. A path with a glob
 that Antigravity cannot express is dropped, and the path lists of `guard.py` cover it. Each Kaimon
 tool of the template, `mcp__kaimon__<tool>`, becomes `mcp(kaimon/<tool>)` after the other rules
-of its list: the app needs one grant per Kaimon tool, and the wildcard `mcp(kaimon/*)` has no
+of its list, in `deny` before the rules of `denyWrite` below: the app needs one grant per Kaimon tool, and the wildcard `mcp(kaimon/*)` has no
 effect there. A Kaimon tool that the template does not name gets no rule, and the app asks for it.
 Last in `allow`, the first word of each command of the template's `sandbox.excludedCommands`,
 which Claude Code runs outside its sandbox, becomes a `command(<word>)` rule, unless the list
@@ -434,6 +434,26 @@ Bash denies and asks before these rules, so `git push --force` and `git add -A` 
 and `gh pr merge` still asks. The path list of `guard.py` refuses a write to `config/config.json`
 by a tool that writes a file, so an agent cannot widen its own grants with one. A command or a
 `multi_replace_file_content` call that writes the file gets `ask` from the guard, not `deny`.
+
+Last in `deny`, each entry of the template's `sandbox.filesystem.denyWrite`, the paths that Claude
+Code's sandbox does not let a command write, becomes a `read_file(<path>)` rule, with `~` as the
+home directory, unless the list holds it. The guard lifts `git` out of the app's sandbox, so a
+`.git/hooks` or `.git/config` that a sandboxed command could write would run outside it. The rule
+is a `read_file` deny because of a probe in the app. A `write_file` deny of a path below the
+workspace hid much more than its path, all of `~/Research/.scratch` in the probe. A `read_file`
+deny of `<repo>/.git/hooks` and `<repo>/.git/config` stopped a sandboxed command from reading
+`.git/config` and from writing either path, and left the rest of the workspace readable. It also
+hides the two paths from a sandboxed read, which costs nothing: a sandboxed `git` cannot read
+`~/.gitconfig` and fails anyway, and a lifted `git` runs outside the sandbox. The app honours no
+wildcard in a path, so an entry `~/Research/**/<rest>` becomes one rule `<repo>/<rest>` for each
+repository that `harness repos status` lists and whose `.git` is a directory. A worktree, whose
+`.git` is a file, is covered by its main repository. A repository that `harness repos status`
+does not list, one below `~/Research` that is neither in a group directory nor a fixed repository,
+gets no rule. One warning of the dry run names the number of
+repositories that these rules cover. A repository cloned after the install is covered after the
+next install, and the dry run then shows the changed number and `config/config.json` as a change.
+Any other entry with a wildcard, such as `~/.julia/juliaup/julia-*`, gives a warning that names
+it, and no rule.
 
 The install exits with status 2, before it writes a file, in these cases among others:
 
