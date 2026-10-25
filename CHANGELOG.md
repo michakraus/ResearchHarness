@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- **`scripts/julia-update-test.jl` runs on ubuntu-26.04.** There `/usr/bin/sleep` is a relative
+  symlink, so the fixture's copy of it dangled and every case with a live server failed on
+  `chmod` (ENOENT). The fixture copies the file the link names, and starts it through `bash`'s
+  `exec -a sleep`, because a multi-call coreutils binary chooses its tool by `argv[0]`. A control
+  with a relative-symlink `sleep` first on the PATH fails the old fixture in 10 cases and passes
+  the new one, 55 of 55, on macOS.
+
 - **`bibliography` is no longer a fixed repository of the research tree.** The example tree keeps
   its citation keys and the tools that build the shared bibliography in `Library`, and the shared
   `.bib` in `Latex`. `WIKI_REPOSITORIES`, and with it the fixed repositories of `harness clone` and
