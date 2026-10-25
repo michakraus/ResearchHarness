@@ -391,8 +391,8 @@ No skill or agent calls it.
 ## `wiki-lint.jl`
 
 `wiki-lint.jl` checks the structure of the Markdown in the prose repositories of the research
-tree: the vaults `Knowledge/` and `Environment/`, and the reference trees `Tasks/`,
-`Bibliography/` and `Library/`. It finds text that a later change of the tree made false, for
+tree: the vaults `Knowledge/` and `Environment/`, and the reference trees `Tasks/`
+and `Library/`. It finds text that a later change of the tree made false, for
 example a broken link, a path that does not exist, or a line citation past the end of its file.
 
 ```bash

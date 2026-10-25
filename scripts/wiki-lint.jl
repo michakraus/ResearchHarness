@@ -1,10 +1,10 @@
 #!/usr/bin/env julia
 #
 # Structural lint for the Markdown that carries claims and cross references: the two vaults
-# `Knowledge/` and `Environment/`, and the three reference trees `Tasks/`, `Bibliography/` and
-# `Library/`: five trees, the `SCOPES` below.
+# `Knowledge/` and `Environment/`, and the two reference trees `Tasks/` and `Library/`: four
+# trees, the `SCOPES` below.
 #
-#     julia --startup-file=no wiki-lint.jl            # all five
+#     julia --startup-file=no wiki-lint.jl            # all four
 #     julia --startup-file=no wiki-lint.jl Knowledge  # one of them
 #     julia --startup-file=no wiki-lint.jl --strict   # warnings fail too
 #     julia --startup-file=no wiki-lint.jl --quiet    # findings and totals only
@@ -14,8 +14,8 @@
 # A **vault** is a wiki: one claim per page, `[[wiki-links]]`, and a page nothing links to is
 # worth knowing about. It gets every check.
 #
-# A **reference tree** is not a wiki. `Tasks/` is a work queue, `Bibliography/` is tooling around
-# `.bib` files, and `Library/` is a catalogue of other people's papers; all three are dense in
+# A **reference tree** is not a wiki. `Tasks/` is a work queue, and `Library/` is a catalogue of
+# other people's papers with the tooling around the `.bib` files; both are dense in
 # paths into `Packages/`, `Experiments/`, `Papers/`, `Books/` and `Projects/`, and that is the
 # whole reason to lint them. They get the path and line-citation checks, and `Tasks/` also gets
 # rule 14, the task board's schema. Running
@@ -95,7 +95,7 @@ const ROOT = get(ENV, "RESEARCH_ROOT", joinpath(homedir(), "Research"))
 # Order matters only for the report. `:vault` gets every check, `:refs` gets paths and line
 # citations. Adding a tree here is the whole cost of extending the lint to it.
 const SCOPES = ["Knowledge" => :vault, "Environment" => :vault,
-    "Tasks" => :refs, "Bibliography" => :refs, "Library" => :refs]
+    "Tasks" => :refs, "Library" => :refs]
 
 kind_of(name) = something(findfirst(p -> p.first == name, SCOPES), 0) == 0 ? :refs :
                 SCOPES[findfirst(p -> p.first == name, SCOPES)].second
@@ -332,7 +332,7 @@ function lint_scope(vault::AbstractString, kind::Symbol, files, texts, names,
     # error: the page moved and the link did not. A link broken across a newline is an error too,
     # however well it reads — Obsidian does not join the lines.
     # A cross-vault link means different things on each side. Inside a vault it is an error: the
-    # page moved and the link did not. From `Tasks/` or `Bibliography/` it is the normal way to
+    # page moved and the link did not. From `Tasks/` or `Library/` it is the normal way to
     # point at a claim, so it is only a warning — Obsidian will not follow it across vaults, and
     # that is worth saying once, not failing a commit over.
     inbound = Dict(f => 0 for f in files)

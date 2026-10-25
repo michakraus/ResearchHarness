@@ -41,8 +41,9 @@ pages and can only report.
 Judge each candidate on whether it is worth the user's time, not on how well it matches the
 query string. Mark clearly:
 
-- **duplicates** of something already in `~/Research/Bibliography` (search the `.bib` files
-  before reporting a candidate as new)
+- **duplicates** of something already in a `.bib` file under `~/Research` (search
+  `~/Research/Latex/shared.bib` and the manuscripts' own `.bib` files before reporting a
+  candidate as new)
 - **already held** in `~/Research/Library` — say so instead of proposing retrieval
 - **superseded** versions: prefer the journal version over the preprint when both exist, and
   say if they differ materially
@@ -64,7 +65,7 @@ Sources searched: <which indexes, and any that failed>
 | # | key | authors, year | title | DOI | status | why |
 |--:|:----|:--------------|:------|:----|:-------|:----|
 
-status: new · already in Bibliography · already in Library · superseded · retracted
+status: new · already in a .bib · already in Library · superseded · retracted
 
 ### BibTeX
 <entries for the "new" rows only, in the house key scheme>
