@@ -40,7 +40,7 @@ rather than per run. Use it when you are iterating on one package and expect sev
 `TestRunner.jl` through it rather than launching a fresh `julia` per attempt.
 
 **A suite with Metal as a test dependency runs as a child of `ex`**:
-``run(`julia +1.11 --startup-file=no … run-tests.jl <dir> full`)``. The Bash sandbox hides the GPU,
+``run(`julia +1.12 --startup-file=no … run-tests.jl <dir> full`)``. The Bash sandbox hides the GPU,
 so a green from Bash ran the Metal testset with no device and says nothing about Metal. In an `ex`
 session, `TestEnv.activate()` fails with `can not merge projects`; run `run-tests.jl` as a child
 process instead.
@@ -94,7 +94,7 @@ guarded `@allocated` assertion is skipped** — so a green suite on a Julia befo
 evidence for an allocation bound. An unguarded assertion still runs there, and a failure of one is
 a real failure of the CI `min` job: report it as a failure, never as an artefact of the flag.
 
-Run another Julia as `julia +1.11 --startup-file=no run-tests.jl <worktree> full`. Where another
+Run another Julia as `julia +1.12 --startup-file=no run-tests.jl <worktree> full`. Where another
 minor version resolved the manifest, `run-tests.jl` runs in a copy without it; make no copy of your
 own.
 

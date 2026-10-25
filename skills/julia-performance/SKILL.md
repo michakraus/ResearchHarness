@@ -31,8 +31,7 @@ code. Take a median over repeats, not a single reading.
 
 **Print the resolved versions next to any cross-version measurement.** A probe environment that
 silently resolved the *registered* package instead of the working tree has produced a pre-fix
-figure reported as post-fix. `[sources]` is Pkg 1.11+, so on **1.10 a `[sources]` entry is
-ignored** and the registry copy wins — use `Pkg.develop(path=…)` in any 1.10 probe env.
+figure reported as post-fix.
 
 **Do not measure while a test suite is running** over any of the same packages. `Pkg.test()`'s
 `--check-bounds=yes` on 1.12 and earlier diverges from your `auto`, the shared precompile images
@@ -84,10 +83,6 @@ removes compilation, not this noise.
 
 **`@allocated` around a constructor measures the constructor**, not the work the caller did to
 build its argument. To compare retained storage, use `Base.summarysize`.
-
-**On Julia 1.11, keep the measuring function to one line, with all arguments as parameters.** A
-function that builds the object and holds the `@allocated` gets a `Core.Box` that 1.11 does not
-elide, so `@allocated` reads 16 bytes for a zero-allocation call. Build the object in the caller.
 
 **`Profile.Allocs` gives correct counts and wrong sizes.** Use it to find which `file:line`
 allocates and how often. Take every byte figure from `@allocated` on a warm call in a cold process.

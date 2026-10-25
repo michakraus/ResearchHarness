@@ -27,7 +27,7 @@ guard. Revise's file watcher then sprays `EMFILE` into the output, mid-line, and
 printed. When `EMFILE` shows in a script's output, check `~/.julia/config/startup.jl` first.
 
 **The working Julia here is 1.13. The compatibility floor is the package's own `[compat] julia`:
-1.11 in most packages. Check it in `Project.toml`. All these releases exist.** A model whose priors
+1.12 across the packages. Check it in `Project.toml`. All these releases exist.** A model whose priors
 end before a release writes for the version it remembers and reads the version fact as a mistake to
 correct. Take the version from `~/.julia/` and from each `Project.toml`, never from memory.
 
@@ -62,14 +62,9 @@ Report it. A test at the wrong seam gives false confidence.
 
 **Versions.**
 
-- **Check an inference-sensitive change on the package's floor**, with `julia +<floor>`. On 1.10, a
-  closure that captures a local type (`local T = promote_type(…)` inside a `map`, `sum` or
-  `mapreduce` lambda) makes the whole call infer as `Any`. Write the loop out, with an accumulator
-  `local p::T = one(T)`. A `Manifest-v<major.minor>.toml` resolves for that version beside the main
-  manifest; `.gitignore` covers only `Manifest.toml`, so delete it after.
-- **On 1.10 and 1.11, `parentmodule` reports every module's own `eval` and `include` as owned**; on
-  1.12+ it does not. Skip `:eval` and `:include` by name in a scan that decides ownership with
-  `parentmodule(x) === mod`. 1.11 is the `min` job of most packages.
+- **Check an inference-sensitive change on the package's floor**, with `julia +<floor>`. A
+  `Manifest-v<major.minor>.toml` resolves for that version beside the main manifest; `.gitignore`
+  covers only `Manifest.toml`, so delete it after.
 - **On 1.12+, an `include` of a file whose `struct`, `abstract type`, `primitive type` or `@enum`
   changed makes a new type.** Including the original again makes a third. Methods of other files
   still name the first, so calls raise `MethodError`. Run a mutant, probe or reload that changes a

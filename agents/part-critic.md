@@ -69,7 +69,9 @@ A **blocking defect** is one of these, and nothing else:
 
 **A failure outside every clause's domain is an other defect**, with its reproducer: a neighbour
 input of another class, a missing test that no clause asks for, a style remark. It never blocks.
-An entry of `KNOWN_ISSUES.md` blocks only when the part claims to fix it.
+An entry of `KNOWN_ISSUES.md` blocks only when the part claims to fix it. A floating-point
+difference of one or a few ULPs (at least up to `8 ulp`, `8 * eps(real(T))`) is acceptable and
+never blocks.
 
 **PASS only when no clause is unmet and no blocking defect exists.** Every blocking defect has a
 reproducer that fails now and passes when the defect is fixed: a probe file or a command.

@@ -58,7 +58,9 @@ recorded and not blocking.
   the pre-fix value in the same process. Where the fix edits a method body, use `pins.jl`.
 - **A tolerance is a number with a reason**: `√eps(T)`, a multiple of `eps · κ`, the order of the
   method, or a measured noise floor. "To tolerance" is not a tolerance until the row states the
-  number.
+  number. A floating-point difference of one or a few ULPs — at least up to `8 ulp`,
+  `8 * eps(real(T))`, across platforms, architectures, Julia versions or compilation contexts — is
+  acceptable and never fails a clause or blocks a round.
 - **A measurement names its method**: a cold process, the number of BLAS threads, the number of
   runs, the machine and the package versions.
 - **"The suite is green" is evidence only for a clause that the suite covers.** Name the test file
@@ -172,8 +174,8 @@ mutants or fewer runs each mutant cold, about a minute each in a large package. 
 table of a fix round, the kind of a selected earlier mutant is `function`, `test` or `survivor`,
 and the closing line adds `n earlier mutants keep their verdicts`.
 
-**Another Julia is one command.** `julia +1.11 --startup-file=no run-tests.jl <worktree> full`
-runs the suite on the 1.11 floor. Where another minor version resolved the manifest, `run-tests.jl`
+**Another Julia is one command.** `julia +1.12 --startup-file=no run-tests.jl <worktree> full`
+runs the suite on the 1.12 floor. Where another minor version resolved the manifest, `run-tests.jl`
 and `mutate.jl` run in a copy without it, and the worktree's manifest stays as it is. Make no copy
 of your own.
 
@@ -270,9 +272,6 @@ concrete types and which calls the function once before it measures:
 allocations(f::F, a::A) where {F, A} = (f(a); @allocated f(a))
 ```
 
-Julia 1.11 boxes a closure over a loop variable, a captured type parameter and an unspecialised
-varargs splat, where 1.12 and 1.13 do not. An assertion at testset scope, or through such a helper,
-then fails the CI `min` job although the code allocates nothing. Where no barrier can hold the
-call, guard the assertion with `Base.JLOptions().check_bounds != 1` and say in the row that the
-floor does not check it. A control, `@test allocations(collect, a) > 0`, shows that the helper sees
-an allocation.
+Where no barrier can hold the call, guard the assertion with `Base.JLOptions().check_bounds != 1`
+and say in the row that `--check-bounds=yes` skips it. A control, `@test allocations(collect, a) > 0`,
+shows that the helper sees an allocation.

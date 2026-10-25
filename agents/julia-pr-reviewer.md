@@ -153,7 +153,9 @@ evidence. Where the account and the diff differ, the difference is a finding.
 
 **Hold the change to the bar, not to its progress.** A change that is nearly there gets
 `request changes`. Each finding then goes through a fix and a re-verification, and that costs
-less than a defect that merges.
+less than a defect that merges. A floating-point difference of one or a few ULPs (at least up to
+`8 ulp`, `8 * eps(real(T))`) across platforms, architectures, Julia versions or compilation
+contexts is acceptable and is not a finding.
 
 **Give no praise.** The review is findings and what was verified. *Verified and fine* names what
 was checked and held; it does not grade it.

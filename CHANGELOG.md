@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+- **Floating-point differences up to at least `8 ulp` never block, and the package compatibility
+  floor is Julia 1.12.** `skills/build-part/evidence.md`, `skills/build-part/edges.md`,
+  `agents/julia-critic.md`, `agents/part-critic.md`, `agents/julia-pr-reviewer.md`,
+  `agents/arbitrator.md` and `rules/julia-tests.md` state that a floating-point difference of one or
+  a few ULPs — at least up to `8 ulp`, `8 * eps(real(T))`, across platforms, architectures, Julia
+  versions or compilation contexts — is acceptable and never fails a clause or blocks a round; when
+  a test or a critic fails only on a difference of a few ULPs, the arbitrator chooses `test round`
+  rather than `park`. `rules/julia-code.md`, `rules/julia-tests.md`,
+  `skills/julia-package-audit/SKILL.md`, `skills/julia-performance/SKILL.md`,
+  `skills/build-part/evidence.md`, `skills/build-part/edges.md`, `agents/julia-test-runner.md`,
+  `agents/julia-load-doctor.md` and `agents/julia-perf-analyst.md` state the Julia 1.12 package
+  compatibility floor and drop 1.10- and 1.11-only floor workarounds.
+
 - **A settings file nested just deeper than the second parse reads exits 2, not with a traceback:
   K100 and K105 leave `KNOWN_ISSUES.md`.** `rewritten_numbers`, which parses a settings file a
   second time to keep the text of each number, turns a `RecursionError` of that parse into "… is

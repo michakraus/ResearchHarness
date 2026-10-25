@@ -60,8 +60,13 @@ Every repository here lays out its tests in one form. `Harness/scripts/test-layo
 - **Every test file is self-contained.** It has its own `using`, and a fixed seed where it draws
   random numbers.
 - **The label of a `@safetestset` is a plain string**, unique in `runtests.jl`.
+- **A floating-point difference of one or a few ULPs (at least up to `8 ulp`, `8 * eps(real(T))`)
+  is acceptable and never blocks.** Assert floating-point identities and directional derivatives
+  with `isapprox(a, b; rtol = 8 * eps(real(T)))` rather than `==`, because FMA contraction and
+  summation order differ by a few ULPs across architectures, Julia versions and compilation
+  contexts.
 - **A rounding-path assertion asserts a rate across a sweep**, not the outcome at one parameter
-  value. `--check-bounds` changes summation order, and `Pkg.test()` forces `yes` on 1.10–1.12 but
+  value. `--check-bounds` changes summation order, and `Pkg.test()` forces `yes` on 1.12 but
   inherits the session's setting on 1.13. Beside a `check_bounds == 0` guard, write "skipped where
   a run forces `--check-bounds=yes`", never "`Pkg.test()` skips this". Where a single-point
   assertion is unavoidable, reproduce it under `--check-bounds=yes` before you believe it.
@@ -71,9 +76,8 @@ Every repository here lays out its tests in one form. `Harness/scripts/test-layo
   sits above the residue and can hide an `N×2n` temporary.
 - **Assert that the iterate changes after one step.** A test that checks only types or convergence
   flags misses an iterate that never moves.
-- **Reproduce a 1.11 `min` failure in the package environment**: `julia +1.11 --project=. <test
-  file>` in a second worktree. The 1.11 test environment cannot instantiate in the sandbox, because
-  the proxy blocks its `OpenSSL_jll` artifact, and that run dies before any test.
+- **Reproduce a 1.12 `min` failure with `julia +1.12`**: run `julia +1.12 --startup-file=no
+  run-tests.jl <worktree> <test file>` or `julia +1.12 --project=. <test file>`.
 
 Run one file, a group, or the files a diff reaches, with `run-tests.jl <repository> <path>`,
 `run-tests.jl <repository> core` or `run-tests.jl <repository> affected`. `affected` never runs

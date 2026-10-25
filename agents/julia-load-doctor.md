@@ -60,8 +60,8 @@ load failure.
   `Project.toml`, eat every comment, and inject a `[sources]` table that **blocks registration in
   General**.
 - **Probe in a scratch environment outside the repository.** The in-repo `Manifest.toml` is
-  routinely stale, and on Julia 1.10 `[sources]` is ignored, so an in-repo probe can silently
-  resolve the *registered* package instead of the working tree.
+  routinely stale, so an in-repo probe can silently resolve the *registered* package instead of
+  the working tree.
 - Run a load probe beside another Julia job over shared packages only when their `check_bounds`
   match (Julia 1.13 with no `--check-bounds` set; never beside `Pkg.test()` on 1.12 and earlier) —
   divergent `check_bounds` invalidates the precompile images and the resulting `CacheFlags` and `MethodError`

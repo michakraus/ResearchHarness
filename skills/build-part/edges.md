@@ -119,13 +119,14 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   decrease exists (K10, round 5; the C1 replay of l14)
 - a stationary point that is a maximum, which a test of the slope's sign accepts; a test on a convex
   merit only does not show it (K12, round 5)
-- a bit-for-bit comparison of a product built from `muladd`, across two compilation contexts: the
-  compiler may contract the product into a fused multiply–add in one and not the other, so a
-  `ComplexF32` static product differs by up to 2 ulp between a kernel and the host that evaluates
-  the same expression, when every operand is bit-identical and the two Julia versions disagree about
-  which context contracts (L-a verify 2 and 3, *Design the solver package*). Write every operand out
-  of the kernel whole and compare those exactly, and compare the product at a stated ulp bound — a
-  tolerance on the product alone hides a corruption of an operand that reaches only it.
+- a bit-for-bit comparison of a floating-point expression across two compilation contexts,
+  architectures or Julia versions: the compiler may contract `muladd` or reorder a reduction in one
+  context and not the other, so the result differs by a few ULPs when every operand is bit-identical
+  (L-a verify 2 and 3, L-b verify 2 and 3, *Design the solver package*). Differences of one or a few
+  ULPs (at least up to `8 ulp`, `8 * eps(real(T))`) are acceptable and never block. Write every
+  operand out of a kernel whole and compare those exactly, and compare the result at an ULP bound of
+  at least `8 * eps(real(T))` — a wide tolerance on the result alone hides a corruption of an
+  operand that reaches only it.
 - a solver swap that changes the quantity a tolerance bounds: the old solver tested `maximum(abs, F)`
   where the replacement tests `‖F‖₂`, so the same `abstol` is now stricter and rejects a solve the
   reference accepted (P44, *Rewrite the reduced basis packages*)
@@ -417,7 +418,7 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   *Add the Antigravity frontend*)
 - doctests in the manual pages, not only in the docstrings
 - a tolerance or an API that answers on the session's Julia and not on the `[compat]` floor:
-  `eps(::Type{ComplexF32})` returns a value on 1.13 and raises a `MethodError` on 1.11, so a device
+  `eps(::Type{ComplexF32})` returns a value on 1.13 and raises a `MethodError` on 1.12, so a device
   test that uses it errors in CI's `min` job while every local run is green (J round 1 and verify 2,
   *Design the solver package*). Run the floor once per part, and write `eps(real(T))` wherever `T`
   may be complex.

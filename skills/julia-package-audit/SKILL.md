@@ -61,8 +61,7 @@ These interlock, and the order matters:
    alone: the rule does not follow `include`, so it flags a module file's load-bearing imports.
 2. **ExplicitImports.jl** goes further: implicit imports (`using Foo` then relying on what it
    happens to export), stale explicit imports, and accesses to names a package does **not**
-   declare public. Run on Julia **1.11+** — the `public`/non-public distinction does not exist
-   below that, so the checks are only authoritative there.
+   declare public.
 3. **Aqua's `stale_deps`** then finally means what it claims. This is the point of the
    exercise: *a live-but-useless `using` hides a stale dependency from Aqua*, so clearing 1 and
    2 is what makes 3 trustworthy. It still passes a dependency that another dependency loads;
@@ -106,7 +105,7 @@ syntax `f(; max_iter)`. Test exception **types** or user-facing messages, not in
 - **CairoMakie, not Plots.** Plots survives only in legacy `docs/` and `scripts/`.
 - **Edit `[compat]` by hand, then `Pkg.resolve()`.** `Pkg.develop` rewrites `Project.toml`,
   eats every comment, and injects a `[sources]` table that blocks registration in General.
-- **The floor is the package's `[compat] julia`** — 1.11 in most packages, 1.10 in a few; CI runs
+- **The floor is the package's `[compat] julia`** — 1.12 across the packages; CI runs
   from it to `^1.13.0-0` and nightly.
 - **Doctests are not run by `Pkg.test()`** — only `docs/make.jl` executes `jldoctest` blocks.
 - **Run a test suite beside another Julia job over shared packages only when their `CacheFlags`

@@ -147,6 +147,8 @@ A **blocking defect** is one of these:
 
 **A failure outside every clause's domain is an other defect of kind *found late***, with its
 reproducer. **An entry of `KNOWN_ISSUES.md` blocks only when the part claims to fix it.**
+**A floating-point difference of one or a few ULPs (at least up to `8 ulp`, `8 * eps(real(T))`)
+is acceptable and never blocks.**
 
 **Five things are not evidence**, from the builder or from you: "the suite is green" where the
 suite never ran the change; a total that disagrees with its own rows; a figure from a warm process,
