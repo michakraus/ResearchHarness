@@ -12,6 +12,13 @@ path that `hooks.json` names, and gives it the call as JSON on stdin: `toolCall.
 `ask` leaves Antigravity's own policy in force: its permission rules and its preset decide, as with
 no hook. It never answers `{}`, which Antigravity reads as a deny with an empty reason.
 
+A `run_command` that it does not deny also gets `"overwrite": {"BypassSandbox": …}`, which replaces
+that argument of the call: true when Claude Code would run the command outside its sandbox, by the
+rule `top_level` of the sandbox-semantics.py beside this file (every part led by git, gh, glab or
+ps, and no file redirected), else false. So the guard, not the agent, decides the sandbox of a
+command, as Claude Code's `sandbox.excludedCommands` does, and an agent's own `BypassSandbox` on any
+other command is dropped. A deny, and a call of any other tool, carries no `overwrite`.
+
 THE CHECKS, by the name of the tool:
 
     every tool     the `deny` list on each argument of PATH_KEYS
@@ -59,6 +66,7 @@ it.
 """
 
 import concurrent.futures
+import importlib.util
 import json
 import os
 import pathlib
@@ -345,6 +353,18 @@ def guards(runs):
     return {"decision": "ask"}
 
 
+def lifted(command, cwd):
+    """Whether `command`, run in `cwd`, runs outside the sandbox: whether `top_level` of the
+    sandbox-semantics.py beside this file, Claude Code's rule for `sandbox.excludedCommands`, finds
+    no reason to keep it inside. A command that it cannot parse stays inside."""
+    sys.dont_write_bytecode = True  # no __pycache__ in the installed hooks/
+    spec = importlib.util.spec_from_file_location("sandbox_semantics", HOOKS / WORK_TREE)
+    semantics = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(semantics)
+    classified = semantics.top_level(command, cwd)
+    return classified is not None and classified[1] is None
+
+
 def answer(payload):
     """The answer to the Antigravity hook payload `payload`, parsed."""
     call = payload["toolCall"]
@@ -398,9 +418,11 @@ def answer(payload):
         asked = matched(bash["bash_ask"], parts)
         shell = json.dumps({"tool_name": "Bash", "tool_input": {"command": command}, "cwd": cwd})
         result = guards([*((s, shell, ()) for s in SHELL), (WORK_TREE, shell, ("--work-tree",))])
-        if asked is not None and result["decision"] != "deny":
-            return {"decision": "force_ask", "reason": f"The settings template's rule Bash({asked}) asks the user."}
-        return result
+        if result["decision"] == "deny":
+            return result
+        if asked is not None:
+            result = {"decision": "force_ask", "reason": f"The settings template's rule Bash({asked}) asks the user."}
+        return {**result, "overwrite": {"BypassSandbox": lifted(command, cwd)}}
     if name == "call_mcp_tool" and args.get("ServerName") == KAIMON_SERVER and args.get("ToolName") in KAIMON_TOOLS:
         arguments = args.get("Arguments")
         if isinstance(arguments, str):

@@ -1444,6 +1444,30 @@ AGY_CASES = [
     # matches `git init sub`, which sandbox-semantics.py refuses.
     ("run_command", {"CommandLine": "gh pr merge 1 && git init sub"}, "deny", None),
 ]
+# The sandbox of a run_command that the hook does not deny: (args, the hook's decision, the
+# `BypassSandbox` of its `overwrite`), in the probe's work tree. It is true exactly when `top_level`
+# of sandbox-semantics.py lifts the command, as Claude Code's `excludedCommands` does: every part
+# led by git, gh, glab or ps, and no file redirected. A line that does not parse stays in the
+# sandbox, and so does any other command, whatever `BypassSandbox` the agent sets. The rm-scope
+# guard asks on a line that does not parse and holds `rm`, as `--format` does.
+AGY_BYPASS = [
+    ({"CommandLine": "git status"}, "ask", True),
+    ({"CommandLine": "gh pr view 1"}, "ask", True),
+    ({"CommandLine": "git -C x log"}, "ask", True),
+    ({"CommandLine": "ps aux"}, "ask", True),
+    ({"CommandLine": "glab mr list"}, "ask", True),
+    ({"CommandLine": "git status 2>&1"}, "ask", True),
+    ({"CommandLine": "git fetch && git status"}, "ask", True),
+    ({"CommandLine": f"cd {CWD} && git status"}, "ask", True),
+    ({"CommandLine": "gh pr merge 1"}, "force_ask", True),
+    ({"CommandLine": "cd x && git status"}, "ask", False),
+    ({"CommandLine": "julia --version"}, "ask", False),
+    ({"CommandLine": "git status | cat"}, "ask", False),
+    ({"CommandLine": "git log --oneline '"}, "ask", False),
+    ({"CommandLine": 'git log --format="%h'}, "force_ask", False),
+    ({"CommandLine": "julia --version", "BypassSandbox": True}, "ask", False),
+    ({"CommandLine": "git status", "BypassSandbox": False}, "ask", True),
+]
 
 
 def agy_cases():
@@ -1486,9 +1510,10 @@ def agy_cases():
                 f.write(paths(rendered) if callable(paths) else paths if paths is not None else rendered)
         return h
 
-    def verdict(h, tool=None, args=None, workspace=CWD, raw=None, env=None, argv=None, limit=TIMEOUT):
-        """The decision of the hook in home `h` on a call of `tool` with `args`, or on the payload
-        text `raw`, within `limit` seconds; what went wrong when it prints no decision, or `{}`."""
+    def reply(h, tool=None, args=None, workspace=CWD, raw=None, env=None, argv=None, limit=TIMEOUT):
+        """The answer of the hook in home `h` on a call of `tool` with `args`, or on the payload
+        text `raw`, within `limit` seconds, as (the answer object, None); (None, what went wrong)
+        when it prints no decision, or `{}`."""
         payload = raw if raw is not None else json.dumps({
             "conversationId": "probe", "modelName": "probe", "stepIdx": 1,
             "toolCall": {"name": tool, "args": args}, "workspacePaths": [workspace]})
@@ -1498,16 +1523,26 @@ def agy_cases():
                                capture_output=True, text=True, timeout=limit, cwd=config,
                                env=env or {**CLEAN, "HOME": "/" + h})
         except subprocess.TimeoutExpired:
-            return "timeout", ""
+            return None, ("timeout", "")
         try:
             answer = json.loads(p.stdout)
         except ValueError:
-            return f"exit {p.returncode}, unreadable output {p.stdout[-80:]!r}", p.stderr
+            return None, (f"exit {p.returncode}, unreadable output {p.stdout[-80:]!r}", p.stderr)
         if p.returncode != 0 or not isinstance(answer, dict) or not answer.get("decision"):
-            return f"exit {p.returncode}, answer {answer!r}", p.stderr
+            return None, (f"exit {p.returncode}, answer {answer!r}", p.stderr)
         if answer["decision"] != "ask" and not answer.get("reason"):
-            return f"{answer['decision']} without a reason", ""
-        return answer["decision"], answer.get("reason", "")
+            return None, (f"{answer['decision']} without a reason", "")
+        return answer, None
+
+    def verdict(*args, **kw):
+        """The decision of the hook and its reason, as `reply` gets them; what went wrong when it
+        prints no decision, or `{}`."""
+        answer, failed = reply(*args, **kw)
+        return failed or (answer["decision"], answer.get("reason", ""))
+
+    def overwrite_of(answer):
+        """The `overwrite` of `answer`, or "none" when it has none."""
+        return answer.get("overwrite", "none") if answer else "no answer"
 
     def permission(command):
         for kind in ("deny", "ask", "allow"):
@@ -1557,12 +1592,28 @@ def agy_cases():
         # A home without the template's rules, where the shell guards alone decide a `sed -i`.
         bare = home("agy-home-no-bash", paths=lambda text: json.dumps(
             {**json.loads(text), "bash_deny": [], "bash_ask": []}))
+        # A home whose sandbox-semantics.py lifts julia too.
+        with open(HOOKS + "sandbox-semantics.py") as f:
+            semantics = f.read()
+        line = 'EXCLUDED = {"git", "gh", "glab", "ps"}\n'
+        if line not in semantics:
+            raise OSError(f"hooks/sandbox-semantics.py holds no line {line!r}, which the julia case replaces")
+        lifts_julia = home("agy-home-julia", scripts={
+            "sandbox-semantics.py": semantics.replace(line, 'EXCLUDED = {"git", "gh", "glab", "ps", "julia"}\n')})
     except OSError as e:
         report(False, f"exp fixture got {type(e).__name__}  [agy-guard]  {e}")
         return total, wrong
     for tool, args, expected, pattern in AGY_CASES:
-        got, _ = verdict(good, tool, args)
+        answer, failed = reply(good, tool, args)
+        got = failed[0] if failed else answer["decision"]
         report(got == expected, f"exp {expected} got {got}  [agy-guard]  {tool} {args}")
+        # Only a run_command that the hook does not deny carries an `overwrite`, and it holds
+        # `BypassSandbox` alone, as a bool.
+        sandbox = overwrite_of(answer)
+        want = "BypassSandbox" if tool == "run_command" and expected != "deny" else "none"
+        shape = "none" if sandbox == "none" else "BypassSandbox" if isinstance(sandbox, dict) and list(
+            sandbox) == ["BypassSandbox"] and isinstance(sandbox["BypassSandbox"], bool) else repr(sandbox)
+        report(shape == want, f"exp {want} got {shape}  [agy-bypass]  the overwrite of {tool} {args}")
         if pattern is not None:
             got = permission(args["CommandLine"])
             report(got == pattern, f"exp {pattern} got {got}  [agy-perms]  {args['CommandLine']}")
@@ -1571,10 +1622,38 @@ def agy_cases():
     for line, expected, grant in [("git push --force origin x", "deny", "command(git)"),
                                   ("git add -A", "deny", "command(git)"),
                                   ("gh pr merge 1", "force_ask", "command(gh)")]:
-        got, _ = verdict(good, "run_command", {"CommandLine": line})
+        answer, failed = reply(good, "run_command", {"CommandLine": line})
+        got = failed[0] if failed else answer["decision"]
         granted = grant in rules["allow"] and agy.rule_matches(grant, line)
         report(got == expected and granted,
                f"exp {expected} got {got}  [agy-grant]  {line}, which the allow rule {grant} matches: {granted}")
+        # A deny leaves the sandbox as it is; a force_ask runs the lifted command outside it.
+        sandbox, want = overwrite_of(answer), "none" if expected == "deny" else {"BypassSandbox": True}
+        report(sandbox == want, f"exp {want} got {sandbox}  [agy-bypass]  the overwrite of {line}")
+    for args, expected, bypass in AGY_BYPASS:
+        answer, failed = reply(good, "run_command", args)
+        got = failed[0] if failed else (answer["decision"], overwrite_of(answer))
+        want = (expected, {"BypassSandbox": bypass})
+        reason = "" if got == want or not answer else " " + repr(answer.get("reason", "")[:160])
+        report(got == want, f"exp {want} got {got}  [agy-bypass]  {args}{reason}")
+    # A file redirection keeps the command in the sandbox. The shell guards refuse `> f` in a work
+    # tree, so the call runs in a directory that is none.
+    answer, failed = reply(good, "run_command", {"CommandLine": "git status > f"}, workspace=elsewhere)
+    got = failed[0] if failed else (answer["decision"], overwrite_of(answer))
+    report(got == ("ask", {"BypassSandbox": False}),
+           f"exp ('ask', {{'BypassSandbox': False}}) got {got}  [agy-bypass]  git status > f outside a work tree")
+    # The rule is the installed sandbox-semantics.py's, not a copy in guard.py: a copy of it that
+    # also lifts julia lifts `julia --version`.
+    got = overwrite_of(reply(lifts_julia, "run_command", {"CommandLine": "julia --version"})[0])
+    report(got == {"BypassSandbox": True},
+           f"exp {{'BypassSandbox': True}} got {got}  [agy-bypass]  julia --version, with an installed rule that "
+           "lifts julia")
+    # Reading the rule writes no bytecode cache into the installed hooks/, also where the environment
+    # allows one.
+    reply(good, "run_command", {"CommandLine": "git status"},
+          env={**{k: v for k, v in CLEAN.items() if k != "PYTHONDONTWRITEBYTECODE"}, "HOME": "/" + good})
+    cached = sorted(n for n in os.listdir(good + "/.gemini/config/hooks") if n == "__pycache__")
+    report(cached == [], f"exp [] got {cached}  [agy-bypass]  no __pycache__ in the hooks/ of guard.py")
     # A line of many words gets its answer within the timeout that hooks.json gives the hook.
     for line in ["echo " + "git push " * 10000, "echo " + "a " * 20000]:
         got, _ = verdict(good, "run_command", {"CommandLine": line}, limit=agy.HOOK_TIMEOUT)
@@ -1682,7 +1761,7 @@ def agy_cases():
     p = subprocess.run(["/bin/sh", "-c", handler["command"]], input=status_call, capture_output=True, text=True,
                        cwd=elsewhere, env={**CLEAN, "HOME": spaced}, timeout=TIMEOUT)
     got = p.stdout.strip()
-    report(got == '{"decision": "ask"}',
+    report(got == '{"decision": "ask", "overwrite": {"BypassSandbox": true}}',
            f"exp ask got {got!r}  [agy-guard]  the handler {handler['command']} from another directory")
     # With no python3 on the PATH, the handler fails and prints nothing, which Antigravity reads as
     # a block.

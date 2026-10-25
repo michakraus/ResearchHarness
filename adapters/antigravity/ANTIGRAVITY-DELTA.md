@@ -15,6 +15,9 @@ final for that path or command: do not reach it in another form. The hook fails 
 that cannot run refuses the call. Change a file with the edit tool, never with `sed -i` or
 `perl -pi`.
 
+The guard hook decides the sandbox of each command and sets `BypassSandbox` itself: true for the
+commands that Claude Code runs outside its sandbox, false for every other. Do not set it yourself.
+
 In the app, a call of a subagent that needs a grant shows the app's dialog, as a call of the main
 agent does.
 
