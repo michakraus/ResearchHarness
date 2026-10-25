@@ -253,7 +253,7 @@ Example = "https://github.com/example/Example.jl.git"
 "A Paper Title" = "https://git.example.org/example/papers/a-paper.git"
 ```
 
-The fixed repositories are `knowledge`, `environment`, `tasks`, `bibliography` and `library`.
+The fixed repositories are `knowledge`, `environment`, `tasks` and `library`.
 The groups are `packages`, `experiments`, `papers`, `books`, `talks` and `projects`. Another key
 is an error, and so is a directory name that holds a `/` or starts with `.`.
 `examples/repositories.toml` shows a whole table.
@@ -447,7 +447,7 @@ harness wiki-lint-hook [--apply]
 ```
 
 Copies `githooks/pre-commit-wiki` as `.githooks/pre-commit` into each prose repository of the
-research tree (`Knowledge`, `Environment`, `Tasks`, `Bibliography`, `Library`), and sets
+research tree (`Knowledge`, `Environment`, `Tasks`, `Library`), and sets
 `core.hooksPath`. It skips a name that is not a git repository.
 
 **Exit status and where to run it:** as `githooks`.

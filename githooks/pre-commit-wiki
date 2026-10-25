@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
-# Shared pre-commit hook for the five prose repositories: Knowledge, Environment, Tasks,
-# Bibliography and Library. Canonical copy:
+# Shared pre-commit hook for the four prose repositories: Knowledge, Environment, Tasks and
+# Library. Canonical copy:
 #
 #   ~/Research/Harness/githooks/pre-commit-wiki
 #
@@ -14,7 +14,7 @@
 #
 # WHAT IT DOES
 #
-# Runs `wiki-lint.jl` over all five trees and blocks the commit if it reports an ERROR. About
+# Runs `wiki-lint.jl` over all four trees and blocks the commit if it reports an ERROR. About
 # three seconds. It does not filter to staged files, deliberately: a change to a *script* can
 # break a `checks:` or `depends_on:` pin in a page that is not in the commit, and the existing
 # `pre-commit` already demonstrates the cost of filtering — it exits 0 on a Markdown-only commit
@@ -22,7 +22,7 @@
 #
 # IT BLOCKS ON AN ERROR ANYWHERE, NOT ONLY IN THIS REPOSITORY
 #
-# That is a decision, and the alternative is one flag away. The five trees cross-reference each
+# That is a decision, and the alternative is one flag away. The four trees cross-reference each
 # other, so an edit here can only break a link over there: rename a `Knowledge/` page and the
 # error appears in `Tasks/`. A hook that failed only on its own repository would report that
 # error to nobody until someone happened to commit in `Tasks/`.

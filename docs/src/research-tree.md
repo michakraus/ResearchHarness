@@ -33,7 +33,7 @@ one of them, and links each to its section in *Components*.
 
 | directory | what it holds | the components that serve it |
 |:--|:--|:--|
-| `Library` | a catalogue of the papers and books of other authors: for each paper, a directory with its file and a short Markdown description | [`literature-scout`](components/agents.md#literature-scout), which says when a paper is already in the library; [`wiki-lint.jl`](components/scripts.md#wiki-lint-jl), which checks the paths and the line citations; [`pre-commit-wiki`](components/githooks.md#pre-commit-wiki), which runs it before each commit |
+| `Library` | a catalogue of the papers and books of other authors: for each paper, a directory with its file and a short Markdown description; in the example also the citation keys and the tools that build the shared bibliography | [`literature-scout`](components/agents.md#literature-scout), which says when a paper is already in the library; [`wiki-lint.jl`](components/scripts.md#wiki-lint-jl), which checks the paths and the line citations; [`pre-commit-wiki`](components/githooks.md#pre-commit-wiki), which runs it before each commit |
 | `Knowledge` | a vault of Markdown notes that record what is established: facts, methods and measurements, with links between the notes | [`wiki-lint.jl`](components/scripts.md#wiki-lint-jl) with every check, and [`pre-commit-wiki`](components/githooks.md#pre-commit-wiki); [`changelog-scribe`](components/agents.md#changelog-scribe), for a change to what is established; [`math-verify`](components/skills.md#math-verify), whose scripts the notes link; [`wait-what`](components/skills.md#wait-what) |
 | `Packages` | the software packages, Julia packages in the example, each with its tests, its documentation and a `CHANGELOG.md` | the agents and skills of a planned change and of a pull request, from [Agentic software engineering](agentic-engineering.md); the Julia skills [`julia-structure`](components/skills.md#julia-structure), [`julia-package-audit`](components/skills.md#julia-package-audit), [`julia-surgical-fix`](components/skills.md#julia-surgical-fix) and [`julia-release`](components/skills.md#julia-release); the agents of a diagnosis, such as [`julia-load-doctor`](components/agents.md#julia-load-doctor); the rules [`julia-code`](components/rules.md#julia-code), [`julia-tests`](components/rules.md#julia-tests), [`julia-docs`](components/rules.md#julia-docs), [`changelog`](components/rules.md#changelog) and [`known-issues`](components/rules.md#known-issues); the shared git hooks and workflows of [Git hooks and workflows](components/githooks.md) |
 | `Experiments` | the numerical experiments: code with reproducible results, its tests and a `CHANGELOG.md` | the same agents of a planned change and of a pull request as `Packages`; [`julia-perf-analyst`](components/agents.md#julia-perf-analyst) and the skill [`julia-performance`](components/skills.md#julia-performance), for a measurement; the rules [`julia-code`](components/rules.md#julia-code), [`julia-tests`](components/rules.md#julia-tests) and [`changelog`](components/rules.md#changelog); the same git hooks |
@@ -43,13 +43,12 @@ one of them, and links each to its section in *Components*.
 [`worker`](components/agents.md#worker) reads the directory's own instruction file before its
 first edit in `Packages`, `Experiments`, `Projects` or `Papers`.
 
-The tree has five more directories that the subcommands of the `harness` command know:
+The tree has four more directories that the subcommands of the `harness` command know:
 
 | directory | what it holds |
 |:--|:--|
 | `Environment` | the notes about the machine and the harness, with the evidence behind each rule, and, in the example, the [tree instructions](concepts.md#tree-instructions) |
 | `Tasks` | the task files: one Markdown plan for each task, with its parts table and the state of each part |
-| `Bibliography` | the bibliography of the papers |
 | `Books` and `Talks` | the books and the talks, one repository each, as in `Papers` |
 
 ## Your own layout
@@ -77,7 +76,7 @@ below the research tree, `$RESEARCH_ROOT`, or `~/Research` if it is not set:
   `Packages` and `Experiments`.
 - `harness clone` and `harness repos` look in the group directories `Packages`, `Experiments`,
   `Papers`, `Books`, `Talks` and `Projects`, and for the fixed repositories `Knowledge`,
-  `Environment`, `Tasks`, `Bibliography` and `Library`.
+  `Environment`, `Tasks` and `Library`.
 - `harness wiki-lint-hook` looks for the prose repositories, `Knowledge` and `Library` among
   them. The script `wiki-lint.jl` reads the same names.
 
@@ -144,7 +143,7 @@ repository, and a hook that runs a full test suite can take a long time.
 
 `status`, `pull` and `clone` take every group (`packages`, `experiments`, `papers`, `books`,
 `talks`, `projects`) and every fixed repository (`knowledge`, `environment`, `tasks`,
-`bibliography`, `library`) when you name none; `push` and `sync` take `packages` and
+`library`) when you name none; `push` and `sync` take `packages` and
 `experiments`.
 
 The copies of `githooks` and `workflows` are tracked files in each repository. Read the

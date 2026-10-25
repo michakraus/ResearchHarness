@@ -260,7 +260,7 @@ a request such as "find papers on X", "is there prior work on this" or "track do
 
 It searches the structured indexes first, for example Crossref, OpenAlex and arXiv, and publisher
 pages last. For a paper behind a paywall it uses the link resolver that the tree instructions
-name. It marks each candidate as new, already in the bibliography, already in the library,
+name. It marks each candidate as new, already in a `.bib` file, already in the library,
 superseded or retracted. It proposes a citation key in the scheme `AuthorSurname:Year`.
 
 It returns a table of candidates, BibTeX entries for the new ones, a retrieval worklist, and what

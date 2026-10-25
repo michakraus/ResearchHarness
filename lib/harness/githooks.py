@@ -49,7 +49,7 @@ from . import profile as profile_module
 
 HOOKS = REPO / "githooks"
 WORKFLOWS = HOOKS / "workflows"
-WIKI_REPOSITORIES = ["Knowledge", "Environment", "Tasks", "Bibliography", "Library"]
+WIKI_REPOSITORIES = ["Knowledge", "Environment", "Tasks", "Library"]
 RETIRED = [".github/workflows/CompatHelper.yml"]
 
 

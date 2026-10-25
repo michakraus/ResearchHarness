@@ -9,6 +9,16 @@
   with a relative-symlink `sleep` first on the PATH fails the old fixture in 10 cases and passes
   the new one, 55 of 55, on macOS.
 
+- **`bibliography` is no longer a fixed repository of the research tree.** The example tree keeps
+  its citation keys and the tools that build the shared bibliography in `Library`, and the shared
+  `.bib` in `Latex`. `WIKI_REPOSITORIES`, and with it the fixed repositories of `harness clone` and
+  `harness repos`, is `Knowledge`, `Environment`, `Tasks` and `Library`; `wiki-lint.jl` lints those
+  four trees, and `pre-commit-wiki` says so. A `bibliography` key in `repositories.toml` is an
+  error: remove it before the next `harness repos`. `wiki-lint.jl` still reads a
+  `` `Bibliography/…` `` span as a path, so a stale reference shows as a dead path.
+  `literature-scout` checks `~/Research/Latex/shared.bib` and the manuscripts' own `.bib` files for
+  duplicates, and marks one as "already in a .bib". The examples and the docs follow.
+
 - **`harness doctor` checks the Kaimon token when Antigravity is installed.** Antigravity's
   `mcp_config.json` gets the token from `~/.config/kaimon/auth-token`, but the doctor skipped the
   check on a machine with neither OpenCode nor oh-my-pi, saying that only they read the file. It
