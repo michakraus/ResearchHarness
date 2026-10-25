@@ -118,12 +118,26 @@ function fixture()
     return Fixture(root, home, stubs, log, bindir, harness)
 end
 
-"Start the server: a copy of `sleep` at `bindir/julia`. Returns the process and its binary."
-function start_server(fx::Fixture)
-    binary = joinpath(fx.bindir, "julia")
-    cp(Sys.which("sleep"), binary)
+"""
+Write a copy of `sleep` at `binary`. `/usr/bin/sleep` can be a relative symlink, as on
+ubuntu-26.04, so the copy follows it: a copied link would dangle.
+"""
+function copy_sleep(binary)
+    cp(Sys.which("sleep"), binary; follow_symlinks = true)
     chmod(binary, 0o755)
-    return run(`$binary 600`; wait = false), binary
+    return binary
+end
+
+"""
+Start the server: a copy of `sleep` at `bindir/julia`. Returns the process and its binary.
+
+`bash`'s `exec -a` runs the copy with `argv[0]` set to `sleep`, because a multi-call coreutils
+binary, as uutils is on ubuntu-26.04, chooses its tool by `argv[0]`. The process's binary is still
+`bindir/julia`.
+"""
+function start_server(fx::Fixture)
+    binary = copy_sleep(joinpath(fx.bindir, "julia"))
+    return run(`$(Sys.which("bash")) -c 'exec -a sleep "$0" 600' $binary`; wait = false), binary
 end
 
 "Run the script; return the exit code, its output and the call log's lines."
@@ -164,8 +178,7 @@ alerts(calls) = filter(l -> startswith(l, NOTIFIER * " "), calls)
 
 function rewrite(binary)
     rm(binary)
-    cp(Sys.which("sleep"), binary)
-    chmod(binary, 0o755)
+    copy_sleep(binary)
 end
 
 @testset "julia-update.jl on $(LINUX ? "Linux" : "macOS")" begin
