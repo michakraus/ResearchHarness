@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- **`run-tests.jl` takes the path of a test file relative to the package root, too.** A unit
+  `test/utils.jl` named no file, because a path was read relative to `test/` alone: the run
+  stopped with exit status 2 and "no test file is the group, the path or the label of …", and ran
+  nothing. A path unit is now read relative to `test/` where that is a file, and else relative to
+  the package root; an absolute path and a path with `..` named the file already and still do.
+  `mutate.jl` reads its units through the same function. The error message names the accepted
+  forms. Of the new checks in `run-tests-test.jl`, the `test/`-prefixed unit and the message fail
+  before the fix; the absolute, `..` and nonexistent units are regression guards.
+
 - **Under Antigravity, Julia runs through Kaimon.** `ANTIGRAVITY-DELTA.md`, which the install
   writes as Antigravity's global `GEMINI.md`, gains a section that says so. The app's sandbox
   cannot start `julia`: its launcher and depot lie outside the workspace, and the guard keeps

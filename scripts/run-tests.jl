@@ -16,9 +16,10 @@
 # run with any selection. A changed `Project.toml` or `test/Project.toml` runs `full`.
 # `select` prints what `affected` would run, and runs nothing. `full` runs `Pkg.test()`. `list`
 # prints the test files, their groups and their labels.
-# A `<unit>` is a group (`core`, `slow`, `doctests`, `metal`, `cuda`, `broken`), a test path
-# relative to `test/`, or a substring of a testset label. A unit that names no test file is an
-# error. `affected` selects from `core` alone, so it never runs `doctests`.
+# A `<unit>` is a group (`core`, `slow`, `doctests`, `metal`, `cuda`, `broken`), the path of a
+# test file, or a substring of a testset label. The path is relative to `test/` (`utils.jl`), to
+# the package root (`test/utils.jl`), or absolute. A unit that names no test file is an error.
+# `affected` selects from `core` alone, so it never runs `doctests`.
 #
 # A selection runs in one fresh process through `TestEnv`, which builds the test environment
 # outside the package directory, each file in its own module under a `@testset` of its label, and
@@ -165,12 +166,21 @@ function affected(pkg, entries, paths; group = "core")
     return pick, why
 end
 
-"The test files that the units name: a group, a path relative to `test/`, or part of a label."
+"""
+The absolute path that the unit `a` names, where `t` is the package's `test/`: `a` relative to
+`test/` where that is a file, else relative to the package root; an absolute `a` is itself.
+"""
+function unit_path(t, a)
+    p = normpath(joinpath(t, a))
+    isfile(p) ? p : normpath(joinpath(dirname(t), a))
+end
+
+"The test files that the units name: a group, a path, or part of a label."
 function named(entries, args)
     filter(entries) do e
         any(args) do a
             a in GROUP_NAMES ? e.group == a :
-            normpath(joinpath(dirname(e.file), a)) == e.path || occursin(a, string(e.label))
+            unit_path(dirname(e.file), a) == e.path || occursin(a, string(e.label))
         end
     end
 end
@@ -330,7 +340,8 @@ function main(args)
         none = filter(a -> isempty(named(entries, [a])), rest)
         if !isempty(none)
             println(stderr, "$name: no test file is the group, the path or the label of ",
-                join(none, ", "), ". `run-tests.jl $(args[1]) list` shows them.")
+                join(none, ", "), ". A path is relative to `test/` or to the package, or absolute. ",
+                "`run-tests.jl $(args[1]) list` shows them.")
             return 2
         end
         pick = named(entries, rest)

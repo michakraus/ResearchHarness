@@ -144,6 +144,11 @@ end
     @test names("slow") == ["verification/convergence.jl"]
     @test names("metal", "slow") == ["devices/metal.jl", "verification/convergence.jl"]
     @test names("base/options.jl") == ["base/options.jl"]
+    # a path relative to the package root, or absolute, or with `..`, names the same file
+    @test names("test/base/options.jl") == ["base/options.jl"]
+    @test names(joinpath(DIR, "test", "base", "options.jl")) == ["base/options.jl"]
+    @test names("solvers/../base/options.jl") == ["base/options.jl"]
+    @test names("test/base/nonexistent.jl") == []
     @test names("Newton") == ["solvers/newton.jl"]
     @test names("runtests.jl") == []
 end
@@ -180,6 +185,10 @@ end
     code, out = script(RUNTESTS, DIR, "runtests.jl")
     @test code == 2
     @test occursin("runtests.jl", out)
+    @test occursin("A path is relative to `test/` or to the package, or absolute.", out)
+    @test !occursin("Nothing ran", out)
+    code, out = script(RUNTESTS, DIR, "test/nonexistent.jl")
+    @test code == 2
     @test !occursin("Nothing ran", out)
     # one unit that names nothing stops the run, beside one that names a file
     code, out = script(RUNTESTS, DIR, "base/options.jl", "cor")
