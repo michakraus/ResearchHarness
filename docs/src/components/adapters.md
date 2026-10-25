@@ -447,9 +447,10 @@ app. A `write_file` deny of a path below the workspace hid much more than its pa
 `~/Research/.scratch` in the probe. A `read_file` deny of `<repo>/.git/hooks` and
 `<repo>/.git/config` stopped a sandboxed command from reading `.git/config` and from writing either
 path, and left the rest of the workspace readable. It also hides the two paths from a sandboxed
-read, which costs nothing: a sandboxed `git` cannot read `~/.gitconfig` and fails anyway, and a
-lifted `git` runs outside the sandbox. The app honours no wildcard in a path, so an entry
-`~/Research/**/<rest>` becomes one rule `<repo>/<rest>` for each directory at or below the
+read. A sandboxed `git` cannot read `~/.gitconfig` and fails anyway, and a lifted `git` runs
+outside the sandbox; a sandboxed tool that reads `.git/config` itself, such as a library that
+finds a repository's remote, can no longer read it. The app honours no wildcard in a path, so an
+entry `~/Research/**/<rest>` becomes one rule `<repo>/<rest>` for each directory at or below the
 research root that holds a `.git` directory, nested repositories included. The walk is the one of
 `harness trust`: it skips `.git`, `.scratch`, `.worktrees` and `node_modules`, and follows no
 symbolic link. A worktree, whose `.git` is a file, is covered by its main repository. The rules

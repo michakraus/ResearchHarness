@@ -2,9 +2,10 @@
 
 ## Unreleased
 
-- **Antigravity's sandbox keeps a command out of `.git/hooks` and `.git/config`, as Claude Code's
-  does.** A probe in the app showed that a sandboxed command could write both in a repository of
-  the workspace; the guard lifts `git` out of the sandbox, where it would then run a planted hook
+- **Antigravity's sandbox keeps a command out of `.git/hooks` and `.git/config` of each repository
+  that exists at install time.** Claude Code's sandbox covers these paths in every repository, a
+  new one too. A probe in the app showed that a sandboxed command could write both in a repository
+  of the workspace; the guard lifts `git` out of the sandbox, where it would then run a planted hook
   or alias. `harness install` now renders each entry of the settings template's
   `sandbox.filesystem.denyWrite` at or below the research root as a `read_file(<path>)` deny in
   the CLI's `permissions.deny` and the app's deny grants, after the other denies and each once. An
