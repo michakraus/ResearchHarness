@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- **`harness doctor` checks the Kaimon token when Antigravity is installed.** Antigravity's
+  `mcp_config.json` gets the token from `~/.config/kaimon/auth-token`, but the doctor skipped the
+  check on a machine with neither OpenCode nor oh-my-pi, saying that only they read the file. It
+  treats Antigravity as installed when `~/.gemini` is a directory, as its adapter does, so a
+  missing or empty token, or one of a mode other than 600, is a FAIL there too. Three new cases cover Antigravity
+  alone with a token, without one, and a `~/.gemini` that is a file.
+
 - **Kaimon's bearer token lives in `~/.config/kaimon/auth-token`, not `opencode-token`.** OpenCode,
   oh-my-pi and Antigravity all read the file, so its name no longer names one frontend. The three
   adapters, `harness doctor`, the read and sandbox denies of the settings template, OpenCode's
