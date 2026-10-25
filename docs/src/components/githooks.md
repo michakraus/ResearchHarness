@@ -62,12 +62,12 @@ stop the hook, stop its Julia process too. `harness repos push` runs this hook i
 
 ## `pre-commit-wiki`
 
-`pre-commit-wiki` is the pre-commit hook of the five prose repositories: `Knowledge`,
-`Environment`, `Tasks`, `Bibliography` and `Library`. `harness wiki-lint-hook --apply` installs it
+`pre-commit-wiki` is the pre-commit hook of the four prose repositories: `Knowledge`,
+`Environment`, `Tasks` and `Library`. `harness wiki-lint-hook --apply` installs it
 into each as `.githooks/pre-commit`, and sets `core.hooksPath`.
 
 The hook runs `scripts/wiki-lint.jl --quiet` from `$RESEARCH_ROOT/Harness`, or from
-`~/Research/Harness` if `RESEARCH_ROOT` is not set, over all five trees. An ERROR in any tree
+`~/Research/Harness` if `RESEARCH_ROOT` is not set, over all four trees. An ERROR in any tree
 blocks the commit, even an ERROR in another repository: the trees link to each other, so an edit
 here can break a link there. A warning does not block. A missing lint script, or no `julia` on
 the `PATH`, blocks too. The run takes about three seconds. No Julia repository uses this hook; it

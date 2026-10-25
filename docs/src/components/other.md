@@ -233,7 +233,7 @@ file is optional. The test cases copy the example beside their scratch profile.
 
 The example of the repository table, `examples/repositories.toml`: the repositories of the
 research tree and their clone URLs, for `harness clone` and `harness repos`. A top-level key is a
-fixed repository, `knowledge`, `environment`, `tasks`, `bibliography` or `library`; a table is a
+fixed repository, `knowledge`, `environment`, `tasks` or `library`; a table is a
 group, `packages`, `experiments`, `papers`, `books`, `talks` or `projects`, and each key in it a
 directory of that group. Each directory is its key in title case below the research root.
 

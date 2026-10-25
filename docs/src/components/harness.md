@@ -213,7 +213,7 @@ its `--apply`. [Git hooks and workflows](githooks.md) describes the copied files
 The subcommands `harness clone [SELECTION ...] [--apply]` and
 `harness repos status|pull|push|sync [SELECTION ...]`. They read the repository table,
 `repositories.toml` beside the profile or `$RESEARCH_HARNESS_REPOSITORIES`. A top-level key
-names a fixed repository (`knowledge`, `environment`, `tasks`, `bibliography`, `library`), and a
+names a fixed repository (`knowledge`, `environment`, `tasks`, `library`), and a
 table names a group (`packages`, `experiments`, `papers`, `books`, `talks`, `projects`); each
 directory is the key in title case below the research root. `load_table` refuses an unknown key
 and a directory name that has a `/` or starts with `.`. Without a table, `repos` takes each git
