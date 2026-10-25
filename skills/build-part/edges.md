@@ -246,6 +246,11 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   a second type of the same family keeps the old field name, so the family is now named two ways.
   Grep the family for the old name, and record the one the item does not name (M5, the learning
   package)
+- a batch applied by indexing one sample per step inside a Zygote-differentiated path: the adjoint
+  of each `getindex` allocates a cotangent of the whole batch, so one step allocates O(k²) in the
+  batch size, and a test at one size cannot see it. Map over `eachcol` of the batch, keep the input
+  gradient (no `ignore_derivatives` on the input), and add an allocation-difference test across two
+  batch sizes (B2a, the learning package)
 
 ## A tool that reads files or a tree
 
