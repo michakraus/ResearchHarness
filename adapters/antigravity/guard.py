@@ -105,6 +105,13 @@ WORD_BREAK = "\0"
 # Seconds that each script may take. The scripts of one call run at once, so the call takes about as
 # long; `hooks.json` gives the hook 15 s.
 TIMEOUT = 10
+# A command line whose reading is the same in sh, bash and zsh: commands joined by `&&`, `||`, `;`
+# or `|`, each of words separated by blanks. A word is `2>&1`, or pieces: a character of the set
+# below, a single-quoted text with no `'`, or a double-quoted text with none of `"`, `$`, the
+# backtick, `\` and `!`. No piece holds a NUL or a character outside ASCII.
+WORD = r"""(?:2>&1|(?:[A-Za-z0-9_./:@%+,=~^-]|'[^'\x00\x80-\U0010ffff]*'|"[^"$`\\!\x00\x80-\U0010ffff]*")+)"""
+COMMAND = rf"{WORD}(?:[ \t]+{WORD})*"
+PLAIN = re.compile(rf"[ \t]*{COMMAND}(?:[ \t]*(?:&&|\|\||;|\|)[ \t]*{COMMAND})*[ \t]*")
 CLOSED = "The guard hook fails closed. Tell the user, and do not run the call in another form."
 
 
@@ -360,8 +367,12 @@ def lifted(command, cwd):
     no reason to keep it inside, and none of the guard's screens applies. A command that it cannot
     parse stays inside.
 
-    The screens keep inside a command that the rule lifts but whose program is not the one it
-    reads: a `#`, which shlex reads as a comment up to the end of the line, so a next line joins
+    The first screen lifts only text whose reading is certain in sh, bash and zsh: the whole line
+    matches PLAIN, else it stays inside. So no quote, expansion or glob that the rule's shlex reads
+    in another way than a shell can hide a program from the rule.
+
+    The other screens keep inside a command that the rule lifts but whose program is not the one
+    it reads: a `#`, which shlex reads as a comment up to the end of the line, so a next line joins
     the part before it; a NUL, which no shell runs and `os.path.realpath` refuses; a part that
     `exposed` or `path_screened` refuses; an assignment or a path in front of a program; and a git
     option before the subcommand that takes a value, `-C` aside, or `--config-env`, which can name
@@ -370,6 +381,8 @@ def lifted(command, cwd):
     spec = importlib.util.spec_from_file_location("sandbox_semantics", HOOKS / WORK_TREE)
     semantics = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(semantics)
+    if PLAIN.fullmatch(command) is None:
+        return False
     if "#" in command or "\0" in command:
         return False
     classified = semantics.top_level(command, cwd)

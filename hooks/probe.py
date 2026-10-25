@@ -1458,6 +1458,7 @@ AGY_BYPASS = [
     ({"CommandLine": "git status # x\njulia --version"}, "ask", False),
     ({"CommandLine": "git status#x; julia --version"}, "ask", False),
     ({"CommandLine": "gh pr view $(echo 1)"}, "ask", False),
+    ({"CommandLine": "gh pr view '$(echo 1)'"}, "ask", False),
     ({"CommandLine": "git -c alias.x='!julia -e 1' x"}, "ask", False),
     ({"CommandLine": "git --git-dir=x status"}, "ask", False),
     ({"CommandLine": "git -C x -c a=b log"}, "ask", False),
@@ -1467,6 +1468,40 @@ AGY_BYPASS = [
     ({"CommandLine": "./git status"}, "ask", False),
     ({"CommandLine": "git clone https://example.com/r.git /tmp/r"}, "ask", False),
     ({"CommandLine": "cd a\u0000b"}, "ask", False),
+    ({"CommandLine": 'gh pr create --title "Fix #12"'}, "ask", False),
+    # Text whose reading is not certain in sh, bash and zsh: an ANSI-C quote, which shlex ends at
+    # its `\'`; a zsh process substitution and glob qualifier; a glob; a `$`, a backtick or a
+    # backslash; a lone surrogate; a `\` or `!` in double quotes; a character outside ASCII; a lone
+    # `&`; a newline outside quotes.
+    ({"CommandLine": "git log $'\\'' ; julia --version ; true \\'"}, "ask", False),
+    ({"CommandLine": "gh pr view 1 $'\\'' ; julia --version ; true \\'"}, "ask", False),
+    ({"CommandLine": "git status $'\\''\njulia --version\ntrue \\'"}, "ask", False),
+    ({"CommandLine": "git log =(julia --version)"}, "ask", False),
+    ({"CommandLine": "git log *(e:'julia --version':)"}, "ask", False),
+    ({"CommandLine": "git log -- *.md"}, "ask", False),
+    ({"CommandLine": "git log $'x'"}, "ask", False),
+    ({"CommandLine": 'git log "$(julia -e 1)"'}, "ask", False),
+    ({"CommandLine": 'git log "`julia`"'}, "ask", False),
+    ({"CommandLine": "git log a\\b"}, "ask", False),
+    ({"CommandLine": "git log ${x:-y}"}, "ask", False),
+    ({"CommandLine": "cd a\ud800b"}, "ask", False),
+    ({"CommandLine": 'git log "a\\b"'}, "ask", False),
+    ({"CommandLine": 'git log "a!b"'}, "ask", False),
+    ({"CommandLine": "git log 'é'"}, "ask", False),
+    ({"CommandLine": 'git log "é"'}, "ask", False),
+    ({"CommandLine": "git fetch & git status"}, "ask", False),
+    ({"CommandLine": "git fetch\ngit status"}, "ask", False),
+    # Text whose reading is certain: plain words, quoted words and `2>&1`, with blanks and the four
+    # separators between them.
+    ({"CommandLine": "git -C ~/Research/Harness status --short --branch"}, "ask", True),
+    ({"CommandLine": "gh auth status"}, "ask", True),
+    ({"CommandLine": "gh auth status --hostname github.com"}, "ask", True),
+    ({"CommandLine": 'git commit -m "Fix the parser\'s edge"'}, "ask", True),
+    ({"CommandLine": "git commit -m 'Use \"x\" here'"}, "ask", True),
+    ({"CommandLine": "git log --format=%H HEAD~1"}, "ask", True),
+    ({"CommandLine": 'git add a && git commit -m "x y"'}, "ask", True),
+    ({"CommandLine": " git fetch || git status\t--short "}, "ask", True),
+    ({"CommandLine": "git fetch; git log --oneline | git status"}, "ask", True),
     # A `cd` to the working directory is dropped whatever its form, and a screened git option
     # screens git alone.
     ({"CommandLine": f"/usr/bin/cd {CWD} && git status"}, "ask", True),

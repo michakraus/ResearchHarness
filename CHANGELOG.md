@@ -9,11 +9,17 @@
   `"overwrite": {"BypassSandbox": …}`: true when `top_level` of the installed
   `sandbox-semantics.py`, Claude Code's rule for `sandbox.excludedCommands`, lifts the command
   (every part led by `git`, `gh`, `glab` or `ps`, and no file redirected) and none of the guard's
-  screens applies, false otherwise. The screens keep in the sandbox a line with a `#`, which hides
-  the next line from the rule; a line with a NUL; a substitution behind `gh`; a `git` path argument
-  that `sandbox-semantics.py` screens; an assignment or a path in front of the program; and a `git`
-  option such as `-c` or `--git-dir`, which can run another program or name another repository.
-  `git -C` is lifted. A `git` or `gh` line that holds a `#`, such as
+  screens applies, false otherwise. The first screen lifts only a line whose reading is the same in
+  sh, bash and zsh: words of plain characters, single-quoted text and double-quoted text with no
+  `$`, backtick, `\` or `!`, joined by `&&`, `||`, `;` or `|`, with `2>&1` as the one redirection.
+  So a `$`, a backtick, a backslash, a glob, a brace, a non-ASCII character or a newline outside
+  quotes keeps a `git` or `gh` line in the sandbox, and an ANSI-C quote `$'…'`, which the rule's
+  parser ends in another place than the shell, cannot hide a next command. The other screens keep
+  in the sandbox a line with a `#`, which hides the next line from the rule; a line with a NUL; a
+  substitution behind `gh`; a `git` path argument that `sandbox-semantics.py` screens; an
+  assignment or a path in front of the program; and a `git` option such as `-c` or `--git-dir`,
+  which can run another program or name another repository. `git -C` is lifted. A `git` or `gh`
+  line that holds a `#`, such as
   `gh pr create --title "Fix #12"`, therefore stays in the sandbox; keep the `#` in a file passed
   with `--body-file` or `-F`. A probe in the app showed that any command that an allow rule covers,
   `julia --version` among them, leaves the sandbox with no dialog when the agent sets
