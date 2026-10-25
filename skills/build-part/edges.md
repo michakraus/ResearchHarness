@@ -428,6 +428,10 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
 - a new `test/Project.toml` that makes `Pkg.test()` write a `test/Manifest.toml` the
   `.gitignore` does not name
 - a renamed file whose old name stays in a comment under `src/`, `ext/` or `scripts/`
+- a relative path in a document that moves to another depth, such as a README that goes one
+  directory deeper: the path resolved from the old place and names nothing from the new one, and
+  a fix that drops the `../` is still wrong. Resolve every relative path of a moved file from its
+  new place with `test -e` (B2 round 1, the move of a bibliography tree)
 - a removal of every citation of a directory, checked by its path only: a citation by the bare
   file name (`Loop-Benchmark.md`) or of a page in a subdirectory (`settings/settings.json.md`)
   survives; grep for the file name of every page below the directory (P6, *Publish the harness as
