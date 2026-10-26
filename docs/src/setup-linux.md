@@ -187,8 +187,11 @@ them.
 describes. Ubuntu 26.04 packages Python 3.14 and Node.js 22.22, which meet their minimums, but
 gitleaks only in version 8.16.0, below the minimum 8.21. So gitleaks comes from its release. A
 release of a distribution can package an older version than the minimum that Dependencies gives.
-Then install that tool from its own site. The pre-push hook also runs `python3.11`; where
-`python3.11` is missing, the hook skips that run with one line, because CI runs it. bubblewrap and
+Then install that tool from its own site. Ubuntu 26.04 packages no uv: the first run of `harness`
+outside a session fetches the uv release that `bin/harness` pins into `~/.local/bin`, checks its
+sha256, and makes the Python environment of the harness with it. The pre-push hook also runs
+`python3.14`; where `python3.14` is missing, the hook skips that run with one line, because CI
+runs it. bubblewrap and
 socat are the tools of [The sandbox of Claude Code](#the-sandbox-of-claude-code). The Julia update
 job of [The jobs](#the-jobs) calls `lsof`. jq is optional: the status line of Claude Code reads
 its data with jq, and without it, the status line shows no values. You need Julia even if you
@@ -196,7 +199,7 @@ write no Julia code: the first install instantiates the Julia environment of the
 scripts, and it stops without `julia`.
 
 **Check.** The first command prints the version of each package that `apt-get` installed. Each
-command after it prints the version of one tool: Python 3.11 or later, Node.js 22.3 or later (or
+command after it prints the version of one tool: Python 3.14 or later, Node.js 22.3 or later (or
 20.16 or later in 20.x), RTK 1.0.1, actionlint 1.7.12 or later, fatou 0.22.0 or later, and Julia
 1.13 or later.
 
@@ -379,8 +382,11 @@ zsh, so that each new shell finds `harness`.
 **Why.** Every step after this one uses `harness`, and the installed configuration names files of
 the checkout.
 
-**Check.** `harness --help` lists the subcommands. A Python older than 3.11 makes `harness` stop
-with exit status 2, an error, and the message names the version that it found.
+**Check.** `harness --help` lists the subcommands. A Python older than 3.14 makes `harness` stop
+with exit status 2, an error, and the message names the version that it found. The first run
+outside a session also makes the Python environment of the harness, with `uv sync`, and prints
+one line that names it; in a session, `harness` instead prints one line that names
+`harness install --apply`, which makes it.
 
 ```bash
 harness --help

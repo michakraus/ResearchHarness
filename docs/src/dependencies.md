@@ -17,7 +17,8 @@ needs it, and where the harness calls it.
 
 | tool | minimum | used for |
 |:--|:--|:--|
-| Python | ≥ 3.11, the check in `bin/harness` | runs the `harness` command, the guard hooks and the pre-push hook |
+| Python | ≥ 3.14, the check in `bin/harness` and `requires-python` in `pyproject.toml` | runs the `harness` command, the guard hooks and the pre-push hook |
+| uv | tested with 0.13.5, the release that `bin/harness` fetches on Linux | makes the Python environment that the `harness` command runs on, from `uv.lock` |
 | git | tested with 2.54.0 | reads and pushes the repositories of the tree, makes the worktrees of Claude Code, and clones the pushed commit for the pre-push hook |
 | gh | tested with 2.102.0 | protects the default branch of each repository on GitHub, in `harness ci-protection` |
 | gitleaks | ≥ 8.21, the check in `.githooks/pre-push` | finds secrets in the commits of a push, in the pre-push hook and in CI; needed only to push to the harness, so `harness doctor` gives a `WARN`, not a `FAIL`, without it |
@@ -82,23 +83,47 @@ The sections follow the order of the tables.
 ### Python
 
 Python is the language of the `harness` command, the guard hooks and the hook probe. The
-command uses the standard library only, so no package must be installed.
+command uses the standard library only. The tools that check the Python code come from the `dev`
+group of `uv.lock`, which only a profile with `develop = true` installs.
 
-Every subcommand runs on Python. The pre-push hook runs `bin/harness test` on `python3` and on
-`python3.11`, and CI runs it on Python 3.11 and the latest 3.x. The guard hooks are Python
+Every subcommand runs on the interpreter of the Python environment of the harness, which
+`bin/harness` makes with [uv](#uv). The pre-push hook runs `bin/harness test` on `python3` and on
+`python3.14`, and CI runs it on Python 3.14 and the latest 3.x. The guard hooks are Python
 scripts, which Claude Code, OpenCode, oh-my-pi and Antigravity call before a
 [tool call](concepts.md#tool-call).
 
-The harness needs Python 3.11 or later because the [profile](concepts.md#profile) and the model
-tables are TOML, and
-`tomllib` is in the standard library from 3.11. A shell script cannot parse TOML or JSON safely,
-and a compiled tool needs a build step on each machine.
+The harness needs Python 3.14 or later because 3.14 is the one version that it is tested on, in
+its environment, in CI and in the pre-push hook. The [profile](concepts.md#profile) and the model
+tables are TOML, which `tomllib` of the standard library reads. A shell script cannot parse TOML
+or JSON safely, and a compiled tool needs a build step on each machine.
 
 Call sites: every subcommand (`bin/harness`); the pre-push hook (`.githooks/pre-push`, also for
-`python3.11`, which the hook skips when it is missing, because the CI job `python` runs Python
-3.11);
+`python3.14`, which the hook skips when it is missing, because the CI job `python` runs Python
+3.14);
 the guard hooks, which oh-my-pi calls (`adapters/omp/guards.ts`) and Antigravity's guard hook runs
 (`adapters/antigravity/guard.py`).
+
+### uv
+
+uv makes a Python environment from a project and its lock file. The Python environment of the
+harness is at `~/.local/share/research-harness/python/`, or at `$RESEARCH_HARNESS_PYTHON`, an
+absolute path. The first time that `bin/harness` runs outside a session, it makes the
+environment with `uv sync --locked --no-dev` from `pyproject.toml` and `uv.lock`, and from then on
+it runs every subcommand on the environment's interpreter. `harness install --apply` syncs the
+environment again when it lags `uv.lock`, with the `dev` group where the profile sets
+`develop = true`, and `harness doctor` checks it.
+
+The harness needs uv because the environment comes from a committed lock, so that every machine
+and CI run the same versions of the same packages.
+
+On macOS, install uv with Homebrew: without uv, `bin/harness` stops and names `brew install uv`.
+On Linux, without uv on the `PATH` or in `~/.local/bin`, `bin/harness` fetches release 0.13.5 into
+`~/.local/bin` and checks its sha256 first. A session never runs uv: there, without the
+environment, `bin/harness` runs the subcommand on the interpreter that started it, and prints one
+line that names `harness install --apply`.
+
+Call sites: the start of every subcommand (`bin/harness`); `harness install`
+(`lib/harness/install.py`).
 
 ### git
 

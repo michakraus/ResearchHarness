@@ -9,19 +9,19 @@
 # than main gets `harness leaks --commits` only, over the tree at its SHA and the commits that the
 # push sends (remote..local, or the commits that origin/main lacks for a new branch), so a PR
 # branch cannot bring a private string to main; its gitleaks checks and its suite run in CI. A
-# hit, no Python of 3.11 or later, or a check that fails refuses the push with one line.
+# hit, no Python of 3.14 or later, or a check that fails refuses the push with one line.
 #
 # A push to main gets the full gate. First the leak checks: gitleaks over the commits
 # that the push sends, gitleaks stdin over their messages, which gitleaks git does not read,
 # gitleaks over the tree at the SHA, and `harness leaks --commits` over both, messages included.
 # They fail closed: no gitleaks of 8.21 or later, no profile, an empty `leak` list or a check that
 # fails each refuse the push with one line. Then it runs `bin/harness test` on the first Python of
-# 3.11 or later among python3, python3.14, python3.13, python3.12 and python3.11, and on
-# python3.11, the compile check on python3.11, shellcheck over the shell files, the kit's tests
+# 3.14 or later among python3 and python3.14, and on python3.14, the compile check on python3.14,
+# shellcheck over the shell files, the kit's tests
 # examples/dotfiles/tests/{update-check,check-check,driver-check,render-check,script-check}.py on
 # that first Python, and the Julia test files that the changed paths of the pushed range select.
-# A missing tool among python3.11, shellcheck, chezmoi and julia prints one skip line, because CI
-# runs them; no Python of 3.11 or later refuses the push.
+# A missing tool among python3.14, shellcheck, chezmoi and julia prints one skip line, because CI
+# runs them; no Python of 3.14 or later refuses the push.
 
 # No `set -u`: macOS ships bash 3.2, whose handling of unset expansions differs from bash 4+.
 set -o pipefail
@@ -78,14 +78,14 @@ leak_check() {
 # A Homebrew upgrade can drop the unversioned python3 link, which leaves the system's 3.9 first.
 find_python() {
     python=
-    for candidate in python3 python3.14 python3.13 python3.12 python3.11; do
+    for candidate in python3 python3.14; do
         if command -v "$candidate" >/dev/null &&
-            "$candidate" -c 'import sys; sys.exit(sys.version_info < (3, 11))' 2>/dev/null; then
+            "$candidate" -c 'import sys; sys.exit(sys.version_info < (3, 14))' 2>/dev/null; then
             python=$candidate
             break
         fi
     done
-    [ -n "$python" ] || refuse "no python3 of 3.11 or later"
+    [ -n "$python" ] || refuse "no python3 of 3.14 or later"
 }
 
 # A branch gets `harness leaks` only; gitleaks and the suite run in CI. The commits that the push
@@ -190,10 +190,10 @@ fail=0
 
 # The Python steps.
 pythons=("$python")
-[ "$python" = python3.11 ] || pythons+=(python3.11)
+[ "$python" = python3.14 ] || pythons+=(python3.14)
 for py in "${pythons[@]}"; do
     if ! command -v "$py" >/dev/null; then
-        echo "skip  $py: not found; CI runs bin/harness test and the compile check on Python 3.11"
+        echo "skip  $py: not found; CI runs bin/harness test and the compile check on Python 3.14"
         continue
     fi
     echo "$py bin/harness test"
@@ -211,9 +211,9 @@ for py in "${pythons[@]}"; do
         esac
         fail=1
     fi
-    if [ "$py" = python3.11 ]; then
-        echo "python3.11 -m compileall -q lib hooks scripts adapters"
-        python3.11 -m compileall -q lib hooks scripts adapters || fail=1
+    if [ "$py" = python3.14 ]; then
+        echo "python3.14 -m compileall -q lib hooks scripts adapters"
+        python3.14 -m compileall -q lib hooks scripts adapters || fail=1
     fi
 done
 

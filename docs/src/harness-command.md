@@ -10,10 +10,12 @@ harness <subcommand> --help
 
 ## Description
 
-`bin/harness` is the entry point of the harness. It needs Python 3.11 or later and nothing beyond
+`bin/harness` is the entry point of the harness. It needs Python 3.14 or later and nothing beyond
 the standard library. Put `bin/` on the `PATH`, as the step *The clone*
 of [setup-macos.md](setup-macos.md#the-clone) and [setup-linux.md](setup-linux.md#the-clone) shows.
 An older Python prints the version that it found and the version that it needs, and exits 2.
+Every subcommand runs on the interpreter of the Python environment of the harness, which
+`bin/harness` makes with [uv](dependencies.md#uv) the first time that it runs outside a session.
 
 Each subcommand of `harness`, such as `install` or `doctor`, keeps one contract:
 

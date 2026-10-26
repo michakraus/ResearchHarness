@@ -32,6 +32,16 @@ def scratch_profile(path, tree, raw=None):
     return path
 
 
+def python_env(directory):
+    """A Python environment at `directory` that `harness install` plans as synced without the `dev`
+    group: bin/python, a link to this interpreter, and the stamp of this uv.lock; `directory`."""
+    (directory / "bin").mkdir(parents=True)
+    (directory / "bin" / "python").symlink_to(sys.executable)
+    boot = install.boot()
+    (directory / boot.STAMP).write_text(boot.stamp_text(False))
+    return directory
+
+
 def skill_names(directory):
     """The skills of `directory` as the install copies them: the first part of each path of
     `install.source_files` that lies in a subdirectory. `source_files` skips hidden names, so a
@@ -75,8 +85,9 @@ class Scratch:
         self.check, self.tmp, self.n = check, pathlib.Path(tmp), 0
 
     def fresh(self, tree_files=(), key=True, raw=None):
-        """A scratch HOME, OpenCode and Julia directory, and tree instructions holding `tree_files`;
-        `raw` is the value of `tree_agents` as written in the profile."""
+        """A scratch HOME, OpenCode and Julia directory, a synced Python environment, and tree
+        instructions holding `tree_files`; `raw` is the value of `tree_agents` as written in the
+        profile."""
         self.n += 1
         base = self.tmp / f"claude{self.n}"
         (base / "home" / ".claude" / "skills").mkdir(parents=True)
@@ -84,6 +95,7 @@ class Scratch:
         (base / "julia").mkdir()
         (base / "julia" / "Project.toml").write_bytes((REPO / "Project.toml").read_bytes())
         (base / "julia" / "Manifest.toml").touch()
+        python_env(base / "python")
         tree = base / "Agents"
         tree.mkdir()
         for name in tree_files:
@@ -98,7 +110,8 @@ class Scratch:
     def env(base):
         """The environment of a process with HOME and the destinations in `base`."""
         return dict(os.environ, HOME=str(base / "home"), OPENCODE_CONFIG_DIR=str(base / "opencode"),
-                    RESEARCH_HARNESS_JULIA=str(base / "julia"), PI_CODING_AGENT_DIR=str(base / "omp"))
+                    RESEARCH_HARNESS_JULIA=str(base / "julia"), RESEARCH_HARNESS_PYTHON=str(base / "python"),
+                    PI_CODING_AGENT_DIR=str(base / "omp"))
 
     @staticmethod
     def run(base, *argv, extra_env=None, models=REPO / "examples" / "models.toml"):
