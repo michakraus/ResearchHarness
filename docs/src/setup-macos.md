@@ -96,7 +96,7 @@ Add the `export` line to `~/.zshrc` too, so that each new shell finds the tools.
 This command installs the tools that Homebrew packages:
 
 ```bash
-brew install python python@3.11 git gh node shellcheck actionlint coreutils rsync jq rtk
+brew install python python@3.11 git gh node shellcheck actionlint rsync jq rtk
 ```
 
 **Optional: jq and RTK.** Leave `jq` or `rtk` out of the line if you do not want it. RTK shortens
@@ -140,10 +140,8 @@ the first install adds them.
 describes. `harness` runs on the `python3` of the `PATH`, which must be 3.11 or later. `python`
 supplies a current `python3`, and `python@3.11` supplies `python3.11`, which the pre-push hook
 also runs; where `python3.11` is missing, the hook skips that run with one line, because CI runs
-it. `coreutils`
-supplies `timeout`, which macOS does not have. Homebrew's `rsync` replaces the `rsync` of macOS
-on the `PATH`. jq is optional: the status line of Claude Code reads its data with jq, and without
-it, the status line shows no values. You need Julia even if you write no Julia code: the first
+it. Homebrew's `rsync` replaces the `rsync` of macOS on the `PATH`. jq is optional: the status
+line of Claude Code reads its data with jq, and without it, the status line shows no values. You need Julia even if you write no Julia code: the first
 install instantiates the Julia environment of the harness's scripts, and it stops without
 `julia`. macOS supplies `lsof`, `launchctl` and the other system tools of
 [Dependencies](dependencies.md#optional).

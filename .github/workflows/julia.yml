@@ -2,9 +2,9 @@ name: julia
 
 on:
   push:
-    paths: ['**.jl', 'Project.toml', 'launchagents/**', 'githooks/pre-commit', '.github/workflows/julia.yml']
+    paths: ['**.jl', 'Project.toml', 'launchagents/**', 'githooks/pre-commit', 'githooks/pre-push', '.github/workflows/julia.yml']
   pull_request:
-    paths: ['**.jl', 'Project.toml', 'launchagents/**', 'githooks/pre-commit', '.github/workflows/julia.yml']
+    paths: ['**.jl', 'Project.toml', 'launchagents/**', 'githooks/pre-commit', 'githooks/pre-push', '.github/workflows/julia.yml']
 
 permissions:
   contents: read

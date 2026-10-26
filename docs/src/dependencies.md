@@ -24,7 +24,6 @@ needs it, and where the harness calls it.
 | Node.js | ≥ 20.16 (20.x), ≥ 22.3, for `process.getBuiltinModule`, as the API documentation says: <https://nodejs.org/api/process.html#processgetbuiltinmoduleid> | loads the guard extensions of oh-my-pi and OpenCode in the hook probe of `harness test`, and builds the documentation site with npm and VitePress |
 | shellcheck | tested with 0.11.0 | checks the shell scripts, in the pre-push hook and in CI |
 | actionlint | ≥ 1.7.12, the CI pin in `.github/workflows/test.yml` | checks the GitHub workflow files, in CI |
-| timeout | tested with 9.12 | stops `fatou lint` in the installed pre-commit hook after 60 seconds |
 | rsync | tested with 3.5.1 | copies a package without its `.git` directory, for the test runner and the mutation tests |
 
 ## Julia and its packages
@@ -193,19 +192,6 @@ The harness needs actionlint because GitHub reports an error in a workflow only 
 runs. actionlint finds the error before the push.
 
 Call site: the CI job `lint` (`.github/workflows/test.yml`).
-
-### timeout
-
-`timeout` runs a command with a time limit and stops the command when the limit is reached. It is
-part of GNU coreutils. macOS does not supply it.
-
-The installed pre-commit hook runs `fatou lint` under `timeout -k 5 60`.
-
-The harness needs `timeout` because `fatou lint` does not always stop: on one large generated
-file it ran for hours. Without `timeout`, the hook runs `fatou lint` with no limit, and a commit
-can wait for a long time.
-
-Call site: the installed pre-commit hook (`githooks/pre-commit`).
 
 ### rsync
 
