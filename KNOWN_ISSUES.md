@@ -489,3 +489,24 @@
   syntax reads `*` as every command. The settings template holds none of them.
 - kind: defect
 - found: #84
+
+### K107 · A terminal hangup or a SIGTERM to the pre-push hook does not reach its suite.
+
+- location: `githooks/pre-push.jl:56`
+- evidence: `run_suite` starts the suite with `Cmd(cmd; detach = true)`, in a session of its own,
+  and passes an interrupt on to the suite's process group: the case "pre-push: an interrupted hook
+  stops its suite" sends SIGINT to the hook and sees the suite end. A hangup of the terminal goes
+  to the terminal's session, which does not hold the suite, and a SIGTERM ends the hook's `julia`,
+  which has no handler for it. In both cases the suite and the test process of `Pkg.test` go on as
+  orphans. A handler that passes these signals on as well trades one orphan case for another.
+- kind: defect
+- found: 2026-10-26, the critic of the hook programs
+
+### K108 · The 60 s box of `fatou lint` signals `fatou` alone, so a child of `fatou` that holds the output pipe holds the stage past the box.
+
+- location: `githooks/pre-commit.jl:43`
+- evidence: `run_boxed` sends SIGTERM, and SIGKILL 5 s later, to the process `p` only, and then
+  reads the pipe to its end. A child that inherits the pipe and outlives `p` keeps the pipe open,
+  and the read waits for it. `fatou` is one native binary, and no child of it is known.
+- kind: defect
+- found: 2026-10-26, the critic of the hook programs
