@@ -294,7 +294,9 @@ def selftest():
     check(found == expected, f"systemd/ holds the five units -> {found}")
     if found != expected:
         return n, wrong
-    dummy = profile.load(profile.DUMMY)
+    # The dummy home, not this process's HOME: a HOME below $TMPDIR, which a session can write,
+    # would put each unit's PATH below a session directory.
+    dummy = profile.load(profile.DUMMY, home=profile.DUMMY_HOME)
     for service, problems in check_jobs(dummy).items():
         check(not problems, f"{service} describes the job of its plist -> {problems}")
 

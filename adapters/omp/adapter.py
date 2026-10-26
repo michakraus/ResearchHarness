@@ -668,7 +668,7 @@ def omp_cases(case, fresh, run):
     """The oh-my-pi layer: the overlay, the guard extension, AGENTS.md and the rules, with the
     grammar of render_rule, under a scratch PI_CODING_AGENT_DIR; `case`, `fresh` and `run` are
     those of `install_cases.Scratch`."""
-    from harness.install_cases import RULE_HEAD, Scratch
+    from harness.install_cases import RULE_HEAD, Scratch, rule_names
 
     opencode = frontends.adapter("opencode")
     tail = Scratch.tail
@@ -696,7 +696,8 @@ def omp_cases(case, fresh, run):
          f"adapters/omp/OMP-DELTA.md, {len(delta.read_bytes())} bytes, is no larger than OPENCODE-DELTA.md, "
          f"{len(opencode_delta.read_bytes())} bytes")
     # The rule sources: rules/ and the tree instructions' rules/, one rendered rule each.
-    sources = sorted([*(REPO / "rules").glob("*.md"), tree / "rules" / "meta-repository.md"],
+    sources = sorted([*(REPO / "rules" / n for n in rule_names(REPO / "rules")),
+                      tree / "rules" / "meta-repository.md"],
                      key=lambda p: p.name)
     case(lambda: all(listed.get(f"rules/{s.name}") == "INSTALL" for s in sources) and len(sources) == 8,
          f"the dry run lists one rules/<name>.md per rule source, 8: {sorted(k for k in listed if k.startswith('rules/'))}")

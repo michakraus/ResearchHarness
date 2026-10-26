@@ -837,7 +837,7 @@ def rule_matches(rule, command):
 
 def selftest():
     """The Antigravity layer of `harness install`, end to end on scratch HOMEs."""
-    from harness.install_cases import Scratch
+    from harness.install_cases import Scratch, source_name_cases
 
     total = wrong = 0
 
@@ -848,6 +848,7 @@ def selftest():
 
     with tempfile.TemporaryDirectory() as tmp:
         scratch = Scratch(check, tmp)
+        source_name_cases(scratch.case, tmp)
         layer_cases(scratch)
         instruction_cases(scratch)
         rule_cases(scratch.case)
@@ -863,9 +864,11 @@ def selftest():
 
 def layer_cases(scratch):
     """The files of the layer, the warning with no ~/.gemini/, hooks.json and the copies."""
+    from harness.install_cases import rule_names, skill_names
+
     case, run, tail = scratch.case, scratch.run, scratch.tail
     line = re.compile(r"^antigravity/(\S+)\s+(\S+)", re.M)
-    rules = sorted([*(p.name for p in (REPO / "rules").glob("*.md")), "meta-repository.md"])
+    rules = sorted([*rule_names(REPO / "rules"), "meta-repository.md"])
     texts = ["config/GEMINI.md", *(f"config/rules/{n}" for n in ["RTK.md", "core.md", "research-tree.md", *rules]),
              *(f"config/skills/{f}" for f in skills_files()),
              *(f"config/agents/{p.name}" for p in (REPO / "agents").glob("*.md"))]
@@ -907,7 +910,7 @@ def layer_cases(scratch):
          and sorted(p.removeprefix("config/rules/") for p in listed if p.startswith("config/rules/")
                     and p not in ("config/rules/RTK.md", "config/rules/core.md", "config/rules/research-tree.md"))
          == rules
-         and planned == {p.name for p in (REPO / "skills").iterdir() if p.is_dir()},
+         and sorted(planned) == skill_names(REPO / "skills"),
          f"the dry run lists the global file, the three always-on files, one rule file for each of the {len(rules)} "
          f"rules and one skills/<name>/ for each of the {len(planned)} skills: {sorted(listed)}")
     code, text = run(base, "--apply")
@@ -1039,7 +1042,7 @@ def layer_cases(scratch):
 def instruction_cases(scratch):
     """The global file, the always-on files, the rules and the skills: their sizes, their paths,
     their frontmatter, the delta, the files with no source, and the refusals."""
-    from harness.install_cases import RULE_HEAD
+    from harness.install_cases import RULE_HEAD, rule_names, skill_names
 
     case, run, tail, mode = scratch.case, scratch.run, scratch.tail, scratch.mode
     base, claude, tree = scratch.fresh(["instructions/research-tree.md", "rules/meta-repository.md"])
@@ -1063,7 +1066,7 @@ def instruction_cases(scratch):
         return
     rules = sorted((config / "rules").glob("*.md"))
     sizes = {p.name: len(p.read_bytes()) for p in [config / "GEMINI.md", *rules]}
-    case(lambda: len(sizes) == 5 + len(list((REPO / "rules").glob("*.md")))
+    case(lambda: len(sizes) == 5 + len(rule_names(REPO / "rules"))
          and max(sizes.values()) < 24000 and sum(sizes.values()) < 20000 * 4
          and not [n for n in sizes if b"@[" in (config / "rules" / n if n != "GEMINI.md" else config / n).read_bytes()],
          f"each installed instruction file and rule is below 24,000 bytes, holds no include, and their sum is below "
@@ -1095,7 +1098,7 @@ def instruction_cases(scratch):
                              'globs: "**/CLAUDE.md, **/SKILL.md, **/agents/*.md, **/rules/*.md, **/AGENTS.md"'],
          f"a rule of several paths has them as one `globs`, joined by `, `: {several}")
     delta = (SOURCE / "ANTIGRAVITY-DELTA.md").read_text()
-    unlisted = [p.name for p in (REPO / "rules").glob("*.md") if f"| `{p.name}` |" not in delta]
+    unlisted = [n for n in rule_names(REPO / "rules") if f"| `{n}` |" not in delta]
     case(lambda: not unlisted and "| `meta-repository.md` |" in delta and "~/.gemini/config/rules/" in delta,
          f"ANTIGRAVITY-DELTA.md lists each rule of rules/ and meta-repository.md with its scope: {unlisted}")
     core = (config / "rules" / "core.md").read_bytes()
@@ -1113,7 +1116,7 @@ def instruction_cases(scratch):
     case(lambda: keys == ["name", "description"] and head[0] == "name: build-part",
          f"skills/build-part/SKILL.md keeps name and description and drops model: {keys}")
     heads = {p.parent.name: p.read_text().split("\n---\n", 1)[0] for p in (config / "skills").glob("*/SKILL.md")}
-    case(lambda: sorted(heads) == sorted(p.name for p in (REPO / "skills").iterdir() if p.is_dir())
+    case(lambda: sorted(heads) == skill_names(REPO / "skills")
          and all(re.search(r"(?m)^name: ", h) and re.search(r"(?m)^description: ", h)
                  and not re.search(r"(?m)^model:", h) for h in heads.values())
          and "disable-model-invocation: true" in heads["wait-what"],

@@ -30,6 +30,22 @@ jobs:
       - name: compileall
         run: python -m compileall -q lib hooks scripts adapters
 
+  # The suite with HOME set to a new empty directory, so a case that needs a file of the runner's
+  # home fails here.
+  empty-home:
+    name: harness test with an empty HOME
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.11'
+      - name: harness test
+        run: |
+          home="$RUNNER_TEMP/empty-home"
+          mkdir "$home"
+          HOME="$home" python bin/harness test
+
   # A pull request that changes code adds a fragment to changelog.d/; the check reads
   # `git diff BASE...HEAD`, so the checkout holds the whole history.
   changelog:
