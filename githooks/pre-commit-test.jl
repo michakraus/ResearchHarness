@@ -51,7 +51,7 @@ const DOES_NOT_LOAD = """
 const NOT_NFC = """
     module Fixture
 
-    # café
+    # caf$('e' * Char(0x301))
 
     double(x) = 2x
 
@@ -103,8 +103,9 @@ function environment(home)
 end
 
 """
-A fixture package repository with `src/Fixture.jl` holding `source`, and the files of `extra`
-(path => text). With `stage`, each file is staged. Returns the repository and its environment.
+A fixture package repository with `src/Fixture.jl` holding `source`, `Project.toml` holding
+`project` unless that is `nothing`, and the files of `extra` (path => text). With `stage`, each
+file is staged. Returns the repository and its environment.
 """
 function fixture(source; extra = Pair{String,String}[], project = PROJECT, stage = true)
     root = realpath(mktempdir())
@@ -114,9 +115,12 @@ function fixture(source; extra = Pair{String,String}[], project = PROJECT, stage
     mkpath(joinpath(repo, "src"))
     env = environment(home)
     run(setenv(`git init -q -b main $repo`, env))
-    write(joinpath(repo, "Project.toml"), project)
     write(joinpath(repo, ".JuliaFormatter.toml"), "style = \"sciml\"\n")
-    files = ["Project.toml", ".JuliaFormatter.toml"]
+    files = [".JuliaFormatter.toml"]
+    if project !== nothing
+        write(joinpath(repo, "Project.toml"), project)
+        push!(files, "Project.toml")
+    end
     if source !== nothing
         write(joinpath(repo, "src", "Fixture.jl"), source)
         push!(files, joinpath("src", "Fixture.jl"))
@@ -139,12 +143,15 @@ function capture(cmd, repo, env; input = "")
 end
 
 """
-Run the pre-commit hook on a fixture made by `fixture(source; extra)`, with `path` as its `PATH`
-where one is given. Returns the hook's exit code and its stdout and stderr in one string.
+Run the pre-commit hook on a fixture made by `fixture(source; extra, project)`, with `path` as its
+`PATH` where one is given, and the variables of `vars` set. Returns the hook's exit code and its
+stdout and stderr in one string.
 """
-function run_hook(source; extra = Pair{String,String}[], path = nothing)
-    repo, env = fixture(source; extra)
+function run_hook(source; extra = Pair{String,String}[], path = nothing, project = PROJECT,
+                  vars = Dict{String,String}())
+    repo, env = fixture(source; extra, project)
     path === nothing || (env["PATH"] = path)
+    merge!(env, vars)
     code, out, err = capture(`bash $HOOK`, repo, env)
     return code, out * err
 end
@@ -218,6 +225,51 @@ alive(pid) = ccall(:kill, Cint, (Cint, Cint), pid, 0) == 0
         @test occursin("formatting: ok", out)
     end
 
+    @testset "a test-layout.jl that throws is refused" begin
+        code, out = run_hook(nothing;
+                             extra = [".githooks/test-layout.jl" => "violations(repo) = error(\"broken script\")\n",
+                                      "test/data.txt" => "data\n"])
+        @test code == 1
+        @test occursin("test layout: FAILED", out)
+        @test occursin("broken script", out)
+    end
+
+    @testset "without JuliaFormatter, the formatting stage refuses" begin
+        code, out = run_hook(FORMATTED;
+                             vars = Dict("RESEARCH_HARNESS_JULIA" => mktempdir(),
+                                         "JULIA_LOAD_PATH" => "@stdlib"))
+        @test code == 1
+        @test occursin("JuliaFormatter is in no environment of the load path", out)
+        @test occursin("formatting: FAILED", out)
+    end
+
+    @testset "a file that is not valid UTF-8 is no NFC finding" begin
+        code, out = run_hook("module Fixture\n# \xff\nend\n")
+        @test occursin("unicode: NFC", out)
+    end
+
+    @testset "a repository without Project.toml has no load test" begin
+        code, out = run_hook(FORMATTED; project = nothing)
+        @test code == 0
+        @test occursin("unicode: NFC", out)
+        @test !occursin("loads:", out)
+    end
+
+    @testset "the load failure shows its first 20 lines" begin
+        code, out = run_hook("""
+            module Fixture
+
+            foreach(i -> println(stderr, "load line ", i), 1:30)
+
+            const VALUE = undefined_name + 1
+
+            end
+            """)
+        @test code == 1
+        @test occursin("    load line 1\n", out)
+        @test !occursin("load line 30", out)
+    end
+
     @testset "a commit with no staged file passes with no stage" begin
         repo, env = fixture(FORMATTED; stage = false)
         code, out, err = capture(`bash $HOOK`, repo, env)
@@ -271,12 +323,16 @@ alive(pid) = ccall(:kill, Cint, (Cint, Cint), pid, 0) == 0
     end
 end
 
-# The time box of the lint stage, called in this process: the program runs its stages only as a
-# program file, so an include defines its functions and runs nothing.
-@testset "the lint time box" begin
+# Functions of the programs, called in this process: each program runs only as a program file,
+# so an include defines its functions and runs nothing.
+@testset "functions of pre-commit.jl" begin
     hook = Module(:PreCommitProgram)
     Base.include(hook, PROGRAM)
     run_boxed(cmd, seconds) = Base.invokelatest(hook.run_boxed, cmd, seconds)
+
+    @testset "a git that fails lists no staged file" begin
+        @test cd(() -> Base.invokelatest(hook.staged, "--", "*.jl"), mktempdir()) === nothing
+    end
 
     @testset "the lint time box keeps the exit status and both streams" begin
         code, out = run_boxed(`sh -c 'echo out; echo err >&2; exit 3'`, 30)
@@ -301,8 +357,9 @@ end
     topic = "refs/heads/topic 1111111111111111111111111111111111111111 refs/heads/topic 0000000000000000000000000000000000000000\n"
     main = "refs/heads/main 1111111111111111111111111111111111111111 refs/heads/main 0000000000000000000000000000000000000000\n"
 
-    # The suite fails unless it runs with the default bounds checks: Pkg.test passes
-    # --check-bounds=yes to the test process unless julia_args says otherwise.
+    # The suite fails unless it runs with the default bounds checks: up to Julia 1.12, Pkg.test
+    # passes --check-bounds=yes to the test process unless julia_args says otherwise. The
+    # command itself is checked in "the suite of pre-push", for the Julia releases after 1.12.
     passing = "Base.JLOptions().check_bounds == 0 || error(\"check-bounds is not auto\")\n"
 
     @testset "pre-push: a push of a topic branch skips the suite" begin
@@ -351,8 +408,8 @@ end
         @test occursin("Suite passed.", out)
     end
 
-    @testset "pre-push: a repository without a name or a test/runtests.jl runs nothing" begin
-        repo, env = fixture(nothing; project = "[deps]\n")
+    @testset "pre-push: a repository without Project.toml or test/runtests.jl runs nothing" begin
+        repo, env = fixture(nothing; project = nothing)
         code, out, _ = capture(`bash $PREPUSH origin https://example.org/x.git`, repo, env;
                                input = main)
         @test code == 0
@@ -384,9 +441,32 @@ end
         @test isfile(pidfile)
         suite = parse(Int, read(pidfile, String))
         kill(p, Base.SIGINT)
-        wait(p)
+        t = @elapsed wait(p)
+        @test t < 30
         @test p.exitcode == 130
         @test !alive(suite)
         alive(suite) && ccall(:kill, Cint, (Cint, Cint), suite, 9)
     end
+end
+
+@testset "the gate of pre-push" begin
+    prepush = Module(:PrePushProgram)
+    Base.include(prepush, joinpath(@__DIR__, "pre-push.jl"))
+    gated(line) = Base.invokelatest(prepush.gated, line)
+    @test gated("refs/heads/x 1 refs/heads/main 0")
+    @test gated("refs/heads/x 1 refs/heads/master 0")
+    @test !gated("refs/heads/main 1 refs/heads/topic 0")
+    @test !gated("refs/heads/x 1 refs/heads/mainline 0")
+    @test !gated("refs/heads/main 1")
+    @test !gated("")
+end
+
+@testset "the suite of pre-push" begin
+    prepush = Module(:PrePushSuite)
+    Base.include(prepush, joinpath(@__DIR__, "pre-push.jl"))
+    cmd = Base.invokelatest(prepush.suite, "Fixture")
+    @test cmd.exec[1] == joinpath(Sys.BINDIR, Base.julia_exename())
+    @test "--check-bounds=auto" in cmd.exec
+    @test "--project=." in cmd.exec
+    @test cmd.exec[end] == "using Pkg; Pkg.test(\"Fixture\"; julia_args = `--check-bounds=auto`)"
 end

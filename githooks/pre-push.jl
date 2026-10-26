@@ -1,7 +1,7 @@
-# The gate and the suite of the shared pre-push hook. Canonical copy:
-# ~/Research/Harness/githooks/pre-push.jl. Installed beside its launcher, `pre-push`, into each
-# repository's .githooks/ by harness githooks — edit the canonical copy and re-run the
-# installer, never the copy in a repository.
+# The gate and the suite of the shared pre-push hook. Canonical copy: githooks/pre-push.jl of
+# the harness. Installed beside its launcher, `pre-push`, into each repository's .githooks/ by
+# harness githooks — edit the canonical copy and re-run the installer, never the copy in a
+# repository.
 #
 # Runs the full test suite, but only when pushing to main/master. A suite on every push to every
 # branch makes a push take 10-30 minutes with no output, which looks exactly like a network

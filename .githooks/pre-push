@@ -288,7 +288,7 @@ duration() {
         scripts/gate-test.jl | scripts/mutants-test.jl) echo "about 5 s" ;;
         githooks/release-notes-test.jl) echo "about 4 s" ;;
         launchagents/claude-autocommit-test.jl) echo "about 2 s" ;;
-        githooks/pre-commit-test.jl) echo "about 5 s" ;;
+        githooks/pre-commit-test.jl) echo "about 1 min" ;;
         scripts/base-tree-test.jl) echo "about 3 s" ;;
         scripts/fatou-lsp-test.jl) echo "about 7 s" ;;
         scripts/julia-update-test.jl) echo "about 14 s" ;;

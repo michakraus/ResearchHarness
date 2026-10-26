@@ -1,7 +1,7 @@
-# The stages of the shared pre-commit hook. Canonical copy:
-# ~/Research/Harness/githooks/pre-commit.jl. Installed beside its launcher, `pre-commit`, into
-# each repository's .githooks/ by harness githooks — edit the canonical copy and re-run the
-# installer, never the copy in a repository.
+# The stages of the shared pre-commit hook. Canonical copy: githooks/pre-commit.jl of the
+# harness. Installed beside its launcher, `pre-commit`, into each repository's .githooks/ by
+# harness githooks — edit the canonical copy and re-run the installer, never the copy in a
+# repository.
 #
 # One Julia process runs every stage except the load test, which runs in a child process:
 #
@@ -12,7 +12,7 @@
 #   3. package load             BLOCKS   catches a syntax error or a broken include
 #
 # Stages 1–3 run on STAGED .jl files only. A whole-tree JuliaFormatter run is not sure to end:
-# one has run inside SciML's `nest!` for 62 minutes of CPU.
+# one has died inside SciML's `nest!` after 62 minutes of CPU.
 #
 # Included rather than run as the program file, this file defines its functions and runs nothing.
 
