@@ -35,6 +35,7 @@ import sys
 import tempfile
 import threading
 import time
+import types
 from unittest import mock
 
 from . import REPO, HarnessError, changelog, doctor, sweep
@@ -101,8 +102,8 @@ def changed(base, names, root=REPO):
     """The parts of `names` that the paths of `git diff --name-status base...HEAD` in `root` select,
     both paths of a rename or a copy, with docs and sweep: (the selected names in the order of
     `names`, one line per path that says what it selects). A base that git cannot resolve raises."""
-    p = subprocess.run(["git", "diff", "--name-status", "-z", "--find-renames", "--find-copies", "--end-of-options",
-                        f"{base}...HEAD", "--"], cwd=root, capture_output=True, text=True, check=False)
+    p = subprocess.run(["git", "diff", "--name-status", "-z", "--end-of-options", f"{base}...HEAD", "--"], cwd=root,
+                       capture_output=True, text=True, check=False)
     if p.returncode != 0:
         message = p.stderr.strip().splitlines()
         raise HarnessError(f"--changed {base}: git diff exits {p.returncode}" + (f": {message[0]}" if message else ""))
@@ -419,6 +420,12 @@ def selftest():
           and {f"doctor:{g}" for g in doctor.GROUPS} | {f"probe:{g}" for g in PROBE_GROUPS} <= set(names)
           and not {"doctor", "probe"} & set(names),
           f"the parts, sorted, with the groups of the probe and of doctor and neither whole: {names}")
+    for result, want in (((2, 1), 1), ((2, 0), 0)):
+        fake = types.SimpleNamespace(__name__="harness.fake", selftest=lambda result=result: result)
+        with contextlib.redirect_stdout(io.StringIO()) as out:
+            code = cmd_test(argparse.Namespace(part="fake"), [fake])
+        check(code == want and out.getvalue() == f"\n{result[0]} cases, {result[1]} wrong\n",
+              f"the child of a part with {result} prints its summary and exits {want}: exit {code}, {out.getvalue()!r}")
     with contextlib.redirect_stdout(io.StringIO()):
         here = doctor.selftest(("minimum",))
     n, w, _ = run_part("doctor:minimum", parts(cli.modules())["doctor:minimum"])

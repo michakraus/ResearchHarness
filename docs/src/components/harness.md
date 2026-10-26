@@ -92,8 +92,8 @@ line, or whose exit status does not agree with it, counts as one more failed cas
 stderr; a crash so shows its traceback. A child that runs longer than 300 s is stopped with its
 process group and counts as one failed case.
 
-`changed` reads `git diff --name-status BASE...HEAD`, with rename and copy detection, and `owners`
-maps each path to its parts by the table `OWNERS`. `take_slot` holds one of the two slot files
+`changed` reads `git diff --name-status BASE...HEAD`, both paths of a rename or a copy, and
+`owners` maps each path to its parts by the table `OWNERS`. `take_slot` holds one of the two slot files
 with an exclusive `flock`. [Development](../development.md#tests) describes the selection, the
 options and the slots for a user.
 
