@@ -273,8 +273,9 @@ class Doctor:
         """A tool of TOOLS: missing, or a version flag that exits non-zero, is a FAIL for a required
         tool (`without` None) and a WARN for an optional one; a non-zero exit is a SKIP in a
         session's sandbox, which can refuse the flag. A version below its minimum is a FAIL, and
-        output with no version a WARN."""
-        path = shutil.which(command)
+        output with no version a WARN. uv is found as `harness install --apply` finds it, on the
+        PATH or in ~/.local/bin."""
+        path = install.boot().find_uv() if command == "uv" else shutil.which(command)
         if path is None:
             if without is None:
                 return self.fail(name, f"{command} not found", "tools")
@@ -935,6 +936,16 @@ def status_cases(check, root, system_name):
     # A working environment runs without uv, so a missing uv is a WARN; the loop above derives
     # the status from the row, and this case states it.
     case("no uv", {"uv": "WARN"}, lambda f: (f.bin / "uv").unlink(), ("tools",), only=("uv",))
+
+    # uv in ~/.local/bin, where the bootstrap fetches it, and not on the PATH: the lookup of the sync.
+    def local_uv(f):
+        (f.bin / "uv").unlink()
+        (f.home / ".local" / "bin").mkdir(parents=True, exist_ok=True)
+        stub(f.home / ".local" / "bin" / "uv", [("--version", "uv 0.13.5\n", "", 0)])
+
+    got, _ = case("uv in ~/.local/bin only", {"uv": "PASS"}, local_uv, ("tools",), only=("uv",))
+    check(".local/bin/uv" in got["uv"].detail,
+          f"{system_name}: the uv line names ~/.local/bin/uv -> {got['uv'].detail!r}")
     for version, want in (("21.7.3", "FAIL"), ("20.18.0", "PASS"), ("18.20.4", "FAIL"), ("23.0.0", "PASS")):
         case(f"node at {version}", {"Node.js": want},
              lambda f, v=version: f.tool("node", ("--version", f"v{v}\n", "", 0)), ("tools",), only=("Node.js",))

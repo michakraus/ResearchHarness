@@ -395,7 +395,8 @@ It checks, in this order:
   tool with a minimum on that page is at or above it; below it, or missing, is a `FAIL`. A missing
   tool that serves one frontend, one job or a push to the harness (the frontends, RTK, jq,
   juliaup, iTerm2 and gitleaks), or that only the sync of the Python environment needs (uv), is a
-  `WARN` that says what stops without it. When the version flag
+  `WARN` that says what stops without it. uv is looked for as the sync looks for it, on the `PATH`
+  or in `~/.local/bin`. When the version flag
   of a tool exits with a status other than 0, the check is a `FAIL` for a required tool and a
   `WARN` for an optional one. In a session's sandbox, which can refuse the flag, the check is a
   `SKIP`. When the flag exits with status 0 but the subcommand cannot read a version from its
