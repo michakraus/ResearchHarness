@@ -11,7 +11,7 @@ import stat
 import subprocess
 import sys
 
-from . import REPO
+from . import REPO, install
 from . import profile as profile_module
 
 # The frontmatter of a rule that the cases write: oh-my-pi's rendering needs a `description`.
@@ -30,6 +30,40 @@ def scratch_profile(path, tree, raw=None):
     path.write_text(re.sub(r"(?m)^tree_agents = .*$", line, text))
     (path.parent / "providers.toml").write_bytes((REPO / "examples" / "providers.toml").read_bytes())
     return path
+
+
+def skill_names(directory):
+    """The skills of `directory` as the install copies them: the first part of each path of
+    `install.source_files` that lies in a subdirectory. `source_files` skips hidden names, so a
+    hidden directory, such as the `.claude/` that Claude Code leaves in a checkout, is no skill,
+    and a directory that holds no file is none either."""
+    return sorted({rel.parts[0] for rel in install.source_files(directory) if len(rel.parts) > 1})
+
+
+def rule_names(directory):
+    """The rules of `directory` as the install reads them: the name of each `.md` file of
+    `install.source_files` that lies in `directory` itself, so a hidden name is none."""
+    return sorted(rel.name for rel in install.source_files(directory) if len(rel.parts) == 1 and rel.suffix == ".md")
+
+
+def source_name_cases(case, tmp):
+    """`skill_names` and `rule_names` on a scratch directory that holds hidden, empty and nested
+    entries beside the sources; `case(ok, label)` counts each case."""
+    root = pathlib.Path(tmp) / "source-names"
+    for rel in ["skills/a/SKILL.md", "skills/b/own/x.md", "skills/.claude/.cc-writes/x", "skills/.hidden/SKILL.md",
+                "skills/__pycache__/m.pyc", "skills/README.md", "rules/a.md", "rules/.x.md", "rules/b.txt",
+                "rules/sub/c.md", "rules/.claude/d.md"]:
+        (root / rel).parent.mkdir(parents=True, exist_ok=True)
+        (root / rel).write_text("x\n")
+    (root / "skills" / "empty").mkdir()
+    (root / "skills" / ".claude" / "empty").mkdir()
+    skills, rules = skill_names(root / "skills"), rule_names(root / "rules")
+    case(lambda: skills == ["a", "b"],
+         f"the skill names are the subdirectories that hold a file, without a hidden one, __pycache__, an empty "
+         f"directory or a file of skills/ itself: {skills}")
+    case(lambda: rules == ["a.md"],
+         f"the rule names are the .md files of rules/ itself, without a hidden one, another suffix or a file of a "
+         f"subdirectory: {rules}")
 
 
 class Scratch:

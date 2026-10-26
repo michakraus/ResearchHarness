@@ -109,7 +109,8 @@ git config core.hooksPath .githooks
 
 CI runs `.github/workflows/test.yml` on every push, pull request and manual dispatch:
 `bin/harness test` and the compile check on Python 3.11 and the latest 3.x, `shellcheck` and
-`actionlint`. Its `leaks` job runs gitleaks 8.30.1, a pinned tarball checked by its SHA256, with
+`actionlint`. Its `empty-home` job runs `bin/harness test` once more on Python 3.11, with `HOME`
+set to a new empty directory, so a case that reads the runner's home fails there. Its `leaks` job runs gitleaks 8.30.1, a pinned tarball checked by its SHA256, with
 `.gitleaks.toml` and `--redact`. A canary step first checks that gitleaks finds a synthetic token
 and a synthetic home path, built at run time, and that the token is not in the log. Then the job
 scans the pushed range (`before..sha`; for a new branch `origin/main..sha`, for a new `main`
