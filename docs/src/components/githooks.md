@@ -11,8 +11,9 @@ subcommands of the `harness` command install the templates into every repository
 `Packages/` and `Experiments/` (see
 [Clone, sync and trust](../research-tree.md#clone-sync-and-trust)):
 
-- `harness githooks --apply` copies `pre-commit`, `pre-push` and `scripts/test-layout.jl` into
-  `.githooks/` of each repository, and sets `core.hooksPath` there.
+- `harness githooks --apply` copies `pre-commit`, `pre-commit.jl`, `pre-push`, `pre-push.jl`
+  and `scripts/test-layout.jl` into `.githooks/` of each repository, and sets `core.hooksPath`
+  there.
 - `harness workflows --apply` copies the files of `githooks/workflows/` into each repository that
   has a `Project.toml`.
 
@@ -22,34 +23,45 @@ then install again; never edit a copy. The other scripts of this page run from t
 This repository has a pre-push hook of its own, `.githooks/pre-push`; it is not a template, and
 [Development](../development.md) describes it.
 
-## `pre-commit` and `pre-commit-test.jl`
+## `pre-commit`, `pre-commit.jl` and `pre-commit-test.jl`
 
-`pre-commit` is the shared pre-commit hook of the Julia repositories. It runs these stages:
+`pre-commit` is the shared pre-commit hook of the Julia repositories. It is a short bash
+launcher: without `julia` on the `PATH` it prints `pre-commit: julia is not on the PATH.` and
+refuses the commit; otherwise it starts `pre-commit.jl` beside it, in one Julia process. That
+program runs these stages:
 
 | stage | what it checks | on a failure |
 |:--|:--|:--|
-| 0 | `test-layout.jl --check`, on a commit that touches `test/` | blocks |
+| 0 | the `violations` of `test-layout.jl`, on a commit that touches `test/` | blocks |
 | 1 | JuliaFormatter, with the `.JuliaFormatter.toml` of the repository | blocks |
-| 2 | `fatou lint`, with a limit of 60 s where `timeout` exists | warns only |
+| 2 | `fatou lint`, with a limit of 60 s | warns only |
 | 2.5 | each file is in Unicode NFC | blocks |
 | 3 | `using <package>` loads, for a repository with a package name | blocks |
 
 Stages 1 to 3 run on the staged `.jl` files only. Stage 0 reads `.githooks/test-layout.jl`, which
 `harness githooks` installs beside the hook; a missing copy blocks the commit. Stage 0 checks the
-working tree, not the index. The lint only warns, because `fatou lint` reports false positives. The
-NFC stage does not change a file; run `nfc.jl --apply` to fix one. A commit with no
-staged `.jl` file and no change below `test/` passes with no check. `git commit --no-verify` skips
-the hook.
+working tree, not the index. The lint only warns, because `fatou lint` reports false positives;
+without `fatou` on the `PATH`, the stage prints one line and is skipped. The NFC stage does not
+change a file; run `nfc.jl --apply` to fix one. Stage 3 loads the package in a child process, in
+the environment of the repository, so that the versions of JuliaFormatter's dependencies in the
+hook's own process do not change what the package loads. A commit with no staged `.jl` file and
+no change below `test/` passes with no check. `git commit --no-verify` skips the hook.
 
-`pre-commit-test.jl` runs the hook, unchanged, in a fixture package repository: a formatted file
-passes, and a misformatted file, a file that does not load and a change below `test/` without
-`test-layout.jl` are refused (`julia --startup-file=no pre-commit-test.jl`). CI runs it on Linux.
+`pre-commit-test.jl` runs both hooks, unchanged, in fixture package repositories
+(`julia --startup-file=no pre-commit-test.jl`). For `pre-commit`: a formatted file passes, and a
+misformatted file, a file that does not load, a file that is not NFC and a change below `test/`
+without `test-layout.jl` or out of its layout are refused; a missing `julia` or `fatou`, and the
+findings of `fatou`, give their lines; a commit of one `.jl` file starts `julia` from the `PATH`
+once. It checks the time limit of the lint stage, and for `pre-push` each case of the gate and
+the suite. CI runs it on Linux.
 
-## `pre-push`
+## `pre-push` and `pre-push.jl`
 
-`pre-push` is the shared pre-push hook of the Julia repositories. It runs the full test suite,
-but only on a push to `main` or `master`. A push to another branch passes at once, and CI tests
-it.
+`pre-push` is the shared pre-push hook of the Julia repositories. Like `pre-commit`, it is a bash
+launcher: without `julia` on the `PATH` it prints `pre-push: julia is not on the PATH.` and
+refuses the push; otherwise it starts `pre-push.jl` beside it. The program runs the full test
+suite, but only on a push to `main` or `master`. A push to another branch passes at once, and CI
+tests it.
 
 For a package, the hook runs `Pkg.test("<package>")` with `--check-bounds=auto`, and passes the
 flag to the test process through `julia_args`: up to Julia 1.12, `Pkg.test` gives the test
@@ -57,8 +69,10 @@ process `--check-bounds=yes` whatever the calling process uses. For a repository
 with no package name, it runs `test/runtests.jl`. With neither, it runs nothing and passes. A
 failure refuses the push.
 
-The suite takes 10 to 30 minutes and prints nothing until it ends. That is not a hang. When you
-stop the hook, stop its Julia process too. `harness repos push` runs this hook in each repository.
+The suite takes 10 to 30 minutes and prints nothing until it ends. That is not a hang. The suite
+runs in a process group of its own. When you interrupt the hook with Ctrl-C or `SIGINT`, it sends
+the interrupt to that group, waits for the suite to stop, and exits with status 130. `harness
+repos push` runs this hook in each repository.
 
 ## `pre-commit-wiki`
 
@@ -91,9 +105,9 @@ valid UTF-8. The exit status is 0 when each checked file is NFC, and 1 when one 
 named file is not valid UTF-8. With `--apply`, the exit status is 0 after the rewrite.
 
 Normalisation can change a string literal. Before `--apply`, check what reads such a literal, for
-example a doctest. The `pre-commit` hook has its own copy of the check, and names this script for
-the fix. The rule `generated-hooks-and-workflows` and the agent `julia-pr-shepherd` tell an agent
-to run it.
+example a doctest. The `pre-commit` hook has its own copy of the check, in `pre-commit.jl`, and
+names this script for the fix. The rule `generated-hooks-and-workflows` and the agent
+`julia-pr-shepherd` tell an agent to run it.
 
 ## `explicit-imports.jl`
 

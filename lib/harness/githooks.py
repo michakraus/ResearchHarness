@@ -1,7 +1,8 @@
 """Install the shared git hooks and GitHub workflows into the research tree's repositories.
 
-    harness githooks [--apply]          # pre-commit, pre-push, test-layout.jl into every
-                                        # repository under Packages/ and Experiments/
+    harness githooks [--apply]          # pre-commit, pre-commit.jl, pre-push, pre-push.jl,
+                                        # test-layout.jl into every repository under
+                                        # Packages/ and Experiments/
     harness wiki-lint-hook [--apply]    # pre-commit-wiki into the prose repositories
     harness workflows [--apply]         # the canonical workflows from githooks/workflows/
 
@@ -138,7 +139,9 @@ def install_hooks(args, targets, files):
 def cmd_githooks(args):
     files = [
         (HOOKS / "pre-commit", "pre-commit", True),
+        (HOOKS / "pre-commit.jl", "pre-commit.jl", False),
         (HOOKS / "pre-push", "pre-push", True),
+        (HOOKS / "pre-push.jl", "pre-push.jl", False),
         (REPO / "scripts" / "test-layout.jl", "test-layout.jl", False),
     ]
     return install_hooks(args, [d for d, _ in repositories()], files)
@@ -197,7 +200,8 @@ def cmd_workflows(args):
 
 def register(sub):
     changing(sub.add_parser("githooks", help="install the shared git hooks into every package and experiment",
-                            description="Copy githooks/pre-commit, githooks/pre-push and scripts/test-layout.jl "
+                            description="Copy githooks/pre-commit, githooks/pre-commit.jl, githooks/pre-push, "
+                                        "githooks/pre-push.jl and scripts/test-layout.jl "
                                         "into .githooks/ of each git repository below Packages/ and Experiments/, "
                                         "and set core.hooksPath. Without --apply it prints what would change and "
                                         "exits 1 when something would; --apply copies the files and sets the path. "

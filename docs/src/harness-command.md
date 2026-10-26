@@ -430,10 +430,11 @@ harness repos sync --apply
 harness githooks [--apply]
 ```
 
-Copies `githooks/pre-commit`, `githooks/pre-push` and `scripts/test-layout.jl` into `.githooks/`
-of each git repository below `Packages/` and `Experiments/`, and sets `core.hooksPath` to
-`.githooks`. The copies are tracked files of each repository: read the diff, then commit each file
-by name. `core.hooksPath` is local configuration, so a new clone needs this subcommand again.
+Copies `githooks/pre-commit`, `githooks/pre-commit.jl`, `githooks/pre-push`,
+`githooks/pre-push.jl` and `scripts/test-layout.jl` into `.githooks/` of each git repository
+below `Packages/` and `Experiments/`, and sets `core.hooksPath` to `.githooks`. The copies are
+tracked files of each repository: read the diff, then commit each file by name. `core.hooksPath`
+is local configuration, so a new clone needs this subcommand again.
 
 **Exit status:** 0 when every copy is current, or after `--apply`; 1 when the dry run has a
 change; 2 when `core.hooksPath` cannot be set. The subcommand then prints the command for each

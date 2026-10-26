@@ -82,7 +82,6 @@ TOOLS = [
     ("Node.js", "node", ["--version"], None),
     ("shellcheck", "shellcheck", ["--version"], None),
     ("actionlint", "actionlint", ["--version"], None),
-    ("timeout", "timeout", ["--version"], None),
     ("rsync", "rsync", ["--version"], None),
     ("Julia", "julia", ["--version"], None),
     ("fatou", "fatou", ["--version"], None),
@@ -581,7 +580,7 @@ TOKEN = "kaimon_" + "5e" * 20
 # but for actionlint, whose line is the form of its releases, and launchctl, whose lines are
 # written from its known form: in a session's sandbox it gives no answer. The Linux versions are
 # those of a machine with Ubuntu 26.04 set up with setup-linux.md, each in its tool's form: the
-# lines of gh, shellcheck, timeout and rsync are the form of their upstream releases, and those of
+# lines of gh, shellcheck and rsync are the form of their upstream releases, and those of
 # systemctl, loginctl and bwrap are written from their known form around the answers that the
 # machine gave, such as `Linger=no` and `active`.
 SHELLCHECK = ("ShellCheck - shell script analysis tool\nversion: 0.11.0\nlicense: GNU General Public License, "
@@ -606,8 +605,6 @@ LINUX = COMMON | {
     "node": [("--version", "v22.22.1\n", "", 0)],
     "actionlint": [("--version", "1.7.12\ninstalled by downloading from release page\n"
                                  "built with go1.26.1 compiler for linux/amd64\n", "", 0)],
-    "timeout": [("--version", "timeout (GNU coreutils) 9.7\nCopyright (C) 2025 Free Software Foundation, Inc.\n", "",
-                 0)],
     "rsync": [("--version", "rsync  version 3.4.1  protocol version 32\n", "", 0)],
     "julia": [("--version", "julia version 1.13.1\n", "", 0), ("-e using Revise", "", "", 0)],
     "juliaup": [("--version", "Juliaup 1.22.7\n", "", 0)],
@@ -629,8 +626,6 @@ MACOS = COMMON | {
     "node": [("--version", "v26.12.0\n", "", 0)],
     "actionlint": [("--version", "1.7.12\ninstalled by downloading from release page\n"
                                  "built with go1.26.1 compiler for darwin/arm64\n", "", 0)],
-    "timeout": [("--version", "timeout (GNU coreutils) 9.12\nCopyright (C) 2026 Free Software Foundation, Inc.\n", "",
-                 0)],
     "rsync": [("--version", "rsync  version 3.5.1  protocol version 33\n", "", 0)],
     "julia": [("--version", "julia version 1.13.2\n", "", 0), ("-e using Revise", "", "", 0)],
     "fatou": [("--version", "fatou 0.23.0\n", "", 0)],

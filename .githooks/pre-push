@@ -272,7 +272,8 @@ while IFS= read -r path; do
         githooks/release-notes.jl) select_test githooks/release-notes-test.jl ;;
         scripts/julia-update.jl) select_test scripts/julia-update-test.jl ;;
         launchagents/claude-autocommit) select_test launchagents/claude-autocommit-test.jl ;;
-        githooks/pre-commit) select_test githooks/pre-commit-test.jl ;;
+        githooks/pre-commit | githooks/pre-commit.jl) select_test githooks/pre-commit-test.jl ;;
+        githooks/pre-push | githooks/pre-push.jl) select_test githooks/pre-commit-test.jl ;;
         scripts/fatou-lsp.jl) select_test scripts/fatou-lsp-test.jl ;;
         scripts/base-tree.jl) select_test scripts/base-tree-test.jl ;;
         *-test.jl) [ -f "$path" ] && select_test "$path" ;; # a deleted test file selects nothing
@@ -287,7 +288,7 @@ duration() {
         scripts/gate-test.jl | scripts/mutants-test.jl) echo "about 5 s" ;;
         githooks/release-notes-test.jl) echo "about 4 s" ;;
         launchagents/claude-autocommit-test.jl) echo "about 2 s" ;;
-        githooks/pre-commit-test.jl) echo "about 5 s" ;;
+        githooks/pre-commit-test.jl) echo "about 1 min" ;;
         scripts/base-tree-test.jl) echo "about 3 s" ;;
         scripts/fatou-lsp-test.jl) echo "about 7 s" ;;
         scripts/julia-update-test.jl) echo "about 14 s" ;;
