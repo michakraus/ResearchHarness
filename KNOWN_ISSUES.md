@@ -510,3 +510,24 @@
   and the read waits for it. `fatou` is one native binary, and no child of it is known.
 - kind: defect
 - found: 2026-10-26, the critic of the hook programs
+
+### K109 · A SIGKILL of `harness test` leaves its running parts as orphans, and frees its slot while they run.
+
+- location: `lib/harness/testrun.py:154`
+- evidence: `run_part` starts each part with `start_new_session=True`, and the run stops the
+  parts' process groups only from Python: on an error, an interrupt, a SIGTERM or a SIGHUP. A
+  SIGKILL ends the run with no handler, so each running part goes on, and the 300 s limit, which
+  the run keeps, no longer applies to it. The kernel frees the run's slot at once, so a third run
+  can start beside the orphans.
+- kind: defect
+- found: 2026-10-26, the critic of the test runner
+
+### K110 · `changed` runs `git diff` with no `timeout=`.
+
+- location: `lib/harness/testrun.py:110`
+- evidence: `subprocess.run(["git", "diff", "--name-status", …], cwd=root, capture_output=True,
+  text=True, check=False)` names no `timeout`, so a `git` that does not end holds
+  `harness test --changed` with it. No `git diff` that hangs is known, and no configuration of
+  the repository checks for a `timeout=` yet.
+- kind: not verified
+- found: 2026-10-26, the critic of the test runner
