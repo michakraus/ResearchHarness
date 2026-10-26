@@ -198,8 +198,8 @@ harness wiki-lint-hook [--apply]
 harness workflows [--apply]
 ```
 
-`githooks` copies `githooks/pre-commit`, `githooks/pre-push` and `scripts/test-layout.jl` into
-`.githooks/` of each git repository directly below `Packages/` and `Experiments/`, and sets
+`githooks` copies `githooks/pre-commit`, `githooks/pre-commit.jl`, `githooks/pre-push`,
+`githooks/pre-push.jl` and `scripts/test-layout.jl` into `.githooks/` of each git repository directly below `Packages/` and `Experiments/`, and sets
 `core.hooksPath`. `wiki-lint-hook` copies `githooks/pre-commit-wiki` as the pre-commit hook of the
 prose repositories that `WIKI_REPOSITORIES` names. `workflows` copies the canonical files of
 `githooks/workflows/` and deletes the retired `CompatHelper.yml`.

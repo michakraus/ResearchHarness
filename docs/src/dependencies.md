@@ -262,7 +262,7 @@ do. A copy of their code in the harness would be larger and less correct.
 
 Call sites: ExplicitImports, `githooks/explicit-imports.jl`; JSON, `scripts/gate.jl`,
 `scripts/mutate.jl` and `scripts/fatou-lsp.jl`; JuliaFormatter, `harness format`
-(`githooks/format-tree.jl`), the installed pre-commit hook (`githooks/pre-commit`) and
+(`githooks/format-tree.jl`), the installed pre-commit hook (`githooks/pre-commit.jl`) and
 `scripts/gate.jl`; JuliaSyntax, `scripts/mutate.jl` and
 `scripts/mutants.jl`; TestEnv, `scripts/run-tests.jl` and `scripts/mutate-worker.jl`; YAML,
 `harness ci-protection` through `githooks/verify-workflows.jl`, and the installed wiki hook
@@ -281,7 +281,7 @@ as advice. `mutate.jl` runs `fatou lint` to reject a mutant that uses an undefin
 The harness needs fatou because it reports an undefined name from the source alone. Julia reports
 such a name only when the code runs.
 
-Call sites: the installed pre-commit hook (`githooks/pre-commit`); `scripts/mutate.jl`; the CI
+Call sites: the installed pre-commit hook (`githooks/pre-commit.jl`); `scripts/mutate.jl`; the CI
 job `test` (`.github/workflows/julia.yml`).
 
 ### Kaimon
