@@ -15,6 +15,7 @@ UTF-8 stops both with exit 2, and nothing is written.
 of CODE and adds no fragment exits 1, and names that path.
 """
 
+import argparse
 import contextlib
 import io
 import os
@@ -145,8 +146,12 @@ def unrecorded(pairs):
 
 
 def check(root, base, env=None):
-    """Exit 1 when the branch changes code since `base` and adds no fragment, else 0."""
-    p = git(root, ["diff", "--name-status", "-z", f"{base}...HEAD"], env)
+    """Exit 1 when the branch changes code since `base` and adds no fragment, else 0. An empty `base`
+    raises: git reads `...HEAD` as `HEAD...HEAD`, which changes nothing. `--end-of-options` keeps a
+    `base` that starts with `-` from being read as an option."""
+    if not base:
+        raise HarnessError("BASE is empty")
+    p = git(root, ["diff", "--name-status", "-z", "--end-of-options", f"{base}...HEAD"], env)
     if p.returncode != 0:
         raise HarnessError(f"git diff {base}...HEAD: {p.stderr.strip()}")
     path = unrecorded(changes(p.stdout))
@@ -157,10 +162,10 @@ def check(root, base, env=None):
     return 1
 
 
-def cmd_changelog(args):
+def cmd_changelog(args, root=REPO, env=None):
     if args.check is not None:
-        return check(REPO, args.check)
-    return outcome(args, write(REPO, args.apply))
+        return check(root, args.check, env)
+    return outcome(args, write(root, args.apply, env))
 
 
 def register(sub):
@@ -222,6 +227,9 @@ def selftest():
     check_(insert("# Changelog\n\n### Unreleased\n\n## 1.0\n", "- **A.** a.\n")
            == "# Changelog\n\n### Unreleased\n\n## Unreleased\n\n- **A.** a.\n\n## 1.0\n",
            "a ### heading is neither the section nor the first ## heading")
+    check_(insert("# Changelog\n\n## Unreleased notes\n\n- x\n", "- **A.** a.\n")
+           == "# Changelog\n\n## Unreleased\n\n- **A.** a.\n\n## Unreleased notes\n\n- x\n",
+           "a heading that only starts with ## Unreleased is not the section")
     check_(insert("# Changelog\n", "- **A.** a.\n") == "# Changelog\n\n## Unreleased\n\n- **A.** a.\n",
            "without any ## heading, the section goes at the end")
     check_(insert("# Changelog", "- **A.** a.\n") == "# Changelog\n\n## Unreleased\n\n- **A.** a.\n",
@@ -309,7 +317,9 @@ def selftest():
         (root / DIRECTORY / "notes.txt").write_text("not a fragment\n")
         (root / DIRECTORY / "sub").mkdir()
         (root / DIRECTORY / "sub" / "d.md").write_text("- **D.** d.\n")
-        check_(fragments(root) == [fa, fb, fc], "the fragments are the .md files of changelog.d/ but README.md")
+        (root / DIRECTORY / "dir.md").mkdir()
+        check_(fragments(root) == [fa, fb, fc],
+               "the fragments are the .md files of changelog.d/ but README.md; a directory dir.md is none")
         ordered, block = plan(root, env)
         check_(ordered == [fc, fb, fa] and block == "- **C.** c.\n\n- **B.** b.\n\n- **A.** a.\n",
                f"the block: the uncommitted fragment first, then the newest, a final newline added -> {block!r}")
@@ -363,6 +373,15 @@ def selftest():
                f"--check: code without a fragment exits 1 and names the path -> {status}, {out!r}")
         fragment(root, "topic.md", "- **T.** t.\n", "2026-01-04")
         check_(quiet(lambda: check(root, "main", env))[0] == 0, "--check: code with an added fragment exits 0")
+        runs = [quiet(lambda: cmd_changelog(argparse.Namespace(check=base, apply=False), root, env))[0]
+                for base in ("main", None)]
+        check_(runs == [0, 1], f"the verb runs --check with a BASE and the dry run without one -> {runs}")
+        check_(raises(lambda: cmd_changelog(argparse.Namespace(check="", apply=False), root, env)) == "BASE is empty",
+               "--check with an empty BASE stops")
+        before = state(root)
+        message = raises(lambda: check(root, "--output=written", env)) or ""
+        check_(message.startswith("git diff --output=written...HEAD: ") and state(root) == before,
+               f"--check: a BASE that starts with - is no option of git diff -> {message!r}")
         git(root, ["switch", "-q", "-c", "docs", "main"], env)
         (root / "docs").mkdir()
         (root / "docs" / "x.md").write_text("x\n")
