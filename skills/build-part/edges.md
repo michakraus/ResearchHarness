@@ -115,6 +115,11 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   entry, and measure the scalar's own threshold before a comment claims it holds (M1b round 1b,
   *Simplify the optimiser package and the learning package for 0.9*)
 - a counter or a budget that a relative stop cannot end, such as a bracket whose lower end is 0
+- an aggregate whose value depends on data the case set does not name: an accuracy whose error count
+  is floored rather than halved agrees with the halved form on every fully labelled case, and moves
+  its value on a sample that carries no label. Name that input in the decided edge, and keep the
+  arithmetic the base used (M6 fix 1, *Simplify the optimiser package and the learning package for
+  0.9*)
 - a status that hides a failure, such as *stalled* for a large increase
 - a minimiser near an end of the bracket, where a safeguard on the interpolated step falls back to
   bisection (K13, round 5 of the loop benchmark)
@@ -605,3 +610,17 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   threshold: `> 1e-3` lay below the `Float32` pass bound `100 eps(T)/Δt ≈ 0.012`, so the guard no
   longer proved the pass check non-vacuous. Give the guard the pass bound of the same `T` (C1,
   *Move the Hamiltonian and Lagrangian networks out of the learning package*)
+- a call site of a renamed function outside the directories the spec's count reads: the count over
+  `src/ test/ docs/ scripts/` missed `README.md`, which holds the same call, and a count over the
+  same four directories on the head reads a pass while the README still calls the old name. Count a
+  rename over the repository with a `*.jl`/`*.md` glob, and keep the changelog out by name (M6
+  round 1, *Simplify the optimiser package and the learning package for 0.9*)
+- a test that cannot fail for the property it names: the accuracy's new testset said the result
+  carries the loader's element type, and every case paired the loader with a model of the same type,
+  so the two readings of the fraction agreed on all of them and the mutant survived. Add the mixed
+  pair — a model of the other element type on the loader — that separates them (M6 round 1b,
+  *Simplify the optimiser package and the learning package for 0.9*)
+- a count of a set that the prose states, such as "runs three testsets", where the change deletes a
+  member: the sentence keeps its number and the page is wrong in a way no test reads. Grep the
+  sentence's own phrase from the delta's check (M6 round 1a, *Simplify the optimiser package and
+  the learning package for 0.9*)
