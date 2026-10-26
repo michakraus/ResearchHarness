@@ -97,6 +97,10 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   that file. A `zsh -c` reads `.zshenv` and not `.zshrc`, so a shim that `.zshrc` puts in front
   is not the `julia` of a frontend whose Bash does not read `.zshrc`. Check `command -v <name>`
   in each frontend's own shell (M1, *Sandbox the agent frontends*)
+- a file that an installer copies into another repository, where that repository's own gate reads
+  it: a hook program that is not in the style of the packages' formatter makes the installed
+  pre-commit hook refuse the commit of its own files. Run the target's gate on the installed copy
+  in a case (P3 round 1, *Make the Harness enforce strict Python*)
 
 ## A numerical method
 
@@ -405,6 +409,10 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   a file that the other program writes minified changes its bytes on every merge, so each install
   reports a change and makes a backup; test a merge of a file that already holds every rule (G5
   round 1, *Add the Antigravity frontend*)
+- an empty base in a `git diff BASE...HEAD`: git reads `...HEAD` as `HEAD...HEAD`, so the diff is
+  empty, a selection of changed paths selects nothing, and the run passes on no evidence. Refuse
+  an empty base, and pass `--end-of-options` before a base that starts with `-` (T1 round 1,
+  *Make the Harness enforce strict Python*)
 
 ## A step that runs a user's script
 
@@ -424,6 +432,11 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   for the learning and optimiser packages*)
 - a scratch name keyed on the clock alone, such as a stamp to the second: two runs started
   together share it, and one run removes the other's files. Give each run a `mktempdir` (I1)
+- a child started in a session of its own (`start_new_session=True`, `detach = true`): only the
+  path that the parent handles, often SIGINT alone, stops it, so a SIGTERM or SIGHUP of the parent
+  leaves it as an orphan that holds no lock and no limit. Pass each signal that the parent receives
+  on to the child's process group, and record SIGKILL as a limit (T1 round 1, P3, *Make the
+  Harness enforce strict Python*)
 
 ## A lint cleanup
 
