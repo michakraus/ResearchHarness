@@ -90,8 +90,8 @@ per case and, last, `<n> cases, <w> wrong`.
 `report` prints each part's output whole, in the order of the part names. A child that prints no
 summary line, or whose exit status does not agree with it, counts as one more failed case, with
 its stderr; a crash so shows its traceback. A child that runs longer than 300 s is stopped with
-its process group and counts as one failed case. An error or an interrupt of the run stops the
-children that still run.
+its process group and counts as one failed case. An error, an interrupt, a SIGTERM or a SIGHUP of
+the run stops the children that still run.
 
 `changed` reads `git diff --name-status BASE...HEAD`, both paths of a rename or a copy, and
 `owners` maps each path to its parts by the table `OWNERS`. `take_slot` holds one of the two slot

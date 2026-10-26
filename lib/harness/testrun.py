@@ -53,6 +53,8 @@ SLOTS = 2
 # them, as part names or globs over the part names, with `\1` the pattern's group. A path that no
 # pattern matches, or whose owners are no part, selects every part.
 OWNERS = [
+    # The probe groups of these three adapters load their guard files from the repository.
+    (r"adapters/(omp|opencode|antigravity)/.+", [r"\1", r"probe:\1"]),
     (r"adapters/([^/]+)/.+", [r"\1"]),
     (r"hooks/.+", ["probe:*"]),
     (r"lib/harness/doctor\.py", ["doctor:*"]),
@@ -101,7 +103,10 @@ def owners(path, names):
 def changed(base, names, root=REPO):
     """The parts of `names` that the paths of `git diff --name-status base...HEAD` in `root` select,
     both paths of a rename or a copy, with docs and sweep: (the selected names in the order of
-    `names`, one line per path that says what it selects). A base that git cannot resolve raises."""
+    `names`, one line per path that says what it selects). An empty base, which git would read as
+    HEAD, and a base that git cannot resolve raise."""
+    if not base:
+        raise HarnessError("--changed: BASE is empty")
     p = subprocess.run(["git", "diff", "--name-status", "-z", "--end-of-options", f"{base}...HEAD", "--"], cwd=root,
                        capture_output=True, text=True, check=False)
     if p.returncode != 0:
@@ -119,17 +124,24 @@ def changed(base, names, root=REPO):
     return [n for n in names if n in chosen], reasons
 
 
-# The child processes that run now; an error or an interrupt of the run stops their process groups.
+# The child processes that run now; an error, an interrupt, a SIGTERM or a SIGHUP of the run stops
+# their process groups.
 LIVE = set()
 LIVE_LOCK = threading.Lock()
 
 
 def stop(p):
     """Kill the process group of the child `p`, which `run_part` starts as a group of its own."""
-    try:
+    with contextlib.suppress(ProcessLookupError):
         os.killpg(p.pid, signal.SIGKILL)
-    except ProcessLookupError:
-        pass
+
+
+def leave(signum, _frame):
+    """The handler of SIGTERM and SIGHUP while parts run: ignore a second one, and end the run with
+    status 128 + `signum` through an exception, so that `run_parts` stops the parts first."""
+    for s in (signal.SIGTERM, signal.SIGHUP):
+        signal.signal(s, signal.SIG_IGN)
+    raise SystemExit(128 + signum)
 
 
 def run_part(name, argv, timeout=TIMEOUT):
@@ -164,20 +176,26 @@ def run_part(name, argv, timeout=TIMEOUT):
 
 def run_parts(table, jobs, emit, timeout=TIMEOUT):
     """Run the parts of `table`, {name: argv}, at most `jobs` at once, and call
-    `emit(name, lines, cases, wrong)` for each part in the order of `table`: (cases, wrong)."""
+    `emit(name, lines, cases, wrong)` for each part in the order of `table`: (cases, wrong). It runs
+    in the main thread, where a SIGTERM or a SIGHUP stops the parts and ends the run (`leave`)."""
     total = wrong = 0
-    with concurrent.futures.ThreadPoolExecutor(max_workers=jobs) as pool:
-        try:
-            results = pool.map(lambda item: run_part(*item, timeout=timeout), table.items())
-            for name, (n, w, lines) in zip(table, results, strict=True):
-                emit(name, lines, n, w)
-                total, wrong = total + n, wrong + w
-        except BaseException:
-            pool.shutdown(wait=False, cancel_futures=True)
-            with LIVE_LOCK:
-                for p in LIVE:
-                    stop(p)
-            raise
+    previous = {s: signal.signal(s, leave) for s in (signal.SIGTERM, signal.SIGHUP)}
+    try:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=jobs) as pool:
+            try:
+                results = pool.map(lambda item: run_part(*item, timeout=timeout), table.items())
+                for name, (n, w, lines) in zip(table, results, strict=True):
+                    emit(name, lines, n, w)
+                    total, wrong = total + n, wrong + w
+            except BaseException:
+                pool.shutdown(wait=False, cancel_futures=True)
+                with LIVE_LOCK:
+                    for p in LIVE:
+                        stop(p)
+                raise
+    finally:
+        for s, handler in previous.items():
+            signal.signal(s, handler)
     return total, wrong
 
 
@@ -222,8 +240,8 @@ def jobs_count(text):
 def cmd_test(args, modules):
     table = parts(modules)
     if args.part is not None:
-        if args.part not in table:
-            raise HarnessError(f"no part {args.part}")
+        if args.part not in table or args.part.startswith("probe:"):  # a probe group runs as hooks/probe.py
+            raise HarnessError(f"no part {args.part} runs through --part")
         n, w = selftest_of(args.part, modules)()
         print(f"\n{n} cases, {w} wrong")
         return 1 if w else 0
@@ -248,7 +266,11 @@ def cmd_test(args, modules):
     except OSError as e:
         raise HarnessError(f"--log {args.log}: {e.strerror}") from None
     try:
-        with take_slot(slot_directory(), lambda line: print(line, file=sys.stderr, flush=True)):
+        try:
+            slot = take_slot(slot_directory(), lambda line: print(line, file=sys.stderr, flush=True))
+        except OSError as e:
+            raise HarnessError(f"the slot directory {slot_directory()}: {e.strerror}") from None
+        with slot:
             wrong = report({n: table[n] for n in names}, jobs(args.jobs, len(names), os.cpu_count()), log, sys.stdout)
     finally:
         if log is not None:
@@ -262,8 +284,8 @@ def jobs(requested, count, cpus):
     return min(requested or max(1, (cpus or 2) // 2), count)
 
 
-def report(table, jobs, log, out, timeout=TIMEOUT):
-    """Run the parts of `table` with `run_parts` and write each part's lines, a line
+def report(table, at_once, log, out, timeout=TIMEOUT):
+    """Run the parts of `table` with `run_parts`, `at_once` at a time, and write each part's lines, a line
     `part <name>: <n> cases, <w> wrong` and, last, the summary `<n> cases, <w> wrong`: all of it to
     `out` when `log` is None, else all of it to `log` and only the BAD lines and the summary to
     `out`. Returns the number of wrong cases."""
@@ -277,7 +299,7 @@ def report(table, jobs, log, out, timeout=TIMEOUT):
             out.write("".join(line + "\n" for line in lines if line.startswith("BAD")))
         out.flush()
 
-    total, wrong = run_parts(table, jobs, emit, timeout=timeout)
+    total, wrong = run_parts(table, at_once, emit, timeout=timeout)
     summary = f"\n{total} cases, {wrong} wrong\n"
     if log is not None:
         log.write(summary)
@@ -357,11 +379,24 @@ def selftest():
     check((n, w) == (1, 1), f"a last line with more than the summary is no summary line: {(n, w)}, {lines}")
 
     # --jobs runs the parts at once: three parts of 1.5 s each take less than two of them in a row.
+    before = [signal.getsignal(s) for s in (signal.SIGTERM, signal.SIGHUP)]
     start = time.monotonic()
     run_parts({k: child("import time; time.sleep(1.5); print('1 cases, 0 wrong')") for k in "abc"}, 3,
               lambda *_: None)
     took = time.monotonic() - start
     check(took < 3, f"--jobs 3 runs three parts of 1.5 s at once: {took:.1f} s")
+    after = [signal.getsignal(s) for s in (signal.SIGTERM, signal.SIGHUP)]
+    check(after == before, f"run_parts gives SIGTERM and SIGHUP their handlers back: {before} -> {after}")
+    try:
+        leave(signal.SIGTERM, None)
+        code = None
+    except SystemExit as e:
+        code = e.code
+    ignored = [signal.getsignal(s) for s in (signal.SIGTERM, signal.SIGHUP)]
+    for s, handler in zip((signal.SIGTERM, signal.SIGHUP), before, strict=True):
+        signal.signal(s, handler)
+    check(code == 128 + signal.SIGTERM and ignored == [signal.SIG_IGN] * 2,
+          f"a SIGTERM ends the run with 128 + 15 and ignores a second one: {code}, {ignored}")
     got = [jobs(*a) for a in ((None, 99, None), (None, 99, 1), (None, 99, 3), (None, 99, 16), (None, 3, 16),
                               (5, 99, 16), (50, 3, 16))]
     check(got == [1, 1, 1, 8, 3, 5, 3],
@@ -446,7 +481,11 @@ def selftest():
             ("lib/harness/fmt.py", []),
             ("lib/harness/doctor.py", sorted(f"doctor:{g}" for g in doctor.GROUPS)),
             ("hooks/rm-scope.py", sorted(f"probe:{g}" for g in PROBE_GROUPS)),
-            ("adapters/omp/OMP-DELTA.md", ["omp"]),
+            ("adapters/omp/OMP-DELTA.md", ["omp", "probe:omp"]),
+            ("adapters/antigravity/guard.py", ["antigravity", "probe:antigravity"]),
+            ("adapters/omp/guards.ts", ["omp", "probe:omp"]),
+            ("adapters/opencode/plugins/guards.ts", ["opencode", "probe:opencode"]),
+            ("adapters/claude/adapter.py", ["claude"]),
             ("docs/src/dependencies.md", ["docs", "doctor:minimum"]),
             ("docs/src/development.md", ["docs"]),
             ("changelog.d/topic.md", ["changelog"]),
@@ -466,6 +505,10 @@ def selftest():
         def git(*argv):
             subprocess.run(["git", *argv], cwd=root, env=env, check=True, capture_output=True)
 
+        def changed_here(base):
+            with mock.patch.dict(os.environ, env, clear=True):
+                return changed(base, names, root)
+
         for path in ("adapters/omp/OMP-DELTA.md", "lib/harness/profile.py"):
             (root / path).parent.mkdir(parents=True, exist_ok=True)
             (root / path).write_text(f"{path}\n" * 20)
@@ -476,26 +519,29 @@ def selftest():
         (root / "adapters" / "opencode").mkdir()
         git("mv", "adapters/omp/OMP-DELTA.md", "adapters/opencode/OMP-DELTA.md")
         git("commit", "-q", "-m", "rename")
-        got, reasons = changed("main", names, root)
-        check(got == ["docs", "omp", "opencode", "sweep"] and len(reasons) == 2,
+        got, reasons = changed_here("main")
+        check(got == ["docs", "omp", "opencode", "probe:omp", "probe:opencode", "sweep"] and len(reasons) == 2,
               f"a rename selects the owners of both paths: {got}, {reasons}")
         git("switch", "-q", "-c", "profile", "main")
         (root / "lib" / "harness" / "profile.py").write_text("changed\n")
         git("commit", "-q", "-am", "profile")
-        got, reasons = changed("main", names, root)
+        got, reasons = changed_here("main")
         check(got == ["docs", "profile", "sweep"] and reasons == ["lib/harness/profile.py selects profile"],
               f"a modified module selects its part: {got}, {reasons}")
         (root / "unowned.txt").write_text("x\n")
         git("add", "unowned.txt")
         git("commit", "-q", "-m", "unowned")
-        got, _ = changed("main", names, root)
+        got, _ = changed_here("main")
         check(got == names, f"a path with no owner selects every part: {len(got)} of {len(names)}")
-        try:
-            changed("no-such-ref", names, root)
-            raised = None
-        except HarnessError as e:
-            raised = str(e)
-        check(raised is not None and "no-such-ref" in raised, f"an unknown base raises: {raised!r}")
+        # An empty base would read as HEAD...HEAD, and a base that starts with `-` as an option of git.
+        for base in ("no-such-ref", "", "--output=x"):
+            try:
+                changed_here(base)
+                raised = None
+            except HarnessError as e:
+                raised = str(e)
+            check(raised is not None and base in raised and not list(root.glob("x*")),
+                  f"the base {base!r} raises and writes no file: {raised!r}")
 
         # The slots: with both held, a run says once that it waits and holds a slot once one frees.
         slots = root / "slots"
@@ -520,6 +566,57 @@ def selftest():
         check(len(said) == 1, f"a free slot is taken with no wait: said {said}")
         free.close()
 
+        # Two runs that hold a slot each make a third wait.
+        said, taken = [], []
+        runs = [take_slot(slots, said.append), take_slot(slots, said.append)]
+        waiter = threading.Thread(target=lambda: taken.append(take_slot(slots, said.append, poll=0.05)))
+        waiter.start()
+        time.sleep(0.5)
+        waiting = waiter.is_alive() and not taken
+        runs[0].close()
+        waiter.join(10)
+        check(waiting and not said[1:] and len(taken) == 1
+              and sorted(f.name for f in runs) == [str(slots / "slot-1.lock"), str(slots / "slot-2.lock")],
+              f"two runs of take_slot hold the two slots and a third waits: waited {waiting}, "
+              f"held {[f.name for f in runs]}, said {said}")
+        for f in [runs[1], *taken]:
+            f.close()
+
+        # A slot directory that cannot be made is a usage error, before any part runs.
+        (root / "a-file").write_text("x\n")
+        p = subprocess.run([*HARNESS, "test", "docs"], capture_output=True, text=True, check=False, timeout=60,
+                           env=os.environ | {"XDG_RUNTIME_DIR": str(root / "a-file")})
+        check(p.returncode == 2 and "a-file" in p.stderr and "Traceback" not in p.stderr and "ok " not in p.stdout,
+              f"a slot directory that cannot be made exits 2: exit {p.returncode}, {p.stderr.strip()[-200:]!r}")
+
+        # A SIGTERM or a SIGHUP of the run stops the parts that still run, as an interrupt does.
+        for signum in (signal.SIGTERM, signal.SIGHUP):
+            mark = root / f"part-{signum}.pid"
+            part = [sys.executable, "-c", f"import os, time; open({str(mark)!r}, 'w').write(str(os.getpid())); "
+                                          "time.sleep(30)"]
+            run = subprocess.Popen([sys.executable, "-c", f"import sys; sys.path.insert(0, {str(REPO / 'lib')!r}); "
+                                    f"from harness import testrun; testrun.run_parts({{'a': {part!r}}}, 1, "
+                                    "lambda *_: None)"])
+            deadline = time.monotonic() + 20
+            while not (mark.exists() and mark.read_text()) and time.monotonic() < deadline:
+                time.sleep(0.05)
+            pid = int(mark.read_text() or 0) if mark.exists() else 0
+            run.send_signal(signum)
+            ended = run.wait(10)
+            deadline = time.monotonic() + 5
+            alive = pid > 0
+            while alive and time.monotonic() < deadline:
+                try:
+                    os.kill(pid, 0)
+                    time.sleep(0.05)
+                except ProcessLookupError:
+                    alive = False
+            if alive:
+                os.kill(pid, signal.SIGKILL)
+            check(pid > 0 and not alive and ended == 128 + signum,
+                  f"a {signal.Signals(signum).name} of the run stops its parts: part {pid} alive {alive}, "
+                  f"the run exits {ended}")
+
         # The slot directory, and --list, which takes no slot.
         for variables, want in (({"XDG_RUNTIME_DIR": "/x", "TMPDIR": "/t"}, "/x"),
                                 ({"XDG_RUNTIME_DIR": "", "TMPDIR": "/t"}, "/t"), ({}, "/tmp")):
@@ -542,7 +639,8 @@ def selftest():
     for argv, text in ((["no-such-part"], "no-such-part"), (["--jobs", "0", "docs"], "--jobs"),
                        (["--jobs", "-1", "docs"], "--jobs"), (["--changed", "HEAD", "docs"], "exclude"),
                        (["--log", str(REPO / "no-such-dir" / "x.log"), "docs"], "no-such-dir"),
-                       (["--part", "no-such-part"], "no-such-part")):
+                       (["--part", "no-such-part"], "no-such-part"), (["--part", "probe:drift"], "probe:drift"),
+                       (["--changed", "", "--list"], "BASE is empty")):
         p = subprocess.run([*HARNESS, "test", *argv], capture_output=True, text=True, check=False, timeout=60)
         check(p.returncode == 2 and text in p.stderr and "Traceback" not in p.stderr and "ok " not in p.stdout,
               f"harness test {' '.join(argv)}: exit {p.returncode}, {p.stderr.strip()[-200:]!r}")

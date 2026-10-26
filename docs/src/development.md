@@ -24,10 +24,13 @@ With no argument, `harness test` runs every part. Part names select those parts,
 `--changed BASE` selects the parts that own a path of `git diff --name-status BASE...HEAD`; both
 paths of a rename count. The table `OWNERS` of `lib/harness/testrun.py` gives the owners: a
 module's own file, an adapter's directory, `hooks/` for the probe's groups, `docs/` for `docs`,
-and `changelog.d/` for `changelog`. A path that no part owns selects every part. `docs` and `sweep`
-run in every selection, and `--changed` prints on stderr which path selects which parts. While
-you edit one module, `harness test --changed origin/main` runs its cases; run the whole suite once
-before you push. The hook probe is a part of `harness test`, so it needs no run of its own.
+and `changelog.d/` for `changelog`. The directories of `omp`, `opencode` and `antigravity` also
+select the probe group of the same name, which loads their guard files. A path that no part owns
+selects every part. `docs` and `sweep` run in every selection, and `--changed` prints on stderr
+which path selects which parts. `--changed` reads the commits only, so an edit that is not
+committed selects nothing. While you work on one module, commit and run
+`harness test --changed origin/main`; run the whole suite once before you push. The hook probe is
+a part of `harness test`, so it needs no run of its own.
 
 `--jobs N` runs at most N parts at once, half the CPUs by default. Each part's output is printed
 whole, in the order of the part names, followed by a line `part <name>: <n> cases, <w> wrong`.

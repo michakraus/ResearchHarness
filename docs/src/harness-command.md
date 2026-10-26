@@ -625,8 +625,9 @@ above. It prints each part's lines and, last, `<n> cases, <w> wrong`.
 At most two runs share a machine; a third waits for one of them to end.
 
 **Exit status:** 0 when every case passes, 1 when a case fails, 2 on a usage error: an unknown
-part, part names together with `--changed`, a `BASE` that git cannot resolve, `--jobs` below 1, or
-a `--log` file whose directory does not exist.
+part, part names together with `--changed`, an empty `BASE` or one that git cannot resolve,
+`--jobs` below 1, a `--log` file whose directory does not exist, or a directory of the slot files
+that cannot be made or written.
 
 ### `changelog`
 
