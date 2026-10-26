@@ -10,6 +10,7 @@ than working without. This is the one place history belongs: comments and prose 
 current state, the changelog records how it got there.
 
 - **Add the entry in the same change that earns it**, not in a sweep afterwards.
+- **A repository with a `changelog.d/` takes the entry as a fragment there**, not in `CHANGELOG.md`.
 - Write **what changed and why it matters to someone using this**, not which files were touched.
 - **Name the gaps.** An honest "these versions were never written up" beats a silently incomplete
   record.

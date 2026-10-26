@@ -65,6 +65,7 @@ These options come before the subcommand.
 | [`settings`](#settings) | measures and checks the Claude Code settings: `surface`, `compare`, `twins`, `selftest` | no |
 | [`permissions`](#permissions) | generates the OpenCode permission block and path-guard list from the settings template | yes |
 | [`test`](#test) | runs the harness's own test cases | no |
+| [`changelog`](#changelog) | joins the changelog fragments of `changelog.d/` into `CHANGELOG.md`, or checks that a branch adds one | yes |
 | [`skill-triggers`](#skill-triggers) | tests whether each skill loads on its queries | runs paid sessions with `--apply` |
 
 The sections below give each subcommand's synopsis, what it does, its options, its exit status,
@@ -612,6 +613,35 @@ checks the contract above. It prints `<n> cases, <w> wrong`.
 [development.md](development.md#tests) describes the cases.
 
 **Exit status:** 0 when every case passes, 1 when a case fails.
+
+### `changelog`
+
+```text
+harness changelog [--apply | --check BASE]
+```
+
+Joins the changelog fragments of the harness checkout into its `CHANGELOG.md`. A fragment is a
+file `changelog.d/*.md` other than `README.md`, and holds the entry of one branch;
+`changelog.d/README.md` gives its name and its form. The dry run prints the `## Unreleased` block
+that the fragments make: each fragment's text, with a final newline added where it lacks one,
+separated by one blank line. The newest fragment comes first, by the committer date of the commit
+that added it; a fragment that no commit holds comes before them, and fragments of the same date
+go by file name.
+
+| option | meaning |
+|:--|:--|
+| `--apply` | put the block at the top of the `## Unreleased` section of `CHANGELOG.md`, above its entries, and delete the fragments. Without that heading, it inserts `## Unreleased` above the first `## ` heading, or at the end |
+| `--check BASE` | read `git diff --name-status BASE...HEAD`, and fail when the branch changes a path below `lib/`, `hooks/`, `adapters/`, `bin/`, `scripts/`, `githooks/`, `agents/`, `skills/` or `rules/` and adds no fragment |
+
+A fragment that is empty, holds only whitespace, holds a carriage return or is not UTF-8 stops the
+dry run and `--apply`; the message names it, and no file changes.
+
+**Exit status:** without `--check`, 0 when there is no fragment, or after `--apply`; 1 when the
+dry run prints a block; 2 on a bad fragment. With `--check`, 0 when a fragment is added or no code
+changes; 1 when code changes without a fragment, and the output names the first such path; 2 when
+git cannot resolve `BASE`.
+
+**Where to run it:** in the harness checkout. CI runs `--check` on each pull request.
 
 ### `skill-triggers`
 

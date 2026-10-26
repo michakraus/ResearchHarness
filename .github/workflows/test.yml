@@ -30,6 +30,21 @@ jobs:
       - name: compileall
         run: python -m compileall -q lib hooks scripts adapters
 
+  # A pull request that changes code adds a fragment to changelog.d/; the check reads
+  # `git diff BASE...HEAD`, so the checkout holds the whole history.
+  changelog:
+    name: changelog fragment
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: harness changelog --check
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: python3 bin/harness changelog --check "$BASE"
+
   # Each systemd --user unit, rendered with examples/profile.toml under this runner's home, where
   # stubs stand for the programs that the units start: systemd-analyze verify checks that each
   # ExecStart is executable.
