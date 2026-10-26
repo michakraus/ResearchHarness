@@ -12,7 +12,7 @@ the fragments. A fragment that is empty, holds only whitespace, holds a carriage
 UTF-8 stops both with exit 2, and nothing is written.
 
 `--check BASE` reads `git diff --name-status BASE...HEAD`: a branch that changes a path below one
-of CODE and adds no fragment exits 1, and names that path.
+of CODE and adds no fragment exits 1, and names the first such path.
 """
 
 import argparse
@@ -56,8 +56,8 @@ def entry(path, root):
 
 
 def added(path, root, env=None):
-    """The committer date, in seconds, of the last commit that added `path`, or None when no commit
-    holds it."""
+    """The committer date, in seconds, of the last commit of HEAD's history that added `path`, or
+    None when no such commit holds it."""
     p = git(root, ["log", "-1", "--diff-filter=A", "--format=%ct", "--", str(path.relative_to(root))], env)
     if p.returncode != 0:
         raise HarnessError(f"git log: {p.stderr.strip()}")
@@ -275,7 +275,7 @@ def selftest():
                GIT_AUTHOR_EMAIL="changelog@example.org", GIT_COMMITTER_NAME="changelog",
                GIT_COMMITTER_EMAIL="changelog@example.org")
     with tempfile.TemporaryDirectory(prefix="harness-changelog-") as tmp:
-        # git looks for a repository no higher than the scratch directory.
+        # git looks for a repository only below the scratch directory.
         env["GIT_CEILING_DIRECTORIES"] = tmp
         counter = iter(range(1000))
 

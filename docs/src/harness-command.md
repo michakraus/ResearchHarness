@@ -637,9 +637,9 @@ A fragment that is empty, holds only whitespace, holds a carriage return or is n
 dry run and `--apply`; the message names it, and no file changes.
 
 **Exit status:** without `--check`, 0 when there is no fragment, or after `--apply`; 1 when the
-dry run prints a block; 2 on a bad fragment. With `--check`, 0 when a fragment is added or no code
-changes; 1 when code changes without a fragment, and the output names the first such path; 2 when
-git cannot resolve `BASE`.
+dry run prints a block; 2 on a bad fragment or a failure. With `--check`, 0 when a fragment is
+added or no code changes; 1 when code changes without a fragment, and the output names the first
+such path; 2 when `BASE` is empty or git cannot resolve it.
 
 **Where to run it:** in the harness checkout. CI runs `--check` on each pull request.
 

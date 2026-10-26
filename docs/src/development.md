@@ -9,9 +9,10 @@ case fails. The three sets run in this order:
 2. The hook probe, `hooks/probe.py`, which runs every Python hook with the same interpreter on a
    fixture `HOME`.
 3. The contract sweep, `lib/harness/sweep.py`, which runs the dry run of every subcommand except
-   `format`, `ci-protection`, `skill-triggers` and `doctor` on a fixture `HOME` and research tree.
-   The cases of `skill-triggers` run its dry run and its `--apply` on a fake `claude`, and the
-   cases of `doctor` run it on the sweep's fixture with stub commands.
+   `format`, `ci-protection`, `skill-triggers`, `doctor` and `changelog` on a fixture `HOME` and
+   research tree. The cases of `skill-triggers` run its dry run and its `--apply` on a fake
+   `claude`, the cases of `doctor` run it on the sweep's fixture with stub commands, and the cases
+   of `changelog` run it on scratch repositories.
 
 The sweep checks the contract of [the `harness` command](harness-command.md): a dry run changes
 no file, a subcommand with a missing precondition exits with status 2 and prints one line, and for

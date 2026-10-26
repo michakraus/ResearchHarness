@@ -302,13 +302,13 @@ no `selftest`, and the sweep does not run it, because it runs Julia over the tre
 The subcommand `harness changelog [--apply | --check BASE]`, the changelog fragments of the
 harness checkout. Each branch writes its entry into a file of `changelog.d/`, so two pull requests
 never change the same lines of `CHANGELOG.md`. `fragments` lists the fragments, every
-`changelog.d/*.md` but `README.md`, and every other function reads that list. The dry run prints
-the `## Unreleased` block that they make, newest first by the committer date of the commit that
-added each; `--apply` writes the block at the top of the `## Unreleased` section of
+`changelog.d/*.md` but `README.md`, and the dry run and `--apply` read that list. The dry run
+prints the `## Unreleased` block that they make, newest first by the committer date of the commit
+that added each; `--apply` writes the block at the top of the `## Unreleased` section of
 `CHANGELOG.md` and deletes the fragments. `--check BASE` reads
-`git diff --name-status -z BASE...HEAD`; `unrecorded`, a function of the changed paths alone,
-names the first path below a code directory when no fragment is added. CI runs it on each pull
-request.
+`git diff --name-status -z BASE...HEAD`; `unrecorded`, a function of the changed paths and their
+status alone, names the first path below a code directory when no added path is a fragment. CI
+runs `--check` on each pull request.
 
 Its cases check the join, the insertion into `CHANGELOG.md`, the order and the path
 classification without git, and the dry run, `--apply` and `--check` on scratch repositories with
