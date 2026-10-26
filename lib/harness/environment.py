@@ -21,6 +21,7 @@ import http.server
 import io
 import os
 import pathlib
+import re
 import shutil
 import subprocess
 import sys
@@ -45,10 +46,15 @@ TIMEOUT = 60
 # A command whose output shows that the restarted process kept its arguments: the profile's
 # `harness`, `~/Research/Harness` below the scratch HOME.
 GET = ["--profile", str(REPO / "examples" / "profile.toml"), "get", "harness"]
-# The syntax of Python 3.1 to 3.6 that Python 3.0 does not read, as the nodes of `ast`; a parse with
-# the grammar of 3.7 refuses the syntax of 3.8 and later.
-NEWER = (ast.JoinedStr, ast.NamedExpr, ast.AnnAssign, ast.Match, ast.AsyncFunctionDef, ast.Await, ast.AsyncWith,
-         ast.AsyncFor, ast.TypeAlias, ast.YieldFrom, ast.MatMult)
+# The closed set of forms that bin/harness may use: the node types of `ast`, the token types and
+# the operators that it uses, each of which Python 3.0 reads.
+NODES = frozenset("Add And Assign Attribute AugAssign BinOp BoolOp Call ClassDef Compare Constant Dict Eq "
+                  "ExceptHandler Expr For FunctionDef If IfExp Import ImportFrom Is List ListComp Load Lt Mod "
+                  "Module Name Not NotEq Or Raise Return Slice Store Subscript Try Tuple USub UnaryOp With alias "
+                  "arg arguments comprehension keyword withitem".split())
+TOKENS = frozenset("NAME OP STRING NUMBER NEWLINE NL COMMENT INDENT DEDENT ENDMARKER".split())
+OPERATORS = frozenset("!= % ( ) + += , - . : < = == [ ] { }".split())
+NUMBER = re.compile(r"0|[1-9][0-9]*|0o[0-7]+")
 
 
 class Box:
@@ -193,26 +199,49 @@ def release_server():
         server.server_close()
 
 
-def newer_syntax(text):
-    """The syntax in `text` that Python 3.0 does not read: the refusal of a parse with the grammar
-    of 3.7, which knows the syntax of 3.8 and later, or else each node of NEWER, `with` of two
-    items, unpacking in a display or a call, a u'' string and a `_` in a number."""
+def outside_syntax(text):
+    """Each form in `text` outside the closed set that bin/harness may use, as "<rule> at line N",
+    or an empty list. The set holds the node types of NODES, the token types of TOKENS, the
+    operators of OPERATORS, strings with no prefix and no \\N escape, the numbers of NUMBER and
+    ASCII text, and three rules on shapes that the node types do not show: a `with` has one item,
+    no `with` is followed by `(`, and the tuple of an `except` is in parentheses. Every other form
+    is outside the set, also where Python 3.0 reads it. A text that the running Python does not
+    parse gives only its syntax error."""
     try:
-        tree = ast.parse(text, feature_version=(3, 7))
+        tree = ast.parse(text)
     except SyntaxError as e:
-        return [f"{e.msg} at line {e.lineno}"]
-    newer = {f"{type(n).__name__} at line {getattr(n, 'lineno', '?')}" for n in ast.walk(tree)
-             if isinstance(n, NEWER)
-             or isinstance(n, ast.With) and len(n.items) > 1
-             or isinstance(n, (ast.List, ast.Tuple, ast.Set)) and any(isinstance(e, ast.Starred) for e in n.elts)
-             or isinstance(n, ast.Call) and (any(isinstance(a, ast.Starred) for a in n.args)
-                                             or sum(k.arg is None for k in n.keywords) > 1)
-             or isinstance(n, ast.Dict) and None in n.keys
-             or isinstance(n, ast.Constant) and n.kind == "u"}
-    numbers = io.StringIO(text).readline
-    newer |= {f"a number with _ at line {t.start[0]}" for t in tokenize.generate_tokens(numbers)
-              if t.type == tokenize.NUMBER and "_" in t.string}
-    return sorted(newer)
+        return [f"syntax error ({e.msg}) at line {e.lineno}"]
+    found = set()
+    lines = text.encode().splitlines()
+    for n in ast.walk(tree):
+        line = getattr(n, "lineno", 1)
+        if type(n).__name__ not in NODES:
+            found.add(f"node {type(n).__name__} at line {line}")
+        if isinstance(n, ast.With) and len(n.items) != 1:
+            found.add(f"with of {len(n.items)} items at line {line}")
+        if isinstance(n, ast.ExceptHandler) and isinstance(n.type, ast.Tuple) \
+                and lines[n.type.lineno - 1][n.type.col_offset:n.type.col_offset + 1] != b"(":
+            found.add(f"unparenthesized except at line {line}")
+    tokens = list(tokenize.generate_tokens(io.StringIO(text).readline))
+    types = {getattr(tokenize, name) for name in TOKENS}
+    for t, after in zip(tokens, tokens[1:] + [None]):
+        line = t.start[0]
+        if t.type not in types:
+            found.add(f"token {tokenize.tok_name[t.type]} at line {line}")
+        if t.type == tokenize.OP and t.string not in OPERATORS:
+            found.add(f"operator {t.string} at line {line}")
+        if t.type == tokenize.STRING and t.string[0] not in "'\"":
+            found.add(f"string prefix at line {line}")
+        if t.type == tokenize.STRING and "\\N" in t.string:
+            found.add(f"\\N escape at line {line}")
+        if t.type == tokenize.NUMBER and not NUMBER.fullmatch(t.string):
+            found.add(f"number at line {line}")
+        if t.type == tokenize.NAME and t.string == "with" and after.type == tokenize.OP and after.string == "(":
+            found.add(f"parenthesized with at line {line}")
+    for number, line in enumerate(lines, 1):
+        if not line.isascii():
+            found.add(f"non-ASCII at line {number}")
+    return sorted(found)
 
 
 def syntax_cases(case, tmp):
@@ -228,26 +257,31 @@ def syntax_cases(case, tmp):
          and not b.uv_lines() and b.below(".local") == [],
          f"an interpreter that reports 3.13 exits 2 with one line that names 3.13 and 3.14, and starts no uv: "
          f"{p.returncode}, {lines}, uv {b.uv_lines()}")
-    newer = newer_syntax(HARNESS.read_text())
-    case(lambda: not newer, f"bin/harness uses no syntax newer than Python 3.0: {newer}")
-    for snippet, label in [("def f(a, /):\n    pass\n", "a positional-only parameter"),
-                           ("def same[T](a, b):\n    pass\n", "a generic def"),
-                           ("def g():\n    yield from h()\n", "yield from"),
-                           ("x = a @ b\n", "the @ operator"),
-                           ("if (y := 1):\n    pass\n", ":="),
-                           ("try:\n    pass\nexcept* E:\n    pass\n", "except*"),
-                           ("x = f'{y}'\n", "an f-string"),
-                           ("x: int = 1\n", "an annotated assignment"),
-                           ("async def f():\n    return [x async for x in y]\n", "async"),
-                           ("f(*a, *b)\n", "two unpackings in a call"),
-                           ("f(**a, **b)\n", "two ** in a call"),
-                           ("x = u'y'\n", "a u'' string"),
-                           ("x = 1_000\n", "a _ in a number"),
-                           ("with a as b, c as d:\n    pass\n", "`with` of two items")]:
-        found = newer_syntax(snippet)
-        case(lambda: found != [], f"the syntax check refuses {label}: {found}")
-    found = newer_syntax("def f(a, *args, **kw):\n    nonlocal_ = [x for x in a]\n    return {1: 2}, {3}\n")
-    case(lambda: found == [], f"the syntax check accepts the syntax of Python 3.0: {found}")
+    found = outside_syntax(HARNESS.read_text())
+    case(lambda: found == [], f"bin/harness uses only the closed set of Python 3.0 forms: {found}")
+    for snippet, phrase in [("def f(:\n", "syntax error"),
+                            ("def g():\n    yield from h()\n", "node YieldFrom"),
+                            ("def g():\n    x = yield\n    return 2\n", "node Yield"),
+                            ("def same[T](a, b):\n    pass\n", "node TypeVar"),
+                            ("x = f'{y}'\n", "token FSTRING_START"),
+                            ("def f(a, /):\n    pass\n", "operator /"),
+                            ("@a.b[0]\ndef f():\n    pass\n", "operator @"),
+                            ("def f(*a,):\n    pass\n", "operator *"),
+                            ("f(**k, a=1)\n", "operator **"),
+                            ("x = rb'x'\n", "string prefix"),
+                            ("x = u'y'\n", "string prefix"),
+                            ("x = 1_000\n", "number"),
+                            ("with a as b, c as d:\n    pass\n", "with of 2 items"),
+                            ("with (a as b):\n    pass\n", "parenthesized with"),
+                            ("try:\n    pass\nexcept A, B:\n    pass\n", "unparenthesized except"),
+                            ("\u00e9t\u00e9 = 1\n", "non-ASCII"),
+                            ('x = "\\N{FACE WITH TEARS OF JOY}"\n', "\\N escape")]:
+        found = outside_syntax(snippet)
+        case(lambda: any(f.startswith(phrase + " ") for f in found),
+             f"the syntax check refuses {snippet!r} with {phrase!r}: {found}")
+    found = outside_syntax('class A(B):\n    w = 1\ntry:\n    with open(x) as f:\n        y = "%d" % n\n'
+                           "except (A, B) as e:\n    z = 0o755\n")
+    case(lambda: found == [], f"the syntax check accepts the forms that bin/harness uses: {found}")
 
 
 def start_cases(case, tmp):
@@ -386,6 +420,20 @@ def start_cases(case, tmp):
     case(lambda: code == 2 and len(b.uv_lines()) == 1 and one_line(err, "no working environment"),
          f"a sync that makes no environment exits 2 after one sync, never a loop: {code} in {seconds:.1f} s, "
          f"uv {b.uv_lines()}, {err}")
+    # A removal that fails after a failed sync: one Refusal that names both.
+    b = box()
+    boot = install.boot()
+    failing = mock.Mock(rmtree=mock.Mock(side_effect=OSError(13, "Permission denied")))
+    with (mock.patch.dict(os.environ, b.environ(FAKE_UV="fail"), clear=True),
+          mock.patch.object(boot, "shutil", failing)):
+        try:
+            boot.sync(str(b.bin / "uv"), str(b.env_dir), False)
+            refused = None
+        except boot.Refusal as e:
+            refused = str(e)
+    case(lambda: refused is not None and "the lock does not resolve" in refused and "cannot remove" in refused
+         and str(b.env_dir) in refused and failing.rmtree.call_count == 1,
+         f"a failed removal of the environment of a failed sync is part of its one Refusal: {refused!r}")
 
     # The marker that a process exports to its children: the environment's interpreter when it
     # runs there, and the current interpreter in the session fallback, after one line.

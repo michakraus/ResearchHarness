@@ -231,7 +231,10 @@ def sync(uv, environment, dev):
 
     def refuse(message):
         if not existed and os.path.lexists(environment):
-            shutil.rmtree(environment)
+            try:
+                shutil.rmtree(environment)
+            except OSError as e:
+                message = "%s; cannot remove %s: %s" % (message, environment, e.strerror or e)
         raise Refusal(message)
 
     try:
