@@ -245,19 +245,19 @@ def cmd_test(args, modules):
         log = open(args.log, "w", encoding="utf-8") if args.log else None
     except OSError as e:
         raise HarnessError(f"--log {args.log}: {e.strerror}") from None
-    jobs = min(args.jobs or default_jobs(os.cpu_count()), len(names))
     try:
         with take_slot(slot_directory(), lambda line: print(line, file=sys.stderr, flush=True)):
-            wrong = report({n: table[n] for n in names}, jobs, log, sys.stdout)
+            wrong = report({n: table[n] for n in names}, jobs(args.jobs, len(names), os.cpu_count()), log, sys.stdout)
     finally:
         if log is not None:
             log.close()
     return 1 if wrong else 0
 
 
-def default_jobs(cpus):
-    """The default of --jobs on a machine of `cpus` CPUs, None when unknown: half of them, at least 1."""
-    return max(1, (cpus or 2) // 2)
+def jobs(requested, count, cpus):
+    """The number of parts that run at once: `requested`, by default half of `cpus` (None when
+    unknown) and at least 1, and never more than the `count` parts."""
+    return min(requested or max(1, (cpus or 2) // 2), count)
 
 
 def report(table, jobs, log, out, timeout=TIMEOUT):
@@ -320,13 +320,13 @@ def selftest():
     table = {"a": passing(1), "b": passing(2), "c": child("import sys; print('BAD  a case'); print('4 cases, 1 wrong'); "
                                                           "sys.exit(1)"),
              "d": passing(3), "e": passing(5)}
-    for jobs in (1, 3, 5):
+    for at_once in (1, 3, 5):
         seen = []
-        got = run_parts(table, jobs, lambda name, lines, n, w, seen=seen: seen.append((name, n, w, lines)))
+        got = run_parts(table, at_once, lambda name, lines, n, w, seen=seen: seen.append((name, n, w, lines)))
         check(got == (15, 1) and [s[:3] for s in seen] == [("a", 1, 0), ("b", 2, 0), ("c", 4, 1), ("d", 3, 0),
                                                            ("e", 5, 0)]
               and seen[0][3] == ["ok   a case"],
-              f"--jobs {jobs}: five parts give 15 cases, 1 wrong, each part once and in order: {got}, "
+              f"--jobs {at_once}: five parts give 15 cases, 1 wrong, each part once and in order: {got}, "
               f"{[s[:3] for s in seen]}")
 
     # A part that crashes, ends with no summary line, or whose exit status disagrees with its summary
@@ -359,8 +359,10 @@ def selftest():
               lambda *_: None)
     took = time.monotonic() - start
     check(took < 3, f"--jobs 3 runs three parts of 1.5 s at once: {took:.1f} s")
-    check([default_jobs(c) for c in (None, 1, 2, 3, 16)] == [1, 1, 1, 1, 8],
-          f"the default of --jobs is half the CPUs, at least 1: {[default_jobs(c) for c in (None, 1, 2, 3, 16)]}")
+    got = [jobs(*a) for a in ((None, 99, None), (None, 99, 1), (None, 99, 3), (None, 99, 16), (None, 3, 16), (5, 99, 16),
+                              (50, 3, 16))]
+    check(got == [1, 1, 1, 8, 3, 5, 3],
+          f"--jobs: by default half the CPUs and at least 1, and never more than the parts: {got}")
 
     # An error of the run stops the parts that still run, with their children.
     def fail(name, *_):
@@ -403,6 +405,13 @@ def selftest():
     probe = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(probe)
     probe.FIXTURE.cleanup()
+    probe.GROUPS |= {"x": lambda: (3, 1), "y": lambda: (4, 1)}
+    with contextlib.redirect_stdout(io.StringIO()) as out:
+        code = probe.cases(["x", "y"])
+    check(code == 1 and out.getvalue() == "\n7 cases, 2 wrong\n",
+          f"the probe adds up its groups and exits 1 with a wrong case: exit {code}, {out.getvalue()!r}")
+    for name in ("x", "y"):
+        del probe.GROUPS[name]
     check(tuple(probe.GROUPS) == PROBE_GROUPS, f"PROBE_GROUPS {PROBE_GROUPS} are the groups of hooks/probe.py, "
                                                f"{tuple(probe.GROUPS)}")
     check(names == sorted(names) and {"docs", "sweep", "testrun", "install", "claude", "opencode", "omp",
