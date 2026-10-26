@@ -1211,9 +1211,9 @@ GROUPS = {
 }
 
 
-def selftest(groups=tuple(GROUPS)):
-    """The groups `groups` of GROUPS, every group by default: the minimums against dependencies.md,
-    each status of each check on a fixture of Linux and of macOS, the exit status, and a run in a
+def selftest(groups):
+    """The cases of the groups `groups` of GROUPS: the minimums against dependencies.md, each
+    status of each check on a fixture of Linux and of macOS, the exit status, and a run in a
     process of its own: (number of cases, number wrong)."""
     total = wrong = 0
 

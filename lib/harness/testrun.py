@@ -20,9 +20,12 @@ most two runs share a machine; the kernel frees a slot when the process that hol
 
 import argparse
 import concurrent.futures
+import contextlib
 import fcntl
 import fnmatch
 import importlib.util
+import inspect
+import io
 import os
 import pathlib
 import re
@@ -32,6 +35,7 @@ import sys
 import tempfile
 import threading
 import time
+from unittest import mock
 
 from . import REPO, HarnessError, changelog, doctor, sweep
 
@@ -241,29 +245,42 @@ def cmd_test(args, modules):
         log = open(args.log, "w", encoding="utf-8") if args.log else None
     except OSError as e:
         raise HarnessError(f"--log {args.log}: {e.strerror}") from None
-
-    def emit(name, lines, n, w):
-        part = f"part {name}: {n} cases, {w} wrong"
-        if log is None:
-            print("\n".join([*lines, part]), flush=True)
-        else:
-            log.write("\n".join([*lines, part]) + "\n")
-            for line in lines:
-                if line.startswith("BAD"):
-                    print(line, flush=True)
-
-    jobs = min(args.jobs or max(1, (os.cpu_count() or 2) // 2), len(names))
+    jobs = min(args.jobs or default_jobs(os.cpu_count()), len(names))
     try:
         with take_slot(slot_directory(), lambda line: print(line, file=sys.stderr, flush=True)):
-            total, wrong = run_parts({n: table[n] for n in names}, jobs, emit)
-        summary = f"{total} cases, {wrong} wrong"
-        if log is not None:
-            log.write(f"\n{summary}\n")
+            wrong = report({n: table[n] for n in names}, jobs, log, sys.stdout)
     finally:
         if log is not None:
             log.close()
-    print(f"\n{summary}")
     return 1 if wrong else 0
+
+
+def default_jobs(cpus):
+    """The default of --jobs on a machine of `cpus` CPUs, None when unknown: half of them, at least 1."""
+    return max(1, (cpus or 2) // 2)
+
+
+def report(table, jobs, log, out, timeout=TIMEOUT):
+    """Run the parts of `table` with `run_parts` and write each part's lines, a line
+    `part <name>: <n> cases, <w> wrong` and, last, the summary `<n> cases, <w> wrong`: all of it to
+    `out` when `log` is None, else all of it to `log` and only the BAD lines and the summary to
+    `out`. Returns the number of wrong cases."""
+
+    def emit(name, lines, n, w):
+        text = "\n".join([*lines, f"part {name}: {n} cases, {w} wrong"]) + "\n"
+        if log is None:
+            out.write(text)
+        else:
+            log.write(text)
+            out.write("".join(line + "\n" for line in lines if line.startswith("BAD")))
+        out.flush()
+
+    total, wrong = run_parts(table, jobs, emit, timeout=timeout)
+    summary = f"\n{total} cases, {wrong} wrong\n"
+    if log is not None:
+        log.write(summary)
+    out.write(summary)
+    return wrong
 
 
 def register(sub, modules):
@@ -331,6 +348,51 @@ def selftest():
     took = time.monotonic() - start
     check((n, w) == (1, 1) and took < 10 and "BAD  slow: runs longer than 1 s and is stopped" in lines,
           f"a part past its timeout: {(n, w)} after {took:.1f} s, {lines}")
+    defaults = {f.__name__: inspect.signature(f).parameters["timeout"].default for f in (run_part, run_parts, report)}
+    check(set(defaults.values()) == {300}, f"a part's timeout is 300 s: {defaults}")
+    n, w, lines = run_part("x", child("print('2 cases, 0 wrong.')"))
+    check((n, w) == (1, 1), f"a last line with more than the summary is no summary line: {(n, w)}, {lines}")
+
+    # --jobs runs the parts at once: three parts of 1.5 s each take less than two of them in a row.
+    start = time.monotonic()
+    run_parts({k: child("import time; time.sleep(1.5); print('1 cases, 0 wrong')") for k in "abc"}, 3,
+              lambda *_: None)
+    took = time.monotonic() - start
+    check(took < 3, f"--jobs 3 runs three parts of 1.5 s at once: {took:.1f} s")
+    check([default_jobs(c) for c in (None, 1, 2, 3, 16)] == [1, 1, 1, 1, 8],
+          f"the default of --jobs is half the CPUs, at least 1: {[default_jobs(c) for c in (None, 1, 2, 3, 16)]}")
+
+    # An error of the run stops the parts that still run, with their children.
+    def fail(name, *_):
+        raise RuntimeError(name)
+
+    start = time.monotonic()
+    try:
+        run_parts({"a": child("import time; time.sleep(0.5); print('1 cases, 0 wrong')"),
+                   "b": child("import subprocess, sys, time; "
+                              "subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(30)']); time.sleep(30)")},
+                  2, fail)
+        raised = None
+    except RuntimeError as e:
+        raised = str(e)
+    took = time.monotonic() - start
+    check(raised == "a" and took < 10, f"an error of the run stops the other parts: raised {raised!r} after {took:.1f} s")
+
+    # The output: without a log, every line; with one, every line to the log and only the BAD lines
+    # and the summary to the terminal.
+    two = {"a": passing(1), "b": child("import sys; print('ok   one'); print('BAD  two'); print('2 cases, 1 wrong'); "
+                                       "sys.exit(1)")}
+    out = io.StringIO()
+    got = report(two, 2, None, out)
+    check(got == 1 and out.getvalue() == "ok   a case\npart a: 1 cases, 0 wrong\nok   one\nBAD  two\n"
+                                          "part b: 2 cases, 1 wrong\n\n3 cases, 1 wrong\n",
+          f"without --log, every line: {got}, {out.getvalue()!r}")
+    out, log = io.StringIO(), io.StringIO()
+    got = report(two, 2, log, out)
+    check(got == 1 and out.getvalue() == "BAD  two\n\n3 cases, 1 wrong\n"
+          and log.getvalue() == "ok   a case\npart a: 1 cases, 0 wrong\nok   one\nBAD  two\npart b: 2 cases, 1 wrong\n"
+                                "\n3 cases, 1 wrong\n",
+          f"with --log, the BAD lines and the summary: {out.getvalue()!r}, and the log {log.getvalue()!r}")
 
     # The part table: every module with cases, each adapter, the groups of the probe and of doctor,
     # and the sweep; the probe's groups are those of hooks/probe.py.
@@ -348,10 +410,19 @@ def selftest():
           and {f"doctor:{g}" for g in doctor.GROUPS} | {f"probe:{g}" for g in PROBE_GROUPS} <= set(names)
           and not {"doctor", "probe"} & set(names),
           f"the parts, sorted, with the groups of the probe and of doctor and neither whole: {names}")
+    with contextlib.redirect_stdout(io.StringIO()):
+        here = doctor.selftest(("minimum",))
+    n, w, _ = run_part("doctor:minimum", parts(cli.modules())["doctor:minimum"])
+    check((n, w) == here and n > 0, f"the part doctor:minimum runs that group alone: {(n, w)}, in this process {here}")
+    p = subprocess.run([sys.executable, str(PROBE), "no-such-group"], capture_output=True, text=True, check=False,
+                       timeout=60)
+    check(p.returncode == 2 and "no-such-group" in p.stderr and "cases" not in p.stdout,
+          f"hooks/probe.py no-such-group exits 2 and names it: exit {p.returncode}, {p.stderr.strip()!r}")
 
     # The owners of a path.
     for path, want in (
             ("lib/harness/profile.py", ["profile"]),
+            ("lib/harness/profile.py.orig", []),
             ("lib/harness/doctor.py", sorted(f"doctor:{g}" for g in doctor.GROUPS)),
             ("hooks/rm-scope.py", sorted(f"probe:{g}" for g in PROBE_GROUPS)),
             ("adapters/omp/OMP-DELTA.md", ["omp"]),
@@ -428,10 +499,29 @@ def selftest():
         check(len(said) == 1, f"a free slot is taken with no wait: said {said}")
         free.close()
 
+        # The slot directory, and --list, which takes no slot.
+        for variables, want in (({"XDG_RUNTIME_DIR": "/x", "TMPDIR": "/t"}, "/x"),
+                                ({"XDG_RUNTIME_DIR": "", "TMPDIR": "/t"}, "/t"), ({}, "/tmp")):
+            clean = {k: v for k, v in os.environ.items() if k not in ("XDG_RUNTIME_DIR", "TMPDIR")}
+            with mock.patch.dict(os.environ, clean | variables, clear=True):
+                got = slot_directory()
+            check(got == pathlib.Path(want) / "research-harness-test", f"the slot directory with {variables}: {got}")
+        runtime = root / "runtime"
+        (runtime / "research-harness-test").mkdir(parents=True)
+        held = [open(runtime / "research-harness-test" / f"slot-{i}.lock", "a") for i in (1, 2)]
+        for f in held:
+            fcntl.flock(f, fcntl.LOCK_EX)
+        p = subprocess.run([*HARNESS, "test", "--list"], capture_output=True, text=True, check=False, timeout=30,
+                           env=os.environ | {"XDG_RUNTIME_DIR": str(runtime)})
+        check(p.returncode == 0 and "wait" not in p.stderr, f"--list takes no slot: exit {p.returncode}, {p.stderr!r}")
+        for f in held:
+            f.close()
+
     # The command line: a usage error exits 2 before any part runs.
     for argv, text in ((["no-such-part"], "no-such-part"), (["--jobs", "0", "docs"], "--jobs"),
                        (["--jobs", "-1", "docs"], "--jobs"), (["--changed", "HEAD", "docs"], "exclude"),
-                       (["--log", str(REPO / "no-such-dir" / "x.log"), "docs"], "no-such-dir")):
+                       (["--log", str(REPO / "no-such-dir" / "x.log"), "docs"], "no-such-dir"),
+                       (["--part", "no-such-part"], "no-such-part")):
         p = subprocess.run([*HARNESS, "test", *argv], capture_output=True, text=True, check=False, timeout=60)
         check(p.returncode == 2 and text in p.stderr and "Traceback" not in p.stderr and "ok " not in p.stdout,
               f"harness test {' '.join(argv)}: exit {p.returncode}, {p.stderr.strip()[-200:]!r}")
