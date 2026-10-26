@@ -8,6 +8,7 @@ import sys
 from . import REPO, HarnessError, __doc__ as CONTRACT
 from . import docs, fmt, frontends, frontmatter, githooks, install, network, profile, protection, repos, sweep
 from . import doctor, dotfiles_kit, providers, script_cases, skill_triggers, units, update
+from . import changelog
 
 # The modules of lib/harness/; the adapters of lib/harness/frontends.py follow `install`.
 MODULES = [install, update, frontmatter, githooks, repos, protection, fmt, profile]
@@ -19,6 +20,7 @@ MODULES.append(network)
 MODULES.append(providers)
 MODULES.append(doctor)
 MODULES.append(dotfiles_kit)
+MODULES.append(changelog)
 
 PROBE = REPO / "hooks" / "probe.py"
 SUMMARY = re.compile(r"(\d+) cases, (\d+) wrong")

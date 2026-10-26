@@ -9,9 +9,10 @@ case fails. The three sets run in this order:
 2. The hook probe, `hooks/probe.py`, which runs every Python hook with the same interpreter on a
    fixture `HOME`.
 3. The contract sweep, `lib/harness/sweep.py`, which runs the dry run of every subcommand except
-   `format`, `ci-protection`, `skill-triggers` and `doctor` on a fixture `HOME` and research tree.
-   The cases of `skill-triggers` run its dry run and its `--apply` on a fake `claude`, and the
-   cases of `doctor` run it on the sweep's fixture with stub commands.
+   `format`, `ci-protection`, `skill-triggers`, `doctor` and `changelog` on a fixture `HOME` and
+   research tree. The cases of `skill-triggers` run its dry run and its `--apply` on a fake
+   `claude`, the cases of `doctor` run it on the sweep's fixture with stub commands, and the cases
+   of `changelog` run it on scratch repositories.
 
 The sweep checks the contract of [the `harness` command](harness-command.md): a dry run changes
 no file, a subcommand with a missing precondition exits with status 2 and prints one line, and for
@@ -86,6 +87,14 @@ the whole history; for a pull request `base..head`), the messages of that range 
 with `examples/profile.toml`. CI has no profile, so the private strings are the hook's alone.
 Its `dotfiles` job installs chezmoi 2.73.2 from its release tarball, checked by its SHA256, and
 runs the five tests of the [dotfiles kit](dotfiles-command.md) in `examples/dotfiles/tests/`.
+On a pull request, its `changelog` job runs
+[`bin/harness changelog --check`](harness-command.md#changelog) against the pull request's base.
+A branch writes its changelog entry as a fragment, `changelog.d/<branch>.md` with each `/` of the
+branch name as `-`, not as an edit of `CHANGELOG.md`, so two open pull requests never change the
+same lines; `changelog.d/README.md` gives the form. The job fails when the branch changes a file
+below `lib/`, `hooks/`, `adapters/`, `bin/`, `scripts/`, `githooks/`, `agents/`, `skills/` or
+`rules/` and adds no fragment. At a release, `harness changelog --apply` joins the fragments into
+`## Unreleased`.
 `.github/workflows/julia.yml` runs the ten Julia test files on Julia 1.13 when a
 `.jl` file, `Project.toml`, a file of `launchagents/`, `githooks/pre-commit` or the workflow
 itself changes.

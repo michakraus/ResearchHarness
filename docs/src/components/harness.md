@@ -25,6 +25,7 @@ then the contract sweep. Three subcommands live in the adapters: `settings` and 
 | `format` | `fmt.py` |
 | `skill-triggers` | `skill_triggers.py` |
 | `doctor` | `doctor.py` |
+| `changelog` | `changelog.py` |
 | `test` | `cli.py` |
 
 `frontmatter.py`, `docs.py` and `sweep.py` have no subcommand. Their cases run only in
@@ -79,7 +80,7 @@ and each subcommand of the modules and the adapters. On a `HarnessError` of a su
 
 1. the `selftest` of `install.py`, then of each adapter, then of `frontmatter.py`,
    `protection.py`, `profile.py`, `skill_triggers.py`, `docs.py`, `units.py`, `script_cases.py`,
-   `network.py`, `providers.py` and `doctor.py`;
+   `network.py`, `providers.py`, `doctor.py` and `changelog.py`;
 2. the hook probe `hooks/probe.py`, in a process of its own;
 3. the contract sweep of `sweep.py`.
 
@@ -295,6 +296,24 @@ JuliaFormatter cannot handle. The marker, the skip list and the log go to `$FMT_
 
 The dry run counts the files that the script would format, from its summary line. The module has
 no `selftest`, and the sweep does not run it, because it runs Julia over the tree.
+
+## `changelog.py`
+
+The subcommand `harness changelog [--apply | --check BASE]`, the changelog fragments of the
+harness checkout. Each branch writes its entry into a file of `changelog.d/`, so two pull requests
+never change the same lines of `CHANGELOG.md`. `fragments` lists the fragments, every
+`changelog.d/*.md` but `README.md`, and the dry run and `--apply` read that list. The dry run
+prints the `## Unreleased` block that they make, newest first by the committer date of the commit
+that added each; `--apply` writes the block at the top of the `## Unreleased` section of
+`CHANGELOG.md` and deletes the fragments. `--check BASE` reads
+`git diff --name-status -z BASE...HEAD`; `unrecorded`, a function of the changed paths and their
+status alone, names the first path below a code directory when no added path is a fragment. CI
+runs `--check` on each pull request.
+
+Its cases check the join, the insertion into `CHANGELOG.md`, the order and the path
+classification without git, and the dry run, `--apply` and `--check` on scratch repositories with
+fixed commit dates. The sweep does not run it, because it reads the harness checkout and its
+history, not the fixture.
 
 ## `skill_triggers.py`
 
