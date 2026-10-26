@@ -6,8 +6,8 @@ A part is a module of lib/harness/ with a `selftest`, by its module name; an ada
 of its directory below adapters/; a group of the hook probe, `probe:<group>`; a group of doctor's
 cases, `doctor:<group>`; or the contract sweep, `sweep`. Each part runs in a child process that
 prints one line per case and, last, `<n> cases, <w> wrong`. A part that ends with no such line,
-whose exit status disagrees with it, or that runs longer than TIMEOUT seconds is one more wrong
-case, and the run goes on.
+or whose exit status disagrees with it, is one more wrong case; a part that runs longer than
+TIMEOUT seconds is one wrong case. The run goes on.
 
 Names select those parts; `--changed BASE` selects the parts that OWNERS gives for each path of
 `git diff --name-status BASE...HEAD`, and every part when a path has no owner. `docs` and `sweep`
@@ -119,7 +119,7 @@ def changed(base, names, root=REPO):
     return [n for n in names if n in chosen], reasons
 
 
-# The child processes that run now; an interrupt of the run stops their process groups.
+# The child processes that run now; an error or an interrupt of the run stops their process groups.
 LIVE = set()
 LIVE_LOCK = threading.Lock()
 
@@ -135,9 +135,10 @@ def stop(p):
 def run_part(name, argv, timeout=TIMEOUT):
     """Run one part's child process: (cases, wrong, its output lines without the summary line).
 
-    A child that ends with no summary line or with an exit status that disagrees with it, or that
-    runs longer than `timeout` seconds, is one more wrong case, with a BAD line that names the part.
-    Its stderr follows its stdout, so a crash shows its traceback."""
+    A child that ends with no summary line or with an exit status that disagrees with it is one more
+    wrong case, and a child that runs longer than `timeout` seconds is stopped and is one wrong case;
+    each has a BAD line that names the part. Its stderr follows its stdout, so a crash shows its
+    traceback."""
     p = subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, start_new_session=True)
     with LIVE_LOCK:
         LIVE.add(p)
@@ -296,7 +297,8 @@ def register(sub, modules):
                    help="run the parts that own a path of `git diff BASE...HEAD`, with docs and sweep")
     p.add_argument("--list", action="store_true", help="print the selected part names and run nothing")
     p.add_argument("--jobs", type=jobs_count, metavar="N", help="run at most N parts at once; default: half the CPUs")
-    p.add_argument("--log", metavar="FILE", help="write every line to FILE, and print only the BAD lines and the summary")
+    p.add_argument("--log", metavar="FILE",
+                   help="write every line to FILE, and print only the BAD lines and the summary")
     p.add_argument("--part", help=argparse.SUPPRESS)  # the child process of one part
     p.set_defaults(run=lambda args: cmd_test(args, modules()))
 
@@ -318,8 +320,8 @@ def selftest():
 
     # Each part's result is counted once, also the last one, and emitted whole in the order of the
     # table, whatever the number of jobs.
-    table = {"a": passing(1), "b": passing(2), "c": child("import sys; print('BAD  a case'); print('4 cases, 1 wrong'); "
-                                                          "sys.exit(1)"),
+    table = {"a": passing(1), "b": passing(2),
+             "c": child("import sys; print('BAD  a case'); print('4 cases, 1 wrong'); sys.exit(1)"),
              "d": passing(3), "e": passing(5)}
     for at_once in (1, 3, 5):
         seen = []
@@ -360,8 +362,8 @@ def selftest():
               lambda *_: None)
     took = time.monotonic() - start
     check(took < 3, f"--jobs 3 runs three parts of 1.5 s at once: {took:.1f} s")
-    got = [jobs(*a) for a in ((None, 99, None), (None, 99, 1), (None, 99, 3), (None, 99, 16), (None, 3, 16), (5, 99, 16),
-                              (50, 3, 16))]
+    got = [jobs(*a) for a in ((None, 99, None), (None, 99, 1), (None, 99, 3), (None, 99, 16), (None, 3, 16),
+                              (5, 99, 16), (50, 3, 16))]
     check(got == [1, 1, 1, 8, 3, 5, 3],
           f"--jobs: by default half the CPUs and at least 1, and never more than the parts: {got}")
 
@@ -373,13 +375,15 @@ def selftest():
     try:
         run_parts({"a": child("import time; time.sleep(0.5); print('1 cases, 0 wrong')"),
                    "b": child("import subprocess, sys, time; "
-                              "subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(30)']); time.sleep(30)")},
+                              "subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(30)']); "
+                              "time.sleep(30)")},
                   2, fail)
         raised = None
     except RuntimeError as e:
         raised = str(e)
     took = time.monotonic() - start
-    check(raised == "a" and took < 10, f"an error of the run stops the other parts: raised {raised!r} after {took:.1f} s")
+    check(raised == "a" and took < 10,
+          f"an error of the run stops the other parts: raised {raised!r} after {took:.1f} s")
 
     # The output: without a log, every line; with one, every line to the log and only the BAD lines
     # and the summary to the terminal.
@@ -543,5 +547,6 @@ def selftest():
               f"harness test {' '.join(argv)}: exit {p.returncode}, {p.stderr.strip()[-200:]!r}")
     p = subprocess.run([*HARNESS, "test", "--list", "profile"], capture_output=True, text=True, check=False, timeout=60)
     check(p.returncode == 0 and p.stdout.split() == ["docs", "profile", "sweep"],
-          f"harness test --list profile prints docs, profile, sweep and runs nothing: exit {p.returncode}, {p.stdout!r}")
+          f"harness test --list profile prints docs, profile, sweep and runs nothing: exit {p.returncode}, "
+          f"{p.stdout!r}")
     return total, wrong

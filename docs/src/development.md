@@ -16,15 +16,15 @@ usage error. `harness test --list` prints the part names. The parts are:
    a fixture of its own.
 3. The contract sweep, `sweep`, from `lib/harness/sweep.py`, which runs the dry run of every
    subcommand except `format`, `ci-protection`, `skill-triggers`, `doctor` and `changelog` on a
-   fixture `HOME` and research tree. The cases of `skill-triggers` run its dry run and
-   its `--apply` on a fake `claude`, the cases of `doctor` run it on the sweep's fixture with stub
+   fixture `HOME` and research tree. The cases of `skill-triggers` run its dry run and its
+   `--apply` on a fake `claude`, the cases of `doctor` run it on the sweep's fixture with stub
    commands, and the cases of `changelog` run it on scratch repositories.
 
 With no argument, `harness test` runs every part. Part names select those parts, and
 `--changed BASE` selects the parts that own a path of `git diff --name-status BASE...HEAD`; both
-paths of a rename count. The table `OWNERS` of `lib/harness/testrun.py` gives the owners: a module's own
-file, an adapter's directory, `hooks/` for the probe's groups, `docs/` for `docs`, and
-`changelog.d/` for `changelog`. A path that no part owns selects every part. `docs` and `sweep`
+paths of a rename count. The table `OWNERS` of `lib/harness/testrun.py` gives the owners: a
+module's own file, an adapter's directory, `hooks/` for the probe's groups, `docs/` for `docs`,
+and `changelog.d/` for `changelog`. A path that no part owns selects every part. `docs` and `sweep`
 run in every selection, and `--changed` prints on stderr which path selects which parts. While
 you edit one module, `harness test --changed origin/main` runs its cases; run the whole suite once
 before you push. The hook probe is a part of `harness test`, so it needs no run of its own.

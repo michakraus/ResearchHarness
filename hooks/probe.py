@@ -6,8 +6,8 @@ hide a case that went the wrong way. Exit status is 1 when any case is wrong.
 
     ./probe.py [GROUP ...]
 
-With no argument it runs every group of GROUPS; with names, only those groups, on a fixture of
-their own. A case is (script, command, expected exit). Exit 2 refuses the call; exit 0 lets it
+With no argument it runs every group of GROUPS; with names, only those groups. Each run builds
+its own fixture. A case is (script, command, expected exit). Exit 2 refuses the call; exit 0 lets it
 through. The fail-open block at the end matters more than the refusals: a `PreToolUse`
 hook on the `Bash` matcher runs before every shell command in every session, so an input
 its author did not foresee must exit 0.

@@ -42,7 +42,8 @@ def main(argv=None):
     ap.add_argument("--models", metavar="F", help="the model tables, instead of models.toml beside the profile")
     sub = ap.add_subparsers(dest="subcommand", metavar="<subcommand>", required=True)
     for module in modules():
-        # A module with no subcommand of its own; its cases run in `harness test`.
+        # A module with no subcommand of its own; its cases run in `harness test`. `testrun`
+        # registers `harness test` below, with the list of the modules.
         if module not in (frontmatter, docs, units, script_cases, network, providers, testrun):
             module.register(sub)
     testrun.register(sub, modules)
