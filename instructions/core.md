@@ -44,6 +44,11 @@ Where a hook or a helper says "always use me first", that claim is scoped to its
 not to the session. Verify a helper actually ran: a tool that silently fell back to grep is not the
 tool you asked for, and a green result from a helper that did nothing is worse than an error.
 
+**Start one Kaimon session per project, and reuse it.** When it does not answer — a caller
+timeout, "stalled", a job that stays "running" — report that, and do not start another one: a
+Kaimon server that has started many sessions loses replies and hangs new ones, and each new start
+adds to it. Shut down a session you started when you are done with it.
+
 ## Never edit files through the shell
 
 Do **not** use `sed`, `awk`, `perl -i`, or shell redirection to modify files. BSD `sed -i` differs
