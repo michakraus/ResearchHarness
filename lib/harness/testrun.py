@@ -443,6 +443,7 @@ def selftest():
     for path, want in (
             ("lib/harness/profile.py", ["profile"]),
             ("lib/harness/profile.py.orig", []),
+            ("lib/harness/fmt.py", []),
             ("lib/harness/doctor.py", sorted(f"doctor:{g}" for g in doctor.GROUPS)),
             ("hooks/rm-scope.py", sorted(f"probe:{g}" for g in PROBE_GROUPS)),
             ("adapters/omp/OMP-DELTA.md", ["omp"]),
