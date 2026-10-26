@@ -379,14 +379,17 @@ def selftest():
     check((n, w) == (1, 1), f"a last line with more than the summary is no summary line: {(n, w)}, {lines}")
 
     # --jobs runs the parts at once: three parts of 1.5 s each take less than two of them in a row.
-    before = [signal.getsignal(s) for s in (signal.SIGTERM, signal.SIGHUP)]
+    def mark(*_):
+        pass
+
+    before = [signal.signal(s, mark) for s in (signal.SIGTERM, signal.SIGHUP)]
     start = time.monotonic()
     run_parts({k: child("import time; time.sleep(1.5); print('1 cases, 0 wrong')") for k in "abc"}, 3,
               lambda *_: None)
     took = time.monotonic() - start
     check(took < 3, f"--jobs 3 runs three parts of 1.5 s at once: {took:.1f} s")
     after = [signal.getsignal(s) for s in (signal.SIGTERM, signal.SIGHUP)]
-    check(after == before, f"run_parts gives SIGTERM and SIGHUP their handlers back: {before} -> {after}")
+    check(after == [mark, mark], f"run_parts gives SIGTERM and SIGHUP their handlers back: {after}")
     try:
         leave(signal.SIGTERM, None)
         code = None
