@@ -200,12 +200,14 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
 - every structured leaf of a container, such as a skew-symmetric or a triangular leaf beside the
   symmetric one
 - a device array under `allowscalar(false)`
-- a dense solve of a small block, `lu!` and `ldiv!`, on a device array: the buffers sit on the
-  device, so the method looks device-capable, and the solve indexes one entry at a time and raises
-  "Scalar indexing is disallowed". `inv` fails the same way on a `JLArray`, and JLArrays has no `lu`,
-  so a `JLArray` test cannot show device support either way. State the host-only limit in the
-  docstring and in `KNOWN_ISSUES.md`, and measure a device claim on Metal (A round 1,
-  *Implement multi-modal symplectic autoencoders*)
+- a device claim read from a `JLArray` run, for a method that factors a small block with `lu!` and
+  `ldiv!`: a `JLArray` raises "Scalar indexing is disallowed" there, because JLArrays has no `lu` and
+  `inv` fails the same way, while Metal supplies an `lu!` and runs the method. A `JLArray` failure
+  shows no device limit and a `JLArray` pass shows no device support, so a `KNOWN_ISSUES.md` entry
+  that says "host only" can be false on Metal. Measure the claim on Metal through Kaimon, against a
+  dense host reference and not a host twin of the same code, and put the Metal row in
+  `test/devices/metal.jl` (A round 1 and the pull-request review, *Implement multi-modal symplectic
+  autoencoders*)
 - the precision of a device: Metal has `Float32` only, and a `Float64` array or scalar raises an
   error. Query `KernelAbstractions.supports_float64(backend)`; do not hardcode a default. Metal has
   no `qr` and no `svd` on an `MtlArray` (the solver package's capability spike)
