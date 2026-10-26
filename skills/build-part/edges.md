@@ -59,6 +59,14 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   *Rewrite the reduced basis packages*). **Assert the refusing guard's own phrase, not the type
   alone.** The mirror of the entry above: there an earlier check hides the case, here a later one
   hides the mutant
+- **a guard's phrase that a library error also writes:** Base's matrix-product `DimensionMismatch`
+  says "a matrix of size …" too, so a test that asserts that phrase as a substring passes when the
+  guard is removed and a later `mul!` raises, and the mutant that drops the guard survives. A phrase
+  that a spec or a ruling prescribes binds the same way. Assert the guard's whole message with an
+  anchored pattern (`r"^…$"`), add a case that the pattern matches no message of the library
+  (matrix product, broadcast) and not the other guard's message, and print the library's messages
+  before a phrase enters a spec. The refinement of the entry above: the phrase must be one that only
+  the guard writes (A verify 2, *Implement multi-modal symplectic autoencoders*)
 - **a refusal message that names several values, tested on a case where two of them are equal:** a
   message can name the outer scale and the march's scale, and a test at `χ = 2` matches either, so a
   mutant that drops one of the two sentences survives; the equal case never separates them. Give
@@ -192,6 +200,12 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
 - every structured leaf of a container, such as a skew-symmetric or a triangular leaf beside the
   symmetric one
 - a device array under `allowscalar(false)`
+- a dense solve of a small block, `lu!` and `ldiv!`, on a device array: the buffers sit on the
+  device, so the method looks device-capable, and the solve indexes one entry at a time and raises
+  "Scalar indexing is disallowed". `inv` fails the same way on a `JLArray`, and JLArrays has no `lu`,
+  so a `JLArray` test cannot show device support either way. State the host-only limit in the
+  docstring and in `KNOWN_ISSUES.md`, and measure a device claim on Metal (A round 1,
+  *Implement multi-modal symplectic autoencoders*)
 - the precision of a device: Metal has `Float32` only, and a `Float64` array or scalar raises an
   error. Query `KernelAbstractions.supports_float64(backend)`; do not hardcode a default. Metal has
   no `qr` and no `svd` on an `MtlArray` (the solver package's capability spike)
@@ -592,6 +606,11 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   `KNOWN_ISSUES.md` uses `## KI-<n> · kind · problem` with prose, a new entry still takes
   `### K<n> · <problem>` and the four bullets, and takes the next `K<n>` after the highest in the
   file, never the older scheme (P10 and P29, *Rewrite the reduced basis packages*)
+- a new `KNOWN_ISSUES.md` number that `main` or an open pull request takes while the branch is open:
+  the file says IDs are never reused, so the branch's entry reuses an ID on merge and the two
+  entries conflict. Read the highest `K<n>` of `origin/main` and of the open pull requests' changes
+  before the finish round, and merge `main` as a new commit, because a rebase needs the force-push
+  (A verify 2 and finish, *Implement multi-modal symplectic autoencoders*)
 - a fix that rewrites a comment about dispatch from a critic's sentence, not from the methods: a
   subtype such as `Manifold <: AbstractMatrix` makes "an array" false. Write the comment from the
   method table (G10 verify 2, *Simplify the optimiser package and the learning package for 0.9*)
