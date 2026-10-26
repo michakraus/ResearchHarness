@@ -594,18 +594,23 @@ def selftest():
 
         # A SIGTERM or a SIGHUP of the run stops the parts that still run, as an interrupt does.
         for signum in (signal.SIGTERM, signal.SIGHUP):
-            mark = root / f"part-{signum}.pid"
-            part = [sys.executable, "-c", f"import os, time; open({str(mark)!r}, 'w').write(str(os.getpid())); "
+            pidfile = root / f"part-{signum}.pid"
+            part = [sys.executable, "-c", f"import os, time; open({str(pidfile)!r}, 'w').write(str(os.getpid())); "
                                           "time.sleep(30)"]
             run = subprocess.Popen([sys.executable, "-c", f"import sys; sys.path.insert(0, {str(REPO / 'lib')!r}); "
                                     f"from harness import testrun; testrun.run_parts({{'a': {part!r}}}, 1, "
                                     "lambda *_: None)"])
             deadline = time.monotonic() + 20
-            while not (mark.exists() and mark.read_text()) and time.monotonic() < deadline:
+            while not (pidfile.exists() and pidfile.read_text()) and time.monotonic() < deadline:
                 time.sleep(0.05)
-            pid = int(mark.read_text() or 0) if mark.exists() else 0
+            pid = int(pidfile.read_text() or 0) if pidfile.exists() else 0
             run.send_signal(signum)
-            ended = run.wait(10)
+            try:
+                ended = run.wait(10)
+            except subprocess.TimeoutExpired:
+                run.kill()
+                run.wait(5)
+                ended = None
             deadline = time.monotonic() + 5
             alive = pid > 0
             while alive and time.monotonic() < deadline:
