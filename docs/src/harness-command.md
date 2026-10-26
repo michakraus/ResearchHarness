@@ -605,15 +605,28 @@ template.
 ### `test`
 
 ```text
-harness test
+harness test [NAME ...] [--changed BASE] [--list] [--jobs N] [--log FILE]
 ```
 
-Runs the harness's own test cases: the cases of each module and adapter, the hook probe, and the
-contract sweep. The sweep runs the dry run of each subcommand on a fixture home directory and
-checks the contract above. It prints `<n> cases, <w> wrong`.
-[development.md](development.md#tests) describes the cases.
+Runs the harness's own test cases as parts, each in a process of its own: the cases of each
+module and adapter, the groups of the hook probe and of `doctor`, and the contract sweep. The
+sweep runs the dry run of each subcommand on a fixture home directory and checks the contract
+above. It prints each part's lines and, last, `<n> cases, <w> wrong`.
+[development.md](development.md#tests) describes the parts and the selection.
 
-**Exit status:** 0 when every case passes, 1 when a case fails.
+| option | meaning |
+|:--|:--|
+| `NAME ...` | run these parts, with `docs` and `sweep` |
+| `--changed BASE` | run the parts that own a path of `git diff --name-status BASE...HEAD`, with `docs` and `sweep`; a path that no part owns selects every part |
+| `--list` | print the selected part names, one per line, and run nothing |
+| `--jobs N` | run at most N parts at once; the default is half the CPUs |
+| `--log FILE` | write every line and a line `part <name>: <n> cases, <w> wrong` per part to `FILE`; print only the `BAD` lines and the summary |
+
+At most two runs share a machine; a third waits for one of them to end.
+
+**Exit status:** 0 when every case passes, 1 when a case fails, 2 on a usage error: an unknown
+part, part names together with `--changed`, a `BASE` that git cannot resolve, `--jobs` below 1, or
+a `--log` file whose directory does not exist.
 
 ### `changelog`
 

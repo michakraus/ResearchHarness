@@ -269,8 +269,9 @@ a machine with iTerm2 and a machine without it. It guards nothing.
 
 ## `probe.py`
 
-This script holds the test cases of the hooks and runs them. `harness test` runs it after each
-module's own cases; [Development](../development.md#tests) describes the run.
+This script holds the test cases of the hooks and runs them. Its `GROUPS` split the cases into
+seven groups, and `harness test` runs each group as the part `probe:<group>`, so the probe needs
+no run of its own; [Development](../development.md#tests) describes the run.
 
 A case is a script, an input and the expected result. The probe runs each case in its own
 process, with a timeout, and prints one line per case: `ok` or `BAD`, the expected and the actual
@@ -279,8 +280,9 @@ status is 1 when any case fails. It covers each Python hook of this page, the fa
 the shell guards, the fail-closed cases of `worktree.py`, and the drift cases of
 `install-drift.py`. It also loads `adapters/omp/guards.ts` and the OpenCode plugins under `node`,
 so `node` must be on `PATH`. The hooks run against a fixture `HOME` in a temporary directory,
-never the real one. Run it alone:
+never the real one. With no argument it runs every group; with group names, only those groups.
+Each run builds its own fixture:
 
 ```bash
-./probe.py
+./probe.py [GROUP ...]
 ```

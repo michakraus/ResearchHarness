@@ -8,9 +8,10 @@ implements which subcommand, and which modules have only test cases.
 The entry point is `bin/harness`. The code is the Python package `lib/harness/`, which uses the
 standard library only. Each module that owns a subcommand has a function `register`, which adds
 its subcommand to the argument parser. Most modules also have a function `selftest`, which runs
-their own test cases. `harness test` runs every `selftest`, then the hook probe `hooks/probe.py`,
-then the contract sweep. Three subcommands live in the adapters: `settings` and `trust` in
-`adapters/claude/adapter.py`, and `permissions` in `adapters/opencode/adapter.py`.
+their own test cases. `harness test` runs every `selftest`, the groups of the hook probe
+`hooks/probe.py` and the contract sweep, each as a part in a process of its own. Three
+subcommands live in the adapters: `settings` and `trust` in `adapters/claude/adapter.py`, and
+`permissions` in `adapters/opencode/adapter.py`.
 [The adapters](adapters.md) describes them.
 
 | subcommand | module |
@@ -26,7 +27,7 @@ then the contract sweep. Three subcommands live in the adapters: `settings` and 
 | `skill-triggers` | `skill_triggers.py` |
 | `doctor` | `doctor.py` |
 | `changelog` | `changelog.py` |
-| `test` | `cli.py` |
+| `test` | `testrun.py` |
 
 `frontmatter.py`, `docs.py` and `sweep.py` have no subcommand. Their cases run only in
 `harness test`. `install_cases.py` holds helpers for the cases of other modules. The sections
@@ -70,23 +71,31 @@ contract.
 
 ## `cli.py`
 
-The argument parser of `harness`, and the subcommand `harness test`. `main` loads the three
-adapters through `frontends.py` first. When an adapter fails to load, `harness` exits with status
-2 before any subcommand runs. Then `main` adds the global options `--profile F` and `--models F`,
-and each subcommand of the modules and the adapters. On a `HarnessError` of a subcommand,
+The argument parser of `harness`. `main` loads the adapters through `frontends.py` first.
+When an adapter fails to load, `harness` exits with status 2 before any subcommand runs. Then
+`main` adds the global options `--profile F` and `--models F`, each subcommand of the modules and
+the adapters, and `harness test` from `testrun.py`. On a `HarnessError` of a subcommand,
 `harness` prints one line, `harness <subcommand>: <message>`, and exits with status 2.
 
-`harness test` runs the cases in this order:
+## `testrun.py`
 
-1. the `selftest` of `install.py`, then of each adapter, then of `frontmatter.py`,
-   `protection.py`, `profile.py`, `skill_triggers.py`, `docs.py`, `units.py`, `script_cases.py`,
-   `network.py`, `providers.py`, `doctor.py` and `changelog.py`;
-2. the hook probe `hooks/probe.py`, in a process of its own;
-3. the contract sweep of `sweep.py`.
+The subcommand `harness test`. `parts` gives the table of the parts, by name: each module and
+adapter with a `selftest`, the groups of `doctor.py` (its `GROUPS`) and of `hooks/probe.py`
+(`PROBE_GROUPS`, which a case checks against the probe's `GROUPS`), and the sweep. A part runs in
+a child process: a probe group as `hooks/probe.py <group>`, every other part as
+`harness test --part <name>`, an option that `--help` does not show. The child prints one line
+per case and, last, `<n> cases, <w> wrong`.
 
-It prints one summary line, `<n> cases, <w> wrong`, and exits with status 1 when a case fails. A
-probe that prints no summary line, or whose exit status does not agree with it, counts as one more
-failed case.
+`run_parts` runs the parts in a pool of `--jobs` threads, each of which waits on one child, and
+prints each part's output whole, in the order of the part names. A child that prints no summary
+line, or whose exit status does not agree with it, counts as one more failed case, with its
+stderr; a crash so shows its traceback. A child that runs longer than 300 s is stopped with its
+process group and counts as one failed case.
+
+`changed` reads `git diff --name-status BASE...HEAD`, with rename and copy detection, and `owners`
+maps each path to its parts by the table `OWNERS`. `take_slot` holds one of the two slot files
+with an exclusive `flock`. [Development](../development.md#tests) describes the selection, the
+options and the slots for a user.
 
 ## `frontends.py`
 
@@ -377,7 +386,9 @@ reason, so run the subcommand in a plain terminal for its real verdict.
 Its cases run each status of each check on a fixture: a scratch `HOME` and stub commands on the
 `PATH` that print what each tool prints on Linux and on macOS. They also check the exit status,
 the minimums against the page, that no token reaches the output, and one run of the subcommand on
-the fixture of the contract sweep, which changes no file.
+the fixture of the contract sweep, which changes no file. `GROUPS` splits them into five groups,
+`minimum`, `linux`, `darwin`, `exit` and `process`, and `harness test` runs each as the part
+`doctor:<group>`.
 
 ## `units.py`
 
@@ -461,7 +472,8 @@ curated skill of `skills/`.
 
 ## `sweep.py`
 
-The contract sweep, the last set of cases of `harness test`. It has no subcommand.
+The contract sweep, the part `sweep` of `harness test`, which runs in every selection. It has no
+subcommand.
 
 The sweep creates a fixture `HOME` in a temporary directory: the dummy profile and model tables,
 the files that the subcommands read, and a research root with one package and one prose

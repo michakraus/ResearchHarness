@@ -2,17 +2,44 @@
 
 ## Tests
 
-`harness test` runs three sets of test cases and prints one summary line. It exits 1 when a test
-case fails. The three sets run in this order:
+`harness test` runs the test cases of the harness as parts, each in a process of its own, and
+prints one summary line, `<n> cases, <w> wrong`. It exits 1 when a test case fails, and 2 on a
+usage error. `harness test --list` prints the part names. The parts are:
 
-1. Each module's own cases.
+1. Each module's own cases, by the module's name (`install`, `profile`, …), and each adapter's,
+   by the name of its directory (`claude`, `opencode`, `omp`, `antigravity`). The cases of
+   `doctor` run as five groups, `doctor:minimum`, `doctor:linux`, `doctor:darwin`, `doctor:exit`
+   and `doctor:process`.
 2. The hook probe, `hooks/probe.py`, which runs every Python hook with the same interpreter on a
-   fixture `HOME`.
-3. The contract sweep, `lib/harness/sweep.py`, which runs the dry run of every subcommand except
-   `format`, `ci-protection`, `skill-triggers`, `doctor` and `changelog` on a fixture `HOME` and
-   research tree. The cases of `skill-triggers` run its dry run and its `--apply` on a fake
-   `claude`, the cases of `doctor` run it on the sweep's fixture with stub commands, and the cases
-   of `changelog` run it on scratch repositories.
+   fixture `HOME`. Its seven groups run as the parts `probe:commands`, `probe:payloads`,
+   `probe:manifest`, `probe:drift`, `probe:omp`, `probe:opencode` and `probe:antigravity`, each on
+   a fixture of its own.
+3. The contract sweep, `sweep`, from `lib/harness/sweep.py`, which runs the dry run of every
+   subcommand except `format`, `ci-protection`, `skill-triggers`, `doctor` and `changelog` on a
+   fixture `HOME` and research tree. The cases of `skill-triggers` run its dry run and
+   its `--apply` on a fake `claude`, the cases of `doctor` run it on the sweep's fixture with stub
+   commands, and the cases of `changelog` run it on scratch repositories.
+
+With no argument, `harness test` runs every part. Part names select those parts, and
+`--changed BASE` selects the parts that own a path of `git diff --name-status BASE...HEAD`; both
+paths of a rename count. The table `OWNERS` of `lib/harness/testrun.py` gives the owners: a module's own
+file, an adapter's directory, `hooks/` for the probe's groups, `docs/` for `docs`, and
+`changelog.d/` for `changelog`. A path that no part owns selects every part. `docs` and `sweep`
+run in every selection, and `--changed` prints on stderr which path selects which parts. While
+you edit one module, `harness test --changed origin/main` runs its cases; run the whole suite once
+before you push. The hook probe is a part of `harness test`, so it needs no run of its own.
+
+`--jobs N` runs at most N parts at once, half the CPUs by default. Each part's output is printed
+whole, in the order of the part names, followed by a line `part <name>: <n> cases, <w> wrong`.
+`--log FILE` writes all of it to `FILE` and prints only the `BAD` lines and the summary. A part
+that crashes counts as one failed case and shows its traceback; a part that runs longer than
+300 s is stopped and counts as one failed case.
+
+At most two runs of `harness test` share a machine. A run holds one of two slots, an exclusive
+`flock` lock on `slot-1.lock` or `slot-2.lock` in `research-harness-test/` below
+`$XDG_RUNTIME_DIR`, else `$TMPDIR`, else `/tmp`. A third run prints that it waits, and starts when
+a slot frees. The kernel releases the lock when the process that holds it ends, also after a
+crash. `--list` takes no slot.
 
 The sweep checks the contract of [the `harness` command](harness-command.md): a dry run changes
 no file, a subcommand with a missing precondition exits with status 2 and prints one line, and for

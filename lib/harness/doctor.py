@@ -1200,10 +1200,21 @@ def process_cases(check, root):
           f"{install_line!r}" + (f": {p.stderr.strip()[-300:]!r}" if p.returncode not in (0, 1) else ""))
 
 
-def selftest():
-    """The minimums against dependencies.md, each status of each check on a fixture of Linux and
-    of macOS, the exit status, and a run in a process of its own: (number of cases, number
-    wrong)."""
+# The groups of cases, each a function of `check` and a scratch directory; `harness test` runs each
+# group as the part `doctor:<group>`.
+GROUPS = {
+    "minimum": lambda check, root: minimum_cases(check),
+    "linux": lambda check, root: status_cases(check, root / "Linux", "Linux"),
+    "darwin": lambda check, root: status_cases(check, root / "Darwin", "Darwin"),
+    "exit": lambda check, root: exit_cases(check, root / "exit"),
+    "process": lambda check, root: process_cases(check, root / "process"),
+}
+
+
+def selftest(groups=tuple(GROUPS)):
+    """The groups `groups` of GROUPS, every group by default: the minimums against dependencies.md,
+    each status of each check on a fixture of Linux and of macOS, the exit status, and a run in a
+    process of its own: (number of cases, number wrong)."""
     total = wrong = 0
 
     def check(ok, label):
@@ -1211,13 +1222,9 @@ def selftest():
         total, wrong = total + 1, wrong + (not ok)
         print(f"{'ok ' if ok else 'BAD'}  doctor: {label}")
 
-    minimum_cases(check)
     with tempfile.TemporaryDirectory(prefix="harness-doctor-") as tmp:
-        root = pathlib.Path(tmp)
-        for system_name in ("Linux", "Darwin"):
-            status_cases(check, root / system_name, system_name)
-        exit_cases(check, root / "exit")
-        process_cases(check, root / "process")
+        for name in groups:
+            GROUPS[name](check, pathlib.Path(tmp))
     return total, wrong
 
 

@@ -4,9 +4,10 @@
 Each case is checked on its own and printed on its own line, so a passing total cannot
 hide a case that went the wrong way. Exit status is 1 when any case is wrong.
 
-    ./probe.py
+    ./probe.py [GROUP ...]
 
-A case is (script, command, expected exit). Exit 2 refuses the call; exit 0 lets it
+With no argument it runs every group of GROUPS; with names, only those groups, on a fixture of
+their own. A case is (script, command, expected exit). Exit 2 refuses the call; exit 0 lets it
 through. The fail-open block at the end matters more than the refusals: a `PreToolUse`
 hook on the `Bash` matcher runs before every shell command in every session, so an input
 its author did not foresee must exit 0.
@@ -2117,15 +2118,34 @@ def drift_cases(install=install):
     return total, wrong
 
 
-def main():
+def main(argv=None):
+    """Run the groups that `argv` names, every group when it names none, on one fixture; print one
+    line per case and the summary `<n> cases, <w> wrong`. An unknown group exits 2."""
+    names = sys.argv[1:] if argv is None else argv
+    unknown = [name for name in names if name not in GROUPS]
+    if unknown:
+        print(f"probe.py: no group {', '.join(unknown)}; the groups are {', '.join(GROUPS)}", file=sys.stderr)
+        return 2
     try:
         fixture()
-        return cases()
+        return cases(names or list(GROUPS))
     finally:
         FIXTURE.cleanup()
 
 
-def cases():
+def cases(names):
+    """Run the groups `names` in order and print the summary line: exit status 1 when a case is wrong."""
+    wrong = 0
+    total = 0
+    for name in names:
+        n, bad = GROUPS[name]()
+        total, wrong = total + n, wrong + bad
+    print(f"\n{total} cases, {wrong} wrong")
+    return 1 if wrong else 0
+
+
+def command_cases():
+    """Each guard of CASES on one shell command."""
     wrong = 0
     total = 0
     for script, command, expected in CASES:
@@ -2134,6 +2154,13 @@ def cases():
         wrong += got != expected
         mark = "ok " if got == expected else "BAD"
         print(f"{mark} exp {expected} got {got}  [{script.rsplit('/', 1)[-1][:9]}]  {command}")
+    return total, wrong
+
+
+def payload_cases():
+    """The other hooks on their payloads, and each guard on the payloads it must let through."""
+    wrong = 0
+    total = 0
     for payload, expected in KAIMON_CASES:
         got = run(KAIMON, payload)
         total += 1
@@ -2202,18 +2229,20 @@ def cases():
         wrong += got != 1
         mark = "ok " if got == 1 else "BAD"
         print(f"{mark} exp 1 got {got}  [worktree ]  fail-closed: {payload!r}")
-    n, bad = manifest_cases()
-    total, wrong = total + n, wrong + bad
-    n, bad = drift_cases()
-    total, wrong = total + n, wrong + bad
-    n, bad = omp_cases()
-    total, wrong = total + n, wrong + bad
-    n, bad = oc_cases()
-    total, wrong = total + n, wrong + bad
-    n, bad = agy_cases()
-    total, wrong = total + n, wrong + bad
-    print(f"\n{total} cases, {wrong} wrong")
-    return 1 if wrong else 0
+    return total, wrong
+
+
+# The groups of cases, in the order of a run of every group; each returns (number of cases, number
+# wrong). `harness test` runs each group as the part `probe:<group>`.
+GROUPS = {
+    "commands": command_cases,
+    "payloads": payload_cases,
+    "manifest": manifest_cases,
+    "drift": drift_cases,
+    "omp": omp_cases,
+    "opencode": oc_cases,
+    "antigravity": agy_cases,
+}
 
 
 if __name__ == "__main__":
