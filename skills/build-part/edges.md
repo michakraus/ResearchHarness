@@ -613,6 +613,11 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   entries conflict. Read the highest `K<n>` of `origin/main` and of the open pull requests' changes
   before the finish round, and merge `main` as a new commit, because a rebase needs the force-push
   (A verify 2 and finish, *Implement multi-modal symplectic autoencoders*)
+- a `KNOWN_ISSUES.md` entry numbered after the highest ID *in the file*: an ID that one commit added
+  and a later one removed is absent from the file and still taken, so the next entry goes above the
+  maximum the file's history used. `git log origin/main -p -- KNOWN_ISSUES.md |
+  grep -oE '^[-+]### K[0-9]+'` lists every ID the history used, removed ones included (P50 round 1a,
+  *Rewrite the reduced basis packages*)
 - a fix that rewrites a comment about dispatch from a critic's sentence, not from the methods: a
   subtype such as `Manifold <: AbstractMatrix` makes "an array" false. Write the comment from the
   method table (G10 verify 2, *Simplify the optimiser package and the learning package for 0.9*)
