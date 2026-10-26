@@ -30,8 +30,8 @@ jobs:
       - name: compileall
         run: python -m compileall -q lib hooks scripts adapters
 
-  # The suite with HOME set to a new empty directory: a case that reads the runner's home, or a
-  # file that it holds, fails here.
+  # The suite with HOME set to a new empty directory, so a case that needs a file of the runner's
+  # home fails here.
   empty-home:
     name: harness test with an empty HOME
     runs-on: ubuntu-latest

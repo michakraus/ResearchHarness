@@ -124,7 +124,7 @@
 
 ### K36 · A whole-history gitleaks scan is red until the history is rewritten.
 
-- location: `.github/workflows/test.yml:124`
+- location: `.github/workflows/test.yml:224`
 - evidence: the root commit `a78062a` holds 166 `home-path` findings. The `leaks` job scans the
   whole history on a `workflow_dispatch` on `main`, on a forced push to `main` (the `before`
   SHA is not in the clone), and on a new `main` on a remote, and each of these runs is red until
@@ -143,7 +143,7 @@
 
 ### K38 · `gitleaks git` exits 0 on a `--log-opts` range that it cannot read.
 
-- location: `.github/workflows/test.yml:131`, `.githooks/pre-push:90`
+- location: `.github/workflows/test.yml:230`, `.githooks/pre-push:90`
 - evidence: `gitleaks git --log-opts=<a range it cannot read>` prints `fatal: Invalid revision
   range` and still exits 0 with "no leaks found". Both `gitleaks git` calls, of the CI step
   *gitleaks over the pushed range* and of the pre-push hook, rely on its status. The CI step
@@ -400,7 +400,7 @@
 - evidence: `"isolation" in body` is true for any body that holds the word, so an agent that says
   "the caller spawned you without isolation" (`agents/julia-builder.md:86`) gets the worktree rule
   of its "Under OpenCode" or "Under oh-my-pi" section. The same test is at
-  `adapters/omp/adapter.py:1171` and `adapters/opencode/adapter.py:240`.
+  `adapters/omp/adapter.py:1172` and `adapters/opencode/adapter.py:240`.
 - kind: defect
 - found: #78
 

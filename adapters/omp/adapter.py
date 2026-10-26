@@ -696,7 +696,8 @@ def omp_cases(case, fresh, run):
          f"adapters/omp/OMP-DELTA.md, {len(delta.read_bytes())} bytes, is no larger than OPENCODE-DELTA.md, "
          f"{len(opencode_delta.read_bytes())} bytes")
     # The rule sources: rules/ and the tree instructions' rules/, one rendered rule each.
-    sources = sorted([*(REPO / "rules" / n for n in rule_names(REPO / "rules")), tree / "rules" / "meta-repository.md"],
+    sources = sorted([*(REPO / "rules" / n for n in rule_names(REPO / "rules")),
+                      tree / "rules" / "meta-repository.md"],
                      key=lambda p: p.name)
     case(lambda: all(listed.get(f"rules/{s.name}") == "INSTALL" for s in sources) and len(sources) == 8,
          f"the dry run lists one rules/<name>.md per rule source, 8: {sorted(k for k in listed if k.startswith('rules/'))}")

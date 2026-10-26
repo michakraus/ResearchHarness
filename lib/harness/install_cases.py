@@ -43,7 +43,8 @@ def skill_names(directory):
 def rule_names(directory):
     """The rules of `directory` as the install reads them: the name of each `.md` file of
     `install.source_files` that lies in `directory` itself, so a hidden name is none."""
-    return sorted(rel.name for rel in install.source_files(directory) if len(rel.parts) == 1 and rel.suffix == ".md")
+    return sorted(rel.name for rel in install.source_files(directory)
+                  if len(rel.parts) == 1 and rel.suffix == ".md")
 
 
 def source_name_cases(case, tmp):
