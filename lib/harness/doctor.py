@@ -932,6 +932,9 @@ def status_cases(check, root, system_name):
                 text = out.replace(at, version, 1)
                 case(f"{command} at {version}, minimum {' or '.join(MINIMUMS[name])}", {name: want},
                      lambda f, c=command, a=flags, t=text: f.tool(c, (" ".join(a), t, "", 0)), ("tools",), **one)
+    # A working environment runs without uv, so a missing uv is a WARN; the loop above derives
+    # the status from the row, and this case states it.
+    case("no uv", {"uv": "WARN"}, lambda f: (f.bin / "uv").unlink(), ("tools",), only=("uv",))
     for version, want in (("21.7.3", "FAIL"), ("20.18.0", "PASS"), ("18.20.4", "FAIL"), ("23.0.0", "PASS")):
         case(f"node at {version}", {"Node.js": want},
              lambda f, v=version: f.tool("node", ("--version", f"v{v}\n", "", 0)), ("tools",), only=("Node.js",))
