@@ -203,8 +203,9 @@ def outside_syntax(text):
     """Each form in `text` outside the closed set that bin/harness may use, as "<rule> at line N",
     or an empty list. The set holds the node types of NODES, the token types of TOKENS, the
     operators of OPERATORS, strings with no prefix and no \\N escape, the numbers of NUMBER and
-    ASCII text, and three rules on shapes that the node types do not show: a `with` has one item,
-    no `with` is followed by `(`, and the tuple of an `except` is in parentheses. Every other form
+    ASCII text, and the rules on shapes that the node types do not show: a `with` has one item, no
+    `with` is followed by `(`, and no `,` stands at bracket depth 0 between an `except` and the
+    first `:` at depth 0 after it, as the `except` clause of Python 3.0 requires. Every other form
     is outside the set, also where Python 3.0 reads it. A text that the running Python does not
     parse gives only its syntax error."""
     try:
@@ -219,13 +220,24 @@ def outside_syntax(text):
             found.add(f"node {type(n).__name__} at line {line}")
         if isinstance(n, ast.With) and len(n.items) != 1:
             found.add(f"with of {len(n.items)} items at line {line}")
-        if isinstance(n, ast.ExceptHandler) and isinstance(n.type, ast.Tuple) \
-                and lines[n.type.lineno - 1][n.type.col_offset:n.type.col_offset + 1] != b"(":
-            found.add(f"unparenthesized except at line {line}")
     tokens = list(tokenize.generate_tokens(io.StringIO(text).readline))
     types = {getattr(tokenize, name) for name in TOKENS}
+    # The scan of an `except` clause: its line and its bracket depth, from the NAME `except` to
+    # the first `:` at depth 0, or None outside a clause.
+    scan = None
     for t, after in zip(tokens, tokens[1:] + [None]):
         line = t.start[0]
+        if t.type == tokenize.NAME and t.string == "except":
+            scan = [line, 0]
+        elif scan is not None and t.type == tokenize.OP:
+            if t.string in ("(", "[", "{"):
+                scan[1] += 1
+            elif t.string in (")", "]", "}"):
+                scan[1] -= 1
+            elif t.string == ":" and scan[1] == 0:
+                scan = None
+            elif t.string == "," and scan[1] == 0:
+                found.add(f"unparenthesized except at line {scan[0]}")
         if t.type not in types:
             found.add(f"token {tokenize.tok_name[t.type]} at line {line}")
         if t.type == tokenize.OP and t.string not in OPERATORS:
@@ -246,7 +258,7 @@ def outside_syntax(text):
 
 def syntax_cases(case, tmp):
     """The version check of bin/harness on an interpreter that reports 3.13, under a scratch HOME,
-    and the syntax of the whole file, which Python 3.0 must read to reach the check."""
+    and the syntax of the whole file: only the closed set of Python 3.0 forms."""
     run = ("import runpy, sys; sys.version_info = (3, 13, 9, 'final', 0); "
            "runpy.run_path(sys.argv[1], run_name='__main__')")
     b = Box(tmp / "syntax")
@@ -274,13 +286,19 @@ def syntax_cases(case, tmp):
                             ("with a as b, c as d:\n    pass\n", "with of 2 items"),
                             ("with (a as b):\n    pass\n", "parenthesized with"),
                             ("try:\n    pass\nexcept A, B:\n    pass\n", "unparenthesized except"),
+                            ("try:\n    pass\nexcept (A), B:\n    pass\n", "unparenthesized except"),
+                            ("try:\n    pass\nexcept (A, B), C:\n    pass\n", "unparenthesized except"),
+                            ('try:\n    pass\nexcept (A, "(" ), f(")"):\n    pass\n', "unparenthesized except"),
+                            ("try:\n    pass\nexcept (A[0:1]), B:\n    pass\n", "unparenthesized except"),
+                            ("try:\n    pass\nexcept {1: A}[1], B:\n    pass\n", "unparenthesized except"),
                             ("\u00e9t\u00e9 = 1\n", "non-ASCII"),
                             ('x = "\\N{FACE WITH TEARS OF JOY}"\n', "\\N escape")]:
         found = outside_syntax(snippet)
         case(lambda: any(f.startswith(phrase + " ") for f in found),
              f"the syntax check refuses {snippet!r} with {phrase!r}: {found}")
     found = outside_syntax('class A(B):\n    w = 1\ntry:\n    with open(x) as f:\n        y = "%d" % n\n'
-                           "except (A, B) as e:\n    z = 0o755\n")
+                           "except (A, B) as e:\n    z = 0o755\n"
+                           'try:\n    w = 1\nexcept (A[0:1], f(",")) as e:\n    x, y = e, e\n')
     case(lambda: found == [], f"the syntax check accepts the forms that bin/harness uses: {found}")
 
 
