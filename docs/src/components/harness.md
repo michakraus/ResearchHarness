@@ -58,7 +58,10 @@ at `$RESEARCH_HARNESS_PYTHON`, an absolute path, or else at
   fetches the uv release that it pins into `~/.local/bin` and checks the sha256 of the archive;
   the download follows one redirect, to `release-assets.githubusercontent.com`, and no other. Then
   it runs `uv sync --locked --no-dev` into the environment, writes the environment's stamp, the
-  sha256 of `uv.lock` and the group, and starts itself on the new interpreter.
+  sha256 of `uv.lock` and the group, and starts itself on the new interpreter. The environment is
+  made on Python 3.14 (`UV_PYTHON` overrides it), and uv downloads a managed 3.14 where none is
+  installed. A sync that fails, or that leaves no working environment, removes the environment
+  when the sync made it; a uv that the fetch wrote and checked stays in `~/.local/bin`.
 
 The chosen interpreter goes into `RESEARCH_HARNESS_INTERPRETER`, which each child process
 inherits. A process that finds it set does no lookup: it runs when it runs on that interpreter,
@@ -401,7 +404,9 @@ It checks, in this order:
   `Manifest.toml` of the Julia environment of the scripts. The Python environment of the harness
   is a `FAIL` when its interpreter does not start or is below the minimum of Python, a `WARN`
   when its stamp names another `uv.lock` or another group than the profile's `develop`, and
-  otherwise a `PASS`.
+  otherwise a `PASS`. A lagging environment is also one change of the dry run of
+  `harness install`, so the same run gives a `FAIL` on the install line, and `doctor` exits 1;
+  `harness install --apply` fixes both.
 - the profile: it loads, the `tree_agents` directory and the OpenCode configuration directory
   exist, and the line `autocommit_branch` prints the value.
 - the install: the dry run of `harness install` reports `0 change(s)`, otherwise a `FAIL` with
@@ -531,19 +536,22 @@ It does not run `format`, `ci-protection`, `skill-triggers`, `doctor` or `test`.
 The cases of the Python environment of the harness. The module has no subcommand. Its cases run
 `bin/harness` as a child process under a scratch `HOME`, with a fake `uv` that logs its arguments
 and makes the environment with `python -m venv`: a session with no environment, the marker, the
-first sync and a second run, the restart with its arguments onto a working environment, in a
-session too, each refusal of the start, and a restart that lands on another interpreter, which
-exits with status 2 instead of a loop. They also check that the script uses no newer syntax than
-its version check allows.
+first sync and a second run, the Python that uv is asked for, the restart with its arguments onto
+a working environment, in a session too, each refusal of the start, a failed sync that removes
+the environment that it made and keeps a directory that was there, and a restart that lands on
+another interpreter, which exits with status 2 instead of a loop. In the process of the cases,
+they check the marker that a start exports to its children. They also check, under a scratch
+`HOME`, that the script uses no newer syntax than its version check allows.
 
 The cases of the Linux download set the platform and the release URL through
 `RESEARCH_HARNESS_TEST_PLATFORM` and `RESEARCH_HARNESS_TEST_UV_URL`, which only they set, and
 serve fake archives from a local `http.server`: an unknown architecture, a download that fails, a
 checksum that is not the pinned one and a redirect to another host. No fake archive has the pinned
 sha256, so the download that succeeds, and the redirects, run in the process of the cases, with a
-patched checksum. Last, the cases run `harness install` on `Scratch`: the plan line, the sync with
-and without the `dev` group, an interpreter that does not start, a sync that fails, no uv, and a
-`develop` that is not `true` or `false`.
+patched checksum, and so does a start whose fetched uv makes no environment: the start refuses,
+and the uv stays in `~/.local/bin`. Last, the cases run `harness install` on `Scratch`: the plan
+line, the sync with and without the `dev` group, an interpreter that does not start, a sync that
+fails, no uv, and a `develop` that is not `true` or `false`.
 
 ## `docs.py`
 

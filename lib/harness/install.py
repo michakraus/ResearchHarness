@@ -15,7 +15,7 @@ What it installs:
   pyproject.toml, uv.lock          -> ~/.local/share/research-harness/python/ ($RESEARCH_HARNESS_PYTHON),
                                       by `uv sync --locked`, with the `dev` group where the
                                       profile sets `develop = true`: the interpreter of `harness`
-  each frontend's files           -> as the docstring of its adapters/<frontend>/adapter.py says
+  each frontend's files            -> as the docstring of its adapters/<frontend>/adapter.py says
 
 It loads the profile and the model tables, `--models F`, else $RESEARCH_HARNESS_MODELS, else
 models.toml beside the profile; examples/models.toml shows them. Then it plans each frontend, in

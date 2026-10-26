@@ -111,7 +111,8 @@ absolute path. The first time that `bin/harness` runs outside a session, it make
 environment with `uv sync --locked --no-dev` from `pyproject.toml` and `uv.lock`, and from then on
 it runs every subcommand on the environment's interpreter. `harness install --apply` syncs the
 environment again when it lags `uv.lock`, with the `dev` group where the profile sets
-`develop = true`, and `harness doctor` checks it.
+`develop = true`, and `harness doctor` checks it. The environment is made on Python 3.14
+(`UV_PYTHON` overrides it), and uv downloads a managed 3.14 where none is installed.
 
 The harness needs uv because the environment comes from a committed lock, so that every machine
 and CI run the same versions of the same packages.

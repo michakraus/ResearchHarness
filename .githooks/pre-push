@@ -16,8 +16,8 @@
 # gitleaks over the tree at the SHA, and `harness leaks --commits` over both, messages included.
 # They fail closed: no gitleaks of 8.21 or later, no profile, an empty `leak` list or a check that
 # fails each refuse the push with one line. Then it runs `bin/harness test` on the first Python of
-# 3.14 or later among python3 and python3.14, and on python3.14, the compile check on python3.14,
-# shellcheck over the shell files, the kit's tests
+# 3.14 or later among python3 and python3.14, and on python3.14, the compile check on
+# python3.14, shellcheck over the shell files, the kit's tests
 # examples/dotfiles/tests/{update-check,check-check,driver-check,render-check,script-check}.py on
 # that first Python, and the Julia test files that the changed paths of the pushed range select.
 # A missing tool among python3.14, shellcheck, chezmoi and julia prints one skip line, because CI

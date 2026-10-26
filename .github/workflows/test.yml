@@ -25,8 +25,11 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: ${{ matrix.python-version }}
+      # UV_PYTHON makes the environment on the matrix's Python, so that the 3.x job tests the latest.
       - name: harness test
-        run: python bin/harness test
+        run: |
+          UV_PYTHON="$(command -v python)" python bin/harness test
+          "$HOME/.local/share/research-harness/python/bin/python" --version
       - name: compileall
         run: python -m compileall -q lib hooks scripts adapters
 

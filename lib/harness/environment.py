@@ -3,9 +3,10 @@ environment and runs each command on its interpreter, and the plan and the sync 
 `harness install`.
 
 Each case of the start runs `bin/harness` as a child process under a scratch HOME, with a fake
-`uv` first on the PATH that logs its arguments and `UV_PROJECT_ENVIRONMENT`, and makes the
-environment with `python -m venv`. The child has no SANDBOX_RUNTIME, CLAUDECODE,
-RESEARCH_HARNESS_PYTHON or RESEARCH_HARNESS_INTERPRETER, except where a case sets one. The cases
+`uv` first on the PATH that logs its arguments, `UV_PROJECT_ENVIRONMENT` and `UV_PYTHON`, and
+makes the environment with `python -m venv`. The child has no SANDBOX_RUNTIME, CLAUDECODE,
+RESEARCH_HARNESS_PYTHON, RESEARCH_HARNESS_INTERPRETER or UV_PYTHON, except where a case sets one.
+The cases of the marker that a start exports run `start` in this process. The cases
 of the Linux download set the platform and the release URL through the variables that bin/harness
 reads for the cases alone, and serve the release from a local `http.server`; the cases of a
 download that succeeds load bin/harness in this process with a patched checksum, because no fake
@@ -27,6 +28,7 @@ import tarfile
 import tempfile
 import threading
 import time
+import tokenize
 from unittest import mock
 
 from . import REPO, install
@@ -36,16 +38,17 @@ HARNESS = REPO / "bin" / "harness"
 # The variables of the caller that would point the child past its scratch HOME.
 UNSET = ["SANDBOX_RUNTIME", "CLAUDECODE", "RESEARCH_HARNESS_PYTHON", "RESEARCH_HARNESS_INTERPRETER",
          "RESEARCH_HARNESS_RESTARTED", "RESEARCH_HARNESS_TEST_PLATFORM", "RESEARCH_HARNESS_TEST_UV_URL",
-         "UV_PROJECT_ENVIRONMENT"]
+         "UV_PROJECT_ENVIRONMENT", "UV_PYTHON"]
 # The system directories of the child's PATH, after the fake uv; they hold no uv.
 SYSTEM_PATH = ["/usr/bin", "/bin"]
 TIMEOUT = 60
 # A command whose output shows that the restarted process kept its arguments: the profile's
 # `harness`, `~/Research/Harness` below the scratch HOME.
 GET = ["--profile", str(REPO / "examples" / "profile.toml"), "get", "harness"]
-# The syntax that Python 3.0 does not read, as the nodes of `ast`.
+# The syntax of Python 3.1 to 3.6 that Python 3.0 does not read, as the nodes of `ast`; a parse with
+# the grammar of 3.7 refuses the syntax of 3.8 and later.
 NEWER = (ast.JoinedStr, ast.NamedExpr, ast.AnnAssign, ast.Match, ast.AsyncFunctionDef, ast.Await, ast.AsyncWith,
-         ast.AsyncFor, ast.TypeAlias)
+         ast.AsyncFor, ast.TypeAlias, ast.YieldFrom, ast.MatMult)
 
 
 class Box:
@@ -91,14 +94,16 @@ class Box:
 
 
 def fake_uv(path, log):
-    """A uv that appends `<arguments> | <UV_PROJECT_ENVIRONMENT>` to `log` and, by $FAKE_UV, makes
-    the environment anew (ok, the default), exits 1 after two stderr lines (fail), or exits 0 and
-    makes nothing (empty)."""
+    """A uv that appends `<arguments> | <UV_PROJECT_ENVIRONMENT> | <UV_PYTHON>` to `log` and, by
+    $FAKE_UV, makes the environment anew (ok, the default), makes a venv in it and then exits 1
+    after two stderr lines, as a real `uv sync --locked` that fails can (fail), or exits 0 and makes
+    nothing (empty)."""
     path.write_text(f"""#!/bin/sh
-echo "$* | ${{UV_PROJECT_ENVIRONMENT:-unset}}" >> '{log}'
+echo "$* | ${{UV_PROJECT_ENVIRONMENT:-unset}} | ${{UV_PYTHON:-unset}}" >> '{log}'
 case "${{FAKE_UV:-ok}}" in
 ok) rm -rf "$UV_PROJECT_ENVIRONMENT" && exec '{sys.executable}' -m venv --without-pip "$UV_PROJECT_ENVIRONMENT" ;;
-fail) echo "first line" >&2; echo "the lock does not resolve" >&2; exit 1 ;;
+fail) '{sys.executable}' -m venv --without-pip "$UV_PROJECT_ENVIRONMENT"
+  echo "first line" >&2; echo "the lock does not resolve" >&2; exit 1 ;;
 empty) exit 0 ;;
 esac
 """)
@@ -142,8 +147,9 @@ def archive(machine, uv=True):
 
 class Release(http.server.BaseHTTPRequestHandler):
     """The local release server: /ok/<file> serves the archive of its machine, /missing/ is 404,
-    /away/ redirects to localhost, /near/ to 127.0.0.1 once, /twice/ twice, /plain/ to the release
-    host over http. It records the path of each request."""
+    /away/ redirects to localhost, /near/ to 127.0.0.1 once, /twice/ twice, /plain/ to 127.0.0.1
+    over http, for a case that allows only https to 127.0.0.1. It records the path of each
+    request."""
 
     requests = []
 
@@ -161,7 +167,7 @@ class Release(http.server.BaseHTTPRequestHandler):
             return
         targets = {"away": f"http://localhost:{port}/ok/{rest}", "near": f"http://127.0.0.1:{port}/ok/{rest}",
                    "twice": f"http://127.0.0.1:{port}/near/{rest}",
-                   "plain": f"http://release-assets.githubusercontent.com/{rest}"}
+                   "plain": f"http://127.0.0.1:{port}/ok/{rest}"}
         if kind in targets:
             self.send_response(302)
             self.send_header("Location", targets[kind])
@@ -187,24 +193,61 @@ def release_server():
         server.server_close()
 
 
-def syntax_cases(case):
-    """The version check of bin/harness on an interpreter that reports 3.13, and the syntax of the
-    whole file, which Python 3.0 must read to reach the check."""
+def newer_syntax(text):
+    """The syntax in `text` that Python 3.0 does not read: the refusal of a parse with the grammar
+    of 3.7, which knows the syntax of 3.8 and later, or else each node of NEWER, `with` of two
+    items, unpacking in a display or a call, a u'' string and a `_` in a number."""
+    try:
+        tree = ast.parse(text, feature_version=(3, 7))
+    except SyntaxError as e:
+        return [f"{e.msg} at line {e.lineno}"]
+    newer = {f"{type(n).__name__} at line {getattr(n, 'lineno', '?')}" for n in ast.walk(tree)
+             if isinstance(n, NEWER)
+             or isinstance(n, ast.With) and len(n.items) > 1
+             or isinstance(n, (ast.List, ast.Tuple, ast.Set)) and any(isinstance(e, ast.Starred) for e in n.elts)
+             or isinstance(n, ast.Call) and (any(isinstance(a, ast.Starred) for a in n.args)
+                                             or sum(k.arg is None for k in n.keywords) > 1)
+             or isinstance(n, ast.Dict) and None in n.keys
+             or isinstance(n, ast.Constant) and n.kind == "u"}
+    numbers = io.StringIO(text).readline
+    newer |= {f"a number with _ at line {t.start[0]}" for t in tokenize.generate_tokens(numbers)
+              if t.type == tokenize.NUMBER and "_" in t.string}
+    return sorted(newer)
+
+
+def syntax_cases(case, tmp):
+    """The version check of bin/harness on an interpreter that reports 3.13, under a scratch HOME,
+    and the syntax of the whole file, which Python 3.0 must read to reach the check."""
     run = ("import runpy, sys; sys.version_info = (3, 13, 9, 'final', 0); "
            "runpy.run_path(sys.argv[1], run_name='__main__')")
+    b = Box(tmp / "syntax")
     p = subprocess.run([sys.executable, "-c", run, str(HARNESS), "--help"], capture_output=True, text=True,
-                       timeout=TIMEOUT, env={k: v for k, v in os.environ.items() if k not in UNSET})
+                       timeout=TIMEOUT, env=b.environ(), cwd=b.root)
     lines = p.stderr.splitlines()
-    case(lambda: p.returncode == 2 and lines == ["harness: Python 3.13 found, 3.14 or later needed"] and not p.stdout,
-         f"an interpreter that reports 3.13 exits 2 with one line that names 3.13 and 3.14: {p.returncode}, {lines}")
-    tree = ast.parse(HARNESS.read_text())
-    newer = sorted({f"{type(n).__name__} at line {n.lineno}" for n in ast.walk(tree) if isinstance(n, NEWER)
-                    or isinstance(n, ast.With) and len(n.items) > 1
-                    or isinstance(n, (ast.List, ast.Tuple, ast.Set)) and any(isinstance(e, ast.Starred) for e in n.elts)
-                    or isinstance(n, ast.Call) and any(isinstance(a, ast.Starred) for a in n.args)
-                    or isinstance(n, ast.Dict) and None in n.keys})
-    case(lambda: not newer, f"bin/harness uses no f-string, :=, annotated assignment, match, async, type alias, "
-                            f"unpacking in a display or a call, or `with` of two items: {newer}")
+    case(lambda: p.returncode == 2 and lines == ["harness: Python 3.13 found, 3.14 or later needed"] and not p.stdout
+         and not b.uv_lines() and b.below(".local") == [],
+         f"an interpreter that reports 3.13 exits 2 with one line that names 3.13 and 3.14, and starts no uv: "
+         f"{p.returncode}, {lines}, uv {b.uv_lines()}")
+    newer = newer_syntax(HARNESS.read_text())
+    case(lambda: not newer, f"bin/harness uses no syntax newer than Python 3.0: {newer}")
+    for snippet, label in [("def f(a, /):\n    pass\n", "a positional-only parameter"),
+                           ("def same[T](a, b):\n    pass\n", "a generic def"),
+                           ("def g():\n    yield from h()\n", "yield from"),
+                           ("x = a @ b\n", "the @ operator"),
+                           ("if (y := 1):\n    pass\n", ":="),
+                           ("try:\n    pass\nexcept* E:\n    pass\n", "except*"),
+                           ("x = f'{y}'\n", "an f-string"),
+                           ("x: int = 1\n", "an annotated assignment"),
+                           ("async def f():\n    return [x async for x in y]\n", "async"),
+                           ("f(*a, *b)\n", "two unpackings in a call"),
+                           ("f(**a, **b)\n", "two ** in a call"),
+                           ("x = u'y'\n", "a u'' string"),
+                           ("x = 1_000\n", "a _ in a number"),
+                           ("with a as b, c as d:\n    pass\n", "`with` of two items")]:
+        found = newer_syntax(snippet)
+        case(lambda: found != [], f"the syntax check refuses {label}: {found}")
+    found = newer_syntax("def f(a, *args, **kw):\n    nonlocal_ = [x for x in a]\n    return {1: 2}, {3}\n")
+    case(lambda: found == [], f"the syntax check accepts the syntax of Python 3.0: {found}")
 
 
 def start_cases(case, tmp):
@@ -256,13 +299,18 @@ def start_cases(case, tmp):
     lines = b.uv_lines()
     stamp = b.env_dir / install.boot().STAMP
     case(lambda: code == 0 and "usage" in out and len(lines) == 1
-         and lines[0] == f"sync --locked --project {REPO} --no-dev | {b.env_dir}"
+         and lines[0] == f"sync --locked --project {REPO} --no-dev | {b.env_dir} | 3.14"
          and (b.env_dir / "bin" / "python").is_file() and stamp.read_text() == install.boot().stamp_text(False),
-         f"no environment: one uv sync --locked --no-dev into {b.env_dir}, the stamp without the dev group, then the "
-         f"command: {code}, uv {lines}, {err}")
+         f"no environment: one uv sync --locked --no-dev into {b.env_dir} on Python 3.14, the stamp without the dev "
+         f"group, then the command: {code}, uv {lines}, {err}")
     code, out, err, _ = b.run()
     case(lambda: code == 0 and "usage" in out and len(b.uv_lines()) == 1 and err == [],
          f"a working environment: no second sync, and no line: {code}, uv {b.uv_lines()}, {err}")
+    # A caller's own UV_PYTHON wins over the floor's version.
+    b = box()
+    code, out, err, _ = b.run(UV_PYTHON="3.15")
+    case(lambda: code == 0 and b.uv_lines() == [f"sync --locked --project {REPO} --no-dev | {b.env_dir} | 3.15"],
+         f"UV_PYTHON=3.15 from the caller is the Python that uv is asked for: {code}, uv {b.uv_lines()}, {err}")
 
     # The restart keeps every argument: `--profile F get harness` after a sync prints the value.
     b = box()
@@ -310,7 +358,7 @@ def start_cases(case, tmp):
     b = box()
     given = b.root / "given-env"
     code, out, err, _ = b.run(RESEARCH_HARNESS_PYTHON=str(given))
-    case(lambda: code == 0 and b.uv_lines() == [f"sync --locked --project {REPO} --no-dev | {given}"]
+    case(lambda: code == 0 and b.uv_lines() == [f"sync --locked --project {REPO} --no-dev | {given} | 3.14"]
          and (given / "bin" / "python").is_file() and not b.env_dir.exists(),
          f"an absolute $RESEARCH_HARNESS_PYTHON is the environment: {code}, uv {b.uv_lines()}, {err}")
     b = box()
@@ -318,16 +366,45 @@ def start_cases(case, tmp):
     case(lambda: code == 2 and one_line(err, "rel/env", "absolute") and not b.uv_lines(),
          f"a relative $RESEARCH_HARNESS_PYTHON exits 2 with one line, and no uv runs: {code}, {err}")
 
-    # A sync that fails: its last stderr line, exit 2; one that makes nothing: exit 2, once.
+    # A sync that fails: its last stderr line, exit 2, and the venv that it left is removed; one
+    # that makes nothing: exit 2, once. A directory that was there before the sync stays.
     b = box()
     code, out, err, _ = b.run(FAKE_UV="fail")
-    case(lambda: code == 2 and one_line(err, "the lock does not resolve") and "first line" not in err[0],
-         f"a uv sync that fails exits 2 with its last stderr line: {code}, {err}")
+    case(lambda: code == 2 and one_line(err, "the lock does not resolve") and "first line" not in err[0]
+         and len(b.uv_lines()) == 1 and not b.env_dir.exists(),
+         f"a uv sync that fails exits 2 with its last stderr line, and removes the environment that it made: {code}, "
+         f"{err}, exists {b.env_dir.exists()}")
+    b = box()
+    b.env_dir.mkdir(parents=True)
+    (b.env_dir / "keep").write_text("x\n")
+    code, out, err, _ = b.run(FAKE_UV="fail")
+    case(lambda: code == 2 and one_line(err, "the lock does not resolve") and (b.env_dir / "keep").is_file(),
+         f"a uv sync that fails into a directory that was there keeps the directory: {code}, {err}, "
+         f"{b.below('.local', 'share')}")
     b = box()
     code, out, err, seconds = b.run(FAKE_UV="empty", timeout=30)
     case(lambda: code == 2 and len(b.uv_lines()) == 1 and one_line(err, "no working environment"),
          f"a sync that makes no environment exits 2 after one sync, never a loop: {code} in {seconds:.1f} s, "
          f"uv {b.uv_lines()}, {err}")
+
+    # The marker that a process exports to its children: the environment's interpreter when it
+    # runs there, and the current interpreter in the session fallback, after one line.
+    boot = install.boot()
+    clean = {k: v for k, v in os.environ.items() if k not in UNSET}
+    with (mock.patch.dict(os.environ, clean, clear=True), mock.patch.object(boot, "interpreter",
+                                                                             lambda environment: sys.executable),
+          mock.patch.object(boot, "run", lambda: os.environ.get(boot.MARKER))):
+        exported = boot.start([])
+    case(lambda: exported == sys.executable,
+         f"a process on the environment's interpreter exports it as the marker: {exported!r}")
+    stderr = io.StringIO()
+    with (mock.patch.dict(os.environ, {**clean, "SANDBOX_RUNTIME": "1", "RESEARCH_HARNESS_PYTHON":
+                                       str(tmp / "no-such-env")}, clear=True),
+          mock.patch.object(boot, "run", lambda: os.environ.get(boot.MARKER)), contextlib.redirect_stderr(stderr)):
+        exported = boot.start([])
+    case(lambda: exported == os.path.abspath(sys.executable) and len(stderr.getvalue().splitlines()) == 1,
+         f"the session fallback exports the current interpreter as the marker, after one line: {exported!r}, "
+         f"{stderr.getvalue().splitlines()}")
 
     # An environment whose bin/python starts another interpreter: the restart lands elsewhere, and
     # the restarted process exits 2 instead of restarting again.
@@ -406,7 +483,7 @@ def download_cases(case, tmp):
             ("near", ("http", "127.0.0.1"), "installed", "one redirect to the allowed host"),
             ("twice", ("http", "127.0.0.1"), "redirects to", "a second redirect"),
             ("near", boot.REDIRECT, "redirects to", "a redirect to a host that is not the allowed one"),
-            ("plain", boot.REDIRECT, "redirects to", "a redirect to the allowed host over http"),
+            ("plain", ("https", "127.0.0.1"), "redirects to", "a redirect to the allowed host over http"),
         ]:
             b = box()
             patches = {**environ, "RESEARCH_HARNESS_TEST_UV_URL": f"{url}/{kind}"}
@@ -435,6 +512,29 @@ def download_cases(case, tmp):
                 got = str(e)
         case(lambda: "cannot read uv-nouv-unknown-linux-gnu/uv" in got and b.below(".local") == [],
              f"in this process, an archive with no uv: a refusal, and nothing below ~/.local -> {got}")
+
+        # The start fetches the checked uv, whose sync makes nothing: the start refuses, and the
+        # fetched uv stays in ~/.local/bin for the next start. A restart would replace this process,
+        # so it raises here instead.
+        b = box()
+        env = {k: v for k, v in b.environ().items() if k not in (boot.MARKER, boot.RESTARTED)}
+        env.update(environ, RESEARCH_HARNESS_TEST_UV_URL=f"{url}/ok")
+
+        def no_restart(python, argv):
+            raise boot.Refusal(f"a restart onto {python}")
+
+        with (mock.patch.dict(os.environ, env, clear=True), mock.patch.object(boot, "UV_SHA256", {"x86_64": good}),
+              mock.patch.object(boot, "restart", no_restart)):
+            try:
+                boot.start(["--help"])
+                got = "ran"
+            except boot.Refusal as e:
+                got = str(e)
+        uv = b.home / ".local" / "bin" / "uv"
+        case(lambda: "no working environment" in got and uv.is_file() and os.access(uv, os.X_OK)
+             and uv.read_bytes() == b"#!/bin/sh\necho fake uv\n" and not b.env_dir.exists(),
+             f"in this process, a fetched uv whose sync makes nothing: a refusal, the uv stays in ~/.local/bin, and "
+             f"no environment -> {got}, {b.below('.local')}")
 
 
 def install_cases_of(case, tmp):
@@ -474,7 +574,9 @@ def install_cases_of(case, tmp):
              f"develop {develop}: the dry run plans one SYNC line and starts no uv: {code}, {lines}")
         code, text = scratch.run(base, "--apply", extra_env=extra)
         got = uv_lines()
-        want = f"sync --locked --project {REPO}{' --no-dev' if flag else ''} | {env_dir}"
+        # The install's environment is the caller's, whose UV_PYTHON wins over the floor's version.
+        want = (f"sync --locked --project {REPO}{' --no-dev' if flag else ''} | {env_dir} | "
+                f"{os.environ.get('UV_PYTHON') or '3.14'}")
         stamp = env_dir / install.boot().STAMP
         case(lambda: code == 0 and got == [want] and stamp.read_text() == install.boot().stamp_text(not flag),
              f"develop {develop}: --apply runs `{want}` and stamps the group: {code}, {got}, {scratch.tail(text)!r}")
@@ -505,8 +607,10 @@ def install_cases_of(case, tmp):
     extra = {"PATH": path, "RESEARCH_HARNESS_PYTHON": str(base / "fresh-env"), "FAKE_UV": "fail"}
     code, text = scratch.run(base, "--apply", extra_env=extra)
     case(lambda: scratch.refused(code, text)
-         and scratch.tail(text).endswith("uv sync exits 1: the lock does not resolve"),
-         f"a uv sync that fails exits 2 with its last stderr line: {code}, {scratch.tail(text)!r}")
+         and scratch.tail(text).endswith("uv sync exits 1: the lock does not resolve")
+         and not (base / "fresh-env").exists(),
+         f"a uv sync that fails exits 2 with its last stderr line, and removes the environment that it made: {code}, "
+         f"{scratch.tail(text)!r}")
     uv_lines()
     tools = tmp / "install-no-uv"
     tools.mkdir()
@@ -588,7 +692,7 @@ def selftest():
          f"no uv in {', '.join(SYSTEM_PATH)}, the system part of the cases' PATH")
     with tempfile.TemporaryDirectory(prefix="harness-environment-") as tmp:
         tmp = pathlib.Path(tmp)
-        syntax_cases(case)
+        syntax_cases(case, tmp)
         start_cases(case, tmp)
         download_cases(case, tmp)
         install_cases_of(case, tmp)

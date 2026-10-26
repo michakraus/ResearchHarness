@@ -1012,8 +1012,8 @@ def status_cases(check, root, system_name):
                     stamp(f).write_text(install.boot().stamp_text(True))), ("tools",), **none)
     got, _ = case("a relative $RESEARCH_HARNESS_PYTHON", {env_name: "FAIL"}, sections=("tools",),
                   extra={"RESEARCH_HARNESS_PYTHON": "relative/env"}, **none)
-    check("relative/env" in got[env_name].detail,
-          f"{system_name}: the line names the relative path -> {got[env_name].detail!r}")
+    check("relative/env" in got[env_name].detail and "not an absolute path" in got[env_name].detail,
+          f"{system_name}: the line names the relative path, which is not absolute -> {got[env_name].detail!r}")
 
     # The profile.
     for label, text in (("no profile", None), ("a profile that is not TOML", "home = \n"),

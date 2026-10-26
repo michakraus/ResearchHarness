@@ -19,7 +19,7 @@
 #   fetches: its sandbox cannot write the environment.
 # - Otherwise the script finds uv on the PATH or in ~/.local/bin, fetches the pinned release into
 #   ~/.local/bin on Linux when there is none, runs `uv sync --locked --no-dev` into the
-#   environment, and starts itself on the new interpreter.
+#   environment on Python 3.14, or on $UV_PYTHON, and starts itself on the new interpreter.
 #
 # Each refusal is one line on stderr and exit status 2. Before the restart, the script imports
 # nothing outside the standard library. lib/harness reads the environment's path, the stamp and
@@ -144,12 +144,12 @@ def platform_of():
     return platform.system(), platform.machine()
 
 
-def find_uv(home=None):
+def find_uv():
     """uv on the PATH, else the copy that the bootstrap fetches into ~/.local/bin, else None."""
     found = shutil.which("uv")
     if found:
         return found
-    fetched = os.path.join(home or os.path.expanduser("~"), ".local", "bin", "uv")
+    fetched = os.path.join(os.path.expanduser("~"), ".local", "bin", "uv")
     return fetched if os.path.isfile(fetched) and os.access(fetched, os.X_OK) else None
 
 
@@ -220,22 +220,31 @@ def fetch_uv(home=None):
 
 
 def sync(uv, environment, dev):
-    """`uv sync --locked` into `environment`, with the `dev` group when `dev`, else `--no-dev`;
-    then the stamp. A sync that fails, or that leaves no working environment, raises Refusal."""
+    """`uv sync --locked` into `environment` on Python 3.14, or on the caller's $UV_PYTHON, with the
+    `dev` group when `dev`, else `--no-dev`; then the stamp. A sync that fails, or that leaves no
+    working environment, raises Refusal, and first removes `environment` when the sync made it."""
     command = [uv, "sync", "--locked", "--project", ROOT] + ([] if dev else ["--no-dev"])
     env = dict(os.environ)
     env["UV_PROJECT_ENVIRONMENT"] = environment
+    env.setdefault("UV_PYTHON", "%d.%d" % NEED)
+    existed = os.path.lexists(environment)
+
+    def refuse(message):
+        if not existed and os.path.lexists(environment):
+            shutil.rmtree(environment)
+        raise Refusal(message)
+
     try:
         p = subprocess.run(command, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                            env=env, universal_newlines=True)
     except OSError as e:
-        raise Refusal("cannot start %s: %s" % (uv, e.strerror or e))
+        refuse("cannot start %s: %s" % (uv, e.strerror or e))
     if p.returncode != 0:
         lines = [line.strip() for line in p.stderr.splitlines() if line.strip()]
-        raise Refusal("uv sync exits %d: %s" % (p.returncode, lines[-1] if lines else "no output"))
+        refuse("uv sync exits %d: %s" % (p.returncode, lines[-1] if lines else "no output"))
     if not starts(interpreter(environment)):
-        raise Refusal("uv sync left no working environment at %s: %s does not start"
-                      % (environment, interpreter(environment)))
+        refuse("uv sync left no working environment at %s: %s does not start"
+               % (environment, interpreter(environment)))
     try:
         with open(os.path.join(environment, STAMP), "w") as f:
             f.write(stamp_text(dev))

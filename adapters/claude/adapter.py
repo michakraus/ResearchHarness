@@ -1055,6 +1055,7 @@ def layer_cases(check, tmp):
         with contextlib.ExitStack() as stack:
             stack.enter_context(mock.patch.dict(os.environ, HOME=str(base / "home"),
                                                 OPENCODE_CONFIG_DIR=str(base / "opencode"),
+                                                RESEARCH_HARNESS_PYTHON=str(base / "python"),
                                                 PI_CODING_AGENT_DIR=str(base / "omp")))
             stack.enter_context(mock.patch.object(install, "JULIA_ENV", base / "julia"))
             if source is not None:

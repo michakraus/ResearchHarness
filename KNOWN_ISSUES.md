@@ -531,3 +531,15 @@
   the repository checks for a `timeout=` yet.
 - kind: not verified
 - found: 2026-10-26, the critic of the test runner
+
+### K111 · `harness doctor` looks for uv on the `PATH` only, while the sync also takes `~/.local/bin/uv`.
+
+- location: `lib/harness/doctor.py:277`
+- evidence: the `uv` row of `TOOLS` goes through `Doctor.tool`, which runs `shutil.which("uv")`.
+  `find_uv` in `bin/harness`, which `bin/harness` and `harness install --apply` use, also takes an
+  executable `~/.local/bin/uv`, where the bootstrap fetches it on Linux. So on Linux, after the
+  fetch and with `~/.local/bin` not on the `PATH`, the row is a `WARN` "uv not found: harness
+  install cannot sync the Python environment", which is false. The form of the row is a decision
+  of the plan. Found by reading the code; no reproducer.
+- kind: defect
+- found: 2026-10-26, the critic of the uv environment
