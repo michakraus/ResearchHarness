@@ -40,7 +40,8 @@ to the process that calls `Pkg.test`.
 """
 function suite(pkg)
     julia = `$(Base.julia_cmd()) --startup-file=no --check-bounds=auto --project=.`
-    pkg === nothing || return `$julia -e "using Pkg; Pkg.test(\"$pkg\"; julia_args = \`--check-bounds=auto\`)"`
+    pkg === nothing ||
+        return `$julia -e "using Pkg; Pkg.test(\"$pkg\"; julia_args = \`--check-bounds=auto\`)"`
     isfile(joinpath("test", "runtests.jl")) && return `$julia test/runtests.jl`  # not a package
     return nothing
 end
@@ -54,8 +55,9 @@ outlives its hook survives as an orphan, and such processes accumulate over days
 """
 function run_suite(cmd)
     flush(stdout)
-    p = run(pipeline(ignorestatus(Cmd(cmd; detach = true)); stdin = devnull, stdout, stderr);
-            wait = false)
+    p = run(
+        pipeline(ignorestatus(Cmd(cmd; detach = true)); stdin = devnull, stdout, stderr);
+        wait = false)
     try
         wait(p)
     catch e
@@ -85,7 +87,7 @@ function main()
 
     pkg = package_name()
     println("\n$(DIM)pre-push$(NC)  pushing to main/master — running the full suite for ",
-            something(pkg, basename(root)), ".")
+        something(pkg, basename(root)), ".")
     println("$(DIM)This takes 10-30 minutes and prints nothing until it finishes. That is not a hang.$(NC)\n")
 
     cmd = suite(pkg)

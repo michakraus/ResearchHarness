@@ -215,6 +215,18 @@ alive(pid) = ccall(:kill, Cint, (Cint, Cint), pid, 0) == 0
                                       LAYOUT_FILES])
         @test code == 0
         @test occursin("test layout: ok", out)
+        @test !occursin("WARNING", out)
+    end
+
+    # harness githooks copies the programs into each package's .githooks/, and the package then
+    # commits them through this hook, under its own style = "sciml".
+    @testset "a commit of the installed programs passes the formatting stage" begin
+        code, out = run_hook(nothing; project = nothing,
+                             extra = [".githooks/pre-commit.jl" => read(PROGRAM, String),
+                                      ".githooks/pre-push.jl" => read(joinpath(@__DIR__, "pre-push.jl"), String),
+                                      ".githooks/test-layout.jl" => read(LAYOUT, String)])
+        @test occursin("formatting: ok", out)
+        @test code == 0
     end
 
     @testset "a file that is not NFC is refused" begin

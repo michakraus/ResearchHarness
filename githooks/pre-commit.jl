@@ -77,7 +77,7 @@ function test_layout(root)
     found = try
         layout = Module(:TestLayout)
         Base.include(layout, script)
-        Base.invokelatest(layout.violations, root)
+        @invokelatest layout.violations(root)
     catch e
         [sprint(showerror, e)]
     end
@@ -102,10 +102,11 @@ either way.
 function formatting(files)
     bad = try
         env = get(ENV, "RESEARCH_HARNESS_JULIA",
-                  joinpath(homedir(), ".local", "share", "research-harness", "julia"))
+            joinpath(homedir(), ".local", "share", "research-harness", "julia"))
         pushfirst!(LOAD_PATH, env)
         id = Base.identify_package("JuliaFormatter")
-        id === nothing && error("JuliaFormatter is in no environment of the load path; $env is first")
+        id === nothing &&
+            error("JuliaFormatter is in no environment of the load path; $env is first")
         format = Base.require(id).format
         filter(f -> !Base.invokelatest(format, f; overwrite = false), files)
     catch e
@@ -251,7 +252,8 @@ function main()
 
     ok = isempty(tests) || test_layout(root)
     if isempty(jl)
-        ok || println("\n$(RED)pre-commit failed.$(NC) Use --no-verify only if you know why.\n")
+        ok ||
+            println("\n$(RED)pre-commit failed.$(NC) Use --no-verify only if you know why.\n")
         exit(ok ? 0 : 1)
     end
 

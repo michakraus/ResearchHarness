@@ -106,8 +106,8 @@ named file is not valid UTF-8. With `--apply`, the exit status is 0 after the re
 
 Normalisation can change a string literal. Before `--apply`, check what reads such a literal, for
 example a doctest. The `pre-commit` hook has its own copy of the check, in `pre-commit.jl`, and
-names this script for the fix. The rule `generated-hooks-and-workflows` and the agent `julia-pr-shepherd` tell an agent
-to run it.
+names this script for the fix. The rule `generated-hooks-and-workflows` and the agent
+`julia-pr-shepherd` tell an agent to run it.
 
 ## `explicit-imports.jl`
 
