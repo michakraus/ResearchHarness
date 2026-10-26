@@ -93,6 +93,10 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   second command from shlex, and each fix screened one form. Gate the reader with a closed grammar
   that every target shell reads the same way, and keep any other line inside (G7 round 1 to
   verify 2, *Add the Antigravity frontend*)
+- a program put first on the `PATH` by a shell start file: it is first only in a shell that reads
+  that file. A `zsh -c` reads `.zshenv` and not `.zshrc`, so a shim that `.zshrc` puts in front
+  is not the `julia` of a frontend whose Bash does not read `.zshrc`. Check `command -v <name>`
+  in each frontend's own shell (M1, *Sandbox the agent frontends*)
 - a file that an installer copies into another repository, where that repository's own gate reads
   it: a hook program that is not in the style of the packages' formatter makes the installed
   pre-commit hook refuse the commit of its own files. Run the target's gate on the installed copy
