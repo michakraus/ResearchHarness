@@ -91,8 +91,17 @@ NINE-DETAIL.
 
 TRAP-TEXT.
 """
-BUNDLE_IN = ["P-GOAL", "P-SECTION", "P-DECISION", "V-RULE", "builder also reads", "SIX-RULE",
-             "NINE-PREAMBLE", "TRAP-TEXT", "| id | goal | verification |"]
+BUNDLE_IN = [
+    "P-GOAL",
+    "P-SECTION",
+    "P-DECISION",
+    "V-RULE",
+    "builder also reads",
+    "SIX-RULE",
+    "NINE-PREAMBLE",
+    "TRAP-TEXT",
+    "| id | goal | verification |",
+]
 BUNDLE_OUT = ["HANDOVER-TEXT", "Q-SECTION", "other goal", "NINE-DETAIL", "NARRATION"]
 
 # The fixture spec in the spec-delta format: one premise, one MODIFIED and one ADDED requirement,
@@ -161,8 +170,12 @@ KEPT = ["src/A.jl", "test/runtests.jl", "env.jl"]
 LEFT_OUT = [".env", ".env.ts", "test/.env.local", ".git/HEAD", ".claude/scratch/x"]
 
 # The files whose fix round runs only the mutants that the fix touches.
-FIX_ROUND_FILES = ["agents/julia-builder.md", "agents/part-builder.md",
-                   "skills/build-part/SKILL.md", "skills/build-reviewed/SKILL.md"]
+FIX_ROUND_FILES = [
+    "agents/julia-builder.md",
+    "agents/part-builder.md",
+    "skills/build-part/SKILL.md",
+    "skills/build-reviewed/SKILL.md",
+]
 
 # The fixture task file of the spec gate: (part, repository, tier, Files, expected verdict).
 SPEC_PARTS = [
@@ -186,8 +199,14 @@ def fix_round_mutants(read):
     section = re.search(r"^### A fix round's mutants\n(.*?)(?=^#)", evidence, re.S | re.M)
     if section is None:
         return ["evidence.md has no section `### A fix round's mutants`"]
-    for phrase in ("**Round 1 runs the full set**", "**Own**", "**Function**", "**Test**", "**Survivor**",
-                   "do not run the earlier lists again"):
+    for phrase in (
+        "**Round 1 runs the full set**",
+        "**Own**",
+        "**Function**",
+        "**Test**",
+        "**Survivor**",
+        "do not run the earlier lists again",
+    ):
         if phrase not in section.group(1):
             problems.append(f"the section lacks {phrase}")
     for path in FIX_ROUND_FILES:
@@ -224,17 +243,27 @@ def spec_gate(tmp):
     root = pathlib.Path(tmp) / "Research"
     for d in ("Packages/Example/src", "Packages/Other/src", "Harness/scripts", "Tasks"):
         (root / d).mkdir(parents=True, exist_ok=True)
-    rows = "\n".join(f"| **{p}** | `{r}` | §{k}, §V, §L | x | {t} | open |"
-                     for k, (p, r, t, _, _) in enumerate(SPEC_PARTS, 1))
-    sections = "\n\n".join(f"## {k} · part {p}\n\n1. **Done when** — x.\n2. **Decided at the edges** — x.\n"
-                           f"3. **Tests catch** — x.\n4. **Files** — {files}.\n5. **Not in this part** — x."
-                           for k, (p, _, _, files, _) in enumerate(SPEC_PARTS, 1))
+    rows = "\n".join(
+        f"| **{p}** | `{r}` | §{k}, §V, §L | x | {t} | open |"
+        for k, (p, r, t, _, _) in enumerate(SPEC_PARTS, 1)
+    )
+    sections = "\n\n".join(
+        f"## {k} · part {p}\n\n1. **Done when** — x.\n2. **Decided at the edges** — x.\n"
+        f"3. **Tests catch** — x.\n4. **Files** — {files}.\n5. **Not in this part** — x."
+        for k, (p, _, _, files, _) in enumerate(SPEC_PARTS, 1)
+    )
     task = root / "Tasks" / "plan.md"
-    task.write_text("# Plan\n\n## Parts\n\n| part | repository | sections | what it is | tier | state |\n"
-                    f"|:--|:--|:--|:--|:--|:--|\n{rows}\n\n{sections}\n\n## V\n\nx\n\n## L\n\nx\n")
+    task.write_text(
+        "# Plan\n\n## Parts\n\n| part | repository | sections | what it is | tier | state |\n"
+        f"|:--|:--|:--|:--|:--|:--|\n{rows}\n\n{sections}\n\n## V\n\nx\n\n## L\n\nx\n"
+    )
     env = {**os.environ, "RESEARCH_ROOT": str(root), "HOME": tmp}
-    p = subprocess.run([sys.executable, str(SPEC_GATE), str(task), *[s[0] for s in SPEC_PARTS]],
-                       capture_output=True, text=True, env=env)
+    p = subprocess.run(
+        [sys.executable, str(SPEC_GATE), str(task), *[s[0] for s in SPEC_PARTS]],
+        capture_output=True,
+        text=True,
+        env=env,
+    )
     lines = dict(line.split("\t", 1) for line in p.stdout.splitlines() if "\t" in line)
     return {part: rest.split("\t")[0] for part, rest in lines.items()}, p.returncode, p.stderr
 
@@ -244,8 +273,9 @@ def spec_bundle(tmp, plan):
     task = pathlib.Path(tmp) / "plan.md"
     task.write_text(plan)
     out = pathlib.Path(tmp) / "bundle.md"
-    p = subprocess.run([sys.executable, str(SPEC_BUNDLE), str(task), "P", "--out", str(out)],
-                       capture_output=True, text=True)
+    p = subprocess.run(
+        [sys.executable, str(SPEC_BUNDLE), str(task), "P", "--out", str(out)], capture_output=True, text=True
+    )
     return (out.read_text() if out.exists() else ""), p.stderr, p.returncode
 
 
@@ -272,12 +302,20 @@ def spec_format(check):
         base = tmp / "base"
         base.mkdir()
         out, status = spec_validate(write_spec(tmp / "ok"), "--base", str(base))
-        check(status == 0 and "premise: pass" in out, f"spec-validate.py passes the fixture spec -> {status} {out}")
+        check(
+            status == 0 and "premise: pass" in out,
+            f"spec-validate.py passes the fixture spec -> {status} {out}",
+        )
         out, status = spec_validate(write_spec(tmp / "nodomain", domain=""), "--no-run")
-        check(status == 1 and "rule 8" in out,
-              f"a scenario that enforces a reference with no domain fails rule 8 -> {status} {out}")
+        check(
+            status == 1 and "rule 8" in out,
+            f"a scenario that enforces a reference with no domain fails rule 8 -> {status} {out}",
+        )
         out, status = spec_validate(write_spec(tmp / "premise", premise="false"), "--base", str(base))
-        check(status == 1 and "rule 9" in out, f"a premise that fails on the base fails rule 9 -> {status} {out}")
+        check(
+            status == 1 and "rule 9" in out,
+            f"a premise that fails on the base fails rule 9 -> {status} {out}",
+        )
         spec = write_spec(tmp / "mutant")
         spec.write_text(spec.read_text().replace("| MU1 |", "| MU2 |"))
         out, status = spec_validate(spec, "--no-run")
@@ -288,17 +326,23 @@ def spec_format(check):
         spec = write_spec(tmp / "device", premise="false")
         spec.write_text(spec.read_text().replace("- check: `false`", "- check: `false` (device: metal)"))
         out, status = spec_validate(spec, "--base", str(base))
-        check(status == 2 and "not run (needs metal)" in out and "UNMEASURED" in out,
-              f"a device premise with no --devices is unmeasured, exit 2 -> {status} {out}")
+        check(
+            status == 2 and "not run (needs metal)" in out and "UNMEASURED" in out,
+            f"a device premise with no --devices is unmeasured, exit 2 -> {status} {out}",
+        )
         out, status = spec_validate(spec, "--base", str(base), "--devices", "metal")
-        check(status == 1 and "rule 9" in out, f"with --devices metal the device premise runs -> {status} {out}")
+        check(
+            status == 1 and "rule 9" in out, f"with --devices metal the device premise runs -> {status} {out}"
+        )
 
         # rule 10: a `git grep` without -P that uses \b in a check script fails; with -P it passes
         spec = write_spec(tmp / "escape")
         (spec.parent / "checks" / "names.sh").write_text("git grep -nE '\\bfoo\\b' -- src/\n")
         out, status = spec_validate(spec, "--no-run")
-        check(status == 1 and "rule 10: checks/names.sh:1" in out,
-              f"a git grep -E with \\b in a check script fails rule 10 -> {status} {out}")
+        check(
+            status == 1 and "rule 10: checks/names.sh:1" in out,
+            f"a git grep -E with \\b in a check script fails rule 10 -> {status} {out}",
+        )
         (spec.parent / "checks" / "names.sh").write_text("git grep -nP '\\bfoo\\b' -- src/\n")
         out, status = spec_validate(spec, "--no-run")
         check(status == 0, f"the same pattern with -P passes -> {status} {out}")
@@ -307,60 +351,104 @@ def spec_format(check):
         head = tmp / "head"
         head.mkdir()
         out, status = spec_validate(write_spec(tmp / "gate"), "--head", str(head), "--out", str(tmp / "out"))
-        check(status == 0 and out.count("check: pass") == 2, f"the gate runs the delta's two checks -> {status} {out}")
-        out, status = spec_validate(write_spec(tmp / "gate-fail", check="false"), "--head", str(head),
-                                    "--out", str(tmp / "out"))
-        check(status == 1 and "gate:" in out, f"a check that fails on the head fails the gate -> {status} {out}")
+        check(
+            status == 0 and out.count("check: pass") == 2,
+            f"the gate runs the delta's two checks -> {status} {out}",
+        )
+        out, status = spec_validate(
+            write_spec(tmp / "gate-fail", check="false"), "--head", str(head), "--out", str(tmp / "out")
+        )
+        check(
+            status == 1 and "gate:" in out, f"a check that fails on the head fails the gate -> {status} {out}"
+        )
         subprocess.run(["git", "init", "-q", str(head)], check=True)
-        out, status = spec_validate(write_spec(tmp / "gate-write", check="touch written"), "--head", str(head),
-                                    "--out", str(tmp / "out"))
-        check(status == 1 and "changed `git status" in out,
-              f"a check that writes into the head fails the gate -> {status} {out}")
+        out, status = spec_validate(
+            write_spec(tmp / "gate-write", check="touch written"),
+            "--head",
+            str(head),
+            "--out",
+            str(tmp / "out"),
+        )
+        check(
+            status == 1 and "changed `git status" in out,
+            f"a check that writes into the head fails the gate -> {status} {out}",
+        )
 
         # spec-gate.py and spec-bundle.py on a part whose cell names `spec`
         root = tmp / "Research"
         (root / "Packages" / "Example").mkdir(parents=True)
         (root / "Tasks").mkdir()
         task = root / "Tasks" / "plan.md"
-        task.write_text("# Plan\n\n## Parts\n\n| part | repository | sections | what it is | tier | state |\n"
-                        "|:--|:--|:--|:--|:--|:--|\n| **S** | `Example` | spec, §V, §L | x | build | open |\n"
-                        "| **T** | `Example` | spec, §V, §L | x | build | open |\n\n"
-                        "## §V · Plan rules\n\nV-RULE.\n\n## §L · The loop\n\n- **The builder also reads:** nothing more.\n")
+        task.write_text(
+            "# Plan\n\n## Parts\n\n| part | repository | sections | what it is | tier | state |\n"
+            "|:--|:--|:--|:--|:--|:--|\n| **S** | `Example` | spec, §V, §L | x | build | open |\n"
+            "| **T** | `Example` | spec, §V, §L | x | build | open |\n\n"
+            "## §V · Plan rules\n\nV-RULE.\n\n## §L · The loop\n\n- **The builder also reads:** nothing more.\n"
+        )
         write_spec(root / "Tasks" / "Evidence" / "plan" / "S")
         env = {**os.environ, "RESEARCH_ROOT": str(root), "HOME": str(tmp)}
-        p = subprocess.run([sys.executable, str(SPEC_GATE), str(task), "S", "T", "--no-run"],
-                           capture_output=True, text=True, env=env)
+        p = subprocess.run(
+            [sys.executable, str(SPEC_GATE), str(task), "S", "T", "--no-run"],
+            capture_output=True,
+            text=True,
+            env=env,
+        )
         lines = dict(line.split("\t")[:2] for line in p.stdout.splitlines() if "\t" in line)
-        check(lines.get("S") == "PASS" and lines.get("T") == "MISSING spec" and p.returncode == 1,
-              f"spec-gate.py validates S and finds T's spec missing -> {lines} {p.returncode} {p.stderr.strip()}")
+        check(
+            lines.get("S") == "PASS" and lines.get("T") == "MISSING spec" and p.returncode == 1,
+            f"spec-gate.py validates S and finds T's spec missing -> {lines} {p.returncode} {p.stderr.strip()}",
+        )
         # a part whose device premise did not run is UNMEASURED, exit 2; the premises run on a
         # base exported from a git checkout of the fixture repository
         repo = root / "Packages" / "Example"
-        for cmd in (["init", "-q"], ["-c", "user.name=x", "-c", "user.email=x@x", "commit", "-q",
-                                     "--allow-empty", "-m", "base"]):
+        for cmd in (
+            ["init", "-q"],
+            ["-c", "user.name=x", "-c", "user.email=x@x", "commit", "-q", "--allow-empty", "-m", "base"],
+        ):
             subprocess.run(["git", *cmd], cwd=repo, check=True, capture_output=True)
-        commit = subprocess.run(["git", "rev-parse", "--short=7", "HEAD"], cwd=repo, capture_output=True,
-                                text=True, check=True).stdout.strip()
+        commit = subprocess.run(
+            ["git", "rev-parse", "--short=7", "HEAD"], cwd=repo, capture_output=True, text=True, check=True
+        ).stdout.strip()
         spec = root / "Tasks" / "Evidence" / "plan" / "S" / "spec.md"
-        spec.write_text(spec.read_text().replace("1234567", commit)
-                        .replace("- check: `true`\n- catches: none — a premise",
-                                 "- check: `true` (device: metal)\n- catches: none — a premise"))
-        p = subprocess.run([sys.executable, str(SPEC_GATE), str(task), "S"], capture_output=True, text=True, env=env)
+        spec.write_text(
+            spec.read_text()
+            .replace("1234567", commit)
+            .replace(
+                "- check: `true`\n- catches: none — a premise",
+                "- check: `true` (device: metal)\n- catches: none — a premise",
+            )
+        )
+        p = subprocess.run(
+            [sys.executable, str(SPEC_GATE), str(task), "S"], capture_output=True, text=True, env=env
+        )
         lines = dict(line.split("\t")[:2] for line in p.stdout.splitlines() if "\t" in line)
-        check(lines.get("S") == "UNMEASURED metal" and p.returncode == 2,
-              f"spec-gate.py reports a device premise not run as UNMEASURED, exit 2 -> {lines} {p.returncode} "
-              f"{p.stdout.strip()} {p.stderr.strip()}")
-        p = subprocess.run([sys.executable, str(SPEC_GATE), str(task), "S", "--devices", "metal"],
-                           capture_output=True, text=True, env=env)
+        check(
+            lines.get("S") == "UNMEASURED metal" and p.returncode == 2,
+            f"spec-gate.py reports a device premise not run as UNMEASURED, exit 2 -> {lines} {p.returncode} "
+            f"{p.stdout.strip()} {p.stderr.strip()}",
+        )
+        p = subprocess.run(
+            [sys.executable, str(SPEC_GATE), str(task), "S", "--devices", "metal"],
+            capture_output=True,
+            text=True,
+            env=env,
+        )
         lines = dict(line.split("\t")[:2] for line in p.stdout.splitlines() if "\t" in line)
-        check(lines.get("S") == "PASS" and p.returncode == 0,
-              f"with --devices metal the gate runs it and passes -> {lines} {p.returncode} {p.stdout.strip()}")
+        check(
+            lines.get("S") == "PASS" and p.returncode == 0,
+            f"with --devices metal the gate runs it and passes -> {lines} {p.returncode} {p.stdout.strip()}",
+        )
         out = tmp / "bundle.md"
-        p = subprocess.run([sys.executable, str(SPEC_BUNDLE), str(task), "S", "--out", str(out)],
-                           capture_output=True, text=True)
+        p = subprocess.run(
+            [sys.executable, str(SPEC_BUNDLE), str(task), "S", "--out", str(out)],
+            capture_output=True,
+            text=True,
+        )
         text = out.read_text() if out.exists() else ""
-        check(p.returncode == 0 and "## 3 · Delta" in text and "V-RULE" in text and "**$SPEC:**" in text,
-              f"the bundle of S holds its spec, §V and $SPEC -> {p.returncode} {p.stderr.strip()}")
+        check(
+            p.returncode == 0 and "## 3 · Delta" in text and "V-RULE" in text and "**$SPEC:**" in text,
+            f"the bundle of S holds its spec, §V and $SPEC -> {p.returncode} {p.stderr.strip()}",
+        )
 
 
 def selftest():
@@ -373,8 +461,10 @@ def selftest():
         total, wrong = total + 1, wrong + (not ok)
         print(f"{'ok ' if ok else 'BAD'}  scripts: {label}")
 
-    sources = [("the critic's copy in evidence.md", critic_excludes(EVIDENCE.read_text())),
-               ("copy_command in run-tests.jl", run_tests_excludes(RUN_TESTS.read_text()))]
+    sources = [
+        ("the critic's copy in evidence.md", critic_excludes(EVIDENCE.read_text())),
+        ("copy_command in run-tests.jl", run_tests_excludes(RUN_TESTS.read_text())),
+    ]
     with tempfile.TemporaryDirectory(prefix="harness-copies-") as tmp:
         # the control: without the flags, the fixture's `.env` files are copied
         control = copied([], tmp, "control")
@@ -387,7 +477,9 @@ def selftest():
             check(files == sorted(KEPT), f"{label} leaves out .git, .claude, .env and .env.* -> {files}")
     with tempfile.TemporaryDirectory(prefix="harness-spec-gate-") as tmp:
         verdicts, status, stderr = spec_gate(tmp)
-        check(status == 1, f"spec-gate.py exits 1 on a file with a part that spans -> {status} {stderr.strip()}")
+        check(
+            status == 1, f"spec-gate.py exits 1 on a file with a part that spans -> {status} {stderr.strip()}"
+        )
         for part, _, tier, files, expected in SPEC_PARTS:
             got = verdicts.get(part, "no line")
             want = expected.split()[0]
@@ -400,13 +492,20 @@ def selftest():
         text, stderr, status = spec_bundle(tmp, BUNDLE_PLAN)
         check(status == 0, f"spec-bundle.py exits 0 when every name resolves -> {status} {stderr.strip()}")
         missing = [s for s in BUNDLE_IN if s not in text]
-        check(not missing, f"the bundle holds the part's sections, §V, §L and what §L names -> missing {missing}")
+        check(
+            not missing,
+            f"the bundle holds the part's sections, §V, §L and what §L names -> missing {missing}",
+        )
         leaked = [s for s in BUNDLE_OUT if s in text]
-        check(not leaked, f"the bundle leaves out other parts, handovers and the state's narration -> {leaked}")
+        check(
+            not leaked, f"the bundle leaves out other parts, handovers and the state's narration -> {leaked}"
+        )
         # the control: a heading that §L names and the file lacks is unresolved
         text, stderr, status = spec_bundle(tmp, BUNDLE_PLAN.replace("## Traps", "## Pitfalls"))
-        check(status == 1 and "unresolved: *Traps*" in stderr,
-              f"a name that matches nothing is unresolved, exit 1 -> {status} {stderr.strip()}")
+        check(
+            status == 1 and "unresolved: *Traps*" in stderr,
+            f"a name that matches nothing is unresolved, exit 1 -> {status} {stderr.strip()}",
+        )
     spec_format(check)
     problems = fix_round_mutants(lambda path: (REPO / path).read_text())
     check(not problems, f"a fix round runs only the mutants that its fix touches -> {problems or 'holds'}")

@@ -79,11 +79,14 @@ RULESET = {
     "rules": [
         {"type": "deletion"},
         {"type": "non_fast_forward"},
-        {"type": "required_status_checks", "parameters": {
-            "strict_required_status_checks_policy": True,
-            "do_not_enforce_on_create": False,
-            "required_status_checks": [{"context": c} for c in REQUIRED_CHECKS],
-        }},
+        {
+            "type": "required_status_checks",
+            "parameters": {
+                "strict_required_status_checks_policy": True,
+                "do_not_enforce_on_create": False,
+                "required_status_checks": [{"context": c} for c in REQUIRED_CHECKS],
+            },
+        },
     ],
 }
 
@@ -127,7 +130,9 @@ def ruleset_problem(ruleset):
         return "deletion or force-push is not blocked"
     if [c.get("strict_required_status_checks_policy") for c in checks] != [True]:
         return "required checks missing or not strict"
-    if sorted(c.get("context") for c in checks[0].get("required_status_checks", [])) != sorted(REQUIRED_CHECKS):
+    if sorted(c.get("context") for c in checks[0].get("required_status_checks", [])) != sorted(
+        REQUIRED_CHECKS
+    ):
         return "required checks differ"
     return None
 
@@ -138,7 +143,9 @@ def verify_workflows():
     verifier = REPO / "githooks" / "verify-workflows.jl"
     p = subprocess.run(["julia", "--startup-file=no", str(verifier), "--quiet"])
     if p.returncode != 0:
-        raise HarnessError("workflows have drifted; protection not touched — run `harness workflows --apply` first")
+        raise HarnessError(
+            "workflows have drifted; protection not touched — run `harness workflows --apply` first"
+        )
     print("workflows are canonical.\n")
 
 
@@ -150,8 +157,10 @@ def resolve(repo):
         return "skip", "no github origin"
     slug = m.group(1)
     owner, name = slug.split("/", 1)
-    query = ("query($o:String!, $n:String!) { repository(owner:$o, name:$n) "
-             "{ nameWithOwner isPrivate viewerPermission defaultBranchRef { name } } }")
+    query = (
+        "query($o:String!, $n:String!) { repository(owner:$o, name:$n) "
+        "{ nameWithOwner isPrivate viewerPermission defaultBranchRef { name } } }"
+    )
     data = json.loads(gh("api", "graphql", "-f", f"query={query}", "-F", f"o={owner}", "-F", f"n={name}"))
     meta = (data.get("data") or {}).get("repository") or {}
     canonical = meta.get("nameWithOwner") or ""
@@ -159,8 +168,10 @@ def resolve(repo):
     if not SLUG.fullmatch(canonical):
         raise GhError(f"cannot resolve {slug}")
     if canonical != slug:
-        raise GhError(f"STALE REMOTE: origin says {slug}, GitHub says {canonical}; fix it with "
-                      f"`cd {repo} && git remote set-url origin https://github.com/{canonical}`")
+        raise GhError(
+            f"STALE REMOTE: origin says {slug}, GitHub says {canonical}; fix it with "
+            f"`cd {repo} && git remote set-url origin https://github.com/{canonical}`"
+        )
     if meta.get("viewerPermission") != "ADMIN":
         return "skip", f"viewer permission is {meta.get('viewerPermission')}, protection needs ADMIN"
     if meta.get("isPrivate"):
@@ -172,8 +183,11 @@ def resolve(repo):
 
 def ruleset_id(slug):
     """The id of the repository's own branch ruleset named `main`, or None."""
-    ids = [r["id"] for r in json.loads(gh("api", f"repos/{slug}/rulesets"))
-           if r.get("name") == "main" and r.get("target") == "branch" and r.get("source_type") == "Repository"]
+    ids = [
+        r["id"]
+        for r in json.loads(gh("api", f"repos/{slug}/rulesets"))
+        if r.get("name") == "main" and r.get("target") == "branch" and r.get("source_type") == "Repository"
+    ]
     if len(ids) > 1:
         raise GhError(f"more than one ruleset named main ({ids}); delete all but one")
     return ids[0] if ids else None
@@ -202,8 +216,16 @@ def apply_ruleset(slug, rid, todo):
         else:
             gh("api", "--method", "PUT", f"repos/{slug}/rulesets/{rid}", "--input", "-", payload=body)
     if any(t.startswith("turn on") for t in todo):
-        gh("api", "--method", "PATCH", f"repos/{slug}", "-F", "allow_auto_merge=true",
-           "-F", "delete_branch_on_merge=true")
+        gh(
+            "api",
+            "--method",
+            "PATCH",
+            f"repos/{slug}",
+            "-F",
+            "allow_auto_merge=true",
+            "-F",
+            "delete_branch_on_merge=true",
+        )
 
 
 def plan_classic(slug, branch, rid):
@@ -269,9 +291,14 @@ def selftest():
         (broken(lambda r: r["conditions"]["ref_name"].update(include=[])), "branch list is []"),
         (broken(lambda r: r.update(current_user_can_bypass="never")), "admin bypass is never"),
         (broken(lambda r: r["rules"].pop(1)), "deletion or force-push is not blocked"),
-        (broken(lambda r: r["rules"][2]["parameters"].update(strict_required_status_checks_policy=False)),
-         "required checks missing or not strict"),
-        (broken(lambda r: r["rules"][2]["parameters"]["required_status_checks"].pop()), "required checks differ"),
+        (
+            broken(lambda r: r["rules"][2]["parameters"].update(strict_required_status_checks_policy=False)),
+            "required checks missing or not strict",
+        ),
+        (
+            broken(lambda r: r["rules"][2]["parameters"]["required_status_checks"].pop()),
+            "required checks differ",
+        ),
     ]
     wrong = 0
     for ruleset, expected in cases:
@@ -282,12 +309,20 @@ def selftest():
 
 
 def register(sub):
-    p = changing(sub.add_parser("ci-protection", help="protect every default branch with a ruleset",
-                                description="Protect the default branch of each repository that has a CI.yml with a "
-                                            "GitHub ruleset named `main`, and turn on auto-merge and the deletion of "
-                                            "merged branches. Without --apply it prints what would change and exits 1 "
-                                            "when something would; --apply writes through `gh api`. It refuses unless "
-                                            "verify-workflows.jl passes; run it in your own terminal."))
-    p.add_argument("--remove-classic", action="store_true",
-                   help="delete classic branch protection where the ruleset is right")
+    p = changing(
+        sub.add_parser(
+            "ci-protection",
+            help="protect every default branch with a ruleset",
+            description="Protect the default branch of each repository that has a CI.yml with a "
+            "GitHub ruleset named `main`, and turn on auto-merge and the deletion of "
+            "merged branches. Without --apply it prints what would change and exits 1 "
+            "when something would; --apply writes through `gh api`. It refuses unless "
+            "verify-workflows.jl passes; run it in your own terminal.",
+        )
+    )
+    p.add_argument(
+        "--remove-classic",
+        action="store_true",
+        help="delete classic branch protection where the ruleset is right",
+    )
     p.set_defaults(run=cmd_ci_protection)

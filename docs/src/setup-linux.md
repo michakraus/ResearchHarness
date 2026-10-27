@@ -826,16 +826,19 @@ harness install
 
 **Only to change the harness.** A user who only installs the harness skips this step.
 
-**What it does.** These commands turn on the pre-push hook of this repository, once in the
-checkout:
+**What it does.** These commands turn on the pre-commit and the pre-push hook of this repository,
+once in the checkout:
 
 ```bash
 cd ~/Research/Harness
 git config core.hooksPath .githooks
 ```
 
-**Why.** The pre-push hook runs the leak checks and the tests before a push to `main`, and
-`harness leaks` before a push of any other branch. Its leak checks run gitleaks. [development.md](development.md#the-pre-push-hook) describes the hook.
+**Why.** The pre-commit hook runs `ruff format --check`, `ruff check` and `basedpyright` on each
+commit, with the tools that `develop = true` in the profile puts into the Python environment at
+the next `harness install --apply`; without them it refuses every commit. The pre-push hook runs
+the leak checks, the tests and the same three checks before a push to `main`, and
+`harness leaks` before a push of any other branch. Its leak checks run gitleaks. [development.md](development.md#the-pre-commit-hook) describes the hooks.
 
 **Check.** `git config core.hooksPath` in the checkout prints `.githooks`.
 

@@ -20,8 +20,8 @@ subcommands of the `harness` command install the templates into every repository
 `harness wiki-lint-hook --apply` installs `pre-commit-wiki` into the prose repositories. Each copy
 is byte-identical to its template and is a tracked file in the repository. Edit the template,
 then install again; never edit a copy. The other scripts of this page run from the checkout.
-This repository has a pre-push hook of its own, `.githooks/pre-push`; it is not a template, and
-[Development](../development.md) describes it.
+This repository has a pre-commit and a pre-push hook of its own, `.githooks/pre-commit` and
+`.githooks/pre-push`; they are not templates, and [Development](../development.md) describes them.
 
 ## `pre-commit`, `pre-commit.jl` and `pre-commit-test.jl`
 

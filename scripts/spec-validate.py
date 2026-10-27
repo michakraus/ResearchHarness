@@ -50,6 +50,7 @@ line per error, then `PASS`, `UNMEASURED (<n> commands need <devices>)` or `FAIL
 Exit 0 on a pass, 2 when every command that ran passed and a device command did not run, 1 on a
 fail, and 3 when this script fails.
 """
+
 import argparse
 import os
 import re
@@ -77,8 +78,10 @@ def grep_escape(line):
     `grep` after a pipe does not count."""
     if line.lstrip().startswith("#"):
         return False
-    return any(GIT_GREP.search(seg) and not PERL.search(seg) and ESCAPE.search(seg)
-               for seg in re.split(r"\||;|&&", line))
+    return any(
+        GIT_GREP.search(seg) and not PERL.search(seg) and ESCAPE.search(seg)
+        for seg in re.split(r"\||;|&&", line)
+    )
 
 
 RULE10 = "`git grep` without -P uses `\\b`, `\\s`, `\\w` or `\\d`, which this Git ignores"
@@ -104,14 +107,21 @@ def requirements(lines, start, end):
     while i < end:
         l = lines[i]
         if l.startswith("### ") and not REQ.match(l):
-            kind = "MODIFIED" if "MODIFIED" in l else "ADDED" if "ADDED" in l else \
-                   "REMOVED" if "REMOVED" in l else kind
+            kind = (
+                "MODIFIED"
+                if "MODIFIED" in l
+                else "ADDED"
+                if "ADDED" in l
+                else "REMOVED"
+                if "REMOVED" in l
+                else kind
+            )
         m = REQ.match(l)
         if m:
             j = i + 1
             while j < end and not lines[j].startswith("### ") and not lines[j].startswith("## "):
                 j += 1
-            body = lines[i + 1:j]
+            body = lines[i + 1 : j]
             first = next((k for k, b in enumerate(body) if SCEN.match(b)), len(body))
             scens, k = [], first
             while k < len(body):
@@ -119,10 +129,17 @@ def requirements(lines, start, end):
                 e = k + 1
                 while e < len(body) and not SCEN.match(body[e]):
                     e += 1
-                scens.append((n.group(1), body[k + 1:e]))
+                scens.append((n.group(1), body[k + 1 : e]))
                 k = e
-            reqs.append({"name": m.group(1), "kind": kind,
-                         "statement": "\n".join(body[:first]), "scenarios": scens, "line": i + 1})
+            reqs.append(
+                {
+                    "name": m.group(1),
+                    "kind": kind,
+                    "statement": "\n".join(body[:first]),
+                    "scenarios": scens,
+                    "line": i + 1,
+                }
+            )
             i = j
         else:
             i += 1
@@ -133,8 +150,8 @@ def bullet(body, key):
     """The text of the bullet `- <key>` with its continuation lines, or None."""
     for i, l in enumerate(body):
         if l.startswith(f"- {key}"):
-            text = [l[len(f"- {key}"):]]
-            for c in body[i + 1:]:
+            text = [l[len(f"- {key}") :]]
+            for c in body[i + 1 :]:
                 if not (c.startswith(" ") and c.strip()):
                     break
                 text.append(c)
@@ -155,7 +172,7 @@ def structure(spec, lines):
     for s in SECTIONS:
         if s not in secs:
             err(f"rule 1: no section `## {s}`")
-        elif not any(x.strip() for x in lines[secs[s][0] + 1:secs[s][1]]):
+        elif not any(x.strip() for x in lines[secs[s][0] + 1 : secs[s][1]]):
             err(f"rule 1: section `## {s}` is empty")
     base = next((m.group(1) for l in lines if (m := BASE.search(l))), None)
     if base is None:
@@ -252,7 +269,9 @@ def structure(spec, lines):
 
 def status(tree):
     """`git status --porcelain --ignored` of a git tree, or None for any other tree."""
-    p = subprocess.run(["git", "status", "--porcelain", "--ignored"], cwd=tree, capture_output=True, text=True)
+    p = subprocess.run(
+        ["git", "status", "--porcelain", "--ignored"], cwd=tree, capture_output=True, text=True
+    )
     return p.stdout if p.returncode == 0 else None
 
 
@@ -300,8 +319,15 @@ def main():
         with tempfile.TemporaryDirectory(prefix="spec-validate-") as tmp:
             out = Path(a.out).resolve() if a.out else Path(tmp) / "out"
             out.mkdir(parents=True, exist_ok=True)
-            env = dict(os.environ, SPEC=str(spec.parent), OUT=str(out), BASE=base,
-                       RESEARCH_ROOT=research, JULIA_PROJECT="", **extra)
+            env = dict(
+                os.environ,
+                SPEC=str(spec.parent),
+                OUT=str(out),
+                BASE=base,
+                RESEARCH_ROOT=research,
+                JULIA_PROJECT="",
+                **extra,
+            )
             if a.head:
                 tree = str(Path(a.head).resolve())
                 before = status(tree)
@@ -316,8 +342,10 @@ def main():
                     os.mkdir(tree)
                     archive = subprocess.run(["git", "archive", base], cwd=a.repo, capture_output=True)
                     if archive.returncode != 0:
-                        errors.append(f"rule 9: `git archive {base}` fails in {a.repo}: "
-                                      f"{archive.stderr.decode().strip()}")
+                        errors.append(
+                            f"rule 9: `git archive {base}` fails in {a.repo}: "
+                            f"{archive.stderr.decode().strip()}"
+                        )
                     else:
                         subprocess.run(["tar", "-x", "-C", tree], input=archive.stdout, check=True)
                 if not errors:

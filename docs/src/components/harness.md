@@ -556,6 +556,19 @@ and the uv stays in `~/.local/bin`. Last, the cases run `harness install` on `Sc
 line, the sync with and without the `dev` group, an interpreter that does not start, a sync that
 fails, no uv, and a `develop` that is not `true` or `false`.
 
+## `strict.py`
+
+The cases of the strict profile of the Python code. The module has no subcommand. Its first cases
+parse each `.py` file below `hooks/` and each `adapters/*/guard*.py` with `ast` and fail on an
+import outside the standard library, in this repository and in scratch trees: `hooks/probe.py`
+may also import `harness`, and another file may not. The other cases run
+`.githooks/pre-commit` through `git commit` in scratch repositories, with stubs of `ruff` and
+`basedpyright` in a scratch Python environment and a second pair on the `PATH`: a clean commit, a
+staged file that each check refuses, a staged file that the formatter would change, which stays
+as it was in the work tree and the index, a violation that is not staged, and an environment
+without one tool or both. [Development](../development.md#the-strict-profile) describes the
+profile.
+
 ## `docs.py`
 
 The check of the component pages of the documentation site, which runs in `harness test`. It has

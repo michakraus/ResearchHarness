@@ -85,8 +85,10 @@ def check_entry(path, key, entry):
     if not HOST.fullmatch(host):
         raise HarnessError(f"{path}: {key} entry {entry!r} is not a host name")
     if key == "allow" and host.startswith("*."):
-        raise HarnessError(f"{path}: allow entry {entry!r} is a wildcard; write {host[2:]!r}: WebFetch takes a "
-                           "domain, and the install adds the `*.` form to the sandbox list")
+        raise HarnessError(
+            f"{path}: allow entry {entry!r} is a wildcard; write {host[2:]!r}: WebFetch takes a "
+            "domain, and the install adds the `*.` form to the sandbox list"
+        )
 
 
 def read(path, missing_ok):
@@ -107,8 +109,10 @@ def read(path, missing_ok):
     except tomllib.TOMLDecodeError as e:
         raise HarnessError(f"{path} is not TOML: {e}") from None
     if unknown := [k for k in data if k not in KEYS]:
-        raise HarnessError(f"{path}: no key {', '.join(unknown)}; the keys are allow, infrastructure, deny and "
-                           "[deny_reasons]")
+        raise HarnessError(
+            f"{path}: no key {', '.join(unknown)}; the keys are allow, infrastructure, deny and "
+            "[deny_reasons]"
+        )
     out = {}
     for key in LISTS:
         value = data.get(key, [])
@@ -139,7 +143,9 @@ def merged(overlay):
     for path, data in files:
         for entry, reason in data.get("deny_reasons", {}).items():
             if entry not in out["deny"]:
-                raise HarnessError(f"{path}: deny_reasons key {entry!r} is no deny entry of {LIST} or {overlay}")
+                raise HarnessError(
+                    f"{path}: deny_reasons key {entry!r} is no deny entry of {LIST} or {overlay}"
+                )
             out["deny_reasons"][entry] = reason
     return out
 
@@ -160,25 +166,35 @@ def generate(lists):
 
     allow = kept(lists["allow"])
     mirror = kept(form for h in allow for form in ([h, "*." + h] if h == registrable(h) else [h]))
-    return ([f"{WEBFETCH}{h})" for h in allow],
-            [f"{WEBFETCH}{d})" for d in lists["deny"] if ":" not in d],
-            list(dict.fromkeys(kept(lists["infrastructure"]) + mirror)),
-            list(lists["deny"]),
-            dict(lists["deny_reasons"]))
+    return (
+        [f"{WEBFETCH}{h})" for h in allow],
+        [f"{WEBFETCH}{d})" for d in lists["deny"] if ":" not in d],
+        list(dict.fromkeys(kept(lists["infrastructure"]) + mirror)),
+        list(lists["deny"]),
+        dict(lists["deny_reasons"]),
+    )
 
 
 def apply(cfg, profile, overlay):
     """`cfg`, the rendered settings template, with the network rules of the harness list and the
     overlay at `overlay` in place."""
     if "extra_domain" in profile:
-        raise HarnessError(f"the profile key extra_domain is retired: move its hosts into the allow array of "
-                           f"{overlay} and remove the key")
+        raise HarnessError(
+            f"the profile key extra_domain is retired: move its hosts into the allow array of "
+            f"{overlay} and remove the key"
+        )
     permissions = cfg.get("permissions", {})
     network = cfg.get("sandbox", {}).get("network", {})
     if "allowedDomains" not in network:
-        raise HarnessError(f"{TEMPLATE} has no sandbox.network.allowedDomains for the network lists of {LIST}")
+        raise HarnessError(
+            f"{TEMPLATE} has no sandbox.network.allowedDomains for the network lists of {LIST}"
+        )
     own = [r for kind in ("allow", "deny") for r in permissions.get(kind, []) if r.startswith(WEBFETCH)]
-    own += [*network["allowedDomains"], *network.get("deniedDomains", []), *network.get("deniedDomainReasons", {})]
+    own += [
+        *network["allowedDomains"],
+        *network.get("deniedDomains", []),
+        *network.get("deniedDomainReasons", {}),
+    ]
     if own:
         raise HarnessError(f"{TEMPLATE} holds the network rule {own[0]!r}; a host goes into {LIST}")
     allow, deny, allowed, denied, reasons = generate(merged(overlay))
@@ -248,112 +264,213 @@ def selftest():
 
         # The harness list itself, and the template that keeps no host.
         template = json.loads(TEMPLATE.read_text())
-        case(lambda: not [r for k in ("allow", "deny") for r in template["permissions"][k] if r.startswith(WEBFETCH)]
-             and net(template) == {**net(template), "allowedDomains": []} and "deniedDomains" not in net(template),
-             "the settings template holds no WebFetch(domain:…) rule and an empty allowedDomains")
-        case(lambda: harness_list["deny"] == [] and all(len(set(harness_list[k])) == len(harness_list[k])
-                                                        for k in LISTS),
-             "the harness list has no deny entry, and no entry twice")
-        case(lambda: missing == base, "a missing overlay gives the harness list alone, as an empty overlay does")
+        case(
+            lambda: (
+                not [
+                    r for k in ("allow", "deny") for r in template["permissions"][k] if r.startswith(WEBFETCH)
+                ]
+                and net(template) == {**net(template), "allowedDomains": []}
+                and "deniedDomains" not in net(template)
+            ),
+            "the settings template holds no WebFetch(domain:…) rule and an empty allowedDomains",
+        )
+        case(
+            lambda: (
+                harness_list["deny"] == []
+                and all(len(set(harness_list[k])) == len(harness_list[k]) for k in LISTS)
+            ),
+            "the harness list has no deny entry, and no entry twice",
+        )
+        case(
+            lambda: missing == base,
+            "a missing overlay gives the harness list alone, as an empty overlay does",
+        )
 
         # The generation of each list.
         allow = fetch(base, "allow")
-        case(lambda: allow == [f"{WEBFETCH}{h})" for h in harness_list["allow"]]
-             and base["permissions"]["allow"] == json.loads(profile_module.render_file(TEMPLATE, dummy))[
-                 "permissions"]["allow"] + allow,
-             "each allow host is a WebFetch(domain:…) rule after the template's own allow rules")
-        case(lambda: {"nature.com", "*.nature.com", "core.ac.uk", "*.core.ac.uk", "api.crossref.org"}
-             <= set(net(base)["allowedDomains"]) and "*.api.crossref.org" not in net(base)["allowedDomains"]
-             and "*.ui.adsabs.harvard.edu" not in net(base)["allowedDomains"],
-             "an allow host that is its own registrable domain gives X and *.X to allowedDomains, core.ac.uk "
-             "under its three-label suffix too; a host below its registrable domain gives itself alone")
-        case(lambda: net(base)["allowedDomains"][:len(harness_list["infrastructure"])] == harness_list["infrastructure"]
-             and f"{WEBFETCH}api.anthropic.com)" not in allow and "*.github.io" in net(base)["allowedDomains"],
-             "each infrastructure entry is in allowedDomains exactly as written, first, and is no WebFetch rule")
-        case(lambda: "deniedDomains" not in net(base) and "deniedDomainReasons" not in net(base)
-             and fetch(base, "deny") == [],
-             "with no deny entry, no deniedDomains, no deniedDomainReasons and no WebFetch deny")
-        denied = rendered('deny = ["bad.example", "*.worse.example", "ssh.example:22", "*"]\n'
-                          '[deny_reasons]\n"bad.example" = "The host is retired."\n')
-        case(lambda: fetch(denied, "deny") == [f"{WEBFETCH}bad.example)", f"{WEBFETCH}*.worse.example)",
-                                              f"{WEBFETCH}*)"]
-             and denied["permissions"]["deny"][:-3] == base["permissions"]["deny"],
-             "each deny entry without a port is a WebFetch deny after the template's own deny rules, `*` and "
-             "`*.X` too; an entry with a port is none")
-        case(lambda: net(denied)["deniedDomains"] == ["bad.example", "*.worse.example", "ssh.example:22", "*"]
-             and net(denied)["deniedDomainReasons"] == {"bad.example": "The host is retired."},
-             "each deny entry is in deniedDomains as written, and deny_reasons is deniedDomainReasons")
+        case(
+            lambda: (
+                allow == [f"{WEBFETCH}{h})" for h in harness_list["allow"]]
+                and base["permissions"]["allow"]
+                == json.loads(profile_module.render_file(TEMPLATE, dummy))["permissions"]["allow"] + allow
+            ),
+            "each allow host is a WebFetch(domain:…) rule after the template's own allow rules",
+        )
+        case(
+            lambda: (
+                {"nature.com", "*.nature.com", "core.ac.uk", "*.core.ac.uk", "api.crossref.org"}
+                <= set(net(base)["allowedDomains"])
+                and "*.api.crossref.org" not in net(base)["allowedDomains"]
+                and "*.ui.adsabs.harvard.edu" not in net(base)["allowedDomains"]
+            ),
+            "an allow host that is its own registrable domain gives X and *.X to allowedDomains, core.ac.uk "
+            "under its three-label suffix too; a host below its registrable domain gives itself alone",
+        )
+        case(
+            lambda: (
+                net(base)["allowedDomains"][: len(harness_list["infrastructure"])]
+                == harness_list["infrastructure"]
+                and f"{WEBFETCH}api.anthropic.com)" not in allow
+                and "*.github.io" in net(base)["allowedDomains"]
+            ),
+            "each infrastructure entry is in allowedDomains exactly as written, first, and is no WebFetch rule",
+        )
+        case(
+            lambda: (
+                "deniedDomains" not in net(base)
+                and "deniedDomainReasons" not in net(base)
+                and fetch(base, "deny") == []
+            ),
+            "with no deny entry, no deniedDomains, no deniedDomainReasons and no WebFetch deny",
+        )
+        denied = rendered(
+            'deny = ["bad.example", "*.worse.example", "ssh.example:22", "*"]\n'
+            '[deny_reasons]\n"bad.example" = "The host is retired."\n'
+        )
+        case(
+            lambda: (
+                fetch(denied, "deny")
+                == [f"{WEBFETCH}bad.example)", f"{WEBFETCH}*.worse.example)", f"{WEBFETCH}*)"]
+                and denied["permissions"]["deny"][:-3] == base["permissions"]["deny"]
+            ),
+            "each deny entry without a port is a WebFetch deny after the template's own deny rules, `*` and "
+            "`*.X` too; an entry with a port is none",
+        )
+        case(
+            lambda: (
+                net(denied)["deniedDomains"] == ["bad.example", "*.worse.example", "ssh.example:22", "*"]
+                and net(denied)["deniedDomainReasons"] == {"bad.example": "The host is retired."}
+            ),
+            "each deny entry is in deniedDomains as written, and deny_reasons is deniedDomainReasons",
+        )
 
         # The precedence of deny over allow and infrastructure, over the union of both files.
         one = rendered('deny = ["nature.com", "*.julialang.org"]\n')
-        case(lambda: f"{WEBFETCH}nature.com)" not in fetch(one, "allow")
-             and not {"nature.com", "*.nature.com"} & set(net(one)["allowedDomains"])
-             and f"{WEBFETCH}nature.com)" in fetch(one, "deny"),
-             "an overlay deny of a harness allow host removes its WebFetch rule and both sandbox forms")
-        case(lambda: not {"pkg.julialang.org", "*.pkg.julialang.org", "julialang-s3.julialang.org",
-                          "docs.julialang.org"} & set(net(one)["allowedDomains"])
-             and f"{WEBFETCH}docs.julialang.org)" not in fetch(one, "allow")
-             and "julialang.org" in net(one)["allowedDomains"],
-             "a deny of *.X removes each host and *. form below X, and keeps X itself")
+        case(
+            lambda: (
+                f"{WEBFETCH}nature.com)" not in fetch(one, "allow")
+                and not {"nature.com", "*.nature.com"} & set(net(one)["allowedDomains"])
+                and f"{WEBFETCH}nature.com)" in fetch(one, "deny")
+            ),
+            "an overlay deny of a harness allow host removes its WebFetch rule and both sandbox forms",
+        )
+        case(
+            lambda: (
+                not {
+                    "pkg.julialang.org",
+                    "*.pkg.julialang.org",
+                    "julialang-s3.julialang.org",
+                    "docs.julialang.org",
+                }
+                & set(net(one)["allowedDomains"])
+                and f"{WEBFETCH}docs.julialang.org)" not in fetch(one, "allow")
+                and "julialang.org" in net(one)["allowedDomains"]
+            ),
+            "a deny of *.X removes each host and *. form below X, and keeps X itself",
+        )
         mirrored = rendered('deny = ["*.nature.com"]\n')
-        case(lambda: f"{WEBFETCH}nature.com)" in fetch(mirrored, "allow")
-             and "nature.com" in net(mirrored)["allowedDomains"]
-             and "*.nature.com" not in net(mirrored)["allowedDomains"],
-             "a deny of *.X, with X in allow, keeps the WebFetch rule and X, and drops the mirror form *.X")
+        case(
+            lambda: (
+                f"{WEBFETCH}nature.com)" in fetch(mirrored, "allow")
+                and "nature.com" in net(mirrored)["allowedDomains"]
+                and "*.nature.com" not in net(mirrored)["allowedDomains"]
+            ),
+            "a deny of *.X, with X in allow, keeps the WebFetch rule and X, and drops the mirror form *.X",
+        )
         everything = rendered('deny = ["*"]\n')
-        case(lambda: fetch(everything, "allow") == [] and net(everything)["allowedDomains"] == [],
-             "a deny of * removes every allow and infrastructure host")
+        case(
+            lambda: fetch(everything, "allow") == [] and net(everything)["allowedDomains"] == [],
+            "a deny of * removes every allow and infrastructure host",
+        )
         port = rendered('deny = ["github.com:22"]\n')
-        case(lambda: f"{WEBFETCH}github.com)" in fetch(port, "allow") and "github.com" in net(port)["allowedDomains"]
-             and fetch(port, "deny") == [],
-             "a deny entry with a port leaves its host on the allow lists, and has no WebFetch rule")
-        extra = rendered('allow = ["library.example.org", "nature.com"]\ninfrastructure = ["*.mirror.example.org"]\n')
-        case(lambda: fetch(extra, "allow") == allow + [f"{WEBFETCH}library.example.org)"]
-             and net(extra)["allowedDomains"] == net(base)["allowedDomains"][:len(harness_list["infrastructure"])]
-             + ["*.mirror.example.org"] + net(base)["allowedDomains"][len(harness_list["infrastructure"]):]
-             + ["library.example.org"],
-             "an overlay adds its entries after the harness list's, and an entry of both files once")
+        case(
+            lambda: (
+                f"{WEBFETCH}github.com)" in fetch(port, "allow")
+                and "github.com" in net(port)["allowedDomains"]
+                and fetch(port, "deny") == []
+            ),
+            "a deny entry with a port leaves its host on the allow lists, and has no WebFetch rule",
+        )
+        extra = rendered(
+            'allow = ["library.example.org", "nature.com"]\ninfrastructure = ["*.mirror.example.org"]\n'
+        )
+        case(
+            lambda: (
+                fetch(extra, "allow") == allow + [f"{WEBFETCH}library.example.org)"]
+                and net(extra)["allowedDomains"]
+                == net(base)["allowedDomains"][: len(harness_list["infrastructure"])]
+                + ["*.mirror.example.org"]
+                + net(base)["allowedDomains"][len(harness_list["infrastructure"]) :]
+                + ["library.example.org"]
+            ),
+            "an overlay adds its entries after the harness list's, and an entry of both files once",
+        )
 
         # Each exit 2 names the file and the key.
         for label, text, words in [
-                ("an unknown key", 'ask = ["x.org"]\n', ["no key ask"]),
-                ("an array that is a string", 'allow = "x.org"\n', ["allow is not an array"]),
-                ("a non-string entry", "allow = [1]\n", ["allow holds 1"]),
-                ("a URL with a scheme", 'allow = ["https://x.org"]\n', ["allow entry", "is a URL"]),
-                ("a host with a path", 'infrastructure = ["x.org/a"]\n', ["infrastructure entry", "is a URL"]),
-                ("a host with a query", 'deny = ["x.org?q=1"]\n', ["deny entry", "is a URL"]),
-                ("a port in allow", 'allow = ["x.org:443"]\n', ["allow entry", "has a port"]),
-                ("a port in infrastructure", 'infrastructure = ["x.org:443"]\n',
-                 ["infrastructure entry", "has a port"]),
-                ("a colon with no port number", 'deny = ["x.org:ssh"]\n', ["deny entry", "no port number"]),
-                ("* in infrastructure", 'infrastructure = ["*"]\n', ["infrastructure entry", "every host"]),
-                ("*. in allow", 'allow = ["*.x.org"]\n', ["allow entry", "is a wildcard", "'x.org'"]),
-                ("no host name", 'deny = ["x..org"]\n', ["deny entry", "is not a host name"]),
-                ("a host in allow and deny", 'allow = ["x.org"]\ndeny = ["x.org"]\n', ["in both allow and deny"]),
-                ("a host in infrastructure and deny", 'infrastructure = ["x.org"]\ndeny = ["x.org"]\n',
-                 ["in both infrastructure and deny"]),
-                ("deny_reasons that is no table", 'deny_reasons = "x"\n', ["deny_reasons is not a table"]),
-                ("an empty reason", 'deny = ["x.org"]\n[deny_reasons]\n"x.org" = ""\n',
-                 ["deny_reasons", "not a non-empty string"]),
-                ("a reason for no deny entry", 'deny = ["x.org"]\n[deny_reasons]\n"y.org" = "No."\n',
-                 ["deny_reasons key 'y.org'", "is no deny entry"]),
-                ("text that is not TOML", "allow = [\n", ["is not TOML"])]:
+            ("an unknown key", 'ask = ["x.org"]\n', ["no key ask"]),
+            ("an array that is a string", 'allow = "x.org"\n', ["allow is not an array"]),
+            ("a non-string entry", "allow = [1]\n", ["allow holds 1"]),
+            ("a URL with a scheme", 'allow = ["https://x.org"]\n', ["allow entry", "is a URL"]),
+            ("a host with a path", 'infrastructure = ["x.org/a"]\n', ["infrastructure entry", "is a URL"]),
+            ("a host with a query", 'deny = ["x.org?q=1"]\n', ["deny entry", "is a URL"]),
+            ("a port in allow", 'allow = ["x.org:443"]\n', ["allow entry", "has a port"]),
+            (
+                "a port in infrastructure",
+                'infrastructure = ["x.org:443"]\n',
+                ["infrastructure entry", "has a port"],
+            ),
+            ("a colon with no port number", 'deny = ["x.org:ssh"]\n', ["deny entry", "no port number"]),
+            ("* in infrastructure", 'infrastructure = ["*"]\n', ["infrastructure entry", "every host"]),
+            ("*. in allow", 'allow = ["*.x.org"]\n', ["allow entry", "is a wildcard", "'x.org'"]),
+            ("no host name", 'deny = ["x..org"]\n', ["deny entry", "is not a host name"]),
+            ("a host in allow and deny", 'allow = ["x.org"]\ndeny = ["x.org"]\n', ["in both allow and deny"]),
+            (
+                "a host in infrastructure and deny",
+                'infrastructure = ["x.org"]\ndeny = ["x.org"]\n',
+                ["in both infrastructure and deny"],
+            ),
+            ("deny_reasons that is no table", 'deny_reasons = "x"\n', ["deny_reasons is not a table"]),
+            (
+                "an empty reason",
+                'deny = ["x.org"]\n[deny_reasons]\n"x.org" = ""\n',
+                ["deny_reasons", "not a non-empty string"],
+            ),
+            (
+                "a reason for no deny entry",
+                'deny = ["x.org"]\n[deny_reasons]\n"y.org" = "No."\n',
+                ["deny_reasons key 'y.org'", "is no deny entry"],
+            ),
+            ("text that is not TOML", "allow = [\n", ["is not TOML"]),
+        ]:
             message = refused(lambda: rendered(text))
-            case(lambda: message is not None and str(tmp / "network.toml") in message
-                 and all(w in message for w in words),
-                 f"an overlay with {label} exits 2 and names the file and the key: {message!r}")
+            case(
+                lambda: (
+                    message is not None
+                    and str(tmp / "network.toml") in message
+                    and all(w in message for w in words)
+                ),
+                f"an overlay with {label} exits 2 and names the file and the key: {message!r}",
+            )
         message = refused(lambda: rendered("", {**dummy, "extra_domain": ["x.org"]}))
-        case(lambda: message is not None and "extra_domain" in message and str(tmp / "network.toml") in message,
-             f"a profile with extra_domain exits 2 and names network.toml: {message!r}")
-        for label, edit in [("a WebFetch(domain:…) rule",
-                             lambda c: c["permissions"]["allow"].append(f"{WEBFETCH}x.org)")),
-                            ("an allowedDomains entry", lambda c: net(c)["allowedDomains"].append("x.org")),
-                            ("no allowedDomains", lambda c: net(c).pop("allowedDomains"))]:
+        case(
+            lambda: (
+                message is not None and "extra_domain" in message and str(tmp / "network.toml") in message
+            ),
+            f"a profile with extra_domain exits 2 and names network.toml: {message!r}",
+        )
+        for label, edit in [
+            ("a WebFetch(domain:…) rule", lambda c: c["permissions"]["allow"].append(f"{WEBFETCH}x.org)")),
+            ("an allowedDomains entry", lambda c: net(c)["allowedDomains"].append("x.org")),
+            ("no allowedDomains", lambda c: net(c).pop("allowedDomains")),
+        ]:
             cfg = json.loads(profile_module.render_file(TEMPLATE, dummy))
             edit(cfg)
             message = refused(lambda: apply(cfg, dummy, tmp / "absent.toml"))
-            case(lambda: message is not None and str(TEMPLATE) in message,
-                 f"a settings template with {label} exits 2 and names the template: {message!r}")
+            case(
+                lambda: message is not None and str(TEMPLATE) in message,
+                f"a settings template with {label} exits 2 and names the template: {message!r}",
+            )
 
         # The subcommands that render the template: `harness render`, and `harness settings` through
         # read_settings. A bad overlay exits 2 with one line.
@@ -362,29 +479,63 @@ def selftest():
         home, _, _ = scratch.fresh()
         (home / "network.toml").write_text('allow = ["library.example.org"]\ndeny = ["bad.example"]\n')
         p = subprocess.run(
-            [sys.executable, str(REPO / "bin" / "harness"), "--profile", str(home / "profile.toml"),
-             "render", str(TEMPLATE)], capture_output=True, text=True, env=Scratch.env(home))
+            [
+                sys.executable,
+                str(REPO / "bin" / "harness"),
+                "--profile",
+                str(home / "profile.toml"),
+                "render",
+                str(TEMPLATE),
+            ],
+            capture_output=True,
+            text=True,
+            env=Scratch.env(home),
+        )
         out = json.loads(p.stdout) if p.returncode == 0 else {}
-        case(lambda: f"{WEBFETCH}library.example.org)" in fetch(out, "allow")
-             and net(out)["deniedDomains"] == ["bad.example"],
-             f"`harness render` of the settings template generates the network rules with the overlay: {p.returncode}")
+        case(
+            lambda: (
+                f"{WEBFETCH}library.example.org)" in fetch(out, "allow")
+                and net(out)["deniedDomains"] == ["bad.example"]
+            ),
+            f"`harness render` of the settings template generates the network rules with the overlay: {p.returncode}",
+        )
         claude = next(a for a in frontends.load() if a.NAME == "claude")
         saved, claude.PROFILE = claude.PROFILE, str(home / "profile.toml")
         try:
             cfg = claude.read_settings(TEMPLATE)
         finally:
             claude.PROFILE = saved
-        case(lambda: f"{WEBFETCH}library.example.org)" in fetch(cfg, "allow")
-             and net(cfg)["deniedDomains"] == ["bad.example"],
-             "`harness settings` reads the settings template with the generated network rules")
+        case(
+            lambda: (
+                f"{WEBFETCH}library.example.org)" in fetch(cfg, "allow")
+                and net(cfg)["deniedDomains"] == ["bad.example"]
+            ),
+            "`harness settings` reads the settings template with the generated network rules",
+        )
         (home / "network.toml").write_text('allow = ["https://x.org"]\n')
         p = subprocess.run(
-            [sys.executable, str(REPO / "bin" / "harness"), "--profile", str(home / "profile.toml"),
-             "render", str(TEMPLATE)], capture_output=True, text=True, env=Scratch.env(home))
-        case(lambda: p.returncode == 2 and len(p.stderr.strip().splitlines()) == 1
-             and str(home / "network.toml") in p.stderr and "Traceback" not in p.stderr,
-             f"`harness render` with a bad overlay exits 2 with one line that names it: {p.returncode}, "
-             f"{p.stderr.strip()[-200:]!r}")
+            [
+                sys.executable,
+                str(REPO / "bin" / "harness"),
+                "--profile",
+                str(home / "profile.toml"),
+                "render",
+                str(TEMPLATE),
+            ],
+            capture_output=True,
+            text=True,
+            env=Scratch.env(home),
+        )
+        case(
+            lambda: (
+                p.returncode == 2
+                and len(p.stderr.strip().splitlines()) == 1
+                and str(home / "network.toml") in p.stderr
+                and "Traceback" not in p.stderr
+            ),
+            f"`harness render` with a bad overlay exits 2 with one line that names it: {p.returncode}, "
+            f"{p.stderr.strip()[-200:]!r}",
+        )
 
         # `harness install`: an overlay with allow, infrastructure and deny entries changes the Claude
         # Code settings and leaves every file of OpenCode and oh-my-pi as it is.
@@ -394,20 +545,31 @@ def selftest():
                 (base / "network.toml").write_text(text)
             code, output = scratch.run(base, "--apply")
             # A file names its scratch HOME, which differs from one install to the next.
-            files = {str(p.relative_to(base)): p.read_bytes().replace(str(base).encode(), b"BASE")
-                     for root in ("opencode", "omp")
-                     for p in sorted((base / root).rglob("*")) if p.is_file()}
+            files = {
+                str(p.relative_to(base)): p.read_bytes().replace(str(base).encode(), b"BASE")
+                for root in ("opencode", "omp")
+                for p in sorted((base / root).rglob("*"))
+                if p.is_file()
+            }
             return code, output, files, json.loads((claude_dir / "settings.json").read_text())
 
         plain = install(None)
-        changed = install('allow = ["library.example.org"]\ninfrastructure = ["mirror.example.org"]\n'
-                          'deny = ["github.com", "*.example.net", "ssh.example:22"]\n'
-                          '[deny_reasons]\n"github.com" = "Not here."\n')
-        case(lambda: plain[0] == 0 and changed[0] == 0 and plain[2] and plain[2] == changed[2],
-             f"`harness install --apply` writes the same OpenCode and oh-my-pi files with an overlay deny: "
-             f"{plain[0]}, {changed[0]}, {len(plain[2])} files, {scratch.tail(plain[1] + changed[1])}")
-        case(lambda: f"{WEBFETCH}github.com)" in fetch(changed[3], "deny")
-             and net(changed[3])["deniedDomainReasons"] == {"github.com": "Not here."}
-             and "deniedDomains" not in net(plain[3]),
-             "`harness install --apply` writes the overlay's deny into the Claude Code settings alone")
+        changed = install(
+            'allow = ["library.example.org"]\ninfrastructure = ["mirror.example.org"]\n'
+            'deny = ["github.com", "*.example.net", "ssh.example:22"]\n'
+            '[deny_reasons]\n"github.com" = "Not here."\n'
+        )
+        case(
+            lambda: plain[0] == 0 and changed[0] == 0 and plain[2] and plain[2] == changed[2],
+            f"`harness install --apply` writes the same OpenCode and oh-my-pi files with an overlay deny: "
+            f"{plain[0]}, {changed[0]}, {len(plain[2])} files, {scratch.tail(plain[1] + changed[1])}",
+        )
+        case(
+            lambda: (
+                f"{WEBFETCH}github.com)" in fetch(changed[3], "deny")
+                and net(changed[3])["deniedDomainReasons"] == {"github.com": "Not here."}
+                and "deniedDomains" not in net(plain[3])
+            ),
+            "`harness install --apply` writes the overlay's deny into the Claude Code settings alone",
+        )
     return n, wrong

@@ -17,7 +17,9 @@
 # They fail closed: no gitleaks of 8.21 or later, no profile, an empty `leak` list or a check that
 # fails each refuse the push with one line. Then it runs `bin/harness test` once, which runs on
 # the interpreter of the harness's Python environment, the compile check on that interpreter,
-# then shellcheck over the shell files, the kit's tests
+# the strict profile (`ruff format --check`, `ruff check` and `basedpyright`, from the
+# environment's bin/, where the profile's `develop = true` puts them; a tool that it lacks refuses
+# the push), then shellcheck over the shell files, the kit's tests
 # examples/dotfiles/tests/{update-check,check-check,driver-check,render-check,script-check}.py on
 # python3, and the Julia test files that the changed paths of the pushed range select.
 # A missing tool among shellcheck, chezmoi and julia prints one skip line, because CI runs them;
@@ -186,7 +188,7 @@ fail=0
 
 # The Python steps: the suite once, which bin/harness runs on the environment's interpreter, then
 # the compile check on that interpreter, at the path that bin/harness's own `interpreter` and
-# `environment_path` give.
+# `environment_path` give, and the three checks of the strict profile.
 echo "$python bin/harness test"
 if "$python" bin/harness test >"$tmp/test.log" 2>&1; then
     tail -n 1 "$tmp/test.log"
@@ -211,6 +213,26 @@ print(boot["interpreter"](boot["environment_path"]()))
 if [ -n "$environment_python" ]; then
     echo "$environment_python -m compileall -q lib hooks scripts adapters"
     "$environment_python" -m compileall -q lib hooks scripts adapters || fail=1
+    # The strict profile, with the tools of the environment's bin/, never of the PATH. All three
+    # checks run; a tool that the environment lacks refuses the push and runs none.
+    tools=${environment_python%/*}
+    lacking=
+    for tool in ruff basedpyright; do
+        if [ ! -f "$tools/$tool" ]; then
+            echo "pre-push: no $tool in $tools; set develop = true in the profile, then run harness install --apply"
+            lacking=1
+        fi
+    done
+    if [ -n "$lacking" ]; then
+        fail=1
+    else
+        echo "$tools/ruff format --check --no-cache ."
+        "$tools/ruff" format --check --no-cache . || fail=1
+        echo "$tools/ruff check --no-cache ."
+        "$tools/ruff" check --no-cache . || fail=1
+        echo "$tools/basedpyright"
+        "$tools/basedpyright" || fail=1
+    fi
 else
     echo "pre-push: bin/harness names no interpreter of the Python environment"
     fail=1

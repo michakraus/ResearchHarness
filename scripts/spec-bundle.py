@@ -28,6 +28,7 @@ printed on stderr as `unresolved: <name>`. The exit status is 0 when every name 
 one does not or the part is not in the table, and 3 when this script fails. With no `--out`, the
 bundle goes to stdout and the summary to stderr.
 """
+
 import hashlib
 import importlib.util
 import os
@@ -48,8 +49,10 @@ PREAMBLE = re.compile(r"the preamble of §([0-9A-Z](?:[0-9A-Za-z.]*[0-9A-Za-z])?
 SECTION_KEY = re.compile(r"§([0-9A-Z](?:[0-9A-Za-z.]*[0-9A-Za-z])?)")
 ITALIC = re.compile(r"\*([^*]+)\*")
 # The state itself, without the narration that a state cell gathers over the builds.
-STATE = re.compile(r"^(open|in progress|waiting for the user|merged|declined|blocked by [^—.;(]*|"
-                   r"PR (?:\[#\d+\]\([^)]*\)|#\d+) in review)")
+STATE = re.compile(
+    r"^(open|in progress|waiting for the user|merged|declined|blocked by [^—.;(]*|"
+    r"PR (?:\[#\d+\]\([^)]*\)|#\d+) in review)"
+)
 
 
 def headings(lines):
@@ -75,7 +78,7 @@ def span(heads, j, n, preamble=False):
     """The line range [start, end) of heading j: to the next heading of the same or a higher
     level, or, for its preamble, to its next heading of any level."""
     i, level = heads[j][0], heads[j][1]
-    for k, lv, _, _ in heads[j + 1:]:
+    for k, lv, _, _ in heads[j + 1 :]:
         if preamble or lv <= level:
             return i, k
     return i, n
@@ -139,12 +142,15 @@ def also_reads(text):
 def bundle(path, part):
     lines = open(path, encoding="utf-8").read().split("\n")
     heads = headings(lines)
-    rows = subprocess.run(["awk", "-f", os.path.join(HERE, "parts-table.awk"), path],
-                          capture_output=True, text=True, check=True).stdout.splitlines()
+    rows = subprocess.run(
+        ["awk", "-f", os.path.join(HERE, "parts-table.awk"), path], capture_output=True, text=True, check=True
+    ).stdout.splitlines()
     mine = [r for r in rows if r.split("\t")[:2] == ["PART", part]]
     if not mine:
         return None, [f"part {part} is not in the parts table"]
-    collisions = [r for r in rows if r.startswith("COLLISION") and part in re.split(r"[\s,()]+", r.split("\t")[-1])]
+    collisions = [
+        r for r in rows if r.startswith("COLLISION") and part in re.split(r"[\s,()]+", r.split("\t")[-1])
+    ]
     row = mine[0].split("\t")
     state = STATE.match(row[5].strip())
     mine = ["\t".join(row[:5] + [state.group(1).strip() if state else row[5][:80]])]
@@ -183,7 +189,9 @@ def bundle(path, part):
         if not section(key, preamble=True, label=f"§{key}"):
             unresolved.append(f"§{key}")
     j = by_key(heads, "L")
-    names, skipped = also_reads("\n".join(lines[slice(*span(heads, j, len(lines), True))]) if j is not None else "")
+    names, skipped = also_reads(
+        "\n".join(lines[slice(*span(heads, j, len(lines), True))]) if j is not None else ""
+    )
     for kind, name in names:
         if kind == "title":
             t = by_title(heads, name)
@@ -208,18 +216,37 @@ def render(path, part, lines, rows, ranges, labels, sources, skipped):
         body.append("")
     text = "\n".join(body)
     digest = hashlib.sha256(text.encode()).hexdigest()[:16]
-    commit = subprocess.run(["git", "log", "-1", "--format=%h", "--", os.path.basename(path)],
-                            cwd=os.path.dirname(os.path.abspath(path)), capture_output=True, text=True).stdout.strip()
-    head = [f"# Spec bundle — part {part}", "",
-            f"- **Task file:** `{path}` at commit `{commit or 'unknown'}`",
-            f"- **Body:** {text.count(chr(10)) + 1} lines, {len(text.split())} words, sha256 `{digest}`",
-            "- **Rows:**", "", "```", *rows, "```", "",
-            "- **Sections:** " + "; ".join(f"{l} ({src if src else f'{s + 1}–{e}'})"
-                                           for (s, e), l, src in zip(ranges, labels, sources)),
-            *[f"- **$SPEC:** `{os.path.dirname(src)}`, the directory of the spec's checks"
-              for src in sources if src],
-            "- **§L phrases that add nothing here:** " + ("; ".join(skipped) if skipped else "none"),
-            "", "---", ""]
+    commit = subprocess.run(
+        ["git", "log", "-1", "--format=%h", "--", os.path.basename(path)],
+        cwd=os.path.dirname(os.path.abspath(path)),
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    head = [
+        f"# Spec bundle — part {part}",
+        "",
+        f"- **Task file:** `{path}` at commit `{commit or 'unknown'}`",
+        f"- **Body:** {text.count(chr(10)) + 1} lines, {len(text.split())} words, sha256 `{digest}`",
+        "- **Rows:**",
+        "",
+        "```",
+        *rows,
+        "```",
+        "",
+        "- **Sections:** "
+        + "; ".join(
+            f"{l} ({src if src else f'{s + 1}–{e}'})" for (s, e), l, src in zip(ranges, labels, sources)
+        ),
+        *[
+            f"- **$SPEC:** `{os.path.dirname(src)}`, the directory of the spec's checks"
+            for src in sources
+            if src
+        ],
+        "- **§L phrases that add nothing here:** " + ("; ".join(skipped) if skipped else "none"),
+        "",
+        "---",
+        "",
+    ]
     return "\n".join(head) + text, digest
 
 
@@ -227,7 +254,7 @@ def main(argv):
     out = None
     if "--out" in argv:
         k = argv.index("--out")
-        out, argv = argv[k + 1], argv[:k] + argv[k + 2:]
+        out, argv = argv[k + 1], argv[:k] + argv[k + 2 :]
     if len(argv) != 2:
         print(__doc__.strip().splitlines()[2].strip(), file=sys.stderr)
         return 3

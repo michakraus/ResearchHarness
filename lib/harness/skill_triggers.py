@@ -41,17 +41,19 @@ SKILLS = REPO / "skills"
 QUERIES = REPO / "tests" / "skill-triggers"
 FIXTURES = QUERIES / "fixtures"
 
-LOAD, NEAR = 10, 5          # the counts of a skill that the model can invoke
-LOAD_MIN, NEAR_MAX = 8, 1   # its pass rule
-MESSAGES = 3                # the assistant messages that a Skill call counts in, and the session's --max-turns
-TIMEOUT = 120               # seconds per session
-UNKNOWN = "UNKNOWN"         # the verdict of a session that errors or times out
+LOAD, NEAR = 10, 5  # the counts of a skill that the model can invoke
+LOAD_MIN, NEAR_MAX = 8, 1  # its pass rule
+MESSAGES = 3  # the assistant messages that a Skill call counts in, and the session's --max-turns
+TIMEOUT = 120  # seconds per session
+UNKNOWN = "UNKNOWN"  # the verdict of a session that errors or times out
 
 
 def skill_names(directory=SKILLS):
     """{name: whether the model can invoke it}, for each curated skill below `directory`."""
-    return {name: parse_file(directory / name / "SKILL.md").meta.get("disable-model-invocation") is not True
-            for name in curated_skills(directory)}
+    return {
+        name: parse_file(directory / name / "SKILL.md").meta.get("disable-model-invocation") is not True
+        for name in curated_skills(directory)
+    }
 
 
 def read_queries(directory=QUERIES, skills_dir=SKILLS):
@@ -78,12 +80,18 @@ def read_queries(directory=QUERIES, skills_dir=SKILLS):
         except OSError as e:
             raise HarnessError(f"cannot read {path}: {e.strerror}") from None
         load, near = data.get("load", []), data.get("near", [])
-        if not isinstance(load, list) or not isinstance(near, list) or not all(isinstance(e, dict) for e in near):
+        if (
+            not isinstance(load, list)
+            or not isinstance(near, list)
+            or not all(isinstance(e, dict) for e in near)
+        ):
             raise HarnessError(f"{path}: `load` is not a list, or `near` is not a list of tables")
         near = [(e.get("query"), e.get("skill")) for e in near]
         want = (LOAD, NEAR) if skills[name] else (0, 1)
         if (len(load), len(near)) != want:
-            raise HarnessError(f"{path}: {len(load)} load and {len(near)} near queries, not {want[0]} and {want[1]}")
+            raise HarnessError(
+                f"{path}: {len(load)} load and {len(near)} near queries, not {want[0]} and {want[1]}"
+            )
         seen = set()
         for query in load + [q for q, _ in near]:
             if not isinstance(query, str) or not query.strip():
@@ -95,7 +103,9 @@ def read_queries(directory=QUERIES, skills_dir=SKILLS):
             seen.add(query.strip())
         for query, skill in near:
             if not isinstance(skill, str) or (skill != "none" and skill not in skills):
-                raise HarnessError(f"{path}: the near query {query!r} names {skill!r}, neither a skill nor none")
+                raise HarnessError(
+                    f"{path}: the near query {query!r} names {skill!r}, neither a skill nor none"
+                )
             if skill == name:
                 raise HarnessError(f"{path}: the near query {query!r} names the file's own skill")
         queries[name] = (load, near)
@@ -120,11 +130,16 @@ def verdict(stream):
         return UNKNOWN, None
     results = [e for e in events if e.get("type") == "result"]
     result = results[-1] if results else None
-    if result is None or not (result.get("subtype") == "error_max_turns"
-                              or (result.get("subtype") == "success" and not result.get("is_error"))):
+    if result is None or not (
+        result.get("subtype") == "error_max_turns"
+        or (result.get("subtype") == "success" and not result.get("is_error"))
+    ):
         return UNKNOWN, result
-    messages = [e.get("message") for e in events
-                if e.get("type") == "assistant" and e.get("parent_tool_use_id") is None]
+    messages = [
+        e.get("message")
+        for e in events
+        if e.get("type") == "assistant" and e.get("parent_tool_use_id") is None
+    ]
     messages = [m if isinstance(m, dict) else {} for m in messages]
     if not messages:
         return UNKNOWN, result
@@ -185,8 +200,23 @@ def session(query, model, root, claude, timeout):
     goes in on stdin, so a query that starts with `-` is no flag; `--output-format stream-json`
     under `-p` needs `--verbose`. The session has MESSAGES turns, and lacks `Edit`, `Write`,
     `NotebookEdit`, `Agent` and `Bash`, so it runs nothing in the research tree."""
-    command = [claude, "-p", "--verbose", "--output-format", "stream-json", "--max-turns", str(MESSAGES),
-               "--disallowedTools", "Edit", "Write", "NotebookEdit", "Agent", "Bash", "--model", model]
+    command = [
+        claude,
+        "-p",
+        "--verbose",
+        "--output-format",
+        "stream-json",
+        "--max-turns",
+        str(MESSAGES),
+        "--disallowedTools",
+        "Edit",
+        "Write",
+        "NotebookEdit",
+        "Agent",
+        "Bash",
+        "--model",
+        model,
+    ]
     try:
         p = subprocess.run(command, input=query, cwd=root, capture_output=True, text=True, timeout=timeout)
     except subprocess.TimeoutExpired:
@@ -210,8 +240,15 @@ def apply(queries, skills, model, root, claude="claude", timeout=TIMEOUT):
         loaded, result = session(query, model, root, claude, timeout)
         usage = (result or {}).get("usage") or {}
         totals["sessions"] += 1
-        totals["tokens"] += sum(usage.get(k) or 0 for k in ("input_tokens", "cache_creation_input_tokens",
-                                                              "cache_read_input_tokens", "output_tokens"))
+        totals["tokens"] += sum(
+            usage.get(k) or 0
+            for k in (
+                "input_tokens",
+                "cache_creation_input_tokens",
+                "cache_read_input_tokens",
+                "output_tokens",
+            )
+        )
         totals["cost"] += (result or {}).get("total_cost_usd") or 0
         return loaded
 
@@ -226,15 +263,26 @@ def apply(queries, skills, model, root, claude="claude", timeout=TIMEOUT):
                 outcomes[kind].append(outcome)
                 others |= {v for v in verdicts if v not in (None, UNKNOWN, name)}
                 records.append((name, kind, query, belongs, verdicts, outcome))
-                print(f"  {name:<20} {kind:<4} {'met' if outcome is True else 'FAILED' if outcome is False else UNKNOWN:<7}"
-                      f" {query!r} -> {verdicts}", flush=True)
+                print(
+                    f"  {name:<20} {kind:<4} {'met' if outcome is True else 'FAILED' if outcome is False else UNKNOWN:<7}"
+                    f" {query!r} -> {verdicts}",
+                    flush=True,
+                )
         loads, false_loads = outcomes["load"].count(True), outcomes["near"].count(False)
         unknown = [outcomes[k].count(UNKNOWN) for k in ("load", "near")]
         # The unknown column counts the queries with a second UNKNOWN, also where a majority of
         # the other runs decides the query.
         twice = sum(second_unknown(r[4]) for r in records if r[0] == name)
-        rows.append((name, f"{loads}/{len(load)}", f"{false_loads}/{len(near)}", twice,
-                     skill_verdict(skills[name], loads, unknown[0], false_loads, unknown[1]), ", ".join(sorted(others))))
+        rows.append(
+            (
+                name,
+                f"{loads}/{len(load)}",
+                f"{false_loads}/{len(near)}",
+                twice,
+                skill_verdict(skills[name], loads, unknown[0], false_loads, unknown[1]),
+                ", ".join(sorted(others)),
+            )
+        )
 
     header = ("skill", "loads", "false loads", "unknown", "verdict", "loaded instead")
     print()
@@ -244,19 +292,37 @@ def apply(queries, skills, model, root, claude="claude", timeout=TIMEOUT):
     print("\n" + summary)
 
     try:
-        version = subprocess.run([claude, "--version"], capture_output=True, text=True,
-                                 stdin=subprocess.DEVNULL, timeout=30).stdout.strip() or "unknown"
-    except (OSError, subprocess.TimeoutExpired):
+        version = (
+            subprocess.run(
+                [claude, "--version"], capture_output=True, text=True, stdin=subprocess.DEVNULL, timeout=30
+            ).stdout.strip()
+            or "unknown"
+        )
+    except OSError, subprocess.TimeoutExpired:
         version = "unknown"
     today = datetime.date.today().isoformat()
     report = pathlib.Path(root) / ".scratch" / "skill-triggers" / f"{today}-{model.replace(os.sep, '-')}.md"
-    lines = [f"# Skill triggers, {today}, model {model}", "", f"Claude Code {version}; {summary}.", "",
-             "| " + " | ".join(header) + " |", "|" + ":--|" * len(header)]
+    lines = [
+        f"# Skill triggers, {today}, model {model}",
+        "",
+        f"Claude Code {version}; {summary}.",
+        "",
+        "| " + " | ".join(header) + " |",
+        "|" + ":--|" * len(header),
+    ]
     lines += ["| " + " | ".join(cell(c) for c in row) + " |" for row in rows]
-    lines += ["", "## Queries", "", "| skill | kind | query | belongs to | verdicts | outcome |", "|" + ":--|" * 6]
-    lines += [f"| {name} | {kind} | {cell(query)} | {belongs} | {', '.join(str(v) for v in verdicts)} | "
-              f"{'met' if outcome is True else 'failed' if outcome is False else UNKNOWN} |"
-              for name, kind, query, belongs, verdicts, outcome in records]
+    lines += [
+        "",
+        "## Queries",
+        "",
+        "| skill | kind | query | belongs to | verdicts | outcome |",
+        "|" + ":--|" * 6,
+    ]
+    lines += [
+        f"| {name} | {kind} | {cell(query)} | {belongs} | {', '.join(str(v) for v in verdicts)} | "
+        f"{'met' if outcome is True else 'failed' if outcome is False else UNKNOWN} |"
+        for name, kind, query, belongs, verdicts, outcome in records
+    ]
     report.parent.mkdir(parents=True, exist_ok=True)
     report.write_text("\n".join(lines) + "\n")
     print(f"report:  {report}")
@@ -279,8 +345,10 @@ def cmd_skill_triggers(args):
     for name, (load, near) in queries.items():
         print(f"{name:<22} {len(load):>4} {len(near):>4}  {'on' if skills[name] else 'off'}")
     sessions = sum(len(load) + len(near) for load, near in queries.values())
-    print(f"\n--apply starts {sessions} session{'' if sessions == 1 else 's'}, one per query, and more: a query that fails its"
-          f" expectation runs twice more, and a session that gives UNKNOWN once more.")
+    print(
+        f"\n--apply starts {sessions} session{'' if sessions == 1 else 's'}, one per query, and more: a query that fails its"
+        f" expectation runs twice more, and a session that gives UNKNOWN once more."
+    )
     return 1
 
 
@@ -357,22 +425,40 @@ def selftest():
         ("11 load queries", {"a.toml": toml(load + ["one more"], near)}),
         ("4 near queries", {"a.toml": toml(load, near[:4])}),
         ("a load query for a skill with model invocation off", {"b.toml": toml(["x"], [("y", "none")])}),
-        ("2 near queries for a skill with model invocation off",
-         {"b.toml": toml([], [("x", "none"), ("y", "none")])}),
+        (
+            "2 near queries for a skill with model invocation off",
+            {"b.toml": toml([], [("x", "none"), ("y", "none")])},
+        ),
         ("a duplicate load query", {"a.toml": toml(load[:9] + [load[0]], near)}),
         ("a near query that repeats a load query", {"a.toml": toml(load, [(load[3], "b")] + near[1:])}),
         ("an empty query", {"a.toml": toml(load[:9] + ["   "], near)}),
-        ("a near entry with no query", {"a.toml": toml(load, near[:4]).replace(
-            "near = [", 'near = [\n    { skill = "b" },')}),
+        (
+            "a near entry with no query",
+            {"a.toml": toml(load, near[:4]).replace("near = [", 'near = [\n    { skill = "b" },')},
+        ),
         ("a query that starts with /", {"a.toml": toml(load[:9] + ["/build-part next"], near)}),
         ("a near entry that names an unknown skill", {"a.toml": toml(load, near[:4] + [("z", "c")])}),
-        ("a near entry with no skill", {"a.toml": toml(load, near[:4]).replace(
-            "near = [", 'near = [\n    { query = "z" },')}),
+        (
+            "a near entry with no skill",
+            {"a.toml": toml(load, near[:4]).replace("near = [", 'near = [\n    { query = "z" },')},
+        ),
         ("a file that is not TOML", {"a.toml": "load = [\n"}),
-        ("a near entry whose skill is a list", {"a.toml": toml(load, near[:4]).replace(
-            "near = [", 'near = [\n    { query = "z", skill = ["b"] },')}),
-        ("a near entry whose skill is a table", {"a.toml": toml(load, near[:4]).replace(
-            "near = [", 'near = [\n    { query = "z", skill = { b = 1 } },')}),
+        (
+            "a near entry whose skill is a list",
+            {
+                "a.toml": toml(load, near[:4]).replace(
+                    "near = [", 'near = [\n    { query = "z", skill = ["b"] },'
+                )
+            },
+        ),
+        (
+            "a near entry whose skill is a table",
+            {
+                "a.toml": toml(load, near[:4]).replace(
+                    "near = [", 'near = [\n    { query = "z", skill = { b = 1 } },'
+                )
+            },
+        ),
         ("a near entry that names the file's own skill", {"a.toml": toml(load, near[:4] + [("z", "a")])}),
         ("a query file that cannot be read", {"a.toml": "a directory"}),
     ]
@@ -405,12 +491,21 @@ def selftest():
     # in its second message, then Bash in its third, whose result is an error; `read-read-read`
     # calls Read in each of its 3 messages. The others are written by hand for the shapes that a session does not
     # give on demand: an error, a Skill call after a tool in one message, two Skill calls.
-    for fixture, expected in [("skill-first", "julia-performance"), ("skill-then-tool", "build-reviewed"),
-                              ("no-skill", None), ("thinking-text", None), ("two-tools", None),
-                              ("read-then-skill", "build-part"), ("read-read-read", None),
-                              ("skill-after-tool", "julia-performance"), ("skill-second-message", "build-part"),
-                              ("two-skills", "julia-package-audit"), ("error", UNKNOWN),
-                              ("no-result", UNKNOWN), ("api-error", UNKNOWN)]:
+    for fixture, expected in [
+        ("skill-first", "julia-performance"),
+        ("skill-then-tool", "build-reviewed"),
+        ("no-skill", None),
+        ("thinking-text", None),
+        ("two-tools", None),
+        ("read-then-skill", "build-part"),
+        ("read-read-read", None),
+        ("skill-after-tool", "julia-performance"),
+        ("skill-second-message", "build-part"),
+        ("two-skills", "julia-package-audit"),
+        ("error", UNKNOWN),
+        ("no-result", UNKNOWN),
+        ("api-error", UNKNOWN),
+    ]:
         got = verdict((FIXTURES / f"{fixture}.jsonl").read_text())[0]
         check(got == expected, f"verdict of {fixture}.jsonl: {got!r}, expected {expected!r}")
     got = verdict("not json\n" + (FIXTURES / "skill-first.jsonl").read_text())[0]
@@ -427,31 +522,77 @@ def selftest():
     for label, lines, expected in [
         ("a JSON line that is not an object", ["[1, 2]", end], UNKNOWN),
         ("a message whose content is a string", [{"id": "m", "content": "text"}, end], None),
-        ("a Skill call whose skill is not a string",
-         [{"id": "m", "content": [{"type": "tool_use", "name": "Skill", "input": {"skill": ["a"]}}]}, end], None),
-        ("a Skill call in message 3", [message(1, tool("Read")), message(2, tool("Read")),
-                                       message(3, tool("Skill", "a")), end], "a"),
-        ("a Skill call in message 4", [message(1, tool("Read")), message(2, tool("Read")), message(3, tool("Read")),
-                                       message(4, tool("Skill", "a")), end], None),
-        ("message 2 in two events, its Skill call in the second",
-         [message(1, tool("Read")), message(2, tool("Read")), message(2, tool("Skill", "a")),
-          message(3, tool("Skill", "b")), end], "a"),
-        ("a Skill call in message 2 and another in message 3",
-         [message(1, tool("Read")), message(2, tool("Skill", "a")), message(3, tool("Skill", "b")), end], "a"),
-        ("a subagent's Skill call before the session's own",
-         [message(1, tool("Agent")), (message(9, tool("Skill", "a")), "toolu_1"), message(2, tool("Skill", "b")), end],
-         "b"),
-        ("a subagent's Skill call alone, in the first 3 messages",
-         [message(1, tool("Agent")), (message(9, tool("Skill", "a")), "toolu_1"), message(2, tool("Read")), end],
-         None),
-        ("a session that ends with success after 2 messages, text only",
-         [message(1, tool("Read")), message(2, {"type": "text", "text": "done"}), end], None),
+        (
+            "a Skill call whose skill is not a string",
+            [{"id": "m", "content": [{"type": "tool_use", "name": "Skill", "input": {"skill": ["a"]}}]}, end],
+            None,
+        ),
+        (
+            "a Skill call in message 3",
+            [message(1, tool("Read")), message(2, tool("Read")), message(3, tool("Skill", "a")), end],
+            "a",
+        ),
+        (
+            "a Skill call in message 4",
+            [
+                message(1, tool("Read")),
+                message(2, tool("Read")),
+                message(3, tool("Read")),
+                message(4, tool("Skill", "a")),
+                end,
+            ],
+            None,
+        ),
+        (
+            "message 2 in two events, its Skill call in the second",
+            [
+                message(1, tool("Read")),
+                message(2, tool("Read")),
+                message(2, tool("Skill", "a")),
+                message(3, tool("Skill", "b")),
+                end,
+            ],
+            "a",
+        ),
+        (
+            "a Skill call in message 2 and another in message 3",
+            [message(1, tool("Read")), message(2, tool("Skill", "a")), message(3, tool("Skill", "b")), end],
+            "a",
+        ),
+        (
+            "a subagent's Skill call before the session's own",
+            [
+                message(1, tool("Agent")),
+                (message(9, tool("Skill", "a")), "toolu_1"),
+                message(2, tool("Skill", "b")),
+                end,
+            ],
+            "b",
+        ),
+        (
+            "a subagent's Skill call alone, in the first 3 messages",
+            [
+                message(1, tool("Agent")),
+                (message(9, tool("Skill", "a")), "toolu_1"),
+                message(2, tool("Read")),
+                end,
+            ],
+            None,
+        ),
+        (
+            "a session that ends with success after 2 messages, text only",
+            [message(1, tool("Read")), message(2, {"type": "text", "text": "done"}), end],
+            None,
+        ),
     ]:
-        stream = "\n".join(line if isinstance(line, str) else
-                           json.dumps({"type": "assistant", "message": line[0], "parent_tool_use_id": line[1]})
-                           if isinstance(line, tuple) else
-                           json.dumps({"type": "assistant", "message": line, "parent_tool_use_id": None})
-                           for line in lines)
+        stream = "\n".join(
+            line
+            if isinstance(line, str)
+            else json.dumps({"type": "assistant", "message": line[0], "parent_tool_use_id": line[1]})
+            if isinstance(line, tuple)
+            else json.dumps({"type": "assistant", "message": line, "parent_tool_use_id": None})
+            for line in lines
+        )
         try:
             got = verdict(stream)[0]
         except Exception as e:  # a traceback would end the whole --apply run
@@ -462,23 +603,40 @@ def selftest():
     met = lambda v: v == "s"  # noqa: E731
     # The third value: whether a session gave UNKNOWN twice in a row, which the row reports.
     for runs, expected, twice in [
-            (["s"], True, False), (["x", "s", "s"], True, False), (["x", "s", "x"], False, False),
-            ([None, None, "s"], False, False), ([UNKNOWN, "s"], True, False), ([UNKNOWN, UNKNOWN], UNKNOWN, True),
-            (["x", UNKNOWN, UNKNOWN, "s"], UNKNOWN, True), (["x", UNKNOWN, "x", "s"], False, False),
-            (["x", UNKNOWN, UNKNOWN, UNKNOWN, UNKNOWN], UNKNOWN, True), (["x", UNKNOWN, UNKNOWN, "x"], False, True)]:
+        (["s"], True, False),
+        (["x", "s", "s"], True, False),
+        (["x", "s", "x"], False, False),
+        ([None, None, "s"], False, False),
+        ([UNKNOWN, "s"], True, False),
+        ([UNKNOWN, UNKNOWN], UNKNOWN, True),
+        (["x", UNKNOWN, UNKNOWN, "s"], UNKNOWN, True),
+        (["x", UNKNOWN, "x", "s"], False, False),
+        (["x", UNKNOWN, UNKNOWN, UNKNOWN, UNKNOWN], UNKNOWN, True),
+        (["x", UNKNOWN, UNKNOWN, "x"], False, True),
+    ]:
         given = iter(runs)
         outcome, verdicts = decide(lambda: next(given), met)
-        check(outcome == expected and verdicts == runs and second_unknown(verdicts) == twice,
-              f"majority of {runs}: {outcome!r} after {verdicts}, a second UNKNOWN {second_unknown(verdicts)};"
-              f" expected {expected!r}, {twice}")
+        check(
+            outcome == expected and verdicts == runs and second_unknown(verdicts) == twice,
+            f"majority of {runs}: {outcome!r} after {verdicts}, a second UNKNOWN {second_unknown(verdicts)};"
+            f" expected {expected!r}, {twice}",
+        )
 
     # The pass rule at its bounds: (fires, loads, load UNKNOWN, false loads, near UNKNOWN).
-    for counts, expected in [((True, 8, 0, 1, 0), "PASS"), ((True, 7, 0, 0, 0), "FAIL"),
-                             ((True, 10, 0, 2, 0), "FAIL"), ((True, 10, 0, 0, 0), "PASS"),
-                             ((False, 0, 0, 0, 0), "PASS"), ((False, 0, 0, 1, 0), "FAIL"),
-                             ((True, 7, 1, 0, 0), UNKNOWN), ((True, 8, 0, 1, 1), UNKNOWN),
-                             ((True, 8, 2, 0, 0), "PASS"), ((True, 6, 1, 0, 0), "FAIL"),
-                             ((True, 7, 2, 2, 0), "FAIL"), ((False, 0, 0, 0, 1), UNKNOWN)]:
+    for counts, expected in [
+        ((True, 8, 0, 1, 0), "PASS"),
+        ((True, 7, 0, 0, 0), "FAIL"),
+        ((True, 10, 0, 2, 0), "FAIL"),
+        ((True, 10, 0, 0, 0), "PASS"),
+        ((False, 0, 0, 0, 0), "PASS"),
+        ((False, 0, 0, 1, 0), "FAIL"),
+        ((True, 7, 1, 0, 0), UNKNOWN),
+        ((True, 8, 0, 1, 1), UNKNOWN),
+        ((True, 8, 2, 0, 0), "PASS"),
+        ((True, 6, 1, 0, 0), "FAIL"),
+        ((True, 7, 2, 2, 0), "FAIL"),
+        ((False, 0, 0, 0, 1), UNKNOWN),
+    ]:
         got = skill_verdict(*counts)
         check(got == expected, f"pass rule on {counts}: {got!r}, expected {expected!r}")
 
@@ -486,23 +644,43 @@ def selftest():
     # exits 2.
     harness = [sys.executable, str(REPO / "bin" / "harness"), "skill-triggers"]
     p = subprocess.run(harness, capture_output=True, text=True)
-    check(p.returncode == 1 and "152 sessions" in p.stdout and "Traceback" not in p.stderr,
-          f"the dry run exits {p.returncode}: {p.stdout.strip().splitlines()[-1:]!r}")
+    check(
+        p.returncode == 1 and "152 sessions" in p.stdout and "Traceback" not in p.stderr,
+        f"the dry run exits {p.returncode}: {p.stdout.strip().splitlines()[-1:]!r}",
+    )
     p = subprocess.run(harness + ["--apply"], capture_output=True, text=True)
-    check(p.returncode == 2 and len(p.stderr.strip().splitlines()) == 1 and "--model" in p.stderr,
-          f"--apply without --model exits {p.returncode}: {p.stderr.strip()!r}")
+    check(
+        p.returncode == 2 and len(p.stderr.strip().splitlines()) == 1 and "--model" in p.stderr,
+        f"--apply without --model exits {p.returncode}: {p.stderr.strip()!r}",
+    )
     # --skill, which can repeat, limits the dry run to its query files: 15 sessions each, 1 for wait-what.
-    for names, sessions in [(["julia-performance", "build-part"], "30 sessions,"), (["wait-what"], "1 session,")]:
-        p = subprocess.run(harness + [a for n in names for a in ("--skill", n)], capture_output=True, text=True)
-        rows = [line.split()[0] for line in p.stdout.splitlines()[1:] if line.strip() and not line.startswith("--")]
-        check(p.returncode == 1 and f"starts {sessions}" in p.stdout and sorted(rows) == sorted(names),
-              f"the dry run with --skill {' --skill '.join(names)} exits {p.returncode}, rows {rows}:"
-              f" {p.stdout.strip().splitlines()[-1:]!r}")
-    for argv in (["--skill", "no-such-skill"], ["--skill", "build-part", "--skill", "no-such-skill"],
-                 ["--apply", "--model", "fixture-model", "--skill", "no-such-skill"]):
+    for names, sessions in [
+        (["julia-performance", "build-part"], "30 sessions,"),
+        (["wait-what"], "1 session,"),
+    ]:
+        p = subprocess.run(
+            harness + [a for n in names for a in ("--skill", n)], capture_output=True, text=True
+        )
+        rows = [
+            line.split()[0]
+            for line in p.stdout.splitlines()[1:]
+            if line.strip() and not line.startswith("--")
+        ]
+        check(
+            p.returncode == 1 and f"starts {sessions}" in p.stdout and sorted(rows) == sorted(names),
+            f"the dry run with --skill {' --skill '.join(names)} exits {p.returncode}, rows {rows}:"
+            f" {p.stdout.strip().splitlines()[-1:]!r}",
+        )
+    for argv in (
+        ["--skill", "no-such-skill"],
+        ["--skill", "build-part", "--skill", "no-such-skill"],
+        ["--apply", "--model", "fixture-model", "--skill", "no-such-skill"],
+    ):
         p = subprocess.run(harness + argv, capture_output=True, text=True)
-        check(p.returncode == 2 and len(p.stderr.strip().splitlines()) == 1 and "no-such-skill" in p.stderr,
-              f"{' '.join(argv)} exits {p.returncode}: {p.stderr.strip()!r}")
+        check(
+            p.returncode == 2 and len(p.stderr.strip().splitlines()) == 1 and "no-such-skill" in p.stderr,
+            f"{' '.join(argv)} exits {p.returncode}: {p.stderr.strip()!r}",
+        )
 
     # --apply on a fake `claude`, which prints the streams: skill `julia-performance` can fire,
     # `wait-what` cannot.
@@ -517,10 +695,18 @@ def selftest():
             (tmp / "bin" / "plan.json").write_text(json.dumps(plan | {"fixtures": str(FIXTURES)}))
             out = io.StringIO()
             with contextlib.redirect_stdout(out):
-                status = apply(queries, {"julia-performance": True, "wait-what": False}, "fixture-model",
-                               tmp / "root", claude=str(claude), timeout=timeout)
+                status = apply(
+                    queries,
+                    {"julia-performance": True, "wait-what": False},
+                    "fixture-model",
+                    tmp / "root",
+                    claude=str(claude),
+                    timeout=timeout,
+                )
             calls = [json.loads(line) for line in (tmp / "bin" / "calls.jsonl").read_text().splitlines()]
-            written = sorted(str(p.relative_to(tmp / "root")) for p in (tmp / "root").rglob("*") if p.is_file())
+            written = sorted(
+                str(p.relative_to(tmp / "root")) for p in (tmp / "root").rglob("*") if p.is_file()
+            )
             report = (tmp / "root" / written[0]).read_text() if len(written) == 1 else ""
             return status, out.getvalue(), calls, written, report, (tmp / "root").resolve()
 
@@ -529,48 +715,88 @@ def selftest():
     queries = {"julia-performance": (load, near), "wait-what": ([], [("the purpose", "none")])}
 
     status, out, calls, written, report, root = scenario(
-        {"default": ["no-skill"], **{q: ["skill-first"] for q in load}}, queries)
-    argv = ["-p", "--verbose", "--output-format", "stream-json", "--max-turns", "3",
-            "--disallowedTools", "Edit", "Write", "NotebookEdit", "Agent", "Bash", "--model", "fixture-model"]
-    check(len(calls) == 16 and all(c["argv"] == argv and pathlib.Path(c["cwd"]).resolve() == root for c in calls)
-          and sorted(c["query"] for c in calls) == sorted(load + [q for q, _ in near] + ["the purpose"]),
-          f"--apply starts one session per query, with {argv} in the research root: {len(calls)} sessions")
+        {"default": ["no-skill"], **{q: ["skill-first"] for q in load}}, queries
+    )
+    argv = [
+        "-p",
+        "--verbose",
+        "--output-format",
+        "stream-json",
+        "--max-turns",
+        "3",
+        "--disallowedTools",
+        "Edit",
+        "Write",
+        "NotebookEdit",
+        "Agent",
+        "Bash",
+        "--model",
+        "fixture-model",
+    ]
+    check(
+        len(calls) == 16
+        and all(c["argv"] == argv and pathlib.Path(c["cwd"]).resolve() == root for c in calls)
+        and sorted(c["query"] for c in calls) == sorted(load + [q for q, _ in near] + ["the purpose"]),
+        f"--apply starts one session per query, with {argv} in the research root: {len(calls)} sessions",
+    )
     today = datetime.date.today().isoformat()
-    check(written == [f".scratch/skill-triggers/{today}-fixture-model.md"],
-          f"--apply writes only the report below .scratch/skill-triggers: {written}")
+    check(
+        written == [f".scratch/skill-triggers/{today}-fixture-model.md"],
+        f"--apply writes only the report below .scratch/skill-triggers: {written}",
+    )
     # 10 recorded loads of 38939 tokens and $0.1059428, 6 recorded misses of 38862 and $0.1052268.
-    check(status == 0 and "16 sessions, 622562 tokens, $1.6908" in out,
-          f"every skill passes: exit {status}, the totals {[l for l in out.splitlines() if 'tokens' in l]!r}")
-    check(all(q in report for q in load) and "| julia-performance | 10/10 | 0/5 | 0 | PASS |" in report
-          and "| wait-what | 0/0 | 0/1 | 0 | PASS |" in report,
-          "the report holds the table and every query")
+    check(
+        status == 0 and "16 sessions, 622562 tokens, $1.6908" in out,
+        f"every skill passes: exit {status}, the totals {[l for l in out.splitlines() if 'tokens' in l]!r}",
+    )
+    check(
+        all(q in report for q in load)
+        and "| julia-performance | 10/10 | 0/5 | 0 | PASS |" in report
+        and "| wait-what | 0/0 | 0/1 | 0 | PASS |" in report,
+        "the report holds the table and every query",
+    )
 
-    plan = {"default": ["no-skill"],
-            **{q: ["skill-first"] for q in load[:7]},
-            load[7]: ["no-skill", "skill-first", "skill-first"],    # a majority loads it
-            load[8]: ["no-skill"],                                 # a miss
-            load[9]: ["hang", "error"],                            # UNKNOWN twice
-            near[0][0]: ["skill-first", "no-skill", "no-skill"],   # a majority does not load it
-            near[1][0]: ["skill-first"],                           # a false load
-            near[2][0]: ["error", "no-skill"],                     # UNKNOWN, then not loaded
-            "the purpose": ["two-skills"]}                         # another skill loads
+    plan = {
+        "default": ["no-skill"],
+        **{q: ["skill-first"] for q in load[:7]},
+        load[7]: ["no-skill", "skill-first", "skill-first"],  # a majority loads it
+        load[8]: ["no-skill"],  # a miss
+        load[9]: ["hang", "error"],  # UNKNOWN twice
+        near[0][0]: ["skill-first", "no-skill", "no-skill"],  # a majority does not load it
+        near[1][0]: ["skill-first"],  # a false load
+        near[2][0]: ["error", "no-skill"],  # UNKNOWN, then not loaded
+        "the purpose": ["two-skills"],
+    }  # another skill loads
     status, out, calls, written, report, root = scenario(plan, queries, timeout=2)
-    check(status == 1 and "| julia-performance | 8/10 | 1/5 | 1 | PASS |" in report
-          and "| wait-what | 0/0 | 0/1 | 0 | PASS | julia-package-audit |" in report,
-          f"an UNKNOWN query exits 1 although every skill passes: exit {status}, {len(calls)} sessions")
+    check(
+        status == 1
+        and "| julia-performance | 8/10 | 1/5 | 1 | PASS |" in report
+        and "| wait-what | 0/0 | 0/1 | 0 | PASS | julia-package-audit |" in report,
+        f"an UNKNOWN query exits 1 although every skill passes: exit {status}, {len(calls)} sessions",
+    )
     check(len(calls) == 26, f"the re-runs: 16 queries and 10 more sessions, {len(calls)} in all")
 
     # A second UNKNOWN in the re-runs of a miss: the outcome is the miss, the row reports it, exit 1.
     status, out, calls, written, report, root = scenario(
-        {"default": ["no-skill"], **{q: ["skill-first"] for q in load[1:]},
-         load[0]: ["no-skill", "error", "error", "no-skill"]}, queries)
-    check(status == 1 and "| julia-performance | 9/10 | 0/5 | 1 | PASS |" in report and len(calls) == 19,
-          f"a second UNKNOWN inside a majority exits 1: exit {status}, {len(calls)} sessions")
+        {
+            "default": ["no-skill"],
+            **{q: ["skill-first"] for q in load[1:]},
+            load[0]: ["no-skill", "error", "error", "no-skill"],
+        },
+        queries,
+    )
+    check(
+        status == 1 and "| julia-performance | 9/10 | 0/5 | 1 | PASS |" in report and len(calls) == 19,
+        f"a second UNKNOWN inside a majority exits 1: exit {status}, {len(calls)} sessions",
+    )
 
     status, out, calls, written, report, root = scenario(
-        {"default": ["skill-first"], **{q: ["no-skill"] for q in load[:3]}}, queries)
-    check(status == 1 and "| julia-performance | 7/10 | 5/5 | 0 | FAIL |" in report,
-          f"a failing skill exits 1: exit {status}")
+        {"default": ["skill-first"], **{q: ["no-skill"] for q in load[:3]}}, queries
+    )
+    check(
+        status == 1 and "| julia-performance | 7/10 | 5/5 | 0 | FAIL |" in report,
+        f"a failing skill exits 1: exit {status}",
+    )
 
     apply_skill_case(check, harness)
     # A curated skill that fails parse_file, as read_queries raises it, is one wrong case of
@@ -578,15 +804,19 @@ def selftest():
     from unittest import mock
 
     results = []
-    with mock.patch(f"{__name__}.read_queries", side_effect=HarnessError("x/SKILL.md: the model 'bogus' is not a tier")):
+    with mock.patch(
+        f"{__name__}.read_queries", side_effect=HarnessError("x/SKILL.md: the model 'bogus' is not a tier")
+    ):
         try:
             apply_skill_case(lambda ok, label: results.append((ok, label)), [sys.executable, "-c", "pass"])
             raised = None
         except Exception as e:
             raised = f"{type(e).__name__}: {e}"
-    check(raised is None and [ok for ok, _ in results] == [False] and "'bogus' is not a tier" in results[0][1],
-          f"a query file that read_queries refuses is one wrong case of the --apply --skill case: raised {raised}, "
-          f"{results}")
+    check(
+        raised is None and [ok for ok, _ in results] == [False] and "'bogus' is not a tier" in results[0][1],
+        f"a query file that read_queries refuses is one wrong case of the --apply --skill case: raised {raised}, "
+        f"{results}",
+    )
     return total, wrong
 
 
@@ -602,13 +832,24 @@ def apply_skill_case(check, harness):
         (tmp / "root").mkdir()
         (tmp / "bin" / "claude").write_text(f"#!{sys.executable}\n" + FAKE_CLAUDE)
         (tmp / "bin" / "claude").chmod(0o755)
-        (tmp / "bin" / "plan.json").write_text(json.dumps({"default": ["no-skill"], "fixtures": str(FIXTURES)}))
-        env = os.environ | {"PATH": f"{tmp / 'bin'}{os.pathsep}{os.environ.get('PATH', '')}",
-                            "RESEARCH_ROOT": str(tmp / "root")}
-        p = subprocess.run(harness + ["--apply", "--model", "fixture-model", "--skill", "wait-what"],
-                           capture_output=True, text=True, env=env)
-        calls = [json.loads(line) for line in (tmp / "bin" / "calls.jsonl").read_text().splitlines()] \
-            if (tmp / "bin" / "calls.jsonl").is_file() else []
+        (tmp / "bin" / "plan.json").write_text(
+            json.dumps({"default": ["no-skill"], "fixtures": str(FIXTURES)})
+        )
+        env = os.environ | {
+            "PATH": f"{tmp / 'bin'}{os.pathsep}{os.environ.get('PATH', '')}",
+            "RESEARCH_ROOT": str(tmp / "root"),
+        }
+        p = subprocess.run(
+            harness + ["--apply", "--model", "fixture-model", "--skill", "wait-what"],
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+        calls = (
+            [json.loads(line) for line in (tmp / "bin" / "calls.jsonl").read_text().splitlines()]
+            if (tmp / "bin" / "calls.jsonl").is_file()
+            else []
+        )
         reports = list((tmp / "root").rglob("*.md"))
         report = reports[0].read_text() if len(reports) == 1 else ""
         try:
@@ -616,21 +857,31 @@ def apply_skill_case(check, harness):
         except HarnessError as e:
             check(False, f"--apply --skill wait-what: the query files cannot be read: {e}")
             return
-        check(p.returncode == 0 and [c["query"] for c in calls] == [near[0][0]]
-              and "| wait-what | 0/0 | 0/1 | 0 | PASS |" in report and report.count(" | PASS |") == 1,
-              f"--apply --skill wait-what runs only its query and reports only its row: exit {p.returncode},"
-              f" {len(calls)} sessions, {p.stderr.strip()[-200:]!r}")
+        check(
+            p.returncode == 0
+            and [c["query"] for c in calls] == [near[0][0]]
+            and "| wait-what | 0/0 | 0/1 | 0 | PASS |" in report
+            and report.count(" | PASS |") == 1,
+            f"--apply --skill wait-what runs only its query and reports only its row: exit {p.returncode},"
+            f" {len(calls)} sessions, {p.stderr.strip()[-200:]!r}",
+        )
 
 
 def register(sub):
-    p = changing(sub.add_parser("skill-triggers", help="test whether each skill loads on its queries, with claude -p",
-                                description="Test whether each skill loads on the queries of "
-                                            "tests/skill-triggers/<skill>.toml. Without --apply it prints the counts "
-                                            "per skill and the number of sessions, and exits 1; --apply --model ALIAS "
-                                            "runs one `claude -p` session per query, at the user's cost, and writes "
-                                            "the report below .scratch/skill-triggers/ of the research tree."),
-                 help="run the sessions and write the report; without it, print the counts")
+    p = changing(
+        sub.add_parser(
+            "skill-triggers",
+            help="test whether each skill loads on its queries, with claude -p",
+            description="Test whether each skill loads on the queries of "
+            "tests/skill-triggers/<skill>.toml. Without --apply it prints the counts "
+            "per skill and the number of sessions, and exits 1; --apply --model ALIAS "
+            "runs one `claude -p` session per query, at the user's cost, and writes "
+            "the report below .scratch/skill-triggers/ of the research tree.",
+        ),
+        help="run the sessions and write the report; without it, print the counts",
+    )
     p.add_argument("--model", metavar="ALIAS", help="the model of the sessions; --apply needs it")
-    p.add_argument("--skill", metavar="NAME", action="append",
-                   help="only the query file of this skill; can repeat")
+    p.add_argument(
+        "--skill", metavar="NAME", action="append", help="only the query file of this skill; can repeat"
+    )
     p.set_defaults(run=cmd_skill_triggers)

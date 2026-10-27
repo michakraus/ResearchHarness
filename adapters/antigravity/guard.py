@@ -80,7 +80,13 @@ HOOKS = pathlib.Path(__file__).resolve().parent
 LIST = HOOKS.parent / "guard-paths.json"
 # The shell guards, the work-tree check of sandbox-semantics.py, and the Kaimon guard: the scripts
 # of `frontends.GUARDS`, in its order.
-SHELL = ("no-blind-stage.py", "no-shell-file-write.py", "gh-api-writes.py", "rm-scope.py", "git-archive-output.py")
+SHELL = (
+    "no-blind-stage.py",
+    "no-shell-file-write.py",
+    "gh-api-writes.py",
+    "rm-scope.py",
+    "git-archive-output.py",
+)
 WORK_TREE = "sandbox-semantics.py"
 KAIMON = "kaimon-session.py"
 KAIMON_SERVER = "kaimon"
@@ -90,13 +96,19 @@ KAIMON_TOOLS = ("ex", "manage_repl")
 # `replace_file_content`, `grep_search`, `find_by_name` and `list_dir`; `Cwd` of `run_command`.
 PATH_KEYS = ("Path", "AbsolutePath", "TargetFile", "SearchPath", "SearchDirectory", "DirectoryPath", "Cwd")
 # The tools that write a file, of both families, and the argument that names the file.
-WRITE_TOOLS = {"write_file": "Path", "edit_file": "Path", "write_to_file": "TargetFile",
-               "replace_file_content": "TargetFile"}
+WRITE_TOOLS = {
+    "write_file": "Path",
+    "edit_file": "Path",
+    "write_to_file": "TargetFile",
+    "replace_file_content": "TargetFile",
+}
 # The arguments whose path the call reads below, as a `cd` or a recursive read does.
 WIDE_KEYS = ("Cwd", "SearchPath")
 # A command that reads below its paths: OpenCode's guard's `RECURSIVE`.
-RECURSIVE = re.compile(r"\b(?:find|rg|tree|du|tar|zip|rsync|walkdir|readdir)\b"
-                       r"|\b(?:grep|egrep|ls|cp|chmod|chown)\b[^|;&\n]*\s(?:--recursive\b|-[A-Za-z]*[rR])")
+RECURSIVE = re.compile(
+    r"\b(?:find|rg|tree|du|tar|zip|rsync|walkdir|readdir)\b"
+    r"|\b(?:grep|egrep|ls|cp|chmod|chown)\b[^|;&\n]*\s(?:--recursive\b|-[A-Za-z]*[rR])"
+)
 # The characters of a shell glob or a brace expansion.
 GLOB = re.compile(r"[*?\[{]")
 # The text between two words of a segment when a Bash rule matches them: a NUL, which no argument
@@ -142,9 +154,13 @@ def listed(key):
     try:
         items = json.loads(LIST.read_text(encoding="utf-8"))[key]
     except (OSError, ValueError, KeyError, TypeError) as e:
-        return f"The path list {LIST} cannot be used ({type(e).__name__}: {e}), so the call is blocked. {CLOSED}"
+        return (
+            f"The path list {LIST} cannot be used ({type(e).__name__}: {e}), so the call is blocked. {CLOSED}"
+        )
     if not isinstance(items, list) or not all(isinstance(g, str) for g in items):
-        return f"The path list {LIST} holds no list of strings under \"{key}\", so the call is blocked. {CLOSED}"
+        return (
+            f'The path list {LIST} holds no list of strings under "{key}", so the call is blocked. {CLOSED}'
+        )
     return items
 
 
@@ -152,7 +168,7 @@ def literal_prefix(glob):
     """The part of `glob` that names one directory or file: up to the last `/` before its first
     `*` or `?`, or the whole glob."""
     g = re.search(r"[*?]", glob)
-    return glob if g is None else glob[:max(glob.rfind("/", 0, g.start()), 0)]
+    return glob if g is None else glob[: max(glob.rfind("/", 0, g.start()), 0)]
 
 
 def path_rules(key="deny"):
@@ -165,7 +181,7 @@ def path_rules(key="deny"):
 def expanded(raw):
     """`raw` with a leading `~`, `~user`, `$HOME` or `${HOME}` expanded as the shell expands it."""
     m = re.match(r"(?:\$HOME|\$\{HOME\})(?=/|$)", raw)
-    return os.path.expanduser("~") + raw[m.end():] if m else os.path.expanduser(raw)
+    return os.path.expanduser("~") + raw[m.end() :] if m else os.path.expanduser(raw)
 
 
 def absolute(raw, cwd):
@@ -189,7 +205,9 @@ def refused_path(raw, cwd, rules, kind="deny", wide=False):
             if pattern.fullmatch(path):
                 return f"{path} matches the {kind} rule {glob}"
             if wide and prefix.lower().startswith(under):
-                return f"the call reads below {path}, which holds {prefix}, which the {kind} rule {glob} covers"
+                return (
+                    f"the call reads below {path}, which holds {prefix}, which the {kind} rule {glob} covers"
+                )
     return None
 
 
@@ -210,7 +228,7 @@ def refused_command(command, cwd, rules):
     recursive = RECURSIVE.search(command) is not None
     split = words(command)
     for i, word in enumerate(split):
-        wide = recursive or split[i - 1:i] in (["cd"], ["pushd"])
+        wide = recursive or split[i - 1 : i] in (["cd"], ["pushd"])
         for part in dict.fromkeys([word, *re.split(r"[=:,]", word)]):
             refused = part and refused_path(part, cwd, rules, wide=wide)
             if refused:
@@ -231,7 +249,7 @@ def segments(line):
         while i < len(line):
             c = line[i]
             if c == "\\":  # a backslash-newline joins two lines, as in the shell
-                seg, i = seg + ("" if line.startswith("\n", i + 1) else line[i:i + 2]), i + 2
+                seg, i = seg + ("" if line.startswith("\n", i + 1) else line[i : i + 2]), i + 2
             elif c == "'" and not quoted:
                 j = line.find("'", i + 1)
                 j = len(line) if j < 0 else j + 1
@@ -239,7 +257,7 @@ def segments(line):
             elif c == close and not quoted:
                 found.append(seg)
                 return i + 1
-            elif line.startswith("$(", i) or c == "`" or c == "(" and not quoted:
+            elif line.startswith("$(", i) or c == "`" or (c == "(" and not quoted):
                 j = scan(i + (2 if c == "$" else 1), "`" if c == "`" else ")")
                 seg, i = seg + line[i:j], j
             elif c == '"':
@@ -274,7 +292,7 @@ def bash_matcher(body):
     in the length of `text`."""
     if m := re.fullmatch(r"([^*]*[^*\s]) \*", body, re.S):
         x = m.group(1).split()
-        return lambda w, text: any(w[i:i + len(x)] == x for i in range(len(w)))
+        return lambda w, text: any(w[i : i + len(x)] == x for i in range(len(w)))
     trailing = body.endswith(" *")
     parts = [WORD_BREAK.join(re.split(r"\s+", part)) for part in (body[:-2] if trailing else body).split("*")]
     return lambda w, text: placed(parts, trailing, text)
@@ -328,8 +346,9 @@ def run(script, payload, args=()):
     if not path.is_file():
         return "deny", failed.format(f"is missing from {HOOKS}")
     try:
-        p = subprocess.run([sys.executable, str(path), *args], input=payload, capture_output=True, text=True,
-                           timeout=TIMEOUT)
+        p = subprocess.run(
+            [sys.executable, str(path), *args], input=payload, capture_output=True, text=True, timeout=TIMEOUT
+        )
     except subprocess.TimeoutExpired:
         return "deny", failed.format(f"did not answer within {TIMEOUT} s")
     except OSError as e:
@@ -343,7 +362,7 @@ def run(script, payload, args=()):
     try:
         hook = json.loads(p.stdout)["hookSpecificOutput"]
         decision, reason = hook.get("permissionDecision"), hook.get("permissionDecisionReason")
-    except (ValueError, KeyError, TypeError, AttributeError):
+    except ValueError, KeyError, TypeError, AttributeError:
         return "deny", failed.format("printed output that is not a JSON answer")
     if decision in ("deny", "ask"):
         return decision, reason or f"{script} answered {decision}."
@@ -418,8 +437,11 @@ def answer(payload):
         return deny(f"The tool call is not one that the guard hook can read, so it is blocked. {CLOSED}")
     workspaces = payload.get("workspacePaths") or []
     workspace = workspaces[0] if workspaces else os.getcwd()
-    cwd = os.path.normpath(os.path.join(workspace, expanded(args["Cwd"]))) if isinstance(args.get("Cwd"), str) \
+    cwd = (
+        os.path.normpath(os.path.join(workspace, expanded(args["Cwd"])))
+        if isinstance(args.get("Cwd"), str)
         else workspace
+    )
     rules = path_rules()
     if isinstance(rules, str):
         return deny(rules)
@@ -428,8 +450,10 @@ def answer(payload):
             # `cwd` is `Cwd` resolved already, and joining `Cwd` to it again would name another path.
             refused = refused_path(cwd if key == "Cwd" else args[key], cwd, rules, wide=key in WIDE_KEYS)
             if refused:
-                return deny(f"Refused by the path guard: {refused}. Use only the paths your task names. "
-                            "Do not reach this path in another form.")
+                return deny(
+                    f"Refused by the path guard: {refused}. Use only the paths your task names. "
+                    "Do not reach this path in another form."
+                )
     if name in WRITE_TOOLS:
         edit, ask = path_rules("edit"), path_rules("ask")
         for rules_of in (edit, ask):
@@ -449,8 +473,10 @@ def answer(payload):
             return deny(f"The run_command call holds no CommandLine, so the guards cannot check it. {CLOSED}")
         refused = refused_command(command, cwd, rules)
         if refused:
-            return deny(f"Refused by the path guard: {refused}. Use only the paths your task names. "
-                        "Do not reach this path in another form.")
+            return deny(
+                f"Refused by the path guard: {refused}. Use only the paths your task names. "
+                "Do not reach this path in another form."
+            )
         bash = {key: bash_rules(key) for key in ("bash_deny", "bash_ask")}
         for rules_of in bash.values():
             if isinstance(rules_of, str):
@@ -458,22 +484,33 @@ def answer(payload):
         parts = segments(command)
         hit = matched(bash["bash_deny"], parts)
         if hit is not None:
-            return deny(f"Refused by the settings template's rule Bash({hit}). Do not run the command in another "
-                        "form.")
+            return deny(
+                f"Refused by the settings template's rule Bash({hit}). Do not run the command in another "
+                "form."
+            )
         asked = matched(bash["bash_ask"], parts)
         shell = json.dumps({"tool_name": "Bash", "tool_input": {"command": command}, "cwd": cwd})
         result = guards([*((s, shell, ()) for s in SHELL), (WORK_TREE, shell, ("--work-tree",))])
         if result["decision"] == "deny":
             return result
         if asked is not None:
-            result = {"decision": "force_ask", "reason": f"The settings template's rule Bash({asked}) asks the user."}
+            result = {
+                "decision": "force_ask",
+                "reason": f"The settings template's rule Bash({asked}) asks the user.",
+            }
         return {**result, "overwrite": {"BypassSandbox": lifted(command, cwd)}}
-    if name == "call_mcp_tool" and args.get("ServerName") == KAIMON_SERVER and args.get("ToolName") in KAIMON_TOOLS:
+    if (
+        name == "call_mcp_tool"
+        and args.get("ServerName") == KAIMON_SERVER
+        and args.get("ToolName") in KAIMON_TOOLS
+    ):
         arguments = args.get("Arguments")
         if isinstance(arguments, str):
             arguments = json.loads(arguments)
         if not isinstance(arguments, dict):
-            return deny(f"The Kaimon call holds no object of Arguments, so the Kaimon guard cannot check it. {CLOSED}")
+            return deny(
+                f"The Kaimon call holds no object of Arguments, so the Kaimon guard cannot check it. {CLOSED}"
+            )
         kaimon = json.dumps({"tool_name": f"mcp__kaimon__{args['ToolName']}", "tool_input": arguments})
         return guards([(KAIMON, kaimon, ())])
     return {"decision": "ask"}

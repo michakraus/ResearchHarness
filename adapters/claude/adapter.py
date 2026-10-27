@@ -139,7 +139,7 @@ import subprocess
 import sys
 import tempfile
 import unicodedata
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, UTC
 from unittest import mock
 
 from harness import REPO, HarnessError, changing, frontends, frontmatter, install, network, outcome
@@ -150,7 +150,9 @@ from harness.sources import NEUTRAL
 
 NAME = "claude"
 TEMPLATES = ["launchagents/claude-autocommit.plist"]
-RESTART = "Restart Claude Code: its installed files changed, and a running session keeps the files it has read."
+RESTART = (
+    "Restart Claude Code: its installed files changed, and a running session keeps the files it has read."
+)
 
 # The Claude Code layer's sources in this repository, each (directory, installed prefix): the
 # neutral directories at their own path below ~/.claude/, and adapters/claude/ at its top.
@@ -166,8 +168,17 @@ CLAUDE_TEMPLATES = frozenset()
 CLAUDE_SETTINGS = frozenset({"settings.json", "settings.local.json"})
 # The Claude Code name of each neutral tool of frontmatter.TOOLS; the Kaimon tool
 # `mcp/kaimon/<tool>` is MCP_PREFIX followed by `<tool>`.
-TOOLS = {"read": "Read", "edit": "Edit", "write": "Write", "grep": "Grep", "glob": "Glob", "shell": "Bash",
-         "agent": "Agent", "web_search": "WebSearch", "web_fetch": "WebFetch"}
+TOOLS = {
+    "read": "Read",
+    "edit": "Edit",
+    "write": "Write",
+    "grep": "Grep",
+    "glob": "Glob",
+    "shell": "Bash",
+    "agent": "Agent",
+    "web_search": "WebSearch",
+    "web_fetch": "WebFetch",
+}
 MCP_PREFIX = "mcp__kaimon__"
 # A model of [claude] that render_source writes as it is into `model:`: a plain YAML scalar that
 # reads as this string. Any other model is written as JSON writes a string, a YAML double-quoted
@@ -208,7 +219,9 @@ def read_settings(path):
         raise HarnessError(f"{path}: the value of permissions is not a JSON object")
     if render_profile.PLACEHOLDER.search(text):
         profile = render_profile.load(PROFILE)
-        cfg = network.apply(render_profile.render_data(cfg, profile), profile, render_profile.network_path(PROFILE))
+        cfg = network.apply(
+            render_profile.render_data(cfg, profile), profile, render_profile.network_path(PROFILE)
+        )
     return cfg
 
 
@@ -225,8 +238,10 @@ def json_object(path, text):
         raise HarnessError(f"{path} is not a JSON object")
     return cfg
 
+
 # The matcher evaluates each segment of a compound command separately.
 SEGMENT = re.compile(r"(?:&&|\|\||;|\||\n)")
+
 
 def load_rules(path):
     """Return a settings file's Bash patterns as (allow, ask, deny, excluded).
@@ -260,7 +275,7 @@ def load_rules(path):
 
 def commands(days):
     """Yield every Bash command string issued in the last `days` days."""
-    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    cutoff = (datetime.now(UTC) - timedelta(days=days)).isoformat()
     for path in PROJECTS.rglob("*.jsonl"):
         if path.stat().st_mtime < (datetime.now().timestamp() - days * 86400):
             continue
@@ -299,7 +314,7 @@ def segments(command):
 ESCAPED_STAR, ESCAPED_BACKSLASH, GLOBSTAR = "\x00S\x00", "\x00B\x00", "\x00G\x00"
 
 
-@functools.lru_cache(maxsize=None)
+@functools.cache
 def wildcard_regex(pattern):
     """The regex Claude Code 2.1.282 builds for a Bash wildcard rule."""
     source, text, index = pattern.strip(), "", 0
@@ -361,7 +376,7 @@ def rule_matches(segment, rule, kind):
     return segment == rule
 
 
-@functools.lru_cache(maxsize=None)
+@functools.cache
 def parse_rule(rule):
     """A rule's shape and what `rule_matches` needs for it, computed once per rule."""
     prefix = re.fullmatch(r"(.+):\*", rule)
@@ -433,9 +448,9 @@ def cmd_compare(args):
     print(f"{len(cmds)} Bash calls in the last {args.days} days\n")
     print(f"  {'':10s} {'before':>8s} {'after':>8s}  {'delta':>8s}")
     for head in heads:
-        print(f"  {head:10s} {before[head]:8d} {after[head]:8d}  {after[head]-before[head]:+8d}")
+        print(f"  {head:10s} {before[head]:8d} {after[head]:8d}  {after[head] - before[head]:+8d}")
     b, a = sum(before.values()), sum(after.values())
-    print(f"  {'TOTAL':10s} {b:8d} {a:8d}  {a-b:+8d}")
+    print(f"  {'TOTAL':10s} {b:8d} {a:8d}  {a - b:+8d}")
 
 
 # (rule, kind, segment, expected). Each is a reading of the 2.1.282 matcher or a probe of
@@ -510,7 +525,7 @@ def indent_of(text):
     for line in lines[1:]:
         stripped = line.lstrip(" \t")
         if stripped and stripped != line:
-            return line[:len(line) - len(stripped)]
+            return line[: len(line) - len(stripped)]
     return 2
 
 
@@ -583,11 +598,17 @@ def settings_template(profile, overlay, python=None):
     template = json.loads(text)
     python = install.python_interpreter() if python is None else python
     try:
-        cfg = render_profile.render_data(template, profile) if render_profile.PLACEHOLDER.search(text) else template
+        cfg = (
+            render_profile.render_data(template, profile)
+            if render_profile.PLACEHOLDER.search(text)
+            else template
+        )
         for event, groups in template.get("hooks", {}).items():
             for i, group in enumerate(groups):
                 for j, handler in enumerate(group["hooks"]):
-                    cfg["hooks"][event][i]["hooks"][j]["command"] = hook_command(handler["command"], profile, python)
+                    cfg["hooks"][event][i]["hooks"][j]["command"] = hook_command(
+                        handler["command"], profile, python
+                    )
     except (KeyError, TypeError, ValueError) as e:
         raise HarnessError(f"{PROPOSAL}: {e.args[0]}") from e
     return network.apply(cfg, profile, overlay)
@@ -626,9 +647,13 @@ def settings_file(root, profile, overlay):
     cfg, indent, old = {}, 2, None
     if st is not None:
         if stat.S_ISDIR(st.st_mode):
-            raise HarnessError(f"{live} is a directory; `harness install` merges the settings into a file only")
+            raise HarnessError(
+                f"{live} is a directory; `harness install` merges the settings into a file only"
+            )
         if not stat.S_ISREG(st.st_mode):
-            raise HarnessError(f"{live} is not a file; `harness install` merges the settings into a file only")
+            raise HarnessError(
+                f"{live} is not a file; `harness install` merges the settings into a file only"
+            )
         try:
             old = live.read_bytes()
         except OSError as e:
@@ -643,7 +668,7 @@ def settings_file(root, profile, overlay):
             raise HarnessError(f"{live}: the value of {', '.join(wrong)} is not a JSON object")
         indent = indent_of(text)
     template = settings_template(profile, overlay)
-    added =[k for k in template if k not in OWNED and k not in cfg]
+    added = [k for k in template if k not in OWNED and k not in cfg]
     env = cfg.get("env")
     env_added = [k for k in template.get("env", {}) if k not in env] if isinstance(env, dict) else []
 
@@ -653,14 +678,21 @@ def settings_file(root, profile, overlay):
         if env_added:
             s["env"] = {k: c["env"][k] for k in env_added if k in c["env"]}
         return s
+
     a, b = (dumps(section(c), indent=2, sort_keys=True).splitlines() for c in (cfg, template))
-    diff = list(difflib.unified_diff(a, b, "~/.claude/settings.json", "settings/settings.proposal.json", lineterm=""))
+    diff = list(
+        difflib.unified_diff(a, b, "~/.claude/settings.json", "settings/settings.proposal.json", lineterm="")
+    )
     if diff or old is None:
         rewritten = rewritten_numbers(text, OWNED, live) if old is not None else []
         if rewritten:
-            raise HarnessError(f"{live}: the merge would rewrite " + ", ".join(
-                f"the number `{source}` of `{key}` as `{emitted}`" for key, source, emitted in rewritten)
-                + "; write each as the merge writes it, then run the install again")
+            raise HarnessError(
+                f"{live}: the merge would rewrite "
+                + ", ".join(
+                    f"the number `{source}` of `{key}` as `{emitted}`" for key, source, emitted in rewritten
+                )
+                + "; write each as the merge writes it, then run the install again"
+            )
         for key in OWNED:
             if key in template:
                 cfg[key] = template[key]
@@ -704,16 +736,27 @@ def stray_warnings():
                 if isinstance(rules, list):
                     found += [(path, kind, rule) for rule in rules]
                 else:
-                    warnings.append((escaped(f"{path}: the value of permissions.{kind} is not a list, so its "
-                                             "rules are not listed"),))
-        except (FileNotFoundError, NotADirectoryError):
+                    warnings.append(
+                        (
+                            escaped(
+                                f"{path}: the value of permissions.{kind} is not a list, so its "
+                                "rules are not listed"
+                            ),
+                        )
+                    )
+        except FileNotFoundError, NotADirectoryError:
             continue
         except (OSError, ValueError, AttributeError, TypeError, RecursionError) as e:
             warnings.append((escaped(f"{path} cannot be read as a settings file: {type(e).__name__}: {e}"),))
     if found:
-        warnings.insert(0, (f"{len(found)} permission rule(s) outside ~/.claude/settings.json — fold them into the "
-                            "settings template or delete them; `harness settings` does not measure them:",
-                            *(escaped(f"  {path}  {kind}  {rule}") for path, kind, rule in found)))
+        warnings.insert(
+            0,
+            (
+                f"{len(found)} permission rule(s) outside ~/.claude/settings.json — fold them into the "
+                "settings template or delete them; `harness settings` does not measure them:",
+                *(escaped(f"  {path}  {kind}  {rule}") for path, kind, rule in found),
+            ),
+        )
     return warnings
 
 
@@ -726,56 +769,101 @@ def run(args):
 
 def register(sub):
     register_settings(sub)
-    changing(sub.add_parser("trust", help="trust the research root and every repository in it for Claude Code",
-                            description="Mark the research root and every git repository under it as trusted in "
-                                        "~/.claude.json, so that Claude Code shows no trust dialog. Without --apply "
-                                        "it lists the untrusted roots and exits 1 when there is one; --apply writes "
-                                        "~/.claude.json. Run it outside a session, which cannot read that file.")
-             ).set_defaults(run=cmd_trust)
+    changing(
+        sub.add_parser(
+            "trust",
+            help="trust the research root and every repository in it for Claude Code",
+            description="Mark the research root and every git repository under it as trusted in "
+            "~/.claude.json, so that Claude Code shows no trust dialog. Without --apply "
+            "it lists the untrusted roots and exits 1 when there is one; --apply writes "
+            "~/.claude.json. Run it outside a session, which cannot read that file.",
+        )
+    ).set_defaults(run=cmd_trust)
 
 
 def register_settings(sub):
-    top = sub.add_parser("settings", help="measure and check the Claude Code settings",
-                         description="Measure and check the Claude Code settings against the Bash commands of the "
-                                     "recent session transcripts in ~/.claude/projects/. Each subcommand of "
-                                     "`settings` is read-only: it prints a report and changes no file.")
+    top = sub.add_parser(
+        "settings",
+        help="measure and check the Claude Code settings",
+        description="Measure and check the Claude Code settings against the Bash commands of the "
+        "recent session transcripts in ~/.claude/projects/. Each subcommand of "
+        "`settings` is read-only: it prints a report and changes no file.",
+    )
     top.set_defaults(run=run)
     sub = top.add_subparsers(dest="cmd", metavar="<sub>", required=True)
 
-    s = sub.add_parser("surface", help="prompt surface of one settings file",
-                       description="Count the segments of the recent Bash commands that reach a permission prompt "
-                                   "under one settings file, by leading word. Read-only.")
-    s.add_argument("--settings", default=str(LIVE), metavar="F",
-                   help="the settings file to measure (default: ~/.claude/settings.json)")
-    s.add_argument("--days", type=int, default=5, metavar="N",
-                   help="read the Bash commands of the last N days (default: 5)")
-    s.add_argument("--head", type=int, default=0, metavar="N",
-                   help="also print the N most frequent prompting segments (default: 0, none)")
+    s = sub.add_parser(
+        "surface",
+        help="prompt surface of one settings file",
+        description="Count the segments of the recent Bash commands that reach a permission prompt "
+        "under one settings file, by leading word. Read-only.",
+    )
+    s.add_argument(
+        "--settings",
+        default=str(LIVE),
+        metavar="F",
+        help="the settings file to measure (default: ~/.claude/settings.json)",
+    )
+    s.add_argument(
+        "--days",
+        type=int,
+        default=5,
+        metavar="N",
+        help="read the Bash commands of the last N days (default: 5)",
+    )
+    s.add_argument(
+        "--head",
+        type=int,
+        default=0,
+        metavar="N",
+        help="also print the N most frequent prompting segments (default: 0, none)",
+    )
     s.set_defaults(func=cmd_surface)
 
-    c = sub.add_parser("compare", help="prompt surface of two settings files, side by side",
-                       description="Count the segments of the recent Bash commands that reach a permission prompt "
-                                   "under two settings files, by leading word, side by side and with the difference. "
-                                   "Read-only.")
+    c = sub.add_parser(
+        "compare",
+        help="prompt surface of two settings files, side by side",
+        description="Count the segments of the recent Bash commands that reach a permission prompt "
+        "under two settings files, by leading word, side by side and with the difference. "
+        "Read-only.",
+    )
     c.add_argument("old", help="the settings file before the change")
     c.add_argument("new", help="the settings file after the change")
-    c.add_argument("--days", type=int, default=5, metavar="N",
-                   help="read the Bash commands of the last N days (default: 5)")
+    c.add_argument(
+        "--days",
+        type=int,
+        default=5,
+        metavar="N",
+        help="read the Bash commands of the last N days (default: 5)",
+    )
     c.set_defaults(func=cmd_compare)
 
-    m = sub.add_parser("selftest", help="check the matcher against the recorded Claude Code cases",
-                       description="Check the Bash matcher of this module against the recorded cases of Claude "
-                                   "Code. Read-only; exits 1 when a case fails. Run it after a Claude Code update.")
+    m = sub.add_parser(
+        "selftest",
+        help="check the matcher against the recorded Claude Code cases",
+        description="Check the Bash matcher of this module against the recorded cases of Claude "
+        "Code. Read-only; exits 1 when a case fails. Run it after a Claude Code update.",
+    )
     m.set_defaults(func=cmd_selftest)
 
-    t = sub.add_parser("twins", help="emit the git -C twins of a rule set",
-                       description="Print the `git -C * <sub>` twin of each plain `git` rule of a settings file, as "
-                                   "lines for its rule lists: `Bash(git status *)` does not match "
-                                   "`git -C /path status`. Read-only.")
-    t.add_argument("--settings", default=str(LIVE), metavar="F",
-                   help="the settings file to read (default: ~/.claude/settings.json)")
-    t.add_argument("--list", choices=("allow", "ask", "deny"),
-                   help="print the twins of this list only (default: all three)")
+    t = sub.add_parser(
+        "twins",
+        help="emit the git -C twins of a rule set",
+        description="Print the `git -C * <sub>` twin of each plain `git` rule of a settings file, as "
+        "lines for its rule lists: `Bash(git status *)` does not match "
+        "`git -C /path status`. Read-only.",
+    )
+    t.add_argument(
+        "--settings",
+        default=str(LIVE),
+        metavar="F",
+        help="the settings file to read (default: ~/.claude/settings.json)",
+    )
+    t.add_argument(
+        "--list",
+        choices=("allow", "ask", "deny"),
+        help="print the twins of this list only (default: all three)",
+    )
     t.set_defaults(func=cmd_twins)
 
 
@@ -851,16 +939,21 @@ def harness_checkout(profile):
 def claude_sources(profile):
     """Each source of ~/.claude/: (directory, installed prefix, top-level names not installed,
     top-level directories whose files are skipped with a SKIP line)."""
-    return [*((d, prefix, ADAPTER_CODE if d == CLAUDE_ADAPTER else set(), set()) for d, prefix in CLAUDE_SOURCES),
-            (REPO / "hooks", "hooks", {"probe.py"}, set()),
-            (tree_agents(profile), "", {"README.md"}, {"agents", "hooks"})]
+    return [
+        *((d, prefix, ADAPTER_CODE if d == CLAUDE_ADAPTER else set(), set()) for d, prefix in CLAUDE_SOURCES),
+        (REPO / "hooks", "hooks", {"probe.py"}, set()),
+        (tree_agents(profile), "", {"README.md"}, {"agents", "hooks"}),
+    ]
 
 
 def source_of(sources, dst):
     """The source files of the installed path `dst` in `sources`, as claude_sources gives them."""
     path = pathlib.PurePosixPath(dst)
-    return [d / path.relative_to(prefix) for d, prefix, _, _ in sources
-            if path.is_relative_to(prefix) and (d / path.relative_to(prefix)).is_file()]
+    return [
+        d / path.relative_to(prefix)
+        for d, prefix, _, _ in sources
+        if path.is_relative_to(prefix) and (d / path.relative_to(prefix)).is_file()
+    ]
 
 
 def claude_plan(profile, sources=None, templates=None):
@@ -885,17 +978,25 @@ def claude_plan(profile, sources=None, templates=None):
                 print(f"SKIP {directory / rel} — agents and hooks install from this repository only")
                 continue
             if directory == CLAUDE_ADAPTER and install.fold(rel.parts[0]) in {*NEUTRAL, "hooks"}:
-                raise HarnessError(f"{directory / rel}: a file of ~/.claude/{install.fold(rel.parts[0])}/ has its source "
-                                   f"in {install.fold(rel.parts[0])}/ of this repository, not in {directory}")
+                raise HarnessError(
+                    f"{directory / rel}: a file of ~/.claude/{install.fold(rel.parts[0])}/ has its source "
+                    f"in {install.fold(rel.parts[0])}/ of this repository, not in {directory}"
+                )
             src, dst = directory / rel, pathlib.PurePosixPath(prefix, rel).as_posix()
             if install.fold(dst) in CLAUDE_SETTINGS:
-                raise HarnessError(f"{src}: ~/.claude/{dst} is the Claude Code settings, which `harness install` "
-                                   "merges from the settings template; no source of this install holds it")
+                raise HarnessError(
+                    f"{src}: ~/.claude/{dst} is the Claude Code settings, which `harness install` "
+                    "merges from the settings template; no source of this install holds it"
+                )
             if install.fold(dst) in owner:
                 raise HarnessError(f"~/.claude/{dst} has two sources, {owner[install.fold(dst)]} and {src}")
             owner[install.fold(dst)] = src
             try:
-                data = render_profile.render_file(src, profile).encode() if dst in templates else src.read_bytes()
+                data = (
+                    render_profile.render_file(src, profile).encode()
+                    if dst in templates
+                    else src.read_bytes()
+                )
                 mode = stat.S_IMODE(src.stat().st_mode) if dst.startswith("hooks/") else 0o644
             except (OSError, ValueError) as e:
                 raise HarnessError(f"{src} cannot be read: {e}") from None
@@ -914,9 +1015,14 @@ def claude_extras(root, plan):
             continue
         for path, dirs, files in os.walk(root / top, onerror=install.unreadable):
             rel = pathlib.Path(path).relative_to(root)
-            dirs[:] = sorted(d for d in dirs if not install.hidden(d) and (rel / d).as_posix() != "skills/synced")
-            extra += [pathlib.Path(path, f) for f in sorted(files)
-                      if not install.hidden(f) and install.fold((rel / f).as_posix()) not in ours]
+            dirs[:] = sorted(
+                d for d in dirs if not install.hidden(d) and (rel / d).as_posix() != "skills/synced"
+            )
+            extra += [
+                pathlib.Path(path, f)
+                for f in sorted(files)
+                if not install.hidden(f) and install.fold((rel / f).as_posix()) not in ours
+            ]
     return extra
 
 
@@ -925,12 +1031,17 @@ def load_models(path):
     frontmatter.TIERS, each a model with no control character of MODEL_CONTROL that is not a word
     of YAML_WORDS; any other table exits 2 (profile.tier_table)."""
     models = render_profile.tier_table(path, "claude", "Claude Code")
-    wrong = [t for t in frontmatter.TIERS if MODEL_CONTROL.search(models[t]) or models[t].lower() in YAML_WORDS]
+    wrong = [
+        t for t in frontmatter.TIERS if MODEL_CONTROL.search(models[t]) or models[t].lower() in YAML_WORDS
+    ]
     if wrong:
-        raise HarnessError(f"{path}: the tier {', '.join(wrong)} of [claude] is "
-                           + ", ".join(repr(models[t]) for t in wrong) + ", which the install does not write "
-                           "into `model:`: a model holds no control character and is no word that YAML reads "
-                           "as a boolean or null")
+        raise HarnessError(
+            f"{path}: the tier {', '.join(wrong)} of [claude] is "
+            + ", ".join(repr(models[t]) for t in wrong)
+            + ", which the install does not write "
+            "into `model:`: a model holds no control character and is no word that YAML reads "
+            "as a boolean or null"
+        )
     return models
 
 
@@ -994,15 +1105,32 @@ def plan(ctx):
     files = [settings]
     for dst, data, mode in layer:
         src = source_of(layer_sources, dst)[0]
-        files.append((root / dst, render_source(src, data, models) if neutral_source(src) else data, mode,
-                      f"~/.claude/{dst}"))
+        files.append(
+            (
+                root / dst,
+                render_source(src, data, models) if neutral_source(src) else data,
+                mode,
+                f"~/.claude/{dst}",
+            )
+        )
     # The stamp goes after the layer, so that an apply that stops before its end leaves the old one.
     # It is over the source bytes of `layer`, which the hook reads again, not over the rendered ones.
-    files.append((root / install.STAMP, install.stamp_bytes(layer_sources, layer, harness_checkout(ctx.profile)), 0o644,
-                  f"~/.claude/{install.STAMP}"))
-    extra = [f"\nEXTRA: {f} is installed and has no source here; the install leaves it.\n"
-             f"       To remove it:  rm '{f}'" for f in claude_extras(root, layer)]
-    rules = [(dst, source_of(layer_sources, dst)[0], data) for dst, data, _ in layer if dst.startswith("rules/")]
+    files.append(
+        (
+            root / install.STAMP,
+            install.stamp_bytes(layer_sources, layer, harness_checkout(ctx.profile)),
+            0o644,
+            f"~/.claude/{install.STAMP}",
+        )
+    )
+    extra = [
+        f"\nEXTRA: {f} is installed and has no source here; the install leaves it.\n"
+        f"       To remove it:  rm '{f}'"
+        for f in claude_extras(root, layer)
+    ]
+    rules = [
+        (dst, source_of(layer_sources, dst)[0], data) for dst, data, _ in layer if dst.startswith("rules/")
+    ]
     rendered = {str(f[0].relative_to(root)): f[1] for f in files}
     shared = [(dst, rendered[dst], mode) for dst, _, mode in layer if frontends.shared(dst)]
     return frontends.Plan(files=files, warnings=stray_warnings(), extra=extra, rules=rules, shared=shared)
@@ -1014,22 +1142,70 @@ def plan(ctx):
 # The installed paths whose source is in this repository: in agents/, skills/, rules/,
 # instructions/, commands/ or adapters/claude/. The tree instructions hold
 # instructions/research-tree.md and rules/meta-repository.md.
-MOVED = ["CLAUDE.md", "RTK.md", "instructions/core.md",
-         *(f"agents/{a}.md" for a in [
-             "advisor", "arbitrator", "changelog-scribe", "ci-triage", "exhaustive-auditor", "git-hook-triage",
-             "julia-branch-verifier", "julia-builder", "julia-critic", "julia-load-doctor",
-             "julia-perf-analyst", "julia-pr-reviewer", "julia-pr-shepherd", "julia-test-runner",
-             "latex-verifier", "literature-scout", "part-builder", "part-critic", "reader", "worker"]),
-         "commands/merge-pr.md", "commands/review-pr.md",
-         *(f"rules/{r}.md" for r in [
-             "changelog", "generated-hooks-and-workflows", "instruction-files", "julia-code", "julia-docs",
-             "julia-tests", "known-issues"]),
-         "skills/build-part/SKILL.md", "skills/build-part/edges.md", "skills/build-part/evidence.md",
-         "skills/build-reviewed/SKILL.md",
-         *(f"skills/{s}/SKILL.md" for s in [
-             "julia-package-audit", "julia-performance", "julia-release", "julia-structure",
-             "julia-surgical-fix", "latex-revision", "math-verify", "plan-parts", "wait-what", "which-model"]),
-         "skills/plan-parts/plan-sections.md"]
+MOVED = [
+    "CLAUDE.md",
+    "RTK.md",
+    "instructions/core.md",
+    *(
+        f"agents/{a}.md"
+        for a in [
+            "advisor",
+            "arbitrator",
+            "changelog-scribe",
+            "ci-triage",
+            "exhaustive-auditor",
+            "git-hook-triage",
+            "julia-branch-verifier",
+            "julia-builder",
+            "julia-critic",
+            "julia-load-doctor",
+            "julia-perf-analyst",
+            "julia-pr-reviewer",
+            "julia-pr-shepherd",
+            "julia-test-runner",
+            "latex-verifier",
+            "literature-scout",
+            "part-builder",
+            "part-critic",
+            "reader",
+            "worker",
+        ]
+    ),
+    "commands/merge-pr.md",
+    "commands/review-pr.md",
+    *(
+        f"rules/{r}.md"
+        for r in [
+            "changelog",
+            "generated-hooks-and-workflows",
+            "instruction-files",
+            "julia-code",
+            "julia-docs",
+            "julia-tests",
+            "known-issues",
+        ]
+    ),
+    "skills/build-part/SKILL.md",
+    "skills/build-part/edges.md",
+    "skills/build-part/evidence.md",
+    "skills/build-reviewed/SKILL.md",
+    *(
+        f"skills/{s}/SKILL.md"
+        for s in [
+            "julia-package-audit",
+            "julia-performance",
+            "julia-release",
+            "julia-structure",
+            "julia-surgical-fix",
+            "latex-revision",
+            "math-verify",
+            "plan-parts",
+            "wait-what",
+            "which-model",
+        ]
+    ),
+    "skills/plan-parts/plan-sections.md",
+]
 
 
 def selftest():
@@ -1054,26 +1230,40 @@ def layer_cases(check, tmp):
 
     this = sys.modules[__name__]
     scratch = Scratch(check, tmp)
-    fresh, run, case, refused, tail, mode = (scratch.fresh, scratch.run, scratch.case, scratch.refused,
-                                             scratch.tail, scratch.mode)
+    fresh, run, case, refused, tail, mode = (
+        scratch.fresh,
+        scratch.run,
+        scratch.case,
+        scratch.refused,
+        scratch.tail,
+        scratch.mode,
+    )
     hooks = sorted(f.name for f in (REPO / "hooks").iterdir() if f.is_file() and f.name != "probe.py")
 
     # A scratch source holds no agent that a council could copy, so its model tables have none.
     no_council = tmp / "models-no-council.toml"
-    no_council.write_text(re.sub(r"(?ms)^julia-critic = \[$.*?^\]\n", "",
-                                 (REPO / "examples" / "models.toml").read_text()))
+    no_council.write_text(
+        re.sub(r"(?ms)^julia-critic = \[$.*?^\]\n", "", (REPO / "examples" / "models.toml").read_text())
+    )
 
     def inproc(base, source, apply=False, templates=None):
         """`harness install` in this process, as `run` does, with `source`, when given, as the one
         source in this repository, which mirrors ~/.claude/, the example model tables with no
         council, and `templates`, when given, as CLAUDE_TEMPLATES; (exit status, output)."""
         out = io.StringIO()
-        args = argparse.Namespace(profile=str(base / "profile.toml"), models=str(no_council), apply=apply, force=False)
+        args = argparse.Namespace(
+            profile=str(base / "profile.toml"), models=str(no_council), apply=apply, force=False
+        )
         with contextlib.ExitStack() as stack:
-            stack.enter_context(mock.patch.dict(os.environ, HOME=str(base / "home"),
-                                                OPENCODE_CONFIG_DIR=str(base / "opencode"),
-                                                RESEARCH_HARNESS_PYTHON=str(base / "python"),
-                                                PI_CODING_AGENT_DIR=str(base / "omp")))
+            stack.enter_context(
+                mock.patch.dict(
+                    os.environ,
+                    HOME=str(base / "home"),
+                    OPENCODE_CONFIG_DIR=str(base / "opencode"),
+                    RESEARCH_HARNESS_PYTHON=str(base / "python"),
+                    PI_CODING_AGENT_DIR=str(base / "omp"),
+                )
+            )
             stack.enter_context(mock.patch.object(install, "JULIA_ENV", base / "julia"))
             if source is not None:
                 stack.enter_context(mock.patch.object(this, "CLAUDE_SOURCES", [(source, "")]))
@@ -1096,29 +1286,50 @@ def layer_cases(check, tmp):
     code, text = run(base, "--apply")
     # The cases below read the files that this install writes: a failed one leaves them unwritten.
     if code != 0:
-        check(False, f"the setup install --apply of the layer cases exits {code}: {tail(text)!r}; "
-                     f"the layer cases after it do not run")
+        check(
+            False,
+            f"the setup install --apply of the layer cases exits {code}: {tail(text)!r}; "
+            f"the layer cases after it do not run",
+        )
         return
     again, text2 = run(base)
-    case(lambda: code == 0 and again == 0,
-         f"after an --apply, a second dry run exits 0: {code}, {again}, {tail(text2)}")
-    case(lambda: all((claude / "hooks" / h).read_bytes() == (REPO / "hooks" / h).read_bytes() for h in hooks)
-         and not (claude / "hooks" / "probe.py").exists() and not (claude / "README.md").exists()
-         and (claude / "rules" / "tool.sh").is_file()
-         and not (claude / "adapter.py").exists() and "adapter.py" not in text + text2,
-         "hooks/ installs into hooks/, the tree instructions at their own path; probe.py, README.md and "
-         "adapters/claude/adapter.py do not")
-    case(lambda: (claude / "instructions" / "research-tree.md").read_bytes()
-         == (tree / "instructions" / "research-tree.md").read_bytes(),
-         "a file that is not a template and holds {home} is copied byte for byte")
-    case(lambda: all(mode(claude / "hooks" / h) == mode(REPO / "hooks" / h) for h in hooks)
-         and mode(claude / "rules" / "tool.sh") == 0o644,
-         "a hook keeps its source's mode, and every other file is installed 0644")
+    case(
+        lambda: code == 0 and again == 0,
+        f"after an --apply, a second dry run exits 0: {code}, {again}, {tail(text2)}",
+    )
+    case(
+        lambda: (
+            all((claude / "hooks" / h).read_bytes() == (REPO / "hooks" / h).read_bytes() for h in hooks)
+            and not (claude / "hooks" / "probe.py").exists()
+            and not (claude / "README.md").exists()
+            and (claude / "rules" / "tool.sh").is_file()
+            and not (claude / "adapter.py").exists()
+            and "adapter.py" not in text + text2
+        ),
+        "hooks/ installs into hooks/, the tree instructions at their own path; probe.py, README.md and "
+        "adapters/claude/adapter.py do not",
+    )
+    case(
+        lambda: (
+            (claude / "instructions" / "research-tree.md").read_bytes()
+            == (tree / "instructions" / "research-tree.md").read_bytes()
+        ),
+        "a file that is not a template and holds {home} is copied byte for byte",
+    )
+    case(
+        lambda: (
+            all(mode(claude / "hooks" / h) == mode(REPO / "hooks" / h) for h in hooks)
+            and mode(claude / "rules" / "tool.sh") == 0o644
+        ),
+        "a hook keeps its source's mode, and every other file is installed 0644",
+    )
     if (claude / "hooks" / hooks[0]).is_file():
         (claude / "hooks" / hooks[0]).chmod(0o644)
     code, text = run(base)
-    case(lambda: code == 1 and f"~/.claude/hooks/{hooks[0]}" in text and "MODE" in text,
-         f"a hook whose mode alone differs is a change: {code}, {tail(text)}")
+    case(
+        lambda: code == 1 and f"~/.claude/hooks/{hooks[0]}" in text and "MODE" in text,
+        f"a hook whose mode alone differs is a change: {code}, {tail(text)}",
+    )
 
     # The neutral vocabulary: the Claude Code renders of two agents are the installed files of
     # 2f31fee, byte for byte, and every agent and skill differs from its source in the value of
@@ -1126,21 +1337,35 @@ def layer_cases(check, tmp):
     example = load_models(REPO / "examples" / "models.toml")
     for name in ["julia-builder", "literature-scout"]:
         src = REPO / "agents" / f"{name}.md"
-        case(lambda: render_source(src, src.read_bytes(), example)
-             == (CLAUDE_ADAPTER / "fixtures" / f"{name}.md").read_bytes(),
-             f"the Claude Code render of agents/{name}.md is fixtures/{name}.md, the installed file of 2f31fee")
+        case(
+            lambda: (
+                render_source(src, src.read_bytes(), example)
+                == (CLAUDE_ADAPTER / "fixtures" / f"{name}.md").read_bytes()
+            ),
+            f"the Claude Code render of agents/{name}.md is fixtures/{name}.md, the installed file of 2f31fee",
+        )
     quoted = tmp / "quoted.md"
     quoted.write_text('---\nname: q\ndescription: "d"\nmodel: "large"\n---\nbody\n')
-    case(lambda: render_source(quoted, quoted.read_bytes(), example)
-         == b'---\nname: q\ndescription: "d"\nmodel: "opus"\n---\nbody\n',
-         'a quoted `model: "large"` renders as the quoted model, `model: "opus"`')
+    case(
+        lambda: (
+            render_source(quoted, quoted.read_bytes(), example)
+            == b'---\nname: q\ndescription: "d"\nmodel: "opus"\n---\nbody\n'
+        ),
+        'a quoted `model: "large"` renders as the quoted model, `model: "opus"`',
+    )
     ttl = tmp / "ttl.md"
     ttl.write_text('---\nname: t\ndescription: "d"\ncacheTtl: 1h\nmodel: small\n---\ncacheTtl: 1h\n')
-    case(lambda: render_source(ttl, ttl.read_bytes(), example)
-         == b'---\nname: t\ndescription: "d"\nexperimental:\n  cacheTtl: 1h\nmodel: haiku\n---\ncacheTtl: 1h\n',
-         "`cacheTtl: 1h` renders below a new `experimental:` line, and the same text in the body stays")
-    case(lambda: sorted(TOOLS) == sorted(frontmatter.TOOLS),
-         f"TOOLS maps exactly the neutral tools of frontmatter.TOOLS: {sorted(set(TOOLS) ^ set(frontmatter.TOOLS))}")
+    case(
+        lambda: (
+            render_source(ttl, ttl.read_bytes(), example)
+            == b'---\nname: t\ndescription: "d"\nexperimental:\n  cacheTtl: 1h\nmodel: haiku\n---\ncacheTtl: 1h\n'
+        ),
+        "`cacheTtl: 1h` renders below a new `experimental:` line, and the same text in the body stays",
+    )
+    case(
+        lambda: sorted(TOOLS) == sorted(frontmatter.TOOLS),
+        f"TOOLS maps exactly the neutral tools of frontmatter.TOOLS: {sorted(set(TOOLS) ^ set(frontmatter.TOOLS))}",
+    )
     base, claude, tree = fresh()
     code, text = run(base, "--apply")
 
@@ -1154,13 +1379,23 @@ def layer_cases(check, tmp):
         return [(a, b) for a, b in zip(old, new) if a != b] + count
 
     names = set(TOOLS.values())
-    wrong = {str(src.relative_to(REPO)): [(a, b) for a, b in changed_lines(src)
-                                         if not (re.fullmatch(r"model: (large|medium|small)", a)
-                                                 and b == f"model: {example[a[len('model: '):]]}")
-                                         and not (re.fullmatch(r"  - [a-z_]+|  - mcp/kaimon/\w+", a)
-                                                  and (b[4:] in names or b[4:].startswith(MCP_PREFIX)))
-                                         and not (a.startswith("cacheTtl:") and b == "experimental:\n  " + a)]
-             for src in neutral.listing()}
+    wrong = {
+        str(src.relative_to(REPO)): [
+            (a, b)
+            for a, b in changed_lines(src)
+            if not (
+                re.fullmatch(r"model: (large|medium|small)", a)
+                and b == f"model: {example[a[len('model: ') :]]}"
+            )
+            and not (
+                re.fullmatch(r"  - [a-z_]+|  - mcp/kaimon/\w+", a)
+                and (b[4:] in names or b[4:].startswith(MCP_PREFIX))
+            )
+            and not (a.startswith("cacheTtl:") and b == "experimental:\n  " + a)
+        ]
+        for src in neutral.listing()
+    }
+
     def owed(src):
         """The number of lines that the render changes in `src`: its `model:`, its `tools:` items and
         its `cacheTtl:`."""
@@ -1169,13 +1404,22 @@ def layer_cases(check, tmp):
 
     # Each `model:`, each `tools:` item and each `cacheTtl:` of a source changes, so a source
     # installed as it is fails.
-    unchanged = [str(src.relative_to(REPO)) for src in neutral.listing() if len(changed_lines(src)) != owed(src)]
-    case(lambda: code == 0 and len(wrong) > 25 and not any(wrong.values()) and not unchanged
-         and any(s.name == "SKILL.md" and changed_lines(s) for s in neutral.listing()),
-         f"every agent and skill is installed with its `model:` mapped by [claude], its `tools:` items by TOOLS "
-         f"and its `cacheTtl:` below `experimental:`, and every other byte as in its source: {code}, "
-         f"{[(k, v) for k, v in wrong.items() if v][:3]}, "
-         f"not rewritten: {unchanged}")
+    unchanged = [
+        str(src.relative_to(REPO)) for src in neutral.listing() if len(changed_lines(src)) != owed(src)
+    ]
+    case(
+        lambda: (
+            code == 0
+            and len(wrong) > 25
+            and not any(wrong.values())
+            and not unchanged
+            and any(s.name == "SKILL.md" and changed_lines(s) for s in neutral.listing())
+        ),
+        f"every agent and skill is installed with its `model:` mapped by [claude], its `tools:` items by TOOLS "
+        f"and its `cacheTtl:` below `experimental:`, and every other byte as in its source: {code}, "
+        f"{[(k, v) for k, v in wrong.items() if v][:3]}, "
+        f"not rewritten: {unchanged}",
+    )
 
     # [claude] is required, with exactly the three tiers, each a model; any other table exits 2 and
     # writes nothing.
@@ -1187,18 +1431,35 @@ def layer_cases(check, tmp):
         ("a tier that is a number in [claude]", text0.replace('small = "haiku"\n', "small = 5\n", 1)),
         ("a fourth key in [claude]", text0.replace('small = "haiku"\n', 'small = "haiku"\nhuge = "x"\n', 1)),
         # A newline or another control character, and a word that YAML reads as a boolean or null.
-        *((f"the model {value} in [claude]", text0.replace('small = "haiku"\n', f'small = "{value}"\n', 1))
-          for value in [r"haiku\npermissionMode: bypassPermissions", r"hai\tku", r"haiku\r", r"haiku\u0007",
-                        *(r"haiku\u%04x" % c for c in (0x7F, 0x85, 0x2028, 0x2029)), "null", "Yes"]),
+        *(
+            (f"the model {value} in [claude]", text0.replace('small = "haiku"\n', f'small = "{value}"\n', 1))
+            for value in [
+                r"haiku\npermissionMode: bypassPermissions",
+                r"hai\tku",
+                r"haiku\r",
+                r"haiku\u0007",
+                *(r"haiku\u%04x" % c for c in (0x7F, 0x85, 0x2028, 0x2029)),
+                "null",
+                "Yes",
+            ]
+        ),
     ]:
         base, claude, tree = fresh(["rules/x.md"])
         models = base / "models.toml"
         models.write_text(models_text)
         code, text = run(base, "--apply", models=models)
-        case(lambda: models_text != text0 and refused(code, text) and str(models) in text and "[claude]" in text
-             and not (claude / "rules").exists() and not (base / "opencode" / "opencode.jsonc").exists(),
-             f"a models.toml with {label} exits 2, names the file and [claude], and writes nothing: "
-             f"{code}, {tail(text)}")
+        case(
+            lambda: (
+                models_text != text0
+                and refused(code, text)
+                and str(models) in text
+                and "[claude]" in text
+                and not (claude / "rules").exists()
+                and not (base / "opencode" / "opencode.jsonc").exists()
+            ),
+            f"a models.toml with {label} exits 2, names the file and [claude], and writes nothing: "
+            f"{code}, {tail(text)}",
+        )
 
     # A model of [claude] loads, a Bedrock and a Vertex model ID among them, and the rendered agent's
     # `model:` reads as that string: a plain YAML scalar of MODEL, else a YAML double-quoted scalar
@@ -1213,55 +1474,107 @@ def layer_cases(check, tmp):
 
     agent = tmp / "agent-small.md"
     agent.write_text('---\nname: a\ndescription: "d"\nmodel: small\n---\nbody\n')
-    for value in ["opus", "claude-opus-4-1", "claude-3.5-haiku", "opus[1m]", "inherit",
-                  "us.anthropic.claude-opus-4-1-20250805-v1:0", "claude-opus-4-1@20250805", "a: b", "haiku #1",
-                  " haiku", "haiku ", "[haiku]", 'hai"ku', "hai\\ku", "1", "-haiku", "hai ku", "modèle"]:
+    for value in [
+        "opus",
+        "claude-opus-4-1",
+        "claude-3.5-haiku",
+        "opus[1m]",
+        "inherit",
+        "us.anthropic.claude-opus-4-1-20250805-v1:0",
+        "claude-opus-4-1@20250805",
+        "a: b",
+        "haiku #1",
+        " haiku",
+        "haiku ",
+        "[haiku]",
+        'hai"ku',
+        "hai\\ku",
+        "1",
+        "-haiku",
+        "hai ku",
+        "modèle",
+    ]:
         models = tmp / "models-value.toml"
         models.write_text(text0.replace('small = "haiku"\n', f"small = {json.dumps(value)}\n", 1))
 
         line = model_line(agent, models)
         written = line.removeprefix("model: ")
-        case(lambda: load_models(models)["small"] == value and line.startswith("model: ")
-             and (written == value if MODEL.fullmatch(value) else written[:1] == '"' and json.loads(written) == value),
-             f"the model {value!r} of [claude] loads, and the rendered `model:` reads as it: {line!r}")
+        case(
+            lambda: (
+                load_models(models)["small"] == value
+                and line.startswith("model: ")
+                and (
+                    written == value
+                    if MODEL.fullmatch(value)
+                    else written[:1] == '"' and json.loads(written) == value
+                )
+            ),
+            f"the model {value!r} of [claude] loads, and the rendered `model:` reads as it: {line!r}",
+        )
     agent.write_text('---\nname: a\ndescription: "d"\nmodel: "small"\n---\nbody\n')
-    models.write_text(text0.replace('small = "haiku"\n', 'small = "us.anthropic.claude-opus-4-1-20250805-v1:0"\n', 1))
+    models.write_text(
+        text0.replace('small = "haiku"\n', 'small = "us.anthropic.claude-opus-4-1-20250805-v1:0"\n', 1)
+    )
     line = model_line(agent, models)
-    case(lambda: line == 'model: "us.anthropic.claude-opus-4-1-20250805-v1:0"',
-         f'a quoted `model: "small"` renders a Bedrock model ID quoted once: {line!r}')
+    case(
+        lambda: line == 'model: "us.anthropic.claude-opus-4-1-20250805-v1:0"',
+        f'a quoted `model: "small"` renders a Bedrock model ID quoted once: {line!r}',
+    )
 
     # A source with a value outside the neutral vocabulary exits 2, names the file, and writes nothing.
-    for rel, lines in [("agents/x.md", "model: opus"), ("agents/x.md", "tools:\n  - Read"),
-                       ("agents/x.md", "tools:\n  - mcp/kaimon/*"), ("skills/x/SKILL.md", "model: opus")]:
+    for rel, lines in [
+        ("agents/x.md", "model: opus"),
+        ("agents/x.md", "tools:\n  - Read"),
+        ("agents/x.md", "tools:\n  - mcp/kaimon/*"),
+        ("skills/x/SKILL.md", "model: opus"),
+    ]:
         base, claude, tree = fresh(["rules/x.md"])
         source = base / "claude"
         (source / rel).parent.mkdir(parents=True)
         (source / "skills").mkdir(exist_ok=True)
         (source / rel).write_text(f'---\nname: x\ndescription: "d"\n{lines}\n---\nbody\n')
         code, text = inproc(base, source, apply=True)
-        case(lambda: refused(code, text) and str(source / rel) in text
-             and not (claude / rel).exists() and not (claude / "rules").exists()
-             and not (base / "opencode" / "opencode.jsonc").exists(),
-             f"{rel} with {lines!r} exits 2, names the file and writes nothing: {code}, {tail(text)}")
+        case(
+            lambda: (
+                refused(code, text)
+                and str(source / rel) in text
+                and not (claude / rel).exists()
+                and not (claude / "rules").exists()
+                and not (base / "opencode" / "opencode.jsonc").exists()
+            ),
+            f"{rel} with {lines!r} exits 2, names the file and writes nothing: {code}, {tail(text)}",
+        )
 
     # A file with no source, in a directory the install writes, is EXTRA; nothing else is.
     base, claude, tree = fresh(["skills/mine/SKILL.md"])
     run(base, "--apply")
     # skills/other/ holds no installed file and no SKILL.md, so it is searched and is no skill.
-    for rel in ["hooks/old.py", "skills/other/notes.md", "hooks/.hidden", "hooks/.claude/.cc-writes/x",
-                "skills/synced/s/SKILL.md", "projects/p.jsonl"]:
+    for rel in [
+        "hooks/old.py",
+        "skills/other/notes.md",
+        "hooks/.hidden",
+        "hooks/.claude/.cc-writes/x",
+        "skills/synced/s/SKILL.md",
+        "projects/p.jsonl",
+    ]:
         (claude / rel).parent.mkdir(parents=True, exist_ok=True)
         (claude / rel).write_text("x\n")
     expected = [claude / "hooks" / "old.py", claude / "skills" / "other" / "notes.md"]
     code, text = run(base)
     applied, text2 = run(base, "--apply")
     extra = [[l for l in t.splitlines() if "EXTRA" in l] for t in (text, text2)]
-    case(lambda: code == 0 and applied == 0
-         and all(len(e) == 2 and all(str(f) in " ".join(e) for f in expected) for e in extra)
-         and all(f"rm '{f}'" in t for f in expected for t in (text, text2)) and all(f.is_file() for f in expected),
-         "an installed file with no source is EXTRA, with its removal, not counted and not removed by an --apply; "
-         "a hidden name, skills/synced/ and a directory the layer does not write are not: "
-         f"{code}, {applied}, {extra}")
+    case(
+        lambda: (
+            code == 0
+            and applied == 0
+            and all(len(e) == 2 and all(str(f) in " ".join(e) for f in expected) for e in extra)
+            and all(f"rm '{f}'" in t for f in expected for t in (text, text2))
+            and all(f.is_file() for f in expected)
+        ),
+        "an installed file with no source is EXTRA, with its removal, not counted and not removed by an --apply; "
+        "a hidden name, skills/synced/ and a directory the layer does not write are not: "
+        f"{code}, {applied}, {extra}",
+    )
 
     # A directory that cannot be read below a top-level directory the layer writes into exits 2,
     # before anything is written.
@@ -1270,9 +1583,15 @@ def layer_cases(check, tmp):
     (claude / "rules" / "sub").chmod(0)
     code, text = run(base, "--apply")
     (claude / "rules" / "sub").chmod(0o755)
-    case(lambda: refused(code, text) and str(claude / "rules" / "sub") in text
-         and not (claude / "rules" / "x.md").exists() and not (base / "opencode" / "opencode.jsonc").exists(),
-         f"an installed directory that cannot be read exits 2 and writes nothing: {code}, {tail(text)}")
+    case(
+        lambda: (
+            refused(code, text)
+            and str(claude / "rules" / "sub") in text
+            and not (claude / "rules" / "x.md").exists()
+            and not (base / "opencode" / "opencode.jsonc").exists()
+        ),
+        f"an installed directory that cannot be read exits 2 and writes nothing: {code}, {tail(text)}",
+    )
 
     # A path in both sources, also when the names differ in case or in Unicode form only:
     # ~/.claude is on a volume that folds both, where they are one installed file. The Julia
@@ -1285,12 +1604,20 @@ def layer_cases(check, tmp):
         (source / "rules" / mine).write_text("x\n")
         (base / "julia" / "Project.toml").write_text("stale\n")
         code, text = inproc(base, source, apply=True)
-        case(lambda: refused(code, text) and "two sources" in text and str(source / "rules" / mine) in text
-             and str(tree / "rules" / name) in text and not (claude / "rules").exists()
-             and not (claude / "hooks").exists() and not (base / "opencode" / "opencode.jsonc").exists()
-             and (base / "julia" / "Project.toml").read_text() == "stale\n",
-             f"a path in both sources, as rules/{mine} and rules/{ascii(name)[1:-1]}, exits 2, names both and "
-             f"writes nothing: {code}, {tail(text)}")
+        case(
+            lambda: (
+                refused(code, text)
+                and "two sources" in text
+                and str(source / "rules" / mine) in text
+                and str(tree / "rules" / name) in text
+                and not (claude / "rules").exists()
+                and not (claude / "hooks").exists()
+                and not (base / "opencode" / "opencode.jsonc").exists()
+                and (base / "julia" / "Project.toml").read_text() == "stale\n"
+            ),
+            f"a path in both sources, as rules/{mine} and rules/{ascii(name)[1:-1]}, exits 2, names both and "
+            f"writes nothing: {code}, {tail(text)}",
+        )
 
     # A source at prefix "" mirrors ~/.claude/, a path in it and in the tree instructions exits 2,
     # and a file that the install lists as a template is rendered with the profile.
@@ -1301,31 +1628,51 @@ def layer_cases(check, tmp):
         (source / name).write_text(f"{RULE_HEAD}{name}: written at {{home}}\n")
     code, text = inproc(base, source, apply=True, templates={"rules/t.md"})
     home = render_profile.load(base / "profile.toml")["home"]
-    case(lambda: code == 0 and (claude / "rules" / "julia-code.md").read_bytes()
-         == (source / "rules" / "julia-code.md").read_bytes()
-         and (claude / "rules" / "t.md").read_text() == f"{RULE_HEAD}rules/t.md: written at {home}\n"
-         and not (claude / "claude").exists(),
-         f"a source at prefix \"\" installs at its own path, and a template is rendered with the profile: "
-         f"{code}, {tail(text)}")
-    case(lambda: (base / "omp" / "rules" / "t.md").read_text()
-         == '---\nglobs: ["**/*.x"]\ndescription: "A rule of the scratch tree."\n---\n'
-         + f"rules/t.md: written at {home}\n",
-         "oh-my-pi's copy of a template rule is rendered with the profile too")
+    case(
+        lambda: (
+            code == 0
+            and (claude / "rules" / "julia-code.md").read_bytes()
+            == (source / "rules" / "julia-code.md").read_bytes()
+            and (claude / "rules" / "t.md").read_text() == f"{RULE_HEAD}rules/t.md: written at {home}\n"
+            and not (claude / "claude").exists()
+        ),
+        f'a source at prefix "" installs at its own path, and a template is rendered with the profile: '
+        f"{code}, {tail(text)}",
+    )
+    case(
+        lambda: (
+            (base / "omp" / "rules" / "t.md").read_text()
+            == '---\nglobs: ["**/*.x"]\ndescription: "A rule of the scratch tree."\n---\n'
+            + f"rules/t.md: written at {home}\n"
+        ),
+        "oh-my-pi's copy of a template rule is rendered with the profile too",
+    )
     (source / "rules" / "x.md").write_text("x\n")
     code, text = inproc(base, source)
-    case(lambda: code == 2 and str(source / "rules" / "x.md") in text and str(tree / "rules" / "x.md") in text,
-         f"a path in a source of this repository and in the tree instructions exits 2 and names both: {code}, {tail(text)}")
+    case(
+        lambda: code == 2 and str(source / "rules" / "x.md") in text and str(tree / "rules" / "x.md") in text,
+        f"a path in a source of this repository and in the tree instructions exits 2 and names both: {code}, {tail(text)}",
+    )
 
     # The same on the sources of this repository as they are: a neutral directory at its own
     # prefix, at one depth and at two, also when the names differ in case, and adapters/claude/.
-    for name, mine in [("rules/julia-code.md", "rules/julia-code.md"), ("rules/Julia-Code.md", "rules/julia-code.md"),
-                       ("skills/build-part/SKILL.md", "skills/build-part/SKILL.md"),
-                       ("RTK.md", "adapters/claude/RTK.md")]:
+    for name, mine in [
+        ("rules/julia-code.md", "rules/julia-code.md"),
+        ("rules/Julia-Code.md", "rules/julia-code.md"),
+        ("skills/build-part/SKILL.md", "skills/build-part/SKILL.md"),
+        ("RTK.md", "adapters/claude/RTK.md"),
+    ]:
         base, claude, tree = fresh([name])
         code, text = run(base)
-        case(lambda: refused(code, text) and "two sources" in text and str(REPO / mine) in text
-             and str(tree / name) in text,
-             f"{name} in the tree instructions and {mine} in this repository exit 2 and name both: {code}, {tail(text)}")
+        case(
+            lambda: (
+                refused(code, text)
+                and "two sources" in text
+                and str(REPO / mine) in text
+                and str(tree / name) in text
+            ),
+            f"{name} in the tree instructions and {mine} in this repository exit 2 and name both: {code}, {tail(text)}",
+        )
 
     # A file of adapters/claude/ below a directory that another source of this repository installs
     # exits 2, at any depth and in any case: the neutral directories and hooks/ are the only sources
@@ -1340,25 +1687,50 @@ def layer_cases(check, tmp):
             (source / name).parent.mkdir(parents=True, exist_ok=True)
             (source / name).write_text("x\n")
         layer = [(d, p) for d, p in CLAUDE_SOURCES if d != CLAUDE_ADAPTER] + [(source, "")]
-        with mock.patch.object(this, "CLAUDE_ADAPTER", source), mock.patch.object(this, "CLAUDE_SOURCES", layer):
+        with (
+            mock.patch.object(this, "CLAUDE_ADAPTER", source),
+            mock.patch.object(this, "CLAUDE_SOURCES", layer),
+        ):
             return *inproc(base, None, apply=apply), source / rel
 
-    for rel in ["agents/x.md", "Agents/x.md", "skills/s/SKILL.md", "skills/s/t/x.md", "rules/x.md",
-                "instructions/x.md", "commands/x.md", "hooks/x.sh"]:
+    for rel in [
+        "agents/x.md",
+        "Agents/x.md",
+        "skills/s/SKILL.md",
+        "skills/s/t/x.md",
+        "rules/x.md",
+        "instructions/x.md",
+        "commands/x.md",
+        "hooks/x.sh",
+    ]:
         code, text, src = adapter(rel)
-        case(lambda: refused(code, text) and f"{src}: a file of ~/.claude/{rel.split('/')[0].lower()}/" in text,
-             f"adapters/claude/{rel} exits 2 and names the directory it belongs in: {code}, {tail(text)}")
+        case(
+            lambda: (
+                refused(code, text) and f"{src}: a file of ~/.claude/{rel.split('/')[0].lower()}/" in text
+            ),
+            f"adapters/claude/{rel} exits 2 and names the directory it belongs in: {code}, {tail(text)}",
+        )
     # The code of the adapter and its fixtures are not sources: the dry run lists neither.
     code, text, src = adapter("agents.md", also=["adapter.py", "fixtures/x.md", "fixtures/agents/y.md"])
-    case(lambda: code == 1 and "~/.claude/agents.md" in text
-         and "~/.claude/adapter.py" not in text and "~/.claude/fixtures/" not in text,
-         f"a file of adapters/claude/ beside those directories installs, and adapter.py and fixtures/ do not: "
-         f"{code}, {tail(text)}")
+    case(
+        lambda: (
+            code == 1
+            and "~/.claude/agents.md" in text
+            and "~/.claude/adapter.py" not in text
+            and "~/.claude/fixtures/" not in text
+        ),
+        f"a file of adapters/claude/ beside those directories installs, and adapter.py and fixtures/ do not: "
+        f"{code}, {tail(text)}",
+    )
     # The `SessionStart` hook skips them too: after the --apply, its digest is the stamp's.
-    code, text, src = adapter("agents.md", also=["adapter.py", "fixtures/x.md", "fixtures/agents/y.md"], apply=True)
+    code, text, src = adapter(
+        "agents.md", also=["adapter.py", "fixtures/x.md", "fixtures/agents/y.md"], apply=True
+    )
     warning = install.drift_hook().check(str(src.parents[1] / "home"))
-    case(lambda: code == 0 and warning is None,
-         f"the hook skips adapter.py and fixtures/ of adapters/claude/, as the plan does: {code}, {warning!r}")
+    case(
+        lambda: code == 0 and warning is None,
+        f"the hook skips adapter.py and fixtures/ of adapters/claude/, as the plan does: {code}, {warning!r}",
+    )
 
     # A settings.json or a settings.local.json in a source, in any case, is refused and not
     # installed; ~/.claude/settings.json comes from the settings template only.
@@ -1366,36 +1738,49 @@ def layer_cases(check, tmp):
         base, claude, tree = fresh([name])
         (claude / name).write_text("{}\n")
         code, text = run(base, "--apply")
-        case(lambda: refused(code, text) and name in text and (claude / name).read_text() == "{}\n",
-             f"a {name} in the tree instructions exits 2 and is not written: {code}, {tail(text)}")
+        case(
+            lambda: refused(code, text) and name in text and (claude / name).read_text() == "{}\n",
+            f"a {name} in the tree instructions exits 2 and is not written: {code}, {tail(text)}",
+        )
     base, claude, tree = fresh()
     source = base / "claude"
     source.mkdir()
     (source / "settings.json").write_text('{"permissions": {}}\n')
     code, text = inproc(base, source, apply=True)
-    case(lambda: code == 2 and "settings.json" in text and not (claude / "settings.json").exists(),
-         f"a settings.json in a source of this repository exits 2 and is not written: {code}, {tail(text)}")
+    case(
+        lambda: code == 2 and "settings.json" in text and not (claude / "settings.json").exists(),
+        f"a settings.json in a source of this repository exits 2 and is not written: {code}, {tail(text)}",
+    )
 
     # A symlink in a source, to a file, to a directory, or to nothing, exits 2.
-    for label, make in [("a file", lambda t, o: (t / "rules" / "l.md").symlink_to(o / "x.md")),
-                        ("a directory", lambda t, o: (t / "more").symlink_to(o)),
-                        ("nothing", lambda t, o: (t / "rules" / "l.md").symlink_to(o / "missing.md"))]:
+    for label, make in [
+        ("a file", lambda t, o: (t / "rules" / "l.md").symlink_to(o / "x.md")),
+        ("a directory", lambda t, o: (t / "more").symlink_to(o)),
+        ("nothing", lambda t, o: (t / "rules" / "l.md").symlink_to(o / "missing.md")),
+    ]:
         base, claude, tree = fresh(["rules/x.md"])
         outside = base / "outside"
         outside.mkdir()
         (outside / "x.md").write_text("x\n")
         make(tree, outside)
         code, text = run(base)
-        case(lambda: refused(code, text) and "symlink" in text,
-             f"a symlink to {label} in the tree instructions exits 2: {code}, {tail(text)}")
+        case(
+            lambda: refused(code, text) and "symlink" in text,
+            f"a symlink to {label} in the tree instructions exits 2: {code}, {tail(text)}",
+        )
 
     # An entry in a source that is neither a file nor a directory, a FIFO, exits 2 and is not read.
     base, claude, tree = fresh(["rules/x.md"])
     os.mkfifo(tree / "rules" / "pipe.md")
     code, text = run(base, "--apply")
-    case(lambda: refused(code, text) and str(tree / "rules" / "pipe.md") in text
-         and not (claude / "rules").exists(),
-         f"a FIFO in the tree instructions exits 2 and writes nothing: {code}, {tail(text)}")
+    case(
+        lambda: (
+            refused(code, text)
+            and str(tree / "rules" / "pipe.md") in text
+            and not (claude / "rules").exists()
+        ),
+        f"a FIFO in the tree instructions exits 2 and writes nothing: {code}, {tail(text)}",
+    )
 
     # A source directory or file that cannot be read exits 2 and names it; a directory of mode 0444
     # can be listed, but its entries cannot be examined.
@@ -1404,23 +1789,36 @@ def layer_cases(check, tmp):
         (tree / rel).chmod(bits)
         code, text = run(base)
         (tree / rel).chmod(0o755)
-        case(lambda: refused(code, text) and str(tree / rel) in text,
-             f"{rel} of mode {bits:04o} in the tree instructions cannot be read and exits 2: {code}, {tail(text)}")
+        case(
+            lambda: refused(code, text) and str(tree / rel) in text,
+            f"{rel} of mode {bits:04o} in the tree instructions cannot be read and exits 2: {code}, {tail(text)}",
+        )
 
     # An installed path that is not what the install writes: a file where a directory goes, a
     # directory where a file goes, and a file that cannot be read.
-    for label, make in [("hooks/ that is a file", lambda c: (c / "hooks").write_text("x\n")),
-                        (f"hooks/{hooks[0]} that is a directory",
-                         lambda c: (c / "hooks" / hooks[0]).mkdir(parents=True)),
-                        (f"hooks/{hooks[0]} that cannot be read", lambda c: (
-                            (c / "hooks").mkdir(), (c / "hooks" / hooks[0]).write_text("x\n"),
-                            (c / "hooks" / hooks[0]).chmod(0)))]:
+    for label, make in [
+        ("hooks/ that is a file", lambda c: (c / "hooks").write_text("x\n")),
+        (f"hooks/{hooks[0]} that is a directory", lambda c: (c / "hooks" / hooks[0]).mkdir(parents=True)),
+        (
+            f"hooks/{hooks[0]} that cannot be read",
+            lambda c: (
+                (c / "hooks").mkdir(),
+                (c / "hooks" / hooks[0]).write_text("x\n"),
+                (c / "hooks" / hooks[0]).chmod(0),
+            ),
+        ),
+    ]:
         base, claude, tree = fresh()
         make(claude)
         code, text = run(base, "--apply")
-        case(lambda: refused(code, text) and str(claude / "hooks") in text
-             and not (base / "opencode" / "opencode.jsonc").exists(),
-             f"an installed {label} exits 2 and writes nothing: {code}, {tail(text)}")
+        case(
+            lambda: (
+                refused(code, text)
+                and str(claude / "hooks") in text
+                and not (base / "opencode" / "opencode.jsonc").exists()
+            ),
+            f"an installed {label} exits 2 and writes nothing: {code}, {tail(text)}",
+        )
         if (claude / "hooks" / hooks[0]).is_file():
             (claude / "hooks" / hooks[0]).chmod(0o644)
 
@@ -1432,36 +1830,49 @@ def layer_cases(check, tmp):
     (claude / "hooks").mkdir()
     (claude / "hooks" / hooks[0]).symlink_to(outside / hooks[0])
     code, text = run(base, "--apply")
-    case(lambda: code == 2 and "symlink" in text and (outside / hooks[0]).read_text() == "outside\n",
-         f"an installed file that is a symlink exits 2, and nothing is written through it: {code}, {tail(text)}")
+    case(
+        lambda: code == 2 and "symlink" in text and (outside / hooks[0]).read_text() == "outside\n",
+        f"an installed file that is a symlink exits 2, and nothing is written through it: {code}, {tail(text)}",
+    )
     base, claude, tree = fresh(["rules/x.md"])
     outside = base / "outside"
     outside.mkdir()
     (claude / "rules").symlink_to(outside)
     code, text = run(base, "--apply")
-    case(lambda: code == 2 and "symlink" in text and not (outside / "x.md").exists(),
-         f"an installed directory that is a symlink exits 2, and nothing is written through it: {code}, {tail(text)}")
+    case(
+        lambda: code == 2 and "symlink" in text and not (outside / "x.md").exists(),
+        f"an installed directory that is a symlink exits 2, and nothing is written through it: {code}, {tail(text)}",
+    )
 
     # The tree instructions: a missing key, a missing directory, an empty directory, an agent, a hook.
     base, claude, tree = fresh(key=False)
     code, text = run(base)
-    case(lambda: code == 2 and "tree_agents" in text, f"a profile with no tree_agents exits 2: {code}, {tail(text)}")
+    case(
+        lambda: code == 2 and "tree_agents" in text,
+        f"a profile with no tree_agents exits 2: {code}, {tail(text)}",
+    )
     base, claude, tree = fresh()
     tree.rmdir()
     code, text = run(base)
-    case(lambda: code == 2 and str(tree) in text,
-         f"a tree_agents directory that does not exist exits 2: {code}, {tail(text)}")
+    case(
+        lambda: code == 2 and str(tree) in text,
+        f"a tree_agents directory that does not exist exits 2: {code}, {tail(text)}",
+    )
     # The value must name an absolute directory. The run's working directory, `base`, holds the
     # directory Agents/, so "", "." and a relative "Agents" each name an existing directory.
     for raw in ['""', '"."', '"Agents"', "1"]:
         base, claude, tree = fresh(["rules/x.md"], raw=raw)
         code, text = run(base, "--apply")
-        case(lambda: refused(code, text) and "tree_agents" in text and not (claude / "rules").exists(),
-             f"tree_agents = {raw} exits 2 and writes nothing: {code}, {tail(text)}")
+        case(
+            lambda: refused(code, text) and "tree_agents" in text and not (claude / "rules").exists(),
+            f"tree_agents = {raw} exits 2 and writes nothing: {code}, {tail(text)}",
+        )
     base, claude, tree = fresh()
     code, text = run(base)
-    case(lambda: code == 1 and re.search(r"^\d+ change\(s\) to make\.$", text, re.M) is not None,
-         f"an empty tree_agents directory is valid: {code}, {tail(text)}")
+    case(
+        lambda: code == 1 and re.search(r"^\d+ change\(s\) to make\.$", text, re.M) is not None,
+        f"an empty tree_agents directory is valid: {code}, {tail(text)}",
+    )
     # An agent or a hook in the tree instructions is not installed: one SKIP line per file, not
     # counted, and the exit status does not change. A hook with the name of one in hooks/ is no
     # second source, and a name that differs in case only is skipped too.
@@ -1475,14 +1886,25 @@ def layer_cases(check, tmp):
         again, text2 = run(base)
         skip = f"SKIP {tree / rel} — agents and hooks install from this repository only"
         top = rel.split("/")[0].lower()
-        case(lambda: first == 1 and len(without) == 1 and count.findall(text0) == without
-             and code == 0 and again == 0 and all(t.count(skip) == 1 for t in (text0, text, text2))
-             and re.search(r"^0 change\(s\) to make\.$", text2, re.M) is not None
-             and (claude / "rules" / "x.md").is_file()
-             and ((claude / rel).read_bytes() == (REPO / rel).read_bytes() if rel == f"hooks/{hooks[0]}"
-                  else not (claude / top / rel.split("/")[1]).exists()),
-             f"{rel} in the tree instructions is a SKIP line, not installed and not counted: "
-             f"{first}, {code}, {again}, {tail(text2)}")
+        case(
+            lambda: (
+                first == 1
+                and len(without) == 1
+                and count.findall(text0) == without
+                and code == 0
+                and again == 0
+                and all(t.count(skip) == 1 for t in (text0, text, text2))
+                and re.search(r"^0 change\(s\) to make\.$", text2, re.M) is not None
+                and (claude / "rules" / "x.md").is_file()
+                and (
+                    (claude / rel).read_bytes() == (REPO / rel).read_bytes()
+                    if rel == f"hooks/{hooks[0]}"
+                    else not (claude / top / rel.split("/")[1]).exists()
+                )
+            ),
+            f"{rel} in the tree instructions is a SKIP line, not installed and not counted: "
+            f"{first}, {code}, {again}, {tail(text2)}",
+        )
 
     # The Claude Code settings: `harness install` merges the sections of OWNED from the rendered
     # settings template into ~/.claude/settings.json, as one file of the plan, adds each other key
@@ -1500,16 +1922,24 @@ def layer_cases(check, tmp):
     # stays one shell word when the profile's home and the interpreter's path hold a space.
     spaced, python = "/home/ex ample", "/env with space/bin/python"
     raw = hook_commands(json.loads(PROPOSAL.read_text())["hooks"])
-    rendered = hook_commands(settings_template({**profile, "home": spaced}, home / "network.toml", python)["hooks"])
-    want = [([python] if c.split()[0].endswith(".py") else []) + [w.replace("{home}", spaced) for w in c.split()]
-            for c in raw]
-    case(lambda: [shlex.split(c) for c in rendered] == want
-         and sum(w[0] == python for w in want) == sum(c.split()[0].endswith(".py") for c in raw) > 0
-         and any(w == [f"{spaced}/.claude/hooks/cc-status"] for w in want)
-         and not any(c.startswith("python3") for c in rendered),
-         f"each hook command of the template that runs a .py hook renders as the environment's interpreter and the "
-         f"hook's path, each one shell word under a home with a space, and every other command keeps its words: "
-         f"{rendered}")
+    rendered = hook_commands(
+        settings_template({**profile, "home": spaced}, home / "network.toml", python)["hooks"]
+    )
+    want = [
+        ([python] if c.split()[0].endswith(".py") else []) + [w.replace("{home}", spaced) for w in c.split()]
+        for c in raw
+    ]
+    case(
+        lambda: (
+            [shlex.split(c) for c in rendered] == want
+            and sum(w[0] == python for w in want) == sum(c.split()[0].endswith(".py") for c in raw) > 0
+            and any(w == [f"{spaced}/.claude/hooks/cc-status"] for w in want)
+            and not any(c.startswith("python3") for c in rendered)
+        ),
+        f"each hook command of the template that runs a .py hook renders as the environment's interpreter and the "
+        f"hook's path, each one shell word under a home with a space, and every other command keeps its words: "
+        f"{rendered}",
+    )
 
     def owned_of(b):
         """The owned sections of the template as the install in the scratch `b` renders them: its
@@ -1525,67 +1955,125 @@ def layer_cases(check, tmp):
     def lacked(cfg):
         """The keys of `others` that `cfg` lacks, with the template's values, in its order."""
         return {k: v for k, v in others.items() if k not in cfg}
+
     state = base / "home" / ".claude.json"
     state.write_text('{"state": 1}\n')
     state.chmod(0)
     first, _ = run(base, "--apply")
-    live = {"model": "opus", "permissions": {"allow": ["Bash(rm *)"], "deny": []}, "env": {"X": "{home} — é"},
-            "statusLine": {"type": "command", "command": "x"}, "hooks": {}, "someFutureKey": [1, {"a": None}]}
+    live = {
+        "model": "opus",
+        "permissions": {"allow": ["Bash(rm *)"], "deny": []},
+        "env": {"X": "{home} — é"},
+        "statusLine": {"type": "command", "command": "x"},
+        "hooks": {},
+        "someFutureKey": [1, {"a": None}],
+    }
     old = json.dumps(live, indent=4, ensure_ascii=False) + "\n"
     (claude / "settings.json").write_text(old)
     (claude / "settings.json").chmod(0o600)
     code, text = run(base)
     lines = text.splitlines()
     at = [i for i, line in enumerate(lines) if settings_line.fullmatch(line)]
-    case(lambda: first == 0 and code == 1 and len(at) == 1 and settings_line.fullmatch(lines[at[0]]).group(1)
-         .startswith("REPLACE (backup: settings.json.bak-") and lines[at[0] + 1].startswith("--- ")
-         and lines[at[0] + 2].startswith("+++ ") and lines[at[0] + 3].startswith("@@ ")
-         and any(l.startswith("-") and "Bash(rm *)" in l for l in lines)
-         and re.search(r"^1 change\(s\) to make\.$", text, re.M) is not None
-         and (claude / "settings.json").read_text() == old,
-         f"a settings.json whose owned sections differ is one REPLACE line, then the unified diff of the owned "
-         f"sections, one change, exit 1, and the dry run writes nothing: {first}, {code}, {at}, {tail(text)}")
+    case(
+        lambda: (
+            first == 0
+            and code == 1
+            and len(at) == 1
+            and settings_line.fullmatch(lines[at[0]])
+            .group(1)
+            .startswith("REPLACE (backup: settings.json.bak-")
+            and lines[at[0] + 1].startswith("--- ")
+            and lines[at[0] + 2].startswith("+++ ")
+            and lines[at[0] + 3].startswith("@@ ")
+            and any(l.startswith("-") and "Bash(rm *)" in l for l in lines)
+            and re.search(r"^1 change\(s\) to make\.$", text, re.M) is not None
+            and (claude / "settings.json").read_text() == old
+        ),
+        f"a settings.json whose owned sections differ is one REPLACE line, then the unified diff of the owned "
+        f"sections, one change, exit 1, and the dry run writes nothing: {first}, {code}, {at}, {tail(text)}",
+    )
     code, text = run(base, "--apply")
     merged = json.loads((claude / "settings.json").read_text())
     backups = sorted(claude.glob("settings.json.bak-*"))
-    expected = {"model": "opus", "permissions": owned["permissions"], "env": {"X": "{home} — é", **others["env"]},
-                "statusLine": {"type": "command", "command": "x"}, "hooks": owned["hooks"],
-                "someFutureKey": [1, {"a": None}], "sandbox": owned["sandbox"],
-                "modelSettings": owned["modelSettings"], **lacked(live)}
-    case(lambda: code == 0 and merged == expected and list(merged) == list(expected) and len(lacked(live)) > 5
-         and (claude / "settings.json").read_text() == json.dumps(expected, indent=4, ensure_ascii=False) + "\n",
-         f"--apply replaces the owned sections from the rendered template, adds the template's other keys that the "
-         f"file lacks after its keys and the template's `env` variables that its `env` lacks after its variables, "
-         f"keeps every other key, its value and its order, and the live file's indent "
-         f"of 4: {code}, {list(merged)}, {tail(text)}")
-    case(lambda: len(backups) == 1 and backups[0].read_text() == old,
-         f"--apply keeps the old settings.json as a backup: {[b.name for b in backups]}")
-    case(lambda: mode(claude / "settings.json") == 0o600 and len(backups) == 1 and mode(backups[0]) == 0o600,
-         f"--apply keeps the mode 0600 of a settings.json it replaces, in the file and in its backup: "
-         f"{oct(mode(claude / 'settings.json'))}, {[oct(mode(b)) for b in backups]}")
+    expected = {
+        "model": "opus",
+        "permissions": owned["permissions"],
+        "env": {"X": "{home} — é", **others["env"]},
+        "statusLine": {"type": "command", "command": "x"},
+        "hooks": owned["hooks"],
+        "someFutureKey": [1, {"a": None}],
+        "sandbox": owned["sandbox"],
+        "modelSettings": owned["modelSettings"],
+        **lacked(live),
+    }
+    case(
+        lambda: (
+            code == 0
+            and merged == expected
+            and list(merged) == list(expected)
+            and len(lacked(live)) > 5
+            and (claude / "settings.json").read_text()
+            == json.dumps(expected, indent=4, ensure_ascii=False) + "\n"
+        ),
+        f"--apply replaces the owned sections from the rendered template, adds the template's other keys that the "
+        f"file lacks after its keys and the template's `env` variables that its `env` lacks after its variables, "
+        f"keeps every other key, its value and its order, and the live file's indent "
+        f"of 4: {code}, {list(merged)}, {tail(text)}",
+    )
+    case(
+        lambda: len(backups) == 1 and backups[0].read_text() == old,
+        f"--apply keeps the old settings.json as a backup: {[b.name for b in backups]}",
+    )
+    case(
+        lambda: mode(claude / "settings.json") == 0o600 and len(backups) == 1 and mode(backups[0]) == 0o600,
+        f"--apply keeps the mode 0600 of a settings.json it replaces, in the file and in its backup: "
+        f"{oct(mode(claude / 'settings.json'))}, {[oct(mode(b)) for b in backups]}",
+    )
     again, text2 = run(base)
     # An unchanged settings.json prints its line and nothing after it, not even a blank line.
     after = [b for a, b in zip(text2.splitlines(), text2.splitlines()[1:]) if settings_line.fullmatch(a)]
-    case(lambda: again == 0 and [m.group(1) for m in settings_line.finditer(text2)] == ["already identical"]
-         and len(after) == 1 and after[0].strip() != ""
-         and re.search(r"^0 change\(s\) to make\.$", text2, re.M) is not None,
-         f"the dry run after the --apply finds settings.json identical, prints no blank line after it, 0 changes, "
-         f"exit 0: {again}, {after[:1]}, {tail(text2)}")
+    case(
+        lambda: (
+            again == 0
+            and [m.group(1) for m in settings_line.finditer(text2)] == ["already identical"]
+            and len(after) == 1
+            and after[0].strip() != ""
+            and re.search(r"^0 change\(s\) to make\.$", text2, re.M) is not None
+        ),
+        f"the dry run after the --apply finds settings.json identical, prints no blank line after it, 0 changes, "
+        f"exit 0: {again}, {after[:1]}, {tail(text2)}",
+    )
     state.chmod(0o600)
     case(lambda: state.read_text() == '{"state": 1}\n', "~/.claude.json is neither read nor written")
     # Owned sections equal to the template's in another layout, in a file that holds every key of the
     # template, are no change: the file is left as it is, and a key with another value than the
     # template's keeps it.
-    (claude / "settings.json").write_text(json.dumps({"hooks": owned["hooks"], "sandbox": owned["sandbox"],
-                                                      "modelSettings": owned["modelSettings"],
-                                                      "permissions": owned["permissions"], **others,
-                                                      "model": "x", "cleanupPeriodDays": 7}) + "\n")
+    (claude / "settings.json").write_text(
+        json.dumps(
+            {
+                "hooks": owned["hooks"],
+                "sandbox": owned["sandbox"],
+                "modelSettings": owned["modelSettings"],
+                "permissions": owned["permissions"],
+                **others,
+                "model": "x",
+                "cleanupPeriodDays": 7,
+            }
+        )
+        + "\n"
+    )
     kept = (claude / "settings.json").read_bytes()
     code, text = run(base, "--apply")
-    case(lambda: code == 0 and [m.group(1) for m in settings_line.finditer(text)] == ["already identical"]
-         and (claude / "settings.json").read_bytes() == kept and others["cleanupPeriodDays"] != 7,
-         f"a settings.json whose owned sections equal the template's, in another layout, and that holds every key "
-         f"of the template, some with other values, is not rewritten: {code}, {tail(text)}")
+    case(
+        lambda: (
+            code == 0
+            and [m.group(1) for m in settings_line.finditer(text)] == ["already identical"]
+            and (claude / "settings.json").read_bytes() == kept
+            and others["cleanupPeriodDays"] != 7
+        ),
+        f"a settings.json whose owned sections equal the template's, in another layout, and that holds every key "
+        f"of the template, some with other values, is not rewritten: {code}, {tail(text)}",
+    )
     # A key of the template that the file lacks is in the dry run's diff, and --apply adds it after the
     # file's keys and changes no other key.
     lacking = json.loads(kept)
@@ -1594,13 +2082,21 @@ def layer_cases(check, tmp):
     dry, text = run(base)
     code, _ = run(base, "--apply")
     merged = json.loads((claude / "settings.json").read_text())
-    case(lambda: dry == 1
-         and any(l.rstrip(",") == f'+  "cleanupPeriodDays": {others["cleanupPeriodDays"]}' for l in text.splitlines())
-         and any(l.rstrip(",") == '-  "cleanupPeriodDays": null' for l in text.splitlines())
-         and code == 0 and merged == {**lacking, "cleanupPeriodDays": others["cleanupPeriodDays"]}
-         and list(merged)[-1] == "cleanupPeriodDays",
-         f"a key of the template that settings.json lacks is in the dry run's diff, and --apply adds it last and "
-         f"changes no other key: {dry}, {code}, {list(merged)[-3:]}, {tail(text)}")
+    case(
+        lambda: (
+            dry == 1
+            and any(
+                l.rstrip(",") == f'+  "cleanupPeriodDays": {others["cleanupPeriodDays"]}'
+                for l in text.splitlines()
+            )
+            and any(l.rstrip(",") == '-  "cleanupPeriodDays": null' for l in text.splitlines())
+            and code == 0
+            and merged == {**lacking, "cleanupPeriodDays": others["cleanupPeriodDays"]}
+            and list(merged)[-1] == "cleanupPeriodDays"
+        ),
+        f"a key of the template that settings.json lacks is in the dry run's diff, and --apply adds it last and "
+        f"changes no other key: {dry}, {code}, {list(merged)[-3:]}, {tail(text)}",
+    )
     # An effort or an auto-compact window that the UI wrote into modelSettings is in the diff, and
     # --apply replaces the section with the template's.
     ui = json.loads(kept)
@@ -1608,63 +2104,100 @@ def layer_cases(check, tmp):
     (claude / "settings.json").write_text(json.dumps(ui) + "\n")
     dry, text = run(base)
     code, _ = run(base, "--apply")
-    case(lambda: dry == 1 and any(l.startswith("-") and "claude-ui-model" in l for l in text.splitlines())
-         and code == 0 and json.loads((claude / "settings.json").read_text())["modelSettings"]
-         == owned["modelSettings"],
-         f"a modelSettings entry that the UI wrote is in the dry run's diff, and --apply replaces the section "
-         f"with the template's: {dry}, {code}, {tail(text)}")
+    case(
+        lambda: (
+            dry == 1
+            and any(l.startswith("-") and "claude-ui-model" in l for l in text.splitlines())
+            and code == 0
+            and json.loads((claude / "settings.json").read_text())["modelSettings"] == owned["modelSettings"]
+        ),
+        f"a modelSettings entry that the UI wrote is in the dry run's diff, and --apply replaces the section "
+        f"with the template's: {dry}, {code}, {tail(text)}",
+    )
 
     # An `env` variable that the file sets keeps its value; one that the file lacks is added.
     base, claude, tree = fresh()
     first = next(iter(others["env"]))
-    (claude / "settings.json").write_text(json.dumps({**owned_of(base), **others, "env": {first: "own"}}, indent=2)
-                                          + "\n")
+    (claude / "settings.json").write_text(
+        json.dumps({**owned_of(base), **others, "env": {first: "own"}}, indent=2) + "\n"
+    )
     dry, text = run(base)
     code, _ = run(base, "--apply")
     again, _ = run(base)
     env = json.loads((claude / "settings.json").read_text())["env"]
-    case(lambda: dry == 1 and code == 0 and again == 0 and len(others["env"]) > 1
-         and env == {first: "own", **{k: v for k, v in others["env"].items() if k != first}} and list(env)[0] == first,
-         f"--apply adds the template's `env` variables that the file lacks and keeps the file's value of {first}; "
-         f"the next dry run has nothing to do: {dry}, {code}, {again}, {env}, {tail(text)}")
+    case(
+        lambda: (
+            dry == 1
+            and code == 0
+            and again == 0
+            and len(others["env"]) > 1
+            and env == {first: "own", **{k: v for k, v in others["env"].items() if k != first}}
+            and list(env)[0] == first
+        ),
+        f"--apply adds the template's `env` variables that the file lacks and keeps the file's value of {first}; "
+        f"the next dry run has nothing to do: {dry}, {code}, {again}, {env}, {tail(text)}",
+    )
 
     # A missing settings.json is created with the keys of the template, indented by 2, mode 0644.
     base, claude, tree = fresh()
     code, text = run(base)
-    case(lambda: code == 1 and [m.group(1) for m in settings_line.finditer(text)] == ["INSTALL"]
-         and not (claude / "settings.json").exists(),
-         f"the dry run prints INSTALL for a missing settings.json and counts it: {code}, {tail(text)}")
+    case(
+        lambda: (
+            code == 1
+            and [m.group(1) for m in settings_line.finditer(text)] == ["INSTALL"]
+            and not (claude / "settings.json").exists()
+        ),
+        f"the dry run prints INSTALL for a missing settings.json and counts it: {code}, {tail(text)}",
+    )
     # Under a umask of 077 only an explicit mode gives 0644; the process inherits the umask.
     umask = os.umask(0o077)
     try:
         code, text = run(base, "--apply")
     finally:
         os.umask(umask)
-    case(lambda: code == 0 and list(json.loads((claude / "settings.json").read_text())) == [*owned, *others]
-         and (claude / "settings.json").read_text()
-         == json.dumps({**owned_of(base), **others}, indent=2, ensure_ascii=False) + "\n"
-         and mode(claude / "settings.json") == 0o644,
-         f"--apply writes a missing settings.json with the owned sections, then the template's other keys, "
-         f"indented by 2, mode 0644 under a umask of 077: {code}, {tail(text)}")
+    case(
+        lambda: (
+            code == 0
+            and list(json.loads((claude / "settings.json").read_text())) == [*owned, *others]
+            and (claude / "settings.json").read_text()
+            == json.dumps({**owned_of(base), **others}, indent=2, ensure_ascii=False) + "\n"
+            and mode(claude / "settings.json") == 0o644
+        ),
+        f"--apply writes a missing settings.json with the owned sections, then the template's other keys, "
+        f"indented by 2, mode 0644 under a umask of 077: {code}, {tail(text)}",
+    )
 
     # Each owned key that the template lacks is removed from the live file; the other keys stay.
     # The template keeps `sandbox`, which holds the slot of the network lists, and lacks `hooks`.
     base, claude, tree = fresh()
     lacking = tmp / "settings-without-hooks.json"
-    lacking.write_text(json.dumps({k: v for k, v in json.loads(PROPOSAL.read_text()).items() if k != "hooks"},
-                                  indent=2, ensure_ascii=False) + "\n")
+    lacking.write_text(
+        json.dumps(
+            {k: v for k, v in json.loads(PROPOSAL.read_text()).items() if k != "hooks"},
+            indent=2,
+            ensure_ascii=False,
+        )
+        + "\n"
+    )
     (claude / "settings.json").write_text(json.dumps({"model": "x", "hooks": {"Stop": []}}, indent=2) + "\n")
     with mock.patch.object(this, "PROPOSAL", lacking):
         code, text = inproc(base, None, apply=True)
     merged = json.loads((claude / "settings.json").read_text())
-    case(lambda: code == 0 and list(merged)[:4] == ["model", "permissions", "sandbox", "modelSettings"]
-         and "hooks" not in merged and merged["model"] == "x",
-         f"an owned key that the template lacks is removed from settings.json: {code}, {list(merged)}, {tail(text)}")
+    case(
+        lambda: (
+            code == 0
+            and list(merged)[:4] == ["model", "permissions", "sandbox", "modelSettings"]
+            and "hooks" not in merged
+            and merged["model"] == "x"
+        ),
+        f"an owned key that the template lacks is removed from settings.json: {code}, {list(merged)}, {tail(text)}",
+    )
 
     # A template that cannot be rendered exits 2 and names the template, before anything is written.
-    for label, key, value in [("an undefined placeholder", "allow", [*template["permissions"]["allow"],
-                                                                     "Bash(x {no_such_key})"]),
-                              ("a list placeholder in a string that is not a list item", "defaultMode", "{org}")]:
+    for label, key, value in [
+        ("an undefined placeholder", "allow", [*template["permissions"]["allow"], "Bash(x {no_such_key})"]),
+        ("a list placeholder in a string that is not a list item", "defaultMode", "{org}"),
+    ]:
         base, claude, tree = fresh()
         broken = tmp / "settings-unrenderable.json"
         cfg = json.loads(PROPOSAL.read_text())
@@ -1672,45 +2205,81 @@ def layer_cases(check, tmp):
         broken.write_text(json.dumps(cfg, indent=2, ensure_ascii=False) + "\n")
         with mock.patch.object(this, "PROPOSAL", broken):
             code, text = inproc(base, None, apply=True)
-        case(lambda: code == 2 and str(broken) in text and "Traceback" not in text
-             and not (claude / "settings.json").exists(),
-             f"a settings template with {label} exits 2, names the template and writes nothing: {code}, {tail(text)}")
+        case(
+            lambda: (
+                code == 2
+                and str(broken) in text
+                and "Traceback" not in text
+                and not (claude / "settings.json").exists()
+            ),
+            f"a settings template with {label} exits 2, names the template and writes nothing: {code}, {tail(text)}",
+        )
 
     # A lone surrogate escape, which JavaScript's JSON.stringify can write, stays an escape: in a key
     # the merge keeps, and in the printed diff of an owned section.
     base, claude, tree = fresh()
-    (claude / "settings.json").write_bytes(b'{\n  "note": "\\ud800",\n  "permissions": {"allow": ["\\udfff"]}\n}\n')
+    (claude / "settings.json").write_bytes(
+        b'{\n  "note": "\\ud800",\n  "permissions": {"allow": ["\\udfff"]}\n}\n'
+    )
     code, text = run(base)
     applied, text2 = run(base, "--apply")
     written = (claude / "settings.json").read_text()
-    case(lambda: code == 1 and applied == 0 and "Traceback" not in text + text2 and "\\udfff" in text
-         and '"note": "\\ud800"' in written and json.loads(written)["note"] == "\ud800",
-         f"a lone surrogate escape in settings.json stays an escape in the diff and in the merged file: {code}, "
-         f"{applied}, {tail(text + text2)}")
+    case(
+        lambda: (
+            code == 1
+            and applied == 0
+            and "Traceback" not in text + text2
+            and "\\udfff" in text
+            and '"note": "\\ud800"' in written
+            and json.loads(written)["note"] == "\ud800"
+        ),
+        f"a lone surrogate escape in settings.json stays an escape in the diff and in the merged file: {code}, "
+        f"{applied}, {tail(text + text2)}",
+    )
 
     # The merge keeps a tab indent, and writes a one-line file on one line.
-    for label, data, indent in [("tab-indented", '{\n\t"model": "x",\n\t"env": {\n\t\t"A": "1"\n\t}\n}\n', "\t"),
-                                ("one-line", '{"model": "x", "env": {"A": "1"}}\n', None),
-                                ("one-line (a raw U+2028 in a string)",
-                                 '{"model": "x' + chr(0x2028) + 'y", "env": {"A": "1"}}\n', None)]:
+    for label, data, indent in [
+        ("tab-indented", '{\n\t"model": "x",\n\t"env": {\n\t\t"A": "1"\n\t}\n}\n', "\t"),
+        ("one-line", '{"model": "x", "env": {"A": "1"}}\n', None),
+        (
+            "one-line (a raw U+2028 in a string)",
+            '{"model": "x' + chr(0x2028) + 'y", "env": {"A": "1"}}\n',
+            None,
+        ),
+    ]:
         base, claude, tree = fresh()
         (claude / "settings.json").write_text(data)
         code, text = run(base, "--apply")
         written = (claude / "settings.json").read_text()
         cfg = json.loads(data)
-        expected = json.dumps({**cfg, "env": {**cfg["env"], **others["env"]}, **owned_of(base), **lacked(cfg)},
-                              indent=indent, ensure_ascii=False) + "\n"
-        case(lambda: code == 0 and written == expected and written.count("\n") == (1 if indent is None else
-                                                                                   expected.count("\n")),
-             f"a {label} settings.json is written in the same form: {code}, {written[:60]!r}, {tail(text)}")
+        expected = (
+            json.dumps(
+                {**cfg, "env": {**cfg["env"], **others["env"]}, **owned_of(base), **lacked(cfg)},
+                indent=indent,
+                ensure_ascii=False,
+            )
+            + "\n"
+        )
+        case(
+            lambda: (
+                code == 0
+                and written == expected
+                and written.count("\n") == (1 if indent is None else expected.count("\n"))
+            ),
+            f"a {label} settings.json is written in the same form: {code}, {written[:60]!r}, {tail(text)}",
+        )
 
     # A number outside the owned sections that the merge would write in other text exits 2, the dry run
     # and --apply, with one line that names the key, and no file changes.
     def number_file(body):
         return "{\n" + body + ',\n  "permissions": {"allow": ["Bash(rm *)"]}\n}\n'
 
-    for body, key, literal in [('  "x": 1.10', "x", "1.10"), ('  "y": 1e400', "y", "1e400"), ('  "z": 1E5', "z", "1E5"),
-                               ('  "env": {"list": [1, 2.50]}', "env.list[1]", "2.50")]:
+    for body, key, literal in [
+        ('  "x": 1.10', "x", "1.10"),
+        ('  "y": 1e400', "y", "1e400"),
+        ('  "z": 1E5', "z", "1E5"),
+        ('  "env": {"list": [1, 2.50]}', "env.list[1]", "2.50"),
+    ]:
         for argv in [(), ("--apply",)]:
             base, claude, tree = fresh(["rules/x.md"])
             live = claude / "settings.json"
@@ -1718,10 +2287,18 @@ def layer_cases(check, tmp):
             before = scratch.snapshot(base)
             code, text = run(base, *argv)
             lines = text.strip().splitlines()
-            case(lambda: refused(code, text) and len(lines) == 1 and str(live) in lines[0] and f"`{key}`" in lines[0]
-                 and f"`{literal}`" in lines[0] and scratch.snapshot(base) == before,
-                 f"a settings.json with {body.strip()} exits 2 {'under --apply' if argv else 'in the dry run'} with "
-                 f"one line that names {key}, and no file changes: {code}, {lines[-3:]}")
+            case(
+                lambda: (
+                    refused(code, text)
+                    and len(lines) == 1
+                    and str(live) in lines[0]
+                    and f"`{key}`" in lines[0]
+                    and f"`{literal}`" in lines[0]
+                    and scratch.snapshot(base) == before
+                ),
+                f"a settings.json with {body.strip()} exits 2 {'under --apply' if argv else 'in the dry run'} with "
+                f"one line that names {key}, and no file changes: {code}, {lines[-3:]}",
+            )
     # `1.5`, `10` and `-0.0` are written as their source text, and a number in an owned section is replaced.
     base, claude, tree = fresh(["rules/x.md"])
     live = claude / "settings.json"
@@ -1729,25 +2306,41 @@ def layer_cases(check, tmp):
     dry, text = run(base)
     code, text2 = run(base, "--apply")
     written = live.read_text()
-    case(lambda: dry == 1 and code == 0 and '"x": 1.5,' in written and '"y": 10,' in written and "-0.0" in written
-         and json.loads(written)["sandbox"] == owned["sandbox"],
-         f"the numbers 1.5, 10 and -0.0 pass unchanged, and one in an owned section is replaced: {dry}, {code}, "
-         f"{tail(text + text2)}")
+    case(
+        lambda: (
+            dry == 1
+            and code == 0
+            and '"x": 1.5,' in written
+            and '"y": 10,' in written
+            and "-0.0" in written
+            and json.loads(written)["sandbox"] == owned["sandbox"]
+        ),
+        f"the numbers 1.5, 10 and -0.0 pass unchanged, and one in an owned section is replaced: {dry}, {code}, "
+        f"{tail(text + text2)}",
+    )
     # A file that the merge leaves as it is keeps its numbers: there is nothing to check.
     kept = json.dumps({**owned_of(base), **others}, indent=2, ensure_ascii=False)[:-2] + ',\n  "x": 1.10\n}\n'
     live.write_text(kept)
     code, text = run(base, "--apply")
-    case(lambda: code == 0 and live.read_text() == kept,
-         f"a settings.json whose owned sections equal the template's keeps 1.10, unchecked: {code}, {tail(text)}")
+    case(
+        lambda: code == 0 and live.read_text() == kept,
+        f"a settings.json whose owned sections equal the template's keeps 1.10, unchecked: {code}, {tail(text)}",
+    )
 
     # The order: settings.json is the first file line of the Claude Code layer, the stamp the last.
     base, claude, tree = fresh(["rules/x.md"])
     code, text = run(base)
     labels = re.findall(r"^(~/\.claude/\S+)\s", text, re.M)
-    case(lambda: len(labels) > 50 and labels[0] == "~/.claude/settings.json"
-         and labels[-1] == f"~/.claude/{install.STAMP}" and labels.count("~/.claude/settings.json") == 1,
-         f"settings.json is the first file line of the Claude Code layer, the stamp the last: "
-         f"{labels[:2]}, {labels[-1:]}")
+    case(
+        lambda: (
+            len(labels) > 50
+            and labels[0] == "~/.claude/settings.json"
+            and labels[-1] == f"~/.claude/{install.STAMP}"
+            and labels.count("~/.claude/settings.json") == 1
+        ),
+        f"settings.json is the first file line of the Claude Code layer, the stamp the last: "
+        f"{labels[:2]}, {labels[-1:]}",
+    )
 
     # A settings.json that cannot be merged exits 2 with one line naming it and the reason, before
     # anything of any frontend is written.
@@ -1758,18 +2351,28 @@ def layer_cases(check, tmp):
             for name in dirs + files:
                 p = pathlib.Path(path, name)
                 st = p.lstat()
-                out[str(p)] = (stat.S_IMODE(st.st_mode), os.readlink(p) if p.is_symlink()
-                               else p.read_bytes() if stat.S_ISREG(st.st_mode) else None)
+                out[str(p)] = (
+                    stat.S_IMODE(st.st_mode),
+                    os.readlink(p)
+                    if p.is_symlink()
+                    else p.read_bytes()
+                    if stat.S_ISREG(st.st_mode)
+                    else None,
+                )
         return out
 
-    for label, data, reason in [("not JSON", b"{\n", "is not JSON"), ("not UTF-8", b'{"x": "\xff"}\n', "is not UTF-8"),
-                                ("JSON after a UTF-8 BOM", b"\xef\xbb\xbf{}\n", "is not JSON"),
-                                ("JSON that is not an object", b"[]\n", "is not a JSON object"),
-                                ("JSON nested 400000 deep", b"[" * 400000 + b"]" * 400000 + b"\n", "nested too deep"),
-                                ("an owned key that is a list", b'{"permissions": []}\n', "permissions"),
-                                ("an owned key that is null", b'{"model": "x", "sandbox": null}\n', "sandbox"),
-                                ("a symlink", None, "symlink"), ("a directory", None, "is a directory"),
-                                ("unreadable, of mode 000", b"{}\n", "cannot be read")]:
+    for label, data, reason in [
+        ("not JSON", b"{\n", "is not JSON"),
+        ("not UTF-8", b'{"x": "\xff"}\n', "is not UTF-8"),
+        ("JSON after a UTF-8 BOM", b"\xef\xbb\xbf{}\n", "is not JSON"),
+        ("JSON that is not an object", b"[]\n", "is not a JSON object"),
+        ("JSON nested 400000 deep", b"[" * 400000 + b"]" * 400000 + b"\n", "nested too deep"),
+        ("an owned key that is a list", b'{"permissions": []}\n', "permissions"),
+        ("an owned key that is null", b'{"model": "x", "sandbox": null}\n', "sandbox"),
+        ("a symlink", None, "symlink"),
+        ("a directory", None, "is a directory"),
+        ("unreadable, of mode 000", b"{}\n", "cannot be read"),
+    ]:
         base, claude, tree = fresh(["rules/x.md"])
         live = claude / "settings.json"
         if label == "a symlink":
@@ -1786,10 +2389,17 @@ def layer_cases(check, tmp):
         if label.startswith("unreadable"):
             live.chmod(0o644)
         lines = text.strip().splitlines()
-        case(lambda: refused(code, text) and len(lines) == 1 and str(live) in lines[0] and reason in lines[0]
-             and snapshot(base) == before,
-             f"a settings.json that is {label} exits 2 with one line that names it and the reason, and no file "
-             f"changes: {code}, {lines[-3:]}")
+        case(
+            lambda: (
+                refused(code, text)
+                and len(lines) == 1
+                and str(live) in lines[0]
+                and reason in lines[0]
+                and snapshot(base) == before
+            ),
+            f"a settings.json that is {label} exits 2 with one line that names it and the reason, and no file "
+            f"changes: {code}, {lines[-3:]}",
+        )
 
     # A settings.json whose stat the sandbox denies (EPERM) is a file that cannot be read, not a
     # missing one: Path.exists() returns False there on Python 3.12 and later, and raises on 3.11.
@@ -1803,15 +2413,23 @@ def layer_cases(check, tmp):
             if os.fspath(path) == str(live):
                 raise PermissionError(errno.EPERM, "Operation not permitted", str(live))
             return real(path, *a, **k)
+
         return call
 
     with mock.patch.object(os, "stat", denied(os.stat)), mock.patch.object(os, "lstat", denied(os.lstat)):
         code, text = inproc(base, None, apply=True)
     lines = text.strip().splitlines()
-    case(lambda: code == 2 and len(lines) == 1 and str(live) in lines[0] and "cannot be read" in lines[0]
-         and snapshot(base) == before,
-         f"a settings.json whose stat is denied exits 2 with one line that names it, and no file changes: "
-         f"{code}, {lines[-3:]}")
+    case(
+        lambda: (
+            code == 2
+            and len(lines) == 1
+            and str(live) in lines[0]
+            and "cannot be read" in lines[0]
+            and snapshot(base) == before
+        ),
+        f"a settings.json whose stat is denied exits 2 with one line that names it, and no file changes: "
+        f"{code}, {lines[-3:]}",
+    )
 
     # The second parse, which keeps the text of each number, can run out of stack at a depth that
     # json_object reads; the depth depends on the interpreter, so json.loads raises RecursionError
@@ -1833,38 +2451,67 @@ def layer_cases(check, tmp):
     finally:
         json.loads = loads
     lines = text.strip().splitlines()
-    case(lambda: code == 2 and len(lines) == 1 and str(live) in lines[0] and "nested too deep" in lines[0]
-         and snapshot(base) == before,
-         f"a RecursionError of the parse that keeps the text of each number exits 2 with one line that names "
-         f"settings.json, and no file changes: {code}, {lines[-3:]}")
+    case(
+        lambda: (
+            code == 2
+            and len(lines) == 1
+            and str(live) in lines[0]
+            and "nested too deep" in lines[0]
+            and snapshot(base) == before
+        ),
+        f"a RecursionError of the parse that keeps the text of each number exits 2 with one line that names "
+        f"settings.json, and no file changes: {code}, {lines[-3:]}",
+    )
 
     # `harness settings install` and `harness settings domains` are gone; the subcommands of
     # `settings` that measure stay. The network lists are generated, so no command checks a mirror of them.
-    p = subprocess.run([sys.executable, str(REPO / "bin" / "harness"), "settings", "--help"], capture_output=True,
-                       text=True)
-    gone = [subprocess.run([sys.executable, str(REPO / "bin" / "harness"), "settings", subcommand],
-                           capture_output=True, text=True) for subcommand in ("install", "domains")]
-    case(lambda: p.returncode == 0 and "install" not in p.stdout and "domains" not in p.stdout
-         and all(g.returncode == 2 for g in gone)
-         and all(s in p.stdout for s in ["surface", "compare", "selftest", "twins"]),
-         f"`harness settings --help` lists no install and no domains, and each exits 2: {p.returncode}, "
-         f"{[g.returncode for g in gone]}, {gone[-1].stderr.strip()[-120:]!r}")
+    p = subprocess.run(
+        [sys.executable, str(REPO / "bin" / "harness"), "settings", "--help"], capture_output=True, text=True
+    )
+    gone = [
+        subprocess.run(
+            [sys.executable, str(REPO / "bin" / "harness"), "settings", subcommand],
+            capture_output=True,
+            text=True,
+        )
+        for subcommand in ("install", "domains")
+    ]
+    case(
+        lambda: (
+            p.returncode == 0
+            and "install" not in p.stdout
+            and "domains" not in p.stdout
+            and all(g.returncode == 2 for g in gone)
+            and all(s in p.stdout for s in ["surface", "compare", "selftest", "twins"])
+        ),
+        f"`harness settings --help` lists no install and no domains, and each exits 2: {p.returncode}, "
+        f"{[g.returncode for g in gone]}, {gone[-1].stderr.strip()[-120:]!r}",
+    )
 
     # The permission rules of the other settings files are a warning of `harness install`; one that
     # cannot be read as JSON is a warning too, not a traceback.
     base, claude, tree = fresh()
     research = base / "home" / "Research"
-    for rel, data in [("Research/.claude/settings.local.json", '{"permissions": {"allow": ["Bash(gh issue *)"]}}\n'),
-                      ("Research/Knowledge/.claude/settings.json", '{"permissions": {"deny": ["Read(x)"]}}\n'),
-                      ("Research/Broken/.claude/settings.local.json", "{\n")]:
+    for rel, data in [
+        ("Research/.claude/settings.local.json", '{"permissions": {"allow": ["Bash(gh issue *)"]}}\n'),
+        ("Research/Knowledge/.claude/settings.json", '{"permissions": {"deny": ["Read(x)"]}}\n'),
+        ("Research/Broken/.claude/settings.local.json", "{\n"),
+    ]:
         (base / "home" / rel).parent.mkdir(parents=True)
         (base / "home" / rel).write_text(data)
     code, text = run(base)
-    case(lambda: code == 1 and "Traceback" not in text and "WARNING: 2 permission rule(s) outside" in text
-         and f"{research / '.claude' / 'settings.local.json'}  allow  Bash(gh issue *)" in text
-         and f"{research / 'Knowledge' / '.claude' / 'settings.json'}  deny  Read(x)" in text
-         and f"{research / 'Broken' / '.claude' / 'settings.local.json'} cannot be read as a settings file" in text,
-         f"`harness install` warns about the permission rules outside ~/.claude/settings.json: {code}, {tail(text)}")
+    case(
+        lambda: (
+            code == 1
+            and "Traceback" not in text
+            and "WARNING: 2 permission rule(s) outside" in text
+            and f"{research / '.claude' / 'settings.local.json'}  allow  Bash(gh issue *)" in text
+            and f"{research / 'Knowledge' / '.claude' / 'settings.json'}  deny  Read(x)" in text
+            and f"{research / 'Broken' / '.claude' / 'settings.local.json'} cannot be read as a settings file"
+            in text
+        ),
+        f"`harness install` warns about the permission rules outside ~/.claude/settings.json: {code}, {tail(text)}",
+    )
     # A directory of ~/Research that cannot be searched is a warning too, on every Python.
     base, claude, tree = fresh()
     locked = base / "home" / "Research" / "Locked"
@@ -1875,9 +2522,14 @@ def layer_cases(check, tmp):
         code, text = run(base)
     finally:
         locked.chmod(0o755)
-    case(lambda: code == 1 and "Traceback" not in text
-         and f"{locked / '.claude' / 'settings.json'} cannot be read as a settings file" in text,
-         f"a directory of ~/Research that cannot be searched is a warning of `harness install`: {code}, {tail(text)}")
+    case(
+        lambda: (
+            code == 1
+            and "Traceback" not in text
+            and f"{locked / '.claude' / 'settings.json'} cannot be read as a settings file" in text
+        ),
+        f"a directory of ~/Research that cannot be searched is a warning of `harness install`: {code}, {tail(text)}",
+    )
     # A stray allow, ask or deny that is not a list is one warning line that names the file and the key, and
     # lists no rule of it.
     for kind, value in [("allow", '"Bash(x)"'), ("ask", '{"Bash(y)": 1}'), ("deny", "5")]:
@@ -1887,9 +2539,16 @@ def layer_cases(check, tmp):
         stray.write_text(f'{{"permissions": {{"{kind}": {value}}}}}\n')
         code, text = run(base)
         lines = [l for l in text.splitlines() if str(stray) in l]
-        case(lambda: code == 1 and "Traceback" not in text and len(lines) == 1 and f"permissions.{kind}" in lines[0]
-             and "permission rule(s)" not in text,
-             f"a stray {kind} of {value} is one warning line that names the file and the key: {code}, {lines}")
+        case(
+            lambda: (
+                code == 1
+                and "Traceback" not in text
+                and len(lines) == 1
+                and f"permissions.{kind}" in lines[0]
+                and "permission rule(s)" not in text
+            ),
+            f"a stray {kind} of {value} is one warning line that names the file and the key: {code}, {lines}",
+        )
 
     # Each installed path whose source is in this repository is planned from there: an installed
     # copy of it is a change, never EXTRA. A path in a subdirectory has its source at the same path
@@ -1902,27 +2561,40 @@ def layer_cases(check, tmp):
         (claude / rel).parent.mkdir(parents=True, exist_ok=True)
         (claude / rel).write_text("an installed copy\n")
     code, text = run(base)
-    case(lambda: code == 1 and all(re.search(rf"^~/\.claude/{re.escape(rel)}\s+REPLACE$", text, re.M) for rel in MOVED)
-         and not any(f"EXTRA: {claude / rel} " in text for rel in MOVED),
-         f"each of the {len(MOVED)} moved paths has its source in this repository, and none is EXTRA: "
-         f"{[rel for rel in MOVED if not repo_source(rel).is_file()]}, {tail(text)}")
+    case(
+        lambda: (
+            code == 1
+            and all(re.search(rf"^~/\.claude/{re.escape(rel)}\s+REPLACE$", text, re.M) for rel in MOVED)
+            and not any(f"EXTRA: {claude / rel} " in text for rel in MOVED)
+        ),
+        f"each of the {len(MOVED)} moved paths has its source in this repository, and none is EXTRA: "
+        f"{[rel for rel in MOVED if not repo_source(rel).is_file()]}, {tail(text)}",
+    )
 
     # The tree instructions' file is research-tree.md: CLAUDE.md imports it, and OpenCode lists it.
     def imports():
         return re.findall(r"(?m)^@(\S+)$", (REPO / "adapters" / "claude" / "CLAUDE.md").read_text())
 
     jsonc = (REPO / "adapters" / "opencode" / "opencode.jsonc").read_text()
-    case(lambda: "instructions/research-tree.md" in imports() and "instructions/profile.md" not in imports()
-         and '"~/.claude/instructions/research-tree.md"' in jsonc and "instructions/profile.md" not in jsonc,
-         "CLAUDE.md imports research-tree.md, and opencode.jsonc lists it")
+    case(
+        lambda: (
+            "instructions/research-tree.md" in imports()
+            and "instructions/profile.md" not in imports()
+            and '"~/.claude/instructions/research-tree.md"' in jsonc
+            and "instructions/profile.md" not in jsonc
+        ),
+        "CLAUDE.md imports research-tree.md, and opencode.jsonc lists it",
+    )
 
     # Each `@` import of CLAUDE.md has a source in the plan: an import with none loads nothing.
     base, claude, tree = fresh(["instructions/research-tree.md"])
     with contextlib.redirect_stdout(io.StringIO()):
         planned = {dst for dst, _, _ in claude_plan(render_profile.load(base / "profile.toml"))}
-    case(lambda: "RTK.md" in imports() and all(i in planned for i in imports()),
-         f"each @ import of CLAUDE.md has a source in the plan: {imports()}, "
-         f"{[i for i in imports() if i not in planned]} with none")
+    case(
+        lambda: "RTK.md" in imports() and all(i in planned for i in imports()),
+        f"each @ import of CLAUDE.md has a source in the plan: {imports()}, "
+        f"{[i for i in imports() if i not in planned]} with none",
+    )
 
     # The stamp: --apply writes the sources and the digest of the `SessionStart` hook,
     # hooks/install-drift.py, over their files; an edit in a source is a change of the stamp.
@@ -1935,30 +2607,47 @@ def layer_cases(check, tmp):
     def stamp():
         return json.loads((claude / install.STAMP).read_text())
 
-    sources = [*([str(REPO / d), d, [], []] for d in ["agents", "skills", "rules", "instructions", "commands"]),
-               [str(REPO / "adapters" / "claude"), "", ["adapter.py", "fixtures"], []],
-               [str(REPO / "hooks"), "hooks", ["probe.py"], []],
-               [str(tree), "", ["README.md"], ["agents", "hooks"]]]
-    case(lambda: code == 0 and again == 0 and stamp()["sources"] == sources
-         and stamp()["digest"] == hook.digest(sources) and stamp_line.findall(text) == ["INSTALL"]
-         and stamp_line.findall(text2) == ["already"] and mode(claude / install.STAMP) == 0o644,
-         f"--apply writes the stamp over the five neutral directories, adapters/claude/, hooks/ and the tree "
-         f"instructions, and the dry run after it "
-         f"finds it identical: {code}, {again}, {stamp_line.findall(text)}, {stamp_line.findall(text2)}")
+    sources = [
+        *([str(REPO / d), d, [], []] for d in ["agents", "skills", "rules", "instructions", "commands"]),
+        [str(REPO / "adapters" / "claude"), "", ["adapter.py", "fixtures"], []],
+        [str(REPO / "hooks"), "hooks", ["probe.py"], []],
+        [str(tree), "", ["README.md"], ["agents", "hooks"]],
+    ]
+    case(
+        lambda: (
+            code == 0
+            and again == 0
+            and stamp()["sources"] == sources
+            and stamp()["digest"] == hook.digest(sources)
+            and stamp_line.findall(text) == ["INSTALL"]
+            and stamp_line.findall(text2) == ["already"]
+            and mode(claude / install.STAMP) == 0o644
+        ),
+        f"--apply writes the stamp over the five neutral directories, adapters/claude/, hooks/ and the tree "
+        f"instructions, and the dry run after it "
+        f"finds it identical: {code}, {again}, {stamp_line.findall(text)}, {stamp_line.findall(text2)}",
+    )
     (tree / "rules" / "x.md").write_text(f"{RULE_HEAD}an edit\n")
     code, text = run(base)
-    case(lambda: code == 1 and stamp_line.findall(text) == ["REPLACE"],
-         f"an edit in the tree instructions makes the stamp a change: {code}, {stamp_line.findall(text)}")
+    case(
+        lambda: code == 1 and stamp_line.findall(text) == ["REPLACE"],
+        f"an edit in the tree instructions makes the stamp a change: {code}, {stamp_line.findall(text)}",
+    )
     # The hook's files are the planned files, and its digest of the sources is the digest of the
     # planned bytes and modes, which the stamp records.
     profile = render_profile.load(base / "profile.toml")
     with mock.patch.dict(os.environ, HOME=str(base / "home")), contextlib.redirect_stdout(io.StringIO()):
         plan = claude_plan(profile)
     planned = [dst for dst, _, _ in plan]
-    case(lambda: [dst for dst, _, _ in hook.files(sources)] == planned and len(planned) > 50
-         and hook.digest(sources) == hook.digest_of(plan),
-         f"the hook's files are the {len(planned)} planned files, in the same order, with the planned bytes and "
-         f"modes: {sorted(set(planned) ^ {dst for dst, _, _ in hook.files(sources)})}")
+    case(
+        lambda: (
+            [dst for dst, _, _ in hook.files(sources)] == planned
+            and len(planned) > 50
+            and hook.digest(sources) == hook.digest_of(plan)
+        ),
+        f"the hook's files are the {len(planned)} planned files, in the same order, with the planned bytes and "
+        f"modes: {sorted(set(planned) ^ {dst for dst, _, _ in hook.files(sources)})}",
+    )
     # The stamp is over the bytes that --apply installs, not over the sources read again after the
     # layer: a source edited while the apply runs is installed with its old bytes, and the hook warns.
     base, claude, tree = fresh(["rules/x.md"])
@@ -1970,17 +2659,24 @@ def layer_cases(check, tmp):
     with mock.patch.object(install, "install_julia_env", julia_env_and_an_edit):
         code, text = inproc(base, None, apply=True)
     warning = hook.check(str(base / "home")) or ""
-    case(lambda: code == 0 and (claude / "rules" / "x.md").read_text() != (tree / "rules" / "x.md").read_text()
-         and "behind its sources" in warning,
-         f"a source edited after the plan is read, while --apply runs, leaves a stamp that the hook warns on: "
-         f"{code}, {warning[:80]!r}")
+    case(
+        lambda: (
+            code == 0
+            and (claude / "rules" / "x.md").read_text() != (tree / "rules" / "x.md").read_text()
+            and "behind its sources" in warning
+        ),
+        f"a source edited after the plan is read, while --apply runs, leaves a stamp that the hook warns on: "
+        f"{code}, {warning[:80]!r}",
+    )
 
     # The stamp names each source of this repository below the profile's `harness` path, whatever
     # checkout runs the apply: a second checkout with the same sources finds the stamp identical and
     # writes the same bytes, and the hook reads the profile's checkout. The scratch profile names this one.
     other = tmp / "checkout-2"
     git_env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
-    listed = subprocess.run(["git", "ls-files", "-z"], cwd=REPO, capture_output=True, text=True, env=git_env).stdout
+    listed = subprocess.run(
+        ["git", "ls-files", "-z"], cwd=REPO, capture_output=True, text=True, env=git_env
+    ).stdout
     for rel in filter(None, listed.split("\0")):
         if (REPO / rel).is_file():
             (other / rel).parent.mkdir(parents=True, exist_ok=True)
@@ -1990,9 +2686,23 @@ def layer_cases(check, tmp):
     first = (claude / install.STAMP).read_bytes() if code == 0 else b""
 
     def run_other(*argv):
-        p = subprocess.run([sys.executable, str(other / "bin" / "harness"), "--profile", str(base / "profile.toml"),
-                            "--models", str(REPO / "examples" / "models.toml"), "install", *argv],
-                           capture_output=True, text=True, env=scratch.env(base), cwd=base, timeout=60)
+        p = subprocess.run(
+            [
+                sys.executable,
+                str(other / "bin" / "harness"),
+                "--profile",
+                str(base / "profile.toml"),
+                "--models",
+                str(REPO / "examples" / "models.toml"),
+                "install",
+                *argv,
+            ],
+            capture_output=True,
+            text=True,
+            env=scratch.env(base),
+            cwd=base,
+            timeout=60,
+        )
         return p.returncode, p.stdout + p.stderr
 
     dry, text2 = run_other()
@@ -2000,10 +2710,18 @@ def layer_cases(check, tmp):
     second = (claude / install.STAMP).read_bytes() if (claude / install.STAMP).is_file() else b""
     named = [s[0] for s in json.loads(second)["sources"]] if second else []
     warning = hook.check(str(base / "home"))
-    case(lambda: code == 0 and stamp_line.findall(text2) == ["already"] and applied == 0 and second == first
-         and named == [s[0] for s in sources[:-1]] + [str(tree)] and warning is None,
-         f"a dry run and an --apply from a second checkout find the stamp identical, and it names the profile's "
-         f"checkout: {code}, {dry}, {applied}, {stamp_line.findall(text2)}, {named[:1]}, {warning!r}, {tail(text3)}")
+    case(
+        lambda: (
+            code == 0
+            and stamp_line.findall(text2) == ["already"]
+            and applied == 0
+            and second == first
+            and named == [s[0] for s in sources[:-1]] + [str(tree)]
+            and warning is None
+        ),
+        f"a dry run and an --apply from a second checkout find the stamp identical, and it names the profile's "
+        f"checkout: {code}, {dry}, {applied}, {stamp_line.findall(text2)}, {named[:1]}, {warning!r}, {tail(text3)}",
+    )
 
     # In the adapter's plan: the profile's `harness` path names the repository's sources; with no
     # `harness` key the running checkout does; a value that is not an absolute path exits 2.
@@ -2013,43 +2731,73 @@ def layer_cases(check, tmp):
         prof = {k: v for k, v in render_profile.load(base / "profile.toml").items() if k != "harness"}
         if value is not None:
             prof["harness"] = value
-        ctx = argparse.Namespace(profile=prof, models=REPO / "examples" / "models.toml",
-                                 args=argparse.Namespace(profile=str(base / "profile.toml")))
+        ctx = argparse.Namespace(
+            profile=prof,
+            models=REPO / "examples" / "models.toml",
+            args=argparse.Namespace(profile=str(base / "profile.toml")),
+        )
         try:
-            with mock.patch.dict(os.environ, HOME=str(base / "home")), contextlib.redirect_stdout(io.StringIO()):
+            with (
+                mock.patch.dict(os.environ, HOME=str(base / "home")),
+                contextlib.redirect_stdout(io.StringIO()),
+            ):
                 files = this.plan(ctx).files
         except HarnessError as e:
             return str(e)
         return [s[0] for s in json.loads(next(f[1] for f in files if f[0].name == install.STAMP))["sources"]]
 
     repository = [str(REPO / d) for d in NEUTRAL] + [str(CLAUDE_ADAPTER), str(REPO / "hooks")]
-    elsewhere = ["/elsewhere/Harness/" + d for d in NEUTRAL] + ["/elsewhere/Harness/adapters/claude",
-                                                               "/elsewhere/Harness/hooks"]
-    for value, expected in [("/elsewhere/Harness", elsewhere + [str(tree)]), ("/elsewhere/Harness/", elsewhere + [str(tree)]),
-                            (None, repository + [str(tree)])]:
+    elsewhere = ["/elsewhere/Harness/" + d for d in NEUTRAL] + [
+        "/elsewhere/Harness/adapters/claude",
+        "/elsewhere/Harness/hooks",
+    ]
+    for value, expected in [
+        ("/elsewhere/Harness", elsewhere + [str(tree)]),
+        ("/elsewhere/Harness/", elsewhere + [str(tree)]),
+        (None, repository + [str(tree)]),
+    ]:
         got = planned_stamp(value)
-        case(lambda: got == expected,
-             f"the planned stamp with harness = {value!r} names the sources {got if isinstance(got, str) else got[:1]}")
+        case(
+            lambda: got == expected,
+            f"the planned stamp with harness = {value!r} names the sources {got if isinstance(got, str) else got[:1]}",
+        )
     for value in ["relative/Harness", ["/elsewhere/Harness"], ""]:
         got = planned_stamp(value)
-        case(lambda: isinstance(got, str) and got.startswith("harness: ") and "absolute path" in got,
-             f"a profile with harness = {value!r} exits 2 and names the key: {got if isinstance(got, str) else got[:1]}")
+        case(
+            lambda: isinstance(got, str) and got.startswith("harness: ") and "absolute path" in got,
+            f"a profile with harness = {value!r} exits 2 and names the key: {got if isinstance(got, str) else got[:1]}",
+        )
 
     # Every installed path, the stamp included, is an `Edit` deny of the settings template, and the
     # paths the desktop app and the sessions write below ~/.claude stay writable.
     def edit_rule(pattern):
         """The regular expression of an `Edit` rule's absolute path: `**` any path, `*` one name."""
         parts = re.split(r"(\*\*/?|\*)", pattern)
-        return re.compile("".join(".*" if p.startswith("**") else "[^/]*" if p == "*" else re.escape(p)
-                                  for p in parts) + r"\Z")
+        return re.compile(
+            "".join(".*" if p.startswith("**") else "[^/]*" if p == "*" else re.escape(p) for p in parts)
+            + r"\Z"
+        )
 
     proposal = json.loads(render_profile.render_file(REPO / "settings" / "settings.proposal.json", profile))
-    denies = [edit_rule(r[len("Edit("):-1]) for r in proposal["permissions"]["deny"] if r.startswith("Edit(")]
+    denies = [
+        edit_rule(r[len("Edit(") : -1]) for r in proposal["permissions"]["deny"] if r.startswith("Edit(")
+    ]
     root = "/" + profile["home"] + "/.claude/"
-    open_paths = ["skills/synced/s/SKILL.md", f"projects/{profile['memory_project']}/memory/m.md", "plans/p.md",
-                  "workflows/w.md", "skills/.claude/.cc-writes/x", "history.jsonl"]
+    open_paths = [
+        "skills/synced/s/SKILL.md",
+        f"projects/{profile['memory_project']}/memory/m.md",
+        "plans/p.md",
+        "workflows/w.md",
+        "skills/.claude/.cc-writes/x",
+        "history.jsonl",
+    ]
     for rel in planned + [install.STAMP]:
-        case(lambda: any(d.match(root + rel) for d in denies), f"~/.claude/{rel} is an Edit deny of the settings template")
+        case(
+            lambda: any(d.match(root + rel) for d in denies),
+            f"~/.claude/{rel} is an Edit deny of the settings template",
+        )
     for rel in open_paths:
-        case(lambda: not any(d.match(root + rel) for d in denies),
-             f"~/.claude/{rel} is not an Edit deny of the settings template")
+        case(
+            lambda: not any(d.match(root + rel) for d in denies),
+            f"~/.claude/{rel} is not an Edit deny of the settings template",
+        )

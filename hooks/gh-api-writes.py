@@ -40,8 +40,23 @@ SEPARATORS = set(";|&\n")
 
 # Flags of `gh api` that consume the token after them.
 TAKES_VALUE = {
-    "-X", "--method", "-f", "--raw-field", "-F", "--field", "-H", "--header",
-    "--input", "-q", "--jq", "-t", "--template", "--cache", "--hostname", "-p", "--preview",
+    "-X",
+    "--method",
+    "-f",
+    "--raw-field",
+    "-F",
+    "--field",
+    "-H",
+    "--header",
+    "--input",
+    "-q",
+    "--jq",
+    "-t",
+    "--template",
+    "--cache",
+    "--hostname",
+    "-p",
+    "--preview",
 }
 BODY = {"-f", "--raw-field", "-F", "--field", "--input"}
 
@@ -59,9 +74,14 @@ REVIEW_WRITES = [
 
 # The GraphQL mutations a review needs. Every top-level field of a mutation must be one.
 REVIEW_MUTATIONS = {
-    "addPullRequestReview", "submitPullRequestReview", "updatePullRequestReview",
-    "addPullRequestReviewComment", "addPullRequestReviewThread",
-    "addPullRequestReviewThreadReply", "resolveReviewThread", "unresolveReviewThread",
+    "addPullRequestReview",
+    "submitPullRequestReview",
+    "updatePullRequestReview",
+    "addPullRequestReviewComment",
+    "addPullRequestReviewThread",
+    "addPullRequestReviewThreadReply",
+    "resolveReviewThread",
+    "unresolveReviewThread",
     "addComment",
 }
 
@@ -166,7 +186,7 @@ def mutation_fields(text):
                     continue
                 name = NAME.match(text, index)
                 if name:
-                    rest = text[name.end():].lstrip()
+                    rest = text[name.end() :].lstrip()
                     if not rest.startswith(":"):
                         names.add(name.group())
                     index = name.end()
@@ -223,12 +243,17 @@ def main():
             sys.stderr.write(DELETE_MESSAGE.format(tool=tool, endpoint=endpoint))
             return 2
         if verdict == "ask":
-            print(json.dumps({"hookSpecificOutput": {
-                "hookEventName": "PreToolUse",
-                "permissionDecision": "ask",
-                "permissionDecisionReason":
-                    f"gh api {method} {endpoint} writes outside the review and comment endpoints.",
-            }}))
+            print(
+                json.dumps(
+                    {
+                        "hookSpecificOutput": {
+                            "hookEventName": "PreToolUse",
+                            "permissionDecision": "ask",
+                            "permissionDecisionReason": f"gh api {method} {endpoint} writes outside the review and comment endpoints.",
+                        }
+                    }
+                )
+            )
             return 0
     return 0
 

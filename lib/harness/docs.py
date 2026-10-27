@@ -72,6 +72,7 @@ SPAWNING_SKILLS = ("build-part", "build-reviewed")
 TABLES = ("Generic tools", "Julia and its packages", "Optional")
 TABLE_HEADER = "| tool | minimum | used for |"
 
+
 def stem(path):
     """The file name without `.md`: the name of an agent, a rule or a command."""
     return path.rsplit("/", 1)[-1].removesuffix(".md")
@@ -266,8 +267,13 @@ def call_cases(calls, sources, meta, lines, check):
     for number, call in enumerate(calls, 1):
         problems = call_problems(call, sources, meta, lines)
         name = f"{call.get('caller')} -> {call.get('callee')}" if isinstance(call, dict) else repr(call)
-        check(not problems, f"calls.toml entry {number}, {name}" + (": " + "; ".join(problems) if problems else ""))
-    keys = [tuple(repr(c.get(k)) for k in ("caller", "callee", "effort")) for c in calls if isinstance(c, dict)]
+        check(
+            not problems,
+            f"calls.toml entry {number}, {name}" + (": " + "; ".join(problems) if problems else ""),
+        )
+    keys = [
+        tuple(repr(c.get(k)) for k in ("caller", "callee", "effort")) for c in calls if isinstance(c, dict)
+    ]
     for key in sorted({k for k in keys if keys.count(k) > 1}):
         check(False, f"calls.toml has {key[0]} -> {key[1]} at effort {key[2]} more than once")
     callers = {c.get("caller") for c in calls if isinstance(c, dict) and isinstance(c.get("caller"), str)}
@@ -311,10 +317,17 @@ def walkthrough_problems(data, sources, lines, calls=()):
         if "effort" in b:
             if kind != "agent":
                 problems.append(f"box {name!r} shows an effort, which only the box of an agent can")
-            elif not any(isinstance(c, dict) and c.get("callee") == shows and c.get("effort") == b["effort"]
-                         and c.get("caller") in callers for c in calls):
-                problems.append(f"box {name!r} shows the effort {b['effort']!r}, which no entry of calls.toml gives to "
-                                f"{shows!r} from an agent or skill of the walk-through")
+            elif not any(
+                isinstance(c, dict)
+                and c.get("callee") == shows
+                and c.get("effort") == b["effort"]
+                and c.get("caller") in callers
+                for c in calls
+            ):
+                problems.append(
+                    f"box {name!r} shows the effort {b['effort']!r}, which no entry of calls.toml gives to "
+                    f"{shows!r} from an agent or skill of the walk-through"
+                )
         if "cell" not in b and b.get("in") not in group_ids:
             problems.append(f"box {name!r} has neither a cell nor a group")
     edges = set()
@@ -385,7 +398,10 @@ def selftest():
         ("git", "gitleaks", False),
     ]:
         check(word(name, text) == expected, f"{name!r} is a word of {text!r}: {expected}")
-    check(headings("# T\n## `a`\n```\n## `b`\n```\n### `c`\n", 2) == ["`a`"], "headings skip code fences and other levels")
+    check(
+        headings("# T\n## `a`\n```\n## `b`\n```\n### `c`\n", 2) == ["`a`"],
+        "headings skip code fences and other levels",
+    )
     check(named("`a` and `b`") == {"a", "b"}, "named reads each name in backticks")
 
     for page, names in sorted(components(tracked()).items()):
@@ -402,42 +418,96 @@ def selftest():
 
     # The code spans of research-tree.md that have the shape of a component's name: on fixed inputs,
     # then on the page of this checkout, each is a component of some page.
-    check(code_spans("`a` and ``b`c``\n```\n`d`\n```\n` e `\n") == ["a", "b`c", "e"],
-          "code_spans reads each code span outside code fences")
+    check(
+        code_spans("`a` and ``b`c``\n```\n`d`\n```\n` e `\n") == ["a", "b`c", "e"],
+        "code_spans reads each code span outside code fences",
+    )
     sample = "`julia-builder`, `wiki-lint.jl`, `julia-bilder`, `gate.sh`, `harness install`, `repository_roots`, `main`"
     found = shaped_spans(sample, {"julia-builder", "wiki-lint.jl"})
-    check(found == ["julia-bilder", "gate.sh"], f"shaped_spans names a script and a hyphenated name that are no component: {found}")
+    check(
+        found == ["julia-bilder", "gate.sh"],
+        f"shaped_spans names a script and a hyphenated name that are no component: {found}",
+    )
     names = set().union(*components(tracked()).values())
-    found = shaped_spans(RESEARCH_TREE.read_text(), names) if RESEARCH_TREE.is_file() else ["the page does not exist"]
-    check(not found, "docs/src/research-tree.md: every code span of a component's shape names a component"
-          + (f": not {', '.join(found)}" if found else ""))
+    found = (
+        shaped_spans(RESEARCH_TREE.read_text(), names)
+        if RESEARCH_TREE.is_file()
+        else ["the page does not exist"]
+    )
+    check(
+        not found,
+        "docs/src/research-tree.md: every code span of a component's shape names a component"
+        + (f": not {', '.join(found)}" if found else ""),
+    )
 
     # The rules of the dependencies page on fixed inputs, then the page of this checkout.
-    def page(generic="| A | 1 | a |\n| B | 2 | b |\n", heads="### A\n### B and C\n### D, E\n", header=TABLE_HEADER,
-             order=TABLES):
-        bodies = {"Generic tools": generic, "Julia and its packages": "| C | 3 | c |\n", "Optional": "| D | 4 | d |\n| E | 5 | e |\n"}
+    def page(
+        generic="| A | 1 | a |\n| B | 2 | b |\n",
+        heads="### A\n### B and C\n### D, E\n",
+        header=TABLE_HEADER,
+        order=TABLES,
+    ):
+        bodies = {
+            "Generic tools": generic,
+            "Julia and its packages": "| C | 3 | c |\n",
+            "Optional": "| D | 4 | d |\n| E | 5 | e |\n",
+        }
         tables = "".join(f"## {t}\n\n{header}\n|:--|:--|:--|\n{bodies[t]}\n" for t in order)
         return f"# Dependencies\n\n{tables}## What each tool does\n\n```\n### Z\n```\n{heads}"
+
     check(dependency_problems(page()) == [], "a true dependencies page has no problem")
     for label, text, phrase in [
-        ("a row removed, its heading kept", page(generic="| A | 1 | a |\n"), "'B' is named by a heading and is no row"),
-        ("a heading removed, its row kept", page(heads="### A\n### B and C\n### E\n"), "'D' is a row of the tables and no heading"),
-        ("a row twice", page(generic="| A | 1 | a |\n| B | 2 | b |\n| A | 1 | a |\n"), "'A' is a row of the tables more than once"),
-        ("a tool in two headings", page(heads="### A\n### B and C\n### D, E\n### A\n"), "'A' is named by more than one heading"),
+        (
+            "a row removed, its heading kept",
+            page(generic="| A | 1 | a |\n"),
+            "'B' is named by a heading and is no row",
+        ),
+        (
+            "a heading removed, its row kept",
+            page(heads="### A\n### B and C\n### E\n"),
+            "'D' is a row of the tables and no heading",
+        ),
+        (
+            "a row twice",
+            page(generic="| A | 1 | a |\n| B | 2 | b |\n| A | 1 | a |\n"),
+            "'A' is a row of the tables more than once",
+        ),
+        (
+            "a tool in two headings",
+            page(heads="### A\n### B and C\n### D, E\n### A\n"),
+            "'A' is named by more than one heading",
+        ),
         ("the tables out of order", page(order=(TABLES[1], TABLES[0], TABLES[2])), "the tables are under"),
         ("another header", page(header="| tool | minimum | needed by |"), "has the header"),
     ]:
         found = dependency_problems(text)
-        check(len(found) == (3 if "header" in phrase else 1) and phrase in found[0], f"a dependencies page with {label} gives {phrase!r}: {found}")
-    problems = dependency_problems(DEPENDENCIES.read_text()) if DEPENDENCIES.is_file() else ["the page does not exist"]
-    check(not problems, "docs/src/dependencies.md: " + ("; ".join(problems) if problems else "its tables and their headings agree"))
+        check(
+            len(found) == (3 if "header" in phrase else 1) and phrase in found[0],
+            f"a dependencies page with {label} gives {phrase!r}: {found}",
+        )
+    problems = (
+        dependency_problems(DEPENDENCIES.read_text())
+        if DEPENDENCIES.is_file()
+        else ["the page does not exist"]
+    )
+    check(
+        not problems,
+        "docs/src/dependencies.md: "
+        + ("; ".join(problems) if problems else "its tables and their headings agree"),
+    )
 
     # The rules of calls.toml on fixed inputs: each wrong entry gives one problem.
     sources = call_sources(["agents/a.md", "agents/b.md", "skills/s/SKILL.md", "skills/s/edges.md"])
     meta = {"a": {"tools": ["read"]}, "b": {"tools": ["agent"], "effort": "medium"}, "s": {}}
-    files = {"agents/b.md": ["---", "Spawn `a` here.", "Spawn the s skill."], "skills/s/SKILL.md": ["Spawn `b`."]}
+    files = {
+        "agents/b.md": ["---", "Spawn `a` here.", "Spawn the s skill."],
+        "skills/s/SKILL.md": ["Spawn `b`."],
+    }
     good = {"caller": "b", "callee": "a", "at": "agents/b.md:2"}
-    check(sources == {"a": "agents/a.md", "b": "agents/b.md", "s": "skills/s/SKILL.md"}, "call_sources reads agents/*.md and skills/*/SKILL.md only")
+    check(
+        sources == {"a": "agents/a.md", "b": "agents/b.md", "s": "skills/s/SKILL.md"},
+        "call_sources reads agents/*.md and skills/*/SKILL.md only",
+    )
     check(call_problems(good, sources, meta, files.get) == [], "a true entry of calls.toml has no problem")
     for change, phrase in [
         ({"callee": "nonexistent"}, "callee 'nonexistent' is no agent"),
@@ -451,19 +521,45 @@ def selftest():
         ({"label": 1}, "label is not a string"),
     ]:
         found = call_problems(good | change, sources, meta, files.get)
-        check(len(found) == 1 and phrase in found[0], f"calls.toml entry with {change} gives {phrase!r}: {found}")
-    check(call_problems({"caller": "s", "callee": "b", "at": "skills/s/SKILL.md:1", "effort": "medium"}, sources, meta, files.get)
-          == ["effort 'medium' is the callee's own"], "an effort that is the callee's own is a problem")
-    check(call_problems({"caller": "b", "callee": "a"}, sources, meta, files.get) == ["has no 'at'"], "an entry without 'at' is a problem")
-    check(spawners(meta) == ["b", *SPAWNING_SKILLS], "spawners: the sources with the tool agent, and SPAWNING_SKILLS")
+        check(
+            len(found) == 1 and phrase in found[0],
+            f"calls.toml entry with {change} gives {phrase!r}: {found}",
+        )
+    check(
+        call_problems(
+            {"caller": "s", "callee": "b", "at": "skills/s/SKILL.md:1", "effort": "medium"},
+            sources,
+            meta,
+            files.get,
+        )
+        == ["effort 'medium' is the callee's own"],
+        "an effort that is the callee's own is a problem",
+    )
+    check(
+        call_problems({"caller": "b", "callee": "a"}, sources, meta, files.get) == ["has no 'at'"],
+        "an entry without 'at' is a problem",
+    )
+    check(
+        spawners(meta) == ["b", *SPAWNING_SKILLS],
+        "spawners: the sources with the tool agent, and SPAWNING_SKILLS",
+    )
     found = []
-    call_cases([good, good, {"caller": "s", "callee": "b", "at": "skills/s/SKILL.md:1"}], sources, meta, files.get,
-               lambda ok, label: found.append((ok, label)))
-    check([label for ok, label in found if not ok] == [
-        "calls.toml has 'b' -> 'a' at effort None more than once",
-        "calls.toml has an entry with the caller 'build-part', which spawns",
-        "calls.toml has an entry with the caller 'build-reviewed', which spawns",
-    ], f"call_cases names a duplicate and each spawner without an entry: {found}")
+    call_cases(
+        [good, good, {"caller": "s", "callee": "b", "at": "skills/s/SKILL.md:1"}],
+        sources,
+        meta,
+        files.get,
+        lambda ok, label: found.append((ok, label)),
+    )
+    check(
+        [label for ok, label in found if not ok]
+        == [
+            "calls.toml has 'b' -> 'a' at effort None more than once",
+            "calls.toml has an entry with the caller 'build-part', which spawns",
+            "calls.toml has an entry with the caller 'build-reviewed', which spawns",
+        ],
+        f"call_cases names a duplicate and each spawner without an entry: {found}",
+    )
 
     # calls.toml of this checkout; a source that parse_file refuses is one wrong case, not the end of
     # `harness test`.
@@ -472,38 +568,77 @@ def selftest():
     from unittest import mock
 
     found = []
-    with mock.patch(f"{__name__}.parse_file", side_effect=HarnessError("x/SKILL.md: the model 'bogus' is not a tier")):
+    with mock.patch(
+        f"{__name__}.parse_file", side_effect=HarnessError("x/SKILL.md: the model 'bogus' is not a tier")
+    ):
         try:
             checkout_call_cases(paths, lambda ok, label: found.append((ok, label)))
             raised = None
         except Exception as e:
             raised = f"{type(e).__name__}: {e}"
-    check(raised is None and [ok for ok, _ in found if not ok] == [False]
-          and "'bogus' is not a tier" in next(label for ok, label in found if not ok),
-          f"a source of calls.toml that parse_file refuses is one wrong case: raised {raised}, {found}")
+    check(
+        raised is None
+        and [ok for ok, _ in found if not ok] == [False]
+        and "'bogus' is not a tier" in next(label for ok, label in found if not ok),
+        f"a source of calls.toml that parse_file refuses is one wrong case: raised {raised}, {found}",
+    )
 
     # The rules of a walk-through on fixed inputs: each wrong entry gives one problem.
     files = {"skills/s/SKILL.md": ["---", "Spawn `a`.", ""], "agents/a.md": ["---"]}
     good = {
-        "title": "T", "subtitle": "S", "steps": ["you -> s", "s -> g"],
-        "box": [{"id": "you", "cell": [0, 0], "kind": "you", "name": "You"},
-                {"id": "s", "cell": [1, 0], "kind": "skill", "shows": "s"},
-                {"id": "a", "in": "g", "kind": "agent", "shows": "a"}],
+        "title": "T",
+        "subtitle": "S",
+        "steps": ["you -> s", "s -> g"],
+        "box": [
+            {"id": "you", "cell": [0, 0], "kind": "you", "name": "You"},
+            {"id": "s", "cell": [1, 0], "kind": "skill", "shows": "s"},
+            {"id": "a", "in": "g", "kind": "agent", "shows": "a"},
+        ],
         "group": [{"id": "g", "cell": [2, 0], "name": "G"}],
-        "edge": [{"from": "you", "to": "s", "route": ["right", "left"], "at": "skills/s/SKILL.md:2"},
-                 {"from": "s", "to": "g", "route": ["right", "left"], "at": "skills/s/SKILL.md:2", "label": "l"}],
+        "edge": [
+            {"from": "you", "to": "s", "route": ["right", "left"], "at": "skills/s/SKILL.md:2"},
+            {"from": "s", "to": "g", "route": ["right", "left"], "at": "skills/s/SKILL.md:2", "label": "l"},
+        ],
     }
     sources = call_sources(["agents/a.md", "skills/s/SKILL.md"])
     check(walkthrough_problems(good, sources, files.get) == [], "a true walk-through has no problem")
     for label, change, phrase in [
-        ("an agent renamed", ("box", 2, {"shows": "nonexistent"}), "box 'a' shows 'nonexistent', which is no agent of agents/"),
-        ("a skill renamed", ("box", 1, {"shows": "nonexistent"}), "box 's' shows 'nonexistent', which is no skill of skills/"),
-        ("a skill as an agent", ("box", 1, {"kind": "agent"}), "box 's' shows 's', which is no agent of agents/"),
+        (
+            "an agent renamed",
+            ("box", 2, {"shows": "nonexistent"}),
+            "box 'a' shows 'nonexistent', which is no agent of agents/",
+        ),
+        (
+            "a skill renamed",
+            ("box", 1, {"shows": "nonexistent"}),
+            "box 's' shows 'nonexistent', which is no skill of skills/",
+        ),
+        (
+            "a skill as an agent",
+            ("box", 1, {"kind": "agent"}),
+            "box 's' shows 's', which is no agent of agents/",
+        ),
         ("an unknown kind", ("box", 0, {"kind": "person"}), "box 'you' has the kind 'person'"),
-        ("a cited line past the end", ("edge", 0, {"at": "skills/s/SKILL.md:4"}), "at 'skills/s/SKILL.md:4' is past the end of the file"),
-        ("a cited blank line", ("edge", 0, {"at": "skills/s/SKILL.md:3"}), "at 'skills/s/SKILL.md:3' is a blank line"),
-        ("a cited file that does not exist", ("edge", 0, {"at": "skills/t/SKILL.md:1"}), "at 'skills/t/SKILL.md:1' names no file of the repository"),
-        ("a citation with no line", ("edge", 0, {"at": "skills/s/SKILL.md"}), "at 'skills/s/SKILL.md' is no file:line"),
+        (
+            "a cited line past the end",
+            ("edge", 0, {"at": "skills/s/SKILL.md:4"}),
+            "at 'skills/s/SKILL.md:4' is past the end of the file",
+        ),
+        (
+            "a cited blank line",
+            ("edge", 0, {"at": "skills/s/SKILL.md:3"}),
+            "at 'skills/s/SKILL.md:3' is a blank line",
+        ),
+        (
+            "a cited file that does not exist",
+            ("edge", 0, {"at": "skills/t/SKILL.md:1"}),
+            "at 'skills/t/SKILL.md:1' names no file of the repository",
+        ),
+        (
+            "a citation with no line",
+            ("edge", 0, {"at": "skills/s/SKILL.md"}),
+            "at 'skills/s/SKILL.md' is no file:line",
+        ),
         ("an edge to no box", ("edge", 1, {"to": "z"}), "the edge s -> z names no box 'z'"),
         ("a box with no cell", ("box", 1, {"cell": None}), "box 's' has neither a cell nor a group"),
     ]:
@@ -513,32 +648,51 @@ def selftest():
         found = walkthrough_problems(data, sources, files.get)
         if label == "an edge to no box":
             found = [p for p in found if "names no edge" not in p]
-        check(len(found) == 1 and phrase in found[0], f"a walk-through with {label} gives {phrase!r}: {found}")
+        check(
+            len(found) == 1 and phrase in found[0], f"a walk-through with {label} gives {phrase!r}: {found}"
+        )
     found = walkthrough_problems({**good, "steps": ["you -> s", "a -> you"]}, sources, files.get)
     check(found == ["the step 'a -> you' names no edge"], f"a step that names no edge is a problem: {found}")
     found = walkthrough_problems({k: v for k, v in good.items() if k != "title"}, sources, files.get)
     check(found == ["has no 'title'"], f"a walk-through with no title is a problem: {found}")
     # A box that shows the effort of its spawn: an entry of calls.toml gives the agent that effort.
     spawns = [{"caller": "s", "callee": "a", "at": "skills/s/SKILL.md:2", "effort": "high"}]
+
     def with_effort(effort, box=2):
         data = {**good, "box": [dict(b) for b in good["box"]]}
         data["box"][box]["effort"] = effort
         return walkthrough_problems(data, sources, files.get, spawns)
-    check(with_effort("high") == [], f"a box with the effort of a spawn in calls.toml has no problem: {with_effort('high')}")
-    check(with_effort("low") == ["box 'a' shows the effort 'low', which no entry of calls.toml gives to 'a' "
-                                 "from an agent or skill of the walk-through"],
-          f"a box with an effort that no spawn has is a problem: {with_effort('low')}")
-    check(with_effort("high", 1) == ["box 's' shows an effort, which only the box of an agent can"],
-          f"a skill's box with an effort is a problem: {with_effort('high', 1)}")
+
+    check(
+        with_effort("high") == [],
+        f"a box with the effort of a spawn in calls.toml has no problem: {with_effort('high')}",
+    )
+    check(
+        with_effort("low")
+        == [
+            "box 'a' shows the effort 'low', which no entry of calls.toml gives to 'a' "
+            "from an agent or skill of the walk-through"
+        ],
+        f"a box with an effort that no spawn has is a problem: {with_effort('low')}",
+    )
+    check(
+        with_effort("high", 1) == ["box 's' shows an effort, which only the box of an agent can"],
+        f"a skill's box with an effort is a problem: {with_effort('high', 1)}",
+    )
     # The spawn's caller is the agent or skill of a box of the walk-through: a spawn at that effort
     # by a caller outside it, here `b`, does not pass.
     data = {**good, "box": [dict(b) for b in good["box"]]}
     data["box"][2]["effort"] = "high"
     outside = [{"caller": "b", "callee": "a", "at": "agents/b.md:2", "effort": "high"}]
     found = walkthrough_problems(data, sources, files.get, outside)
-    check(found == ["box 'a' shows the effort 'high', which no entry of calls.toml gives to 'a' "
-                    "from an agent or skill of the walk-through"],
-          f"a box whose effort only a caller outside the walk-through gives is a problem: {found}")
+    check(
+        found
+        == [
+            "box 'a' shows the effort 'high', which no entry of calls.toml gives to 'a' "
+            "from an agent or skill of the walk-through"
+        ],
+        f"a box whose effort only a caller outside the walk-through gives is a problem: {found}",
+    )
     twice = {**good, "edge": [*good["edge"], dict(good["edge"][0])]}
     found = walkthrough_problems(twice, sources, files.get)
     check(found == ["two edges have the name 'you -> s'"], f"two edges of one name are a problem: {found}")
@@ -554,7 +708,10 @@ def selftest():
         for name in ("walkthrough-new.toml", "calls.toml", "walkthrough-new.txt"):
             (figures / name).touch()
         found = walkthroughs(pathlib.Path(tmp))
-        check(found == ["docs/figures/walkthrough-new.toml"], f"walkthroughs reads an untracked data file on disk: {found}")
+        check(
+            found == ["docs/figures/walkthrough-new.toml"],
+            f"walkthroughs reads an untracked data file on disk: {found}",
+        )
 
     # The walk-throughs of this checkout, tracked or not; the files that they cite are tracked.
     walks = walkthroughs()
@@ -562,6 +719,11 @@ def selftest():
     known = set(paths)
     lines = lambda path: (REPO / path).read_text().splitlines() if path in known else None
     for path in walks:
-        problems = walkthrough_problems(tomllib.loads((REPO / path).read_text()), call_sources(paths), lines, calls)
-        check(not problems, f"{path}" + (": " + "; ".join(problems) if problems else ": its boxes and cited lines exist"))
+        problems = walkthrough_problems(
+            tomllib.loads((REPO / path).read_text()), call_sources(paths), lines, calls
+        )
+        check(
+            not problems,
+            f"{path}" + (": " + "; ".join(problems) if problems else ": its boxes and cited lines exist"),
+        )
     return total, wrong

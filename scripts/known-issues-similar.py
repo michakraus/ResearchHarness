@@ -19,6 +19,7 @@ the reader's call.
 Exit status 0 on success; 1 when Ollama fails, a model is missing, an embedding has zero norm, or a
 `--pair` needle matches no entry or more than one. Nothing is written on a failure.
 """
+
 import argparse
 import json
 import math
@@ -120,7 +121,7 @@ def split(text, whole=False):
         span = range(k, span_end)
         if any(ID_HEADING.match(lines[j]) and not fen[j] for j in span):
             continue
-        if bullets(list(enumerate(lines[k + 1:span_end], k + 1)), fen[k + 1:span_end]):
+        if bullets(list(enumerate(lines[k + 1 : span_end], k + 1)), fen[k + 1 : span_end]):
             continue
         entries.append((k, "\n".join(lines[k:span_end]).rstrip()))
         skip_until = span_end
@@ -149,7 +150,7 @@ def collect(root):
 def embed(model, texts):
     vecs = []
     for k in range(0, len(texts), 16):
-        body = json.dumps({"model": model, "input": texts[k:k + 16], "truncate": False}).encode()
+        body = json.dumps({"model": model, "input": texts[k : k + 16], "truncate": False}).encode()
         req = urllib.request.Request(OLLAMA, body, {"Content-Type": "application/json"})
         with urllib.request.urlopen(req, timeout=600) as r:
             vecs += json.load(r)["embeddings"]
@@ -181,17 +182,23 @@ def write(path, model, threshold, entries, pairs, labelled):
     for e in entries:
         counts[e[0]] = counts.get(e[0], 0) + 1
     kept = [p for p in pairs if p[0] >= threshold]
-    out = [f"# Duplicate shortlist — `{model}`, threshold {threshold:.4f}", "",
-           "Written by `Harness/scripts/known-issues-similar.py`. A pair is a candidate,",
-           "not a finding: the builder that moves the entry decides whether it is one issue.", "",
-           "## Entries per repository", "", "| repository | entries |", "|:--|--:|"]
+    out = [
+        f"# Duplicate shortlist — `{model}`, threshold {threshold:.4f}",
+        "",
+        "Written by `Harness/scripts/known-issues-similar.py`. A pair is a candidate,",
+        "not a finding: the builder that moves the entry decides whether it is one issue.",
+        "",
+        "## Entries per repository",
+        "",
+        "| repository | entries |",
+        "|:--|--:|",
+    ]
     out += [f"| {r} | {n} |" for r, n in sorted(counts.items())]
     out += ["", "## Labelled pairs", "", "| rank | cosine | a | b |", "|--:|--:|:--|:--|"]
     for rank, (c, i, j) in enumerate(pairs, 1):
         if (i, j) in labelled:
             out.append(f"| {rank} | {c:.4f} | {loc(entries[i])} | {loc(entries[j])} |")
-    out += ["", f"## Pairs at or above {threshold:.4f}", "",
-            "| rank | cosine | a | b |", "|--:|--:|:--|:--|"]
+    out += ["", f"## Pairs at or above {threshold:.4f}", "", "| rank | cosine | a | b |", "|--:|--:|:--|:--|"]
     for rank, (c, i, j) in enumerate(kept, 1):
         mark = " (labelled)" if (i, j) in labelled else ""
         out.append(f"| {rank} | {c:.4f} | {loc(entries[i])} | {loc(entries[j])}{mark} |")
@@ -215,8 +222,9 @@ def main():
     ap.add_argument("--threshold", type=float)
     ap.add_argument("--out")
     ap.add_argument("--root", default=RESEARCH)
-    ap.add_argument("--pair", nargs=4, action="append", default=[],
-                    metavar=("REPO", "NEEDLE", "REPO", "NEEDLE"))
+    ap.add_argument(
+        "--pair", nargs=4, action="append", default=[], metavar=("REPO", "NEEDLE", "REPO", "NEEDLE")
+    )
     a = ap.parse_args()
     if (a.threshold is None) != (a.out is None):
         ap.error("--threshold and --out go together")
@@ -243,8 +251,7 @@ def main():
             print(f"labelled rank {r}: {c:.4f}  {loc(entries[i])}  {loc(entries[j])}", file=sys.stderr)
     if best:
         r, (c, i, j) = best
-        print(f"best unlabelled rank {r}: {c:.4f}  {loc(entries[i])}  {loc(entries[j])}",
-              file=sys.stderr)
+        print(f"best unlabelled rank {r}: {c:.4f}  {loc(entries[i])}  {loc(entries[j])}", file=sys.stderr)
     print(f"{len(entries)} entries, {len(pairs)} pairs", file=sys.stderr)
     if a.out:
         write(a.out, a.model, a.threshold, entries, pairs, labelled)

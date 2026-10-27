@@ -163,12 +163,17 @@ def cmd_workflows(args):
         if not (WORKFLOWS / f).is_file():
             raise HarnessError(f"missing template: {WORKFLOWS / f}")
     profile = profile_module.load(args.profile)
-    own_docs = set(profile_module.get(profile, "docs_exceptions")) | set(profile_module.get(profile, "docs_additions"))
+    own_docs = set(profile_module.get(profile, "docs_exceptions")) | set(
+        profile_module.get(profile, "docs_additions")
+    )
     written = removed = skipped = 0
     for repo, kind in repositories(require_project=True):
         print(f"{repo.name:<28} {kind}")
-        plan = [("CI.yml", ".github/workflows/CI.yml"), ("dependabot.yml", ".github/dependabot.yml"),
-                ("codecov.yml", "codecov.yml")]
+        plan = [
+            ("CI.yml", ".github/workflows/CI.yml"),
+            ("dependabot.yml", ".github/dependabot.yml"),
+            ("codecov.yml", "codecov.yml"),
+        ]
         if kind == "package":
             plan.append(("TagBot.yml", ".github/workflows/TagBot.yml"))
         if repo.name in own_docs:
@@ -191,32 +196,46 @@ def cmd_workflows(args):
                     (repo / rel).unlink()
                 print(f"      {'removed' if args.apply else 'would remove'} {rel}")
                 removed += 1
-    print(f"\n{written} file(s) {'written' if args.apply else 'to write'}, {removed} retired file(s) "
-          f"{'removed' if args.apply else 'to remove'}, {skipped} documentation workflow(s) skipped.")
+    print(
+        f"\n{written} file(s) {'written' if args.apply else 'to write'}, {removed} retired file(s) "
+        f"{'removed' if args.apply else 'to remove'}, {skipped} documentation workflow(s) skipped."
+    )
     if not args.apply and written + removed:
         print("Re-run with --apply, then run verify-workflows.jl.")
     return outcome(args, written + removed)
 
 
 def register(sub):
-    changing(sub.add_parser("githooks", help="install the shared git hooks into every package and experiment",
-                            description="Copy githooks/pre-commit, githooks/pre-commit.jl, githooks/pre-push, "
-                                        "githooks/pre-push.jl and scripts/test-layout.jl "
-                                        "into .githooks/ of each git repository below Packages/ and Experiments/, "
-                                        "and set core.hooksPath. Without --apply it prints what would change and "
-                                        "exits 1 when something would; --apply copies the files and sets the path. "
-                                        "A path that cannot be set is printed with its command, and the subcommand "
-                                        "exits with status 2.")
-             ).set_defaults(run=cmd_githooks)
-    changing(sub.add_parser("wiki-lint-hook", help="install the wiki-lint hook into the prose repositories",
-                            description="Copy githooks/pre-commit-wiki as .githooks/pre-commit into each prose "
-                                        "repository of the research tree, and set core.hooksPath. Without --apply "
-                                        "it prints what would change and exits 1 when something would; --apply "
-                                        "copies the file and sets the path.")
-             ).set_defaults(run=cmd_wiki_lint_hook)
-    changing(sub.add_parser("workflows", help="install the canonical GitHub workflows",
-                            description="Copy the canonical files of githooks/workflows/ into each package and "
-                                        "experiment that has a Project.toml, and remove the retired CompatHelper.yml. "
-                                        "Without --apply it prints what would change and exits 1 when something "
-                                        "would; --apply writes and removes the files.")
-             ).set_defaults(run=cmd_workflows)
+    changing(
+        sub.add_parser(
+            "githooks",
+            help="install the shared git hooks into every package and experiment",
+            description="Copy githooks/pre-commit, githooks/pre-commit.jl, githooks/pre-push, "
+            "githooks/pre-push.jl and scripts/test-layout.jl "
+            "into .githooks/ of each git repository below Packages/ and Experiments/, "
+            "and set core.hooksPath. Without --apply it prints what would change and "
+            "exits 1 when something would; --apply copies the files and sets the path. "
+            "A path that cannot be set is printed with its command, and the subcommand "
+            "exits with status 2.",
+        )
+    ).set_defaults(run=cmd_githooks)
+    changing(
+        sub.add_parser(
+            "wiki-lint-hook",
+            help="install the wiki-lint hook into the prose repositories",
+            description="Copy githooks/pre-commit-wiki as .githooks/pre-commit into each prose "
+            "repository of the research tree, and set core.hooksPath. Without --apply "
+            "it prints what would change and exits 1 when something would; --apply "
+            "copies the file and sets the path.",
+        )
+    ).set_defaults(run=cmd_wiki_lint_hook)
+    changing(
+        sub.add_parser(
+            "workflows",
+            help="install the canonical GitHub workflows",
+            description="Copy the canonical files of githooks/workflows/ into each package and "
+            "experiment that has a Project.toml, and remove the retired CompatHelper.yml. "
+            "Without --apply it prints what would change and exits 1 when something "
+            "would; --apply writes and removes the files.",
+        )
+    ).set_defaults(run=cmd_workflows)

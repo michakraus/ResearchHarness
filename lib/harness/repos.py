@@ -114,8 +114,10 @@ def load_table(path):
                     raise HarnessError(f"{path}: [{key}] {name!r} is not a URL string")
                 rows.append((key, f"{directory(key)}/{name}", url))
         else:
-            raise HarnessError(f"{path}: {key!r} is neither a fixed repository ({', '.join(FIXED)}) with a URL "
-                               f"nor a group ({', '.join(GROUPS)}) with a table")
+            raise HarnessError(
+                f"{path}: {key!r} is neither a fixed repository ({', '.join(FIXED)}) with a URL "
+                f"nor a group ({', '.join(GROUPS)}) with a table"
+            )
     return rows
 
 
@@ -136,6 +138,7 @@ def same_url(a, b):
     def bare(url):
         url = url.rstrip("/")
         return url[:-4] if url.endswith(".git") else url
+
     return bare(a) == bare(b)
 
 
@@ -189,7 +192,9 @@ def fetch_all(found):
 
     def one(e):
         p = git(e.path, "fetch", "--quiet", "--prune", "origin")
-        return e.name, (p.stderr.strip().splitlines() or [f"exit {p.returncode}"])[-1] if p.returncode else None
+        return e.name, (p.stderr.strip().splitlines() or [f"exit {p.returncode}"])[
+            -1
+        ] if p.returncode else None
 
     with concurrent.futures.ThreadPoolExecutor(WORKERS) as pool:
         return {name: error for name, error in pool.map(one, targets) if error}
@@ -215,7 +220,11 @@ def overlap(path):
 
 
 def default_branch(path):
-    return git(path, "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD").stdout.strip().removeprefix("origin/")
+    return (
+        git(path, "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD")
+        .stdout.strip()
+        .removeprefix("origin/")
+    )
 
 
 def open_prs(url):
@@ -224,14 +233,34 @@ def open_prs(url):
     parsed = urlparse(url if "://" in url else "ssh://" + url.replace(":", "/", 1))
     project = parsed.path.strip("/").removesuffix(".git")
     if parsed.hostname == "github.com":
-        command = ["gh", "pr", "list", "-R", f"github.com/{project}", "--state", "open",
-                   "--json", "number", "--jq", ".[].number"]
+        command = [
+            "gh",
+            "pr",
+            "list",
+            "-R",
+            f"github.com/{project}",
+            "--state",
+            "open",
+            "--json",
+            "number",
+            "--jq",
+            ".[].number",
+        ]
     else:
-        command = ["glab", "mr", "list", "-R", f"https://{parsed.hostname}/{project}", "-F", "json",
-                   "--jq", ".[].iid"]
+        command = [
+            "glab",
+            "mr",
+            "list",
+            "-R",
+            f"https://{parsed.hostname}/{project}",
+            "-F",
+            "json",
+            "--jq",
+            ".[].iid",
+        ]
     try:
         p = subprocess.run(command, capture_output=True, text=True, timeout=60)
-    except (OSError, subprocess.TimeoutExpired):
+    except OSError, subprocess.TimeoutExpired:
         return None
     return p.stdout.split() if p.returncode == 0 else None
 
@@ -253,7 +282,9 @@ def cmd_clone(args):
         else:
             todo.append(e)
     if blocked:
-        raise HarnessError(f"{len(blocked)} directories are in the way; move them, then run again. Nothing is cloned")
+        raise HarnessError(
+            f"{len(blocked)} directories are in the way; move them, then run again. Nothing is cloned"
+        )
     failed = 0
     for e in todo:
         if not args.apply:
@@ -270,12 +301,16 @@ def cmd_clone(args):
                 print("      " + line)
             failed += 1
     done = len(todo) - failed
-    print(f"\n{len(found)} repositories in the table, {len(found) - len(todo)} cloned already, "
-          f"{done if args.apply else len(todo)} {'cloned' if args.apply else 'to clone'}"
-          + (f", {failed} failed." if failed else "."))
+    print(
+        f"\n{len(found)} repositories in the table, {len(found) - len(todo)} cloned already, "
+        f"{done if args.apply else len(todo)} {'cloned' if args.apply else 'to clone'}"
+        + (f", {failed} failed." if failed else ".")
+    )
     if args.apply and done:
-        print("Next: a new clone has no git hooks and no workspace trust. Run\n"
-              "    harness githooks --apply\n    harness wiki-lint-hook --apply\n    harness trust --apply")
+        print(
+            "Next: a new clone has no git hooks and no workspace trust. Run\n"
+            "    harness githooks --apply\n    harness wiki-lint-hook --apply\n    harness trust --apply"
+        )
     if failed:
         raise HarnessError(f"{failed} clones failed")
     return outcome(args, len(todo))
@@ -312,8 +347,10 @@ def cmd_status(args):
             numbers = ""
         else:
             numbers = "?" if prs.get(e.name) is None else " ".join(f"#{n}" for n in prs[e.name]) or "-"
-        line = (f"{e.name:<{w}} {branch or '(detached)':<16} {ahead if upstream else '':>5} "
-                f"{behind if upstream else '':>6} {changed or '':>7}  {numbers}")
+        line = (
+            f"{e.name:<{w}} {branch or '(detached)':<16} {ahead if upstream else '':>5} "
+            f"{behind if upstream else '':>6} {changed or '':>7}  {numbers}"
+        )
         print(line.rstrip() + ("   " + "; ".join(notes) if notes else ""))
     return 0
 
@@ -350,11 +387,15 @@ def pull(args, found):
             if p.returncode == 0:
                 print(f"{e.name:<{w}} fast-forwarded {behind} commit(s) from {upstream}")
             else:
-                print(f"{e.name:<{w}} FAILED (rc={p.returncode}): {(p.stderr.strip().splitlines() or [''])[-1]}")
+                print(
+                    f"{e.name:<{w}} FAILED (rc={p.returncode}): {(p.stderr.strip().splitlines() or [''])[-1]}"
+                )
                 failed += 1
     done = planned - failed
-    print(f"\npull: {done if args.apply else planned} {'fast-forwarded' if args.apply else 'to fast-forward'}, "
-          f"{uptodate} up to date, {skipped} skipped" + (f", {failed} failed." if failed else "."))
+    print(
+        f"\npull: {done if args.apply else planned} {'fast-forwarded' if args.apply else 'to fast-forward'}, "
+        f"{uptodate} up to date, {skipped} skipped" + (f", {failed} failed." if failed else ".")
+    )
     return planned, failed
 
 
@@ -385,13 +426,20 @@ def push(args, found):
         default = default_branch(e.path)
         if default and branch != default and not args.include_topic_branches:
             print(f"{e.name:<{w}} SKIP   on {branch}, not the default branch {default}")
-            print(f"{'':<{w + 1}}{ahead} commit(s) would land on a topic branch; pass --include-topic-branches to push anyway")
+            print(
+                f"{'':<{w + 1}}{ahead} commit(s) would land on a topic branch; pass --include-topic-branches to push anyway"
+            )
             skipped += 1
             continue
-        src = " ".join(git(e.path, "diff", "--name-only", f"{upstream}..HEAD", "--", "*.jl").stdout.split()[:3])
+        src = " ".join(
+            git(e.path, "diff", "--name-only", f"{upstream}..HEAD", "--", "*.jl").stdout.split()[:3]
+        )
         planned += 1
         if not args.apply:
-            print(f"{e.name:<{w}} would push {ahead} commit(s) to {upstream}" + (f"   .jl touched: {src}" if src else ""))
+            print(
+                f"{e.name:<{w}} would push {ahead} commit(s) to {upstream}"
+                + (f"   .jl touched: {src}" if src else "")
+            )
             continue
         if src and args.no_verify:
             print(f"{e.name:<{w}} NOTE   .jl files in this push, and the hooks are skipped: {src}")
@@ -407,8 +455,10 @@ def push(args, found):
             for line in (p.stdout + p.stderr).splitlines()[-12:]:
                 print("      " + line)
             failed += 1
-    print(f"\npush: {pushed if args.apply else planned} {'pushed' if args.apply else 'to push'}, "
-          f"{uptodate} up to date, {skipped} skipped" + (f", {failed} failed." if failed else "."))
+    print(
+        f"\npush: {pushed if args.apply else planned} {'pushed' if args.apply else 'to push'}, "
+        f"{uptodate} up to date, {skipped} skipped" + (f", {failed} failed." if failed else ".")
+    )
     return planned, failed
 
 
@@ -435,52 +485,99 @@ def cmd_sync(args):
 
 def register(sub):
     choices = ", ".join(GROUPS + FIXED)
-    p = changing(sub.add_parser("clone", help="clone the repositories of the research tree from repositories.toml",
-                                description="Clone each repository of repositories.toml (beside the profile) that "
-                                            "has no directory yet. Without --apply it lists the clones and exits 1 "
-                                            "when there is one; --apply clones. A directory in the way stops the "
-                                            "run before the first clone."))
-    p.add_argument("selection", nargs="*", metavar="SELECTION", help=f"a group or fixed repository: {choices}; "
-                                                                      "none means all")
+    p = changing(
+        sub.add_parser(
+            "clone",
+            help="clone the repositories of the research tree from repositories.toml",
+            description="Clone each repository of repositories.toml (beside the profile) that "
+            "has no directory yet. Without --apply it lists the clones and exits 1 "
+            "when there is one; --apply clones. A directory in the way stops the "
+            "run before the first clone.",
+        )
+    )
+    p.add_argument(
+        "selection",
+        nargs="*",
+        metavar="SELECTION",
+        help=f"a group or fixed repository: {choices}; none means all",
+    )
     p.set_defaults(run=cmd_clone)
 
-    repos = sub.add_parser("repos", help="report, pull, push or sync the repositories of the research tree",
-                           description="Work on the git repositories of the research tree as one set: those of "
-                                       "repositories.toml, or each git repository below the group directories.")
+    repos = sub.add_parser(
+        "repos",
+        help="report, pull, push or sync the repositories of the research tree",
+        description="Work on the git repositories of the research tree as one set: those of "
+        "repositories.toml, or each git repository below the group directories.",
+    )
     actions = repos.add_subparsers(dest="action", metavar="<action>", required=True)
 
     def selection(parser, default):
-        parser.add_argument("selection", nargs="*", metavar="SELECTION",
-                            help=f"a group or fixed repository: {choices}; none means {default}")
+        parser.add_argument(
+            "selection",
+            nargs="*",
+            metavar="SELECTION",
+            help=f"a group or fixed repository: {choices}; none means {default}",
+        )
         return parser
 
-    p = selection(actions.add_parser("status", help="branch, ahead, behind, changes and open pull requests",
-                                     description="Fetch every repository, then print its branch, the commits "
-                                                 "ahead of and behind its upstream, its changed tracked files and "
-                                                 "its open pull requests, and name each drift from the table."),
-                  "all")
+    p = selection(
+        actions.add_parser(
+            "status",
+            help="branch, ahead, behind, changes and open pull requests",
+            description="Fetch every repository, then print its branch, the commits "
+            "ahead of and behind its upstream, its changed tracked files and "
+            "its open pull requests, and name each drift from the table.",
+        ),
+        "all",
+    )
     p.add_argument("--no-fetch", action="store_true", help="read the remote-tracking refs of the last fetch")
     p.add_argument("--no-prs", action="store_true", help="ask no host for open pull requests")
     p.set_defaults(run=cmd_status)
 
-    p = selection(changing(actions.add_parser("pull", help="fast-forward every repository behind its upstream",
-                                              description="Fetch, then fast-forward each branch that is behind "
-                                                          "its upstream. Without --apply it lists them and exits 1 "
-                                                          "when there is one; --apply merges --ff-only.")), "all")
+    p = selection(
+        changing(
+            actions.add_parser(
+                "pull",
+                help="fast-forward every repository behind its upstream",
+                description="Fetch, then fast-forward each branch that is behind "
+                "its upstream. Without --apply it lists them and exits 1 "
+                "when there is one; --apply merges --ff-only.",
+            )
+        ),
+        "all",
+    )
     p.set_defaults(run=cmd_pull)
 
-    for name, run, text in (("push", cmd_push, "push every repository ahead of its upstream, one at a time"),
-                            ("sync", cmd_sync, "pull, then push")):
-        p = selection(changing(actions.add_parser(name, help=text,
-                                                  description=f"{text[0].upper()}{text[1:]}. Without --apply it "
-                                                              "lists the plan and exits 1 when there is something "
-                                                              "to do; --apply does it. The pre-push hook can run a "
-                                                              "full suite per repository, so run it in your own "
-                                                              "terminal.")), "packages and experiments")
-        p.add_argument("--no-verify", "--skip-hooks", dest="no_verify", action="store_true",
-                       help="push with --no-verify: no pre-push suite")
-        p.add_argument("--include-topic-branches", action="store_true", help="also push a branch that is not the "
-                                                                             "default branch")
+    for name, run, text in (
+        ("push", cmd_push, "push every repository ahead of its upstream, one at a time"),
+        ("sync", cmd_sync, "pull, then push"),
+    ):
+        p = selection(
+            changing(
+                actions.add_parser(
+                    name,
+                    help=text,
+                    description=f"{text[0].upper()}{text[1:]}. Without --apply it "
+                    "lists the plan and exits 1 when there is something "
+                    "to do; --apply does it. The pre-push hook can run a "
+                    "full suite per repository, so run it in your own "
+                    "terminal.",
+                )
+            ),
+            "packages and experiments",
+        )
+        p.add_argument(
+            "--no-verify",
+            "--skip-hooks",
+            dest="no_verify",
+            action="store_true",
+            help="push with --no-verify: no pre-push suite",
+        )
+        p.add_argument(
+            "--include-topic-branches",
+            action="store_true",
+            help="also push a branch that is not the default branch",
+        )
         p.set_defaults(run=run)
 
 
@@ -516,15 +613,35 @@ def selftest():
         return code, out.getvalue()
 
     def args(**kw):
-        return argparse.Namespace(**({"profile": None, "selection": [], "apply": False, "no_fetch": False,
-                                      "no_prs": True, "no_verify": False, "include_topic_branches": False} | kw))
+        return argparse.Namespace(
+            **(
+                {
+                    "profile": None,
+                    "selection": [],
+                    "apply": False,
+                    "no_fetch": False,
+                    "no_prs": True,
+                    "no_verify": False,
+                    "include_topic_branches": False,
+                }
+                | kw
+            )
+        )
 
     def run(*command, cwd=None):
         subprocess.run(command, cwd=cwd, check=True, capture_output=True)
 
-    with tempfile.TemporaryDirectory() as tmp, \
-            mock.patch.dict(os.environ, GIT | {"RESEARCH_ROOT": f"{tmp}/Research",
-                                               "RESEARCH_HARNESS_REPOSITORIES": f"{tmp}/repositories.toml"}):
+    with (
+        tempfile.TemporaryDirectory() as tmp,
+        mock.patch.dict(
+            os.environ,
+            GIT
+            | {
+                "RESEARCH_ROOT": f"{tmp}/Research",
+                "RESEARCH_HARNESS_REPOSITORIES": f"{tmp}/repositories.toml",
+            },
+        ),
+    ):
         tmp = pathlib.Path(tmp)
         root, table = tmp / "Research", tmp / "repositories.toml"
 
@@ -545,13 +662,18 @@ def selftest():
             run("git", "commit", "-q", "-m", text, cwd=repo)
 
         urls = {name: remote(name) for name in ("knowledge", "alpha", "paper")}
-        body = (f'knowledge = "{urls["knowledge"]}"\n\n[packages]\nAlpha = "{urls["alpha"]}"\n\n'
-                f'[papers]\n"A Title" = "{urls["paper"]}"\n')
+        body = (
+            f'knowledge = "{urls["knowledge"]}"\n\n[packages]\nAlpha = "{urls["alpha"]}"\n\n'
+            f'[papers]\n"A Title" = "{urls["paper"]}"\n'
+        )
         table.write_text(body)
 
         check(len(load_table(table)) == 3, "the table gives one row per repository")
-        for bad, label in (('wiki = "x"\n', "an unknown key"), ('[packages]\n"../up" = "x"\n', "a name with a /"),
-                           ('[packages]\nAlpha = 1\n', "a URL that is not a string")):
+        for bad, label in (
+            ('wiki = "x"\n', "an unknown key"),
+            ('[packages]\n"../up" = "x"\n', "a name with a /"),
+            ("[packages]\nAlpha = 1\n", "a URL that is not a string"),
+        ):
             (tmp / "bad.toml").write_text(bad)
             check(raises(lambda: load_table(tmp / "bad.toml")), f"{label} is refused")
         check(raises(lambda: selectors(["slides"], GROUPS)), "an unknown selection is refused")
@@ -559,17 +681,25 @@ def selftest():
         code, _ = quiet(cmd_clone, args())
         check(code == 1 and not root.exists(), "the clone dry run plans and writes nothing")
         code, _ = quiet(cmd_clone, args(selection=["Papers"], apply=True))
-        check(code == 0 and is_clone(root / "Papers" / "A Title") and not (root / "Packages").exists(),
-              "a selection clones its group only")
+        check(
+            code == 0 and is_clone(root / "Papers" / "A Title") and not (root / "Packages").exists(),
+            "a selection clones its group only",
+        )
         quiet(cmd_clone, args(apply=True))
         code, _ = quiet(cmd_clone, args())
-        check(code == 0 and is_clone(root / "Knowledge") and is_clone(root / "Packages" / "Alpha"),
-              "after --apply the dry run has nothing to do")
+        check(
+            code == 0 and is_clone(root / "Knowledge") and is_clone(root / "Packages" / "Alpha"),
+            "after --apply the dry run has nothing to do",
+        )
 
         (root / "Packages" / "Beta").mkdir()
-        table.write_text(body.replace("\n\n[papers]", f'\nBeta = "{urls["alpha"]}"\nGamma = "{urls["alpha"]}"\n\n[papers]'))
-        check(raises(lambda: cmd_clone(args(apply=True))) and not (root / "Packages" / "Gamma").exists(),
-              "a directory in the way stops the run before the first clone")
+        table.write_text(
+            body.replace("\n\n[papers]", f'\nBeta = "{urls["alpha"]}"\nGamma = "{urls["alpha"]}"\n\n[papers]')
+        )
+        check(
+            raises(lambda: cmd_clone(args(apply=True))) and not (root / "Packages" / "Gamma").exists(),
+            "a directory in the way stops the run before the first clone",
+        )
         (root / "Packages" / "Beta").rmdir()
         table.write_text(body.replace("\n\n[papers]", '\nGone = "/nonexistent"\n\n[papers]'))
 
@@ -579,35 +709,53 @@ def selftest():
         run("git", "init", "-q", str(root / "Packages" / "Stray"))
         code, out = quiet(cmd_status, args())
         lines = {line.split()[0]: line for line in out.splitlines()[1:] if line.strip()}
-        check(code == 0 and lines["Packages/Alpha"].split()[1:4] == ["main", "0", "1"], "status counts a commit behind")
+        check(
+            code == 0 and lines["Packages/Alpha"].split()[1:4] == ["main", "0", "1"],
+            "status counts a commit behind",
+        )
         check(lines["Knowledge"].split()[1:4] == ["main", "1", "0"], "status counts a commit ahead")
-        check("MISSING" in lines["Packages/Gone"] and "not in the table" in lines["Packages/Stray"]
-              and "no origin" in lines["Packages/Stray"], "status names the drift from the table")
+        check(
+            "MISSING" in lines["Packages/Gone"]
+            and "not in the table" in lines["Packages/Stray"]
+            and "no origin" in lines["Packages/Stray"],
+            "status names the drift from the table",
+        )
 
         code, out = quiet(cmd_pull, args())
-        check(code == 1 and "Packages/Alpha" in out and "Knowledge " not in out.split("pull:")[0],
-              "the pull dry run plans the branch behind only")
+        check(
+            code == 1 and "Packages/Alpha" in out and "Knowledge " not in out.split("pull:")[0],
+            "the pull dry run plans the branch behind only",
+        )
         code, _ = quiet(cmd_pull, args(apply=True))
         check(code == 0 and state(root / "Packages" / "Alpha")[3] == 0, "pull --apply fast-forwards")
         commit(tmp / "work" / "alpha", "three")
         run("git", "push", "-q", "origin", "HEAD:main", cwd=tmp / "work" / "alpha")
         (root / "Packages" / "Alpha" / "file").write_text("changed")
         code, out = quiet(cmd_pull, args(selection=["packages"]))
-        check(code == 0 and "change local changes: file" in out, "pull skips incoming commits that change a local change")
+        check(
+            code == 0 and "change local changes: file" in out,
+            "pull skips incoming commits that change a local change",
+        )
         run("git", "checkout", "-q", "--", "file", cwd=root / "Packages" / "Alpha")
         (root / "Packages" / "Alpha" / "readme").write_text("changed")
         code, _ = quiet(cmd_pull, args(selection=["packages"], apply=True))
-        check(code == 0 and state(root / "Packages" / "Alpha")[3] == 0
-              and (root / "Packages" / "Alpha" / "readme").read_text() == "changed",
-              "pull fast-forwards past a local change to another file, and keeps it")
+        check(
+            code == 0
+            and state(root / "Packages" / "Alpha")[3] == 0
+            and (root / "Packages" / "Alpha" / "readme").read_text() == "changed",
+            "pull fast-forwards past a local change to another file, and keeps it",
+        )
         run("git", "checkout", "-q", "--", "readme", cwd=root / "Packages" / "Alpha")
 
         code, out = quiet(cmd_push, args(selection=["knowledge"]))
         check(code == 1 and "would push 1 commit" in out, "the push dry run plans a branch ahead")
         code, _ = quiet(cmd_push, args(selection=["knowledge"], apply=True))
         local = git(root / "Knowledge", "rev-parse", "HEAD").stdout.strip()
-        check(code == 0 and git(root / "Knowledge", "ls-remote", "origin", "refs/heads/main").stdout.startswith(local),
-              "push --apply lands on the remote")
+        check(
+            code == 0
+            and git(root / "Knowledge", "ls-remote", "origin", "refs/heads/main").stdout.startswith(local),
+            "push --apply lands on the remote",
+        )
         alpha = root / "Packages" / "Alpha"
         run("git", "merge", "-q", "--ff-only", "@{u}", cwd=alpha)
         run("git", "switch", "-q", "-c", "topic", cwd=alpha)
@@ -617,22 +765,34 @@ def selftest():
         check(code == 0 and "not the default branch" in out, "push skips a topic branch")
         code, _ = quiet(cmd_push, args(include_topic_branches=True))
         check(code == 1, "--include-topic-branches plans the topic branch")
-        check("Knowledge" not in [e.name for e in entries(args(), [], PUSH_DEFAULT)],
-              "push and sync default to the packages and experiments")
+        check(
+            "Knowledge" not in [e.name for e in entries(args(), [], PUSH_DEFAULT)],
+            "push and sync default to the packages and experiments",
+        )
 
         composed, decomposed = "Poincaré", "Poincaré"
         table.write_text(body + f'\n[projects]\n"{composed}" = "{urls["paper"]}"\n')
         run("git", "init", "-q", str(root / "Projects" / decomposed))
         names = [e.name for e in entries(args(), ["projects"], GROUPS)]
-        check(names == [f"Projects/{composed}"], f"a decomposed directory name is the table's composed one: {names}")
+        check(
+            names == [f"Projects/{composed}"],
+            f"a decomposed directory name is the table's composed one: {names}",
+        )
 
         calls = []
-        with mock.patch.object(subprocess, "run", lambda c, **kw: calls.append(c) or
-                               subprocess.CompletedProcess(c, 0, "3\n7\n", "")):
+        with mock.patch.object(
+            subprocess,
+            "run",
+            lambda c, **kw: calls.append(c) or subprocess.CompletedProcess(c, 0, "3\n7\n", ""),
+        ):
             github = open_prs("https://github.com/Owner/Name.jl.git")
             gitlab = open_prs("git@gitlab.example.org:group/sub/name.git")
-        check(github == ["3", "7"] and calls[0][:5] == ["gh", "pr", "list", "-R", "github.com/Owner/Name.jl"],
-              "a github.com URL asks gh")
-        check(calls[1][:5] == ["glab", "mr", "list", "-R", "https://gitlab.example.org/group/sub/name"],
-              "another host asks glab")
+        check(
+            github == ["3", "7"] and calls[0][:5] == ["gh", "pr", "list", "-R", "github.com/Owner/Name.jl"],
+            "a github.com URL asks gh",
+        )
+        check(
+            calls[1][:5] == ["glab", "mr", "list", "-R", "https://gitlab.example.org/group/sub/name"],
+            "another host asks glab",
+        )
     return len(results), results.count(False)

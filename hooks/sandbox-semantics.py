@@ -77,9 +77,29 @@ SEPARATORS = set(";|&\n")
 # are left out on purpose: `$(git rev-parse HEAD)` and `$(git branch --show-current)` are
 # ordinary idioms that work sandboxed, and refusing them would be a false positive.
 GIT_WRITES = {
-    "add", "commit", "push", "merge", "rebase", "cherry-pick", "revert", "am", "apply",
-    "reset", "stash", "clone", "init", "fetch", "pull", "update-ref", "gc", "prune",
-    "restore", "mv", "rm", "checkout", "switch",
+    "add",
+    "commit",
+    "push",
+    "merge",
+    "rebase",
+    "cherry-pick",
+    "revert",
+    "am",
+    "apply",
+    "reset",
+    "stash",
+    "clone",
+    "init",
+    "fetch",
+    "pull",
+    "update-ref",
+    "gc",
+    "prune",
+    "restore",
+    "mv",
+    "rm",
+    "checkout",
+    "switch",
 }
 
 # `git` global options that consume the token after them.
@@ -89,8 +109,11 @@ TAKES_VALUE = {"-C", "-c", "--git-dir", "--work-tree", "--exec-path", "--namespa
 # An argument after them that is not a flag and reads as a path outside the working
 # directory withdraws the exemption, so the command runs sandboxed and cannot create `.git`.
 PATH_SCREENED = {
-    ("init", None), ("clone", None),
-    ("worktree", "add"), ("worktree", "move"), ("bundle", "create"),
+    ("init", None),
+    ("clone", None),
+    ("worktree", "add"),
+    ("worktree", "move"),
+    ("bundle", "create"),
 }
 DRIVE = re.compile(r"^[A-Za-z]:")
 
@@ -235,22 +258,21 @@ def path_screened(heads):
         sub = git_subcommand(arguments)
         if sub is None:
             continue
-        rest = arguments[arguments.index(sub) + 1:]
+        rest = arguments[arguments.index(sub) + 1 :]
         action = next((token for token in rest if not token.startswith("-")), None)
         if (sub, None) in PATH_SCREENED:
             found = "git " + sub
         elif (sub, action) in PATH_SCREENED:
             found = f"git {sub} {action}"
-            rest = rest[rest.index(action) + 1:]
+            rest = rest[rest.index(action) + 1 :]
         else:
             continue
         if "--bare" in rest or "--mirror" in rest:
-            continue                 # no `.git` directory, so the sandbox lets it write
+            continue  # no `.git` directory, so the sandbox lets it write
         for token in rest:
             if token.startswith("-"):
                 continue
-            if (token[:1] in "/\\~$" or DRIVE.match(token)
-                    or ".." in re.split(r"[/\\]", token)):
+            if token[:1] in "/\\~$" or DRIVE.match(token) or ".." in re.split(r"[/\\]", token):
                 return found, token
     return None
 
@@ -285,7 +307,7 @@ def in_work_tree(heads, cwd):
         sub = git_subcommand(arguments)
         if sub not in ("init", "clone"):
             continue
-        rest = arguments[arguments.index(sub) + 1:]
+        rest = arguments[arguments.index(sub) + 1 :]
         operands = [token for token in rest if not token.startswith("-")]
         target = os.path.expanduser(os.path.expandvars(operands[-1])) if operands else "."
         root = work_tree(os.path.join(cwd, target))
@@ -357,7 +379,7 @@ def parts(command):
 def part_head(tokens):
     """Return the leading program of a part, and its arguments."""
     while tokens and "=" in tokens[0] and not tokens[0].startswith("-"):
-        tokens = tokens[1:]          # a leading VAR=value assignment
+        tokens = tokens[1:]  # a leading VAR=value assignment
     if not tokens:
         return None, []
     return tokens[0].rsplit("/", 1)[-1], tokens[1:]
@@ -378,8 +400,7 @@ def top_level(command, cwd):
         return None
     split, redirected = parsed
     heads = [part_head(tokens) for tokens in split]
-    heads = [(head, arguments) for head, arguments in heads
-             if head and not into_cwd(head, arguments, cwd)]
+    heads = [(head, arguments) for head, arguments in heads if head and not into_cwd(head, arguments, cwd)]
     others = [head for head, _ in heads if head not in EXCLUDED]
     if redirected:
         return heads, "it redirects a file"
