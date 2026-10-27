@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Refuse a recursive `rm` outside the scratch zones, and ask for a `git rm` outside a worktree.
+"""Refuse a recursive `rm` outside the scratch zones; ask for a `git rm` or `git merge` outside a worktree.
 
 A `PreToolUse` hook on the `Bash` matcher. It reads the tool call on stdin, follows the
 working directory through each `cd` in the command, and resolves every operand.
@@ -15,6 +15,11 @@ working directory through each `cd` in the command, and resolves every operand.
   * **`git rm`** — no output when the working directory lies in a worktree and no
     `-f`/`--force` is given; otherwise "ask". Without `-f`, `git rm` refuses a file with local
     changes, so what it removes is recoverable from `HEAD`.
+  * **`git merge`** — no output when the working directory lies in a worktree; there the merge
+    is local, and `git reset --hard ORIG_HEAD` undoes it. Elsewhere, or aimed at another
+    repository, "ask", except for a `--ff-only` or `--no-edit` merge with none of `--no-ff`,
+    `--squash`, `--no-commit` and `-m`: a fast-forward and the commit of a conflict resolution
+    run unasked. `--abort` is left to its `ask` rule. The settings allow `git merge *`.
 
 No `permissions` rule can state this. The matcher expands no `~`, cannot see the working
 directory, and its `*` crosses `..`. So `Bash(rm -rf /Users*)` refuses a worktree's
@@ -36,6 +41,7 @@ import os
 import re
 import shlex
 import sys
+from typing import cast
 
 HOME = os.path.realpath(os.path.expanduser("~"))
 ROOT = os.path.realpath(os.path.join(HOME, "Research"))
@@ -173,8 +179,8 @@ def rm_arguments(words):
     return recursive, operands
 
 
-def git_rm(words):
-    """Return (is `git rm`, points elsewhere, forced) for a `git` invocation."""
+def git_subcommand(words: list[str]) -> tuple[str | None, list[str], bool]:
+    """Return (subcommand, its arguments, points elsewhere) for a `git` invocation."""
     index, elsewhere = 1, False
     while index < len(words):
         word = words[index]
@@ -186,18 +192,40 @@ def git_rm(words):
             index += 1
         else:
             break
-    if index >= len(words) or words[index] != "rm":
-        return False, False, False
-    forced = False
-    for word in words[index + 1 :]:
-        if word == "--":
-            break
-        if word == "--force" or (word.startswith("-") and not word.startswith("--") and "f" in word):
-            forced = True
-    return True, elsewhere, forced
+    if index >= len(words):
+        return None, [], elsewhere
+    return words[index], words[index + 1 :], elsewhere
 
 
-def in_worktree(cwd):
+def options(arguments: list[str]) -> list[str]:
+    """Return the arguments before `--`."""
+    return arguments[: arguments.index("--")] if "--" in arguments else arguments
+
+
+def git_rm_forced(arguments: list[str]) -> bool:
+    """True when a `git rm` carries `-f` or `--force`, also in a short cluster."""
+    return any(
+        word == "--force" or (word.startswith("-") and not word.startswith("--") and "f" in word)
+        for word in options(arguments)
+    )
+
+
+def git_merge_asks(arguments: list[str]) -> bool:
+    """True when a `git merge` outside a worktree asks: anything but a plain `--ff-only` or
+    `--no-edit` merge."""
+    words = options(arguments)
+    if "--abort" in words:
+        return False
+    named = any(
+        word in ("--no-ff", "--squash", "--no-commit")
+        or word.startswith("--message")
+        or (word.startswith("-m") and not word.startswith("--"))
+        for word in words
+    )
+    return named or not any(word in ("--ff-only", "--no-edit") for word in words)
+
+
+def in_worktree(cwd: str | None) -> bool:
     return cwd is not None and below(cwd, WORKTREES)
 
 
@@ -235,9 +263,12 @@ def decide(command, cwd):
                 if path is not None and not in_zone(path) and guarded(path):
                     return "deny", MESSAGE.format(segment=" ".join(words), operand=operand, path=path)
         elif head == "git":
-            is_rm, elsewhere, forced = git_rm(words)
-            if is_rm and (elsewhere or forced or not in_worktree(cwd)):
+            subcommand, arguments, elsewhere = git_subcommand(cast("list[str]", words))
+            local = in_worktree(cwd) and not elsewhere
+            if subcommand == "rm" and (not local or git_rm_forced(arguments)):
                 return "ask", "`git rm` outside a worktree, with --force, or aimed at another repository."
+            if subcommand == "merge" and not local and git_merge_asks(arguments):
+                return "ask", "`git merge` outside a worktree, or aimed at another repository."
     return None
 
 
@@ -262,11 +293,11 @@ def main():
         command = payload["tool_input"]["command"]
         if not isinstance(command, str):
             raise TypeError
-        if "rm" not in command:
+        if "rm" not in command and "merge" not in command:
             return 0
         verdict = decide(command, payload.get("cwd"))
     except Exception:
-        return ask("rm-scope could not read a command that mentions rm.")
+        return ask("rm-scope could not read a command that mentions rm or merge.")
     if verdict is None:
         return 0
     if verdict[0] == "deny":
