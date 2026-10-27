@@ -11,10 +11,11 @@ runs them.
   T-number row, §V, §L without the handovers filed below it, and what §L's *also reads* lines
   name; it leaves out the other parts and the state cell's narration; a name that matches nothing
   is unresolved, with exit status 1.
-- scripts/spec-validate.py on a fixture spec in the spec-delta format: it passes, and a missing
-  domain, a failing premise and a mutant with no row each fail; with `--head`, a failing check and
-  a check that writes into the head fail the gate. spec-gate.py validates a part whose cell names
-  `spec` and finds a missing spec, and spec-bundle.py copies the spec and names `$SPEC`.
+- scripts/spec-validate.py on a fixture spec in the spec-delta format: it passes, an `--env` name
+  that it sets itself exits 3, and a missing domain, a failing premise and a mutant with no row
+  each fail; with `--head`, a failing check and a check that writes into the head fail the gate.
+  spec-gate.py validates a part whose cell names `spec` and finds a missing spec, and
+  spec-bundle.py copies the spec and names `$SPEC`.
 - The fix round's mutants: skills/build-part/evidence.md defines them in one section, with its
   four rules, and both builders and both build skills point at it.
 """
