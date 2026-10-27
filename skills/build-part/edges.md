@@ -123,6 +123,9 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   cannot (M1b verify 3, *Simplify the optimiser package and the learning package for 0.9*)
 - a first trial step of `Inf`, or above the caller's ceiling; an invalid ceiling
 - an empty, a one-element or a zero-width case; the edge of a grid
+- a value read out of a live cache and stored beside the solution: it aliases the cache, so every
+  stored entry ends up equal to the last one. Copy it, and give the test's fixture a
+  step-dependent value so the test can see the difference (C, a package revival)
 - a tie that round-off decides, for example a safeguard of the form `w <= wprev / 2`
 - a square or a product of unscaled quantities, which overflows at extreme scales
 - one scale formed as a scalar and applied to the whole gradient: `1/(‖R‖‖Y‖)` is subnormal in
