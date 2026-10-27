@@ -11,6 +11,8 @@
       "{home}/.config/**": "deny",
       "{home}/.config/**": "deny",
       "{harness}/adapters/opencode/**": "ask",
+      "{home}/Research/**/.githooks/**": "ask",
+      "{home}/Research/**/.github/workflows/**": "ask",
       "{home}/.julia/packages/**": "deny"
     },
     "external_directory": {

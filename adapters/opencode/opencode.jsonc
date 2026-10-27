@@ -139,11 +139,10 @@
       "{home}/.local/share/opencode/**": "deny"
     },
     "edit": {
-      "{home}/Research/**/.githooks/**": "ask",
-      "{home}/Research/**/.github/workflows/**": "ask",
       "{home}/.claude/skills/**": "ask",
       "{home}/.claude/workflows/**": "ask",
       "{home}/.claude/hooks/**": "deny",
+      "{home}/.claude/logs/**": "deny",
       "{home}/.claude/CLAUDE.md": "deny",
       "{home}/.claude/RTK.md": "deny",
       "{home}/.claude/statusline-command.sh": "deny",
@@ -198,6 +197,8 @@
       "{home}/.local/share/rtk/trusted_filters.json": "deny",
       "{home}/{protected_dir}/**": "deny",
       "{harness}/adapters/opencode/**": "ask",
+      "{home}/Research/**/.githooks/**": "ask",
+      "{home}/Research/**/.github/workflows/**": "ask",
       "{home}/.julia/packages/**": "deny"
     },
     "external_directory": {
