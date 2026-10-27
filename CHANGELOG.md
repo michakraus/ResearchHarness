@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- **Under oh-my-pi, `gh pr create` in an own organisation runs unasked when it runs alone.**
+  oh-my-pi's `allow` matches only a whole command with no `;`, `&`, `|`, redirection or `$`, so a
+  `cd … && gh pr create --repo <owner>/…` or a trailing `| tail` fell to the final `prompt` pattern.
+  In two weeks of sessions, 60 of the 71 `gh pr create` calls that asked named an own organisation
+  correctly. `OMP-DELTA.md` says to run such a command alone with the `cwd` argument, and no longer
+  lists "no `cd … &&`" among the Claude Code rules that do not bind.
+
+- **The settings template allows `WebSearch`.** It asked in `default` mode only, 3 times in 23
+  days of the prompt log; its query leaves the machine as a `WebFetch` URL does. No `ask` or
+  `deny` rule names the tool.
+
 - **`run-tests.jl` takes the path of a test file relative to the package root, too.** A unit
   `test/utils.jl` named no file, because a path was read relative to `test/` alone: the run
   stopped with exit status 2 and "no test file is the group, the path or the label of …", and ran

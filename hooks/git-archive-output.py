@@ -32,8 +32,16 @@ PUNCTUATION = "();<>|&\n"
 SEPARATORS = set(";|&\n")
 
 # Global options of `git` that consume the token after them.
-GLOBAL_VALUE = {"-C", "-c", "--git-dir", "--work-tree", "--namespace", "--exec-path",
-                "--super-prefix", "--config-env"}
+GLOBAL_VALUE = {
+    "-C",
+    "-c",
+    "--git-dir",
+    "--work-tree",
+    "--namespace",
+    "--exec-path",
+    "--super-prefix",
+    "--config-env",
+}
 
 # The short options of `git archive` that take no value, so that `o` may follow them in a cluster.
 SHORT_FLAGS = set("lv0123456789")
@@ -88,7 +96,7 @@ def archive_arguments(tokens):
         elif token.startswith("-"):
             index += 1
         else:
-            return tokens[index + 1:] if token == "archive" else None
+            return tokens[index + 1 :] if token == "archive" else None
     return None
 
 

@@ -157,7 +157,9 @@ def expand_home(data, path, home=None):
     if not (isinstance(home, str) and "~" not in home and pathlib.PurePath(home).is_absolute()):
         if given:
             raise HarnessError(f"{path}: `home` is {home!r}, not an absolute path without `~`")
-        raise HarnessError(f"{path}: the home directory is not known ({home!r}); set `home` to an absolute path")
+        raise HarnessError(
+            f"{path}: the home directory is not known ({home!r}); set `home` to an absolute path"
+        )
     home = home.rstrip("/") or "/"
 
     def expanded(v):
@@ -229,15 +231,21 @@ def read_models(path):
         raise HarnessError(f"{path} is not TOML: {e}") from None
     opencode, omp = models.get("opencode"), models.get("omp")
     renames = []
-    for name, table in [("claude", models.get("claude")), ("models", models.get("models")),
-                        ("omp.models", omp.get("models") if isinstance(omp, dict) else None),
-                        ("opencode.models", opencode.get("models") if isinstance(opencode, dict) else None)]:
+    for name, table in [
+        ("claude", models.get("claude")),
+        ("models", models.get("models")),
+        ("omp.models", omp.get("models") if isinstance(omp, dict) else None),
+        ("opencode.models", opencode.get("models") if isinstance(opencode, dict) else None),
+    ]:
         old = [t for t in OLD_TIERS if isinstance(table, dict) and t in table]
         if old:
             renames.append(f"in [{name}] rename " + ", ".join(f"{t} to {OLD_TIERS[t]}" for t in old))
     if renames:
-        add = [] if isinstance(models.get("claude"), dict) else [
-            "add a [claude] table of the tiers, which examples/models.toml shows"]
+        add = (
+            []
+            if isinstance(models.get("claude"), dict)
+            else ["add a [claude] table of the tiers, which examples/models.toml shows"]
+        )
         raise HarnessError(f"{path} names tiers by their old names: " + "; ".join(renames + add))
     return models
 
@@ -249,16 +257,24 @@ def tier_table(path, name, frontend):
     tiers = frontmatter.TIERS
     table = read_models(path).get(name)
     if not isinstance(table, dict):
-        raise HarnessError(f"{path} has no [{name}] table, which maps the tiers {', '.join(tiers)} to {frontend}'s "
-                           "models — examples/models.toml shows it")
+        raise HarnessError(
+            f"{path} has no [{name}] table, which maps the tiers {', '.join(tiers)} to {frontend}'s "
+            "models — examples/models.toml shows it"
+        )
     missing, unknown = [t for t in tiers if t not in table], sorted(set(table) - set(tiers))
     if missing or unknown:
-        raise HarnessError(f"{path}: [{name}] holds the tiers {', '.join(tiers)}, one {frontend} model each; "
-                           + "; ".join([f"it has no {', '.join(missing)}"] * bool(missing)
-                                       + [f"{', '.join(unknown)} is no tier"] * bool(unknown)))
+        raise HarnessError(
+            f"{path}: [{name}] holds the tiers {', '.join(tiers)}, one {frontend} model each; "
+            + "; ".join(
+                [f"it has no {', '.join(missing)}"] * bool(missing)
+                + [f"{', '.join(unknown)} is no tier"] * bool(unknown)
+            )
+        )
     wrong = [t for t in tiers if not isinstance(table[t], str) or not table[t].strip()]
     if wrong:
-        raise HarnessError(f"{path}: the tier {', '.join(wrong)} of [{name}] is not a string that names a model")
+        raise HarnessError(
+            f"{path}: the tier {', '.join(wrong)} of [{name}] is not a string that names a model"
+        )
     return {t: table[t] for t in tiers}
 
 
@@ -270,8 +286,15 @@ def tier_table(path, name, frontend):
 # [omp] may hold the same sub-tables, each key of which replaces the shared one for that frontend
 # alone. [claude] is Claude Code's table of the tiers, and [antigravity] Antigravity's; neither
 # frontend takes a model from the shared tables.
-MODEL_TABLES = ["models", "model_overrides", "model_variants", "variants", "reasoning_effort", "councils",
-                "context_limits"]
+MODEL_TABLES = [
+    "models",
+    "model_overrides",
+    "model_variants",
+    "variants",
+    "reasoning_effort",
+    "councils",
+    "context_limits",
+]
 # The frontends that read MODEL_TABLES, each with a table of its own overrides.
 SHARING = ("opencode", "omp")
 # A council has one to eight seats beside its agent.
@@ -288,18 +311,23 @@ def model_tables(path, name):
     data = read_models(path)
     tops = ["claude", "antigravity", *MODEL_TABLES, *SHARING]
     if tiers := [t for t in frontmatter.TIERS if t in data]:
-        raise HarnessError(f"{path}: the tiers {', '.join(tiers)} are at the top level; move them into [models]")
+        raise HarnessError(
+            f"{path}: the tiers {', '.join(tiers)} are at the top level; move them into [models]"
+        )
     if unknown := sorted(set(data) - set(tops)):
         raise HarnessError(f"{path} has no table {', '.join(unknown)}; it has {', '.join(tops)}")
     table = data.get(name, {})
     if not isinstance(table, dict):
         raise HarnessError(f"{path}: [{name}] is not a table")
     if tiers := [t for t in frontmatter.TIERS if t in table]:
-        raise HarnessError(f"{path}: [{name}] holds the tiers {', '.join(tiers)}; move them into [models], or "
-                           f"into [{name}.models] for {name} alone")
+        raise HarnessError(
+            f"{path}: [{name}] holds the tiers {', '.join(tiers)}; move them into [models], or "
+            f"into [{name}.models] for {name} alone"
+        )
     if unknown := sorted(set(table) - set(MODEL_TABLES)):
-        raise HarnessError(f"{path}: [{name}] has no sub-table {', '.join(unknown)}; "
-                           f"it has {', '.join(MODEL_TABLES)}")
+        raise HarnessError(
+            f"{path}: [{name}] has no sub-table {', '.join(unknown)}; it has {', '.join(MODEL_TABLES)}"
+        )
     models = {}
     for sub in MODEL_TABLES:
         for label, part in ((f"[{sub}]", data.get(sub, {})), (f"[{name}.{sub}]", table.get(sub, {}))):
@@ -309,29 +337,44 @@ def model_tables(path, name):
     where = lambda sub: f"[{sub}] or [{name}.{sub}]"  # noqa: E731
     for sub in ("models", "model_overrides", "model_variants", "variants", "reasoning_effort"):
         if wrong := [k for k, v in models[sub].items() if not (isinstance(v, str) and v.strip())]:
-            raise HarnessError(f"{path}: the value of {', '.join(wrong)} in {where(sub)} is not a string that is "
-                               "not blank")
+            raise HarnessError(
+                f"{path}: the value of {', '.join(wrong)} in {where(sub)} is not a string that is not blank"
+            )
     if wrong := [k for k, v in models["context_limits"].items() if not (type(v) is int and v > 0)]:
-        raise HarnessError(f"{path}: the value of {', '.join(wrong)} in {where('context_limits')} is not a "
-                           "positive integer")
+        raise HarnessError(
+            f"{path}: the value of {', '.join(wrong)} in {where('context_limits')} is not a positive integer"
+        )
     # Each seat is installed as `<name>.md`, so a second seat of one name would replace the first.
     seen = {}
     for agent, seats in models["councils"].items():
-        if not (isinstance(seats, list) and all(
-                isinstance(s, dict) and {"name", "model"} <= set(s) <= {"name", "model", "verify"} for s in seats)):
-            raise HarnessError(f"{path}: councils.{agent} is a list of {{ name = …, model = … }}, "
-                               "and one seat may add `verify = true`")
+        if not (
+            isinstance(seats, list)
+            and all(
+                isinstance(s, dict) and {"name", "model"} <= set(s) <= {"name", "model", "verify"}
+                for s in seats
+            )
+        ):
+            raise HarnessError(
+                f"{path}: councils.{agent} is a list of {{ name = …, model = … }}, "
+                "and one seat may add `verify = true`"
+            )
         if len(seats) not in COUNCIL_SEATS:
             raise HarnessError(f"{path}: councils.{agent} has {len(seats)} seats; a council has 1 to 8")
         for seat in seats:
             for key in ("name", "model"):
                 if not isinstance(seat[key], str) or not seat[key].strip():
-                    raise HarnessError(f"{path}: the seat {key} {seat[key]!r} of councils.{agent} is not a string")
+                    raise HarnessError(
+                        f"{path}: the seat {key} {seat[key]!r} of councils.{agent} is not a string"
+                    )
             if not isinstance(seat.get("verify", False), bool):
-                raise HarnessError(f"{path}: `verify` of the seat {seat['name']!r} of councils.{agent} is not true or false")
+                raise HarnessError(
+                    f"{path}: `verify` of the seat {seat['name']!r} of councils.{agent} is not true or false"
+                )
             if seat["name"] in seen:
-                raise HarnessError(f"{path}: the seat {seat['name']!r} of councils.{agent} is also a seat "
-                                   f"of councils.{seen[seat['name']]}")
+                raise HarnessError(
+                    f"{path}: the seat {seat['name']!r} of councils.{agent} is also a seat "
+                    f"of councils.{seen[seat['name']]}"
+                )
             seen[seat["name"]] = agent
         if sum(s.get("verify", False) for s in seats) > 1:
             raise HarnessError(f"{path}: more than one seat of councils.{agent} has `verify = true`")
@@ -354,15 +397,19 @@ def agent_model(name, tier, models, where):
 def agent_effort(name, model, models):
     """The effort of the agent or seat `name` on `model`: its `variants` entry, else its
     `reasoning_effort` entry, else the `model_variants` entry of `model`, else None."""
-    return models["variants"].get(name, models["reasoning_effort"].get(name, models["model_variants"].get(model)))
+    return models["variants"].get(
+        name, models["reasoning_effort"].get(name, models["model_variants"].get(model))
+    )
 
 
 def council_description(source, seat, frontend):
     """The description of the council seat `seat` of the agent `source` under `frontend`."""
     verify = " It also judges each verify round, alone." if seat.get("verify") else ""
-    return (f"A member of the round-1 critic council of build-part under {frontend}, on {seat['model']}.{verify} "
-            f"The same agent as {source}, which has the full description. Spawn it only as the build-part "
-            "dispatcher.")
+    return (
+        f"A member of the round-1 critic council of build-part under {frontend}, on {seat['model']}.{verify} "
+        f"The same agent as {source}, which has the full description. Spawn it only as the build-part "
+        "dispatcher."
+    )
 
 
 def render_line(line, profile):
@@ -449,7 +496,9 @@ def render_file(path, profile):
 def cmd_render(args):
     profile = DEFAULTS | load(args.profile)
     if pathlib.Path(args.template).resolve() == network.TEMPLATE:
-        cfg = network.apply(json.loads(render_file(args.template, profile)), profile, network_path(args.profile))
+        cfg = network.apply(
+            json.loads(render_file(args.template, profile)), profile, network_path(args.profile)
+        )
         sys.stdout.write(json.dumps(cfg, indent=2, ensure_ascii=False) + "\n")
     else:
         sys.stdout.write(render_file(args.template, profile))
@@ -479,7 +528,9 @@ def name_pattern(names):
 
 def own_repository(repo=REPO):
     """`owner/name` of the `origin` URL, or None without one."""
-    url = subprocess.run(["git", "remote", "get-url", "origin"], cwd=repo, capture_output=True, text=True).stdout
+    url = subprocess.run(
+        ["git", "remote", "get-url", "origin"], cwd=repo, capture_output=True, text=True
+    ).stdout
     m = re.search(r"[:/]([^/:]+/[^/]+?)(?:\.git)?\s*$", url)
     return m.group(1) if m else None
 
@@ -516,7 +567,7 @@ def read_commits(path):
 
 
 # The escapes of a path that git quotes: `\` and three octal digits, or one character.
-QUOTED = re.compile(rb'\\([0-7]{3}|.)')
+QUOTED = re.compile(rb"\\([0-7]{3}|.)")
 ESCAPES = {b"a": 7, b"b": 8, b"t": 9, b"n": 10, b"v": 11, b"f": 12, b"r": 13}
 
 
@@ -525,8 +576,9 @@ def unquoted(path):
     printable ASCII, a `"` or a `\\` in double quotes, with C escapes."""
     if len(path) < 2 or path[0] != '"' or path[-1] != '"':
         return path
-    return QUOTED.sub(lambda m: bytes([int(m[1], 8) if len(m[1]) == 3 else ESCAPES.get(m[1], m[1][0])]),
-                      path[1:-1].encode()).decode(errors="replace")
+    return QUOTED.sub(
+        lambda m: bytes([int(m[1], 8) if len(m[1]) == 3 else ESCAPES.get(m[1], m[1][0])]), path[1:-1].encode()
+    ).decode(errors="replace")
 
 
 def added_lines(sha, repo=REPO):
@@ -535,14 +587,32 @@ def added_lines(sha, repo=REPO):
     A line is a `+` line of `git show --format= --text -U0`, so a binary file's lines too; in a
     merge's combined diff, a line with a `+` in any parent's column. No external diff and no
     textconv driver rewrites them."""
-    p = subprocess.run(["git", "diff-tree", "-r", "-z", "-m", "--root", "--no-commit-id", "--name-only",
-                        "--no-renames", "--diff-filter=d", sha], cwd=repo, capture_output=True)
+    p = subprocess.run(
+        [
+            "git",
+            "diff-tree",
+            "-r",
+            "-z",
+            "-m",
+            "--root",
+            "--no-commit-id",
+            "--name-only",
+            "--no-renames",
+            "--diff-filter=d",
+            sha,
+        ],
+        cwd=repo,
+        capture_output=True,
+    )
     if p.returncode:
         raise HarnessError(f"git diff-tree {sha}: {p.stderr.decode(errors='replace').strip()}")
     paths = dict.fromkeys(p.stdout.decode(errors="replace").split("\0"))  # -m names a path once per parent
     out = [(f"{sha[:12]} {path}:0", path) for path in paths if path]
-    p = subprocess.run(["git", "show", "--format=", "--text", "-U0", "--no-color", "--no-ext-diff",
-                        "--no-textconv", sha], cwd=repo, capture_output=True)
+    p = subprocess.run(
+        ["git", "show", "--format=", "--text", "-U0", "--no-color", "--no-ext-diff", "--no-textconv", sha],
+        cwd=repo,
+        capture_output=True,
+    )
     if p.returncode:
         raise HarnessError(f"git show {sha}: {p.stderr.decode(errors='replace').strip()}")
     path, number, parents = "", 0, 0
@@ -567,19 +637,26 @@ def added_lines(sha, repo=REPO):
 def message_lines(sha, repo=REPO):
     """(where, text) for each line of the message of the commit `sha`, `%B`: the raw subject and
     body, trailers too, numbered from 1. The author, the committer and a signature are not read."""
-    p = subprocess.run(["git", "show", "-s", "--no-show-signature", "--format=%B", sha], cwd=repo,
-                       capture_output=True)
+    p = subprocess.run(
+        ["git", "show", "-s", "--no-show-signature", "--format=%B", sha], cwd=repo, capture_output=True
+    )
     if p.returncode:
         raise HarnessError(f"git show -s {sha}: {p.stderr.decode(errors='replace').strip()}")
-    return [(f"{sha[:12]} message:{n}", line)
-            for n, line in enumerate(p.stdout.decode(errors="replace").split("\n"), 1)]
+    return [
+        (f"{sha[:12]} message:{n}", line)
+        for n, line in enumerate(p.stdout.decode(errors="replace").split("\n"), 1)
+    ]
 
 
 def commit_hits(shas, leak, pattern, allowed, repo=REPO):
     """(where, string) for each private string and tree name in a path or on a line that one of `shas`
     adds, or on a line of its message."""
-    return [(where, s) for sha in shas for where, line in added_lines(sha, repo) + message_lines(sha, repo)
-            for s in [s for s in leak if s in line] + name_hits(line, pattern, allowed)]
+    return [
+        (where, s)
+        for sha in shas
+        for where, line in added_lines(sha, repo) + message_lines(sha, repo)
+        for s in [s for s in leak if s in line] + name_hits(line, pattern, allowed)
+    ]
 
 
 def cmd_leaks(args, repo=REPO):
@@ -632,7 +709,11 @@ CASES = [
     (["{home}/{dir}/**"], {"home": "/h", "dir": ["D"]}, ["/h/D/**"]),
     (["{a}{b}"], {"a": ["1"], "b": ["2"]}, None),
     ({"{home}": ["{home}"]}, {"home": "/h"}, {"/h": ["/h"]}),
-    ("{\n  {t}\n}\n", {"t": {"a": {"m/x:1": 2}, "b": []}}, '{\n  "a": {\n    "m/x:1": 2\n  },\n  "b": []\n}\n'),
+    (
+        "{\n  {t}\n}\n",
+        {"t": {"a": {"m/x:1": 2}, "b": []}},
+        '{\n  "a": {\n    "m/x:1": 2\n  },\n  "b": []\n}\n',
+    ),
     ("{\n  {t}\n}\n", {"t": {}}, "{\n}\n"),
     ("  x: {t},\n", {"t": {"a": 1}}, None),
     (["{t}"], {"t": {"a": 1}}, None),
@@ -656,9 +737,14 @@ NAME_CASES = [
 def commit_cases():
     """The cases of `leaks --commits` on a fixture repository: (number of cases, number wrong)."""
     env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
-    env.update(GIT_CONFIG_GLOBAL="/dev/null", GIT_CONFIG_NOSYSTEM="1",
-               GIT_AUTHOR_NAME="leaks", GIT_AUTHOR_EMAIL="leaks@example.org",
-               GIT_COMMITTER_NAME="leaks", GIT_COMMITTER_EMAIL="leaks@example.org")
+    env.update(
+        GIT_CONFIG_GLOBAL="/dev/null",
+        GIT_CONFIG_NOSYSTEM="1",
+        GIT_AUTHOR_NAME="leaks",
+        GIT_AUTHOR_EMAIL="leaks@example.org",
+        GIT_COMMITTER_NAME="leaks",
+        GIT_COMMITTER_EMAIL="leaks@example.org",
+    )
     wrong = 0
     with tempfile.TemporaryDirectory(prefix="harness-leaks-") as tmp:
         repo = pathlib.Path(tmp) / "repo"
@@ -666,8 +752,9 @@ def commit_cases():
 
         def git(*args, **extra):
             """`git args` in the fixture; `extra` sets variables of its environment."""
-            return subprocess.run(["git", *args], cwd=repo, env={**env, **extra}, check=True, capture_output=True,
-                                  text=True).stdout.strip()
+            return subprocess.run(
+                ["git", *args], cwd=repo, env={**env, **extra}, check=True, capture_output=True, text=True
+            ).stdout.strip()
 
         def commit(name, data=None, *move):
             if move:
@@ -683,8 +770,15 @@ def commit_cases():
         def note(message):
             """An empty commit with the message `message`, bytes taken as they are."""
             (pathlib.Path(tmp) / "message").write_bytes(message)
-            git("commit", "-q", "--allow-empty", "--allow-empty-message", "--cleanup=verbatim",
-                "-F", str(pathlib.Path(tmp) / "message"))
+            git(
+                "commit",
+                "-q",
+                "--allow-empty",
+                "--allow-empty-message",
+                "--cleanup=verbatim",
+                "-F",
+                str(pathlib.Path(tmp) / "message"),
+            )
             return git("rev-parse", "HEAD")
 
         git("init", "-q", "-b", "main")
@@ -729,8 +823,11 @@ def commit_cases():
             ("a leak in a binary file", [binary], 1),
             ("a tree name on an added line", [named], 1),
             ("the same tree name only on a removed line", [unnamed], 0),
-            ("a tree name in a path that one commit adds and a later one renames away",
-             [path_added, path_renamed], 1),
+            (
+                "a tree name in a path that one commit adds and a later one renames away",
+                [path_added, path_renamed],
+                1,
+            ),
             ("a tree name in the new path of a pure rename", [rename_in], 1),
             ("a leak in the path of an empty file", [empty], 1),
             ("a tree name in a path of the root commit", [root], 1),
@@ -742,13 +839,17 @@ def commit_cases():
         got = [where for where, _ in commit_hits([spaced], ["LEAK"], pattern, None, repo)]
         expected = [f"{spaced[:12]} a b.txt:2"]
         wrong += got != expected
-        print(f"{'ok ' if got == expected else 'BAD'}  leaks --commits: the place of a leak in a path "
-              f"with a space -> {got}")
+        print(
+            f"{'ok ' if got == expected else 'BAD'}  leaks --commits: the place of a leak in a path "
+            f"with a space -> {got}"
+        )
         got = [where for where, _ in commit_hits([merge], ["LEAK"], pattern, None, repo)]
         expected = [f"{merge[:12]} side-Pkg.md:0"]
         wrong += got != expected
-        print(f"{'ok ' if got == expected else 'BAD'}  leaks --commits: a tree name in a path that a "
-              f"merge brings from its side parent -> {got}")
+        print(
+            f"{'ok ' if got == expected else 'BAD'}  leaks --commits: a tree name in a path that a "
+            f"merge brings from its side parent -> {got}"
+        )
         # (label, shas, tree names, allowed owner/name, expected places); the leak string is LEAK.
         message_cases = [
             ("a leak in a message body", [body], ["Pkg"], None, [f"{body[:12]} message:3"]),
@@ -756,10 +857,20 @@ def commit_cases():
             ("the own owner/name in a message", [own], ["Pkg", "org"], "org/Pkg", []),
             ("a clean message and clean content", [clean], ["Pkg"], None, []),
             ("an empty message", [no_message], ["Pkg"], None, []),
-            ("a leak in the ASCII part of a message that is not UTF-8", [latin], ["Pkg"], None,
-             [f"{latin[:12]} message:1"]),
-            ("a leak string and a tree name on one message line", [both], ["Pkg"], None,
-             [f"{both[:12]} message:1"] * 2),
+            (
+                "a leak in the ASCII part of a message that is not UTF-8",
+                [latin],
+                ["Pkg"],
+                None,
+                [f"{latin[:12]} message:1"],
+            ),
+            (
+                "a leak string and a tree name on one message line",
+                [both],
+                ["Pkg"],
+                None,
+                [f"{both[:12]} message:1"] * 2,
+            ),
             ("a leak in a merge's message", [merged], ["Pkg"], None, [f"{merged[:12]} message:1"]),
             ("a SHA listed twice", [body, body], ["Pkg"], None, [f"{body[:12]} message:3"] * 2),
         ]
@@ -778,60 +889,94 @@ def commit_cases():
         # `harness leaks` itself, on the fixture's clean tree, without and with the commits.
         (pathlib.Path(tmp) / "roots" / "Pkg").mkdir(parents=True)
         (pathlib.Path(tmp) / "profile.toml").write_text(
-            f"leak = [\"LEAK\"]\norg = []\nrepository_roots = [{json.dumps(str(pathlib.Path(tmp) / 'roots'))}]\n")
+            f'leak = ["LEAK"]\norg = []\nrepository_roots = [{json.dumps(str(pathlib.Path(tmp) / "roots"))}]\n'
+        )
         (pathlib.Path(tmp) / "commits").write_text(git("rev-list", "HEAD") + "\n")
         runs = [
             ("the tree only", None, 0, []),
-            ("the tree and every commit", pathlib.Path(tmp) / "commits", 1,
-             [f"  {added[:12]} a.txt:2: 'LEAK'", f"  {path_added[:12]} notes-Pkg.md:0: 'Pkg'",
-              f"  {body[:12]} message:3: 'LEAK'"]),
+            (
+                "the tree and every commit",
+                pathlib.Path(tmp) / "commits",
+                1,
+                [
+                    f"  {added[:12]} a.txt:2: 'LEAK'",
+                    f"  {path_added[:12]} notes-Pkg.md:0: 'Pkg'",
+                    f"  {body[:12]} message:3: 'LEAK'",
+                ],
+            ),
         ]
         for label, commits, status, lines in runs:
             out = io.StringIO()
             with contextlib.redirect_stdout(out):
-                got = cmd_leaks(argparse.Namespace(profile=pathlib.Path(tmp) / "profile.toml", commits=commits), repo)
+                got = cmd_leaks(
+                    argparse.Namespace(profile=pathlib.Path(tmp) / "profile.toml", commits=commits), repo
+                )
             ok = got == status and all(line in out.getvalue().splitlines() for line in lines)
             wrong += not ok
             print(f"{'ok ' if ok else 'BAD'}  leaks: {label} -> exit {got}")
         # The home directory as a leak string, `~` in the profile: the templates render with the
         # dummy under a home that is not the running user's, so they hold no hit.
         (pathlib.Path(tmp) / "profile-home.toml").write_text(
-            f"leak = [\"~\"]\norg = []\nrepository_roots = [{json.dumps(str(pathlib.Path(tmp) / 'roots'))}]\n")
+            f'leak = ["~"]\norg = []\nrepository_roots = [{json.dumps(str(pathlib.Path(tmp) / "roots"))}]\n'
+        )
         out = io.StringIO()
-        with contextlib.redirect_stdout(out), mock.patch.dict(os.environ, HOME=str(pathlib.Path(tmp) / "roots")):
-            got = cmd_leaks(argparse.Namespace(profile=pathlib.Path(tmp) / "profile-home.toml", commits=None), repo)
+        with (
+            contextlib.redirect_stdout(out),
+            mock.patch.dict(os.environ, HOME=str(pathlib.Path(tmp) / "roots")),
+        ):
+            got = cmd_leaks(
+                argparse.Namespace(profile=pathlib.Path(tmp) / "profile-home.toml", commits=None), repo
+            )
         summary = out.getvalue().splitlines()[-1]
         ok = got == 0 and summary.endswith(", 0 hits")
         wrong += not ok
-        print(f"{'ok ' if ok else 'BAD'}  leaks: the running user's home as the leak string, and the templates "
-              f"rendered with the dummy -> exit {got}, {summary.strip()!r}")
+        print(
+            f"{'ok ' if ok else 'BAD'}  leaks: the running user's home as the leak string, and the templates "
+            f"rendered with the dummy -> exit {got}, {summary.strip()!r}"
+        )
         # The running host's name as a leak string: the dummy's `autocommit_branch` renders under a
         # host name that is not the running one, so the templates hold no hit.
         (pathlib.Path(tmp) / "profile-host.toml").write_text(
-            f"leak = [\"leakhost\"]\norg = []\nrepository_roots = [{json.dumps(str(pathlib.Path(tmp) / 'roots'))}]\n")
+            f'leak = ["leakhost"]\norg = []\nrepository_roots = [{json.dumps(str(pathlib.Path(tmp) / "roots"))}]\n'
+        )
         out = io.StringIO()
-        with contextlib.redirect_stdout(out), mock.patch("socket.gethostname", return_value="leakhost.example.org"):
-            got = cmd_leaks(argparse.Namespace(profile=pathlib.Path(tmp) / "profile-host.toml", commits=None), repo)
+        with (
+            contextlib.redirect_stdout(out),
+            mock.patch("socket.gethostname", return_value="leakhost.example.org"),
+        ):
+            got = cmd_leaks(
+                argparse.Namespace(profile=pathlib.Path(tmp) / "profile-host.toml", commits=None), repo
+            )
         summary = out.getvalue().splitlines()[-1]
         ok = got == 0 and summary.endswith(", 0 hits")
         wrong += not ok
-        print(f"{'ok ' if ok else 'BAD'}  leaks: the running host's name as the leak string, and the templates "
-              f"rendered with the dummy -> exit {got}, {summary.strip()!r}")
+        print(
+            f"{'ok ' if ok else 'BAD'}  leaks: the running host's name as the leak string, and the templates "
+            f"rendered with the dummy -> exit {got}, {summary.strip()!r}"
+        )
         # The templates that `harness leaks` renders: TEMPLATES and each adapter's. The leak string is
         # the suffix of a rendered template's name, so each template it renders is one hit on line 0.
         (pathlib.Path(tmp) / "profile-templates.toml").write_text(
-            f"leak = [\" (rendered with the dummy)\"]\norg = []\n"
-            f"repository_roots = [{json.dumps(str(pathlib.Path(tmp) / 'roots'))}]\n")
+            f'leak = [" (rendered with the dummy)"]\norg = []\n'
+            f"repository_roots = [{json.dumps(str(pathlib.Path(tmp) / 'roots'))}]\n"
+        )
         out = io.StringIO()
         with contextlib.redirect_stdout(out):
-            cmd_leaks(argparse.Namespace(profile=pathlib.Path(tmp) / "profile-templates.toml", commits=None), repo)
-        rendered = {line.strip().rsplit(" (rendered with the dummy):0: ", 1)[0]
-                    for line in out.getvalue().splitlines() if " (rendered with the dummy):0: " in line}
+            cmd_leaks(
+                argparse.Namespace(profile=pathlib.Path(tmp) / "profile-templates.toml", commits=None), repo
+            )
+        rendered = {
+            line.strip().rsplit(" (rendered with the dummy):0: ", 1)[0]
+            for line in out.getvalue().splitlines()
+            if " (rendered with the dummy):0: " in line
+        }
         adapters = {t for adapter in frontends.load() for t in adapter.TEMPLATES}
         ok = bool(adapters - set(TEMPLATES)) and rendered == set(TEMPLATES) | adapters
         wrong += not ok
-        print(f"{'ok ' if ok else 'BAD'}  leaks: renders TEMPLATES and each adapter's TEMPLATES -> "
-              f"{len(rendered)} templates, missing {sorted((set(TEMPLATES) | adapters) - rendered)}")
+        print(
+            f"{'ok ' if ok else 'BAD'}  leaks: renders TEMPLATES and each adapter's TEMPLATES -> "
+            f"{len(rendered)} templates, missing {sorted((set(TEMPLATES) | adapters) - rendered)}"
+        )
         # The limits that docs/src/security.md states: a leak only in a commit's author name, only in
         # the message of an annotated tag on a listed commit, or only in a note on one, is no hit; the
         # same leak in a listed commit's message is one, so the fixture can see it. Empty commits.
@@ -845,17 +990,30 @@ def commit_cases():
         # (label, SHA, where git shows the leak, expected hits)
         limits = [
             ("a leak only in a commit's author name", author, git("show", "-s", "--format=%an", author), 0),
-            ("a leak only in the message of an annotated tag on the commit", tagged,
-             git("tag", "-l", "--format=%(contents)", "v1"), 0),
+            (
+                "a leak only in the message of an annotated tag on the commit",
+                tagged,
+                git("tag", "-l", "--format=%(contents)", "v1"),
+                0,
+            ),
             ("a leak only in a git note on the commit", noted, git("notes", "show", noted), 0),
-            ("the same leak in the commit's message", messaged, git("show", "-s", "--format=%B", messaged), 1),
+            (
+                "the same leak in the commit's message",
+                messaged,
+                git("show", "-s", "--format=%B", messaged),
+                1,
+            ),
         ]
         for label, sha, shown, expected in limits:
             (pathlib.Path(tmp) / "commits").write_text(sha + "\n")
             out = io.StringIO()
             with contextlib.redirect_stdout(out):
-                status = cmd_leaks(argparse.Namespace(profile=pathlib.Path(tmp) / "profile.toml",
-                                                      commits=pathlib.Path(tmp) / "commits"), repo)
+                status = cmd_leaks(
+                    argparse.Namespace(
+                        profile=pathlib.Path(tmp) / "profile.toml", commits=pathlib.Path(tmp) / "commits"
+                    ),
+                    repo,
+                )
             summary = out.getvalue().splitlines()[-1]
             ok = "LEAK" in shown and status == min(expected, 1) and summary.endswith(f", {expected} hits")
             wrong += not ok
@@ -888,10 +1046,16 @@ def commit_cases():
         quote = commit('a"b.txt', b"LEAK\n")
         # (label, SHA, expected places); the leak string is LEAK, the tree name Pkg.
         place_cases = [
-            ("an evil merge names each path once, the one that differs from the second parent only too", evil,
-             [f"{evil[:12]} evil-Pkg.md:0", f"{evil[:12]} m-Pkg.md:0"]),
-            ("a line that a merge's resolution adds, which neither parent has", resolved,
-             [f"{resolved[:12]} f.txt:2"]),
+            (
+                "an evil merge names each path once, the one that differs from the second parent only too",
+                evil,
+                [f"{evil[:12]} evil-Pkg.md:0", f"{evil[:12]} m-Pkg.md:0"],
+            ),
+            (
+                "a line that a merge's resolution adds, which neither parent has",
+                resolved,
+                [f"{resolved[:12]} f.txt:2"],
+            ),
             ("a leak in a path with a non-ASCII character", cafe, [f"{cafe[:12]} café.txt:1"]),
             ('a leak in a path with a "', quote, [f'{quote[:12]} a"b.txt:1']),
         ]
@@ -907,13 +1071,23 @@ def commit_cases():
         (pathlib.Path(tmp) / "commits").write_text(own + "\n")
         out = io.StringIO()
         with contextlib.redirect_stdout(out):
-            status = cmd_leaks(argparse.Namespace(profile=pathlib.Path(tmp) / "profile.toml",
-                                                  commits=pathlib.Path(tmp) / "commits"), repo)
+            status = cmd_leaks(
+                argparse.Namespace(
+                    profile=pathlib.Path(tmp) / "profile.toml", commits=pathlib.Path(tmp) / "commits"
+                ),
+                repo,
+            )
         summary = out.getvalue().splitlines()[-1]
-        ok = own_repository(repo) == "org/Pkg" != own_repository() and status == 0 and summary.endswith(", 0 hits")
+        ok = (
+            own_repository(repo) == "org/Pkg" != own_repository()
+            and status == 0
+            and summary.endswith(", 0 hits")
+        )
         wrong += not ok
-        print(f"{'ok ' if ok else 'BAD'}  leaks --commits: the own owner/name of a repository whose origin is not "
-              f"this checkout's -> exit {status}, {summary.strip()!r}")
+        print(
+            f"{'ok ' if ok else 'BAD'}  leaks --commits: the own owner/name of a repository whose origin is not "
+            f"this checkout's -> exit {status}, {summary.strip()!r}"
+        )
     return len(cases) + 3 + len(message_cases) + len(runs) + 3 + len(limits) + len(place_cases) + 1, wrong
 
 
@@ -927,29 +1101,51 @@ COMPILE = "-m compileall -q lib hooks scripts adapters"
 
 
 NO_INTERPRETER = "pre-push: bin/harness names no interpreter of the Python environment"
+# The checks of the strict profile, as the stubs of the environment's tools log them.
+STRICT = ["ruff format --check --no-cache .", "ruff check --no-cache .", "basedpyright"]
 
 
-def prepush_case(path=None, kit_fails=None, no_environment=False):
+def prepush_case(
+    path: str | None = None,
+    kit_fails: str | None = None,
+    *,
+    no_environment: bool = False,
+    lacks: tuple[str, ...] = (),
+    fails: str = "",
+) -> tuple[int, int]:
     """`.githooks/pre-push` on a fixture checkout whose `origin` is a GitHub URL, for a push to
     main, with stubs of gitleaks, of `bin/harness` and of the Python environment's interpreter,
     and no shellcheck, julia or chezmoi on the PATH: `harness leaks` runs in the hook's clone with
     that URL as its `origin`, not the path of the checkout, `bin/harness test` runs once, the
     compile check runs on the interpreter that the stub's `interpreter(environment_path())`
-    names, and the kit's tests are skipped with one line. With `no_environment`, the stub's
-    `environment_path` raises: the hook prints NO_INTERPRETER, runs no compile check and refuses
-    the push. With `kit_fails`,
+    names, the three checks of STRICT run in the clone from the environment's bin/, and the kit's
+    tests are skipped with one line. The environment's `ruff` and `basedpyright` and a second pair
+    first on the PATH are stubs that log their arguments. With `no_environment`, the stub's
+    `environment_path` raises: the hook prints NO_INTERPRETER, runs no compile check and no check
+    of STRICT, and refuses the push. With `lacks`, the names of tools that the environment lacks:
+    the hook prints one line per tool that names `harness install --apply`, runs no check of
+    STRICT and no tool of the PATH, and refuses the push. With `fails`, one command of STRICT,
+    whose stub exits 1: the hook still runs all three and refuses the push. With `kit_fails`,
     the name of one of KIT_TESTS, a stub of chezmoi is on the PATH and the fixture holds the five
     kit tests, of which that one exits 1: the hook runs all five and refuses the push with one
     line that names it. The tools are linked from `path`, this process's PATH by default, without a
     directory named `git-core`: git puts its exec path first in a hook's PATH, and a `git` started
     from a link to that copy looks for `git-upload-pack` beside the link. (number of cases, number
     wrong)"""
-    search = os.pathsep.join(d for d in (os.environ.get("PATH", "") if path is None else path).split(os.pathsep)
-                             if pathlib.PurePath(d).name != "git-core")
+    search = os.pathsep.join(
+        d
+        for d in (os.environ.get("PATH", "") if path is None else path).split(os.pathsep)
+        if pathlib.PurePath(d).name != "git-core"
+    )
     env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
-    env.update(GIT_CONFIG_GLOBAL="/dev/null", GIT_CONFIG_NOSYSTEM="1",
-               GIT_AUTHOR_NAME="leaks", GIT_AUTHOR_EMAIL="leaks@example.org",
-               GIT_COMMITTER_NAME="leaks", GIT_COMMITTER_EMAIL="leaks@example.org")
+    env.update(
+        GIT_CONFIG_GLOBAL="/dev/null",
+        GIT_CONFIG_NOSYSTEM="1",
+        GIT_AUTHOR_NAME="leaks",
+        GIT_AUTHOR_EMAIL="leaks@example.org",
+        GIT_COMMITTER_NAME="leaks",
+        GIT_COMMITTER_EMAIL="leaks@example.org",
+    )
     url = "https://github.com/owner/fixture.git"
     with tempfile.TemporaryDirectory(prefix="harness-pre-push-") as tmp:
         tmp = pathlib.Path(tmp)
@@ -962,8 +1158,9 @@ def prepush_case(path=None, kit_fails=None, no_environment=False):
         for tool in PREPUSH_TOOLS:
             (tools / tool).symlink_to(shutil.which(tool, path=search))
         (tools / "python3").symlink_to(sys.executable)
-        (tools / "gitleaks").write_text('#!/bin/sh\n[ "$1" = version ] && echo v8.24.0\n'
-                                        '[ "$1" = stdin ] && cat >/dev/null\nexit 0\n')
+        (tools / "gitleaks").write_text(
+            '#!/bin/sh\n[ "$1" = version ] && echo v8.24.0\n[ "$1" = stdin ] && cat >/dev/null\nexit 0\n'
+        )
         (tools / "gitleaks").chmod(0o755)
         (repo / "bin").mkdir(parents=True)
         # The stub names the environment's interpreter as bin/harness does, by `environment_path`
@@ -980,11 +1177,28 @@ def prepush_case(path=None, kit_fails=None, no_environment=False):
             "        url = subprocess.run(['git', 'remote', 'get-url', 'origin'], capture_output=True,\n"
             "                             text=True).stdout\n"
             "        open(os.environ['ORIGIN_SEEN'], 'w').write(url.strip())\n"
-            "    print('0 cases, 0 wrong')\n")
-        environment, harness_ran, compiled = tmp / "environment with space", tmp / "harness-ran", tmp / "compiled"
+            "    print('0 cases, 0 wrong')\n"
+        )
+        environment, harness_ran, compiled = (
+            tmp / "environment with space",
+            tmp / "harness-ran",
+            tmp / "compiled",
+        )
         (environment / "bin").mkdir(parents=True)
         (environment / "bin" / "python").write_text(f"#!/bin/sh\necho \"$*\" >> '{compiled}'\n")
         (environment / "bin" / "python").chmod(0o755)
+        strict = tmp / "strict"
+        for directory, prefix, names in (
+            (environment / "bin", "", [t for t in ("ruff", "basedpyright") if t not in lacks]),
+            (tools, "PATH ", ["ruff", "basedpyright"]),
+        ):
+            for name in names:
+                # The command of STRICT that `fails` names exits 1.
+                (directory / name).write_text(
+                    f'#!/bin/sh\nline="{prefix}{name} $*"\necho "$line | $(pwd)" >> \'{strict}\'\n'
+                    f"[ \"${{line% }}\" = '{fails}' ] && exit 1\nexit 0\n"
+                )
+                (directory / name).chmod(0o755)
         ran = tmp / "kit-ran"
         if kit_fails:
             (tools / "chezmoi").write_text("#!/bin/sh\nexit 0\n")
@@ -994,11 +1208,13 @@ def prepush_case(path=None, kit_fails=None, no_environment=False):
                 (repo / "examples" / "dotfiles" / "tests" / f"{name}.py").write_text(
                     "import os, sys\n"
                     f"open(os.environ['KIT_RAN'], 'a').write({name!r} + '\\n')\n"
-                    f"sys.exit({int(name == kit_fails)})\n")
+                    f"sys.exit({int(name == kit_fails)})\n"
+                )
 
         def git(*args):
-            return subprocess.run(["git", *args], cwd=repo, env=env, check=True, capture_output=True,
-                                  text=True).stdout.strip()
+            return subprocess.run(
+                ["git", *args], cwd=repo, env=env, check=True, capture_output=True, text=True
+            ).stdout.strip()
 
         git("init", "-q", "-b", "main")
         git("add", "--", ".")
@@ -1006,12 +1222,23 @@ def prepush_case(path=None, kit_fails=None, no_environment=False):
         git("remote", "add", "origin", url)
         sha = git("rev-parse", "HEAD")
         try:
-            p = subprocess.run([str(REPO / ".githooks" / "pre-push"), "origin", url],
-                               input=f"refs/heads/main {sha} refs/heads/main {'0' * 40}\n", cwd=repo,
-                               env={**env, "PATH": str(tools), "ORIGIN_SEEN": str(seen), "TMPDIR": str(tmp),
-                                    "KIT_RAN": str(ran), "HARNESS_RAN": str(harness_ran),
-                                    **({} if no_environment else {"STUB_ENVIRONMENT": str(environment)})},
-                               capture_output=True, text=True, timeout=60)
+            p = subprocess.run(
+                [str(REPO / ".githooks" / "pre-push"), "origin", url],
+                input=f"refs/heads/main {sha} refs/heads/main {'0' * 40}\n",
+                cwd=repo,
+                env={
+                    **env,
+                    "PATH": str(tools),
+                    "ORIGIN_SEEN": str(seen),
+                    "TMPDIR": str(tmp),
+                    "KIT_RAN": str(ran),
+                    "HARNESS_RAN": str(harness_ran),
+                    **({} if no_environment else {"STUB_ENVIRONMENT": str(environment)}),
+                },
+                capture_output=True,
+                text=True,
+                timeout=60,
+            )
             code, text = p.returncode, p.stdout + p.stderr
         except subprocess.TimeoutExpired:
             code, text = None, "TIMEOUT"
@@ -1019,27 +1246,85 @@ def prepush_case(path=None, kit_fails=None, no_environment=False):
         tests = ran.read_text().split() if ran.exists() else []
         commands = harness_ran.read_text().split() if harness_ran.exists() else []
         compile_runs = compiled.read_text().splitlines() if compiled.exists() else []
+        checks = strict.read_text().splitlines() if strict.exists() else []
+    strict_runs = [line.partition(" | ")[0].strip() for line in checks]
+    # The hook's clone is repo/ below the hook's own directory under TMPDIR, not the fixture's repo/.
+    in_clone = all(
+        line.partition(" | ")[2].endswith("/repo") and "/harness-pre-push." in line for line in checks
+    )
     lines = text.strip().splitlines() or ["no output"]
     if kit_fails:
         refusal = f"pre-push: refused, the kit's tests failed: examples/dotfiles/tests/{kit_fails}.py"
         ok = code == 1 and got == url and tests == KIT_TESTS and lines[-1] == refusal
-        print(f"{'ok ' if ok else 'BAD'}  pre-push: with chezmoi on the PATH, the kit's tests run and "
-              f"{kit_fails}.py exiting 1 refuses the push -> exit {code}, ran {tests}, {lines[-1]!r}")
+        print(
+            f"{'ok ' if ok else 'BAD'}  pre-push: with chezmoi on the PATH, the kit's tests run and "
+            f"{kit_fails}.py exiting 1 refuses the push -> exit {code}, ran {tests}, {lines[-1]!r}"
+        )
         return 1, int(not ok)
     if no_environment:
-        ok = (code == 1 and NO_INTERPRETER in lines and compile_runs == [] and commands == ["leaks", "test"]
-              and any(line.startswith("pre-push: refused;") for line in lines))
-        print(f"{'ok ' if ok else 'BAD'}  pre-push: when bin/harness names no interpreter of the environment, the "
-              f"hook says so, runs no compile check and refuses the push -> exit {code}, compile {compile_runs}, "
-              f"{[line for line in lines if line.startswith('pre-push:')]}")
+        ok = (
+            code == 1
+            and NO_INTERPRETER in lines
+            and compile_runs == []
+            and checks == []
+            and commands == ["leaks", "test"]
+            and any(line.startswith("pre-push: refused;") for line in lines)
+        )
+        print(
+            f"{'ok ' if ok else 'BAD'}  pre-push: when bin/harness names no interpreter of the environment, the "
+            f"hook says so, runs no compile check and no check of the strict profile and refuses the push "
+            f"-> exit {code}, compile {compile_runs}, checks {checks}, "
+            f"{[line for line in lines if line.startswith('pre-push:')]}"
+        )
         return 1, int(not ok)
-    ok = (code == 0 and got == url and KIT_SKIP in lines and tests == [] and commands == ["leaks", "test"]
-          and compile_runs == [COMPILE] and not any("python3.14" in line for line in lines))
-    print(f"{'ok ' if ok else 'BAD'}  pre-push: harness leaks runs in the clone with the checkout's "
-          f"origin URL, bin/harness test runs once, the compile check runs on the environment's interpreter, "
-          f"and without chezmoi the kit's tests skip with one line "
-          f"-> exit {code}, origin {got!r}, harness {commands}, compile {compile_runs}, skip line {KIT_SKIP in lines}, "
-          f"{lines[-1]!r}")
+    if lacks:
+        said = [line for line in lines if line.startswith("pre-push: no ")]
+        ok = (
+            code == 1
+            and checks == []
+            and len(said) == len(lacks)
+            and all(f"pre-push: no {tool} in " in line for tool, line in zip(lacks, said, strict=True))
+            and all("harness install --apply" in line for line in said)
+            and any(line.startswith("pre-push: refused;") for line in lines)
+        )
+        print(
+            f"{'ok ' if ok else 'BAD'}  pre-push: an environment without {' and '.join(lacks)}, "
+            f"with both tools on the PATH: one line per tool that names harness install --apply, "
+            f"no check runs, the push is refused -> exit {code}, checks {checks}, "
+            f"{[line for line in lines if line.startswith('pre-push:')]}"
+        )
+        return 1, int(not ok)
+    if fails:
+        ok = (
+            code == 1
+            and strict_runs == STRICT
+            and any(line.startswith("pre-push: refused;") for line in lines)
+        )
+        print(
+            f"{'ok ' if ok else 'BAD'}  pre-push: `{fails}` fails: all three checks run "
+            f"and the push is refused -> exit {code}, checks {strict_runs}, "
+            f"{[line for line in lines if line.startswith('pre-push:')]}"
+        )
+        return 1, int(not ok)
+    ok = (
+        code == 0
+        and got == url
+        and KIT_SKIP in lines
+        and tests == []
+        and commands == ["leaks", "test"]
+        and compile_runs == [COMPILE]
+        and strict_runs == STRICT
+        and in_clone
+        and not any("python3.14" in line for line in lines)
+    )
+    print(
+        f"{'ok ' if ok else 'BAD'}  pre-push: harness leaks runs in the clone with the checkout's "
+        f"origin URL, bin/harness test runs once, the compile check runs on the environment's interpreter, "
+        f"the three checks of the strict profile run in the clone with the environment's tools, "
+        f"and without chezmoi the kit's tests skip with one line "
+        f"-> exit {code}, origin {got!r}, harness {commands}, compile {compile_runs}, checks {checks}, "
+        f"skip line {KIT_SKIP in lines}, {lines[-1]!r}"
+    )
     return 1, int(not ok)
 
 
@@ -1051,12 +1336,18 @@ def prepush_branch_cases():
     new commit adds the string and whose next commit removes it is refused; a branch on the
     commit with the string is refused for its tree. No case runs the suite. (number of cases,
     number wrong)"""
-    search = os.pathsep.join(d for d in os.environ.get("PATH", "").split(os.pathsep)
-                             if pathlib.PurePath(d).name != "git-core")
+    search = os.pathsep.join(
+        d for d in os.environ.get("PATH", "").split(os.pathsep) if pathlib.PurePath(d).name != "git-core"
+    )
     env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
-    env.update(GIT_CONFIG_GLOBAL="/dev/null", GIT_CONFIG_NOSYSTEM="1",
-               GIT_AUTHOR_NAME="leaks", GIT_AUTHOR_EMAIL="leaks@example.org",
-               GIT_COMMITTER_NAME="leaks", GIT_COMMITTER_EMAIL="leaks@example.org")
+    env.update(
+        GIT_CONFIG_GLOBAL="/dev/null",
+        GIT_CONFIG_NOSYSTEM="1",
+        GIT_AUTHOR_NAME="leaks",
+        GIT_AUTHOR_EMAIL="leaks@example.org",
+        GIT_COMMITTER_NAME="leaks",
+        GIT_COMMITTER_EMAIL="leaks@example.org",
+    )
     url = "https://github.com/owner/fixture.git"
     with tempfile.TemporaryDirectory(prefix="harness-pre-push-") as tmp:
         tmp = pathlib.Path(tmp)
@@ -1080,11 +1371,13 @@ def prepush_branch_cases():
             "for sha in open(sys.argv[3]).read().split():\n"
             "    hit |= word in subprocess.run(['git', 'show', sha], capture_output=True, text=True).stdout\n"
             "print('1 hit' if hit else '0 hits')\n"
-            "sys.exit(int(hit))\n")
+            "sys.exit(int(hit))\n"
+        )
 
         def git(*args):
-            return subprocess.run(["git", *args], cwd=repo, env=env, check=True, capture_output=True,
-                                  text=True).stdout.strip()
+            return subprocess.run(
+                ["git", *args], cwd=repo, env=env, check=True, capture_output=True, text=True
+            ).stdout.strip()
 
         def commit(name, content=None):
             if content is None:
@@ -1109,20 +1402,37 @@ def prepush_branch_cases():
         git("checkout", "-q", "--detach", with_leak)
         on_leak = commit("y.txt", "clean\n")
         cases = [
-            ("a clean new branch on origin/main passes, and the commits of origin/main are not sent",
-             clean, 0, "the leak check of the branches passed"),
-            ("a branch whose new commit adds the leak string, removed by the next commit, is refused",
-             removed, 1, "found a leak"),
-            ("a branch whose tree holds the leak string of an earlier commit is refused",
-             on_leak, 1, "found a leak"),
+            (
+                "a clean new branch on origin/main passes, and the commits of origin/main are not sent",
+                clean,
+                0,
+                "the leak check of the branches passed",
+            ),
+            (
+                "a branch whose new commit adds the leak string, removed by the next commit, is refused",
+                removed,
+                1,
+                "found a leak",
+            ),
+            (
+                "a branch whose tree holds the leak string of an earlier commit is refused",
+                on_leak,
+                1,
+                "found a leak",
+            ),
         ]
         wrong = 0
         for label, sha, expected, marker in cases:
             try:
-                p = subprocess.run([str(REPO / ".githooks" / "pre-push"), "origin", url],
-                                   input=f"refs/heads/topic {sha} refs/heads/topic {'0' * 40}\n", cwd=repo,
-                                   env={**env, "PATH": str(tools), "TMPDIR": str(tmp)},
-                                   capture_output=True, text=True, timeout=60)
+                p = subprocess.run(
+                    [str(REPO / ".githooks" / "pre-push"), "origin", url],
+                    input=f"refs/heads/topic {sha} refs/heads/topic {'0' * 40}\n",
+                    cwd=repo,
+                    env={**env, "PATH": str(tools), "TMPDIR": str(tmp)},
+                    capture_output=True,
+                    text=True,
+                    timeout=60,
+                )
                 code, text = p.returncode, p.stdout + p.stderr
             except subprocess.TimeoutExpired:
                 code, text = None, "TIMEOUT"
@@ -1164,24 +1474,42 @@ def home_cases():
             return isinstance(got, str) and got.startswith("error: ") and "`home`" in got
 
         got = loaded('x = "~/a"\n')
-        check(isinstance(got, dict) and got.get("home") == str(user) and got.get("x") == f"{user}/a",
-              f"no `home`: the running user's home, and `~/a` below it -> {got}")
+        check(
+            isinstance(got, dict) and got.get("home") == str(user) and got.get("x") == f"{user}/a",
+            f"no `home`: the running user's home, and `~/a` below it -> {got}",
+        )
         got = loaded('x = "~/a"\n', home_env=str(user) + "/")
-        check(isinstance(got, dict) and got.get("home") == str(user),
-              f"no `home`, $HOME with a trailing slash: none in `home` -> {got}")
+        check(
+            isinstance(got, dict) and got.get("home") == str(user),
+            f"no `home`, $HOME with a trailing slash: none in `home` -> {got}",
+        )
         got = loaded('home = "/h"\nx = "~/a"\n')
-        check(isinstance(got, dict) and got.get("home") == "/h" and got.get("x") == "/h/a",
-              f"a given `home` -> {got}")
+        check(
+            isinstance(got, dict) and got.get("home") == "/h" and got.get("x") == "/h/a",
+            f"a given `home` -> {got}",
+        )
         got = loaded('home = "/h/"\nx = "~/a"\ny = "~"\n')
-        check(isinstance(got, dict) and got.get("home") == "/h" and got.get("x") == "/h/a" and got.get("y") == "/h",
-              f"a given `home` with a trailing slash: removed, so no `//` -> {got}")
+        check(
+            isinstance(got, dict)
+            and got.get("home") == "/h"
+            and got.get("x") == "/h/a"
+            and got.get("y") == "/h",
+            f"a given `home` with a trailing slash: removed, so no `//` -> {got}",
+        )
         got = loaded('home = "/"\nx = "~/a"\ny = "~"\n')
-        check(isinstance(got, dict) and got.get("home") == "/" and got.get("x") == "/a" and got.get("y") == "/",
-              f"`home` the root directory -> {got}")
-        for text, label in (('home = "h"\n', "a relative `home`"), ('home = ""\n', "an empty `home`"),
-                            ('home = "~"\n', "`home` = `~`"), ('home = "~/h"\n', "`home` below `~`"),
-                            ('home = "/h/~x"\n', "`home` with a `~` inside"), ("home = 1\n", "a number as `home`"),
-                            ('home = ["/h"]\n', "a list as `home`")):
+        check(
+            isinstance(got, dict) and got.get("home") == "/" and got.get("x") == "/a" and got.get("y") == "/",
+            f"`home` the root directory -> {got}",
+        )
+        for text, label in (
+            ('home = "h"\n', "a relative `home`"),
+            ('home = ""\n', "an empty `home`"),
+            ('home = "~"\n', "`home` = `~`"),
+            ('home = "~/h"\n', "`home` below `~`"),
+            ('home = "/h/~x"\n', "`home` with a `~` inside"),
+            ("home = 1\n", "a number as `home`"),
+            ('home = ["/h"]\n', "a list as `home`"),
+        ):
             got = loaded(text)
             check(refused(got), f"{label} is refused, naming the key -> {got}")
         got = loaded('x = "~"\n', home_env="relative")
@@ -1190,36 +1518,67 @@ def home_cases():
             got = loaded('x = "~"\n')
         check(refused(got), f"no `home` and no home directory: refused, naming the key -> {got}")
         got = loaded('x = "~"\n', home="/fallback")
-        check(isinstance(got, dict) and got.get("home") == "/fallback" and got.get("x") == "/fallback",
-              f"no `home`, and the caller's home -> {got}")
+        check(
+            isinstance(got, dict) and got.get("home") == "/fallback" and got.get("x") == "/fallback",
+            f"no `home`, and the caller's home -> {got}",
+        )
         got = loaded('home = "/h"\nx = "~"\n', home="/fallback")
-        check(isinstance(got, dict) and got.get("home") == "/h", f"a given `home` over the caller's home -> {got}")
-        text = ('home = "/h"\nalone = "~"\nbelow = "~/x/y"\nlist = ["~/a", "b", "~", "a~b"]\nmid = "a~b"\n'
-                'tail = "a/~"\nslashless = "~x"\nuser = "~name/x"\nnumber = 3\nflag = true\n'
-                'nested = [["~/n"]]\n[table]\nk = "~/t"\n')
+        check(
+            isinstance(got, dict) and got.get("home") == "/h",
+            f"a given `home` over the caller's home -> {got}",
+        )
+        text = (
+            'home = "/h"\nalone = "~"\nbelow = "~/x/y"\nlist = ["~/a", "b", "~", "a~b"]\nmid = "a~b"\n'
+            'tail = "a/~"\nslashless = "~x"\nuser = "~name/x"\nnumber = 3\nflag = true\n'
+            'nested = [["~/n"]]\n[table]\nk = "~/t"\n'
+        )
         got = loaded(text)
-        expected = {"home": "/h", "alone": "/h", "below": "/h/x/y", "list": ["/h/a", "b", "/h", "a~b"], "mid": "a~b",
-                    "tail": "a/~", "slashless": "~x", "user": "~name/x", "number": 3, "flag": True,
-                    "nested": [["~/n"]], "table": {"k": "~/t"}}
+        expected = {
+            "home": "/h",
+            "alone": "/h",
+            "below": "/h/x/y",
+            "list": ["/h/a", "b", "/h", "a~b"],
+            "mid": "a~b",
+            "tail": "a/~",
+            "slashless": "~x",
+            "user": "~name/x",
+            "number": 3,
+            "flag": True,
+            "nested": [["~/n"]],
+            "table": {"k": "~/t"},
+        }
         for key, value in expected.items():
-            check(isinstance(got, dict) and got.get(key) == value,
-                  f"{key} -> {got.get(key) if isinstance(got, dict) else got!r}, expected {value!r}")
+            check(
+                isinstance(got, dict) and got.get(key) == value,
+                f"{key} -> {got.get(key) if isinstance(got, dict) else got!r}, expected {value!r}",
+            )
         # examples/profile.toml as copied: `harness get` under the scratch HOME.
         copy = tmp / "copy.toml"
         copy.write_bytes(DUMMY.read_bytes())
         env = {**os.environ, "HOME": str(user)}
         env.pop("RESEARCH_HARNESS_PROFILE", None)
-        for key, expected in (("home", str(user)), ("harness", f"{user}/Research/Harness"),
-                              ("tree_agents", f"{user}/Research/Environment/Agents"),
-                              ("repository_roots", f"{user}/Research/Packages\n{user}/Research/Experiments")):
-            p = subprocess.run([sys.executable, str(REPO / "bin" / "harness"), "--profile", str(copy), "get", key],
-                               env=env, capture_output=True, text=True)
-            check(p.returncode == 0 and p.stdout.strip() == expected,
-                  f"examples/profile.toml as copied: harness get {key} -> exit {p.returncode}, {p.stdout.strip()!r}")
+        for key, expected in (
+            ("home", str(user)),
+            ("harness", f"{user}/Research/Harness"),
+            ("tree_agents", f"{user}/Research/Environment/Agents"),
+            ("repository_roots", f"{user}/Research/Packages\n{user}/Research/Experiments"),
+        ):
+            p = subprocess.run(
+                [sys.executable, str(REPO / "bin" / "harness"), "--profile", str(copy), "get", key],
+                env=env,
+                capture_output=True,
+                text=True,
+            )
+            check(
+                p.returncode == 0 and p.stdout.strip() == expected,
+                f"examples/profile.toml as copied: harness get {key} -> exit {p.returncode}, {p.stdout.strip()!r}",
+            )
         dummy = tomllib.loads(DUMMY.read_text())
-        check("home" not in dummy and dummy["leak"][0] == "~",
-              f"examples/profile.toml: no `home` key, and `~` as the home entry of `leak` -> "
-              f"{'home' in dummy}, {dummy['leak']}")
+        check(
+            "home" not in dummy and dummy["leak"][0] == "~",
+            f"examples/profile.toml: no `home` key, and `~` as the home entry of `leak` -> "
+            f"{'home' in dummy}, {dummy['leak']}",
+        )
     return n, wrong
 
 
@@ -1253,54 +1612,90 @@ def branch_cases():
             ("no `template_host` -> main", "", "beta", "main"),
             ("`template_host` is this host -> main", 'template_host = "alpha"\n', "alpha", "main"),
             ("another host -> memory/<host>", 'template_host = "alpha"\n', "beta", "memory/beta"),
-            ("a given branch with `template_host`, on another host", 'template_host = "alpha"\n'
-             'autocommit_branch = "own"\n', "beta", "own"),
-            ("a given branch with `template_host`, on the template host", 'template_host = "alpha"\n'
-             'autocommit_branch = "own"\n', "alpha", "own"),
+            (
+                "a given branch with `template_host`, on another host",
+                'template_host = "alpha"\nautocommit_branch = "own"\n',
+                "beta",
+                "own",
+            ),
+            (
+                "a given branch with `template_host`, on the template host",
+                'template_host = "alpha"\nautocommit_branch = "own"\n',
+                "alpha",
+                "own",
+            ),
             ("a given branch without `template_host`", 'autocommit_branch = "own"\n', "beta", "own"),
-            ("a host name with a domain part, another host", 'template_host = "alpha"\n', "beta.example.org",
-             "memory/beta"),
-            ("a host name with a domain part, the template host", 'template_host = "alpha"\n',
-             "alpha.example.org", "main"),
+            (
+                "a host name with a domain part, another host",
+                'template_host = "alpha"\n',
+                "beta.example.org",
+                "memory/beta",
+            ),
+            (
+                "a host name with a domain part, the template host",
+                'template_host = "alpha"\n',
+                "alpha.example.org",
+                "main",
+            ),
             ("an empty host name -> main", 'template_host = "alpha"\n', "", "main"),
-            ("a host name that differs in case only is another host", 'template_host = "alpha"\n', "Alpha",
-             "memory/Alpha"),
+            (
+                "a host name that differs in case only is another host",
+                'template_host = "alpha"\n',
+                "Alpha",
+                "memory/Alpha",
+            ),
         ]:
             got = branch(text, host)
             check(got == expected, f"{label} -> {got!r}")
-        for text, label in (('template_host = ""\n', "an empty `template_host`"),
-                            ('template_host = "alpha.example.org"\n', "a `template_host` with a domain part"),
-                            ("template_host = 1\n", "a number as `template_host`")):
+        for text, label in (
+            ('template_host = ""\n', "an empty `template_host`"),
+            ('template_host = "alpha.example.org"\n', "a `template_host` with a domain part"),
+            ("template_host = 1\n", "a number as `template_host`"),
+        ):
             got = branch(text, "beta")
-            check(isinstance(got, str) and got.startswith("error: ") and "`template_host`" in got,
-                  f"{label} is refused, naming the key -> {got!r}")
+            check(
+                isinstance(got, str) and got.startswith("error: ") and "`template_host`" in got,
+                f"{label} is refused, naming the key -> {got!r}",
+            )
         # `harness get autocommit_branch` prints the default.
         (tmp / "profile.toml").write_text('home = "/h"\ntemplate_host = "alpha"\n')
         out = io.StringIO()
-        with contextlib.redirect_stdout(out), mock.patch("socket.gethostname", return_value="beta.example.org"):
+        with (
+            contextlib.redirect_stdout(out),
+            mock.patch("socket.gethostname", return_value="beta.example.org"),
+        ):
             try:
                 status = cmd_get(argparse.Namespace(profile=tmp / "profile.toml", key="autocommit_branch"))
             except HarnessError as e:
                 status = f"error: {e}"
-        check(status == 0 and out.getvalue() == "memory/beta\n",
-              f"harness get prints the default -> {status}, {out.getvalue()!r}")
+        check(
+            status == 0 and out.getvalue() == "memory/beta\n",
+            f"harness get prints the default -> {status}, {out.getvalue()!r}",
+        )
         dummy = tomllib.loads(DUMMY.read_text())
-        check(isinstance(dummy.get("template_host"), str) and "autocommit_branch" not in dummy,
-              f"examples/profile.toml sets `template_host` and no `autocommit_branch` -> "
-              f"{dummy.get('template_host')!r}, {dummy.get('autocommit_branch')!r}")
+        check(
+            isinstance(dummy.get("template_host"), str) and "autocommit_branch" not in dummy,
+            f"examples/profile.toml sets `template_host` and no `autocommit_branch` -> "
+            f"{dummy.get('template_host')!r}, {dummy.get('autocommit_branch')!r}",
+        )
     return n, wrong
 
 
 def selftest():
     """The render's cases, the tree-name cases, the cases of `home` and `~`, the cases of
-    `--commits`, and the `origin` case, the kit case, the case with no environment and the branch
-    cases of the pre-push hook:
+    `--commits`, and the `origin` case, the kit case, the case with no environment, the cases of an
+    environment without the tools of the strict profile, the cases of a check of the strict profile
+    that fails and the branch cases of the pre-push hook:
     (number of cases, number wrong)."""
     wrong = 0
     for template, profile, expected in CASES:
         try:
-            got = render_text(template, profile) if isinstance(template, str) else render_data(template, profile)
-        except (KeyError, TypeError, ValueError):
+            got = (
+                render_text(template, profile)
+                if isinstance(template, str)
+                else render_data(template, profile)
+            )
+        except KeyError, TypeError, ValueError:
             got = None
         wrong += got != expected
         print(f"{'ok ' if got == expected else 'BAD'}  {template!r} -> {got!r}")
@@ -1315,31 +1710,51 @@ def selftest():
     n, w = n + n0 + n1, w + w0 + w1
     n2, w2 = prepush_case()
     # As inside a git hook: git's exec path first on the PATH.
-    exec_path = subprocess.run(["git", "--exec-path"], capture_output=True, text=True, check=True).stdout.strip()
+    exec_path = subprocess.run(
+        ["git", "--exec-path"], capture_output=True, text=True, check=True
+    ).stdout.strip()
     n3, w3 = prepush_case(exec_path + os.pathsep + os.environ.get("PATH", ""))
     n4, w4 = prepush_branch_cases()
     n5, w5 = prepush_case(kit_fails="update-check")
     n6, w6 = prepush_case(no_environment=True)
+    for lacks in (("ruff",), ("basedpyright",), ("ruff", "basedpyright")):
+        n7, w7 = prepush_case(lacks=lacks)
+        n6, w6 = n6 + n7, w6 + w7
+    for fails in STRICT:
+        n7, w7 = prepush_case(fails=fails)
+        n6, w6 = n6 + n7, w6 + w7
     return len(CASES) + len(NAME_CASES) + n + n2 + n3 + n4 + n5 + n6, wrong + w + w2 + w3 + w4 + w5 + w6
 
 
 def register(sub):
-    r = sub.add_parser("render", help="print a template rendered with the profile",
-                       description="Print TEMPLATE with each placeholder `{key}` replaced by its profile value. "
-                                   "Read-only; a placeholder that the profile lacks exits with status 2.")
+    r = sub.add_parser(
+        "render",
+        help="print a template rendered with the profile",
+        description="Print TEMPLATE with each placeholder `{key}` replaced by its profile value. "
+        "Read-only; a placeholder that the profile lacks exits with status 2.",
+    )
     r.add_argument("template", help="the path of the template file")
     r.set_defaults(run=cmd_render)
-    g = sub.add_parser("get", help="print a profile value, one line per item of a list",
-                       description="Print the profile value of KEY, one line per item of a list. Read-only; a key "
-                                   "that the profile lacks exits with status 2.")
+    g = sub.add_parser(
+        "get",
+        help="print a profile value, one line per item of a list",
+        description="Print the profile value of KEY, one line per item of a list. Read-only; a key "
+        "that the profile lacks exits with status 2.",
+    )
     g.add_argument("key", help="a key of the profile, such as `home`")
     g.set_defaults(run=cmd_get)
-    l = sub.add_parser("leaks", help="search the repository and its renders for the private strings of the profile's `leak` list",
-                       description="Search the tracked files of this repository for the private strings of the "
-                                   "profile's `leak` list and for the names of the research tree, and the templates, "
-                                   "rendered with the dummy profile, for the private strings. Read-only; exits 1 on "
-                                   "a hit.")
-    l.add_argument("--commits", metavar="FILE",
-                   help="also search the paths and lines that each commit of FILE adds, and its message, "
-                        "one SHA per line")
+    l = sub.add_parser(
+        "leaks",
+        help="search the repository and its renders for the private strings of the profile's `leak` list",
+        description="Search the tracked files of this repository for the private strings of the "
+        "profile's `leak` list and for the names of the research tree, and the templates, "
+        "rendered with the dummy profile, for the private strings. Read-only; exits 1 on "
+        "a hit.",
+    )
+    l.add_argument(
+        "--commits",
+        metavar="FILE",
+        help="also search the paths and lines that each commit of FILE adds, and its message, "
+        "one SHA per line",
+    )
     l.set_defaults(run=cmd_leaks)

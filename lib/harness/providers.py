@@ -46,8 +46,10 @@ from . import HarnessError
 
 FRONTENDS = ("opencode", "omp")
 # The `api` of a provider -> (OpenCode's `npm`, oh-my-pi's `api`).
-APIS = {"anthropic": ("@ai-sdk/anthropic", "anthropic-messages"),
-        "openai-compatible": ("@ai-sdk/openai-compatible", "openai-completions")}
+APIS = {
+    "anthropic": ("@ai-sdk/anthropic", "anthropic-messages"),
+    "openai-compatible": ("@ai-sdk/openai-compatible", "openai-completions"),
+}
 PROVIDER_KEYS = ("api", "url", "name", "key", "frontends", "models", *FRONTENDS)
 MODEL_KEYS = ("name", "reasoning", "context", "output", "effort", *FRONTENDS)
 # The thinking levels of oh-my-pi 18.12.0, the keys of a model's `compat.reasoningEffortMap`.
@@ -64,8 +66,10 @@ def load(path, profile=None):
     `profile`, the loaded profile, must not hold a key of OLD_KEYS."""
     path = pathlib.Path(path)
     if old := [k for k in OLD_KEYS if k in (profile or {})]:
-        raise HarnessError(f"the profile holds {', '.join(old)}, which {path} replaces: write each provider "
-                           "once there, as examples/providers.toml shows, and remove the key from the profile")
+        raise HarnessError(
+            f"the profile holds {', '.join(old)}, which {path} replaces: write each provider "
+            "once there, as examples/providers.toml shows, and remove the key from the profile"
+        )
     if not path.is_file():
         return {}
     try:
@@ -92,23 +96,29 @@ def check(path, name, provider):
     if not (isinstance(url, str) and re.fullmatch(r"https?://\S+", url)):
         raise HarnessError(f"{where}: `url` is the base URL, http:// or https://")
     if provider["api"] == "anthropic" and not url.rstrip("/").endswith("/v1"):
-        raise HarnessError(f"{where}: the `url` of an \"anthropic\" provider ends in /v1")
+        raise HarnessError(f'{where}: the `url` of an "anthropic" provider ends in /v1')
     if "name" in provider and not isinstance(provider["name"], str):
         raise HarnessError(f"{where}: `name` is not a string")
     # The message never holds the value: a `key` that is no form may be the key itself.
-    if "key" in provider and not (isinstance(provider["key"], str)
-                                  and (ENV_KEY.fullmatch(provider["key"]) or FILE_KEY.fullmatch(provider["key"]))):
+    if "key" in provider and not (
+        isinstance(provider["key"], str)
+        and (ENV_KEY.fullmatch(provider["key"]) or FILE_KEY.fullmatch(provider["key"]))
+    ):
         raise HarnessError(f"{where}: `key` is {{env:VARIABLE}} or {{file:PATH}}, never the key itself")
     frontends = provider.get("frontends", list(FRONTENDS))
-    if not (isinstance(frontends, list) and frontends and set(frontends) <= set(FRONTENDS)
-            and len(set(frontends)) == len(frontends)):
+    if not (
+        isinstance(frontends, list)
+        and frontends
+        and set(frontends) <= set(FRONTENDS)
+        and len(set(frontends)) == len(frontends)
+    ):
         raise HarnessError(f"{where}: `frontends` is a list of {', '.join(map(repr, FRONTENDS))}, each once")
     for own in FRONTENDS:
         if not isinstance(provider.get(own, {}), dict):
             raise HarnessError(f"{where}: `{own}` is not a table")
     models = provider.get("models", {})
     if not (isinstance(models, dict) and all(isinstance(m, dict) for m in models.values())):
-        raise HarnessError(f"{where}: `models` is a table of model tables, [{name}.models.\"<id>\"]")
+        raise HarnessError(f'{where}: `models` is a table of model tables, [{name}.models."<id>"]')
     for model, table in models.items():
         at = f"{where} model {model!r}"
         if unknown := sorted(set(table) - set(MODEL_KEYS)):
@@ -122,7 +132,7 @@ def check(path, name, provider):
         if [k for k in ("context", "output") if k in table and not (type(table[k]) is int and table[k] > 0)]:
             raise HarnessError(f"{at}: `context` and `output` are positive integers")
         if "effort" in table and not (isinstance(table["effort"], str) and table["effort"].strip()):
-            raise HarnessError(f"{at}: `effort` is not a string that names an effort, such as \"none\"")
+            raise HarnessError(f'{at}: `effort` is not a string that names an effort, such as "none"')
         for own in FRONTENDS:
             if not isinstance(table.get(own, {}), dict):
                 raise HarnessError(f"{at}: `{own}` is not a table")
@@ -145,8 +155,11 @@ def opencode(providers):
     """{name: entry} of the `provider` object of opencode.jsonc."""
     out = {}
     for name, p in chosen(providers, "opencode").items():
-        entry = {"npm": APIS[p["api"]][0], **({"name": p["name"]} if "name" in p else {}),
-                 "options": {"baseURL": p["url"], **({"apiKey": p["key"]} if "key" in p else {})}}
+        entry = {
+            "npm": APIS[p["api"]][0],
+            **({"name": p["name"]} if "name" in p else {}),
+            "options": {"baseURL": p["url"], **({"apiKey": p["key"]} if "key" in p else {})},
+        }
         if "models" in p:
             entry["models"] = {}
             for model, m in p["models"].items():
@@ -174,17 +187,24 @@ def omp(providers):
             for model, m in p["models"].items():
                 # A model without `reasoning` gets the agent's effort under oh-my-pi, and none under
                 # OpenCode; `false` sends none.
-                base = {"id": model, **({"name": m["name"]} if "name" in m else {}),
-                        "reasoning": m.get("reasoning", False)}
+                base = {
+                    "id": model,
+                    **({"name": m["name"]} if "name" in m else {}),
+                    "reasoning": m.get("reasoning", False),
+                }
                 if "context" in m:
                     base |= {"contextWindow": m["context"], "maxTokens": m["output"]}
                 # oh-my-pi sends no effort for a model without `reasoning`, and the default
                 # disable mode of a Qwen model on a generic host sends `enable_thinking`, not
                 # `reasoning_effort`.
                 if "effort" in m:
-                    base |= {"reasoning": True,
-                             "compat": {"reasoningEffortMap": dict.fromkeys(LEVELS, m["effort"]),
-                                        "reasoningDisableMode": "none-effort"}}
+                    base |= {
+                        "reasoning": True,
+                        "compat": {
+                            "reasoningEffortMap": dict.fromkeys(LEVELS, m["effort"]),
+                            "reasoningDisableMode": "none-effort",
+                        },
+                    }
                 entry["models"].append(merged(base, m.get("omp", {})))
         out[name] = merged(entry, p.get("omp", {}))
     return out
@@ -192,74 +212,212 @@ def omp(providers):
 
 # (label, providers.toml, expected OpenCode entries, expected oh-my-pi entries); None for an exit 2.
 CASES = [
-    ("an anthropic provider with an env key, a model and an oh-my-pi key",
-     '[a]\napi = "anthropic"\nurl = "https://h/anthropic/v1"\nname = "A"\nkey = "{env:A_KEY}"\n'
-     '[a.models.m]\nname = "M"\nreasoning = true\ncontext = 100\noutput = 10\n',
-     {"a": {"npm": "@ai-sdk/anthropic", "name": "A", "options": {"baseURL": "https://h/anthropic/v1",
-                                                                  "apiKey": "{env:A_KEY}"},
-            "models": {"m": {"name": "M", "reasoning": True, "limit": {"context": 100, "output": 10}}}}},
-     {"a": {"baseUrl": "https://h/anthropic", "api": "anthropic-messages", "apiKey": "A_KEY",
-            "models": [{"id": "m", "name": "M", "reasoning": True, "contextWindow": 100, "maxTokens": 10}]}}),
-    ("an openai-compatible provider with a file key keeps its /v1 for oh-my-pi; a quoted model id stays",
-     '[o]\napi = "openai-compatible"\nurl = "https://h/v1"\nkey = "{file:~/.config/k}"\n'
-     '[o.models."org/m:7b"]\n',
-     {"o": {"npm": "@ai-sdk/openai-compatible", "options": {"baseURL": "https://h/v1", "apiKey": "{file:~/.config/k}"},
-            "models": {"org/m:7b": {}}}},
-     {"o": {"baseUrl": "https://h/v1", "api": "openai-completions", "apiKey": "!cat ~/.config/k",
-            "models": [{"id": "org/m:7b", "reasoning": False}]}}),
-    ("a frontend's own keys merge over the rest, of the provider and of a model",
-     '[o]\napi = "openai-compatible"\nurl = "http://127.0.0.1:8080/v1"\nomp = { apiKey = "K" }\n'
-     'opencode = { options = { timeout = 5 } }\n'
-     '[o.models.m]\ncontext = 1\noutput = 1\nopencode = { tool_call = false, options = { reasoningEffort = "none" } }\n'
-     'omp = { contextWindow = 2 }\n',
-     {"o": {"npm": "@ai-sdk/openai-compatible", "options": {"baseURL": "http://127.0.0.1:8080/v1", "timeout": 5},
-            "models": {"m": {"limit": {"context": 1, "output": 1}, "tool_call": False,
-                             "options": {"reasoningEffort": "none"}}}}},
-     {"o": {"baseUrl": "http://127.0.0.1:8080/v1", "api": "openai-completions", "apiKey": "K",
-            "models": [{"id": "m", "reasoning": False, "contextWindow": 2, "maxTokens": 1}]}}),
-    ("`frontends` limits a provider to OpenCode",
-     '[o]\napi = "openai-compatible"\nurl = "https://h/v1"\nfrontends = ["opencode"]\n',
-     {"o": {"npm": "@ai-sdk/openai-compatible", "options": {"baseURL": "https://h/v1"}}}, {}),
-    ("`effort` fixes the effort in both, and oh-my-pi's model reasons and sends it in every thinking format",
-     '[o]\napi = "openai-compatible"\nurl = "https://h/v1"\n[o.models.m]\neffort = "none"\n',
-     {"o": {"npm": "@ai-sdk/openai-compatible", "options": {"baseURL": "https://h/v1"},
-            "models": {"m": {"options": {"reasoningEffort": "none"}}}}},
-     {"o": {"baseUrl": "https://h/v1", "api": "openai-completions",
-            "models": [{"id": "m", "reasoning": True, "compat": {
-                "reasoningEffortMap": {"minimal": "none", "low": "none", "medium": "none", "high": "none",
-                                       "xhigh": "none", "max": "none"},
-                "reasoningDisableMode": "none-effort"}}]}}),
-    ("a frontend's own keys merge over `effort`",
-     '[o]\napi = "openai-compatible"\nurl = "https://h/v1"\n[o.models.m]\nreasoning = false\neffort = "medium"\n'
-     'opencode = { options = { reasoningEffort = "low", x = 1 } }\nomp = { compat = { reasoningEffortMap = { max = "high" } } }\n',
-     {"o": {"npm": "@ai-sdk/openai-compatible", "options": {"baseURL": "https://h/v1"},
-            "models": {"m": {"reasoning": False, "options": {"reasoningEffort": "low", "x": 1}}}}},
-     {"o": {"baseUrl": "https://h/v1", "api": "openai-completions",
-            "models": [{"id": "m", "reasoning": True, "compat": {
-                "reasoningEffortMap": {"minimal": "medium", "low": "medium", "medium": "medium", "high": "medium",
-                                       "xhigh": "medium", "max": "high"},
-                "reasoningDisableMode": "none-effort"}}]}}),
+    (
+        "an anthropic provider with an env key, a model and an oh-my-pi key",
+        '[a]\napi = "anthropic"\nurl = "https://h/anthropic/v1"\nname = "A"\nkey = "{env:A_KEY}"\n'
+        '[a.models.m]\nname = "M"\nreasoning = true\ncontext = 100\noutput = 10\n',
+        {
+            "a": {
+                "npm": "@ai-sdk/anthropic",
+                "name": "A",
+                "options": {"baseURL": "https://h/anthropic/v1", "apiKey": "{env:A_KEY}"},
+                "models": {"m": {"name": "M", "reasoning": True, "limit": {"context": 100, "output": 10}}},
+            }
+        },
+        {
+            "a": {
+                "baseUrl": "https://h/anthropic",
+                "api": "anthropic-messages",
+                "apiKey": "A_KEY",
+                "models": [
+                    {"id": "m", "name": "M", "reasoning": True, "contextWindow": 100, "maxTokens": 10}
+                ],
+            }
+        },
+    ),
+    (
+        "an openai-compatible provider with a file key keeps its /v1 for oh-my-pi; a quoted model id stays",
+        '[o]\napi = "openai-compatible"\nurl = "https://h/v1"\nkey = "{file:~/.config/k}"\n'
+        '[o.models."org/m:7b"]\n',
+        {
+            "o": {
+                "npm": "@ai-sdk/openai-compatible",
+                "options": {"baseURL": "https://h/v1", "apiKey": "{file:~/.config/k}"},
+                "models": {"org/m:7b": {}},
+            }
+        },
+        {
+            "o": {
+                "baseUrl": "https://h/v1",
+                "api": "openai-completions",
+                "apiKey": "!cat ~/.config/k",
+                "models": [{"id": "org/m:7b", "reasoning": False}],
+            }
+        },
+    ),
+    (
+        "a frontend's own keys merge over the rest, of the provider and of a model",
+        '[o]\napi = "openai-compatible"\nurl = "http://127.0.0.1:8080/v1"\nomp = { apiKey = "K" }\n'
+        "opencode = { options = { timeout = 5 } }\n"
+        '[o.models.m]\ncontext = 1\noutput = 1\nopencode = { tool_call = false, options = { reasoningEffort = "none" } }\n'
+        "omp = { contextWindow = 2 }\n",
+        {
+            "o": {
+                "npm": "@ai-sdk/openai-compatible",
+                "options": {"baseURL": "http://127.0.0.1:8080/v1", "timeout": 5},
+                "models": {
+                    "m": {
+                        "limit": {"context": 1, "output": 1},
+                        "tool_call": False,
+                        "options": {"reasoningEffort": "none"},
+                    }
+                },
+            }
+        },
+        {
+            "o": {
+                "baseUrl": "http://127.0.0.1:8080/v1",
+                "api": "openai-completions",
+                "apiKey": "K",
+                "models": [{"id": "m", "reasoning": False, "contextWindow": 2, "maxTokens": 1}],
+            }
+        },
+    ),
+    (
+        "`frontends` limits a provider to OpenCode",
+        '[o]\napi = "openai-compatible"\nurl = "https://h/v1"\nfrontends = ["opencode"]\n',
+        {"o": {"npm": "@ai-sdk/openai-compatible", "options": {"baseURL": "https://h/v1"}}},
+        {},
+    ),
+    (
+        "`effort` fixes the effort in both, and oh-my-pi's model reasons and sends it in every thinking format",
+        '[o]\napi = "openai-compatible"\nurl = "https://h/v1"\n[o.models.m]\neffort = "none"\n',
+        {
+            "o": {
+                "npm": "@ai-sdk/openai-compatible",
+                "options": {"baseURL": "https://h/v1"},
+                "models": {"m": {"options": {"reasoningEffort": "none"}}},
+            }
+        },
+        {
+            "o": {
+                "baseUrl": "https://h/v1",
+                "api": "openai-completions",
+                "models": [
+                    {
+                        "id": "m",
+                        "reasoning": True,
+                        "compat": {
+                            "reasoningEffortMap": {
+                                "minimal": "none",
+                                "low": "none",
+                                "medium": "none",
+                                "high": "none",
+                                "xhigh": "none",
+                                "max": "none",
+                            },
+                            "reasoningDisableMode": "none-effort",
+                        },
+                    }
+                ],
+            }
+        },
+    ),
+    (
+        "a frontend's own keys merge over `effort`",
+        '[o]\napi = "openai-compatible"\nurl = "https://h/v1"\n[o.models.m]\nreasoning = false\neffort = "medium"\n'
+        'opencode = { options = { reasoningEffort = "low", x = 1 } }\nomp = { compat = { reasoningEffortMap = { max = "high" } } }\n',
+        {
+            "o": {
+                "npm": "@ai-sdk/openai-compatible",
+                "options": {"baseURL": "https://h/v1"},
+                "models": {"m": {"reasoning": False, "options": {"reasoningEffort": "low", "x": 1}}},
+            }
+        },
+        {
+            "o": {
+                "baseUrl": "https://h/v1",
+                "api": "openai-completions",
+                "models": [
+                    {
+                        "id": "m",
+                        "reasoning": True,
+                        "compat": {
+                            "reasoningEffortMap": {
+                                "minimal": "medium",
+                                "low": "medium",
+                                "medium": "medium",
+                                "high": "medium",
+                                "xhigh": "medium",
+                                "max": "high",
+                            },
+                            "reasoningDisableMode": "none-effort",
+                        },
+                    }
+                ],
+            }
+        },
+    ),
     ("an empty file", "", {}, {}),
-    ("a blank effort", '[o]\napi = "openai-compatible"\nurl = "https://h/v1"\n[o.models.m]\neffort = " "\n',
-     None, None),
-    ("an effort that is no string", '[o]\napi = "openai-compatible"\nurl = "https://h/v1"\n[o.models.m]\neffort = 1\n',
-     None, None),
-    ("a literal key", '[o]\napi = "openai-compatible"\nurl = "https://h/v1"\nkey = "sk-LITERAL"\n', None, None),
-    ("a file key with a shell character", '[o]\napi = "openai-compatible"\nurl = "https://h/v1"\n'
-     'key = "{file:~/k;rm}"\n', None, None),
+    (
+        "a blank effort",
+        '[o]\napi = "openai-compatible"\nurl = "https://h/v1"\n[o.models.m]\neffort = " "\n',
+        None,
+        None,
+    ),
+    (
+        "an effort that is no string",
+        '[o]\napi = "openai-compatible"\nurl = "https://h/v1"\n[o.models.m]\neffort = 1\n',
+        None,
+        None,
+    ),
+    (
+        "a literal key",
+        '[o]\napi = "openai-compatible"\nurl = "https://h/v1"\nkey = "sk-LITERAL"\n',
+        None,
+        None,
+    ),
+    (
+        "a file key with a shell character",
+        '[o]\napi = "openai-compatible"\nurl = "https://h/v1"\nkey = "{file:~/k;rm}"\n',
+        None,
+        None,
+    ),
     ("an unknown api", '[o]\napi = "openai"\nurl = "https://h/v1"\n', None, None),
     ("no url", '[o]\napi = "openai-compatible"\n', None, None),
     ("an anthropic url without /v1", '[a]\napi = "anthropic"\nurl = "https://h/anthropic"\n', None, None),
-    ("OpenCode's key baseURL at the top level", '[o]\napi = "openai-compatible"\nurl = "https://h/v1"\n'
-     'baseURL = "https://h/v1"\n', None, None),
-    ("an unknown frontend", '[o]\napi = "openai-compatible"\nurl = "https://h/v1"\nfrontends = ["pi"]\n', None, None),
+    (
+        "OpenCode's key baseURL at the top level",
+        '[o]\napi = "openai-compatible"\nurl = "https://h/v1"\nbaseURL = "https://h/v1"\n',
+        None,
+        None,
+    ),
+    (
+        "an unknown frontend",
+        '[o]\napi = "openai-compatible"\nurl = "https://h/v1"\nfrontends = ["pi"]\n',
+        None,
+        None,
+    ),
     ("no frontend", '[o]\napi = "openai-compatible"\nurl = "https://h/v1"\nfrontends = []\n', None, None),
-    ("a context without an output", '[o]\napi = "openai-compatible"\nurl = "https://h/v1"\n'
-     '[o.models.m]\ncontext = 1\n', None, None),
-    ("OpenCode's model key limit", '[o]\napi = "openai-compatible"\nurl = "https://h/v1"\n'
-     '[o.models.m]\nlimit = { context = 1, output = 1 }\n', None, None),
-    ("a context of zero", '[o]\napi = "openai-compatible"\nurl = "https://h/v1"\n'
-     '[o.models.m]\ncontext = 0\noutput = 1\n', None, None),
+    (
+        "a context without an output",
+        '[o]\napi = "openai-compatible"\nurl = "https://h/v1"\n[o.models.m]\ncontext = 1\n',
+        None,
+        None,
+    ),
+    (
+        "OpenCode's model key limit",
+        '[o]\napi = "openai-compatible"\nurl = "https://h/v1"\n'
+        "[o.models.m]\nlimit = { context = 1, output = 1 }\n",
+        None,
+        None,
+    ),
+    (
+        "a context of zero",
+        '[o]\napi = "openai-compatible"\nurl = "https://h/v1"\n[o.models.m]\ncontext = 0\noutput = 1\n',
+        None,
+        None,
+    ),
     ("a provider that is no table", 'o = "x"\n', None, None),
 ]
 
@@ -284,8 +442,10 @@ def selftest():
             except HarnessError as e:
                 got, message = None, str(e)
             if expected_opencode is None:
-                report(got is None and str(path) in message and "LITERAL" not in message,
-                       f"{label} exits 2, names the file and holds no key: {message or got}")
+                report(
+                    got is None and str(path) in message and "LITERAL" not in message,
+                    f"{label} exits 2, names the file and holds no key: {message or got}",
+                )
             else:
                 report(got == (expected_opencode, expected_omp), f"{label}: {got}")
         report(load(pathlib.Path(tmp) / "missing.toml") == {}, "a missing file holds no provider")
@@ -295,6 +455,8 @@ def selftest():
                 message = ""
             except HarnessError as e:
                 message = str(e)
-            report(key in message and str(path) in message and "examples/providers.toml" in message,
-                   f"a profile with {key} exits 2 and names providers.toml: {message}")
+            report(
+                key in message and str(path) in message and "examples/providers.toml" in message,
+                f"a profile with {key} exits 2 and names providers.toml: {message}",
+            )
     return n, wrong

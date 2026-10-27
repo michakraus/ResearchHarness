@@ -115,14 +115,14 @@ from = "hook"
 to = "warning"
 route = ["left", "right"]
 label = "differ"
-at = "hooks/install-drift.py:114"
+at = "hooks/install-drift.py:118"
 
 [[edge]]
 from = "warning"
 to = "you"
 route = ["top", "bottom"]
 label = "names the command"
-at = "hooks/install-drift.py:97"
+at = "hooks/install-drift.py:101"
 
 [[edge]]
 from = "you"
@@ -157,4 +157,4 @@ from = "hook"
 to = "current"
 route = ["bottom+40", "y 2", "right"]
 label = "equal"
-at = "hooks/install-drift.py:95"
+at = "hooks/install-drift.py:99"

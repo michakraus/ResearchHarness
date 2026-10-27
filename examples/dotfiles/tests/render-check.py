@@ -57,9 +57,13 @@ KIT_TARGETS = [
 MERGE_SCRIPT = ".local/bin/dotfiles-merge"
 SK_PROVIDER = "SSH_SK_PROVIDER"
 FORBIDDEN = {"darwin": ["/home/"], "linux": ["/Users/", "/opt/homebrew"]}
-TOML_TARGETS = [".config/research-harness/profile.toml", ".config/research-harness/models.toml",
-                ".config/research-harness/network.toml", ".config/research-harness/providers.toml",
-                ".config/research-harness/repositories.toml"]
+TOML_TARGETS = [
+    ".config/research-harness/profile.toml",
+    ".config/research-harness/models.toml",
+    ".config/research-harness/network.toml",
+    ".config/research-harness/providers.toml",
+    ".config/research-harness/repositories.toml",
+]
 
 failures = []
 
@@ -96,10 +100,14 @@ def chezmoi(work, args, data=None, stdin=None):
         args = [args[0], "--exclude=scripts"] + args[1:]
     cmd = [
         "chezmoi",
-        "--config", str(work / "chezmoi.toml"),
-        "--source", str(SOURCE),
-        "--destination", str(work / "home"),
-        "--persistent-state", str(work / "state.boltdb"),
+        "--config",
+        str(work / "chezmoi.toml"),
+        "--source",
+        str(SOURCE),
+        "--destination",
+        str(work / "home"),
+        "--persistent-state",
+        str(work / "state.boltdb"),
         "--no-tty",
     ]
     if data is not None:
@@ -186,8 +194,9 @@ def check_host(root, host, os_name, home, live_home, template_host):
             print(f"  autocommit_branch: {got or 'none, so main'}")
 
     # Check 5: SSH_SK_PROVIDER only in dotfiles-merge; the scripts are executable.
-    provider = [f for f in files
-                if (dest / f).is_file() and SK_PROVIDER in (dest / f).read_text(errors="replace")]
+    provider = [
+        f for f in files if (dest / f).is_file() and SK_PROVIDER in (dest / f).read_text(errors="replace")
+    ]
     want_provider = [MERGE_SCRIPT] if host == template_host else []
     if sorted(provider) != want_provider:
         fail(f"{host}: {SK_PROVIDER} appears in {sorted(provider)}, expected {want_provider}")
@@ -212,7 +221,8 @@ def check_host(root, host, os_name, home, live_home, template_host):
             diff = difflib.unified_diff(
                 live.read_text(errors="replace").splitlines(keepends=True),
                 rendered.read_text(errors="replace").splitlines(keepends=True),
-                f"live/{f}", f"render/{f}",
+                f"live/{f}",
+                f"render/{f}",
             )
             fail(f"{host}: the render of {f} differs from the live file:\n{''.join(diff)}")
     if len(failures) == before:
@@ -247,8 +257,10 @@ def check_unknown_host(root):
         for args in (["managed"], ["apply"]):
             result = chezmoi(work, args, data)
             if result.returncode == 0 or FAKE_HOST not in result.stderr:
-                fail(f"chezmoi {args[0]} ({os_name}) for {FAKE_HOST}: exit {result.returncode}, "
-                     f"stderr does not name the host: {result.stderr.strip()!r}")
+                fail(
+                    f"chezmoi {args[0]} ({os_name}) for {FAKE_HOST}: exit {result.returncode}, "
+                    f"stderr does not name the host: {result.stderr.strip()!r}"
+                )
             else:
                 print(f"  chezmoi {args[0]} ({os_name}) fails: {result.stderr.strip()}")
     readers = host_templates()
@@ -260,8 +272,10 @@ def check_unknown_host(root):
         rel = path.relative_to(SOURCE)
         result = chezmoi(work, ["execute-template"], data, stdin=path.read_text())
         if result.returncode == 0 or FAKE_HOST not in result.stderr:
-            fail(f"{rel} does not stop for {FAKE_HOST}: exit {result.returncode}, "
-                 f"stderr {result.stderr.strip()!r}")
+            fail(
+                f"{rel} does not stop for {FAKE_HOST}: exit {result.returncode}, "
+                f"stderr {result.stderr.strip()!r}"
+            )
         else:
             print(f"  {rel} stops with chezmoi's fail")
 
@@ -289,8 +303,9 @@ def main():
         if this_host in machines:
             print(f"This machine is {this_host}: its render is compared with {live_home}.")
         else:
-            print(f"This machine, {this_host}, is not in machines.toml: no render is compared "
-                  "with live files.")
+            print(
+                f"This machine, {this_host}, is not in machines.toml: no render is compared with live files."
+            )
 
         for host, entry in machines.items():
             os_name = entry["os"]

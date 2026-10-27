@@ -149,7 +149,7 @@ def in_zone(path):
     if below(path, SCRATCH):
         return True
     if below(path, WORKTREES):
-        return "/" in path[len(WORKTREES) + 1:]
+        return "/" in path[len(WORKTREES) + 1 :]
     return False
 
 
@@ -189,7 +189,7 @@ def git_rm(words):
     if index >= len(words) or words[index] != "rm":
         return False, False, False
     forced = False
-    for word in words[index + 1:]:
+    for word in words[index + 1 :]:
         if word == "--":
             break
         if word == "--force" or (word.startswith("-") and not word.startswith("--") and "f" in word):
@@ -242,11 +242,17 @@ def decide(command, cwd):
 
 
 def ask(reason):
-    print(json.dumps({"hookSpecificOutput": {
-        "hookEventName": "PreToolUse",
-        "permissionDecision": "ask",
-        "permissionDecisionReason": reason,
-    }}))
+    print(
+        json.dumps(
+            {
+                "hookSpecificOutput": {
+                    "hookEventName": "PreToolUse",
+                    "permissionDecision": "ask",
+                    "permissionDecisionReason": reason,
+                }
+            }
+        )
+    )
     return 0
 
 

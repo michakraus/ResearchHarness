@@ -31,6 +31,7 @@ or spans repositories, 2 when none of those holds and a part is unmeasured, and 
 script fails. The parts table comes from `parts-table.awk`, beside
 this script. The research root is $RESEARCH_ROOT, else ~/Research.
 """
+
 import os
 import re
 import subprocess
@@ -49,8 +50,9 @@ HEADING = re.compile(r"^(#{2,4})\s+§?([0-9A-Z][0-9A-Za-z.]*)")
 
 
 def parts(path):
-    out = subprocess.run(["awk", "-f", os.path.join(HERE, "parts-table.awk"), path],
-                         capture_output=True, text=True, check=True).stdout
+    out = subprocess.run(
+        ["awk", "-f", os.path.join(HERE, "parts-table.awk"), path], capture_output=True, text=True, check=True
+    ).stdout
     for row in out.splitlines():
         f = row.split("\t")
         if f[0] == "PART" and len(f) >= 6:
@@ -60,11 +62,12 @@ def parts(path):
 def sections(lines):
     """Map each heading key, such as `5V.P14`, `G6` or `4`, to the text up to the next heading of
     the same or a higher level."""
-    heads = [(i, len(m.group(1)), m.group(2).rstrip("."))
-             for i, l in enumerate(lines) if (m := HEADING.match(l))]
+    heads = [
+        (i, len(m.group(1)), m.group(2).rstrip(".")) for i, l in enumerate(lines) if (m := HEADING.match(l))
+    ]
     text = {}
     for j, (i, level, key) in enumerate(heads):
-        end = next((k for k, lv, _ in heads[j + 1:] if lv <= level), len(lines))
+        end = next((k for k, lv, _ in heads[j + 1 :] if lv <= level), len(lines))
         text.setdefault(key, "\n".join(lines[i:end]))
     return text
 
@@ -74,8 +77,10 @@ def applies(repository):
     group of them in words, such as "the packages already in form"."""
     for name in (t.strip(" `()") for t in repository.split(",")):
         first = name.split()[0] if name.split() else ""
-        if any(os.path.isdir(os.path.join(RESEARCH, tree, first))
-               for tree in ("Packages", "Experiments")) and first:
+        if (
+            any(os.path.isdir(os.path.join(RESEARCH, tree, first)) for tree in ("Packages", "Experiments"))
+            and first
+        ):
             return True, ""
     if repository.strip(" `").lower().startswith("the "):
         return True, f"a group in words: {repository!r}"
@@ -131,12 +136,16 @@ def validate(spec, own, no_run, devices):
     """Run spec-validate.py on a spec: (its exit status, 0, 1 or 2, and its lines)."""
     checkout = os.path.join(RESEARCH, own)
     where = ["--no-run"] if no_run or not os.path.isdir(checkout) else ["--repo", checkout]
-    p = subprocess.run([sys.executable, os.path.join(HERE, "spec-validate.py"), spec, *where,
-                        "--devices", devices], capture_output=True, text=True)
+    p = subprocess.run(
+        [sys.executable, os.path.join(HERE, "spec-validate.py"), spec, *where, "--devices", devices],
+        capture_output=True,
+        text=True,
+    )
     if p.returncode not in (0, 1, 2):
         raise RuntimeError(f"spec-validate.py exits {p.returncode}: {p.stderr.strip()}")
-    lines = [l for l in p.stdout.splitlines()
-             if not l.startswith(("premise: pass", "PASS", "FAIL", "UNMEASURED"))]
+    lines = [
+        l for l in p.stdout.splitlines() if not l.startswith(("premise: pass", "PASS", "FAIL", "UNMEASURED"))
+    ]
     if where == ["--no-run"] and not no_run:
         lines.append(f"premises not run: no checkout at {checkout}")
     return p.returncode, lines
@@ -148,7 +157,7 @@ def main(argv):
     devices = ""
     if "--devices" in argv:
         k = argv.index("--devices")
-        devices, argv = argv[k + 1], argv[:k] + argv[k + 2:]
+        devices, argv = argv[k + 1], argv[:k] + argv[k + 2 :]
     if not argv:
         print(__doc__.strip().splitlines()[2].strip())
         return 3
@@ -173,14 +182,22 @@ def main(argv):
         body = "\n".join([text[k] for k in found] + ([open(spec, encoding="utf-8").read()] if spec else []))
         across = spans(body, home(repository)) if tier != "direct" else []
         if across:
-            print(f"{part}\tSPANS {', '.join(across)}\ta file in another repository is a dispatcher step of its own")
+            print(
+                f"{part}\tSPANS {', '.join(across)}\ta file in another repository is a dispatcher step of its own"
+            )
             failed = True
             continue
         if spec:
             code, lines = validate(spec, home(repository), no_run, devices)
             errors = [l for l in lines if l.startswith("rule ")]
-            needs = sorted({d.strip() for l in lines if (m := re.search(r"not run \(needs ([^)]*)\)", l))
-                            for d in m.group(1).split(",")})
+            needs = sorted(
+                {
+                    d.strip()
+                    for l in lines
+                    if (m := re.search(r"not run \(needs ([^)]*)\)", l))
+                    for d in m.group(1).split(",")
+                }
+            )
             verdict = {0: "PASS", 1: f"INVALID {len(errors)} errors", 2: f"UNMEASURED {', '.join(needs)}"}
             print(f"{part}\t{verdict[code]}")
             for line in lines:
@@ -195,7 +212,9 @@ def main(argv):
         missing = [lab for lab in LABELS if lab not in body]
         verdict = "PASS" if not missing else "MISSING " + ", ".join(missing)
         failed |= bool(missing)
-        extra = [f"unresolved: {', '.join(k for k in keys if k not in text)}"] if len(found) < len(keys) else []
+        extra = (
+            [f"unresolved: {', '.join(k for k in keys if k not in text)}"] if len(found) < len(keys) else []
+        )
         if note:
             extra.append(note)
         print("\t".join([part, verdict] + extra))

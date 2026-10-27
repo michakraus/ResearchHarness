@@ -21,95 +21,116 @@ The settings hold no `Edit` ask for these paths: an `ask` rule outranks the hook
 **It fails closed, to a prompt**, on a payload it cannot read. Claude Code treats a hook that
 does not run as non-blocking, so a missing or broken hook lets every gated edit through.
 
-Test it without installing:
+Test it without installing, with a file of `$HOME/Research/Harness/.githooks/` as `file_path`:
 
-    echo '{"session_id":"s","tool_input":{"file_path":"'"$HOME"'/Research/Harness/.githooks/pre-push"}}' | ./edit-scope.py
+    echo '{"session_id":"s","tool_input":{"file_path":"…/.githooks/pre-push"}}' | ./edit-scope.py
 """
 
 import datetime
 import json
-import os
+import pathlib
 import sys
 
-HOME = os.path.realpath(os.path.expanduser("~"))
-ROOT = os.path.join(HOME, "Research")
-WORKTREES = os.path.join(ROOT, ".worktrees")
-GRANTS = os.path.join(HOME, ".claude", "logs", "edit-scope.jsonl")
+HOME = pathlib.Path.home().resolve()
+ROOT = HOME / "Research"
+WORKTREES = ROOT / ".worktrees"
+GRANTS = HOME / ".claude" / "logs" / "edit-scope.jsonl"
 GATED = ("/.githooks/", "/.github/workflows/")
 
-REASON = ("An edit of a git hook or a CI workflow: the hook runs outside the sandbox at the next "
-          "commit, the workflow runs with the repository's secrets when its branch is pushed.{more}")
+REASON = (
+    "An edit of a git hook or a CI workflow: the hook runs outside the sandbox at the next "
+    "commit, the workflow runs with the repository's secrets when its branch is pushed.{more}"
+)
 ONCE = " Approve it once, and this session's later edits of these files in {worktree} do not ask."
 
 
-def target(payload):
+def target(payload: dict[str, object]) -> pathlib.Path | None:
     """The absolute path that the tool call edits, or None."""
     tool_input = payload["tool_input"]
-    path = tool_input.get("file_path") or tool_input.get("notebook_path")
+    if not isinstance(tool_input, dict):
+        raise TypeError("tool_input is no object")
+    fields: dict[str, object] = tool_input  # pyright: ignore[reportUnknownVariableType]
+    path = fields.get("file_path") or fields.get("notebook_path")
     if not isinstance(path, str) or not path:
         return None
-    if not os.path.isabs(path):
+    edited = pathlib.Path(path)
+    if not edited.is_absolute():
         cwd = payload.get("cwd")
-        if not isinstance(cwd, str) or not os.path.isabs(cwd):
+        if not isinstance(cwd, str) or not pathlib.Path(cwd).is_absolute():
             raise ValueError("a relative path with no working directory")
-        path = os.path.join(cwd, path)
-    return os.path.realpath(path)
+        edited = pathlib.Path(cwd) / edited
+    return edited.resolve()
 
 
-def gated(path):
-    return path.startswith(ROOT + "/") and any(part in path for part in GATED)
+def gated(path: pathlib.Path) -> bool:
+    return path.is_relative_to(ROOT) and any(part in f"{path}/" for part in GATED)
 
 
-def worktree(path):
+def worktree(path: pathlib.Path) -> pathlib.Path | None:
     """The worktree `~/Research/.worktrees/<name>` that holds `path`, or None."""
-    if not path.startswith(WORKTREES + "/"):
+    if not path.is_relative_to(WORKTREES) or path == WORKTREES:
         return None
-    name = path[len(WORKTREES) + 1:].split("/")[0]
-    return os.path.join(WORKTREES, name) if name else None
+    return WORKTREES / path.relative_to(WORKTREES).parts[0]
 
 
-def granted(session, tree):
+def granted(session: str, tree: pathlib.Path) -> bool:
     try:
-        with open(GRANTS, encoding="utf-8") as grants:
+        with GRANTS.open(encoding="utf-8") as grants:
             for line in grants:
                 try:
                     record = json.loads(line)
                 except ValueError:
                     continue
-                if record.get("session_id") == session and record.get("worktree") == tree:
+                if (
+                    isinstance(record, dict)
+                    and record.get("session_id") == session  # pyright: ignore[reportUnknownMemberType]
+                    and record.get("worktree") == str(tree)  # pyright: ignore[reportUnknownMemberType]
+                ):
                     return True
     except FileNotFoundError:
         pass
     return False
 
 
-def grant(session, tree):
+def grant(session: str, tree: pathlib.Path) -> None:
     if granted(session, tree):
         return
-    os.makedirs(os.path.dirname(GRANTS), exist_ok=True)
-    record = {"time": datetime.datetime.now().astimezone().isoformat(timespec="seconds"),
-              "session_id": session, "worktree": tree}
-    with open(GRANTS, "a", encoding="utf-8") as grants:
+    GRANTS.parent.mkdir(parents=True, exist_ok=True)
+    record = {
+        "time": datetime.datetime.now().astimezone().isoformat(timespec="seconds"),
+        "session_id": session,
+        "worktree": str(tree),
+    }
+    with GRANTS.open("a", encoding="utf-8") as grants:
         grants.write(json.dumps(record) + "\n")
 
 
-def ask(reason):
-    print(json.dumps({"hookSpecificOutput": {
-        "hookEventName": "PreToolUse",
-        "permissionDecision": "ask",
-        "permissionDecisionReason": reason,
-    }}))
+def ask(reason: str) -> int:
+    print(
+        json.dumps(
+            {
+                "hookSpecificOutput": {
+                    "hookEventName": "PreToolUse",
+                    "permissionDecision": "ask",
+                    "permissionDecisionReason": reason,
+                }
+            }
+        )
+    )
     return 0
 
 
-def main(argv):
+def main(argv: list[str]) -> int:
     record = argv == ["--record"]
     try:
         payload = json.load(sys.stdin)
-        path = target(payload)
+        if not isinstance(payload, dict):
+            return 0 if record else ask("edit-scope could not read the call, and asks.")
+        call: dict[str, object] = payload  # pyright: ignore[reportUnknownVariableType]
+        path = target(call)
         if path is None or not gated(path):
             return 0
-        session = payload.get("session_id")
+        session = call.get("session_id")
         session = session if isinstance(session, str) and session else None
         tree = worktree(path)
         if record:
@@ -118,9 +139,10 @@ def main(argv):
             return 0
         if tree is not None and session is not None and granted(session, tree):
             return 0
-        more = ONCE.format(worktree=os.path.basename(tree)) if tree is not None else ""
+        more = ONCE.format(worktree=tree.name) if tree is not None else ""
         return ask(REASON.format(more=more))
-    except Exception:
+    # A hook that crashes fails open, so every error before the edit asks; after it, nothing blocks.
+    except Exception:  # noqa: BLE001
         return 0 if record else ask("edit-scope could not read the call, and asks.")
 
 

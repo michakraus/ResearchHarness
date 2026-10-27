@@ -30,8 +30,16 @@ LOG = os.environ.get("LOG") or os.path.expanduser("~/.claude/logs/permission-req
 LIMIT = 400
 
 # The fields kept from the payload. `transcript_path` follows from `session_id`.
-FIELDS = ("session_id", "cwd", "permission_mode", "tool_name", "tool_use_id", "agent_id",
-          "agent_type", "permission_suggestions")
+FIELDS = (
+    "session_id",
+    "cwd",
+    "permission_mode",
+    "tool_name",
+    "tool_use_id",
+    "agent_id",
+    "agent_type",
+    "permission_suggestions",
+)
 
 
 def shorten(value):

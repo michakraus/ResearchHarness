@@ -62,8 +62,10 @@ JULIA = ["julia", "--startup-file=no"]
 # The installed copy of the repository's Project.toml, which every Julia script puts in its
 # LOAD_PATH. A session cannot write below ~/.local, so it cannot change what the unsandboxed
 # updater installs there.
-JULIA_ENV = pathlib.Path(os.environ.get("RESEARCH_HARNESS_JULIA")
-                         or pathlib.Path.home() / ".local" / "share" / "research-harness" / "julia")
+JULIA_ENV = pathlib.Path(
+    os.environ.get("RESEARCH_HARNESS_JULIA")
+    or pathlib.Path.home() / ".local" / "share" / "research-harness" / "julia"
+)
 # The width of the label column of the lines that `install_file` prints. `cmd_install` sets it to
 # the longest label of the install, so that the status column lines up.
 WIDTH = 34
@@ -81,13 +83,20 @@ def behind_origin(repo=REPO):
     offline. A checkout with no `origin/main`, or no git, gets no warning."""
     # No `GIT_*` variable of the caller: a `GIT_DIR` that a git hook exports names another repository.
     env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
-    p = subprocess.run(["git", "rev-list", "--count", "HEAD..refs/remotes/origin/main"], cwd=repo,
-                       capture_output=True, text=True, env=env)
+    p = subprocess.run(
+        ["git", "rev-list", "--count", "HEAD..refs/remotes/origin/main"],
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
     behind = int(p.stdout) if p.returncode == 0 and p.stdout.strip().isdigit() else 0
     if not behind:
         return None
-    return [f"the checkout {repo} is {behind} commit(s) behind its origin/main, as its last fetch saw it.",
-            "The install reads the checkout as it is. Run `git pull` there, then install again."]
+    return [
+        f"the checkout {repo} is {behind} commit(s) behind its origin/main, as its last fetch saw it.",
+        "The install reads the checkout as it is. Run `git pull` there, then install again.",
+    ]
 
 
 def install_file(apply, data, dst, label, backup=False, mode=None):
@@ -154,11 +163,18 @@ def stamp_bytes(sources, plan, harness=None):
     bytes and modes, which are what the apply installs, each file with the bytes of its source.
     A directory in this checkout is named below `harness`, the profile's checkout of this
     repository, when given, so that every checkout with the same sources writes the same stamp."""
+
     def named(d):
-        return str(pathlib.Path(harness, d.relative_to(REPO)) if harness is not None and d.is_relative_to(REPO) else d)
+        return str(
+            pathlib.Path(harness, d.relative_to(REPO))
+            if harness is not None and d.is_relative_to(REPO)
+            else d
+        )
 
     sources = [[named(d), prefix, sorted(skip), sorted(skipped)] for d, prefix, skip, skipped in sources]
-    return (json.dumps({"sources": sources, "digest": drift_hook().digest_of(plan)}, indent=2) + "\n").encode()
+    return (
+        json.dumps({"sources": sources, "digest": drift_hook().digest_of(plan)}, indent=2) + "\n"
+    ).encode()
 
 
 def source_files(directory):
@@ -182,7 +198,9 @@ def source_files(directory):
             except OSError as e:
                 raise HarnessError(f"{entry} cannot be read: {e.strerror}") from None
             if not regular:
-                raise HarnessError(f"{entry} is neither a file nor a directory; a source holds files and directories only")
+                raise HarnessError(
+                    f"{entry} is neither a file nor a directory; a source holds files and directories only"
+                )
         found += [pathlib.Path(path, f).relative_to(directory) for f in files]
     return sorted(found)
 
@@ -229,28 +247,40 @@ def check_files(files):
         if not same and rest and rest[0] and not os.access(dst.parent, os.W_OK | os.X_OK):
             return f"{dst} cannot be written: its backup goes to {dst.parent}, which cannot be written"
         # `install_file` runs a chmod on a changed file whenever the plan names a mode.
-        if (mode is not None and (not same or mode != stat.S_IMODE(st.st_mode))
-                and os.geteuid() not in (0, st.st_uid)):
+        if (
+            mode is not None
+            and (not same or mode != stat.S_IMODE(st.st_mode))
+            and os.geteuid() not in (0, st.st_uid)
+        ):
             return f"{dst} cannot change its mode to {mode:04o}: another user is its owner"
     return None
 
 
 def install_julia_env(apply):
     """Copy Project.toml to JULIA_ENV and instantiate it there; the number of changes."""
-    changes = install_file(apply, (REPO / "Project.toml").read_bytes(), JULIA_ENV / "Project.toml",
-                           "julia/Project.toml")
+    changes = install_file(
+        apply, (REPO / "Project.toml").read_bytes(), JULIA_ENV / "Project.toml", "julia/Project.toml"
+    )
     if not (JULIA_ENV / "Manifest.toml").is_file():
         print(f"{'julia/Manifest.toml':<{WIDTH}}  INSTANTIATE")
         changes += 1
     if apply and changes:
         # `Pkg.resolve` adds no registry, so a new depot needs General first.
         try:
-            p = subprocess.run([*JULIA, f"--project={JULIA_ENV}", "-e",
-                                "using Pkg; isempty(Pkg.Registry.reachable_registries()) && "
-                                "Pkg.Registry.add(\"General\"); Pkg.resolve(); Pkg.instantiate()"])
+            p = subprocess.run(
+                [
+                    *JULIA,
+                    f"--project={JULIA_ENV}",
+                    "-e",
+                    "using Pkg; isempty(Pkg.Registry.reachable_registries()) && "
+                    'Pkg.Registry.add("General"); Pkg.resolve(); Pkg.instantiate()',
+                ]
+            )
         except OSError as e:
-            raise HarnessError(f"julia cannot be started ({e.strerror}): it is not found on the PATH, or not "
-                               "executable; install Julia with juliaup") from None
+            raise HarnessError(
+                f"julia cannot be started ({e.strerror}): it is not found on the PATH, or not "
+                "executable; install Julia with juliaup"
+            ) from None
         if p.returncode != 0:
             raise HarnessError(f"Pkg.instantiate failed in {JULIA_ENV}")
     return changes
@@ -292,16 +322,20 @@ def install_python_env(apply, develop, environment):
     if not b.starts(b.interpreter(environment)):
         print(f"{label}  SYNC: no interpreter that starts at {b.interpreter(environment)}")
     elif not b.synced(environment, develop):
-        print(f"{label}  SYNC: it was not synced with this uv.lock {'with' if develop else 'without'} the dev group")
+        print(
+            f"{label}  SYNC: it was not synced with this uv.lock {'with' if develop else 'without'} the dev group"
+        )
     else:
         print(f"{label}  already synced")
         return 0
     if apply:
         uv = b.find_uv()
         if uv is None:
-            raise HarnessError("uv is not found on the PATH or in ~/.local/bin; install it (on Linux x86_64 and "
-                               "aarch64, bin/harness fetches it into ~/.local/bin when it starts outside a "
-                               "session and finds no environment that starts)")
+            raise HarnessError(
+                "uv is not found on the PATH or in ~/.local/bin; install it (on Linux x86_64 and "
+                "aarch64, bin/harness fetches it into ~/.local/bin when it starts outside a "
+                "session and finds no environment that starts)"
+            )
         try:
             b.sync(uv, environment, develop)
         except b.Refusal as e:
@@ -322,15 +356,35 @@ def cmd_install(args):
     for adapter in adapters:
         ctx.plans[adapter.NAME] = adapter.plan(ctx)
     plans = list(ctx.plans.values())
-    WIDTH = max(len(label) for label in ["julia/Manifest.toml", "python environment",
-                                         *(f[3] for plan in plans for f in plan.files),
-                                         *(r[0] for plan in plans for r in plan.refused)])
+    WIDTH = max(
+        len(label)
+        for label in [
+            "julia/Manifest.toml",
+            "python environment",
+            *(f[3] for plan in plans for f in plan.files),
+            *(r[0] for plan in plans for r in plan.refused),
+        ]
+    )
     # Every target, the Julia environment's and each plan's, is checked before anything is written.
     # A target that cannot be written stops an --apply here, and a dry run after its count line,
     # so that a session, which cannot write the installed files, still sees the plan.
-    unwritable = [r for r in [check_files([(JULIA_ENV / "Project.toml", (REPO / "Project.toml").read_bytes(), None,
-                                            "julia/Project.toml")]),
-                              *(check_files(plan.files) for plan in plans)] if r]
+    unwritable = [
+        r
+        for r in [
+            check_files(
+                [
+                    (
+                        JULIA_ENV / "Project.toml",
+                        (REPO / "Project.toml").read_bytes(),
+                        None,
+                        "julia/Project.toml",
+                    )
+                ]
+            ),
+            *(check_files(plan.files) for plan in plans),
+        ]
+        if r
+    ]
     if unwritable and args.apply:
         raise HarnessError(unwritable[0])
     # The two environments belong to no frontend, so their changes count in no plan's.
@@ -393,38 +447,70 @@ def selftest():
         for data, argv, label in [
             (b"home = \n", ["--profile", str(bad), "get", "home"], "a profile that is not TOML"),
             (b'home = "\xff"\n', ["--profile", str(bad), "get", "home"], "a profile that is not UTF-8"),
-            (b'[x]\n# \xff\n', ["--profile", str(profile_module.DUMMY), "--models", str(bad), "install"],
-             "a models.toml that is not UTF-8"),
+            (
+                b"[x]\n# \xff\n",
+                ["--profile", str(profile_module.DUMMY), "--models", str(bad), "install"],
+                "a models.toml that is not UTF-8",
+            ),
         ]:
             bad.write_bytes(data)
             p = subprocess.run(harness + argv, capture_output=True, text=True)
-            check(p.returncode == 2 and str(bad) in p.stderr and "Traceback" not in p.stderr,
-                  f"{label} exits 2 and names the file: {p.returncode}, {p.stderr.strip()[-200:]!r}")
+            check(
+                p.returncode == 2 and str(bad) in p.stderr and "Traceback" not in p.stderr,
+                f"{label} exits 2 and names the file: {p.returncode}, {p.stderr.strip()[-200:]!r}",
+            )
         # A table of the tiers with an old key, Claude Code's name of a tier, exits 2 and names the rename.
         example = (REPO / "examples" / "models.toml").read_text()
-        for table, old, new in [("[claude]", "opus", "large"), ("[models]", "opus", "large"),
-                                ("[models]", "sonnet", "medium"), ("[omp.models]", "opus", "large"),
-                                ("[omp.models]", "sonnet", "medium"), ("[omp.models]", "haiku", "small")]:
+        for table, old, new in [
+            ("[claude]", "opus", "large"),
+            ("[models]", "opus", "large"),
+            ("[models]", "sonnet", "medium"),
+            ("[omp.models]", "opus", "large"),
+            ("[omp.models]", "sonnet", "medium"),
+            ("[omp.models]", "haiku", "small"),
+        ]:
             at = example.index(table + "\n") + len(table) + 1
             bad.write_text(example[:at] + f'{old} = "provider-a/large-model"\n' + example[at:])
-            p = subprocess.run(harness + ["--profile", str(profile_module.DUMMY), "--models", str(bad), "install"],
-                               capture_output=True, text=True)
-            check(p.returncode == 2 and str(bad) in p.stderr and f"rename {old} to {new}" in p.stderr
-                  and table in p.stderr and "Traceback" not in p.stderr,
-                  f"a models.toml with {old} = in {table} exits 2, names the file and {new}: {p.returncode}, "
-                  f"{p.stderr.strip()[-200:]!r}")
+            p = subprocess.run(
+                harness + ["--profile", str(profile_module.DUMMY), "--models", str(bad), "install"],
+                capture_output=True,
+                text=True,
+            )
+            check(
+                p.returncode == 2
+                and str(bad) in p.stderr
+                and f"rename {old} to {new}" in p.stderr
+                and table in p.stderr
+                and "Traceback" not in p.stderr,
+                f"a models.toml with {old} = in {table} exits 2, names the file and {new}: {p.returncode}, "
+                f"{p.stderr.strip()[-200:]!r}",
+            )
         # Old keys in two tables, and no [claude]: one refusal names every rename and the table to add.
         text = example.replace('[claude]\nlarge = "opus"\nmedium = "sonnet"\nsmall = "haiku"\n', "", 1)
         for table, old in [("[models]", "sonnet"), ("[omp.models]", "haiku")]:
             at = text.index(table + "\n") + len(table) + 1
             text = text[:at] + f'{old} = "provider-a/large-model"\n' + text[at:]
         bad.write_text(text)
-        p = subprocess.run(harness + ["--profile", str(profile_module.DUMMY), "--models", str(bad), "install"],
-                           capture_output=True, text=True)
-        check(p.returncode == 2 and all(w in p.stderr for w in ["[models]", "rename sonnet to medium",
-                                                                 "[omp.models]", "rename haiku to small", "[claude]"]),
-              f"old keys in [models] and [omp.models] and no [claude] exit 2 with one message that names "
-              f"all three: {p.returncode}, {p.stderr.strip()[-300:]!r}")
+        p = subprocess.run(
+            harness + ["--profile", str(profile_module.DUMMY), "--models", str(bad), "install"],
+            capture_output=True,
+            text=True,
+        )
+        check(
+            p.returncode == 2
+            and all(
+                w in p.stderr
+                for w in [
+                    "[models]",
+                    "rename sonnet to medium",
+                    "[omp.models]",
+                    "rename haiku to small",
+                    "[claude]",
+                ]
+            ),
+            f"old keys in [models] and [omp.models] and no [claude] exit 2 with one message that names "
+            f"all three: {p.returncode}, {p.stderr.strip()[-300:]!r}",
+        )
         load_cases(check, pathlib.Path(tmp))
         restart_cases(check, pathlib.Path(tmp))
         precondition_cases(check, pathlib.Path(tmp))
@@ -440,14 +526,20 @@ def behind_cases(check, tmp):
     repository do not."""
     repo = tmp / "behind"
     repo.mkdir()
-    env = {**{k: v for k, v in os.environ.items() if not k.startswith("GIT_")},
-           "GIT_CONFIG_GLOBAL": "/dev/null", "GIT_CONFIG_NOSYSTEM": "1",
-           "GIT_AUTHOR_NAME": "case", "GIT_AUTHOR_EMAIL": "case@example.org",
-           "GIT_COMMITTER_NAME": "case", "GIT_COMMITTER_EMAIL": "case@example.org"}
+    env = {
+        **{k: v for k, v in os.environ.items() if not k.startswith("GIT_")},
+        "GIT_CONFIG_GLOBAL": "/dev/null",
+        "GIT_CONFIG_NOSYSTEM": "1",
+        "GIT_AUTHOR_NAME": "case",
+        "GIT_AUTHOR_EMAIL": "case@example.org",
+        "GIT_COMMITTER_NAME": "case",
+        "GIT_COMMITTER_EMAIL": "case@example.org",
+    }
 
     def git(*args):
-        return subprocess.run(["git", *args], cwd=repo, env=env, check=True, capture_output=True,
-                              text=True).stdout.strip()
+        return subprocess.run(
+            ["git", *args], cwd=repo, env=env, check=True, capture_output=True, text=True
+        ).stdout.strip()
 
     git("init", "-q", "-b", "main")
     check(behind_origin(repo) is None, "a checkout with no origin/main gets no warning")
@@ -455,12 +547,20 @@ def behind_cases(check, tmp):
     for n in range(3):
         git("commit", "-q", "--allow-empty", "-m", f"c{n}")
         commits.append(git("rev-parse", "HEAD"))
-    for head, origin, expected in [(2, 2, None), (0, 2, "2 commit(s) behind"), (1, 2, "1 commit(s) behind"),
-                                   (2, 0, None)]:
+    for head, origin, expected in [
+        (2, 2, None),
+        (0, 2, "2 commit(s) behind"),
+        (1, 2, "1 commit(s) behind"),
+        (2, 0, None),
+    ]:
         git("update-ref", "refs/remotes/origin/main", commits[origin])
         git("reset", "-q", "--hard", commits[head])
         got = behind_origin(repo)
-        ok = got is None if expected is None else got is not None and expected in got[0] and str(repo) in got[0]
+        ok = (
+            got is None
+            if expected is None
+            else got is not None and expected in got[0] and str(repo) in got[0]
+        )
         check(ok, f"HEAD at c{head}, origin/main at c{origin}: {expected or 'no warning'} -> {got}")
     plain = tmp / "no-repository"
     plain.mkdir()
@@ -476,17 +576,25 @@ def load_cases(check, tmp):
     from .install_cases import Scratch
 
     scratch = Scratch(check, tmp / "homes")
-    run =("import pathlib, sys; sys.path.insert(0, sys.argv[1]); from harness import cli, frontends; "
-           "frontends.REPO = pathlib.Path(sys.argv[2]); sys.exit(cli.main(sys.argv[3:]))")
+    run = (
+        "import pathlib, sys; sys.path.insert(0, sys.argv[1]); from harness import cli, frontends; "
+        "frontends.REPO = pathlib.Path(sys.argv[2]); sys.exit(cli.main(sys.argv[3:]))"
+    )
     first, middle, last = frontends.FRONTENDS[0], frontends.FRONTENDS[1], frontends.FRONTENDS[-1]
-    for n, (name, code, said, label) in enumerate([
-        (first, "def (:\n", "SyntaxError", "a syntax error"),
-        (last, "raise RuntimeError('broken at import')\n", "RuntimeError: broken at import",
-         "an exception at import"),
-        (last, "raise SystemExit(3)\n", "SystemExit: 3", "a SystemExit at import"),
-        (middle, "del plan\n", "plan", "no `plan`"),
-        (middle, "del RESTART\n", "RESTART", "no `RESTART`"),
-    ]):
+    for n, (name, code, said, label) in enumerate(
+        [
+            (first, "def (:\n", "SyntaxError", "a syntax error"),
+            (
+                last,
+                "raise RuntimeError('broken at import')\n",
+                "RuntimeError: broken at import",
+                "an exception at import",
+            ),
+            (last, "raise SystemExit(3)\n", "SystemExit: 3", "a SystemExit at import"),
+            (middle, "del plan\n", "plan", "no `plan`"),
+            (middle, "del RESTART\n", "RESTART", "no `RESTART`"),
+        ]
+    ):
         base, _, _ = scratch.fresh()
         repo = tmp / f"repo{n}"
         for frontend in frontends.FRONTENDS:
@@ -497,15 +605,36 @@ def load_cases(check, tmp):
         line = len(path.read_text().splitlines())
         before = sorted(base.rglob("*"))
         env = scratch.env(base)
-        p = subprocess.run([sys.executable, "-c", run, str(REPO / "lib"), str(repo),
-                            "--profile", str(base / "profile.toml"), "--models", str(REPO / "examples" / "models.toml"),
-                            "install", "--apply"], capture_output=True, text=True, env=env, cwd=base)
+        p = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                run,
+                str(REPO / "lib"),
+                str(repo),
+                "--profile",
+                str(base / "profile.toml"),
+                "--models",
+                str(REPO / "examples" / "models.toml"),
+                "install",
+                "--apply",
+            ],
+            capture_output=True,
+            text=True,
+            env=env,
+            cwd=base,
+        )
         after = sorted(base.rglob("*"))
         where = f"{path}:{line}: " if name != middle else f"{path}: "
-        check(p.returncode == 2 and where in p.stderr and said in p.stderr and "Traceback" not in p.stderr
-              and after == before,
-              f"an adapter with {label} exits 2 with its path{' and line' * (name != middle)}, and nothing is "
-              f"written: {p.returncode}, {len(after) - len(before)} new paths, {p.stderr.strip()[-200:]!r}")
+        check(
+            p.returncode == 2
+            and where in p.stderr
+            and said in p.stderr
+            and "Traceback" not in p.stderr
+            and after == before,
+            f"an adapter with {label} exits 2 with its path{' and line' * (name != middle)}, and nothing is "
+            f"written: {p.returncode}, {len(after) - len(before)} new paths, {p.stderr.strip()[-200:]!r}",
+        )
 
     # `frontends.load()` twice in one process, on a scratch adapter that lacks a member: each call
     # raises, and the adapter is not left in `sys.modules`, so the second call loads it again.
@@ -528,17 +657,24 @@ def load_cases(check, tmp):
             except HarnessError as e:
                 raised = str(e)
             results.append((raised, key in sys.modules))
-    check(all(raised is not None and "defines no plan" in raised and not held for raised, held in results),
-          f"frontends.load() twice on an adapter with no `plan`: HarnessError both times, and {key} is absent "
-          f"from sys.modules after each: {results}")
+    check(
+        all(raised is not None and "defines no plan" in raised and not held for raised, held in results),
+        f"frontends.load() twice on an adapter with no `plan`: HarnessError both times, and {key} is absent "
+        f"from sys.modules after each: {results}",
+    )
 
 
 def register(sub):
-    p = changing(sub.add_parser("install", help="install the configuration of each frontend",
-                                description="Install the Julia environment of the scripts and the configuration "
-                                            "of each frontend: Claude Code, OpenCode, oh-my-pi and Antigravity. "
-                                            "Without --apply "
-                                            "it prints the plan and exits 1 when a file would change, 0 when none "
-                                            "would; --apply installs. A refusal exits with status 2."))
+    p = changing(
+        sub.add_parser(
+            "install",
+            help="install the configuration of each frontend",
+            description="Install the Julia environment of the scripts and the configuration "
+            "of each frontend: Claude Code, OpenCode, oh-my-pi and Antigravity. "
+            "Without --apply "
+            "it prints the plan and exits 1 when a file would change, 0 when none "
+            "would; --apply installs. A refusal exits with status 2.",
+        )
+    )
     p.add_argument("--force", action="store_true", help="replace a file that the install refuses to replace")
     p.set_defaults(run=cmd_install)

@@ -56,8 +56,8 @@ const c3 = columns[2]
 // frontend in the order of FRONTENDS (Claude Code, OpenCode, oh-my-pi), installs the Julia
 // environment, writes the files of each plan, and then runs the steps after the files (OpenCode's
 // links to the skills). The Claude Code plan starts with the merge of ~/.claude/settings.json
-// (`files = [settings]` in `plan`, adapters/claude/adapter.py:862) and ends with the stamp
-// (adapters/claude/adapter.py:869).
+// (`files = [settings]` in `plan`, adapters/claude/adapter.py:1105) and ends with the stamp
+// (adapters/claude/adapter.py:1118).
 const installGroup = group(c2.x + INNER, BAND + INNER, c2.w - 2 * INNER, [
   { title: 'Read the profile', icon: 'profile', lines: ['and the model tables'] },
   { title: 'Render the sources', icon: 'sources', lines: ['a plan for each frontend'] },

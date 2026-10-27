@@ -14,16 +14,17 @@ oh-my-pi has no filesystem or network allowlist. Two controls stand in its place
 carried inside a string argument, so treat every command as unconfined. Where a sandbox would make
 a mistake survivable, ask. A rule that exists only because of Claude Code's sandbox or its
 permission matcher does not bind here: the unsandboxed programs, a `git` alone on its line, no
-`cd … &&`, no `git -C`, no `$?`, and a failed `ps` read as a refusal. A compound command and a
-`git -C` run without a prompt: under `yolo` only a `prompt` pattern asks, and a `prompt` or `deny`
-pattern matches each part of a compound command as well as the whole. The network
+`git -C`, no `$?`, and a failed `ps` read as a refusal. An `allow` pattern matches only a whole
+command with no `;`, `&`, `|`, redirection or `$`: run one such as
+`gh pr create --repo <owner>/<repo>` alone, with the `cwd` argument. The network
 lists of `network.toml` apply to Claude Code only; here no list limits the hosts a command reaches.
 
 oh-my-pi runs no RTK rewrite: a command runs as typed, so the rewrite facts of `RTK.md` do not
 apply, and `grep` returns every match.
 
 The approval mode is `yolo`. Every call runs without a prompt, except a command that a `deny`
-pattern refuses or a `prompt` pattern asks for; in `omp -p` a `prompt` pattern refuses. The
+pattern refuses or a `prompt` pattern asks for, in the whole or in any part of it; in `omp -p` a
+`prompt` pattern refuses. The
 `eval` tool is denied: run code through `bash`.
 
 ## The guard extension

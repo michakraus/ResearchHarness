@@ -82,8 +82,13 @@ CLONE_KEYS = {
     "Research/Harness": "harness",
     "Research/.meta": "meta",
 }
-UNITS = ["kaimon.service", "julia-update.service", "julia-update.timer",
-         "claude-autocommit.service", "claude-autocommit.timer"]
+UNITS = [
+    "kaimon.service",
+    "julia-update.service",
+    "julia-update.timer",
+    "claude-autocommit.service",
+    "claude-autocommit.timer",
+]
 JOBS = ["kaimon", "julia-update", "claude-autocommit"]
 GPU_PACKAGE = {"metal": "Metal", "cuda": "CUDA", "amdgpu": "AMDGPU", "none": None}
 
@@ -116,23 +121,30 @@ def machines_data():
 DATA = machines_data()
 TEMPLATE_HOST = DATA["template_host"]
 # A Linux host that is not the template host, from machines.toml.
-LINUX_HOST = next((host for host, entry in DATA["machines"].items()
-                   if entry["os"] == "linux" and host != TEMPLATE_HOST), None)
+LINUX_HOST = next(
+    (host for host, entry in DATA["machines"].items() if entry["os"] == "linux" and host != TEMPLATE_HOST),
+    None,
+)
 
 
 def harness_source():
     """The harness checkout that the services test clones, and the commit it checks out: this
     source's own harness checkout at its HEAD when the source is its examples/dotfiles/,
     otherwise ~/Research/Harness at the harness_commit of machines.toml."""
-    if (SOURCE == KIT_HARNESS / "examples" / "dotfiles"
-            and (KIT_HARNESS / "bin" / "harness").is_file() and (KIT_HARNESS / ".git").exists()):
-        head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=KIT_HARNESS, capture_output=True,
-                              text=True, check=True).stdout.strip()
+    if (
+        SOURCE == KIT_HARNESS / "examples" / "dotfiles"
+        and (KIT_HARNESS / "bin" / "harness").is_file()
+        and (KIT_HARNESS / ".git").exists()
+    ):
+        head = subprocess.run(
+            ["git", "rev-parse", "HEAD"], cwd=KIT_HARNESS, capture_output=True, text=True, check=True
+        ).stdout.strip()
         return KIT_HARNESS, head
     return HOME_HARNESS, DATA["harness_commit"]
 
 
 # ---------------------------------------------------------------- scratch helpers ----
+
 
 def scratch(name):
     """A new empty directory below the run's scratch root."""
@@ -149,12 +161,17 @@ def render(script, host, os_name, home, extra=None):
         data[key] = value
     cmd = [
         "chezmoi",
-        "--config", str(work / "chezmoi.toml"),
-        "--source", str(SOURCE),
-        "--destination", str(work / "home"),
-        "--persistent-state", str(work / "state.boltdb"),
+        "--config",
+        str(work / "chezmoi.toml"),
+        "--source",
+        str(SOURCE),
+        "--destination",
+        str(work / "home"),
+        "--persistent-state",
+        str(work / "state.boltdb"),
         "--no-tty",
-        "--override-data", json.dumps(data),
+        "--override-data",
+        json.dumps(data),
         "execute-template",
     ]
     result = subprocess.run(cmd, capture_output=True, text=True, input=(SCRIPTS / script).read_text())
@@ -182,7 +199,7 @@ def stub(directory, name, body):
 # times for that label, as for a bootout that has not finished. A bootstrap fails while the label
 # is listed, and the first N bootstraps fail when $HOME/bootstrap-failures holds N; one that does
 # not fail adds the label.
-LAUNCHCTL = r'''count() { cat "$1" 2>/dev/null || echo 0; }
+LAUNCHCTL = r"""count() { cat "$1" 2>/dev/null || echo 0; }
 case "$1" in
 print)
     label=${2##*/}
@@ -208,7 +225,7 @@ bootstrap)
     echo "$label" >> "$HOME/loaded"
     exit 0 ;;
 esac
-'''
+"""
 
 
 def logging_stubs(home, bindir):
@@ -244,8 +261,9 @@ def environment(home, bindir, gitconfig=None):
 def run_script(text, env, cwd=None):
     path = scratch("script") / "script.sh"
     path.write_text(text)
-    return subprocess.run(["/bin/bash", str(path)], capture_output=True, text=True, env=env,
-                          cwd=cwd or env["HOME"])
+    return subprocess.run(
+        ["/bin/bash", str(path)], capture_output=True, text=True, env=env, cwd=cwd or env["HOME"]
+    )
 
 
 def git(env, *args, cwd=None):
@@ -259,10 +277,16 @@ def git_env(base):
     """An environment for the test's own git calls, with a scratch global configuration."""
     config = base / "gitconfig"
     if not config.exists():
-        config.write_text("[user]\n\tname = test\n\temail = test@example.invalid\n"
-                          "[init]\n\tdefaultBranch = master\n")
-    return {"HOME": str(base), "PATH": "/usr/bin:/bin", "GIT_CONFIG_GLOBAL": str(config),
-            "GIT_CONFIG_NOSYSTEM": "1", "LANG": "C"}
+        config.write_text(
+            "[user]\n\tname = test\n\temail = test@example.invalid\n[init]\n\tdefaultBranch = master\n"
+        )
+    return {
+        "HOME": str(base),
+        "PATH": "/usr/bin:/bin",
+        "GIT_CONFIG_GLOBAL": str(config),
+        "GIT_CONFIG_NOSYSTEM": "1",
+        "LANG": "C",
+    }
 
 
 def make_remote(base, env, rel, files, branch="master"):
@@ -292,9 +316,15 @@ def add_commit(env, work, bare, name, content, message="next"):
 
 
 def write_gitconfig(path, rewrites):
-    lines = ["[user]", "\tname = test", "\temail = test@example.invalid",
-             "[init]", "\tdefaultBranch = master",
-             "[advice]", "\tdetachedHead = false"]
+    lines = [
+        "[user]",
+        "\tname = test",
+        "\temail = test@example.invalid",
+        "[init]",
+        "\tdefaultBranch = master",
+        "[advice]",
+        "\tdetachedHead = false",
+    ]
     for local, url in rewrites.items():
         lines += [f'[url "{local}"]', f"\tinsteadOf = {url}"]
     path.write_text("\n".join(lines) + "\n")
@@ -322,6 +352,7 @@ def missing_named(stderr):
 
 # ----------------------------------------------------------------- check 1 ----
 
+
 def test_tool_check():
     print("\n== check 1: the tool check")
     home = scratch("home")
@@ -345,27 +376,36 @@ def test_tool_check():
             return result
 
         result = run_with(everything)
-        check(result.returncode == 0 and missing_named(result.stderr) is None,
-              f"{os_name}: every tool present: exit {result.returncode}")
+        check(
+            result.returncode == 0 and missing_named(result.stderr) is None,
+            f"{os_name}: every tool present: exit {result.returncode}",
+        )
         for tool in required:
             result = run_with([t for t in everything if t != tool])
-            check(result.returncode == 1 and missing_named(result.stderr) == {tool},
-                  f"{os_name}: without {tool}: exit {result.returncode}, named "
-                  f"{sorted(missing_named(result.stderr) or [])}")
+            check(
+                result.returncode == 1 and missing_named(result.stderr) == {tool},
+                f"{os_name}: without {tool}: exit {result.returncode}, named "
+                f"{sorted(missing_named(result.stderr) or [])}",
+            )
         result = run_with([])
-        check(result.returncode == 1 and missing_named(result.stderr) == set(required),
-              f"{os_name}: with no tool: exit {result.returncode}, every one of the "
-              f"{len(required)} tools named")
+        check(
+            result.returncode == 1 and missing_named(result.stderr) == set(required),
+            f"{os_name}: with no tool: exit {result.returncode}, every one of the "
+            f"{len(required)} tools named",
+        )
         result = run_with(everything, old_python=True)
-        check(result.returncode == 1 and missing_named(result.stderr) == {"python3>=3.11"},
-              f"{os_name}: python3 older than 3.11: exit {result.returncode}, named "
-              f"{sorted(missing_named(result.stderr) or [])}")
+        check(
+            result.returncode == 1 and missing_named(result.stderr) == {"python3>=3.11"},
+            f"{os_name}: python3 older than 3.11: exit {result.returncode}, named "
+            f"{sorted(missing_named(result.stderr) or [])}",
+        )
         if os_name == "darwin":
             result = run_with(COMMON_TOOLS)
             check(result.returncode == 0, "darwin: bwrap, socat, secret-tool not required")
 
 
 # ----------------------------------------------------------------- check 2 ----
+
 
 def clone_urls():
     """Each clone's directory below HOME and its remote, from the [remotes] table."""
@@ -380,8 +420,11 @@ def clone_fixture():
         ".claude": {"plans/README": "plans\n"},
         "Research/Environment": {"README.md": "environment\n"},
         "Research/Harness": {"README.md": "harness\n"},
-        "Research/.meta": {"Books/CLAUDE.md": "books\n", "Packages/CLAUDE.md": "packages\n",
-                           ".kaimon/tools.json": "{}\n"},
+        "Research/.meta": {
+            "Books/CLAUDE.md": "books\n",
+            "Packages/CLAUDE.md": "packages\n",
+            ".kaimon/tools.json": "{}\n",
+        },
     }
     heads = {}
     for rel, key in CLONE_KEYS.items():
@@ -416,14 +459,22 @@ def test_clones():
         head = git(env, "--git-dir", str(d / ".git"), "rev-parse", "HEAD")
         check(origin == url and head == heads[rel], f"fresh home: {rel} is a clone of {url}")
     meta = home / "Research/.meta/.git"
-    check(git(env, "--git-dir", str(meta), "config", "--get", "core.worktree") == str(home / "Research"),
-          "fresh home: the meta repository's work tree is ~/Research")
-    check((home / "Research/Books/CLAUDE.md").read_text() == "books\n"
-          and (home / "Research/.kaimon/tools.json").is_file(),
-          "fresh home: the meta repository's files are in ~/Research")
-    status = subprocess.run(["git", "--git-dir", str(meta), "status", "--porcelain",
-                             "--untracked-files=no"], capture_output=True, text=True, env=env,
-                            cwd=home / "Research")
+    check(
+        git(env, "--git-dir", str(meta), "config", "--get", "core.worktree") == str(home / "Research"),
+        "fresh home: the meta repository's work tree is ~/Research",
+    )
+    check(
+        (home / "Research/Books/CLAUDE.md").read_text() == "books\n"
+        and (home / "Research/.kaimon/tools.json").is_file(),
+        "fresh home: the meta repository's files are in ~/Research",
+    )
+    status = subprocess.run(
+        ["git", "--git-dir", str(meta), "status", "--porcelain", "--untracked-files=no"],
+        capture_output=True,
+        text=True,
+        env=env,
+        cwd=home / "Research",
+    )
     check(status.returncode == 0 and status.stdout == "", "fresh home: the meta checkout is clean")
 
     before = tree(home)
@@ -431,8 +482,10 @@ def test_clones():
     after = tree(home)
     for log in ("chsh.log",):
         after.pop(log, None)
-    check(result.returncode == 0 and result.stdout.count("skipped") == 3 and after == before,
-          f"second run: exit {result.returncode}, the three clones skipped, nothing changed")
+    check(
+        result.returncode == 0 and result.stdout.count("skipped") == 3 and after == before,
+        f"second run: exit {result.returncode}, the three clones skipped, nothing changed",
+    )
 
     # Each directory that exists and is not a clone of its remote stops the run before the first
     # clone, and stays as it was.
@@ -445,16 +498,26 @@ def test_clones():
                 (d / "keep.txt").write_text("keep\n")
             elif kind == "another remote":
                 git(env, "init", "-q", str(d))
-                git(env, "--git-dir", str(d / ".git"), "remote", "add", "origin",
-                    "https://example.invalid/other.git")
+                git(
+                    env,
+                    "--git-dir",
+                    str(d / ".git"),
+                    "remote",
+                    "add",
+                    "origin",
+                    "https://example.invalid/other.git",
+                )
             before = tree(d)
             result = run_script(text, env)
             others = [r for r in CLONE_KEYS if r != rel and (home / r / ".git").exists()]
-            check(result.returncode != 0
-                  and f"{d} exists and is not a clone of {url}" in result.stderr
-                  and tree(d) == before and not others,
-                  f"{rel} {kind}: exit {result.returncode}, the stop names it, it is unchanged, "
-                  f"no other clone made (made: {others})")
+            check(
+                result.returncode != 0
+                and f"{d} exists and is not a clone of {url}" in result.stderr
+                and tree(d) == before
+                and not others,
+                f"{rel} {kind}: exit {result.returncode}, the stop names it, it is unchanged, "
+                f"no other clone made (made: {others})",
+            )
 
     # A file in the way of the meta checkout stops the run; once it is gone, a second run
     # completes the checkout.
@@ -463,23 +526,32 @@ def test_clones():
     blocker.parent.mkdir(parents=True)
     blocker.write_text("mine\n")
     result = run_script(text, env)
-    check(result.returncode != 0 and blocker.read_text() == "mine\n",
-          f"a file in the way of the meta checkout: exit {result.returncode}, the file kept")
+    check(
+        result.returncode != 0 and blocker.read_text() == "mine\n",
+        f"a file in the way of the meta checkout: exit {result.returncode}, the file kept",
+    )
     blocker.unlink()
     result = run_script(text, env)
-    check(result.returncode == 0 and blocker.read_text() == "books\n"
-          and (home / "Research/Packages/CLAUDE.md").read_text() == "packages\n",
-          f"the run after it: exit {result.returncode}, the meta checkout complete")
+    check(
+        result.returncode == 0
+        and blocker.read_text() == "books\n"
+        and (home / "Research/Packages/CLAUDE.md").read_text() == "packages\n",
+        f"the run after it: exit {result.returncode}, the meta checkout complete",
+    )
 
     # A remote that does not answer fails the run.
-    home, env = clone_home({f"{ROOT}/no-such-remotes/{CLONE_KEYS[rel]}.git": url
-                            for rel, url in clone_urls().items()})
+    home, env = clone_home(
+        {f"{ROOT}/no-such-remotes/{CLONE_KEYS[rel]}.git": url for rel, url in clone_urls().items()}
+    )
     result = run_script(text, env)
-    check(result.returncode != 0 and not (home / ".claude/.git").exists(),
-          f"no remote: exit {result.returncode}, no clone")
+    check(
+        result.returncode != 0 and not (home / ".claude/.git").exists(),
+        f"no remote: exit {result.returncode}, no clone",
+    )
 
 
 # ----------------------------------------------------------------- check 3 ----
+
 
 def test_harness():
     print("\n== check 3: the harness at its pin")
@@ -488,8 +560,9 @@ def test_harness():
     def fixture():
         base = scratch("remotes")
         genv = git_env(base)
-        first, work = make_remote(base, genv, "ResearchHarness.git",
-                                  {"bin/harness": harness_stub, "README.md": "one\n"})
+        first, work = make_remote(
+            base, genv, "ResearchHarness.git", {"bin/harness": harness_stub, "README.md": "one\n"}
+        )
         home = scratch("home")
         bindir = home / ".test-bin"
         logging_stubs(home, bindir)
@@ -508,12 +581,15 @@ def test_harness():
     text = rendered(HARNESS, LINUX_HOST, "linux", home, {"harness_commit": pin})
     result = run_script(text, env)
     log = home / "harness.log"
-    check(result.returncode == 0 and head(env, checkout) == pin
-          and log.read_text() == "install --apply\n",
-          f"clean checkout: exit {result.returncode}, HEAD at the pin, `harness install --apply` ran")
+    check(
+        result.returncode == 0 and head(env, checkout) == pin and log.read_text() == "install --apply\n",
+        f"clean checkout: exit {result.returncode}, HEAD at the pin, `harness install --apply` ran",
+    )
     result = run_script(text, env)
-    check(result.returncode == 0 and log.read_text() == "install --apply\n" * 2,
-          f"second run at the pin: exit {result.returncode}, the install runs again")
+    check(
+        result.returncode == 0 and log.read_text() == "install --apply\n" * 2,
+        f"second run at the pin: exit {result.returncode}, the install runs again",
+    )
 
     for kind in ("modified", "untracked"):
         home, env, checkout, first, pin = fixture()
@@ -521,17 +597,22 @@ def test_harness():
         target = checkout / ("README.md" if kind == "modified" else "notes.txt")
         target.write_text("local work\n")
         result = run_script(text, env)
-        check(result.returncode != 0 and "has local changes" in result.stderr
-              and head(env, checkout) == first and target.read_text() == "local work\n"
-              and not (home / "harness.log").exists(),
-              f"{kind} file: exit {result.returncode}, stopped before the checkout, no install")
+        check(
+            result.returncode != 0
+            and "has local changes" in result.stderr
+            and head(env, checkout) == first
+            and target.read_text() == "local work\n"
+            and not (home / "harness.log").exists(),
+            f"{kind} file: exit {result.returncode}, stopped before the checkout, no install",
+        )
 
     home, env, checkout, first, pin = fixture()
     text = rendered(HARNESS, LINUX_HOST, "linux", home, {"harness_commit": "0" * 40})
     result = run_script(text, env)
-    check(result.returncode != 0 and head(env, checkout) == first
-          and not (home / "harness.log").exists(),
-          f"a pin the remote lacks: exit {result.returncode}, no checkout, no install")
+    check(
+        result.returncode != 0 and head(env, checkout) == first and not (home / "harness.log").exists(),
+        f"a pin the remote lacks: exit {result.returncode}, no checkout, no install",
+    )
 
     # The template host: the development checkout, never moved.
     template = DATA["template_host"]
@@ -547,29 +628,36 @@ def test_harness():
     (checkout / "notes.txt").write_text("untracked\n")
     text = rendered(HARNESS, template, template_os, home, {"harness_commit": first})
     result = run_script(text, env)
-    check(result.returncode == 0 and head(env, checkout) == ahead
-          and git(env, "symbolic-ref", "--short", "HEAD", cwd=checkout) == "master"
-          and (checkout / "README.md").read_text() == "local work\n"
-          and (checkout / "notes.txt").is_file()
-          and (home / "harness.log").read_text() == "install --apply\n",
-          f"template host, HEAD contains the pin, local changes: exit {result.returncode}, "
-          "the install ran, HEAD and the branch unchanged, the changes kept")
+    check(
+        result.returncode == 0
+        and head(env, checkout) == ahead
+        and git(env, "symbolic-ref", "--short", "HEAD", cwd=checkout) == "master"
+        and (checkout / "README.md").read_text() == "local work\n"
+        and (checkout / "notes.txt").is_file()
+        and (home / "harness.log").read_text() == "install --apply\n",
+        f"template host, HEAD contains the pin, local changes: exit {result.returncode}, "
+        "the install ran, HEAD and the branch unchanged, the changes kept",
+    )
 
     home, env, checkout, first, pin = fixture()
     text = rendered(HARNESS, template, template_os, home, {"harness_commit": pin})
     result = run_script(text, env)
-    check(result.returncode == 1 and "does not contain the pin" in result.stderr
-          and head(env, checkout) == first and not (home / "harness.log").exists(),
-          f"template host, HEAD lacks the pin: exit {result.returncode}, stopped, no install, "
-          "HEAD unchanged")
+    check(
+        result.returncode == 1
+        and "does not contain the pin" in result.stderr
+        and head(env, checkout) == first
+        and not (home / "harness.log").exists(),
+        f"template host, HEAD lacks the pin: exit {result.returncode}, stopped, no install, HEAD unchanged",
+    )
 
     home, env, checkout, first, pin = fixture()
     git(env, "remote", "set-url", "origin", str(ROOT / "no-such-remote.git"), cwd=checkout)
     text = rendered(HARNESS, LINUX_HOST, "linux", home, {"harness_commit": pin})
     result = run_script(text, env)
-    check(result.returncode != 0 and head(env, checkout) == first
-          and not (home / "harness.log").exists(),
-          f"no remote: exit {result.returncode}, no checkout, no install")
+    check(
+        result.returncode != 0 and head(env, checkout) == first and not (home / "harness.log").exists(),
+        f"no remote: exit {result.returncode}, no checkout, no install",
+    )
 
 
 # ----------------------------------------------------------------- check 4 ----
@@ -577,8 +665,23 @@ def test_harness():
 # The package set of .chezmoidata/julia.toml, written out here so that the check does not take
 # the set from the file it checks: each package and its minimum channel.
 JULIA_PACKAGES = dict.fromkeys(
-    ["Adapt", "Aqua", "Cthulhu", "DocumenterTools", "ExplicitImports", "JET", "JSON",
-     "JuliaFormatter", "JuliaSyntax", "PkgTemplates", "Revise", "TestEnv", "YAML"], "1.10")
+    [
+        "Adapt",
+        "Aqua",
+        "Cthulhu",
+        "DocumenterTools",
+        "ExplicitImports",
+        "JET",
+        "JSON",
+        "JuliaFormatter",
+        "JuliaSyntax",
+        "PkgTemplates",
+        "Revise",
+        "TestEnv",
+        "YAML",
+    ],
+    "1.10",
+)
 JULIA_PACKAGES["KaimonGate"] = "1.12"
 UUID = '"00000000-0000-0000-0000-000000000000"'
 PKG_ADD = re.compile(r"^julia \+(\S+) --startup-file=no -e using Pkg; Pkg\.add\((.*)\)$")
@@ -595,8 +698,7 @@ def julia_home(installed=(), envs=None, kaimon=False, julia_exit=0):
     if installed:
         record = home / ".julia/juliaup/juliaup.json"
         record.parent.mkdir(parents=True)
-        record.write_text(json.dumps({"Default": "release",
-                                      "InstalledChannels": {c: {} for c in installed}}))
+        record.write_text(json.dumps({"Default": "release", "InstalledChannels": {c: {} for c in installed}}))
     for channel, text in (envs or {}).items():
         project = home / f".julia/environments/v{channel}/Project.toml"
         project.parent.mkdir(parents=True, exist_ok=True)
@@ -648,8 +750,11 @@ def expected_adds(channels, package, present=None):
         if not is_xy(c):
             continue
         version = tuple(int(p) for p in c.split("."))
-        wanted = {name for name, minimum in JULIA_PACKAGES.items()
-                  if tuple(int(p) for p in minimum.split(".")) <= version}
+        wanted = {
+            name
+            for name, minimum in JULIA_PACKAGES.items()
+            if tuple(int(p) for p in minimum.split(".")) <= version
+        }
         if package:
             wanted.add(package)
         wanted -= set((present or {}).get(c, ()))
@@ -659,27 +764,29 @@ def expected_adds(channels, package, present=None):
 
 
 def expected_juliaup(channels, default, skip_channels=()):
-    return [f"juliaup add {c}" for c in channels if c not in skip_channels] + [
-        f"juliaup default {default}"]
+    return [f"juliaup add {c}" for c in channels if c not in skip_channels] + [f"juliaup default {default}"]
 
 
 def kaimon_line(default):
     return f'julia +{default} --startup-file=no -e using Pkg; Pkg.Apps.add("Kaimon")'
 
 
-def check_julia_run(label, result, home, channels, default, package, present=None,
-                    skip_channels=(), kaimon=False):
+def check_julia_run(
+    label, result, home, channels, default, package, present=None, skip_channels=(), kaimon=False
+):
     """The run exits 0; juliaup adds the missing channels and sets the default; each X.Y channel
     gets one Pkg.add of exactly its missing packages; the Kaimon app unless it is there."""
     juliaup, adds, other = julia_calls(home)
     want_adds = expected_adds(channels, package, present)
     want_other = [] if kaimon else [kaimon_line(default)]
-    good = (result.returncode == 0
-            and juliaup == expected_juliaup(channels, default, skip_channels)
-            and adds == want_adds and other == want_other)
+    good = (
+        result.returncode == 0
+        and juliaup == expected_juliaup(channels, default, skip_channels)
+        and adds == want_adds
+        and other == want_other
+    )
     got = "" if good else f"; got juliaup {juliaup}, adds {adds}, other {other}, {result.stderr.strip()}"
-    check(good, f"{label}: exit {result.returncode}, one Pkg.add on "
-                f"{sorted(want_adds) or 'no channel'}{got}")
+    check(good, f"{label}: exit {result.returncode}, one Pkg.add on {sorted(want_adds) or 'no channel'}{got}")
     return adds
 
 
@@ -688,22 +795,37 @@ def test_julia_packages_file():
     path = SOURCE / ".chezmoidata" / "julia.toml"
     with open(path, "rb") as handle:
         data = tomllib.load(handle)
-    check(data.get("julia_packages") == JULIA_PACKAGES,
-          f"julia_packages holds the 14 packages and their minimum channels: {data}")
-    check(list(data) == ["julia_packages"] and not set(data) & set(DATA),
-          "julia.toml has the one top-level key julia_packages, which machines.toml lacks")
-    check(any(line.startswith("#") for line in path.read_text().splitlines()),
-          "julia.toml carries a comment")
+    check(
+        data.get("julia_packages") == JULIA_PACKAGES,
+        f"julia_packages holds the 14 packages and their minimum channels: {data}",
+    )
+    check(
+        list(data) == ["julia_packages"] and not set(data) & set(DATA),
+        "julia.toml has the one top-level key julia_packages, which machines.toml lacks",
+    )
+    check(any(line.startswith("#") for line in path.read_text().splitlines()), "julia.toml carries a comment")
 
 
 def test_julia():
     print("\n== check 4: Julia")
     five = ["1.10", "1.11", "1.12", "1.13", "nightly"]
-    hosts = {f"test-julia-{gpu}": {"os": "linux", "arch": "x86_64", "gpu": gpu,
-                                   "julia_channels": five, "julia_default": "1.13"}
-             for gpu in GPU_PACKAGE}
-    odd = {"os": "linux", "arch": "x86_64", "gpu": "cuda", "julia_default": "1.12",
-           "julia_channels": ["1.12", "release", "lts", "1.13.1", "nightly", "1.x"]}
+    hosts = {
+        f"test-julia-{gpu}": {
+            "os": "linux",
+            "arch": "x86_64",
+            "gpu": gpu,
+            "julia_channels": five,
+            "julia_default": "1.13",
+        }
+        for gpu in GPU_PACKAGE
+    }
+    odd = {
+        "os": "linux",
+        "arch": "x86_64",
+        "gpu": "cuda",
+        "julia_default": "1.12",
+        "julia_channels": ["1.12", "release", "lts", "1.13.1", "nightly", "1.x"],
+    }
     extra = {"machines": dict(hosts, **{"test-julia-odd": odd})}
 
     # Empty environments: 1.10 and 1.11 get the 13 packages of minimum 1.10, 1.12 and 1.13 the
@@ -714,102 +836,159 @@ def test_julia():
         result = run_script(rendered(JULIA, host, "linux", home, extra), env)
         adds = check_julia_run(f"{host}, empty environments", result, home, five, "1.13", package)
         gpu = 1 if package else 0
-        check([len(adds.get(c, [[]])[0]) for c in five] == [13 + gpu, 13 + gpu, 14 + gpu,
-                                                             14 + gpu, 0],
-              f"{host}: 1.10, 1.11, 1.12, 1.13, nightly get {13 + gpu}, {13 + gpu}, {14 + gpu}, "
-              f"{14 + gpu}, 0 packages")
-        check(all(package in adds[c][0] for c in five[:4]) if package
-              else not any(n not in JULIA_PACKAGES for c in adds for n in adds[c][0]),
-              f"{host}: {'the GPU package ' + package if package else 'no GPU package'} "
-              "in each X.Y channel's call")
-        check("chezmoi: KaimonGate needs Julia 1.12; skipped on Julia 1.10." in result.stdout
-              and "skipped on Julia 1.12" not in result.stdout,
-              f"{host}: the skip of KaimonGate below 1.12 names the package, the channel and "
-              "the minimum")
+        check(
+            [len(adds.get(c, [[]])[0]) for c in five] == [13 + gpu, 13 + gpu, 14 + gpu, 14 + gpu, 0],
+            f"{host}: 1.10, 1.11, 1.12, 1.13, nightly get {13 + gpu}, {13 + gpu}, {14 + gpu}, "
+            f"{14 + gpu}, 0 packages",
+        )
+        check(
+            all(package in adds[c][0] for c in five[:4])
+            if package
+            else not any(n not in JULIA_PACKAGES for c in adds for n in adds[c][0]),
+            f"{host}: {'the GPU package ' + package if package else 'no GPU package'} "
+            "in each X.Y channel's call",
+        )
+        check(
+            "chezmoi: KaimonGate needs Julia 1.12; skipped on Julia 1.10." in result.stdout
+            and "skipped on Julia 1.12" not in result.stdout,
+            f"{host}: the skip of KaimonGate below 1.12 names the package, the channel and the minimum",
+        )
 
     # Every host of machines.toml, with empty environments.
     for host, entry in DATA["machines"].items():
         home, env = julia_home()
         result = run_script(rendered(JULIA, host, entry["os"], home), env)
-        check_julia_run(f"{host} (gpu {entry['gpu']}), empty environments", result, home,
-                        entry["julia_channels"], entry["julia_default"], GPU_PACKAGE[entry["gpu"]])
+        check_julia_run(
+            f"{host} (gpu {entry['gpu']}), empty environments",
+            result,
+            home,
+            entry["julia_channels"],
+            entry["julia_default"],
+            GPU_PACKAGE[entry["gpu"]],
+        )
 
     # A channel that is not X.Y gets no package.
     home, env = julia_home()
     result = run_script(rendered(JULIA, "test-julia-odd", "linux", home, extra), env)
-    adds = check_julia_run("channels 1.12, release, lts, 1.13.1, nightly, 1.x", result, home,
-                           odd["julia_channels"], "1.12", "CUDA")
+    adds = check_julia_run(
+        "channels 1.12, release, lts, 1.13.1, nightly, 1.x",
+        result,
+        home,
+        odd["julia_channels"],
+        "1.12",
+        "CUDA",
+    )
     check(list(adds) == ["1.12"], f"only 1.12 gets a Pkg.add: {sorted(adds)}")
 
     # Some packages present in [deps]: only the rest.
     present = {"1.12": ["Aqua", "JET", "CUDA", "KaimonGate"], "1.10": ["Revise"]}
     home, env = julia_home(envs={c: project_toml(names) for c, names in present.items()})
     result = run_script(rendered(JULIA, "test-julia-cuda", "linux", home, extra), env)
-    check_julia_run("some packages in [deps] of 1.10 and 1.12", result, home, five, "1.13",
-                    "CUDA", present)
+    check_julia_run("some packages in [deps] of 1.10 and 1.12", result, home, five, "1.13", "CUDA", present)
 
     # Every package present: no Pkg.add, and a skipped line per X.Y channel.
     every = {c: list(JULIA_PACKAGES) + ["CUDA"] for c in five[:4]}
-    home, env = julia_home(envs={c: project_toml(names) for c, names in every.items()},
-                           kaimon=True)
+    home, env = julia_home(envs={c: project_toml(names) for c, names in every.items()}, kaimon=True)
     result = run_script(rendered(JULIA, "test-julia-cuda", "linux", home, extra), env)
-    check_julia_run("every package present", result, home, five, "1.13", "CUDA", every,
-                    kaimon=True)
-    check(not any("Pkg.add(" in line for line in julia_log(home))
-          and all(f"global environment of Julia {c} holds every package; skipped." in result.stdout
-                  for c in five[:4]),
-          "every package present: no Pkg.add, a skipped line for each X.Y channel")
+    check_julia_run("every package present", result, home, five, "1.13", "CUDA", every, kaimon=True)
+    check(
+        not any("Pkg.add(" in line for line in julia_log(home))
+        and all(
+            f"global environment of Julia {c} holds every package; skipped." in result.stdout
+            for c in five[:4]
+        ),
+        "every package present: no Pkg.add, a skipped line for each X.Y channel",
+    )
 
     # A name under [compat] only, or in a comment, counts as missing.
     text = project_toml(["Aqua"], compat=["Revise", "JET"]) + "# YAML = " + UUID + "\n"
     home, env = julia_home(envs={"1.13": text})
     result = run_script(rendered(JULIA, "test-julia-cuda", "linux", home, extra), env)
-    adds = check_julia_run("1.13 with Aqua in [deps], Revise and JET in [compat], YAML in a "
-                           "comment", result, home, five, "1.13", "CUDA", {"1.13": ["Aqua"]})
-    check(all(n in adds.get("1.13", [[]])[0] for n in ("Revise", "JET", "YAML"))
-          and "Aqua" not in adds.get("1.13", [[]])[0],
-          "a package named only under [compat] or in a comment counts as missing")
+    adds = check_julia_run(
+        "1.13 with Aqua in [deps], Revise and JET in [compat], YAML in a comment",
+        result,
+        home,
+        five,
+        "1.13",
+        "CUDA",
+        {"1.13": ["Aqua"]},
+    )
+    check(
+        all(n in adds.get("1.13", [[]])[0] for n in ("Revise", "JET", "YAML"))
+        and "Aqua" not in adds.get("1.13", [[]])[0],
+        "a package named only under [compat] or in a comment counts as missing",
+    )
 
     # The template host with some channels installed, its GPU package in 1.10, and the Kaimon app.
     entry = DATA["machines"][TEMPLATE_HOST]
     package = GPU_PACKAGE[entry["gpu"]]
     in_110 = {"1.10": [package]} if package else {}
-    home, env = julia_home(installed=("1.10", "1.13", "release"),
-                           envs={c: project_toml(names) for c, names in in_110.items()}, kaimon=True)
+    home, env = julia_home(
+        installed=("1.10", "1.13", "release"),
+        envs={c: project_toml(names) for c, names in in_110.items()},
+        kaimon=True,
+    )
     result = run_script(rendered(JULIA, TEMPLATE_HOST, entry["os"], home), env)
-    check_julia_run(f"{TEMPLATE_HOST} with 1.10, 1.13 and release installed, {package} in 1.10 and "
-                    "Kaimon", result, home, entry["julia_channels"], entry["julia_default"], package,
-                    in_110, skip_channels=("1.10", "1.13", "release"), kaimon=True)
+    check_julia_run(
+        f"{TEMPLATE_HOST} with 1.10, 1.13 and release installed, {package} in 1.10 and Kaimon",
+        result,
+        home,
+        entry["julia_channels"],
+        entry["julia_default"],
+        package,
+        in_110,
+        skip_channels=("1.10", "1.13", "release"),
+        kaimon=True,
+    )
 
     home, env = julia_home()
     shutil.rmtree(home / ".juliaup")
     result = run_script(rendered(JULIA, LINUX_HOST, "linux", home), env)
-    check(result.returncode == 1 and ".juliaup/bin/juliaup does not exist" in result.stderr,
-          f"no ~/.juliaup/bin/juliaup: exit {result.returncode}, the stop names it")
+    check(
+        result.returncode == 1 and ".juliaup/bin/juliaup does not exist" in result.stderr,
+        f"no ~/.juliaup/bin/juliaup: exit {result.returncode}, the stop names it",
+    )
 
     # A failing julia stops the run at the first channel and names it.
     home, env = julia_home(julia_exit=1)
     result = run_script(rendered(JULIA, "test-julia-cuda", "linux", home, extra), env)
     juliaup, adds, other = julia_calls(home)
-    check(result.returncode != 0 and "Julia 1.10" in result.stderr
-          and list(adds) == ["1.10"] and len(adds["1.10"]) == 1 and not other,
-          f"julia fails (as without a network): exit {result.returncode}, the stop names Julia "
-          f"1.10, no later julia call: adds {sorted(adds)}, other {other}, "
-          f"{result.stderr.strip()!r}")
+    check(
+        result.returncode != 0
+        and "Julia 1.10" in result.stderr
+        and list(adds) == ["1.10"]
+        and len(adds["1.10"]) == 1
+        and not other,
+        f"julia fails (as without a network): exit {result.returncode}, the stop names Julia "
+        f"1.10, no later julia call: adds {sorted(adds)}, other {other}, "
+        f"{result.stderr.strip()!r}",
+    )
 
-    code, _, err = render(JULIA, "test-gpu-bad", "linux", "/home/example",
-                          {"machines": {"test-gpu-bad": dict(odd, gpu="opencl")}})
+    code, _, err = render(
+        JULIA,
+        "test-gpu-bad",
+        "linux",
+        "/home/example",
+        {"machines": {"test-gpu-bad": dict(odd, gpu="opencl")}},
+    )
     check(code != 0 and "opencl" in err, "an unknown gpu value fails the render")
 
     for minimum in ("1", "1.10.0", "latest", 1.1):
-        code, _, err = render(JULIA, "test-julia-cuda", "linux", "/home/example",
-                              dict(extra, julia_packages={"NotAPackage": minimum}))
-        check(code != 0 and "NotAPackage" in err,
-              f"a minimum {minimum!r} that is not X.Y fails the render and names the package: "
-              f"{err.strip()!r}")
+        code, _, err = render(
+            JULIA,
+            "test-julia-cuda",
+            "linux",
+            "/home/example",
+            dict(extra, julia_packages={"NotAPackage": minimum}),
+        )
+        check(
+            code != 0 and "NotAPackage" in err,
+            f"a minimum {minimum!r} that is not X.Y fails the render and names the package: {err.strip()!r}",
+        )
 
 
 # ----------------------------------------------------------------- check 5 ----
+
 
 def harness_clone(home, env, checkout, pin):
     """A scratch clone of the harness checkout `checkout` at `pin`."""
@@ -838,12 +1017,26 @@ def rendered_profile(host, os_name, home, extra=None):
     (work / "chezmoi.toml").write_text("")
     data = {"chezmoi": {"hostname": host, "os": os_name, "homeDir": str(home)}}
     data.update(extra or {})
-    result = subprocess.run([
-        "chezmoi", "--config", str(work / "chezmoi.toml"), "--source", str(SOURCE),
-        "--destination", str(work / "home"), "--persistent-state", str(work / "state.boltdb"),
-        "--no-tty", "--override-data", json.dumps(data), "execute-template"],
-        capture_output=True, text=True,
-        input=(SOURCE / "dot_config/research-harness/profile.toml.tmpl").read_text())
+    result = subprocess.run(
+        [
+            "chezmoi",
+            "--config",
+            str(work / "chezmoi.toml"),
+            "--source",
+            str(SOURCE),
+            "--destination",
+            str(work / "home"),
+            "--persistent-state",
+            str(work / "state.boltdb"),
+            "--no-tty",
+            "--override-data",
+            json.dumps(data),
+            "execute-template",
+        ],
+        capture_output=True,
+        text=True,
+        input=(SOURCE / "dot_config/research-harness/profile.toml.tmpl").read_text(),
+    )
     if result.returncode != 0:
         raise RuntimeError(result.stderr)
     return result.stdout
@@ -856,8 +1049,12 @@ def launchd_prefix(home):
 
 
 def harness_render(env, harness, template):
-    result = subprocess.run([str(harness / "bin/harness"), "render", str(harness / template)],
-                            capture_output=True, text=True, env=env)
+    result = subprocess.run(
+        [str(harness / "bin/harness"), "render", str(harness / template)],
+        capture_output=True,
+        text=True,
+        env=env,
+    )
     if result.returncode != 0:
         raise RuntimeError(f"harness render {template}: {result.stderr.strip()}")
     return result.stdout
@@ -871,13 +1068,19 @@ def log_lines(home, name):
 def check_copies(home, harness, label):
     claude = home / ".local/bin/claude-autocommit"
     update = home / ".local/bin/julia-update.jl"
-    good = (claude.is_file() and update.is_file()
-            and claude.read_bytes() == (harness / "launchagents/claude-autocommit").read_bytes()
-            and update.read_bytes() == (harness / "scripts/julia-update.jl").read_bytes()
-            and stat.S_IMODE(claude.stat().st_mode) == 0o755
-            and stat.S_IMODE(update.stat().st_mode) == 0o644)
-    check(good, f"{label}: the copies of claude-autocommit (755) and julia-update.jl (644) "
-                "in ~/.local/bin equal the pinned harness's")
+    good = (
+        claude.is_file()
+        and update.is_file()
+        and claude.read_bytes() == (harness / "launchagents/claude-autocommit").read_bytes()
+        and update.read_bytes() == (harness / "scripts/julia-update.jl").read_bytes()
+        and stat.S_IMODE(claude.stat().st_mode) == 0o755
+        and stat.S_IMODE(update.stat().st_mode) == 0o644
+    )
+    check(
+        good,
+        f"{label}: the copies of claude-autocommit (755) and julia-update.jl (644) "
+        "in ~/.local/bin equal the pinned harness's",
+    )
 
 
 def test_services():
@@ -899,18 +1102,28 @@ def test_services():
     units = home / ".config/systemd/user"
     for unit in UNITS:
         path = units / unit
-        check(path.is_file() and path.read_text() == harness_render(env, harness, f"systemd/{unit}"),
-              f"linux: {unit} equals `harness render systemd/{unit}`")
+        check(
+            path.is_file() and path.read_text() == harness_render(env, harness, f"systemd/{unit}"),
+            f"linux: {unit} equals `harness render systemd/{unit}`",
+        )
     autocommit = (units / "claude-autocommit.service").read_text()
-    check(f"CLAUDE_AUTOCOMMIT_BRANCH=memory/{host}" in autocommit,
-          f"linux: claude-autocommit.service pushes to memory/{host}")
-    check(log_lines(home, "systemctl") == [
-        "--user daemon-reload",
-        "--user enable --now kaimon.service julia-update.timer claude-autocommit.timer",
-        "--user restart kaimon.service julia-update.timer claude-autocommit.timer"],
-        "linux: daemon-reload, then enable --now and restart the service and the two timers")
-    check(not log_lines(home, "launchctl") and not (home / "Library").exists(),
-          "linux: no launchctl, no ~/Library")
+    check(
+        f"CLAUDE_AUTOCOMMIT_BRANCH=memory/{host}" in autocommit,
+        f"linux: claude-autocommit.service pushes to memory/{host}",
+    )
+    check(
+        log_lines(home, "systemctl")
+        == [
+            "--user daemon-reload",
+            "--user enable --now kaimon.service julia-update.timer claude-autocommit.timer",
+            "--user restart kaimon.service julia-update.timer claude-autocommit.timer",
+        ],
+        "linux: daemon-reload, then enable --now and restart the service and the two timers",
+    )
+    check(
+        not log_lines(home, "launchctl") and not (home / "Library").exists(),
+        "linux: no launchctl, no ~/Library",
+    )
 
     # macOS, the template host.
     host = TEMPLATE_HOST
@@ -923,17 +1136,21 @@ def test_services():
         text = rendered(SERVICES, host, "darwin", home, pinned)
         result = run_script(text, env)
         state = "loaded" if loaded else "not loaded"
-        check(result.returncode == 0, f"macOS template host, jobs {state}: exit "
-                                      f"{result.returncode} {result.stderr.strip()}")
+        check(
+            result.returncode == 0,
+            f"macOS template host, jobs {state}: exit {result.returncode} {result.stderr.strip()}",
+        )
         check_copies(home, harness, f"macOS, jobs {state}")
         agents = home / "Library/LaunchAgents"
         for job in JOBS:
             path = agents / f"{prefix}.{job}.plist"
-            check(path.is_file()
-                  and path.read_text() == harness_render(env, harness, f"launchagents/{job}.plist")
-                  and (home / "Library/Logs" / job).is_dir(),
-                  f"macOS: {path.name} equals `harness render launchagents/{job}.plist`, "
-                  "its log directory exists")
+            check(
+                path.is_file()
+                and path.read_text() == harness_render(env, harness, f"launchagents/{job}.plist")
+                and (home / "Library/Logs" / job).is_dir(),
+                f"macOS: {path.name} equals `harness render launchagents/{job}.plist`, "
+                "its log directory exists",
+            )
         domain = f"gui/{os.getuid()}"
         want = []
         for label in labels:
@@ -943,25 +1160,32 @@ def test_services():
             want.append(f"bootstrap {domain} {agents / (label + '.plist')}")
         got = log_lines(home, "launchctl")
         then = "bootout, then " if loaded else ""
-        check(got == want, f"macOS, jobs {state}: {then}bootstrap of each job"
-                           f"{'' if got == want else f'; got {got}'}")
-        check(sorted((home / "loaded").read_text().split()) == sorted(labels),
-              f"macOS, jobs {state}: every job loaded at the end")
+        check(
+            got == want,
+            f"macOS, jobs {state}: {then}bootstrap of each job{'' if got == want else f'; got {got}'}",
+        )
+        check(
+            sorted((home / "loaded").read_text().split()) == sorted(labels),
+            f"macOS, jobs {state}: every job loaded at the end",
+        )
         check(not log_lines(home, "systemctl"), "macOS: no systemctl")
         autocommit = (agents / f"{prefix}.claude-autocommit.plist").read_text()
-        check("<string>main</string>" in autocommit,
-              "macOS template host: claude-autocommit pushes to main")
+        check("<string>main</string>" in autocommit, "macOS template host: claude-autocommit pushes to main")
 
     # macOS, not the template host.
     mac = {"machines": {"test-second-mac": dict(DATA["machines"][TEMPLATE_HOST])}, **pinned}
     home, env, harness = services_home("test-second-mac", "darwin", checkout, pin, mac)
     prefix = launchd_prefix(home)
     result = run_script(rendered(SERVICES, "test-second-mac", "darwin", home, mac), env)
-    check(result.returncode == 0 and len(log_lines(home, "launchctl")) == 2 * len(JOBS),
-          f"macOS, another host: exit {result.returncode}, three jobs")
+    check(
+        result.returncode == 0 and len(log_lines(home, "launchctl")) == 2 * len(JOBS),
+        f"macOS, another host: exit {result.returncode}, three jobs",
+    )
     autocommit = (home / f"Library/LaunchAgents/{prefix}.claude-autocommit.plist").read_text()
-    check("<string>memory/test-second-mac</string>" in autocommit,
-          "macOS, another host: claude-autocommit pushes to memory/test-second-mac")
+    check(
+        "<string>memory/test-second-mac</string>" in autocommit,
+        "macOS, another host: claude-autocommit pushes to memory/test-second-mac",
+    )
 
     # A bootout that launchd finishes late: each job stays listed for three `print`s after its
     # bootout, and the first bootstrap fails. The script waits, tries again, and loads every job;
@@ -971,7 +1195,7 @@ def test_services():
     lines = text.splitlines(keepends=True)
     start = next(i for i, line in enumerate(lines) if line.strip() == "tries=0")
     end = next(i for i in range(start, len(lines)) if lines[i].strip() == "done")
-    no_wait = "".join(lines[:start] + lines[end + 1:])
+    no_wait = "".join(lines[:start] + lines[end + 1 :])
     for name, script in (("the script", text), ("a mutant with no wait", no_wait)):
         home, env, harness = services_home("test-second-mac", "darwin", checkout, pin, mac)
         (home / "loaded").write_text("\n".join(labels) + "\n")
@@ -980,35 +1204,55 @@ def test_services():
         result = run_script(script, env)
         loaded = sorted((home / "loaded").read_text().split())
         if script is text:
-            check(result.returncode == 0 and loaded == sorted(labels),
-                  f"a late bootout and a failed first bootstrap, {name}: exit "
-                  f"{result.returncode}, every job loaded {result.stderr.strip()}")
+            check(
+                result.returncode == 0 and loaded == sorted(labels),
+                f"a late bootout and a failed first bootstrap, {name}: exit "
+                f"{result.returncode}, every job loaded {result.stderr.strip()}",
+            )
         else:
-            check(result.returncode == 1 and labels[0] not in loaded
-                  and f"bootstrap of {labels[0]} failed: Bootstrap failed: 5" in result.stderr,
-                  f"a late bootout, {name}: exit {result.returncode}, {labels[0]} not loaded, "
-                  f"the stop names it: {result.stderr.strip()}")
+            check(
+                result.returncode == 1
+                and labels[0] not in loaded
+                and f"bootstrap of {labels[0]} failed: Bootstrap failed: 5" in result.stderr,
+                f"a late bootout, {name}: exit {result.returncode}, {labels[0]} not loaded, "
+                f"the stop names it: {result.stderr.strip()}",
+            )
 
     # The run_onchange key: the text changes with the pin and with the profile.
     base = rendered(SERVICES, LINUX_HOST, "linux", "/home/example")
     other_pin = rendered(SERVICES, LINUX_HOST, "linux", "/home/example", {"harness_commit": "1" * 40})
     other_profile = rendered(SERVICES, LINUX_HOST, "linux", "/home/example/other")
-    check(base != other_pin and base != other_profile,
-          "the services script's text changes with harness_commit and with the profile")
+    check(
+        base != other_pin and base != other_profile,
+        "the services script's text changes with harness_commit and with the profile",
+    )
 
 
 # ----------------------------------------------------------------- check 6 ----
 
+
 def test_lint():
     print("\n== check 6: bash -n and shellcheck on every script, for every host")
     scripts = sorted(p.name for p in SCRIPTS.iterdir())
-    check(scripts == sorted([TOOL_CHECK, CLONES, JULIA, HARNESS, SERVICES]),
-          f"the scripts are the five of the kit: {scripts}")
+    check(
+        scripts == sorted([TOOL_CHECK, CLONES, JULIA, HARNESS, SERVICES]),
+        f"the scripts are the five of the kit: {scripts}",
+    )
     shellcheck = shutil.which("shellcheck")
     if shellcheck is None:
         fail("shellcheck is not installed")
-    forbidden = ["sudo", "| sh", "|sh", "| bash", "|bash", "api-keys", "id_ed25519", "id_rsa",
-                 "secret-tool store", "add-generic-password"]
+    forbidden = [
+        "sudo",
+        "| sh",
+        "|sh",
+        "| bash",
+        "|bash",
+        "api-keys",
+        "id_ed25519",
+        "id_rsa",
+        "secret-tool store",
+        "add-generic-password",
+    ]
     for host, entry in DATA["machines"].items():
         home = "/Users/me" if entry["os"] == "darwin" else "/home/example"
         before = len(failures)
@@ -1017,21 +1261,37 @@ def test_lint():
             path = scratch("lint") / script.removesuffix(".tmpl")
             path.write_text(text)
             syntax = subprocess.run(["/bin/bash", "-n", str(path)], capture_output=True, text=True)
-            lint = (subprocess.run([shellcheck, "-s", "bash", str(path)], capture_output=True,
-                                   text=True) if shellcheck else None)
+            lint = (
+                subprocess.run([shellcheck, "-s", "bash", str(path)], capture_output=True, text=True)
+                if shellcheck
+                else None
+            )
             hits = [f for f in forbidden if f in text]
-            chsh = [line for line in text.splitlines()
-                    if "chsh" in line and not line.lstrip().startswith(("#", "echo"))]
-            good = (syntax.returncode == 0 and lint is not None and lint.returncode == 0
-                    and text.startswith("#!/bin/bash\n") and not hits and not chsh
-                    and "curl" not in text.replace('tools="git zsh curl', ""))
+            chsh = [
+                line
+                for line in text.splitlines()
+                if "chsh" in line and not line.lstrip().startswith(("#", "echo"))
+            ]
+            good = (
+                syntax.returncode == 0
+                and lint is not None
+                and lint.returncode == 0
+                and text.startswith("#!/bin/bash\n")
+                and not hits
+                and not chsh
+                and "curl" not in text.replace('tools="git zsh curl', "")
+            )
             if not good:
                 detail = (syntax.stderr + (lint.stdout if lint else "")).strip()
-                fail(f"{host} {script}: bash -n {syntax.returncode}, shellcheck "
-                     f"{lint.returncode if lint else 'missing'}, forbidden {hits}, chsh {chsh}\n{detail}")
+                fail(
+                    f"{host} {script}: bash -n {syntax.returncode}, shellcheck "
+                    f"{lint.returncode if lint else 'missing'}, forbidden {hits}, chsh {chsh}\n{detail}"
+                )
         if len(failures) == before:
-            ok(f"{host}: {len(scripts)} scripts pass bash -n and shellcheck, name no sudo, "
-               "no pipe into a shell, no key file, run no chsh")
+            ok(
+                f"{host}: {len(scripts)} scripts pass bash -n and shellcheck, name no sudo, "
+                "no pipe into a shell, no key file, run no chsh"
+            )
 
 
 def main():
@@ -1042,8 +1302,15 @@ def main():
         return 1
     with tempfile.TemporaryDirectory(prefix="script-check-") as tmp:
         ROOT = pathlib.Path(tmp).resolve()
-        for test in (test_tool_check, test_clones, test_harness, test_julia_packages_file,
-                     test_julia, test_services, test_lint):
+        for test in (
+            test_tool_check,
+            test_clones,
+            test_harness,
+            test_julia_packages_file,
+            test_julia,
+            test_services,
+            test_lint,
+        ):
             try:
                 test()
             except Exception as error:  # a broken fixture is a failure, not a crash

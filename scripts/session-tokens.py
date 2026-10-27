@@ -23,6 +23,7 @@ measured for this tree's text. Usage figures are the API's own.
     python3 session-tokens.py            # the last 7 days
     python3 session-tokens.py --days 30
 """
+
 import argparse
 import glob
 import hashlib
@@ -122,7 +123,9 @@ for path in paths:
                     text = result_text(block.get("content"))
                     results.append((len(calls), tool_group(name), len(text)))
                     if name == "Bash":
-                        results.append((len(calls), "Bash: " + program(tool_input.get("command", "")), len(text)))
+                        results.append(
+                            (len(calls), "Bash: " + program(tool_input.get("command", "")), len(text))
+                        )
                     is_error = bool(block.get("is_error"))
                     # waste: repeated whole-file Read of an unedited path
                     file_path = tool_input.get("file_path")
@@ -206,6 +209,11 @@ table("Bash, by program", [g for g in tool_carried if g.startswith("Bash: ")])
 print(f"carried cost of all tool results: {total_carried / 1e6:.1f}M of {total_cost / 1e6:.1f}M input cost")
 
 print(f"\n{'waste pattern':<28}{'events':>8}{'kchars':>10}")
-for pattern in ("re-read, unedited", "Bash re-run, same output", "same call after error, 3+", "errors in a row, 4+"):
+for pattern in (
+    "re-read, unedited",
+    "Bash re-run, same output",
+    "same call after error, 3+",
+    "errors in a row, 4+",
+):
     events, chars = waste[pattern]
     print(f"{pattern:<28}{events:>8}{chars / 1e3:>10.1f}")
