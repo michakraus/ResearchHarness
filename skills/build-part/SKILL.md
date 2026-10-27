@@ -215,9 +215,11 @@ or the critic's context writes that context again in full after every 5 minutes 
 spec's checks and CI, so that a mechanical failure blocks the round whatever the critic finds:
 
 - **The checks.** The same `julia-test-runner` runs, after the suite and never beside it,
-  `python3 ~/Research/Harness/scripts/spec-validate.py <spec> --head <worktree> --out ~/Research/.scratch/gate/<Repository>-<part>/round-<N>/`,
+  `python3 ~/Research/Harness/scripts/spec-validate.py <spec> --head <worktree> --out "$TMPDIR/gate-<Repository>-<part>-round-<N>"`,
   and returns the totals and every failure, verbatim. It runs every `check:` of the delta on the
-  head, and fails a check that writes into the worktree. A check tagged `(device: metal)` does not
+  head, and fails a check that writes into the worktree. The output goes below `$TMPDIR`, because
+  the sandbox refuses a `.claude` directory below `~/Research/.scratch`, and a check that runs a
+  scratch `harness install` makes one. A check tagged `(device: metal)` does not
   run there and makes the run `UNMEASURED`: run the same command with `--devices metal` from a
   Kaimon session yourself (`spec-format.md`, *A device check runs from a Kaimon session*). A
   device check counts only from that run.
