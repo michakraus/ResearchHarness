@@ -1378,13 +1378,14 @@ def layer_cases(check, tmp):
     base, claude, tree = fresh()
     code, text = run(base, "--apply")
 
-    def changed_lines(src):
-        """The lines in which the installed copy of `src` differs from it, as (source, installed).
+    def changed_lines(src: pathlib.Path) -> list[tuple[str, str]]:
+        """The lines in which the installed copy of `src` differs from it, as (source, installed),
+        and a last pair ("line count", "<source> != <installed>") where the line counts differ.
         An installed `experimental:` line and the line after it count as one line."""
         old = src.read_text().split("\n")
         new = (claude / src.relative_to(REPO)).read_text().replace("\nexperimental:\n", "\nexperimental:\0")
         new = [line.replace("\0", "\n") for line in new.split("\n")]
-        count = [("line count", len(old), len(new))] * (len(old) != len(new))
+        count = [("line count", f"{len(old)} != {len(new)}")] * (len(old) != len(new))
         return [(a, b) for a, b in zip(old, new) if a != b] + count
 
     names = set(TOOLS.values())
