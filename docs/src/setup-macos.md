@@ -140,9 +140,8 @@ the first install adds them.
 describes. `harness` starts on the `python3` of the `PATH`, which must be 3.14 or later, and then
 runs on the interpreter of its Python environment, which it makes with `uv` the first time that it
 runs outside a [session](concepts.md#session). `python` supplies a current `python3`, and
-`python@3.14` supplies `python3.14`, which the pre-push hook also runs; where `python3.14` is
-missing, the hook skips that run with one line, because CI runs it. Homebrew's `rsync` replaces
-the `rsync` of macOS on the `PATH`. jq is optional: the status line of Claude Code reads its data with jq, and without it,
+`python@3.14` supplies the Python 3.14 that uv makes the environment on. Homebrew's `rsync`
+replaces the `rsync` of macOS on the `PATH`. jq is optional: the status line of Claude Code reads its data with jq, and without it,
 the status line shows no values. You need Julia even if you write no Julia code: the first install
 instantiates the Julia environment of the harness's scripts, and it stops without `julia`. macOS
 supplies `lsof`, `launchctl` and the other system tools of

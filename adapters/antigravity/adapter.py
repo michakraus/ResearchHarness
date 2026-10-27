@@ -12,8 +12,9 @@ whose guard scripts, install-drift.py, instructions, rules and skills it copies.
                                  is current, and a warning that names the script when it exits
                                  with an error or its output is not a JSON object with a text
                                  `systemMessage` (TRANSLATE); and one `PreToolUse` group, matcher
-                                 `*`, which runs config/hooks/guard.py; each by its absolute path
-                                 with a timeout of 15 s (render_hooks). The matcher names no tool,
+                                 `*`, which runs config/hooks/guard.py; each by its absolute path,
+                                 on the Python environment's interpreter, with a timeout of 15 s
+                                 (render_hooks). The matcher names no tool,
                                  so no tool is missed, and guard.py decides by the name of the tool
   config/hooks/guard.py          adapters/antigravity/guard.py, byte for byte: the guard scripts
                                  and the path list on every tool call, failing closed
@@ -226,19 +227,22 @@ def render(path, profile):
     return profile_module.render_line(path, profile)
 
 
-def render_hooks(root):
+def render_hooks(root, python=None):
     """The text of hooks.json for Antigravity's directory `root`: the hook HOOK, which runs
     install-drift.py at the start of a session, its warning translated by TRANSLATE, and guard.py
-    on every tool call, each by its absolute path, so that it runs from any directory."""
+    on every tool call, each by its absolute path, so that it runs from any directory, and each on
+    the interpreter `python`, by default the Python environment's (`install.python_interpreter`),
+    not on the `python3` of the `PATH`. Each path is one shell word (`shlex.quote`)."""
     hooks = root / "config" / "hooks"
+    python = shlex.quote(install.python_interpreter() if python is None else python)
 
     def handler(command):
         return {"type": "command", "command": command, "timeout": HOOK_TIMEOUT}
 
-    start = "python3 -c " + shlex.quote(TRANSLATE) + " " + shlex.quote(str(hooks / "install-drift.py"))
+    start = python + " -c " + shlex.quote(TRANSLATE) + " " + shlex.quote(str(hooks / "install-drift.py"))
     return json.dumps({HOOK: {"SessionStart": [handler(start)],
                               "PreToolUse": [{"matcher": "*", "hooks": [handler(
-                                  "python3 " + shlex.quote(str(hooks / "guard.py")))]}]}}, indent=2) + "\n"
+                                  python + " " + shlex.quote(str(hooks / "guard.py")))]}]}}, indent=2) + "\n"
 
 
 def relocate(data, root):
@@ -922,15 +926,32 @@ def layer_cases(scratch):
     case(lambda: installed == want, f"--apply installs those files below ~/.gemini/, and nothing else: {installed}")
     config = gemini / "config"
     hooks = (config / "hooks.json").read_text() if (config / "hooks.json").is_file() else None
-    handler = "python3 " + shlex.quote(str(config / "hooks" / "guard.py"))
-    start = "python3 -c " + shlex.quote(TRANSLATE) + " " + shlex.quote(str(config / "hooks" / "install-drift.py"))
+    python = shlex.quote(str(base / "python" / "bin" / "python"))
+    handler = python + " " + shlex.quote(str(config / "hooks" / "guard.py"))
+    start = python + " -c " + shlex.quote(TRANSLATE) + " " + shlex.quote(str(config / "hooks" / "install-drift.py"))
     case(lambda: json.loads(hooks)
          == {HOOK: {"SessionStart": [{"type": "command", "command": start, "timeout": 15}],
                     "PreToolUse": [{"matcher": "*", "hooks": [{"type": "command", "command": handler,
                                                                "timeout": 15}]}]}},
          f"hooks.json holds the one hook {HOOK}: one SessionStart handler, which runs install-drift.py and turns its "
-         f"warning into injectSteps, and one PreToolUse group, matcher *, guard.py by its absolute path, each with "
-         f"a timeout of 15 s: {hooks!r}")
+         f"warning into injectSteps, and one PreToolUse group, matcher *, guard.py by its absolute path, each on "
+         f"the environment's interpreter with a timeout of 15 s: {hooks!r}")
+
+    def commands_of(value):
+        """Every string value of a key `command` in the JSON value `value`."""
+        if isinstance(value, dict):
+            return [c for k, v in value.items()
+                    for c in ([v] if k == "command" and isinstance(v, str) else commands_of(v))]
+        return [c for v in value for c in commands_of(v)] if isinstance(value, list) else []
+
+    # Every command that the install writes for a .py hook, in either frontend's file, runs it on the
+    # scratch environment's interpreter.
+    runs_py = [c for c in commands_of(json.loads((claude / "settings.json").read_text())["hooks"])
+               + commands_of(json.loads(hooks)) if ".py" in c]
+    case(lambda: len(runs_py) > 2 and all(shlex.split(c)[0] == str(base / "python" / "bin" / "python")
+                                          for c in runs_py),
+         f"each command of ~/.claude/settings.json and hooks.json that runs a .py hook starts with the "
+         f"environment's interpreter: {runs_py}")
     case(lambda: (config / "hooks" / "install-drift.py").read_bytes()
          == (claude / "hooks" / "install-drift.py").read_bytes()
          and scratch.mode(config / "hooks" / "install-drift.py") == scratch.mode(claude / "hooks" / "install-drift.py"),

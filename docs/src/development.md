@@ -86,13 +86,12 @@ a check that fails; the hook skips none of them. **gitleaks 8.21 or later is a r
 tool** (`brew install gitleaks`); 8.19 added the `git`, `dir` and `stdin` commands, and 8.21 is
 the first release with several allowlists per rule, `[[rules.allowlists]]`.
 
-Then it runs `bin/harness test` on `python3` and on `python3.14`. When a Python environment
-works, `bin/harness` restarts both runs on the environment's interpreter, so the second run
-repeats the first. Then it runs the compile check
-`python3.14 -m compileall -q lib hooks scripts adapters`, and `shellcheck -S warning` over the
-shell files.
-Then, when `chezmoi` is on the `PATH`, it runs the kit's tests on the Python that ran
-`bin/harness test` first: `examples/dotfiles/tests/update-check.py`, `check-check.py`,
+Then it runs `bin/harness test` once, with `python3`; `bin/harness` runs the suite on the
+interpreter of the harness's Python environment. Then it runs the compile check
+`<environment>/bin/python -m compileall -q lib hooks scripts adapters` on that interpreter, at the
+path that `bin/harness` gives, and `shellcheck -S warning` over the shell files.
+Then, when `chezmoi` is on the `PATH`, it runs the kit's tests on `python3`:
+`examples/dotfiles/tests/update-check.py`, `check-check.py`,
 `driver-check.py`, `render-check.py` and `script-check.py`. All five run, and when one fails the
 hook refuses the push with one line that names it. Without `chezmoi` it prints
 `skip  chezmoi: not found; CI runs the kit's tests`.
@@ -100,8 +99,8 @@ Then it runs the Julia test files that the changed paths of the pushed range sel
 to `scripts/mutate.jl` selects `scripts/run-tests-test.jl`, a change to `Project.toml` all ten,
 and a change to `README.md` none. It prints each file's name and its usual time before it runs
 it; `scripts/run-tests-test.jl` is silent for about 11 minutes. Without a `python3` of 3.14 or
-later, the hook refuses the push. A missing `python3.14`, `shellcheck`, `chezmoi` or `julia`
-prints one `skip` line, because CI runs them. Enable the hook once per checkout:
+later, the hook refuses the push. A missing `shellcheck`, `chezmoi` or `julia` prints one `skip`
+line, because CI runs them. Enable the hook once per checkout:
 
 ```bash
 git config core.hooksPath .githooks
@@ -111,7 +110,10 @@ git config core.hooksPath .githooks
 
 CI runs `.github/workflows/test.yml` on every push, pull request and manual dispatch:
 `bin/harness test` and the compile check on Python 3.14 and the latest 3.x, `shellcheck` and
-`actionlint`. Its `empty-home` job runs `bin/harness test` once more on Python 3.14, with `HOME`
+`actionlint`. Its `python` job installs uv with `astral-sh/setup-uv`, pinned by its commit SHA,
+and runs `uv sync --locked` into the environment that `bin/harness` reads, on the job's Python;
+the job on the latest 3.x has `continue-on-error`, so its failure warns and does not fail the
+run. Its `empty-home` job runs `bin/harness test` once more on Python 3.14, with `HOME`
 set to a new empty directory, so a case that needs a file of the runner's home fails there. Its
 `leaks` job runs gitleaks 8.30.1, a pinned tarball checked by its SHA256, with
 `.gitleaks.toml` and `--redact`. A canary step first checks that gitleaks finds a synthetic token

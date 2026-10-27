@@ -276,6 +276,12 @@ def python_env():
         raise HarnessError(str(e)) from None
 
 
+def python_interpreter():
+    """The interpreter of the Python environment (`python_env`): its bin/python, the link not
+    resolved, as bin/harness's `interpreter` names it. The rendered hook commands run on it."""
+    return boot().interpreter(str(python_env()))
+
+
 def install_python_env(apply, develop, environment):
     """Plan the Python environment at `environment` as one line, and under `apply` sync it with
     `uv sync --locked`, with the `dev` group when `develop`, else `--no-dev`; the number of changes.
