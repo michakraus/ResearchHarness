@@ -114,8 +114,10 @@ def write(root, apply, env=None):
     target.write_bytes(insert(target.read_bytes().decode("utf-8"), block).encode("utf-8"))
     for path in ordered:
         path.unlink()
-    print(f"CHANGELOG.md: {len(ordered)} entries added to {HEADING}; removed "
-          + ", ".join(str(path.relative_to(root)) for path in ordered))
+    print(
+        f"CHANGELOG.md: {len(ordered)} entries added to {HEADING}; removed "
+        + ", ".join(str(path.relative_to(root)) for path in ordered)
+    )
     return len(ordered)
 
 
@@ -127,7 +129,7 @@ def changes(output):
     while i < len(fields) and fields[i]:
         status = fields[i]
         count = 2 if status[0] in "RC" else 1
-        pairs += [(status, path) for path in fields[i + 1:i + 1 + count]]
+        pairs += [(status, path) for path in fields[i + 1 : i + 1 + count]]
         i += 1 + count
     return pairs
 
@@ -169,16 +171,21 @@ def cmd_changelog(args, root=REPO, env=None):
 
 
 def register(sub):
-    p = sub.add_parser("changelog", help="join the fragments of changelog.d/ into CHANGELOG.md, or check that a branch "
-                                         "adds one",
-                       description="Print the ## Unreleased block that the fragments of changelog.d/ make, newest "
-                                   "first, and exit 1 when there is one. --apply puts the block into CHANGELOG.md "
-                                   "and deletes the fragments. --check BASE exits 1 when the branch changes code "
-                                   "since BASE and adds no fragment.")
+    p = sub.add_parser(
+        "changelog",
+        help="join the fragments of changelog.d/ into CHANGELOG.md, or check that a branch adds one",
+        description="Print the ## Unreleased block that the fragments of changelog.d/ make, newest "
+        "first, and exit 1 when there is one. --apply puts the block into CHANGELOG.md "
+        "and deletes the fragments. --check BASE exits 1 when the branch changes code "
+        "since BASE and adds no fragment.",
+    )
     modes = p.add_mutually_exclusive_group()
-    modes.add_argument("--apply", action="store_true", help="write the block into CHANGELOG.md and delete the fragments")
-    modes.add_argument("--check", metavar="BASE", help="exit 1 when the branch changes code since BASE and adds no "
-                                                       "fragment")
+    modes.add_argument(
+        "--apply", action="store_true", help="write the block into CHANGELOG.md and delete the fragments"
+    )
+    modes.add_argument(
+        "--check", metavar="BASE", help="exit 1 when the branch changes code since BASE and adds no fragment"
+    )
     p.set_defaults(run=cmd_changelog)
 
 
@@ -208,72 +215,113 @@ def selftest():
         return result, out.getvalue()
 
     # The join and the insertion, without a repository.
-    check_(join(["- **A.** a.\n", "- **B.** b.\n"]) == "- **A.** a.\n\n- **B.** b.\n",
-           "two fragments join with one blank line between them")
+    check_(
+        join(["- **A.** a.\n", "- **B.** b.\n"]) == "- **A.** a.\n\n- **B.** b.\n",
+        "two fragments join with one blank line between them",
+    )
     old = "# Changelog\n\n## Unreleased\n\n- **Old.** old.\n\n## 1.0\n\n- **First.** first.\n"
-    check_(insert(old, "- **B.** b.\n\n- **A.** a.\n")
-           == "# Changelog\n\n## Unreleased\n\n- **B.** b.\n\n- **A.** a.\n\n- **Old.** old.\n\n## 1.0\n\n"
-              "- **First.** first.\n",
-           "the block goes to the top of ## Unreleased, above its entries")
-    check_(insert("# Changelog\n\n## Unreleased\n\n## 1.0\n\n- **First.** first.\n", "- **A.** a.\n")
-           == "# Changelog\n\n## Unreleased\n\n- **A.** a.\n\n## 1.0\n\n- **First.** first.\n",
-           "an empty ## Unreleased section followed by a heading gets the block")
+    check_(
+        insert(old, "- **B.** b.\n\n- **A.** a.\n")
+        == "# Changelog\n\n## Unreleased\n\n- **B.** b.\n\n- **A.** a.\n\n- **Old.** old.\n\n## 1.0\n\n"
+        "- **First.** first.\n",
+        "the block goes to the top of ## Unreleased, above its entries",
+    )
+    check_(
+        insert("# Changelog\n\n## Unreleased\n\n## 1.0\n\n- **First.** first.\n", "- **A.** a.\n")
+        == "# Changelog\n\n## Unreleased\n\n- **A.** a.\n\n## 1.0\n\n- **First.** first.\n",
+        "an empty ## Unreleased section followed by a heading gets the block",
+    )
     for tail in ("## Unreleased\n", "## Unreleased"):
-        check_(insert(f"# Changelog\n\n{tail}", "- **A.** a.\n") == "# Changelog\n\n## Unreleased\n\n- **A.** a.\n",
-               f"an ## Unreleased heading at the end of the file gets the block below it: {tail!r}")
-    check_(insert("# Changelog\n\n## 1.0\n\n- **First.** first.\n", "- **A.** a.\n")
-           == "# Changelog\n\n## Unreleased\n\n- **A.** a.\n\n## 1.0\n\n- **First.** first.\n",
-           "without ## Unreleased, the section goes above the first ## heading")
-    check_(insert("# Changelog\n\n### Unreleased\n\n## 1.0\n", "- **A.** a.\n")
-           == "# Changelog\n\n### Unreleased\n\n## Unreleased\n\n- **A.** a.\n\n## 1.0\n",
-           "a ### heading is neither the section nor the first ## heading")
-    check_(insert("# Changelog\n\n## Unreleased notes\n\n- x\n", "- **A.** a.\n")
-           == "# Changelog\n\n## Unreleased\n\n- **A.** a.\n\n## Unreleased notes\n\n- x\n",
-           "a heading that only starts with ## Unreleased is not the section")
-    check_(insert("# Changelog\n", "- **A.** a.\n") == "# Changelog\n\n## Unreleased\n\n- **A.** a.\n",
-           "without any ## heading, the section goes at the end")
-    check_(insert("# Changelog", "- **A.** a.\n") == "# Changelog\n\n## Unreleased\n\n- **A.** a.\n",
-           "a file without a final newline gets one before the section")
-    check_(insert("# Changelog\n\n\n", "- **A.** a.\n") == "# Changelog\n\n## Unreleased\n\n- **A.** a.\n",
-           "blank lines at the end of the file become one blank line before the section")
-    check_(insert("", "- **A.** a.\n") == "## Unreleased\n\n- **A.** a.\n", "an empty file gets the section alone")
+        check_(
+            insert(f"# Changelog\n\n{tail}", "- **A.** a.\n")
+            == "# Changelog\n\n## Unreleased\n\n- **A.** a.\n",
+            f"an ## Unreleased heading at the end of the file gets the block below it: {tail!r}",
+        )
+    check_(
+        insert("# Changelog\n\n## 1.0\n\n- **First.** first.\n", "- **A.** a.\n")
+        == "# Changelog\n\n## Unreleased\n\n- **A.** a.\n\n## 1.0\n\n- **First.** first.\n",
+        "without ## Unreleased, the section goes above the first ## heading",
+    )
+    check_(
+        insert("# Changelog\n\n### Unreleased\n\n## 1.0\n", "- **A.** a.\n")
+        == "# Changelog\n\n### Unreleased\n\n## Unreleased\n\n- **A.** a.\n\n## 1.0\n",
+        "a ### heading is neither the section nor the first ## heading",
+    )
+    check_(
+        insert("# Changelog\n\n## Unreleased notes\n\n- x\n", "- **A.** a.\n")
+        == "# Changelog\n\n## Unreleased\n\n- **A.** a.\n\n## Unreleased notes\n\n- x\n",
+        "a heading that only starts with ## Unreleased is not the section",
+    )
+    check_(
+        insert("# Changelog\n", "- **A.** a.\n") == "# Changelog\n\n## Unreleased\n\n- **A.** a.\n",
+        "without any ## heading, the section goes at the end",
+    )
+    check_(
+        insert("# Changelog", "- **A.** a.\n") == "# Changelog\n\n## Unreleased\n\n- **A.** a.\n",
+        "a file without a final newline gets one before the section",
+    )
+    check_(
+        insert("# Changelog\n\n\n", "- **A.** a.\n") == "# Changelog\n\n## Unreleased\n\n- **A.** a.\n",
+        "blank lines at the end of the file become one blank line before the section",
+    )
+    check_(
+        insert("", "- **A.** a.\n") == "## Unreleased\n\n- **A.** a.\n",
+        "an empty file gets the section alone",
+    )
 
     # The order, without a repository.
     a, b, c = (pathlib.Path(f"changelog.d/{n}.md") for n in "abc")
-    check_(newest_first([(a, 100), (b, 200), (c, None)]) == [c, b, a],
-           "the order: a fragment no commit holds first, then the newest")
+    check_(
+        newest_first([(a, 100), (b, 200), (c, None)]) == [c, b, a],
+        "the order: a fragment no commit holds first, then the newest",
+    )
     check_(newest_first([(b, 100), (a, 100)]) == [a, b], "fragments of the same date go by file name")
     check_(newest_first([(b, None), (a, None)]) == [a, b], "fragments no commit holds go by file name")
 
     # The path classification, without a repository.
     code = ("M", "lib/harness/x.py")
-    check_(unrecorded([("M", "docs/src/x.md"), ("A", "README.md"), ("M", "CHANGELOG.md")]) is None,
-           "a branch that changes only docs/ and top-level files needs no fragment")
+    check_(
+        unrecorded([("M", "docs/src/x.md"), ("A", "README.md"), ("M", "CHANGELOG.md")]) is None,
+        "a branch that changes only docs/ and top-level files needs no fragment",
+    )
     check_(unrecorded([code, ("A", "changelog.d/topic.md")]) is None, "code with an added fragment passes")
-    check_(unrecorded([("M", "docs/x.md"), code, ("M", "hooks/y.py")]) == "lib/harness/x.py",
-           "code without a fragment names the first changed code path")
+    check_(
+        unrecorded([("M", "docs/x.md"), code, ("M", "hooks/y.py")]) == "lib/harness/x.py",
+        "code without a fragment names the first changed code path",
+    )
     for prefix in CODE:
         check_(unrecorded([("M", f"{prefix}x")]) == f"{prefix}x", f"a change below {prefix} is code")
-    check_(unrecorded([("M", "library/x"), ("M", "binary"), ("M", "x/lib/y")]) is None,
-           "a path that only starts with the name of a code directory is not code")
-    for label, pair in [("a modified fragment", ("M", "changelog.d/topic.md")),
-                        ("a deleted fragment", ("D", "changelog.d/topic.md")),
-                        ("a renamed fragment", ("R100", "changelog.d/topic.md")),
-                        ("an added README.md", ("A", "changelog.d/README.md")),
-                        ("an added file that is not .md", ("A", "changelog.d/topic.txt")),
-                        ("an added .md below a subdirectory", ("A", "changelog.d/sub/topic.md"))]:
+    check_(
+        unrecorded([("M", "library/x"), ("M", "binary"), ("M", "x/lib/y")]) is None,
+        "a path that only starts with the name of a code directory is not code",
+    )
+    for label, pair in [
+        ("a modified fragment", ("M", "changelog.d/topic.md")),
+        ("a deleted fragment", ("D", "changelog.d/topic.md")),
+        ("a renamed fragment", ("R100", "changelog.d/topic.md")),
+        ("an added README.md", ("A", "changelog.d/README.md")),
+        ("an added file that is not .md", ("A", "changelog.d/topic.txt")),
+        ("an added .md below a subdirectory", ("A", "changelog.d/sub/topic.md")),
+    ]:
         check_(unrecorded([code, pair]) == "lib/harness/x.py", f"{label} is no added fragment")
     pairs = changes("M\0docs/x.md\0R087\0lib/a.py\0lib/b.py\0A\0changelog.d/t.md\0")
-    check_(pairs == [("M", "docs/x.md"), ("R087", "lib/a.py"), ("R087", "lib/b.py"), ("A", "changelog.d/t.md")],
-           f"the -z output parses into (status, path) pairs, both paths of a rename -> {pairs}")
+    check_(
+        pairs == [("M", "docs/x.md"), ("R087", "lib/a.py"), ("R087", "lib/b.py"), ("A", "changelog.d/t.md")],
+        f"the -z output parses into (status, path) pairs, both paths of a rename -> {pairs}",
+    )
     check_(changes("") == [], "an empty diff has no pairs")
 
     # The verb on scratch repositories: a fixed identity and dates, no configuration of the caller,
     # and no GIT_* variable, which would send the commands to the caller's repository.
     env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
-    env.update(GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_NOSYSTEM="1", GIT_AUTHOR_NAME="changelog",
-               GIT_AUTHOR_EMAIL="changelog@example.org", GIT_COMMITTER_NAME="changelog",
-               GIT_COMMITTER_EMAIL="changelog@example.org")
+    env.update(
+        GIT_CONFIG_GLOBAL=os.devnull,
+        GIT_CONFIG_NOSYSTEM="1",
+        GIT_AUTHOR_NAME="changelog",
+        GIT_AUTHOR_EMAIL="changelog@example.org",
+        GIT_COMMITTER_NAME="changelog",
+        GIT_COMMITTER_EMAIL="changelog@example.org",
+    )
     with tempfile.TemporaryDirectory(prefix="harness-changelog-") as tmp:
         # git looks for a repository only below the scratch directory.
         env["GIT_CEILING_DIRECTORIES"] = tmp
@@ -301,14 +349,19 @@ def selftest():
             return path
 
         def state(root):
-            return sorted((str(p.relative_to(root)), p.read_bytes()) for p in root.rglob("*")
-                          if p.is_file() and ".git" not in p.relative_to(root).parts)
+            return sorted(
+                (str(p.relative_to(root)), p.read_bytes())
+                for p in root.rglob("*")
+                if p.is_file() and ".git" not in p.relative_to(root).parts
+            )
 
         root = repo()
         before = state(root)
         runs = [quiet(lambda: write(root, apply, env)) for apply in (False, True)]
-        check_(plan(root, env) == ([], "") and runs == [(0, "no fragments\n")] * 2 and state(root) == before,
-               f"with no fragment, the dry run and --apply print 'no fragments' and change nothing -> {runs}")
+        check_(
+            plan(root, env) == ([], "") and runs == [(0, "no fragments\n")] * 2 and state(root) == before,
+            f"with no fragment, the dry run and --apply print 'no fragments' and change nothing -> {runs}",
+        )
 
         root = repo()
         fa = fragment(root, "a.md", "- **A.** a.\n", "2026-01-01")
@@ -318,49 +371,71 @@ def selftest():
         (root / DIRECTORY / "sub").mkdir()
         (root / DIRECTORY / "sub" / "d.md").write_text("- **D.** d.\n")
         (root / DIRECTORY / "dir.md").mkdir()
-        check_(fragments(root) == [fa, fb, fc],
-               "the fragments are the .md files of changelog.d/ but README.md; a directory dir.md is none")
+        check_(
+            fragments(root) == [fa, fb, fc],
+            "the fragments are the .md files of changelog.d/ but README.md; a directory dir.md is none",
+        )
         ordered, block = plan(root, env)
-        check_(ordered == [fc, fb, fa] and block == "- **C.** c.\n\n- **B.** b.\n\n- **A.** a.\n",
-               f"the block: the uncommitted fragment first, then the newest, a final newline added -> {block!r}")
+        check_(
+            ordered == [fc, fb, fa] and block == "- **C.** c.\n\n- **B.** b.\n\n- **A.** a.\n",
+            f"the block: the uncommitted fragment first, then the newest, a final newline added -> {block!r}",
+        )
         before = state(root)
         dry = quiet(lambda: write(root, False, env))
-        check_(dry == (3, f"## Unreleased\n\n{block}") and state(root) == before,
-               "the dry run prints the block under ## Unreleased, counts 3 and changes no file")
-        check_(quiet(lambda: write(root, True, env))[0] == 3 and not any(p.exists() for p in (fa, fb, fc))
-               and (root / DIRECTORY / "README.md").is_file() and (root / DIRECTORY / "notes.txt").is_file()
-               and (root / DIRECTORY / "sub" / "d.md").is_file(),
-               "--apply deletes the fragments and keeps README.md and every other file")
-        check_((root / "CHANGELOG.md").read_text()
-               == "# Changelog\n\n## Unreleased\n\n- **C.** c.\n\n- **B.** b.\n\n- **A.** a.\n\n- **Old.** old.\n\n"
-                  "## 1.0\n\n- **First.** first.\n",
-               "--apply writes the block at the top of ## Unreleased")
+        check_(
+            dry == (3, f"## Unreleased\n\n{block}") and state(root) == before,
+            "the dry run prints the block under ## Unreleased, counts 3 and changes no file",
+        )
+        check_(
+            quiet(lambda: write(root, True, env))[0] == 3
+            and not any(p.exists() for p in (fa, fb, fc))
+            and (root / DIRECTORY / "README.md").is_file()
+            and (root / DIRECTORY / "notes.txt").is_file()
+            and (root / DIRECTORY / "sub" / "d.md").is_file(),
+            "--apply deletes the fragments and keeps README.md and every other file",
+        )
+        check_(
+            (root / "CHANGELOG.md").read_text()
+            == "# Changelog\n\n## Unreleased\n\n- **C.** c.\n\n- **B.** b.\n\n- **A.** a.\n\n- **Old.** old.\n\n"
+            "## 1.0\n\n- **First.** first.\n",
+            "--apply writes the block at the top of ## Unreleased",
+        )
         check_(plan(root, env) == ([], ""), "after --apply, no fragment is left")
 
-        for label, text in [("an empty fragment", ""), ("a fragment of whitespace", "  \n\n"),
-                            ("a fragment with a carriage return", "- **X.** y\r\n"),
-                            ("a fragment that is not UTF-8", b"- **X.** \xff\n")]:
+        for label, text in [
+            ("an empty fragment", ""),
+            ("a fragment of whitespace", "  \n\n"),
+            ("a fragment with a carriage return", "- **X.** y\r\n"),
+            ("a fragment that is not UTF-8", b"- **X.** \xff\n"),
+        ]:
             root = repo()
             good = fragment(root, "a.md", "- **A.** a.\n", "2026-01-01")
             fragment(root, "bad.md", text)
             before = state(root)
             messages = [raises(lambda: write(root, apply, env)) for apply in (False, True)]
-            check_(all(m and m.startswith("changelog.d/bad.md: ") for m in messages) and state(root) == before
-                   and good.exists(),
-                   f"{label} stops the dry run and --apply, named, and nothing changes -> {messages}")
+            check_(
+                all(m and m.startswith("changelog.d/bad.md: ") for m in messages)
+                and state(root) == before
+                and good.exists(),
+                f"{label} stops the dry run and --apply, named, and nothing changes -> {messages}",
+            )
 
         root = repo()
         (root / "CHANGELOG.md").unlink()
         fragment(root, "a.md", "- **A.** a.\n")
-        check_(raises(lambda: write(root, True, env)) == "CHANGELOG.md: no such file"
-               and (root / DIRECTORY / "a.md").exists(),
-               "--apply without CHANGELOG.md stops and keeps the fragment")
+        check_(
+            raises(lambda: write(root, True, env)) == "CHANGELOG.md: no such file"
+            and (root / DIRECTORY / "a.md").exists(),
+            "--apply without CHANGELOG.md stops and keeps the fragment",
+        )
 
         root = pathlib.Path(tmp) / "not-a-repository"
         (root / DIRECTORY).mkdir(parents=True)
         fragment(root, "a.md", "- **A.** a.\n")
-        check_((raises(lambda: plan(root, env)) or "").startswith("git log: "),
-               "outside a repository, the date of a fragment cannot be read, and the verb stops")
+        check_(
+            (raises(lambda: plan(root, env)) or "").startswith("git log: "),
+            "outside a repository, the date of a fragment cannot be read, and the verb stops",
+        )
 
         # --check on branches of one repository.
         root = repo()
@@ -369,24 +444,39 @@ def selftest():
         (root / "lib" / "x.py").write_text("x\n")
         commit(root, "2026-01-03", "code", "lib/x.py")
         status, out = quiet(lambda: check(root, "main", env))
-        check_(status == 1 and out.startswith("lib/x.py changes"),
-               f"--check: code without a fragment exits 1 and names the path -> {status}, {out!r}")
+        check_(
+            status == 1 and out.startswith("lib/x.py changes"),
+            f"--check: code without a fragment exits 1 and names the path -> {status}, {out!r}",
+        )
         fragment(root, "topic.md", "- **T.** t.\n", "2026-01-04")
-        check_(quiet(lambda: check(root, "main", env))[0] == 0, "--check: code with an added fragment exits 0")
-        runs = [quiet(lambda: cmd_changelog(argparse.Namespace(check=base, apply=False), root, env))[0]
-                for base in ("main", None)]
+        check_(
+            quiet(lambda: check(root, "main", env))[0] == 0, "--check: code with an added fragment exits 0"
+        )
+        runs = [
+            quiet(lambda: cmd_changelog(argparse.Namespace(check=base, apply=False), root, env))[0]
+            for base in ("main", None)
+        ]
         check_(runs == [0, 1], f"the verb runs --check with a BASE and the dry run without one -> {runs}")
-        check_(raises(lambda: cmd_changelog(argparse.Namespace(check="", apply=False), root, env)) == "BASE is empty",
-               "--check with an empty BASE stops")
+        check_(
+            raises(lambda: cmd_changelog(argparse.Namespace(check="", apply=False), root, env))
+            == "BASE is empty",
+            "--check with an empty BASE stops",
+        )
         before = state(root)
         message = raises(lambda: check(root, "--output=written", env)) or ""
-        check_(message.startswith("git diff --output=written...HEAD: ") and state(root) == before,
-               f"--check: a BASE that starts with - is no option of git diff -> {message!r}")
+        check_(
+            message.startswith("git diff --output=written...HEAD: ") and state(root) == before,
+            f"--check: a BASE that starts with - is no option of git diff -> {message!r}",
+        )
         git(root, ["switch", "-q", "-c", "docs", "main"], env)
         (root / "docs").mkdir()
         (root / "docs" / "x.md").write_text("x\n")
         commit(root, "2026-01-05", "docs", "docs/x.md")
         check_(quiet(lambda: check(root, "main", env))[0] == 0, "--check: docs only exits 0")
-        check_((raises(lambda: check(root, "no-such-ref", env)) or "").startswith("git diff no-such-ref...HEAD: "),
-               "--check: a base that git cannot resolve stops")
+        check_(
+            (raises(lambda: check(root, "no-such-ref", env)) or "").startswith(
+                "git diff no-such-ref...HEAD: "
+            ),
+            "--check: a base that git cannot resolve stops",
+        )
     return total, wrong

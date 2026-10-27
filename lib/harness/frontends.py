@@ -57,26 +57,43 @@ def Plan(**fields):
     installs below rules/; `shared`, [(installed path, bytes, mode)] of each file that `shared` names,
     which a later frontend installs, whole or in part, into its own directory.
     """
-    return types.SimpleNamespace(**{"files": [], "warnings": [], "extra": [], "refused": [], "after": [], **fields})
+    return types.SimpleNamespace(
+        **{"files": [], "warnings": [], "extra": [], "refused": [], "after": [], **fields}
+    )
 
 
 # The guard scripts that OpenCode's plugin, oh-my-pi's extension and Antigravity's guard.py run: the
 # first five on each shell call, `sandbox-semantics.py` with `--work-tree` only, and
 # `kaimon-session.py` on a Kaimon `ex` or `manage_repl` call.
-GUARDS = ("no-blind-stage.py", "no-shell-file-write.py", "gh-api-writes.py", "rm-scope.py", "git-archive-output.py",
-          "sandbox-semantics.py", "kaimon-session.py")
+GUARDS = (
+    "no-blind-stage.py",
+    "no-shell-file-write.py",
+    "gh-api-writes.py",
+    "rm-scope.py",
+    "git-archive-output.py",
+    "sandbox-semantics.py",
+    "kaimon-session.py",
+)
 # The paths below ~/.claude that a text can name and that OpenCode, oh-my-pi and Antigravity hold a
 # copy of, with the first frontend's spelling; `relocate` rewrites them.
-SHARED_ROOTS = ("~/.claude/RTK.md", "~/.claude/instructions/", "~/.claude/hooks/", "~/.claude/rules/",
-                "~/.claude/skills/")
+SHARED_ROOTS = (
+    "~/.claude/RTK.md",
+    "~/.claude/instructions/",
+    "~/.claude/hooks/",
+    "~/.claude/rules/",
+    "~/.claude/skills/",
+)
 
 
 def shared(dst):
     """Whether the Claude Code layer's file at `dst`, relative to ~/.claude, is one that OpenCode,
     oh-my-pi and Antigravity hold a copy of: RTK.md, an instruction file, a guard script, or a file
     of a skill."""
-    return (dst == "RTK.md" or dst.startswith(("instructions/", "skills/"))
-            or dst in (f"hooks/{g}" for g in GUARDS))
+    return (
+        dst == "RTK.md"
+        or dst.startswith(("instructions/", "skills/"))
+        or dst in (f"hooks/{g}" for g in GUARDS)
+    )
 
 
 def relocate(data, root):
@@ -84,7 +101,7 @@ def relocate(data, root):
     directory in its home form, such as `~/.config/opencode`: a frontend's copy of a text names its
     own copies, not Claude Code's."""
     for old in SHARED_ROOTS:
-        data = data.replace(old.encode(), (root + old[len("~/.claude"):]).encode())
+        data = data.replace(old.encode(), (root + old[len("~/.claude") :]).encode())
     return data
 
 
@@ -92,7 +109,7 @@ def home_form(path):
     """`path` with the home directory written as `~`."""
     home = str(pathlib.Path.home())
     text = str(path)
-    return "~" + text[len(home):] if text == home or text.startswith(home + "/") else text
+    return "~" + text[len(home) :] if text == home or text.startswith(home + "/") else text
 
 
 def load():
@@ -111,8 +128,11 @@ def load():
                 del sys.modules[key]
                 # The line in the adapter: a syntax error's own, else the last frame in the file. A
                 # file that cannot be read has neither.
-                lines = [e.lineno] if isinstance(e, SyntaxError) else [
-                    f.lineno for f in traceback.extract_tb(e.__traceback__) if f.filename == str(path)]
+                lines = (
+                    [e.lineno]
+                    if isinstance(e, SyntaxError)
+                    else [f.lineno for f in traceback.extract_tb(e.__traceback__) if f.filename == str(path)]
+                )
                 where = f"{path}:{lines[-1]}" if lines else str(path)
                 raise HarnessError(f"{where}: {traceback.format_exception_only(e)[-1].strip()}") from None
             missing = [m for m in MEMBERS if not hasattr(module, m)]

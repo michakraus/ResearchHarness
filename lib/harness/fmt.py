@@ -62,9 +62,13 @@ def cmd_format(args):
 
 
 def register(sub):
-    changing(sub.add_parser("format", help="run JuliaFormatter over the tracked .jl files of Packages/ and Experiments/",
-                            description="Run JuliaFormatter over the tracked .jl files of Packages/ and "
-                                        "Experiments/, and skip each file on which JuliaFormatter crashes. Without "
-                                        "--apply it counts the files that would change and exits 1 when there is "
-                                        "one; --apply rewrites them.")
-             ).set_defaults(run=cmd_format)
+    changing(
+        sub.add_parser(
+            "format",
+            help="run JuliaFormatter over the tracked .jl files of Packages/ and Experiments/",
+            description="Run JuliaFormatter over the tracked .jl files of Packages/ and "
+            "Experiments/, and skip each file on which JuliaFormatter crashes. Without "
+            "--apply it counts the files that would change and exits 1 when there is "
+            "one; --apply rewrites them.",
+        )
+    ).set_defaults(run=cmd_format)

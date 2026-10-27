@@ -72,8 +72,11 @@ def part_name(module):
 
 def parts(modules):
     """Every part, sorted by name: {name: the command line of the child process that runs it}."""
-    table = {part_name(m): [*HARNESS, "test", "--part", part_name(m)]
-             for m in modules if hasattr(m, "selftest") and m is not doctor}
+    table = {
+        part_name(m): [*HARNESS, "test", "--part", part_name(m)]
+        for m in modules
+        if hasattr(m, "selftest") and m is not doctor
+    }
     table |= {f"doctor:{g}": [*HARNESS, "test", "--part", f"doctor:{g}"] for g in doctor.GROUPS}
     table |= {f"probe:{g}": [sys.executable, str(PROBE), g] for g in PROBE_GROUPS}
     table["sweep"] = [*HARNESS, "test", "--part", "sweep"]
@@ -107,11 +110,18 @@ def changed(base, names, root=REPO):
     HEAD, and a base that git cannot resolve raise."""
     if not base:
         raise HarnessError("--changed: BASE is empty")
-    p = subprocess.run(["git", "diff", "--name-status", "-z", "--end-of-options", f"{base}...HEAD", "--"], cwd=root,
-                       capture_output=True, text=True, check=False)
+    p = subprocess.run(
+        ["git", "diff", "--name-status", "-z", "--end-of-options", f"{base}...HEAD", "--"],
+        cwd=root,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
     if p.returncode != 0:
         message = p.stderr.strip().splitlines()
-        raise HarnessError(f"--changed {base}: git diff exits {p.returncode}" + (f": {message[0]}" if message else ""))
+        raise HarnessError(
+            f"--changed {base}: git diff exits {p.returncode}" + (f": {message[0]}" if message else "")
+        )
     chosen, reasons = set(ALWAYS), []
     for path in dict.fromkeys(path for _, path in changelog.changes(p.stdout)):
         owned = owners(path, names)
@@ -151,7 +161,9 @@ def run_part(name, argv, timeout=TIMEOUT):
     wrong case, and a child that runs longer than `timeout` seconds is stopped and is one wrong case;
     each has a BAD line that names the part. Its stderr follows its stdout, so a crash shows its
     traceback."""
-    p = subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, start_new_session=True)
+    p = subprocess.Popen(
+        argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, start_new_session=True
+    )
     with LIVE_LOCK:
         LIVE.add(p)
     try:
@@ -160,7 +172,11 @@ def run_part(name, argv, timeout=TIMEOUT):
         stop(p)
         out, err = p.communicate()
         lines = out.rstrip().splitlines()
-        return 1, 1, [*lines, f"BAD  {name}: runs longer than {timeout} s and is stopped", *err.rstrip().splitlines()]
+        return (
+            1,
+            1,
+            [*lines, f"BAD  {name}: runs longer than {timeout} s and is stopped", *err.rstrip().splitlines()],
+        )
     finally:
         with LIVE_LOCK:
             LIVE.discard(p)
@@ -169,7 +185,9 @@ def run_part(name, argv, timeout=TIMEOUT):
     body = "\n".join(lines[:-1] if m else lines).rstrip().splitlines()
     n, w = (int(m.group(1)), int(m.group(2))) if m else (0, 0)
     if m is None or (p.returncode != 0) != (w > 0):
-        body.append(f"BAD  {name}: exit {p.returncode} with {'no summary line' if m is None else lines[-1]!r}")
+        body.append(
+            f"BAD  {name}: exit {p.returncode} with {'no summary line' if m is None else lines[-1]!r}"
+        )
         n, w = n + 1, w + 1
     return n, w, body + err.rstrip().splitlines()
 
@@ -271,7 +289,9 @@ def cmd_test(args, modules):
         except OSError as e:
             raise HarnessError(f"the slot directory {slot_directory()}: {e.strerror}") from None
         with slot:
-            wrong = report({n: table[n] for n in names}, jobs(args.jobs, len(names), os.cpu_count()), log, sys.stdout)
+            wrong = report(
+                {n: table[n] for n in names}, jobs(args.jobs, len(names), os.cpu_count()), log, sys.stdout
+            )
     finally:
         if log is not None:
             log.close()
@@ -309,18 +329,27 @@ def report(table, at_once, log, out, timeout=TIMEOUT):
 
 def register(sub, modules):
     """The subcommand `test`; `modules` returns the modules and adapters whose cases it runs."""
-    p = sub.add_parser("test", help="run the harness's own test cases, or the parts that a name or a change selects",
-                       description="Run the harness's own test cases as parts, each in a process of its own: the "
-                                   "cases of each module and adapter, the groups of the hook probe and of doctor, "
-                                   "and the contract sweep. It prints each part's lines and `<n> cases, <w> wrong`, "
-                                   "and exits 1 when a case fails, 2 on a usage error.")
+    p = sub.add_parser(
+        "test",
+        help="run the harness's own test cases, or the parts that a name or a change selects",
+        description="Run the harness's own test cases as parts, each in a process of its own: the "
+        "cases of each module and adapter, the groups of the hook probe and of doctor, "
+        "and the contract sweep. It prints each part's lines and `<n> cases, <w> wrong`, "
+        "and exits 1 when a case fails, 2 on a usage error.",
+    )
     p.add_argument("names", nargs="*", metavar="NAME", help="run these parts, with docs and sweep")
-    p.add_argument("--changed", metavar="BASE",
-                   help="run the parts that own a path of `git diff BASE...HEAD`, with docs and sweep")
+    p.add_argument(
+        "--changed",
+        metavar="BASE",
+        help="run the parts that own a path of `git diff BASE...HEAD`, with docs and sweep",
+    )
     p.add_argument("--list", action="store_true", help="print the selected part names and run nothing")
-    p.add_argument("--jobs", type=jobs_count, metavar="N", help="run at most N parts at once; default: half the CPUs")
-    p.add_argument("--log", metavar="FILE",
-                   help="write every line to FILE, and print only the BAD lines and the summary")
+    p.add_argument(
+        "--jobs", type=jobs_count, metavar="N", help="run at most N parts at once; default: half the CPUs"
+    )
+    p.add_argument(
+        "--log", metavar="FILE", help="write every line to FILE, and print only the BAD lines and the summary"
+    )
     p.add_argument("--part", help=argparse.SUPPRESS)  # the child process of one part
     p.set_defaults(run=lambda args: cmd_test(args, modules()))
 
@@ -342,38 +371,59 @@ def selftest():
 
     # Each part's result is counted once, also the last one, and emitted whole in the order of the
     # table, whatever the number of jobs.
-    table = {"a": passing(1), "b": passing(2),
-             "c": child("import sys; print('BAD  a case'); print('4 cases, 1 wrong'); sys.exit(1)"),
-             "d": passing(3), "e": passing(5)}
+    table = {
+        "a": passing(1),
+        "b": passing(2),
+        "c": child("import sys; print('BAD  a case'); print('4 cases, 1 wrong'); sys.exit(1)"),
+        "d": passing(3),
+        "e": passing(5),
+    }
     for at_once in (1, 3, 5):
         seen = []
         got = run_parts(table, at_once, lambda name, lines, n, w, seen=seen: seen.append((name, n, w, lines)))
-        check(got == (15, 1) and [s[:3] for s in seen] == [("a", 1, 0), ("b", 2, 0), ("c", 4, 1), ("d", 3, 0),
-                                                           ("e", 5, 0)]
-              and seen[0][3] == ["ok   a case"],
-              f"--jobs {at_once}: five parts give 15 cases, 1 wrong, each part once and in order: {got}, "
-              f"{[s[:3] for s in seen]}")
+        check(
+            got == (15, 1)
+            and [s[:3] for s in seen] == [("a", 1, 0), ("b", 2, 0), ("c", 4, 1), ("d", 3, 0), ("e", 5, 0)]
+            and seen[0][3] == ["ok   a case"],
+            f"--jobs {at_once}: five parts give 15 cases, 1 wrong, each part once and in order: {got}, "
+            f"{[s[:3] for s in seen]}",
+        )
 
     # A part that crashes, ends with no summary line, or whose exit status disagrees with its summary
     # is one more wrong case, and the run goes on.
     for label, code, want, text in (
-            ("a crash", "raise ValueError('boom')", (1, 1), "ValueError: boom"),
-            ("no summary line", "print('ok   a case')", (1, 1), "no summary line"),
-            ("exit 1 with no wrong case", "import sys; print('2 cases, 0 wrong'); sys.exit(1)", (3, 1), "exit 1"),
-            ("exit 0 with a wrong case", "print('2 cases, 1 wrong')", (3, 2), "exit 0")):
+        ("a crash", "raise ValueError('boom')", (1, 1), "ValueError: boom"),
+        ("no summary line", "print('ok   a case')", (1, 1), "no summary line"),
+        ("exit 1 with no wrong case", "import sys; print('2 cases, 0 wrong'); sys.exit(1)", (3, 1), "exit 1"),
+        ("exit 0 with a wrong case", "print('2 cases, 1 wrong')", (3, 2), "exit 0"),
+    ):
         n, w, lines = run_part("x", child(code))
-        check((n, w) == want and any(line.startswith("BAD  x: ") for line in lines) and text in "\n".join(lines),
-              f"{label}: {(n, w)} -> {want}, a BAD line that names the part, and {text!r} in {lines[-3:]}")
+        check(
+            (n, w) == want
+            and any(line.startswith("BAD  x: ") for line in lines)
+            and text in "\n".join(lines),
+            f"{label}: {(n, w)} -> {want}, a BAD line that names the part, and {text!r} in {lines[-3:]}",
+        )
 
     # A part that runs past the timeout is stopped with the children it started, and is one wrong case.
     start = time.monotonic()
-    n, w, lines = run_part("slow", child("import subprocess, sys, time; "
-                                         "subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(30)']); "
-                                         "print('ok   a case', flush=True); time.sleep(30)"), timeout=1)
+    n, w, lines = run_part(
+        "slow",
+        child(
+            "import subprocess, sys, time; "
+            "subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(30)']); "
+            "print('ok   a case', flush=True); time.sleep(30)"
+        ),
+        timeout=1,
+    )
     took = time.monotonic() - start
-    check((n, w) == (1, 1) and took < 10 and "BAD  slow: runs longer than 1 s and is stopped" in lines,
-          f"a part past its timeout: {(n, w)} after {took:.1f} s, {lines}")
-    defaults = {f.__name__: inspect.signature(f).parameters["timeout"].default for f in (run_part, run_parts, report)}
+    check(
+        (n, w) == (1, 1) and took < 10 and "BAD  slow: runs longer than 1 s and is stopped" in lines,
+        f"a part past its timeout: {(n, w)} after {took:.1f} s, {lines}",
+    )
+    defaults = {
+        f.__name__: inspect.signature(f).parameters["timeout"].default for f in (run_part, run_parts, report)
+    }
     check(set(defaults.values()) == {300}, f"a part's timeout is 300 s: {defaults}")
     n, w, lines = run_part("x", child("print('2 cases, 0 wrong.')"))
     check((n, w) == (1, 1), f"a last line with more than the summary is no summary line: {(n, w)}, {lines}")
@@ -384,8 +434,11 @@ def selftest():
 
     before = [signal.signal(s, mark) for s in (signal.SIGTERM, signal.SIGHUP)]
     start = time.monotonic()
-    run_parts({k: child("import time; time.sleep(1.5); print('1 cases, 0 wrong')") for k in "abc"}, 3,
-              lambda *_: None)
+    run_parts(
+        {k: child("import time; time.sleep(1.5); print('1 cases, 0 wrong')") for k in "abc"},
+        3,
+        lambda *_: None,
+    )
     took = time.monotonic() - start
     check(took < 3, f"--jobs 3 runs three parts of 1.5 s at once: {took:.1f} s")
     after = [signal.getsignal(s) for s in (signal.SIGTERM, signal.SIGHUP)]
@@ -398,12 +451,26 @@ def selftest():
     ignored = [signal.getsignal(s) for s in (signal.SIGTERM, signal.SIGHUP)]
     for s, handler in zip((signal.SIGTERM, signal.SIGHUP), before, strict=True):
         signal.signal(s, handler)
-    check(code == 128 + signal.SIGTERM and ignored == [signal.SIG_IGN] * 2,
-          f"a SIGTERM ends the run with 128 + 15 and ignores a second one: {code}, {ignored}")
-    got = [jobs(*a) for a in ((None, 99, None), (None, 99, 1), (None, 99, 3), (None, 99, 16), (None, 3, 16),
-                              (5, 99, 16), (50, 3, 16))]
-    check(got == [1, 1, 1, 8, 3, 5, 3],
-          f"--jobs: by default half the CPUs and at least 1, and never more than the parts: {got}")
+    check(
+        code == 128 + signal.SIGTERM and ignored == [signal.SIG_IGN] * 2,
+        f"a SIGTERM ends the run with 128 + 15 and ignores a second one: {code}, {ignored}",
+    )
+    got = [
+        jobs(*a)
+        for a in (
+            (None, 99, None),
+            (None, 99, 1),
+            (None, 99, 3),
+            (None, 99, 16),
+            (None, 3, 16),
+            (5, 99, 16),
+            (50, 3, 16),
+        )
+    ]
+    check(
+        got == [1, 1, 1, 8, 3, 5, 3],
+        f"--jobs: by default half the CPUs and at least 1, and never more than the parts: {got}",
+    )
 
     # An error of the run stops the parts that still run, with their children.
     def fail(name, *_):
@@ -411,33 +478,54 @@ def selftest():
 
     start = time.monotonic()
     try:
-        run_parts({"a": child("import time; time.sleep(0.5); print('1 cases, 0 wrong')"),
-                   "b": child("import subprocess, sys, time; "
-                              "subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(30)']); "
-                              "time.sleep(30)")},
-                  2, fail)
+        run_parts(
+            {
+                "a": child("import time; time.sleep(0.5); print('1 cases, 0 wrong')"),
+                "b": child(
+                    "import subprocess, sys, time; "
+                    "subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(30)']); "
+                    "time.sleep(30)"
+                ),
+            },
+            2,
+            fail,
+        )
         raised = None
     except RuntimeError as e:
         raised = str(e)
     took = time.monotonic() - start
-    check(raised == "a" and took < 10,
-          f"an error of the run stops the other parts: raised {raised!r} after {took:.1f} s")
+    check(
+        raised == "a" and took < 10,
+        f"an error of the run stops the other parts: raised {raised!r} after {took:.1f} s",
+    )
 
     # The output: without a log, every line; with one, every line to the log and only the BAD lines
     # and the summary to the terminal.
-    two = {"a": passing(1), "b": child("import sys; print('ok   one'); print('BAD  two'); print('2 cases, 1 wrong'); "
-                                       "sys.exit(1)")}
+    two = {
+        "a": passing(1),
+        "b": child(
+            "import sys; print('ok   one'); print('BAD  two'); print('2 cases, 1 wrong'); sys.exit(1)"
+        ),
+    }
     out = io.StringIO()
     got = report(two, 2, None, out)
-    check(got == 1 and out.getvalue() == "ok   a case\npart a: 1 cases, 0 wrong\nok   one\nBAD  two\n"
-                                          "part b: 2 cases, 1 wrong\n\n3 cases, 1 wrong\n",
-          f"without --log, every line: {got}, {out.getvalue()!r}")
+    check(
+        got == 1
+        and out.getvalue()
+        == "ok   a case\npart a: 1 cases, 0 wrong\nok   one\nBAD  two\n"
+        "part b: 2 cases, 1 wrong\n\n3 cases, 1 wrong\n",
+        f"without --log, every line: {got}, {out.getvalue()!r}",
+    )
     out, log = io.StringIO(), io.StringIO()
     got = report(two, 2, log, out)
-    check(got == 1 and out.getvalue() == "BAD  two\n\n3 cases, 1 wrong\n"
-          and log.getvalue() == "ok   a case\npart a: 1 cases, 0 wrong\nok   one\nBAD  two\npart b: 2 cases, 1 wrong\n"
-                                "\n3 cases, 1 wrong\n",
-          f"with --log, the BAD lines and the summary: {out.getvalue()!r}, and the log {log.getvalue()!r}")
+    check(
+        got == 1
+        and out.getvalue() == "BAD  two\n\n3 cases, 1 wrong\n"
+        and log.getvalue()
+        == "ok   a case\npart a: 1 cases, 0 wrong\nok   one\nBAD  two\npart b: 2 cases, 1 wrong\n"
+        "\n3 cases, 1 wrong\n",
+        f"with --log, the BAD lines and the summary: {out.getvalue()!r}, and the log {log.getvalue()!r}",
+    )
 
     # The part table: every module with cases, each adapter, the groups of the probe and of doctor,
     # and the sweep; the probe's groups are those of hooks/probe.py.
@@ -451,50 +539,65 @@ def selftest():
     probe.GROUPS |= {"x": lambda: (3, 1), "y": lambda: (4, 1)}
     with contextlib.redirect_stdout(io.StringIO()) as out:
         code = probe.cases(["x", "y"])
-    check(code == 1 and out.getvalue() == "\n7 cases, 2 wrong\n",
-          f"the probe adds up its groups and exits 1 with a wrong case: exit {code}, {out.getvalue()!r}")
+    check(
+        code == 1 and out.getvalue() == "\n7 cases, 2 wrong\n",
+        f"the probe adds up its groups and exits 1 with a wrong case: exit {code}, {out.getvalue()!r}",
+    )
     for name in ("x", "y"):
         del probe.GROUPS[name]
-    check(tuple(probe.GROUPS) == PROBE_GROUPS, f"PROBE_GROUPS {PROBE_GROUPS} are the groups of hooks/probe.py, "
-                                               f"{tuple(probe.GROUPS)}")
-    check(names == sorted(names) and {"docs", "sweep", "testrun", "install", "claude", "opencode", "omp",
-                                      "antigravity"} <= set(names)
-          and {f"doctor:{g}" for g in doctor.GROUPS} | {f"probe:{g}" for g in PROBE_GROUPS} <= set(names)
-          and not {"doctor", "probe"} & set(names),
-          f"the parts, sorted, with the groups of the probe and of doctor and neither whole: {names}")
+    check(
+        tuple(probe.GROUPS) == PROBE_GROUPS,
+        f"PROBE_GROUPS {PROBE_GROUPS} are the groups of hooks/probe.py, {tuple(probe.GROUPS)}",
+    )
+    check(
+        names == sorted(names)
+        and {"docs", "sweep", "testrun", "install", "claude", "opencode", "omp", "antigravity"} <= set(names)
+        and {f"doctor:{g}" for g in doctor.GROUPS} | {f"probe:{g}" for g in PROBE_GROUPS} <= set(names)
+        and not {"doctor", "probe"} & set(names),
+        f"the parts, sorted, with the groups of the probe and of doctor and neither whole: {names}",
+    )
     for result, want in (((2, 1), 1), ((2, 0), 0)):
         fake = types.SimpleNamespace(__name__="harness.fake", selftest=lambda result=result: result)
         with contextlib.redirect_stdout(io.StringIO()) as out:
             code = cmd_test(argparse.Namespace(part="fake"), [fake])
-        check(code == want and out.getvalue() == f"\n{result[0]} cases, {result[1]} wrong\n",
-              f"the child of a part with {result} prints its summary and exits {want}: exit {code}, {out.getvalue()!r}")
+        check(
+            code == want and out.getvalue() == f"\n{result[0]} cases, {result[1]} wrong\n",
+            f"the child of a part with {result} prints its summary and exits {want}: exit {code}, {out.getvalue()!r}",
+        )
     with contextlib.redirect_stdout(io.StringIO()):
         here = doctor.selftest(("minimum",))
     n, w, _ = run_part("doctor:minimum", parts(cli.modules())["doctor:minimum"])
-    check((n, w) == here and n > 0, f"the part doctor:minimum runs that group alone: {(n, w)}, in this process {here}")
-    p = subprocess.run([sys.executable, str(PROBE), "no-such-group"], capture_output=True, text=True, check=False,
-                       timeout=60)
-    check(p.returncode == 2 and "no-such-group" in p.stderr and "cases" not in p.stdout,
-          f"hooks/probe.py no-such-group exits 2 and names it: exit {p.returncode}, {p.stderr.strip()!r}")
+    check(
+        (n, w) == here and n > 0,
+        f"the part doctor:minimum runs that group alone: {(n, w)}, in this process {here}",
+    )
+    p = subprocess.run(
+        [sys.executable, str(PROBE), "no-such-group"], capture_output=True, text=True, check=False, timeout=60
+    )
+    check(
+        p.returncode == 2 and "no-such-group" in p.stderr and "cases" not in p.stdout,
+        f"hooks/probe.py no-such-group exits 2 and names it: exit {p.returncode}, {p.stderr.strip()!r}",
+    )
 
     # The owners of a path.
     for path, want in (
-            ("lib/harness/profile.py", ["profile"]),
-            ("lib/harness/profile.py.orig", []),
-            ("lib/harness/fmt.py", []),
-            ("lib/harness/doctor.py", sorted(f"doctor:{g}" for g in doctor.GROUPS)),
-            ("hooks/rm-scope.py", sorted(f"probe:{g}" for g in PROBE_GROUPS)),
-            ("adapters/omp/OMP-DELTA.md", ["omp", "probe:omp"]),
-            ("adapters/antigravity/guard.py", ["antigravity", "probe:antigravity"]),
-            ("adapters/omp/guards.ts", ["omp", "probe:omp"]),
-            ("adapters/opencode/plugins/guards.ts", ["opencode", "probe:opencode"]),
-            ("adapters/claude/adapter.py", ["claude"]),
-            ("docs/src/dependencies.md", ["docs", "doctor:minimum"]),
-            ("docs/src/development.md", ["docs"]),
-            ("changelog.d/topic.md", ["changelog"]),
-            ("lib/harness/cli.py", []),
-            ("adapters/README.md", []),
-            ("bin/harness", [])):
+        ("lib/harness/profile.py", ["profile"]),
+        ("lib/harness/profile.py.orig", []),
+        ("lib/harness/fmt.py", []),
+        ("lib/harness/doctor.py", sorted(f"doctor:{g}" for g in doctor.GROUPS)),
+        ("hooks/rm-scope.py", sorted(f"probe:{g}" for g in PROBE_GROUPS)),
+        ("adapters/omp/OMP-DELTA.md", ["omp", "probe:omp"]),
+        ("adapters/antigravity/guard.py", ["antigravity", "probe:antigravity"]),
+        ("adapters/omp/guards.ts", ["omp", "probe:omp"]),
+        ("adapters/opencode/plugins/guards.ts", ["opencode", "probe:opencode"]),
+        ("adapters/claude/adapter.py", ["claude"]),
+        ("docs/src/dependencies.md", ["docs", "doctor:minimum"]),
+        ("docs/src/development.md", ["docs"]),
+        ("changelog.d/topic.md", ["changelog"]),
+        ("lib/harness/cli.py", []),
+        ("adapters/README.md", []),
+        ("bin/harness", []),
+    ):
         check(owners(path, names) == want, f"{path} is owned by {want}: {owners(path, names)}")
 
     # --changed on a repository: a modified path selects its owner, a rename both paths' owners, a
@@ -502,8 +605,13 @@ def selftest():
     with tempfile.TemporaryDirectory(prefix="harness-testrun-") as tmp:
         root = pathlib.Path(tmp)
         env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")} | {
-            "GIT_CONFIG_GLOBAL": "/dev/null", "GIT_CONFIG_NOSYSTEM": "1", "GIT_AUTHOR_NAME": "t",
-            "GIT_AUTHOR_EMAIL": "t@example.org", "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@example.org"}
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_AUTHOR_NAME": "t",
+            "GIT_AUTHOR_EMAIL": "t@example.org",
+            "GIT_COMMITTER_NAME": "t",
+            "GIT_COMMITTER_EMAIL": "t@example.org",
+        }
 
         def git(*argv):
             subprocess.run(["git", *argv], cwd=root, env=env, check=True, capture_output=True)
@@ -523,14 +631,18 @@ def selftest():
         git("mv", "adapters/omp/OMP-DELTA.md", "adapters/opencode/OMP-DELTA.md")
         git("commit", "-q", "-m", "rename")
         got, reasons = changed_here("main")
-        check(got == ["docs", "omp", "opencode", "probe:omp", "probe:opencode", "sweep"] and len(reasons) == 2,
-              f"a rename selects the owners of both paths: {got}, {reasons}")
+        check(
+            got == ["docs", "omp", "opencode", "probe:omp", "probe:opencode", "sweep"] and len(reasons) == 2,
+            f"a rename selects the owners of both paths: {got}, {reasons}",
+        )
         git("switch", "-q", "-c", "profile", "main")
         (root / "lib" / "harness" / "profile.py").write_text("changed\n")
         git("commit", "-q", "-am", "profile")
         got, reasons = changed_here("main")
-        check(got == ["docs", "profile", "sweep"] and reasons == ["lib/harness/profile.py selects profile"],
-              f"a modified module selects its part: {got}, {reasons}")
+        check(
+            got == ["docs", "profile", "sweep"] and reasons == ["lib/harness/profile.py selects profile"],
+            f"a modified module selects its part: {got}, {reasons}",
+        )
         (root / "unowned.txt").write_text("x\n")
         git("add", "unowned.txt")
         git("commit", "-q", "-m", "unowned")
@@ -543,8 +655,10 @@ def selftest():
                 raised = None
             except HarnessError as e:
                 raised = str(e)
-            check(raised is not None and base in raised and not list(root.glob("x*")),
-                  f"the base {base!r} raises and writes no file: {raised!r}")
+            check(
+                raised is not None and base in raised and not list(root.glob("x*")),
+                f"the base {base!r} raises and writes no file: {raised!r}",
+            )
 
         # The slots: with both held, a run says once that it waits and holds a slot once one frees.
         slots = root / "slots"
@@ -559,10 +673,15 @@ def selftest():
         waiting = waiter.is_alive() and not taken
         held[1].close()
         waiter.join(10)
-        check(waiting and len(said) == 1 and "waits" in said[0] and len(taken) == 1
-              and taken[0].name.endswith("slot-2.lock"),
-              f"a third run waits while two hold the slots, says so once, and takes the slot that frees: "
-              f"waited {waiting}, said {said}, took {[f.name for f in taken]}")
+        check(
+            waiting
+            and len(said) == 1
+            and "waits" in said[0]
+            and len(taken) == 1
+            and taken[0].name.endswith("slot-2.lock"),
+            f"a third run waits while two hold the slots, says so once, and takes the slot that frees: "
+            f"waited {waiting}, said {said}, took {[f.name for f in taken]}",
+        )
         for f in [held[0], *taken]:
             f.close()
         free = take_slot(slots, said.append)
@@ -578,28 +697,52 @@ def selftest():
         waiting = waiter.is_alive() and not taken
         runs[0].close()
         waiter.join(10)
-        check(waiting and not said[1:] and len(taken) == 1
-              and sorted(f.name for f in runs) == [str(slots / "slot-1.lock"), str(slots / "slot-2.lock")],
-              f"two runs of take_slot hold the two slots and a third waits: waited {waiting}, "
-              f"held {[f.name for f in runs]}, said {said}")
+        check(
+            waiting
+            and not said[1:]
+            and len(taken) == 1
+            and sorted(f.name for f in runs) == [str(slots / "slot-1.lock"), str(slots / "slot-2.lock")],
+            f"two runs of take_slot hold the two slots and a third waits: waited {waiting}, "
+            f"held {[f.name for f in runs]}, said {said}",
+        )
         for f in [runs[1], *taken]:
             f.close()
 
         # A slot directory that cannot be made is a usage error, before any part runs.
         (root / "a-file").write_text("x\n")
-        p = subprocess.run([*HARNESS, "test", "docs"], capture_output=True, text=True, check=False, timeout=60,
-                           env=os.environ | {"XDG_RUNTIME_DIR": str(root / "a-file")})
-        check(p.returncode == 2 and "a-file" in p.stderr and "Traceback" not in p.stderr and "ok " not in p.stdout,
-              f"a slot directory that cannot be made exits 2: exit {p.returncode}, {p.stderr.strip()[-200:]!r}")
+        p = subprocess.run(
+            [*HARNESS, "test", "docs"],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=60,
+            env=os.environ | {"XDG_RUNTIME_DIR": str(root / "a-file")},
+        )
+        check(
+            p.returncode == 2
+            and "a-file" in p.stderr
+            and "Traceback" not in p.stderr
+            and "ok " not in p.stdout,
+            f"a slot directory that cannot be made exits 2: exit {p.returncode}, {p.stderr.strip()[-200:]!r}",
+        )
 
         # A SIGTERM or a SIGHUP of the run stops the parts that still run, as an interrupt does.
         for signum in (signal.SIGTERM, signal.SIGHUP):
             pidfile = root / f"part-{signum}.pid"
-            part = [sys.executable, "-c", f"import os, time; open({str(pidfile)!r}, 'w').write(str(os.getpid())); "
-                                          "time.sleep(30)"]
-            run = subprocess.Popen([sys.executable, "-c", f"import sys; sys.path.insert(0, {str(REPO / 'lib')!r}); "
-                                    f"from harness import testrun; testrun.run_parts({{'a': {part!r}}}, 1, "
-                                    "lambda *_: None)"])
+            part = [
+                sys.executable,
+                "-c",
+                f"import os, time; open({str(pidfile)!r}, 'w').write(str(os.getpid())); time.sleep(30)",
+            ]
+            run = subprocess.Popen(
+                [
+                    sys.executable,
+                    "-c",
+                    f"import sys; sys.path.insert(0, {str(REPO / 'lib')!r}); "
+                    f"from harness import testrun; testrun.run_parts({{'a': {part!r}}}, 1, "
+                    "lambda *_: None)",
+                ]
+            )
             deadline = time.monotonic() + 20
             while not (pidfile.exists() and pidfile.read_text()) and time.monotonic() < deadline:
                 time.sleep(0.05)
@@ -621,39 +764,67 @@ def selftest():
                     alive = False
             if alive:
                 os.kill(pid, signal.SIGKILL)
-            check(pid > 0 and not alive and ended == 128 + signum,
-                  f"a {signal.Signals(signum).name} of the run stops its parts: part {pid} alive {alive}, "
-                  f"the run exits {ended}")
+            check(
+                pid > 0 and not alive and ended == 128 + signum,
+                f"a {signal.Signals(signum).name} of the run stops its parts: part {pid} alive {alive}, "
+                f"the run exits {ended}",
+            )
 
         # The slot directory, and --list, which takes no slot.
-        for variables, want in (({"XDG_RUNTIME_DIR": "/x", "TMPDIR": "/t"}, "/x"),
-                                ({"XDG_RUNTIME_DIR": "", "TMPDIR": "/t"}, "/t"), ({}, "/tmp")):
+        for variables, want in (
+            ({"XDG_RUNTIME_DIR": "/x", "TMPDIR": "/t"}, "/x"),
+            ({"XDG_RUNTIME_DIR": "", "TMPDIR": "/t"}, "/t"),
+            ({}, "/tmp"),
+        ):
             clean = {k: v for k, v in os.environ.items() if k not in ("XDG_RUNTIME_DIR", "TMPDIR")}
             with mock.patch.dict(os.environ, clean | variables, clear=True):
                 got = slot_directory()
-            check(got == pathlib.Path(want) / "research-harness-test", f"the slot directory with {variables}: {got}")
+            check(
+                got == pathlib.Path(want) / "research-harness-test",
+                f"the slot directory with {variables}: {got}",
+            )
         runtime = root / "runtime"
         (runtime / "research-harness-test").mkdir(parents=True)
         held = [open(runtime / "research-harness-test" / f"slot-{i}.lock", "a") for i in (1, 2)]
         for f in held:
             fcntl.flock(f, fcntl.LOCK_EX)
-        p = subprocess.run([*HARNESS, "test", "--list"], capture_output=True, text=True, check=False, timeout=30,
-                           env=os.environ | {"XDG_RUNTIME_DIR": str(runtime)})
-        check(p.returncode == 0 and "wait" not in p.stderr, f"--list takes no slot: exit {p.returncode}, {p.stderr!r}")
+        p = subprocess.run(
+            [*HARNESS, "test", "--list"],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=30,
+            env=os.environ | {"XDG_RUNTIME_DIR": str(runtime)},
+        )
+        check(
+            p.returncode == 0 and "wait" not in p.stderr,
+            f"--list takes no slot: exit {p.returncode}, {p.stderr!r}",
+        )
         for f in held:
             f.close()
 
     # The command line: a usage error exits 2 before any part runs.
-    for argv, text in ((["no-such-part"], "no-such-part"), (["--jobs", "0", "docs"], "--jobs"),
-                       (["--jobs", "-1", "docs"], "--jobs"), (["--changed", "HEAD", "docs"], "exclude"),
-                       (["--log", str(REPO / "no-such-dir" / "x.log"), "docs"], "no-such-dir"),
-                       (["--part", "no-such-part"], "no-such-part"), (["--part", "probe:drift"], "probe:drift"),
-                       (["--changed", "", "--list"], "BASE is empty")):
+    for argv, text in (
+        (["no-such-part"], "no-such-part"),
+        (["--jobs", "0", "docs"], "--jobs"),
+        (["--jobs", "-1", "docs"], "--jobs"),
+        (["--changed", "HEAD", "docs"], "exclude"),
+        (["--log", str(REPO / "no-such-dir" / "x.log"), "docs"], "no-such-dir"),
+        (["--part", "no-such-part"], "no-such-part"),
+        (["--part", "probe:drift"], "probe:drift"),
+        (["--changed", "", "--list"], "BASE is empty"),
+    ):
         p = subprocess.run([*HARNESS, "test", *argv], capture_output=True, text=True, check=False, timeout=60)
-        check(p.returncode == 2 and text in p.stderr and "Traceback" not in p.stderr and "ok " not in p.stdout,
-              f"harness test {' '.join(argv)}: exit {p.returncode}, {p.stderr.strip()[-200:]!r}")
-    p = subprocess.run([*HARNESS, "test", "--list", "profile"], capture_output=True, text=True, check=False, timeout=60)
-    check(p.returncode == 0 and p.stdout.split() == ["docs", "profile", "sweep"],
-          f"harness test --list profile prints docs, profile, sweep and runs nothing: exit {p.returncode}, "
-          f"{p.stdout!r}")
+        check(
+            p.returncode == 2 and text in p.stderr and "Traceback" not in p.stderr and "ok " not in p.stdout,
+            f"harness test {' '.join(argv)}: exit {p.returncode}, {p.stderr.strip()[-200:]!r}",
+        )
+    p = subprocess.run(
+        [*HARNESS, "test", "--list", "profile"], capture_output=True, text=True, check=False, timeout=60
+    )
+    check(
+        p.returncode == 0 and p.stdout.split() == ["docs", "profile", "sweep"],
+        f"harness test --list profile prints docs, profile, sweep and runs nothing: exit {p.returncode}, "
+        f"{p.stdout!r}",
+    )
     return total, wrong

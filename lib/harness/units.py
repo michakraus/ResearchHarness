@@ -47,7 +47,11 @@ SETTINGS = REPO / "settings" / "settings.proposal.json"
 JOBS = [
     ("systemd/kaimon.service", None, "launchagents/kaimon.plist"),
     ("systemd/julia-update.service", "systemd/julia-update.timer", "launchagents/julia-update.plist"),
-    ("systemd/claude-autocommit.service", "systemd/claude-autocommit.timer", "launchagents/claude-autocommit.plist"),
+    (
+        "systemd/claude-autocommit.service",
+        "systemd/claude-autocommit.timer",
+        "launchagents/claude-autocommit.plist",
+    ),
 ]
 # The directories that no session can write and that a job's PATH may hold beyond the denied ones.
 SYSTEM_DIRS = ("/usr/bin", "/bin", "/usr/sbin", "/sbin", "/usr/local/bin", "/opt/homebrew/bin")
@@ -60,8 +64,16 @@ SPAN = {"": 1, "s": 1, "sec": 1, "min": 60, "m": 60, "h": 3600}
 # other section or key is a problem: the check cannot say what it does to the job.
 SERVICE_KEYS = {
     "Unit": {"Description"},
-    "Service": {"Type", "ExecStart", "WorkingDirectory", "Restart", "RestartSec", "Environment", "Nice",
-                "IOSchedulingClass"},
+    "Service": {
+        "Type",
+        "ExecStart",
+        "WorkingDirectory",
+        "Restart",
+        "RestartSec",
+        "Environment",
+        "Nice",
+        "IOSchedulingClass",
+    },
     "Install": {"WantedBy"},
 }
 TIMER_KEYS = {
@@ -121,7 +133,7 @@ def environment(unit):
 def seconds(span):
     """The seconds of a time span such as `900`, `900s` or `15min`."""
     number = span.rstrip("abcdefghijklmnopqrstuvwxyz")
-    return int(number) * SPAN[span[len(number):]]
+    return int(number) * SPAN[span[len(number) :]]
 
 
 def calendar(interval):
@@ -160,10 +172,16 @@ def path_problems(path, filesystem, home):
     allow = [expand(e, home) for e in filesystem["allowWrite"]]
     deny = [expand(e, home) for e in filesystem["denyWrite"]]
     session = session_dirs()
-    return [d for d in path.split(":")
-            if not d.startswith("/") or posixpath.normpath(d) != d
-            or any(pathlib.PurePosixPath(d).is_relative_to(s) for s in session)
-            or d not in SYSTEM_DIRS and any(covers(e, d) for e in allow) and not any(covers(e, d) for e in deny)]
+    return [
+        d
+        for d in path.split(":")
+        if not d.startswith("/")
+        or posixpath.normpath(d) != d
+        or any(pathlib.PurePosixPath(d).is_relative_to(s) for s in session)
+        or d not in SYSTEM_DIRS
+        and any(covers(e, d) for e in allow)
+        and not any(covers(e, d) for e in deny)
+    ]
 
 
 def key_problems(unit, name, keys):
@@ -175,10 +193,16 @@ def key_problems(unit, name, keys):
             problems.append(f"{name} has the section [{section}], which this check does not read")
             continue
         names = [k for k, _ in pairs]
-        problems += [f"{name} has {k}= in [{section}], which this check does not read"
-                     for k in dict.fromkeys(names) if k not in keys[section]]
-        problems += [f"{name} has {k}= {names.count(k)} times in [{section}]"
-                     for k in dict.fromkeys(names) if k in ONCE and names.count(k) > 1]
+        problems += [
+            f"{name} has {k}= in [{section}], which this check does not read"
+            for k in dict.fromkeys(names)
+            if k not in keys[section]
+        ]
+        problems += [
+            f"{name} has {k}= {names.count(k)} times in [{section}]"
+            for k in dict.fromkeys(names)
+            if k in ONCE and names.count(k) > 1
+        ]
     return problems
 
 
@@ -207,8 +231,10 @@ def job_problems(service, timer, plist, filesystem, home):
     if args != plist["ProgramArguments"]:
         problems.append(f"ExecStart {args} is not ProgramArguments {plist['ProgramArguments']}")
     if one(service, "Service", "WorkingDirectory") != plist.get("WorkingDirectory"):
-        problems.append(f"WorkingDirectory {one(service, 'Service', 'WorkingDirectory')} is not "
-                        f"{plist.get('WorkingDirectory')}")
+        problems.append(
+            f"WorkingDirectory {one(service, 'Service', 'WorkingDirectory')} is not "
+            f"{plist.get('WorkingDirectory')}"
+        )
     env, penv = environment(service), plist.get("EnvironmentVariables", {})
     if env != penv:
         problems.append(f"Environment {env} is not EnvironmentVariables {penv}")
@@ -217,13 +243,17 @@ def job_problems(service, timer, plist, filesystem, home):
         problems.append(f"KeepAlive is {keep}, Restart= is {one(service, 'Service', 'Restart')}")
     want = triggers(plist)
     if bool(want) != (timer is not None):
-        problems.append(f"the plist {'has' if want else 'has no'} schedule, the job "
-                        f"{'has' if timer is not None else 'has no'} timer")
+        problems.append(
+            f"the plist {'has' if want else 'has no'} schedule, the job "
+            f"{'has' if timer is not None else 'has no'} timer"
+        )
     load = plist.get("RunAtLoad", False)
     if timer is not None:
         have = {k: v for k, v in timer.get("Timer", []) if k in TRIGGERS}
         if set(have) != set(want):
-            problems.append(f"the timer's triggers {sorted(have)} are not {sorted(want)}, which the plist implies")
+            problems.append(
+                f"the timer's triggers {sorted(have)} are not {sorted(want)}, which the plist implies"
+            )
         for key in set(have) & set(want):
             value = have[key] if key == "OnCalendar" else seconds(have[key])
             if value != want[key]:
@@ -231,16 +261,22 @@ def job_problems(service, timer, plist, filesystem, home):
         if one(timer, "Timer", "Persistent") != "true":
             problems.append("the timer has no Persistent=true")
         if one(timer, "Install", "WantedBy") != "timers.target":
-            problems.append(f"the timer's WantedBy= is {one(timer, 'Install', 'WantedBy')}, not timers.target")
+            problems.append(
+                f"the timer's WantedBy= is {one(timer, 'Install', 'WantedBy')}, not timers.target"
+            )
         if "Install" in service:
-            problems.append("the service of a timer has an [Install] section, which starts it beside the timer")
+            problems.append(
+                "the service of a timer has an [Install] section, which starts it beside the timer"
+            )
     elif load != (one(service, "Install", "WantedBy") == "default.target"):
         problems.append(f"RunAtLoad is {load}, WantedBy= is {one(service, 'Install', 'WantedBy')}")
     if "PATH" not in env:
         problems.append("the unit sets no PATH")
     else:
-        problems += [f"PATH holds {d!r}, which a session can write or this check cannot place"
-                     for d in path_problems(env["PATH"], filesystem, home)]
+        problems += [
+            f"PATH holds {d!r}, which a session can write or this check cannot place"
+            for d in path_problems(env["PATH"], filesystem, home)
+        ]
     return problems
 
 
@@ -255,9 +291,13 @@ def check_jobs(data, read=render):
     out = {}
     for service, timer, plist in JOBS:
         try:
-            out[service] = job_problems(parse_unit(read(service, data)),
-                                        timer and parse_unit(read(timer, data)),
-                                        plistlib.loads(read(plist, data).encode()), filesystem, data["home"])
+            out[service] = job_problems(
+                parse_unit(read(service, data)),
+                timer and parse_unit(read(timer, data)),
+                plistlib.loads(read(plist, data).encode()),
+                filesystem,
+                data["home"],
+            )
         except (ValueError, KeyError) as e:  # a line, a time span or a schedule the check cannot read
             out[service] = [f"cannot read: {e}"]
     return out
@@ -311,6 +351,7 @@ def selftest():
                         raise AssertionError(f"{old!r} is not in {path}")
                     text = text.replace(old, new, 1)
             return text
+
         return read
 
     home, branch = dummy["home"], dummy["autocommit_branch"]
@@ -319,45 +360,105 @@ def selftest():
     update_service = "systemd/julia-update.service"
     mutants = [
         ("kaimon.service without Restart=always", [("systemd/kaimon.service", "Restart=always\n", "")]),
-        ("the home's Research directory on a unit's PATH",
-         [("systemd/claude-autocommit.service", "Environment=PATH=", f"Environment=PATH={home}/Research:")]),
-        ("the home's Research directory on a plist's PATH",
-         [("launchagents/kaimon.plist", f"<string>{home}/.juliaup/bin:", f"<string>{home}/Research:{home}/.juliaup/bin:")]),
+        (
+            "the home's Research directory on a unit's PATH",
+            [
+                (
+                    "systemd/claude-autocommit.service",
+                    "Environment=PATH=",
+                    f"Environment=PATH={home}/Research:",
+                )
+            ],
+        ),
+        (
+            "the home's Research directory on a plist's PATH",
+            [
+                (
+                    "launchagents/kaimon.plist",
+                    f"<string>{home}/.juliaup/bin:",
+                    f"<string>{home}/Research:{home}/.juliaup/bin:",
+                )
+            ],
+        ),
         # The empty element is the working directory, which is ~/Research for kaimon.service.
-        ("an empty element on the PATH of kaimon.service and its plist",
-         [("systemd/kaimon.service", kaimon_path + "\n", kaimon_path + ":\n"),
-          ("launchagents/kaimon.plist", kaimon_path + "<", kaimon_path + ":<")]),
-        ("a relative directory on the PATH of kaimon.service and its plist",
-         [("systemd/kaimon.service", kaimon_path + "\n", kaimon_path + ":bin\n"),
-          ("launchagents/kaimon.plist", kaimon_path + "<", kaimon_path + ":bin<")]),
-        ("another hour in julia-update.timer", [(update_timer, "OnCalendar=*-*-* 04:30", "OnCalendar=*-*-* 05:30")]),
-        ("another interval in claude-autocommit.timer",
-         [(autocommit_timer, "OnUnitActiveSec=15min", "OnUnitActiveSec=10min")]),
+        (
+            "an empty element on the PATH of kaimon.service and its plist",
+            [
+                ("systemd/kaimon.service", kaimon_path + "\n", kaimon_path + ":\n"),
+                ("launchagents/kaimon.plist", kaimon_path + "<", kaimon_path + ":<"),
+            ],
+        ),
+        (
+            "a relative directory on the PATH of kaimon.service and its plist",
+            [
+                ("systemd/kaimon.service", kaimon_path + "\n", kaimon_path + ":bin\n"),
+                ("launchagents/kaimon.plist", kaimon_path + "<", kaimon_path + ":bin<"),
+            ],
+        ),
+        (
+            "another hour in julia-update.timer",
+            [(update_timer, "OnCalendar=*-*-* 04:30", "OnCalendar=*-*-* 05:30")],
+        ),
+        (
+            "another interval in claude-autocommit.timer",
+            [(autocommit_timer, "OnUnitActiveSec=15min", "OnUnitActiveSec=10min")],
+        ),
         ("another argument in kaimon.service", [("systemd/kaimon.service", "--port 2828", "--port 2829")]),
         ("no OnActiveSec in claude-autocommit.timer", [(autocommit_timer, "OnActiveSec=", "#")]),
-        ("a later OnActiveSec in claude-autocommit.timer", [(autocommit_timer, "OnActiveSec=0", "OnActiveSec=5min")]),
-        ("an extra OnCalendar in claude-autocommit.timer",
-         [(autocommit_timer, "\nPersistent=true", "\nOnCalendar=hourly\nPersistent=true")]),
-        ("an OnBootSec in julia-update.timer",
-         [(update_timer, "\nPersistent=true", "\nOnBootSec=5min\nPersistent=true")]),
-        ("a second OnCalendar in julia-update.timer",
-         [(update_timer, "\nPersistent=true", "\nOnCalendar=*-*-* 12:00:00\nPersistent=true")]),
-        ("a second ExecStart in julia-update.service",
-         [(update_service, "Nice=5", f"ExecStart={home}/.local/bin/other\nNice=5")]),
-        ("an ExecStartPre in julia-update.service", [(update_service, "Nice=5", "ExecStartPre=/usr/bin/true\nNice=5")]),
-        ("an EnvironmentFile in julia-update.service",
-         [(update_service, "Nice=5", f"EnvironmentFile={home}/Research/env\nNice=5")]),
-        ("a continued ExecStart line in julia-update.service",
-         [(update_service, "julia-update.jl\n", "julia-update.jl \\\n  --extra\n")]),
-        ("an [Install] section in claude-autocommit.service",
-         [("systemd/claude-autocommit.service", f"Environment=CLAUDE_AUTOCOMMIT_BRANCH={branch}\n",
-           f"Environment=CLAUDE_AUTOCOMMIT_BRANCH={branch}\n[Install]\nWantedBy=default.target\n")]),
-        ("julia-update.timer wanted by no timers.target",
-         [(update_timer, "WantedBy=timers.target", "WantedBy=default.target")]),
-        ("a section the check does not read in kaimon.service",
-         [("systemd/kaimon.service", "[Install]", "[Socket]\nListenStream=2828\n[Install]")]),
-        ("another working directory in kaimon.service",
-         [("systemd/kaimon.service", f"WorkingDirectory={home}/Research", f"WorkingDirectory={home}")]),
+        (
+            "a later OnActiveSec in claude-autocommit.timer",
+            [(autocommit_timer, "OnActiveSec=0", "OnActiveSec=5min")],
+        ),
+        (
+            "an extra OnCalendar in claude-autocommit.timer",
+            [(autocommit_timer, "\nPersistent=true", "\nOnCalendar=hourly\nPersistent=true")],
+        ),
+        (
+            "an OnBootSec in julia-update.timer",
+            [(update_timer, "\nPersistent=true", "\nOnBootSec=5min\nPersistent=true")],
+        ),
+        (
+            "a second OnCalendar in julia-update.timer",
+            [(update_timer, "\nPersistent=true", "\nOnCalendar=*-*-* 12:00:00\nPersistent=true")],
+        ),
+        (
+            "a second ExecStart in julia-update.service",
+            [(update_service, "Nice=5", f"ExecStart={home}/.local/bin/other\nNice=5")],
+        ),
+        (
+            "an ExecStartPre in julia-update.service",
+            [(update_service, "Nice=5", "ExecStartPre=/usr/bin/true\nNice=5")],
+        ),
+        (
+            "an EnvironmentFile in julia-update.service",
+            [(update_service, "Nice=5", f"EnvironmentFile={home}/Research/env\nNice=5")],
+        ),
+        (
+            "a continued ExecStart line in julia-update.service",
+            [(update_service, "julia-update.jl\n", "julia-update.jl \\\n  --extra\n")],
+        ),
+        (
+            "an [Install] section in claude-autocommit.service",
+            [
+                (
+                    "systemd/claude-autocommit.service",
+                    f"Environment=CLAUDE_AUTOCOMMIT_BRANCH={branch}\n",
+                    f"Environment=CLAUDE_AUTOCOMMIT_BRANCH={branch}\n[Install]\nWantedBy=default.target\n",
+                )
+            ],
+        ),
+        (
+            "julia-update.timer wanted by no timers.target",
+            [(update_timer, "WantedBy=timers.target", "WantedBy=default.target")],
+        ),
+        (
+            "a section the check does not read in kaimon.service",
+            [("systemd/kaimon.service", "[Install]", "[Socket]\nListenStream=2828\n[Install]")],
+        ),
+        (
+            "another working directory in kaimon.service",
+            [("systemd/kaimon.service", f"WorkingDirectory={home}/Research", f"WorkingDirectory={home}")],
+        ),
     ]
     for label, edits in mutants:
         try:
@@ -370,10 +471,20 @@ def selftest():
 
     # A directory that settings deny, inside an allowed one, passes; one only allowed fails.
     fs = {"allowWrite": ["~/R"], "denyWrite": ["~/R/bin", "~/R/**/.git/hooks"]}
-    for path, bad in [("/h/R/bin", []), ("/h/R/x/.git/hooks", []), ("/h/R/x", ["/h/R/x"]),
-                      ("/h/.juliaup/bin", []), ("/usr/sbin:/h/R", ["/h/R"]), ("/opt/homebrew/bin", []),
-                      ("/usr/bin:", [""]), (":/usr/bin", [""]), ("/usr/bin::/bin", [""]), ("/usr/bin:bin", ["bin"]),
-                      ("/usr/bin:./bin", ["./bin"]), ("/h/R/bin/../x", ["/h/R/bin/../x"])]:
+    for path, bad in [
+        ("/h/R/bin", []),
+        ("/h/R/x/.git/hooks", []),
+        ("/h/R/x", ["/h/R/x"]),
+        ("/h/.juliaup/bin", []),
+        ("/usr/sbin:/h/R", ["/h/R"]),
+        ("/opt/homebrew/bin", []),
+        ("/usr/bin:", [""]),
+        (":/usr/bin", [""]),
+        ("/usr/bin::/bin", [""]),
+        ("/usr/bin:bin", ["bin"]),
+        ("/usr/bin:./bin", ["./bin"]),
+        ("/h/R/bin/../x", ["/h/R/bin/../x"]),
+    ]:
         got = path_problems(path, fs, "/h")
         check(got == bad, f"PATH {path} -> session-writable {got}")
 
@@ -382,10 +493,17 @@ def selftest():
     fs = {"allowWrite": [], "denyWrite": ["/s/**", "/var/**", "/private/**"]}
     for tmpdir in ["/s/tmp/", None]:
         env = {k: v for k, v in os.environ.items() if k != "TMPDIR"} | ({"TMPDIR": tmpdir} if tmpdir else {})
-        for path, bad in [("/s/tmp", ["/s/tmp"]), ("/s/tmp/bin", ["/s/tmp/bin"]), ("/s/tmp2/bin", []), ("/s/bin", []),
-                          ("/var/folders/ab/T/bin", ["/var/folders/ab/T/bin"]), ("/var/folders", ["/var/folders"]),
-                          ("/private/var/folders/ab/T", ["/private/var/folders/ab/T"]), ("/var/folders2/bin", []),
-                          ("/usr/bin:/var/folders/x:/bin", ["/var/folders/x"])]:
+        for path, bad in [
+            ("/s/tmp", ["/s/tmp"]),
+            ("/s/tmp/bin", ["/s/tmp/bin"]),
+            ("/s/tmp2/bin", []),
+            ("/s/bin", []),
+            ("/var/folders/ab/T/bin", ["/var/folders/ab/T/bin"]),
+            ("/var/folders", ["/var/folders"]),
+            ("/private/var/folders/ab/T", ["/private/var/folders/ab/T"]),
+            ("/var/folders2/bin", []),
+            ("/usr/bin:/var/folders/x:/bin", ["/var/folders/x"]),
+        ]:
             want = bad if tmpdir or not path.startswith("/s/tmp") else []
             with mock.patch.dict(os.environ, env, clear=True):
                 got = path_problems(path, fs, "/h")
@@ -398,25 +516,38 @@ def selftest():
         element = os.path.realpath(real) + "/bin"
         with mock.patch.dict(os.environ, {"TMPDIR": str(link)}):
             got = path_problems(element, {"allowWrite": [], "denyWrite": []}, "/h")
-        check(got == [element], f"PATH {element} below the real path of a symlinked TMPDIR -> session-writable {got}")
+        check(
+            got == [element],
+            f"PATH {element} below the real path of a symlinked TMPDIR -> session-writable {got}",
+        )
 
     # autocommit_branch: the profile's value, else `memory/<short host name>` on a host that is
     # not `template_host`, else `main`; a missing `home` is the running user's, and a relative one
     # exits 2.
     base = 'home = "/h"\nlaunchd_prefix = "org.x"\n'
     for template in ("systemd/claude-autocommit.service", "launchagents/claude-autocommit.plist"):
-        for text, branch in [(base, "main"), (base + 'autocommit_branch = "memory/host"\n', "memory/host"),
-                             (base + 'template_host = "alpha"\n', "memory/beta"),
-                             (base + 'template_host = "beta"\n', "main")]:
+        for text, branch in [
+            (base, "main"),
+            (base + 'autocommit_branch = "memory/host"\n', "memory/host"),
+            (base + 'template_host = "alpha"\n', "memory/beta"),
+            (base + 'template_host = "beta"\n', "main"),
+        ]:
             with mock.patch("socket.gethostname", return_value="beta.example.org"):
                 got = render_default(template, text)
-            want = (f"CLAUDE_AUTOCOMMIT_BRANCH={branch}\n" if template.endswith(".service")
-                    else f"<string>{branch}</string>")
+            want = (
+                f"CLAUDE_AUTOCOMMIT_BRANCH={branch}\n"
+                if template.endswith(".service")
+                else f"<string>{branch}</string>"
+            )
             check(got is not None and want in got, f"{template} renders branch {branch!r}")
         with mock.patch.dict(os.environ, HOME="/running/user"):
             got = render_default(template, 'launchd_prefix = "org.x"\n')
-        check(got is not None and "/running/user/" in got and "{home}" not in got,
-              f"{template} with no home renders the running user's home")
-        check(render_default(template, 'home = "h"\nlaunchd_prefix = "org.x"\n') is None,
-              f"{template} with a relative home exits 2")
+        check(
+            got is not None and "/running/user/" in got and "{home}" not in got,
+            f"{template} with no home renders the running user's home",
+        )
+        check(
+            render_default(template, 'home = "h"\nlaunchd_prefix = "org.x"\n') is None,
+            f"{template} with a relative home exits 2",
+        )
     return n, wrong

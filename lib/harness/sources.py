@@ -24,8 +24,11 @@ def curated_skills(root):
     root = pathlib.Path(root)
     if not root.is_dir():
         raise HarnessError(f"{root} is not a directory")
-    return sorted(n for n in os.listdir(root)
-                  if not n.startswith(".") and n not in EXCLUDED_SKILLS and (root / n / "SKILL.md").is_file())
+    return sorted(
+        n
+        for n in os.listdir(root)
+        if not n.startswith(".") and n not in EXCLUDED_SKILLS and (root / n / "SKILL.md").is_file()
+    )
 
 
 def listing():

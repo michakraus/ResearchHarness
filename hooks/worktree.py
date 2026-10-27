@@ -61,7 +61,9 @@ def owning_repository(start):
         raise Refusal(f"{start} is not a directory")
     probe = subprocess.run(
         ["git", "rev-parse", "--path-format=absolute", "--git-common-dir"],
-        cwd=start, capture_output=True, text=True,
+        cwd=start,
+        capture_output=True,
+        text=True,
     )
     if probe.returncode != 0:
         raise Refusal(f"{start} is not inside a git repository; `cd` into the repository first")
@@ -74,7 +76,9 @@ def owning_repository(start):
 def slug(name):
     segments = name.split("/")
     if not name or any(s in ("", ".", "..") or not SEGMENT.match(s) for s in segments):
-        raise Refusal(f"worktree name {name!r}: each `/`-separated segment must be letters, digits, `.`, `_` or `-`")
+        raise Refusal(
+            f"worktree name {name!r}: each `/`-separated segment must be letters, digits, `.`, `_` or `-`"
+        )
     return "-".join(segments)
 
 
@@ -86,17 +90,23 @@ def registered(repo, path):
 def base_ref(repo):
     head = subprocess.run(
         ["git", "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"],
-        cwd=repo, capture_output=True, text=True,
+        cwd=repo,
+        capture_output=True,
+        text=True,
     )
     if head.returncode == 0:
         return head.stdout.strip()
     main = subprocess.run(
         ["git", "rev-parse", "--verify", "--quiet", "refs/remotes/origin/main"],
-        cwd=repo, capture_output=True, text=True,
+        cwd=repo,
+        capture_output=True,
+        text=True,
     )
     if main.returncode == 0:
         return "origin/main"
-    raise Refusal(f"{repo} has neither `origin/HEAD` nor `origin/main`; run `git remote set-head origin --auto` there")
+    raise Refusal(
+        f"{repo} has neither `origin/HEAD` nor `origin/main`; run `git remote set-head origin --auto` there"
+    )
 
 
 def create(payload):
@@ -114,10 +124,15 @@ def create(payload):
         git("worktree", "add", "--detach", str(path), base_ref(repo), cwd=repo)
         copy_manifest(repo, path)
         return path
-    branch_exists = subprocess.run(
-        ["git", "rev-parse", "--verify", "--quiet", f"refs/heads/{name}"],
-        cwd=repo, capture_output=True, text=True,
-    ).returncode == 0
+    branch_exists = (
+        subprocess.run(
+            ["git", "rev-parse", "--verify", "--quiet", f"refs/heads/{name}"],
+            cwd=repo,
+            capture_output=True,
+            text=True,
+        ).returncode
+        == 0
+    )
     if branch_exists:
         git("worktree", "add", str(path), name, cwd=repo)
     else:
@@ -158,8 +173,10 @@ def copy_manifest(repo, path):
         return
     why = manifest_fits(project, manifest)
     if why:
-        sys.stderr.write(f"worktree hook: no Manifest.toml copied, because {why}; "
-                         "run `Pkg.instantiate()` in the worktree\n")
+        sys.stderr.write(
+            f"worktree hook: no Manifest.toml copied, because {why}; "
+            "run `Pkg.instantiate()` in the worktree\n"
+        )
         return
     shutil.copy2(source, target)
 
@@ -210,7 +227,7 @@ def pad(v):
 def bump(v, depth):
     """The version after every version that agrees with `v` in its first `depth` parts."""
     v = pad(v)
-    return v[:depth - 1] + (v[depth - 1] + 1,) + (0,) * (3 - depth)
+    return v[: depth - 1] + (v[depth - 1] + 1,) + (0,) * (3 - depth)
 
 
 def compat_ranges(spec):

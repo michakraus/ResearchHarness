@@ -155,8 +155,12 @@ HOOK_TIMEOUT = 15
 # The MCP configuration of Antigravity, which holds the Kaimon token in plain text.
 MCP_CONFIG = "{home}/.gemini/config/mcp_config.json"
 # The files of this layer, which an agent that rewrites them could use to switch off its guard.
-LAYER = ("{home}/.gemini/config/hooks.json", "{home}/.gemini/config/hooks/**", "{home}/.gemini/config/guard-paths.json",
-         "{home}/.gemini/antigravity-cli/settings.json")
+LAYER = (
+    "{home}/.gemini/config/hooks.json",
+    "{home}/.gemini/config/hooks/**",
+    "{home}/.gemini/config/guard-paths.json",
+    "{home}/.gemini/antigravity-cli/settings.json",
+)
 SETTINGS = REPO / "settings" / "settings.proposal.json"
 POSTURE = {"toolPermission": "proceed-in-sandbox", "enableTerminalSandbox": True}
 # The lists of the template's `permissions` and of Antigravity's, in the order the rules render.
@@ -201,9 +205,17 @@ WORDS = ("inherit", "flash", "flash_lite", "pro")
 # default set, so that an agent keeps the tools that Antigravity gives a subagent by itself. A
 # `tools:` list only restricts an agent. Kaimon is reached through `call_mcp_tool`, which every
 # agent has and `tools:` refuses, so a Kaimon tool gives `inheritMcp: true` and no name.
-TOOLS = {"read": ("view_file", "list_dir"), "edit": ("replace_file_content",), "write": ("write_to_file",),
-         "grep": ("grep_search",), "glob": ("find_by_name",), "shell": ("run_command",),
-         "agent": ("invoke_subagent",), "web_search": ("search_web",), "web_fetch": ("read_url_content",)}
+TOOLS = {
+    "read": ("view_file", "list_dir"),
+    "edit": ("replace_file_content",),
+    "write": ("write_to_file",),
+    "grep": ("grep_search",),
+    "glob": ("find_by_name",),
+    "shell": ("run_command",),
+    "agent": ("invoke_subagent",),
+    "web_search": ("search_web",),
+    "web_fetch": ("read_url_content",),
+}
 KAIMON_URL = "http://127.0.0.1:2828/"
 # Kaimon's bearer token, below the home directory. Antigravity expands no shell form in a header,
 # so mcp_config.json holds the token itself.
@@ -240,9 +252,23 @@ def render_hooks(root, python=None):
         return {"type": "command", "command": command, "timeout": HOOK_TIMEOUT}
 
     start = python + " -c " + shlex.quote(TRANSLATE) + " " + shlex.quote(str(hooks / "install-drift.py"))
-    return json.dumps({HOOK: {"SessionStart": [handler(start)],
-                              "PreToolUse": [{"matcher": "*", "hooks": [handler(
-                                  python + " " + shlex.quote(str(hooks / "guard.py")))]}]}}, indent=2) + "\n"
+    return (
+        json.dumps(
+            {
+                HOOK: {
+                    "SessionStart": [handler(start)],
+                    "PreToolUse": [
+                        {
+                            "matcher": "*",
+                            "hooks": [handler(python + " " + shlex.quote(str(hooks / "guard.py")))],
+                        }
+                    ],
+                }
+            },
+            indent=2,
+        )
+        + "\n"
+    )
 
 
 def relocate(data, root):
@@ -285,7 +311,9 @@ def render_skill(data):
     if fences[:1] != [0] or len(fences) < 2:
         return data
     end = fences[1]
-    return b"\n".join(line for i, line in enumerate(lines) if not (0 < i < end and line.startswith(b"model:")))
+    return b"\n".join(
+        line for i, line in enumerate(lines) if not (0 < i < end and line.startswith(b"model:"))
+    )
 
 
 def check_sizes(texts):
@@ -294,18 +322,24 @@ def check_sizes(texts):
     have BUDGET bytes or more: Antigravity would cut the file, or demote rules to path pointers."""
     included = [label for label, data in texts if INCLUDE.search(data)]
     if included:
-        raise HarnessError(f"{', '.join(included)} holds an include, `@[…](…)`, which Antigravity expands before it "
-                           "cuts the file at 24,000 bytes; the install measures no expanded size, so it writes no "
-                           "include")
+        raise HarnessError(
+            f"{', '.join(included)} holds an include, `@[…](…)`, which Antigravity expands before it "
+            "cuts the file at 24,000 bytes; the install measures no expanded size, so it writes no "
+            "include"
+        )
     over = [f"{label}: {len(data)} bytes" for label, data in texts if len(data) >= FILE_CAP]
     if over:
-        raise HarnessError(f"{'; '.join(over)}. Antigravity cuts an instruction file or a rule at 24,000 bytes, so "
-                           "the install writes none of that size")
+        raise HarnessError(
+            f"{'; '.join(over)}. Antigravity cuts an instruction file or a rule at 24,000 bytes, so "
+            "the install writes none of that size"
+        )
     total = sum(len(data) for _, data in texts)
     if total >= BUDGET:
-        raise HarnessError(f"the instruction files and rules hold {total} bytes together. Antigravity's rules share "
-                           f"20,000 tokens, {BUDGET} bytes at 4 bytes a token, and a rule over the budget becomes a "
-                           "path pointer, so the install writes none over it")
+        raise HarnessError(
+            f"the instruction files and rules hold {total} bytes together. Antigravity's rules share "
+            f"20,000 tokens, {BUDGET} bytes at 4 bytes a token, and a rule over the budget becomes a "
+            "path pointer, so the install writes none over it"
+        )
 
 
 def extras(root, files):
@@ -315,17 +349,34 @@ def extras(root, files):
     other file on its own. A hidden name is not listed, and nothing outside those directories is."""
     config = root / "config"
     ours = {install.fold(rel) for rel, *_ in files}
-    found = [(d, "rm -r") for d in (sorted(p for p in (config / "skills").iterdir() if p.is_dir())
-                                    if (config / "skills").is_dir() else [])
-             if not install.hidden(d.name)
-             and not any(o.startswith(install.fold(f"config/skills/{d.name}/")) for o in ours)]
+    found = [
+        (d, "rm -r")
+        for d in (
+            sorted(p for p in (config / "skills").iterdir() if p.is_dir())
+            if (config / "skills").is_dir()
+            else []
+        )
+        if not install.hidden(d.name)
+        and not any(o.startswith(install.fold(f"config/skills/{d.name}/")) for o in ours)
+    ]
     for top in ("rules", "skills", "hooks", "agents"):
-        for path, dirs, names in os.walk(config / top, onerror=install.unreadable) if (config / top).is_dir() else []:
-            dirs[:] = sorted(d for d in dirs if not install.hidden(d) and (pathlib.Path(path, d), "rm -r") not in found)
-            found += [(pathlib.Path(path, n), "rm") for n in sorted(names) if not install.hidden(n)
-                      and install.fold(pathlib.Path(path, n).relative_to(root).as_posix()) not in ours]
-    return [f"\nEXTRA: {p} is installed and has no source here; the install leaves it.\n"
-            f"       To remove it:  {command} '{p}'" for p, command in found]
+        for path, dirs, names in (
+            os.walk(config / top, onerror=install.unreadable) if (config / top).is_dir() else []
+        ):
+            dirs[:] = sorted(
+                d for d in dirs if not install.hidden(d) and (pathlib.Path(path, d), "rm -r") not in found
+            )
+            found += [
+                (pathlib.Path(path, n), "rm")
+                for n in sorted(names)
+                if not install.hidden(n)
+                and install.fold(pathlib.Path(path, n).relative_to(root).as_posix()) not in ours
+            ]
+    return [
+        f"\nEXTRA: {p} is installed and has no source here; the install leaves it.\n"
+        f"       To remove it:  {command} '{p}'"
+        for p, command in found
+    ]
 
 
 def guard_paths(profile):
@@ -340,21 +391,48 @@ def guard_paths(profile):
     ask of the template."""
     deny = json.loads(profile_module.render_file(GUARD_PATHS, profile))["deny"]
     permissions = json.loads(profile_module.render_file(SETTINGS, profile))["permissions"]
-    bodies = {(tool, key): [m.group(1) for e in permissions.get(key, [])
-                            if (m := re.fullmatch(rf"{tool}\((.*)\)", e, re.S))]
-              for tool in ("Edit", "Bash") for key in ("deny", "ask")}
+    bodies = {
+        (tool, key): [
+            m.group(1) for e in permissions.get(key, []) if (m := re.fullmatch(rf"{tool}\((.*)\)", e, re.S))
+        ]
+        for tool in ("Edit", "Bash")
+        for key in ("deny", "ask")
+    }
     home = render("{home}", profile)
     roots = tuple(home + root.removeprefix("~") for root in frontends.SHARED_ROOTS)
     edits = {key: [re.sub(r"^//+", "/", p) for p in bodies["Edit", key]] for key in ("deny", "ask")}
-    copies = {key: [home + relocate(("~" + p[len(home):]).encode(), "~/.gemini/config").decode()[1:]
-                    for p in paths if p.startswith(roots)] for key, paths in edits.items()}
-    globals_ = [render(p, profile) for p in ("{home}/.gemini/config/GEMINI.md", "{home}/.gemini/config/AGENTS.md",
-                                             "{home}/.gemini/GEMINI.md", AGENTS, APP_CONFIG)]
-    return json.dumps({"deny": [*deny, render(MCP_CONFIG, profile), *(render(p, profile) for p in LAYER)],
-                       "edit": [*edits["deny"], *copies["deny"], *globals_],
-                       "ask": [*edits["ask"], *copies["ask"]],
-                       "bash_deny": bodies["Bash", "deny"], "bash_ask": bodies["Bash", "ask"]},
-                      indent=2, ensure_ascii=False) + "\n"
+    copies = {
+        key: [
+            home + relocate(("~" + p[len(home) :]).encode(), "~/.gemini/config").decode()[1:]
+            for p in paths
+            if p.startswith(roots)
+        ]
+        for key, paths in edits.items()
+    }
+    globals_ = [
+        render(p, profile)
+        for p in (
+            "{home}/.gemini/config/GEMINI.md",
+            "{home}/.gemini/config/AGENTS.md",
+            "{home}/.gemini/GEMINI.md",
+            AGENTS,
+            APP_CONFIG,
+        )
+    ]
+    return (
+        json.dumps(
+            {
+                "deny": [*deny, render(MCP_CONFIG, profile), *(render(p, profile) for p in LAYER)],
+                "edit": [*edits["deny"], *copies["deny"], *globals_],
+                "ask": [*edits["ask"], *copies["ask"]],
+                "bash_deny": bodies["Bash", "deny"],
+                "bash_ask": bodies["Bash", "ask"],
+            },
+            indent=2,
+            ensure_ascii=False,
+        )
+        + "\n"
+    )
 
 
 def command_rule(body, allow=False):
@@ -366,8 +444,12 @@ def command_rule(body, allow=False):
         return f"command({m.group(1)})"
     star = SEGMENT_TEXT if allow else ".*"
     head, tail = (body[:-2], f"(?: {star})?") if body.endswith(" *") else (body, "")
-    return "command(regex:^" + star.join(REGEX_SPECIAL.sub(lambda c: "\\" + c.group(0), part)
-                                         for part in head.split("*")) + tail + "$)"
+    return (
+        "command(regex:^"
+        + star.join(REGEX_SPECIAL.sub(lambda c: "\\" + c.group(0), part) for part in head.split("*"))
+        + tail
+        + "$)"
+    )
 
 
 def path_rule(action, body):
@@ -411,14 +493,18 @@ def render_permissions(cfg, profile):
             elif (m := re.fullmatch(r"WebFetch\(domain:(.*)\)", entry)) and key == "allow":
                 rule = f"read_url({m.group(1)})"
             else:
-                reason = "no Antigravity rule renders it: the rules come from the Bash, Read and Edit entries, " \
-                         "the allow hosts and the Kaimon tools"
+                reason = (
+                    "no Antigravity rule renders it: the rules come from the Bash, Read and Edit entries, "
+                    "the allow hosts and the Kaimon tools"
+                )
             if rule is None:
                 dropped.append((key, entry, reason))
             else:
                 rules[key].append(rule)
-    rules["deny"] += [f"read_file({render(MCP_CONFIG, profile)})",
-                      *(f"write_file({render(p, profile).removesuffix('/**')})" for p in (*LAYER, MCP_CONFIG))]
+    rules["deny"] += [
+        f"read_file({render(MCP_CONFIG, profile)})",
+        *(f"write_file({render(p, profile).removesuffix('/**')})" for p in (*LAYER, MCP_CONFIG)),
+    ]
     for key in LISTS:
         rules[key] += kaimon[key]
     for command in cfg.get("sandbox", {}).get("excludedCommands", []):
@@ -447,8 +533,12 @@ def deny_write(entries, home, root, found, taken=()):
     for entry in entries:
         path = units.expand(entry, home)
         if not path.startswith("/"):
-            warnings.append((f"The settings template's `denyWrite` entry {entry} is not an absolute path, so it "
-                             f"renders no Antigravity `read_file` deny.",))
+            warnings.append(
+                (
+                    f"The settings template's `denyWrite` entry {entry} is not an absolute path, so it "
+                    f"renders no Antigravity `read_file` deny.",
+                )
+            )
             continue
         head = re.match(r"[^*?\[]*", path).group(0)
         if head == path:
@@ -458,7 +548,7 @@ def deny_write(entries, home, root, found, taken=()):
         else:
             # The directory that every match of the entry lies in: the text before the first
             # wildcard, up to its last `/`.
-            base = pathlib.Path(os.path.realpath(head[:head.rindex("/") + 1]))
+            base = pathlib.Path(os.path.realpath(head[: head.rindex("/") + 1]))
             if not base.is_relative_to(top) and not top.is_relative_to(base):
                 continue
             if (m := re.fullmatch(r"[^*?\[]*/\*\*/([^*?\[]+)", path)) and base.is_relative_to(top):
@@ -466,23 +556,33 @@ def deny_write(entries, home, root, found, taken=()):
                 covered += [c for c in found if c.is_relative_to(base) and c not in covered]
                 expanded = True
             else:
-                warnings.append((f"The settings template's `denyWrite` entry {entry} has a wildcard that no "
-                                 f"Antigravity rule expresses, so it renders no `read_file` deny.",))
+                warnings.append(
+                    (
+                        f"The settings template's `denyWrite` entry {entry} has a wildcard that no "
+                        f"Antigravity rule expresses, so it renders no `read_file` deny.",
+                    )
+                )
                 continue
         rules += [r for r in (f"read_file({p})" for p in paths) if r not in rules and r not in taken]
     if expanded:
         n = len(covered)
-        warnings.append((f"The `read_file` denies of the template's `denyWrite` entries with `**` cover {n} "
-                         f"{'repository' if n == 1 else 'repositories'}: each directory at or below the "
-                         f"research root that holds a `.git` directory.",
-                         "A repository cloned later is covered at the next `harness install --apply`."))
+        warnings.append(
+            (
+                f"The `read_file` denies of the template's `denyWrite` entries with `**` cover {n} "
+                f"{'repository' if n == 1 else 'repositories'}: each directory at or below the "
+                f"research root that holds a `.git` directory.",
+                "A repository cloned later is covered at the next `harness install --apply`.",
+            )
+        )
     return rules, warnings
 
 
 def clones():
     """Each directory at or below the research root that holds a `.git` directory, by its real
     path, walked as `harness trust` walks it: a worktree's `.git` is a file."""
-    return [pathlib.Path(p) for p in frontends.adapter("claude").roots() if os.path.isdir(os.path.join(p, ".git"))]
+    return [
+        pathlib.Path(p) for p in frontends.adapter("claude").roots() if os.path.isdir(os.path.join(p, ".git"))
+    ]
 
 
 def read_regular(path, refused):
@@ -520,8 +620,10 @@ def merge_settings(path, rules):
         settings, indent = claude.json_object(path, text), claude.indent_of(text)
         numbers = claude.rewritten_numbers(text, ("permissions", *POSTURE), path)
         if numbers:
-            raise HarnessError(f"{path} holds numbers that JSON would write in other text: "
-                               f"{', '.join(f'{k}: {old} as {new}' for k, old, new in numbers)}{refused}")
+            raise HarnessError(
+                f"{path} holds numbers that JSON would write in other text: "
+                f"{', '.join(f'{k}: {old} as {new}' for k, old, new in numbers)}{refused}"
+            )
     settings.update(permissions=rules, **POSTURE)
     try:
         return (claude.dumps(settings, indent=indent) + "\n").encode()
@@ -540,16 +642,20 @@ def merge_grants(path, rules):
     number that json writes in other text. The install removes no entry, so a rule that it wrote
     once stays."""
     claude = frontends.adapter("claude")
-    refused = ("; the install adds its rules to userSettings.globalPermissionGrants of a JSON object in a regular "
-               "file there, and writes nothing")
+    refused = (
+        "; the install adds its rules to userSettings.globalPermissionGrants of a JSON object in a regular "
+        "file there, and writes nothing"
+    )
     text = read_regular(path, refused)
     settings, indent = {}, 2
     if text is not None:
         settings, indent = claude.json_object(path, text), claude.indent_of(text)
         numbers = claude.rewritten_numbers(text, (), path)
         if numbers:
-            raise HarnessError(f"{path} holds numbers that JSON would write in other text: "
-                               f"{', '.join(f'{k}: {old} as {new}' for k, old, new in numbers)}{refused}")
+            raise HarnessError(
+                f"{path} holds numbers that JSON would write in other text: "
+                f"{', '.join(f'{k}: {old} as {new}' for k, old, new in numbers)}{refused}"
+            )
     node, where = settings, []
     for key in ("userSettings", "globalPermissionGrants"):
         node, where = node.setdefault(key, {}), [*where, key]
@@ -578,29 +684,40 @@ def load_models(path, agents):
     table = profile_module.read_models(path).get("antigravity")
     tiers, words = frontmatter.TIERS, ", ".join(WORDS)
     if not isinstance(table, dict):
-        raise HarnessError(f"{path} has no [antigravity] table, which maps the tiers {', '.join(tiers)} to "
-                           f"Antigravity's tiers {words} — examples/models.toml shows it")
+        raise HarnessError(
+            f"{path} has no [antigravity] table, which maps the tiers {', '.join(tiers)} to "
+            f"Antigravity's tiers {words} — examples/models.toml shows it"
+        )
     missing, unknown = [t for t in tiers if t not in table], sorted(set(table) - {*tiers, "model_overrides"})
     if missing or unknown:
-        raise HarnessError(f"{path}: [antigravity] holds the tiers {', '.join(tiers)} and model_overrides; "
-                           + "; ".join([f"it has no {', '.join(missing)}"] * bool(missing)
-                                       + [f"{', '.join(unknown)} is no key of it"] * bool(unknown)))
+        raise HarnessError(
+            f"{path}: [antigravity] holds the tiers {', '.join(tiers)} and model_overrides; "
+            + "; ".join(
+                [f"it has no {', '.join(missing)}"] * bool(missing)
+                + [f"{', '.join(unknown)} is no key of it"] * bool(unknown)
+            )
+        )
     overrides = table.get("model_overrides", {})
     if not isinstance(overrides, dict):
         raise HarnessError(f"{path}: [antigravity.model_overrides] is not a table of agent = tier")
     wrong = [f"[antigravity] {t} = {table[t]!r}" for t in tiers if table[t] not in WORDS] + [
-        f"[antigravity.model_overrides] {a} = {v!r}" for a, v in overrides.items() if v not in WORDS]
+        f"[antigravity.model_overrides] {a} = {v!r}" for a, v in overrides.items() if v not in WORDS
+    ]
     if wrong:
         raise HarnessError(f"{path}: {'; '.join(wrong)} is not an Antigravity tier; a tier is {words}")
     names = {p.stem for p in pathlib.Path(agents).glob("*.md")}
     if strangers := sorted(set(overrides) - names):
-        raise HarnessError(f"{path}: [antigravity.model_overrides] {', '.join(strangers)} is no agent of {agents}")
+        raise HarnessError(
+            f"{path}: [antigravity.model_overrides] {', '.join(strangers)} is no agent of {agents}"
+        )
     return {t: table[t] for t in tiers}, dict(overrides)
 
 
 def sections(text):
     """{name: text} of each level-2 section `## <name>` of `text`, its text stripped."""
-    return {m.group(1): m.group(2).strip() for m in re.finditer(r"(?m)^## (\w+)\n(.*?)(?=^## |\Z)", text, re.S)}
+    return {
+        m.group(1): m.group(2).strip() for m in re.finditer(r"(?m)^## (\w+)\n(.*?)(?=^## |\Z)", text, re.S)
+    }
 
 
 def under_antigravity(meta, body, text=None):
@@ -611,21 +728,31 @@ def under_antigravity(meta, body, text=None):
     section that it needs and that `text` lacks exits 2."""
     rules = sections(UNDER.read_text() if text is None else text)
     tools, skills = meta.get("tools", []), meta.get("skills", [])
-    used = [key for key, uses in [
-        ("skills", bool(skills)),
-        ("worktree", meta.get("isolation") == "worktree" or re.search(r'isolation: "?worktree', body) is not None),
-        ("agent", "agent" in tools),
-        ("background", "run_in_background" in body),
-        ("mcp", any(t.startswith(frontmatter.MCP) for t in tools)),
-        # `gh pr create` can need a grant, so the caller runs it.
-        ("pr", re.search(r"(?i)open (?:the|a) pull request", body) is not None)] if uses]
+    used = [
+        key
+        for key, uses in [
+            ("skills", bool(skills)),
+            (
+                "worktree",
+                meta.get("isolation") == "worktree" or re.search(r'isolation: "?worktree', body) is not None,
+            ),
+            ("agent", "agent" in tools),
+            ("background", "run_in_background" in body),
+            ("mcp", any(t.startswith(frontmatter.MCP) for t in tools)),
+            # `gh pr create` can need a grant, so the caller runs it.
+            ("pr", re.search(r"(?i)open (?:the|a) pull request", body) is not None),
+        ]
+        if uses
+    ]
     if not used:
         return ""
     if missing := [k for k in ["intro", *used] if k not in rules]:
         raise HarnessError(f"{UNDER}: no section `## {missing[0]}`")
     named = f"{sources.code_list(skills)} skill{'s' * (len(skills) > 1)}" if skills else ""
     lines = [rules[k].replace("{skills}", named) for k in used]
-    return "## Under Antigravity\n\n" + rules["intro"] + "\n\n" + "\n".join("- " + line for line in lines) + "\n"
+    return (
+        "## Under Antigravity\n\n" + rules["intro"] + "\n\n" + "\n".join("- " + line for line in lines) + "\n"
+    )
 
 
 def render_agent(path, tiers, overrides, root="~/.gemini/config"):
@@ -650,19 +777,31 @@ def render_agent(path, tiers, overrides, root="~/.gemini/config"):
         if tool.startswith(frontmatter.MCP):
             continue
         if tool not in TOOLS:
-            raise HarnessError(f"{path}: the tool {tool!r} has no Antigravity name; TOOLS of "
-                               f"adapters/antigravity/adapter.py maps {', '.join(TOOLS)} and Kaimon's tools")
+            raise HarnessError(
+                f"{path}: the tool {tool!r} has no Antigravity name; TOOLS of "
+                f"adapters/antigravity/adapter.py maps {', '.join(TOOLS)} and Kaimon's tools"
+            )
         tools += [n for n in TOOLS[tool] if n not in tools]
     model = overrides.get(name, tiers[meta["model"]] if "model" in meta else "inherit")
-    head = {"name": name, "description": meta["description"], "model": model, "tools": tools, "subagent": True}
+    head = {
+        "name": name,
+        "description": meta["description"],
+        "model": model,
+        "tools": tools,
+        "subagent": True,
+    }
     if any(t.startswith(frontmatter.MCP) for t in meta.get("tools", [])):
         head["inheritMcp"] = True
     section = under_antigravity(meta, fm.body)
-    rest = (f"<!-- Generated by `harness install` from agents/{name}.md of the harness repository. Do not "
-            "edit this file: edit the source and run `harness install --apply`. -->\n\n"
-            + (section + "\n" if section else "") + fm.body.lstrip("\n"))
-    return (("---\n" + "".join(f"{k}: {json.dumps(v, ensure_ascii=False)}\n" for k, v in head.items()) + "---\n\n")
-            .encode() + relocate(rest.encode(), root))
+    rest = (
+        f"<!-- Generated by `harness install` from agents/{name}.md of the harness repository. Do not "
+        "edit this file: edit the source and run `harness install --apply`. -->\n\n"
+        + (section + "\n" if section else "")
+        + fm.body.lstrip("\n")
+    )
+    return (
+        "---\n" + "".join(f"{k}: {json.dumps(v, ensure_ascii=False)}\n" for k, v in head.items()) + "---\n\n"
+    ).encode() + relocate(rest.encode(), root)
 
 
 def render_mcp(home, config):
@@ -676,7 +815,10 @@ def render_mcp(home, config):
     try:
         # A FIFO would block the read, so the file's type is checked first.
         if not stat.S_ISREG(path.stat().st_mode):
-            return None, (f"{path} is not a regular file{none}.", "Make it a file, mode 600, with Kaimon's token alone.")
+            return None, (
+                f"{path} is not a regular file{none}.",
+                "Make it a file, mode 600, with Kaimon's token alone.",
+            )
         token = path.read_bytes().decode("utf-8").strip()
     except FileNotFoundError:
         return None, (f"{path} does not exist{none}.", "Create it, mode 600, with Kaimon's token alone.")
@@ -701,13 +843,16 @@ def merge_mcp(path, kaimon):
     text. The error names each such key and each such number by its path, a JSON list of the keys
     and indices from the top, and prints no value."""
     claude = frontends.adapter("claude")
-    refused = "; the install sets mcpServers.kaimon of a JSON object in a regular file there, and writes nothing"
+    refused = (
+        "; the install sets mcpServers.kaimon of a JSON object in a regular file there, and writes nothing"
+    )
     text = read_regular(path, refused)
     cfg, indent = {}, 2
     if text is not None and text.strip():
         cfg, indent = claude.json_object(path, text), claude.indent_of(text)
         if not isinstance(cfg.get("mcpServers", {}), dict):
             raise HarnessError(f"{path}: its mcpServers is not a JSON object{refused}")
+
         # A second parse keeps, in each object, the keys that it holds twice, whose earlier values
         # the merge would drop, and the text of each number, to compare it with the text json
         # writes. The Kaimon entry is replaced as a whole, so its keys and numbers stop nothing.
@@ -718,8 +863,12 @@ def merge_mcp(path, kaimon):
                 self.twice = {k for k in keys if keys.count(k) > 1}
 
         try:
-            tree = json.loads(text, object_pairs_hook=Pairs, parse_int=claude.Number, parse_float=claude.Number)
-        except RecursionError:  # with its hooks, this parse can run out of stack at a depth that the first reads
+            tree = json.loads(
+                text, object_pairs_hook=Pairs, parse_int=claude.Number, parse_float=claude.Number
+            )
+        except (
+            RecursionError
+        ):  # with its hooks, this parse can run out of stack at a depth that the first reads
             raise HarnessError(f"{path} is JSON nested too deep for the parser{refused}") from None
         if "mcpServers" in tree:
             tree["mcpServers"].pop("kaimon", None)
@@ -734,8 +883,14 @@ def merge_mcp(path, kaimon):
                 stack += [([*key, i], v) for i, v in enumerate(value)]
             elif isinstance(value, claude.Number) and json.dumps(json.loads(value.text)) != value.text:
                 numbers.append(json.dumps(key))
-        found = [f"{what}, at {', '.join(sorted(paths))}" for what, paths in [
-            ("a key twice in one object", twice), ("numbers that JSON would write in other text", numbers)] if paths]
+        found = [
+            f"{what}, at {', '.join(sorted(paths))}"
+            for what, paths in [
+                ("a key twice in one object", twice),
+                ("numbers that JSON would write in other text", numbers),
+            ]
+            if paths
+        ]
         if found:
             raise HarnessError(f"{path} holds {'; and '.join(found)}{refused}")
     cfg.setdefault("mcpServers", {})["kaimon"] = kaimon
@@ -750,11 +905,15 @@ def council_warnings(path):
     in [councils] or in [<frontend>.councils] of a frontend of profile.SHARING. Antigravity runs
     the agent alone and writes no seat."""
     data = profile_module.read_models(path)
-    tables = [data.get("councils"), *(data[f].get("councils") if isinstance(data.get(f), dict) else None
-                                      for f in profile_module.SHARING)]
+    tables = [
+        data.get("councils"),
+        *(data[f].get("councils") if isinstance(data.get(f), dict) else None for f in profile_module.SHARING),
+    ]
     agents = sorted({a for t in tables if isinstance(t, dict) for a in t})
-    return [(f"{path} gives {a} a council. Antigravity runs {a} alone, on its own tier, and writes no seat.",)
-            for a in agents]
+    return [
+        (f"{path} gives {a} a council. Antigravity runs {a} alone, on its own tier, and writes no seat.",)
+        for a in agents
+    ]
 
 
 def plan(ctx):
@@ -764,32 +923,53 @@ def plan(ctx):
     root = gemini_dir()
     if not root.is_dir():
         state = "is not a directory" if root.exists() else "does not exist"
-        return frontends.Plan(warnings=[(f"{root} {state}, so the Antigravity layer is not installed.",
-                                         "Install Antigravity, then run `harness install` again.")])
+        return frontends.Plan(
+            warnings=[
+                (
+                    f"{root} {state}, so the Antigravity layer is not installed.",
+                    "Install Antigravity, then run `harness install` again.",
+                )
+            ]
+        )
     tiers, overrides = load_models(ctx.models, ctx.agents)
     claude = frontends.adapter("claude")
     cfg = claude.settings_template(ctx.profile, profile_module.network_path(ctx.args.profile))
     rules, _ = render_permissions(cfg, ctx.profile)
     # Claude Code's sandbox keeps a command from writing these paths, and the guard lifts git out
     # of Antigravity's sandbox, where it would run a hook or an alias that a sandboxed command planted.
-    denies, notes = deny_write(cfg.get("sandbox", {}).get("filesystem", {}).get("denyWrite", []),
-                               str(pathlib.Path.home()), research_root(), clones(), rules["deny"])
+    denies, notes = deny_write(
+        cfg.get("sandbox", {}).get("filesystem", {}).get("denyWrite", []),
+        str(pathlib.Path.home()),
+        research_root(),
+        clones(),
+        rules["deny"],
+    )
     rules["deny"] += denies
     layer = ctx.plans["claude"]
     scripts = {f"hooks/{g}" for g in frontends.GUARDS}
     drift = next((f[1], f[2]) for f in layer.files if f[3] == "~/.claude/hooks/install-drift.py")
-    files = [("config/hooks.json", render_hooks(root).encode(), None),
-             ("config/hooks/guard.py", (SOURCE / "guard.py").read_bytes(), None),
-             *((f"config/{dst}", data, mode) for dst, data, mode in layer.shared if dst in scripts),
-             ("config/hooks/install-drift.py", *drift),
-             ("config/guard-paths.json", guard_paths(ctx.profile).encode(), None)]
+    files = [
+        ("config/hooks.json", render_hooks(root).encode(), None),
+        ("config/hooks/guard.py", (SOURCE / "guard.py").read_bytes(), None),
+        *((f"config/{dst}", data, mode) for dst, data, mode in layer.shared if dst in scripts),
+        ("config/hooks/install-drift.py", *drift),
+        ("config/guard-paths.json", guard_paths(ctx.profile).encode(), None),
+    ]
     # The texts name Antigravity's copies, not Claude Code's; the global file names them itself.
     home = frontends.home_form(root / "config")
-    texts = [("config/GEMINI.md", DELTA.read_bytes(), DELTA),
-             *((f"config/rules/{dst.split('/')[-1]}", always_on(relocate(data, home)), f"~/.claude/{dst}")
-               for dst, data, _ in layer.shared if re.fullmatch(r"RTK\.md|instructions/[^/]+\.md", dst)),
-             *((f"config/rules/{dst.split('/')[-1]}", render_rule(src, relocate(data, home)), src)
-               for dst, src, data in layer.rules if re.fullmatch(r"rules/[^/]+\.md", dst))]
+    texts = [
+        ("config/GEMINI.md", DELTA.read_bytes(), DELTA),
+        *(
+            (f"config/rules/{dst.split('/')[-1]}", always_on(relocate(data, home)), f"~/.claude/{dst}")
+            for dst, data, _ in layer.shared
+            if re.fullmatch(r"RTK\.md|instructions/[^/]+\.md", dst)
+        ),
+        *(
+            (f"config/rules/{dst.split('/')[-1]}", render_rule(src, relocate(data, home)), src)
+            for dst, src, data in layer.rules
+            if re.fullmatch(r"rules/[^/]+\.md", dst)
+        ),
+    ]
     owner = {}
     for rel, _, src in texts:
         if install.fold(rel) in owner:
@@ -797,11 +977,21 @@ def plan(ctx):
         owner[install.fold(rel)] = src
     check_sizes([(f"~/.gemini/{rel}", data) for rel, data, _ in texts])
     files += [(rel, data, None) for rel, data, _ in texts]
-    files += [(f"config/{dst}", relocate(render_skill(data) if re.fullmatch(r"skills/[^/]+/SKILL\.md", dst)
-                                         else data, home) if dst.endswith(".md") else data, mode)
-              for dst, data, mode in layer.shared if dst.startswith("skills/")]
-    files += [(f"config/agents/{p.name}", render_agent(p, tiers, overrides, home), None)
-              for p in sorted(pathlib.Path(ctx.agents).glob("*.md"))]
+    files += [
+        (
+            f"config/{dst}",
+            relocate(render_skill(data) if re.fullmatch(r"skills/[^/]+/SKILL\.md", dst) else data, home)
+            if dst.endswith(".md")
+            else data,
+            mode,
+        )
+        for dst, data, mode in layer.shared
+        if dst.startswith("skills/")
+    ]
+    files += [
+        (f"config/agents/{p.name}", render_agent(p, tiers, overrides, home), None)
+        for p in sorted(pathlib.Path(ctx.agents).glob("*.md"))
+    ]
     warnings = [*notes, *council_warnings(ctx.models)]
     # The file holds the token, so it is written with mode 600 and never backed up: a backup beside
     # it is outside the deny rules of MCP_CONFIG.
@@ -812,11 +1002,21 @@ def plan(ctx):
         files.append(("config/mcp_config.json", mcp, 0o600))
     settings, app = root / "antigravity-cli" / "settings.json", root / "config" / "config.json"
     # The CLI's and the app's settings hold the user's own keys, so a replaced file is backed up first.
-    return frontends.Plan(files=[*((root / rel, data, mode, f"antigravity/{rel}") for rel, data, mode in files),
-                                 (settings, merge_settings(settings, rules), None,
-                                  "antigravity/antigravity-cli/settings.json", True),
-                                 (app, merge_grants(app, rules), None, "antigravity/config/config.json", True)],
-                          extra=extras(root, files), warnings=warnings)
+    return frontends.Plan(
+        files=[
+            *((root / rel, data, mode, f"antigravity/{rel}") for rel, data, mode in files),
+            (
+                settings,
+                merge_settings(settings, rules),
+                None,
+                "antigravity/antigravity-cli/settings.json",
+                True,
+            ),
+            (app, merge_grants(app, rules), None, "antigravity/config/config.json", True),
+        ],
+        extra=extras(root, files),
+        warnings=warnings,
+    )
 
 
 def register(sub):
@@ -832,7 +1032,7 @@ def rule_matches(rule, command):
         return False
     if m.group(1):
         return re.search(m.group(2), command) is not None
-    return command.split()[:len(m.group(2).split())] == m.group(2).split()
+    return command.split()[: len(m.group(2).split())] == m.group(2).split()
 
 
 # ---------------------------------------------------------------------------------------------
@@ -873,149 +1073,285 @@ def layer_cases(scratch):
     case, run, tail = scratch.case, scratch.run, scratch.tail
     line = re.compile(r"^antigravity/(\S+)\s+(\S+)", re.M)
     rules = sorted([*rule_names(REPO / "rules"), "meta-repository.md"])
-    texts = ["config/GEMINI.md", *(f"config/rules/{n}" for n in ["RTK.md", "core.md", "research-tree.md", *rules]),
-             *(f"config/skills/{f}" for f in skills_files()),
-             *(f"config/agents/{p.name}" for p in (REPO / "agents").glob("*.md"))]
-    want = sorted(["config/hooks.json", "config/guard-paths.json", "config/hooks/guard.py",
-                   *(f"config/hooks/{g}" for g in frontends.GUARDS), "config/hooks/install-drift.py",
-                   "antigravity-cli/settings.json", "config/config.json", *texts])
+    texts = [
+        "config/GEMINI.md",
+        *(f"config/rules/{n}" for n in ["RTK.md", "core.md", "research-tree.md", *rules]),
+        *(f"config/skills/{f}" for f in skills_files()),
+        *(f"config/agents/{p.name}" for p in (REPO / "agents").glob("*.md")),
+    ]
+    want = sorted(
+        [
+            "config/hooks.json",
+            "config/guard-paths.json",
+            "config/hooks/guard.py",
+            *(f"config/hooks/{g}" for g in frontends.GUARDS),
+            "config/hooks/install-drift.py",
+            "antigravity-cli/settings.json",
+            "config/config.json",
+            *texts,
+        ]
+    )
 
     base, claude, _ = scratch.fresh()
     code, dry = run(base)
     warned = [w for w in dry.split("WARNING: ")[1:] if ".gemini" in w]
-    case(lambda: code in (0, 1) and line.findall(dry) == [] and len(warned) == 1
-         and str(base / "home" / ".gemini") in warned[0] and not (base / "home" / ".gemini").exists(),
-         f"with no ~/.gemini/, the dry run lists no file of the layer and gives one warning that names the "
-         f"directory: {code}, {line.findall(dry)}, {warned}")
+    case(
+        lambda: (
+            code in (0, 1)
+            and line.findall(dry) == []
+            and len(warned) == 1
+            and str(base / "home" / ".gemini") in warned[0]
+            and not (base / "home" / ".gemini").exists()
+        ),
+        f"with no ~/.gemini/, the dry run lists no file of the layer and gives one warning that names the "
+        f"directory: {code}, {line.findall(dry)}, {warned}",
+    )
 
     base, claude, _ = scratch.fresh()
     (base / "home" / ".gemini").write_text("x")
     code, dry = run(base)
     warned = [w for w in dry.split("WARNING: ")[1:] if ".gemini" in w]
-    case(lambda: line.findall(dry) == [] and len(warned) == 1 and "is not a directory" in warned[0],
-         f"with a file at ~/.gemini, the one warning says that it is not a directory: {warned}")
+    case(
+        lambda: line.findall(dry) == [] and len(warned) == 1 and "is not a directory" in warned[0],
+        f"with a file at ~/.gemini, the one warning says that it is not a directory: {warned}",
+    )
 
     base, claude, _ = scratch.fresh(["instructions/research-tree.md", "rules/meta-repository.md"])
     gemini = base / "home" / ".gemini"
     gemini.mkdir()
     code, dry = run(base)
     listed = dict(line.findall(dry))
-    case(lambda: sorted(listed) == want and set(listed.values()) == {"INSTALL"}
-         and sorted(p.relative_to(gemini).as_posix() for p in gemini.rglob("*")) == [],
-         f"the dry run lists hooks.json, guard-paths.json, hooks/guard.py, the seven scripts of frontends.GUARDS, "
-         f"hooks/install-drift.py, antigravity-cli/settings.json, config/config.json, the instruction files, rules "
-         f"and skills, and one "
-         f"agents/<name>.md for each agent of agents/, each INSTALL, and writes nothing: {code}, "
-         f"{sorted(set(listed) ^ set(want))}")
+    case(
+        lambda: (
+            sorted(listed) == want
+            and set(listed.values()) == {"INSTALL"}
+            and sorted(p.relative_to(gemini).as_posix() for p in gemini.rglob("*")) == []
+        ),
+        f"the dry run lists hooks.json, guard-paths.json, hooks/guard.py, the seven scripts of frontends.GUARDS, "
+        f"hooks/install-drift.py, antigravity-cli/settings.json, config/config.json, the instruction files, rules "
+        f"and skills, and one "
+        f"agents/<name>.md for each agent of agents/, each INSTALL, and writes nothing: {code}, "
+        f"{sorted(set(listed) ^ set(want))}",
+    )
     planned = {p.split("/")[2] for p in listed if p.startswith("config/skills/")}
-    case(lambda: "config/GEMINI.md" in listed
-         and sorted(p for p in listed if re.fullmatch(r"config/rules/(RTK|core|research-tree)\.md", p))
-         == ["config/rules/RTK.md", "config/rules/core.md", "config/rules/research-tree.md"]
-         and sorted(p.removeprefix("config/rules/") for p in listed if p.startswith("config/rules/")
-                    and p not in ("config/rules/RTK.md", "config/rules/core.md", "config/rules/research-tree.md"))
-         == rules
-         and sorted(planned) == skill_names(REPO / "skills"),
-         f"the dry run lists the global file, the three always-on files, one rule file for each of the {len(rules)} "
-         f"rules and one skills/<name>/ for each of the {len(planned)} skills: {sorted(listed)}")
+    case(
+        lambda: (
+            "config/GEMINI.md" in listed
+            and sorted(p for p in listed if re.fullmatch(r"config/rules/(RTK|core|research-tree)\.md", p))
+            == ["config/rules/RTK.md", "config/rules/core.md", "config/rules/research-tree.md"]
+            and sorted(
+                p.removeprefix("config/rules/")
+                for p in listed
+                if p.startswith("config/rules/")
+                and p not in ("config/rules/RTK.md", "config/rules/core.md", "config/rules/research-tree.md")
+            )
+            == rules
+            and sorted(planned) == skill_names(REPO / "skills")
+        ),
+        f"the dry run lists the global file, the three always-on files, one rule file for each of the {len(rules)} "
+        f"rules and one skills/<name>/ for each of the {len(planned)} skills: {sorted(listed)}",
+    )
     code, text = run(base, "--apply")
     if code != 0:
-        case(lambda: False, f"the setup install --apply of the Antigravity cases exits {code}: {tail(text)!r}; "
-                            f"the cases after it do not run")
+        case(
+            lambda: False,
+            f"the setup install --apply of the Antigravity cases exits {code}: {tail(text)!r}; "
+            f"the cases after it do not run",
+        )
         return
     installed = sorted(p.relative_to(gemini).as_posix() for p in gemini.rglob("*") if p.is_file())
-    case(lambda: installed == want, f"--apply installs those files below ~/.gemini/, and nothing else: {installed}")
+    case(
+        lambda: installed == want,
+        f"--apply installs those files below ~/.gemini/, and nothing else: {installed}",
+    )
     config = gemini / "config"
     hooks = (config / "hooks.json").read_text() if (config / "hooks.json").is_file() else None
     python = shlex.quote(str(base / "python" / "bin" / "python"))
     handler = python + " " + shlex.quote(str(config / "hooks" / "guard.py"))
-    start = python + " -c " + shlex.quote(TRANSLATE) + " " + shlex.quote(str(config / "hooks" / "install-drift.py"))
-    case(lambda: json.loads(hooks)
-         == {HOOK: {"SessionStart": [{"type": "command", "command": start, "timeout": 15}],
-                    "PreToolUse": [{"matcher": "*", "hooks": [{"type": "command", "command": handler,
-                                                               "timeout": 15}]}]}},
-         f"hooks.json holds the one hook {HOOK}: one SessionStart handler, which runs install-drift.py and turns its "
-         f"warning into injectSteps, and one PreToolUse group, matcher *, guard.py by its absolute path, each on "
-         f"the environment's interpreter with a timeout of 15 s: {hooks!r}")
+    start = (
+        python
+        + " -c "
+        + shlex.quote(TRANSLATE)
+        + " "
+        + shlex.quote(str(config / "hooks" / "install-drift.py"))
+    )
+    case(
+        lambda: (
+            json.loads(hooks)
+            == {
+                HOOK: {
+                    "SessionStart": [{"type": "command", "command": start, "timeout": 15}],
+                    "PreToolUse": [
+                        {"matcher": "*", "hooks": [{"type": "command", "command": handler, "timeout": 15}]}
+                    ],
+                }
+            }
+        ),
+        f"hooks.json holds the one hook {HOOK}: one SessionStart handler, which runs install-drift.py and turns its "
+        f"warning into injectSteps, and one PreToolUse group, matcher *, guard.py by its absolute path, each on "
+        f"the environment's interpreter with a timeout of 15 s: {hooks!r}",
+    )
 
     def commands_of(value):
         """Every string value of a key `command` in the JSON value `value`."""
         if isinstance(value, dict):
-            return [c for k, v in value.items()
-                    for c in ([v] if k == "command" and isinstance(v, str) else commands_of(v))]
+            return [
+                c
+                for k, v in value.items()
+                for c in ([v] if k == "command" and isinstance(v, str) else commands_of(v))
+            ]
         return [c for v in value for c in commands_of(v)] if isinstance(value, list) else []
 
     # Every command that the install writes for a .py hook, in either frontend's file, runs it on the
     # scratch environment's interpreter.
-    runs_py = [c for c in commands_of(json.loads((claude / "settings.json").read_text())["hooks"])
-               + commands_of(json.loads(hooks)) if ".py" in c]
-    case(lambda: len(runs_py) > 2 and all(shlex.split(c)[0] == str(base / "python" / "bin" / "python")
-                                          for c in runs_py),
-         f"each command of ~/.claude/settings.json and hooks.json that runs a .py hook starts with the "
-         f"environment's interpreter: {runs_py}")
-    case(lambda: (config / "hooks" / "install-drift.py").read_bytes()
-         == (claude / "hooks" / "install-drift.py").read_bytes()
-         and scratch.mode(config / "hooks" / "install-drift.py") == scratch.mode(claude / "hooks" / "install-drift.py"),
-         "hooks/install-drift.py is the Claude Code layer's copy, with its mode")
-    case(lambda: (config / "hooks" / "guard.py").read_bytes() == (SOURCE / "guard.py").read_bytes()
-         and all((config / "hooks" / g).read_bytes() == (claude / "hooks" / g).read_bytes() for g in frontends.GUARDS),
-         "hooks/guard.py is adapters/antigravity/guard.py, and each guard script is the Claude Code layer's copy")
-    case(lambda: (lambda g: (*g.SHELL, g.WORK_TREE, g.KAIMON))(_guard_module()) == frontends.GUARDS,
-         f"guard.py runs the scripts of frontends.GUARDS, in its order: {frontends.GUARDS}")
+    runs_py = [
+        c
+        for c in commands_of(json.loads((claude / "settings.json").read_text())["hooks"])
+        + commands_of(json.loads(hooks))
+        if ".py" in c
+    ]
+    case(
+        lambda: (
+            len(runs_py) > 2
+            and all(shlex.split(c)[0] == str(base / "python" / "bin" / "python") for c in runs_py)
+        ),
+        f"each command of ~/.claude/settings.json and hooks.json that runs a .py hook starts with the "
+        f"environment's interpreter: {runs_py}",
+    )
+    case(
+        lambda: (
+            (config / "hooks" / "install-drift.py").read_bytes()
+            == (claude / "hooks" / "install-drift.py").read_bytes()
+            and scratch.mode(config / "hooks" / "install-drift.py")
+            == scratch.mode(claude / "hooks" / "install-drift.py")
+        ),
+        "hooks/install-drift.py is the Claude Code layer's copy, with its mode",
+    )
+    case(
+        lambda: (
+            (config / "hooks" / "guard.py").read_bytes() == (SOURCE / "guard.py").read_bytes()
+            and all(
+                (config / "hooks" / g).read_bytes() == (claude / "hooks" / g).read_bytes()
+                for g in frontends.GUARDS
+            )
+        ),
+        "hooks/guard.py is adapters/antigravity/guard.py, and each guard script is the Claude Code layer's copy",
+    )
+    case(
+        lambda: (lambda g: (*g.SHELL, g.WORK_TREE, g.KAIMON))(_guard_module()) == frontends.GUARDS,
+        f"guard.py runs the scripts of frontends.GUARDS, in its order: {frontends.GUARDS}",
+    )
     profile = profile_module.load(base / "profile.toml")
     opencode = json.loads(profile_module.render_file(GUARD_PATHS, profile))["deny"]
     h = profile["home"]
     template = json.loads(profile_module.render_file(SETTINGS, profile))["permissions"]
-    edits = {key: [re.sub(r"^//+", "/", e[len("Edit("):-1]) for e in template[key] if e.startswith("Edit(")]
-             for key in ("deny", "ask")}
-    bash = {key: [e[len("Bash("):-1] for e in template[key] if e.startswith("Bash(")] for key in ("deny", "ask")}
+    edits = {
+        key: [re.sub(r"^//+", "/", e[len("Edit(") : -1]) for e in template[key] if e.startswith("Edit(")]
+        for key in ("deny", "ask")
+    }
+    bash = {
+        key: [e[len("Bash(") : -1] for e in template[key] if e.startswith("Bash(")] for key in ("deny", "ask")
+    }
     # The Edit rules of Claude Code's copied files, below Antigravity's copies, written out: RTK.md and
     # the files of instructions/ are in rules/, the other roots at the same path.
     copied = ("RTK.md", "instructions/", "hooks/", "rules/", "skills/")
 
     def moved(p):
-        rest = p[len(h + "/.claude/"):]
-        rest = ("rules/RTK.md" if rest == "RTK.md" else "rules/" + rest.removeprefix("instructions/")
-                if rest.startswith("instructions/") else rest)
+        rest = p[len(h + "/.claude/") :]
+        rest = (
+            "rules/RTK.md"
+            if rest == "RTK.md"
+            else "rules/" + rest.removeprefix("instructions/")
+            if rest.startswith("instructions/")
+            else rest
+        )
         return f"{h}/.gemini/config/{rest}"
 
-    copies = {key: [moved(p) for p in edits[key] if p.startswith(tuple(f"{h}/.claude/{c}" for c in copied))]
-              for key in ("deny", "ask")}
-    globals_ = [f"{h}/.gemini/config/GEMINI.md", f"{h}/.gemini/config/AGENTS.md", f"{h}/.gemini/GEMINI.md",
-                f"{h}/.gemini/config/agents/**", f"{h}/.gemini/config/config.json"]
+    copies = {
+        key: [moved(p) for p in edits[key] if p.startswith(tuple(f"{h}/.claude/{c}" for c in copied))]
+        for key in ("deny", "ask")
+    }
+    globals_ = [
+        f"{h}/.gemini/config/GEMINI.md",
+        f"{h}/.gemini/config/AGENTS.md",
+        f"{h}/.gemini/GEMINI.md",
+        f"{h}/.gemini/config/agents/**",
+        f"{h}/.gemini/config/config.json",
+    ]
     lists = config / "guard-paths.json"
     written = json.loads(lists.read_text()) if lists.is_file() else {}
-    case(lambda: written["edit"][len(edits["deny"]):] == [*copies["deny"], *globals_]
-         and written["ask"][len(edits["ask"]):] == copies["ask"]
-         and {f"{h}/.gemini/config/rules/RTK.md", f"{h}/.gemini/config/rules/**",
-              f"{h}/.gemini/config/skills/build-part/**", f"{h}/.gemini/config/hooks/**"} <= set(copies["deny"])
-         and len([p for p in edits["deny"] if p in (f"{h}/.claude/RTK.md", f"{h}/.claude/instructions/**")]) == 2
-         and not {f"{h}/.gemini/config/RTK.md", f"{h}/.gemini/config/instructions/**"} & set(written["edit"])
-         and copies["ask"] == [f"{h}/.gemini/config/skills/**"],
-         f"after the template's Edit rules, `edit` holds each Edit deny of a copied path below ~/.claude/ as "
-         f"the path of its copy below ~/.gemini/config/, RTK.md and instructions/ in rules/, then GEMINI.md, "
-         f"AGENTS.md, ~/.gemini/GEMINI.md, the installed agents and the app's config.json, and `ask` each such "
-         f"Edit ask: "
-         f"{written.get('edit', [])[len(edits['deny']):]}, {written.get('ask', [])[len(edits['ask']):]}")
-    case(lambda: written == {"deny": [*opencode, f"{h}/.gemini/config/mcp_config.json", f"{h}/.gemini/config/hooks.json",
-                                      f"{h}/.gemini/config/hooks/**", f"{h}/.gemini/config/guard-paths.json",
-                                      f"{h}/.gemini/antigravity-cli/settings.json"],
-                             "edit": [*edits["deny"], *copies["deny"], *globals_],
-                             "ask": [*edits["ask"], *copies["ask"]],
-                             "bash_deny": bash["deny"], "bash_ask": bash["ask"]}
-         and len(edits["deny"]) >= 54 and len(edits["ask"]) >= 4
-         and len(bash["deny"]) >= 187 and len(bash["ask"]) >= 105,
-         f"guard-paths.json is OpenCode's deny list, then mcp_config.json and the files of the layer; `edit` is "
-         f"every Edit deny of the template and `ask` every Edit ask, each then with Antigravity's copies; "
-         f"`bash_deny` and `bash_ask` are the bodies "
-         f"of every Bash deny and ask, entry by entry: { {k: len(v) for k, v in written.items()} }")
+    case(
+        lambda: (
+            written["edit"][len(edits["deny"]) :] == [*copies["deny"], *globals_]
+            and written["ask"][len(edits["ask"]) :] == copies["ask"]
+            and {
+                f"{h}/.gemini/config/rules/RTK.md",
+                f"{h}/.gemini/config/rules/**",
+                f"{h}/.gemini/config/skills/build-part/**",
+                f"{h}/.gemini/config/hooks/**",
+            }
+            <= set(copies["deny"])
+            and len(
+                [p for p in edits["deny"] if p in (f"{h}/.claude/RTK.md", f"{h}/.claude/instructions/**")]
+            )
+            == 2
+            and not {f"{h}/.gemini/config/RTK.md", f"{h}/.gemini/config/instructions/**"}
+            & set(written["edit"])
+            and copies["ask"] == [f"{h}/.gemini/config/skills/**"]
+        ),
+        f"after the template's Edit rules, `edit` holds each Edit deny of a copied path below ~/.claude/ as "
+        f"the path of its copy below ~/.gemini/config/, RTK.md and instructions/ in rules/, then GEMINI.md, "
+        f"AGENTS.md, ~/.gemini/GEMINI.md, the installed agents and the app's config.json, and `ask` each such "
+        f"Edit ask: "
+        f"{written.get('edit', [])[len(edits['deny']) :]}, {written.get('ask', [])[len(edits['ask']) :]}",
+    )
+    case(
+        lambda: (
+            written
+            == {
+                "deny": [
+                    *opencode,
+                    f"{h}/.gemini/config/mcp_config.json",
+                    f"{h}/.gemini/config/hooks.json",
+                    f"{h}/.gemini/config/hooks/**",
+                    f"{h}/.gemini/config/guard-paths.json",
+                    f"{h}/.gemini/antigravity-cli/settings.json",
+                ],
+                "edit": [*edits["deny"], *copies["deny"], *globals_],
+                "ask": [*edits["ask"], *copies["ask"]],
+                "bash_deny": bash["deny"],
+                "bash_ask": bash["ask"],
+            }
+            and len(edits["deny"]) >= 54
+            and len(edits["ask"]) >= 4
+            and len(bash["deny"]) >= 187
+            and len(bash["ask"]) >= 105
+        ),
+        f"guard-paths.json is OpenCode's deny list, then mcp_config.json and the files of the layer; `edit` is "
+        f"every Edit deny of the template and `ask` every Edit ask, each then with Antigravity's copies; "
+        f"`bash_deny` and `bash_ask` are the bodies "
+        f"of every Bash deny and ask, entry by entry: { {k: len(v) for k, v in written.items()} }",
+    )
     new = gemini / "antigravity-cli" / "settings.json"
     settings = json.loads(new.read_text()) if new.is_file() else {}
-    case(lambda: settings["toolPermission"] == "proceed-in-sandbox" and settings["enableTerminalSandbox"] is True
-         and "allowNonWorkspaceAccess" not in settings and sorted(settings) == sorted(["permissions", *POSTURE]),
-         f"a new settings.json holds the three keys, with the sandbox on and proceed-in-sandbox, and no "
-         f"allowNonWorkspaceAccess: {sorted(settings)}")
-    kaimon = {key: ["mcp(kaimon/" + e.removeprefix("mcp__kaimon__") + ")" for e in template[key]
-                    if e.startswith("mcp__kaimon__")] for key in LISTS}
+    case(
+        lambda: (
+            settings["toolPermission"] == "proceed-in-sandbox"
+            and settings["enableTerminalSandbox"] is True
+            and "allowNonWorkspaceAccess" not in settings
+            and sorted(settings) == sorted(["permissions", *POSTURE])
+        ),
+        f"a new settings.json holds the three keys, with the sandbox on and proceed-in-sandbox, and no "
+        f"allowNonWorkspaceAccess: {sorted(settings)}",
+    )
+    kaimon = {
+        key: [
+            "mcp(kaimon/" + e.removeprefix("mcp__kaimon__") + ")"
+            for e in template[key]
+            if e.startswith("mcp__kaimon__")
+        ]
+        for key in LISTS
+    }
     cli = settings.get("permissions", {})
     excluded = json.loads(profile_module.render_file(SETTINGS, profile))["sandbox"]["excludedCommands"]
     unsandboxed = [f"command({w})" for w in dict.fromkeys(e.split()[0] for e in excluded)]
@@ -1030,34 +1366,59 @@ def layer_cases(scratch):
             rules = rules[:-1]
         return rules
 
-    case(lambda: all(kaimon[key] and before_unsandboxed(key)[-len(kaimon[key]):] == kaimon[key]
-                     and not [r for r in before_unsandboxed(key)[:-len(kaimon[key])] if r.startswith("mcp(")]
-                     for key in LISTS)
-         and "mcp(kaimon/*)" not in cli["allow"],
-         f"the CLI's settings.json holds each Kaimon tool of the template as mcp(kaimon/<tool>) after the other "
-         f"rules of its list, in `allow` before the rules of excludedCommands, and no mcp(kaimon/*): "
-         f"{ {key: before_unsandboxed(key)[-2:] for key in LISTS} }")
-    case(lambda: len(unsandboxed) >= 4
-         and cli["allow"][len(before_unsandboxed("allow")):] == [r for r in unsandboxed
-                                                                if r not in before_unsandboxed("allow")]
-         and all(cli["allow"].count(r) == 1 for r in unsandboxed),
-         f"the CLI's settings.json ends its allow list with each rule of excludedCommands, {unsandboxed}, that "
-         f"the list does not hold, and holds each once: {cli.get('allow', [])[-4:]}")
+    case(
+        lambda: (
+            all(
+                kaimon[key]
+                and before_unsandboxed(key)[-len(kaimon[key]) :] == kaimon[key]
+                and not [r for r in before_unsandboxed(key)[: -len(kaimon[key])] if r.startswith("mcp(")]
+                for key in LISTS
+            )
+            and "mcp(kaimon/*)" not in cli["allow"]
+        ),
+        f"the CLI's settings.json holds each Kaimon tool of the template as mcp(kaimon/<tool>) after the other "
+        f"rules of its list, in `allow` before the rules of excludedCommands, and no mcp(kaimon/*): "
+        f"{ {key: before_unsandboxed(key)[-2:] for key in LISTS} }",
+    )
+    case(
+        lambda: (
+            len(unsandboxed) >= 4
+            and cli["allow"][len(before_unsandboxed("allow")) :]
+            == [r for r in unsandboxed if r not in before_unsandboxed("allow")]
+            and all(cli["allow"].count(r) == 1 for r in unsandboxed)
+        ),
+        f"the CLI's settings.json ends its allow list with each rule of excludedCommands, {unsandboxed}, that "
+        f"the list does not hold, and holds each once: {cli.get('allow', [])[-4:]}",
+    )
     app = config / "config.json"
     grants = json.loads(app.read_text()) if app.is_file() else {}
-    case(lambda: all(grants["userSettings"]["globalPermissionGrants"]["allow"].count(r) == 1 for r in unsandboxed),
-         f"the app's config.json holds each rule of excludedCommands once in its allow grants: "
-         f"{grants.get('userSettings', {}).get('globalPermissionGrants', {}).get('allow', [])[-4:]}")
-    case(lambda: grants == {"userSettings": {"globalPermissionGrants": {k: cli[k] for k in ("allow", "deny", "ask")}}}
-         and list(grants["userSettings"]["globalPermissionGrants"]) == ["allow", "deny", "ask"]
-         and not list(config.glob("config.json.bak-*")),
-         f"a new config/config.json holds userSettings.globalPermissionGrants alone, its allow, deny and ask the "
-         f"rules of the CLI's permissions, and no backup is made: {list(grants)}")
+    case(
+        lambda: all(
+            grants["userSettings"]["globalPermissionGrants"]["allow"].count(r) == 1 for r in unsandboxed
+        ),
+        f"the app's config.json holds each rule of excludedCommands once in its allow grants: "
+        f"{grants.get('userSettings', {}).get('globalPermissionGrants', {}).get('allow', [])[-4:]}",
+    )
+    case(
+        lambda: (
+            grants
+            == {"userSettings": {"globalPermissionGrants": {k: cli[k] for k in ("allow", "deny", "ask")}}}
+            and list(grants["userSettings"]["globalPermissionGrants"]) == ["allow", "deny", "ask"]
+            and not list(config.glob("config.json.bak-*"))
+        ),
+        f"a new config/config.json holds userSettings.globalPermissionGrants alone, its allow, deny and ask the "
+        f"rules of the CLI's permissions, and no backup is made: {list(grants)}",
+    )
     code, text = run(base, "--apply")
-    case(lambda: code == 0 and dict(line.findall(text)) == {k: "already" for k in want}
-         and not list((gemini / "antigravity-cli").glob("settings.json.bak-*"))
-         and not list(config.glob("config.json.bak-*")),
-         f"a second --apply finds every file identical and makes no backup: {code}, {dict(line.findall(text))}")
+    case(
+        lambda: (
+            code == 0
+            and dict(line.findall(text)) == {k: "already" for k in want}
+            and not list((gemini / "antigravity-cli").glob("settings.json.bak-*"))
+            and not list(config.glob("config.json.bak-*"))
+        ),
+        f"a second --apply finds every file identical and makes no backup: {code}, {dict(line.findall(text))}",
+    )
 
 
 def instruction_cases(scratch):
@@ -1077,131 +1438,255 @@ def instruction_cases(scratch):
     finally:
         os.umask(umask)
     if code != 0:
-        case(lambda: False, f"the setup install --apply of the Antigravity instruction cases exits {code}: "
-                            f"{tail(text)!r}; the cases after it do not run")
+        case(
+            lambda: False,
+            f"the setup install --apply of the Antigravity instruction cases exits {code}: "
+            f"{tail(text)!r}; the cases after it do not run",
+        )
         return
     config = gemini / "config"
     if not (config / "GEMINI.md").is_file():
-        case(lambda: False, "the setup install --apply of the Antigravity instruction cases writes "
-                            "~/.gemini/config/GEMINI.md; the cases after it do not run")
+        case(
+            lambda: False,
+            "the setup install --apply of the Antigravity instruction cases writes "
+            "~/.gemini/config/GEMINI.md; the cases after it do not run",
+        )
         return
     rules = sorted((config / "rules").glob("*.md"))
     sizes = {p.name: len(p.read_bytes()) for p in [config / "GEMINI.md", *rules]}
-    case(lambda: len(sizes) == 5 + len(rule_names(REPO / "rules"))
-         and max(sizes.values()) < 24000 and sum(sizes.values()) < 20000 * 4
-         and not [n for n in sizes if b"@[" in (config / "rules" / n if n != "GEMINI.md" else config / n).read_bytes()],
-         f"each installed instruction file and rule is below 24,000 bytes, holds no include, and their sum is below "
-         f"20,000 tokens at 4 bytes a token: {sum(sizes.values())} bytes, {sizes}")
+    case(
+        lambda: (
+            len(sizes) == 5 + len(rule_names(REPO / "rules"))
+            and max(sizes.values()) < 24000
+            and sum(sizes.values()) < 20000 * 4
+            and not [
+                n
+                for n in sizes
+                if b"@[" in (config / "rules" / n if n != "GEMINI.md" else config / n).read_bytes()
+            ]
+        ),
+        f"each installed instruction file and rule is below 24,000 bytes, holds no include, and their sum is below "
+        f"20,000 tokens at 4 bytes a token: {sum(sizes.values())} bytes, {sizes}",
+    )
 
     # Each text but the global file names Antigravity's copies; a ~/.claude/ path that is left names
     # Claude Code itself, outside the roots that Antigravity copies.
     texts = [p for p in config.rglob("*.md") if p != config / "GEMINI.md"]
-    hits = [(p.relative_to(config).as_posix(), line) for p in texts
-            for line in p.read_text(encoding="utf-8").splitlines() if "~/.claude/" in line]
+    hits = [
+        (p.relative_to(config).as_posix(), line)
+        for p in texts
+        for line in p.read_text(encoding="utf-8").splitlines()
+        if "~/.claude/" in line
+    ]
     shared = [h for h in hits if any(root in h[1] for root in frontends.SHARED_ROOTS)]
     moved = [p for p in texts if "~/.gemini/config/rules/" in p.read_text(encoding="utf-8")]
-    case(lambda: not shared and hits and moved,
-         f"a grep of the rendered set for ~/.claude/ finds only the lines that name Claude Code itself, "
-         f"{len(hits)} of them, and none of frontends.SHARED_ROOTS; {len(moved)} texts name ~/.gemini/config/rules/: "
-         f"{shared[:3]}")
+    case(
+        lambda: not shared and hits and moved,
+        f"a grep of the rendered set for ~/.claude/ finds only the lines that name Claude Code itself, "
+        f"{len(hits)} of them, and none of frontends.SHARED_ROOTS; {len(moved)} texts name ~/.gemini/config/rules/: "
+        f"{shared[:3]}",
+    )
 
     # A rule's `paths` becomes Antigravity's glob trigger, and the delta lists the rule with its scope.
     source = (REPO / "rules" / "julia-code.md").read_bytes()
     end = source.index(b"\n---\n", 3)
     description = re.search(rb"^description: (.*)$", source[:end], re.M).group(1).decode()
     installed = (config / "rules" / "julia-code.md").read_bytes()
-    case(lambda: installed == (f'---\ntrigger: glob\nglobs: "**/*.jl"\ndescription: {json.dumps(description)}'
-                               .encode() + relocate(source[end:], "~/.gemini/config")),
-         f"rules/julia-code.md reads back as trigger: glob, globs **/*.jl, its description and its body: "
-         f"{installed[:120]!r}")
+    case(
+        lambda: (
+            installed
+            == (
+                f'---\ntrigger: glob\nglobs: "**/*.jl"\ndescription: {json.dumps(description)}'.encode()
+                + relocate(source[end:], "~/.gemini/config")
+            )
+        ),
+        f"rules/julia-code.md reads back as trigger: glob, globs **/*.jl, its description and its body: "
+        f"{installed[:120]!r}",
+    )
     several = (config / "rules" / "instruction-files.md").read_text().split("\n")[:3]
-    case(lambda: several == ["---", "trigger: glob",
-                             'globs: "**/CLAUDE.md, **/SKILL.md, **/agents/*.md, **/rules/*.md, **/AGENTS.md"'],
-         f"a rule of several paths has them as one `globs`, joined by `, `: {several}")
+    case(
+        lambda: (
+            several
+            == [
+                "---",
+                "trigger: glob",
+                'globs: "**/CLAUDE.md, **/SKILL.md, **/agents/*.md, **/rules/*.md, **/AGENTS.md"',
+            ]
+        ),
+        f"a rule of several paths has them as one `globs`, joined by `, `: {several}",
+    )
     delta = (SOURCE / "ANTIGRAVITY-DELTA.md").read_text()
     unlisted = [n for n in rule_names(REPO / "rules") if f"| `{n}` |" not in delta]
-    case(lambda: not unlisted and "| `meta-repository.md` |" in delta and "~/.gemini/config/rules/" in delta,
-         f"ANTIGRAVITY-DELTA.md lists each rule of rules/ and meta-repository.md with its scope: {unlisted}")
+    case(
+        lambda: not unlisted and "| `meta-repository.md` |" in delta and "~/.gemini/config/rules/" in delta,
+        f"ANTIGRAVITY-DELTA.md lists each rule of rules/ and meta-repository.md with its scope: {unlisted}",
+    )
     core = (config / "rules" / "core.md").read_bytes()
-    case(lambda: core == b"---\ntrigger: always_on\n---\n\n" + relocate(
-        (REPO / "instructions" / "core.md").read_bytes(), "~/.gemini/config")
-         and (config / "rules" / "RTK.md").read_bytes().startswith(b"---\ntrigger: always_on\n---\n\n# RTK")
-         and (config / "rules" / "research-tree.md").read_bytes()
-         == b"---\ntrigger: always_on\n---\n\n" + (tree / "instructions" / "research-tree.md").read_bytes(),
-         f"the core, RTK.md and the tree instructions are rules with trigger: always_on: {core[:60]!r}")
+    case(
+        lambda: (
+            core
+            == b"---\ntrigger: always_on\n---\n\n"
+            + relocate((REPO / "instructions" / "core.md").read_bytes(), "~/.gemini/config")
+            and (config / "rules" / "RTK.md")
+            .read_bytes()
+            .startswith(b"---\ntrigger: always_on\n---\n\n# RTK")
+            and (config / "rules" / "research-tree.md").read_bytes()
+            == b"---\ntrigger: always_on\n---\n\n" + (tree / "instructions" / "research-tree.md").read_bytes()
+        ),
+        f"the core, RTK.md and the tree instructions are rules with trigger: always_on: {core[:60]!r}",
+    )
 
     # A skill keeps `name` and `description` and drops `model`; its own files go beside it, with their modes.
     skill = (config / "skills" / "build-part" / "SKILL.md").read_text()
     head = skill.split("\n---\n", 1)[0].splitlines()[1:]
     keys = [l.split(":", 1)[0] for l in head if not l.startswith(" ")]
-    case(lambda: keys == ["name", "description"] and head[0] == "name: build-part",
-         f"skills/build-part/SKILL.md keeps name and description and drops model: {keys}")
-    heads = {p.parent.name: p.read_text().split("\n---\n", 1)[0] for p in (config / "skills").glob("*/SKILL.md")}
-    case(lambda: sorted(heads) == skill_names(REPO / "skills")
-         and all(re.search(r"(?m)^name: ", h) and re.search(r"(?m)^description: ", h)
-                 and not re.search(r"(?m)^model:", h) for h in heads.values())
-         and "disable-model-invocation: true" in heads["wait-what"],
-         f"every SKILL.md keeps name and description, drops model, and keeps every other key: {sorted(heads)}")
+    case(
+        lambda: keys == ["name", "description"] and head[0] == "name: build-part",
+        f"skills/build-part/SKILL.md keeps name and description and drops model: {keys}",
+    )
+    heads = {
+        p.parent.name: p.read_text().split("\n---\n", 1)[0] for p in (config / "skills").glob("*/SKILL.md")
+    }
+    case(
+        lambda: (
+            sorted(heads) == skill_names(REPO / "skills")
+            and all(
+                re.search(r"(?m)^name: ", h)
+                and re.search(r"(?m)^description: ", h)
+                and not re.search(r"(?m)^model:", h)
+                for h in heads.values()
+            )
+            and "disable-model-invocation: true" in heads["wait-what"]
+        ),
+        f"every SKILL.md keeps name and description, drops model, and keeps every other key: {sorted(heads)}",
+    )
     own = [f for f in skills_files() if not f.endswith("/SKILL.md")]
-    case(lambda: own and all((config / "skills" / f).read_bytes() == relocate(
-        (claude / "skills" / f).read_bytes(), "~/.gemini/config")
-                             and mode(config / "skills" / f) == mode(claude / "skills" / f) for f in own),
-         f"a skill's own files install beside its SKILL.md, with their modes: {own}")
+    case(
+        lambda: (
+            own
+            and all(
+                (config / "skills" / f).read_bytes()
+                == relocate((claude / "skills" / f).read_bytes(), "~/.gemini/config")
+                and mode(config / "skills" / f) == mode(claude / "skills" / f)
+                for f in own
+            )
+        ),
+        f"a skill's own files install beside its SKILL.md, with their modes: {own}",
+    )
 
     # The delta states Antigravity's facts, is the global file, and is no larger than OpenCode's.
     size = len((SOURCE / "ANTIGRAVITY-DELTA.md").read_bytes())
-    case(lambda: size <= len((REPO / "adapters" / "opencode" / "OPENCODE-DELTA.md").read_bytes())
-         and (config / "GEMINI.md").read_bytes() == (SOURCE / "ANTIGRAVITY-DELTA.md").read_bytes()
-         and all(s in delta for s in ["sandbox", "guard.py", "No RTK rewrite", "git worktree add",
-                                      "~/Research/.worktrees/", "invoke_subagent", "effort", "CLAUDE.md"]),
-         f"ANTIGRAVITY-DELTA.md is ~/.gemini/config/GEMINI.md, states the facts of the delta, and is no larger "
-         f"than OPENCODE-DELTA.md: {size} bytes")
+    case(
+        lambda: (
+            size <= len((REPO / "adapters" / "opencode" / "OPENCODE-DELTA.md").read_bytes())
+            and (config / "GEMINI.md").read_bytes() == (SOURCE / "ANTIGRAVITY-DELTA.md").read_bytes()
+            and all(
+                s in delta
+                for s in [
+                    "sandbox",
+                    "guard.py",
+                    "No RTK rewrite",
+                    "git worktree add",
+                    "~/Research/.worktrees/",
+                    "invoke_subagent",
+                    "effort",
+                    "CLAUDE.md",
+                ]
+            )
+        ),
+        f"ANTIGRAVITY-DELTA.md is ~/.gemini/config/GEMINI.md, states the facts of the delta, and is no larger "
+        f"than OPENCODE-DELTA.md: {size} bytes",
+    )
 
     # An installed file with no source below the paths that the layer owns is EXTRA; Antigravity's
     # own files are neither listed nor touched.
-    strays = [config / "rules" / "stray.md", config / "skills" / "gone" / "SKILL.md",
-              config / "skills" / "build-part" / "old.md", config / "hooks" / "old.py", config / "skills" / "loose.md",
-              config / "agents" / "gone.md"]
-    theirs = [gemini / "antigravity" / "x.json", config / "projects" / "p.json", config / "plugins" / "p" / "x.md",
-              config / "rules" / ".DS_Store"]
+    strays = [
+        config / "rules" / "stray.md",
+        config / "skills" / "gone" / "SKILL.md",
+        config / "skills" / "build-part" / "old.md",
+        config / "hooks" / "old.py",
+        config / "skills" / "loose.md",
+        config / "agents" / "gone.md",
+    ]
+    theirs = [
+        gemini / "antigravity" / "x.json",
+        config / "projects" / "p.json",
+        config / "plugins" / "p" / "x.md",
+        config / "rules" / ".DS_Store",
+    ]
     for p in strays + theirs:
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text("x\n")
     code, text = run(base)
     extra = re.findall(r"^EXTRA: (\S+) .*\n\s+To remove it:\s+(.*)$", text, re.M)
-    case(lambda: code == 0 and sorted(extra) == sorted([
-        (str(config / "rules" / "stray.md"), f"rm '{config / 'rules' / 'stray.md'}'"),
-        (str(config / "skills" / "gone"), f"rm -r '{config / 'skills' / 'gone'}'"),
-        (str(config / "skills" / "build-part" / "old.md"), f"rm '{config / 'skills' / 'build-part' / 'old.md'}'"),
-        (str(config / "hooks" / "old.py"), f"rm '{config / 'hooks' / 'old.py'}'"),
-        (str(config / "skills" / "loose.md"), f"rm '{config / 'skills' / 'loose.md'}'"),
-        (str(config / "agents" / "gone.md"), f"rm '{config / 'agents' / 'gone.md'}'")])
-         and all(p.read_text() == "x\n" for p in strays + theirs),
-         f"a file with no source below rules/, skills/, hooks/ or agents/ is EXTRA with its removal command, and "
-         f"antigravity/, projects/, plugins/ and a hidden file are not listed: {code}, {extra}")
-    case(lambda: render_skill(b"---\nname: s\nmodel: large\n---\n\nmodel: kept\n")
-         == b"---\nname: s\n---\n\nmodel: kept\n"
-         and render_skill(b"no frontmatter\nmodel: kept\n") == b"no frontmatter\nmodel: kept\n",
-         "render_skill drops a `model:` line of the frontmatter only, and leaves a text with no frontmatter")
-    case(lambda: render_skill(b"---\r\nname: s\r\nmodel: large\r\n---\r\n\r\nmodel: kept\r\n")
-         == b"---\r\nname: s\r\n---\r\n\r\nmodel: kept\r\n"
-         and render_skill(b"---\nmodel: kept\n") == b"---\nmodel: kept\n"
-         and render_skill(b"x\n---\nmodel: kept\n---\n") == b"x\n---\nmodel: kept\n---\n",
-         "render_skill drops the `model:` line of a SKILL.md with CRLF line ends too, and leaves a text whose "
-         "frontmatter does not close or does not open on line 1")
-    crlf = [("glob", b'---\r\npaths: ["**/*.jl"]\r\ndescription: A CRLF rule.\r\n---\r\n\r\nbody\r\n'),
-            ("always", b"---\r\ndescription: A CRLF rule.\r\n---\r\n\r\nbody\r\n")]
-    case(lambda: [render_rule(pathlib.Path(f"{name}.md"), data) for name, data in crlf]
-         == [b'---\ntrigger: glob\nglobs: "**/*.jl"\ndescription: "A CRLF rule."\n---\r\n\r\nbody\r\n',
-             b'---\ntrigger: always_on\ndescription: "A CRLF rule."\n---\r\n\r\nbody\r\n'],
-         "a rule with CRLF line ends, which oh-my-pi's grammar accepts, renders with the trigger of one with LF "
-         "and keeps its closing line and body")
+    case(
+        lambda: (
+            code == 0
+            and sorted(extra)
+            == sorted(
+                [
+                    (str(config / "rules" / "stray.md"), f"rm '{config / 'rules' / 'stray.md'}'"),
+                    (str(config / "skills" / "gone"), f"rm -r '{config / 'skills' / 'gone'}'"),
+                    (
+                        str(config / "skills" / "build-part" / "old.md"),
+                        f"rm '{config / 'skills' / 'build-part' / 'old.md'}'",
+                    ),
+                    (str(config / "hooks" / "old.py"), f"rm '{config / 'hooks' / 'old.py'}'"),
+                    (str(config / "skills" / "loose.md"), f"rm '{config / 'skills' / 'loose.md'}'"),
+                    (str(config / "agents" / "gone.md"), f"rm '{config / 'agents' / 'gone.md'}'"),
+                ]
+            )
+            and all(p.read_text() == "x\n" for p in strays + theirs)
+        ),
+        f"a file with no source below rules/, skills/, hooks/ or agents/ is EXTRA with its removal command, and "
+        f"antigravity/, projects/, plugins/ and a hidden file are not listed: {code}, {extra}",
+    )
+    case(
+        lambda: (
+            render_skill(b"---\nname: s\nmodel: large\n---\n\nmodel: kept\n")
+            == b"---\nname: s\n---\n\nmodel: kept\n"
+            and render_skill(b"no frontmatter\nmodel: kept\n") == b"no frontmatter\nmodel: kept\n"
+        ),
+        "render_skill drops a `model:` line of the frontmatter only, and leaves a text with no frontmatter",
+    )
+    case(
+        lambda: (
+            render_skill(b"---\r\nname: s\r\nmodel: large\r\n---\r\n\r\nmodel: kept\r\n")
+            == b"---\r\nname: s\r\n---\r\n\r\nmodel: kept\r\n"
+            and render_skill(b"---\nmodel: kept\n") == b"---\nmodel: kept\n"
+            and render_skill(b"x\n---\nmodel: kept\n---\n") == b"x\n---\nmodel: kept\n---\n"
+        ),
+        "render_skill drops the `model:` line of a SKILL.md with CRLF line ends too, and leaves a text whose "
+        "frontmatter does not close or does not open on line 1",
+    )
+    crlf = [
+        ("glob", b'---\r\npaths: ["**/*.jl"]\r\ndescription: A CRLF rule.\r\n---\r\n\r\nbody\r\n'),
+        ("always", b"---\r\ndescription: A CRLF rule.\r\n---\r\n\r\nbody\r\n"),
+    ]
+    case(
+        lambda: (
+            [render_rule(pathlib.Path(f"{name}.md"), data) for name, data in crlf]
+            == [
+                b'---\ntrigger: glob\nglobs: "**/*.jl"\ndescription: "A CRLF rule."\n---\r\n\r\nbody\r\n',
+                b'---\ntrigger: always_on\ndescription: "A CRLF rule."\n---\r\n\r\nbody\r\n',
+            ]
+        ),
+        "a rule with CRLF line ends, which oh-my-pi's grammar accepts, renders with the trigger of one with LF "
+        "and keeps its closing line and body",
+    )
     # RTK.md and the files of instructions/ are rules of rules/, so a text names them there.
-    case(lambda: relocate(b"~/.claude/RTK.md ~/.claude/instructions/core.md ~/.claude/rules/x.md "
-                          b"~/.claude/skills/a/SKILL.md", "~/.gemini/config")
-         == b"~/.gemini/config/rules/RTK.md ~/.gemini/config/rules/core.md ~/.gemini/config/rules/x.md "
-            b"~/.gemini/config/skills/a/SKILL.md",
-         "relocate names RTK.md and a file of instructions/ in rules/, and the other roots at the same path")
+    case(
+        lambda: (
+            relocate(
+                b"~/.claude/RTK.md ~/.claude/instructions/core.md ~/.claude/rules/x.md "
+                b"~/.claude/skills/a/SKILL.md",
+                "~/.gemini/config",
+            )
+            == b"~/.gemini/config/rules/RTK.md ~/.gemini/config/rules/core.md ~/.gemini/config/rules/x.md "
+            b"~/.gemini/config/skills/a/SKILL.md"
+        ),
+        "relocate names RTK.md and a file of instructions/ in rules/, and the other roots at the same path",
+    )
     base, claude, tree = scratch.fresh(["rules/names.md", "instructions/names-too.md"])
     named = "see ~/.claude/RTK.md and ~/.claude/instructions/core.md\n"
     (tree / "rules" / "names.md").write_text(RULE_HEAD + named)
@@ -1210,59 +1695,97 @@ def instruction_cases(scratch):
     code, text = run(base, "--apply")
     out = base / "home" / ".gemini" / "config" / "rules"
     got = [(out / n).read_text() if (out / n).is_file() else None for n in ("names.md", "names-too.md")]
-    case(lambda: code == 0 and all(g is not None and g.endswith(
-        "see ~/.gemini/config/rules/RTK.md and ~/.gemini/config/rules/core.md\n") for g in got),
-         f"an installed rule and an always-on file name RTK.md and instructions/core.md in rules/: {code}, {got}")
+    case(
+        lambda: (
+            code == 0
+            and all(
+                g is not None
+                and g.endswith("see ~/.gemini/config/rules/RTK.md and ~/.gemini/config/rules/core.md\n")
+                for g in got
+            )
+        ),
+        f"an installed rule and an always-on file name RTK.md and instructions/core.md in rules/: {code}, {got}",
+    )
     # A skill of the tree instructions: its SKILL.md loses `model:`, its other files keep their
     # frontmatter, and a text that is no `.md` keeps its ~/.claude/ paths.
     base, claude, tree = scratch.fresh(["skills/s/SKILL.md", "skills/s/notes.md", "skills/s/run.sh"])
-    (tree / "skills" / "s" / "SKILL.md").write_text("---\nname: s\nmodel: large\ndescription: d\n---\n"
-                                                    "~/.claude/rules/x.md\n")
-    (tree / "skills" / "s" / "notes.md").write_text("---\nmodel: kept\n---\n~/.claude/rules/x.md ~/.claude/RTK.md\n")
+    (tree / "skills" / "s" / "SKILL.md").write_text(
+        "---\nname: s\nmodel: large\ndescription: d\n---\n~/.claude/rules/x.md\n"
+    )
+    (tree / "skills" / "s" / "notes.md").write_text(
+        "---\nmodel: kept\n---\n~/.claude/rules/x.md ~/.claude/RTK.md\n"
+    )
     (tree / "skills" / "s" / "run.sh").write_text("cat ~/.claude/rules/x.md\n")
     (base / "home" / ".gemini").mkdir()
     code, text = run(base, "--apply")
     s = base / "home" / ".gemini" / "config" / "skills" / "s"
     got = [(s / n).read_text() if (s / n).is_file() else None for n in ("SKILL.md", "notes.md", "run.sh")]
-    case(lambda: code == 0 and got == ["---\nname: s\ndescription: d\n---\n~/.gemini/config/rules/x.md\n",
-                                       "---\nmodel: kept\n---\n~/.gemini/config/rules/x.md "
-                                       "~/.gemini/config/rules/RTK.md\n",
-                                       "cat ~/.claude/rules/x.md\n"],
-         f"a tree skill's SKILL.md drops model:, its own .md file keeps its frontmatter, each .md names "
-         f"Antigravity's copies, and a script stays as it is: {code}, {got}")
+    case(
+        lambda: (
+            code == 0
+            and got
+            == [
+                "---\nname: s\ndescription: d\n---\n~/.gemini/config/rules/x.md\n",
+                "---\nmodel: kept\n---\n~/.gemini/config/rules/x.md ~/.gemini/config/rules/RTK.md\n",
+                "cat ~/.claude/rules/x.md\n",
+            ]
+        ),
+        f"a tree skill's SKILL.md drops model:, its own .md file keeps its frontmatter, each .md names "
+        f"Antigravity's copies, and a script stays as it is: {code}, {got}",
+    )
     # A file in a subdirectory of instructions/ and a file of rules/ that is no `.md` are neither
     # always-on files nor rules.
     base, claude, tree = scratch.fresh(["instructions/sub/x.md", "rules/tool.sh"])
     (base / "home" / ".gemini").mkdir()
     code, text = run(base)
     listed = re.findall(r"^antigravity/config/rules/(\S+)\s", text, re.M)
-    case(lambda: code == 1 and (claude / "instructions" / "sub" / "x.md").exists() is False
-         and re.search(r"^~/.claude/instructions/sub/x\.md\s+INSTALL$", text, re.M)
-         and "x.md" not in listed and "tool.sh" not in listed and "core.md" in listed,
-         f"instructions/sub/x.md and rules/tool.sh install no Antigravity rule: {code}, {listed}")
+    case(
+        lambda: (
+            code == 1
+            and (claude / "instructions" / "sub" / "x.md").exists() is False
+            and re.search(r"^~/.claude/instructions/sub/x\.md\s+INSTALL$", text, re.M)
+            and "x.md" not in listed
+            and "tool.sh" not in listed
+            and "core.md" in listed
+        ),
+        f"instructions/sub/x.md and rules/tool.sh install no Antigravity rule: {code}, {listed}",
+    )
 
     # The refusals, before anything is written: a rule of 25,000 bytes, and a rule whose name is
     # that of an always-on file.
-    for name, data, why in [("rules/big.md", RULE_HEAD + "x" * 25000 + "\n", "24,000 bytes"),
-                            ("rules/core.md", RULE_HEAD + "a rule named as the core\n", "two sources")]:
+    for name, data, why in [
+        ("rules/big.md", RULE_HEAD + "x" * 25000 + "\n", "24,000 bytes"),
+        ("rules/core.md", RULE_HEAD + "a rule named as the core\n", "two sources"),
+    ]:
         base, claude, tree = scratch.fresh([name])
         (tree / name).write_text(data)
         (base / "home" / ".gemini").mkdir()
         snapshot = scratch.snapshot(base / "home")
         code, text = run(base, "--apply")
-        case(lambda: scratch.refused(code, text) and why in text and "rules/" + name.split("/")[1] in text
-             and scratch.snapshot(base / "home") == snapshot,
-             f"a tree rule {name} of {len(data)} bytes exits 2 with `{why}`, and nothing is written: {code}, "
-             f"{tail(text)!r}")
+        case(
+            lambda: (
+                scratch.refused(code, text)
+                and why in text
+                and "rules/" + name.split("/")[1] in text
+                and scratch.snapshot(base / "home") == snapshot
+            ),
+            f"a tree rule {name} of {len(data)} bytes exits 2 with `{why}`, and nothing is written: {code}, "
+            f"{tail(text)!r}",
+        )
     # A rule with no `paths` loads always, as in Claude Code.
     base, claude, tree = scratch.fresh(["rules/always.md"])
     (tree / "rules" / "always.md").write_text("---\ndescription: A rule with no paths.\n---\n\nbody\n")
     (base / "home" / ".gemini").mkdir()
     code, text = run(base, "--apply")
     installed = base / "home" / ".gemini" / "config" / "rules" / "always.md"
-    case(lambda: code == 0 and installed.read_text()
-         == '---\ntrigger: always_on\ndescription: "A rule with no paths."\n---\n\nbody\n',
-         f"a rule with no paths is installed with trigger: always_on: {code}, {tail(text)!r}")
+    case(
+        lambda: (
+            code == 0
+            and installed.read_text()
+            == '---\ntrigger: always_on\ndescription: "A rule with no paths."\n---\n\nbody\n'
+        ),
+        f"a rule with no paths is installed with trigger: always_on: {code}, {tail(text)!r}",
+    )
 
     # The bounds of the size check, exactly at the cap and at the budget.
     def refused(texts):
@@ -1272,14 +1795,22 @@ def instruction_cases(scratch):
         except HarnessError as e:
             return str(e)
 
-    cases = [([("a", b"x" * 23999)], None), ([("a", b"x" * 24000)], "a: 24000 bytes"),
-             ([(str(i), b"x" * 19999) for i in range(4)] + [("e", b"x" * 3)], None),
-             ([(str(i), b"x" * 20000) for i in range(4)], "80000 bytes"),
-             ([("a", b"x @[label](path) y")], "a holds an include"), ([("a", b"x @[label] (path) y")], None)]
+    cases = [
+        ([("a", b"x" * 23999)], None),
+        ([("a", b"x" * 24000)], "a: 24000 bytes"),
+        ([(str(i), b"x" * 19999) for i in range(4)] + [("e", b"x" * 3)], None),
+        ([(str(i), b"x" * 20000) for i in range(4)], "80000 bytes"),
+        ([("a", b"x @[label](path) y")], "a holds an include"),
+        ([("a", b"x @[label] (path) y")], None),
+    ]
     got = [refused(t) for t, _ in cases]
-    case(lambda: all((g is None) if w is None else (g is not None and w in g) for g, (_, w) in zip(got, cases)),
-         f"a file of 23,999 bytes passes and one of 24,000 exits 2; a sum of 79,999 bytes passes and one of 80,000 "
-         f"exits 2; a text with an include `@[…](…)` exits 2, and one with `@[…]` alone passes: {got}")
+    case(
+        lambda: all(
+            (g is None) if w is None else (g is not None and w in g) for g, (_, w) in zip(got, cases)
+        ),
+        f"a file of 23,999 bytes passes and one of 24,000 exits 2; a sum of 79,999 bytes passes and one of 80,000 "
+        f"exits 2; a text with an include `@[…](…)` exits 2, and one with `@[…]` alone passes: {got}",
+    )
 
 
 def skills_files():
@@ -1308,13 +1839,23 @@ def rule_cases(case):
     rules, dropped = render_permissions(cfg, profile)
     reasons = {(key, entry): reason for key, entry, reason in dropped}
     h = profile["home"]
-    extras = [f"read_file({h}/.gemini/config/mcp_config.json)", f"write_file({h}/.gemini/config/hooks.json)",
-              f"write_file({h}/.gemini/config/hooks)", f"write_file({h}/.gemini/config/guard-paths.json)",
-              f"write_file({h}/.gemini/antigravity-cli/settings.json)",
-              f"write_file({h}/.gemini/config/mcp_config.json)"]
+    extras = [
+        f"read_file({h}/.gemini/config/mcp_config.json)",
+        f"write_file({h}/.gemini/config/hooks.json)",
+        f"write_file({h}/.gemini/config/hooks)",
+        f"write_file({h}/.gemini/config/guard-paths.json)",
+        f"write_file({h}/.gemini/antigravity-cli/settings.json)",
+        f"write_file({h}/.gemini/config/mcp_config.json)",
+    ]
     # Each Kaimon tool of the template, `mcp__kaimon__<tool>`, as the rule `mcp(kaimon/<tool>)`.
-    kaimon = {key: ["mcp(kaimon/" + e.removeprefix("mcp__kaimon__") + ")" for e in cfg["permissions"][key]
-                    if e.startswith("mcp__kaimon__")] for key in LISTS}
+    kaimon = {
+        key: [
+            "mcp(kaimon/" + e.removeprefix("mcp__kaimon__") + ")"
+            for e in cfg["permissions"][key]
+            if e.startswith("mcp__kaimon__")
+        ]
+        for key in LISTS
+    }
     # The first word of each command that Claude Code runs outside its sandbox, once each, in the
     # template's order, as a `command(<word>)` rule.
     unsandboxed = []
@@ -1347,95 +1888,183 @@ def rule_cases(case):
             if not ok:
                 wrong.append((key, entry, got))
         rest = list(out)
-        held = rules[key][:len(rules[key]) - len(rest)]
+        held = rules[key][: len(rules[key]) - len(rest)]
         after = [r for r in unsandboxed if r not in held] if key == "allow" else []
         if rest != [*{"deny": extras}.get(key, []), *kaimon[key], *after]:
             wrong.append((key, "after the template's entries", rest))
-    case(lambda: not wrong and rules["allow"] and rules["ask"] and rules["deny"],
-         f"each Bash, Read and Edit entry and each allow host is one rule in its list, in order, that matches the "
-         f"entry's lines or names its path; after them, mcp_config.json is a read_file deny, the files of the "
-         f"layer and mcp_config.json are write_file denies, then each Kaimon tool of the list is its "
-         f"mcp(kaimon/<tool>) rule, in the template's order, and last in `allow` each command(<word>) of the "
-         f"template's excludedCommands that the list does not hold: {wrong[:5]}")
-    case(lambda: unsandboxed[:3] == ["command(gh)", "command(git)", "command(glab)"]
-         and all(rules["allow"].count(r) == 1 for r in unsandboxed)
-         and not [r for key in ("deny", "ask") for r in rules[key] if r in unsandboxed]
-         and not [r for key in LISTS for r in rules[key] if r.startswith("unsandboxed(")],
-         f"each first word of the template's excludedCommands, {unsandboxed}, is one command(<word>) rule of "
-         f"`allow`, and no deny, ask or unsandboxed(…) rule: {rules['allow'][-6:]}")
-    case(lambda: {key: len(kaimon[key]) for key in LISTS} == {"deny": 7, "ask": 5, "allow": 27}
-         and {"mcp(kaimon/ping)", "mcp(kaimon/ex)"} <= set(rules["allow"])
-         and not [r for key in LISTS for r in rules[key] if r.startswith("mcp(") and "*" in r],
-         f"the template's 27 Kaimon allows, 7 denies and 5 asks are rules, ping and ex among the allows, and no "
-         f"mcp rule is a wildcard: { {key: [r for r in rules[key] if r.startswith('mcp(')][:3] for key in LISTS} }")
+    case(
+        lambda: not wrong and rules["allow"] and rules["ask"] and rules["deny"],
+        f"each Bash, Read and Edit entry and each allow host is one rule in its list, in order, that matches the "
+        f"entry's lines or names its path; after them, mcp_config.json is a read_file deny, the files of the "
+        f"layer and mcp_config.json are write_file denies, then each Kaimon tool of the list is its "
+        f"mcp(kaimon/<tool>) rule, in the template's order, and last in `allow` each command(<word>) of the "
+        f"template's excludedCommands that the list does not hold: {wrong[:5]}",
+    )
+    case(
+        lambda: (
+            unsandboxed[:3] == ["command(gh)", "command(git)", "command(glab)"]
+            and all(rules["allow"].count(r) == 1 for r in unsandboxed)
+            and not [r for key in ("deny", "ask") for r in rules[key] if r in unsandboxed]
+            and not [r for key in LISTS for r in rules[key] if r.startswith("unsandboxed(")]
+        ),
+        f"each first word of the template's excludedCommands, {unsandboxed}, is one command(<word>) rule of "
+        f"`allow`, and no deny, ask or unsandboxed(…) rule: {rules['allow'][-6:]}",
+    )
+    case(
+        lambda: (
+            {key: len(kaimon[key]) for key in LISTS} == {"deny": 7, "ask": 5, "allow": 27}
+            and {"mcp(kaimon/ping)", "mcp(kaimon/ex)"} <= set(rules["allow"])
+            and not [r for key in LISTS for r in rules[key] if r.startswith("mcp(") and "*" in r]
+        ),
+        f"the template's 27 Kaimon allows, 7 denies and 5 asks are rules, ping and ex among the allows, and no "
+        f"mcp rule is a wildcard: { {key: [r for r in rules[key] if r.startswith('mcp(')][:3] for key in LISTS} }",
+    )
     bash = {key: [e for e in cfg["permissions"][key] if e.startswith("Bash(")] for key in LISTS}
     # The rules of excludedCommands that no Bash allow of the template, `Bash(<word> *)`, renders.
-    added = {"deny": 0, "ask": 0,
-             "allow": len([r for r in unsandboxed if f"Bash({r[len('command('):-1]} *)" not in bash["allow"]])}
-    case(lambda: not [d for d in dropped if d[1].startswith("Bash(")]
-         and all(sum(r.startswith("command(") for r in rules[key]) == len(bash[key]) + added[key] for key in LISTS),
-         f"every Bash entry becomes a command rule, and `allow` holds the rules of excludedCommands besides: "
-         f"{ {key: (len(bash[key]), added[key], sum(r.startswith('command(') for r in rules[key])) for key in LISTS} }")
+    added = {
+        "deny": 0,
+        "ask": 0,
+        "allow": len([r for r in unsandboxed if f"Bash({r[len('command(') : -1]} *)" not in bash["allow"]]),
+    }
+    case(
+        lambda: (
+            not [d for d in dropped if d[1].startswith("Bash(")]
+            and all(
+                sum(r.startswith("command(") for r in rules[key]) == len(bash[key]) + added[key]
+                for key in LISTS
+            )
+        ),
+        f"every Bash entry becomes a command rule, and `allow` holds the rules of excludedCommands besides: "
+        f"{ {key: (len(bash[key]), added[key], sum(r.startswith('command(') for r in rules[key])) for key in LISTS} }",
+    )
     recursive = [e for key, e, _ in dropped if key == "deny" and e.startswith("Read(**/")]
     paths = json.loads(guard_paths(profile))["deny"]
-    case(lambda: recursive and all(e[len("Read("):-1] in paths for e in recursive),
-         f"each dropped Read(**/X) deny is in the path list of guard.py: {recursive}")
+    case(
+        lambda: recursive and all(e[len("Read(") : -1] in paths for e in recursive),
+        f"each dropped Read(**/X) deny is in the path list of guard.py: {recursive}",
+    )
     lists = json.loads(guard_paths(profile))
-    covered = [(key, e) for key, e, _ in dropped if e.startswith("Edit(")
-               and re.sub(r"^//+", "/", e[len("Edit("):-1]) not in lists["edit" if key == "deny" else "ask"]]
-    case(lambda: not covered and any(e.startswith("Edit(") for _, e, _ in dropped),
-         f"each dropped Edit deny is in the `edit` list of guard.py, and each dropped Edit ask in its `ask` list: "
-         f"{covered}")
+    covered = [
+        (key, e)
+        for key, e, _ in dropped
+        if e.startswith("Edit(")
+        and re.sub(r"^//+", "/", e[len("Edit(") : -1]) not in lists["edit" if key == "deny" else "ask"]
+    ]
+    case(
+        lambda: not covered and any(e.startswith("Edit(") for _, e, _ in dropped),
+        f"each dropped Edit deny is in the `edit` list of guard.py, and each dropped Edit ask in its `ask` list: "
+        f"{covered}",
+    )
     others = [(key, e) for key, e, _ in dropped if not re.match(r"(Bash|Read|Edit)\(", e)]
-    case(lambda: all(not re.fullmatch(r"WebFetch\(domain:.*\)", e) or key != "allow" for key, e in others)
-         and all(reasons[d] for d in reasons),
-         f"every entry that is dropped has a reason, and no allow host is among them: {others[:3]}")
-    expected = [(key, e) for key in LISTS for e in cfg["permissions"][key]
-                if (m := re.fullmatch(r"(?:Read|Edit)\(/*(.*?)(?:/\*\*)?\)", e, re.S))
-                and re.search(r"[*?\[]", m.group(1))]
+    case(
+        lambda: (
+            all(not re.fullmatch(r"WebFetch\(domain:.*\)", e) or key != "allow" for key, e in others)
+            and all(reasons[d] for d in reasons)
+        ),
+        f"every entry that is dropped has a reason, and no allow host is among them: {others[:3]}",
+    )
+    expected = [
+        (key, e)
+        for key in LISTS
+        for e in cfg["permissions"][key]
+        if (m := re.fullmatch(r"(?:Read|Edit)\(/*(.*?)(?:/\*\*)?\)", e, re.S))
+        and re.search(r"[*?\[]", m.group(1))
+    ]
     got_drops = [(key, e) for key, e, _ in dropped if re.match(r"(Read|Edit)\(", e)]
-    case(lambda: got_drops == expected,
-         f"the dropped Read and Edit entries are exactly those whose path keeps a glob: {got_drops}")
+    case(
+        lambda: got_drops == expected,
+        f"the dropped Read and Edit entries are exactly those whose path keeps a glob: {got_drops}",
+    )
     globbed = [r for key in LISTS for r in rules[key] if re.match(r"(read_file|write_file)\(.*[*?\[]", r)]
     case(lambda: not globbed, f"no read_file or write_file rule holds a glob: {globbed[:3]}")
-    small = {"permissions": {"deny": ["WebFetch(domain:x.org)", "Read(src/x)", "Edit(//a/*.py)", "Edit(//a/b/**)"],
-                             "allow": ["mcp__kaimon__ex", "WebFetch(domain:y.org)", "mcp__k__ping", "mcp__kaimon",
-                                       "mcp__kaimon__*"],
-                             "ask": ["mcp__kaimon__debug_eval"]}}
+    small = {
+        "permissions": {
+            "deny": ["WebFetch(domain:x.org)", "Read(src/x)", "Edit(//a/*.py)", "Edit(//a/b/**)"],
+            "allow": [
+                "mcp__kaimon__ex",
+                "WebFetch(domain:y.org)",
+                "mcp__k__ping",
+                "mcp__kaimon",
+                "mcp__kaimon__*",
+            ],
+            "ask": ["mcp__kaimon__debug_eval"],
+        }
+    }
     got = render_permissions(small, profile)
-    case(lambda: got[0] == {"deny": ["write_file(/a/b)", *extras], "ask": ["mcp(kaimon/debug_eval)"],
-                            "allow": ["read_url(y.org)", "mcp(kaimon/ex)"]}
-         and [e for _, e, _ in got[1]] == ["WebFetch(domain:x.org)", "Read(src/x)", "Edit(//a/*.py)", "mcp__k__ping",
-                                           "mcp__kaimon", "mcp__kaimon__*"],
-         f"a WebFetch deny, a relative path, a glob in a path, another server's MCP tool and a Kaimon entry that "
-         f"names no tool are dropped; an allow host is a read_url rule, and a Kaimon tool is its mcp rule after "
-         f"the others, in its list: {got}")
+    case(
+        lambda: (
+            got[0]
+            == {
+                "deny": ["write_file(/a/b)", *extras],
+                "ask": ["mcp(kaimon/debug_eval)"],
+                "allow": ["read_url(y.org)", "mcp(kaimon/ex)"],
+            }
+            and [e for _, e, _ in got[1]]
+            == [
+                "WebFetch(domain:x.org)",
+                "Read(src/x)",
+                "Edit(//a/*.py)",
+                "mcp__k__ping",
+                "mcp__kaimon",
+                "mcp__kaimon__*",
+            ]
+        ),
+        f"a WebFetch deny, a relative path, a glob in a path, another server's MCP tool and a Kaimon entry that "
+        f"names no tool are dropped; an allow host is a read_url rule, and a Kaimon tool is its mcp rule after "
+        f"the others, in its list: {got}",
+    )
     allows = {"allow": ["Bash(ps *)", "mcp__kaimon__ex"]}
-    sandboxes = [({}, []), ({"sandbox": {}}, []), ({"sandbox": {"excludedCommands": []}}, []),
-                 ({"sandbox": {"excludedCommands": ["git *", "gh", "git", "ps", "ps *", "glab x"]}},
-                  ["command(git)", "command(gh)", "command(glab)"])]
-    got = [render_permissions({"permissions": allows, **extra}, profile)[0]["allow"] for extra, _ in sandboxes]
-    case(lambda: got == [["command(ps)", "mcp(kaimon/ex)", *after] for _, after in sandboxes],
-         f"with no sandbox, no excludedCommands or an empty one, `allow` gets no rule; else each first word once, "
-         f"in the order of excludedCommands, after the Kaimon rules, and none that the list holds: {got}")
-    examples = {("deny", "Bash(sed -i* *)"): r"command(regex:^sed -i.*(?: .*)?$)",
-                ("deny", "Bash(git push * -f)"): r"command(regex:^git push .* -f$)",
-                ("deny", "Bash(git -C * add .)"): r"command(regex:^git -C .* add \.$)",
-                ("allow", "Bash(git status)"): r"command(regex:^git status$)",
-                ("allow", "Bash(git log *)"): "command(git log)",
-                ("allow", "Bash(git branch * -f)"): r"command(regex:^git branch [^;&|\n`$()<>]* -f$)",
-                ("deny", r"Bash(x * \.^$|?+()[]{} *)"): r"command(regex:^x .* \\\.\^\$\|\?\+\(\)\[\]\{\}(?: .*)?$)"}
-    case(lambda: all(command_rule(e[len("Bash("):-1], key == "allow") == want for (key, e), want in examples.items()),
-         f"the decided forms: {[(e, command_rule(e[len('Bash('):-1], key == 'allow')) for (key, e) in examples]}")
-    case(lambda: rule_matches("command(git push --force)", "git push --force origin x")
-         and not rule_matches("command(git push --force)", "git push --force-with-lease")
-         and rule_matches(command_rule("git push --force*"), "git push --force-with-lease"),
-         "a prefix rule matches whole words, and a regex rule any text in place of a *")
+    sandboxes = [
+        ({}, []),
+        ({"sandbox": {}}, []),
+        ({"sandbox": {"excludedCommands": []}}, []),
+        (
+            {"sandbox": {"excludedCommands": ["git *", "gh", "git", "ps", "ps *", "glab x"]}},
+            ["command(git)", "command(gh)", "command(glab)"],
+        ),
+    ]
+    got = [
+        render_permissions({"permissions": allows, **extra}, profile)[0]["allow"] for extra, _ in sandboxes
+    ]
+    case(
+        lambda: got == [["command(ps)", "mcp(kaimon/ex)", *after] for _, after in sandboxes],
+        f"with no sandbox, no excludedCommands or an empty one, `allow` gets no rule; else each first word once, "
+        f"in the order of excludedCommands, after the Kaimon rules, and none that the list holds: {got}",
+    )
+    examples = {
+        ("deny", "Bash(sed -i* *)"): r"command(regex:^sed -i.*(?: .*)?$)",
+        ("deny", "Bash(git push * -f)"): r"command(regex:^git push .* -f$)",
+        ("deny", "Bash(git -C * add .)"): r"command(regex:^git -C .* add \.$)",
+        ("allow", "Bash(git status)"): r"command(regex:^git status$)",
+        ("allow", "Bash(git log *)"): "command(git log)",
+        ("allow", "Bash(git branch * -f)"): r"command(regex:^git branch [^;&|\n`$()<>]* -f$)",
+        ("deny", r"Bash(x * \.^$|?+()[]{} *)"): r"command(regex:^x .* \\\.\^\$\|\?\+\(\)\[\]\{\}(?: .*)?$)",
+    }
+    case(
+        lambda: all(
+            command_rule(e[len("Bash(") : -1], key == "allow") == want for (key, e), want in examples.items()
+        ),
+        f"the decided forms: {[(e, command_rule(e[len('Bash(') : -1], key == 'allow')) for (key, e) in examples]}",
+    )
+    case(
+        lambda: (
+            rule_matches("command(git push --force)", "git push --force origin x")
+            and not rule_matches("command(git push --force)", "git push --force-with-lease")
+            and rule_matches(command_rule("git push --force*"), "git push --force-with-lease")
+        ),
+        "a prefix rule matches whole words, and a regex rule any text in place of a *",
+    )
     branch, sed = command_rule("git branch * -f", allow=True), command_rule("sed -i* *")
-    case(lambda: rule_matches(branch, "git branch topic -f") and not rule_matches(branch, "git branch x -f; rm -rf ~/y")
-         and not rule_matches(branch, "git branch $(rm -rf ~/x) -f") and rule_matches(sed, "sed -i 's/a;b/c/' f")
-         and rule_matches(command_rule("git -C * reset --hard *"), "git -C . reset --hard"),
-         "an allow regex rule stays in one segment, a deny regex rule does not, and a trailing * matches nothing too")
+    case(
+        lambda: (
+            rule_matches(branch, "git branch topic -f")
+            and not rule_matches(branch, "git branch x -f; rm -rf ~/y")
+            and not rule_matches(branch, "git branch $(rm -rf ~/x) -f")
+            and rule_matches(sed, "sed -i 's/a;b/c/' f")
+            and rule_matches(command_rule("git -C * reset --hard *"), "git -C . reset --hard")
+        ),
+        "an allow regex rule stays in one segment, a deny regex rule does not, and a trailing * matches nothing too",
+    )
     lists = json.loads(guard_paths(profile))
     # `git push  *` is a body of one literal part with a trailing ` *`, a form that no template body
     # has: each such body is a prefix body.
@@ -1450,7 +2079,7 @@ def reference_matcher(body, word_break):
     so the cases give it short lists only."""
     if m := re.fullmatch(r"([^*]*[^*\s]) \*", body, re.S):
         x = m.group(1).split()
-        return lambda w: any(w[i:i + len(x)] == x for i in range(len(w)))
+        return lambda w: any(w[i : i + len(x)] == x for i in range(len(w)))
     head, tail = (body[:-2], f"(?:{word_break}.*)?") if body.endswith(" *") else (body, "")
     literal = (word_break.join(map(re.escape, re.split(r"\s+", part))) for part in head.split("*"))
     pattern = re.compile(".*".join(literal) + tail, re.S)
@@ -1468,9 +2097,11 @@ def matcher_cases(case, bodies):
     except Exception as e:  # a case that crashes is BAD, and the next case still runs
         case(lambda: False, f"guard.py's matcher of each Bash deny and ask runs: {type(e).__name__}: {e}")
         return
-    case(lambda: not differ and 0 < matching < total,
-         f"guard.py's matcher of each Bash deny and ask decides as the reference regex on each of {total} word "
-         f"lists, {matching} of them matching: {differ[:3]}")
+    case(
+        lambda: not differ and 0 < matching < total,
+        f"guard.py's matcher of each Bash deny and ask decides as the reference regex on each of {total} word "
+        f"lists, {matching} of them matching: {differ[:3]}",
+    )
 
 
 def compare_matchers(bodies):
@@ -1525,11 +2156,14 @@ def bash_rule_cases(key, body, rule):
     if rule != escaped_rule(key, body):
         return False
     head = body[:-2] if body.endswith(" *") else None
-    if head is not None and (not rule_matches(rule, head.replace("*", "zz"))
-                             or not head.endswith("*") and rule_matches(rule, head.replace("*", "zz") + "zz")):
+    if head is not None and (
+        not rule_matches(rule, head.replace("*", "zz"))
+        or not head.endswith("*")
+        and rule_matches(rule, head.replace("*", "zz") + "zz")
+    ):
         return False
     for i, c in enumerate(body):
-        other = (body[:i] + "Q" + body[i + 1:]).replace("*", "zz")
+        other = (body[:i] + "Q" + body[i + 1 :]).replace("*", "zz")
         if c in SPECIAL and rule_matches(rule, other):
             return False
     if "*" in body:
@@ -1546,24 +2180,39 @@ def merge_cases(scratch):
     cli = base / "home" / ".gemini" / "antigravity-cli"
     cli.mkdir(parents=True)
     settings = cli / "settings.json"
-    own = {"theme": "dark", "permissions": {"allow": ["command(ls)"]}, "toolPermission": "always-ask",
-           "nested": {"a": [1, 2]}, "allowNonWorkspaceAccess": False}
+    own = {
+        "theme": "dark",
+        "permissions": {"allow": ["command(ls)"]},
+        "toolPermission": "always-ask",
+        "nested": {"a": [1, 2]},
+        "allowNonWorkspaceAccess": False,
+    }
     settings.write_text(json.dumps(own, indent=4) + "\n")
     before = settings.read_bytes()
     code, text = run(base, "--apply")
     merged = json.loads(settings.read_text())
     backups = list(cli.glob("settings.json.bak-*"))
-    case(lambda: code == 0 and list(merged) == list(own) + ["enableTerminalSandbox"]
-         and {k: merged[k] for k in ("theme", "nested", "allowNonWorkspaceAccess")}
-         == {k: own[k] for k in ("theme", "nested", "allowNonWorkspaceAccess")}
-         and merged["toolPermission"] == "proceed-in-sandbox" and merged["permissions"]["allow"] != ["command(ls)"],
-         f"--apply sets the three keys, keeps every other key and the order of the keys: {code}, {list(merged)}, "
-         f"{tail(text)}")
-    case(lambda: len(backups) == 1 and backups[0].read_bytes() == before,
-         f"--apply keeps a backup of the file it replaces, with its bytes: {backups}")
+    case(
+        lambda: (
+            code == 0
+            and list(merged) == list(own) + ["enableTerminalSandbox"]
+            and {k: merged[k] for k in ("theme", "nested", "allowNonWorkspaceAccess")}
+            == {k: own[k] for k in ("theme", "nested", "allowNonWorkspaceAccess")}
+            and merged["toolPermission"] == "proceed-in-sandbox"
+            and merged["permissions"]["allow"] != ["command(ls)"]
+        ),
+        f"--apply sets the three keys, keeps every other key and the order of the keys: {code}, {list(merged)}, "
+        f"{tail(text)}",
+    )
+    case(
+        lambda: len(backups) == 1 and backups[0].read_bytes() == before,
+        f"--apply keeps a backup of the file it replaces, with its bytes: {backups}",
+    )
     text = settings.read_text()
-    case(lambda: text.split("\n")[1].startswith('    "theme"'),
-         f"--apply keeps the file's indent of 4: {text.split(chr(10))[1]!r}")
+    case(
+        lambda: text.split("\n")[1].startswith('    "theme"'),
+        f"--apply keeps the file's indent of 4: {text.split(chr(10))[1]!r}",
+    )
 
     base, _, _ = scratch.fresh()
     cli = base / "home" / ".gemini" / "antigravity-cli"
@@ -1571,8 +2220,10 @@ def merge_cases(scratch):
     (cli / "settings.json").write_text('{"name": "\\ud800", "dash": "—"}\n', encoding="utf-8")
     code, text = run(base, "--apply")
     written = (cli / "settings.json").read_text(encoding="utf-8")
-    case(lambda: code == 0 and '"name": "\\ud800"' in written and '"dash": "—"' in written,
-         f"a lone surrogate stays an escape, and a non-ASCII character stays as it is: {code}, {tail(text)!r}")
+    case(
+        lambda: code == 0 and '"name": "\\ud800"' in written and '"dash": "—"' in written,
+        f"a lone surrogate stays an escape, and a non-ASCII character stays as it is: {code}, {tail(text)!r}",
+    )
 
     def fifo(path):
         os.mkfifo(path)
@@ -1581,13 +2232,19 @@ def merge_cases(scratch):
         (path.parent / "real.json").write_text("{}\n")
         path.symlink_to("real.json")
 
-    for data, label in [(b"", "is empty"), (b"[1, 2]\n", "holds a JSON array"),
-                        (b"not json\n", "holds text that is not JSON"),
-                        (b'"x"\n', "holds a JSON string"), (b"\xff\n", "holds bytes that are not UTF-8"),
-                        (b"[" * 100000 + b"]" * 100000, "holds a JSON array nested 100000 deep"),
-                        (b'{"a": ' * 100000 + b"1" + b"}" * 100000, "holds a JSON object nested 100000 deep"),
-                        (b'{"limit": 1e400}\n', "holds a number that JSON writes in other text"),
-                        (fifo, "is a FIFO"), (link, "is a symlink"), (os.mkdir, "is a directory")]:
+    for data, label in [
+        (b"", "is empty"),
+        (b"[1, 2]\n", "holds a JSON array"),
+        (b"not json\n", "holds text that is not JSON"),
+        (b'"x"\n', "holds a JSON string"),
+        (b"\xff\n", "holds bytes that are not UTF-8"),
+        (b"[" * 100000 + b"]" * 100000, "holds a JSON array nested 100000 deep"),
+        (b'{"a": ' * 100000 + b"1" + b"}" * 100000, "holds a JSON object nested 100000 deep"),
+        (b'{"limit": 1e400}\n', "holds a number that JSON writes in other text"),
+        (fifo, "is a FIFO"),
+        (link, "is a symlink"),
+        (os.mkdir, "is a directory"),
+    ]:
         base, _, _ = scratch.fresh()
         cli = base / "home" / ".gemini" / "antigravity-cli"
         cli.mkdir(parents=True)
@@ -1597,10 +2254,15 @@ def merge_cases(scratch):
             (cli / "settings.json").write_bytes(data)
         snapshot = scratch.snapshot(base)
         code, text = run(base, "--apply")
-        case(lambda: scratch.refused(code, text) and str(cli / "settings.json") in text
-             and scratch.snapshot(base) == snapshot,
-             f"a settings.json that {label} exits 2, names the file, and nothing is written: {code}, "
-             f"{tail(text)!r}")
+        case(
+            lambda: (
+                scratch.refused(code, text)
+                and str(cli / "settings.json") in text
+                and scratch.snapshot(base) == snapshot
+            ),
+            f"a settings.json that {label} exits 2, names the file, and nothing is written: {code}, "
+            f"{tail(text)!r}",
+        )
 
 
 def grants_cases(scratch):
@@ -1612,22 +2274,33 @@ def grants_cases(scratch):
     config = base / "home" / ".gemini" / "config"
     config.mkdir(parents=True)
     app = config / "config.json"
-    own = {"permissionGrantsV2Migrated": True, "remoteControlHostname": "host—1",
-           "userSettings": {"theme": "dark",
-                            "globalPermissionGrants": {"allow": ["read_file(/u/notes)", "mcp(kaimon/*)",
-                                                                 "mcp(kaimon/ping)", "command(git)"],
-                                                       "deny": ["command(rm)"], "other": [1, 2]},
-                            "last": {"a": [1.5]}},
-           "sandboxEnabledAtV2Migration": False}
+    own = {
+        "permissionGrantsV2Migrated": True,
+        "remoteControlHostname": "host—1",
+        "userSettings": {
+            "theme": "dark",
+            "globalPermissionGrants": {
+                "allow": ["read_file(/u/notes)", "mcp(kaimon/*)", "mcp(kaimon/ping)", "command(git)"],
+                "deny": ["command(rm)"],
+                "other": [1, 2],
+            },
+            "last": {"a": [1.5]},
+        },
+        "sandboxEnabledAtV2Migration": False,
+    }
     app.write_text(json.dumps(own, indent=4, ensure_ascii=False) + "\n", encoding="utf-8")
     before = app.read_bytes()
     code, dry = run(base)
     listed = re.findall(r"^antigravity/config/config\.json\s+(\S+)", dry, re.M)
-    case(lambda: code in (0, 1) and listed == ["REPLACE"] and app.read_bytes() == before,
-         f"the dry run lists config/config.json as REPLACE and writes nothing: {code}, {listed}")
+    case(
+        lambda: code in (0, 1) and listed == ["REPLACE"] and app.read_bytes() == before,
+        f"the dry run lists config/config.json as REPLACE and writes nothing: {code}, {listed}",
+    )
     code, text = run(base, "--apply")
     merged = json.loads(app.read_text(encoding="utf-8")) if app.is_file() else {}
-    cli = json.loads((base / "home" / ".gemini" / "antigravity-cli" / "settings.json").read_text())["permissions"]
+    cli = json.loads((base / "home" / ".gemini" / "antigravity-cli" / "settings.json").read_text())[
+        "permissions"
+    ]
     grants = merged.get("userSettings", {}).get("globalPermissionGrants", {})
     mine = own["userSettings"]["globalPermissionGrants"]
 
@@ -1638,36 +2311,66 @@ def grants_cases(scratch):
                 out.append(rule)
         return out
 
-    case(lambda: code == 0 and list(merged) == list(own)
-         and {k: v for k, v in merged.items() if k != "userSettings"} == {k: v for k, v in own.items()
-                                                                           if k != "userSettings"}
-         and list(merged["userSettings"]) == list(own["userSettings"])
-         and merged["userSettings"]["theme"] == "dark" and merged["userSettings"]["last"] == {"a": [1.5]}
-         and list(grants) == ["allow", "deny", "other", "ask"] and grants["other"] == [1, 2],
-         f"--apply keeps every other key of config.json, of userSettings and of globalPermissionGrants, in its "
-         f"place, and adds ask after them: {code}, {list(merged)}, {list(grants)}, {tail(text)!r}")
-    case(lambda: all(grants[key] == [*mine.get(key, []), *added(key)] for key in ("allow", "deny", "ask"))
-         and grants["allow"].count("mcp(kaimon/ping)") == 1 and "mcp(kaimon/ex)" in grants["allow"]
-         and set(cli["deny"]) <= set(grants["deny"]) and set(cli["ask"]) <= set(grants["ask"]),
-         f"each list keeps the user's entries first, mcp(kaimon/*) among them, then holds each rule of the "
-         f"CLI's permissions once: {[grants.get(k, [])[:4] for k in ('allow', 'deny', 'ask')]}")
-    case(lambda: grants["allow"].count("command(git)") == 1 and grants["allow"][3] == "command(git)"
-         and {"command(gh)", "command(git)", "command(glab)"} <= set(cli["allow"])
-         and all(grants["allow"].count(r) == 1 for r in ("command(gh)", "command(glab)", "command(ps)")),
-         f"the user's own command(git) stays in its place and is not added again, and command(gh), command(glab) "
-         f"and command(ps) are added once: {grants.get('allow', [])[:4]}, "
-         f"{[r for r in grants.get('allow', []) if r in ('command(gh)', 'command(git)', 'command(glab)')]}")
+    case(
+        lambda: (
+            code == 0
+            and list(merged) == list(own)
+            and {k: v for k, v in merged.items() if k != "userSettings"}
+            == {k: v for k, v in own.items() if k != "userSettings"}
+            and list(merged["userSettings"]) == list(own["userSettings"])
+            and merged["userSettings"]["theme"] == "dark"
+            and merged["userSettings"]["last"] == {"a": [1.5]}
+            and list(grants) == ["allow", "deny", "other", "ask"]
+            and grants["other"] == [1, 2]
+        ),
+        f"--apply keeps every other key of config.json, of userSettings and of globalPermissionGrants, in its "
+        f"place, and adds ask after them: {code}, {list(merged)}, {list(grants)}, {tail(text)!r}",
+    )
+    case(
+        lambda: (
+            all(grants[key] == [*mine.get(key, []), *added(key)] for key in ("allow", "deny", "ask"))
+            and grants["allow"].count("mcp(kaimon/ping)") == 1
+            and "mcp(kaimon/ex)" in grants["allow"]
+            and set(cli["deny"]) <= set(grants["deny"])
+            and set(cli["ask"]) <= set(grants["ask"])
+        ),
+        f"each list keeps the user's entries first, mcp(kaimon/*) among them, then holds each rule of the "
+        f"CLI's permissions once: {[grants.get(k, [])[:4] for k in ('allow', 'deny', 'ask')]}",
+    )
+    case(
+        lambda: (
+            grants["allow"].count("command(git)") == 1
+            and grants["allow"][3] == "command(git)"
+            and {"command(gh)", "command(git)", "command(glab)"} <= set(cli["allow"])
+            and all(grants["allow"].count(r) == 1 for r in ("command(gh)", "command(glab)", "command(ps)"))
+        ),
+        f"the user's own command(git) stays in its place and is not added again, and command(gh), command(glab) "
+        f"and command(ps) are added once: {grants.get('allow', [])[:4]}, "
+        f"{[r for r in grants.get('allow', []) if r in ('command(gh)', 'command(git)', 'command(glab)')]}",
+    )
     backups = list(config.glob("config.json.bak-*"))
     written = app.read_text(encoding="utf-8")
-    case(lambda: len(backups) == 1 and backups[0].read_bytes() == before
-         and written.split("\n")[1].startswith('    "permissionGrantsV2Migrated"') and '"host—1"' in written,
-         f"--apply keeps a backup of the file it replaces, with its bytes, and the file's indent of 4 and its "
-         f"characters: {backups}, {written.split(chr(10))[1]!r}")
+    case(
+        lambda: (
+            len(backups) == 1
+            and backups[0].read_bytes() == before
+            and written.split("\n")[1].startswith('    "permissionGrantsV2Migrated"')
+            and '"host—1"' in written
+        ),
+        f"--apply keeps a backup of the file it replaces, with its bytes, and the file's indent of 4 and its "
+        f"characters: {backups}, {written.split(chr(10))[1]!r}",
+    )
     after = app.read_bytes()
     code, text = run(base, "--apply")
-    case(lambda: code == 0 and app.read_bytes() == after and len(list(config.glob("config.json.bak-*"))) == 1
-         and re.findall(r"^antigravity/config/config\.json\s+(\S+)", text, re.M) == ["already"],
-         f"a second --apply adds no rule again and makes no backup: {code}, {tail(text)!r}")
+    case(
+        lambda: (
+            code == 0
+            and app.read_bytes() == after
+            and len(list(config.glob("config.json.bak-*"))) == 1
+            and re.findall(r"^antigravity/config/config\.json\s+(\S+)", text, re.M) == ["already"]
+        ),
+        f"a second --apply adds no rule again and makes no backup: {code}, {tail(text)!r}",
+    )
 
     def fifo(path):
         os.mkfifo(path)
@@ -1676,18 +2379,28 @@ def grants_cases(scratch):
         (path.parent / "real.json").write_text("{}\n")
         path.symlink_to("real.json")
 
-    for data, label in [(b"", "is empty"), (b"[1, 2]\n", "holds a JSON array"),
-                        (b"not json\n", "holds text that is not JSON"), (b"\xff\n", "holds bytes that are not UTF-8"),
-                        (b'{"a": ' * 100000 + b"1" + b"}" * 100000, "holds a JSON object nested 100000 deep"),
-                        (b'{"limit": 1e400}\n', "holds a number that JSON writes in other text"),
-                        (b'{"userSettings": []}\n', "has a userSettings that is a list"),
-                        (b'{"userSettings": {"globalPermissionGrants": "x"}}\n',
-                         "has a globalPermissionGrants that is a string"),
-                        (b'{"userSettings": {"globalPermissionGrants": {"allow": {}}}}\n', "has an allow that is an object"),
-                        (b'{"userSettings": {"globalPermissionGrants": {"deny": "command(rm)"}}}\n',
-                         "has a deny that is a string"),
-                        (b'{"userSettings": {"globalPermissionGrants": {"ask": null}}}\n', "has an ask that is null"),
-                        (fifo, "is a FIFO"), (link, "is a symlink"), (os.mkdir, "is a directory")]:
+    for data, label in [
+        (b"", "is empty"),
+        (b"[1, 2]\n", "holds a JSON array"),
+        (b"not json\n", "holds text that is not JSON"),
+        (b"\xff\n", "holds bytes that are not UTF-8"),
+        (b'{"a": ' * 100000 + b"1" + b"}" * 100000, "holds a JSON object nested 100000 deep"),
+        (b'{"limit": 1e400}\n', "holds a number that JSON writes in other text"),
+        (b'{"userSettings": []}\n', "has a userSettings that is a list"),
+        (
+            b'{"userSettings": {"globalPermissionGrants": "x"}}\n',
+            "has a globalPermissionGrants that is a string",
+        ),
+        (b'{"userSettings": {"globalPermissionGrants": {"allow": {}}}}\n', "has an allow that is an object"),
+        (
+            b'{"userSettings": {"globalPermissionGrants": {"deny": "command(rm)"}}}\n',
+            "has a deny that is a string",
+        ),
+        (b'{"userSettings": {"globalPermissionGrants": {"ask": null}}}\n', "has an ask that is null"),
+        (fifo, "is a FIFO"),
+        (link, "is a symlink"),
+        (os.mkdir, "is a directory"),
+    ]:
         base, _, _ = scratch.fresh()
         config = base / "home" / ".gemini" / "config"
         config.mkdir(parents=True)
@@ -1697,40 +2410,69 @@ def grants_cases(scratch):
             (config / "config.json").write_bytes(data)
         snapshot = scratch.snapshot(base)
         code, text = run(base, "--apply")
-        case(lambda: scratch.refused(code, text) and str(config / "config.json") in text
-             and scratch.snapshot(base) == snapshot,
-             f"a config.json that {label} exits 2, names the file, and nothing is written: {code}, {tail(text)!r}")
+        case(
+            lambda: (
+                scratch.refused(code, text)
+                and str(config / "config.json") in text
+                and scratch.snapshot(base) == snapshot
+            ),
+            f"a config.json that {label} exits 2, names the file, and nothing is written: {code}, {tail(text)!r}",
+        )
     # The second parse, which keeps the text of each number, can run out of stack at a depth that
     # json_object reads; the depth depends on the interpreter, so a child process makes that parse
     # raise RecursionError at any depth, and the case holds on each Python.
     import subprocess
     import sys
-    deep = ("import json, runpy, sys\n"
-            "loads = json.loads\n"
-            "def deep(*args, **kwargs):\n"
-            "    if 'parse_int' in kwargs or 'parse_float' in kwargs:\n"
-            "        raise RecursionError('maximum recursion depth exceeded')\n"
-            "    return loads(*args, **kwargs)\n"
-            "json.loads = deep\n"
-            "try:\n"
-            "    sys.argv = sys.argv[1:]\n"
-            "    runpy.run_path(sys.argv[0], run_name='__main__')\n"
-            "finally:\n"
-            "    json.loads = loads\n")
+
+    deep = (
+        "import json, runpy, sys\n"
+        "loads = json.loads\n"
+        "def deep(*args, **kwargs):\n"
+        "    if 'parse_int' in kwargs or 'parse_float' in kwargs:\n"
+        "        raise RecursionError('maximum recursion depth exceeded')\n"
+        "    return loads(*args, **kwargs)\n"
+        "json.loads = deep\n"
+        "try:\n"
+        "    sys.argv = sys.argv[1:]\n"
+        "    runpy.run_path(sys.argv[0], run_name='__main__')\n"
+        "finally:\n"
+        "    json.loads = loads\n"
+    )
     base, _, _ = scratch.fresh()
     config = base / "home" / ".gemini" / "config"
     config.mkdir(parents=True)
     (config / "config.json").write_bytes(b'{"userSettings": {"theme": "dark"}}\n')
     snapshot = scratch.snapshot(base)
-    p = subprocess.run([sys.executable, "-c", deep, str(REPO / "bin" / "harness"),
-                        "--profile", str(base / "profile.toml"),
-                        "--models", str(REPO / "examples" / "models.toml"), "install", "--apply"],
-                       capture_output=True, text=True, env=scratch.env(base), cwd=base, timeout=60)
+    p = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            deep,
+            str(REPO / "bin" / "harness"),
+            "--profile",
+            str(base / "profile.toml"),
+            "--models",
+            str(REPO / "examples" / "models.toml"),
+            "install",
+            "--apply",
+        ],
+        capture_output=True,
+        text=True,
+        env=scratch.env(base),
+        cwd=base,
+        timeout=60,
+    )
     code, text = p.returncode, p.stdout + p.stderr
-    case(lambda: scratch.refused(code, text) and "nested too deep" in text and str(config / "config.json") in text
-         and scratch.snapshot(base) == snapshot,
-         f"a RecursionError of the parse that keeps the text of each number exits 2, names config.json, and "
-         f"nothing is written: {code}, {tail(text)!r}")
+    case(
+        lambda: (
+            scratch.refused(code, text)
+            and "nested too deep" in text
+            and str(config / "config.json") in text
+            and scratch.snapshot(base) == snapshot
+        ),
+        f"a RecursionError of the parse that keeps the text of each number exits 2, names config.json, and "
+        f"nothing is written: {code}, {tail(text)!r}",
+    )
 
 
 def deny_write_cases(scratch):
@@ -1746,67 +2488,163 @@ def deny_write_cases(scratch):
     expected = []
     for entry in template:
         if entry.startswith("~/Research/**/"):
-            expected += [f"read_file({c}/{entry[len('~/Research/**/'):]})" for c in clones_]
+            expected += [f"read_file({c}/{entry[len('~/Research/**/') :]})" for c in clones_]
         elif entry == "~/Research" or entry.startswith("~/Research/"):
             expected.append(f"read_file({home}{entry[1:]})")
-    case(lambda: got[0] == expected and len(expected) >= 6 and not [r for r in got[0] if "*" in r or "~" in r],
-         f"each denyWrite entry of the template below the research root is a read_file deny, in the template's "
-         f"order, and each `~/Research/**/X` one rule per clone: {len(got[0])} of {len(expected)}, "
-         f"{[r for r in got[0] if r not in expected][:3]}, {[r for r in expected if r not in got[0]][:3]}")
-    case(lambda: {"read_file(/h/Research/Packages/A.jl/.git/hooks)", "read_file(/h/Research/Packages/A.jl/.git/config)",
-                  "read_file(/h/Research/Knowledge/.git/hooks)", "read_file(/h/Research/Knowledge/.git/config)"}
-         <= set(got[0]) and all(r.startswith("read_file(/h/Research/") for r in got[0])
-         and [w for w in got[1] if " cover " not in w[0]] == [],
-         f"the rules hold the .git/hooks and .git/config of each clone, none outside the research root, and "
-         f"the template's entries outside it (~/.gitconfig, juliaup/julia-*) give no warning: {got}")
+    case(
+        lambda: got[0] == expected and len(expected) >= 6 and not [r for r in got[0] if "*" in r or "~" in r],
+        f"each denyWrite entry of the template below the research root is a read_file deny, in the template's "
+        f"order, and each `~/Research/**/X` one rule per clone: {len(got[0])} of {len(expected)}, "
+        f"{[r for r in got[0] if r not in expected][:3]}, {[r for r in expected if r not in got[0]][:3]}",
+    )
+    case(
+        lambda: (
+            {
+                "read_file(/h/Research/Packages/A.jl/.git/hooks)",
+                "read_file(/h/Research/Packages/A.jl/.git/config)",
+                "read_file(/h/Research/Knowledge/.git/hooks)",
+                "read_file(/h/Research/Knowledge/.git/config)",
+            }
+            <= set(got[0])
+            and all(r.startswith("read_file(/h/Research/") for r in got[0])
+            and [w for w in got[1] if " cover " not in w[0]] == []
+        ),
+        f"the rules hold the .git/hooks and .git/config of each clone, none outside the research root, and "
+        f"the template's entries outside it (~/.gitconfig, juliaup/julia-*) give no warning: {got}",
+    )
     counted = [w for w in got[1] if " cover " in w[0]]
-    case(lambda: len(counted) == 1 and "cover 2 repositories" in counted[0][0],
-         f"one warning names the number of clones that the rules cover: {counted}")
+    case(
+        lambda: len(counted) == 1 and "cover 2 repositories" in counted[0][0],
+        f"one warning names the number of clones that the rules cover: {counted}",
+    )
 
-    entries = ["/h/Research/abs", "~/Research/x", "~/x", "/abs/p", "~", "~/Research/**/.git/hooks",
-               "~/Research/Packages/**/.git/config", "~/Other/**/y", "~/.julia/juliaup/julia-*", "~/Research/**/z*",
-               "~/Research/**", "~/Research/**/a/**/b", "~/*/x", "~/Research*/x", "rel/p", "~user/p", "~/Research/x",
-               "~/Research/a/b?", "~/Research/a/[bc]", "~/Research", "/h/Researcher/y", "~/Res*/x", "~/**/q"]
-    clones_ = [pathlib.Path("/h/Research/Packages/A.jl"), pathlib.Path("/h/Research/Packages2/B"),
-               pathlib.Path("/h/Research/Knowledge")]
+    entries = [
+        "/h/Research/abs",
+        "~/Research/x",
+        "~/x",
+        "/abs/p",
+        "~",
+        "~/Research/**/.git/hooks",
+        "~/Research/Packages/**/.git/config",
+        "~/Other/**/y",
+        "~/.julia/juliaup/julia-*",
+        "~/Research/**/z*",
+        "~/Research/**",
+        "~/Research/**/a/**/b",
+        "~/*/x",
+        "~/Research*/x",
+        "rel/p",
+        "~user/p",
+        "~/Research/x",
+        "~/Research/a/b?",
+        "~/Research/a/[bc]",
+        "~/Research",
+        "/h/Researcher/y",
+        "~/Res*/x",
+        "~/**/q",
+    ]
+    clones_ = [
+        pathlib.Path("/h/Research/Packages/A.jl"),
+        pathlib.Path("/h/Research/Packages2/B"),
+        pathlib.Path("/h/Research/Knowledge"),
+    ]
     rules, warnings = deny_write(entries, home, root, clones_)
-    case(lambda: rules == ["read_file(/h/Research/abs)", "read_file(/h/Research/x)",
-                           "read_file(/h/Research/Packages/A.jl/.git/hooks)",
-                           "read_file(/h/Research/Packages2/B/.git/hooks)",
-                           "read_file(/h/Research/Knowledge/.git/hooks)",
-                           "read_file(/h/Research/Packages/A.jl/.git/config)", "read_file(/h/Research)"],
-         f"an entry below the research root stays, `~` is the home directory, an entry outside the root renders "
-         f"nothing, a `**` entry covers each clone at or below its prefix, a prefix is compared by path, not by "
-         f"text, and a rule repeats not: {rules}")
-    named = [e for e in ("~/Research/**/z*", "~/Research/**", "~/Research/**/a/**/b", "~/*/x", "~/Research*/x",
-                         "rel/p", "~user/p", "~/Research/a/b?", "~/Research/a/[bc]", "~/Res*/x", "~/**/q")
-             if [w for w in warnings if e in w[0]]]
-    silent = [e for e in ("~/x", "/abs/p", "~/Other/", "julia-*", "/h/Researcher/y") if [w for w in warnings if e in w[0]]]
-    case(lambda: len(named) == 11 and len(warnings) == 12 and silent == [] and "cover 3 repositories" in warnings[-1][0],
-         f"below the research root a wildcard after or beside `**`, a trailing `**`, two `**`, `?` and `[…]`, a "
-         f"wildcard or a `**` whose prefix holds the root, a relative path and `~user` each give one warning and no "
-         f"rule; an entry outside the root gives none, and the count is the last: {warnings}")
-    case(lambda: deny_write(["~/Research/x"], home, root, clones_)[1] == []
-         and "cover 1 repository:" in deny_write(["~/Research/**/c"], home, root, clones_[:1])[1][0][0]
-         and "cover 1 repository:" in deny_write(["~/Research/Packages/**/c"], home, root, clones_)[1][0][0],
-         "with no `**` entry, no count line; the count is of the clones that a `**` entry covers, and says "
-         "`1 repository` for one")
-    case(lambda: deny_write(["~/Other/**/c", "~/x"], home, root, clones_) == ([], []),
-         "a `**` entry outside the research root expands over no clone and adds no count line")
+    case(
+        lambda: (
+            rules
+            == [
+                "read_file(/h/Research/abs)",
+                "read_file(/h/Research/x)",
+                "read_file(/h/Research/Packages/A.jl/.git/hooks)",
+                "read_file(/h/Research/Packages2/B/.git/hooks)",
+                "read_file(/h/Research/Knowledge/.git/hooks)",
+                "read_file(/h/Research/Packages/A.jl/.git/config)",
+                "read_file(/h/Research)",
+            ]
+        ),
+        f"an entry below the research root stays, `~` is the home directory, an entry outside the root renders "
+        f"nothing, a `**` entry covers each clone at or below its prefix, a prefix is compared by path, not by "
+        f"text, and a rule repeats not: {rules}",
+    )
+    named = [
+        e
+        for e in (
+            "~/Research/**/z*",
+            "~/Research/**",
+            "~/Research/**/a/**/b",
+            "~/*/x",
+            "~/Research*/x",
+            "rel/p",
+            "~user/p",
+            "~/Research/a/b?",
+            "~/Research/a/[bc]",
+            "~/Res*/x",
+            "~/**/q",
+        )
+        if [w for w in warnings if e in w[0]]
+    ]
+    silent = [
+        e
+        for e in ("~/x", "/abs/p", "~/Other/", "julia-*", "/h/Researcher/y")
+        if [w for w in warnings if e in w[0]]
+    ]
+    case(
+        lambda: (
+            len(named) == 11
+            and len(warnings) == 12
+            and silent == []
+            and "cover 3 repositories" in warnings[-1][0]
+        ),
+        f"below the research root a wildcard after or beside `**`, a trailing `**`, two `**`, `?` and `[…]`, a "
+        f"wildcard or a `**` whose prefix holds the root, a relative path and `~user` each give one warning and no "
+        f"rule; an entry outside the root gives none, and the count is the last: {warnings}",
+    )
+    case(
+        lambda: (
+            deny_write(["~/Research/x"], home, root, clones_)[1] == []
+            and "cover 1 repository:" in deny_write(["~/Research/**/c"], home, root, clones_[:1])[1][0][0]
+            and "cover 1 repository:"
+            in deny_write(["~/Research/Packages/**/c"], home, root, clones_)[1][0][0]
+        ),
+        "with no `**` entry, no count line; the count is of the clones that a `**` entry covers, and says "
+        "`1 repository` for one",
+    )
+    case(
+        lambda: deny_write(["~/Other/**/c", "~/x"], home, root, clones_) == ([], []),
+        "a `**` entry outside the research root expands over no clone and adds no count line",
+    )
 
     # The home is a symbolic link, as /tmp is on macOS: the walk gives the clones' real paths.
     real = pathlib.Path(scratch.tmp, "deny-write-real")
     (real / "Research" / "A").mkdir(parents=True)
     link = pathlib.Path(scratch.tmp, "deny-write-link")
     link.symlink_to(real)
-    case(lambda: deny_write(["~/Research/**/c", "~/Research/d"], str(link), link / "Research",
-                            [pathlib.Path(os.path.realpath(real / "Research" / "A"))])[0]
-         == [f"read_file({os.path.realpath(real)}/Research/A/c)", f"read_file({link}/Research/d)"],
-         "a home or research root reached through a symbolic link is compared by its real path")
+    case(
+        lambda: (
+            deny_write(
+                ["~/Research/**/c", "~/Research/d"],
+                str(link),
+                link / "Research",
+                [pathlib.Path(os.path.realpath(real / "Research" / "A"))],
+            )[0]
+            == [f"read_file({os.path.realpath(real)}/Research/A/c)", f"read_file({link}/Research/d)"]
+        ),
+        "a home or research root reached through a symbolic link is compared by its real path",
+    )
 
     tree = pathlib.Path(scratch.tmp, "deny-write-tree")
-    for d in ("Packages/A.jl/.git", "Packages/plain", "Papers/P/.git", "Papers/P/inner/.git", "Knowledge/.git",
-              "Harness/.git", "Experiments/W", ".scratch/S/.git", ".worktrees/T/.git", "Lib/node_modules/N/.git"):
+    for d in (
+        "Packages/A.jl/.git",
+        "Packages/plain",
+        "Papers/P/.git",
+        "Papers/P/inner/.git",
+        "Knowledge/.git",
+        "Harness/.git",
+        "Experiments/W",
+        ".scratch/S/.git",
+        ".worktrees/T/.git",
+        "Lib/node_modules/N/.git",
+    ):
         (tree / d).mkdir(parents=True)
     (tree / "Experiments" / "W" / ".git").write_text("gitdir: /elsewhere\n")
     saved = os.environ.get("RESEARCH_ROOT")
@@ -1821,16 +2659,35 @@ def deny_write_cases(scratch):
         else:
             os.environ["RESEARCH_ROOT"] = saved
     t = pathlib.Path(os.path.realpath(tree))
-    case(lambda: found == [t / "Harness", t / "Knowledge", t / "Packages" / "A.jl", t / "Papers" / "P",
-                           t / "Papers" / "P" / "inner"],
-         f"the clones are the directories below the research root with a `.git` directory, nested ones too; a "
-         f"worktree's `.git` file, a directory with no `.git`, .scratch, .worktrees and node_modules left out: "
-         f"{found}")
+    case(
+        lambda: (
+            found
+            == [
+                t / "Harness",
+                t / "Knowledge",
+                t / "Packages" / "A.jl",
+                t / "Papers" / "P",
+                t / "Papers" / "P" / "inner",
+            ]
+        ),
+        f"the clones are the directories below the research root with a `.git` directory, nested ones too; a "
+        f"worktree's `.git` file, a directory with no `.git`, .scratch, .worktrees and node_modules left out: "
+        f"{found}",
+    )
 
-    case(lambda: deny_write(["~/Research/x", "~/Research/y", "~/Research/**/z"], home, root, clones_[:1],
-                            ["read_file(/h/Research/x)", "read_file(/h/Research/Packages/A.jl/z)"])[0]
-         == ["read_file(/h/Research/y)"],
-         "a rule that the deny list already holds is not added again")
+    case(
+        lambda: (
+            deny_write(
+                ["~/Research/x", "~/Research/y", "~/Research/**/z"],
+                home,
+                root,
+                clones_[:1],
+                ["read_file(/h/Research/x)", "read_file(/h/Research/Packages/A.jl/z)"],
+            )[0]
+            == ["read_file(/h/Research/y)"]
+        ),
+        "a rule that the deny list already holds is not added again",
+    )
 
     base, _, _ = scratch.fresh()
     h = base / "home"
@@ -1842,32 +2699,55 @@ def deny_write_cases(scratch):
     config.mkdir(parents=True)
     a = pathlib.Path(os.path.realpath(research / "Packages" / "A.jl"))
     mine = f"read_file({a}/.git/hooks)"
-    (config / "config.json").write_text(json.dumps({"userSettings": {"globalPermissionGrants": {"deny": [mine]}}}))
+    (config / "config.json").write_text(
+        json.dumps({"userSettings": {"globalPermissionGrants": {"deny": [mine]}}})
+    )
     env = {"RESEARCH_ROOT": None}
     code, dry = run(base, extra_env=env)
     count = [w for w in dry.split("WARNING: ")[1:] if "denyWrite" in w and " cover " in w]
-    case(lambda: code in (0, 1) and len(count) == 1 and "cover 1 repository:" in count[0],
-         f"the dry run names the number of clones in one warning: {code}, {count}, {tail(dry)!r}")
+    case(
+        lambda: code in (0, 1) and len(count) == 1 and "cover 1 repository:" in count[0],
+        f"the dry run names the number of clones in one warning: {code}, {count}, {tail(dry)!r}",
+    )
     code, text = run(base, "--apply", extra_env=env)
     cli = json.loads((h / ".gemini" / "antigravity-cli" / "settings.json").read_text())["permissions"]["deny"]
-    grants = json.loads((config / "config.json").read_text())["userSettings"]["globalPermissionGrants"]["deny"]
+    grants = json.loads((config / "config.json").read_text())["userSettings"]["globalPermissionGrants"][
+        "deny"
+    ]
     ours = deny_write(template, str(h), research, [a])[0]
     after = max(i for i, r in enumerate(cli) if r.startswith("mcp(")) + 1
-    case(lambda: code == 0 and cli[after:] == ours and len(ours) == 3
-         and ours == [f"read_file({a}/.git/hooks)", f"read_file({a}/.git/config)", f"read_file({a}/.claude)"]
-         and not [r for r in cli if "/W/" in r] and len(cli) == len(set(cli)),
-         f"--apply writes the rules into the CLI's permissions.deny after the other denies, each once, and none "
-         f"for the worktree: {code}, {cli[after:]}, {[r for r in cli if cli.count(r) > 1][:2]}, {tail(text)!r}")
-    case(lambda: grants == [mine, *[r for r in cli if r != mine]] and grants.count(mine) == 1
-         and f"read_file({a}/.git/config)" in grants,
-         f"--apply adds each rule once to the app's deny grants, after the user's own, which is not added again: "
-         f"{grants[:2]}, {grants.count(mine)}")
+    case(
+        lambda: (
+            code == 0
+            and cli[after:] == ours
+            and len(ours) == 3
+            and ours
+            == [f"read_file({a}/.git/hooks)", f"read_file({a}/.git/config)", f"read_file({a}/.claude)"]
+            and not [r for r in cli if "/W/" in r]
+            and len(cli) == len(set(cli))
+        ),
+        f"--apply writes the rules into the CLI's permissions.deny after the other denies, each once, and none "
+        f"for the worktree: {code}, {cli[after:]}, {[r for r in cli if cli.count(r) > 1][:2]}, {tail(text)!r}",
+    )
+    case(
+        lambda: (
+            grants == [mine, *[r for r in cli if r != mine]]
+            and grants.count(mine) == 1
+            and f"read_file({a}/.git/config)" in grants
+        ),
+        f"--apply adds each rule once to the app's deny grants, after the user's own, which is not added again: "
+        f"{grants[:2]}, {grants.count(mine)}",
+    )
     (research / "Knowledge" / ".git").mkdir(parents=True)
     code, dry = run(base, extra_env=env)
     count = [w for w in dry.split("WARNING: ")[1:] if "denyWrite" in w and " cover " in w]
-    case(lambda: "cover 2 repositories" in count[0]
-         and re.findall(r"^antigravity/config/config\.json\s+(\S+)", dry, re.M) == ["REPLACE"],
-         f"a new clone changes the count and the app's grants at the next dry run: {count}")
+    case(
+        lambda: (
+            "cover 2 repositories" in count[0]
+            and re.findall(r"^antigravity/config/config\.json\s+(\S+)", dry, re.M) == ["REPLACE"]
+        ),
+        f"a new clone changes the count and the app's grants at the next dry run: {count}",
+    )
 
 
 # The tiers of [antigravity] in examples/models.toml, written out here.
@@ -1891,9 +2771,11 @@ def model_cases(scratch):
 
     case, run, tail = scratch.case, scratch.run, scratch.tail
     example = tomllib.loads((REPO / "examples" / "models.toml").read_text())
-    case(lambda: example["antigravity"] == EXAMPLE_TIERS and "antigravity" not in tomllib.loads(models_text()),
-         f"examples/models.toml holds [antigravity] with large = inherit, medium = flash, small = flash_lite: "
-         f"{example.get('antigravity')}")
+    case(
+        lambda: example["antigravity"] == EXAMPLE_TIERS and "antigravity" not in tomllib.loads(models_text()),
+        f"examples/models.toml holds [antigravity] with large = inherit, medium = flash, small = flash_lite: "
+        f"{example.get('antigravity')}",
+    )
     tiers = 'large = "inherit"\nmedium = "flash"\nsmall = "flash_lite"\n'
 
     def written(name, text):
@@ -1903,73 +2785,147 @@ def model_cases(scratch):
 
     refusals = [
         ("no table [antigravity]", models_text(), ["[antigravity]"]),
-        ("a key antigravity that is no table", 'antigravity = "inherit"\n' + models_text(), ["[antigravity]"]),
-        ("a key antigravity that is a list of the tiers",
-         'antigravity = ["large", "medium", "small"]\n' + models_text(), ["[antigravity]"]),
+        (
+            "a key antigravity that is no table",
+            'antigravity = "inherit"\n' + models_text(),
+            ["[antigravity]"],
+        ),
+        (
+            "a key antigravity that is a list of the tiers",
+            'antigravity = ["large", "medium", "small"]\n' + models_text(),
+            ["[antigravity]"],
+        ),
         ("no tier small", models_text('large = "inherit"\nmedium = "flash"\n'), ["[antigravity]", "small"]),
-        ("a model name as a tier", models_text(tiers.replace('"inherit"', '"gemini-4-argon"')),
-         ["[antigravity]", "large", "gemini-4-argon"]),
+        (
+            "a model name as a tier",
+            models_text(tiers.replace('"inherit"', '"gemini-4-argon"')),
+            ["[antigravity]", "large", "gemini-4-argon"],
+        ),
         ("a number as a tier", models_text(tiers.replace('"flash"', "1")), ["[antigravity]", "medium"]),
         ("a key that is no tier", models_text(tiers + 'effort = "high"\n'), ["[antigravity]", "effort"]),
-        ("an override outside the four words", models_text(tiers, '\n[antigravity.model_overrides]\nreader = "fast"\n'),
-         ["[antigravity.model_overrides]", "reader", "fast"]),
-        ("an override of no agent", models_text(tiers, '\n[antigravity.model_overrides]\nnosuch = "flash"\n'),
-         ["[antigravity.model_overrides]", "nosuch"]),
-        ("overrides that are no table", models_text(tiers + 'model_overrides = "flash"\n'),
-         ["[antigravity.model_overrides]"])]
+        (
+            "an override outside the four words",
+            models_text(tiers, '\n[antigravity.model_overrides]\nreader = "fast"\n'),
+            ["[antigravity.model_overrides]", "reader", "fast"],
+        ),
+        (
+            "an override of no agent",
+            models_text(tiers, '\n[antigravity.model_overrides]\nnosuch = "flash"\n'),
+            ["[antigravity.model_overrides]", "nosuch"],
+        ),
+        (
+            "overrides that are no table",
+            models_text(tiers + 'model_overrides = "flash"\n'),
+            ["[antigravity.model_overrides]"],
+        ),
+    ]
     for i, (label, text, words) in enumerate(refusals):
         base, _, _ = scratch.fresh()
         (base / "home" / ".gemini").mkdir()
         snapshot = scratch.snapshot(base)
         code, out = run(base, "--apply", models=written(f"refused-{i}", text))
-        case(lambda: scratch.refused(code, out) and all(w in out for w in words) and scratch.snapshot(base) == snapshot,
-             f"with ~/.gemini/, {label} exits 2 before any write and names {words}: {code}, {tail(out)!r}")
+        case(
+            lambda: (
+                scratch.refused(code, out)
+                and all(w in out for w in words)
+                and scratch.snapshot(base) == snapshot
+            ),
+            f"with ~/.gemini/, {label} exits 2 before any write and names {words}: {code}, {tail(out)!r}",
+        )
     base, _, _ = scratch.fresh()
     code, out = run(base, models=written("no-table", models_text()))
-    case(lambda: code in (0, 1) and "[antigravity]" not in out,
-         f"with no ~/.gemini/, a models file with no [antigravity] installs the other layers: {code}, {tail(out)!r}")
+    case(
+        lambda: code in (0, 1) and "[antigravity]" not in out,
+        f"with no ~/.gemini/, a models file with no [antigravity] installs the other layers: {code}, {tail(out)!r}",
+    )
 
-    words = written("words", models_text('large = "pro"\nmedium = "flash_lite"\nsmall = "inherit"\n',
-                                         '\n[antigravity.model_overrides]\njulia-builder = "flash"\n'))
+    words = written(
+        "words",
+        models_text(
+            'large = "pro"\nmedium = "flash_lite"\nsmall = "inherit"\n',
+            '\n[antigravity.model_overrides]\njulia-builder = "flash"\n',
+        ),
+    )
     try:
         got = load_models(words, REPO / "agents")
     except HarnessError as e:
         got = str(e)
-    case(lambda: got == ({"large": "pro", "medium": "flash_lite", "small": "inherit"}, {"julia-builder": "flash"}),
-         f"each of the four words is a tier, and an override names an agent of agents/: {got}")
-    case(lambda: all(profile_module.model_tables(words, f)["model_overrides"] == {"builder": "provider-b/medium-model"}
-                     for f in profile_module.SHARING),
-         "the overrides of [antigravity.model_overrides] are not merged with the shared [model_overrides]")
+    case(
+        lambda: (
+            got == ({"large": "pro", "medium": "flash_lite", "small": "inherit"}, {"julia-builder": "flash"})
+        ),
+        f"each of the four words is a tier, and an override names an agent of agents/: {got}",
+    )
+    case(
+        lambda: all(
+            profile_module.model_tables(words, f)["model_overrides"] == {"builder": "provider-b/medium-model"}
+            for f in profile_module.SHARING
+        ),
+        "the overrides of [antigravity.model_overrides] are not merged with the shared [model_overrides]",
+    )
     base, _, _ = scratch.fresh()
     (base / "home" / ".gemini").mkdir()
     code, out = run(base, "--apply", models=words)
     agents = base / "home" / ".gemini" / "config" / "agents"
-    got = {n: rendered_head((agents / f"{n}.md").read_bytes())["model"] if (agents / f"{n}.md").is_file() else None
-           for n in ("julia-builder", "julia-critic", "changelog-scribe", "reader")}
-    case(lambda: code == 0 and got == {"julia-builder": "flash", "julia-critic": "pro", "changelog-scribe": "inherit",
-                                       "reader": "inherit"},
-         f"--apply installs each agent on the word of its tier, its override over it: {code}, {got}, {tail(out)!r}")
+    got = {
+        n: rendered_head((agents / f"{n}.md").read_bytes())["model"]
+        if (agents / f"{n}.md").is_file()
+        else None
+        for n in ("julia-builder", "julia-critic", "changelog-scribe", "reader")
+    }
+    case(
+        lambda: (
+            code == 0
+            and got
+            == {
+                "julia-builder": "flash",
+                "julia-critic": "pro",
+                "changelog-scribe": "inherit",
+                "reader": "inherit",
+            }
+        ),
+        f"--apply installs each agent on the word of its tier, its override over it: {code}, {got}, {tail(out)!r}",
+    )
 
     # The OpenCode and oh-my-pi layers that an install writes with the table and without it.
     def tree(base, top):
-        return {p[len(str(base)):]: (m, d.replace(str(base).encode(), b"BASE") if isinstance(d, bytes) else d)
-                for p, (m, d) in scratch.snapshot(base / top).items()}
+        return {
+            p[len(str(base)) :]: (m, d.replace(str(base).encode(), b"BASE") if isinstance(d, bytes) else d)
+            for p, (m, d) in scratch.snapshot(base / top).items()
+        }
 
     installed = []
     for name, text in [("with", models_text(tiers)), ("without", models_text())]:
         base, _, _ = scratch.fresh()
         code, out = run(base, "--apply", models=written(f"plans-{name}", text))
         installed.append((code, {top: tree(base, top) for top in ("opencode", "omp")}))
-    case(lambda: installed[0][0] == installed[1][0] == 0 and installed[0][1] == installed[1][1]
-         and all(installed[0][1].values()),
-         f"the OpenCode and oh-my-pi layers of a models file with [antigravity] are those of the same file without "
-         f"it: {[c for c, _ in installed]}, {[{k: len(v) for k, v in t.items()} for _, t in installed]}")
+    case(
+        lambda: (
+            installed[0][0] == installed[1][0] == 0
+            and installed[0][1] == installed[1][1]
+            and all(installed[0][1].values())
+        ),
+        f"the OpenCode and oh-my-pi layers of a models file with [antigravity] are those of the same file without "
+        f"it: {[c for c, _ in installed]}, {[{k: len(v) for k, v in t.items()} for _, t in installed]}",
+    )
 
 
 # The names that Antigravity accepts in a subagent's `tools:`, both families, written out here so
 # that the cases do not take them from TOOLS.
-ROUND5 = {"read_file", "write_file", "edit_file", "view_file", "write_to_file", "replace_file_content",
-          "grep_search", "find_by_name", "list_dir", "run_command", "search_web", "read_url_content"}
+ROUND5 = {
+    "read_file",
+    "write_file",
+    "edit_file",
+    "view_file",
+    "write_to_file",
+    "replace_file_content",
+    "grep_search",
+    "find_by_name",
+    "list_dir",
+    "run_command",
+    "search_web",
+    "read_url_content",
+}
 
 
 def rendered_head(data):
@@ -1983,11 +2939,21 @@ def agent_cases(scratch):
     the overrides, an agent with no `tools:`, and the "Under Antigravity" section of each
     mechanism."""
     case = scratch.case
-    want_tools = {"read": ["view_file", "list_dir"], "edit": ["replace_file_content"], "write": ["write_to_file"],
-                  "grep": ["grep_search"], "glob": ["find_by_name"], "shell": ["run_command"],
-                  "agent": ["invoke_subagent"], "web_search": ["search_web"], "web_fetch": ["read_url_content"]}
-    case(lambda: {k: list(v) for k, v in TOOLS.items()} == want_tools,
-         f"TOOLS maps each neutral tool to the names of a subagent's default family: {TOOLS}")
+    want_tools = {
+        "read": ["view_file", "list_dir"],
+        "edit": ["replace_file_content"],
+        "write": ["write_to_file"],
+        "grep": ["grep_search"],
+        "glob": ["find_by_name"],
+        "shell": ["run_command"],
+        "agent": ["invoke_subagent"],
+        "web_search": ["search_web"],
+        "web_fetch": ["read_url_content"],
+    }
+    case(
+        lambda: {k: list(v) for k, v in TOOLS.items()} == want_tools,
+        f"TOOLS maps each neutral tool to the names of a subagent's default family: {TOOLS}",
+    )
 
     def attempt(f):
         try:
@@ -2000,9 +2966,11 @@ def agent_cases(scratch):
         got = attempt(lambda: render_agent(src, EXAMPLE_TIERS, {}))
         body = relocate(frontmatter.parse_file(src).body.lstrip("\n").encode(), "~/.gemini/config")
         want = (FIXTURES / f"{name}.md").read_bytes() + body
-        case(lambda: got == want,
-             f"agents/{name}.md renders as fixtures/{name}.md, then its body: "
-             f"{got[:len(want) - len(body)].decode() if isinstance(got, bytes) else got!r}")
+        case(
+            lambda: got == want,
+            f"agents/{name}.md renders as fixtures/{name}.md, then its body: "
+            f"{got[: len(want) - len(body)].decode() if isinstance(got, bytes) else got!r}",
+        )
 
     heads, wrong = {}, []
     for src in sorted((REPO / "agents").glob("*.md")):
@@ -2011,27 +2979,43 @@ def agent_cases(scratch):
         heads[src.stem] = head
         kaimon = any(t.startswith(frontmatter.MCP) for t in meta["tools"])
         tools = list(dict.fromkeys(n for t in meta["tools"] if t in want_tools for n in want_tools[t]))
-        if (list(head) != ["name", "description", "model", "tools", "subagent", *["inheritMcp"] * kaimon]
-                or head["name"] != src.stem or head["description"] != meta["description"]
-                or head["model"] != EXAMPLE_TIERS.get(meta.get("model"), "inherit") or head["tools"] != tools
-                or head["subagent"] is not True or head.get("inheritMcp", True) is not True):
+        if (
+            list(head) != ["name", "description", "model", "tools", "subagent", *["inheritMcp"] * kaimon]
+            or head["name"] != src.stem
+            or head["description"] != meta["description"]
+            or head["model"] != EXAMPLE_TIERS.get(meta.get("model"), "inherit")
+            or head["tools"] != tools
+            or head["subagent"] is not True
+            or head.get("inheritMcp", True) is not True
+        ):
             wrong.append((src.stem, head))
-    case(lambda: heads and not wrong,
-         f"each agent of agents/ renders name, description, its tier's model or inherit, its tools by TOOLS, "
-         f"subagent: true, and inheritMcp: true with a Kaimon tool; no effort, no isolation: {wrong[:2]}")
+    case(
+        lambda: heads and not wrong,
+        f"each agent of agents/ renders name, description, its tier's model or inherit, its tools by TOOLS, "
+        f"subagent: true, and inheritMcp: true with a Kaimon tool; no effort, no isolation: {wrong[:2]}",
+    )
     names = {n for h in heads.values() for n in h["tools"]}
-    case(lambda: names <= ROUND5 | {"invoke_subagent"} and "call_mcp_tool" not in names
-         and all("tools" in h for h in heads.values()),
-         f"every rendered tool name is one of round 5 or invoke_subagent, none is call_mcp_tool, and every agent "
-         f"has a tools key: {sorted(names - ROUND5)}")
+    case(
+        lambda: (
+            names <= ROUND5 | {"invoke_subagent"}
+            and "call_mcp_tool" not in names
+            and all("tools" in h for h in heads.values())
+        ),
+        f"every rendered tool name is one of round 5 or invoke_subagent, none is call_mcp_tool, and every agent "
+        f"has a tools key: {sorted(names - ROUND5)}",
+    )
     builder = REPO / "agents" / "julia-builder.md"
     reader = REPO / "agents" / "reader.md"
-    got = [rendered_head(render_agent(builder, EXAMPLE_TIERS, {"julia-builder": "flash"}))["model"],
-           rendered_head(render_agent(reader, EXAMPLE_TIERS, {"reader": "pro"}))["model"],
-           rendered_head(render_agent(builder, {**EXAMPLE_TIERS, "large": "pro"}, {}))["model"]]
-    case(lambda: got == ["flash", "pro", "pro"],
-         f"an override replaces the tier of an agent, with a `model:` or without one, and the tier follows the "
-         f"table: {got}")
+    got = [
+        rendered_head(render_agent(builder, EXAMPLE_TIERS, {"julia-builder": "flash"}))["model"],
+        rendered_head(render_agent(reader, EXAMPLE_TIERS, {"reader": "pro"}))["model"],
+        rendered_head(render_agent(builder, {**EXAMPLE_TIERS, "large": "pro"}, {}))["model"],
+    ]
+    case(
+        lambda: got == ["flash", "pro", "pro"],
+        f"an override replaces the tier of an agent, with a `model:` or without one, and the tier follows the "
+        f"table: {got}",
+    )
 
     agents = scratch.tmp / "g3-agents"
     agents.mkdir()
@@ -2042,11 +3026,19 @@ def agent_cases(scratch):
         return path
 
     bare = attempt(lambda: render_agent(agent("bare"), EXAMPLE_TIERS, {}))
-    case(lambda: isinstance(bare, bytes) and rendered_head(bare)["tools"] == [] and b"Under Antigravity" not in bare,
-         f"an agent with no tools: renders tools: [], and with no mechanism no section: {bare!r}")
+    case(
+        lambda: (
+            isinstance(bare, bytes)
+            and rendered_head(bare)["tools"] == []
+            and b"Under Antigravity" not in bare
+        ),
+        f"an agent with no tools: renders tools: [], and with no mechanism no section: {bare!r}",
+    )
     twice = attempt(lambda: render_agent(agent("twice", "tools:\n  - read\n  - read\n"), EXAMPLE_TIERS, {}))
-    case(lambda: rendered_head(twice)["tools"] == ["view_file", "list_dir"],
-         f"a tool listed twice renders its names once: {twice!r}")
+    case(
+        lambda: rendered_head(twice)["tools"] == ["view_file", "list_dir"],
+        f"a tool listed twice renders its names once: {twice!r}",
+    )
     saved = TOOLS.pop("web_fetch")
     try:
         missing = attempt(lambda: render_agent(agent("fetch", "tools:\n  - web_fetch\n"), EXAMPLE_TIERS, {}))
@@ -2057,59 +3049,112 @@ def agent_cases(scratch):
     blank = agents / "blank.md"
     blank.write_text("---\nname: blank\n---\n\nDo the work.\n")
     refused = [attempt(lambda: render_agent(p, EXAMPLE_TIERS, {})) for p in (renamed, blank)]
-    case(lambda: all(isinstance(e, HarnessError) for e in refused) and "'other'" in str(refused[0])
-         and "description" in str(refused[1]),
-         f"an agent whose name: is not its file name, and one with no description, exit 2: {refused}")
+    case(
+        lambda: (
+            all(isinstance(e, HarnessError) for e in refused)
+            and "'other'" in str(refused[0])
+            and "description" in str(refused[1])
+        ),
+        f"an agent whose name: is not its file name, and one with no description, exit 2: {refused}",
+    )
     unknown = attempt(lambda: render_agent(agent("odd", "tools:\n  - telepathy\n"), EXAMPLE_TIERS, {}))
-    case(lambda: isinstance(missing, HarnessError) and "web_fetch" in str(missing) and "fetch.md" in str(missing)
-         and isinstance(unknown, HarnessError) and "telepathy" in str(unknown),
-         f"a neutral tool outside TOOLS exits 2, naming the tool and the file, and so does a tool outside the "
-         f"neutral ones: {missing!r}, {unknown!r}")
+    case(
+        lambda: (
+            isinstance(missing, HarnessError)
+            and "web_fetch" in str(missing)
+            and "fetch.md" in str(missing)
+            and isinstance(unknown, HarnessError)
+            and "telepathy" in str(unknown)
+        ),
+        f"a neutral tool outside TOOLS exits 2, naming the tool and the file, and so does a tool outside the "
+        f"neutral ones: {missing!r}, {unknown!r}",
+    )
 
     text = UNDER.read_text()
     rules = sections(text)
-    mechanisms = {"skills": ("skills:\n  - build-part\n", "Do the work.\n"),
-                  "worktree": ("isolation: worktree\n", "Do the work.\n"),
-                  "agent": ("tools:\n  - agent\n", "Do the work.\n"),
-                  "background": ("", "Never set `run_in_background`.\n"),
-                  "mcp": ("tools:\n  - mcp/kaimon/ping\n", "Do the work.\n"),
-                  "pr": ("", "Then open the pull request.\n")}
+    mechanisms = {
+        "skills": ("skills:\n  - build-part\n", "Do the work.\n"),
+        "worktree": ("isolation: worktree\n", "Do the work.\n"),
+        "agent": ("tools:\n  - agent\n", "Do the work.\n"),
+        "background": ("", "Never set `run_in_background`.\n"),
+        "mcp": ("tools:\n  - mcp/kaimon/ping\n", "Do the work.\n"),
+        "pr": ("", "Then open the pull request.\n"),
+    }
     parts = {}
     for key, (head, body) in mechanisms.items():
         data = attempt(lambda: render_agent(agent(f"uses-{key}", head, body), EXAMPLE_TIERS, {}))
-        parts[key] = data.decode().split("## Under Antigravity\n\n", 1)[-1].split("\n\n") if isinstance(
-            data, bytes) else data
+        parts[key] = (
+            data.decode().split("## Under Antigravity\n\n", 1)[-1].split("\n\n")
+            if isinstance(data, bytes)
+            else data
+        )
     filled = {k: rules.get(k, "").replace("{skills}", "`build-part` skill") for k in mechanisms}
-    case(lambda: all(parts[k][:2] == [rules["intro"], "- " + filled[k]] for k in mechanisms),
-         f"an agent that uses one mechanism gets the intro and that mechanism's rule of UNDER-ANTIGRAVITY.md: "
-         f"{ {k: v if isinstance(v, HarnessError) else v[:2] for k, v in parts.items()} }")
+    case(
+        lambda: all(parts[k][:2] == [rules["intro"], "- " + filled[k]] for k in mechanisms),
+        f"an agent that uses one mechanism gets the intro and that mechanism's rule of UNDER-ANTIGRAVITY.md: "
+        f"{ {k: v if isinstance(v, HarnessError) else v[:2] for k, v in parts.items()} }",
+    )
     combined = attempt(lambda: render_agent(builder, EXAMPLE_TIERS, {}))
-    order = [k for k in mechanisms if isinstance(combined, bytes) and "- " + rules[k].split("{")[0][:40]
-             in combined.decode()]
-    case(lambda: order == list(mechanisms),
-         f"julia-builder, which uses each mechanism, gets each rule: {order}")
-    gone = [(k, attempt(lambda: under_antigravity({}, "Then open the pull request.\n",
-                                                  text.replace(f"## {k}\n", "## nothing\n")))) for k in ("pr", "intro")]
-    case(lambda: all(isinstance(e, HarnessError) and "UNDER-ANTIGRAVITY.md" in str(e) and f"## {k}" in str(e)
-                     for k, e in gone),
-         f"a section of UNDER-ANTIGRAVITY.md that an agent needs and that is missing exits 2, naming it: {gone}")
+    order = [
+        k
+        for k in mechanisms
+        if isinstance(combined, bytes) and "- " + rules[k].split("{")[0][:40] in combined.decode()
+    ]
+    case(
+        lambda: order == list(mechanisms),
+        f"julia-builder, which uses each mechanism, gets each rule: {order}",
+    )
+    gone = [
+        (
+            k,
+            attempt(
+                lambda: under_antigravity(
+                    {}, "Then open the pull request.\n", text.replace(f"## {k}\n", "## nothing\n")
+                )
+            ),
+        )
+        for k in ("pr", "intro")
+    ]
+    case(
+        lambda: all(
+            isinstance(e, HarnessError) and "UNDER-ANTIGRAVITY.md" in str(e) and f"## {k}" in str(e)
+            for k, e in gone
+        ),
+        f"a section of UNDER-ANTIGRAVITY.md that an agent needs and that is missing exits 2, naming it: {gone}",
+    )
     worker = attempt(lambda: render_agent(REPO / "agents" / "worker.md", EXAMPLE_TIERS, {}))
-    case(lambda: isinstance(worker, bytes) and ("- " + rules["pr"]).encode() in worker,
-         f"worker, whose body names opening a pull request, gets the rule of `pr`: {worker[:300]!r}")
-    got = {body: [k for k in mechanisms if "- " + filled[k] in under_antigravity({}, body)]
-           for body in ("Open a pull request when the prompt says so.\n",
-                        'Spawn it with `isolation: "worktree"`.\n', "Spawn it with isolation: worktree.\n",
-                        "This agent needs no isolation of any kind.\n", "It reads the pull request.\n")}
-    case(lambda: list(got.values()) == [["pr"], ["worktree"], ["worktree"], [], []],
-         f"a body that says to open a pull request gets the rule of `pr`, one that names `isolation: worktree`, "
-         f"quoted or not, the rule of `worktree`, and the bare word isolation or a pull request that is not "
-         f"opened gets no rule: {got}")
+    case(
+        lambda: isinstance(worker, bytes) and ("- " + rules["pr"]).encode() in worker,
+        f"worker, whose body names opening a pull request, gets the rule of `pr`: {worker[:300]!r}",
+    )
+    got = {
+        body: [k for k in mechanisms if "- " + filled[k] in under_antigravity({}, body)]
+        for body in (
+            "Open a pull request when the prompt says so.\n",
+            'Spawn it with `isolation: "worktree"`.\n',
+            "Spawn it with isolation: worktree.\n",
+            "This agent needs no isolation of any kind.\n",
+            "It reads the pull request.\n",
+        )
+    }
+    case(
+        lambda: list(got.values()) == [["pr"], ["worktree"], ["worktree"], [], []],
+        f"a body that says to open a pull request gets the rule of `pr`, one that names `isolation: worktree`, "
+        f"quoted or not, the rule of `worktree`, and the bare word isolation or a pull request that is not "
+        f"opened gets no rule: {got}",
+    )
 
     delta = DELTA.read_text()
-    case(lambda: "two critics" in delta and "build-part" in delta and "session model" in delta
-         and all(w in delta for w in ("`inherit`", "`flash`", "`flash_lite`", "[antigravity]")),
-         "ANTIGRAVITY-DELTA.md states that round 1 of build-part runs two critics on the session model, and the "
-         "agents' tiers")
+    case(
+        lambda: (
+            "two critics" in delta
+            and "build-part" in delta
+            and "session model" in delta
+            and all(w in delta for w in ("`inherit`", "`flash`", "`flash_lite`", "[antigravity]"))
+        ),
+        "ANTIGRAVITY-DELTA.md states that round 1 of build-part runs two critics on the session model, and the "
+        "agents' tiers",
+    )
 
 
 def council_cases(scratch):
@@ -2117,20 +3162,30 @@ def council_cases(scratch):
     agent it names, and no seat file."""
     case, run, tail = scratch.case, scratch.run, scratch.tail
     path = scratch.tmp / "models-councils.toml"
-    path.write_text(models_text('large = "inherit"\nmedium = "flash"\nsmall = "flash_lite"\n',
-                                '\n[opencode.councils]\njulia-critic = [{ name = "critic-x", model = "provider-c/other-model" }]\n'
-                                'reader = [{ name = "reader-b", model = "provider-c/other-model" }]\n'))
+    path.write_text(
+        models_text(
+            'large = "inherit"\nmedium = "flash"\nsmall = "flash_lite"\n',
+            '\n[opencode.councils]\njulia-critic = [{ name = "critic-x", model = "provider-c/other-model" }]\n'
+            'reader = [{ name = "reader-b", model = "provider-c/other-model" }]\n',
+        )
+    )
     base, _, _ = scratch.fresh()
     (base / "home" / ".gemini").mkdir()
     code, text = run(base, models=path)
     warned = [w for w in text.split("WARNING: ")[1:] if "council" in w and "Antigravity" in w]
     listed = re.findall(r"^antigravity/config/agents/(\S+)\s", text, re.M)
-    case(lambda: code in (0, 1) and len(warned) == 2 and sum("julia-critic" in w for w in warned) == 1
-         and sum("reader" in w for w in warned) == 1
-         and not {"critic-b.md", "critic-c.md", "critic-x.md", "reader-b.md"} & set(listed)
-         and "julia-critic.md" in listed,
-         f"julia-critic, in [councils] and [opencode.councils], and reader, in [opencode.councils], give one "
-         f"warning each, and no seat file is listed: {code}, {warned}, {tail(text)!r}")
+    case(
+        lambda: (
+            code in (0, 1)
+            and len(warned) == 2
+            and sum("julia-critic" in w for w in warned) == 1
+            and sum("reader" in w for w in warned) == 1
+            and not {"critic-b.md", "critic-c.md", "critic-x.md", "reader-b.md"} & set(listed)
+            and "julia-critic.md" in listed
+        ),
+        f"julia-critic, in [councils] and [opencode.councils], and reader, in [opencode.councils], give one "
+        f"warning each, and no seat file is listed: {code}, {warned}, {tail(text)!r}",
+    )
 
 
 def kaimon_cases(scratch):
@@ -2146,25 +3201,42 @@ def kaimon_cases(scratch):
     token.write_text("fake-token-of-the-cases\n")
     token.chmod(0o600)
     code, dry = run(base)
-    case(lambda: line.findall(dry) == ["INSTALL"] and "fake-token-of-the-cases" not in dry,
-         f"with a token file, the dry run lists mcp_config.json and never prints the token: {line.findall(dry)}")
+    case(
+        lambda: line.findall(dry) == ["INSTALL"] and "fake-token-of-the-cases" not in dry,
+        f"with a token file, the dry run lists mcp_config.json and never prints the token: {line.findall(dry)}",
+    )
     config = home / ".gemini" / "config" / "mcp_config.json"
 
     def entry(value):
-        return {"mcpServers": {"kaimon": {"url": "http://127.0.0.1:2828/",
-                                          "headers": {"Authorization": f"Bearer {value}"}}}}
+        return {
+            "mcpServers": {
+                "kaimon": {"url": "http://127.0.0.1:2828/", "headers": {"Authorization": f"Bearer {value}"}}
+            }
+        }
 
     code, out = run(base, "--apply")
     got = json.loads(config.read_text()) if config.is_file() else None
-    case(lambda: code == 0 and got == entry("fake-token-of-the-cases") and scratch.mode(config) == 0o600
-         and "fake-token-of-the-cases" not in out,
-         f"--apply writes the Kaimon entry with the token of the file, mode 600: {code}, {got}, {tail(out)!r}")
+    case(
+        lambda: (
+            code == 0
+            and got == entry("fake-token-of-the-cases")
+            and scratch.mode(config) == 0o600
+            and "fake-token-of-the-cases" not in out
+        ),
+        f"--apply writes the Kaimon entry with the token of the file, mode 600: {code}, {got}, {tail(out)!r}",
+    )
     token.write_text("another-token\n")
     code, out = run(base, "--apply")
     got = json.loads(config.read_text()) if config.is_file() else None
-    case(lambda: code == 0 and got == entry("another-token") and scratch.mode(config) == 0o600
-         and not list(config.parent.glob("mcp_config.json.bak-*")),
-         f"a new token in the file is the token of the entry, and no backup holds the old one: {code}, {got}")
+    case(
+        lambda: (
+            code == 0
+            and got == entry("another-token")
+            and scratch.mode(config) == 0o600
+            and not list(config.parent.glob("mcp_config.json.bak-*"))
+        ),
+        f"a new token in the file is the token of the entry, and no backup holds the old one: {code}, {got}",
+    )
 
     def fresh(token_text="fake-token-of-the-cases\n"):
         base, _, _ = scratch.fresh()
@@ -2178,148 +3250,265 @@ def kaimon_cases(scratch):
 
     # A file of the user's is merged: every other server and key stays, in its place, with its indent.
     base, config = fresh()
-    config.write_text(json.dumps({"mcpServers": {"other": {"command": "x", "args": []}}, "extra": 1}, indent=4) + "\n")
+    config.write_text(
+        json.dumps({"mcpServers": {"other": {"command": "x", "args": []}}, "extra": 1}, indent=4) + "\n"
+    )
     code, out = run(base, "--apply")
     text = config.read_text()
     got = json.loads(text)
-    case(lambda: code == 0 and got == {"mcpServers": {"other": {"command": "x", "args": []},
-                                                      "kaimon": entry("fake-token-of-the-cases")["mcpServers"]["kaimon"]},
-                                       "extra": 1}
-         and list(got) == ["mcpServers", "extra"] and list(got["mcpServers"]) == ["other", "kaimon"]
-         and text.split("\n")[1].startswith('    "mcpServers"') and scratch.mode(config) == 0o600,
-         f"--apply adds kaimon to the user's mcpServers and keeps every other server and key, in place, with the "
-         f"file's indent, mode 600: {code}, {got}")
+    case(
+        lambda: (
+            code == 0
+            and got
+            == {
+                "mcpServers": {
+                    "other": {"command": "x", "args": []},
+                    "kaimon": entry("fake-token-of-the-cases")["mcpServers"]["kaimon"],
+                },
+                "extra": 1,
+            }
+            and list(got) == ["mcpServers", "extra"]
+            and list(got["mcpServers"]) == ["other", "kaimon"]
+            and text.split("\n")[1].startswith('    "mcpServers"')
+            and scratch.mode(config) == 0o600
+        ),
+        f"--apply adds kaimon to the user's mcpServers and keeps every other server and key, in place, with the "
+        f"file's indent, mode 600: {code}, {got}",
+    )
     base, config = fresh("new-token\n")
     other = {"command": "y", "args": ["z"], "env": {"K": "v"}}
-    config.write_text(json.dumps({"mcpServers": {"kaimon": entry("old-token")["mcpServers"]["kaimon"], "other": other}},
-                                 indent=2) + "\n")
+    config.write_text(
+        json.dumps(
+            {"mcpServers": {"kaimon": entry("old-token")["mcpServers"]["kaimon"], "other": other}}, indent=2
+        )
+        + "\n"
+    )
     code, out = run(base, "--apply")
     got = json.loads(config.read_text())
-    case(lambda: code == 0 and got["mcpServers"] == {"kaimon": entry("new-token")["mcpServers"]["kaimon"], "other": other}
-         and not list(config.parent.glob("mcp_config.json.bak-*")) and "old-token" not in out,
-         f"--apply replaces a stale Kaimon token, keeps the other server, and makes no backup: {code}, {got}")
+    case(
+        lambda: (
+            code == 0
+            and got["mcpServers"] == {"kaimon": entry("new-token")["mcpServers"]["kaimon"], "other": other}
+            and not list(config.parent.glob("mcp_config.json.bak-*"))
+            and "old-token" not in out
+        ),
+        f"--apply replaces a stale Kaimon token, keeps the other server, and makes no backup: {code}, {got}",
+    )
     for label, data in [("is empty", b""), ("holds a newline only", b"\n")]:
         base, config = fresh()
         config.write_bytes(data)
         code, out = run(base, "--apply")
         got = config.read_text()
-        case(lambda: code == 0 and json.loads(got) == entry("fake-token-of-the-cases") and scratch.mode(config) == 0o600,
-             f"a mcp_config.json that {label} becomes Kaimon alone: {code}, {got!r}, {tail(out)!r}")
+        case(
+            lambda: (
+                code == 0
+                and json.loads(got) == entry("fake-token-of-the-cases")
+                and scratch.mode(config) == 0o600
+            ),
+            f"a mcp_config.json that {label} becomes Kaimon alone: {code}, {got!r}, {tail(out)!r}",
+        )
     base, config = fresh()
     config.write_text('{"mcpServers": {"kaimon": {"timeout": 1e400}, "other": {"timeout": 1.5}}}\n')
     code, out = run(base, "--apply")
     got = config.read_text()
-    case(lambda: code == 0 and json.loads(got)["mcpServers"] == {
-        "kaimon": entry("fake-token-of-the-cases")["mcpServers"]["kaimon"], "other": {"timeout": 1.5}},
-         f"a number of the Kaimon entry that the merge replaces stops nothing: {code}, {got!r}, {tail(out)!r}")
+    case(
+        lambda: (
+            code == 0
+            and json.loads(got)["mcpServers"]
+            == {"kaimon": entry("fake-token-of-the-cases")["mcpServers"]["kaimon"], "other": {"timeout": 1.5}}
+        ),
+        f"a number of the Kaimon entry that the merge replaces stops nothing: {code}, {got!r}, {tail(out)!r}",
+    )
     new = entry("fake-token-of-the-cases")["mcpServers"]["kaimon"]
     base, config = fresh()
     config.write_text('{"extra": {"u": 1}}\n')
     code, out = run(base, "--apply")
     got = config.read_text()
-    case(lambda: code == 0 and json.loads(got) == {"extra": {"u": 1}, "mcpServers": {"kaimon": new}},
-         f"a file with no mcpServers gains it, with Kaimon alone: {code}, {got!r}, {tail(out)!r}")
+    case(
+        lambda: code == 0 and json.loads(got) == {"extra": {"u": 1}, "mcpServers": {"kaimon": new}},
+        f"a file with no mcpServers gains it, with Kaimon alone: {code}, {got!r}, {tail(out)!r}",
+    )
     base, config = fresh()
     config.write_text('{"mcpServers": {"kaimon": {"u": 1, "u": 2}, "other": {"command": "x"}}}\n')
     code, out = run(base, "--apply")
     got = config.read_text()
-    case(lambda: code == 0 and json.loads(got)["mcpServers"] == {"kaimon": new, "other": {"command": "x"}}
-         and json.dumps(json.loads(got)["mcpServers"]["other"]) == '{"command": "x"}',
-         f"a key twice in the Kaimon entry that the merge replaces stops nothing: {code}, {got!r}, {tail(out)!r}")
+    case(
+        lambda: (
+            code == 0
+            and json.loads(got)["mcpServers"] == {"kaimon": new, "other": {"command": "x"}}
+            and json.dumps(json.loads(got)["mcpServers"]["other"]) == '{"command": "x"}'
+        ),
+        f"a key twice in the Kaimon entry that the merge replaces stops nothing: {code}, {got!r}, {tail(out)!r}",
+    )
     base, config = fresh()
     config.write_text('{"mcpServers": {"kaimon": {"url": "a"}, "kaimon": {"url": "b"}}}\n')
     code, out = run(base, "--apply")
     got = config.read_text()
-    case(lambda: code == 0 and json.loads(got)["mcpServers"] == {"kaimon": new} and got.count('"kaimon"') == 1,
-         f"a Kaimon entry twice in mcpServers becomes one Kaimon entry: {code}, {got!r}, {tail(out)!r}")
+    case(
+        lambda: code == 0 and json.loads(got)["mcpServers"] == {"kaimon": new} and got.count('"kaimon"') == 1,
+        f"a Kaimon entry twice in mcpServers becomes one Kaimon entry: {code}, {got!r}, {tail(out)!r}",
+    )
     base, config = fresh()
     config.write_bytes(b'{"mcpServers": {"a": {"url": "secret-u", "url": "secret-v"}}}\n')
     code, out = run(base, "--apply")
-    case(lambda: scratch.refused(code, out) and '["mcpServers", "a", "url"]' in out and "secret-" not in out,
-         f"a key twice in a server exits 2, names the key by its path and prints no value: {code}, {tail(out)!r}")
+    case(
+        lambda: scratch.refused(code, out) and '["mcpServers", "a", "url"]' in out and "secret-" not in out,
+        f"a key twice in a server exits 2, names the key by its path and prints no value: {code}, {tail(out)!r}",
+    )
     # The depth at which the second parse runs out of stack depends on the interpreter, so a child
     # process makes that parse raise RecursionError at any depth, and the case holds on each Python.
     import subprocess
     import sys
-    deep = ("import json, runpy, sys\n"
-            "loads = json.loads\n"
-            "def deep(*args, **kwargs):\n"
-            "    if 'object_pairs_hook' in kwargs:\n"
-            "        raise RecursionError('maximum recursion depth exceeded')\n"
-            "    return loads(*args, **kwargs)\n"
-            "json.loads = deep\n"
-            "try:\n"
-            "    sys.argv = sys.argv[1:]\n"
-            "    runpy.run_path(sys.argv[0], run_name='__main__')\n"
-            "finally:\n"
-            "    json.loads = loads\n")
+
+    deep = (
+        "import json, runpy, sys\n"
+        "loads = json.loads\n"
+        "def deep(*args, **kwargs):\n"
+        "    if 'object_pairs_hook' in kwargs:\n"
+        "        raise RecursionError('maximum recursion depth exceeded')\n"
+        "    return loads(*args, **kwargs)\n"
+        "json.loads = deep\n"
+        "try:\n"
+        "    sys.argv = sys.argv[1:]\n"
+        "    runpy.run_path(sys.argv[0], run_name='__main__')\n"
+        "finally:\n"
+        "    json.loads = loads\n"
+    )
     base, config = fresh()
     config.write_bytes(b'{"mcpServers": {"other": {"command": "x"}}}\n')
     config.chmod(0o644)
     snapshot = scratch.snapshot(base)
-    p = subprocess.run([sys.executable, "-c", deep, str(REPO / "bin" / "harness"),
-                        "--profile", str(base / "profile.toml"),
-                        "--models", str(REPO / "examples" / "models.toml"), "install", "--apply"],
-                       capture_output=True, text=True, env=scratch.env(base), cwd=base, timeout=60)
+    p = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            deep,
+            str(REPO / "bin" / "harness"),
+            "--profile",
+            str(base / "profile.toml"),
+            "--models",
+            str(REPO / "examples" / "models.toml"),
+            "install",
+            "--apply",
+        ],
+        capture_output=True,
+        text=True,
+        env=scratch.env(base),
+        cwd=base,
+        timeout=60,
+    )
     code, out = p.returncode, p.stdout + p.stderr
-    case(lambda: scratch.refused(code, out) and "nested too deep" in out and str(config) in out
-         and scratch.snapshot(base) == snapshot,
-         f"a RecursionError of the parse that keeps the keys of each object exits 2, and nothing is written: "
-         f"{code}, {tail(out)!r}")
+    case(
+        lambda: (
+            scratch.refused(code, out)
+            and "nested too deep" in out
+            and str(config) in out
+            and scratch.snapshot(base) == snapshot
+        ),
+        f"a RecursionError of the parse that keeps the keys of each object exits 2, and nothing is written: "
+        f"{code}, {tail(out)!r}",
+    )
     truncated = b'{"mcpServers": {"kaimon": {"headers": {"Authorization": "Bearer fake-old'
-    for label, make in [("holds a JSON array", lambda p: p.write_bytes(b"[]\n")),
-                        ("holds a JSON string", lambda p: p.write_bytes(b'"x"\n')),
-                        ("has an mcpServers that is a list", lambda p: p.write_bytes(b'{"mcpServers": []}\n')),
-                        ("is cut off inside a token", lambda p: p.write_bytes(truncated)),
-                        ("holds a number that JSON writes in other text",
-                         lambda p: p.write_bytes(b'{"mcpServers": {"other": {"timeout": 1e400}}}\n')),
-                        ("holds such a number in a list of a server",
-                         lambda p: p.write_bytes(b'{"mcpServers": {"other": {"args": ["x", 1.10]}}}\n')),
-                        ("holds such a number in a server named kaimon.x",
-                         lambda p: p.write_bytes(b'{"mcpServers": {"kaimon.x": {"timeout": 1e400}}}\n')),
-                        ("holds such a number in a server named kaimon[0]",
-                         lambda p: p.write_bytes(b'{"mcpServers": {"kaimon[0]": {"timeout": 1.10}}}\n')),
-                        ("holds such a number in a top-level key named mcpServers.kaimon",
-                         lambda p: p.write_bytes(b'{"mcpServers.kaimon": 1e400, "mcpServers": {}}\n')),
-                        ("holds the key mcpServers twice",
-                         lambda p: p.write_bytes(b'{"mcpServers": {"a": {"url": "u"}}, "mcpServers": {"b": {}}}\n')),
-                        ("holds a key of a server twice",
-                         lambda p: p.write_bytes(b'{"mcpServers": {"a": {"url": "u", "url": "v"}}}\n')),
-                        ("holds a key twice in a top-level key named kaimon",
-                         lambda p: p.write_bytes(b'{"kaimon": {"u": 1, "u": 2}, "mcpServers": {}}\n')),
-                        ("holds a key twice in a server named kaimon.x",
-                         lambda p: p.write_bytes(b'{"mcpServers": {"kaimon.x": {"u": 1, "u": 2}}}\n')),
-                        ("holds a key twice in a key named kaimon of a server",
-                         lambda p: p.write_bytes(b'{"mcpServers": {"o": {"kaimon": {"u": 1, "u": 2}}}}\n')),
-                        ("is not UTF-8", lambda p: p.write_bytes(b"\xff\n")),
-                        ("is a directory", lambda p: p.mkdir()), ("is a FIFO", os.mkfifo)]:
+    for label, make in [
+        ("holds a JSON array", lambda p: p.write_bytes(b"[]\n")),
+        ("holds a JSON string", lambda p: p.write_bytes(b'"x"\n')),
+        ("has an mcpServers that is a list", lambda p: p.write_bytes(b'{"mcpServers": []}\n')),
+        ("is cut off inside a token", lambda p: p.write_bytes(truncated)),
+        (
+            "holds a number that JSON writes in other text",
+            lambda p: p.write_bytes(b'{"mcpServers": {"other": {"timeout": 1e400}}}\n'),
+        ),
+        (
+            "holds such a number in a list of a server",
+            lambda p: p.write_bytes(b'{"mcpServers": {"other": {"args": ["x", 1.10]}}}\n'),
+        ),
+        (
+            "holds such a number in a server named kaimon.x",
+            lambda p: p.write_bytes(b'{"mcpServers": {"kaimon.x": {"timeout": 1e400}}}\n'),
+        ),
+        (
+            "holds such a number in a server named kaimon[0]",
+            lambda p: p.write_bytes(b'{"mcpServers": {"kaimon[0]": {"timeout": 1.10}}}\n'),
+        ),
+        (
+            "holds such a number in a top-level key named mcpServers.kaimon",
+            lambda p: p.write_bytes(b'{"mcpServers.kaimon": 1e400, "mcpServers": {}}\n'),
+        ),
+        (
+            "holds the key mcpServers twice",
+            lambda p: p.write_bytes(b'{"mcpServers": {"a": {"url": "u"}}, "mcpServers": {"b": {}}}\n'),
+        ),
+        (
+            "holds a key of a server twice",
+            lambda p: p.write_bytes(b'{"mcpServers": {"a": {"url": "u", "url": "v"}}}\n'),
+        ),
+        (
+            "holds a key twice in a top-level key named kaimon",
+            lambda p: p.write_bytes(b'{"kaimon": {"u": 1, "u": 2}, "mcpServers": {}}\n'),
+        ),
+        (
+            "holds a key twice in a server named kaimon.x",
+            lambda p: p.write_bytes(b'{"mcpServers": {"kaimon.x": {"u": 1, "u": 2}}}\n'),
+        ),
+        (
+            "holds a key twice in a key named kaimon of a server",
+            lambda p: p.write_bytes(b'{"mcpServers": {"o": {"kaimon": {"u": 1, "u": 2}}}}\n'),
+        ),
+        ("is not UTF-8", lambda p: p.write_bytes(b"\xff\n")),
+        ("is a directory", lambda p: p.mkdir()),
+        ("is a FIFO", os.mkfifo),
+    ]:
         base, config = fresh()
         make(config)
         snapshot = scratch.snapshot(base)
         code, out = run(base, "--apply")
-        case(lambda: scratch.refused(code, out) and str(config) in out and "fake-old" not in out
-             and scratch.snapshot(base) == snapshot,
-             f"a mcp_config.json that {label} exits 2, names the file, prints none of its text, and nothing is "
-             f"written: {code}, {tail(out)!r}")
+        case(
+            lambda: (
+                scratch.refused(code, out)
+                and str(config) in out
+                and "fake-old" not in out
+                and scratch.snapshot(base) == snapshot
+            ),
+            f"a mcp_config.json that {label} exits 2, names the file, prints none of its text, and nothing is "
+            f"written: {code}, {tail(out)!r}",
+        )
     for label, token_text, data in [
-            ("no token file, and a file with another server and a stale Kaimon entry", None,
-             json.dumps({"mcpServers": {"other": {"command": "x"}, "kaimon": {"url": "u"}}}) + "\n"),
-            ("an empty token file, and that file", "\n",
-             json.dumps({"mcpServers": {"other": {"command": "x"}, "kaimon": {"url": "u"}}}) + "\n"),
-            ("no token file, and a file that is not JSON", None, "not json\n")]:
+        (
+            "no token file, and a file with another server and a stale Kaimon entry",
+            None,
+            json.dumps({"mcpServers": {"other": {"command": "x"}, "kaimon": {"url": "u"}}}) + "\n",
+        ),
+        (
+            "an empty token file, and that file",
+            "\n",
+            json.dumps({"mcpServers": {"other": {"command": "x"}, "kaimon": {"url": "u"}}}) + "\n",
+        ),
+        ("no token file, and a file that is not JSON", None, "not json\n"),
+    ]:
         base, config = fresh(token_text)
         config.write_text(data)
         config.chmod(0o644)
         code, out = run(base, "--apply")
         warned = [w for w in out.split("WARNING: ")[1:] if "writes no Kaimon entry" in w]
-        case(lambda: code == 0 and config.read_text() == data and scratch.mode(config) == 0o644 and len(warned) == 1
-             and line.findall(out) == [],
-             f"with {label}, --apply leaves the file as it is, with one warning and no line of it: {code}, "
-             f"{warned}, {tail(out)!r}")
+        case(
+            lambda: (
+                code == 0
+                and config.read_text() == data
+                and scratch.mode(config) == 0o644
+                and len(warned) == 1
+                and line.findall(out) == []
+            ),
+            f"with {label}, --apply leaves the file as it is, with one warning and no line of it: {code}, "
+            f"{warned}, {tail(out)!r}",
+        )
 
-    for label, make in [("does not exist", lambda p: None), ("is empty", lambda p: p.write_text("\n")),
-                        ("is a directory", lambda p: p.mkdir()), ("is a FIFO", os.mkfifo),
-                        ("is not UTF-8", lambda p: p.write_bytes(b"\xff\n"))]:
+    for label, make in [
+        ("does not exist", lambda p: None),
+        ("is empty", lambda p: p.write_text("\n")),
+        ("is a directory", lambda p: p.mkdir()),
+        ("is a FIFO", os.mkfifo),
+        ("is not UTF-8", lambda p: p.write_bytes(b"\xff\n")),
+    ]:
         base, _, _ = scratch.fresh()
         (base / "home" / ".gemini").mkdir()
         token = base / "home" / ".config" / "kaimon" / "auth-token"
@@ -2327,6 +3516,13 @@ def kaimon_cases(scratch):
         make(token)
         code, text = run(base, "--apply")
         warned = [w for w in text.split("WARNING: ")[1:] if "writes no Kaimon entry" in w]
-        case(lambda: code == 0 and line.findall(text) == [] and len(warned) == 1 and "auth-token" in warned[0]
-             and not (base / "home" / ".gemini" / "config" / "mcp_config.json").exists(),
-             f"a token file that {label} writes no Kaimon entry and gives one warning: {code}, {warned}")
+        case(
+            lambda: (
+                code == 0
+                and line.findall(text) == []
+                and len(warned) == 1
+                and "auth-token" in warned[0]
+                and not (base / "home" / ".gemini" / "config" / "mcp_config.json").exists()
+            ),
+            f"a token file that {label} writes no Kaimon entry and gives one warning: {code}, {warned}",
+        )

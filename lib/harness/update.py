@@ -27,8 +27,10 @@ def plan(repo):
     branch = git(repo, "symbolic-ref", "--quiet", "--short", "HEAD").stdout.strip()
     if not branch:
         head = git(repo, "rev-parse", "--short", "HEAD").stdout.strip()
-        raise HarnessError(f"{repo} is pinned at {head} (detached HEAD); move the pin where it is set, "
-                           "such as in your dotfiles, not here")
+        raise HarnessError(
+            f"{repo} is pinned at {head} (detached HEAD); move the pin where it is set, "
+            "such as in your dotfiles, not here"
+        )
     if branch != "main":
         raise HarnessError(f"{repo} is on {branch}, not main; switch to main first")
     upstream = git(repo, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}").stdout.strip()
@@ -59,9 +61,15 @@ def show_diff(repo):
 
 def install(args):
     """`harness install --apply` from the merged checkout, in a process of its own."""
-    options = [o for flag, value in (("--profile", args.profile), ("--models", args.models)) if value
-               for o in (flag, value)]
-    return subprocess.run([sys.executable, str(REPO / "bin" / "harness"), *options, "install", "--apply"]).returncode
+    options = [
+        o
+        for flag, value in (("--profile", args.profile), ("--models", args.models))
+        if value
+        for o in (flag, value)
+    ]
+    return subprocess.run(
+        [sys.executable, str(REPO / "bin" / "harness"), *options, "install", "--apply"]
+    ).returncode
 
 
 def update(args, repo):
@@ -69,7 +77,9 @@ def update(args, repo):
         raise HarnessError("--apply asks on the terminal; run it yourself, in a terminal")
     behind = plan(repo)
     if behind == 0:
-        print(f"up to date: main is origin/main at {git(repo, 'rev-parse', '--short', 'HEAD').stdout.strip()}")
+        print(
+            f"up to date: main is origin/main at {git(repo, 'rev-parse', '--short', 'HEAD').stdout.strip()}"
+        )
         return 0
     print(git(repo, "log", "--oneline", "HEAD..origin/main").stdout.rstrip())
     print(git(repo, "diff", "--stat", "HEAD", "origin/main").stdout.rstrip())
@@ -79,7 +89,9 @@ def update(args, repo):
     if git(repo, "status", "--porcelain", "--untracked-files=no").stdout.strip():
         raise HarnessError(f"{repo} has changes to tracked files; commit or set them aside first")
     show_diff(repo)
-    if not confirm(f"harness update: merge {behind} commit(s) of origin/main and run harness install --apply?"):
+    if not confirm(
+        f"harness update: merge {behind} commit(s) of origin/main and run harness install --apply?"
+    ):
         print("harness update: nothing merged, nothing installed.")
         return 0
     p = git(repo, "merge", "--ff-only", "--quiet", "origin/main")
@@ -95,12 +107,17 @@ def cmd_update(args):
 
 
 def register(sub):
-    changing(sub.add_parser("update", help="bring the harness checkout up to origin/main and install it",
-                            description="Fetch the harness checkout and show the commits of origin/main that it "
-                                        "lacks; exit 1 when there is one. --apply shows the diff, asks y/N in a "
-                                        "terminal, merges --ff-only and runs harness install --apply. A pinned "
-                                        "checkout, at a detached HEAD, is not moved."),
-             help="show the diff, ask, merge and install").set_defaults(run=cmd_update)
+    changing(
+        sub.add_parser(
+            "update",
+            help="bring the harness checkout up to origin/main and install it",
+            description="Fetch the harness checkout and show the commits of origin/main that it "
+            "lacks; exit 1 when there is one. --apply shows the diff, asks y/N in a "
+            "terminal, merges --ff-only and runs harness install --apply. A pinned "
+            "checkout, at a detached HEAD, is not moved.",
+        ),
+        help="show the diff, ask, merge and install",
+    ).set_defaults(run=cmd_update)
 
 
 def selftest():
@@ -127,11 +144,13 @@ def selftest():
     def attempt(repo, apply=False, answer="n", tty=True):
         """(exit status or the error text, whether install ran)."""
         installed = []
-        with mock.patch.object(sys.stdin, "isatty", lambda: tty), \
-                mock.patch("builtins.input", lambda _: answer), \
-                mock.patch(f"{__name__}.install", lambda a: installed.append(a) or 0), \
-                mock.patch(f"{__name__}.show_diff", lambda r: None), \
-                contextlib.redirect_stdout(io.StringIO()):
+        with (
+            mock.patch.object(sys.stdin, "isatty", lambda: tty),
+            mock.patch("builtins.input", lambda _: answer),
+            mock.patch(f"{__name__}.install", lambda a: installed.append(a) or 0),
+            mock.patch(f"{__name__}.show_diff", lambda r: None),
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
             try:
                 code = update(argparse.Namespace(apply=apply, profile=None, models=None), repo)
             except HarnessError as e:
@@ -158,11 +177,17 @@ def selftest():
         check("terminal" in str(attempt(local, apply=True, tty=False)[0]), "--apply without a terminal stops")
         head = git(local, "rev-parse", "HEAD").stdout
         code, installed = attempt(local, apply=True, answer="")
-        check(code == 0 and not installed and git(local, "rev-parse", "HEAD").stdout == head,
-              "the answer no merges and installs nothing")
+        check(
+            code == 0 and not installed and git(local, "rev-parse", "HEAD").stdout == head,
+            "the answer no merges and installs nothing",
+        )
         code, installed = attempt(local, apply=True, answer="y")
-        check(code == 0 and installed and git(local, "rev-list", "--count", "HEAD..origin/main").stdout.strip() == "0",
-              "the answer y merges and installs")
+        check(
+            code == 0
+            and installed
+            and git(local, "rev-list", "--count", "HEAD..origin/main").stdout.strip() == "0",
+            "the answer y merges and installs",
+        )
         run("git", "checkout", "-q", "--detach", "HEAD", cwd=local)
         check("pinned" in str(attempt(local)[0]), "a pinned checkout stops")
         run("git", "switch", "-q", "main", cwd=local)

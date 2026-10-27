@@ -70,9 +70,18 @@ TIMEOUT, INSTALL_TIMEOUT, TEST_TIMEOUT, REVISE_TIMEOUT = 60, 300, 3600, 600
 # last one, or at or above an earlier one of the same major release: Node.js 20.16 in 20.x, else
 # 22.3. A case compares them with the page.
 MINIMUMS = {
-    "Python": ("3.14",), "gitleaks": ("8.21",), "Node.js": ("20.16", "22.3"), "actionlint": ("1.7.12",),
-    "Julia": ("1.13",), "ExplicitImports": ("1.15",), "JSON": ("1.10",), "JuliaFormatter": ("2.14",),
-    "JuliaSyntax": ("1.0.2",), "TestEnv": ("1.103.7",), "YAML": ("0.4.17",), "fatou": ("0.22.0",),
+    "Python": ("3.14",),
+    "gitleaks": ("8.21",),
+    "Node.js": ("20.16", "22.3"),
+    "actionlint": ("1.7.12",),
+    "Julia": ("1.13",),
+    "ExplicitImports": ("1.15",),
+    "JSON": ("1.10",),
+    "JuliaFormatter": ("2.14",),
+    "JuliaSyntax": ("1.0.2",),
+    "TestEnv": ("1.103.7",),
+    "YAML": ("0.4.17",),
+    "fatou": ("0.22.0",),
 }
 # (name in dependencies.md, command, its version arguments, what stops without it); a tool with no
 # such text is required: a FAIL when it is missing, a WARN for the others.
@@ -100,7 +109,10 @@ FIX = {
     "machine": ("setup-linux.md, Check the machine", "setup-macos.md, Check the machine"),
     "sandbox": ("setup-linux.md, The sandbox of Claude Code", "setup-macos.md, The sandbox of Claude Code"),
     "tools": ("setup-linux.md, The dependencies", "setup-macos.md, The dependencies"),
-    "profile": ("setup-linux.md, The profile and the model tables", "setup-macos.md, The profile and the model tables"),
+    "profile": (
+        "setup-linux.md, The profile and the model tables",
+        "setup-macos.md, The profile and the model tables",
+    ),
     "tree": ("setup-linux.md, The tree instructions", "setup-macos.md, The tree instructions"),
     "install": ("setup-linux.md, `harness install --apply`", "setup-macos.md, `harness install --apply`"),
     "kaimon job": ("setup-linux.md, The jobs", "setup-macos.md, The jobs"),
@@ -110,7 +122,16 @@ FIX = {
     "test": ("setup-linux.md, The check that it worked", "setup-macos.md, The check that it worked"),
 }
 # The answers of `systemctl is-active`; any other output is no answer.
-STATES = {"active", "inactive", "failed", "activating", "deactivating", "reloading", "refreshing", "maintenance"}
+STATES = {
+    "active",
+    "inactive",
+    "failed",
+    "activating",
+    "deactivating",
+    "reloading",
+    "refreshing",
+    "maintenance",
+}
 VERSION = re.compile(r"(\d+)\.(\d+)(?:\.(\d+))?")
 SUMMARY = re.compile(r"(\d+) cases, (\d+) wrong")
 WIDTH = 24
@@ -143,8 +164,15 @@ def run(command, timeout=None):
     (default TIMEOUT) gives "timeout"."""
     timeout = timeout or TIMEOUT
     try:
-        p = subprocess.run(command, capture_output=True, text=True, errors="replace", timeout=timeout,
-                           stdin=subprocess.DEVNULL, env=environment())
+        p = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            errors="replace",
+            timeout=timeout,
+            stdin=subprocess.DEVNULL,
+            env=environment(),
+        )
     except FileNotFoundError:
         return None
     except OSError as e:
@@ -158,7 +186,11 @@ def said(command, r):
     """What the run `r` of `command` gave, for a detail: its exit status and its first line."""
     if r is None:
         return f"{command} not found"
-    return f"{command} exits {r[0]}: {first(r[1] + r[2])}" if first(r[1] + r[2]) else f"{command} exits {r[0]}, silent"
+    return (
+        f"{command} exits {r[0]}: {first(r[1] + r[2])}"
+        if first(r[1] + r[2])
+        else f"{command} exits {r[0]}, silent"
+    )
 
 
 def first(text):
@@ -210,7 +242,9 @@ class Doctor:
         """A command or a file that gave no answer: SKIP in a session's sandbox, which can refuse
         it, else FAIL."""
         if sandboxed():
-            return Result("SKIP", name, f"{detail}; the session's sandbox can refuse it: run in a plain terminal")
+            return Result(
+                "SKIP", name, f"{detail}; the session's sandbox can refuse it: run in a plain terminal"
+            )
         return self.fail(name, detail, topic)
 
     # The machine.
@@ -223,8 +257,12 @@ class Doctor:
             if arch in ("x86_64", "aarch64"):
                 result = Result("PASS", "system", where)
             else:
-                result = Result("WARN", "system", f"{where}: the setup page covers x86_64 and aarch64, and its "
-                                                  "release files do not exist for this one")
+                result = Result(
+                    "WARN",
+                    "system",
+                    f"{where}: the setup page covers x86_64 and aarch64, and its "
+                    "release files do not exist for this one",
+                )
             return [result] + self.namespaces() + self.sandbox()
         if self.system == "Darwin":
             return [Result("PASS", "system", f"macOS {platform.mac_ver()[0]} {arch}")]
@@ -235,16 +273,31 @@ class Doctor:
         out = []
         clone = read(KERNEL / "unprivileged_userns_clone")
         if clone is not None and clone.strip() == "0":
-            out.append(self.fail("userns clone", "0: the kernel refuses user namespaces to a user who is not root",
-                                 "machine"))
+            out.append(
+                self.fail(
+                    "userns clone",
+                    "0: the kernel refuses user namespaces to a user who is not root",
+                    "machine",
+                )
+            )
         else:
-            out.append(Result("PASS", "userns clone", clone.strip() if clone is not None else "absent: no limit"))
+            out.append(
+                Result("PASS", "userns clone", clone.strip() if clone is not None else "absent: no limit")
+            )
         armor = read(KERNEL / "apparmor_restrict_unprivileged_userns")
         if armor is not None and armor.strip() == "1":
-            out.append(Result("WARN", "apparmor userns", "1: AppArmor refuses user namespaces to a program that it "
-                                                         "does not allow; the sandbox check decides"))
+            out.append(
+                Result(
+                    "WARN",
+                    "apparmor userns",
+                    "1: AppArmor refuses user namespaces to a program that it "
+                    "does not allow; the sandbox check decides",
+                )
+            )
         else:
-            out.append(Result("PASS", "apparmor userns", armor.strip() if armor is not None else "absent: no limit"))
+            out.append(
+                Result("PASS", "apparmor userns", armor.strip() if armor is not None else "absent: no limit")
+            )
         return out
 
     def sandbox(self):
@@ -253,13 +306,17 @@ class Doctor:
         if bwrap is None:
             out = [self.fail("sandbox", "bwrap not found", "sandbox")]
         else:
-            r = run([bwrap, "--ro-bind", "/", "/", "--dev", "/dev", "--unshare-user", "--unshare-pid", "true"])
+            r = run(
+                [bwrap, "--ro-bind", "/", "/", "--dev", "/dev", "--unshare-user", "--unshare-pid", "true"]
+            )
             if r is not None and r[0] == 0:
                 out = [Result("PASS", "sandbox", f"bwrap makes a sandbox ({bwrap})")]
             else:
                 out = [self.refused("sandbox", said("bwrap", r), "sandbox")]
         socat = shutil.which("socat")
-        return out + [Result("PASS", "socat", socat) if socat else self.fail("socat", "socat not found", "sandbox")]
+        return out + [
+            Result("PASS", "socat", socat) if socat else self.fail("socat", "socat not found", "sandbox")
+        ]
 
     # The tools.
 
@@ -314,7 +371,9 @@ class Doctor:
         try:
             deps = tomllib.loads(manifest.read_text()).get("deps")
         except FileNotFoundError:
-            return [self.fail(n, f"no {manifest}: the environment is not instantiated", "install") for n in names]
+            return [
+                self.fail(n, f"no {manifest}: the environment is not instantiated", "install") for n in names
+            ]
         except PermissionError as e:
             return [self.refused(n, f"cannot read {manifest}: {e.strerror}", "install") for n in names]
         except (OSError, UnicodeDecodeError, tomllib.TOMLDecodeError) as e:
@@ -357,8 +416,12 @@ class Doctor:
             return self.fail(name, f"{m.group(0)} ({python}), below {MINIMUMS['Python'][-1]}", "install")
         develop = profile_module.develop(self.profile) if self.profile is not None else False
         if not boot.synced(environment, develop):
-            return Result("WARN", name, f"{environment} lags uv.lock {'with' if develop else 'without'} the dev "
-                                        f"group: run `harness install --apply`")
+            return Result(
+                "WARN",
+                name,
+                f"{environment} lags uv.lock {'with' if develop else 'without'} the dev "
+                f"group: run `harness install --apply`",
+            )
         return Result("PASS", name, f"{m.group(0)} ({environment})")
 
     # The profile and the install.
@@ -367,8 +430,12 @@ class Doctor:
         where = profile_module.location(self.args.profile)
         if self.profile is None:
             skip = "the profile does not load"
-            return [self.fail("profile", self.profile_error, "profile"),
-                    Result("SKIP", "tree_agents", skip), self.opencode(), Result("SKIP", "autocommit_branch", skip)]
+            return [
+                self.fail("profile", self.profile_error, "profile"),
+                Result("SKIP", "tree_agents", skip),
+                self.opencode(),
+                Result("SKIP", "autocommit_branch", skip),
+            ]
         tree = self.profile.get("tree_agents")
         if not isinstance(tree, str):
             agents = self.fail("tree_agents", "the profile has no tree_agents", "tree")
@@ -376,8 +443,12 @@ class Doctor:
             agents = Result("PASS", "tree_agents", tree)
         else:
             agents = self.fail("tree_agents", f"{tree} is not a directory", "tree")
-        return [Result("PASS", "profile", f"{where} (home {self.profile['home']})"), agents, self.opencode(),
-                Result("PASS", "autocommit_branch", str(self.profile["autocommit_branch"]))]
+        return [
+            Result("PASS", "profile", f"{where} (home {self.profile['home']})"),
+            agents,
+            self.opencode(),
+            Result("PASS", "autocommit_branch", str(self.profile["autocommit_branch"])),
+        ]
 
     def opencode(self):
         directory = os.environ.get("OPENCODE_CONFIG_DIR") or str(self.home / ".config" / "opencode")
@@ -389,8 +460,12 @@ class Doctor:
         """The dry run of `harness install`: its count, and a WARN for each warning."""
         if self.profile is None:
             return [Result("SKIP", "install", "the profile does not load")]
-        options = [o for flag, value in (("--profile", self.args.profile), ("--models", self.args.models)) if value
-                   for o in (flag, value)]
+        options = [
+            o
+            for flag, value in (("--profile", self.args.profile), ("--models", self.args.models))
+            if value
+            for o in (flag, value)
+        ]
         r = run(HARNESS + options + ["install"], INSTALL_TIMEOUT)
         code, out, err = r
         count = re.search(r"^(\d+) change\(s\) to make\.$", out, re.M)
@@ -401,16 +476,25 @@ class Doctor:
         else:
             result = self.fail("install", f"the dry run exits {code}: {last(err) or last(out)}", "install")
         warnings = re.findall(r"^WARNING: (.*)$", out, re.M)
-        return [result] + [Result("WARN", f"install warning {n}", w.strip()) for n, w in enumerate(warnings, 1)]
+        return [result] + [
+            Result("WARN", f"install warning {n}", w.strip()) for n, w in enumerate(warnings, 1)
+        ]
 
     # The jobs.
 
     def jobs(self):
         kaimon = self.home / ".julia" / "bin" / "kaimon"
         installed = os.path.isfile(kaimon) and os.access(kaimon, os.X_OK)
-        out = [Result("PASS", "Kaimon", str(kaimon)) if installed else
-               Result("WARN", "Kaimon", f"{kaimon} is not an executable file: the agents have no Julia session, and "
-                                        "the update job stops")]
+        out = [
+            Result("PASS", "Kaimon", str(kaimon))
+            if installed
+            else Result(
+                "WARN",
+                "Kaimon",
+                f"{kaimon} is not an executable file: the agents have no Julia session, and "
+                "the update job stops",
+            )
+        ]
         if self.linux:
             out.append(self.linger())
             ask = self.systemd()
@@ -418,28 +502,46 @@ class Doctor:
             return out
         elif self.profile is None:
             skip = "the profile, which names launchd_prefix, does not load"
-            return out + [Result("SKIP", name, skip) for name in ("kaimon job", "julia-update job", "autocommit job",
-                                                                   "~/.claude repository")] + [self.token(installed)]
+            return (
+                out
+                + [
+                    Result("SKIP", name, skip)
+                    for name in ("kaimon job", "julia-update job", "autocommit job", "~/.claude repository")
+                ]
+                + [self.token(installed)]
+            )
         else:
             ask = self.launchd(self.profile.get("launchd_prefix"))
-        for name, job, topic in (("kaimon job", "kaimon", "kaimon job"), ("julia-update job", "julia-update",
-                                                                            "update job")):
+        for name, job, topic in (
+            ("kaimon job", "kaimon", "kaimon job"),
+            ("julia-update job", "julia-update", "update job"),
+        ):
             if not installed:
                 out.append(Result("SKIP", name, "Kaimon is not installed"))
                 continue
             answer, detail = ask(job)
-            out.append(Result("PASS", name, detail) if answer == "yes" else
-                       self.refused(name, detail, topic) if answer == "none" else self.fail(name, detail, topic))
+            out.append(
+                Result("PASS", name, detail)
+                if answer == "yes"
+                else self.refused(name, detail, topic)
+                if answer == "none"
+                else self.fail(name, detail, topic)
+            )
         answer, detail = ask("claude-autocommit")
         if answer == "yes":
             out += [Result("PASS", "autocommit job", detail), self.repository()]
         elif answer == "no":
-            out += [Result("SKIP", "autocommit job", f"{detail}: the job is not enabled"),
-                    Result("SKIP", "~/.claude repository", "the autocommit job is not enabled")]
+            out += [
+                Result("SKIP", "autocommit job", f"{detail}: the job is not enabled"),
+                Result("SKIP", "~/.claude repository", "the autocommit job is not enabled"),
+            ]
         else:
-            out += [self.refused("autocommit job", detail, "autocommit") if answer == "none" else
-                    self.fail("autocommit job", detail, "autocommit"),
-                    Result("SKIP", "~/.claude repository", "cannot tell whether the autocommit job is enabled")]
+            out += [
+                self.refused("autocommit job", detail, "autocommit")
+                if answer == "none"
+                else self.fail("autocommit job", detail, "autocommit"),
+                Result("SKIP", "~/.claude repository", "cannot tell whether the autocommit job is enabled"),
+            ]
         return out + [self.token(installed)]
 
     # The `ask(job)` of a service manager gives (answer, detail) for the job `kaimon`,
@@ -470,6 +572,7 @@ class Doctor:
             listed = {word for line in r[1].splitlines() for word in line.split()}
             unit = f"{job}.timer"
             return ("yes", f"{unit} listed") if unit in listed else ("no", f"{unit} is not listed")
+
         return ask
 
     def launchd(self, prefix):
@@ -486,6 +589,7 @@ class Doctor:
             if r is not None and "Could not find service" in r[2]:
                 return "no", f"{label} is not loaded"
             return "none", said("launchctl", r)
+
         return ask
 
     def linger(self):
@@ -512,8 +616,11 @@ class Doctor:
         if top is None:
             return self.fail("~/.claude repository", f"{claude} is not a git repository", "autocommit")
         if os.path.realpath(top) != os.path.realpath(claude):
-            return self.fail("~/.claude repository", f"{claude} is inside the repository {top}, not the top of its own",
-                             "autocommit")
+            return self.fail(
+                "~/.claude repository",
+                f"{claude} is inside the repository {top}, not the top of its own",
+                "autocommit",
+            )
         r = run([git, "-C", str(claude), "remote", "get-url", "origin"])
         if r is None or r[0] != 0:
             return self.fail("~/.claude repository", f"{claude} has no remote origin", "autocommit")
@@ -525,10 +632,16 @@ class Doctor:
         its adapter decides."""
         if not kaimon:
             return Result("SKIP", "Kaimon token", "Kaimon is not installed")
-        if (shutil.which("opencode") is None and shutil.which("omp") is None
-                and not (self.home / ".gemini").is_dir()):
-            return Result("SKIP", "Kaimon token",
-                          "neither OpenCode, oh-my-pi nor Antigravity is installed, and only they read it")
+        if (
+            shutil.which("opencode") is None
+            and shutil.which("omp") is None
+            and not (self.home / ".gemini").is_dir()
+        ):
+            return Result(
+                "SKIP",
+                "Kaimon token",
+                "neither OpenCode, oh-my-pi nor Antigravity is installed, and only they read it",
+            )
         path = self.home / ".config" / "kaimon" / "auth-token"
         try:
             st = os.stat(path)
@@ -549,7 +662,10 @@ class Doctor:
 
     def full(self):
         if not self.args.full:
-            return [Result("SKIP", "harness test", "run with --full"), Result("SKIP", "Revise", "run with --full")]
+            return [
+                Result("SKIP", "harness test", "run with --full"),
+                Result("SKIP", "Revise", "run with --full"),
+            ]
         code, out, err = run(HARNESS + ["test"], TEST_TIMEOUT)
         m = SUMMARY.fullmatch(last(out))
         if code == 0 and m and m.group(2) == "0":
@@ -562,8 +678,15 @@ class Doctor:
         r = run([julia, "-e", "using Revise"], REVISE_TIMEOUT)
         if r is not None and r[0] == 0:
             return [test, Result("PASS", "Revise", f"julia -e 'using Revise' loads it ({julia})")]
-        return [test, Result("WARN", "Revise", f"julia -e 'using Revise' exits {r[0] if r else 127}: "
-                                               f"{last(r[2]) or last(r[1]) if r else ''}")]
+        return [
+            test,
+            Result(
+                "WARN",
+                "Revise",
+                f"julia -e 'using Revise' exits {r[0] if r else 127}: "
+                f"{last(r[2]) or last(r[1]) if r else ''}",
+            ),
+        ]
 
 
 def numbers_of(version):
@@ -575,7 +698,7 @@ def read(path):
     """The text of `path`, or None when it does not exist or cannot be read."""
     try:
         return pathlib.Path(path).read_text()
-    except (OSError, UnicodeDecodeError):
+    except OSError, UnicodeDecodeError:
         return None
 
 
@@ -614,14 +737,17 @@ TOKEN = "kaimon_" + "5e" * 20
 # systemctl, loginctl and bwrap are written from their known form around the answers that the
 # machine gave, such as `Linger=no` and `active`. The Linux line of uv is written: the version of
 # the release that bin/harness fetches, without the build note that follows it.
-SHELLCHECK = ("ShellCheck - shell script analysis tool\nversion: 0.11.0\nlicense: GNU General Public License, "
-              "version 3\nwebsite: https://www.shellcheck.net\n")
+SHELLCHECK = (
+    "ShellCheck - shell script analysis tool\nversion: 0.11.0\nlicense: GNU General Public License, "
+    "version 3\nwebsite: https://www.shellcheck.net\n"
+)
 SYSTEMD_TIMERS = (
     "NEXT                            LEFT LAST                              PASSED UNIT                    ACTIVATES\n"
     "Wed 2026-10-21 04:30:00 CEST      9h -                                      - julia-update.timer      "
     "julia-update.service\n"
     "Tue 2026-10-20 19:12:13 CEST 13min Tue 2026-10-20 18:57:13 CEST 1min 2s ago claude-autocommit.timer "
-    "claude-autocommit.service\n\n2 timers listed.\nPass --all to see loaded but inactive timers, too.\n")
+    "claude-autocommit.service\n\n2 timers listed.\nPass --all to see loaded but inactive timers, too.\n"
+)
 NO_BUS = "Failed to connect to user scope bus via local transport: No such file or directory\n"
 COMMON = {
     "fatou": [("--version", "fatou 0.24.0\n", "", 0)],
@@ -633,10 +759,24 @@ COMMON = {
 LINUX = COMMON | {
     "python3": [("--version", "Python 3.14.4\n", "", 0)],
     "uv": [("--version", "uv 0.13.5\n", "", 0)],
-    "gh": [("--version", "gh version 2.46.0 (2024-03-01)\nhttps://github.com/cli/cli/releases/tag/v2.46.0\n", "", 0)],
+    "gh": [
+        (
+            "--version",
+            "gh version 2.46.0 (2024-03-01)\nhttps://github.com/cli/cli/releases/tag/v2.46.0\n",
+            "",
+            0,
+        )
+    ],
     "node": [("--version", "v22.22.1\n", "", 0)],
-    "actionlint": [("--version", "1.7.12\ninstalled by downloading from release page\n"
-                                 "built with go1.26.1 compiler for linux/amd64\n", "", 0)],
+    "actionlint": [
+        (
+            "--version",
+            "1.7.12\ninstalled by downloading from release page\n"
+            "built with go1.26.1 compiler for linux/amd64\n",
+            "",
+            0,
+        )
+    ],
     "rsync": [("--version", "rsync  version 3.4.1  protocol version 32\n", "", 0)],
     "julia": [("--version", "julia version 1.13.1\n", "", 0), ("-e using Revise", "", "", 0)],
     "juliaup": [("--version", "Juliaup 1.22.7\n", "", 0)],
@@ -646,19 +786,37 @@ LINUX = COMMON | {
     "bwrap": [("--ro-bind / / --dev /dev --unshare-user --unshare-pid true", "", "", 0)],
     "socat": [("*", "", "", 0)],
     "loginctl": [("show-user * -p Linger", "Linger=yes\n", "", 0)],
-    "systemctl": [("--user is-active kaimon.service", "active\n", "", 0),
-                  ("--user list-timers --no-pager", SYSTEMD_TIMERS, "", 0)],
+    "systemctl": [
+        ("--user is-active kaimon.service", "active\n", "", 0),
+        ("--user list-timers --no-pager", SYSTEMD_TIMERS, "", 0),
+    ],
 }
-LAUNCHCTL = ('{\n\t"LimitLoadToSessionType" = "Aqua";\n\t"Label" = "org.example.{job}";\n\t"OnDemand" = false;\n'
-             '\t"LastExitStatus" = 0;\n\t"PID" = 4242;\n\t"Program" = "/Users/me/.local/bin/{job}";\n'
-             '\t"ProgramArguments" = (\n\t\t"/Users/me/.local/bin/{job}";\n\t);\n};\n')
+LAUNCHCTL = (
+    '{\n\t"LimitLoadToSessionType" = "Aqua";\n\t"Label" = "org.example.{job}";\n\t"OnDemand" = false;\n'
+    '\t"LastExitStatus" = 0;\n\t"PID" = 4242;\n\t"Program" = "/Users/me/.local/bin/{job}";\n'
+    '\t"ProgramArguments" = (\n\t\t"/Users/me/.local/bin/{job}";\n\t);\n};\n'
+)
 MACOS = COMMON | {
     "python3": [("--version", "Python 3.14.8\n", "", 0)],
     "uv": [("--version", "uv 0.13.5 (Homebrew 2026-10-22 aarch64-apple-darwin)\n", "", 0)],
-    "gh": [("--version", "gh version 2.102.0 (2026-09-30)\nhttps://github.com/cli/cli/releases/tag/v2.102.0\n", "", 0)],
+    "gh": [
+        (
+            "--version",
+            "gh version 2.102.0 (2026-09-30)\nhttps://github.com/cli/cli/releases/tag/v2.102.0\n",
+            "",
+            0,
+        )
+    ],
     "node": [("--version", "v26.12.0\n", "", 0)],
-    "actionlint": [("--version", "1.7.12\ninstalled by downloading from release page\n"
-                                 "built with go1.26.1 compiler for darwin/arm64\n", "", 0)],
+    "actionlint": [
+        (
+            "--version",
+            "1.7.12\ninstalled by downloading from release page\n"
+            "built with go1.26.1 compiler for darwin/arm64\n",
+            "",
+            0,
+        )
+    ],
     "rsync": [("--version", "rsync  version 3.5.1  protocol version 33\n", "", 0)],
     "julia": [("--version", "julia version 1.13.2\n", "", 0), ("-e using Revise", "", "", 0)],
     "fatou": [("--version", "fatou 0.23.0\n", "", 0)],
@@ -667,18 +825,30 @@ MACOS = COMMON | {
     "opencode": [("--version", "opencode v2.1.0\n", "", 0)],
     "rtk": [("--version", "rtk 1.0.1\n", "", 0)],
     "jq": [("--version", "jq-1.7.1-apple\n", "", 0)],
-    "launchctl": [(f"list org.example.{job}", LAUNCHCTL.replace("{job}", job), "", 0)
-                  for job in ("kaimon", "julia-update", "claude-autocommit")],
+    "launchctl": [
+        (f"list org.example.{job}", LAUNCHCTL.replace("{job}", job), "", 0)
+        for job in ("kaimon", "julia-update", "claude-autocommit")
+    ],
 }
 # The dry run of `harness install` and `harness test`, as their lines end.
-INSTALL_OUT = ("julia/Project.toml                 already identical\n"
-               "\nWARNING: ~/.config/kaimon/auth-token does not exist.\n"
-               "         Create it (mode 600, the token alone).\n"
-               "\n0 change(s) to make.\n")
-HARNESS_STUB = [("--profile * install", INSTALL_OUT, "", 0),
-                ("test", "ok   sweep: a case\n\n1861 cases, 0 wrong\n", "", 0)]
-PACKAGES = {"ExplicitImports": "1.15.0", "JSON": "1.11.0", "JuliaFormatter": "2.14.0", "JuliaSyntax": "1.0.2",
-            "TestEnv": "1.103.7", "YAML": "0.4.17"}
+INSTALL_OUT = (
+    "julia/Project.toml                 already identical\n"
+    "\nWARNING: ~/.config/kaimon/auth-token does not exist.\n"
+    "         Create it (mode 600, the token alone).\n"
+    "\n0 change(s) to make.\n"
+)
+HARNESS_STUB = [
+    ("--profile * install", INSTALL_OUT, "", 0),
+    ("test", "ok   sweep: a case\n\n1861 cases, 0 wrong\n", "", 0),
+]
+PACKAGES = {
+    "ExplicitImports": "1.15.0",
+    "JSON": "1.11.0",
+    "JuliaFormatter": "2.14.0",
+    "JuliaSyntax": "1.0.2",
+    "TestEnv": "1.103.7",
+    "YAML": "0.4.17",
+}
 GIT_ENV = {"GIT_CONFIG_GLOBAL": "/dev/null", "GIT_CONFIG_NOSYSTEM": "1"}
 GIT_VERSION = {"Linux": "git version 2.53.0\n", "Darwin": "git version 2.54.0 (Apple Git-157)\n"}
 
@@ -690,7 +860,9 @@ def stub(path, cases):
     lines = ["#!/bin/sh", 'case "$*" in']
     for pattern, out, err, code in cases:
         glob = "*".join(shlex.quote(part) if part else "" for part in pattern.split("*"))
-        lines.append(f"  {glob}) printf '%s' {shlex.quote(out)}; printf '%s' {shlex.quote(err)} >&2; exit {code} ;;")
+        lines.append(
+            f"  {glob}) printf '%s' {shlex.quote(out)}; printf '%s' {shlex.quote(err)} >&2; exit {code} ;;"
+        )
     lines += ['  *) echo "stub: no case for $*" >&2; exit 99 ;;', "esac", ""]
     path.write_text("\n".join(lines))
     path.chmod(0o755)
@@ -702,17 +874,24 @@ def stubs(directory, system_name):
     for name, cases in (LINUX if system_name == "Linux" else MACOS).items():
         stub(directory / name, cases)
     version = GIT_VERSION[system_name]
-    (directory / "git").write_text(f'#!/bin/sh\n[ "$*" = --version ] && {{ printf %s {shlex.quote(version)}; '
-                                   f'exit 0; }}\nexec {shlex.quote(shutil.which("git"))} "$@"\n')
+    (directory / "git").write_text(
+        f'#!/bin/sh\n[ "$*" = --version ] && {{ printf %s {shlex.quote(version)}; '
+        f'exit 0; }}\nexec {shlex.quote(shutil.which("git"))} "$@"\n'
+    )
     (directory / "git").chmod(0o755)
 
 
 def manifest(versions):
     """A Manifest.toml in the form of Julia 1.13, with `versions`, {package: version}."""
-    head = '# This file is machine-generated - editing it directly is not advised\n\njulia_version = "1.13.2"\n' \
-           'manifest_format = "2.1"\nproject_hash = "94acdf3174e6a47bf3ed8d1b53e835f5db8784a4"\n'
-    return head + "".join(f'\n[[deps.{name}]]\ndeps = ["Dates"]\nuuid = "00000000-0000-0000-0000-000000000000"\n'
-                          f'version = "{version}"\n' for name, version in versions.items())
+    head = (
+        '# This file is machine-generated - editing it directly is not advised\n\njulia_version = "1.13.2"\n'
+        'manifest_format = "2.1"\nproject_hash = "94acdf3174e6a47bf3ed8d1b53e835f5db8784a4"\n'
+    )
+    return head + "".join(
+        f'\n[[deps.{name}]]\ndeps = ["Dates"]\nuuid = "00000000-0000-0000-0000-000000000000"\n'
+        f'version = "{version}"\n'
+        for name, version in versions.items()
+    )
 
 
 class Fixture:
@@ -751,7 +930,9 @@ class Fixture:
         (self.kernel / "unprivileged_userns_clone").write_text("1\n")
         self.os_release.write_text('PRETTY_NAME="Ubuntu 26.04.1 LTS"\nNAME="Ubuntu"\nVERSION_ID="26.04"\n')
         (self.iterm / "Contents").mkdir(parents=True)
-        (self.iterm / "Contents" / "Info.plist").write_bytes(plistlib.dumps({"CFBundleShortVersionString": "3.7.3"}))
+        (self.iterm / "Contents" / "Info.plist").write_bytes(
+            plistlib.dumps({"CFBundleShortVersionString": "3.7.3"})
+        )
         self.bin.mkdir()
         stubs(self.bin, system_name)
         self.harness = self.bin / "harness-stub"
@@ -762,19 +943,36 @@ class Fixture:
         """The arguments of a run on this fixture, inside a context with its HOME, its PATH, its
         system and its files in place of the machine's, and stdout in `self.out`; `only` names
         the tools of TOOLS that the run checks, else all, and `extra` adds variables."""
-        env = {k: v for k, v in os.environ.items()
-               if k not in (SANDBOX, "OPENCODE_CONFIG_DIR", "RESEARCH_HARNESS_PROFILE", "RESEARCH_HARNESS_MODELS")
-               and not k.startswith("GIT_")}
-        env.update(GIT_ENV, HOME=str(self.home), PATH=str(self.bin), RESEARCH_HARNESS_PYTHON=str(self.python),
-                   **({SANDBOX: "1"} if sandbox else {}))
+        env = {
+            k: v
+            for k, v in os.environ.items()
+            if k
+            not in (SANDBOX, "OPENCODE_CONFIG_DIR", "RESEARCH_HARNESS_PROFILE", "RESEARCH_HARNESS_MODELS")
+            and not k.startswith("GIT_")
+        }
+        env.update(
+            GIT_ENV,
+            HOME=str(self.home),
+            PATH=str(self.bin),
+            RESEARCH_HARNESS_PYTHON=str(self.python),
+            **({SANDBOX: "1"} if sandbox else {}),
+        )
         env.update(extra or {})
         self.out = io.StringIO()
-        with (mock.patch.dict(os.environ, env, clear=True), mock.patch(f"{__name__}.system", lambda: self.system),
-              mock.patch(f"{__name__}.machine", lambda: arch or ("x86_64" if self.system == "Linux" else "arm64")),
-              mock.patch(f"{__name__}.KERNEL", self.kernel), mock.patch(f"{__name__}.OS_RELEASE", self.os_release),
-              mock.patch(f"{__name__}.ITERM", self.iterm), mock.patch(f"{__name__}.HARNESS", [str(self.harness)]),
-              mock.patch.object(install, "JULIA_ENV", self.julia), contextlib.redirect_stdout(self.out),
-              mock.patch(f"{__name__}.TOOLS", [t for t in TOOLS if only is None or t[0] in only])):
+        with (
+            mock.patch.dict(os.environ, env, clear=True),
+            mock.patch(f"{__name__}.system", lambda: self.system),
+            mock.patch(
+                f"{__name__}.machine", lambda: arch or ("x86_64" if self.system == "Linux" else "arm64")
+            ),
+            mock.patch(f"{__name__}.KERNEL", self.kernel),
+            mock.patch(f"{__name__}.OS_RELEASE", self.os_release),
+            mock.patch(f"{__name__}.ITERM", self.iterm),
+            mock.patch(f"{__name__}.HARNESS", [str(self.harness)]),
+            mock.patch.object(install, "JULIA_ENV", self.julia),
+            contextlib.redirect_stdout(self.out),
+            mock.patch(f"{__name__}.TOOLS", [t for t in TOOLS if only is None or t[0] in only]),
+        ):
             yield types.SimpleNamespace(profile=str(self.profile), models=models, full=full)
 
     def results(self, *sections, **options):
@@ -797,13 +995,20 @@ def minimum_cases(check):
     found = {tool: tuple(re.findall(r"≥ (\d+(?:\.\d+)*)", cell)) for tool, cell in rows if tool != "tool"}
     check(len(found) >= 20, f"dependencies.md has {len(found)} rows of tools")
     for tool, floors in found.items():
-        check(MINIMUMS.get(tool, ()) == floors, f"the minimum of {tool}: {MINIMUMS.get(tool, ())} here, {floors} "
-                                                f"in dependencies.md")
-    check(set(MINIMUMS) <= set(found), f"every tool of MINIMUMS is a row of dependencies.md: "
-                                       f"{sorted(set(MINIMUMS) - set(found))} are not")
+        check(
+            MINIMUMS.get(tool, ()) == floors,
+            f"the minimum of {tool}: {MINIMUMS.get(tool, ())} here, {floors} in dependencies.md",
+        )
+    check(
+        set(MINIMUMS) <= set(found),
+        f"every tool of MINIMUMS is a row of dependencies.md: {sorted(set(MINIMUMS) - set(found))} are not",
+    )
     names = {name for name, *_ in TOOLS} | set(PACKAGES) | {"Kaimon", "iTerm2"}
-    check(set(found) == names, f"the checks cover each tool of dependencies.md: missing {sorted(set(found) - names)}, "
-                               f"extra {sorted(names - set(found))}")
+    check(
+        set(found) == names,
+        f"the checks cover each tool of dependencies.md: missing {sorted(set(found) - names)}, "
+        f"extra {sorted(names - set(found))}",
+    )
 
 
 def below(floor):
@@ -816,10 +1021,18 @@ def status_cases(check, root, system_name):
     """Each status of each check on a fixture of `system_name`."""
     linux = system_name == "Linux"
     claude = root / "claude-template"
-    subprocess.run(["git", "init", "-q", "-b", "main", str(claude)], check=True, capture_output=True,
-                   env=environment() | GIT_ENV)
-    subprocess.run(["git", "-C", str(claude), "remote", "add", "origin", "https://user:url-secret@example.org/m.git"],
-                   check=True, capture_output=True, env=environment() | GIT_ENV)
+    subprocess.run(
+        ["git", "init", "-q", "-b", "main", str(claude)],
+        check=True,
+        capture_output=True,
+        env=environment() | GIT_ENV,
+    )
+    subprocess.run(
+        ["git", "-C", str(claude), "remote", "add", "origin", "https://user:url-secret@example.org/m.git"],
+        check=True,
+        capture_output=True,
+        env=environment() | GIT_ENV,
+    )
     n = 0
 
     def fixture():
@@ -830,16 +1043,25 @@ def status_cases(check, root, system_name):
     def expect(label, got, want, text="", darwin=not linux):
         """Each check of `want`, {name: status}, has its status in `got`; a FAIL ends with a fix of
         FIX for its system, macOS when `darwin`, and nothing prints the token or the origin's URL."""
-        wrong = {name: (got[name].status if name in got else None) for name, status in want.items()
-                 if name not in got or got[name].status != status}
+        wrong = {
+            name: (got[name].status if name in got else None)
+            for name, status in want.items()
+            if name not in got or got[name].status != status
+        }
         sections = {pair[1] or pair[0] if darwin else pair[0] for pair in FIX.values()}
-        fails = [r for r in got.values() if r.status == "FAIL"
-                 and not any(r.detail.endswith(f"(fix: {s})") for s in sections)]
+        fails = [
+            r
+            for r in got.values()
+            if r.status == "FAIL" and not any(r.detail.endswith(f"(fix: {s})") for s in sections)
+        ]
         leaked = TOKEN in text or "url-secret" in text
-        check(not wrong and not fails and not leaked,
-              f"{system_name}: {label} -> {want}" + (f"; got {wrong}" if wrong else "")
-              + (f"; a FAIL with no fix of this system: {fails}" if fails else "")
-              + ("; the output holds a secret" if leaked else ""))
+        check(
+            not wrong and not fails and not leaked,
+            f"{system_name}: {label} -> {want}"
+            + (f"; got {wrong}" if wrong else "")
+            + (f"; a FAIL with no fix of this system: {fails}" if fails else "")
+            + ("; the output holds a secret" if leaked else ""),
+        )
 
     def case(label, want, change=lambda f: None, sections=(), **options):
         f = fixture()
@@ -849,54 +1071,109 @@ def status_cases(check, root, system_name):
         return got, text
 
     # The whole run on a machine with every step done: no FAIL, and each line in the format.
-    got, text = case("every step done", {name: "PASS" for name in ("system", "Python", "Python environment",
-                                                                     "Kaimon", "profile",
-                                                                     "install", "kaimon job", "julia-update job",
-                                                                     "autocommit job", "~/.claude repository",
-                                                                     "Kaimon token")} | {"install warning 1": "WARN",
-                                                                                         "harness test": "SKIP",
-                                                                                         "Revise": "SKIP"})
+    got, text = case(
+        "every step done",
+        {
+            name: "PASS"
+            for name in (
+                "system",
+                "Python",
+                "Python environment",
+                "Kaimon",
+                "profile",
+                "install",
+                "kaimon job",
+                "julia-update job",
+                "autocommit job",
+                "~/.claude repository",
+                "Kaimon token",
+            )
+        }
+        | {"install warning 1": "WARN", "harness test": "SKIP", "Revise": "SKIP"},
+    )
     lines = text.splitlines()
     form = re.compile(r"(PASS|WARN|FAIL|SKIP)  \S.{%d,}  \S.*" % (WIDTH - 1))
-    check(all(form.fullmatch(line) for line in lines) and len(lines) == len(got),
-          f"{system_name}: each of the {len(lines)} lines is a status, a name and a detail: "
-          f"{[line for line in lines if not form.fullmatch(line)]}")
-    check(not [r for r in got.values() if r.status == "FAIL"], f"{system_name}: every step done gives no FAIL -> "
-                                                                f"{[r for r in got.values() if r.status == 'FAIL']}")
+    check(
+        all(form.fullmatch(line) for line in lines) and len(lines) == len(got),
+        f"{system_name}: each of the {len(lines)} lines is a status, a name and a detail: "
+        f"{[line for line in lines if not form.fullmatch(line)]}",
+    )
+    check(
+        not [r for r in got.values() if r.status == "FAIL"],
+        f"{system_name}: every step done gives no FAIL -> {[r for r in got.values() if r.status == 'FAIL']}",
+    )
 
     # The machine.
     if linux:
-        case("an architecture the page does not cover", {"system": "WARN", "sandbox": "PASS"}, sections=("machine",),
-             arch="riscv64")
+        case(
+            "an architecture the page does not cover",
+            {"system": "WARN", "sandbox": "PASS"},
+            sections=("machine",),
+            arch="riscv64",
+        )
         case("aarch64", {"system": "PASS"}, sections=("machine",), arch="aarch64")
-        case("unprivileged_userns_clone = 0", {"userns clone": "FAIL"},
-             lambda f: (f.kernel / "unprivileged_userns_clone").write_text("0\n"), ("machine",))
-        case("no unprivileged_userns_clone", {"userns clone": "PASS"},
-             lambda f: (f.kernel / "unprivileged_userns_clone").unlink(), ("machine",))
-        case("apparmor_restrict_unprivileged_userns = 1", {"apparmor userns": "WARN"},
-             lambda f: (f.kernel / "apparmor_restrict_unprivileged_userns").write_text("1\n"), ("machine",))
-        case("apparmor_restrict_unprivileged_userns = 0", {"apparmor userns": "PASS"},
-             lambda f: (f.kernel / "apparmor_restrict_unprivileged_userns").write_text("0\n"), ("machine",))
-        refused_bwrap = ("--ro-bind / / --dev /dev --unshare-user --unshare-pid true", "",
-                         "bwrap: setting up uid map: Permission denied\n", 1)
+        case(
+            "unprivileged_userns_clone = 0",
+            {"userns clone": "FAIL"},
+            lambda f: (f.kernel / "unprivileged_userns_clone").write_text("0\n"),
+            ("machine",),
+        )
+        case(
+            "no unprivileged_userns_clone",
+            {"userns clone": "PASS"},
+            lambda f: (f.kernel / "unprivileged_userns_clone").unlink(),
+            ("machine",),
+        )
+        case(
+            "apparmor_restrict_unprivileged_userns = 1",
+            {"apparmor userns": "WARN"},
+            lambda f: (f.kernel / "apparmor_restrict_unprivileged_userns").write_text("1\n"),
+            ("machine",),
+        )
+        case(
+            "apparmor_restrict_unprivileged_userns = 0",
+            {"apparmor userns": "PASS"},
+            lambda f: (f.kernel / "apparmor_restrict_unprivileged_userns").write_text("0\n"),
+            ("machine",),
+        )
+        refused_bwrap = (
+            "--ro-bind / / --dev /dev --unshare-user --unshare-pid true",
+            "",
+            "bwrap: setting up uid map: Permission denied\n",
+            1,
+        )
         case("bwrap refused", {"sandbox": "FAIL"}, lambda f: f.tool("bwrap", refused_bwrap), ("machine",))
-        case("bwrap refused in a session's sandbox", {"sandbox": "SKIP"}, lambda f: f.tool("bwrap", refused_bwrap),
-             ("machine",), sandbox=True)
+        case(
+            "bwrap refused in a session's sandbox",
+            {"sandbox": "SKIP"},
+            lambda f: f.tool("bwrap", refused_bwrap),
+            ("machine",),
+            sandbox=True,
+        )
         case("no bwrap", {"sandbox": "FAIL"}, lambda f: (f.bin / "bwrap").unlink(), ("machine",))
         case("no socat", {"socat": "FAIL"}, lambda f: (f.bin / "socat").unlink(), ("machine",))
     else:
         case("macOS", {"system": "PASS"}, sections=("machine",))
-        got, _ = case("another system", {"system": "WARN"}, sections=("machine", "jobs"),
-                      change=lambda f: setattr(f, "system", "FreeBSD"))
-        check(set(got) == {"system", "Kaimon"},
-              f"another system has no machine-specific check and no job: {sorted(got)}")
+        got, _ = case(
+            "another system",
+            {"system": "WARN"},
+            sections=("machine", "jobs"),
+            change=lambda f: setattr(f, "system", "FreeBSD"),
+        )
+        check(
+            set(got) == {"system", "Kaimon"},
+            f"another system has no machine-specific check and no job: {sorted(got)}",
+        )
 
         def other(f):
             f.system = "FreeBSD"
             (f.bin / "julia").unlink()
+
         got, _ = case("another system without julia", {"Julia": "FAIL"}, other, ("tools",), only=("Julia",))
-        check(got["Julia"].detail.endswith("(fix: setup-linux.md, The dependencies)"),
-              f"another system names the Linux page -> {got['Julia'].detail!r}")
+        check(
+            got["Julia"].detail.endswith("(fix: setup-linux.md, The dependencies)"),
+            f"another system names the Linux page -> {got['Julia'].detail!r}",
+        )
 
     # The tools: each required one missing, each optional one missing, each minimum and the
     # release before it, and output with no version.
@@ -906,33 +1183,74 @@ def status_cases(check, root, system_name):
         status = "FAIL" if without is None else "WARN"
         one = {"only": (name,)}
         case(f"no {command}", {name: status}, lambda f, c=command: (f.bin / c).unlink(), ("tools",), **one)
-        case(f"{command} prints no version", {name: "WARN"},
-             lambda f, c=command, a=flags: f.tool(c, (" ".join(a), "command-line tool, no number here\n", "", 0)),
-             ("tools",), **one)
+        case(
+            f"{command} prints no version",
+            {name: "WARN"},
+            lambda f, c=command, a=flags: f.tool(
+                c, (" ".join(a), "command-line tool, no number here\n", "", 0)
+            ),
+            ("tools",),
+            **one,
+        )
         # A version flag that exits non-zero: FAIL for a required tool, WARN for an optional one,
         # and SKIP in a session's sandbox, where gh prints its version, a warning and exits 1.
-        exits = lambda f, c=command, a=flags: f.tool(c, (" ".join(a), printed[c][0][1],
-                                                         "warning: failed to load config\n", 1))
+        exits = lambda f, c=command, a=flags: f.tool(
+            c, (" ".join(a), printed[c][0][1], "warning: failed to load config\n", 1)
+        )
         got, _ = case(f"{command} exits 1", {name: status}, exits, ("tools",), **one)
-        check(f"{' '.join([command, *flags])} exits 1" in got[name].detail,
-              f"{system_name}: {command} exits 1 names the exit -> {got[name].detail!r}")
-        got, _ = case(f"{command} exits 1 in a session's sandbox", {name: "SKIP"}, exits, ("tools",), sandbox=True,
-                      **one)
-        check("sandbox" in got[name].detail, f"{system_name}: the SKIP names the sandbox -> {got[name].detail!r}")
-        case(f"{command} exits 127", {name: status},
-             lambda f, c=command, a=flags: f.tool(c, (" ".join(a), "", "error while loading shared libraries: "
-                                                      "libfoo.so.1: cannot open shared object file\n", 127)),
-             ("tools",), **one)
-        case(f"{command} prints no version in a session's sandbox", {name: "WARN"},
-             lambda f, c=command, a=flags: f.tool(c, (" ".join(a), "command-line tool, no number here\n", "", 0)),
-             ("tools",), sandbox=True, **one)
+        check(
+            f"{' '.join([command, *flags])} exits 1" in got[name].detail,
+            f"{system_name}: {command} exits 1 names the exit -> {got[name].detail!r}",
+        )
+        got, _ = case(
+            f"{command} exits 1 in a session's sandbox",
+            {name: "SKIP"},
+            exits,
+            ("tools",),
+            sandbox=True,
+            **one,
+        )
+        check(
+            "sandbox" in got[name].detail,
+            f"{system_name}: the SKIP names the sandbox -> {got[name].detail!r}",
+        )
+        case(
+            f"{command} exits 127",
+            {name: status},
+            lambda f, c=command, a=flags: f.tool(
+                c,
+                (
+                    " ".join(a),
+                    "",
+                    "error while loading shared libraries: libfoo.so.1: cannot open shared object file\n",
+                    127,
+                ),
+            ),
+            ("tools",),
+            **one,
+        )
+        case(
+            f"{command} prints no version in a session's sandbox",
+            {name: "WARN"},
+            lambda f, c=command, a=flags: f.tool(
+                c, (" ".join(a), "command-line tool, no number here\n", "", 0)
+            ),
+            ("tools",),
+            sandbox=True,
+            **one,
+        )
         for floor in MINIMUMS.get(name, ()):
             out = printed[command][0][1]
             at = VERSION.search(out).group(0)
             for version, want in ((floor, "PASS"), (below(floor), "FAIL")):
                 text = out.replace(at, version, 1)
-                case(f"{command} at {version}, minimum {' or '.join(MINIMUMS[name])}", {name: want},
-                     lambda f, c=command, a=flags, t=text: f.tool(c, (" ".join(a), t, "", 0)), ("tools",), **one)
+                case(
+                    f"{command} at {version}, minimum {' or '.join(MINIMUMS[name])}",
+                    {name: want},
+                    lambda f, c=command, a=flags, t=text: f.tool(c, (" ".join(a), t, "", 0)),
+                    ("tools",),
+                    **one,
+                )
     # A working environment runs without uv, so a missing uv is a WARN; the loop above derives
     # the status from the row, and this case states it.
     case("no uv", {"uv": "WARN"}, lambda f: (f.bin / "uv").unlink(), ("tools",), only=("uv",))
@@ -944,54 +1262,126 @@ def status_cases(check, root, system_name):
         stub(f.home / ".local" / "bin" / "uv", [("--version", "uv 0.13.5\n", "", 0)])
 
     got, _ = case("uv in ~/.local/bin only", {"uv": "PASS"}, local_uv, ("tools",), only=("uv",))
-    check(".local/bin/uv" in got["uv"].detail,
-          f"{system_name}: the uv line names ~/.local/bin/uv -> {got['uv'].detail!r}")
+    check(
+        ".local/bin/uv" in got["uv"].detail,
+        f"{system_name}: the uv line names ~/.local/bin/uv -> {got['uv'].detail!r}",
+    )
     for version, want in (("21.7.3", "FAIL"), ("20.18.0", "PASS"), ("18.20.4", "FAIL"), ("23.0.0", "PASS")):
-        case(f"node at {version}", {"Node.js": want},
-             lambda f, v=version: f.tool("node", ("--version", f"v{v}\n", "", 0)), ("tools",), only=("Node.js",))
-    case("fatou 0.22 against the minimum 0.22.0", {"fatou": "PASS"},
-         lambda f: f.tool("fatou", ("--version", "fatou 0.22\n", "", 0)), ("tools",), only=("fatou",))
-    case("a version of gitleaks with a v", {"gitleaks": "FAIL"},
-         lambda f: f.tool("gitleaks", ("version", "v8.16.0\n", "", 0)), ("tools",), only=("gitleaks",))
+        case(
+            f"node at {version}",
+            {"Node.js": want},
+            lambda f, v=version: f.tool("node", ("--version", f"v{v}\n", "", 0)),
+            ("tools",),
+            only=("Node.js",),
+        )
+    case(
+        "fatou 0.22 against the minimum 0.22.0",
+        {"fatou": "PASS"},
+        lambda f: f.tool("fatou", ("--version", "fatou 0.22\n", "", 0)),
+        ("tools",),
+        only=("fatou",),
+    )
+    case(
+        "a version of gitleaks with a v",
+        {"gitleaks": "FAIL"},
+        lambda f: f.tool("gitleaks", ("version", "v8.16.0\n", "", 0)),
+        ("tools",),
+        only=("gitleaks",),
+    )
 
     def garbage(f):
         (f.bin / "jq").write_bytes(b"\x00\x01\x02 not a program\n")
+
     got, _ = case("a jq that cannot start", {"jq": "WARN"}, garbage, ("tools",), only=("jq",))
-    check("cannot start" in got["jq"].detail, f"{system_name}: the line names the reason -> {got['jq'].detail!r}")
+    check(
+        "cannot start" in got["jq"].detail,
+        f"{system_name}: the line names the reason -> {got['jq'].detail!r}",
+    )
     with mock.patch(f"{__name__}.TIMEOUT", 1):
-        got, _ = case("a jq that does not answer", {"jq": "WARN"},
-                      lambda f: (f.bin / "jq").write_text("#!/bin/sh\nexec /bin/sleep 5\n"), ("tools",), only=("jq",))
-    check("no answer after 1 s" in got["jq"].detail, f"{system_name}: the line names the time -> {got['jq'].detail!r}")
+        got, _ = case(
+            "a jq that does not answer",
+            {"jq": "WARN"},
+            lambda f: (f.bin / "jq").write_text("#!/bin/sh\nexec /bin/sleep 5\n"),
+            ("tools",),
+            only=("jq",),
+        )
+    check(
+        "no answer after 1 s" in got["jq"].detail,
+        f"{system_name}: the line names the time -> {got['jq'].detail!r}",
+    )
     # The cases below check no tool of TOOLS.
     none = {"only": ()}
     if not linux:
         case("no iTerm2", {"iTerm2": "WARN"}, lambda f: shutil.rmtree(f.iterm), ("tools",), **none)
-        case("an Info.plist of iTerm2 that is no plist", {"iTerm2": "WARN"},
-             lambda f: (f.iterm / "Contents" / "Info.plist").write_text("not a plist\n"), ("tools",), **none)
+        case(
+            "an Info.plist of iTerm2 that is no plist",
+            {"iTerm2": "WARN"},
+            lambda f: (f.iterm / "Contents" / "Info.plist").write_text("not a plist\n"),
+            ("tools",),
+            **none,
+        )
     else:
         got, _ = case("iTerm2 on Linux", {}, sections=("tools",), **none)
         check("iTerm2" not in got, f"Linux: no iTerm2 line -> {got.get('iTerm2')}")
     case("every Julia package", {name: "PASS" for name in PACKAGES}, sections=("tools",), **none)
     for name, floor in ((n, MINIMUMS[n][0]) for n in PACKAGES):
         for version, want in ((floor, "PASS"), (below(floor), "FAIL")):
-            case(f"{name} {version} in the manifest", {name: want},
-                 lambda f, n=name, v=version: (f.julia / "Manifest.toml").write_text(manifest(PACKAGES | {n: v})),
-                 ("tools",), **none)
-    case("JSON not in the manifest", {"JSON": "FAIL", "YAML": "PASS"},
-         lambda f: (f.julia / "Manifest.toml").write_text(manifest({k: v for k, v in PACKAGES.items() if k != "JSON"})),
-         ("tools",), **none)
-    case("no manifest", {name: "FAIL" for name in PACKAGES}, lambda f: (f.julia / "Manifest.toml").unlink(), ("tools",),
-         **none)
-    case("a manifest that is not TOML", {name: "WARN" for name in PACKAGES},
-         lambda f: (f.julia / "Manifest.toml").write_text("[[deps.JSON\n"), ("tools",), **none)
-    case("a version in the manifest that is no version", {"JSON": "WARN"},
-         lambda f: (f.julia / "Manifest.toml").write_text(manifest(PACKAGES | {"JSON": "latest"})), ("tools",), **none)
-    case("a manifest with no table deps", {name: "WARN" for name in PACKAGES},
-         lambda f: (f.julia / "Manifest.toml").write_text('julia_version = "1.13.2"\n'), ("tools",), **none)
+            case(
+                f"{name} {version} in the manifest",
+                {name: want},
+                lambda f, n=name, v=version: (f.julia / "Manifest.toml").write_text(
+                    manifest(PACKAGES | {n: v})
+                ),
+                ("tools",),
+                **none,
+            )
+    case(
+        "JSON not in the manifest",
+        {"JSON": "FAIL", "YAML": "PASS"},
+        lambda f: (f.julia / "Manifest.toml").write_text(
+            manifest({k: v for k, v in PACKAGES.items() if k != "JSON"})
+        ),
+        ("tools",),
+        **none,
+    )
+    case(
+        "no manifest",
+        {name: "FAIL" for name in PACKAGES},
+        lambda f: (f.julia / "Manifest.toml").unlink(),
+        ("tools",),
+        **none,
+    )
+    case(
+        "a manifest that is not TOML",
+        {name: "WARN" for name in PACKAGES},
+        lambda f: (f.julia / "Manifest.toml").write_text("[[deps.JSON\n"),
+        ("tools",),
+        **none,
+    )
+    case(
+        "a version in the manifest that is no version",
+        {"JSON": "WARN"},
+        lambda f: (f.julia / "Manifest.toml").write_text(manifest(PACKAGES | {"JSON": "latest"})),
+        ("tools",),
+        **none,
+    )
+    case(
+        "a manifest with no table deps",
+        {name: "WARN" for name in PACKAGES},
+        lambda f: (f.julia / "Manifest.toml").write_text('julia_version = "1.13.2"\n'),
+        ("tools",),
+        **none,
+    )
     if os.geteuid() != 0:  # root reads a file of mode 000
         for sandbox, want in ((False, "FAIL"), (True, "SKIP")):
-            case(f"a manifest that cannot be read, sandbox {sandbox}", {name: want for name in PACKAGES},
-                 lambda f: (f.julia / "Manifest.toml").chmod(0), ("tools",), sandbox=sandbox, **none)
+            case(
+                f"a manifest that cannot be read, sandbox {sandbox}",
+                {name: want for name in PACKAGES},
+                lambda f: (f.julia / "Manifest.toml").chmod(0),
+                ("tools",),
+                sandbox=sandbox,
+                **none,
+            )
 
     # The Python environment: an interpreter that starts at or above the minimum and the stamp of
     # this uv.lock pass; no interpreter, one that exits non-zero, one below 3.14 and a relative path
@@ -1001,105 +1391,262 @@ def status_cases(check, root, system_name):
     env_name = "Python environment"
     case("a synced Python environment", {env_name: "PASS"}, sections=("tools",), **none)
     case("no Python environment", {env_name: "FAIL"}, lambda f: shutil.rmtree(f.python), ("tools",), **none)
-    case("an interpreter of the environment that is a broken link", {env_name: "FAIL"},
-         lambda f: (python(f).unlink(), python(f).symlink_to(f.python / "gone")), ("tools",), **none)
+    case(
+        "an interpreter of the environment that is a broken link",
+        {env_name: "FAIL"},
+        lambda f: (python(f).unlink(), python(f).symlink_to(f.python / "gone")),
+        ("tools",),
+        **none,
+    )
     exits = lambda f: stub(python(f), [("*", "", "dyld: Library not loaded\n", 6)])
     case("an interpreter of the environment that exits 6", {env_name: "FAIL"}, exits, ("tools",), **none)
-    got, _ = case("an interpreter of the environment that exits 6 in a session's sandbox", {env_name: "SKIP"}, exits,
-                  ("tools",), sandbox=True, **none)
-    check("sandbox" in got[env_name].detail, f"{system_name}: the SKIP names the sandbox -> {got[env_name].detail!r}")
+    got, _ = case(
+        "an interpreter of the environment that exits 6 in a session's sandbox",
+        {env_name: "SKIP"},
+        exits,
+        ("tools",),
+        sandbox=True,
+        **none,
+    )
+    check(
+        "sandbox" in got[env_name].detail,
+        f"{system_name}: the SKIP names the sandbox -> {got[env_name].detail!r}",
+    )
     for version, want in (("3.13.9", "FAIL"), ("3.14.0", "PASS"), ("3.15.1", "PASS")):
-        case(f"an interpreter of the environment at {version}", {env_name: want},
-             lambda f, v=version: stub(python(f), [("*", f"{v}\n", "", 0)]), ("tools",), **none)
-    case("an interpreter of the environment that prints no version", {env_name: "WARN"},
-         lambda f: stub(python(f), [("*", "no number\n", "", 0)]), ("tools",), **none)
-    case("a stamp of another uv.lock", {env_name: "WARN"},
-         lambda f: stamp(f).write_text("0" * 64 + " no-dev\n"), ("tools",), **none)
+        case(
+            f"an interpreter of the environment at {version}",
+            {env_name: want},
+            lambda f, v=version: stub(python(f), [("*", f"{v}\n", "", 0)]),
+            ("tools",),
+            **none,
+        )
+    case(
+        "an interpreter of the environment that prints no version",
+        {env_name: "WARN"},
+        lambda f: stub(python(f), [("*", "no number\n", "", 0)]),
+        ("tools",),
+        **none,
+    )
+    case(
+        "a stamp of another uv.lock",
+        {env_name: "WARN"},
+        lambda f: stamp(f).write_text("0" * 64 + " no-dev\n"),
+        ("tools",),
+        **none,
+    )
     case("no stamp", {env_name: "WARN"}, lambda f: stamp(f).unlink(), ("tools",), **none)
-    case("develop = true and a stamp without the dev group", {env_name: "WARN"},
-         lambda f: f.profile.write_text(f.profile.read_text() + "develop = true\n"), ("tools",), **none)
-    case("develop = true and a stamp with the dev group", {env_name: "PASS"},
-         lambda f: (f.profile.write_text(f.profile.read_text() + "develop = true\n"),
-                    stamp(f).write_text(install.boot().stamp_text(True))), ("tools",), **none)
-    got, _ = case("a relative $RESEARCH_HARNESS_PYTHON", {env_name: "FAIL"}, sections=("tools",),
-                  extra={"RESEARCH_HARNESS_PYTHON": "relative/env"}, **none)
-    check("relative/env" in got[env_name].detail and "not an absolute path" in got[env_name].detail,
-          f"{system_name}: the line names the relative path, which is not absolute -> {got[env_name].detail!r}")
+    case(
+        "develop = true and a stamp without the dev group",
+        {env_name: "WARN"},
+        lambda f: f.profile.write_text(f.profile.read_text() + "develop = true\n"),
+        ("tools",),
+        **none,
+    )
+    case(
+        "develop = true and a stamp with the dev group",
+        {env_name: "PASS"},
+        lambda f: (
+            f.profile.write_text(f.profile.read_text() + "develop = true\n"),
+            stamp(f).write_text(install.boot().stamp_text(True)),
+        ),
+        ("tools",),
+        **none,
+    )
+    got, _ = case(
+        "a relative $RESEARCH_HARNESS_PYTHON",
+        {env_name: "FAIL"},
+        sections=("tools",),
+        extra={"RESEARCH_HARNESS_PYTHON": "relative/env"},
+        **none,
+    )
+    check(
+        "relative/env" in got[env_name].detail and "not an absolute path" in got[env_name].detail,
+        f"{system_name}: the line names the relative path, which is not absolute -> {got[env_name].detail!r}",
+    )
 
     # The profile.
-    for label, text in (("no profile", None), ("a profile that is not TOML", "home = \n"),
-                        ("a relative home", 'home = "h"\n')):
+    for label, text in (
+        ("no profile", None),
+        ("a profile that is not TOML", "home = \n"),
+        ("a relative home", 'home = "h"\n'),
+    ):
+
         def change(f, text=text):
             f.profile.unlink() if text is None else f.profile.write_text(text)
-        case(label, {"profile": "FAIL", "tree_agents": "SKIP", "OpenCode directory": "PASS",
-                     "autocommit_branch": "SKIP", "install": "SKIP"}
-             | ({"kaimon job": "SKIP", "julia-update job": "SKIP", "autocommit job": "SKIP"} if not linux else {}),
-             change, ("profile_checks", "install", "jobs"))
-    case("no tree_agents directory", {"tree_agents": "FAIL"},
-         lambda f: shutil.rmtree(f.home / "Research" / "Environment" / "Agents"), ("profile_checks",))
-    case("no tree_agents key", {"tree_agents": "FAIL"},
-         lambda f: f.profile.write_text(re.sub(r"^tree_agents = .*$", "", f.profile.read_text(), flags=re.M)),
-         ("profile_checks",))
+
+        case(
+            label,
+            {
+                "profile": "FAIL",
+                "tree_agents": "SKIP",
+                "OpenCode directory": "PASS",
+                "autocommit_branch": "SKIP",
+                "install": "SKIP",
+            }
+            | (
+                {"kaimon job": "SKIP", "julia-update job": "SKIP", "autocommit job": "SKIP"}
+                if not linux
+                else {}
+            ),
+            change,
+            ("profile_checks", "install", "jobs"),
+        )
+    case(
+        "no tree_agents directory",
+        {"tree_agents": "FAIL"},
+        lambda f: shutil.rmtree(f.home / "Research" / "Environment" / "Agents"),
+        ("profile_checks",),
+    )
+    case(
+        "no tree_agents key",
+        {"tree_agents": "FAIL"},
+        lambda f: f.profile.write_text(re.sub(r"^tree_agents = .*$", "", f.profile.read_text(), flags=re.M)),
+        ("profile_checks",),
+    )
     with mock.patch.object(profile_module, "load", side_effect=PermissionError(1, "Operation not permitted")):
-        got, _ = case("a profile that cannot be read", {"profile": "FAIL", "install": "SKIP"},
-                      sections=("profile_checks", "install"))
-    check("cannot read the profile" in got["profile"].detail,
-          f"{system_name}: the line says why -> {got['profile'].detail!r}")
-    case("no OpenCode directory", {"OpenCode directory": "FAIL"},
-         lambda f: shutil.rmtree(f.home / ".config" / "opencode"), ("profile_checks",))
+        got, _ = case(
+            "a profile that cannot be read",
+            {"profile": "FAIL", "install": "SKIP"},
+            sections=("profile_checks", "install"),
+        )
+    check(
+        "cannot read the profile" in got["profile"].detail,
+        f"{system_name}: the line says why -> {got['profile'].detail!r}",
+    )
+    case(
+        "no OpenCode directory",
+        {"OpenCode directory": "FAIL"},
+        lambda f: shutil.rmtree(f.home / ".config" / "opencode"),
+        ("profile_checks",),
+    )
     other = root / "opencode-elsewhere"
     other.mkdir(parents=True)
-    case("$OPENCODE_CONFIG_DIR, and no ~/.config/opencode", {"OpenCode directory": "PASS"},
-         lambda f: shutil.rmtree(f.home / ".config" / "opencode"), ("profile_checks",),
-         extra={"OPENCODE_CONFIG_DIR": str(other)})
-    case("an $OPENCODE_CONFIG_DIR that does not exist, and ~/.config/opencode", {"OpenCode directory": "FAIL"},
-         sections=("profile_checks",), extra={"OPENCODE_CONFIG_DIR": str(root / "no-such-directory")})
-    got, _ = case("autocommit_branch", {"autocommit_branch": "PASS"},
-                  lambda f: f.profile.write_text(f.profile.read_text() + 'autocommit_branch = "memory/case"\n'),
-                  ("profile_checks",))
-    check(got["autocommit_branch"].detail == "memory/case",
-          f"{system_name}: the autocommit_branch line prints the value -> {got['autocommit_branch'].detail!r}")
+    case(
+        "$OPENCODE_CONFIG_DIR, and no ~/.config/opencode",
+        {"OpenCode directory": "PASS"},
+        lambda f: shutil.rmtree(f.home / ".config" / "opencode"),
+        ("profile_checks",),
+        extra={"OPENCODE_CONFIG_DIR": str(other)},
+    )
+    case(
+        "an $OPENCODE_CONFIG_DIR that does not exist, and ~/.config/opencode",
+        {"OpenCode directory": "FAIL"},
+        sections=("profile_checks",),
+        extra={"OPENCODE_CONFIG_DIR": str(root / "no-such-directory")},
+    )
+    got, _ = case(
+        "autocommit_branch",
+        {"autocommit_branch": "PASS"},
+        lambda f: f.profile.write_text(f.profile.read_text() + 'autocommit_branch = "memory/case"\n'),
+        ("profile_checks",),
+    )
+    check(
+        got["autocommit_branch"].detail == "memory/case",
+        f"{system_name}: the autocommit_branch line prints the value -> {got['autocommit_branch'].detail!r}",
+    )
 
     # The install.
-    case("an install with changes", {"install": "FAIL"},
-         lambda f: stub(f.harness, [("*install", "julia/Project.toml                 REPLACE\n\n5 change(s) to make.\n",
-                                     "", 1)]), ("install",))
+    case(
+        "an install with changes",
+        {"install": "FAIL"},
+        lambda f: stub(
+            f.harness,
+            [("*install", "julia/Project.toml                 REPLACE\n\n5 change(s) to make.\n", "", 1)],
+        ),
+        ("install",),
+    )
     models = root / "models.toml"
-    case("--models", {"install": "PASS"},
-         lambda f: stub(f.harness, [("--profile * --models * install", INSTALL_OUT, "", 0)]), ("install",),
-         models=str(models))
-    case("an install that exits 2", {"install": "FAIL"},
-         lambda f: stub(f.harness, [("*install", "", "harness install: no profile at /x/profile.toml\n", 2)]),
-         ("install",))
-    three = INSTALL_OUT.replace("\n0 change", "\nWARNING: ~/.omp/agent/.env lacks PI_CONFIG_FILES.\n"
-                                              "\nWARNING: the checkout ~/Research/Harness is 3 commit(s) behind its "
-                                              "origin/main.\n         Run `git pull` there, then install again.\n"
-                                              "\n0 change")
-    got, _ = case("three install warnings", {"install": "PASS", "install warning 1": "WARN",
-                                             "install warning 2": "WARN", "install warning 3": "WARN"},
-                  lambda f: stub(f.harness, [("*install", three, "", 0)]), ("install",))
-    check("3 commit(s) behind" in got["install warning 3"].detail,
-          f"{system_name}: an install warning's line is its first line -> {got['install warning 3'].detail!r}")
+    case(
+        "--models",
+        {"install": "PASS"},
+        lambda f: stub(f.harness, [("--profile * --models * install", INSTALL_OUT, "", 0)]),
+        ("install",),
+        models=str(models),
+    )
+    case(
+        "an install that exits 2",
+        {"install": "FAIL"},
+        lambda f: stub(f.harness, [("*install", "", "harness install: no profile at /x/profile.toml\n", 2)]),
+        ("install",),
+    )
+    three = INSTALL_OUT.replace(
+        "\n0 change",
+        "\nWARNING: ~/.omp/agent/.env lacks PI_CONFIG_FILES.\n"
+        "\nWARNING: the checkout ~/Research/Harness is 3 commit(s) behind its "
+        "origin/main.\n         Run `git pull` there, then install again.\n"
+        "\n0 change",
+    )
+    got, _ = case(
+        "three install warnings",
+        {
+            "install": "PASS",
+            "install warning 1": "WARN",
+            "install warning 2": "WARN",
+            "install warning 3": "WARN",
+        },
+        lambda f: stub(f.harness, [("*install", three, "", 0)]),
+        ("install",),
+    )
+    check(
+        "3 commit(s) behind" in got["install warning 3"].detail,
+        f"{system_name}: an install warning's line is its first line -> {got['install warning 3'].detail!r}",
+    )
 
     # The jobs.
-    case("no Kaimon", {"Kaimon": "WARN", "kaimon job": "SKIP", "julia-update job": "SKIP", "Kaimon token": "SKIP",
-                       "autocommit job": "PASS"}, lambda f: f.kaimon.unlink(), ("jobs",))
-    case("a Kaimon that is not executable", {"Kaimon": "WARN", "kaimon job": "SKIP"}, lambda f: f.kaimon.chmod(0o644),
-         ("jobs",))
+    case(
+        "no Kaimon",
+        {
+            "Kaimon": "WARN",
+            "kaimon job": "SKIP",
+            "julia-update job": "SKIP",
+            "Kaimon token": "SKIP",
+            "autocommit job": "PASS",
+        },
+        lambda f: f.kaimon.unlink(),
+        ("jobs",),
+    )
+    case(
+        "a Kaimon that is not executable",
+        {"Kaimon": "WARN", "kaimon job": "SKIP"},
+        lambda f: f.kaimon.chmod(0o644),
+        ("jobs",),
+    )
     case("no OpenCode", {"Kaimon token": "PASS"}, lambda f: (f.bin / "opencode").unlink(), ("jobs",))
     case("no oh-my-pi", {"Kaimon token": "PASS"}, lambda f: (f.bin / "omp").unlink(), ("jobs",))
-    case("neither OpenCode nor oh-my-pi", {"Kaimon token": "SKIP"},
-         lambda f: ((f.bin / "opencode").unlink(), (f.bin / "omp").unlink()), ("jobs",))
+    case(
+        "neither OpenCode nor oh-my-pi",
+        {"Kaimon token": "SKIP"},
+        lambda f: ((f.bin / "opencode").unlink(), (f.bin / "omp").unlink()),
+        ("jobs",),
+    )
     # Antigravity is installed when ~/.gemini is a directory, as its adapter decides.
-    case("Antigravity alone", {"Kaimon token": "PASS"},
-         lambda f: ((f.bin / "opencode").unlink(), (f.bin / "omp").unlink(), (f.home / ".gemini").mkdir()),
-         ("jobs",))
-    case("Antigravity alone, no token file", {"Kaimon token": "FAIL"},
-         lambda f: ((f.bin / "opencode").unlink(), (f.bin / "omp").unlink(), (f.home / ".gemini").mkdir(),
-                    f.token.unlink()), ("jobs",))
-    case("a ~/.gemini that is a file", {"Kaimon token": "SKIP"},
-         lambda f: ((f.bin / "opencode").unlink(), (f.bin / "omp").unlink(), (f.home / ".gemini").write_text("x")),
-         ("jobs",))
+    case(
+        "Antigravity alone",
+        {"Kaimon token": "PASS"},
+        lambda f: ((f.bin / "opencode").unlink(), (f.bin / "omp").unlink(), (f.home / ".gemini").mkdir()),
+        ("jobs",),
+    )
+    case(
+        "Antigravity alone, no token file",
+        {"Kaimon token": "FAIL"},
+        lambda f: (
+            (f.bin / "opencode").unlink(),
+            (f.bin / "omp").unlink(),
+            (f.home / ".gemini").mkdir(),
+            f.token.unlink(),
+        ),
+        ("jobs",),
+    )
+    case(
+        "a ~/.gemini that is a file",
+        {"Kaimon token": "SKIP"},
+        lambda f: (
+            (f.bin / "opencode").unlink(),
+            (f.bin / "omp").unlink(),
+            (f.home / ".gemini").write_text("x"),
+        ),
+        ("jobs",),
+    )
     case("no token file", {"Kaimon token": "FAIL"}, lambda f: f.token.unlink(), ("jobs",))
     case("a token of mode 644", {"Kaimon token": "FAIL"}, lambda f: f.token.chmod(0o644), ("jobs",))
     case("an empty token", {"Kaimon token": "FAIL"}, lambda f: f.token.write_text(""), ("jobs",))
@@ -1107,74 +1654,175 @@ def status_cases(check, root, system_name):
     def directory(f):
         f.token.unlink()
         f.token.mkdir(mode=0o600)
+
     case("a token that is a directory of mode 600", {"Kaimon token": "FAIL"}, directory, ("jobs",))
 
     def denied(f):
         """A stat of the token that the sandbox denies."""
         real = os.stat
-        f.patch = mock.patch(f"{__name__}.os.stat", lambda p, *a, **k: (_ for _ in ()).throw(
-            PermissionError(1, "Operation not permitted")) if str(p).endswith("auth-token") else real(p, *a, **k))
+        f.patch = mock.patch(
+            f"{__name__}.os.stat",
+            lambda p, *a, **k: (
+                (_ for _ in ()).throw(PermissionError(1, "Operation not permitted"))
+                if str(p).endswith("auth-token")
+                else real(p, *a, **k)
+            ),
+        )
+
     for sandbox, want in ((True, "SKIP"), (False, "FAIL")):
         f = fixture()
         denied(f)
         with f.patch:
             got, text = f.results("jobs", sandbox=sandbox)
         expect(f"a token whose stat is denied, sandbox {sandbox}", got, {"Kaimon token": want}, text)
-    case("~/.claude not a repository", {"~/.claude repository": "FAIL"},
-         lambda f: shutil.rmtree(f.home / ".claude" / ".git"), ("jobs",))
-    case("~/.claude without an origin", {"~/.claude repository": "FAIL"},
-         lambda f: subprocess.run(["git", "-C", str(f.home / ".claude"), "remote", "remove", "origin"], check=True,
-                                  env=environment() | GIT_ENV), ("jobs",))
+    case(
+        "~/.claude not a repository",
+        {"~/.claude repository": "FAIL"},
+        lambda f: shutil.rmtree(f.home / ".claude" / ".git"),
+        ("jobs",),
+    )
+    case(
+        "~/.claude without an origin",
+        {"~/.claude repository": "FAIL"},
+        lambda f: subprocess.run(
+            ["git", "-C", str(f.home / ".claude"), "remote", "remove", "origin"],
+            check=True,
+            env=environment() | GIT_ENV,
+        ),
+        ("jobs",),
+    )
 
     def inside(f):
         """Make ~/.claude a plain directory in a repository of the home, which has an origin."""
         shutil.rmtree(f.home / ".claude" / ".git")
-        for command in (["init", "-q", str(f.home)],
-                        ["-C", str(f.home), "remote", "add", "origin", "https://example.org/h.git"]):
+        for command in (
+            ["init", "-q", str(f.home)],
+            ["-C", str(f.home), "remote", "add", "origin", "https://example.org/h.git"],
+        ):
             subprocess.run(["git", *command], check=True, env=environment() | GIT_ENV)
-    got, _ = case("~/.claude inside the home's repository", {"~/.claude repository": "FAIL"}, inside, ("jobs",))
-    check("inside the repository" in got["~/.claude repository"].detail,
-          f"{system_name}: the line names the repository around ~/.claude -> {got['~/.claude repository'].detail!r}")
+
+    got, _ = case(
+        "~/.claude inside the home's repository", {"~/.claude repository": "FAIL"}, inside, ("jobs",)
+    )
+    check(
+        "inside the repository" in got["~/.claude repository"].detail,
+        f"{system_name}: the line names the repository around ~/.claude -> {got['~/.claude repository'].detail!r}",
+    )
     case("no git", {"~/.claude repository": "FAIL"}, lambda f: (f.bin / "git").unlink(), ("jobs",))
     # As inside a git hook, which exports GIT_DIR: the check still reads ~/.claude.
-    case("~/.claude not a repository, with GIT_DIR of another one", {"~/.claude repository": "FAIL"},
-         lambda f: shutil.rmtree(f.home / ".claude" / ".git"), ("jobs",), extra={"GIT_DIR": str(claude / ".git")})
+    case(
+        "~/.claude not a repository, with GIT_DIR of another one",
+        {"~/.claude repository": "FAIL"},
+        lambda f: shutil.rmtree(f.home / ".claude" / ".git"),
+        ("jobs",),
+        extra={"GIT_DIR": str(claude / ".git")},
+    )
     if linux:
-        case("Linger=no", {"linger": "FAIL"},
-             lambda f: f.tool("loginctl", ("show-user * -p Linger", "Linger=no\n", "", 0)), ("jobs",))
-        no_user = ("show-user * -p Linger", "", "Failed to get user: User ID 1000 is not logged in or lingering\n", 1)
-        case("loginctl without an answer", {"linger": "FAIL"}, lambda f: f.tool("loginctl", no_user), ("jobs",))
-        case("loginctl without an answer in a session's sandbox", {"linger": "SKIP"},
-             lambda f: f.tool("loginctl", no_user), ("jobs",), sandbox=True)
+        case(
+            "Linger=no",
+            {"linger": "FAIL"},
+            lambda f: f.tool("loginctl", ("show-user * -p Linger", "Linger=no\n", "", 0)),
+            ("jobs",),
+        )
+        no_user = (
+            "show-user * -p Linger",
+            "",
+            "Failed to get user: User ID 1000 is not logged in or lingering\n",
+            1,
+        )
+        case(
+            "loginctl without an answer", {"linger": "FAIL"}, lambda f: f.tool("loginctl", no_user), ("jobs",)
+        )
+        case(
+            "loginctl without an answer in a session's sandbox",
+            {"linger": "SKIP"},
+            lambda f: f.tool("loginctl", no_user),
+            ("jobs",),
+            sandbox=True,
+        )
         case("no loginctl", {"linger": "FAIL"}, lambda f: (f.bin / "loginctl").unlink(), ("jobs",))
         timers = ("--user list-timers --no-pager", SYSTEMD_TIMERS, "", 0)
         for state in ("inactive", "failed"):
-            case(f"kaimon.service {state}", {"kaimon job": "FAIL"},
-                 lambda f, s=state: f.tool("systemctl", ("--user is-active kaimon.service", f"{s}\n", "", 3), timers),
-                 ("jobs",))
-        no_bus = [("--user is-active kaimon.service", "", NO_BUS, 1), ("--user list-timers --no-pager", "", NO_BUS, 1)]
-        case("systemctl without a bus", {"kaimon job": "FAIL", "julia-update job": "FAIL", "autocommit job": "FAIL",
-                                         "~/.claude repository": "SKIP"},
-             lambda f: f.tool("systemctl", *no_bus), ("jobs",))
-        case("systemctl without a bus in a session's sandbox",
-             {"kaimon job": "SKIP", "julia-update job": "SKIP", "autocommit job": "SKIP",
-              "~/.claude repository": "SKIP"}, lambda f: f.tool("systemctl", *no_bus), ("jobs",), sandbox=True)
+            case(
+                f"kaimon.service {state}",
+                {"kaimon job": "FAIL"},
+                lambda f, s=state: f.tool(
+                    "systemctl", ("--user is-active kaimon.service", f"{s}\n", "", 3), timers
+                ),
+                ("jobs",),
+            )
+        no_bus = [
+            ("--user is-active kaimon.service", "", NO_BUS, 1),
+            ("--user list-timers --no-pager", "", NO_BUS, 1),
+        ]
+        case(
+            "systemctl without a bus",
+            {
+                "kaimon job": "FAIL",
+                "julia-update job": "FAIL",
+                "autocommit job": "FAIL",
+                "~/.claude repository": "SKIP",
+            },
+            lambda f: f.tool("systemctl", *no_bus),
+            ("jobs",),
+        )
+        case(
+            "systemctl without a bus in a session's sandbox",
+            {
+                "kaimon job": "SKIP",
+                "julia-update job": "SKIP",
+                "autocommit job": "SKIP",
+                "~/.claude repository": "SKIP",
+            },
+            lambda f: f.tool("systemctl", *no_bus),
+            ("jobs",),
+            sandbox=True,
+        )
         only = "\n".join(line for line in SYSTEMD_TIMERS.splitlines() if "julia-update" not in line) + "\n"
-        case("no julia-update.timer", {"julia-update job": "FAIL", "autocommit job": "PASS"},
-             lambda f: f.tool("systemctl", ("--user is-active kaimon.service", "active\n", "", 0),
-                              ("--user list-timers --no-pager", only, "", 0)), ("jobs",))
-        only = "\n".join(line for line in SYSTEMD_TIMERS.splitlines() if "claude-autocommit" not in line) + "\n"
-        case("no claude-autocommit.timer", {"autocommit job": "SKIP", "~/.claude repository": "SKIP",
-                                            "julia-update job": "PASS"},
-             lambda f: f.tool("systemctl", ("--user is-active kaimon.service", "active\n", "", 0),
-                              ("--user list-timers --no-pager", only, "", 0)), ("jobs",))
-        case("no claude-autocommit.timer and no ~/.claude repository", {"~/.claude repository": "SKIP"},
-             lambda f: (f.tool("systemctl", ("--user is-active kaimon.service", "active\n", "", 0),
-                               ("--user list-timers --no-pager", only, "", 0)),
-                        shutil.rmtree(f.home / ".claude" / ".git")), ("jobs",))
-        case("no systemctl", {"kaimon job": "FAIL", "julia-update job": "FAIL", "autocommit job": "FAIL"},
-             lambda f: (f.bin / "systemctl").unlink(), ("jobs",))
+        case(
+            "no julia-update.timer",
+            {"julia-update job": "FAIL", "autocommit job": "PASS"},
+            lambda f: f.tool(
+                "systemctl",
+                ("--user is-active kaimon.service", "active\n", "", 0),
+                ("--user list-timers --no-pager", only, "", 0),
+            ),
+            ("jobs",),
+        )
+        only = (
+            "\n".join(line for line in SYSTEMD_TIMERS.splitlines() if "claude-autocommit" not in line) + "\n"
+        )
+        case(
+            "no claude-autocommit.timer",
+            {"autocommit job": "SKIP", "~/.claude repository": "SKIP", "julia-update job": "PASS"},
+            lambda f: f.tool(
+                "systemctl",
+                ("--user is-active kaimon.service", "active\n", "", 0),
+                ("--user list-timers --no-pager", only, "", 0),
+            ),
+            ("jobs",),
+        )
+        case(
+            "no claude-autocommit.timer and no ~/.claude repository",
+            {"~/.claude repository": "SKIP"},
+            lambda f: (
+                f.tool(
+                    "systemctl",
+                    ("--user is-active kaimon.service", "active\n", "", 0),
+                    ("--user list-timers --no-pager", only, "", 0),
+                ),
+                shutil.rmtree(f.home / ".claude" / ".git"),
+            ),
+            ("jobs",),
+        )
+        case(
+            "no systemctl",
+            {"kaimon job": "FAIL", "julia-update job": "FAIL", "autocommit job": "FAIL"},
+            lambda f: (f.bin / "systemctl").unlink(),
+            ("jobs",),
+        )
     else:
+
         def launchctl(*missing, error=None):
             def change(f):
                 cases = []
@@ -1182,39 +1830,105 @@ def status_cases(check, root, system_name):
                     if error is not None:
                         cases.append((f"list org.example.{job}", "", error, 1))
                     elif job in missing:
-                        cases.append((f"list org.example.{job}", "",
-                                      f'Could not find service "org.example.{job}" in domain for port\n', 113))
+                        cases.append(
+                            (
+                                f"list org.example.{job}",
+                                "",
+                                f'Could not find service "org.example.{job}" in domain for port\n',
+                                113,
+                            )
+                        )
                     else:
                         cases.append((f"list org.example.{job}", LAUNCHCTL.replace("{job}", job), "", 0))
                 f.tool("launchctl", *cases)
+
             return change
-        case("kaimon not loaded", {"kaimon job": "FAIL", "julia-update job": "PASS"}, launchctl("kaimon"), ("jobs",))
-        case("julia-update not loaded", {"julia-update job": "FAIL", "kaimon job": "PASS"}, launchctl("julia-update"),
-             ("jobs",))
-        case("claude-autocommit not loaded", {"autocommit job": "SKIP", "~/.claude repository": "SKIP"},
-             launchctl("claude-autocommit"), ("jobs",))
-        case("claude-autocommit not loaded and no ~/.claude repository", {"~/.claude repository": "SKIP"},
-             lambda f: (launchctl("claude-autocommit")(f), shutil.rmtree(f.home / ".claude" / ".git")), ("jobs",))
+
+        case(
+            "kaimon not loaded",
+            {"kaimon job": "FAIL", "julia-update job": "PASS"},
+            launchctl("kaimon"),
+            ("jobs",),
+        )
+        case(
+            "julia-update not loaded",
+            {"julia-update job": "FAIL", "kaimon job": "PASS"},
+            launchctl("julia-update"),
+            ("jobs",),
+        )
+        case(
+            "claude-autocommit not loaded",
+            {"autocommit job": "SKIP", "~/.claude repository": "SKIP"},
+            launchctl("claude-autocommit"),
+            ("jobs",),
+        )
+        case(
+            "claude-autocommit not loaded and no ~/.claude repository",
+            {"~/.claude repository": "SKIP"},
+            lambda f: (launchctl("claude-autocommit")(f), shutil.rmtree(f.home / ".claude" / ".git")),
+            ("jobs",),
+        )
         # In a session's sandbox, `launchctl list <label>` exits 1 and prints nothing.
-        case("launchctl without an answer", {"kaimon job": "FAIL", "julia-update job": "FAIL", "autocommit job": "FAIL",
-                                             "~/.claude repository": "SKIP"}, launchctl(error=""), ("jobs",))
-        case("launchctl without an answer in a session's sandbox",
-             {"kaimon job": "SKIP", "julia-update job": "SKIP", "autocommit job": "SKIP",
-              "~/.claude repository": "SKIP"}, launchctl(error=""), ("jobs",), sandbox=True)
-        case("no launchctl", {"kaimon job": "FAIL", "julia-update job": "FAIL", "autocommit job": "FAIL"},
-             lambda f: (f.bin / "launchctl").unlink(), ("jobs",))
+        case(
+            "launchctl without an answer",
+            {
+                "kaimon job": "FAIL",
+                "julia-update job": "FAIL",
+                "autocommit job": "FAIL",
+                "~/.claude repository": "SKIP",
+            },
+            launchctl(error=""),
+            ("jobs",),
+        )
+        case(
+            "launchctl without an answer in a session's sandbox",
+            {
+                "kaimon job": "SKIP",
+                "julia-update job": "SKIP",
+                "autocommit job": "SKIP",
+                "~/.claude repository": "SKIP",
+            },
+            launchctl(error=""),
+            ("jobs",),
+            sandbox=True,
+        )
+        case(
+            "no launchctl",
+            {"kaimon job": "FAIL", "julia-update job": "FAIL", "autocommit job": "FAIL"},
+            lambda f: (f.bin / "launchctl").unlink(),
+            ("jobs",),
+        )
 
     # The slow checks.
     case("--full", {"harness test": "PASS", "Revise": "PASS"}, sections=("full",), full=True)
-    case("--full with a wrong case", {"harness test": "FAIL"},
-         lambda f: stub(f.harness, [("test", "BAD  a case\n\n1861 cases, 1 wrong\n", "", 1)]), ("full",), full=True)
-    case("--full with no summary line", {"harness test": "FAIL"},
-         lambda f: stub(f.harness, [("test", "", "Traceback (most recent call last):\n", 1)]), ("full",), full=True)
-    case("--full without Revise", {"Revise": "WARN"},
-         lambda f: f.tool("julia", ("--version", "julia version 1.13.2\n", "", 0),
-                          ("-e using Revise", "", "ERROR: ArgumentError: Package Revise not found in current path.\n",
-                           1)), ("full",), full=True)
-    case("--full without julia", {"Revise": "FAIL"}, lambda f: (f.bin / "julia").unlink(), ("full",), full=True)
+    case(
+        "--full with a wrong case",
+        {"harness test": "FAIL"},
+        lambda f: stub(f.harness, [("test", "BAD  a case\n\n1861 cases, 1 wrong\n", "", 1)]),
+        ("full",),
+        full=True,
+    )
+    case(
+        "--full with no summary line",
+        {"harness test": "FAIL"},
+        lambda f: stub(f.harness, [("test", "", "Traceback (most recent call last):\n", 1)]),
+        ("full",),
+        full=True,
+    )
+    case(
+        "--full without Revise",
+        {"Revise": "WARN"},
+        lambda f: f.tool(
+            "julia",
+            ("--version", "julia version 1.13.2\n", "", 0),
+            ("-e using Revise", "", "ERROR: ArgumentError: Package Revise not found in current path.\n", 1),
+        ),
+        ("full",),
+        full=True,
+    )
+    case(
+        "--full without julia", {"Revise": "FAIL"}, lambda f: (f.bin / "julia").unlink(), ("full",), full=True
+    )
 
     # Nothing on the PATH: each check reports what is missing, and none raises.
     f = fixture()
@@ -1227,25 +1941,40 @@ def status_cases(check, root, system_name):
     except Exception as e:  # the case reports what a check raised instead of stopping the suite
         got, text, raised = {}, "", repr(e)
     missing = [name for name, command, _, without in TOOLS if without is None]
-    check(raised is None and all(got[name].status == "FAIL" and "not found" in got[name].detail for name in missing),
-          f"{system_name}: with nothing on the PATH, each required tool is a FAIL that names it, and no check raises "
-          f"-> {raised or [got.get(n) for n in missing if got[n].status != 'FAIL']}")
+    check(
+        raised is None
+        and all(got[name].status == "FAIL" and "not found" in got[name].detail for name in missing),
+        f"{system_name}: with nothing on the PATH, each required tool is a FAIL that names it, and no check raises "
+        f"-> {raised or [got.get(n) for n in missing if got[n].status != 'FAIL']}",
+    )
 
 
 def exit_cases(check, root):
     """The exit status: 0 with PASS, WARN and SKIP lines only, 1 with a FAIL; and 2 on a usage
     error, in a process of its own."""
     claude = root / "claude-template"
-    subprocess.run(["git", "init", "-q", "-b", "main", str(claude)], check=True, capture_output=True,
-                   env=environment() | GIT_ENV)
-    subprocess.run(["git", "-C", str(claude), "remote", "add", "origin", "https://example.org/m.git"],
-                   check=True, capture_output=True, env=environment() | GIT_ENV)
+    subprocess.run(
+        ["git", "init", "-q", "-b", "main", str(claude)],
+        check=True,
+        capture_output=True,
+        env=environment() | GIT_ENV,
+    )
+    subprocess.run(
+        ["git", "-C", str(claude), "remote", "add", "origin", "https://example.org/m.git"],
+        check=True,
+        capture_output=True,
+        env=environment() | GIT_ENV,
+    )
     this = system() if system() in ("Linux", "Darwin") else "Linux"
     for label, change, want in (
-            ("only PASS, WARN and SKIP", lambda f: None, 0),
-            ("one FAIL", lambda f: f.token.chmod(0o644), 1),
-            ("one FAIL in the install",
-             lambda f: stub(f.harness, [("*install", "\n1 change(s) to make.\n", "", 1)]), 1)):
+        ("only PASS, WARN and SKIP", lambda f: None, 0),
+        ("one FAIL", lambda f: f.token.chmod(0o644), 1),
+        (
+            "one FAIL in the install",
+            lambda f: stub(f.harness, [("*install", "\n1 change(s) to make.\n", "", 1)]),
+            1,
+        ),
+    ):
         f = Fixture(root / label.replace(" ", "-").replace(",", ""), this, claude)
         change(f)
         with f.patched() as args:
@@ -1254,7 +1983,10 @@ def exit_cases(check, root):
         check(code == want, f"{label}: exit {code} -> {statuses}")
     for argv in (["doctor", "--bogus"], ["doctor", "extra"]):
         p = subprocess.run(HARNESS + argv, capture_output=True, text=True)
-        check(p.returncode == 2 and "Traceback" not in p.stderr, f"harness {' '.join(argv)}: exit {p.returncode}")
+        check(
+            p.returncode == 2 and "Traceback" not in p.stderr,
+            f"harness {' '.join(argv)}: exit {p.returncode}",
+        )
 
 
 def process_cases(check, root):
@@ -1266,10 +1998,17 @@ def process_cases(check, root):
     if system() not in ("Linux", "Darwin"):
         return
     home = root / "home"
-    env = {k: v for k, v in os.environ.items()
-           if k not in sweep.UNSET and k != SANDBOX and not k.startswith("GIT_")}
-    env.update(sweep.GIT, HOME=str(home), RESEARCH_ROOT=str(home / "Research"),
-               RESEARCH_HARNESS_JULIA=str(root / "julia-env"))
+    env = {
+        k: v
+        for k, v in os.environ.items()
+        if k not in sweep.UNSET and k != SANDBOX and not k.startswith("GIT_")
+    }
+    env.update(
+        sweep.GIT,
+        HOME=str(home),
+        RESEARCH_ROOT=str(home / "Research"),
+        RESEARCH_HARNESS_JULIA=str(root / "julia-env"),
+    )
     sweep.make_fixture(home, env)
     bin_dir = root / "bin"
     bin_dir.mkdir()
@@ -1278,12 +2017,19 @@ def process_cases(check, root):
     before = sweep.digest(root)
     p = subprocess.run(HARNESS + ["doctor"], capture_output=True, text=True, env=env, cwd=root, timeout=300)
     changed = sweep.digest(root) != before
-    install_line = next((line for line in p.stdout.splitlines()
-                         if line.startswith(("PASS  install ", "FAIL  install "))), None)
-    check(p.returncode in (0, 1) and "Traceback" not in p.stdout + p.stderr and not changed
-          and install_line is not None and "change(s) to make" in install_line,
-          f"harness doctor on the sweep's fixture: exit {p.returncode}, a file changed {changed}, the install line "
-          f"{install_line!r}" + (f": {p.stderr.strip()[-300:]!r}" if p.returncode not in (0, 1) else ""))
+    install_line = next(
+        (line for line in p.stdout.splitlines() if line.startswith(("PASS  install ", "FAIL  install "))),
+        None,
+    )
+    check(
+        p.returncode in (0, 1)
+        and "Traceback" not in p.stdout + p.stderr
+        and not changed
+        and install_line is not None
+        and "change(s) to make" in install_line,
+        f"harness doctor on the sweep's fixture: exit {p.returncode}, a file changed {changed}, the install line "
+        f"{install_line!r}" + (f": {p.stderr.strip()[-300:]!r}" if p.returncode not in (0, 1) else ""),
+    )
 
 
 # The groups of cases, each a function of `check` and a scratch directory; `harness test` runs each
@@ -1315,11 +2061,17 @@ def selftest(groups):
 
 
 def register(sub):
-    p = sub.add_parser("doctor", help="check the setup of this machine, read-only; a session's sandbox makes some checks "
-                                      "SKIP, so run it in a plain terminal",
-                       description="Check this machine's setup, read-only: one line per check, PASS, WARN, FAIL or "
-                                   "SKIP; exit 1 when one fails. A session's sandbox refuses some of the commands, "
-                                   "and those checks are SKIP: run it in a plain terminal for the real verdict.")
-    p.add_argument("--full", action="store_true", help="also run `harness test` and `julia -e 'using Revise'`, which "
-                                                       "take minutes")
+    p = sub.add_parser(
+        "doctor",
+        help="check the setup of this machine, read-only; a session's sandbox makes some checks "
+        "SKIP, so run it in a plain terminal",
+        description="Check this machine's setup, read-only: one line per check, PASS, WARN, FAIL or "
+        "SKIP; exit 1 when one fails. A session's sandbox refuses some of the commands, "
+        "and those checks are SKIP: run it in a plain terminal for the real verdict.",
+    )
+    p.add_argument(
+        "--full",
+        action="store_true",
+        help="also run `harness test` and `julia -e 'using Revise'`, which take minutes",
+    )
     p.set_defaults(run=cmd_doctor)

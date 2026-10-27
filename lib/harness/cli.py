@@ -40,7 +40,9 @@ def main(argv=None):
         prog="harness", description=CONTRACT, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     ap.add_argument("--profile", metavar="F", help="the private profile, instead of the default path")
-    ap.add_argument("--models", metavar="F", help="the model tables, instead of models.toml beside the profile")
+    ap.add_argument(
+        "--models", metavar="F", help="the model tables, instead of models.toml beside the profile"
+    )
     sub = ap.add_subparsers(dest="subcommand", metavar="<subcommand>", required=True)
     for module in modules():
         # A module with no subcommand of its own; its cases run in `harness test`. `testrun`

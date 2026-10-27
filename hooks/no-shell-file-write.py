@@ -79,8 +79,19 @@ ASSIGNMENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
 # The file kinds this tree edits with Read/Edit/Write: the rule outside a git working
 # tree, and for a relative target whose directory is unknown.
 SOURCE_SUFFIXES = (
-    ".jl", ".md", ".toml", ".tex", ".bib", ".sty", ".cls",
-    ".yml", ".yaml", ".json", ".py", ".sh", ".ipynb",
+    ".jl",
+    ".md",
+    ".toml",
+    ".tex",
+    ".bib",
+    ".sty",
+    ".cls",
+    ".yml",
+    ".yaml",
+    ".json",
+    ".py",
+    ".sh",
+    ".ipynb",
 )
 
 HOME = os.path.expanduser("~")
@@ -90,9 +101,17 @@ HOME = os.path.expanduser("~")
 # checkout, so it is a scratch root in each spelling, and a probe `git init` below it
 # does not make it a work tree.
 SCRATCH_PREFIXES = (
-    "$TMPDIR", "${TMPDIR}", "/tmp/", "/private/tmp/", "/var/folders/", "/dev/",
-    "~/Research/.scratch/", "$HOME/Research/.scratch/", "${HOME}/Research/.scratch/",
-    HOME + "/Research/.scratch/", (os.environ.get("TMPDIR") or "/tmp").rstrip("/") + "/",
+    "$TMPDIR",
+    "${TMPDIR}",
+    "/tmp/",
+    "/private/tmp/",
+    "/var/folders/",
+    "/dev/",
+    "~/Research/.scratch/",
+    "$HOME/Research/.scratch/",
+    "${HOME}/Research/.scratch/",
+    HOME + "/Research/.scratch/",
+    (os.environ.get("TMPDIR") or "/tmp").rstrip("/") + "/",
 )
 
 # In-place editing is a flag on these, and the flag is what this hook reads.
@@ -171,7 +190,7 @@ def lex(text):
             end = text.find("'", index + 1)
             if end < 0:
                 return None
-            word.append(text[index + 1:end])
+            word.append(text[index + 1 : end])
             in_word, index = True, end + 1
         elif char == '"':
             index += 1
@@ -256,7 +275,7 @@ def expand(path, variables):
         path = HOME + path[1:]
     match = LEADING_VARIABLE.match(path)
     if match and variables.get(match.group(1) or match.group(2)) is not None:
-        path = variables[match.group(1) or match.group(2)] + path[match.end():]
+        path = variables[match.group(1) or match.group(2)] + path[match.end() :]
     if any(char in path for char in "$*?`"):
         return None
     return path
@@ -282,9 +301,10 @@ def ignored(path):
     while not os.path.isdir(directory):
         directory = os.path.dirname(directory)
     try:
-        result = subprocess.run(["git", "-C", directory, "check-ignore", "-q", path],
-                                capture_output=True, timeout=2)
-    except (OSError, subprocess.TimeoutExpired):
+        result = subprocess.run(
+            ["git", "-C", directory, "check-ignore", "-q", path], capture_output=True, timeout=2
+        )
+    except OSError, subprocess.TimeoutExpired:
         return False
     return result.returncode == 0
 
@@ -367,7 +387,7 @@ def python_writes(code):
 
     try:
         tree = ast.parse(code)
-    except (SyntaxError, ValueError):
+    except SyntaxError, ValueError:
         return []
     bound, seen = {}, set()
     for node in ast.walk(tree):
@@ -396,17 +416,22 @@ def python_writes(code):
         if not isinstance(node, ast.Call):
             continue
         if name(node.func) == "open" and node.args:
-            mode = node.args[1] if len(node.args) > 1 else next(
-                (keyword.value for keyword in node.keywords if keyword.arg == "mode"), None)
+            mode = (
+                node.args[1]
+                if len(node.args) > 1
+                else next((keyword.value for keyword in node.keywords if keyword.arg == "mode"), None)
+            )
             mode = literal(mode) if mode is not None else "r"
             path = literal(node.args[0])
             if path and mode and set(mode) & set("wax+"):
                 found.append((path, f"open({path!r}, {mode!r})"))
-        elif (name(node.func) in ("write_text", "write_bytes")
-              and isinstance(node.func, ast.Attribute)
-              and isinstance(node.func.value, ast.Call)
-              and name(node.func.value.func) == "Path"
-              and node.func.value.args):
+        elif (
+            name(node.func) in ("write_text", "write_bytes")
+            and isinstance(node.func, ast.Attribute)
+            and isinstance(node.func.value, ast.Call)
+            and name(node.func.value.func) == "Path"
+            and node.func.value.args
+        ):
             path = literal(node.func.value.args[0])
             if path:
                 found.append((path, f"Path({path!r}).{node.func.attr}"))
@@ -450,8 +475,9 @@ def main():
     # A cheap reject for the commands this hook can never refuse. `-i` is not the test:
     # `sed -Ei` holds no `-i` substring, which is the whole reason the cluster case needs
     # a parser.
-    if not (">" in command or "tee" in command or "python" in command
-            or any(t in command for t in INPLACE_TOOLS)):
+    if not (
+        ">" in command or "tee" in command or "python" in command or any(t in command for t in INPLACE_TOOLS)
+    ):
         return 0
     cwd = payload.get("cwd")
     if not isinstance(cwd, str) or not os.path.isabs(cwd):

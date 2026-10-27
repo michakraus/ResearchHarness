@@ -38,7 +38,10 @@ another agent's. The rule is in `skills/build-part/evidence.md`, *A warm session
 one session for your tree, `ses` on every `ex`, and a shutdown with `session` before you return.
 """
 
-EXAMPLES = {"ex": "ex(e = …, q = false, ses = <key>)", "manage_repl": 'manage_repl(command = "…", session = <key>)'}
+EXAMPLES = {
+    "ex": "ex(e = …, q = false, ses = <key>)",
+    "manage_repl": 'manage_repl(command = "…", session = <key>)',
+}
 
 
 def main():
@@ -53,7 +56,7 @@ def main():
     prefix = next((p for p in PREFIXES if name.startswith(p)), None)
     if prefix is None:
         return 0
-    tool = name[len(prefix):]
+    tool = name[len(prefix) :]
     key = KEYS.get(tool)
     if key is None or not isinstance(arguments, dict):
         return 0

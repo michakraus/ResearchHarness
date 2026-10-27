@@ -58,14 +58,19 @@ def main():
     try:
         if passes(json.load(sys.stdin)):
             return 0
-    except (ValueError, KeyError, TypeError, AttributeError):
+    except ValueError, KeyError, TypeError, AttributeError:
         pass
-    print(json.dumps({"hookSpecificOutput": {
-        "hookEventName": "PreToolUse",
-        "permissionDecision": "ask",
-        "permissionDecisionReason":
-            f"The target is outside {ROOT}, or the call removes a worktree.",
-    }}))
+    print(
+        json.dumps(
+            {
+                "hookSpecificOutput": {
+                    "hookEventName": "PreToolUse",
+                    "permissionDecision": "ask",
+                    "permissionDecisionReason": f"The target is outside {ROOT}, or the call removes a worktree.",
+                }
+            }
+        )
+    )
     return 0
 
 

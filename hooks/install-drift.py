@@ -59,12 +59,16 @@ def files(sources):
             names = [n for n in names if not hidden(n)]
             for name in dirs + names:
                 if os.path.islink(os.path.join(path, name)):
-                    raise OSError(errno.ELOOP, "a symlink, which `harness install` refuses", os.path.join(path, name))
+                    raise OSError(
+                        errno.ELOOP, "a symlink, which `harness install` refuses", os.path.join(path, name)
+                    )
             for name in names:
                 src = os.path.join(path, name)
                 mode = os.stat(src).st_mode
                 if not stat.S_ISREG(mode):
-                    raise OSError(errno.EINVAL, "neither a file nor a directory, which `harness install` refuses", src)
+                    raise OSError(
+                        errno.EINVAL, "neither a file nor a directory, which `harness install` refuses", src
+                    )
                 rel = os.path.relpath(src, directory).replace(os.sep, "/")
                 if rel.split("/")[0] in skip or fold(rel.split("/")[0]) in skipped:
                     continue
@@ -121,8 +125,14 @@ def main():
     except Exception as e:  # the hook only warns: an error it did not foresee is a warning too
         message = f"install-drift.py failed ({type(e).__name__}: {e}); the installation is not checked."
     if message:
-        print(json.dumps({"systemMessage": message,
-                          "hookSpecificOutput": {"hookEventName": "SessionStart", "additionalContext": message}}))
+        print(
+            json.dumps(
+                {
+                    "systemMessage": message,
+                    "hookSpecificOutput": {"hookEventName": "SessionStart", "additionalContext": message},
+                }
+            )
+        )
     return 0
 
 

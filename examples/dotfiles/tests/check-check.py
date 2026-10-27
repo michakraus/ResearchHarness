@@ -67,11 +67,9 @@ BASE_PATH = "/usr/bin:/bin:/usr/sbin:/sbin"
 WIDTH = 24  # the width of a check's name in `harness doctor`'s lines
 COUNT = re.compile(r"(\d+) PASS, (\d+) WARN, (\d+) FAIL, (\d+) SKIP")
 GPU_PACKAGE = {"metal": "Metal", "cuda": "CUDA", "amdgpu": "AMDGPU", "none": None}
-OWN = ["chezmoi verify", "chezmoi diff", "source signature", "source origin/main",
-       "Harness checkout", "kit"]
+OWN = ["chezmoi verify", "chezmoi diff", "source signature", "source origin/main", "Harness checkout", "kit"]
 # What chezmoi prints when the session's sandbox denies its configuration directory.
-CHEZMOI_DENIED = ("chezmoi: open /home/example/.config/chezmoi/chezmoi.toml: "
-                  "operation not permitted")
+CHEZMOI_DENIED = "chezmoi: open /home/example/.config/chezmoi/chezmoi.toml: operation not permitted"
 REVISE_MISSING = "ERROR: ArgumentError: Package Revise not found in current path."
 # The kit of the scratch Harness checkout, at harness_commit: two code files and a seed, which
 # the source copies.
@@ -122,10 +120,20 @@ NO_GPU_HOST = "test-no-gpu"
 CHANNELS = ["1.10", "1.11", "1.12", "nightly", "release"]
 # The hosts that the test adds to the data of .chezmoidata/machines.toml.
 TEST_MACHINES = {
-    OTHER_HOST: {"os": "linux", "arch": "x86_64", "gpu": "amdgpu", "julia_channels": CHANNELS,
-                 "julia_default": "1.12"},
-    NO_GPU_HOST: {"os": "linux", "arch": "aarch64", "gpu": "none", "julia_channels": CHANNELS,
-                  "julia_default": "1.12"},
+    OTHER_HOST: {
+        "os": "linux",
+        "arch": "x86_64",
+        "gpu": "amdgpu",
+        "julia_channels": CHANNELS,
+        "julia_default": "1.12",
+    },
+    NO_GPU_HOST: {
+        "os": "linux",
+        "arch": "aarch64",
+        "gpu": "none",
+        "julia_channels": CHANNELS,
+        "julia_default": "1.12",
+    },
 }
 MACHINES = DATA["machines"] | TEST_MACHINES
 
@@ -135,6 +143,7 @@ def xy_channels(host):
 
 
 # ---------------------------------------------------------------- helpers ----
+
 
 def scratch(name):
     return pathlib.Path(tempfile.mkdtemp(prefix=f"{name}-", dir=ROOT))
@@ -155,17 +164,21 @@ def render(host, extra=None):
     work = scratch("chezmoi")
     (work / "chezmoi.toml").write_text("")
     home = "/Users/me" if entry["os"] == "darwin" else "/home/example"
-    data = {"chezmoi": {"hostname": host, "os": entry["os"], "homeDir": home},
-            "machines": machines}
+    data = {"chezmoi": {"hostname": host, "os": entry["os"], "homeDir": home}, "machines": machines}
     data.update(extra)
     cmd = [
         "chezmoi",
-        "--config", str(work / "chezmoi.toml"),
-        "--source", str(SOURCE),
-        "--destination", str(work / "home"),
-        "--persistent-state", str(work / "state.boltdb"),
+        "--config",
+        str(work / "chezmoi.toml"),
+        "--source",
+        str(SOURCE),
+        "--destination",
+        str(work / "home"),
+        "--persistent-state",
+        str(work / "state.boltdb"),
         "--no-tty",
-        "--override-data", json.dumps(data),
+        "--override-data",
+        json.dumps(data),
         "execute-template",
     ]
     result = subprocess.run(cmd, capture_output=True, text=True, input=CHECK.read_text())
@@ -183,8 +196,7 @@ def make_key(name):
     directory = ROOT / "keys"
     directory.mkdir(exist_ok=True)
     path = directory / name
-    must(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", name, "-f", str(path)],
-         dict(os.environ))
+    must(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", name, "-f", str(path)], dict(os.environ))
     return path
 
 
@@ -204,16 +216,14 @@ def doctor_line(status, name, detail):
 
 
 def doctor_output(lines):
-    counts = {s: sum(line.startswith(s + " ") for line in lines)
-              for s in ("PASS", "WARN", "FAIL", "SKIP")}
+    counts = {s: sum(line.startswith(s + " ") for line in lines) for s in ("PASS", "WARN", "FAIL", "SKIP")}
     return "\n".join(lines) + "\n\n" + ", ".join(f"{n} {s}" for s, n in counts.items()) + "\n"
 
 
 DOCTOR = [
     doctor_line("PASS", "system", "macOS 27.0.1 arm64"),
     doctor_line("PASS", "git", "2.54.0 (/usr/bin/git)"),
-    doctor_line("WARN", "install warning 1",
-                "/home/example/.config/kaimon/auth-token does not exist"),
+    doctor_line("WARN", "install warning 1", "/home/example/.config/kaimon/auth-token does not exist"),
     doctor_line("SKIP", "harness test", "run with --full"),
     doctor_line("SKIP", "Revise", "run with --full"),
 ]
@@ -221,15 +231,16 @@ DOCTOR_FULL = DOCTOR[:3] + [
     doctor_line("PASS", "harness test", "412 cases, 0 wrong"),
     doctor_line("PASS", "Revise", "julia -e 'using Revise' loads it (/home/example/.juliaup/bin/julia)"),
 ]
-DOCTOR_FAIL = doctor_line("FAIL", "actionlint",
-                          "actionlint not found (fix: setup-linux.md, The dependencies)")
+DOCTOR_FAIL = doctor_line(
+    "FAIL", "actionlint", "actionlint not found (fix: setup-linux.md, The dependencies)"
+)
 
 
 # The stubs. Each logs `<program> <arguments>` to $STUBS/calls.log, logs its name to
 # $STUBS/stdin-pipe.log when its standard input is a pipe (the caller's standard input, which a
 # program could read), and answers from files in $STUBS, which is outside HOME. The harness stub
 # writes bytecode below ~/Research/Harness, as Python does, unless PYTHONDONTWRITEBYTECODE is set.
-HARNESS_STUB = r'''echo "harness $*" >> "$STUBS/calls.log"
+HARNESS_STUB = r"""echo "harness $*" >> "$STUBS/calls.log"
 if [ -z "${PYTHONDONTWRITEBYTECODE:-}" ]; then
     mkdir -p "$HOME/Research/Harness/lib/__pycache__"
     echo bytecode > "$HOME/Research/Harness/lib/__pycache__/doctor.cpython-314.pyc"
@@ -240,8 +251,8 @@ case "$*" in
 esac
 echo "usage: harness [-h] {install,doctor,...} ..." >&2
 exit 2
-'''
-CHEZMOI_STUB = r'''echo "chezmoi $*" >> "$STUBS/calls.log"
+"""
+CHEZMOI_STUB = r"""echo "chezmoi $*" >> "$STUBS/calls.log"
 for arg; do
     case $arg in
         verify|diff)
@@ -251,8 +262,8 @@ for arg; do
     esac
 done
 exit 0
-'''
-JULIA_STUB = r'''echo "julia $*" >> "$STUBS/calls.log"
+"""
+JULIA_STUB = r"""echo "julia $*" >> "$STUBS/calls.log"
 channel=${1#+}
 if [ "$3" = "using Revise" ]; then
     if grep -qxF "$channel" "$STUBS/revise-fails" 2>/dev/null; then
@@ -264,13 +275,12 @@ fi
 cat "$STUBS/gpu.out"
 [ -f "$STUBS/gpu.err" ] && cat "$STUBS/gpu.err" >&2
 exit "$(cat "$STUBS/gpu.code")"
-'''
+"""
 
 
 def stub(path, body):
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text('#!/bin/sh\n[ -p /dev/stdin ] && echo "${0##*/}" >> "$STUBS/stdin-pipe.log"\n'
-                    + body)
+    path.write_text('#!/bin/sh\n[ -p /dev/stdin ] && echo "${0##*/}" >> "$STUBS/stdin-pipe.log"\n' + body)
     path.chmod(0o755)
 
 
@@ -295,13 +305,26 @@ class Machine:
         author_home = self.root / "author-home"
         author_home.mkdir()
         author_config = self.root / "author.gitconfig"
-        author_config.write_text("[user]\n\tname = Author\n\temail = author@test\n"
-                                 "[gpg]\n\tformat = ssh\n[advice]\n\tdetachedHead = false\n")
-        self.author_env = {"HOME": str(author_home), "PATH": BASE_PATH, "LANG": "C",
-                           "TMPDIR": str(ROOT), "GIT_CONFIG_NOSYSTEM": "1",
-                           "GIT_CONFIG_GLOBAL": str(author_config)}
-        self.env = {"HOME": str(self.home), "PATH": f"{self.bindir}:{BASE_PATH}", "LANG": "C",
-                    "TMPDIR": str(ROOT), "GIT_CONFIG_NOSYSTEM": "1", "STUBS": str(self.stubs)}
+        author_config.write_text(
+            "[user]\n\tname = Author\n\temail = author@test\n"
+            "[gpg]\n\tformat = ssh\n[advice]\n\tdetachedHead = false\n"
+        )
+        self.author_env = {
+            "HOME": str(author_home),
+            "PATH": BASE_PATH,
+            "LANG": "C",
+            "TMPDIR": str(ROOT),
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_CONFIG_GLOBAL": str(author_config),
+        }
+        self.env = {
+            "HOME": str(self.home),
+            "PATH": f"{self.bindir}:{BASE_PATH}",
+            "LANG": "C",
+            "TMPDIR": str(ROOT),
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "STUBS": str(self.stubs),
+        }
         if sandbox:
             self.env["SANDBOX_RUNTIME"] = "1"
 
@@ -397,13 +420,22 @@ class Machine:
         log = self.stubs / "calls.log"
         if not log.exists():
             return []
-        return [line.split(" ", 1)[1] if " " in line else ""
-                for line in log.read_text().splitlines() if line.split(" ", 1)[0] == program]
+        return [
+            line.split(" ", 1)[1] if " " in line else ""
+            for line in log.read_text().splitlines()
+            if line.split(" ", 1)[0] == program
+        ]
 
     def run(self, *args, stdin=subprocess.DEVNULL):
-        result = subprocess.run(["/bin/bash", str(self.script), *args], stdin=stdin,
-                                capture_output=True, text=True, env=self.env, cwd=self.home,
-                                timeout=120)
+        result = subprocess.run(
+            ["/bin/bash", str(self.script), *args],
+            stdin=stdin,
+            capture_output=True,
+            text=True,
+            env=self.env,
+            cwd=self.home,
+            timeout=120,
+        )
         return result.returncode, result.stdout, result.stderr
 
 
@@ -430,7 +462,7 @@ def parse(out):
 
 def own(checks, doctor_lines):
     """The lines that follow the lines of `harness doctor`, by name."""
-    return {name: (status, detail) for status, name, detail in checks[len(doctor_lines):]}
+    return {name: (status, detail) for status, name, detail in checks[len(doctor_lines) :]}
 
 
 def statuses(checks, doctor_lines):
@@ -443,6 +475,7 @@ def expected_names(host):
 
 # ---------------------------------------------------------------- clause 2 ----
 
+
 def test_all_pass():
     print("\n== 2 and 3: every check passes, on the template host and another host, with --full and not")
     for host in (TEMPLATE_HOST, OTHER_HOST):
@@ -454,11 +487,12 @@ def test_all_pass():
             check(not defects, f"{label}: the form of harness doctor {defects}")
             doctor = DOCTOR_FULL if args else DOCTOR
             text = [doctor_line(*c) for c in checks]
-            check(text[:len(doctor)] == doctor,
-                  f"{label}: harness doctor's lines come first, unchanged")
-            check(m.calls("harness") == [" ".join(("doctor",) + args)],
-                  f"{label}: harness called as {m.calls('harness')}")
-            names = [c[1] for c in checks[len(doctor):]]
+            check(text[: len(doctor)] == doctor, f"{label}: harness doctor's lines come first, unchanged")
+            check(
+                m.calls("harness") == [" ".join(("doctor",) + args)],
+                f"{label}: harness called as {m.calls('harness')}",
+            )
+            names = [c[1] for c in checks[len(doctor) :]]
             check(names == expected_names(host), f"{label}: the checks {names}")
             got = statuses(checks, doctor)
             package = GPU_PACKAGE[MACHINES[host]["gpu"]]
@@ -470,9 +504,13 @@ def test_all_pass():
             check(got == want, f"{label}: the statuses {got}")
             check(code == 0, f"{label}: exit {code}, 0 ({err.strip()!r})")
             chezmoi = m.calls("chezmoi")
-            check(len(chezmoi) == 2 and "verify" in chezmoi[0].split() and "diff" in chezmoi[1].split()
-                  and all("--exclude=scripts" in c.split() for c in chezmoi),
-                  f"{label}: chezmoi verify and diff, both --exclude=scripts: {chezmoi}")
+            check(
+                len(chezmoi) == 2
+                and "verify" in chezmoi[0].split()
+                and "diff" in chezmoi[1].split()
+                and all("--exclude=scripts" in c.split() for c in chezmoi),
+                f"{label}: chezmoi verify and diff, both --exclude=scripts: {chezmoi}",
+            )
             julia = m.calls("julia")
             if args:
                 default = MACHINES[host]["julia_default"]
@@ -502,17 +540,25 @@ def test_read_only():
         os.close(writer)
     check(code == 0, f"standard input open and silent: it finishes, exit {code} ({err.strip()!r})")
     pipe = m.stubs / "stdin-pipe.log"
-    check(not pipe.exists(), "no program it runs gets its standard input "
-          f"({pipe.read_text().split() if pipe.exists() else []})")
+    check(
+        not pipe.exists(),
+        f"no program it runs gets its standard input ({pipe.read_text().split() if pipe.exists() else []})",
+    )
     after_tree = tree(m.home)
-    check(after_tree == before, "nothing below HOME is written, changed or removed "
-          f"({sorted(set(after_tree) ^ set(before))})")
+    check(
+        after_tree == before,
+        f"nothing below HOME is written, changed or removed ({sorted(set(after_tree) ^ set(before))})",
+    )
     after = m.source_git("rev-parse", "refs/remotes/origin/main")
-    check(after == origin and after != newer,
-          "no fetch: origin/main of the source stays where the last fetch left it")
+    check(
+        after == origin and after != newer,
+        "no fetch: origin/main of the source stays where the last fetch left it",
+    )
     checks, _ = parse(out)
-    check(own(checks, DOCTOR_FULL).get("source origin/main", ("",))[0] == "PASS",
-          "a commit that no fetch has seen does not count")
+    check(
+        own(checks, DOCTOR_FULL).get("source origin/main", ("",))[0] == "PASS",
+        "a commit that no fetch has seen does not count",
+    )
 
 
 def tree(path):
@@ -532,12 +578,17 @@ def test_usage():
     for args in (("--bogus",), ("--full", "--full"), ("",), ("full",)):
         m = Machine("usage", OTHER_HOST)
         code, out, err = m.run(*args)
-        check(code == 2 and "usage: dotfiles-check [--full]" in err and out == ""
-              and (m.stubs / "calls.log").exists() is False,
-              f"arguments {list(args)}: exit {code}, the usage line, no output, no call")
+        check(
+            code == 2
+            and "usage: dotfiles-check [--full]" in err
+            and out == ""
+            and (m.stubs / "calls.log").exists() is False,
+            f"arguments {list(args)}: exit {code}, the usage line, no output, no call",
+        )
 
 
 # ---------------------------------------------------------------- harness doctor ----
+
 
 def test_doctor():
     print("\n== harness doctor: its FAIL lines count; missing; an exit with no FAIL line")
@@ -547,13 +598,19 @@ def test_doctor():
     m.answer("doctor.code", "1\n")
     code, out, err = m.run()
     checks, defects = parse(out)
-    check(not defects and [doctor_line(*c) for c in checks[:len(lines)]] == lines,
-          f"doctor exits 1: its lines, the FAIL line among them, pass through {defects}")
+    check(
+        not defects and [doctor_line(*c) for c in checks[: len(lines)]] == lines,
+        f"doctor exits 1: its lines, the FAIL line among them, pass through {defects}",
+    )
     count = COUNT.fullmatch(out.splitlines()[-1])
-    check(count is not None and count.group(3) == "1",
-          f"doctor exits 1: its FAIL line counts in the total ({out.splitlines()[-1]!r})")
-    check(all(s == "PASS" for s in statuses(checks, lines).values() if s != "SKIP"),
-          "doctor exits 1: the tree's checks still pass")
+    check(
+        count is not None and count.group(3) == "1",
+        f"doctor exits 1: its FAIL line counts in the total ({out.splitlines()[-1]!r})",
+    )
+    check(
+        all(s == "PASS" for s in statuses(checks, lines).values() if s != "SKIP"),
+        "doctor exits 1: the tree's checks still pass",
+    )
     check(code == 1, f"doctor exits 1: dotfiles-check exits {code}, 1")
 
     m = Machine("doctor-missing", OTHER_HOST)
@@ -561,28 +618,39 @@ def test_doctor():
     code, out, err = m.run()
     checks, defects = parse(out)
     got = {name: (status, detail) for status, name, detail in checks}
-    check(got.get("harness doctor", ("",))[0] == "FAIL" and "not found" in got["harness doctor"][1],
-          f"harness not on the PATH: a FAIL line ({got.get('harness doctor')})")
+    check(
+        got.get("harness doctor", ("",))[0] == "FAIL" and "not found" in got["harness doctor"][1],
+        f"harness not on the PATH: a FAIL line ({got.get('harness doctor')})",
+    )
     rest = [c[1] for c in checks[1:]]
-    check(not defects and rest == expected_names(OTHER_HOST) and len(m.calls("chezmoi")) == 2,
-          f"harness not on the PATH: the tree's checks still run ({rest})")
+    check(
+        not defects and rest == expected_names(OTHER_HOST) and len(m.calls("chezmoi")) == 2,
+        f"harness not on the PATH: the tree's checks still run ({rest})",
+    )
     check(code == 1, f"harness not on the PATH: exit {code}, 1")
 
-    for label, text, status in (("exits 2 and prints nothing", "", "2"),
-                                ("exits 1 with no FAIL line", doctor_output(DOCTOR), "1")):
+    for label, text, status in (
+        ("exits 2 and prints nothing", "", "2"),
+        ("exits 1 with no FAIL line", doctor_output(DOCTOR), "1"),
+    ):
         m = Machine("doctor-exit", OTHER_HOST)
         m.answer("doctor.out", text)
         m.answer("doctor.code", status + "\n")
         code, out, err = m.run()
         checks, defects = parse(out)
         got = {name: (s, detail) for s, name, detail in checks}
-        check(not defects and got.get("harness doctor", ("",))[0] == "FAIL"
-              and f"exits {status}" in got["harness doctor"][1] and code == 1,
-              f"harness doctor {label}: a FAIL line that names the exit, exit {code}, 1 "
-              f"({got.get('harness doctor')}, {defects})")
+        check(
+            not defects
+            and got.get("harness doctor", ("",))[0] == "FAIL"
+            and f"exits {status}" in got["harness doctor"][1]
+            and code == 1,
+            f"harness doctor {label}: a FAIL line that names the exit, exit {code}, 1 "
+            f"({got.get('harness doctor')}, {defects})",
+        )
 
 
 # ---------------------------------------------------------------- chezmoi ----
+
 
 def test_chezmoi():
     print("\n== chezmoi verify and chezmoi diff: PASS and FAIL; refused in a sandbox")
@@ -591,19 +659,27 @@ def test_chezmoi():
         m.answer("verify.code", "1\n")
         code, out, err = m.run()
         got = statuses(parse(out)[0], DOCTOR)
-        check(got["chezmoi verify"] == "FAIL" and got["chezmoi diff"] == "PASS" and code == 1,
-              f"chezmoi verify exits 1, silent{', in a sandbox' if sandbox else ''}: FAIL, "
-              f"exit {code} ({got})")
+        check(
+            got["chezmoi verify"] == "FAIL" and got["chezmoi diff"] == "PASS" and code == 1,
+            f"chezmoi verify exits 1, silent{', in a sandbox' if sandbox else ''}: FAIL, exit {code} ({got})",
+        )
 
     m = Machine("diff", OTHER_HOST)
-    m.answer("diff.out", "diff --git a/.zshrc b/.zshrc\nindex 1111111..2222222 100644\n"
-                         "--- a/.zshrc\n+++ b/.zshrc\n@@ -1 +1 @@\n-# old\n+# new\n")
+    m.answer(
+        "diff.out",
+        "diff --git a/.zshrc b/.zshrc\nindex 1111111..2222222 100644\n"
+        "--- a/.zshrc\n+++ b/.zshrc\n@@ -1 +1 @@\n-# old\n+# new\n",
+    )
     code, out, err = m.run()
     checks, _ = parse(out)
     got = own(checks, DOCTOR)
-    check(got["chezmoi diff"][0] == "FAIL" and "7 lines" in got["chezmoi diff"][1]
-          and got["chezmoi verify"][0] == "PASS" and code == 1,
-          f"chezmoi diff prints a diff: FAIL with its length, exit {code} ({got['chezmoi diff']})")
+    check(
+        got["chezmoi diff"][0] == "FAIL"
+        and "7 lines" in got["chezmoi diff"][1]
+        and got["chezmoi verify"][0] == "PASS"
+        and code == 1,
+        f"chezmoi diff prints a diff: FAIL with its length, exit {code} ({got['chezmoi diff']})",
+    )
 
     for sandbox, want, want_code in ((False, "FAIL", 1), (True, "SKIP", 0)):
         m = Machine("chezmoi-refused", OTHER_HOST, sandbox=sandbox)
@@ -613,10 +689,11 @@ def test_chezmoi():
         code, out, err = m.run()
         got = own(parse(out)[0], DOCTOR)
         label = "in a sandbox" if sandbox else "outside a sandbox"
-        check(all(got[v][0] == want and CHEZMOI_DENIED in got[v][1]
-                  for v in ("chezmoi verify", "chezmoi diff")) and code == want_code,
-              f"chezmoi gives no answer {label}: {want} with the reason, exit {code} "
-              f"({got['chezmoi verify']})")
+        check(
+            all(got[v][0] == want and CHEZMOI_DENIED in got[v][1] for v in ("chezmoi verify", "chezmoi diff"))
+            and code == want_code,
+            f"chezmoi gives no answer {label}: {want} with the reason, exit {code} ({got['chezmoi verify']})",
+        )
         if sandbox:
             check("sandbox" in got["chezmoi verify"][1], "the SKIP names the sandbox")
 
@@ -624,24 +701,35 @@ def test_chezmoi():
     (m.bindir / "chezmoi").unlink()
     code, out, err = m.run()
     got = own(parse(out)[0], DOCTOR)
-    check(all(got[v][0] == "FAIL" and "not found" in got[v][1]
-              for v in ("chezmoi verify", "chezmoi diff")) and code == 1,
-          f"chezmoi not on the PATH, even in a sandbox: FAIL, exit {code} ({got['chezmoi verify']})")
+    check(
+        all(got[v][0] == "FAIL" and "not found" in got[v][1] for v in ("chezmoi verify", "chezmoi diff"))
+        and code == 1,
+        f"chezmoi not on the PATH, even in a sandbox: FAIL, exit {code} ({got['chezmoi verify']})",
+    )
 
 
 # ---------------------------------------------------------------- the source ----
+
 
 def test_signature():
     print("\n== the signature of the source's HEAD, by the applied allowed_signers")
     m = Machine("signed", OTHER_HOST)
     code, out, err = m.run()
     got = own(parse(out)[0], DOCTOR)
-    check(got["source signature"][0] == "PASS" and PRINCIPAL in got["source signature"][1],
-          f"signed by the listed key: PASS, with the principal ({got['source signature']})")
+    check(
+        got["source signature"][0] == "PASS" and PRINCIPAL in got["source signature"][1],
+        f"signed by the listed key: PASS, with the principal ({got['source signature']})",
+    )
 
-    cases = (("unsigned", None, None), ("signed by the other key", "other", None),
-             ("signed by the other key, which the source's allowed_signers lists", "other",
-              signer_line(KEYS["listed"]) + signer_line(KEYS["other"])))
+    cases = (
+        ("unsigned", None, None),
+        ("signed by the other key", "other", None),
+        (
+            "signed by the other key, which the source's allowed_signers lists",
+            "other",
+            signer_line(KEYS["listed"]) + signer_line(KEYS["other"]),
+        ),
+    )
     for label, key, source_signers in cases:
         m = Machine("head", OTHER_HOST)
         files = {SIGNERS_SOURCE: source_signers} if source_signers else None
@@ -651,13 +739,17 @@ def test_signature():
         if source_signers:
             # A git configuration that names the source's copy: only the applied one counts.
             (m.home / ".gitconfig").write_text(
-                '[gpg]\n\tformat = ssh\n[gpg "ssh"]\n'
-                f"\tallowedSignersFile = {m.source / SIGNERS_SOURCE}\n")
+                f'[gpg]\n\tformat = ssh\n[gpg "ssh"]\n\tallowedSignersFile = {m.source / SIGNERS_SOURCE}\n'
+            )
         code, out, err = m.run()
         got = own(parse(out)[0], DOCTOR)
-        check(got["source signature"][0] == "FAIL" and head[:7] in got["source signature"][1]
-              and got["source origin/main"][0] == "PASS" and code == 1,
-              f"a head {label}: FAIL that names {head[:7]}, exit {code} ({got['source signature']})")
+        check(
+            got["source signature"][0] == "FAIL"
+            and head[:7] in got["source signature"][1]
+            and got["source origin/main"][0] == "PASS"
+            and code == 1,
+            f"a head {label}: FAIL that names {head[:7]}, exit {code} ({got['source signature']})",
+        )
 
     for label, content in (("missing", None), ("comment-only", "# no key\n")):
         m = Machine("signers", OTHER_HOST)
@@ -667,9 +759,12 @@ def test_signature():
             m.signers.write_text(content)
         code, out, err = m.run()
         got = own(parse(out)[0], DOCTOR)
-        check(got["source signature"][0] == "FAIL"
-              and "missing or lists no key" in got["source signature"][1] and code == 1,
-              f"a {label} allowed_signers: FAIL, exit {code} ({got['source signature']})")
+        check(
+            got["source signature"][0] == "FAIL"
+            and "missing or lists no key" in got["source signature"][1]
+            and code == 1,
+            f"a {label} allowed_signers: FAIL, exit {code} ({got['source signature']})",
+        )
 
 
 def test_origin():
@@ -680,41 +775,59 @@ def test_origin():
     m.source_git("fetch", "-q", "origin")
     code, out, err = m.run()
     got = own(parse(out)[0], DOCTOR)
-    check(got["source origin/main"][0] == "WARN" and tip[:7] in got["source origin/main"][1]
-          and "1 commit" in got["source origin/main"][1] and code == 0,
-          f"behind origin/main: WARN with the count, exit {code} ({got['source origin/main']})")
+    check(
+        got["source origin/main"][0] == "WARN"
+        and tip[:7] in got["source origin/main"][1]
+        and "1 commit" in got["source origin/main"][1]
+        and code == 0,
+        f"behind origin/main: WARN with the count, exit {code} ({got['source origin/main']})",
+    )
 
     m = Machine("ahead", OTHER_HOST)
     m.commit("a local commit", key="listed", cwd=m.source)
     code, out, err = m.run()
     got = own(parse(out)[0], DOCTOR)
-    check(got["source origin/main"][0] == "FAIL" and got["source signature"][0] == "PASS"
-          and code == 1, f"ahead of origin/main: FAIL, exit {code} ({got['source origin/main']})")
+    check(
+        got["source origin/main"][0] == "FAIL" and got["source signature"][0] == "PASS" and code == 1,
+        f"ahead of origin/main: FAIL, exit {code} ({got['source origin/main']})",
+    )
 
     m = Machine("no-origin", OTHER_HOST)
     m.source_git("update-ref", "-d", "refs/remotes/origin/main")
     code, out, err = m.run()
     got = own(parse(out)[0], DOCTOR)
     status, detail = got["source origin/main"]
-    check(status == "FAIL" and "has no origin/main" in detail and code == 1,
-          f"no origin/main: FAIL, exit {code} ({got['source origin/main']})")
+    check(
+        status == "FAIL" and "has no origin/main" in detail and code == 1,
+        f"no origin/main: FAIL, exit {code} ({got['source origin/main']})",
+    )
 
     m = Machine("no-source", OTHER_HOST)
     shutil.rmtree(m.source)
     code, out, err = m.run()
     got = own(parse(out)[0], DOCTOR)
-    check(all(got[n][0] == "FAIL" and "not a git repository" in got[n][1]
-              for n in ("source signature", "source origin/main")) and code == 1,
-          f"no source: both FAIL, exit {code} ({got['source signature']})")
+    check(
+        all(
+            got[n][0] == "FAIL" and "not a git repository" in got[n][1]
+            for n in ("source signature", "source origin/main")
+        )
+        and code == 1,
+        f"no source: both FAIL, exit {code} ({got['source signature']})",
+    )
 
 
 # ---------------------------------------------------------------- the Harness checkout ----
 
+
 def test_harness_checkout():
     print("\n== the Harness checkout: the pin on another host, containing it on the template host")
-    for host, at, want in ((OTHER_HOST, "pin", "PASS"), (OTHER_HOST, "after", "FAIL"),
-                           (TEMPLATE_HOST, "after", "PASS"), (TEMPLATE_HOST, "pin", "PASS"),
-                           (TEMPLATE_HOST, "before", "FAIL")):
+    for host, at, want in (
+        (OTHER_HOST, "pin", "PASS"),
+        (OTHER_HOST, "after", "FAIL"),
+        (TEMPLATE_HOST, "after", "PASS"),
+        (TEMPLATE_HOST, "pin", "PASS"),
+        (TEMPLATE_HOST, "before", "FAIL"),
+    ):
         m = Machine("harness", host)
         if at == "before":
             # A checkout whose HEAD is an earlier commit, so it does not contain the pin.
@@ -724,19 +837,24 @@ def test_harness_checkout():
             m.harness_git("checkout", "-q", "--detach", m.pin if at == "pin" else m.after_pin)
         code, out, err = m.run()
         got = own(parse(out)[0], DOCTOR)
-        check(got["Harness checkout"][0] == want and code == (0 if want == "PASS" else 1),
-              f"{host}, HEAD {at} the pin: {want}, exit {code} ({got['Harness checkout']})")
+        check(
+            got["Harness checkout"][0] == want and code == (0 if want == "PASS" else 1),
+            f"{host}, HEAD {at} the pin: {want}, exit {code} ({got['Harness checkout']})",
+        )
 
     m = Machine("harness-missing", OTHER_HOST)
     shutil.rmtree(m.harness)
     code, out, err = m.run()
     got = own(parse(out)[0], DOCTOR)
     status, detail = got["Harness checkout"]
-    check(status == "FAIL" and "not a git repository" in detail and code == 1,
-          f"no Harness checkout: FAIL, exit {code} ({got['Harness checkout']})")
+    check(
+        status == "FAIL" and "not a git repository" in detail and code == 1,
+        f"no Harness checkout: FAIL, exit {code} ({got['Harness checkout']})",
+    )
 
 
 # ---------------------------------------------------------------- the kit ----
+
 
 def test_kit():
     print("\n== 5: the kit, each code file of kit.toml against the harness at harness_commit")
@@ -748,8 +866,10 @@ def test_kit():
         m = Machine("kit-pass", host)
         code, out, err = m.run()
         got = own(parse(out)[0], DOCTOR)
-        check(got["kit"][0] == "PASS" and m.pin[:7] in got["kit"][1] and code == 0,
-              f"{host}, every code file equals the kit: PASS, exit {code} ({got['kit']})")
+        check(
+            got["kit"][0] == "PASS" and m.pin[:7] in got["kit"][1] and code == 0,
+            f"{host}, every code file equals the kit: PASS, exit {code} ({got['kit']})",
+        )
 
     # Drift: a code file that differs, in the work tree and in a commit, and a seed that differs.
     for host in (TEMPLATE_HOST, OTHER_HOST):
@@ -759,9 +879,15 @@ def test_kit():
         code, out, err = m.run()
         got = own(parse(out)[0], DOCTOR)
         status, detail = got["kit"]
-        check(status == "WARN" and code_files[0] in detail and code_files[1] not in detail
-              and LATER not in detail and seed not in detail and code == 0,
-              f"{host}, a code file that differs: WARN that names it alone, exit {code} ({got['kit']})")
+        check(
+            status == "WARN"
+            and code_files[0] in detail
+            and code_files[1] not in detail
+            and LATER not in detail
+            and seed not in detail
+            and code == 0,
+            f"{host}, a code file that differs: WARN that names it alone, exit {code} ({got['kit']})",
+        )
 
     m = Machine("kit-drift-both", TEMPLATE_HOST)
     for path in code_files:
@@ -769,9 +895,10 @@ def test_kit():
     code, out, err = m.run()
     got = own(parse(out)[0], DOCTOR)
     status, detail = got["kit"]
-    check(status == "WARN" and all(path in detail for path in code_files) and LATER not in detail
-          and code == 0,
-          f"two code files that differ: WARN that names each of them, exit {code} ({got['kit']})")
+    check(
+        status == "WARN" and all(path in detail for path in code_files) and LATER not in detail and code == 0,
+        f"two code files that differ: WARN that names each of them, exit {code} ({got['kit']})",
+    )
 
     m = Machine("kit-drift-commit", OTHER_HOST)
     m.commit("change a code file", key="listed", files={code_files[1]: "# changed\n"})
@@ -779,8 +906,10 @@ def test_kit():
     m.source_git("pull", "-q", "--ff-only")
     code, out, err = m.run()
     got = own(parse(out)[0], DOCTOR)
-    check(got["kit"][0] == "WARN" and code_files[1] in got["kit"][1] and code == 0,
-          f"a committed change of a code file: WARN that names it ({got['kit']})")
+    check(
+        got["kit"][0] == "WARN" and code_files[1] in got["kit"][1] and code == 0,
+        f"a committed change of a code file: WARN that names it ({got['kit']})",
+    )
 
     m = Machine("kit-seed", OTHER_HOST)
     (m.source / seed).write_text("value = 2\n")
@@ -793,17 +922,22 @@ def test_kit():
     code, out, err = m.run()
     got = own(parse(out)[0], DOCTOR)
     status, detail = got["kit"]
-    check(status == "WARN" and f"{code_files[1]} (missing)" in detail
-          and code_files[0] not in detail and code == 0,
-          f"a code file that the source lacks: WARN that names it as missing ({got['kit']})")
+    check(
+        status == "WARN"
+        and f"{code_files[1]} (missing)" in detail
+        and code_files[0] not in detail
+        and code == 0,
+        f"a code file that the source lacks: WARN that names it as missing ({got['kit']})",
+    )
 
     m = Machine("kit-none", OTHER_HOST, kit=False)
     code, out, err = m.run()
     got = own(parse(out)[0], DOCTOR)
     status, detail = got["kit"]
-    check(status == "SKIP" and "examples/dotfiles/kit.toml" in detail and m.pin[:7] in detail
-          and code == 0,
-          f"harness_commit without examples/dotfiles/kit.toml: SKIP that names it ({got['kit']})")
+    check(
+        status == "SKIP" and "examples/dotfiles/kit.toml" in detail and m.pin[:7] in detail and code == 0,
+        f"harness_commit without examples/dotfiles/kit.toml: SKIP that names it ({got['kit']})",
+    )
 
     # A kit.toml in another TOML spelling has no line `"<path>" = "code"`, so the check reads no
     # code file; that is a WARN, not a PASS.
@@ -812,8 +946,10 @@ def test_kit():
     code, out, err = m.run()
     got = own(parse(out)[0], DOCTOR)
     status, detail = got["kit"]
-    check(status == "WARN" and "no line" in detail and m.pin[:7] in detail and code == 0,
-          f"a kit.toml with no code line in the form of the kit: WARN that says so ({got['kit']})")
+    check(
+        status == "WARN" and "no line" in detail and m.pin[:7] in detail and code == 0,
+        f"a kit.toml with no code line in the form of the kit: WARN that says so ({got['kit']})",
+    )
 
     m = Machine("kit-unknown-pin", OTHER_HOST)
     unknown = "1234567" + "0" * 33
@@ -821,15 +957,16 @@ def test_kit():
     code, out, err = m.run()
     got = own(parse(out)[0], DOCTOR)
     status, detail = got["kit"]
-    check(status == "SKIP" and unknown[:7] in detail and "lacks" in detail,
-          f"a Harness checkout that lacks harness_commit: SKIP with that reason ({got['kit']})")
+    check(
+        status == "SKIP" and unknown[:7] in detail and "lacks" in detail,
+        f"a Harness checkout that lacks harness_commit: SKIP with that reason ({got['kit']})",
+    )
 
     m = Machine("kit-no-harness", OTHER_HOST)
     shutil.rmtree(m.harness)
     code, out, err = m.run()
     got = own(parse(out)[0], DOCTOR)
-    check(got["kit"][0] == "SKIP" and "lacks" in got["kit"][1],
-          f"no Harness checkout: SKIP ({got['kit']})")
+    check(got["kit"][0] == "SKIP" and "lacks" in got["kit"][1], f"no Harness checkout: SKIP ({got['kit']})")
 
 
 def test_kit_toml():
@@ -845,26 +982,36 @@ def test_kit_toml():
     # dotfiles-check reads the code files with sed, one line `"<path>" = "code"` each.
     code = {path for path, cls in entries.items() if cls == "code"}
     lines = set(re.findall(r'^"([^"]*)" = "code"$', KIT_TOML.read_text(), re.MULTILINE))
-    check(lines == code, f"each code entry is a line in the form that dotfiles-check reads "
-                         f"{sorted(code ^ lines)}")
+    check(
+        lines == code,
+        f"each code entry is a line in the form that dotfiles-check reads {sorted(code ^ lines)}",
+    )
     absent = sorted(path for path in entries if not (SOURCE / path).is_file())
     check(not absent, f"each entry is a file of the kit {absent}")
-    unlisted = [rel for rel in kit_files()
-                if rel != "kit.toml" and not rel.startswith("tests/") and rel not in entries]
+    unlisted = [
+        rel
+        for rel in kit_files()
+        if rel != "kit.toml" and not rel.startswith("tests/") and rel not in entries
+    ]
     check(not unlisted, f"every file outside tests/ and kit.toml is in kit.toml {unlisted}")
 
 
 def kit_files():
     """The files of the kit, relative to it: in a git work tree, the files that git tracks or
     would track, without the ignored ones such as .DS_Store; outside one, every file."""
-    p = subprocess.run(["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
-                       cwd=SOURCE, capture_output=True, text=True)
+    p = subprocess.run(
+        ["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
+        cwd=SOURCE,
+        capture_output=True,
+        text=True,
+    )
     if p.returncode == 0:
         return sorted({rel for rel in p.stdout.split("\0") if rel and (SOURCE / rel).is_file()})
     return sorted(path.relative_to(SOURCE).as_posix() for path in SOURCE.rglob("*") if path.is_file())
 
 
 # ---------------------------------------------------------------- --full ----
+
 
 def test_full():
     print("\n== --full: Revise on each X.Y channel, and the GPU package")
@@ -876,45 +1023,63 @@ def test_full():
         got = own(parse(out)[0], DOCTOR_FULL)
         others = [got[f"Revise +{c}"][0] for c in channels if c != channels[1]]
         bad = got[f"Revise +{channels[1]}"]
-        check(bad[0] == want and REVISE_MISSING in bad[1] and set(others) == {"PASS"}
-              and code == want_code,
-              f"Revise fails on {channels[1]} {'in a sandbox' if sandbox else ''}: {want} on that "
-              f"channel only, exit {code} ({bad})")
+        check(
+            bad[0] == want and REVISE_MISSING in bad[1] and set(others) == {"PASS"} and code == want_code,
+            f"Revise fails on {channels[1]} {'in a sandbox' if sandbox else ''}: {want} on that "
+            f"channel only, exit {code} ({bad})",
+        )
 
-    for label, gpu_out, gpu_code in (("false", "false\n", "0"),
-                                     ("an error", "ERROR: ArgumentError: Package AMDGPU not "
-                                                  "found in current path.\n", "1"),
-                                     ("true, but julia exits 1", "true\n", "1")):
+    for label, gpu_out, gpu_code in (
+        ("false", "false\n", "0"),
+        ("an error", "ERROR: ArgumentError: Package AMDGPU not found in current path.\n", "1"),
+        ("true, but julia exits 1", "true\n", "1"),
+    ):
         m = Machine("gpu", OTHER_HOST)
         m.answer("gpu.out", gpu_out)
         m.answer("gpu.code", gpu_code + "\n")
         code, out, err = m.run("--full")
         got = own(parse(out)[0], DOCTOR_FULL)
-        check(got["GPU"][0] == "FAIL" and "AMDGPU" in got["GPU"][1] and code == 1,
-              f"AMDGPU.functional() gives {label}: FAIL, exit {code} ({got['GPU']})")
+        check(
+            got["GPU"][0] == "FAIL" and "AMDGPU" in got["GPU"][1] and code == 1,
+            f"AMDGPU.functional() gives {label}: FAIL, exit {code} ({got['GPU']})",
+        )
 
     # The answer is read from standard output only: a warning on standard error after it does
     # not change it, and a "true" on standard error alone is no answer.
     for label, gpu_out, gpu_err, want, want_code in (
-            ("true, then a warning on stderr", "true\n",
-             "WARNING: AMDGPU: a device library is older than the driver\n", "PASS", 0),
-            ("false, then true on stderr", "false\n", "true\n", "FAIL", 1)):
+        (
+            "true, then a warning on stderr",
+            "true\n",
+            "WARNING: AMDGPU: a device library is older than the driver\n",
+            "PASS",
+            0,
+        ),
+        ("false, then true on stderr", "false\n", "true\n", "FAIL", 1),
+    ):
         m = Machine("gpu-stderr", OTHER_HOST)
         m.answer("gpu.out", gpu_out)
         m.answer("gpu.err", gpu_err)
         code, out, err = m.run("--full")
         got = own(parse(out)[0], DOCTOR_FULL)
-        check(got["GPU"][0] == want and code == want_code and err == "",
-              f"AMDGPU.functional() gives {label}: {want}, exit {code}, julia's stderr not "
-              f"passed on ({got['GPU']}, {err.strip()!r})")
+        check(
+            got["GPU"][0] == want and code == want_code and err == "",
+            f"AMDGPU.functional() gives {label}: {want}, exit {code}, julia's stderr not "
+            f"passed on ({got['GPU']}, {err.strip()!r})",
+        )
 
     m = Machine("julia-missing", OTHER_HOST, sandbox=True)
     (m.home / ".juliaup" / "bin" / "julia").unlink()
     code, out, err = m.run("--full")
     got = own(parse(out)[0], DOCTOR_FULL)
-    check(all(got[n][0] == "FAIL" and "not found" in got[n][1]
-              for n in got if n.startswith("Revise") or n == "GPU")
-          and code == 1, f"no julia, even in a sandbox: Revise and GPU FAIL, exit {code}")
+    check(
+        all(
+            got[n][0] == "FAIL" and "not found" in got[n][1]
+            for n in got
+            if n.startswith("Revise") or n == "GPU"
+        )
+        and code == 1,
+        f"no julia, even in a sandbox: Revise and GPU FAIL, exit {code}",
+    )
 
     for args in ((), ("--full",)):
         m = Machine("no-gpu", NO_GPU_HOST)
@@ -922,12 +1087,17 @@ def test_full():
         doctor = DOCTOR_FULL if args else DOCTOR
         got = own(parse(out)[0], doctor)
         julia = m.calls("julia")
-        check(got["GPU"][0] == "SKIP" and "none" in got["GPU"][1] and code == 0
-              and all("functional" not in c for c in julia),
-              f"gpu none {' '.join(args)}: SKIP, no GPU call, exit {code} ({got['GPU']})")
+        check(
+            got["GPU"][0] == "SKIP"
+            and "none" in got["GPU"][1]
+            and code == 0
+            and all("functional" not in c for c in julia),
+            f"gpu none {' '.join(args)}: SKIP, no GPU call, exit {code} ({got['GPU']})",
+        )
 
 
 # ---------------------------------------------------------------- the render ----
+
 
 def test_render():
     print("\n== 3: bash -n and shellcheck on the render for every host; an unknown gpu")
@@ -954,9 +1124,20 @@ def main():
         ROOT = pathlib.Path(tmp).resolve()
         KEYS["listed"] = make_key("listed")
         KEYS["other"] = make_key("other")
-        for case in (test_all_pass, test_read_only, test_usage, test_doctor, test_chezmoi,
-                     test_signature, test_origin, test_harness_checkout, test_kit, test_kit_toml,
-                     test_full, test_render):
+        for case in (
+            test_all_pass,
+            test_read_only,
+            test_usage,
+            test_doctor,
+            test_chezmoi,
+            test_signature,
+            test_origin,
+            test_harness_checkout,
+            test_kit,
+            test_kit_toml,
+            test_full,
+            test_render,
+        ):
             try:
                 case()
             except Exception as error:  # a broken fixture is a failure, not a crash

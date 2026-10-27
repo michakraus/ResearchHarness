@@ -105,7 +105,11 @@ CASES = [
     # which is in the fixture's `Harness` work tree.
     (WRITE, "cat > static.jl <<'EOF'\nx = 1\nEOF", 2),
     (WRITE, "cd ~/Research/Packages/Example/src && cat > static.jl <<'EOF'\nx = 1\nEOF", 2),
-    (WRITE, "cd ~/Research/Packages/Example; printf '%s\\n' '' '- floor τ / |φ′(0)|; `α > 0`' >> CHANGELOG.md", 2),
+    (
+        WRITE,
+        "cd ~/Research/Packages/Example; printf '%s\\n' '' '- floor τ / |φ′(0)|; `α > 0`' >> CHANGELOG.md",
+        2,
+    ),
     (WRITE, "python3 - <<'EOF'\np='backtracking.jl'\ns=open(p).read()\nopen(p,'w').write(s)\nEOF", 2),
     (WRITE, "python3 - <<'EOF' 2>&1\nopen('src/x.jl', mode='a')\nEOF", 2),
     (WRITE, "python3 -c \"open('src/x.jl','w').write('x')\"", 2),
@@ -147,8 +151,7 @@ CASES = [
     (WRITE, "python3 - <<'EOF'\nprint(open('src/x.jl').read())\nEOF", 0),
     (WRITE, "python3 -c \"import sys; open(sys.argv[1],'w')\" f.jl", 0),
     (WRITE, "python3 - <<'EOF'\nfor p in ['a.jl']:\n    open(p, 'w')\nEOF", 0),
-    (WRITE, "julia -e 'write(\"f.jl\", \"x\")'", 0),
-
+    (WRITE, 'julia -e \'write("f.jl", "x")\'', 0),
     (SANDBOX, "echo $(gh run view 1)", 2),
     (SANDBOX, "for r in a b; do gh run list -R x/$r; done", 2),
     (SANDBOX, "until gh run view 1 --json status; do sleep 30; done", 2),
@@ -198,7 +201,12 @@ CASES = [
     (SANDBOX, "git init ~/Research/.scratch/r48probe", 2),
     (SANDBOX, "git init -q -b main " + q(HOME + "/Research/.scratch/gitinit-probe"), 2),
     (SANDBOX, 'git init "$HOME/Research/.scratch/x"', 2),
-    (SANDBOX, "git clone -q https://github.com/example-org/Example.jl.git " + q(HOME + "/Research/Packages/Example"), 2),
+    (
+        SANDBOX,
+        "git clone -q https://github.com/example-org/Example.jl.git "
+        + q(HOME + "/Research/Packages/Example"),
+        2,
+    ),
     (SANDBOX, "git clone " + q(HOME + "/Research/.worktrees/X-origin.git") + " X", 2),
     (SANDBOX, "git worktree add ~/Research/.worktrees/X-y -b fix/y origin/main", 2),
     (SANDBOX, "git worktree add --detach " + q(HOME + "/Research/.worktrees/X-probe") + " origin/main", 2),
@@ -210,8 +218,11 @@ CASES = [
     (SANDBOX, "git bundle verify /tmp/x.bundle", 0),
     (SANDBOX, "git log -- ../x", 0),
     (SANDBOX, "git init --bare --initial-branch=main " + q(HOME + "/Research/.worktrees/X-origin.git"), 0),
-    (SANDBOX, "git clone --mirror https://github.com/example-org/X.jl.git " + q(HOME + "/Research/.scratch/X.git"), 0),
-
+    (
+        SANDBOX,
+        "git clone --mirror https://github.com/example-org/X.jl.git " + q(HOME + "/Research/.scratch/X.git"),
+        0,
+    ),
     (STAGE, "git add -nA", 2),
     (STAGE, "git add src/Foo.jl src/Bar.jl", 0),
     (STAGE, "git add src/Abc.jl", 0),
@@ -221,7 +232,6 @@ CASES = [
     (STAGE, "git status\ngit add -nA", 2),
     (STAGE, "(git add -nA)", 2),
     (STAGE, "git add -nA; echo \"it's", 2),
-
     (ARCHIVE, "git archive -o base.tar origin/main", 2),
     (ARCHIVE, "git archive --format=tar --prefix=base/ origin/main -o " + q(R + "/.scratch/base.tar"), 2),
     (ARCHIVE, "git archive --output=" + q(R + "/.scratch/base.tar") + " origin/main", 2),
@@ -233,7 +243,11 @@ CASES = [
     (ARCHIVE, "git -C " + q(WT) + " archive -o base.tar HEAD", 2),
     (ARCHIVE, "GIT_PAGER=cat git archive -o base.tar HEAD", 2),
     (ARCHIVE, "/usr/bin/git archive -o base.tar HEAD", 2),
-    (ARCHIVE, "mkdir -p base && cd " + q(WT) + " && git archive -o ../base.tar origin/main && tar -xf ../base.tar", 2),
+    (
+        ARCHIVE,
+        "mkdir -p base && cd " + q(WT) + " && git archive -o ../base.tar origin/main && tar -xf ../base.tar",
+        2,
+    ),
     (ARCHIVE, "git archive origin/main | tar -x -C base", 0),
     (ARCHIVE, "git archive --format=tar --prefix=pkg/ HEAD -- src", 0),
     (ARCHIVE, "git archive HEAD -- docs/-o.md", 0),
@@ -303,13 +317,34 @@ GHAPI_CASES = [
     ("gh api repos/{owner}/{repo}/pulls/3/comments/$ID/replies --input r.json", "pass"),
     ("gh api --method POST /repos/o/r/issues/3/comments -f body=x", "pass"),
     ("gh api repos/o/r/commits/abc123/comments --input notes.json", "pass"),
-    ("gh api graphql -f query='query { search(query:\"is:pr\", type: ISSUE, first: 5) { issueCount } }'", "pass"),
-    ("gh api graphql -f query='{ search(query:\"mutation\", type: ISSUE, first: 1) { issueCount } }'", "pass"),
-    ("gh api graphql -F owner=o -f query='query($owner:String!){ repository(owner:$owner, name:\"r\"){ id } }'", "pass"),
-    ("gh api graphql -f query='mutation { addPullRequestReviewThreadReply(input:{pullRequestReviewThreadId:\"T\", body:\"x\"}) { comment { id } } }'", "pass"),
-    ("gh api graphql -f query='mutation($t:ID!){ a: resolveReviewThread(input:{threadId:$t}){ thread { id } } b: resolveReviewThread(input:{threadId:\"U\"}){ thread { id } } }' -f t=T", "pass"),
-    ("gh api graphql -f query='mutation { mergePullRequest(input:{pullRequestId:\"P\"}) { clientMutationId } }'", "ask"),
-    ("gh api graphql -f query='mutation { resolveReviewThread(input:{threadId:\"T\"}) { thread { id } } updateIssueComment(input:{id:\"C\", body:\"x\"}) { issueComment { id } } }'", "ask"),
+    (
+        "gh api graphql -f query='query { search(query:\"is:pr\", type: ISSUE, first: 5) { issueCount } }'",
+        "pass",
+    ),
+    (
+        "gh api graphql -f query='{ search(query:\"mutation\", type: ISSUE, first: 1) { issueCount } }'",
+        "pass",
+    ),
+    (
+        "gh api graphql -F owner=o -f query='query($owner:String!){ repository(owner:$owner, name:\"r\"){ id } }'",
+        "pass",
+    ),
+    (
+        'gh api graphql -f query=\'mutation { addPullRequestReviewThreadReply(input:{pullRequestReviewThreadId:"T", body:"x"}) { comment { id } } }\'',
+        "pass",
+    ),
+    (
+        "gh api graphql -f query='mutation($t:ID!){ a: resolveReviewThread(input:{threadId:$t}){ thread { id } } b: resolveReviewThread(input:{threadId:\"U\"}){ thread { id } } }' -f t=T",
+        "pass",
+    ),
+    (
+        "gh api graphql -f query='mutation { mergePullRequest(input:{pullRequestId:\"P\"}) { clientMutationId } }'",
+        "ask",
+    ),
+    (
+        'gh api graphql -f query=\'mutation { resolveReviewThread(input:{threadId:"T"}) { thread { id } } updateIssueComment(input:{id:"C", body:"x"}) { issueComment { id } } }\'',
+        "ask",
+    ),
     ("gh api graphql -f query='mutation { ...F }'", "ask"),
     ("gh api graphql -F query=@mutation.graphql", "ask"),
     ("gh api graphql --input request.json", "ask"),
@@ -354,15 +389,33 @@ WORKTREE_CASES = [
 
 # `worktree.py`'s manifest test, called as a function: (version, `[compat]` entry, inside or not).
 COMPAT_CASES = [
-    ("0.3.5", "0.4", False), ("0.4.2", "0.4", True), ("0.5.0", "0.4", False),
-    ("1.9.0", "1.2", True), ("2.0.0", "1.2", False), ("1.1.9", "1.2", False),
-    ("0.0.3", "0.0.3", True), ("0.0.4", "0.0.3", False), ("0.9.0", "0", True), ("1.0.0", "0", False),
-    ("1.2.9", "~1.2", True), ("1.3.0", "~1.2", False), ("0.0.3", "~0.0.3", True), ("0.0.4", "~0.0.3", False),
-    ("1.2.3", "=1.2.3", True), ("1.2.4", "=1.2.3", False),
-    ("5.0.0", ">= 1.2", True), ("1.1.0", "≥ 1.2", False), ("1.9.9", "< 2", True), ("2.0.0", "< 2", False),
-    ("2.3.7", "1.2 - 2.3", True), ("2.4.0", "1.2 - 2.3", False),
-    ("0.3.1", "0.3, 0.4", True), ("0.4.1", "0.3, 0.4", True), ("0.5.0", "0.3, 0.4", False),
-    ("1.2.3", "<= 2", None), ("1.2.3", "1.x", None),
+    ("0.3.5", "0.4", False),
+    ("0.4.2", "0.4", True),
+    ("0.5.0", "0.4", False),
+    ("1.9.0", "1.2", True),
+    ("2.0.0", "1.2", False),
+    ("1.1.9", "1.2", False),
+    ("0.0.3", "0.0.3", True),
+    ("0.0.4", "0.0.3", False),
+    ("0.9.0", "0", True),
+    ("1.0.0", "0", False),
+    ("1.2.9", "~1.2", True),
+    ("1.3.0", "~1.2", False),
+    ("0.0.3", "~0.0.3", True),
+    ("0.0.4", "~0.0.3", False),
+    ("1.2.3", "=1.2.3", True),
+    ("1.2.4", "=1.2.3", False),
+    ("5.0.0", ">= 1.2", True),
+    ("1.1.0", "≥ 1.2", False),
+    ("1.9.9", "< 2", True),
+    ("2.0.0", "< 2", False),
+    ("2.3.7", "1.2 - 2.3", True),
+    ("2.4.0", "1.2 - 2.3", False),
+    ("0.3.1", "0.3, 0.4", True),
+    ("0.4.1", "0.3, 0.4", True),
+    ("0.5.0", "0.3, 0.4", False),
+    ("1.2.3", "<= 2", None),
+    ("1.2.3", "1.x", None),
 ]
 # (manifest deps as {name: version or None}, the project's `[deps]` and `[compat]`, copied or not)
 MANIFEST_CASES = [
@@ -377,6 +430,7 @@ MANIFEST_CASES = [
 def manifest_cases():
     """`worktree.py`'s `compat_ranges` and `copy_manifest`: (number of cases, number wrong)."""
     import importlib.util
+
     spec = importlib.util.spec_from_file_location("worktree_hook", WORKTREE)
     hook = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(hook)
@@ -386,22 +440,35 @@ def manifest_cases():
         v = hook.parse_version(version)
         got = None if ranges is None else any(lo <= v < hi for lo, hi in ranges)
         total, wrong = total + 1, wrong + (got != expected)
-        print(f"{'ok ' if got == expected else 'BAD'} exp {expected} got {got}  [worktree ]  {version} in [compat] {entry!r}")
+        print(
+            f"{'ok ' if got == expected else 'BAD'} exp {expected} got {got}  [worktree ]  {version} in [compat] {entry!r}"
+        )
     for k, (deps, names, compat, expected) in enumerate(MANIFEST_CASES):
-        repo, wt = os.path.join(FIXTURE.name, f"manifest-{k}", "repo"), os.path.join(FIXTURE.name, f"manifest-{k}", "wt")
+        repo, wt = (
+            os.path.join(FIXTURE.name, f"manifest-{k}", "repo"),
+            os.path.join(FIXTURE.name, f"manifest-{k}", "wt"),
+        )
         os.makedirs(repo)
         os.makedirs(wt)
         with open(os.path.join(repo, "Manifest.toml"), "w") as f:
             f.write('julia_version = "1.13.0"\nmanifest_format = "2.0"\n')
             for name, version in deps.items():
-                f.write(f'\n[[deps.{name}]]\nuuid = "{k}"\n' + (f'version = "{version}"\n' if version else ""))
+                f.write(
+                    f'\n[[deps.{name}]]\nuuid = "{k}"\n' + (f'version = "{version}"\n' if version else "")
+                )
         with open(os.path.join(wt, "Project.toml"), "w") as f:
-            f.write('name = "P"\n\n[deps]\n' + "".join(f'{n} = "u"\n' for n in names)
-                    + "\n[compat]\n" + "".join(f'{n} = "{c}"\n' for n, c in compat.items()))
+            f.write(
+                'name = "P"\n\n[deps]\n'
+                + "".join(f'{n} = "u"\n' for n in names)
+                + "\n[compat]\n"
+                + "".join(f'{n} = "{c}"\n' for n, c in compat.items())
+            )
         hook.copy_manifest(hook.Path(repo), hook.Path(wt))
         got = os.path.exists(os.path.join(wt, "Manifest.toml"))
         total, wrong = total + 1, wrong + (got != expected)
-        print(f"{'ok ' if got == expected else 'BAD'} exp {expected} got {got}  [worktree ]  manifest {deps} for {names} {compat}")
+        print(
+            f"{'ok ' if got == expected else 'BAD'} exp {expected} got {got}  [worktree ]  manifest {deps} for {names} {compat}"
+        )
     return total, wrong
 
 
@@ -490,7 +557,7 @@ RMSCOPE_CASES = [
     (PKG, "rm docs/build/index.html", "pass"),
     (PKG, "rm -f Manifest.toml", "pass"),
     (PKG, "rm -rf $W/build", "pass"),
-    (PKG, "rm -rf \"$TMPDIR/probe\"", "pass"),
+    (PKG, 'rm -rf "$TMPDIR/probe"', "pass"),
     (PKG, "rm -rf $(mktemp -d)", "pass"),
     (PKG, "rm -rf /tmp/claude/x", "pass"),
     (PKG, "cd $W && rm -rf build", "pass"),
@@ -652,8 +719,12 @@ OMP_PATH_CASES = [
     ("read", {"path": "~/.omp/agent/RTK.md"}, "tree", "pass"),
     ("bash", {"command": "cat ~/.omp/agent/skills/build-part/SKILL.md"}, "tree", "pass"),
     ("grep", {"pattern": "x", "path": "~/.omp/agent/skills"}, "tree", "pass"),
-    ("edit", {"path": "~/.omp/agent/skills/build-part/edges.md", "old_string": "a", "new_string": "b"}, "tree",
-     "block"),
+    (
+        "edit",
+        {"path": "~/.omp/agent/skills/build-part/edges.md", "old_string": "a", "new_string": "b"},
+        "tree",
+        "block",
+    ),
     ("write", {"path": "~/.omp/agent/rules/julia-code.md", "content": "x"}, "tree", "block"),
     # Commands that name no denied path still run.
     ("bash", {"command": "cat src/Foo.jl"}, "tree", "pass"),
@@ -664,13 +735,26 @@ OMP_PATH_CASES = [
     ("bash", {"command": 'git commit -m "the .key rules"'}, "tree", "pass"),
     ("bash", {"command": "git commit -m cd"}, "~/Research", "pass"),
     # `edit` and `write`: the settings template's Edit and Write denies, and oh-my-pi's directory.
-    ("edit", {"path": "~/.omp/agent/config.yml", "old_string": "a", "new_string": "b"}, "~/Research", "block"),
+    (
+        "edit",
+        {"path": "~/.omp/agent/config.yml", "old_string": "a", "new_string": "b"},
+        "~/Research",
+        "block",
+    ),
     ("write", {"path": "~/.omp/agent/config.yml", "content": "x"}, "~/Research", "block"),
-    ("edit", {"path": "~/.omp/agent/extensions/guards.ts", "old_string": "a", "new_string": "b"}, "~/Research",
-     "block"),
+    (
+        "edit",
+        {"path": "~/.omp/agent/extensions/guards.ts", "old_string": "a", "new_string": "b"},
+        "~/Research",
+        "block",
+    ),
     ("write", {"path": "~/.omp/agent/extensions/guards.ts", "content": "x"}, "~/Research", "block"),
-    ("edit", {"path": "~/.claude/hooks/no-shell-file-write.py", "old_string": "a", "new_string": "b"},
-     "~/Research", "block"),
+    (
+        "edit",
+        {"path": "~/.claude/hooks/no-shell-file-write.py", "old_string": "a", "new_string": "b"},
+        "~/Research",
+        "block",
+    ),
     ("write", {"path": "~/.claude/hooks/no-shell-file-write.py", "content": "x"}, "~/Research", "block"),
     ("write", {"path": "../.claude/hooks/no-shell-file-write.py", "content": "x"}, "~/Research", "block"),
     # oh-my-pi's path resolver drops a leading `:` before `./` and `../`, as before `/` and `~`.
@@ -684,37 +768,80 @@ OMP_PATH_CASES = [
     ("write", {"path": "~/Research/Notes/plan.md", "content": "x"}, "tree", "pass"),
     # The write tool removes a hashline header, `[path]` or `[path#TAG]`, from its path.
     ("write", {"path": "[~/.omp/agent/config.yml]", "content": "x"}, "~/Research", "block"),
-    ("write", {"path": "[~/.claude/hooks/no-shell-file-write.py#1A2B]", "content": "x"}, "~/Research", "block"),
+    (
+        "write",
+        {"path": "[~/.claude/hooks/no-shell-file-write.py#1A2B]", "content": "x"},
+        "~/Research",
+        "block",
+    ),
     # An exact-file deny matches only the path without the tag, so this case needs the tag removed.
     ("write", {"path": "[~/.zshrc#1A2B]", "content": "x"}, "~/Research", "block"),
     ("write", {"path": "[Notes/plan.md#1A2B]", "content": "x"}, "~/Research", "pass"),
     # The other edit modes: a patch's `rename`, and the paths of a hashline or apply_patch `input`.
-    ("edit", {"path": "Notes/plan.md", "edits": [{"op": "update", "rename": "~/.config/x.md"}]}, "~/Research",
-     "block"),
-    ("edit", {"input": "*** Begin Patch\n[~/.omp/agent/config.yml#1A2B]\nPUT 1.=1:\n+x\n*** End Patch\n"},
-     "~/Research", "block"),
-    ("edit", {"input": "*** Begin Patch\n[Notes/plan.md#1A2B]\nMV ../.claude/hooks/x.py\n*** End Patch\n"},
-     "~/Research", "block"),
-    ("edit", {"input": "*** Begin Patch\n*** Update File: ../.claude/hooks/gh-api-writes.py\n@@\n-a\n+b\n"
-                       "*** End Patch\n"}, "~/Research", "block"),
+    (
+        "edit",
+        {"path": "Notes/plan.md", "edits": [{"op": "update", "rename": "~/.config/x.md"}]},
+        "~/Research",
+        "block",
+    ),
+    (
+        "edit",
+        {"input": "*** Begin Patch\n[~/.omp/agent/config.yml#1A2B]\nPUT 1.=1:\n+x\n*** End Patch\n"},
+        "~/Research",
+        "block",
+    ),
+    (
+        "edit",
+        {"input": "*** Begin Patch\n[Notes/plan.md#1A2B]\nMV ../.claude/hooks/x.py\n*** End Patch\n"},
+        "~/Research",
+        "block",
+    ),
+    (
+        "edit",
+        {
+            "input": "*** Begin Patch\n*** Update File: ../.claude/hooks/gh-api-writes.py\n@@\n-a\n+b\n"
+            "*** End Patch\n"
+        },
+        "~/Research",
+        "block",
+    ),
     # A hashline header in quotes, a header with no closing `]`, and an `MV` path in quotes.
     ("edit", {"input": '["~/.omp/agent/config.yml"#1A2B]\nPUT 1.=1:\n+x\n'}, "~/Research", "block"),
-    ("edit", {"input": "[Notes/plan.md#1A2B]\nPUT 1.=1:\n+x\n[~/.omp/agent/config.yml#1A2B\nPUT 1.=1:\n+x\n"},
-     "~/Research", "block"),
+    (
+        "edit",
+        {"input": "[Notes/plan.md#1A2B]\nPUT 1.=1:\n+x\n[~/.omp/agent/config.yml#1A2B\nPUT 1.=1:\n+x\n"},
+        "~/Research",
+        "block",
+    ),
     ("edit", {"input": "[Notes/plan.md#1A2B]\nMV '../.claude/hooks/x.py'\n"}, "~/Research", "block"),
-    ("edit", {"input": "*** Begin Patch\n[Notes/plan.md#1A2B]\nPUT 1.=1:\n+x\n*** End Patch\n"}, "~/Research",
-     "pass"),
+    (
+        "edit",
+        {"input": "*** Begin Patch\n[Notes/plan.md#1A2B]\nPUT 1.=1:\n+x\n*** End Patch\n"},
+        "~/Research",
+        "pass",
+    ),
     ("edit", {"input": "PUT 1.=1:\n+x\n"}, "~/Research", "block"),
     # The program argument of an awk, sed or grep is a pattern, not a path: the forms that the
     # guard refused as the path `/` in the oh-my-pi runs.
     ("bash", {"command": "sed -n '/\\[compat\\]/,$p' Project.toml"}, "~/Research", "pass"),
     ("bash", {"command": "git show v0.2.1:Project.toml | sed -n '/\\[compat\\]/,$p'"}, "~/Research", "pass"),
     ("bash", {"command": "sed -n '/^## \\[Unreleased\\]/,+3p' CHANGELOG.md | head -6"}, "~/Research", "pass"),
-    ("bash", {"command": "awk '/^\\[\\[deps\\.(A|B)\\]\\]/{p=1;print;next} /^\\[\\[/{p=0} p&&/version|path/' "
-                         "Manifest.toml"}, "~/Research", "pass"),
+    (
+        "bash",
+        {
+            "command": "awk '/^\\[\\[deps\\.(A|B)\\]\\]/{p=1;print;next} /^\\[\\[/{p=0} p&&/version|path/' "
+            "Manifest.toml"
+        },
+        "~/Research",
+        "pass",
+    ),
     ("bash", {"command": "awk -F'|' '/^\\| \\*\\*P[0-9]+\\*\\*/ {print $2}' plan.md"}, "~/Research", "pass"),
-    ("bash", {"command": "awk '/^\\[compat\\]/{f=1} f&&/^Base/{print $0; exit}' Project.toml"}, "~/Research",
-     "pass"),
+    (
+        "bash",
+        {"command": "awk '/^\\[compat\\]/{f=1} f&&/^Base/{print $0; exit}' Project.toml"},
+        "~/Research",
+        "pass",
+    ),
     ("bash", {"command": "grep -rn token src | sed -n '/function f!/,/^[0-9]*-end/p'"}, "tree", "pass"),
     ("bash", {"command": "grep -E '/[0-9]+/' notes.md"}, "~/Research", "pass"),
     ("bash", {"command": "sed -e '/[a-z]*/d' -e 's/x/y/' f.txt"}, "~/Research", "pass"),
@@ -739,8 +866,13 @@ ASK_USER = "Ask the user in chat"
 OMP_REASON_CASES = [
     # rm-scope.py: a recursive `rm` outside the scratch zones is refused with its message, one inside
     # them runs, and a `git rm` in a main checkout is its "ask", which the extension refuses.
-    ("bash", {"command": "rm -rf ~/Research/x"}, "~/Research", "block",
-     "outside the zones where a recursive `rm` runs"),
+    (
+        "bash",
+        {"command": "rm -rf ~/Research/x"},
+        "~/Research",
+        "block",
+        "outside the zones where a recursive `rm` runs",
+    ),
     ("bash", {"command": "rm -rf ~/Research/.scratch/x"}, "~/Research", "pass", None),
     ("bash", {"command": "git rm f"}, "~/Research/P", "block", ASK_USER),
     # git-archive-output.py: `git archive -o` is refused with the commands that read the tree instead.
@@ -748,24 +880,55 @@ OMP_REASON_CASES = [
     ("bash", {"command": "git archive origin/main -- src"}, "~/Research/P", "pass", None),
     # The template's Edit asks: refused, and the model is told to ask in chat. Every path form of
     # an edit or a write goes through the ask list too.
-    ("edit", {"path": "~/Research/P/.githooks/pre-commit", "old_string": "a", "new_string": "b"}, "~/Research",
-     "block", ASK_USER),
-    ("edit", {"path": ".github/workflows/test.yml", "old_string": "a", "new_string": "b"}, "~/Research/P",
-     "block", ASK_USER),
+    (
+        "edit",
+        {"path": "~/Research/P/.githooks/pre-commit", "old_string": "a", "new_string": "b"},
+        "~/Research",
+        "block",
+        ASK_USER,
+    ),
+    (
+        "edit",
+        {"path": ".github/workflows/test.yml", "old_string": "a", "new_string": "b"},
+        "~/Research/P",
+        "block",
+        ASK_USER,
+    ),
     ("write", {"path": "~/.claude/skills/x/SKILL.md", "content": "x"}, "~/Research", "block", ASK_USER),
     ("write", {"path": "[~/.claude/workflows/x.js#1A2B]", "content": "x"}, "~/Research", "block", ASK_USER),
-    ("edit", {"input": "[Notes/plan.md#1A2B]\nMV ../.claude/skills/x/SKILL.md\n"}, "~/Research", "block",
-     ASK_USER),
-    ("edit", {"path": "~/Research/P/src/a.jl", "old_string": "a", "new_string": "b"}, "~/Research", "pass", None),
+    (
+        "edit",
+        {"input": "[Notes/plan.md#1A2B]\nMV ../.claude/skills/x/SKILL.md\n"},
+        "~/Research",
+        "block",
+        ASK_USER,
+    ),
+    (
+        "edit",
+        {"path": "~/Research/P/src/a.jl", "old_string": "a", "new_string": "b"},
+        "~/Research",
+        "pass",
+        None,
+    ),
     ("write", {"path": "~/.claude/skills.md", "content": "x"}, "~/Research", "pass", None),
     # A path under a deny and an ask is refused with the deny text: the deny list is checked first.
-    ("edit", {"path": "~/.claude/skills/build-part/SKILL.md", "old_string": "a", "new_string": "b"}, "~/Research",
-     "block", "the deny rule"),
+    (
+        "edit",
+        {"path": "~/.claude/skills/build-part/SKILL.md", "old_string": "a", "new_string": "b"},
+        "~/Research",
+        "block",
+        "the deny rule",
+    ),
     # sandbox-semantics.py --work-tree: a `git init` or `git clone` inside a work tree is refused,
     # one in a directory that is no work tree runs, also after a `cd` there.
     ("bash", {"command": "git init probe"}, "~/Research/P", "block", "inside the work tree"),
-    ("bash", {"command": "git clone https://github.com/example-org/X.jl.git X"}, "~/Research/P", "block",
-     "inside the work tree"),
+    (
+        "bash",
+        {"command": "git clone https://github.com/example-org/X.jl.git X"},
+        "~/Research/P",
+        "block",
+        "inside the work tree",
+    ),
     ("bash", {"command": "git init probe"}, "~/Research", "pass", None),
     ("bash", {"command": "cd .. && git init probe"}, "~/Research/P", "pass", None),
     ("bash", {"command": "cd P && git init probe"}, "~/Research", "block", "inside the work tree"),
@@ -792,6 +955,7 @@ OMP_AGENT_CASES = [
 
 def omp_pattern(command, patterns):
     """The approval of the first rule of `patterns` that matches `command`, or "none"."""
+
     def norm(s):
         return re.sub(r"\s+", " ", s.strip())
 
@@ -842,7 +1006,9 @@ def omp_cases():
         if timeout is not None:
             line = "const TIMEOUT_MS = 10_000;"
             if line not in source:
-                raise OSError(f"adapters/omp/guards.ts holds no line {line!r}, which the timeout case replaces")
+                raise OSError(
+                    f"adapters/omp/guards.ts holds no line {line!r}, which the timeout case replaces"
+                )
             source = source.replace(line, f"const TIMEOUT_MS = {timeout};")
         with open(h + "/ext/guards.mjs", "w") as f:
             f.write(source)
@@ -857,9 +1023,13 @@ def omp_cases():
         `want`, a block whose reason lacks that text is wrong too."""
         event = json.dumps({"type": "tool_call", "toolCallId": "probe", "toolName": tool, "input": data})
         try:
-            p = subprocess.run([node, "--input-type=module", "-e", OMP_DRIVER, h + "/ext/guards.mjs", event, cwd, mode],
-                               capture_output=True, text=True, timeout=TIMEOUT,
-                               env=env or {**CLEAN, "HOME": "/" + h})
+            p = subprocess.run(
+                [node, "--input-type=module", "-e", OMP_DRIVER, h + "/ext/guards.mjs", event, cwd, mode],
+                capture_output=True,
+                text=True,
+                timeout=TIMEOUT,
+                env=env or {**CLEAN, "HOME": "/" + h},
+            )
         except subprocess.TimeoutExpired:
             return "timeout"
         if p.returncode != 0:
@@ -892,30 +1062,52 @@ def omp_cases():
         report(False, "exp node got none  [omp-guard]  `node` is not on PATH, so no case of guards.ts runs")
         return total, wrong
     exit_with = "import sys\nsys.exit({})\n".format
-    decide = ('import json\nprint(json.dumps({"hookSpecificOutput": {"permissionDecision": "deny", '
-              '"permissionDecisionReason": "probe-deny"}}))\n')
+    decide = (
+        'import json\nprint(json.dumps({"hookSpecificOutput": {"permissionDecision": "deny", '
+        '"permissionDecisionReason": "probe-deny"}}))\n'
+    )
     try:
         good = home("omp-home")
         os.makedirs(good + "/Research/P/.git")
         # A path list whose ask list also holds ~/.claude/hooks/**, which the edit list denies.
-        both = home("omp-home-both", paths=lambda text, h: json.dumps(
-            {**json.loads(text), "ask": [*json.loads(text).get("ask", []), h + "/.claude/hooks/**"]}))
-        fail = {label: home("omp-home-" + str(i), **kw) for i, (label, kw) in enumerate([
-            ("a guard exits 1", {"scripts": {"no-blind-stage.py": exit_with(1)}}),
-            ("a guard script is missing", {"scripts": {"no-blind-stage.py": None}}),
-            ("a guard prints output that is not JSON", {"scripts": {"no-blind-stage.py": "print('hello')\n"}}),
-            ("a guard answers deny with exit 0", {"scripts": {"no-blind-stage.py": decide}}),
-            ("a guard is killed by a signal",
-             {"scripts": {"no-blind-stage.py": "import os, signal\nos.kill(os.getpid(), signal.SIGKILL)\n"}}),
-            ("a guard takes longer than the timeout",
-             {"scripts": {"no-blind-stage.py": "import time\ntime.sleep(20)\n"}, "timeout": 300}),
-            ("the path list is missing", {"paths": False}),
-            ("the deny list is not a list", {"paths": '{"deny": "x", "edit": []}'}),
-            ("the edit list is missing", {"paths": '{"deny": []}'}),
-            ("rm-scope.py exits 1", {"scripts": {"rm-scope.py": exit_with(1)}}),
-            ("the ask list is not a list", {"paths": '{"deny": [], "edit": [], "ask": "x"}'}),
-            ("the ask list is missing", {"paths": '{"deny": [], "edit": []}'}),
-        ])}
+        both = home(
+            "omp-home-both",
+            paths=lambda text, h: json.dumps(
+                {**json.loads(text), "ask": [*json.loads(text).get("ask", []), h + "/.claude/hooks/**"]}
+            ),
+        )
+        fail = {
+            label: home("omp-home-" + str(i), **kw)
+            for i, (label, kw) in enumerate(
+                [
+                    ("a guard exits 1", {"scripts": {"no-blind-stage.py": exit_with(1)}}),
+                    ("a guard script is missing", {"scripts": {"no-blind-stage.py": None}}),
+                    (
+                        "a guard prints output that is not JSON",
+                        {"scripts": {"no-blind-stage.py": "print('hello')\n"}},
+                    ),
+                    ("a guard answers deny with exit 0", {"scripts": {"no-blind-stage.py": decide}}),
+                    (
+                        "a guard is killed by a signal",
+                        {
+                            "scripts": {
+                                "no-blind-stage.py": "import os, signal\nos.kill(os.getpid(), signal.SIGKILL)\n"
+                            }
+                        },
+                    ),
+                    (
+                        "a guard takes longer than the timeout",
+                        {"scripts": {"no-blind-stage.py": "import time\ntime.sleep(20)\n"}, "timeout": 300},
+                    ),
+                    ("the path list is missing", {"paths": False}),
+                    ("the deny list is not a list", {"paths": '{"deny": "x", "edit": []}'}),
+                    ("the edit list is missing", {"paths": '{"deny": []}'}),
+                    ("rm-scope.py exits 1", {"scripts": {"rm-scope.py": exit_with(1)}}),
+                    ("the ask list is not a list", {"paths": '{"deny": [], "edit": [], "ask": "x"}'}),
+                    ("the ask list is missing", {"paths": '{"deny": [], "edit": []}'}),
+                ]
+            )
+        }
     except OSError as e:
         report(False, f"exp fixture got {type(e).__name__}  [omp-guard]  {e}")
         return total, wrong
@@ -925,50 +1117,121 @@ def omp_cases():
         if pattern is not None:
             got = omp_pattern(data["command"], patterns)
             report(got == pattern, f"exp {pattern} got {got}  [omp-patts]  {data['command']}")
-    where = {"tree": CWD, "~": good, "~/Research": good + "/Research", "~/.ssh": good + "/.ssh",
-             "~/.omp": good + "/.omp", "~/Research/P": good + "/Research/P"}
+    where = {
+        "tree": CWD,
+        "~": good,
+        "~/Research": good + "/Research",
+        "~/.ssh": good + "/.ssh",
+        "~/.omp": good + "/.omp",
+        "~/Research/P": good + "/Research/P",
+    }
     for tool, data, cwd, expected in OMP_PATH_CASES:
         got = verdict(good, tool, data, cwd=where[cwd])
         report(got == expected, f"exp {expected} got {got}  [omp-guard]  {tool} {data}  in {cwd}")
     for tool, data, cwd, expected, want in OMP_REASON_CASES:
         got = verdict(good, tool, data, cwd=where[cwd], want=want)
-        report(got == expected, f"exp {expected} got {got}  [omp-guard]  {tool} {data}  in {cwd}, with {want!r}")
+        report(
+            got == expected, f"exp {expected} got {got}  [omp-guard]  {tool} {data}  in {cwd}, with {want!r}"
+        )
     for tool, data, agent, expected, want in OMP_AGENT_CASES:
         got = verdict(good, tool, data, cwd=where["~/Research"], mode=agent, want=want)
-        report(got == expected, f"exp {expected} got {got}  [omp-guard]  {tool} {data}  in a {agent or 'unnamed'} agent")
-    got = verdict(both, "edit", {"path": "~/.claude/hooks/x", "old_string": "a", "new_string": "b"},
-                  cwd=good + "/Research", want="the deny rule")
-    report(got == "block", f"exp block got {got}  [omp-guard]  a path under a deny and an ask: edit ~/.claude/hooks/x")
+        report(
+            got == expected,
+            f"exp {expected} got {got}  [omp-guard]  {tool} {data}  in a {agent or 'unnamed'} agent",
+        )
+    got = verdict(
+        both,
+        "edit",
+        {"path": "~/.claude/hooks/x", "old_string": "a", "new_string": "b"},
+        cwd=good + "/Research",
+        want="the deny rule",
+    )
+    report(
+        got == "block",
+        f"exp block got {got}  [omp-guard]  a path under a deny and an ask: edit ~/.claude/hooks/x",
+    )
     # It fails closed: a guard that cannot run, exits with another status than 0 or 2, prints
     # output that is not JSON, answers "deny", is killed or times out; a path list that is missing
     # or malformed; and an error of the handler itself each block the call. (label, home, tool,
     # input, environment, driver mode, text the reason must hold)
     status = "git status"
     for label, h, tool, data, env, mode, want in [
-        ("python3 is not on PATH", good, "bash", {"command": status},
-         {**CLEAN, "HOME": "/" + good, "PATH": "/nonexistent"}, "", "fails closed"),
-        *[(label, fail[label], "bash", {"command": status}, None, "", want) for label, want in [
-            ("a guard exits 1", "exited with status 1"),
-            ("a guard script is missing", "is missing"),
-            ("a guard prints output that is not JSON", "not JSON"),
-            ("a guard answers deny with exit 0", "probe-deny"),
-            ("a guard is killed by a signal", "SIGKILL"),
-            ("a guard takes longer than the timeout", "did not answer"),
-            ("the path list is missing", "cannot be used"),
-            ("the deny list is not a list", "cannot be used"),
-        ]],
-        ("the path list is missing", fail["the path list is missing"], "read", {"path": "src/Foo.jl"}, None, "",
-         "cannot be used"),
-        ("the edit list is missing", fail["the edit list is missing"], "edit",
-         {"path": "src/Foo.jl", "old_string": "a", "new_string": "b"}, None, "", "cannot be used"),
-        ("rm-scope.py exits 1", fail["rm-scope.py exits 1"], "bash", {"command": status}, None, "",
-         "rm-scope.py exited with status 1"),
-        ("the ask list is not a list", fail["the ask list is not a list"], "edit",
-         {"path": "src/Foo.jl", "old_string": "a", "new_string": "b"}, None, "", "cannot be used"),
-        ("the ask list is not a list", fail["the ask list is not a list"], "write",
-         {"path": "src/Foo.jl", "content": "x"}, None, "", "cannot be used"),
-        ("the ask list is missing", fail["the ask list is missing"], "edit",
-         {"path": "src/Foo.jl", "old_string": "a", "new_string": "b"}, None, "", "cannot be used"),
+        (
+            "python3 is not on PATH",
+            good,
+            "bash",
+            {"command": status},
+            {**CLEAN, "HOME": "/" + good, "PATH": "/nonexistent"},
+            "",
+            "fails closed",
+        ),
+        *[
+            (label, fail[label], "bash", {"command": status}, None, "", want)
+            for label, want in [
+                ("a guard exits 1", "exited with status 1"),
+                ("a guard script is missing", "is missing"),
+                ("a guard prints output that is not JSON", "not JSON"),
+                ("a guard answers deny with exit 0", "probe-deny"),
+                ("a guard is killed by a signal", "SIGKILL"),
+                ("a guard takes longer than the timeout", "did not answer"),
+                ("the path list is missing", "cannot be used"),
+                ("the deny list is not a list", "cannot be used"),
+            ]
+        ],
+        (
+            "the path list is missing",
+            fail["the path list is missing"],
+            "read",
+            {"path": "src/Foo.jl"},
+            None,
+            "",
+            "cannot be used",
+        ),
+        (
+            "the edit list is missing",
+            fail["the edit list is missing"],
+            "edit",
+            {"path": "src/Foo.jl", "old_string": "a", "new_string": "b"},
+            None,
+            "",
+            "cannot be used",
+        ),
+        (
+            "rm-scope.py exits 1",
+            fail["rm-scope.py exits 1"],
+            "bash",
+            {"command": status},
+            None,
+            "",
+            "rm-scope.py exited with status 1",
+        ),
+        (
+            "the ask list is not a list",
+            fail["the ask list is not a list"],
+            "edit",
+            {"path": "src/Foo.jl", "old_string": "a", "new_string": "b"},
+            None,
+            "",
+            "cannot be used",
+        ),
+        (
+            "the ask list is not a list",
+            fail["the ask list is not a list"],
+            "write",
+            {"path": "src/Foo.jl", "content": "x"},
+            None,
+            "",
+            "cannot be used",
+        ),
+        (
+            "the ask list is missing",
+            fail["the ask list is missing"],
+            "edit",
+            {"path": "src/Foo.jl", "old_string": "a", "new_string": "b"},
+            None,
+            "",
+            "cannot be used",
+        ),
         ("the handler throws", good, "bash", {"command": status}, None, "throw", "failed"),
     ]:
         got = verdict(h, tool, data, env, mode=mode, want=want)
@@ -1025,9 +1288,20 @@ try {
 out.event = ev;
 process.stdout.write(JSON.stringify(out));
 """
-OC_SCRIPTS = ("no-blind-stage.py", "no-shell-file-write.py", "gh-api-writes.py", "rm-scope.py", "git-archive-output.py",
-              "sandbox-semantics.py", "kaimon-session.py")
-OC_PLUGINS = {"guards": "research-harness.guards", "rtk": "research-harness.rtk", "env": "research-harness.env"}
+OC_SCRIPTS = (
+    "no-blind-stage.py",
+    "no-shell-file-write.py",
+    "gh-api-writes.py",
+    "rm-scope.py",
+    "git-archive-output.py",
+    "sandbox-semantics.py",
+    "kaimon-session.py",
+)
+OC_PLUGINS = {
+    "guards": "research-harness.guards",
+    "rtk": "research-harness.rtk",
+    "env": "research-harness.env",
+}
 OC_GUARD = "research-harness.guards"  # each refusal of a guard that cannot answer names the plugin
 
 
@@ -1035,8 +1309,14 @@ def oc_event(command, tool="shell", **fields):
     """An `execute.before` event of OpenCode 2.0.25 for one call of `tool`, whose input holds
     `command`, unless it is None, and `fields`."""
     data = {"command": command, **fields} if command is not None else fields
-    return {"tool": tool, "sessionID": "probe-session", "agent": "build", "messageID": "probe-message",
-            "id": "probe-call", "input": data}
+    return {
+        "tool": tool,
+        "sessionID": "probe-session",
+        "agent": "build",
+        "messageID": "probe-message",
+        "id": "probe-call",
+        "input": data,
+    }
 
 
 def oc_cases():
@@ -1077,19 +1357,34 @@ def oc_cases():
             if timeout is not None and plugin == "guards":
                 line = "const TIMEOUT_MS = 10_000;"
                 if line not in source:
-                    raise OSError(f"adapters/opencode/plugins/{plugin}.ts holds no line {line!r}, "
-                                  "which a case replaces")
+                    raise OSError(
+                        f"adapters/opencode/plugins/{plugin}.ts holds no line {line!r}, which a case replaces"
+                    )
                 source = source.replace(line, f"const TIMEOUT_MS = {timeout};")
             with open(h + f"/plugins/{plugin}.mjs", "w") as f:
                 f.write(source)
         if paths is not False:
             with open(h + "/plugins/guard-paths.json", "w") as f:
-                f.write(paths if paths is not None else profile.render_file(
-                    REPO + "/adapters/opencode/plugins/guard-paths.json", {**dummy, "home": h}))
+                f.write(
+                    paths
+                    if paths is not None
+                    else profile.render_file(
+                        REPO + "/adapters/opencode/plugins/guard-paths.json", {**dummy, "home": h}
+                    )
+                )
         return h
 
-    def drive(h, plugin, event, kind="tool", name="execute.before", cwd=CWD, process_cwd=None, path=None,
-              config_dir=None):
+    def drive(
+        h,
+        plugin,
+        event,
+        kind="tool",
+        name="execute.before",
+        cwd=CWD,
+        process_cwd=None,
+        path=None,
+        config_dir=None,
+    ):
         """The driver's answer for one event, or the text of what went wrong. `cwd` is the
         session's directory, `ctx.location.directory`, or "" for a context with no `location`;
         `process_cwd`, the working directory of the `node` process, or None for this one's; `path`,
@@ -1101,9 +1396,24 @@ def oc_cases():
         if config_dir is not None:
             env["OPENCODE_CONFIG_DIR"] = config_dir
         try:
-            p = subprocess.run([node, "--input-type=module", "-e", OC_DRIVER, h + f"/plugins/{plugin}.mjs", kind, name,
-                                json.dumps(event), cwd], capture_output=True, text=True, timeout=TIMEOUT,
-                               env={**env, "HOME": "/" + h}, cwd=process_cwd)
+            p = subprocess.run(
+                [
+                    node,
+                    "--input-type=module",
+                    "-e",
+                    OC_DRIVER,
+                    h + f"/plugins/{plugin}.mjs",
+                    kind,
+                    name,
+                    json.dumps(event),
+                    cwd,
+                ],
+                capture_output=True,
+                text=True,
+                timeout=TIMEOUT,
+                env={**env, "HOME": "/" + h},
+                cwd=process_cwd,
+            )
         except subprocess.TimeoutExpired:
             return "timeout"
         if p.returncode != 0:
@@ -1141,23 +1451,39 @@ def oc_cases():
     exit_with = "import sys\nsys.exit({})\n".format
     # The fixture's rewrite is not the real RTK's `rtk git status`, so an `rtk` found elsewhere than
     # on the fixture's PATH, such as a fixed path in the plugin, cannot give it.
-    rewrite = ('#!/bin/sh\nif [ "$1 $2 $3" = "hook check git status" ]; then echo "fixture-rtk git status"; exit 0; fi\n'
-               'echo "No rewrite for: $3"; exit 1\n')
+    rewrite = (
+        '#!/bin/sh\nif [ "$1 $2 $3" = "hook check git status" ]; then echo "fixture-rtk git status"; exit 0; fi\n'
+        'echo "No rewrite for: $3"; exit 1\n'
+    )
     try:
         good = home("oc-home", rtk=rewrite)
-        fail = {label: home("oc-home-" + str(i), **kw) for i, (label, kw) in enumerate([
-            ("a guard script is missing", {"scripts": {"no-blind-stage.py": None}}),
-            ("a guard exits 1", {"scripts": {"no-blind-stage.py": exit_with(1)}}),
-            ("a guard prints {", {"scripts": {"no-blind-stage.py": "print('{')\n"}}),
-            ("a guard takes longer than the timeout",
-             {"scripts": {"no-blind-stage.py": "import time\ntime.sleep(20)\n"}, "timeout": 300}),
-            ("the path list is missing", {"paths": False}),
-            ("a guard denies", {"scripts": {"no-blind-stage.py": "import json\nprint(json.dumps({'hookSpecificOutput': "
-                                            "{'permissionDecision': 'deny', 'permissionDecisionReason': "
-                                            "'the fixture guard denies'}}))\n"}}),
-            ("rtk exits 1", {"rtk": '#!/bin/sh\necho "rtk git status"\nexit 1\n'}),
-            ("no rtk", {}),
-        ])}
+        fail = {
+            label: home("oc-home-" + str(i), **kw)
+            for i, (label, kw) in enumerate(
+                [
+                    ("a guard script is missing", {"scripts": {"no-blind-stage.py": None}}),
+                    ("a guard exits 1", {"scripts": {"no-blind-stage.py": exit_with(1)}}),
+                    ("a guard prints {", {"scripts": {"no-blind-stage.py": "print('{')\n"}}),
+                    (
+                        "a guard takes longer than the timeout",
+                        {"scripts": {"no-blind-stage.py": "import time\ntime.sleep(20)\n"}, "timeout": 300},
+                    ),
+                    ("the path list is missing", {"paths": False}),
+                    (
+                        "a guard denies",
+                        {
+                            "scripts": {
+                                "no-blind-stage.py": "import json\nprint(json.dumps({'hookSpecificOutput': "
+                                "{'permissionDecision': 'deny', 'permissionDecisionReason': "
+                                "'the fixture guard denies'}}))\n"
+                            }
+                        },
+                    ),
+                    ("rtk exits 1", {"rtk": '#!/bin/sh\necho "rtk git status"\nexit 1\n'}),
+                    ("no rtk", {}),
+                ]
+            )
+        }
     except OSError as e:
         report(False, f"exp fixture got {type(e).__name__}  [oc-plugin]  {e}")
         return total, wrong
@@ -1166,9 +1492,14 @@ def oc_cases():
     for plugin, id in OC_PLUGINS.items():
         answer = drive(good, plugin, oc_event("true"))
         got = answer if isinstance(answer, str) else (answer["exports"], answer["id"], answer.get("setup"))
-        report(got == (["default"], id, None), f"exp {(['default'], id, None)} got {got}  [oc-plugin]  {plugin}.ts")
+        report(
+            got == (["default"], id, None),
+            f"exp {(['default'], id, None)} got {got}  [oc-plugin]  {plugin}.ts",
+        )
         with open(REPO + f"/adapters/opencode/plugins/{plugin}.ts") as f:
-            imports = [l.strip() for l in f if re.match(r"\s*import\b", l) or re.search(r"\b(?:import|require)\(", l)]
+            imports = [
+                l.strip() for l in f if re.match(r"\s*import\b", l) or re.search(r"\b(?:import|require)\(", l)
+            ]
         report(imports == [], f"exp no import got {imports}  [oc-plugin]  {plugin}.ts")
 
     # The guard: (event, verdict, text the reason must hold).
@@ -1201,7 +1532,11 @@ def oc_cases():
     # `no-shell-file-write.py`. The scripts get `input.workdir` as their working directory, else the
     # session's directory, never the `node` process's: each case runs `node` in a directory where
     # the other answer comes out. `scratch` is below $TMPDIR, so no script refuses anything there.
-    scratch, wt, pkg = FIXTURE.name, "/" + good + "/Research/.worktrees/Foo-bar", "/" + good + "/Research/Packages/A"
+    scratch, wt, pkg = (
+        FIXTURE.name,
+        "/" + good + "/Research/.worktrees/Foo-bar",
+        "/" + good + "/Research/Packages/A",
+    )
     os.makedirs(wt[1:])
     os.makedirs(pkg[1:])
     empty = FIXTURE.name + "/oc-no-work-tree"
@@ -1210,9 +1545,22 @@ def oc_cases():
     for label, event, directory, process_cwd, expected, want in [
         ("gh-api-writes.py asks", oc_event("gh api -X POST repos/o/r/issues"), CWD, None, "refuse", asked),
         ("rm-scope.py asks", oc_event("git rm f"), pkg, wt, "refuse", asked),
-        ("git-archive-output.py refuses", oc_event("git archive -o base.tar origin/main"), wt, wt, "refuse",
-         "base-tree.jl"),
-        ("no-shell-file-write.py refuses", oc_event("echo x > f"), PKG, scratch, "refuse", "git working tree"),
+        (
+            "git-archive-output.py refuses",
+            oc_event("git archive -o base.tar origin/main"),
+            wt,
+            wt,
+            "refuse",
+            "base-tree.jl",
+        ),
+        (
+            "no-shell-file-write.py refuses",
+            oc_event("echo x > f"),
+            PKG,
+            scratch,
+            "refuse",
+            "git working tree",
+        ),
         ("workdir", oc_event("echo x > f", workdir=PKG), scratch, scratch, "refuse", "git working tree"),
         ("session directory", oc_event("rm -rf build"), wt, pkg, "pass", None),
         ("session directory", oc_event("rm -rf build"), pkg, wt, "refuse", None),
@@ -1222,26 +1570,59 @@ def oc_cases():
         ("no location, the node directory", oc_event("rm -rf build"), "", pkg, "refuse", None),
         ("no location, the node directory", oc_event("rm -rf build"), "", wt, "pass", None),
         # sandbox-semantics.py --work-tree: `PKG` is a work tree of the fixture, `scratch` none.
-        ("a git init in a work tree", oc_event("git init probe"), PKG, scratch, "refuse", "inside the work tree"),
-        ("a git init in a work tree", oc_event("git init probe", workdir=PKG), scratch, scratch, "refuse",
-         "inside the work tree"),
+        (
+            "a git init in a work tree",
+            oc_event("git init probe"),
+            PKG,
+            scratch,
+            "refuse",
+            "inside the work tree",
+        ),
+        (
+            "a git init in a work tree",
+            oc_event("git init probe", workdir=PKG),
+            scratch,
+            scratch,
+            "refuse",
+            "inside the work tree",
+        ),
         ("a git init elsewhere", oc_event("git init probe"), scratch, PKG, "pass", None),
         # An empty directory: the path guard refuses a `cd` into one that holds a denied path.
         ("a git init after a cd", oc_event("cd " + q(empty) + " && git init probe"), PKG, PKG, "pass", None),
         # kaimon-session.py on OpenCode's names of the Kaimon tools.
         ("kaimon_ex", oc_event(None, tool="kaimon_ex", e="1"), CWD, None, "refuse", "without `ses`"),
         ("kaimon_ex", oc_event(None, tool="kaimon_ex", e="1", ses="a1b2c3d4"), CWD, None, "pass", None),
-        ("kaimon_manage_repl", oc_event("shutdown", tool="kaimon_manage_repl"), CWD, None, "refuse",
-         "without `session`"),
-        ("kaimon_check_eval", oc_event(None, tool="kaimon_check_eval", eval_id="e1f2a3b4"), CWD, None, "pass", None),
+        (
+            "kaimon_manage_repl",
+            oc_event("shutdown", tool="kaimon_manage_repl"),
+            CWD,
+            None,
+            "refuse",
+            "without `session`",
+        ),
+        (
+            "kaimon_check_eval",
+            oc_event(None, tool="kaimon_check_eval", eval_id="e1f2a3b4"),
+            CWD,
+            None,
+            "pass",
+            None,
+        ),
     ]:
         got = verdict(good, event, want, cwd=directory, process_cwd=process_cwd)
-        report(got == expected,
-               f"exp {expected} got {got}  [oc-guards]  {label}: {event['input']} in {directory or process_cwd}")
+        report(
+            got == expected,
+            f"exp {expected} got {got}  [oc-guards]  {label}: {event['input']} in {directory or process_cwd}",
+        )
 
     # Fail closed: each refuses `git status`, with a reason that names the guard plugin.
-    for label in ("a guard script is missing", "a guard exits 1", "a guard prints {",
-                  "a guard takes longer than the timeout", "the path list is missing"):
+    for label in (
+        "a guard script is missing",
+        "a guard exits 1",
+        "a guard prints {",
+        "a guard takes longer than the timeout",
+        "the path list is missing",
+    ):
         got = verdict(fail[label], oc_event("git status"), OC_GUARD)
         report(got == "refuse", f"exp refuse got {got}  [oc-guards]  fail-closed, {label}: git status")
     # With no path list, `setup` still resolves and registers its hook.
@@ -1270,26 +1651,38 @@ def oc_cases():
         ("no local list", "none", oc_event("git status"), "pass", None),
     ]:
         got = verdict(good, event, want, config_dir=local + "/" + directory)
-        report(got == expected, f"exp {expected} got {got}  [oc-guards]  {label}: {event['input']['command']}")
+        report(
+            got == expected, f"exp {expected} got {got}  [oc-guards]  {label}: {event['input']['command']}"
+        )
 
     # The rewrite: (home, command after the hook, verdict). The plugin finds `rtk` on the PATH of
     # `node` alone, which is the home's `bin/`: the fixture there, or no `rtk` at all.
-    for label, h, expected in [("rtk rewrites", good, ("fixture-rtk git status", "pass")),
-                               ("rtk exits 1", fail["rtk exits 1"], ("git status", "pass")),
-                               ("no rtk on the PATH", fail["no rtk"], ("git status", "pass"))]:
+    for label, h, expected in [
+        ("rtk rewrites", good, ("fixture-rtk git status", "pass")),
+        ("rtk exits 1", fail["rtk exits 1"], ("git status", "pass")),
+        ("no rtk on the PATH", fail["no rtk"], ("git status", "pass")),
+    ]:
         answer = drive(h, "rtk", oc_event("git status"), path=h + "/bin")
         got = answer if isinstance(answer, str) else (answer["event"]["input"]["command"], answer["verdict"])
         report(got == expected, f"exp {expected!r} got {got!r}  [oc-rtk   ]  {label}: git status")
     # Only the `shell` tool's command is rewritten.
     answer = drive(good, "rtk", oc_event("git status", tool="bash"), path=good + "/bin")
     got = answer if isinstance(answer, str) else answer["event"]["input"]["command"]
-    report(got == "git status", f"exp 'git status' got {got!r}  [oc-rtk   ]  rtk rewrites, a bash event: git status")
+    report(
+        got == "git status",
+        f"exp 'git status' got {got!r}  [oc-rtk   ]  rtk rewrites, a bash event: git status",
+    )
 
     # The environment of a shell command.
     event = {"command": "true", "cwd": CWD, "timeout": 0, "shell": "/bin/zsh", "env": {"A": "1"}}
     answer = drive(good, "env", event, kind="shell", name="create.before")
     got = answer if isinstance(answer, str) else answer["event"]["env"]
-    expected = {"A": "1", "JULIA_PKG_USE_CLI_GIT": "true", "JULIA_NUM_THREADS": "2", "OPENBLAS_NUM_THREADS": "2"}
+    expected = {
+        "A": "1",
+        "JULIA_PKG_USE_CLI_GIT": "true",
+        "JULIA_NUM_THREADS": "2",
+        "OPENBLAS_NUM_THREADS": "2",
+    }
     report(got == expected, f"exp {expected} got {got}  [oc-env   ]  create.before")
     return total, wrong
 
@@ -1329,47 +1722,96 @@ AGY_CASES = [
     ("read_file", {"Path": "src/Foo.jl"}, "ask", None),
     ("view_file", {"AbsolutePath": AGY_SSH}, "deny", None),
     ("write_to_file", {"TargetFile": "~/.aws/credentials", "CodeContent": "x"}, "deny", None),
-    ("replace_file_content", {"TargetFile": "~/.netrc", "TargetContent": "a", "ReplacementContent": "b"}, "deny",
-     None),
+    (
+        "replace_file_content",
+        {"TargetFile": "~/.netrc", "TargetContent": "a", "ReplacementContent": "b"},
+        "deny",
+        None,
+    ),
     ("grep_search", {"Query": "token", "SearchPath": "~/.gnupg"}, "deny", None),
     ("find_by_name", {"Pattern": "*", "SearchDirectory": "~/.ssh"}, "deny", None),
     ("list_dir", {"DirectoryPath": "~/.config/api-keys"}, "deny", None),
     ("write_file", {"Path": "notes.md", "Content": "x"}, "ask", None),
     ("send_message", {"Message": "done", "Recipient": "main"}, "ask", None),
     ("call_mcp_tool", {"ServerName": "kaimon", "ToolName": "ex", "Arguments": {"e": "1"}}, "deny", None),
-    ("call_mcp_tool", {"ServerName": "kaimon", "ToolName": "ex", "Arguments": {"e": "1", "ses": "abcd1234"}}, "ask",
-     None),
-    ("call_mcp_tool", {"ServerName": "kaimon", "ToolName": "manage_repl", "Arguments": {"command": "restart"}},
-     "deny", None),
+    (
+        "call_mcp_tool",
+        {"ServerName": "kaimon", "ToolName": "ex", "Arguments": {"e": "1", "ses": "abcd1234"}},
+        "ask",
+        None,
+    ),
+    (
+        "call_mcp_tool",
+        {"ServerName": "kaimon", "ToolName": "manage_repl", "Arguments": {"command": "restart"}},
+        "deny",
+        None,
+    ),
     ("call_mcp_tool", {"ServerName": "kaimon", "ToolName": "ex", "Arguments": '{"e": "1"}'}, "deny", None),
     ("call_mcp_tool", {"ServerName": "kaimon", "ToolName": "ping", "Arguments": {}}, "ask", None),
     ("call_mcp_tool", {"ServerName": "zotero", "ToolName": "ex", "Arguments": {}}, "ask", None),
     # The `edit` and `ask` lists, on the tools that write: a template Edit deny gives deny, an Edit
     # ask gives force_ask, a path under both gives deny; a read and a command word pass them.
     ("write_to_file", {"TargetFile": TOOL + "/.git/config", "CodeContent": "x"}, "deny", None),
-    ("write_file", {"Path": "~/.julia/juliaup/julia-1.11.5+0.aarch64.apple.darwin14/bin/julia", "Content": "x"},
-     "deny", None),
+    (
+        "write_file",
+        {"Path": "~/.julia/juliaup/julia-1.11.5+0.aarch64.apple.darwin14/bin/julia", "Content": "x"},
+        "deny",
+        None,
+    ),
     ("view_file", {"AbsolutePath": TOOL + "/.git/config"}, "ask", None),
     ("run_command", {"CommandLine": "cat .git/HEAD"}, "ask", None),
-    ("replace_file_content", {"TargetFile": "~/Research/X/.github/workflows/ci.yml", "TargetContent": "a",
-                              "ReplacementContent": "b"}, "force_ask", None),
-    ("edit_file", {"Path": "~/.claude/skills/build-part/SKILL.md", "Target": "a", "Replacement": "b"}, "deny", None),
+    (
+        "replace_file_content",
+        {
+            "TargetFile": "~/Research/X/.github/workflows/ci.yml",
+            "TargetContent": "a",
+            "ReplacementContent": "b",
+        },
+        "force_ask",
+        None,
+    ),
+    (
+        "edit_file",
+        {"Path": "~/.claude/skills/build-part/SKILL.md", "Target": "a", "Replacement": "b"},
+        "deny",
+        None,
+    ),
     # The files of the layer itself.
     ("write_to_file", {"TargetFile": "~/.gemini/config/hooks.json", "CodeContent": "{}"}, "deny", None),
-    ("edit_file", {"Path": "~/.gemini/antigravity-cli/settings.json", "Target": "a", "Replacement": "b"}, "deny",
-     None),
+    (
+        "edit_file",
+        {"Path": "~/.gemini/antigravity-cli/settings.json", "Target": "a", "Replacement": "b"},
+        "deny",
+        None,
+    ),
     ("run_command", {"CommandLine": "echo {} > ~/.gemini/config/guard-paths.json"}, "deny", None),
     ("run_command", {"CommandLine": "cat ~/.gemini/config/guard-paths.json"}, "deny", None),
     ("run_command", {"CommandLine": "rm ~/.gemini/config/hooks/guard.py"}, "deny", None),
     # The installed instructions, rules and skills: the template's Edit rules of Claude Code's copies
     # hold for Antigravity's, on the tools that write; a read and a command pass them.
     ("write_file", {"Path": "~/.gemini/config/GEMINI.md", "Content": "x"}, "deny", None),
-    ("replace_file_content", {"TargetFile": "~/.gemini/config/rules/julia-code.md", "TargetContent": "a",
-                              "ReplacementContent": "b"}, "deny", None),
-    ("edit_file", {"Path": "~/.gemini/config/skills/build-part/SKILL.md", "Target": "a", "Replacement": "b"}, "deny",
-     None),
-    ("write_to_file", {"TargetFile": "~/.gemini/config/skills/new-skill/SKILL.md", "CodeContent": "x"}, "force_ask",
-     None),
+    (
+        "replace_file_content",
+        {
+            "TargetFile": "~/.gemini/config/rules/julia-code.md",
+            "TargetContent": "a",
+            "ReplacementContent": "b",
+        },
+        "deny",
+        None,
+    ),
+    (
+        "edit_file",
+        {"Path": "~/.gemini/config/skills/build-part/SKILL.md", "Target": "a", "Replacement": "b"},
+        "deny",
+        None,
+    ),
+    (
+        "write_to_file",
+        {"TargetFile": "~/.gemini/config/skills/new-skill/SKILL.md", "CodeContent": "x"},
+        "force_ask",
+        None,
+    ),
     ("view_file", {"AbsolutePath": "~/.gemini/config/GEMINI.md"}, "ask", None),
     ("run_command", {"CommandLine": "cat ~/.gemini/config/rules/julia-code.md"}, "ask", None),
     # The other global instruction files that Antigravity loads, which the install does not write.
@@ -1385,8 +1827,12 @@ AGY_CASES = [
     # A home path in each form of the shell.
     ("run_command", {"CommandLine": "cat $HOME/.netrc"}, "deny", None),
     ("run_command", {"CommandLine": "cat ${HOME}/.netrc"}, "deny", None),
-    ("call_mcp_tool", {"ServerName": "kaimon", "ToolName": "ex", "Arguments": '{"e": "1", "ses": "abcd1234"}'}, "ask",
-     None),
+    (
+        "call_mcp_tool",
+        {"ServerName": "kaimon", "ToolName": "ex", "Arguments": '{"e": "1", "ses": "abcd1234"}'},
+        "ask",
+        None,
+    ),
     # A glob is checked as written and cut to its directory, which is wide; a recursive command, a
     # `cd`, a `Cwd` and a `SearchPath` make a path wide; a wide path that holds a deny path is refused.
     ("run_command", {"CommandLine": "cat ~/.gemini/config/mcp_conf*.json"}, "deny", None),
@@ -1558,7 +2004,9 @@ def agy_cases():
         if timeout is not None:
             line = "TIMEOUT = 10\n"
             if line not in source:
-                raise OSError(f"adapters/antigravity/guard.py holds no line {line!r}, which the timeout case replaces")
+                raise OSError(
+                    f"adapters/antigravity/guard.py holds no line {line!r}, which the timeout case replaces"
+                )
             source = source.replace(line, f"TIMEOUT = {timeout}\n")
         with open(config + "/hooks/guard.py", "w") as f:
             f.write(source)
@@ -1572,14 +2020,30 @@ def agy_cases():
         """The answer of the hook in home `h` on a call of `tool` with `args`, or on the payload
         text `raw`, within `limit` seconds, as (the answer object, None); (None, what went wrong)
         when it prints no decision, or `{}`."""
-        payload = raw if raw is not None else json.dumps({
-            "conversationId": "probe", "modelName": "probe", "stepIdx": 1,
-            "toolCall": {"name": tool, "args": args}, "workspacePaths": [workspace]})
+        payload = (
+            raw
+            if raw is not None
+            else json.dumps(
+                {
+                    "conversationId": "probe",
+                    "modelName": "probe",
+                    "stepIdx": 1,
+                    "toolCall": {"name": tool, "args": args},
+                    "workspacePaths": [workspace],
+                }
+            )
+        )
         config = h + "/.gemini/config"
         try:
-            p = subprocess.run(argv or [sys.executable, config + "/hooks/guard.py"], input=payload,
-                               capture_output=True, text=True, timeout=limit, cwd=config,
-                               env=env or {**CLEAN, "HOME": "/" + h})
+            p = subprocess.run(
+                argv or [sys.executable, config + "/hooks/guard.py"],
+                input=payload,
+                capture_output=True,
+                text=True,
+                timeout=limit,
+                cwd=config,
+                env=env or {**CLEAN, "HOME": "/" + h},
+            )
         except subprocess.TimeoutExpired:
             return None, ("timeout", "")
         try:
@@ -1622,24 +2086,54 @@ def agy_cases():
     exit_with = "import sys\nsys.exit({})\n".format
     try:
         good = home("agy-home")
-        fail = {label: home("agy-home-" + str(i), **kw) for i, (label, kw) in enumerate([
-            ("a guard script is replaced by exit 7", {"scripts": {"no-blind-stage.py": exit_with(7)}}),
-            ("a guard script is missing", {"scripts": {"rm-scope.py": None}}),
-            ("a guard prints output that is not JSON", {"scripts": {"gh-api-writes.py": "print('hello')\n"}}),
-            ("a guard takes longer than the timeout",
-             {"scripts": {"git-archive-output.py": "import time\ntime.sleep(5)\n"}, "timeout": 1}),
-            ("the Kaimon guard exits 1", {"scripts": {"kaimon-session.py": exit_with(1)}}),
-            ("the path list is missing", {"paths": False}),
-            ("the deny list is not a list", {"paths": '{"deny": "x"}'}),
-            ("the path list is not JSON", {"paths": "{"}),
-            ("the edit list is missing", {"paths": lambda text: json.dumps(
-                {k: v for k, v in json.loads(text).items() if k != "edit"})}),
-            ("the ask list is not a list", {"paths": lambda text: json.dumps({**json.loads(text), "ask": "x"})}),
-            ("the bash_deny list is not a list",
-             {"paths": lambda text: json.dumps({**json.loads(text), "bash_deny": "x"})}),
-            ("the bash_ask list is missing", {"paths": lambda text: json.dumps(
-                {k: v for k, v in json.loads(text).items() if k != "bash_ask"})}),
-        ])}
+        fail = {
+            label: home("agy-home-" + str(i), **kw)
+            for i, (label, kw) in enumerate(
+                [
+                    (
+                        "a guard script is replaced by exit 7",
+                        {"scripts": {"no-blind-stage.py": exit_with(7)}},
+                    ),
+                    ("a guard script is missing", {"scripts": {"rm-scope.py": None}}),
+                    (
+                        "a guard prints output that is not JSON",
+                        {"scripts": {"gh-api-writes.py": "print('hello')\n"}},
+                    ),
+                    (
+                        "a guard takes longer than the timeout",
+                        {"scripts": {"git-archive-output.py": "import time\ntime.sleep(5)\n"}, "timeout": 1},
+                    ),
+                    ("the Kaimon guard exits 1", {"scripts": {"kaimon-session.py": exit_with(1)}}),
+                    ("the path list is missing", {"paths": False}),
+                    ("the deny list is not a list", {"paths": '{"deny": "x"}'}),
+                    ("the path list is not JSON", {"paths": "{"}),
+                    (
+                        "the edit list is missing",
+                        {
+                            "paths": lambda text: json.dumps(
+                                {k: v for k, v in json.loads(text).items() if k != "edit"}
+                            )
+                        },
+                    ),
+                    (
+                        "the ask list is not a list",
+                        {"paths": lambda text: json.dumps({**json.loads(text), "ask": "x"})},
+                    ),
+                    (
+                        "the bash_deny list is not a list",
+                        {"paths": lambda text: json.dumps({**json.loads(text), "bash_deny": "x"})},
+                    ),
+                    (
+                        "the bash_ask list is missing",
+                        {
+                            "paths": lambda text: json.dumps(
+                                {k: v for k, v in json.loads(text).items() if k != "bash_ask"}
+                            )
+                        },
+                    ),
+                ]
+            )
+        }
         # A home whose name holds a space, and a home whose list is rendered for the user's own
         # home, which `~<user>` names.
         spaced = home("agy home")
@@ -1648,16 +2142,24 @@ def agy_cases():
         elsewhere = FIXTURE.name + "/agy-elsewhere"
         os.makedirs(elsewhere + "/sub")
         # A home without the template's rules, where the shell guards alone decide a `sed -i`.
-        bare = home("agy-home-no-bash", paths=lambda text: json.dumps(
-            {**json.loads(text), "bash_deny": [], "bash_ask": []}))
+        bare = home(
+            "agy-home-no-bash",
+            paths=lambda text: json.dumps({**json.loads(text), "bash_deny": [], "bash_ask": []}),
+        )
         # A home whose sandbox-semantics.py lifts julia too.
         with open(HOOKS + "sandbox-semantics.py") as f:
             semantics = f.read()
         line = 'EXCLUDED = {"git", "gh", "glab", "ps"}\n'
         if line not in semantics:
             raise OSError(f"hooks/sandbox-semantics.py holds no line {line!r}, which the julia case replaces")
-        lifts_julia = home("agy-home-julia", scripts={
-            "sandbox-semantics.py": semantics.replace(line, 'EXCLUDED = {"git", "gh", "glab", "ps", "julia"}\n')})
+        lifts_julia = home(
+            "agy-home-julia",
+            scripts={
+                "sandbox-semantics.py": semantics.replace(
+                    line, 'EXCLUDED = {"git", "gh", "glab", "ps", "julia"}\n'
+                )
+            },
+        )
     except OSError as e:
         report(False, f"exp fixture got {type(e).__name__}  [agy-guard]  {e}")
         return total, wrong
@@ -1669,8 +2171,11 @@ def agy_cases():
         # `BypassSandbox` alone, as a bool.
         sandbox = overwrite_of(answer)
         want = "BypassSandbox" if tool == "run_command" and expected != "deny" else "none"
-        alone = (isinstance(sandbox, dict) and set(sandbox) == {"BypassSandbox"}
-                 and type(sandbox["BypassSandbox"]) is bool)
+        alone = (
+            isinstance(sandbox, dict)
+            and set(sandbox) == {"BypassSandbox"}
+            and type(sandbox["BypassSandbox"]) is bool
+        )
         shape = "BypassSandbox" if alone else "none" if sandbox == "none" else repr(sandbox)
         report(shape == want, f"exp {want} got {shape}  [agy-bypass]  the overwrite of {tool} {args}")
         if pattern is not None:
@@ -1678,14 +2183,18 @@ def agy_cases():
             report(got == pattern, f"exp {pattern} got {got}  [agy-perms]  {args['CommandLine']}")
     # The rules of the template's excludedCommands allow each of these lines in the app's policy, and
     # the guard, which runs before that policy, still refuses or asks.
-    for line, expected, grant in [("git push --force origin x", "deny", "command(git)"),
-                                  ("git add -A", "deny", "command(git)"),
-                                  ("gh pr merge 1", "force_ask", "command(gh)")]:
+    for line, expected, grant in [
+        ("git push --force origin x", "deny", "command(git)"),
+        ("git add -A", "deny", "command(git)"),
+        ("gh pr merge 1", "force_ask", "command(gh)"),
+    ]:
         answer, failed = reply(good, "run_command", {"CommandLine": line})
         got = failed[0] if failed else answer["decision"]
         granted = grant in rules["allow"] and agy.rule_matches(grant, line)
-        report(got == expected and granted,
-               f"exp {expected} got {got}  [agy-grant]  {line}, which the allow rule {grant} matches: {granted}")
+        report(
+            got == expected and granted,
+            f"exp {expected} got {got}  [agy-grant]  {line}, which the allow rule {grant} matches: {granted}",
+        )
         # A deny leaves the sandbox as it is; a force_ask runs the lifted command outside it.
         sandbox, want = overwrite_of(answer), "none" if expected == "deny" else {"BypassSandbox": True}
         report(sandbox == want, f"exp {want} got {sandbox}  [agy-bypass]  the overwrite of {line}")
@@ -1699,32 +2208,45 @@ def agy_cases():
     # tree, so the call runs in a directory that is none.
     answer, failed = reply(good, "run_command", {"CommandLine": "git status > f"}, workspace=elsewhere)
     got = failed[0] if failed else (answer["decision"], overwrite_of(answer))
-    report(got == ("ask", {"BypassSandbox": False}),
-           f"exp ('ask', {{'BypassSandbox': False}}) got {got}  [agy-bypass]  git status > f outside a work tree")
+    report(
+        got == ("ask", {"BypassSandbox": False}),
+        f"exp ('ask', {{'BypassSandbox': False}}) got {got}  [agy-bypass]  git status > f outside a work tree",
+    )
     # A subagent's call carries its own Cwd, and a `cd` to that directory is dropped there, not at
     # the workspace.
     line = f"cd {elsewhere}/sub && git status"
     answer, failed = reply(good, "run_command", {"CommandLine": line, "Cwd": elsewhere + "/sub"})
     got = failed[0] if failed else (answer["decision"], overwrite_of(answer))
-    report(got == ("ask", {"BypassSandbox": True}),
-           f"exp ('ask', {{'BypassSandbox': True}}) got {got}  [agy-bypass]  {line} with that Cwd")
+    report(
+        got == ("ask", {"BypassSandbox": True}),
+        f"exp ('ask', {{'BypassSandbox': True}}) got {got}  [agy-bypass]  {line} with that Cwd",
+    )
     # The rule is the installed sandbox-semantics.py's, not a copy in guard.py: a copy of it that
     # also lifts julia lifts `julia --version`.
     got = overwrite_of(reply(lifts_julia, "run_command", {"CommandLine": "julia --version"})[0])
-    report(got == {"BypassSandbox": True},
-           f"exp {{'BypassSandbox': True}} got {got}  [agy-bypass]  julia --version, with an installed rule that "
-           "lifts julia")
+    report(
+        got == {"BypassSandbox": True},
+        f"exp {{'BypassSandbox': True}} got {got}  [agy-bypass]  julia --version, with an installed rule that "
+        "lifts julia",
+    )
     # Reading the rule writes no bytecode cache into the installed hooks/, also where the environment
     # allows one.
-    reply(good, "run_command", {"CommandLine": "git status"},
-          env={**{k: v for k, v in CLEAN.items() if k != "PYTHONDONTWRITEBYTECODE"}, "HOME": "/" + good})
+    reply(
+        good,
+        "run_command",
+        {"CommandLine": "git status"},
+        env={**{k: v for k, v in CLEAN.items() if k != "PYTHONDONTWRITEBYTECODE"}, "HOME": "/" + good},
+    )
     cached = os.path.exists(good + "/.gemini/config/hooks/__pycache__")
     report(not cached, f"exp False got {cached}  [agy-bypass]  a __pycache__ in the hooks/ of guard.py")
     # A line of many words gets its answer within the timeout that hooks.json gives the hook.
     for line in ["echo " + "git push " * 10000, "echo " + "a " * 20000]:
         got, _ = verdict(good, "run_command", {"CommandLine": line}, limit=agy.HOOK_TIMEOUT)
-        report(got == "ask", f"exp ask got {got}  [agy-guard]  {line[:20]!r}…, {len(line.split())} words, "
-                             f"within {agy.HOOK_TIMEOUT} s")
+        report(
+            got == "ask",
+            f"exp ask got {got}  [agy-guard]  {line[:20]!r}…, {len(line.split())} words, "
+            f"within {agy.HOOK_TIMEOUT} s",
+        )
     # The working directory of a call is its `Cwd`, resolved against the first of `workspacePaths`,
     # else that path: the `sed -i` runs in the work tree only through one of them. The template's
     # rules are left out of these homes, so that the shell guards decide the `sed -i`.
@@ -1742,18 +2264,26 @@ def agy_cases():
         (good, {"CommandLine": "rg Bearer", "Cwd": "config"}, good + "/.gemini", "deny"),
     ]:
         got, _ = verdict(h, "run_command", args, workspace=workspace)
-        report(got == expected, f"exp {expected} got {got}  [agy-guard]  {args} with workspacePaths [{workspace}]")
+        report(
+            got == expected,
+            f"exp {expected} got {got}  [agy-guard]  {args} with workspacePaths [{workspace}]",
+        )
     # `~<user>` is the home of that user, as the shell expands it.
     got, _ = verdict(own, "run_command", {"CommandLine": f"cat ~{user}/.netrc"})
     report(got == "deny", f"exp deny got {got}  [agy-guard]  cat ~{user}/.netrc")
     # A Kaimon call whose `Arguments` are not an object.
     for arguments in [None, "null", "[1]", "{"]:
-        args = {"ServerName": "kaimon", "ToolName": "ex"} | ({} if arguments is None else {"Arguments": arguments})
+        args = {"ServerName": "kaimon", "ToolName": "ex"} | (
+            {} if arguments is None else {"Arguments": arguments}
+        )
         got, _ = verdict(good, "call_mcp_tool", args)
         report(got == "deny", f"exp deny got {got}  [agy-guard]  fail-closed, Kaimon Arguments {arguments!r}")
     # The Kaimon guard runs on `ex` and `manage_repl` alone: with it broken, `ping` still passes.
-    got, _ = verdict(fail["the Kaimon guard exits 1"], "call_mcp_tool",
-                     {"ServerName": "kaimon", "ToolName": "ping", "Arguments": {}})
+    got, _ = verdict(
+        fail["the Kaimon guard exits 1"],
+        "call_mcp_tool",
+        {"ServerName": "kaimon", "ToolName": "ping", "Arguments": {}},
+    )
     report(got == "ask", f"exp ask got {got}  [agy-guard]  kaimon ping with the Kaimon guard broken")
     # A missing `edit` list leaves the tools that do not write to the `deny` list.
     got, _ = verdict(fail["the edit list is missing"], "read_file", {"Path": "src/Foo.jl"})
@@ -1762,13 +2292,20 @@ def agy_cases():
     got, _ = verdict(good, "run_command", {"CommandLine": "cat .netrc", "Cwd": good})
     report(got == "deny", f"exp deny got {got}  [agy-guard]  cat .netrc with Cwd the home")
     # A payload with no workspace path still gets an answer.
-    got, _ = verdict(good, raw=json.dumps({"toolCall": {"name": "run_command", "args": {"CommandLine": "git status"}},
-                                           "workspacePaths": []}))
+    got, _ = verdict(
+        good,
+        raw=json.dumps(
+            {"toolCall": {"name": "run_command", "args": {"CommandLine": "git status"}}, "workspacePaths": []}
+        ),
+    )
     report(got == "ask", f"exp ask got {got}  [agy-guard]  git status with no workspacePaths")
     # A guard's refusal reaches the model with the guard's own reason.
     got, reason = verdict(good, "run_command", {"CommandLine": "git add -A"})
     ok = got == "deny" and reason.strip() != "" and "fails closed" not in reason
-    report(ok, f"exp deny got {got}  [agy-guard]  git add -A with no-blind-stage.py's own reason: {reason[:80]!r}")
+    report(
+        ok,
+        f"exp deny got {got}  [agy-guard]  git add -A with no-blind-stage.py's own reason: {reason[:80]!r}",
+    )
     # A guard that cannot start denies: guard.py loaded in this process, with a `subprocess.run`
     # that raises as a missing interpreter does.
     try:
@@ -1782,48 +2319,87 @@ def agy_cases():
             got = shim.run("no-blind-stage.py", "{}")
     except Exception as e:  # the case reports it as wrong
         got = (type(e).__name__, str(e))
-    report(got[0] == "deny" and "could not start" in str(got[1]),
-           f"exp deny got {got[0]}  [agy-guard]  fail-closed, a guard that cannot start: {str(got[1])[:80]!r}")
+    report(
+        got[0] == "deny" and "could not start" in str(got[1]),
+        f"exp deny got {got[0]}  [agy-guard]  fail-closed, a guard that cannot start: {str(got[1])[:80]!r}",
+    )
     # It fails closed: each of these denies `git status`, or the Kaimon call, with its reason.
     status = {"CommandLine": "git status"}
     for label, h, tool, args, raw, want in [
-        *[(label, fail[label], "run_command", status, None, want) for label, want in [
-            ("a guard script is replaced by exit 7", "exited with status 7"),
-            ("a guard script is missing", "is missing"),
-            ("a guard prints output that is not JSON", "not a JSON answer"),
-            ("a guard takes longer than the timeout", "did not answer"),
-            ("the path list is missing", "cannot be used"),
-            ("the deny list is not a list", "no list of strings"),
-            ("the path list is not JSON", "cannot be used"),
-            ("the bash_deny list is not a list", "no list of strings"),
-            ("the bash_ask list is missing", "cannot be used"),
-        ]],
-        ("the Kaimon guard exits 1", fail["the Kaimon guard exits 1"], "call_mcp_tool",
-         {"ServerName": "kaimon", "ToolName": "ex", "Arguments": {"e": "1", "ses": "abcd1234"}}, None,
-         "exited with status 1"),
-        ("the path list is missing", fail["the path list is missing"], "send_message", {"Message": "x"}, None,
-         "cannot be used"),
-        ("the edit list is missing", fail["the edit list is missing"], "write_file",
-         {"Path": "notes.md", "Content": "x"}, None, "cannot be used"),
-        ("the ask list is not a list", fail["the ask list is not a list"], "write_to_file",
-         {"TargetFile": "notes.md", "CodeContent": "x"}, None, "no list of strings"),
+        *[
+            (label, fail[label], "run_command", status, None, want)
+            for label, want in [
+                ("a guard script is replaced by exit 7", "exited with status 7"),
+                ("a guard script is missing", "is missing"),
+                ("a guard prints output that is not JSON", "not a JSON answer"),
+                ("a guard takes longer than the timeout", "did not answer"),
+                ("the path list is missing", "cannot be used"),
+                ("the deny list is not a list", "no list of strings"),
+                ("the path list is not JSON", "cannot be used"),
+                ("the bash_deny list is not a list", "no list of strings"),
+                ("the bash_ask list is missing", "cannot be used"),
+            ]
+        ],
+        (
+            "the Kaimon guard exits 1",
+            fail["the Kaimon guard exits 1"],
+            "call_mcp_tool",
+            {"ServerName": "kaimon", "ToolName": "ex", "Arguments": {"e": "1", "ses": "abcd1234"}},
+            None,
+            "exited with status 1",
+        ),
+        (
+            "the path list is missing",
+            fail["the path list is missing"],
+            "send_message",
+            {"Message": "x"},
+            None,
+            "cannot be used",
+        ),
+        (
+            "the edit list is missing",
+            fail["the edit list is missing"],
+            "write_file",
+            {"Path": "notes.md", "Content": "x"},
+            None,
+            "cannot be used",
+        ),
+        (
+            "the ask list is not a list",
+            fail["the ask list is not a list"],
+            "write_to_file",
+            {"TargetFile": "notes.md", "CodeContent": "x"},
+            None,
+            "no list of strings",
+        ),
         ("the payload is not JSON", good, None, None, "not json", "failed"),
         ("the payload has no toolCall", good, None, None, '{"workspacePaths": []}', "failed"),
         ("the tool call has no name", good, None, None, '{"toolCall": {"args": {}}}', "failed"),
         ("the args are a list", good, "read_file", [], None, "not one that the guard hook can read"),
-        ("the tool name is not a string", good, None, None, '{"toolCall": {"name": 5, "args": {}}}',
-         "not one that the guard hook can read"),
+        (
+            "the tool name is not a string",
+            good,
+            None,
+            None,
+            '{"toolCall": {"name": 5, "args": {}}}',
+            "not one that the guard hook can read",
+        ),
         ("a run_command has no CommandLine", good, "run_command", {}, None, "no CommandLine"),
     ]:
         got, reason = verdict(h, tool, args, raw=raw)
         ok = got == "deny" and want in reason
-        report(ok, f"exp deny got {got}  [agy-guard]  fail-closed, {label}: {tool} {args}"
-                   f"{'' if ok else ' ' + repr(reason[:160])}")
+        report(
+            ok,
+            f"exp deny got {got}  [agy-guard]  fail-closed, {label}: {tool} {args}"
+            f"{'' if ok else ' ' + repr(reason[:160])}",
+        )
+
     # The handler of hooks.json, rendered for a home whose name holds a space, runs guard.py on the
     # interpreter that it names, from any working directory and with no python3 on the PATH.
     def pre_tool_use(python):
-        return json.loads(agy.render_hooks(pathlib.Path(spaced) / ".gemini", python))[agy.HOOK]["PreToolUse"][0][
-            "hooks"][0]
+        return json.loads(agy.render_hooks(pathlib.Path(spaced) / ".gemini", python))[agy.HOOK]["PreToolUse"][
+            0
+        ]["hooks"][0]
 
     # The interpreter's path holds a space too: a link to this interpreter below the spaced home.
     interpreter = spaced + "/python env/bin/python"
@@ -1831,22 +2407,41 @@ def agy_cases():
     if not os.path.lexists(interpreter):
         os.symlink(sys.executable, interpreter)
     handler = pre_tool_use(interpreter)
-    status_call = json.dumps({"toolCall": {"name": "run_command", "args": {"CommandLine": "git status"}},
-                              "workspacePaths": [CWD]})
-    p = subprocess.run(["/bin/sh", "-c", handler["command"]], input=status_call, capture_output=True, text=True,
-                       cwd=elsewhere, env={**CLEAN, "HOME": spaced, "PATH": "/nonexistent"}, timeout=TIMEOUT)
+    status_call = json.dumps(
+        {"toolCall": {"name": "run_command", "args": {"CommandLine": "git status"}}, "workspacePaths": [CWD]}
+    )
+    p = subprocess.run(
+        ["/bin/sh", "-c", handler["command"]],
+        input=status_call,
+        capture_output=True,
+        text=True,
+        cwd=elsewhere,
+        env={**CLEAN, "HOME": spaced, "PATH": "/nonexistent"},
+        timeout=TIMEOUT,
+    )
     got = p.stdout.strip()
-    report(got == '{"decision": "ask", "overwrite": {"BypassSandbox": true}}',
-           f"exp ask got {got!r}  [agy-guard]  the handler {handler['command']} from another directory, with no "
-           f"python3 on the PATH")
+    report(
+        got == '{"decision": "ask", "overwrite": {"BypassSandbox": true}}',
+        f"exp ask got {got!r}  [agy-guard]  the handler {handler['command']} from another directory, with no "
+        f"python3 on the PATH",
+    )
     # With no interpreter at the path that the handler names, the handler fails and prints nothing,
     # which Antigravity reads as a block.
     handler = pre_tool_use(spaced + "/no environment/bin/python")
-    p = subprocess.run(["/bin/sh", "-c", handler["command"]], input="{}", capture_output=True, text=True,
-                       cwd=elsewhere, env={**CLEAN, "HOME": spaced}, timeout=TIMEOUT)
-    report(p.returncode != 0 and p.stdout == "",
-           f"exp exit!=0 got {p.returncode}  [agy-guard]  fail-closed, the handler's interpreter is missing: no output "
-           f"{p.stdout!r}")
+    p = subprocess.run(
+        ["/bin/sh", "-c", handler["command"]],
+        input="{}",
+        capture_output=True,
+        text=True,
+        cwd=elsewhere,
+        env={**CLEAN, "HOME": spaced},
+        timeout=TIMEOUT,
+    )
+    report(
+        p.returncode != 0 and p.stdout == "",
+        f"exp exit!=0 got {p.returncode}  [agy-guard]  fail-closed, the handler's interpreter is missing: no output "
+        f"{p.stdout!r}",
+    )
     return total, wrong
 
 
@@ -1862,8 +2457,14 @@ FAIL_OPEN = [
 def call(script, payload, env=None):
     """Run a Python hook with this interpreter on the fixture; None after the timeout."""
     try:
-        return subprocess.run([sys.executable, script], input=payload, capture_output=True, text=True,
-                              env=env or ENV, timeout=TIMEOUT)
+        return subprocess.run(
+            [sys.executable, script],
+            input=payload,
+            capture_output=True,
+            text=True,
+            env=env or ENV,
+            timeout=TIMEOUT,
+        )
     except subprocess.TimeoutExpired:
         return None
 
@@ -1886,7 +2487,7 @@ def decision(script, payload):
         return "pass"
     try:
         return json.loads(proc.stdout)["hookSpecificOutput"]["permissionDecision"]
-    except (ValueError, KeyError, TypeError):
+    except ValueError, KeyError, TypeError:
         return "unreadable output"
 
 
@@ -1899,9 +2500,15 @@ def fixture():
     result.
     """
     home = FIXTURE.name + "/home"
-    git_env = {**CLEAN, "GIT_CONFIG_GLOBAL": "/dev/null", "GIT_CONFIG_NOSYSTEM": "1",
-               "GIT_AUTHOR_NAME": "probe", "GIT_AUTHOR_EMAIL": "probe@example.org",
-               "GIT_COMMITTER_NAME": "probe", "GIT_COMMITTER_EMAIL": "probe@example.org"}
+    git_env = {
+        **CLEAN,
+        "GIT_CONFIG_GLOBAL": "/dev/null",
+        "GIT_CONFIG_NOSYSTEM": "1",
+        "GIT_AUTHOR_NAME": "probe",
+        "GIT_AUTHOR_EMAIL": "probe@example.org",
+        "GIT_COMMITTER_NAME": "probe",
+        "GIT_COMMITTER_EMAIL": "probe@example.org",
+    }
     repositories = {
         home + "/Research/Packages/Example": ["Project.toml", "CHANGELOG.md", "src/Example.jl"],
         home + "/.claude": ["CLAUDE.md"],
@@ -1916,7 +2523,11 @@ def fixture():
             os.makedirs(os.path.dirname(os.path.join(repository, name)), exist_ok=True)
             with open(os.path.join(repository, name), "w") as f:
                 f.write(content.get(name, ""))
-        for command in (["init", "-q", "-b", "main"], ["add", "--", *files], ["commit", "-q", "-m", "fixture"]):
+        for command in (
+            ["init", "-q", "-b", "main"],
+            ["add", "--", *files],
+            ["commit", "-q", "-m", "fixture"],
+        ):
             subprocess.run(["git", "-C", repository, *command], env=git_env, check=True, capture_output=True)
     os.symlink("/", LINK)
 
@@ -1934,10 +2545,13 @@ def drift(env, payload="{}"):
         out = json.loads(proc.stdout)
         message = out["systemMessage"]
         context = out["hookSpecificOutput"]["additionalContext"]
-    except (ValueError, KeyError, TypeError):
+    except ValueError, KeyError, TypeError:
         return "unreadable output", proc.stdout[-200:]
-    return ("warn", message) if message == context and out["hookSpecificOutput"]["hookEventName"] == "SessionStart" \
+    return (
+        ("warn", message)
+        if message == context and out["hookSpecificOutput"]["hookEventName"] == "SessionStart"
         else ("unreadable output", proc.stdout[-200:])
+    )
 
 
 def agy_drift(env, payload="{}"):
@@ -1951,8 +2565,15 @@ def agy_drift(env, payload="{}"):
     if len(handlers) != 1:
         return f"{len(handlers)} SessionStart handlers", ""
     try:
-        p = subprocess.run(["/bin/sh", "-c", handlers[0]["command"]], input=payload, capture_output=True, text=True,
-                           cwd=config, env=env, timeout=TIMEOUT)
+        p = subprocess.run(
+            ["/bin/sh", "-c", handlers[0]["command"]],
+            input=payload,
+            capture_output=True,
+            text=True,
+            cwd=config,
+            env=env,
+            timeout=TIMEOUT,
+        )
     except subprocess.TimeoutExpired:
         return "timeout", ""
     try:
@@ -1964,10 +2585,13 @@ def agy_drift(env, payload="{}"):
     try:
         [step] = out["injectSteps"]
         message = step["systemMessage"]["systemMessage"]
-    except (KeyError, TypeError, ValueError):
+    except KeyError, TypeError, ValueError:
         return f"exit {p.returncode}, unreadable output", p.stdout[-200:]
-    return ("warn", message) if p.returncode == 0 and list(out) == ["injectSteps"] and isinstance(message, str) \
+    return (
+        ("warn", message)
+        if p.returncode == 0 and list(out) == ["injectSteps"] and isinstance(message, str)
         else (f"exit {p.returncode}, unreadable output", p.stdout[-200:])
+    )
 
 
 class SetupFailed(Exception):
@@ -1976,9 +2600,22 @@ class SetupFailed(Exception):
 
 def install(base, env):
     """`harness install --apply` on the drift fixture below `base`: (exit status, output)."""
-    p = subprocess.run([sys.executable, REPO + "/bin/harness", "--profile", base + "/profile.toml", "--models",
-                        REPO + "/examples/models.toml", "install", "--apply"],
-                       capture_output=True, text=True, env=env, timeout=120)
+    p = subprocess.run(
+        [
+            sys.executable,
+            REPO + "/bin/harness",
+            "--profile",
+            base + "/profile.toml",
+            "--models",
+            REPO + "/examples/models.toml",
+            "install",
+            "--apply",
+        ],
+        capture_output=True,
+        text=True,
+        env=env,
+        timeout=120,
+    )
     return p.returncode, p.stdout + p.stderr
 
 
@@ -2013,18 +2650,32 @@ def drift_cases(install=install):
             f.write(f"---\ndescription: d\n---\n{name}\n" if name.startswith("rules/") else f"{name}\n")
     # The stamp names the sources below the profile's `harness`, so the profile names this checkout.
     with open(REPO + "/examples/profile.toml") as f:
-        lines = [f'tree_agents = "{tree}"' if l.startswith("tree_agents = ") else f'harness = "{REPO}"'
-                 if l.startswith("harness = ") else l for l in f.read().splitlines()]
+        lines = [
+            f'tree_agents = "{tree}"'
+            if l.startswith("tree_agents = ")
+            else f'harness = "{REPO}"'
+            if l.startswith("harness = ")
+            else l
+            for l in f.read().splitlines()
+        ]
     with open(base + "/profile.toml", "w") as f:
         f.write("\n".join(lines) + "\n")
-    env = {**CLEAN, "HOME": home, "OPENCODE_CONFIG_DIR": base + "/opencode", "RESEARCH_HARNESS_JULIA": base + "/julia",
-           "RESEARCH_HARNESS_PYTHON": base + "/python", "PI_CODING_AGENT_DIR": base + "/omp"}
+    env = {
+        **CLEAN,
+        "HOME": home,
+        "OPENCODE_CONFIG_DIR": base + "/opencode",
+        "RESEARCH_HARNESS_JULIA": base + "/julia",
+        "RESEARCH_HARNESS_PYTHON": base + "/python",
+        "PI_CODING_AGENT_DIR": base + "/omp",
+    }
 
     def apply():
         """`harness install --apply` on the fixture; an exit other than 0 raises SetupFailed."""
         code, text = install(base, env)
         if code != 0:
-            raise SetupFailed(f"harness install --apply exits {code}: {(text.strip().splitlines() or ['no output'])[-1]}")
+            raise SetupFailed(
+                f"harness install --apply exits {code}: {(text.strip().splitlines() or ['no output'])[-1]}"
+            )
 
     def edit(path, text="an edit that is not installed\n"):
         with open(path, "a") as f:
@@ -2057,31 +2708,80 @@ def drift_cases(install=install):
     steps = [
         ("the installation that --apply made is current", lambda: apply(), "quiet", ""),
         ("a payload that is not JSON changes nothing", None, "quiet", ""),
-        ("an edit in the tree instructions is drift", lambda: edit(tree + "/rules/meta-repository.md"),
-         "warn", "behind"),
+        (
+            "an edit in the tree instructions is drift",
+            lambda: edit(tree + "/rules/meta-repository.md"),
+            "warn",
+            "behind",
+        ),
         ("after a second --apply, the installation is current", lambda: apply(), "quiet", ""),
-        ("a rename in a source, with the same bytes and the same order, is drift",
-         lambda: os.rename(rules + "/meta-repository.md", rules + "/meta-repository0.md"), "warn", "behind"),
-        ("the name restored, the installation is current",
-         lambda: os.rename(rules + "/meta-repository0.md", rules + "/meta-repository.md"), "quiet", ""),
-        ("a hidden file in a source, such as .DS_Store, is no drift", lambda: edit(rules + "/.DS_Store"), "quiet", ""),
-        ("a FIFO in a source is a warning that names it", lambda: os.mkfifo(rules + "/fifo"), "warn", rules + "/fifo"),
-        ("a symlinked directory in a source is a warning that names it",
-         lambda: (os.remove(rules + "/fifo"), os.symlink(rules, tree + "/linked")), "warn", tree + "/linked"),
-        ("the stamp names copies of rules/ and hooks/, which equal them",
-         lambda: (os.remove(tree + "/linked"), copy_sources()), "quiet", ""),
-        ("a mode change of a hooks/ source is drift", lambda: toggle_x(base + "/hooks/install-drift.py"),
-         "warn", "behind"),
-        ("an edit in rules/ is drift",
-         lambda: (toggle_x(base + "/hooks/install-drift.py"), edit(base + "/rules/julia-code.md")),
-         "warn", "behind"),
+        (
+            "a rename in a source, with the same bytes and the same order, is drift",
+            lambda: os.rename(rules + "/meta-repository.md", rules + "/meta-repository0.md"),
+            "warn",
+            "behind",
+        ),
+        (
+            "the name restored, the installation is current",
+            lambda: os.rename(rules + "/meta-repository0.md", rules + "/meta-repository.md"),
+            "quiet",
+            "",
+        ),
+        (
+            "a hidden file in a source, such as .DS_Store, is no drift",
+            lambda: edit(rules + "/.DS_Store"),
+            "quiet",
+            "",
+        ),
+        (
+            "a FIFO in a source is a warning that names it",
+            lambda: os.mkfifo(rules + "/fifo"),
+            "warn",
+            rules + "/fifo",
+        ),
+        (
+            "a symlinked directory in a source is a warning that names it",
+            lambda: (os.remove(rules + "/fifo"), os.symlink(rules, tree + "/linked")),
+            "warn",
+            tree + "/linked",
+        ),
+        (
+            "the stamp names copies of rules/ and hooks/, which equal them",
+            lambda: (os.remove(tree + "/linked"), copy_sources()),
+            "quiet",
+            "",
+        ),
+        (
+            "a mode change of a hooks/ source is drift",
+            lambda: toggle_x(base + "/hooks/install-drift.py"),
+            "warn",
+            "behind",
+        ),
+        (
+            "an edit in rules/ is drift",
+            lambda: (toggle_x(base + "/hooks/install-drift.py"), edit(base + "/rules/julia-code.md")),
+            "warn",
+            "behind",
+        ),
         ("a missing stamp is drift", lambda: os.remove(claude + "/" + STAMP), "warn", claude + "/" + STAMP),
-        ("a stamp that is not JSON is a warning that names it", lambda: write_stamp("{ not json"),
-         "warn", claude + "/" + STAMP),
-        ("a source tree that cannot be read is a warning that names it",
-         lambda: (apply(), os.chmod(tree + "/rules", 0)), "warn", tree + "/rules"),
-        ("a source tree that does not exist is a warning that names it",
-         lambda: (os.chmod(tree + "/rules", 0o755), os.rename(tree, tree + "-moved")), "warn", tree),
+        (
+            "a stamp that is not JSON is a warning that names it",
+            lambda: write_stamp("{ not json"),
+            "warn",
+            claude + "/" + STAMP,
+        ),
+        (
+            "a source tree that cannot be read is a warning that names it",
+            lambda: (apply(), os.chmod(tree + "/rules", 0)),
+            "warn",
+            tree + "/rules",
+        ),
+        (
+            "a source tree that does not exist is a warning that names it",
+            lambda: (os.chmod(tree + "/rules", 0o755), os.rename(tree, tree + "-moved")),
+            "warn",
+            tree,
+        ),
     ]
     total = wrong = 0
     for label, change, expected, text in steps:
@@ -2107,18 +2807,25 @@ def drift_cases(install=install):
         ok = agy == expected and agy_message == message
         total += 1
         wrong += not ok
-        print(f"{'ok ' if ok else 'BAD'} exp {expected} got {agy}  [agy-drift]  {label}, the same text as "
-              f"install-drift.py's: {agy_message[:160]!r}")
+        print(
+            f"{'ok ' if ok else 'BAD'} exp {expected} got {agy}  [agy-drift]  {label}, the same text as "
+            f"install-drift.py's: {agy_message[:160]!r}"
+        )
     # Antigravity's handler warns, and never answers `{}`, when its copy of install-drift.py gives no
     # answer: the warning names the copy and what went wrong.
     copy = home + "/.gemini/config/hooks/install-drift.py"
-    failures = [("install-drift.py exits 1", "import sys; sys.stderr.write('boom'); sys.exit(1)\n", "exit 1: boom"),
-                ("install-drift.py prints text that is not JSON", "print('not json')\n", "JSONDecodeError"),
-                ("install-drift.py prints JSON that is no object", "print('[1]')\n", "TypeError"),
-                ("install-drift.py prints an object with no systemMessage", "print('{}')\n", "KeyError"),
-                ("install-drift.py prints a systemMessage that is no text", "print('{\"systemMessage\": 1}')\n",
-                 "TypeError"),
-                ("install-drift.py is missing", None, "exit 2: ")]
+    failures = [
+        ("install-drift.py exits 1", "import sys; sys.stderr.write('boom'); sys.exit(1)\n", "exit 1: boom"),
+        ("install-drift.py prints text that is not JSON", "print('not json')\n", "JSONDecodeError"),
+        ("install-drift.py prints JSON that is no object", "print('[1]')\n", "TypeError"),
+        ("install-drift.py prints an object with no systemMessage", "print('{}')\n", "KeyError"),
+        (
+            "install-drift.py prints a systemMessage that is no text",
+            "print('{\"systemMessage\": 1}')\n",
+            "TypeError",
+        ),
+        ("install-drift.py is missing", None, "exit 2: "),
+    ]
     for label, source, text in failures:
         try:
             if source is None:
@@ -2132,8 +2839,10 @@ def drift_cases(install=install):
         ok = agy == "warn" and copy in agy_message and text in agy_message
         total += 1
         wrong += not ok
-        print(f"{'ok ' if ok else 'BAD'} exp warn got {agy}  [agy-drift]  {label}: a warning that names the copy "
-              f"and {text!r}: {agy_message[:200]!r}")
+        print(
+            f"{'ok ' if ok else 'BAD'} exp warn got {agy}  [agy-drift]  {label}: a warning that names the copy "
+            f"and {text!r}: {agy_message[:200]!r}"
+        )
     return total, wrong
 
 

@@ -31,8 +31,17 @@ import tempfile
 from . import HarnessError
 
 KEYS = {
-    "name", "description", "model", "tools", "skills", "effort", "isolation",
-    "disable-model-invocation", "omitClaudeMd", "permissionMode", "cacheTtl",
+    "name",
+    "description",
+    "model",
+    "tools",
+    "skills",
+    "effort",
+    "isolation",
+    "disable-model-invocation",
+    "omitClaudeMd",
+    "permissionMode",
+    "cacheTtl",
 }
 BOOLEAN = "disable-model-invocation"
 LISTS = {"tools", "skills"}
@@ -67,12 +76,12 @@ def scalar(text, where):
         while i < len(text):
             c = text[i]
             if c == '"':
-                if text[i + 1:]:
+                if text[i + 1 :]:
                     raise HarnessError(f"{where}: text after the closing quote")
                 return "".join(out)
             if c == "\\":
-                if text[i + 1:i + 2] not in ("\\", '"'):
-                    raise HarnessError(f"{where}: an escape other than \\\\ and \\\"")
+                if text[i + 1 : i + 2] not in ("\\", '"'):
+                    raise HarnessError(f'{where}: an escape other than \\\\ and \\"')
                 out.append(text[i + 1])
                 i += 2
                 continue
@@ -80,7 +89,7 @@ def scalar(text, where):
             i += 1
         raise HarnessError(f"{where}: an unterminated quote")
     if text[:1] == "\t" or text[-1:] == "\t":
-        raise HarnessError(f"{where}: a tab at the edge of a plain value; quote it with \"")
+        raise HarnessError(f'{where}: a tab at the edge of a plain value; quote it with "')
     first = text[:1]
     if first in "[{":
         raise HarnessError(f"{where}: a flow list or mapping; write a block list")
@@ -89,7 +98,7 @@ def scalar(text, where):
     if first in "&*":
         raise HarnessError(f"{where}: an anchor or an alias")
     if first in "!'%@`#":
-        raise HarnessError(f"{where}: a value that starts with {first!r}; quote it with \"")
+        raise HarnessError(f'{where}: a value that starts with {first!r}; quote it with "')
     if " #" in text:
         raise HarnessError(f"{where}: a plain value that holds ' #'; quote it with \"")
     if ": " in text or text.endswith(":"):
@@ -116,7 +125,7 @@ def parse(text, path):
     if number == len(lines):
         raise HarnessError(f"{path}:{number}: no newline after the closing `---`")
     meta, raw, open_list, list_line = {}, {}, None, 0
-    for n, line in enumerate(lines[1:number - 1], 2):
+    for n, line in enumerate(lines[1 : number - 1], 2):
         where = f"{path}:{n}"
         item = ITEM_LINE.fullmatch(line)
         if item:
@@ -173,12 +182,15 @@ def check_values(meta, path):
     """Exit 2, naming `path`, on a `model` that is not a tier of TIERS, and on a `tools` item that is
     neither a tool of TOOLS nor `mcp/kaimon/<tool>`."""
     if "model" in meta and meta["model"] not in TIERS:
-        raise HarnessError(f"{path}: the model {meta['model']!r} is not a tier; a `model:` is "
-                           f"{', '.join(TIERS)}")
+        raise HarnessError(
+            f"{path}: the model {meta['model']!r} is not a tier; a `model:` is {', '.join(TIERS)}"
+        )
     for tool in meta.get("tools", []):
         if tool not in TOOLS and not MCP_TOOL.fullmatch(tool):
-            raise HarnessError(f"{path}: the tool {tool!r} is not a neutral tool; a `tools:` item is "
-                               f"{', '.join(TOOLS)} or {MCP}<tool>")
+            raise HarnessError(
+                f"{path}: the tool {tool!r} is not a neutral tool; a `tools:` item is "
+                f"{', '.join(TOOLS)} or {MCP}<tool>"
+            )
 
 
 def check_skill(meta, path):
@@ -186,11 +198,14 @@ def check_skill(meta, path):
     with a `<` or a `>`."""
     description = meta.get("description", "")
     if len(description) > DESCRIPTION_MAX:
-        raise HarnessError(f"{path}: the description has {len(description):,} characters; a skill's "
-                           f"description has at most {DESCRIPTION_MAX:,} characters")
+        raise HarnessError(
+            f"{path}: the description has {len(description):,} characters; a skill's "
+            f"description has at most {DESCRIPTION_MAX:,} characters"
+        )
     if "<" in description or ">" in description:
-        raise HarnessError(f"{path}: the description holds a `<` or a `>`; a skill's description holds "
-                           f"no `<` or `>`")
+        raise HarnessError(
+            f"{path}: the description holds a `<` or a `>`; a skill's description holds no `<` or `>`"
+        )
 
 
 def parse_file(path, data=None):
@@ -201,7 +216,7 @@ def parse_file(path, data=None):
     try:
         text = data.decode("utf-8")
     except UnicodeDecodeError as e:
-        line = data[:e.start].count(b"\n") + 1
+        line = data[: e.start].count(b"\n") + 1
         raise HarnessError(f"{path}:{line}: not UTF-8") from None
     fm = parse(text, path)
     check_values(fm.meta, path)
@@ -212,33 +227,33 @@ def parse_file(path, data=None):
 
 # (frontmatter lines, the line the error names); each is one rejected form of the spec.
 REJECTED = [
-    ("skills: [a, b]", 2),                       # a flow list
-    ("description: |", 2),                       # a block scalar
-    ("description: >", 2),                       # a folded block scalar
-    ('description: "one"\n  two', 3),            # a continuation line
-    ("# a comment", 2),                          # a comment line
-    ("model: opus # the tier", 2),               # a plain value that holds ' #'
-    ("model: &tier opus", 2),                    # an anchor
-    ("model: *tier", 2),                         # an alias
-    ("model: opus\nmodel: sonnet", 3),           # a duplicate key
-    ("color: blue", 2),                          # a key outside the ten
-    (r'description: "a \n b"', 2),               # an escape other than \\ and \"
-    ('description: "open', 2),                   # an unterminated quote
-    ("tools:\nmodel: opus", 2),                  # a `key:` with no list item after it
-    ("tools:", 2),                               # the same, at the end
-    ("disable-model-invocation: yes", 2),        # a boolean key with another value
-    ('disable-model-invocation: "true"', 2),     # a quoted boolean is a string
+    ("skills: [a, b]", 2),  # a flow list
+    ("description: |", 2),  # a block scalar
+    ("description: >", 2),  # a folded block scalar
+    ('description: "one"\n  two', 3),  # a continuation line
+    ("# a comment", 2),  # a comment line
+    ("model: opus # the tier", 2),  # a plain value that holds ' #'
+    ("model: &tier opus", 2),  # an anchor
+    ("model: *tier", 2),  # an alias
+    ("model: opus\nmodel: sonnet", 3),  # a duplicate key
+    ("color: blue", 2),  # a key outside the ten
+    (r'description: "a \n b"', 2),  # an escape other than \\ and \"
+    ('description: "open', 2),  # an unterminated quote
+    ("tools:\nmodel: opus", 2),  # a `key:` with no list item after it
+    ("tools:", 2),  # the same, at the end
+    ("disable-model-invocation: yes", 2),  # a boolean key with another value
+    ('disable-model-invocation: "true"', 2),  # a quoted boolean is a string
     ("disable-model-invocation:\n  - true", 2),  # a boolean key with a block list
-    ('tools:\n  - "Read"', 3),                   # a quoted list item
-    ("tools:\n\t- Read", 3),                     # a tab-indented line under a `key:`
-    ("tools:\n   - Read", 3),                    # an item indented by three spaces
-    ("name: \tx", 2),                            # a tab at the start of a plain value
-    ("name: x\t", 2),                            # a tab at the end of a plain value
-    ("tools:\n  - \tRead", 3),                   # a tab at the start of an item
-    ("tools:\n  - Read\t", 3),                   # a tab at the end of an item
-    ("tools: Read, Bash", 2),                    # a list key with a scalar value
-    ("skills: julia-structure", 2),              # the same, one skill
-    ("description:\n  - x", 2),                  # a scalar key with a block list
+    ('tools:\n  - "Read"', 3),  # a quoted list item
+    ("tools:\n\t- Read", 3),  # a tab-indented line under a `key:`
+    ("tools:\n   - Read", 3),  # an item indented by three spaces
+    ("name: \tx", 2),  # a tab at the start of a plain value
+    ("name: x\t", 2),  # a tab at the end of a plain value
+    ("tools:\n  - \tRead", 3),  # a tab at the start of an item
+    ("tools:\n  - Read\t", 3),  # a tab at the end of an item
+    ("tools: Read, Bash", 2),  # a list key with a scalar value
+    ("skills: julia-structure", 2),  # the same, one skill
+    ("description:\n  - x", 2),  # a scalar key with a block list
 ]
 
 ACCEPTED = [
@@ -246,15 +261,19 @@ ACCEPTED = [
     ("name: x\nmodel: true", {"name": "x", "model": "true"}),
     ("disable-model-invocation: false", {"disable-model-invocation": False}),
     (r'description: "say \"hi\" \\ #1: ok"', {"description": 'say "hi" \\ #1: ok'}),
-    ("tools:\n  - Read\n  - mcp__kaimon__ex\nomitClaudeMd: true",
-     {"tools": ["Read", "mcp__kaimon__ex"], "omitClaudeMd": "true"}),
+    (
+        "tools:\n  - Read\n  - mcp__kaimon__ex\nomitClaudeMd: true",
+        {"tools": ["Read", "mcp__kaimon__ex"], "omitClaudeMd": "true"},
+    ),
     ("permissionMode: plan", {"permissionMode": "plan"}),
     ("description: a\tb", {"description": "a\tb"}),
     ('description: "\ta\t"', {"description": "\ta\t"}),
     ("tools:\n  -  Read", {"tools": ["Read"]}),
     ("tools:\n  - Read  ", {"tools": ["Read"]}),
-    ("name: a\N{NO-BREAK SPACE}b\N{ZERO WIDTH SPACE}c\N{ZERO WIDTH NO-BREAK SPACE}d",
-     {"name": "a\N{NO-BREAK SPACE}b\N{ZERO WIDTH SPACE}c\N{ZERO WIDTH NO-BREAK SPACE}d"}),
+    (
+        "name: a\N{NO-BREAK SPACE}b\N{ZERO WIDTH SPACE}c\N{ZERO WIDTH NO-BREAK SPACE}d",
+        {"name": "a\N{NO-BREAK SPACE}b\N{ZERO WIDTH SPACE}c\N{ZERO WIDTH NO-BREAK SPACE}d"},
+    ),
 ]
 
 
@@ -315,21 +334,40 @@ def selftest():
     # The values of `model` and `tools` that parse_file reads: the neutral vocabulary, and nothing else.
     with tempfile.TemporaryDirectory() as tmp:
         f = pathlib.Path(tmp) / "f.md"
-        for lines in ["model: opus", "model: sonnet", "model: haiku", "model: Large", 'model: "large "',
-                      "tools:\n  - Read", "tools:\n  - Bash", "tools:\n  - bash", "tools:\n  - task",
-                      "tools:\n  - mcp__kaimon__ex", "tools:\n  - mcp/kaimon/*", "tools:\n  - mcp/kaimon/",
-                      "tools:\n  - mcp/github/get_issue", "tools:\n  - kaimon_ex", "tools:\n  - read\n  - WebFetch"]:
+        for lines in [
+            "model: opus",
+            "model: sonnet",
+            "model: haiku",
+            "model: Large",
+            'model: "large "',
+            "tools:\n  - Read",
+            "tools:\n  - Bash",
+            "tools:\n  - bash",
+            "tools:\n  - task",
+            "tools:\n  - mcp__kaimon__ex",
+            "tools:\n  - mcp/kaimon/*",
+            "tools:\n  - mcp/kaimon/",
+            "tools:\n  - mcp/github/get_issue",
+            "tools:\n  - kaimon_ex",
+            "tools:\n  - read\n  - WebFetch",
+        ]:
             f.write_text(f"---\n{lines}\n---\nbody\n")
             try:
                 parse_file(f)
                 check(False, f"the value {lines!r} rejected")
             except HarnessError as e:
                 check(str(e).startswith(f"{f}: "), f"the value {lines!r} rejected, naming the file: {e}")
-        for lines, meta in [("model: large", {"model": "large"}), ('model: "medium"', {"model": "medium"}),
-                            ("model: small", {"model": "small"}),
-                            ("tools:\n" + "".join(f"  - {t}\n" for t in TOOLS)
-                             + "  - mcp/kaimon/ex\n  - mcp/kaimon/grep_code",
-                             {"tools": [*TOOLS, "mcp/kaimon/ex", "mcp/kaimon/grep_code"]})]:
+        for lines, meta in [
+            ("model: large", {"model": "large"}),
+            ('model: "medium"', {"model": "medium"}),
+            ("model: small", {"model": "small"}),
+            (
+                "tools:\n"
+                + "".join(f"  - {t}\n" for t in TOOLS)
+                + "  - mcp/kaimon/ex\n  - mcp/kaimon/grep_code",
+                {"tools": [*TOOLS, "mcp/kaimon/ex", "mcp/kaimon/grep_code"]},
+            ),
+        ]:
             f.write_text(f"---\n{lines}\n---\nbody\n")
             try:
                 got = parse_file(f).meta
@@ -346,22 +384,35 @@ def selftest():
     with tempfile.TemporaryDirectory() as tmp:
         f = pathlib.Path(tmp) / "a-skill" / "SKILL.md"
         f.parent.mkdir()
-        for description, rule in [("x" * 1024, None), ("\N{GREEK CAPITAL LETTER OMEGA}" * 1024, None),
-                                  ("x" * 1025, "at most 1,024 characters"),
-                                  ("a <tag> b", "no `<` or `>`"), ("a -> b", "no `<` or `>`"),
-                                  ("a < b", "no `<` or `>`")]:
+        for description, rule in [
+            ("x" * 1024, None),
+            ("\N{GREEK CAPITAL LETTER OMEGA}" * 1024, None),
+            ("x" * 1025, "at most 1,024 characters"),
+            ("a <tag> b", "no `<` or `>`"),
+            ("a -> b", "no `<` or `>`"),
+            ("a < b", "no `<` or `>`"),
+        ]:
             data = f'---\nname: a-skill\ndescription: "{description}"\n---\nbody\n'.encode("utf-8")
             f.write_bytes(data)
-            for label, call in [("parse_file", lambda: parse_file(f)),
-                                ("install's render_source", lambda: render(f, data, {}))]:
+            for label, call in [
+                ("parse_file", lambda: parse_file(f)),
+                ("install's render_source", lambda: render(f, data, {})),
+            ]:
                 try:
                     call()
                     got = None
                 except HarnessError as e:
                     got = str(e)
-                ok = got is None if rule is None else (got is not None and got.startswith(f"{f}: ") and rule in got)
-                check(ok, f"{label} of a SKILL.md whose description is {description[:12]!r}… of "
-                          f"{len(description)} characters: {got or 'accepted'}")
+                ok = (
+                    got is None
+                    if rule is None
+                    else (got is not None and got.startswith(f"{f}: ") and rule in got)
+                )
+                check(
+                    ok,
+                    f"{label} of a SKILL.md whose description is {description[:12]!r}… of "
+                    f"{len(description)} characters: {got or 'accepted'}",
+                )
         # The same description in an agent is not a skill's.
         g = pathlib.Path(tmp) / "agent.md"
         g.write_text(f'---\nname: agent\ndescription: "{"x" * 1025} <x>"\n---\nbody\n')
@@ -379,20 +430,30 @@ def selftest():
     sources = neutral.listing()
     agents = [f for f in sources if f.parent.name == "agents"]
     inside = [f for f in sources if f.is_relative_to(REPO / "agents") or f.is_relative_to(skills)]
-    check(len(agents) == 20 and inside == sources,
-          f"the sources are the 20 agents of agents/ and the curated skills of skills/: {len(agents)} agents, "
-          f"{[str(f) for f in sources if f not in inside]} outside")
+    check(
+        len(agents) == 20 and inside == sources,
+        f"the sources are the 20 agents of agents/ and the curated skills of skills/: {len(agents)} agents, "
+        f"{[str(f) for f in sources if f not in inside]} outside",
+    )
     bad = []
     for f in sources:
         try:
             parse_file(f)
         except HarnessError as e:
             bad.append(str(e))
-    check(sources and not bad, f"the {len(sources)} agents and curated skills of agents/ and skills/ parse" +
-          "".join(f"\n       {b}" for b in bad))
+    check(
+        sources and not bad,
+        f"the {len(sources)} agents and curated skills of agents/ and skills/ parse"
+        + "".join(f"\n       {b}" for b in bad),
+    )
     # No frontmatter line of a source holds a frontend's name: a list item with a capital, or `mcp__`.
-    frontend = [f"{f}:{n}" for f in sources
-                for n, line in enumerate(f.read_text().split("\n---\n", 1)[0].split("\n"), 1)
-                if re.match(r"  - [A-Z]", line) or "mcp__" in line]
-    check(sources and not frontend, f"no frontmatter of agents/ and skills/ names a frontend's tool: {frontend}")
+    frontend = [
+        f"{f}:{n}"
+        for f in sources
+        for n, line in enumerate(f.read_text().split("\n---\n", 1)[0].split("\n"), 1)
+        if re.match(r"  - [A-Z]", line) or "mcp__" in line
+    ]
+    check(
+        sources and not frontend, f"no frontmatter of agents/ and skills/ names a frontend's tool: {frontend}"
+    )
     return total, wrong
