@@ -276,12 +276,12 @@ def python_env():
         raise HarnessError(str(e)) from None
 
 
-def install_python_env(apply, develop):
-    """Plan the Python environment as one line, and under `apply` sync it with `uv sync --locked`,
-    with the `dev` group when `develop`, else `--no-dev`; the number of changes. An environment
-    whose interpreter does not start, or whose stamp names another uv.lock or group, is a change.
-    A sync that fails exits 2 with its last stderr line."""
-    b, environment = boot(), str(python_env())
+def install_python_env(apply, develop, environment):
+    """Plan the Python environment at `environment` as one line, and under `apply` sync it with
+    `uv sync --locked`, with the `dev` group when `develop`, else `--no-dev`; the number of changes.
+    An environment whose interpreter does not start, or whose stamp names another uv.lock or group,
+    is a change. A sync that fails exits 2 with its last stderr line."""
+    b, environment = boot(), str(environment)
     label = f"{'python environment':<{WIDTH}}"
     if not b.starts(b.interpreter(environment)):
         print(f"{label}  SYNC: no interpreter that starts at {b.interpreter(environment)}")
@@ -308,6 +308,8 @@ def cmd_install(args):
     adapters = frontends.load()
     profile = profile_module.load(args.profile)
     develop = profile_module.develop(profile)
+    # A relative $RESEARCH_HARNESS_PYTHON exits 2 here, before anything is written.
+    python = python_env()
     models = profile_module.models_path(args)
     profile_module.read_models(models)
     ctx = types.SimpleNamespace(args=args, profile=profile, models=models, agents=sources.AGENTS, plans={})
@@ -326,7 +328,7 @@ def cmd_install(args):
     if unwritable and args.apply:
         raise HarnessError(unwritable[0])
     # The two environments belong to no frontend, so their changes count in no plan's.
-    environments = install_julia_env(args.apply) + install_python_env(args.apply, develop)
+    environments = install_julia_env(args.apply) + install_python_env(args.apply, develop, python)
     changed = [0] * len(plans)
 
     for i, plan in enumerate(plans):

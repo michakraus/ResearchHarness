@@ -692,6 +692,12 @@ def install_cases_of(case, tmp):
     code, text = scratch.run(base, extra_env={"PATH": path, "RESEARCH_HARNESS_PYTHON": "rel/env"})
     case(lambda: scratch.refused(code, text) and "rel/env" in scratch.tail(text),
          f"a relative $RESEARCH_HARNESS_PYTHON exits 2: {code}, {scratch.tail(text)!r}")
+    (base / "julia" / "Project.toml").unlink()
+    code, text = scratch.run(base, "--apply", extra_env={"PATH": str(tools), "RESEARCH_HARNESS_PYTHON": "rel/env"})
+    case(lambda: scratch.refused(code, text) and "rel/env" in scratch.tail(text)
+         and not (base / "julia" / "Project.toml").exists(),
+         f"a relative $RESEARCH_HARNESS_PYTHON stops --apply before the Julia environment is written: {code}, "
+         f"{scratch.tail(text)!r}")
     for value in ('"yes"', "1", "[]"):
         base, _, _ = scratch.fresh()
         (base / "profile.toml").write_text((base / "profile.toml").read_text() + f"develop = {value}\n")
