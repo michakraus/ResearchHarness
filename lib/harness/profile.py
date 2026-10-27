@@ -1334,8 +1334,9 @@ def prepush_branch_cases():
     The stub of `bin/harness leaks` searches the tree at HEAD and each commit of `--commits` for
     the string. A clean branch passes, so the commits of origin/main are not sent; a branch whose
     new commit adds the string and whose next commit removes it is refused; a branch on the
-    commit with the string is refused for its tree. No case runs the suite. (number of cases,
-    number wrong)"""
+    commit with the string is refused for its tree. An existing branch that merges origin/main
+    passes, because a commit of a remote branch is not sent, and is refused when its own new
+    commits add the string. No case runs the suite. (number of cases, number wrong)"""
     search = os.pathsep.join(
         d for d in os.environ.get("PATH", "").split(os.pathsep) if pathlib.PurePath(d).name != "git-core"
     )
@@ -1391,6 +1392,7 @@ def prepush_branch_cases():
         git("init", "-q", "-b", "main")
         git("add", "--", "bin/harness")
         git("commit", "-q", "-m", "fixture")
+        base = git("rev-parse", "HEAD")
         git("remote", "add", "origin", url)
         with_leak = commit("a.txt", "LEAK\n")
         main = commit("a.txt")
@@ -1401,32 +1403,59 @@ def prepush_branch_cases():
         removed = commit("x.txt")
         git("checkout", "-q", "--detach", with_leak)
         on_leak = commit("y.txt", "clean\n")
+        # A branch pushed before origin/main took the commit with the leak string, which then merges
+        # origin/main: the commits of origin/main that its old tip lacks are on a remote branch, not sent.
+        git("checkout", "-q", "--detach", base)
+        old_tip = commit("old.txt", "old\n")
+        git("update-ref", "refs/remotes/origin/topic", old_tip)
+        git("merge", "-q", "--no-edit", main)
+        merged = git("rev-parse", "HEAD")
+        commit("z.txt", "LEAK\n")
+        merged_removed = commit("z.txt")
+        none = "0" * 40
         cases = [
             (
                 "a clean new branch on origin/main passes, and the commits of origin/main are not sent",
                 clean,
+                none,
                 0,
                 "the leak check of the branches passed",
             ),
             (
                 "a branch whose new commit adds the leak string, removed by the next commit, is refused",
                 removed,
+                none,
                 1,
                 "found a leak",
             ),
             (
                 "a branch whose tree holds the leak string of an earlier commit is refused",
                 on_leak,
+                none,
+                1,
+                "found a leak",
+            ),
+            (
+                "an existing branch that merges origin/main passes: the commits of a remote branch are not sent",
+                merged,
+                old_tip,
+                0,
+                "the leak check of the branches passed",
+            ),
+            (
+                "an existing branch that merges origin/main, then adds and removes the leak string, is refused",
+                merged_removed,
+                old_tip,
                 1,
                 "found a leak",
             ),
         ]
         wrong = 0
-        for label, sha, expected, marker in cases:
+        for label, sha, remote_sha, expected, marker in cases:
             try:
                 p = subprocess.run(
                     [str(REPO / ".githooks" / "pre-push"), "origin", url],
-                    input=f"refs/heads/topic {sha} refs/heads/topic {'0' * 40}\n",
+                    input=f"refs/heads/topic {sha} refs/heads/topic {remote_sha}\n",
                     cwd=repo,
                     env={**env, "PATH": str(tools), "TMPDIR": str(tmp)},
                     capture_output=True,
