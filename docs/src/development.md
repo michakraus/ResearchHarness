@@ -56,6 +56,50 @@ loads `adapters/omp/guards.ts` and the OpenCode plugins `adapters/opencode/plugi
 `lib/harness/script_cases.py` run the package copies of `run-tests.jl` and the critic with
 `rsync`, and `scripts/spec-gate.py` on a fixture task file; they need no Julia.
 
+## The strict profile
+
+The Python code of the harness follows one profile, which `pyproject.toml` sets. `ruff format`
+gives the layout, at line length 110; `.git-blame-ignore-revs` names the commit that formatted
+the whole tree, so `git blame --ignore-revs-file .git-blame-ignore-revs` skips it.
+`ruff check` runs the rule families `E F W B BLE TRY PTH S UP SIM RET C4 PERF PL RUF ARG FBT DTZ N
+TID`, bans `os.system` and `os.popen`, and ignores `S603` and `TRY003`; a file that holds test
+cases also ignores `B023` and `PLR2004`. `bin/harness` and `.githooks/pre-commit` have no `.py`
+suffix, and `pyproject.toml` names both for ruff; the formatter and the `UP` family leave
+`bin/harness`, whose syntax is a closed set of Python 3.0 forms. `basedpyright` checks `lib`,
+`hooks`, `adapters`, `scripts` and `bin` in strict mode for Python 3.14; it reads only `.py`
+files, so it checks neither `bin/harness` nor `.githooks/pre-commit`.
+
+The findings of the code that the profile met are recorded, not fixed: the table
+`[tool.ruff.lint.extend-per-file-ignores]` of `pyproject.toml`, and the baseline
+`.basedpyright/baseline.json`, which `basedpyright --writebaseline` writes. New code meets the
+profile in full, and a module that a change touches leaves both records in that change. A change
+that removes an error from the baseline writes the file again in the same commit; a run of
+`basedpyright` with fewer errors than the baseline writes it too.
+
+The hooks and the guards import only the standard library: a case of `harness test`
+(`lib/harness/strict.py`) parses each `.py` file below `hooks/` and each `adapters/*/guard*.py`,
+and fails on an import of a module outside `sys.stdlib_module_names`. `hooks/probe.py` may also
+import the harness's own package `harness`.
+
+The two tools are pinned in the `dev` group of `pyproject.toml` and locked in `uv.lock`, so every
+machine and CI run the same versions. `harness install --apply` syncs the `dev` group into the
+harness's Python environment only where the profile sets `develop = true`; set it on every
+machine where you commit to the harness.
+
+## The pre-commit hook
+
+`.githooks/pre-commit` runs the three checks of the strict profile on each commit:
+`ruff format --check`, `ruff check` and `basedpyright`. It checks the commit, not the working
+tree: it writes the index into a temporary directory with `git checkout-index` and runs the tools
+there, so a change that is not staged neither fails nor passes a commit. The tools come from the
+`bin/` of the harness's Python environment, which `bin/harness`'s own `environment_path` and
+`interpreter` give, never from the `PATH`. All three run, and one that fails refuses the commit
+with exit 1 and a line that names it. The formatter only checks: it names each staged file that it
+would change, and the hook changes no file; run `ruff format` yourself, then stage again. An
+environment without `ruff` or `basedpyright` refuses the commit with one line: set
+`develop = true` in the profile, then run `harness install --apply`. The cases of
+`lib/harness/strict.py` run the hook in scratch repositories with stub tools.
+
 ## The pre-push hook
 
 `.githooks/pre-push` gates a push to `main` with the leak checks and the suite. A push of any
@@ -89,7 +133,12 @@ the first release with several allowlists per rule, `[[rules.allowlists]]`.
 Then it runs `bin/harness test` once, with `python3`; `bin/harness` runs the suite on the
 interpreter of the harness's Python environment. Then it runs the compile check
 `<environment>/bin/python -m compileall -q lib hooks scripts adapters` on that interpreter, at the
-path that `bin/harness` gives, and `shellcheck -S warning` over the shell files.
+path that `bin/harness` gives, then the three checks of [the strict profile](#the-strict-profile),
+`ruff format --check`, `ruff check` and `basedpyright`, with the tools of that environment's
+`bin/`, and `shellcheck -S warning` over the shell files. All three checks run, and one that fails
+refuses the push; an environment without `ruff` or `basedpyright` refuses the push with one line
+per tool that names `harness install --apply`. A push of a branch runs none of the three; CI runs
+them.
 Then, when `chezmoi` is on the `PATH`, it runs the kit's tests on `python3`:
 `examples/dotfiles/tests/update-check.py`, `check-check.py`,
 `driver-check.py`, `render-check.py` and `script-check.py`. All five run, and when one fails the
@@ -109,12 +158,15 @@ git config core.hooksPath .githooks
 ## CI
 
 CI runs `.github/workflows/test.yml` on every push, pull request and manual dispatch:
-`bin/harness test` and the compile check on Python 3.14 and the latest 3.x, `shellcheck` and
-`actionlint`. Its `python` job installs uv with `astral-sh/setup-uv`, pinned by its commit SHA,
-and runs `uv sync --locked` into the environment that `bin/harness` reads, on the job's Python;
+`bin/harness test` and the compile check on Python 3.14 and the latest 3.x, the three checks of
+the strict profile, `shellcheck` and `actionlint`. Its `python` job installs uv with
+`astral-sh/setup-uv`, pinned by its commit SHA, and runs `uv sync --locked` into the environment that `bin/harness` reads, on the job's Python;
 the job on the latest 3.x has `continue-on-error`, so its failure warns and does not fail the
 run. Its `empty-home` job runs `bin/harness test` once more on Python 3.14, with `HOME`
 set to a new empty directory, so a case that needs a file of the runner's home fails there. Its
+`strict` job runs `uv sync --locked` with the `dev` group into an environment of its own and runs
+the three checks of the strict profile, `ruff format --check`, `ruff check` and `basedpyright`,
+with that environment's tools, each as a step of its own. Its
 `leaks` job runs gitleaks 8.30.1, a pinned tarball checked by its SHA256, with
 `.gitleaks.toml` and `--redact`. A canary step first checks that gitleaks finds a synthetic token
 and a synthetic home path, built at run time, and that the token is not in the log. Then the job

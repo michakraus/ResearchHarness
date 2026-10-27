@@ -6,7 +6,7 @@ import sys
 from . import HarnessError, __doc__ as CONTRACT
 from . import docs, fmt, frontends, frontmatter, githooks, install, network, profile, protection, repos
 from . import doctor, dotfiles_kit, providers, script_cases, skill_triggers, units, update
-from . import changelog, environment, testrun
+from . import changelog, environment, strict, testrun
 
 # The modules of lib/harness/; the adapters of lib/harness/frontends.py follow `install`.
 MODULES = [install, update, frontmatter, githooks, repos, protection, fmt, profile]
@@ -20,6 +20,7 @@ MODULES.append(doctor)
 MODULES.append(dotfiles_kit)
 MODULES.append(changelog)
 MODULES.append(environment)
+MODULES.append(strict)
 MODULES.append(testrun)
 
 
@@ -47,7 +48,17 @@ def main(argv=None):
     for module in modules():
         # A module with no subcommand of its own; its cases run in `harness test`. `testrun`
         # registers `harness test` below, with the list of the modules.
-        if module not in (frontmatter, docs, units, script_cases, network, providers, environment, testrun):
+        if module not in (
+            frontmatter,
+            docs,
+            units,
+            script_cases,
+            network,
+            providers,
+            environment,
+            strict,
+            testrun,
+        ):
             module.register(sub)
     testrun.register(sub, modules)
     args = ap.parse_args(argv)

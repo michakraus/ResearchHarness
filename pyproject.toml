@@ -46,7 +46,7 @@ ignore = ["S603", "TRY003"]
 # literal values (PLR2004), and bin/harness keeps its Python 3.0 forms (UP).
 [tool.ruff.lint.per-file-ignores]
 "bin/harness" = ["UP"]
-"lib/harness/{changelog,docs,doctor,dotfiles_kit,environment,frontmatter,install,install_cases,network,profile,protection,providers,repos,script_cases,skill_triggers,sweep,testrun,units,update}.py" = [
+"lib/harness/{changelog,docs,doctor,dotfiles_kit,environment,frontmatter,install,install_cases,network,profile,protection,providers,repos,script_cases,skill_triggers,strict,sweep,testrun,units,update}.py" = [
     "B023",
     "PLR2004",
 ]

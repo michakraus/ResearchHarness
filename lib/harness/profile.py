@@ -1101,17 +1101,31 @@ COMPILE = "-m compileall -q lib hooks scripts adapters"
 
 
 NO_INTERPRETER = "pre-push: bin/harness names no interpreter of the Python environment"
+# The checks of the strict profile, as the stubs of the environment's tools log them.
+STRICT = ["ruff format --check --no-cache .", "ruff check --no-cache .", "basedpyright"]
 
 
-def prepush_case(path=None, kit_fails=None, no_environment=False):
+def prepush_case(
+    path: str | None = None,
+    kit_fails: str | None = None,
+    *,
+    no_environment: bool = False,
+    lacks: tuple[str, ...] = (),
+    fails: str = "",
+) -> tuple[int, int]:
     """`.githooks/pre-push` on a fixture checkout whose `origin` is a GitHub URL, for a push to
     main, with stubs of gitleaks, of `bin/harness` and of the Python environment's interpreter,
     and no shellcheck, julia or chezmoi on the PATH: `harness leaks` runs in the hook's clone with
     that URL as its `origin`, not the path of the checkout, `bin/harness test` runs once, the
     compile check runs on the interpreter that the stub's `interpreter(environment_path())`
-    names, and the kit's tests are skipped with one line. With `no_environment`, the stub's
-    `environment_path` raises: the hook prints NO_INTERPRETER, runs no compile check and refuses
-    the push. With `kit_fails`,
+    names, the three checks of STRICT run in the clone from the environment's bin/, and the kit's
+    tests are skipped with one line. The environment's `ruff` and `basedpyright` and a second pair
+    first on the PATH are stubs that log their arguments. With `no_environment`, the stub's
+    `environment_path` raises: the hook prints NO_INTERPRETER, runs no compile check and no check
+    of STRICT, and refuses the push. With `lacks`, the names of tools that the environment lacks:
+    the hook prints one line per tool that names `harness install --apply`, runs no check of
+    STRICT and no tool of the PATH, and refuses the push. With `fails`, one command of STRICT,
+    whose stub exits 1: the hook still runs all three and refuses the push. With `kit_fails`,
     the name of one of KIT_TESTS, a stub of chezmoi is on the PATH and the fixture holds the five
     kit tests, of which that one exits 1: the hook runs all five and refuses the push with one
     line that names it. The tools are linked from `path`, this process's PATH by default, without a
@@ -1173,6 +1187,18 @@ def prepush_case(path=None, kit_fails=None, no_environment=False):
         (environment / "bin").mkdir(parents=True)
         (environment / "bin" / "python").write_text(f"#!/bin/sh\necho \"$*\" >> '{compiled}'\n")
         (environment / "bin" / "python").chmod(0o755)
+        strict = tmp / "strict"
+        for directory, prefix, names in (
+            (environment / "bin", "", [t for t in ("ruff", "basedpyright") if t not in lacks]),
+            (tools, "PATH ", ["ruff", "basedpyright"]),
+        ):
+            for name in names:
+                # The command of STRICT that `fails` names exits 1.
+                (directory / name).write_text(
+                    f'#!/bin/sh\nline="{prefix}{name} $*"\necho "$line | $(pwd)" >> \'{strict}\'\n'
+                    f"[ \"${{line% }}\" = '{fails}' ] && exit 1\nexit 0\n"
+                )
+                (directory / name).chmod(0o755)
         ran = tmp / "kit-ran"
         if kit_fails:
             (tools / "chezmoi").write_text("#!/bin/sh\nexit 0\n")
@@ -1220,6 +1246,12 @@ def prepush_case(path=None, kit_fails=None, no_environment=False):
         tests = ran.read_text().split() if ran.exists() else []
         commands = harness_ran.read_text().split() if harness_ran.exists() else []
         compile_runs = compiled.read_text().splitlines() if compiled.exists() else []
+        checks = strict.read_text().splitlines() if strict.exists() else []
+    strict_runs = [line.partition(" | ")[0].strip() for line in checks]
+    # The hook's clone is repo/ below the hook's own directory under TMPDIR, not the fixture's repo/.
+    in_clone = all(
+        line.partition(" | ")[2].endswith("/repo") and "/harness-pre-push." in line for line in checks
+    )
     lines = text.strip().splitlines() or ["no output"]
     if kit_fails:
         refusal = f"pre-push: refused, the kit's tests failed: examples/dotfiles/tests/{kit_fails}.py"
@@ -1234,13 +1266,42 @@ def prepush_case(path=None, kit_fails=None, no_environment=False):
             code == 1
             and NO_INTERPRETER in lines
             and compile_runs == []
+            and checks == []
             and commands == ["leaks", "test"]
             and any(line.startswith("pre-push: refused;") for line in lines)
         )
         print(
             f"{'ok ' if ok else 'BAD'}  pre-push: when bin/harness names no interpreter of the environment, the "
-            f"hook says so, runs no compile check and refuses the push -> exit {code}, compile {compile_runs}, "
+            f"hook says so, runs no compile check and no check of the strict profile and refuses the push "
+            f"-> exit {code}, compile {compile_runs}, checks {checks}, "
             f"{[line for line in lines if line.startswith('pre-push:')]}"
+        )
+        return 1, int(not ok)
+    if lacks:
+        said = [line for line in lines if line.startswith("pre-push: no ")]
+        ok = (
+            code == 1
+            and checks == []
+            and len(said) == len(lacks)
+            and all(f"pre-push: no {tool} in " in line for tool, line in zip(lacks, said, strict=True))
+            and all("harness install --apply" in line for line in said)
+            and any(line.startswith("pre-push: refused;") for line in lines)
+        )
+        print(
+            f"{'ok ' if ok else 'BAD'}  pre-push: an environment without {' and '.join(lacks)}, with both tools "
+            f"on the PATH: one line per tool that names harness install --apply, no check runs, the push is "
+            f"refused -> exit {code}, checks {checks}, {[line for line in lines if line.startswith('pre-push:')]}"
+        )
+        return 1, int(not ok)
+    if fails:
+        ok = (
+            code == 1
+            and strict_runs == STRICT
+            and any(line.startswith("pre-push: refused;") for line in lines)
+        )
+        print(
+            f"{'ok ' if ok else 'BAD'}  pre-push: `{fails}` fails: all three checks run and the push is refused "
+            f"-> exit {code}, checks {strict_runs}, {[line for line in lines if line.startswith('pre-push:')]}"
         )
         return 1, int(not ok)
     ok = (
@@ -1250,14 +1311,17 @@ def prepush_case(path=None, kit_fails=None, no_environment=False):
         and tests == []
         and commands == ["leaks", "test"]
         and compile_runs == [COMPILE]
+        and strict_runs == STRICT
+        and in_clone
         and not any("python3.14" in line for line in lines)
     )
     print(
         f"{'ok ' if ok else 'BAD'}  pre-push: harness leaks runs in the clone with the checkout's "
         f"origin URL, bin/harness test runs once, the compile check runs on the environment's interpreter, "
+        f"the three checks of the strict profile run in the clone with the environment's tools, "
         f"and without chezmoi the kit's tests skip with one line "
-        f"-> exit {code}, origin {got!r}, harness {commands}, compile {compile_runs}, skip line {KIT_SKIP in lines}, "
-        f"{lines[-1]!r}"
+        f"-> exit {code}, origin {got!r}, harness {commands}, compile {compile_runs}, checks {checks}, "
+        f"skip line {KIT_SKIP in lines}, {lines[-1]!r}"
     )
     return 1, int(not ok)
 
@@ -1617,8 +1681,9 @@ def branch_cases():
 
 def selftest():
     """The render's cases, the tree-name cases, the cases of `home` and `~`, the cases of
-    `--commits`, and the `origin` case, the kit case, the case with no environment and the branch
-    cases of the pre-push hook:
+    `--commits`, and the `origin` case, the kit case, the case with no environment, the cases of an
+    environment without the tools of the strict profile, the cases of a check of the strict profile
+    that fails and the branch cases of the pre-push hook:
     (number of cases, number wrong)."""
     wrong = 0
     for template, profile, expected in CASES:
@@ -1650,6 +1715,12 @@ def selftest():
     n4, w4 = prepush_branch_cases()
     n5, w5 = prepush_case(kit_fails="update-check")
     n6, w6 = prepush_case(no_environment=True)
+    for lacks in (("ruff",), ("basedpyright",), ("ruff", "basedpyright")):
+        n7, w7 = prepush_case(lacks=lacks)
+        n6, w6 = n6 + n7, w6 + w7
+    for fails in STRICT:
+        n7, w7 = prepush_case(fails=fails)
+        n6, w6 = n6 + n7, w6 + w7
     return len(CASES) + len(NAME_CASES) + n + n2 + n3 + n4 + n5 + n6, wrong + w + w2 + w3 + w4 + w5 + w6
 
 
