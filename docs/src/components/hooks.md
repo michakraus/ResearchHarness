@@ -126,8 +126,8 @@ echo '{"tool_input":{"command":"gh api repos/o/r/hooks -f url=x"}}' | ./gh-api-w
 
 ## `rm-scope.py`
 
-This hook refuses a recursive `rm` outside the scratch zones, and asks before a `git rm` outside a
-worktree. Claude Code runs it as a `PreToolUse` hook on the `Bash` matcher. oh-my-pi and OpenCode
+This hook refuses a recursive `rm` outside the scratch zones, and asks before a `git rm` or a
+`git merge` outside a worktree. Claude Code runs it as a `PreToolUse` hook on the `Bash` matcher. oh-my-pi and OpenCode
 run it on each shell call.
 
 It follows the working directory through each `cd` and resolves each operand. A recursive `rm`
@@ -137,8 +137,13 @@ parent directory of the home directories, `/Users` or `/home`, or of any path be
 worktree itself goes through `git worktree remove`. A
 plain `rm`, and an operand that it cannot resolve, get no decision. A `git rm` gets an `ask`
 decision outside a worktree, with `-f` or `--force`, or with `-C`, `--git-dir` or `--work-tree`.
+A `git merge` in a worktree passes: the merge is local, and `git reset --hard ORIG_HEAD` undoes
+it. Outside a worktree, or with `-C`, `--git-dir` or `--work-tree`, it gets `ask`, except a
+`--ff-only` or `--no-edit` merge with none of `--no-ff`, `--squash`, `--no-commit` and `-m`. So
+the settings allow `git merge *`, and keep an `ask` only for `--abort`.
 
-It fails closed to a prompt: a command that holds `rm` and that it cannot read gets `ask`. Test
+It fails closed to a prompt: a command that holds `rm` or `merge` and that it cannot read gets
+`ask`. Test
 it:
 
 ```bash

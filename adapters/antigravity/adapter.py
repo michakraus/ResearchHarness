@@ -1325,7 +1325,7 @@ def layer_cases(scratch):
             and len(edits["deny"]) >= 54
             and len(edits["ask"]) >= 4
             and len(bash["deny"]) >= 187
-            and len(bash["ask"]) >= 105
+            and len(bash["ask"]) >= 97
         ),
         f"guard-paths.json is OpenCode's deny list, then mcp_config.json and the files of the layer; `edit` is "
         f"every Edit deny of the template and `ask` every Edit ask, each then with Antigravity's copies; "

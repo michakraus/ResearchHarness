@@ -582,6 +582,26 @@ RMSCOPE_CASES = [
     (WT, "git -C " + q(PKG) + " rm src/old.jl", "ask"),
     (WT, "git --git-dir=" + q(PKG + "/.git") + " rm x", "ask"),
     (PKG, "cd " + q(WT) + " && git rm src/old.jl", "pass"),
+    # `git merge`: free in a worktree; elsewhere it asks, except a plain `--ff-only` or `--no-edit`.
+    (WT, "git merge --no-ff --no-commit origin/main", "pass"),
+    (WT, "git merge --no-ff origin/main -m 'Merge main'", "pass"),
+    (WT, "git merge --squash topic", "pass"),
+    (WT + "/src", "git merge origin/main", "pass"),
+    (WT, "git -C " + q(PKG) + " merge --no-ff topic", "ask"),
+    (PKG, "git merge --no-ff topic", "ask"),
+    (PKG, "git merge topic --no-commit", "ask"),
+    (PKG, "git merge -mMerge topic", "ask"),
+    (PKG, "git merge --message=Merge topic", "ask"),
+    (PKG, "git merge --squash topic", "ask"),
+    (PKG, "git merge topic", "ask"),
+    (PKG, "git merge --no-edit --no-ff topic", "ask"),
+    (PKG, "git merge --ff-only origin/main", "pass"),
+    (PKG, "git merge --no-edit topic", "pass"),
+    (PKG, "git merge --abort", "pass"),
+    (PKG, "git merge-base HEAD origin/main", "pass"),
+    (PKG, "git merge --ff-only -- --no-ff", "pass"),
+    (PKG, "cd " + q(WT) + " && git merge --no-ff origin/main", "pass"),
+    (R + "/.worktrees", "git merge --no-ff topic", "ask"),
     # Fail closed: an `rm` it cannot read asks.
     (WT, "rm -rf 'unbalanced", "ask"),
 ]
@@ -593,6 +613,7 @@ RMSCOPE_PAYLOADS = [
     ('{"tool_input":{"command":"ls"}}', "pass"),
     ('{"tool_input":{"command":"rm -rf build"}}', "pass"),
     ('{"tool_input":{"command":"rm -rf ~/Research/Papers"}}', "deny"),
+    ('{"tool_input":{"command":"git merge --no-ff topic"}}', "ask"),
 ]
 
 # `prompt-log.py` decides nothing: every payload exits 0 with no output.
