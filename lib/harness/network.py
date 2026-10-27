@@ -44,6 +44,7 @@ import subprocess
 import sys
 import tempfile
 import tomllib
+from typing import Any
 
 from . import REPO, HarnessError
 
@@ -134,11 +135,16 @@ def read(path, missing_ok):
     return out
 
 
-def merged(overlay):
+def merged(overlay: str | pathlib.Path) -> dict[str, Any]:
     """The union of the harness list and the overlay at `overlay`, the harness list's entries first:
     {key: value} of every key of KEYS."""
-    files = [(LIST, read(LIST, False)), (overlay, read(overlay, True))]
-    out = {key: list(dict.fromkeys(e for _, data in files for e in data.get(key, []))) for key in LISTS}
+    files: list[tuple[str | pathlib.Path, dict[str, Any]]] = [
+        (LIST, read(LIST, missing_ok=False)),
+        (overlay, read(overlay, missing_ok=True)),
+    ]
+    out: dict[str, Any] = {
+        key: list(dict.fromkeys(e for _, data in files for e in data.get(key, []))) for key in LISTS
+    }
     out["deny_reasons"] = {}
     for path, data in files:
         for entry, reason in data.get("deny_reasons", {}).items():
@@ -490,6 +496,7 @@ def selftest():
             capture_output=True,
             text=True,
             env=Scratch.env(home),
+            check=False,
         )
         out = json.loads(p.stdout) if p.returncode == 0 else {}
         case(
@@ -499,7 +506,8 @@ def selftest():
             ),
             f"`harness render` of the settings template generates the network rules with the overlay: {p.returncode}",
         )
-        claude = next(a for a in frontends.load() if a.NAME == "claude")
+        # An adapter module whose PROFILE the case sets and restores.
+        claude: Any = next(a for a in frontends.load() if a.NAME == "claude")
         saved, claude.PROFILE = claude.PROFILE, str(home / "profile.toml")
         try:
             cfg = claude.read_settings(TEMPLATE)
@@ -525,6 +533,7 @@ def selftest():
             capture_output=True,
             text=True,
             env=Scratch.env(home),
+            check=False,
         )
         case(
             lambda: (

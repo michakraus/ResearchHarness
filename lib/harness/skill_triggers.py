@@ -31,6 +31,7 @@ import pathlib
 import subprocess
 import tempfile
 import tomllib
+from typing import cast
 
 from . import REPO, HarnessError, changing
 from .frontmatter import parse_file
@@ -150,7 +151,8 @@ def verdict(stream):
         content = message.get("content")
         for block in content if isinstance(content, list) else []:
             if isinstance(block, dict) and block.get("type") == "tool_use" and block.get("name") == "Skill":
-                skill = block.get("input").get("skill") if isinstance(block.get("input"), dict) else None
+                given = cast("dict[str, object]", block).get("input")
+                skill = cast("dict[str, object]", given).get("skill") if isinstance(given, dict) else None
                 return (skill if isinstance(skill, str) else None), result
     return None, result
 
@@ -195,7 +197,7 @@ def skill_verdict(fires, loads, load_unknown, false_loads, near_unknown):
     return UNKNOWN
 
 
-def session(query, model, root, claude, timeout):
+def session(query: str, model: str, root: str | pathlib.Path, claude: str | pathlib.Path, timeout: float):
     """One `claude -p` session on `query`: (its verdict, its `result` event or None). The query
     goes in on stdin, so a query that starts with `-` is no flag; `--output-format stream-json`
     under `-p` needs `--verbose`. The session has MESSAGES turns, and lacks `Edit`, `Write`,
@@ -218,7 +220,9 @@ def session(query, model, root, claude, timeout):
         model,
     ]
     try:
-        p = subprocess.run(command, input=query, cwd=root, capture_output=True, text=True, timeout=timeout)
+        p = subprocess.run(
+            command, input=query, cwd=root, capture_output=True, text=True, timeout=timeout, check=False
+        )
     except subprocess.TimeoutExpired:
         return UNKNOWN, None
     except OSError as e:
@@ -294,7 +298,12 @@ def apply(queries, skills, model, root, claude="claude", timeout=TIMEOUT):
     try:
         version = (
             subprocess.run(
-                [claude, "--version"], capture_output=True, text=True, stdin=subprocess.DEVNULL, timeout=30
+                [claude, "--version"],
+                capture_output=True,
+                text=True,
+                stdin=subprocess.DEVNULL,
+                timeout=30,
+                check=False,
             ).stdout.strip()
             or "unknown"
         )
@@ -395,7 +404,8 @@ def selftest():
             call()
         except HarnessError as e:
             return str(e)
-        except Exception as e:  # a traceback, which exits 1, not 2
+        # a traceback, which exits 1, not 2
+        except (OSError, ValueError, KeyError, TypeError, AttributeError) as e:
             return f"TRACEBACK {type(e).__name__}: {e}"
         return None
 
@@ -595,7 +605,8 @@ def selftest():
         )
         try:
             got = verdict(stream)[0]
-        except Exception as e:  # a traceback would end the whole --apply run
+        # a traceback would end the whole --apply run
+        except (AttributeError, TypeError, KeyError, IndexError, ValueError) as e:
             got = f"{type(e).__name__}: {e}"
         check(got == expected, f"verdict of {label}: {got!r}, expected {expected!r}")
 
@@ -643,12 +654,12 @@ def selftest():
     # The subcommand's exits: the dry run exits 1 and counts the sessions; --apply without --model
     # exits 2.
     harness = [sys.executable, str(REPO / "bin" / "harness"), "skill-triggers"]
-    p = subprocess.run(harness, capture_output=True, text=True)
+    p = subprocess.run(harness, capture_output=True, text=True, check=False)
     check(
         p.returncode == 1 and "152 sessions" in p.stdout and "Traceback" not in p.stderr,
         f"the dry run exits {p.returncode}: {p.stdout.strip().splitlines()[-1:]!r}",
     )
-    p = subprocess.run(harness + ["--apply"], capture_output=True, text=True)
+    p = subprocess.run([*harness, "--apply"], capture_output=True, text=True, check=False)
     check(
         p.returncode == 2 and len(p.stderr.strip().splitlines()) == 1 and "--model" in p.stderr,
         f"--apply without --model exits {p.returncode}: {p.stderr.strip()!r}",
@@ -659,7 +670,7 @@ def selftest():
         (["wait-what"], "1 session,"),
     ]:
         p = subprocess.run(
-            harness + [a for n in names for a in ("--skill", n)], capture_output=True, text=True
+            harness + [a for n in names for a in ("--skill", n)], capture_output=True, text=True, check=False
         )
         rows = [
             line.split()[0]
@@ -676,7 +687,7 @@ def selftest():
         ["--skill", "build-part", "--skill", "no-such-skill"],
         ["--apply", "--model", "fixture-model", "--skill", "no-such-skill"],
     ):
-        p = subprocess.run(harness + argv, capture_output=True, text=True)
+        p = subprocess.run(harness + argv, capture_output=True, text=True, check=False)
         check(
             p.returncode == 2 and len(p.stderr.strip().splitlines()) == 1 and "no-such-skill" in p.stderr,
             f"{' '.join(argv)} exits {p.returncode}: {p.stderr.strip()!r}",
@@ -810,7 +821,7 @@ def selftest():
         try:
             apply_skill_case(lambda ok, label: results.append((ok, label)), [sys.executable, "-c", "pass"])
             raised = None
-        except Exception as e:
+        except HarnessError as e:
             raised = f"{type(e).__name__}: {e}"
     check(
         raised is None and [ok for ok, _ in results] == [False] and "'bogus' is not a tier" in results[0][1],
@@ -844,6 +855,7 @@ def apply_skill_case(check, harness):
             capture_output=True,
             text=True,
             env=env,
+            check=False,
         )
         calls = (
             [json.loads(line) for line in (tmp / "bin" / "calls.jsonl").read_text().splitlines()]

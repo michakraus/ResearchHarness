@@ -71,9 +71,11 @@ files, so it checks neither `bin/harness` nor `.githooks/pre-commit`.
 
 The findings of the code that the profile met are recorded, not fixed: the table
 `[tool.ruff.lint.extend-per-file-ignores]` of `pyproject.toml`, and the baseline
-`.basedpyright/baseline.json`, which `basedpyright --writebaseline` writes. New code meets the
-profile in full, and a module that a change touches leaves both records in that change. A change
-that removes an error from the baseline writes the file again in the same commit; a run of
+`.basedpyright/baseline.json`, which `basedpyright --writebaseline` writes. The lines that a
+change adds or changes meet the profile with both records removed. A new module is in neither
+record, and a module leaves a record when its last entry there goes. A change writes both records
+again in the same commit as the fixes that shrink them: the table from `ruff check --output-format
+json` with the table removed, and the baseline with `basedpyright --writebaseline`; a run of
 `basedpyright` with fewer errors than the baseline writes it too.
 
 The hooks and the guards import only the standard library: a case of `harness test`

@@ -25,59 +25,66 @@ import os
 import stat
 import sys
 import unicodedata
+from collections.abc import Collection, Iterable
+from pathlib import Path
+from typing import NoReturn
 
 STAMP = ".harness-install.json"
 
+# A source as the stamp records it: [directory, installed prefix, top-level names not installed,
+# top-level directories not installed].
+Source = tuple[str, str, Collection[str], Iterable[str]]
 
-def hidden(name):
+
+def hidden(name: str) -> bool:
     """A name that is not a source, as `harness install` reads its sources."""
     return name.startswith(".") or name == "__pycache__"
 
 
-def fold(name):
+def fold(name: str) -> str:
     """`name` with case and Unicode form folded, as `harness install` compares names."""
     return unicodedata.normalize("NFC", name).casefold()
 
 
-def raise_error(error):
+def raise_error(error: OSError) -> NoReturn:
     raise error
 
 
-def files(sources):
+def files(sources: Iterable[Source]) -> list[tuple[str, Path, int]]:
     """[(installed path, source file, installed mode)] of `sources`, sorted by installed path; the
     mode is the source's below hooks/ and 0o644 elsewhere, as `harness install` installs it. A
     source that is not a directory, a directory that cannot be read, a symlink, and an entry that is
     neither a file nor a directory, such as a FIFO, raise OSError with its path, as each exits 2 in
     `harness install`."""
-    found = []
+    found: list[tuple[str, Path, int]] = []
     for directory, prefix, skip, skipped in sources:
-        if not os.path.isdir(directory):
+        if not Path(directory).is_dir():
             raise FileNotFoundError(2, "not a directory", directory)
-        skipped = {fold(s) for s in skipped}
+        folded = {fold(s) for s in skipped}
         for path, dirs, names in os.walk(directory, onerror=raise_error):
             dirs[:] = [d for d in dirs if not hidden(d)]
-            names = [n for n in names if not hidden(n)]
-            for name in dirs + names:
-                if os.path.islink(os.path.join(path, name)):
+            kept = [n for n in names if not hidden(n)]
+            for name in dirs + kept:
+                if (Path(path) / name).is_symlink():
                     raise OSError(
-                        errno.ELOOP, "a symlink, which `harness install` refuses", os.path.join(path, name)
+                        errno.ELOOP, "a symlink, which `harness install` refuses", Path(path) / name
                     )
-            for name in names:
-                src = os.path.join(path, name)
-                mode = os.stat(src).st_mode
+            for name in kept:
+                src = Path(path) / name
+                mode = src.stat().st_mode
                 if not stat.S_ISREG(mode):
                     raise OSError(
                         errno.EINVAL, "neither a file nor a directory, which `harness install` refuses", src
                     )
                 rel = os.path.relpath(src, directory).replace(os.sep, "/")
-                if rel.split("/")[0] in skip or fold(rel.split("/")[0]) in skipped:
+                if rel.split("/")[0] in skip or fold(rel.split("/")[0]) in folded:
                     continue
                 dst = "/".join(p for p in (prefix, rel) if p)
                 found.append((dst, src, stat.S_IMODE(mode) if dst.startswith("hooks/") else 0o644))
     return sorted(found)
 
 
-def digest_of(entries):
+def digest_of(entries: Iterable[tuple[str, bytes, int]]) -> str:
     """The SHA-256, as hex, of `entries`, [(installed path, bytes, installed mode)], in sorted order:
     the plan of `harness install`, whose digest the stamp records."""
     h = hashlib.sha256()
@@ -86,21 +93,21 @@ def digest_of(entries):
     return h.hexdigest()
 
 
-def digest(sources):
+def digest(sources: Iterable[Source]) -> str:
     """`digest_of` the files of `sources`, with the bytes that each holds now."""
-    entries = []
+    entries: list[tuple[str, bytes, int]] = []
     for dst, src, mode in files(sources):
-        with open(src, "rb") as f:
+        with src.open("rb") as f:
             entries.append((dst, f.read(), mode))
     return digest_of(entries)
 
 
-def check(home):
+def check(home: str | os.PathLike[str]) -> str | None:
     """The warning for the installation below `home`, or None when it is current."""
-    stamp = os.path.join(home, ".claude", STAMP)
+    stamp = Path(home, ".claude", STAMP)
     apply = "Run `harness install` to see the changes, then `harness install --apply`."
     try:
-        with open(stamp, encoding="utf-8") as f:
+        with stamp.open(encoding="utf-8") as f:
             recorded = json.load(f)
         sources, expected = recorded["sources"], recorded["digest"]
     except FileNotFoundError:
@@ -119,10 +126,12 @@ def check(home):
     return None
 
 
-def main():
+def main() -> int:
     try:
-        message = check(os.path.expanduser("~"))
-    except Exception as e:  # the hook only warns: an error it did not foresee is a warning too
+        message = check(Path("~").expanduser())
+    # The hook only warns: a stamp or a source of a shape that `check` does not name, a stamp nested
+    # too deep for `json` (RecursionError), and a home that cannot be found are warnings too.
+    except (OSError, ValueError, LookupError, TypeError, RuntimeError) as e:
         message = f"install-drift.py failed ({type(e).__name__}: {e}); the installation is not checked."
     if message:
         print(

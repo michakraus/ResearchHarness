@@ -28,6 +28,7 @@ Not swept: `format` runs Julia over the tree, `ci-protection` needs `gh` with a 
 pushes. `update` fetches the harness checkout itself; its own cases run it on a scratch remote.
 """
 
+import dataclasses
 import hashlib
 import os
 import pathlib
@@ -171,13 +172,27 @@ def digest(root):
 TIMEOUT = 120
 
 
-def run(command, env, cwd, timeout=TIMEOUT):
+@dataclasses.dataclass(frozen=True)
+class Run:
+    """The result of `run`, with the fields of `subprocess.CompletedProcess` that the checks read;
+    `returncode` is the text `timeout` for a run that outlives its timeout."""
+
+    args: list[str]
+    returncode: int | str
+    stdout: str
+    stderr: str
+
+
+def run(command: list[str], env: dict[str, str], cwd: str | pathlib.Path, timeout: float = TIMEOUT) -> Run:
     """One run of `command`; a run that outlives `timeout` exits `timeout`, which no check of the
     sweep accepts."""
     try:
-        return subprocess.run(command, env=env, cwd=cwd, capture_output=True, text=True, timeout=timeout)
+        p = subprocess.run(
+            command, env=env, cwd=cwd, capture_output=True, text=True, timeout=timeout, check=False
+        )
     except subprocess.TimeoutExpired:
-        return subprocess.CompletedProcess(command, "timeout", "", "")
+        return Run(command, "timeout", "", "")
+    return Run(command, p.returncode, p.stdout, p.stderr)
 
 
 # The checks of the sweep, each on the result of `run`.

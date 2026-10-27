@@ -14,14 +14,29 @@ question, and it stops when a tracked file has changes or the branch has commits
 `origin/main` lacks.
 """
 
+import argparse
+import contextlib
+import io
+import pathlib
+import shutil
 import subprocess
 import sys
+import tempfile
+from typing import Protocol
+from unittest import mock
 
 from . import REPO, HarnessError, changing
 from .githooks import git
+from .sweep import GIT
 
 
-def plan(repo):
+class Subcommands(Protocol):
+    """The `sub` that `register` receives: what `add_subparsers` returns."""
+
+    def add_parser(self, name: str, *, help: str, description: str) -> argparse.ArgumentParser: ...
+
+
+def plan(repo: pathlib.Path) -> int:
     """Fetch, then the number of commits of `origin/main` that `HEAD` lacks; a checkout that
     cannot be fast-forwarded is a `HarnessError`."""
     branch = git(repo, "symbolic-ref", "--quiet", "--short", "HEAD").stdout.strip()
@@ -46,7 +61,7 @@ def plan(repo):
     return behind
 
 
-def confirm(question):
+def confirm(question: str) -> bool:
     """True only for the answer y or Y; an empty line and the end of input mean no."""
     try:
         return input(f"{question} [y/N] ").strip() in ("y", "Y")
@@ -54,12 +69,14 @@ def confirm(question):
         return False
 
 
-def show_diff(repo):
-    """The whole diff, through git's pager when the output is a terminal."""
-    subprocess.run(["git", "-C", str(repo), "diff", "HEAD", "origin/main"])
+def show_diff(repo: pathlib.Path) -> None:
+    """The whole diff, through git's pager when the output is a terminal. Its exit status is not
+    read: the diff only informs the question that follows, which still decides."""
+    git_program = shutil.which("git") or "git"
+    subprocess.run([git_program, "-C", str(repo), "diff", "HEAD", "origin/main"], check=False)
 
 
-def install(args):
+def install(args: argparse.Namespace) -> int:
     """`harness install --apply` from the merged checkout, in a process of its own."""
     options = [
         o
@@ -68,11 +85,11 @@ def install(args):
         for o in (flag, value)
     ]
     return subprocess.run(
-        [sys.executable, str(REPO / "bin" / "harness"), *options, "install", "--apply"]
+        [sys.executable, str(REPO / "bin" / "harness"), *options, "install", "--apply"], check=False
     ).returncode
 
 
-def update(args, repo):
+def update(args: argparse.Namespace, repo: pathlib.Path) -> int:
     if args.apply and not sys.stdin.isatty():
         raise HarnessError("--apply asks on the terminal; run it yourself, in a terminal")
     behind = plan(repo)
@@ -102,11 +119,11 @@ def update(args, repo):
     return 0
 
 
-def cmd_update(args):
+def cmd_update(args: argparse.Namespace) -> int:
     return update(args, REPO)
 
 
-def register(sub):
+def register(sub: Subcommands) -> None:
     changing(
         sub.add_parser(
             "update",
@@ -123,47 +140,52 @@ def register(sub):
 def selftest():
     """`plan` and `update` on a scratch remote and its clone: a pinned and a diverged checkout
     stop, the dry run lists a new commit, and `--apply` merges and installs only after `y`."""
-    import argparse
-    import contextlib
-    import io
-    import pathlib
-    import tempfile
-    from unittest import mock
+    results: list[object] = []
 
-    from .sweep import GIT
-
-    results = []
-
-    def check(ok, label):
+    def check(ok: object, label: str) -> None:
         results.append(ok)
         print(f"{'ok ' if ok else 'BAD'}  update: {label}")
 
-    def run(*command, cwd):
+    def run(*command: str, cwd: pathlib.Path) -> None:
         subprocess.run(command, cwd=cwd, check=True, capture_output=True)
 
-    def attempt(repo, apply=False, answer="n", tty=True):
+    def attempt(
+        repo: pathlib.Path, *, apply: bool = False, answer: str = "n", tty: bool = True
+    ) -> tuple[int | str, bool]:
         """(exit status or the error text, whether install ran)."""
-        installed = []
+        installed: list[argparse.Namespace] = []
+
+        def ask(_question: str) -> str:
+            return answer
+
+        def install_stub(a: argparse.Namespace) -> int:
+            installed.append(a)
+            return 0
+
+        def show_diff_stub(_repo: pathlib.Path) -> None:
+            return None
+
         with (
             mock.patch.object(sys.stdin, "isatty", lambda: tty),
-            mock.patch("builtins.input", lambda _: answer),
-            mock.patch(f"{__name__}.install", lambda a: installed.append(a) or 0),
-            mock.patch(f"{__name__}.show_diff", lambda r: None),
+            mock.patch("builtins.input", ask),
+            mock.patch(f"{__name__}.install", install_stub),
+            mock.patch(f"{__name__}.show_diff", show_diff_stub),
             contextlib.redirect_stdout(io.StringIO()),
         ):
+            code: int | str
             try:
                 code = update(argparse.Namespace(apply=apply, profile=None, models=None), repo)
             except HarnessError as e:
                 code = str(e)
         return code, bool(installed)
 
-    with tempfile.TemporaryDirectory() as tmp, mock.patch.dict("os.environ", GIT):
-        tmp = pathlib.Path(tmp)
+    with tempfile.TemporaryDirectory() as name, mock.patch.dict("os.environ", GIT):
+        tmp = pathlib.Path(name)
         run("git", "init", "-q", "--bare", "-b", "main", "origin.git", cwd=tmp)
         run("git", "clone", "-q", "origin.git", "author", cwd=tmp)
         author, local = tmp / "author", tmp / "local"
 
-        def commit(repo, text):
+        def commit(repo: pathlib.Path, text: str) -> None:
             (repo / "file").write_text(text)
             run("git", "add", "file", cwd=repo)
             run("git", "commit", "-q", "-m", text, cwd=repo)

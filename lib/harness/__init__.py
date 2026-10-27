@@ -5,6 +5,7 @@ prints its plan and exits 1 when something would change, 0 when nothing would. `
 the change. Exit 2 is a usage error or a failure. A read-only subcommand takes no mode flag.
 """
 
+import argparse
 import pathlib
 
 REPO = pathlib.Path(__file__).resolve().parent.parent.parent
@@ -14,13 +15,15 @@ class HarnessError(Exception):
     """A failure the subcommand reports in one line; `harness` exits 2."""
 
 
-def changing(parser, help="make the change; without it, print the plan"):
+def changing(
+    parser: argparse.ArgumentParser, help: str = "make the change; without it, print the plan"
+) -> argparse.ArgumentParser:
     """Give a subcommand that changes something its `--apply` flag, with `help` as its help."""
     parser.add_argument("--apply", action="store_true", help=help)
     return parser
 
 
-def outcome(args, changes):
+def outcome(args: argparse.Namespace, changes: int) -> int:
     """The exit status of a subcommand that changes files, given its number of `changes`,
     planned or made."""
     return 0 if args.apply or not changes else 1

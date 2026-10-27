@@ -38,6 +38,8 @@ import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 _spec = importlib.util.spec_from_file_location("spec_gate", os.path.join(HERE, "spec-gate.py"))
+if _spec is None or _spec.loader is None:  # a `.py` path always has a spec with a source loader
+    raise ImportError(f"no module spec for spec-gate.py in {HERE}")
 spec_gate = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(spec_gate)
 
@@ -221,6 +223,7 @@ def render(path, part, lines, rows, ranges, labels, sources, skipped):
         cwd=os.path.dirname(os.path.abspath(path)),
         capture_output=True,
         text=True,
+        check=False,
     ).stdout.strip()
     head = [
         f"# Spec bundle — part {part}",
@@ -256,6 +259,8 @@ def main(argv):
         k = argv.index("--out")
         out, argv = argv[k + 1], argv[:k] + argv[k + 2 :]
     if len(argv) != 2:
+        if __doc__ is None:  # the module has a docstring; `python -OO` drops it
+            raise RuntimeError("spec-bundle.py has no docstring: run it without -OO")
         print(__doc__.strip().splitlines()[2].strip(), file=sys.stderr)
         return 3
     path, part = argv
@@ -280,6 +285,12 @@ def main(argv):
 if __name__ == "__main__":
     try:
         sys.exit(main(sys.argv[1:]))
-    except Exception as e:  # the script's own failure, told apart from an unresolved name
+    except (
+        OSError,
+        subprocess.SubprocessError,
+        ValueError,
+        IndexError,
+        RuntimeError,
+    ) as e:  # the script's own failure, told apart from an unresolved name
         print(f"spec-bundle.py failed: {type(e).__name__}: {e}", file=sys.stderr)
         sys.exit(3)

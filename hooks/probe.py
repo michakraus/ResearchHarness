@@ -20,6 +20,7 @@ with its shebang, and each call has a timeout.
 """
 
 import getpass
+import importlib.util
 import json
 import os
 import pathlib
@@ -30,6 +31,9 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import types
+from collections.abc import Callable
+from typing import Any, Literal, TypedDict, Unpack
 
 HOOKS = os.path.dirname(os.path.abspath(__file__)) + "/"
 
@@ -427,13 +431,20 @@ MANIFEST_CASES = [
 ]
 
 
+def load_module(name: str, path: str) -> types.ModuleType:
+    """The Python file `path`, loaded as the module `name`."""
+    spec = importlib.util.spec_from_file_location(name, path)
+    # A path that ends in `.py` always gets a spec with a source loader.
+    if spec is None or spec.loader is None:
+        raise ImportError(f"{path} gives no module spec")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def manifest_cases():
     """`worktree.py`'s `compat_ranges` and `copy_manifest`: (number of cases, number wrong)."""
-    import importlib.util
-
-    spec = importlib.util.spec_from_file_location("worktree_hook", WORKTREE)
-    hook = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(hook)
+    hook = load_module("worktree_hook", WORKTREE)
     total = wrong = 0
     for version, entry, expected in COMPAT_CASES:
         ranges = hook.compat_ranges(entry)
@@ -1043,7 +1054,19 @@ def omp_cases():
 
     node = shutil.which("node")
 
-    def home(name, scripts=None, paths=None, timeout=None):
+    class HomeOptions(TypedDict, total=False):
+        """The keywords of `home` that a fail-closed case sets."""
+
+        scripts: dict[str, str | None]
+        paths: str | Literal[False]
+        timeout: int
+
+    def home(
+        name: str,
+        scripts: dict[str, str | None] | None = None,
+        paths: str | Callable[[str, str], str] | Literal[False] | None = None,
+        timeout: int | None = None,
+    ) -> str:
         """A fixture home with the seven guard scripts of OC_SCRIPTS in hooks/, beside ext/, each
         one that `scripts` names replaced by its text there, or left out for None, and the
         extension with its path list in `ext/`: `paths`, for a function the text
@@ -1056,9 +1079,9 @@ def omp_cases():
         for script in OC_SCRIPTS:
             if script not in scripts:
                 os.symlink(HOOKS + script, h + "/hooks/" + script)
-            elif scripts[script] is not None:
+            elif (text := scripts[script]) is not None:
                 with open(h + "/hooks/" + script, "w") as f:
-                    f.write(scripts[script])
+                    f.write(text)
         with open(REPO + "/adapters/omp/guards.ts") as f:
             source = f.read()
         if timeout is not None:
@@ -1080,6 +1103,9 @@ def omp_cases():
         """'block', 'pass', or what went wrong, for one event of `tool` with input `data`; with
         `want`, a block whose reason lacks that text is wrong too."""
         event = json.dumps({"type": "tool_call", "toolCallId": "probe", "toolName": tool, "input": data})
+        # omp_cases returns before its first case when `node` is not on PATH.
+        if node is None:
+            raise RuntimeError("`node` is not on PATH")
         try:
             p = subprocess.run(
                 [node, "--input-type=module", "-e", OMP_DRIVER, h + "/ext/guards.mjs", event, cwd, mode],
@@ -1087,6 +1113,7 @@ def omp_cases():
                 text=True,
                 timeout=TIMEOUT,
                 env=env or {**CLEAN, "HOME": "/" + h},
+                check=False,
             )
         except subprocess.TimeoutExpired:
             return "timeout"
@@ -1107,13 +1134,18 @@ def omp_cases():
     try:
         sys.path.insert(0, REPO + "/lib")
         from harness import frontends, profile
-
+    except ImportError as e:  # the case reports it as wrong, and the probe goes on to its summary
+        report(ok=False, line=f"exp render got {type(e).__name__}  [omp-guard]  {e}")
+        return total, wrong
+    try:
         omp = frontends.adapter("omp")
         dummy = profile.load(REPO + "/examples/profile.toml")
         config = omp.render_config(dummy, omp.load_models(REPO + "/examples/models.toml"))
         patterns = json.loads("".join(l for l in config.splitlines(keepends=True) if not l.startswith("#")))
         patterns = patterns["bash"]["patterns"]
-    except Exception as e:  # the case reports it as wrong, and the probe goes on to its summary
+    # The adapter, the profile and the rendering fail with HarnessError; the parsing of their
+    # output with the others. The case reports it as wrong, and the probe goes on to its summary.
+    except (profile.HarnessError, OSError, ValueError, LookupError, TypeError) as e:
         report(False, f"exp render got {type(e).__name__}  [omp-guard]  {e}")
         return total, wrong
     if node is None:
@@ -1134,38 +1166,34 @@ def omp_cases():
                 {**json.loads(text), "ask": [*json.loads(text).get("ask", []), h + "/.claude/hooks/**"]}
             ),
         )
-        fail = {
-            label: home("omp-home-" + str(i), **kw)
-            for i, (label, kw) in enumerate(
-                [
-                    ("a guard exits 1", {"scripts": {"no-blind-stage.py": exit_with(1)}}),
-                    ("a guard script is missing", {"scripts": {"no-blind-stage.py": None}}),
-                    (
-                        "a guard prints output that is not JSON",
-                        {"scripts": {"no-blind-stage.py": "print('hello')\n"}},
-                    ),
-                    ("a guard answers deny with exit 0", {"scripts": {"no-blind-stage.py": decide}}),
-                    (
-                        "a guard is killed by a signal",
-                        {
-                            "scripts": {
-                                "no-blind-stage.py": "import os, signal\nos.kill(os.getpid(), signal.SIGKILL)\n"
-                            }
-                        },
-                    ),
-                    (
-                        "a guard takes longer than the timeout",
-                        {"scripts": {"no-blind-stage.py": "import time\ntime.sleep(20)\n"}, "timeout": 300},
-                    ),
-                    ("the path list is missing", {"paths": False}),
-                    ("the deny list is not a list", {"paths": '{"deny": "x", "edit": []}'}),
-                    ("the edit list is missing", {"paths": '{"deny": []}'}),
-                    ("rm-scope.py exits 1", {"scripts": {"rm-scope.py": exit_with(1)}}),
-                    ("the ask list is not a list", {"paths": '{"deny": [], "edit": [], "ask": "x"}'}),
-                    ("the ask list is missing", {"paths": '{"deny": [], "edit": []}'}),
-                ]
-            )
-        }
+        options: list[tuple[str, HomeOptions]] = [
+            ("a guard exits 1", {"scripts": {"no-blind-stage.py": exit_with(1)}}),
+            ("a guard script is missing", {"scripts": {"no-blind-stage.py": None}}),
+            (
+                "a guard prints output that is not JSON",
+                {"scripts": {"no-blind-stage.py": "print('hello')\n"}},
+            ),
+            ("a guard answers deny with exit 0", {"scripts": {"no-blind-stage.py": decide}}),
+            (
+                "a guard is killed by a signal",
+                {
+                    "scripts": {
+                        "no-blind-stage.py": "import os, signal\nos.kill(os.getpid(), signal.SIGKILL)\n"
+                    }
+                },
+            ),
+            (
+                "a guard takes longer than the timeout",
+                {"scripts": {"no-blind-stage.py": "import time\ntime.sleep(20)\n"}, "timeout": 300},
+            ),
+            ("the path list is missing", {"paths": False}),
+            ("the deny list is not a list", {"paths": '{"deny": "x", "edit": []}'}),
+            ("the edit list is missing", {"paths": '{"deny": []}'}),
+            ("rm-scope.py exits 1", {"scripts": {"rm-scope.py": exit_with(1)}}),
+            ("the ask list is not a list", {"paths": '{"deny": [], "edit": [], "ask": "x"}'}),
+            ("the ask list is missing", {"paths": '{"deny": [], "edit": []}'}),
+        ]
+        fail = {label: home("omp-home-" + str(i), **kw) for i, (label, kw) in enumerate(options)}
     except OSError as e:
         report(False, f"exp fixture got {type(e).__name__}  [omp-guard]  {e}")
         return total, wrong
@@ -1453,6 +1481,9 @@ def oc_cases():
             env["PATH"] = path
         if config_dir is not None:
             env["OPENCODE_CONFIG_DIR"] = config_dir
+        # oc_cases returns before its first case when `node` is not on PATH.
+        if node is None:
+            raise RuntimeError("`node` is not on PATH")
         try:
             p = subprocess.run(
                 [
@@ -1471,6 +1502,7 @@ def oc_cases():
                 timeout=TIMEOUT,
                 env={**env, "HOME": "/" + h},
                 cwd=process_cwd,
+                check=False,
             )
         except subprocess.TimeoutExpired:
             return "timeout"
@@ -1498,9 +1530,14 @@ def oc_cases():
     try:
         sys.path.insert(0, REPO + "/lib")
         from harness import profile
-
+    except ImportError as e:  # the case reports it as wrong, and the probe goes on to its summary
+        report(ok=False, line=f"exp profile got {type(e).__name__}  [oc-plugin]  {e}")
+        return total, wrong
+    try:
         dummy = profile.load(REPO + "/examples/profile.toml")
-    except Exception as e:  # the case reports it as wrong, and the probe goes on to its summary
+    # The profile fails with HarnessError, its fields of an unexpected shape with the others. The
+    # case reports it as wrong, and the probe goes on to its summary.
+    except (profile.HarnessError, OSError, ValueError, LookupError, TypeError) as e:
         report(False, f"exp profile got {type(e).__name__}  [oc-plugin]  {e}")
         return total, wrong
     if node is None:
@@ -2041,7 +2078,20 @@ def agy_cases():
         total, wrong = total + 1, wrong + (not ok)
         print(f"{'ok ' if ok else 'BAD'} {line}")
 
-    def home(name, scripts=None, paths=None, timeout=None, rendered_for=None):
+    class HomeOptions(TypedDict, total=False):
+        """The keywords of `home` that a fail-closed case sets."""
+
+        scripts: dict[str, str | None]
+        paths: str | Callable[[str], str] | Literal[False]
+        timeout: int
+
+    def home(
+        name: str,
+        scripts: dict[str, str | None] | None = None,
+        paths: str | Callable[[str], str] | Literal[False] | None = None,
+        timeout: int | None = None,
+        rendered_for: str | None = None,
+    ) -> str:
         """A fixture home with guard.py and the seven guard scripts of OC_SCRIPTS in
         .gemini/config/hooks/, each one that `scripts` names replaced by its text there, or left
         out for None, and the path list `paths`, for a function the text `paths(rendered list)`, else
@@ -2054,9 +2104,9 @@ def agy_cases():
         for script in OC_SCRIPTS:
             if script not in scripts:
                 os.symlink(HOOKS + script, config + "/hooks/" + script)
-            elif scripts[script] is not None:
+            elif (text := scripts[script]) is not None:
                 with open(config + "/hooks/" + script, "w") as f:
-                    f.write(scripts[script])
+                    f.write(text)
         with open(REPO + "/adapters/antigravity/guard.py") as f:
             source = f.read()
         if timeout is not None:
@@ -2074,10 +2124,26 @@ def agy_cases():
                 f.write(paths(rendered) if callable(paths) else paths if paths is not None else rendered)
         return h
 
-    def reply(h, tool=None, args=None, workspace=CWD, raw=None, env=None, argv=None, limit=TIMEOUT):
+    class ReplyOptions(TypedDict, total=False):
+        """The fields of the hook call that a case varies, beside the tool and its arguments."""
+
+        workspace: str
+        raw: str | None
+        env: dict[str, str] | None
+        argv: list[str] | None
+        limit: float
+
+    def reply(
+        h: str, tool: str | None = None, args: dict[str, Any] | None = None, **options: Unpack[ReplyOptions]
+    ) -> tuple[Any, tuple[str, str] | None]:
         """The answer of the hook in home `h` on a call of `tool` with `args`, or on the payload
         text `raw`, within `limit` seconds, as (the answer object, None); (None, what went wrong)
-        when it prints no decision, or `{}`."""
+        when it prints no decision, or `{}`. `workspace` is CWD and `limit` TIMEOUT by default."""
+        workspace = options.get("workspace", CWD)
+        raw = options.get("raw")
+        env = options.get("env")
+        argv = options.get("argv")
+        limit = options.get("limit", TIMEOUT)
         payload = (
             raw
             if raw is not None
@@ -2101,6 +2167,7 @@ def agy_cases():
                 timeout=limit,
                 cwd=config,
                 env=env or {**CLEAN, "HOME": "/" + h},
+                check=False,
             )
         except subprocess.TimeoutExpired:
             return None, ("timeout", "")
@@ -2133,65 +2200,66 @@ def agy_cases():
     try:
         sys.path.insert(0, REPO + "/lib")
         from harness import frontends, profile
-
+    except ImportError as e:  # the case reports it as wrong, and the probe goes on to its summary
+        report(ok=False, line=f"exp render got {type(e).__name__}  [agy-guard]  {e}")
+        return total, wrong
+    try:
         agy = frontends.adapter("antigravity")
         dummy = profile.load(REPO + "/examples/profile.toml")
         cfg = frontends.adapter("claude").settings_template(dummy, FIXTURE.name + "/no-network.toml")
         rules, _ = agy.render_permissions(cfg, dummy)
-    except Exception as e:  # the case reports it as wrong, and the probe goes on to its summary
+    # The adapters, the profile and the rendering fail with HarnessError, an input of an unexpected
+    # shape with the others. The case reports it as wrong, and the probe goes on to its summary.
+    except (profile.HarnessError, OSError, ValueError, LookupError, TypeError) as e:
         report(False, f"exp render got {type(e).__name__}  [agy-guard]  {e}")
         return total, wrong
     exit_with = "import sys\nsys.exit({})\n".format
     try:
         good = home("agy-home")
-        fail = {
-            label: home("agy-home-" + str(i), **kw)
-            for i, (label, kw) in enumerate(
-                [
-                    (
-                        "a guard script is replaced by exit 7",
-                        {"scripts": {"no-blind-stage.py": exit_with(7)}},
-                    ),
-                    ("a guard script is missing", {"scripts": {"rm-scope.py": None}}),
-                    (
-                        "a guard prints output that is not JSON",
-                        {"scripts": {"gh-api-writes.py": "print('hello')\n"}},
-                    ),
-                    (
-                        "a guard takes longer than the timeout",
-                        {"scripts": {"git-archive-output.py": "import time\ntime.sleep(5)\n"}, "timeout": 1},
-                    ),
-                    ("the Kaimon guard exits 1", {"scripts": {"kaimon-session.py": exit_with(1)}}),
-                    ("the path list is missing", {"paths": False}),
-                    ("the deny list is not a list", {"paths": '{"deny": "x"}'}),
-                    ("the path list is not JSON", {"paths": "{"}),
-                    (
-                        "the edit list is missing",
-                        {
-                            "paths": lambda text: json.dumps(
-                                {k: v for k, v in json.loads(text).items() if k != "edit"}
-                            )
-                        },
-                    ),
-                    (
-                        "the ask list is not a list",
-                        {"paths": lambda text: json.dumps({**json.loads(text), "ask": "x"})},
-                    ),
-                    (
-                        "the bash_deny list is not a list",
-                        {"paths": lambda text: json.dumps({**json.loads(text), "bash_deny": "x"})},
-                    ),
-                    (
-                        "the bash_ask list is missing",
-                        {
-                            "paths": lambda text: json.dumps(
-                                {k: v for k, v in json.loads(text).items() if k != "bash_ask"}
-                            )
-                        },
-                    ),
-                ]
-            )
-        }
+        options: list[tuple[str, HomeOptions]] = [
+            (
+                "a guard script is replaced by exit 7",
+                {"scripts": {"no-blind-stage.py": exit_with(7)}},
+            ),
+            ("a guard script is missing", {"scripts": {"rm-scope.py": None}}),
+            (
+                "a guard prints output that is not JSON",
+                {"scripts": {"gh-api-writes.py": "print('hello')\n"}},
+            ),
+            (
+                "a guard takes longer than the timeout",
+                {"scripts": {"git-archive-output.py": "import time\ntime.sleep(5)\n"}, "timeout": 1},
+            ),
+            ("the Kaimon guard exits 1", {"scripts": {"kaimon-session.py": exit_with(1)}}),
+            ("the path list is missing", {"paths": False}),
+            ("the deny list is not a list", {"paths": '{"deny": "x"}'}),
+            ("the path list is not JSON", {"paths": "{"}),
+            (
+                "the edit list is missing",
+                {
+                    "paths": lambda text: json.dumps(
+                        {k: v for k, v in json.loads(text).items() if k != "edit"}
+                    )
+                },
+            ),
+            (
+                "the ask list is not a list",
+                {"paths": lambda text: json.dumps({**json.loads(text), "ask": "x"})},
+            ),
+            (
+                "the bash_deny list is not a list",
+                {"paths": lambda text: json.dumps({**json.loads(text), "bash_deny": "x"})},
+            ),
+            (
+                "the bash_ask list is missing",
+                {
+                    "paths": lambda text: json.dumps(
+                        {k: v for k, v in json.loads(text).items() if k != "bash_ask"}
+                    )
+                },
+            ),
+        ]
+        fail = {label: home("agy-home-" + str(i), **kw) for i, (label, kw) in enumerate(options)}
         # A home whose name holds a space, and a home whose list is rendered for the user's own
         # home, which `~<user>` names.
         spaced = home("agy home")
@@ -2367,15 +2435,14 @@ def agy_cases():
     # A guard that cannot start denies: guard.py loaded in this process, with a `subprocess.run`
     # that raises as a missing interpreter does.
     try:
-        import importlib.util
         from unittest import mock
 
-        spec = importlib.util.spec_from_file_location("agy_guard", good + "/.gemini/config/hooks/guard.py")
-        shim = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(shim)
+        shim = load_module("agy_guard", good + "/.gemini/config/hooks/guard.py")
         with mock.patch.object(shim.subprocess, "run", side_effect=FileNotFoundError(2, "No such file")):
             got = shim.run("no-blind-stage.py", "{}")
-    except Exception as e:  # the case reports it as wrong
+    # A guard.py that cannot be read or compiled, that has no `subprocess` or `run`, or whose `run`
+    # lets the error of the start through: the case reports it as wrong.
+    except (ImportError, SyntaxError, OSError, AttributeError, TypeError, ValueError) as e:
         got = (type(e).__name__, str(e))
     report(
         got[0] == "deny" and "could not start" in str(got[1]),
@@ -2476,6 +2543,7 @@ def agy_cases():
         cwd=elsewhere,
         env={**CLEAN, "HOME": spaced, "PATH": "/nonexistent"},
         timeout=TIMEOUT,
+        check=False,
     )
     got = p.stdout.strip()
     report(
@@ -2494,6 +2562,7 @@ def agy_cases():
         cwd=elsewhere,
         env={**CLEAN, "HOME": spaced},
         timeout=TIMEOUT,
+        check=False,
     )
     report(
         p.returncode != 0 and p.stdout == "",
@@ -2522,6 +2591,7 @@ def call(script, payload, env=None, args: tuple[str, ...] = ()):
             text=True,
             env=env or ENV,
             timeout=TIMEOUT,
+            check=False,
         )
     except subprocess.TimeoutExpired:
         return None
@@ -2586,7 +2656,12 @@ def fixture():
             ["add", "--", *files],
             ["commit", "-q", "-m", "fixture"],
         ):
-            subprocess.run(["git", "-C", repository, *command], env=git_env, check=True, capture_output=True)
+            subprocess.run(
+                ["git", "-C", repository, *command],  # noqa: S607 -- git runs from PATH
+                env=git_env,
+                check=True,
+                capture_output=True,
+            )
     os.symlink("/", LINK)
 
 
@@ -2631,6 +2706,7 @@ def agy_drift(env, payload="{}"):
             cwd=config,
             env=env,
             timeout=TIMEOUT,
+            check=False,
         )
     except subprocess.TimeoutExpired:
         return "timeout", ""
@@ -2673,6 +2749,7 @@ def install(base, env):
         text=True,
         env=env,
         timeout=120,
+        check=False,
     )
     return p.returncode, p.stdout + p.stderr
 
@@ -2852,7 +2929,9 @@ def drift_cases(install=install):
             total, wrong = total + 1, wrong + 1
             print(f"BAD exp {expected} got {e}  [inst-drif]  {label}; the cases after it do not run")
             return total, wrong
-        except Exception as e:  # a case that crashes is wrong, and the next case still runs
+        # A change or a hook run that fails on a file, a stamp of an unexpected shape, or a timeout
+        # of the install: a case that crashes is wrong, and the next case still runs.
+        except (OSError, ValueError, LookupError, TypeError, subprocess.SubprocessError) as e:
             got, message = f"raised {type(e).__name__}", str(e)
         ok = got == expected and text in message
         total += 1
@@ -2860,7 +2939,9 @@ def drift_cases(install=install):
         print(f"{'ok ' if ok else 'BAD'} exp {expected} got {got}  [inst-drif]  {label}: {message[:160]!r}")
         try:
             agy, agy_message = agy_drift(env, payload)
-        except Exception as e:  # a case that crashes is wrong, and the next case still runs
+        # A hooks.json that cannot be read or is of an unexpected shape: a case that crashes is
+        # wrong, and the next case still runs.
+        except (OSError, ValueError, LookupError, TypeError, AttributeError) as e:
             agy, agy_message = f"raised {type(e).__name__}", str(e)
         ok = agy == expected and agy_message == message
         total += 1
@@ -2892,7 +2973,9 @@ def drift_cases(install=install):
                 with open(copy, "w") as f:
                     f.write(source)
             agy, agy_message = agy_drift(env)
-        except Exception as e:  # a case that crashes is wrong, and the next case still runs
+        # A copy that cannot be written, or a hooks.json that cannot be read or is of an unexpected
+        # shape: a case that crashes is wrong, and the next case still runs.
+        except (OSError, ValueError, LookupError, TypeError, AttributeError) as e:
             agy, agy_message = f"raised {type(e).__name__}", str(e)
         ok = agy == "warn" and copy in agy_message and text in agy_message
         total += 1

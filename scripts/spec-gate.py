@@ -140,6 +140,7 @@ def validate(spec, own, no_run, devices):
         [sys.executable, os.path.join(HERE, "spec-validate.py"), spec, *where, "--devices", devices],
         capture_output=True,
         text=True,
+        check=False,
     )
     if p.returncode not in (0, 1, 2):
         raise RuntimeError(f"spec-validate.py exits {p.returncode}: {p.stderr.strip()}")
@@ -159,7 +160,8 @@ def main(argv):
         k = argv.index("--devices")
         devices, argv = argv[k + 1], argv[:k] + argv[k + 2 :]
     if not argv:
-        print(__doc__.strip().splitlines()[2].strip())
+        # `python -OO` drops the docstring; the IndexError then exits 3.
+        print((__doc__ or "").strip().splitlines()[2].strip())
         return 3
     path, wanted = argv[0], set(argv[1:])
     text = sections(open(path, encoding="utf-8").read().split("\n"))
@@ -227,6 +229,12 @@ def main(argv):
 if __name__ == "__main__":
     try:
         sys.exit(main(sys.argv[1:]))
-    except Exception as e:  # the script's own failure, told apart from a missing label
+    except (
+        OSError,
+        subprocess.SubprocessError,
+        ValueError,
+        IndexError,
+        RuntimeError,
+    ) as e:  # the script's own failure, told apart from a missing label
         print(f"spec-gate.py failed: {type(e).__name__}: {e}", file=sys.stderr)
         sys.exit(3)

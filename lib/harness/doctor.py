@@ -50,6 +50,8 @@ import tempfile
 import tomllib
 import types
 from collections import namedtuple
+from collections.abc import Callable
+from typing import cast
 from unittest import mock
 
 from . import REPO, HarnessError, install
@@ -172,6 +174,7 @@ def run(command, timeout=None):
             timeout=timeout,
             stdin=subprocess.DEVNULL,
             env=environment(),
+            check=False,
         )
     except FileNotFoundError:
         return None
@@ -383,8 +386,9 @@ class Doctor:
         out = []
         for name in names:
             entry = deps.get(name)
-            readable = isinstance(entry, list) and entry and isinstance(entry[0], dict)
-            version = entry[0].get("version") if readable else None
+            head = cast(object, entry[0] if isinstance(entry, list) and entry else None)
+            fields = cast("dict[str, object]", head) if isinstance(head, dict) else {}
+            version = fields.get("version")
             if version is None:
                 out.append(self.fail(name, f"not in {manifest}", "install"))
             elif not isinstance(version, str) or VERSION.fullmatch(version) is None:
@@ -467,7 +471,8 @@ class Doctor:
             for o in (flag, value)
         ]
         r = run(HARNESS + options + ["install"], INSTALL_TIMEOUT)
-        code, out, err = r
+        # The program of HARNESS is this interpreter, which exists: `run` gives no None.
+        code, out, err = cast("tuple[int | str, str, str]", r)
         count = re.search(r"^(\d+) change\(s\) to make\.$", out, re.M)
         if code == 0 and count and count.group(1) == "0":
             result = Result("PASS", "install", "0 change(s) to make")
@@ -666,7 +671,8 @@ class Doctor:
                 Result("SKIP", "harness test", "run with --full"),
                 Result("SKIP", "Revise", "run with --full"),
             ]
-        code, out, err = run(HARNESS + ["test"], TEST_TIMEOUT)
+        # The program of HARNESS is this interpreter, which exists: `run` gives no None.
+        code, out, err = cast("tuple[int | str, str, str]", run([*HARNESS, "test"], TEST_TIMEOUT))
         m = SUMMARY.fullmatch(last(out))
         if code == 0 and m and m.group(2) == "0":
             test = Result("PASS", "harness test", last(out))
@@ -689,9 +695,10 @@ class Doctor:
         ]
 
 
-def numbers_of(version):
+def numbers_of(version: str):
     """The three integers of the first version in `version`."""
-    return numbers(VERSION.search(version).group(0))
+    # Each caller passes a text that VERSION has matched.
+    return numbers(cast("re.Match[str]", VERSION.search(version)).group(0))
 
 
 def read(path):
@@ -874,9 +881,11 @@ def stubs(directory, system_name):
     for name, cases in (LINUX if system_name == "Linux" else MACOS).items():
         stub(directory / name, cases)
     version = GIT_VERSION[system_name]
+    # The cases run where git is on the PATH.
+    git = cast(str, shutil.which("git"))
     (directory / "git").write_text(
         f'#!/bin/sh\n[ "$*" = --version ] && {{ printf %s {shlex.quote(version)}; '
-        f'exit 0; }}\nexec {shlex.quote(shutil.which("git"))} "$@"\n'
+        f'exit 0; }}\nexec {shlex.quote(git)} "$@"\n'
     )
     (directory / "git").chmod(0o755)
 
@@ -898,6 +907,9 @@ class Fixture:
     """A scratch HOME one level below `root`, with every step of the setup page done, and a
     directory of stub commands that print what each tool prints on `system`; `results` runs the
     checks of some sections with both."""
+
+    # A patch that a case sets on its fixture and enters around `results`.
+    patch: contextlib.AbstractContextManager[object]
 
     def __init__(self, root, system_name, claude):
         self.system = system_name
@@ -1241,7 +1253,8 @@ def status_cases(check, root, system_name):
         )
         for floor in MINIMUMS.get(name, ()):
             out = printed[command][0][1]
-            at = VERSION.search(out).group(0)
+            # The stub of each tool prints a version.
+            at = cast("re.Match[str]", VERSION.search(out)).group(0)
             for version, want in ((floor, "PASS"), (below(floor), "FAIL")):
                 text = out.replace(at, version, 1)
                 case(
@@ -1519,14 +1532,14 @@ def status_cases(check, root, system_name):
         lambda f: shutil.rmtree(f.home / ".config" / "opencode"),
         ("profile_checks",),
     )
-    other = root / "opencode-elsewhere"
-    other.mkdir(parents=True)
+    elsewhere = cast(pathlib.Path, root / "opencode-elsewhere")
+    elsewhere.mkdir(parents=True)
     case(
         "$OPENCODE_CONFIG_DIR, and no ~/.config/opencode",
         {"OpenCode directory": "PASS"},
         lambda f: shutil.rmtree(f.home / ".config" / "opencode"),
         ("profile_checks",),
-        extra={"OPENCODE_CONFIG_DIR": str(other)},
+        extra={"OPENCODE_CONFIG_DIR": str(elsewhere)},
     )
     case(
         "an $OPENCODE_CONFIG_DIR that does not exist, and ~/.config/opencode",
@@ -1938,7 +1951,8 @@ def status_cases(check, root, system_name):
     try:
         got, text = f.results()
         raised = None
-    except Exception as e:  # the case reports what a check raised instead of stopping the suite
+    # The case reports what a check raised instead of stopping the suite.
+    except (OSError, ValueError, LookupError, TypeError, AttributeError) as e:
         got, text, raised = {}, "", repr(e)
     missing = [name for name, command, _, without in TOOLS if without is None]
     check(
@@ -1982,14 +1996,14 @@ def exit_cases(check, root):
         statuses = sorted({line[:4] for line in f.out.getvalue().splitlines()[:-2]})
         check(code == want, f"{label}: exit {code} -> {statuses}")
     for argv in (["doctor", "--bogus"], ["doctor", "extra"]):
-        p = subprocess.run(HARNESS + argv, capture_output=True, text=True)
+        p = subprocess.run(HARNESS + argv, capture_output=True, text=True, check=False)
         check(
             p.returncode == 2 and "Traceback" not in p.stderr,
             f"harness {' '.join(argv)}: exit {p.returncode}",
         )
 
 
-def process_cases(check, root):
+def process_cases(check: Callable[[object, str], object], root: pathlib.Path):
     """`harness doctor` in a process of its own on the contract sweep's fixture, with the stubs of
     this system on the PATH and the real dry run of `harness install`: it exits 0 or 1, prints no
     traceback and changes no file below the fixture."""
@@ -2015,7 +2029,9 @@ def process_cases(check, root):
     stubs(bin_dir, system())
     env["PATH"] = str(bin_dir)
     before = sweep.digest(root)
-    p = subprocess.run(HARNESS + ["doctor"], capture_output=True, text=True, env=env, cwd=root, timeout=300)
+    p = subprocess.run(
+        [*HARNESS, "doctor"], capture_output=True, text=True, env=env, cwd=root, timeout=300, check=False
+    )
     changed = sweep.digest(root) != before
     install_line = next(
         (line for line in p.stdout.splitlines() if line.startswith(("PASS  install ", "FAIL  install "))),

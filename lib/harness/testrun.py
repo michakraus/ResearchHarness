@@ -533,10 +533,13 @@ def selftest():
 
     names = list(parts(cli.modules()))
     spec = importlib.util.spec_from_file_location("harness_probe", PROBE)
+    # A path that ends in .py gives a spec with a source loader.
+    if spec is None or spec.loader is None:
+        raise HarnessError(f"{PROBE} gives no module spec")
     probe = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(probe)
     probe.FIXTURE.cleanup()
-    probe.GROUPS |= {"x": lambda: (3, 1), "y": lambda: (4, 1)}
+    probe.GROUPS.update({"x": lambda: (3, 1), "y": lambda: (4, 1)})
     with contextlib.redirect_stdout(io.StringIO()) as out:
         code = probe.cases(["x", "y"])
     check(

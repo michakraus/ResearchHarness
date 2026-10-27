@@ -532,3 +532,13 @@
   the repository checks for a `timeout=` yet.
 - kind: not verified
 - found: 2026-10-26, the critic of the test runner
+
+### K111 · No case of the `protection` part runs `gh()`.
+
+- location: `lib/harness/protection.py:113`
+- evidence: with `check=False` changed to `check=True` in the `subprocess.run` of `gh()`,
+  `bin/harness test protection` still prints `part protection: 7 cases, 0 wrong`. So no case
+  shows that a failed `gh` call reaches the retry and the `GhError`, and not a
+  `CalledProcessError`.
+- kind: missing test
+- found: 2026-10-27, the critic of the strict-Python part

@@ -21,6 +21,7 @@ Exit status 0 on success; 1 when Ollama fails, a model is missing, an embedding 
 """
 
 import argparse
+import http.client
 import json
 import math
 import os
@@ -52,11 +53,12 @@ def bullets(seg, fen):
     entries, cur, prev_blank, attached = [], None, False, False
     for (i, line), f in zip(seg, fen):
         if f and not FENCE.match(line):
-            if attached:
+            # A fence is attached only to an entry: `attached` implies an entry in `cur`.
+            if attached and cur is not None:
                 cur[1].append(line)
             continue
         if f:  # a delimiter
-            if attached:  # closes a fence that belongs to the entry
+            if attached and cur is not None:  # closes a fence that belongs to the entry
                 cur[1].append(line)
                 attached = False
                 continue
@@ -217,6 +219,8 @@ def loc(e):
 
 
 def main():
+    if __doc__ is None:  # the module has a docstring; `python -OO` drops it
+        raise RuntimeError("known-issues-similar.py has no docstring: run it without -OO")
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--model", required=True)
     ap.add_argument("--threshold", type=float)
@@ -237,7 +241,14 @@ def main():
             i, j = sorted((find(entries, r1, n1), find(entries, r2, n2)))
             labelled.add((i, j))
         vecs = embed(a.model, [e[3] for e in entries])
-    except Exception as err:  # every failure is fatal, and nothing is written
+    except (
+        OSError,
+        ValueError,
+        KeyError,
+        TypeError,
+        RuntimeError,
+        http.client.HTTPException,
+    ) as err:  # every failure is fatal, and nothing is written
         print(f"known-issues-similar: {err}", file=sys.stderr)
         return 1
     pairs = []

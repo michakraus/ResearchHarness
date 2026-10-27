@@ -101,10 +101,17 @@ class GhError(Exception):
     """A `gh` call that failed; the message is its first line of output."""
 
 
-def gh(*args, payload=None):
+def gh(*args: str, payload: str | None = None) -> str:
     """Run `gh args` and return its stdout; retry the keychain XPC failure four times."""
+    out = ""
     for attempt in range(4):
-        p = subprocess.run(["gh", *args], input=payload, capture_output=True, text=True)
+        p = subprocess.run(
+            ["gh", *args],  # noqa: S607 -- gh runs from PATH, where the user installs it
+            input=payload,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
         if p.returncode == 0:
             return p.stdout
         out = (p.stdout + p.stderr).strip()
@@ -141,7 +148,10 @@ def verify_workflows():
     """Refuse unless the workflows are canonical: the static check list depends on it."""
     print("verifying that the workflows are canonical...", flush=True)
     verifier = REPO / "githooks" / "verify-workflows.jl"
-    p = subprocess.run(["julia", "--startup-file=no", str(verifier), "--quiet"])
+    p = subprocess.run(
+        ["julia", "--startup-file=no", str(verifier), "--quiet"],  # noqa: S607 -- julia runs from PATH
+        check=False,
+    )
     if p.returncode != 0:
         raise HarnessError(
             "workflows have drifted; protection not touched — run `harness workflows --apply` first"

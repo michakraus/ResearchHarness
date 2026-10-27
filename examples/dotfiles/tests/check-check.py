@@ -87,7 +87,7 @@ KIT_AFTER_PIN = KIT | {
 }
 
 failures = []
-ROOT = None  # the scratch directory of the whole run
+RUN = {}  # "root": the scratch directory of the whole run, which main sets
 KEYS = {}  # name -> private key path
 
 
@@ -109,7 +109,7 @@ def check(condition, message):
 
 
 def machines_data():
-    with open(SOURCE / ".chezmoidata" / "machines.toml", "rb") as handle:
+    with (SOURCE / ".chezmoidata" / "machines.toml").open("rb") as handle:
         return tomllib.load(handle)
 
 
@@ -146,11 +146,11 @@ def xy_channels(host):
 
 
 def scratch(name):
-    return pathlib.Path(tempfile.mkdtemp(prefix=f"{name}-", dir=ROOT))
+    return pathlib.Path(tempfile.mkdtemp(prefix=f"{name}-", dir=RUN["root"]))
 
 
 def must(cmd, env, cwd=None):
-    result = subprocess.run(cmd, capture_output=True, text=True, env=env, cwd=cwd)
+    result = subprocess.run(cmd, capture_output=True, text=True, env=env, cwd=cwd, check=False)
     if result.returncode != 0:
         raise RuntimeError(f"{' '.join(map(str, cmd))}: {result.stderr.strip()}")
     return result.stdout.strip()
@@ -181,7 +181,7 @@ def render(host, extra=None):
         json.dumps(data),
         "execute-template",
     ]
-    result = subprocess.run(cmd, capture_output=True, text=True, input=CHECK.read_text())
+    result = subprocess.run(cmd, capture_output=True, text=True, input=CHECK.read_text(), check=False)
     return result.returncode, result.stdout, result.stderr
 
 
@@ -193,7 +193,7 @@ def rendered(host, extra=None):
 
 
 def make_key(name):
-    directory = ROOT / "keys"
+    directory = RUN["root"] / "keys"
     directory.mkdir(exist_ok=True)
     path = directory / name
     must(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", name, "-f", str(path)], dict(os.environ))
@@ -227,7 +227,8 @@ DOCTOR = [
     doctor_line("SKIP", "harness test", "run with --full"),
     doctor_line("SKIP", "Revise", "run with --full"),
 ]
-DOCTOR_FULL = DOCTOR[:3] + [
+DOCTOR_FULL = [
+    *DOCTOR[:3],
     doctor_line("PASS", "harness test", "412 cases, 0 wrong"),
     doctor_line("PASS", "Revise", "julia -e 'using Revise' loads it (/home/example/.juliaup/bin/julia)"),
 ]
@@ -289,7 +290,7 @@ class Machine:
     every check of which passes until a case changes it. With kit=False, harness_commit has no
     examples/dotfiles/kit.toml; a string as `kit` is the text of its kit.toml."""
 
-    def __init__(self, name, host, sandbox=False, kit=True):
+    def __init__(self, name, host, *, sandbox=False, kit: bool | str = True):
         self.host = host
         self.root = scratch(name)
         self.home = self.root / "home"
@@ -313,7 +314,7 @@ class Machine:
             "HOME": str(author_home),
             "PATH": BASE_PATH,
             "LANG": "C",
-            "TMPDIR": str(ROOT),
+            "TMPDIR": str(RUN["root"]),
             "GIT_CONFIG_NOSYSTEM": "1",
             "GIT_CONFIG_GLOBAL": str(author_config),
         }
@@ -321,7 +322,7 @@ class Machine:
             "HOME": str(self.home),
             "PATH": f"{self.bindir}:{BASE_PATH}",
             "LANG": "C",
-            "TMPDIR": str(ROOT),
+            "TMPDIR": str(RUN["root"]),
             "GIT_CONFIG_NOSYSTEM": "1",
             "STUBS": str(self.stubs),
         }
@@ -435,6 +436,7 @@ class Machine:
             env=self.env,
             cwd=self.home,
             timeout=120,
+            check=False,
         )
         return result.returncode, result.stdout, result.stderr
 
@@ -445,17 +447,18 @@ def parse(out):
     them, which is the last line."""
     lines = out.splitlines()
     defects = []
-    if len(lines) < 3 or lines[-2] != "" or not COUNT.fullmatch(lines[-1]):
+    count = COUNT.fullmatch(lines[-1]) if len(lines) >= 3 else None
+    if len(lines) < 3 or lines[-2] != "" or not count:
         return [], [f"the output does not end in an empty line and a count line: {lines[-2:]}"]
     checks = []
     for line in lines[:-2]:
-        m = re.fullmatch(r"(PASS|WARN|FAIL|SKIP)  (.{%d})  (.*)" % WIDTH, line)
+        m = re.fullmatch(rf"(PASS|WARN|FAIL|SKIP)  (.{{{WIDTH}}})  (.*)", line)
         if m is None or m.group(2).startswith(" "):
             defects.append(f"not a check line: {line!r}")
             continue
         checks.append((m.group(1), m.group(2).rstrip(), m.group(3)))
     counts = [sum(c[0] == s for c in checks) for s in ("PASS", "WARN", "FAIL", "SKIP")]
-    if [int(n) for n in COUNT.fullmatch(lines[-1]).groups()] != counts:
+    if [int(n) for n in count.groups()] != counts:
         defects.append(f"the count line {lines[-1]!r} does not count the lines {counts}")
     return checks, defects
 
@@ -489,7 +492,7 @@ def test_all_pass():
             text = [doctor_line(*c) for c in checks]
             check(text[: len(doctor)] == doctor, f"{label}: harness doctor's lines come first, unchanged")
             check(
-                m.calls("harness") == [" ".join(("doctor",) + args)],
+                m.calls("harness") == [" ".join(("doctor", *args))],
                 f"{label}: harness called as {m.calls('harness')}",
             )
             names = [c[1] for c in checks[len(doctor) :]]
@@ -593,10 +596,10 @@ def test_usage():
 def test_doctor():
     print("\n== harness doctor: its FAIL lines count; missing; an exit with no FAIL line")
     m = Machine("doctor-fail", OTHER_HOST)
-    lines = DOCTOR[:2] + [DOCTOR_FAIL] + DOCTOR[2:]
+    lines = [*DOCTOR[:2], DOCTOR_FAIL, *DOCTOR[2:]]
     m.answer("doctor.out", doctor_output(lines))
     m.answer("doctor.code", "1\n")
-    code, out, err = m.run()
+    code, out, _ = m.run()
     checks, defects = parse(out)
     check(
         not defects and [doctor_line(*c) for c in checks[: len(lines)]] == lines,
@@ -615,7 +618,7 @@ def test_doctor():
 
     m = Machine("doctor-missing", OTHER_HOST)
     (m.bindir / "harness").unlink()
-    code, out, err = m.run()
+    code, out, _ = m.run()
     checks, defects = parse(out)
     got = {name: (status, detail) for status, name, detail in checks}
     check(
@@ -636,7 +639,7 @@ def test_doctor():
         m = Machine("doctor-exit", OTHER_HOST)
         m.answer("doctor.out", text)
         m.answer("doctor.code", status + "\n")
-        code, out, err = m.run()
+        code, out, _ = m.run()
         checks, defects = parse(out)
         got = {name: (s, detail) for s, name, detail in checks}
         check(
@@ -657,7 +660,7 @@ def test_chezmoi():
     for sandbox in (False, True):
         m = Machine("verify", OTHER_HOST, sandbox=sandbox)
         m.answer("verify.code", "1\n")
-        code, out, err = m.run()
+        code, out, _ = m.run()
         got = statuses(parse(out)[0], DOCTOR)
         check(
             got["chezmoi verify"] == "FAIL" and got["chezmoi diff"] == "PASS" and code == 1,
@@ -670,7 +673,7 @@ def test_chezmoi():
         "diff --git a/.zshrc b/.zshrc\nindex 1111111..2222222 100644\n"
         "--- a/.zshrc\n+++ b/.zshrc\n@@ -1 +1 @@\n-# old\n+# new\n",
     )
-    code, out, err = m.run()
+    code, out, _ = m.run()
     checks, _ = parse(out)
     got = own(checks, DOCTOR)
     check(
@@ -686,7 +689,7 @@ def test_chezmoi():
         for verb in ("verify", "diff"):
             m.answer(f"{verb}.err", CHEZMOI_DENIED + "\n")
             m.answer(f"{verb}.code", "1\n")
-        code, out, err = m.run()
+        code, out, _ = m.run()
         got = own(parse(out)[0], DOCTOR)
         label = "in a sandbox" if sandbox else "outside a sandbox"
         check(
@@ -699,7 +702,7 @@ def test_chezmoi():
 
     m = Machine("chezmoi-missing", OTHER_HOST, sandbox=True)
     (m.bindir / "chezmoi").unlink()
-    code, out, err = m.run()
+    code, out, _ = m.run()
     got = own(parse(out)[0], DOCTOR)
     check(
         all(got[v][0] == "FAIL" and "not found" in got[v][1] for v in ("chezmoi verify", "chezmoi diff"))
@@ -714,7 +717,7 @@ def test_chezmoi():
 def test_signature():
     print("\n== the signature of the source's HEAD, by the applied allowed_signers")
     m = Machine("signed", OTHER_HOST)
-    code, out, err = m.run()
+    code, out, _ = m.run()
     got = own(parse(out)[0], DOCTOR)
     check(
         got["source signature"][0] == "PASS" and PRINCIPAL in got["source signature"][1],
@@ -741,7 +744,7 @@ def test_signature():
             (m.home / ".gitconfig").write_text(
                 f'[gpg]\n\tformat = ssh\n[gpg "ssh"]\n\tallowedSignersFile = {m.source / SIGNERS_SOURCE}\n'
             )
-        code, out, err = m.run()
+        code, out, _ = m.run()
         got = own(parse(out)[0], DOCTOR)
         check(
             got["source signature"][0] == "FAIL"
@@ -757,7 +760,7 @@ def test_signature():
             m.signers.unlink()
         else:
             m.signers.write_text(content)
-        code, out, err = m.run()
+        code, out, _ = m.run()
         got = own(parse(out)[0], DOCTOR)
         check(
             got["source signature"][0] == "FAIL"
@@ -773,7 +776,7 @@ def test_origin():
     tip = m.commit("on the remote", key="listed")
     m.push()
     m.source_git("fetch", "-q", "origin")
-    code, out, err = m.run()
+    code, out, _ = m.run()
     got = own(parse(out)[0], DOCTOR)
     check(
         got["source origin/main"][0] == "WARN"
@@ -785,7 +788,7 @@ def test_origin():
 
     m = Machine("ahead", OTHER_HOST)
     m.commit("a local commit", key="listed", cwd=m.source)
-    code, out, err = m.run()
+    code, out, _ = m.run()
     got = own(parse(out)[0], DOCTOR)
     check(
         got["source origin/main"][0] == "FAIL" and got["source signature"][0] == "PASS" and code == 1,
@@ -794,7 +797,7 @@ def test_origin():
 
     m = Machine("no-origin", OTHER_HOST)
     m.source_git("update-ref", "-d", "refs/remotes/origin/main")
-    code, out, err = m.run()
+    code, out, _ = m.run()
     got = own(parse(out)[0], DOCTOR)
     status, detail = got["source origin/main"]
     check(
@@ -804,7 +807,7 @@ def test_origin():
 
     m = Machine("no-source", OTHER_HOST)
     shutil.rmtree(m.source)
-    code, out, err = m.run()
+    code, out, _ = m.run()
     got = own(parse(out)[0], DOCTOR)
     check(
         all(
@@ -835,7 +838,7 @@ def test_harness_checkout():
             m.harness_git("commit", "-q", "--allow-empty", "-m", "earlier")
         else:
             m.harness_git("checkout", "-q", "--detach", m.pin if at == "pin" else m.after_pin)
-        code, out, err = m.run()
+        code, out, _ = m.run()
         got = own(parse(out)[0], DOCTOR)
         check(
             got["Harness checkout"][0] == want and code == (0 if want == "PASS" else 1),
@@ -844,7 +847,7 @@ def test_harness_checkout():
 
     m = Machine("harness-missing", OTHER_HOST)
     shutil.rmtree(m.harness)
-    code, out, err = m.run()
+    code, out, _ = m.run()
     got = own(parse(out)[0], DOCTOR)
     status, detail = got["Harness checkout"]
     check(
@@ -856,15 +859,21 @@ def test_harness_checkout():
 # ---------------------------------------------------------------- the kit ----
 
 
-def test_kit():
-    print("\n== 5: the kit, each code file of kit.toml against the harness at harness_commit")
+def kit_paths():
+    """The code files of the kit, and its first seed."""
     code_files = [path for path, (cls, _) in KIT.items() if cls == "code"]
     seed = next(path for path, (cls, _) in KIT.items() if cls == "seed")
+    return code_files, seed
+
+
+def test_kit():
+    print("\n== 5: the kit, each code file of kit.toml against the harness at harness_commit")
+    code_files, seed = kit_paths()
     # The template host's checkout is on the commit after the pin, whose kit differs from the
     # pin's: its kit line still compares with the pin.
     for host in (TEMPLATE_HOST, OTHER_HOST):
         m = Machine("kit-pass", host)
-        code, out, err = m.run()
+        code, out, _ = m.run()
         got = own(parse(out)[0], DOCTOR)
         check(
             got["kit"][0] == "PASS" and m.pin[:7] in got["kit"][1] and code == 0,
@@ -876,7 +885,7 @@ def test_kit():
         m = Machine("kit-drift", host)
         (m.source / code_files[0]).write_text("#!/bin/sh\necho changed\n")
         (m.source / seed).write_text("value = 2\n")
-        code, out, err = m.run()
+        code, out, _ = m.run()
         got = own(parse(out)[0], DOCTOR)
         status, detail = got["kit"]
         check(
@@ -892,7 +901,7 @@ def test_kit():
     m = Machine("kit-drift-both", TEMPLATE_HOST)
     for path in code_files:
         (m.source / path).write_text("# changed\n")
-    code, out, err = m.run()
+    code, out, _ = m.run()
     got = own(parse(out)[0], DOCTOR)
     status, detail = got["kit"]
     check(
@@ -904,22 +913,27 @@ def test_kit():
     m.commit("change a code file", key="listed", files={code_files[1]: "# changed\n"})
     m.push()
     m.source_git("pull", "-q", "--ff-only")
-    code, out, err = m.run()
+    code, out, _ = m.run()
     got = own(parse(out)[0], DOCTOR)
     check(
         got["kit"][0] == "WARN" and code_files[1] in got["kit"][1] and code == 0,
         f"a committed change of a code file: WARN that names it ({got['kit']})",
     )
 
+
+def test_kit_absent():
+    """The kit check of 5 on a seed that differs, a code file or kit.toml that is missing, a
+    kit.toml in another form, and a harness_commit that the checkout lacks."""
+    code_files, seed = kit_paths()
     m = Machine("kit-seed", OTHER_HOST)
     (m.source / seed).write_text("value = 2\n")
-    code, out, err = m.run()
+    _, out, _ = m.run()
     got = own(parse(out)[0], DOCTOR)
     check(got["kit"][0] == "PASS", f"a seed that differs: PASS ({got['kit']})")
 
     m = Machine("kit-missing", OTHER_HOST)
     (m.source / code_files[1]).unlink()
-    code, out, err = m.run()
+    code, out, _ = m.run()
     got = own(parse(out)[0], DOCTOR)
     status, detail = got["kit"]
     check(
@@ -931,7 +945,7 @@ def test_kit():
     )
 
     m = Machine("kit-none", OTHER_HOST, kit=False)
-    code, out, err = m.run()
+    code, out, _ = m.run()
     got = own(parse(out)[0], DOCTOR)
     status, detail = got["kit"]
     check(
@@ -943,7 +957,7 @@ def test_kit():
     # code file; that is a WARN, not a PASS.
     m = Machine("kit-form", OTHER_HOST, kit=kit_toml(KIT).replace('" = "', '"="'))
     (m.source / code_files[0]).write_text("# changed\n")
-    code, out, err = m.run()
+    code, out, _ = m.run()
     got = own(parse(out)[0], DOCTOR)
     status, detail = got["kit"]
     check(
@@ -954,7 +968,7 @@ def test_kit():
     m = Machine("kit-unknown-pin", OTHER_HOST)
     unknown = "1234567" + "0" * 33
     m.render(unknown)
-    code, out, err = m.run()
+    code, out, _ = m.run()
     got = own(parse(out)[0], DOCTOR)
     status, detail = got["kit"]
     check(
@@ -964,7 +978,7 @@ def test_kit():
 
     m = Machine("kit-no-harness", OTHER_HOST)
     shutil.rmtree(m.harness)
-    code, out, err = m.run()
+    _, out, _ = m.run()
     got = own(parse(out)[0], DOCTOR)
     check(got["kit"][0] == "SKIP" and "lacks" in got["kit"][1], f"no Harness checkout: SKIP ({got['kit']})")
 
@@ -974,7 +988,7 @@ def test_kit_toml():
     if not KIT_TOML.exists():
         print(f"  skip: {SOURCE} has no kit.toml; it is a copy of the kit, not the kit")
         return
-    with open(KIT_TOML, "rb") as handle:
+    with KIT_TOML.open("rb") as handle:
         entries = tomllib.load(handle).get("files", {})
     check(bool(entries), f"kit.toml has a [files] table ({len(entries)} entries)")
     wrong = {path: cls for path, cls in entries.items() if cls not in ("code", "seed")}
@@ -1000,10 +1014,11 @@ def kit_files():
     """The files of the kit, relative to it: in a git work tree, the files that git tracks or
     would track, without the ignored ones such as .DS_Store; outside one, every file."""
     p = subprocess.run(
-        ["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
+        ["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard"],  # noqa: S607 -- git runs from PATH
         cwd=SOURCE,
         capture_output=True,
         text=True,
+        check=False,
     )
     if p.returncode == 0:
         return sorted({rel for rel in p.stdout.split("\0") if rel and (SOURCE / rel).is_file()})
@@ -1104,24 +1119,33 @@ def test_render():
     for host in MACHINES:
         path = scratch("lint") / "dotfiles-check"
         path.write_text(rendered(host))
-        syntax = subprocess.run(["bash", "-n", str(path)], capture_output=True, text=True)
+        syntax = subprocess.run(
+            ["bash", "-n", str(path)],  # noqa: S607 -- bash runs from PATH
+            capture_output=True,
+            text=True,
+            check=False,
+        )
         check(syntax.returncode == 0, f"bash -n dotfiles-check ({host}) {syntax.stderr.strip()}")
-        lint = subprocess.run(["shellcheck", "-S", "warning", str(path)], capture_output=True, text=True)
+        lint = subprocess.run(
+            ["shellcheck", "-S", "warning", str(path)],  # noqa: S607 -- shellcheck runs from PATH
+            capture_output=True,
+            text=True,
+            check=False,
+        )
         check(lint.returncode == 0, f"shellcheck dotfiles-check ({host}) {lint.stdout.strip()}")
 
     machines = {"machines": {"test-tpu": dict(TEST_MACHINES[OTHER_HOST], gpu="tpu")}}
-    code, text, err = render("test-tpu", machines)
+    code, _, err = render("test-tpu", machines)
     check(code != 0 and '"tpu"' in err, f"a gpu outside the four stops the render ({err.strip()!r})")
 
 
 def main():
-    global ROOT
     for tool in ("chezmoi", "git", "bash", "ssh-keygen", "shellcheck"):
         if shutil.which(tool) is None:
             print(f"check-check: {tool} is not on the PATH")
             return 1
     with tempfile.TemporaryDirectory(prefix="check-check-") as tmp:
-        ROOT = pathlib.Path(tmp).resolve()
+        RUN["root"] = pathlib.Path(tmp).resolve()
         KEYS["listed"] = make_key("listed")
         KEYS["other"] = make_key("other")
         for case in (
@@ -1134,13 +1158,22 @@ def main():
             test_origin,
             test_harness_checkout,
             test_kit,
+            test_kit_absent,
             test_kit_toml,
             test_full,
             test_render,
         ):
             try:
                 case()
-            except Exception as error:  # a broken fixture is a failure, not a crash
+            except (
+                RuntimeError,
+                OSError,
+                subprocess.SubprocessError,
+                KeyError,
+                IndexError,
+                ValueError,
+                StopIteration,
+            ) as error:  # a broken fixture is a failure, not a crash
                 fail(f"{case.__name__}: {type(error).__name__}: {error}")
     if failures:
         print(f"\ncheck-check: {len(failures)} failure(s)")

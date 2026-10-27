@@ -140,6 +140,7 @@ import sys
 import tempfile
 import unicodedata
 from datetime import datetime, timedelta, UTC
+from typing import Any, Literal, cast
 from unittest import mock
 
 from harness import REPO, HarnessError, changing, frontends, frontmatter, install, network, outcome
@@ -222,10 +223,10 @@ def read_settings(path):
         cfg = network.apply(
             render_profile.render_data(cfg, profile), profile, render_profile.network_path(PROFILE)
         )
-    return cfg
+    return cast("dict[str, Any]", cfg)
 
 
-def json_object(path, text):
+def json_object(path: str | os.PathLike[str], text: str) -> dict[str, Any]:
     """`text`, the contents of the file at `path`, parsed; exits 2 when it is not JSON, is nested
     deeper than the parser reads, or is not a JSON object."""
     try:
@@ -352,7 +353,7 @@ def ends_in_star(pattern):
     return text.endswith("*") and not escaped_at(text, len(text) - 1)
 
 
-def rule_matches(segment, rule, kind):
+def rule_matches(segment: str, rule: str, kind: str) -> bool:
     """Whether one Bash rule matches one segment, as Claude Code 2.1.282 decides it.
 
     A rule ending in `:*` is a prefix rule: the segment equals the prefix, or starts with
@@ -362,12 +363,12 @@ def rule_matches(segment, rule, kind):
     """
     if "\x00" in segment:
         return False
-    shape, *parts = parse_rule(rule)
-    if shape == "prefix":
+    parsed = parse_rule(rule)
+    if parsed[0] == "prefix":
         command = re.sub(r"[ \t]+", " ", segment)
-        return any(command == p or command.startswith(p + " ") for p in parts)
-    if shape == "wildcard":
-        plain, via_xargs, star_at_end = parts
+        return any(command == p or command.startswith(p + " ") for p in parsed[1:])
+    if parsed[0] == "wildcard":
+        _, plain, via_xargs, star_at_end = parsed
         if plain.fullmatch(segment):
             return True
         if kind == "allow" and not star_at_end:
@@ -377,7 +378,13 @@ def rule_matches(segment, rule, kind):
 
 
 @functools.cache
-def parse_rule(rule):
+def parse_rule(
+    rule: str,
+) -> (
+    tuple[Literal["prefix"], str, str]
+    | tuple[Literal["wildcard"], re.Pattern[str], re.Pattern[str], bool]
+    | tuple[Literal["exact"]]
+):
     """A rule's shape and what `rule_matches` needs for it, computed once per rule."""
     prefix = re.fullmatch(r"(.+):\*", rule)
     if prefix:
@@ -598,10 +605,11 @@ def settings_template(profile, overlay, python=None):
     template = json.loads(text)
     python = install.python_interpreter() if python is None else python
     try:
-        cfg = (
+        cfg = cast(
+            "dict[str, Any]",
             render_profile.render_data(template, profile)
             if render_profile.PLACEHOLDER.search(text)
-            else template
+            else template,
         )
         for event, groups in template.get("hooks", {}).items():
             for i, group in enumerate(groups):
@@ -645,6 +653,7 @@ def settings_file(root, profile, overlay):
     if st is not None and stat.S_ISLNK(st.st_mode):
         raise HarnessError(f"{live} is a symlink; `harness install` merges the settings into a file only")
     cfg, indent, old = {}, 2, None
+    text = ""
     if st is not None:
         if stat.S_ISDIR(st.st_mode):
             raise HarnessError(
@@ -1102,7 +1111,7 @@ def plan(ctx):
     models = load_models(ctx.models)
     layer_sources = claude_sources(ctx.profile)
     layer = claude_plan(ctx.profile, layer_sources)
-    files = [settings]
+    files: list[tuple[Any, ...]] = [settings]
     for dst, data, mode in layer:
         src = source_of(layer_sources, dst)[0]
         files.append(
@@ -1369,13 +1378,14 @@ def layer_cases(check, tmp):
     base, claude, tree = fresh()
     code, text = run(base, "--apply")
 
-    def changed_lines(src):
-        """The lines in which the installed copy of `src` differs from it, as (source, installed).
+    def changed_lines(src: pathlib.Path) -> list[tuple[str, str]]:
+        """The lines in which the installed copy of `src` differs from it, as (source, installed),
+        and a last pair ("line count", "<source> != <installed>") where the line counts differ.
         An installed `experimental:` line and the line after it count as one line."""
         old = src.read_text().split("\n")
         new = (claude / src.relative_to(REPO)).read_text().replace("\nexperimental:\n", "\nexperimental:\0")
         new = [line.replace("\0", "\n") for line in new.split("\n")]
-        count = [("line count", len(old), len(new))] * (len(old) != len(new))
+        count = [("line count", f"{len(old)} != {len(new)}")] * (len(old) != len(new))
         return [(a, b) for a, b in zip(old, new) if a != b] + count
 
     names = set(TOOLS.values())
@@ -1469,7 +1479,8 @@ def layer_cases(check, tmp):
         error that the load or the render raises."""
         try:
             return render_source(src, src.read_bytes(), load_models(models)).decode().split("\n")[3]
-        except Exception as e:  # a refusal is the case's failure, not the end of `harness test`
+        except (HarnessError, OSError, ValueError, KeyError, IndexError) as e:
+            # a refusal is the case's failure, not the end of `harness test`
             return f"raised {type(e).__name__}: {e}"
 
     agent = tmp / "agent-small.md"
@@ -1559,7 +1570,7 @@ def layer_cases(check, tmp):
     ]:
         (claude / rel).parent.mkdir(parents=True, exist_ok=True)
         (claude / rel).write_text("x\n")
-    expected = [claude / "hooks" / "old.py", claude / "skills" / "other" / "notes.md"]
+    sourceless = [claude / "hooks" / "old.py", claude / "skills" / "other" / "notes.md"]
     code, text = run(base)
     applied, text2 = run(base, "--apply")
     extra = [[l for l in t.splitlines() if "EXTRA" in l] for t in (text, text2)]
@@ -1567,9 +1578,9 @@ def layer_cases(check, tmp):
         lambda: (
             code == 0
             and applied == 0
-            and all(len(e) == 2 and all(str(f) in " ".join(e) for f in expected) for e in extra)
-            and all(f"rm '{f}'" in t for f in expected for t in (text, text2))
-            and all(f.is_file() for f in expected)
+            and all(len(e) == 2 and all(str(f) in " ".join(e) for f in sourceless) for e in extra)
+            and all(f"rm '{f}'" in t for f in sourceless for t in (text, text2))
+            and all(f.is_file() for f in sourceless)
         ),
         "an installed file with no source is EXTRA, with its removal, not counted and not removed by an --apply; "
         "a hidden name, skills/synced/ and a directory the layer does not write are not: "
@@ -1960,7 +1971,7 @@ def layer_cases(check, tmp):
     state.write_text('{"state": 1}\n')
     state.chmod(0)
     first, _ = run(base, "--apply")
-    live = {
+    live_cfg = {
         "model": "opus",
         "permissions": {"allow": ["Bash(rm *)"], "deny": []},
         "env": {"X": "{home} — é"},
@@ -1968,7 +1979,7 @@ def layer_cases(check, tmp):
         "hooks": {},
         "someFutureKey": [1, {"a": None}],
     }
-    old = json.dumps(live, indent=4, ensure_ascii=False) + "\n"
+    old = json.dumps(live_cfg, indent=4, ensure_ascii=False) + "\n"
     (claude / "settings.json").write_text(old)
     (claude / "settings.json").chmod(0o600)
     code, text = run(base)
@@ -1979,9 +1990,8 @@ def layer_cases(check, tmp):
             first == 0
             and code == 1
             and len(at) == 1
-            and settings_line.fullmatch(lines[at[0]])
-            .group(1)
-            .startswith("REPLACE (backup: settings.json.bak-")
+            and (head := settings_line.fullmatch(lines[at[0]])) is not None
+            and head.group(1).startswith("REPLACE (backup: settings.json.bak-")
             and lines[at[0] + 1].startswith("--- ")
             and lines[at[0] + 2].startswith("+++ ")
             and lines[at[0] + 3].startswith("@@ ")
@@ -2004,14 +2014,14 @@ def layer_cases(check, tmp):
         "someFutureKey": [1, {"a": None}],
         "sandbox": owned["sandbox"],
         "modelSettings": owned["modelSettings"],
-        **lacked(live),
+        **lacked(live_cfg),
     }
     case(
         lambda: (
             code == 0
             and merged == expected
             and list(merged) == list(expected)
-            and len(lacked(live)) > 5
+            and len(lacked(live_cfg)) > 5
             and (claude / "settings.json").read_text()
             == json.dumps(expected, indent=4, ensure_ascii=False) + "\n"
         ),
@@ -2252,7 +2262,7 @@ def layer_cases(check, tmp):
         code, text = run(base, "--apply")
         written = (claude / "settings.json").read_text()
         cfg = json.loads(data)
-        expected = (
+        expected_text = (
             json.dumps(
                 {**cfg, "env": {**cfg["env"], **others["env"]}, **owned_of(base), **lacked(cfg)},
                 indent=indent,
@@ -2263,8 +2273,8 @@ def layer_cases(check, tmp):
         case(
             lambda: (
                 code == 0
-                and written == expected
-                and written.count("\n") == (1 if indent is None else expected.count("\n"))
+                and written == expected_text
+                and written.count("\n") == (1 if indent is None else expected_text.count("\n"))
             ),
             f"a {label} settings.json is written in the same form: {code}, {written[:60]!r}, {tail(text)}",
         )
@@ -2466,13 +2476,17 @@ def layer_cases(check, tmp):
     # `harness settings install` and `harness settings domains` are gone; the subcommands of
     # `settings` that measure stay. The network lists are generated, so no command checks a mirror of them.
     p = subprocess.run(
-        [sys.executable, str(REPO / "bin" / "harness"), "settings", "--help"], capture_output=True, text=True
+        [sys.executable, str(REPO / "bin" / "harness"), "settings", "--help"],
+        capture_output=True,
+        text=True,
+        check=False,
     )
     gone = [
         subprocess.run(
             [sys.executable, str(REPO / "bin" / "harness"), "settings", subcommand],
             capture_output=True,
             text=True,
+            check=False,
         )
         for subcommand in ("install", "domains")
     ]
@@ -2675,7 +2689,12 @@ def layer_cases(check, tmp):
     other = tmp / "checkout-2"
     git_env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
     listed = subprocess.run(
-        ["git", "ls-files", "-z"], cwd=REPO, capture_output=True, text=True, env=git_env
+        ["git", "ls-files", "-z"],  # noqa: S607 -- git runs from PATH
+        cwd=REPO,
+        capture_output=True,
+        text=True,
+        env=git_env,
+        check=False,  # outside a git checkout the list is empty, and the case below is wrong
     ).stdout
     for rel in filter(None, listed.split("\0")):
         if (REPO / rel).is_file():
@@ -2702,6 +2721,7 @@ def layer_cases(check, tmp):
             env=scratch.env(base),
             cwd=base,
             timeout=60,
+            check=False,
         )
         return p.returncode, p.stdout + p.stderr
 

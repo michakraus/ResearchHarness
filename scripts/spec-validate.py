@@ -58,6 +58,7 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
+from typing import cast
 
 SECTIONS = ["1 · Living spec", "2 · Change proposal", "3 · Delta", "4 · What stays from the plan"]
 REQ = re.compile(r"^### Requirement: (.+?)\s*$")
@@ -126,6 +127,8 @@ def requirements(lines, start, end):
             scens, k = [], first
             while k < len(body):
                 n = SCEN.match(body[k])
+                if n is None:  # k is the first scenario line, or the one the inner loop stopped at
+                    raise ValueError(f"line {i + k + 2}: no `#### Scenario:` heading")
                 e = k + 1
                 while e < len(body) and not SCEN.match(body[e]):
                     e += 1
@@ -267,10 +270,14 @@ def structure(spec, lines):
     return errors, premise_cmds, delta_cmds, base
 
 
-def status(tree):
+def status(tree: str) -> str | None:
     """`git status --porcelain --ignored` of a git tree, or None for any other tree."""
     p = subprocess.run(
-        ["git", "status", "--porcelain", "--ignored"], cwd=tree, capture_output=True, text=True
+        ["git", "status", "--porcelain", "--ignored"],  # noqa: S607 -- git runs from PATH
+        cwd=tree,
+        capture_output=True,
+        text=True,
+        check=False,
     )
     return p.stdout if p.returncode == 0 else None
 
@@ -284,7 +291,14 @@ def run(cmds, tree, env, label, errors, rule, on, devices, unmeasured):
             print(f"{label}: not run (needs {', '.join(missing)}): {c}")
             unmeasured.append((c, missing))
             continue
-        p = subprocess.run(["bash", "-c", c], cwd=tree, env=env, capture_output=True, text=True)
+        p = subprocess.run(
+            ["bash", "-c", cast("str", c)],  # noqa: S607 -- bash runs from PATH
+            cwd=cast("str", tree),
+            env=cast("dict[str, str]", env),
+            capture_output=True,
+            text=True,
+            check=False,
+        )
         print(f"{label}: {'pass' if p.returncode == 0 else f'exit {p.returncode}'}: {c}")
         if p.returncode != 0:
             tail = (p.stdout + p.stderr).strip().splitlines()[-20:]
@@ -340,14 +354,23 @@ def main():
                 if a.repo:
                     tree = str(Path(tmp) / "base")
                     os.mkdir(tree)
-                    archive = subprocess.run(["git", "archive", base], cwd=a.repo, capture_output=True)
+                    archive = subprocess.run(
+                        ["git", "archive", cast("str", base)],  # noqa: S607 -- git runs from PATH
+                        cwd=a.repo,
+                        capture_output=True,
+                        check=False,
+                    )
                     if archive.returncode != 0:
                         errors.append(
                             f"rule 9: `git archive {base}` fails in {a.repo}: "
                             f"{archive.stderr.decode().strip()}"
                         )
                     else:
-                        subprocess.run(["tar", "-x", "-C", tree], input=archive.stdout, check=True)
+                        subprocess.run(
+                            ["tar", "-x", "-C", tree],  # noqa: S607 -- tar runs from PATH
+                            input=archive.stdout,
+                            check=True,
+                        )
                 if not errors:
                     run(premises, tree, env, "premise", errors, "rule 9", "base", devices, unmeasured)
 
@@ -367,6 +390,11 @@ def main():
 if __name__ == "__main__":
     try:
         sys.exit(main())
-    except Exception as e:  # the script's own failure, told apart from a failed rule
+    except (
+        OSError,
+        subprocess.SubprocessError,
+        ValueError,
+        TypeError,  # an --env name that the script sets itself: `dict()` gets it twice
+    ) as e:  # the script's own failure, told apart from a failed rule
         print(f"spec-validate.py failed: {type(e).__name__}: {e}", file=sys.stderr)
         sys.exit(3)

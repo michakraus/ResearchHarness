@@ -71,9 +71,14 @@ def repositories(require_project=False):
     return found
 
 
-def git(repo, *args):
+def git(repo: str | os.PathLike[str], *args: str):
     """Run `git -C repo args`; the completed process, never raising."""
-    return subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True)
+    return subprocess.run(
+        ["git", "-C", str(repo), *args],  # noqa: S607 -- git runs from PATH
+        capture_output=True,
+        text=True,
+        check=False,
+    )
 
 
 def differs(src, dst, executable=False):
