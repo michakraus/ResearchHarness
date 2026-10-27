@@ -70,7 +70,7 @@ def guarded_files(root: pathlib.Path) -> list[pathlib.Path]:
 def third_party_imports(root: pathlib.Path) -> list[str]:
     """Each import of a file of `guarded_files(root)` whose top-level module is neither in the
     standard library nor in OWN for that file, as `<path>:<line>: <module>`. A relative import
-    names a module of its own directory and passes."""
+    names a module of the repository and passes."""
     found: list[str] = []
     for path in guarded_files(root):
         rel = path.relative_to(root).as_posix()

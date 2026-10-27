@@ -112,7 +112,7 @@ ignore = ["S603", "TRY003"]
 "scripts/spec-validate.py" = ["BLE001", "E501", "E741", "PLR0912", "PLR0913", "PLR0915", "PLR0917", "PLW1510", "PTH102", "PTH111", "RUF002", "S607"]
 "scripts/startup-tokens.py" = ["PTH110", "PTH111", "PTH123", "PTH204", "PTH207", "SIM115"]
 
-# basedpyright reads only *.py files, so `bin` names no file today. `lib` is on the search path,
+# basedpyright reads only *.py files, so it checks no file of `bin`. `lib` is on the search path,
 # as `bin/harness` puts it on `sys.path`. The errors of the code that strict mode met are in
 # .basedpyright/baseline.json, which `basedpyright --writebaseline` writes; a module that a change
 # touches leaves it.
