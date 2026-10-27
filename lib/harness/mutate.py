@@ -341,7 +341,8 @@ def register(sub: fmt.Subcommands) -> None:
 # The stub `bin/harness` of the selftest's fixture: `test --list` prints its parts, and `test NAME…`
 # runs NAME… with docs and sweep on the fixture's m.py and prints `ok`/`BAD` lines and, last,
 # `<n> cases, <w> wrong`, as `harness test` does. Its `docs` part fails where `git ls-files` fails
-# in its root, as the real one does. Each call appends its arguments to $STUB_LOG.
+# in its root, as the real one does, and its `sweep` part where PYTHONDONTWRITEBYTECODE is not 1.
+# Each call appends its arguments to $STUB_LOG; `test --list` exits $STUB_LIST_EXIT where it is set.
 STUB = """\
 import os, pathlib, subprocess, sys, time
 root = pathlib.Path(__file__).resolve().parent.parent
@@ -351,7 +352,7 @@ with open(os.environ["STUB_LOG"], "a") as log:
 PARTS = ["a", "broken", "docs", "hang", "slow", "sweep"]
 if args == ["test", "--list"]:
     print("\\n".join(PARTS))
-    sys.exit(0)
+    sys.exit(int(os.environ.get("STUB_LIST_EXIT", "0")))
 text = (root / "m.py").read_text()
 if "CRASH" in text:
     sys.exit("crashed at import")
@@ -377,7 +378,7 @@ for name in sorted({*args[1:], "docs", "sweep"}):
             continue
         ok, label = True, "slow: Z is 3"
     else:
-        ok, label = True, name + ": passes"
+        ok, label = os.environ.get("PYTHONDONTWRITEBYTECODE") == "1", "sweep: no bytecode is written"
     lines.append(("ok   " if ok else "BAD  ") + label)
 wrong = sum(line.startswith("BAD") for line in lines)
 print("\\n".join(lines))
@@ -531,30 +532,47 @@ def run_cases(check: Check, base: pathlib.Path) -> None:  # noqa: PLR0915 -- one
     (root / "bin").mkdir(parents=True)
     (root / "bin" / "harness").write_text(STUB)
     (root / "m.py").write_text(FIXTURE)
-    (root / ".gitignore").write_text("ignored.log\n")
+    (root / ".gitignore").write_text("*.log\n")
     (root / "gone.py").write_text("gone\n")
+    (root / "kept.log").write_text("tracked, and ignored by .gitignore\n")
+    (root / "link.py").symlink_to("m.py")
     git(["init", "-q", "-b", "main"], root, env)
     git(["add", "."], root, env)
+    git(["add", "-f", "kept.log"], root, env)
     git(["commit", "-q", "-m", "fixture"], root, env)
     (root / "gone.py").unlink()
     (root / "ignored.log").write_text("ignored\n")
 
-    # The copy.
+    # The copy; a GIT_DIR of the caller does not send it to another repository.
     (root / "new.py").write_text("NEW = 1\n")
     (root / "m.py").write_text(FIXTURE + "# changed\n")
     dest = base / "copy"
     dest.mkdir()
-    names = copy(root, dest, env)
+    names = copy(root, dest, env | {"GIT_DIR": str(base / "nowhere"), "GIT_INDEX_FILE": str(base / "no")})
     listed = git(["ls-files"], dest, env).split()
     check(
-        sorted(names) == listed == [".gitignore", "bin/harness", "m.py", "new.py"]
+        sorted(names) == listed == [".gitignore", "bin/harness", "kept.log", "link.py", "m.py", "new.py"]
         and (dest / "m.py").read_text() == FIXTURE + "# changed\n"
+        and (dest / "link.py").is_symlink()
+        and (dest / "link.py").readlink() == pathlib.Path("m.py")
         and not (dest / "ignored.log").exists(),
-        "the copy holds the tracked and the untracked files that git does not ignore, with their "
-        f"working-tree bytes, and no deleted file, and git ls-files lists them -> {listed}",
+        "the copy holds the tracked files, an ignored one too, and the untracked files that git does "
+        "not ignore, with their working-tree bytes, a symlink as a symlink, and no deleted file, and "
+        f"git ls-files lists them -> {listed}",
     )
     (root / "new.py").unlink()
     (root / "m.py").write_text(FIXTURE)
+    elsewhere = base / "not-a-repository"
+    elsewhere.mkdir()
+    try:
+        copy(elsewhere, base / "copy2", env)
+        message = ""
+    except HarnessError as e:
+        message = str(e)
+    check(
+        message.startswith(f"git ls-files in {elsewhere}: "),
+        f"a root that is no git repository stops the copy -> {message!r}",
+    )
 
     def state() -> list[tuple[str, bytes]]:
         return sorted((str(p.relative_to(root)), p.read_bytes()) for p in root.rglob("*") if p.is_file())
@@ -682,6 +700,13 @@ def run_cases(check: Check, base: pathlib.Path) -> None:  # noqa: PLR0915 -- one
             isinstance(status, str) and expected in status and not lines and calls == runs,
             f"{label} stops the run before any mutant's test, named -> {status!r}, {calls}",
         )
+    env["STUB_LIST_EXIT"] = "3"
+    status, lines, calls = go(m1)
+    del env["STUB_LIST_EXIT"]
+    check(
+        status == "harness test --list of the copy exits 3" and not lines and calls == ["test --list"],
+        f"a harness test --list that fails stops the run before any test -> {status!r}, {calls}",
+    )
     (root / "latin.py").write_bytes(b"# fixture\nX = '\xff'\n")
     status, _, calls = go(table("M8", "X", "x", file="latin.py"))
     (root / "latin.py").unlink()
