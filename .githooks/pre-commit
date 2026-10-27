@@ -1,0 +1,69 @@
+#!/usr/bin/env python3
+"""The pre-commit hook of the harness repository: the strict profile of the Python code. Enable it
+once per checkout, with the pre-push hook beside it:
+
+    git config core.hooksPath .githooks
+
+It checks the commit, not the working tree: it writes the index into a temporary directory with
+`git checkout-index` and runs `ruff format --check`, `ruff check` and `basedpyright` there. Each
+tool comes from the bin/ of the harness's Python environment, beside the interpreter that
+bin/harness's own `interpreter(environment_path())` names, never from the PATH; the environment
+holds them where the profile sets `develop = true` and `harness install --apply` has run. A tool
+that the environment lacks refuses the commit with one line. All three checks run, and one that
+fails refuses the commit with exit 1. The formatter only checks: it names each staged file that it
+would change, and the hook changes no file.
+"""
+
+import pathlib
+import subprocess
+import sys
+import tempfile
+from collections.abc import Callable
+from typing import cast
+
+ROOT = pathlib.Path(__file__).resolve().parent.parent
+TOOLS = ("ruff", "basedpyright")
+# (the name in the refusal, the tool, its arguments)
+CHECKS: list[tuple[str, str, list[str]]] = [
+    ("ruff format --check", "ruff", ["format", "--check", "--no-cache", "."]),
+    ("ruff check", "ruff", ["check", "--no-cache", "."]),
+    ("basedpyright", "basedpyright", []),
+]
+
+
+def environment_bin() -> pathlib.Path:
+    """The bin/ of the harness's Python environment, by bin/harness's own `environment_path` and
+    `interpreter`."""
+    harness = ROOT / "bin" / "harness"
+    boot: dict[str, object] = {"__name__": "harness_boot", "__file__": str(harness)}
+    exec(compile(harness.read_text(encoding="utf-8"), str(harness), "exec"), boot)  # noqa: S102 -- this checkout's own code
+    environment_path = cast("Callable[[], str]", boot["environment_path"])
+    interpreter = cast("Callable[[str], str]", boot["interpreter"])
+    return pathlib.Path(interpreter(environment_path())).parent
+
+
+def main() -> int:
+    tools = environment_bin()
+    missing = [tool for tool in TOOLS if not (tools / tool).is_file()]
+    if missing:
+        print(
+            f"pre-commit: refused, {' and '.join(missing)} not in {tools}; "
+            "set develop = true in the profile, then run harness install --apply"
+        )
+        return 1
+    failed: list[str] = []
+    with tempfile.TemporaryDirectory(prefix="harness-pre-commit-") as tree:
+        # git is the program that runs this hook, so the PATH holds it.
+        subprocess.run(["git", "checkout-index", "--all", f"--prefix={tree}/"], check=True)  # noqa: S607
+        for name, tool, args in CHECKS:
+            print(name, flush=True)
+            if subprocess.run([str(tools / tool), *args], cwd=tree, check=False).returncode != 0:
+                failed.append(name)
+    if failed:
+        print(f"pre-commit: refused, {' and '.join(failed)} failed")
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
