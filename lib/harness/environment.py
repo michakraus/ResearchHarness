@@ -290,6 +290,7 @@ def syntax_cases(case, tmp):
                             ("try:\n    pass\nexcept (A, B), C:\n    pass\n", "unparenthesized except"),
                             ('try:\n    pass\nexcept (A, "(" ), f(")"):\n    pass\n', "unparenthesized except"),
                             ("try:\n    pass\nexcept (A[0:1]), B:\n    pass\n", "unparenthesized except"),
+                            ("try:\n    pass\nexcept A[0:1], B:\n    pass\n", "unparenthesized except"),
                             ("try:\n    pass\nexcept {1: A}[1], B:\n    pass\n", "unparenthesized except"),
                             ("\u00e9t\u00e9 = 1\n", "non-ASCII"),
                             ('x = "\\N{FACE WITH TEARS OF JOY}"\n', "\\N escape")]:
