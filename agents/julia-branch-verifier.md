@@ -12,6 +12,7 @@ tools:
   - mcp/kaimon/ex
   - mcp/kaimon/ping
   - mcp/kaimon/start_session
+  - mcp/kaimon/manage_repl
   - mcp/kaimon/document_symbols
 skills:
   - julia-package-audit
@@ -82,6 +83,8 @@ the branch is what made it wrong.** Everything else is reported and does not blo
 print calls of the code you send are removed, and a call that holds a `using` loses the printed
 output of what it calls. Aqua and JuliaFormatter load from `@v#.#`, which every session's load
 path carries. A package that does not load has no session and no points 3 and 4; say so.
+Before you return, shut down a session you started with `manage_repl` `shutdown`: nobody else
+knows it is yours, so it stays up until the user stops it. Leave a session you did not start.
 
 | point | run with | attributable when |
 |:--|:--|:--|
