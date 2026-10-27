@@ -148,6 +148,9 @@ CLAUDE_TO_OPENCODE_TOOL = {
 # provider. Claude Code's sandbox never lets a command read it; OpenCode has no sandbox, so a
 # `read` deny and the path guard are what is left.
 #
+# An edit of a git hook or a CI workflow asks here on each call (frontends.EDIT_SCOPE_ASKS); Claude
+# Code asks once per worktree and session, through its hook `edit-scope.py`.
+#
 # `kill` and `pkill` ask here and not in Claude Code. There the sandbox lets a signal reach only
 # the same command; OpenCode has no sandbox, so `kill` reaches every process of the user.
 #
@@ -166,6 +169,7 @@ OPENCODE_ONLY_RULES = [
         "edit",
         [
             ("{harness}/adapters/opencode/**", "ask"),
+            *((p, "ask") for p in frontends.EDIT_SCOPE_ASKS),
             ("{home}/.julia/packages/**", "deny"),
         ],
     ),

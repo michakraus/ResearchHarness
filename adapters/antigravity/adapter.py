@@ -401,6 +401,7 @@ def guard_paths(profile):
     home = render("{home}", profile)
     roots = tuple(home + root.removeprefix("~") for root in frontends.SHARED_ROOTS)
     edits = {key: [re.sub(r"^//+", "/", p) for p in bodies["Edit", key]] for key in ("deny", "ask")}
+    edits["ask"] += [render(p, profile) for p in frontends.EDIT_SCOPE_ASKS]  # pyright: ignore[reportUnknownArgumentType]
     copies = {
         key: [
             home + relocate(("~" + p[len(home) :]).encode(), "~/.gemini/config").decode()[1:]
@@ -1249,6 +1250,8 @@ def layer_cases(scratch):
         key: [re.sub(r"^//+", "/", e[len("Edit(") : -1]) for e in template[key] if e.startswith("Edit(")]
         for key in ("deny", "ask")
     }
+    # The asks that the template leaves to Claude Code's hook edit-scope.py follow its own.
+    edits["ask"] += [f"{h}/Research/**/.githooks/**", f"{h}/Research/**/.github/workflows/**"]
     bash = {
         key: [e[len("Bash(") : -1] for e in template[key] if e.startswith("Bash(")] for key in ("deny", "ask")
     }

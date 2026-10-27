@@ -4,7 +4,7 @@ A hook is a program that the frontend runs at a fixed event, for example before 
 at the start of a session. The frontend sends the event as JSON on standard input. A `PreToolUse`
 hook runs before a tool call and can refuse it: exit status 2 refuses the call and shows the hook's
 standard error to the model, and an `ask` decision on standard output shows a prompt to the user.
-The hooks of this page use the Claude Code events `PreToolUse`, `SessionStart`,
+The hooks of this page use the Claude Code events `PreToolUse`, `PostToolUse`, `SessionStart`,
 `PermissionRequest`, `WorktreeCreate` and `WorktreeRemove`. `cc-status` also runs on the other
 events of a session.
 
@@ -143,6 +143,31 @@ it:
 
 ```bash
 echo '{"tool_input":{"command":"rm -rf ../x"},"cwd":"/Users/me/Research/Packages/A"}' | ./rm-scope.py
+```
+
+## `edit-scope.py`
+
+This hook asks once per worktree and session before an edit of a git hook or a CI workflow: a
+path below `.githooks/` or `.github/workflows/` under `~/Research`. A git hook runs outside the
+sandbox at the next commit, and a workflow runs in CI with the repository's secrets when its
+branch is pushed. An `ask` on each such edit stops protecting anything once a person approves
+forty of them in a row.
+
+Claude Code runs it on the `Edit`, `Write`, `MultiEdit` and `NotebookEdit` tools twice. As a
+`PreToolUse` hook it gets `ask` for such a path in a main checkout, and for one below a worktree,
+`~/Research/.worktrees/<name>/`, unless this session holds a grant for that worktree. As a
+`PostToolUse` hook, `edit-scope.py --record`, it writes the grant after an edit there ran: only an
+approved edit runs, so only an approval makes a grant. The grants are in
+`~/.claude/logs/edit-scope.jsonl`, which the sandbox and an `Edit` deny keep from a session. The
+settings hold no `Edit` ask for these paths, because an `ask` rule outranks the hook's silence.
+OpenCode, oh-my-pi and Antigravity run no such hook and ask on each edit: their path lists take
+the two paths from `EDIT_SCOPE_ASKS` of `lib/harness/frontends.py`.
+
+It fails closed to a prompt on a call that it cannot read. A hook that does not run lets every
+such edit through, because the settings hold no rule for them. Test it:
+
+```bash
+echo '{"session_id":"s","tool_input":{"file_path":"'"$HOME"'/Research/Harness/.githooks/pre-push"}}' | ./edit-scope.py
 ```
 
 ## `git-archive-output.py`

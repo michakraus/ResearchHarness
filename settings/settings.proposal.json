@@ -400,6 +400,7 @@
       "Read(**/id_rsa*)",
       "Read(**/id_ed25519*)",
       "Edit(/{home}/.claude/hooks/**)",
+      "Edit(/{home}/.claude/logs/**)",
       "Edit(/{home}/.claude/CLAUDE.md)",
       "Edit(/{home}/.claude/RTK.md)",
       "Edit(/{home}/.claude/statusline-command.sh)",
@@ -635,8 +636,6 @@
       "Bash(gh pr comment * --repo * -R *)",
       "Bash(gh pr comment * --repo * --repo*)",
       "Bash(gh pr comment http*)",
-      "Edit(/{home}/Research/**/.githooks/**)",
-      "Edit(/{home}/Research/**/.github/workflows/**)",
       "Edit(/{home}/.claude/skills/**)",
       "Edit(/{home}/.claude/workflows/**)",
       "mcp__kaimon__manage_extension",
@@ -695,6 +694,16 @@
     ],
     "PostToolUse": [
       {
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "{home}/.claude/hooks/edit-scope.py --record",
+            "timeout": 5
+          }
+        ]
+      },
+      {
         "hooks": [
           {
             "type": "command",
@@ -750,6 +759,16 @@
           {
             "type": "command",
             "command": "{home}/.claude/hooks/directory-scope.py",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "{home}/.claude/hooks/edit-scope.py",
             "timeout": 5
           }
         ]

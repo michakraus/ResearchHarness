@@ -323,8 +323,8 @@ def render_models(models, own, where="providers.toml"):
 def guard_paths(profile):
     """The text of extensions/guard-paths.json, rendered with `profile`: under `deny` the `read`
     denies of OpenCode's path list, for `read`, `grep` and `bash`; under `edit` the template's
-    `Edit` and `Write` denies, and under `ask` its `Edit` and `Write` asks, for `edit` and `write`,
-    each `//` prefix of Claude Code's as `/`."""
+    `Edit` and `Write` denies, and under `ask` its `Edit` and `Write` asks and the paths of
+    frontends.EDIT_SCOPE_ASKS, for `edit` and `write`, each `//` prefix of Claude Code's as `/`."""
     deny = json.loads(profile_module.render_file(GUARD_PATHS, profile))["deny"]
     permissions = json.loads(profile_module.render_file(SETTINGS, profile))["permissions"]
     lists = {"deny": [], "ask": []}
@@ -335,6 +335,11 @@ def guard_paths(profile):
             m = re.fullmatch(r"(?:Edit|Write)\((.*)\)", rule, re.S)
             if m is not None and (path := re.sub(r"^//+", "/", m.group(1))) not in paths:
                 paths.append(path)
+    scope_asks: list[str] = [
+        profile_module.render_line(p, profile)  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType]
+        for p in frontends.EDIT_SCOPE_ASKS
+    ]
+    lists["ask"] += [p for p in scope_asks if p not in lists["ask"]]
     out = {"deny": deny, "edit": lists["deny"], "ask": lists["ask"]}
     return json.dumps(out, indent=2, ensure_ascii=False) + "\n"
 
@@ -937,7 +942,8 @@ def omp_cases(case, fresh, run):
     )["permissions"]
     # The path list: OpenCode's `read` denies under `deny`, the template's Edit and Write denies
     # under `edit` and its Edit and Write asks under `ask`, each `//` prefix as `/`, in the
-    # template's order.
+    # template's order; then under `ask` the paths of frontends.EDIT_SCOPE_ASKS, which the template
+    # leaves to Claude Code's hook.
     guard_list = json.loads(
         profile_module.render_file(REPO / "adapters" / "opencode" / "plugins" / "guard-paths.json", profile)
     )["deny"]
@@ -951,6 +957,11 @@ def omp_cases(case, fresh, run):
         )
         for key in ("deny", "ask")
     )
+    scope_asks: list[str] = [
+        profile_module.render_line(p, profile)  # pyright: ignore[reportUnknownMemberType]
+        for p in frontends.EDIT_SCOPE_ASKS
+    ]
+    ask_list += [p for p in scope_asks if p not in ask_list]
     # The Claude Code layer's copies: RTK.md, the instructions, the guard scripts and the skills.
     shared = sorted(
         p.relative_to(claude).as_posix()

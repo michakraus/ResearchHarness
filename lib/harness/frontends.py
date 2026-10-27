@@ -74,6 +74,11 @@ GUARDS = (
     "sandbox-semantics.py",
     "kaimon-session.py",
 )
+# The edits that Claude Code leaves to its hook `edit-scope.py`, which asks once per worktree and
+# session, and so holds no `Edit` ask for: a git hook runs outside the sandbox at the next commit,
+# a CI workflow with the repository's secrets. OpenCode, oh-my-pi and Antigravity run no such hook
+# and ask for each one, with `{home}` rendered from the profile.
+EDIT_SCOPE_ASKS = ("{home}/Research/**/.githooks/**", "{home}/Research/**/.github/workflows/**")
 # The paths below ~/.claude that a text can name and that OpenCode, oh-my-pi and Antigravity hold a
 # copy of, with the first frontend's spelling; `relocate` rewrites them.
 SHARED_ROOTS = (
