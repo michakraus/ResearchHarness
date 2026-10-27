@@ -88,8 +88,9 @@ group of `uv.lock`, which only a profile with `develop = true` installs.
 
 Every subcommand runs on the interpreter of the Python environment of the harness, which
 `bin/harness` makes with [uv](#uv). The pre-push hook runs `bin/harness test` on `python3` and on
-`python3.14`, and CI runs it on Python 3.14 and the latest 3.x. The guard hooks are Python
-scripts, which Claude Code, OpenCode, oh-my-pi and Antigravity call before a
+`python3.14`; when the environment works, `bin/harness` restarts both runs on its interpreter, so
+the second run repeats the first. CI runs it on Python 3.14 and the latest 3.x. The guard hooks
+are Python scripts, which Claude Code, OpenCode, oh-my-pi and Antigravity call before a
 [tool call](concepts.md#tool-call).
 
 The harness needs Python 3.14 or later because 3.14 is the one version that it is tested on, in

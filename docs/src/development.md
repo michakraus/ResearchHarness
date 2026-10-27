@@ -86,7 +86,9 @@ a check that fails; the hook skips none of them. **gitleaks 8.21 or later is a r
 tool** (`brew install gitleaks`); 8.19 added the `git`, `dir` and `stdin` commands, and 8.21 is
 the first release with several allowlists per rule, `[[rules.allowlists]]`.
 
-Then it runs `bin/harness test` on `python3` and on `python3.14`, the compile check
+Then it runs `bin/harness test` on `python3` and on `python3.14`. When a Python environment
+works, `bin/harness` restarts both runs on the environment's interpreter, so the second run
+repeats the first. Then it runs the compile check
 `python3.14 -m compileall -q lib hooks scripts adapters`, and `shellcheck -S warning` over the
 shell files.
 Then, when `chezmoi` is on the `PATH`, it runs the kit's tests on the Python that ran
