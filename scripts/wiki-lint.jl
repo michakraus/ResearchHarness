@@ -50,8 +50,9 @@
 # changelog is never corrected, so a path that has since moved is not a defect there. Linting it
 # would report the history as a fault and invite exactly the rewrite the convention forbids.
 # `Tasks/Archive/` and `Tasks/Evidence/` are records for the same reason, so the path and
-# line-citation checks skip them (`RECORDS`); the task board's schema still reads `Archive/`. A
-# directory marks itself a record with a `.lint-records` file, and the same two checks skip it.
+# line-citation checks skip them (`RECORDS`), and so does `link-unwritten`; the task board's
+# schema still reads `Archive/`. A directory marks itself a record with a `.lint-records` file,
+# and the same three checks skip it.
 #
 # SEVERITIES
 #
@@ -260,8 +261,8 @@ command_head(s::AbstractString) = rstrip(strip(first(split(s, r" --?[A-Za-z]")))
     records_dirs(scope) -> Vector{String}
 
 Every directory under `ROOT/scope` that holds a `.lint-records` file, relative to `ROOT`. Such a
-directory is a record — audit output, benchmark runs, a review — and the path and line-citation
-checks skip everything under it, for the reason they skip a `CHANGELOG.md`.
+directory is a record — audit output, benchmark runs, a review — and the path, line-citation
+and `link-unwritten` checks skip everything under it, for the reason they skip a `CHANGELOG.md`.
 """
 function records_dirs(scope::AbstractString)
     out = String[]
@@ -370,6 +371,9 @@ function lint_scope(vault::AbstractString, kind::Symbol, files, texts, names,
     # page moved and the link did not. From `Tasks/` or `Library/` it is the normal way to
     # point at a claim, so it is only a warning — Obsidian will not follow it across vaults, and
     # that is worth saying once, not failing a commit over.
+    # A record keeps its unwritten links as it keeps its dead paths: the marker was true when it
+    # was written, and the record is never edited to write the page.
+    records = vcat(RECORDS, records_dirs(vault))
     inbound = Dict(f => 0 for f in files)
     for f in files, (ln, target, wrapped) in wiki_links(texts[f])
         here = get(names, target, nothing)
@@ -384,7 +388,7 @@ function lint_scope(vault::AbstractString, kind::Symbol, files, texts, names,
             push!(findings, Finding(kind == :vault ? :error : :warn, "link-crossvault", f, ln,
                 "[[$target]] is in another vault, at `$(elsewhere[target])`" *
                 (kind == :vault ? "" : " — Obsidian will not follow it from here")))
-        else
+        elseif !any(p -> startswith(f, p), records)
             push!(findings, Finding(:warn, "link-unwritten", f, ln,
                 "[[$target]] names no page — a marker, or a typo"))
         end
@@ -422,7 +426,6 @@ function lint_scope(vault::AbstractString, kind::Symbol, files, texts, names,
     end
 
     # --- 8, 9: paths and line citations in prose ---------------------------------------------
-    records = vcat(RECORDS, records_dirs(vault))
     for f in files
         any(p -> startswith(f, p), records) && continue
         for (ln, raw) in prose_paths(texts[f])
