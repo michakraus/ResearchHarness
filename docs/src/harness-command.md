@@ -67,6 +67,7 @@ These options come before the subcommand.
 | [`settings`](#settings) | measures and checks the Claude Code settings: `surface`, `compare`, `twins`, `selftest` | no |
 | [`permissions`](#permissions) | generates the OpenCode permission block and path-guard list from the settings template | yes |
 | [`test`](#test) | runs the harness's own test cases | no |
+| [`mutate`](#mutate) | runs named mutants of the Python code against the parts of `test` that should kill them | no |
 | [`changelog`](#changelog) | joins the changelog fragments of `changelog.d/` into `CHANGELOG.md`, or checks that a branch adds one | yes |
 | [`skill-triggers`](#skill-triggers) | tests whether each skill loads on its queries | runs paid sessions with `--apply` |
 
@@ -631,6 +632,53 @@ part, part names together with `--changed`, an empty `BASE` or one that git cann
 `--jobs` below 1, a `--log` file whose directory does not exist, or a directory of the slot files
 that cannot be made or written.
 
+### `mutate`
+
+```text
+harness mutate SPEC
+```
+
+Runs named mutants of the Python code of the harness. `SPEC` is a TOML file with one table per
+mutant, in the order in which they run:
+
+```toml
+[MU1]
+file = "lib/harness/changelog.py"   # a path relative to the harness checkout
+anchor = 'DIRECTORY = "changelog.d"' # a text on exactly one line of file
+old = 'HEADING = "## Unreleased"'    # a text that occurs exactly once after the end of that line
+new = 'HEADING = "## Released"'      # the text that replaces it
+tests = ["changelog"]                # the parts of harness test that should kill the mutant
+```
+
+The anchor tells two equal texts apart without a line number. `mutate` copies the checkout into a
+temporary directory: its tracked files and its untracked files that git does not ignore, with
+their working-tree bytes, as a git repository, because the parts `docs` and `sweep` read
+`git ls-files`. It writes nothing into the checkout or its `.git`, and removes the copy after the
+run, also after an error or an interrupt. The copy first runs `harness test` with the parts of
+every mutant, unmutated. Then each mutant is applied alone to the copy, `harness test` runs with
+its parts, and the file is reverted. It prints one line per mutant and, last,
+`<n> mutants, <k> killed, <s> survived, <i> invalid`:
+
+| line | meaning |
+|:--|:--|
+| `<name> killed: <line>` | the first `BAD` line of the run. A run that fails with no `BAD` line, such as a crash at import, gives `exit <status> with no BAD line: <its last line>` |
+| `<name> killed (timeout): <line>` | the first `BAD` line is that of a part stopped after its timeout of 300 s |
+| `<name> SURVIVED` | every case of the mutant's parts passes |
+| `<name> invalid: <error>` | `ast.parse` refuses the mutated file; no test runs |
+
+`mutate` stops before any mutant runs, and the message names the mutant, when the spec is empty;
+a table lacks one of the five keys, has another key, or has a value of the wrong type; `file` is
+not a file of the copy or is not UTF-8; `anchor` is on no line or on more than one; `old` does not
+occur exactly once after the anchor's line; `tests` is empty, or names a part that
+`harness test --list` does not name. It also stops, with the first `BAD` line, when the unmutated
+copy fails the parts of the spec.
+
+**Exit status:** 0 when every mutant is killed, 1 when a mutant survives or is invalid, 2 when it
+stops.
+
+**Where to run it:** in the harness checkout. It runs `harness test`, so it takes as long as the
+parts that it names, once for the unmutated copy and once per valid mutant.
+
 ### `changelog`
 
 ```text
@@ -713,7 +761,7 @@ report to `$RESEARCH_ROOT/.scratch/skill-triggers/<date>-<model>.md`.
 | status | meaning |
 |:--|:--|
 | 0 | nothing to do, the change is made, or the read-only subcommand finished |
-| 1 | the dry run has work to do; a check (`doctor`, `leaks`, `test`, `settings selftest`, `skill-triggers`) failed |
+| 1 | the dry run has work to do; a check (`doctor`, `leaks`, `test`, `mutate`, `settings selftest`, `skill-triggers`) failed |
 | 2 | a usage error, a refusal or a failure, with one line on standard error |
 
 ## The Julia environment

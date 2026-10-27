@@ -22,8 +22,9 @@ A subcommand's run that takes more than `TIMEOUT` seconds exits `timeout`, a wro
 runs the runner on a child that outlives a timeout of 1 s and passes the result through each check
 of the sweep: `dry_run_ok`, `refused_ok` and `applied_ok`.
 
-Not swept: `format` runs Julia over the tree, `ci-protection` needs `gh` with a login, and
-`skill-triggers` runs its dry run and its `--apply` in its own cases.
+Not swept: `format` runs Julia over the tree, `ci-protection` needs `gh` with a login,
+`skill-triggers` runs its dry run and its `--apply` in its own cases, and `mutate` needs a SPEC
+and runs `harness test`.
 `install --apply` instantiates a Julia environment, `clone --apply` clones and `repos push --apply`
 pushes. `update` fetches the harness checkout itself; its own cases run it on a scratch remote.
 """
