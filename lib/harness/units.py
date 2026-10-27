@@ -178,9 +178,7 @@ def path_problems(path, filesystem, home):
         if not d.startswith("/")
         or posixpath.normpath(d) != d
         or any(pathlib.PurePosixPath(d).is_relative_to(s) for s in session)
-        or d not in SYSTEM_DIRS
-        and any(covers(e, d) for e in allow)
-        and not any(covers(e, d) for e in deny)
+        or (d not in SYSTEM_DIRS and any(covers(e, d) for e in allow) and not any(covers(e, d) for e in deny))
     ]
 
 

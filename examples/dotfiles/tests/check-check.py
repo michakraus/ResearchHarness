@@ -496,7 +496,7 @@ def test_all_pass():
             check(names == expected_names(host), f"{label}: the checks {names}")
             got = statuses(checks, doctor)
             package = GPU_PACKAGE[MACHINES[host]["gpu"]]
-            want = {name: "PASS" for name in expected_names(host)}
+            want = dict.fromkeys(expected_names(host), "PASS")
             if not args:
                 want.update({n: "SKIP" for n in want if n.startswith("Revise") or n == "GPU"})
             if package is None:

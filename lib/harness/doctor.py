@@ -1073,9 +1073,8 @@ def status_cases(check, root, system_name):
     # The whole run on a machine with every step done: no FAIL, and each line in the format.
     got, text = case(
         "every step done",
-        {
-            name: "PASS"
-            for name in (
+        dict.fromkeys(
+            (
                 "system",
                 "Python",
                 "Python environment",
@@ -1087,8 +1086,9 @@ def status_cases(check, root, system_name):
                 "autocommit job",
                 "~/.claude repository",
                 "Kaimon token",
-            )
-        }
+            ),
+            "PASS",
+        )
         | {"install warning 1": "WARN", "harness test": "SKIP", "Revise": "SKIP"},
     )
     lines = text.splitlines()
@@ -1323,7 +1323,7 @@ def status_cases(check, root, system_name):
     else:
         got, _ = case("iTerm2 on Linux", {}, sections=("tools",), **none)
         check("iTerm2" not in got, f"Linux: no iTerm2 line -> {got.get('iTerm2')}")
-    case("every Julia package", {name: "PASS" for name in PACKAGES}, sections=("tools",), **none)
+    case("every Julia package", dict.fromkeys(PACKAGES, "PASS"), sections=("tools",), **none)
     for name, floor in ((n, MINIMUMS[n][0]) for n in PACKAGES):
         for version, want in ((floor, "PASS"), (below(floor), "FAIL")):
             case(
@@ -1346,14 +1346,14 @@ def status_cases(check, root, system_name):
     )
     case(
         "no manifest",
-        {name: "FAIL" for name in PACKAGES},
+        dict.fromkeys(PACKAGES, "FAIL"),
         lambda f: (f.julia / "Manifest.toml").unlink(),
         ("tools",),
         **none,
     )
     case(
         "a manifest that is not TOML",
-        {name: "WARN" for name in PACKAGES},
+        dict.fromkeys(PACKAGES, "WARN"),
         lambda f: (f.julia / "Manifest.toml").write_text("[[deps.JSON\n"),
         ("tools",),
         **none,
@@ -1367,7 +1367,7 @@ def status_cases(check, root, system_name):
     )
     case(
         "a manifest with no table deps",
-        {name: "WARN" for name in PACKAGES},
+        dict.fromkeys(PACKAGES, "WARN"),
         lambda f: (f.julia / "Manifest.toml").write_text('julia_version = "1.13.2"\n'),
         ("tools",),
         **none,
@@ -1376,7 +1376,7 @@ def status_cases(check, root, system_name):
         for sandbox, want in ((False, "FAIL"), (True, "SKIP")):
             case(
                 f"a manifest that cannot be read, sandbox {sandbox}",
-                {name: want for name in PACKAGES},
+                dict.fromkeys(PACKAGES, want),
                 lambda f: (f.julia / "Manifest.toml").chmod(0),
                 ("tools",),
                 sandbox=sandbox,

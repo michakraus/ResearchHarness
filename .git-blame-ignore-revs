@@ -1,0 +1,6 @@
+# Commits that `git blame` skips: each changes the layout of the code and nothing else. Use it
+# with `git blame --ignore-revs-file .git-blame-ignore-revs`, or once per checkout with
+# `git config blame.ignoreRevsFile .git-blame-ignore-revs`.
+
+# ruff format over every Python file, at line length 110
+0a21c5c81e82a5410e5c9f172a816340c7ceb040

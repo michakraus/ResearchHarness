@@ -57,13 +57,63 @@ GET = ["--profile", str(REPO / "examples" / "profile.toml"), "get", "harness"]
 # The closed set of forms that bin/harness may use: the node types of `ast`, the token types and
 # the operators that it uses, each of which Python 3.0 reads.
 NODES = frozenset(
-    "Add And Assign Attribute AugAssign BinOp BoolOp Call ClassDef Compare Constant Dict Eq "
-    "ExceptHandler Expr For FunctionDef If IfExp Import ImportFrom Is List ListComp Load Lt Mod "
-    "Module Name Not NotEq Or Raise Return Slice Store Subscript Try Tuple USub UnaryOp With alias "
-    "arg arguments comprehension keyword withitem".split()
+    [
+        "Add",
+        "And",
+        "Assign",
+        "Attribute",
+        "AugAssign",
+        "BinOp",
+        "BoolOp",
+        "Call",
+        "ClassDef",
+        "Compare",
+        "Constant",
+        "Dict",
+        "Eq",
+        "ExceptHandler",
+        "Expr",
+        "For",
+        "FunctionDef",
+        "If",
+        "IfExp",
+        "Import",
+        "ImportFrom",
+        "Is",
+        "List",
+        "ListComp",
+        "Load",
+        "Lt",
+        "Mod",
+        "Module",
+        "Name",
+        "Not",
+        "NotEq",
+        "Or",
+        "Raise",
+        "Return",
+        "Slice",
+        "Store",
+        "Subscript",
+        "Try",
+        "Tuple",
+        "USub",
+        "UnaryOp",
+        "With",
+        "alias",
+        "arg",
+        "arguments",
+        "comprehension",
+        "keyword",
+        "withitem",
+    ]
 )
-TOKENS = frozenset("NAME OP STRING NUMBER NEWLINE NL COMMENT INDENT DEDENT ENDMARKER".split())
-OPERATORS = frozenset("!= % ( ) + += , - . : < = == [ ] { }".split())
+TOKENS = frozenset(
+    ["NAME", "OP", "STRING", "NUMBER", "NEWLINE", "NL", "COMMENT", "INDENT", "DEDENT", "ENDMARKER"]
+)
+OPERATORS = frozenset(
+    ["!=", "%", "(", ")", "+", "+=", ",", "-", ".", ":", "<", "=", "==", "[", "]", "{", "}"]
+)
 NUMBER = re.compile(r"0|[1-9][0-9]*|0o[0-7]+")
 
 

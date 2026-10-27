@@ -1413,7 +1413,7 @@ def layer_cases(scratch):
     case(
         lambda: (
             code == 0
-            and dict(line.findall(text)) == {k: "already" for k in want}
+            and dict(line.findall(text)) == dict.fromkeys(want, "already")
             and not list((gemini / "antigravity-cli").glob("settings.json.bak-*"))
             and not list(config.glob("config.json.bak-*"))
         ),
@@ -2158,8 +2158,7 @@ def bash_rule_cases(key, body, rule):
     head = body[:-2] if body.endswith(" *") else None
     if head is not None and (
         not rule_matches(rule, head.replace("*", "zz"))
-        or not head.endswith("*")
-        and rule_matches(rule, head.replace("*", "zz") + "zz")
+        or (not head.endswith("*") and rule_matches(rule, head.replace("*", "zz") + "zz"))
     ):
         return False
     for i, c in enumerate(body):

@@ -139,7 +139,7 @@ import subprocess
 import sys
 import tempfile
 import unicodedata
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, UTC
 from unittest import mock
 
 from harness import REPO, HarnessError, changing, frontends, frontmatter, install, network, outcome
@@ -275,7 +275,7 @@ def load_rules(path):
 
 def commands(days):
     """Yield every Bash command string issued in the last `days` days."""
-    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    cutoff = (datetime.now(UTC) - timedelta(days=days)).isoformat()
     for path in PROJECTS.rglob("*.jsonl"):
         if path.stat().st_mtime < (datetime.now().timestamp() - days * 86400):
             continue
@@ -314,7 +314,7 @@ def segments(command):
 ESCAPED_STAR, ESCAPED_BACKSLASH, GLOBSTAR = "\x00S\x00", "\x00B\x00", "\x00G\x00"
 
 
-@functools.lru_cache(maxsize=None)
+@functools.cache
 def wildcard_regex(pattern):
     """The regex Claude Code 2.1.282 builds for a Bash wildcard rule."""
     source, text, index = pattern.strip(), "", 0
@@ -376,7 +376,7 @@ def rule_matches(segment, rule, kind):
     return segment == rule
 
 
-@functools.lru_cache(maxsize=None)
+@functools.cache
 def parse_rule(rule):
     """A rule's shape and what `rule_matches` needs for it, computed once per rule."""
     prefix = re.fullmatch(r"(.+):\*", rule)

@@ -392,7 +392,7 @@ def selftest():
             ("a -> b", "no `<` or `>`"),
             ("a < b", "no `<` or `>`"),
         ]:
-            data = f'---\nname: a-skill\ndescription: "{description}"\n---\nbody\n'.encode("utf-8")
+            data = f'---\nname: a-skill\ndescription: "{description}"\n---\nbody\n'.encode()
             f.write_bytes(data)
             for label, call in [
                 ("parse_file", lambda: parse_file(f)),

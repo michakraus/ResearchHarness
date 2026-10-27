@@ -257,7 +257,7 @@ def segments(line):
             elif c == close and not quoted:
                 found.append(seg)
                 return i + 1
-            elif line.startswith("$(", i) or c == "`" or c == "(" and not quoted:
+            elif line.startswith("$(", i) or c == "`" or (c == "(" and not quoted):
                 j = scan(i + (2 if c == "$" else 1), "`" if c == "`" else ")")
                 seg, i = seg + line[i:j], j
             elif c == '"':

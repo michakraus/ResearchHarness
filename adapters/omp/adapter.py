@@ -1583,7 +1583,7 @@ def omp_agent_cases(case, fresh, run, agent):
                     "an Under oh-my-pi section where no mechanism is used, or none where one is",
                     ("## Under oh-my-pi" in under) != uses,
                 ),
-                ("no council rule", council and f"critics here, `1a`" not in under),
+                ("no council rule", council and "critics here, `1a`" not in under),
                 (
                     "no skills rule naming each skill",
                     any(

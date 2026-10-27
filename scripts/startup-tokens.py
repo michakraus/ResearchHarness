@@ -60,4 +60,4 @@ for path in paths:
 print(f"{'kind':<34}{'entry':<16}{'n':>5}{'total':>9}{'read':>9}{'write':>9}   (medians)")
 for (kind, entry), rows in sorted(groups.items(), key=lambda kv: -len(kv[1])):
     med = [int(statistics.median(r[i] for r in rows)) for i in range(3)]
-    print(f"{kind:<34}{str(entry):<16}{len(rows):>5}{med[0]:>9}{med[1]:>9}{med[2]:>9}")
+    print(f"{kind:<34}{entry!s:<16}{len(rows):>5}{med[0]:>9}{med[1]:>9}{med[2]:>9}")
