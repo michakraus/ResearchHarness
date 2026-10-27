@@ -541,8 +541,9 @@ first sync and a second run, the Python that uv is asked for, the restart with i
 a working environment, in a session too, each refusal of the start, a failed sync that removes
 the environment that it made and keeps a directory that was there, and a restart that lands on
 another interpreter, which exits with status 2 instead of a loop. In the process of the cases,
-they check the marker that a start exports to its children. They also check, under a scratch
-`HOME`, that the script uses only a closed set of forms, each of which Python 3.0 reads.
+they check the marker that a start exports to its children. They also run the script, under a
+scratch `HOME`, on an interpreter that reports 3.13, and check that the script uses only a closed
+set of forms, each of which Python 3.0 reads.
 
 The cases of the Linux download set the platform and the release URL through
 `RESEARCH_HARNESS_TEST_PLATFORM` and `RESEARCH_HARNESS_TEST_UV_URL`, which only they set, and

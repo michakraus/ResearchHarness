@@ -13,6 +13,6 @@ dependencies = []
 
 [dependency-groups]
 dev = [
-    "ruff==0.17.2",  # formats and lints the Python code, at the version that CI runs
-    "basedpyright==1.40.2",  # checks the types of the Python code, at the version that CI runs
+    "ruff==0.17.2",  # formats and lints the Python code, at one pinned version on every machine
+    "basedpyright==1.40.2",  # checks the types of the Python code, at one pinned version on every machine
 ]
