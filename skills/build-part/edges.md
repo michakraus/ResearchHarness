@@ -295,6 +295,12 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   `Any`. No clause names inference, so no critic sees it and the branch verifier finds it after a
   pass. A port keeps the source's type parameter (`ForcingLayer{…, CT, …}` at #207's `3b1775cd`),
   and the layer's own test file asserts `@inferred` on its forward pass (B2c, the learning package)
+- a cost premise that times the build of a generated function and never calls it: the run-time
+  compilation of the first call is two orders larger than the build, and it lands in the test file
+  and in the CI job's `timeout-minutes` instead of in the premise. Time the first call once per
+  width, and write the growth into the premise and into the clause that rests on it (P39, *Rewrite
+  the reduced basis packages*: 7.2 s to build at `m = 10` against 762 s for the first gradient
+  call, so the check that times the build saw neither)
 
 ## A tool that reads files or a tree
 
@@ -719,3 +725,15 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   of `origin/main` and on the branch, each run alone from a cold process. Without it the entry
   records the load, and the verifier can only call it unverified (C3, the Hamiltonian and Lagrangian
   networks' package)
+- **a post-PASS fix committed on top of the release commit:** the tip is then no longer
+  `Release <version>`, and a spec clause that reads the last commit — subject, `1 1` numstat in two
+  files, a heading date equal to the commit date — fails on the head the pull request carries,
+  although the release commit met it when it was pushed. `record_head.sh` showed it only when the
+  dispatcher reran the gate on the new head. Put the fix beneath the release commit on
+  `<branch>-recut`: keep the content commits, add the fix as one commit, and cherry-pick the release
+  commit last, so its author date and the heading keep their day (P51 finish,
+  *Rewrite the reduced basis packages*; now a plan-wide rule in that plan's §L)
+- **a part's file list that excludes a page the branch makes false:** `docs/src/paper.md` counted
+  "Four scripts in `scripts/`" and the branch added a fifth, and no clause saw it because the list
+  owned `scripts/` alone. Read every page that counts, lists or tabulates what the diff adds, and
+  put it in the part's files (P39, *Rewrite the reduced basis packages*)
