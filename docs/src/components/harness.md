@@ -27,6 +27,7 @@ subcommands live in the adapters: `settings` and `trust` in `adapters/claude/ada
 | `skill-triggers` | `skill_triggers.py` |
 | `doctor` | `doctor.py` |
 | `changelog` | `changelog.py` |
+| `mutate` | `mutate.py` |
 | `test` | `testrun.py` |
 
 `frontmatter.py`, `docs.py`, `sweep.py` and `environment.py` have no subcommand. Their cases run
@@ -361,6 +362,22 @@ Its cases check the join, the insertion into `CHANGELOG.md`, the order and the p
 classification without git, and the dry run, `--apply` and `--check` on scratch repositories with
 fixed commit dates. The sweep does not run it, because it reads the harness checkout and its
 history, not the fixture.
+
+## `mutate.py`
+
+The subcommand `harness mutate SPEC`, the named mutants of the Python code. `load` reads the TOML
+spec, one table per mutant with `file`, `anchor`, `old`, `new` and `tests`. `copy` copies the
+tracked files of the checkout and its untracked files that git does not ignore into a temporary
+directory and makes it a git repository, because the parts `docs` and `sweep` read
+`git ls-files`. `mutated` replaces the one `old` after the anchor's line. Before any mutant runs,
+`run` refuses a spec that it cannot apply, a part that `harness test --list` of the copy does not
+name, and a copy that fails the spec's parts unmutated. `each` then applies each mutant alone,
+skips the test of a mutated file that `ast.parse` refuses, runs `harness test` of the copy with
+the mutant's parts, reverts the file, and prints the line that `verdict` gives.
+
+Its cases check the spec, the anchor, the verdicts and the copy, and run whole runs and each
+refusal on a fixture git repository with a stub `bin/harness`; they never run the real suite. The
+sweep does not run it, because it needs a spec and runs `harness test`.
 
 ## `skill_triggers.py`
 
