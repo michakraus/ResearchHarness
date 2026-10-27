@@ -49,6 +49,9 @@
 # `CHANGELOG.md` is skipped entirely. An entry states what was true when it was written, and a
 # changelog is never corrected, so a path that has since moved is not a defect there. Linting it
 # would report the history as a fault and invite exactly the rewrite the convention forbids.
+# `Tasks/Archive/` and `Tasks/Evidence/` are records for the same reason, so the path and
+# line-citation checks skip them (`RECORDS`); the task board's schema still reads `Archive/`. A
+# directory marks itself a record with a `.lint-records` file, and the same two checks skip it.
 #
 # SEVERITIES
 #
@@ -170,8 +173,15 @@ const BACKTICK_RE = r"`([^`\n]+)`"
 const DATE_RE = r"\b(19|20)\d\d-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])\b"
 const GEN_OPEN_RE = r"<!--\s*generated:\s*([A-Za-z0-9_-]+)\s*-->"
 
-# A span holding any of these is a pattern or a placeholder, not a path that must resolve.
-const NOT_A_PATH = ['*', '?', '<', '>', '{', '}', '…', ' ', '\t']
+# A span holding any of these is a pattern or a placeholder, not a path that must resolve. A space
+# is not among them: `Projects/`, `Papers/`, `Books/` and `Talks/` name most directories with
+# spaces, and excluding it hid a line citation past the end of its file.
+const NOT_A_PATH = ['*', '?', '<', '>', '{', '}', '…']
+
+# `Tasks/Archive/` and `Tasks/Evidence/` are records: a closed task and the reports a plan rested
+# on state what was true when they were written, so the path and line-citation checks skip them
+# for the reason they skip a `CHANGELOG.md`. In the corpus they held 197 of the 440 path warnings.
+const RECORDS = ["Tasks/Archive/", "Tasks/Evidence/"]
 
 # Two directories are ephemeral by rule: `.worktrees/` holds temporary checkouts, removed when
 # the branch merges, and `.scratch/` holds logs and throw-away environments. A page naming one
@@ -219,8 +229,8 @@ end
     prose_paths(text) -> Vector{(line, span)}
 
 Backticked spans that name a path into the tree and could resolve. A span holding a glob, a
-`<placeholder>`, an ellipsis or whitespace is skipped: it is a pattern or a shape, and reporting
-it as a dead path buries the real findings. That exclusion is why this check is an ERROR.
+`<placeholder>` or an ellipsis is skipped: it is a pattern or a shape, and reporting it as a dead
+path buries the real findings.
 """
 function prose_paths(text::AbstractString)
     out = Tuple{Int,String}[]
@@ -233,6 +243,31 @@ function prose_paths(text::AbstractString)
             endswith(s, "...") && continue
             push!(out, (i, String(s)))
         end
+    end
+    return out
+end
+
+"""
+    command_head(s) -> String
+
+The path a command span starts with: `s` up to its first flag (` -x` or ` --x`). A span that does
+not resolve whole is checked again as this, because `script.jl --apply` names `script.jl`. The
+whole span comes first, since a file name can hold ` -C` or ` - ` itself.
+"""
+command_head(s::AbstractString) = rstrip(strip(first(split(s, r" --?[A-Za-z]"))), '/')
+
+"""
+    records_dirs(scope) -> Vector{String}
+
+Every directory under `ROOT/scope` that holds a `.lint-records` file, relative to `ROOT`. Such a
+directory is a record — audit output, benchmark runs, a review — and the path and line-citation
+checks skip everything under it, for the reason they skip a `CHANGELOG.md`.
+"""
+function records_dirs(scope::AbstractString)
+    out = String[]
+    for (dir, dirs, files) in walkdir(joinpath(ROOT, scope))
+        filter!(d -> !(d in SKIP_DIRS), dirs)
+        ".lint-records" in files && push!(out, relpath(dir, ROOT) * "/")
     end
     return out
 end
@@ -357,13 +392,39 @@ function lint_scope(vault::AbstractString, kind::Symbol, files, texts, names,
 
     # --- 7: orphans --------------------------------------------------------------------------
     # Only in a vault. Nothing links to a task file, and that is not a defect.
+    #
+    # A backticked path to a page, or to a directory above it, links it too. That is how a note
+    # points at the evidence it rests on — `harness-audit/f11/`, relative to the note — and
+    # counting only `[[…]]` reported every file of such a directory: 385 of the 406 orphans. A
+    # directory counts only from two levels below the vault root: a top-level directory such as
+    # `Notes/` is a section of the wiki, and one mention of it would link 439 pages.
+    if kind == :vault
+        fileset = Set(files)
+        for f in files, m in eachmatch(BACKTICK_RE, texts[f])
+            s = rstrip(replace(strip(m.captures[1]), r":\d+(?:[-–]\d+)?$" => ""), '/')
+            (isempty(s) || any(c -> c in NOT_A_PATH, s)) && continue
+            abs = any(p -> startswith(s, p), PATH_PREFIXES) ? resolve(s) :
+                  joinpath(ROOT, dirname(f), s)
+            rel = relpath(normpath(abs), ROOT)
+            if rel in fileset
+                rel == f || (inbound[rel] += 1)
+            elseif startswith(rel, vault * "/") && length(splitpath(rel)) >= 3 &&
+                   all(c -> ncodeunits(c) <= 255, splitpath(rel)) && isdir(abs)  # NAME_MAX
+                for g in files
+                    startswith(g, rel * "/") && g != f && (inbound[g] += 1)
+                end
+            end
+        end
+    end
     for f in (kind == :vault ? files : String[])
         basename(f) in ("README.md",) && continue
         inbound[f] == 0 && push!(findings, Finding(:warn, "orphan", f, 0, "no inbound link"))
     end
 
     # --- 8, 9: paths and line citations in prose ---------------------------------------------
+    records = vcat(RECORDS, records_dirs(vault))
     for f in files
+        any(p -> startswith(f, p), records) && continue
         for (ln, raw) in prose_paths(texts[f])
             p = rstrip(raw, '/')
             m = match(r"^(.*?):(\d+)(?:[-–](\d+))?$", p)     # `file:12` and `file:12-25`
@@ -379,7 +440,7 @@ function lint_scope(vault::AbstractString, kind::Symbol, files, texts, names,
                         "`$p` names line $n; the file has $total"))
                 end
             else
-                ispath(resolve(p)) ||
+                ispath(resolve(p)) || ispath(resolve(command_head(p))) ||
                     push!(findings, Finding(:warn, "path", f, ln, "`$raw` does not exist"))
             end
         end
@@ -420,7 +481,7 @@ end
 # because the hook blocks on an error and a half-finished retrofit must not block a commit.
 #
 # `Tasks/Evidence/` holds the reports a plan rests on, one folder per plan. They are not task
-# files, so this rule skips them; the path and line-citation checks still read them.
+# files, so this rule skips them, and as `RECORDS` the path and line-citation checks skip them too.
 
 const TASK_STATUSES = ("wip", "next", "incoming", "backlog", "done")
 const TASK_NOT_TASKS = ("README.md", "CLAUDE.md")
