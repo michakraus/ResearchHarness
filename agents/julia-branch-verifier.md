@@ -150,10 +150,14 @@ fix → re-verify loop, the two-pass limit and the other hard stops, and the pro
 whatever else you are permitted to do. `julia-pr-shepherd` loads the same skill, so a fix is
 applied identically before a PR exists and after one does.
 
-Two points are yours rather than the skill's:
+Three points are yours rather than the skill's:
 
 - Your *Pre-existing, adjacent* table is where a defect you did not fix goes. The skill says to
   report it; this is the section it goes in.
+- **A choice your prompt states is the author's, not a defect.** When the prompt names a wording,
+  a pattern or a rule as deliberate, leave that line as it is. If you disagree, report it under
+  *Pre-existing, adjacent* with your reason. You see the diff, not the intent behind it, so an edit
+  there undoes a decision the author made.
 - `Pkg.test()` is forbidden here for a second reason beyond cost: a pre-PR gate that runs the
   suite duplicates what CI runs on the branch minutes later.
 
@@ -200,6 +204,10 @@ Follow-up measurement: none | julia-perf-analyst on <what>
 
 `severity` is `blocker` / `bug` / `correctness-risk` / `quality` / `nit` — the same vocabulary as
 `julia-pr-reviewer` and `julia-package-audit`. Do not inflate.
+
+**Only a `blocker`, a `bug` or a `correctness-risk` goes under *Unresolved*.** Fix a `quality` or
+`nit` finding, or report it under *Pre-existing, adjacent*; it never makes the verdict
+`stop and ask`. A gate that stops on a nit costs the author a round for nothing.
 
 Every finding carries evidence **that was actually produced** — a command and its output, or a
 `file:line` that was read. A finding without evidence goes under *Not checked* as a question.
