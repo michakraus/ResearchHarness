@@ -1825,7 +1825,12 @@ def agy_cases():
         return json.loads(agy.render_hooks(pathlib.Path(spaced) / ".gemini", python))[agy.HOOK]["PreToolUse"][0][
             "hooks"][0]
 
-    handler = pre_tool_use(sys.executable)
+    # The interpreter's path holds a space too: a link to this interpreter below the spaced home.
+    interpreter = spaced + "/python env/bin/python"
+    os.makedirs(os.path.dirname(interpreter), exist_ok=True)
+    if not os.path.lexists(interpreter):
+        os.symlink(sys.executable, interpreter)
+    handler = pre_tool_use(interpreter)
     status_call = json.dumps({"toolCall": {"name": "run_command", "args": {"CommandLine": "git status"}},
                               "workspacePaths": [CWD]})
     p = subprocess.run(["/bin/sh", "-c", handler["command"]], input=status_call, capture_output=True, text=True,

@@ -576,8 +576,9 @@ def hook_command(command, profile, python):
 def settings_template(profile, overlay, python=None):
     """The settings template parsed, rendered with `profile` when it holds a placeholder, and with
     the network rules of settings/network.toml and the overlay at `overlay`, as `read_settings`
-    renders it; each command of its `hooks` is rendered by `hook_command`, with the interpreter
-    `python`, by default the Python environment's (`install.python_interpreter`)."""
+    renders it. Then each command of its `hooks` is rendered by `hook_command`, which
+    `read_settings` does not do, with the interpreter `python`, by default the Python
+    environment's (`install.python_interpreter`)."""
     text = PROPOSAL.read_text()
     template = json.loads(text)
     python = install.python_interpreter() if python is None else python
@@ -1509,6 +1510,7 @@ def layer_cases(check, tmp):
          f"each hook command of the template that runs a .py hook renders as the environment's interpreter and the "
          f"hook's path, each one shell word under a home with a space, and every other command keeps its words: "
          f"{rendered}")
+
     def owned_of(b):
         """The owned sections of the template as the install in the scratch `b` renders them: its
         hook commands run on the interpreter of the scratch's environment."""
