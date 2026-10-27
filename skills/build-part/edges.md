@@ -469,6 +469,10 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   `@assert` on the right of `show_status && …` reads as diagnostic output, but the audit that names
   it as a later part's defect makes it a thing to keep — the guard goes and the statement stays
   (B, the plan that revives the multisymplectic package)
+- new code in a module that a generated suppression record covers: a per-file ignore table or a
+  type-checker baseline written by the same branch suppresses by file and code, so the branch's own
+  new lines pass with findings that the rule for new code forbids. Check the lines that the branch
+  adds with the generated record removed (Q1 round 1, *Make the Harness enforce strict Python*)
 
 ## A migration of tests or of text
 
