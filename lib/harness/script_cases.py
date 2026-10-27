@@ -317,6 +317,14 @@ def spec_format(check: Callable[[object, str], None]) -> None:
             status == 0 and "premise: pass" in out,
             f"spec-validate.py passes the fixture spec -> {status} {out}",
         )
+        # an --env name that the script sets itself is the script's own failure, exit 3, never
+        # the exit 1 of a failed rule
+        for pair in ("JULIA_PROJECT=@.", "BASE=abc1234"):
+            out, status = spec_validate(write_spec(tmp / "ok"), "--base", str(base), "--env", pair)
+            check(
+                status == 3 and "spec-validate.py failed: TypeError" in out,
+                f"--env {pair} is the script's own failure, exit 3 -> {status} {out}",
+            )
         out, status = spec_validate(write_spec(tmp / "nodomain", domain=""), "--no-run")
         check(
             status == 1 and "rule 8" in out,

@@ -394,6 +394,7 @@ if __name__ == "__main__":
         OSError,
         subprocess.SubprocessError,
         ValueError,
+        TypeError,  # an --env name that the script sets itself: `dict()` gets it twice
     ) as e:  # the script's own failure, told apart from a failed rule
         print(f"spec-validate.py failed: {type(e).__name__}: {e}", file=sys.stderr)
         sys.exit(3)

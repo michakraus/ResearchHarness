@@ -2694,7 +2694,7 @@ def layer_cases(check, tmp):
         capture_output=True,
         text=True,
         env=git_env,
-        check=True,
+        check=False,  # outside a git checkout the list is empty, and the case below is wrong
     ).stdout
     for rel in filter(None, listed.split("\0")):
         if (REPO / rel).is_file():
