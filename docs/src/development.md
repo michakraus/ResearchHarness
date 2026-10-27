@@ -160,7 +160,8 @@ git config core.hooksPath .githooks
 CI runs `.github/workflows/test.yml` on every push, pull request and manual dispatch:
 `bin/harness test` and the compile check on Python 3.14 and the latest 3.x, the three checks of
 the strict profile, `shellcheck` and `actionlint`. Its `python` job installs uv with
-`astral-sh/setup-uv`, pinned by its commit SHA, and runs `uv sync --locked` into the environment that `bin/harness` reads, on the job's Python;
+`astral-sh/setup-uv`, pinned by its commit SHA, and runs `uv sync --locked` into the environment
+that `bin/harness` reads, on the job's Python;
 the job on the latest 3.x has `continue-on-error`, so its failure warns and does not fail the
 run. Its `empty-home` job runs `bin/harness test` once more on Python 3.14, with `HOME`
 set to a new empty directory, so a case that needs a file of the runner's home fails there. Its

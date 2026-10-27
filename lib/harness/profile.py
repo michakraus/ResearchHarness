@@ -1288,9 +1288,10 @@ def prepush_case(
             and any(line.startswith("pre-push: refused;") for line in lines)
         )
         print(
-            f"{'ok ' if ok else 'BAD'}  pre-push: an environment without {' and '.join(lacks)}, with both tools "
-            f"on the PATH: one line per tool that names harness install --apply, no check runs, the push is "
-            f"refused -> exit {code}, checks {checks}, {[line for line in lines if line.startswith('pre-push:')]}"
+            f"{'ok ' if ok else 'BAD'}  pre-push: an environment without {' and '.join(lacks)}, "
+            f"with both tools on the PATH: one line per tool that names harness install --apply, "
+            f"no check runs, the push is refused -> exit {code}, checks {checks}, "
+            f"{[line for line in lines if line.startswith('pre-push:')]}"
         )
         return 1, int(not ok)
     if fails:
@@ -1300,8 +1301,9 @@ def prepush_case(
             and any(line.startswith("pre-push: refused;") for line in lines)
         )
         print(
-            f"{'ok ' if ok else 'BAD'}  pre-push: `{fails}` fails: all three checks run and the push is refused "
-            f"-> exit {code}, checks {strict_runs}, {[line for line in lines if line.startswith('pre-push:')]}"
+            f"{'ok ' if ok else 'BAD'}  pre-push: `{fails}` fails: all three checks run "
+            f"and the push is refused -> exit {code}, checks {strict_runs}, "
+            f"{[line for line in lines if line.startswith('pre-push:')]}"
         )
         return 1, int(not ok)
     ok = (
