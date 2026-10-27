@@ -55,6 +55,7 @@ import subprocess
 import sys
 import tempfile
 import tomllib
+from typing import cast
 from unittest import mock
 
 from . import REPO, HarnessError, frontends, frontmatter, network
@@ -529,7 +530,11 @@ def name_pattern(names):
 def own_repository(repo=REPO):
     """`owner/name` of the `origin` URL, or None without one."""
     url = subprocess.run(
-        ["git", "remote", "get-url", "origin"], cwd=repo, capture_output=True, text=True
+        ["git", "remote", "get-url", "origin"],  # noqa: S607 -- git runs from PATH
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        check=False,
     ).stdout
     m = re.search(r"[:/]([^/:]+/[^/]+?)(?:\.git)?\s*$", url)
     return m.group(1) if m else None
@@ -581,14 +586,14 @@ def unquoted(path):
     ).decode(errors="replace")
 
 
-def added_lines(sha, repo=REPO):
+def added_lines(sha: str, repo: pathlib.Path = REPO) -> list[tuple[str, str]]:
     """(where, text) for each path and line that the commit `sha` adds. A path is that of each
     file that the commit adds or changes against any parent, a rename's new path too, as line 0.
     A line is a `+` line of `git show --format= --text -U0`, so a binary file's lines too; in a
     merge's combined diff, a line with a `+` in any parent's column. No external diff and no
     textconv driver rewrites them."""
     p = subprocess.run(
-        [
+        [  # noqa: S607 -- git runs from PATH
             "git",
             "diff-tree",
             "-r",
@@ -603,15 +608,27 @@ def added_lines(sha, repo=REPO):
         ],
         cwd=repo,
         capture_output=True,
+        check=False,
     )
     if p.returncode:
         raise HarnessError(f"git diff-tree {sha}: {p.stderr.decode(errors='replace').strip()}")
     paths = dict.fromkeys(p.stdout.decode(errors="replace").split("\0"))  # -m names a path once per parent
     out = [(f"{sha[:12]} {path}:0", path) for path in paths if path]
     p = subprocess.run(
-        ["git", "show", "--format=", "--text", "-U0", "--no-color", "--no-ext-diff", "--no-textconv", sha],
+        [  # noqa: S607 -- git runs from PATH
+            "git",
+            "show",
+            "--format=",
+            "--text",
+            "-U0",
+            "--no-color",
+            "--no-ext-diff",
+            "--no-textconv",
+            sha,
+        ],
         cwd=repo,
         capture_output=True,
+        check=False,
     )
     if p.returncode:
         raise HarnessError(f"git show {sha}: {p.stderr.decode(errors='replace').strip()}")
@@ -634,11 +651,14 @@ def added_lines(sha, repo=REPO):
     return out
 
 
-def message_lines(sha, repo=REPO):
+def message_lines(sha: str, repo: pathlib.Path = REPO):
     """(where, text) for each line of the message of the commit `sha`, `%B`: the raw subject and
     body, trailers too, numbered from 1. The author, the committer and a signature are not read."""
     p = subprocess.run(
-        ["git", "show", "-s", "--no-show-signature", "--format=%B", sha], cwd=repo, capture_output=True
+        ["git", "show", "-s", "--no-show-signature", "--format=%B", sha],  # noqa: S607 -- git runs from PATH
+        cwd=repo,
+        capture_output=True,
+        check=False,
     )
     if p.returncode:
         raise HarnessError(f"git show -s {sha}: {p.stderr.decode(errors='replace').strip()}")
@@ -670,7 +690,11 @@ def cmd_leaks(args, repo=REPO):
     pattern, allowed = name_pattern(names), own_repository(repo)
     dummy = DEFAULTS | load(DUMMY, home=DUMMY_HOME, host=DUMMY_HOST)
     files = subprocess.run(
-        ["git", "ls-files", "-z"], cwd=repo, capture_output=True, text=True, check=True
+        ["git", "ls-files", "-z"],  # noqa: S607 -- git runs from PATH
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        check=True,
     ).stdout.split("\0")
     sources = [(f, (repo / f).read_text(errors="replace")) for f in files if f and (repo / f).is_file()]
     tracked = len(sources)
@@ -750,10 +774,15 @@ def commit_cases():
         repo = pathlib.Path(tmp) / "repo"
         repo.mkdir()
 
-        def git(*args, **extra):
+        def git(*args: str, **extra: str) -> str:
             """`git args` in the fixture; `extra` sets variables of its environment."""
             return subprocess.run(
-                ["git", *args], cwd=repo, env={**env, **extra}, check=True, capture_output=True, text=True
+                ["git", *args],  # noqa: S607 -- git runs from PATH
+                cwd=repo,
+                env={**env, **extra},
+                check=True,
+                capture_output=True,
+                text=True,
             ).stdout.strip()
 
         def commit(name, data=None, *move):
@@ -1036,7 +1065,13 @@ def commit_cases():
         commit("f.txt", b"side\n")
         git("switch", "-q", "main")
         commit("f.txt", b"main\n")
-        subprocess.run(["git", "merge", "-q", "--no-ff", "side4"], cwd=repo, env=env, capture_output=True)
+        subprocess.run(
+            ["git", "merge", "-q", "--no-ff", "side4"],  # noqa: S607 -- git runs from PATH
+            cwd=repo,
+            env=env,
+            capture_output=True,
+            check=False,
+        )
         (repo / "f.txt").write_bytes(b"main\nLEAK\n")
         git("add", "--", "f.txt")
         git("commit", "-q", "-m", "merge")
@@ -1156,7 +1191,8 @@ def prepush_case(
             print(f"BAD  pre-push: the case needs {', '.join(missing)} on the PATH; it does not run")
             return 1, 1
         for tool in PREPUSH_TOOLS:
-            (tools / tool).symlink_to(shutil.which(tool, path=search))
+            # `missing` is empty, so each tool is found.
+            (tools / tool).symlink_to(cast(str, shutil.which(tool, path=search)))
         (tools / "python3").symlink_to(sys.executable)
         (tools / "gitleaks").write_text(
             '#!/bin/sh\n[ "$1" = version ] && echo v8.24.0\n[ "$1" = stdin ] && cat >/dev/null\nexit 0\n'
@@ -1211,9 +1247,14 @@ def prepush_case(
                     f"sys.exit({int(name == kit_fails)})\n"
                 )
 
-        def git(*args):
+        def git(*args: str) -> str:
             return subprocess.run(
-                ["git", *args], cwd=repo, env=env, check=True, capture_output=True, text=True
+                ["git", *args],  # noqa: S607 -- git runs from PATH
+                cwd=repo,
+                env=env,
+                check=True,
+                capture_output=True,
+                text=True,
             ).stdout.strip()
 
         git("init", "-q", "-b", "main")
@@ -1238,6 +1279,7 @@ def prepush_case(
                 capture_output=True,
                 text=True,
                 timeout=60,
+                check=False,
             )
             code, text = p.returncode, p.stdout + p.stderr
         except subprocess.TimeoutExpired:
@@ -1358,7 +1400,8 @@ def prepush_branch_cases():
             print(f"BAD  pre-push: the branch cases need {', '.join(missing)} on the PATH; they do not run")
             return 1, 1
         for tool in PREPUSH_TOOLS:
-            (tools / tool).symlink_to(shutil.which(tool, path=search))
+            # `missing` is empty, so each tool is found.
+            (tools / tool).symlink_to(cast(str, shutil.which(tool, path=search)))
         (tools / "python3").symlink_to(sys.executable)
         (repo / "bin").mkdir(parents=True)
         # The stub holds the leak string split, so its own tree does not hit.
@@ -1374,9 +1417,14 @@ def prepush_branch_cases():
             "sys.exit(int(hit))\n"
         )
 
-        def git(*args):
+        def git(*args: str) -> str:
             return subprocess.run(
-                ["git", *args], cwd=repo, env=env, check=True, capture_output=True, text=True
+                ["git", *args],  # noqa: S607 -- git runs from PATH
+                cwd=repo,
+                env=env,
+                check=True,
+                capture_output=True,
+                text=True,
             ).stdout.strip()
 
         def commit(name, content=None):
@@ -1432,6 +1480,7 @@ def prepush_branch_cases():
                     capture_output=True,
                     text=True,
                     timeout=60,
+                    check=False,
                 )
                 code, text = p.returncode, p.stdout + p.stderr
             except subprocess.TimeoutExpired:
@@ -1568,6 +1617,7 @@ def home_cases():
                 env=env,
                 capture_output=True,
                 text=True,
+                check=False,
             )
             check(
                 p.returncode == 0 and p.stdout.strip() == expected,
@@ -1711,7 +1761,10 @@ def selftest():
     n2, w2 = prepush_case()
     # As inside a git hook: git's exec path first on the PATH.
     exec_path = subprocess.run(
-        ["git", "--exec-path"], capture_output=True, text=True, check=True
+        ["git", "--exec-path"],  # noqa: S607 -- git runs from PATH
+        capture_output=True,
+        text=True,
+        check=True,
     ).stdout.strip()
     n3, w3 = prepush_case(exec_path + os.pathsep + os.environ.get("PATH", ""))
     n4, w4 = prepush_branch_cases()

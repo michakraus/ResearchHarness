@@ -41,6 +41,7 @@ import pathlib
 import re
 import tempfile
 import tomllib
+from typing import cast
 
 from . import HarnessError
 
@@ -181,7 +182,12 @@ def omp(providers):
         entry = {"baseUrl": url, "api": APIS[p["api"]][1]}
         if "key" in p:
             env = ENV_KEY.fullmatch(p["key"])
-            entry["apiKey"] = env.group(1) if env else "!cat " + FILE_KEY.fullmatch(p["key"]).group(1)
+            # check() admits a `key` of the {env:...} or the {file:...} form only.
+            form = cast(str, p["key"])
+            key = env or FILE_KEY.fullmatch(form)
+            if key is None:
+                raise HarnessError(f"[{name}]: `key` is {{env:VARIABLE}} or {{file:PATH}}")
+            entry["apiKey"] = key.group(1) if env else "!cat " + key.group(1)
         if "models" in p:
             entry["models"] = []
             for model, m in p["models"].items():

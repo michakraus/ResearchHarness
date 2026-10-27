@@ -35,7 +35,7 @@ FRONTENDS = ("claude", "opencode", "omp", "antigravity")
 MEMBERS = ("NAME", "TEMPLATES", "register", "plan", "selftest", "RESTART")
 
 
-def Plan(**fields):
+def Plan(**fields: object) -> types.SimpleNamespace:  # noqa: N802 -- the adapters call it by this name, as a class
     """One frontend's part of `harness install`:
 
       files        [(destination, bytes, mode, label[, backup[, note]])], each installed by
@@ -85,7 +85,7 @@ SHARED_ROOTS = (
 )
 
 
-def shared(dst):
+def shared(dst: str) -> bool:
     """Whether the Claude Code layer's file at `dst`, relative to ~/.claude, is one that OpenCode,
     oh-my-pi and Antigravity hold a copy of: RTK.md, an instruction file, a guard script, or a file
     of a skill."""
@@ -96,7 +96,7 @@ def shared(dst):
     )
 
 
-def relocate(data, root):
+def relocate(data: bytes, root: str) -> bytes:
     """`data` with each path of SHARED_ROOTS rewritten to the same path below `root`, a frontend's
     directory in its home form, such as `~/.config/opencode`: a frontend's copy of a text names its
     own copies, not Claude Code's."""
@@ -105,21 +105,25 @@ def relocate(data, root):
     return data
 
 
-def home_form(path):
+def home_form(path: str | pathlib.Path) -> str:
     """`path` with the home directory written as `~`."""
     home = str(pathlib.Path.home())
     text = str(path)
     return "~" + text[len(home) :] if text == home or text.startswith(home + "/") else text
 
 
-def load():
+def load() -> list[types.ModuleType]:
     """The adapter of each frontend of FRONTENDS, in that order; each is loaded once."""
-    adapters = []
+    adapters: list[types.ModuleType] = []
     for name in FRONTENDS:
         key = f"harness_adapter_{name}"
         if key not in sys.modules:
             path = REPO / "adapters" / name / "adapter.py"
             spec = importlib.util.spec_from_file_location(key, path)
+            # A path ending in .py always gets a spec with the source file loader; without one the
+            # adapter fails to load, with its path.
+            if spec is None or spec.loader is None:
+                raise HarnessError(f"{path}: no module loader for this path")
             module = importlib.util.module_from_spec(spec)
             sys.modules[key] = module
             try:
@@ -134,7 +138,7 @@ def load():
                     else [f.lineno for f in traceback.extract_tb(e.__traceback__) if f.filename == str(path)]
                 )
                 where = f"{path}:{lines[-1]}" if lines else str(path)
-                raise HarnessError(f"{where}: {traceback.format_exception_only(e)[-1].strip()}") from None
+                raise HarnessError(f"{where}: {traceback.format_exception_only(e)[-1].strip()}") from e
             missing = [m for m in MEMBERS if not hasattr(module, m)]
             if missing:
                 del sys.modules[key]
@@ -143,6 +147,6 @@ def load():
     return adapters
 
 
-def adapter(name):
+def adapter(name: str) -> types.ModuleType:
     """The adapter of the frontend `name`."""
     return load()[FRONTENDS.index(name)]

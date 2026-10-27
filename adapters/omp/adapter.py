@@ -102,6 +102,7 @@ import os
 import pathlib
 import re
 import tempfile
+from typing import Any, cast
 
 from harness import REPO, HarnessError, frontends, frontmatter, install, providers, sources
 from harness import profile as profile_module
@@ -641,7 +642,7 @@ def plan(ctx):
         frontends.home_form(agent),
         chains,
         own,
-        where,
+        str(where),
     )
     # An installed oh-my-pi rule, agent or skill with no source is left in place, and oh-my-pi still
     # lists it: a file of rules/ whose name ends in `.md` or `.mdc`, a file of agents/ that ends in
@@ -1014,7 +1015,7 @@ def omp_cases(case, fresh, run):
             and yml
             == {
                 "providers": {
-                    **own,
+                    **cast(dict[str, Any], own),
                     **{
                         s.split("/", 1)[0]: {"modelOverrides": {s.split("/", 1)[1]: {"contextWindow": n}}}
                         for s, n in limits.items()
@@ -1056,7 +1057,14 @@ def omp_cases(case, fresh, run):
         case(
             lambda: (
                 (refusal is None) == ok
-                and (ok or ("`apiKey` of the provider p" in refusal and str(key) not in refusal))
+                and (
+                    ok
+                    or (
+                        refusal is not None
+                        and "`apiKey` of the provider p" in refusal
+                        and str(key) not in refusal
+                    )
+                )
             ),
             f"an apiKey {'that names a variable or a command passes' if ok else 'that is no variable name exits 2 without its value'}: "
             f"{'passed' if refusal is None else 'refused'}",

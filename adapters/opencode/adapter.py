@@ -878,6 +878,7 @@ def selftest():
             check(False, "an unknown tier exits 2")
         except HarnessError as e:
             check(str(bad) in str(e) and "'nosuch'" in str(e), f"an unknown tier exits 2: {e}")
+        path = pathlib.Path(tmp) / "models.toml"
         for case in [
             (None, "a missing models.toml"),
             ("[claude]\n[modles]\n", "an unknown top-level table", "modles"),
@@ -947,7 +948,6 @@ def selftest():
             ),
         ]:
             text, label, *names = case
-            path = pathlib.Path(tmp) / "models.toml"
             if text is None:
                 path.unlink(missing_ok=True)
             else:
@@ -1083,7 +1083,8 @@ def selftest():
     except ValueError as e:
         provider = f"no JSON: {e}"
     check(
-        provider == entries
+        isinstance(provider, dict)
+        and provider == entries
         and list(provider) == ["p", "q", "local"]
         and provider["local"]["models"]
         == {"org/model:7b": {"name": "M", "limit": {"context": 1000, "output": 100}}},
@@ -1176,7 +1177,7 @@ def install_cases(check, tmp):
     empty.mkdir()
     dummy = scratch_profile(tmp / "profile.toml", empty)
 
-    def dry_run(patch=contextlib.nullcontext()):
+    def dry_run(patch: contextlib.AbstractContextManager[object] | None = None) -> tuple[str, str]:
         out = io.StringIO()
         args = argparse.Namespace(
             profile=str(dummy), models=str(REPO / "examples" / "models.toml"), apply=False, force=False
@@ -1189,11 +1190,18 @@ def install_cases(check, tmp):
                     OPENCODE_CONFIG_DIR=str(tmp),
                     PI_CODING_AGENT_DIR=str(tmp / "omp"),
                 ),
-                patch,
+                contextlib.nullcontext() if patch is None else patch,
                 contextlib.redirect_stdout(out),
             ):
                 install.cmd_install(args)
-        except Exception as e:  # the case reports a crash as BAD instead of stopping `harness test`
+        except (
+            HarnessError,
+            OSError,
+            ValueError,
+            LookupError,
+            TypeError,
+            AttributeError,
+        ) as e:  # the case reports a crash as BAD instead of stopping `harness test`
             out.write(f"\nraised {type(e).__name__}: {e}")
         text = out.getvalue()
         return text, (text.strip().splitlines() or ["no output"])[-1]
@@ -1296,7 +1304,7 @@ def install_cases(check, tmp):
 
     def instructions():
         jsonc = (base / "opencode" / "opencode.jsonc").read_text()
-        return re.findall(r'"([^"]*)"', re.search(r'"instructions":\s*\[(.*?)\]', jsonc, re.S).group(1))
+        return re.findall(r'"([^"]*)"', re.findall(r'"instructions":\s*\[(.*?)\]', jsonc, re.S)[0])
 
     case(
         lambda: (

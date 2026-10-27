@@ -10,6 +10,9 @@ import shutil
 import stat
 import subprocess
 import sys
+from importlib.abc import Loader
+from importlib.machinery import ModuleSpec
+from typing import cast
 
 from . import REPO, install
 from . import profile as profile_module
@@ -163,6 +166,7 @@ class Scratch:
                 env=env,
                 cwd=base,
                 timeout=60,
+                check=False,
             )
         except subprocess.TimeoutExpired:
             return None, "TIMEOUT"
@@ -334,10 +338,10 @@ def target_cases(check, tmp):
                     and what in lines[-1]
                     and (
                         len(lines) == 1
-                        if not plan
+                        if not plan or shown is None
                         else any(l.startswith(shown) for l in lines[:-1])
                         and len(COUNT_LINE.findall(text)) == 1
-                        and COUNT_LINE.search(text).group(1) == "to make"
+                        and COUNT_LINE.findall(text) == ["to make"]
                         and not any(str(target) in l for l in lines[:-1])
                     )
                     and snapshot(base) == before
@@ -512,7 +516,8 @@ def setup_guard_cases(check, tmp):
             with mock.patch.object(Scratch, "run", staticmethod(failing)):
                 group(lambda ok, label: labels.append((ok, label)), where)
             raised = None
-        except Exception as e:  # the defect that the case looks for: reported, and the next group runs
+        # The defect that the case looks for: reported, and the next group runs.
+        except (OSError, ValueError, LookupError, TypeError, AttributeError) as e:
             raised = f"{type(e).__name__}: {e}"
         setup = [
             i
@@ -532,15 +537,19 @@ def setup_guard_cases(check, tmp):
     import importlib.util
     import io
 
-    spec = importlib.util.spec_from_file_location("harness_probe", REPO / "hooks" / "probe.py")
+    # A path that ends in `.py` always gets a spec with a source loader.
+    spec = cast(
+        "ModuleSpec", importlib.util.spec_from_file_location("harness_probe", REPO / "hooks" / "probe.py")
+    )
     probe = importlib.util.module_from_spec(spec)
     out = io.StringIO()
     try:
-        spec.loader.exec_module(probe)
+        cast("Loader", spec.loader).exec_module(probe)
         with contextlib.redirect_stdout(out):
             result = probe.drift_cases(lambda base, env: (2, f"some output\n{failure}\n"))
         raised = None
-    except Exception as e:  # the defect that the case looks for: reported
+    # The defect that the case looks for: reported.
+    except (OSError, ValueError, LookupError, TypeError, AttributeError) as e:
         result, raised = None, f"{type(e).__name__}: {e}"
     finally:
         if hasattr(probe, "FIXTURE"):
@@ -587,7 +596,7 @@ def restart_cases(check, tmp):
     (home / ".gemini").mkdir()
     code, text = run(base)
     case(
-        lambda: expect(code, text, set(), status=1) and COUNT_LINE.search(text).group(1) == "to make",
+        lambda: expect(code, text, set(), status=1) and COUNT_LINE.findall(text) == ["to make"],
         f"a dry run with changes pending prints no restart line: {code}, {after_count(text)}",
     )
     code, text = run(base, "--apply")

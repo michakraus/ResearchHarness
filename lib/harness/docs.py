@@ -42,6 +42,8 @@ import re
 import subprocess
 import tempfile
 import tomllib
+from collections.abc import Callable, Mapping, Sequence
+from typing import Any
 
 from . import REPO, HarnessError
 from .frontmatter import parse_file
@@ -262,7 +264,13 @@ def spawners(meta):
     return sorted({name for name, m in meta.items() if "agent" in m.get("tools", [])} | set(SPAWNING_SKILLS))
 
 
-def call_cases(calls, sources, meta, lines, check):
+def call_cases(
+    calls: Sequence[Any],
+    sources: Mapping[str, str],
+    meta: Mapping[str, Mapping[str, Any]],
+    lines: Callable[[str], list[str] | None],
+    check: Callable[[bool, str], None],
+):
     """The cases of `calls`, the entries of calls.toml, through `check(ok, label)`."""
     for number, call in enumerate(calls, 1):
         problems = call_problems(call, sources, meta, lines)
@@ -357,7 +365,7 @@ def walkthrough_problems(data, sources, lines, calls=()):
     return problems
 
 
-def checkout_call_cases(paths, check):
+def checkout_call_cases(paths: list[str], check: Callable[[bool, str], None]) -> list[Any]:
     """The cases of calls.toml of this checkout, whose tracked files are `paths`; its [[call]]
     entries. A source that parse_file refuses is one wrong case that names the refusal, and the
     call cases do not run."""
@@ -441,7 +449,7 @@ def selftest():
     )
 
     # The rules of the dependencies page on fixed inputs, then the page of this checkout.
-    def page(
+    def dependencies_page(
         generic="| A | 1 | a |\n| B | 2 | b |\n",
         heads="### A\n### B and C\n### D, E\n",
         header=TABLE_HEADER,
@@ -455,30 +463,34 @@ def selftest():
         tables = "".join(f"## {t}\n\n{header}\n|:--|:--|:--|\n{bodies[t]}\n" for t in order)
         return f"# Dependencies\n\n{tables}## What each tool does\n\n```\n### Z\n```\n{heads}"
 
-    check(dependency_problems(page()) == [], "a true dependencies page has no problem")
+    check(dependency_problems(dependencies_page()) == [], "a true dependencies page has no problem")
     for label, text, phrase in [
         (
             "a row removed, its heading kept",
-            page(generic="| A | 1 | a |\n"),
+            dependencies_page(generic="| A | 1 | a |\n"),
             "'B' is named by a heading and is no row",
         ),
         (
             "a heading removed, its row kept",
-            page(heads="### A\n### B and C\n### E\n"),
+            dependencies_page(heads="### A\n### B and C\n### E\n"),
             "'D' is a row of the tables and no heading",
         ),
         (
             "a row twice",
-            page(generic="| A | 1 | a |\n| B | 2 | b |\n| A | 1 | a |\n"),
+            dependencies_page(generic="| A | 1 | a |\n| B | 2 | b |\n| A | 1 | a |\n"),
             "'A' is a row of the tables more than once",
         ),
         (
             "a tool in two headings",
-            page(heads="### A\n### B and C\n### D, E\n### A\n"),
+            dependencies_page(heads="### A\n### B and C\n### D, E\n### A\n"),
             "'A' is named by more than one heading",
         ),
-        ("the tables out of order", page(order=(TABLES[1], TABLES[0], TABLES[2])), "the tables are under"),
-        ("another header", page(header="| tool | minimum | needed by |"), "has the header"),
+        (
+            "the tables out of order",
+            dependencies_page(order=(TABLES[1], TABLES[0], TABLES[2])),
+            "the tables are under",
+        ),
+        ("another header", dependencies_page(header="| tool | minimum | needed by |"), "has the header"),
     ]:
         found = dependency_problems(text)
         check(
@@ -543,22 +555,22 @@ def selftest():
         spawners(meta) == ["b", *SPAWNING_SKILLS],
         "spawners: the sources with the tool agent, and SPAWNING_SKILLS",
     )
-    found = []
+    results: list[tuple[bool, str]] = []
     call_cases(
         [good, good, {"caller": "s", "callee": "b", "at": "skills/s/SKILL.md:1"}],
         sources,
         meta,
         files.get,
-        lambda ok, label: found.append((ok, label)),
+        lambda ok, label: results.append((ok, label)),
     )
     check(
-        [label for ok, label in found if not ok]
+        [label for ok, label in results if not ok]
         == [
             "calls.toml has 'b' -> 'a' at effort None more than once",
             "calls.toml has an entry with the caller 'build-part', which spawns",
             "calls.toml has an entry with the caller 'build-reviewed', which spawns",
         ],
-        f"call_cases names a duplicate and each spawner without an entry: {found}",
+        f"call_cases names a duplicate and each spawner without an entry: {results}",
     )
 
     # calls.toml of this checkout; a source that parse_file refuses is one wrong case, not the end of
@@ -567,20 +579,20 @@ def selftest():
     calls = checkout_call_cases(paths, check)
     from unittest import mock
 
-    found = []
+    results = []
     with mock.patch(
         f"{__name__}.parse_file", side_effect=HarnessError("x/SKILL.md: the model 'bogus' is not a tier")
     ):
         try:
-            checkout_call_cases(paths, lambda ok, label: found.append((ok, label)))
+            checkout_call_cases(paths, lambda ok, label: results.append((ok, label)))
             raised = None
-        except Exception as e:
+        except HarnessError as e:
             raised = f"{type(e).__name__}: {e}"
     check(
         raised is None
-        and [ok for ok, _ in found if not ok] == [False]
-        and "'bogus' is not a tier" in next(label for ok, label in found if not ok),
-        f"a source of calls.toml that parse_file refuses is one wrong case: raised {raised}, {found}",
+        and [ok for ok, _ in results if not ok] == [False]
+        and "'bogus' is not a tier" in next(label for ok, label in results if not ok),
+        f"a source of calls.toml that parse_file refuses is one wrong case: raised {raised}, {results}",
     )
 
     # The rules of a walk-through on fixed inputs: each wrong entry gives one problem.

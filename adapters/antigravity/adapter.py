@@ -139,6 +139,8 @@ import re
 import shlex
 import stat
 import tempfile
+from collections.abc import Callable
+from typing import Any, cast
 
 from harness import REPO, HarnessError, frontends, frontmatter, install, sources, units
 from harness import profile as profile_module
@@ -467,7 +469,9 @@ def path_rule(action, body):
     return f"{action}({path})", None
 
 
-def render_permissions(cfg, profile):
+def render_permissions(
+    cfg: dict[str, Any], profile: dict[str, Any]
+) -> tuple[dict[str, list[str]], list[tuple[str, str, str | None]]]:
     """({list: [rule]}, [(list, entry, reason)]) of the `permissions` of `cfg`, the rendered
     settings template: the Antigravity rules in the template's lists and order, MCP_CONFIG as a
     `read_file` deny and LAYER and MCP_CONFIG as `write_file` denies after them, then each Kaimon
@@ -540,7 +544,7 @@ def deny_write(entries, home, root, found, taken=()):
                 )
             )
             continue
-        head = re.match(r"[^*?\[]*", path).group(0)
+        head = re.split(r"[*?\[]", cast(str, path), maxsplit=1)[0]
         if head == path:
             if not pathlib.Path(os.path.realpath(path)).is_relative_to(top):
                 continue
@@ -755,7 +759,12 @@ def under_antigravity(meta, body, text=None):
     )
 
 
-def render_agent(path, tiers, overrides, root="~/.gemini/config"):
+def render_agent(
+    path: str | os.PathLike[str],
+    tiers: dict[str, str],
+    overrides: dict[str, str],
+    root: str = "~/.gemini/config",
+) -> bytes:
     """The bytes of the Antigravity agent of the agent at `path`, with `tiers` and `overrides` of
     load_models: the frontmatter `name`, `description`, `model` (its override, else the word of its
     tier, else `inherit`), `tools` (each neutral tool by TOOLS, `[]` for none), `subagent: true`,
@@ -876,7 +885,7 @@ def merge_mcp(path, kaimon):
         twice, numbers, stack = [], [], [([], tree)]
         while stack:
             key, value = stack.pop()
-            if isinstance(value, dict):
+            if isinstance(value, Pairs):
                 twice += [json.dumps([*key, k]) for k in value.twice]
                 stack += [([*key, k], v) for k, v in value.items()]
             elif isinstance(value, list):
@@ -1177,7 +1186,8 @@ def layer_cases(scratch):
     )
     case(
         lambda: (
-            json.loads(hooks)
+            hooks is not None
+            and json.loads(cast(str, hooks))
             == {
                 HOOK: {
                     "SessionStart": [{"type": "command", "command": start, "timeout": 15}],
@@ -1207,7 +1217,7 @@ def layer_cases(scratch):
     runs_py = [
         c
         for c in commands_of(json.loads((claude / "settings.json").read_text())["hooks"])
-        + commands_of(json.loads(hooks))
+        + (commands_of(json.loads(cast(str, hooks))) if hooks is not None else [])
         if ".py" in c
     ]
     case(
@@ -1490,7 +1500,7 @@ def instruction_cases(scratch):
     # A rule's `paths` becomes Antigravity's glob trigger, and the delta lists the rule with its scope.
     source = (REPO / "rules" / "julia-code.md").read_bytes()
     end = source.index(b"\n---\n", 3)
-    description = re.search(rb"^description: (.*)$", source[:end], re.M).group(1).decode()
+    description = re.findall(rb"^description: (.*)$", source[:end], re.M)[0].decode()
     installed = (config / "rules" / "julia-code.md").read_bytes()
     case(
         lambda: (
@@ -1823,6 +1833,8 @@ def _guard_module():
     import importlib.util
 
     spec = importlib.util.spec_from_file_location("harness_antigravity_guard", SOURCE / "guard.py")
+    if spec is None or spec.loader is None:
+        raise HarnessError(f"{SOURCE / 'guard.py'} has no module loader")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
@@ -1990,16 +2002,16 @@ def rule_cases(case):
             "ask": ["mcp__kaimon__debug_eval"],
         }
     }
-    got = render_permissions(small, profile)
+    rendered = render_permissions(small, cast(dict[str, Any], profile))
     case(
         lambda: (
-            got[0]
+            rendered[0]
             == {
                 "deny": ["write_file(/a/b)", *extras],
                 "ask": ["mcp(kaimon/debug_eval)"],
                 "allow": ["read_url(y.org)", "mcp(kaimon/ex)"],
             }
-            and [e for _, e, _ in got[1]]
+            and [e for _, e, _ in rendered[1]]
             == [
                 "WebFetch(domain:x.org)",
                 "Read(src/x)",
@@ -2011,7 +2023,7 @@ def rule_cases(case):
         ),
         f"a WebFetch deny, a relative path, a glob in a path, another server's MCP tool and a Kaimon entry that "
         f"names no tool are dropped; an allow host is a read_url rule, and a Kaimon tool is its mcp rule after "
-        f"the others, in its list: {got}",
+        f"the others, in its list: {rendered}",
     )
     allows = {"allow": ["Bash(ps *)", "mcp__kaimon__ex"]}
     sandboxes = [
@@ -2094,7 +2106,16 @@ def matcher_cases(case, bodies):
     after it, `x`, `zz` and the empty word."""
     try:
         total, matching, differ = compare_matchers(bodies)
-    except Exception as e:  # a case that crashes is BAD, and the next case still runs
+    except (
+        OSError,
+        ImportError,
+        SyntaxError,
+        AttributeError,
+        LookupError,
+        TypeError,
+        ValueError,
+        re.error,
+    ) as e:  # a case that crashes is BAD, and the next case still runs
         case(lambda: False, f"guard.py's matcher of each Bash deny and ask runs: {type(e).__name__}: {e}")
         return
     case(
@@ -2460,6 +2481,7 @@ def grants_cases(scratch):
         env=scratch.env(base),
         cwd=base,
         timeout=60,
+        check=False,
     )
     code, text = p.returncode, p.stdout + p.stderr
     case(
@@ -2650,7 +2672,8 @@ def deny_write_cases(scratch):
     os.environ["RESEARCH_ROOT"] = str(tree)
     try:
         found = clones()
-    except Exception as e:  # recorded, so that the environment is restored and the case reports it
+    except (HarnessError, OSError) as e:
+        # Recorded, so that the environment is restored and the case reports it.
         found = e
     finally:
         if saved is None:
@@ -2954,7 +2977,7 @@ def agent_cases(scratch):
         f"TOOLS maps each neutral tool to the names of a subagent's default family: {TOOLS}",
     )
 
-    def attempt(f):
+    def attempt[T](f: Callable[[], T]) -> T | HarnessError:
         try:
             return f()
         except HarnessError as e:
@@ -2982,7 +3005,7 @@ def agent_cases(scratch):
             list(head) != ["name", "description", "model", "tools", "subagent", *["inheritMcp"] * kaimon]
             or head["name"] != src.stem
             or head["description"] != meta["description"]
-            or head["model"] != EXAMPLE_TIERS.get(meta.get("model"), "inherit")
+            or head["model"] != EXAMPLE_TIERS.get(cast(dict[str, Any], meta).get("model", ""), "inherit")
             or head["tools"] != tools
             or head["subagent"] is not True
             or head.get("inheritMcp", True) is not True
@@ -3019,7 +3042,7 @@ def agent_cases(scratch):
     agents = scratch.tmp / "g3-agents"
     agents.mkdir()
 
-    def agent(name, head="", body="Do the work.\n"):
+    def agent(name: str, head: str = "", body: str = "Do the work.\n") -> pathlib.Path:
         path = agents / f"{name}.md"
         path.write_text(f"---\nname: {name}\ndescription: An agent of the cases.\n{head}---\n\n{body}")
         return path
@@ -3080,8 +3103,8 @@ def agent_cases(scratch):
         "pr": ("", "Then open the pull request.\n"),
     }
     parts = {}
-    for key, (head, body) in mechanisms.items():
-        data = attempt(lambda: render_agent(agent(f"uses-{key}", head, body), EXAMPLE_TIERS, {}))
+    for key, (front, prose) in mechanisms.items():
+        data = attempt(lambda: render_agent(agent(f"uses-{key}", front, prose), EXAMPLE_TIERS, {}))
         parts[key] = (
             data.decode().split("## Under Antigravity\n\n", 1)[-1].split("\n\n")
             if isinstance(data, bytes)
@@ -3124,7 +3147,8 @@ def agent_cases(scratch):
     worker = attempt(lambda: render_agent(REPO / "agents" / "worker.md", EXAMPLE_TIERS, {}))
     case(
         lambda: isinstance(worker, bytes) and ("- " + rules["pr"]).encode() in worker,
-        f"worker, whose body names opening a pull request, gets the rule of `pr`: {worker[:300]!r}",
+        f"worker, whose body names opening a pull request, gets the rule of `pr`: "
+        f"{worker[:300] if isinstance(worker, bytes) else worker!r}",
     )
     got = {
         body: [k for k in mechanisms if "- " + filled[k] in under_antigravity({}, body)]
@@ -3214,6 +3238,8 @@ def kaimon_cases(scratch):
         }
 
     code, out = run(base, "--apply")
+    # Each case below binds `got` to the file's parsed JSON or its text, and its lambda reads it.
+    got: Any
     got = json.loads(config.read_text()) if config.is_file() else None
     case(
         lambda: (
@@ -3395,6 +3421,7 @@ def kaimon_cases(scratch):
         env=scratch.env(base),
         cwd=base,
         timeout=60,
+        check=False,
     )
     code, out = p.returncode, p.stdout + p.stderr
     case(

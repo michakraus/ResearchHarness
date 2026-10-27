@@ -30,6 +30,8 @@ import tempfile
 import threading
 import time
 import tokenize
+from collections.abc import Sequence
+from typing import cast, override
 from unittest import mock
 
 from . import REPO, install
@@ -143,7 +145,13 @@ class Box:
         env.update(extra)
         return env
 
-    def run(self, argv=("--help",), python=None, timeout=TIMEOUT, **extra):
+    def run(
+        self,
+        argv: Sequence[str] = ("--help",),
+        python: str | None = None,
+        timeout: float = TIMEOUT,
+        **extra: str,
+    ):
         """bin/harness with `argv` on `python`, this interpreter by default: (exit status, stdout,
         stderr lines, seconds); a run past `timeout` is the status None."""
         start = time.monotonic()
@@ -155,6 +163,7 @@ class Box:
                 env=self.environ(**extra),
                 cwd=self.root,
                 timeout=timeout,
+                check=False,
             )
             code, out, err = p.returncode, p.stdout, p.stderr
         except subprocess.TimeoutExpired:
@@ -245,7 +254,7 @@ class Release(http.server.BaseHTTPRequestHandler):
 
     def do_GET(self):
         Release.requests.append(self.path)
-        port = self.server.server_address[1]
+        port = cast("tuple[str, int]", self.server.server_address)[1]
         kind, _, rest = self.path.lstrip("/").partition("/")
         if kind == "ok":
             machine = rest.removeprefix("uv-").partition("-unknown")[0]
@@ -269,7 +278,8 @@ class Release(http.server.BaseHTTPRequestHandler):
             return
         self.send_error(404)
 
-    def log_message(self, *args):
+    @override
+    def log_message(self, format: str, *args: object) -> None:
         pass
 
 
@@ -338,6 +348,7 @@ def outside_syntax(text):
         if (
             t.type == tokenize.NAME
             and t.string == "with"
+            and after is not None
             and after.type == tokenize.OP
             and after.string == "("
         ):
@@ -363,6 +374,7 @@ def syntax_cases(case, tmp):
         timeout=TIMEOUT,
         env=b.environ(),
         cwd=b.root,
+        check=False,
     )
     lines = p.stderr.splitlines()
     case(
@@ -432,7 +444,7 @@ def start_cases(case, tmp):
     # A session with no environment: the command runs here, after one line; no uv, no environment.
     for variable in ("SANDBOX_RUNTIME", "CLAUDECODE"):
         b = box()
-        code, out, err, _ = b.run(**{variable: "1"})
+        code, out, err, _ = b.run(("--help",), None, TIMEOUT, **{variable: "1"})
         case(
             lambda: (
                 code == 0
@@ -522,7 +534,7 @@ def start_cases(case, tmp):
         b = box()
         seen = b.root / "seen.log"
         make_env(b.env_dir, seen)
-        code, out, err, _ = b.run(GET, **extra)
+        code, out, err, _ = b.run(GET, None, TIMEOUT, **extra)
         runs = started(seen)
         want = repr([str(HARNESS.resolve()), *GET])
         case(
@@ -874,7 +886,7 @@ def install_cases_of(case, tmp):
     fake_uv(stubs / "uv", log)
     path = os.pathsep.join([str(stubs), os.environ.get("PATH", "")])
 
-    def uv_lines():
+    def uv_lines() -> list[str]:
         lines = log.read_text().splitlines() if log.exists() else []
         log.unlink(missing_ok=True)
         return lines
@@ -950,7 +962,9 @@ def install_cases_of(case, tmp):
     code, text = scratch.run(base, "--apply", extra_env={"PATH": path})
     case(
         lambda: (
-            code == 0 and len(uv_lines()) == 1 and subprocess.run([str(python), "-c", ""]).returncode == 0
+            code == 0
+            and len(uv_lines()) == 1
+            and subprocess.run([str(python), "-c", ""], check=False).returncode == 0
         ),
         f"--apply makes an environment whose interpreter starts: {code}, {scratch.tail(text)!r}",
     )
@@ -1019,6 +1033,7 @@ def install_cases_of(case, tmp):
                 env=scratch.env(base),
                 cwd=base,
                 timeout=TIMEOUT,
+                check=False,
             )
             case(
                 lambda: (
@@ -1078,6 +1093,7 @@ def prepush_cases(case, tmp):
             text=True,
             env={**env, "PATH": str(tools), "TMPDIR": str(tmp)},
             timeout=TIMEOUT,
+            check=False,
         )
         lines = p.stdout.strip().splitlines()
         case(

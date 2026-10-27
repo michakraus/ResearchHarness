@@ -91,10 +91,11 @@ BASE_PATH = "/usr/bin:/bin:/usr/sbin:/sbin"
 EOF = "\x04"  # ^D on a pseudo-terminal; on a pipe, the end of the written answers
 TERMINAL_TEST = "if [ ! -t 0 ]; then"
 UNSET = "<unset>"  # what the logging gpg.ssh.program writes for an unset SSH_SK_PROVIDER
-PTY = False  # whether a pseudo-terminal opens here; set in main
 
 failures = []
-ROOT = None  # the scratch directory of the whole run
+# Set in main: "root", the scratch directory of the whole run; "pty", whether a pseudo-terminal
+# opens here.
+RUN = {}
 KEYS = {}  # name -> private key path
 SCRIPTS = {}  # script name -> rendered text for the template host, with the listed key
 
@@ -117,7 +118,7 @@ def check(condition, message):
 
 
 def machines_data():
-    with open(SOURCE / ".chezmoidata" / "machines.toml", "rb") as handle:
+    with (SOURCE / ".chezmoidata" / "machines.toml").open("rb") as handle:
         return tomllib.load(handle)
 
 
@@ -129,11 +130,11 @@ TEMPLATE_HOST = DATA["template_host"]
 
 
 def scratch(name):
-    return pathlib.Path(tempfile.mkdtemp(prefix=f"{name}-", dir=ROOT))
+    return pathlib.Path(tempfile.mkdtemp(prefix=f"{name}-", dir=RUN["root"]))
 
 
 def must(cmd, env, cwd=None):
-    result = subprocess.run(cmd, capture_output=True, text=True, env=env, cwd=cwd)
+    result = subprocess.run(cmd, capture_output=True, text=True, env=env, cwd=cwd, check=False)
     if result.returncode != 0:
         raise RuntimeError(f"{' '.join(map(str, cmd))}: {result.stderr.strip()}")
     return result.stdout.strip()
@@ -164,7 +165,7 @@ def render(template, host, entry=None, source=SOURCE):
         json.dumps(data),
         "execute-template",
     ]
-    result = subprocess.run(cmd, capture_output=True, text=True, input=template.read_text())
+    result = subprocess.run(cmd, capture_output=True, text=True, input=template.read_text(), check=False)
     if result.returncode != 0:
         raise RuntimeError(f"{template.name} does not render for {host}: {result.stderr.strip()}")
     return result.stdout
@@ -187,14 +188,14 @@ def source_without(key):
             if line.split("=")[0].strip() != key
         )
     )
-    with open(machines, "rb") as handle:
+    with machines.open("rb") as handle:
         if key in tomllib.load(handle)["machines"][TEMPLATE_HOST]:
             raise RuntimeError(f"{machines}: the template host still has {key}")
     return copy
 
 
 def make_key(name):
-    directory = ROOT / "keys"
+    directory = RUN["root"] / "keys"
     directory.mkdir(exist_ok=True)
     path = directory / name
     must(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", name, "-f", str(path)], dict(os.environ))
@@ -211,7 +212,7 @@ def base_env(home, gitconfig=None):
         "HOME": str(home),
         "PATH": BASE_PATH,
         "LANG": "C",
-        "TMPDIR": str(ROOT),
+        "TMPDIR": str(RUN["root"]),
         "GIT_CONFIG_NOSYSTEM": "1",
         "GIT_TERMINAL_PROMPT": "0",
     }
@@ -225,7 +226,7 @@ class World:
     is the signing_key of the host data that dotfiles-merge is rendered with: a key name, a path
     below the world's root, or the text itself when `literal` is true."""
 
-    def __init__(self, name, signingkey="listed", sk_provider="", literal=False):
+    def __init__(self, name, signingkey="listed", sk_provider="", *, literal=False):
         self.root = scratch(name)
         self.remote = self.root / "remote.git"
         self.author = self.root / "author"
@@ -289,8 +290,8 @@ class World:
             self.scripts["dotfiles-merge"] = render(MERGE, TEMPLATE_HOST, signing_data(key, sk_provider))
         local_bin = self.home / ".local" / "bin"
         local_bin.mkdir(parents=True)
-        for name, text in self.scripts.items():
-            path = local_bin / name
+        for script, text in self.scripts.items():
+            path = local_bin / script
             path.write_text(text)
             path.chmod(0o755)
 
@@ -314,8 +315,8 @@ class World:
         must(cmd, env, cwd)
         return must(["git", "rev-parse", "HEAD"], env, cwd)
 
-    def push(self, ref="main", force=False):
-        cmd = ["git", "push", "-q"] + (["--force"] if force else []) + ["origin", f"HEAD:refs/heads/{ref}"]
+    def push(self, ref="main", *, force=False):
+        cmd = ["git", "push", "-q", *(["--force"] if force else []), "origin", f"HEAD:refs/heads/{ref}"]
         must(cmd, self.author_env, self.author)
 
     def author_git(self, *args):
@@ -366,10 +367,10 @@ class World:
         answers go to a pipe; in the second case the script that runs is the copy whose terminal
         test is `false` (see answering_copy)."""
         path = self.home / ".local" / "bin" / script
-        if terminal and not PTY:
+        if terminal and not RUN["pty"]:
             path = answering_copy(self.root, script, self.scripts[script])
         cmd = ["/bin/bash", str(path), *args]
-        if not terminal or not PTY:
+        if not terminal or not RUN["pty"]:
             result = subprocess.run(
                 cmd,
                 input=answers.replace(EOF, ""),
@@ -378,6 +379,7 @@ class World:
                 env=self.env,
                 cwd=self.home,
                 timeout=120,
+                check=False,
             )
             return result.returncode, result.stdout + result.stderr
         master, slave = os.openpty()
@@ -424,8 +426,10 @@ def answering_copy(root, script, text):
     return path
 
 
-def stopped(world, label, code, out, commit, head):
-    """The stop of clauses 1-4: exit non-zero, the commit named, no chezmoi call, HEAD kept."""
+def stopped(world, label, run, commit, head):
+    """The stop of clauses 1-4: exit non-zero, the commit named, no chezmoi call, HEAD kept.
+    `run` is the (exit status, output) of the script's run."""
+    code, out = run
     check(code != 0, f"{label}: exit {code}, non-zero")
     check(commit in out, f"{label}: the output names {commit[:7]}")
     check(world.calls() == [], f"{label}: no chezmoi call (log {world.calls()})")
@@ -441,8 +445,7 @@ def clause_1():
     head = w.head()
     bad = w.commit("unsigned")
     w.push()
-    code, out = w.run("dotfiles-update", answers="y\n")
-    stopped(w, "unsigned", code, out, bad, head)
+    stopped(w, "unsigned", w.run("dotfiles-update", answers="y\n"), bad, head)
 
 
 def clause_2():
@@ -452,8 +455,7 @@ def clause_2():
     bad = w.commit("signed by other", key="other")
     w.push()
     check("\ngpgsig " in w.author_git("cat-file", "commit", bad), "the commit carries a signature")
-    code, out = w.run("dotfiles-update", answers="y\n")
-    stopped(w, "other key", code, out, bad, head)
+    stopped(w, "other key", w.run("dotfiles-update", answers="y\n"), bad, head)
 
 
 # A stand-in for gpg or gpgsm that the host's git config names: it signs anything, and it reports
@@ -469,7 +471,8 @@ if [ "$mode" = sign ]; then
 fi
 echo '[GNUPG:] NEWSIG'
 echo '[GNUPG:] GOODSIG 0123456789ABCDEF Eve <eve@test>'
-echo '[GNUPG:] VALIDSIG 0123456789ABCDEF0123456789ABCDEF01234567 2026-10-15 1700000000 0 4 0 22 8 00 0123456789ABCDEF0123456789ABCDEF01234567'
+echo '[GNUPG:] VALIDSIG 0123456789ABCDEF0123456789ABCDEF01234567 2026-10-15 1700000000 0 4 0 22 8 00' \\
+    0123456789ABCDEF0123456789ABCDEF01234567
 echo '[GNUPG:] TRUST_ULTIMATE 0 pgp'
 """
 
@@ -481,7 +484,7 @@ def clause_2_backends():
         fake = w.root / f"fake-{fmt}"
         fake.write_text(FAKE_GPG.replace("HEADER", header))
         fake.chmod(0o755)
-        with open(w.home / ".gitconfig", "a") as handle:
+        with (w.home / ".gitconfig").open("a") as handle:
             if fmt == "openpgp":
                 handle.write(f"[gpg]\n\tprogram = {fake}\n")
             handle.write(f'[gpg "{fmt}"]\n\tprogram = {fake}\n')
@@ -507,8 +510,7 @@ def clause_2_backends():
             w.signature(bad) == "G Eve <eve@test>",
             f"{label}: the host's git reads the signature as G ({w.signature(bad)!r})",
         )
-        code, out = w.run("dotfiles-update", answers="y\n")
-        stopped(w, label, code, out, bad, head)
+        stopped(w, label, w.run("dotfiles-update", answers="y\n"), bad, head)
 
 
 def clause_3():
@@ -518,8 +520,7 @@ def clause_3():
     bad = w.commit("unsigned below")
     w.commit("signed tip", key="listed")
     w.push()
-    code, out = w.run("dotfiles-update", answers="y\n")
-    stopped(w, "signed tip", code, out, bad, head)
+    stopped(w, "signed tip", w.run("dotfiles-update", answers="y\n"), bad, head)
 
 
 def clause_4():
@@ -532,8 +533,7 @@ def clause_4():
     w.author_git("reset", "-q", "--hard", "HEAD~1")
     tip = w.commit("rewritten", key="listed")
     w.push(force=True)
-    code, out = w.run("dotfiles-update", answers="y\n")
-    stopped(w, "not a fast-forward", code, out, tip, head)
+    stopped(w, "not a fast-forward", w.run("dotfiles-update", answers="y\n"), tip, head)
 
 
 def clause_5():
@@ -549,7 +549,7 @@ def clause_5():
         w.commit("one", key="listed")
         tip = w.commit("two", key="listed")
         w.push()
-        code, out = w.run("dotfiles-update", answers=answers)
+        code, _ = w.run("dotfiles-update", answers=answers)
         want = ["diff", "apply"] if applies else ["diff"]
         check(code == 0, f"answer {label}: exit {code}, 0")
         check(w.calls() == want, f"answer {label}: chezmoi calls {w.calls()}, expected {want}")
@@ -572,18 +572,18 @@ def clause_5():
     )
     tip = w.author_git("rev-parse", "HEAD")
     w.push()
-    code, out = w.run("dotfiles-update", answers="y\n")
+    code, _ = w.run("dotfiles-update", answers="y\n")
     check(
         code == 0 and w.calls() == ["diff", "apply"] and w.head() == tip,
         f"a signed --no-ff merge of an unsigned branch commit is applied (exit {code}, calls {w.calls()})",
     )
 
     w = World("c5-trust")
-    with open(w.home / ".gitconfig", "a") as handle:
+    with (w.home / ".gitconfig").open("a") as handle:
         handle.write("[gpg]\n\tminTrustLevel = ultimate\n")
     tip = w.commit("signed", key="listed")
     w.push()
-    code, out = w.run("dotfiles-update", answers="y\n")
+    code, _ = w.run("dotfiles-update", answers="y\n")
     check(
         code == 0 and w.calls() == ["diff", "apply"] and w.head() == tip,
         "the check reads %G?, not git verify-commit's status: gpg.minTrustLevel = ultimate "
@@ -591,11 +591,11 @@ def clause_5():
     )
 
     w = World("c5-showsignature")
-    with open(w.home / ".gitconfig", "a") as handle:
+    with (w.home / ".gitconfig").open("a") as handle:
         handle.write("[log]\n\tshowSignature = true\n")
     tip = w.commit("signed", key="listed")
     w.push()
-    code, out = w.run("dotfiles-update", answers="y\n")
+    code, _ = w.run("dotfiles-update", answers="y\n")
     check(
         code == 0 and w.calls() == ["diff", "apply"] and w.head() == tip,
         f"a gitconfig with log.showSignature = true changes nothing (exit {code}, calls {w.calls()})",
@@ -608,7 +608,7 @@ def clause_6():
     head, before = w.head(), w.origin_main()
     w.commit("signed", key="listed")
     w.push()
-    code, out = w.run("dotfiles-update", answers="y\n", terminal=False)
+    code, _ = w.run("dotfiles-update", answers="y\n", terminal=False)
     check(code != 0, f"exit {code}, non-zero")
     check(w.origin_main() == before, "origin/main of the source did not move: no git fetch ran")
     check(w.calls() == [] and w.head() == head, "no chezmoi call, HEAD unchanged")
@@ -623,16 +623,14 @@ def clause_7():
     bad = w.commit("signed by the other key", key="other")
     w.push()
     applied = w.signers.read_text()
-    code, out = w.run("dotfiles-update", answers="y\n")
-    stopped(w, "two commits", code, out, bad, head)
+    stopped(w, "two commits", w.run("dotfiles-update", answers="y\n"), bad, head)
     check(w.signers.read_text() == applied, "the applied allowed_signers is unchanged")
 
     w = World("c7-one")
     head = w.head()
     bad = w.commit("add and sign with the other key", key="other", files={SIGNERS_SOURCE: both})
     w.push()
-    code, out = w.run("dotfiles-update", answers="y\n")
-    stopped(w, "one commit", code, out, bad, head)
+    stopped(w, "one commit", w.run("dotfiles-update", answers="y\n"), bad, head)
 
 
 def update_edges():
@@ -705,9 +703,9 @@ def update_edges():
 # ---------------------------------------------------------------- dotfiles-merge ----
 
 
-def merge_world(name, signingkey="listed", sk_provider="", literal=False):
+def merge_world(name, signingkey="listed", sk_provider="", *, literal=False):
     """A world with a branch `topic` on the remote: one unsigned commit that changes dot_zshrc."""
-    w = World(name, signingkey, sk_provider, literal)
+    w = World(name, signingkey, sk_provider, literal=literal)
     w.author_git("switch", "-q", "-c", "topic")
     topic = w.commit("topic change", files={"dot_zshrc": "# zshrc\n# topic change\n"})
     w.push("topic")
@@ -715,7 +713,9 @@ def merge_world(name, signingkey="listed", sk_provider="", literal=False):
     return w, topic
 
 
-def merge_kept(w, label, code, head, main, want_zero=False):
+def merge_kept(w, label, code, before, *, want_zero=False):
+    """No merge, no push, no chezmoi call: `before` is the (HEAD, the remote's main) before the run."""
+    head, main = before
     if want_zero:
         check(code == 0, f"{label}: exit {code}, 0")
     else:
@@ -731,7 +731,7 @@ def clause_11():
     w, topic = merge_world("c11-tty")
     head, main = w.head(), w.remote_main()
     code, out = w.run("dotfiles-merge", "topic", answers="y\ny\n", terminal=False)
-    merge_kept(w, "no terminal", code, head, main)
+    merge_kept(w, "no terminal", code, (head, main))
 
     for label, files in (
         ("a modified file", {"dot_zshrc": "# local edit\n"}),
@@ -742,7 +742,7 @@ def clause_11():
             (w.source / path).write_text(text)
         head, main = w.head(), w.remote_main()
         code, out = w.run("dotfiles-merge", "topic", answers="y\ny\n")
-        merge_kept(w, f"local changes, {label}", code, head, main)
+        merge_kept(w, f"local changes, {label}", code, (head, main))
 
     w, topic = merge_world("c11-behind")
     head = w.head()
@@ -750,20 +750,20 @@ def clause_11():
     w.push()
     main = w.remote_main()
     code, out = w.run("dotfiles-merge", "topic", answers="y\ny\n")
-    merge_kept(w, "HEAD behind origin/main", code, head, main)
+    merge_kept(w, "HEAD behind origin/main", code, (head, main))
 
     w, topic = merge_world("c11-ahead")
     main = w.remote_main()
     w.commit("local commit", cwd=w.source)
     head = w.head()
     code, out = w.run("dotfiles-merge", "topic", answers="y\ny\n")
-    merge_kept(w, "HEAD ahead of origin/main", code, head, main)
+    merge_kept(w, "HEAD ahead of origin/main", code, (head, main))
 
     w, topic = merge_world("c11-detached")
     must(["git", "switch", "-q", "--detach", "origin/main"], w.env, w.source)
     head, main = w.head(), w.remote_main()
     code, out = w.run("dotfiles-merge", "topic", answers="y\ny\n")
-    merge_kept(w, "a detached HEAD at origin/main", code, head, main)
+    merge_kept(w, "a detached HEAD at origin/main", code, (head, main))
 
     w, topic = merge_world("c11-yes")
     base = w.head()
@@ -799,41 +799,41 @@ def clause_11():
         w, topic = merge_world("c11-no")
         head, main = w.head(), w.remote_main()
         code, out = w.run("dotfiles-merge", "topic", answers=answers)
-        merge_kept(w, f"answer {label}", code, head, main, want_zero=True)
+        merge_kept(w, f"answer {label}", code, (head, main), want_zero=True)
 
 
 def merge_edges():
     print("\n== dotfiles-merge: the decided edges")
-    w, topic = merge_world("medge-missing")
+    w, _ = merge_world("medge-missing")
     head, main = w.head(), w.remote_main()
     code, out = w.run("dotfiles-merge", "no-such-branch", answers="y\ny\n")
-    merge_kept(w, "a branch the remote lacks", code, head, main)
+    merge_kept(w, "a branch the remote lacks", code, (head, main))
     check("[y/N]" not in out, "a branch the remote lacks: no question is asked")
 
-    w, topic = merge_world("medge-deleted")
+    w, _ = merge_world("medge-deleted")
     must(["git", "fetch", "-q", "origin"], w.env, w.source)
     w.author_git("push", "-q", "origin", "--delete", "topic")
     head, main = w.head(), w.remote_main()
     code, out = w.run("dotfiles-merge", "topic", answers="y\ny\n")
-    merge_kept(w, "a branch the remote deleted after the source fetched it", code, head, main)
+    merge_kept(w, "a branch the remote deleted after the source fetched it", code, (head, main))
     check("[y/N]" not in out, "a branch the remote deleted: no question is asked")
 
-    w, topic = merge_world("medge-contained")
+    w, _ = merge_world("medge-contained")
     w.author_git("merge", "-q", "--ff-only", "topic")
     w.push()
     w.sync()
     head, main = w.head(), w.remote_main()
     code, out = w.run("dotfiles-merge", "topic", answers="y\ny\n")
-    merge_kept(w, "a branch main contains", code, head, main, want_zero=True)
+    merge_kept(w, "a branch main contains", code, (head, main), want_zero=True)
     check("nothing to merge" in out, "a branch main contains: 'nothing to merge'")
 
-    w, topic = merge_world("medge-conflict")
+    w, _ = merge_world("medge-conflict")
     w.commit("main changes dot_zshrc", key="listed", files={"dot_zshrc": "# zshrc\n# main\n"})
     w.push()
     w.sync()
     head, main = w.head(), w.remote_main()
     code, out = w.run("dotfiles-merge", "topic", answers="y\ny\n")
-    merge_kept(w, "a conflict", code, head, main)
+    merge_kept(w, "a conflict", code, (head, main))
     check(
         must(["git", "status", "--porcelain"], w.env, w.source) == "",
         "a conflict: the merge is aborted, the work tree is clean",
@@ -843,15 +843,15 @@ def merge_edges():
         ("a signing key that does not exist", "missing-key"),
         ("a signing key that allowed_signers does not list", "other"),
     ):
-        w, topic = merge_world("medge-sign", signingkey=key)
+        w, _ = merge_world("medge-sign", signingkey=key)
         head, main = w.head(), w.remote_main()
         code, out = w.run("dotfiles-merge", "topic", answers="y\ny\n")
-        merge_kept(w, label, code, head, main)
+        merge_kept(w, label, code, (head, main))
         check(
             must(["git", "status", "--porcelain"], w.env, w.source) == "", f"{label}: the work tree is clean"
         )
 
-    w, topic = merge_world("medge-refused")
+    w, _ = merge_world("medge-refused")
     hook = w.remote / "hooks" / "pre-receive"
     hook.write_text("#!/bin/sh\necho 'refused by the test' >&2\nexit 1\n")
     hook.chmod(0o755)
@@ -873,7 +873,7 @@ def clause_13():
     for label, w in (("an empty signing_key", empty), ("no signing_key in the host entry", absent)):
         head, main, origin = w.head(), w.remote_main(), w.origin_main()
         code, out = w.run("dotfiles-merge", "topic", answers="y\ny\n")
-        merge_kept(w, label, code, head, main)
+        merge_kept(w, label, code, (head, main))
         lines = out.strip().splitlines()
         check(
             len(lines) == 1 and "signing_key" in lines[0],
@@ -881,17 +881,18 @@ def clause_13():
         )
         fetched = (
             subprocess.run(
-                ["git", "rev-parse", "--verify", "--quiet", "refs/remotes/origin/topic"],
+                ["git", "rev-parse", "--verify", "--quiet", "refs/remotes/origin/topic"],  # noqa: S607 -- git runs from PATH
                 capture_output=True,
                 env=w.env,
                 cwd=w.source,
+                check=False,
             ).returncode
             == 0
         )
         check(w.origin_main() == origin and not fetched, f"{label}: it stops before the fetch")
 
     # A signing_key under ~, as the host data writes it: git reads it below HOME.
-    w, topic = merge_world("c13-tilde", signingkey="~/.ssh/signing", literal=True)
+    w, _ = merge_world("c13-tilde", signingkey="~/.ssh/signing", literal=True)
     (w.home / ".ssh").mkdir()
     for suffix in ("", ".pub"):
         shutil.copy(f"{KEYS['listed']}{suffix}", w.home / ".ssh" / f"signing{suffix}")
@@ -902,10 +903,10 @@ def clause_13():
         f"a signing_key under ~: the merge is signed by the listed key and pushed (exit {code})",
     )
 
-    for provider, want in (("", UNSET), (str(ROOT / "no-such-provider.so"), None)):
-        w, topic = merge_world("c13-provider", sk_provider=provider)
+    for provider, logged in (("", UNSET), (str(RUN["root"] / "no-such-provider.so"), None)):
+        w, _ = merge_world("c13-provider", sk_provider=provider)
         code, out = w.run("dotfiles-merge", "topic", answers="y\nn\n")
-        want = want or provider
+        want = logged or provider
         label = f"sk_provider {provider!r}"
         check(
             code == 0 and w.signature(w.head()) == f"G {PRINCIPAL}",
@@ -917,7 +918,7 @@ def clause_13():
         )
 
     # A host entry with no sk_provider at all signs as an empty one does.
-    w, topic = merge_world("c13-absent-provider")
+    w, _ = merge_world("c13-absent-provider")
     w.install(
         "dotfiles-merge",
         render(
@@ -941,7 +942,7 @@ def clause_13():
         )
         + 'printf "%s\\n" "$SIGNING_KEY" "$SK_PROVIDER"\n'
     )
-    result = subprocess.run(["/bin/bash", str(path)], capture_output=True, text=True, cwd=probe)
+    result = subprocess.run(["/bin/bash", str(path)], capture_output=True, text=True, cwd=probe, check=False)
     check(
         result.stdout == f"{value}\n{value}\n" and not (probe / "pwned").exists(),
         f"signing_key and sk_provider with quotes and $( ): the script reads them as text "
@@ -961,7 +962,10 @@ def clause_14():
 
         def get(name):
             result = subprocess.run(
-                ["git", "config", "--file", str(path), "--get", name], capture_output=True, text=True
+                ["git", "config", "--file", str(path), "--get", name],  # noqa: S607 -- git runs from PATH
+                capture_output=True,
+                text=True,
+                check=False,
             )
             return result.stdout.strip() if result.returncode == 0 else None
 
@@ -1042,7 +1046,7 @@ def big_chezmoi_diff(w, status=None):
 
 
 def large_topic(name):
-    w, topic = merge_world(name)
+    w, _ = merge_world(name)
     w.author_git("switch", "-q", "topic")
     w.commit("a large change", files={"dot_large": ("z" * 79 + "\n") * (BIG // 80)})
     w.push("topic")
@@ -1085,7 +1089,7 @@ def cut_merge_review(mutate):
 
 
 def cut_merge_apply(mutate):
-    w, topic = merge_world("c16-merge-apply")
+    w, _ = merge_world("c16-merge-apply")
     use_pager(w, "big-pager", BIG_PAGER)
     big_chezmoi_diff(w)
     w.install("dotfiles-merge", mutate(w.scripts["dotfiles-merge"]))
@@ -1149,10 +1153,12 @@ def clause_16():
         code == 0 and "[y/N]" in out and "quit the review" not in out,
         f"dotfiles-merge, a pager that reads to the end: the question is asked (exit {code})",
     )
-    merge_kept(w, "dotfiles-merge, a pager that reads to the end, answer n", code, head, main, want_zero=True)
+    merge_kept(
+        w, "dotfiles-merge, a pager that reads to the end, answer n", code, (head, main), want_zero=True
+    )
 
     w = World("c16-update-read")
-    tip = w.commit("signed", key="listed")
+    w.commit("signed", key="listed")
     w.push()
     use_pager(w, "read-pager", READ_PAGER)
     big_chezmoi_diff(w)
@@ -1191,10 +1197,19 @@ def clause_9():
         for host in receivers(name):
             path = scratch("lint") / name
             path.write_text(render(template, host))
-            syntax = subprocess.run(["bash", "-n", str(path)], capture_output=True, text=True)
+            syntax = subprocess.run(
+                ["bash", "-n", str(path)],  # noqa: S607 -- bash runs from PATH
+                capture_output=True,
+                text=True,
+                check=False,
+            )
             check(syntax.returncode == 0, f"bash -n {name} ({host}) {syntax.stderr.strip()}")
             lint = subprocess.run(
-                ["shellcheck", "-S", "warning", str(path)], capture_output=True, text=True, env=env
+                ["shellcheck", "-S", "warning", str(path)],  # noqa: S607 -- shellcheck runs from PATH
+                capture_output=True,
+                text=True,
+                env=env,
+                check=False,
             )
             check(lint.returncode == 0, f"shellcheck {name} ({host}) {lint.stdout.strip()}")
 
@@ -1223,9 +1238,8 @@ def clause_12():
 
 
 def main():
-    global ROOT, PTY
-    PTY = pty_available()
-    if PTY:
+    RUN["pty"] = pty_available()
+    if RUN["pty"]:
         print("The answers go to a pseudo-terminal.")
     else:
         print(
@@ -1238,7 +1252,7 @@ def main():
             print(f"update-check: {tool} is not on the PATH")
             return 1
     with tempfile.TemporaryDirectory(prefix="update-check-") as tmp:
-        ROOT = pathlib.Path(tmp)
+        RUN["root"] = pathlib.Path(tmp)
         KEYS["listed"] = make_key("listed")
         KEYS["other"] = make_key("other")
         try:

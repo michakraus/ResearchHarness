@@ -12,18 +12,27 @@ the skip list and the log go to $FMT_OUT, else $TMPDIR.
 The dry run counts the files that format-tree.jl would reformat, from its summary line.
 """
 
+import argparse
 import os
 import pathlib
 import re
 import subprocess
+import tempfile
+from typing import Protocol
 
 from . import REPO, HarnessError, changing, outcome
 
 ATTEMPTS = 40
 
 
-def cmd_format(args):
-    out = pathlib.Path(os.environ.get("FMT_OUT") or os.environ.get("TMPDIR") or "/tmp")
+class Subcommands(Protocol):
+    """The `sub` that `register` receives: what `add_subparsers` returns."""
+
+    def add_parser(self, name: str, *, help: str, description: str) -> argparse.ArgumentParser: ...
+
+
+def cmd_format(args: argparse.Namespace) -> int:
+    out = pathlib.Path(os.environ.get("FMT_OUT") or tempfile.gettempdir())
     marker, skiplist, log = out / "format-marker", out / "format-skiplist", out / "format-tree.log"
     env = dict(os.environ, FMT_MARKER=str(marker), FMT_SKIPLIST=str(skiplist))
     log.write_text("")
@@ -35,7 +44,7 @@ def cmd_format(args):
         with log.open("a") as f:
             f.write(f"\n---------- attempt {attempt} ----------\n")
             f.flush()
-            rc = subprocess.run(command, stdout=f, stderr=subprocess.STDOUT, env=env).returncode
+            rc = subprocess.run(command, stdout=f, stderr=subprocess.STDOUT, env=env, check=False).returncode
         if rc == 0:
             break
         if not marker.is_file() or not marker.read_text().strip():
@@ -61,7 +70,7 @@ def cmd_format(args):
     return outcome(args, int(m.group(1)))
 
 
-def register(sub):
+def register(sub: Subcommands) -> None:
     changing(
         sub.add_parser(
             "format",

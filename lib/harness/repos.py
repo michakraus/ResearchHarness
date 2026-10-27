@@ -66,6 +66,7 @@ import pathlib
 import subprocess
 import tomllib
 import unicodedata
+from typing import cast
 from urllib.parse import urlparse
 
 from . import HarnessError, changing, outcome
@@ -149,6 +150,11 @@ def origin(path):
 class Entry:
     """One repository of the selection: `name` relative to the root, its `path`, the table's `url`
     (None when the table does not list it) and whether a table was read at all."""
+
+    name: str
+    url: str | None
+    tabled: bool
+    path: pathlib.Path
 
     def __init__(self, name, url, tabled):
         self.name, self.url, self.tabled = name, url, tabled
@@ -259,7 +265,7 @@ def open_prs(url):
             ".[].iid",
         ]
     try:
-        p = subprocess.run(command, capture_output=True, text=True, timeout=60)
+        p = subprocess.run(command, capture_output=True, text=True, timeout=60, check=False)
     except OSError, subprocess.TimeoutExpired:
         return None
     return p.stdout.split() if p.returncode == 0 else None
@@ -271,7 +277,8 @@ def cmd_clone(args):
         raise HarnessError(f"no repository table at {path}; examples/repositories.toml shows the form")
     found = [e for e in entries(args, args.selection, GROUPS + FIXED) if e.url]
     w = width(found)
-    todo, blocked = [], []
+    todo: list[Entry] = []
+    blocked: list[Entry] = []
     for e in found:
         if is_clone(e.path) and same_url(origin(e.path), e.url):
             continue
@@ -292,7 +299,14 @@ def cmd_clone(args):
             continue
         print(f"{e.name:<{w}} cloning {e.url} ...", end="", flush=True)
         e.path.parent.mkdir(parents=True, exist_ok=True)
-        p = subprocess.run(["git", "clone", "--quiet", e.url, str(e.path)], capture_output=True, text=True)
+        # `found` holds only the entries with a url.
+        url = cast(str, e.url)
+        p = subprocess.run(
+            ["git", "clone", "--quiet", url, str(e.path)],  # noqa: S607 -- git runs from PATH
+            capture_output=True,
+            text=True,
+            check=False,
+        )
         if p.returncode == 0:
             print(" done")
         else:
@@ -320,7 +334,7 @@ def cmd_status(args):
     found = entries(args, args.selection, GROUPS + FIXED)
     w = width(found)
     errors = {} if args.no_fetch else fetch_all(found)
-    prs = {}
+    prs: dict[str, list[str] | None] = {}
     if not args.no_prs:
         asked = [e for e in found if is_clone(e.path) and origin(e.path)]
         with concurrent.futures.ThreadPoolExecutor(WORKERS) as pool:
@@ -346,7 +360,8 @@ def cmd_status(args):
         if args.no_prs or not url:
             numbers = ""
         else:
-            numbers = "?" if prs.get(e.name) is None else " ".join(f"#{n}" for n in prs[e.name]) or "-"
+            listed = prs.get(e.name)
+            numbers = "?" if listed is None else " ".join(f"#{n}" for n in listed) or "-"
         line = (
             f"{e.name:<{w}} {branch or '(detached)':<16} {ahead if upstream else '':>5} "
             f"{behind if upstream else '':>6} {changed or '':>7}  {numbers}"

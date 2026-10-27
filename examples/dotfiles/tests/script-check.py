@@ -49,6 +49,7 @@ Checks, numbered as the section banners and the `== check N` lines of the output
      no script names sudo, a pipe into a shell, or a key file.
 """
 
+import dataclasses
 import json
 import os
 import pathlib
@@ -93,7 +94,7 @@ JOBS = ["kaimon", "julia-update", "claude-autocommit"]
 GPU_PACKAGE = {"metal": "Metal", "cuda": "CUDA", "amdgpu": "AMDGPU", "none": None}
 
 failures = []
-ROOT = None  # the scratch directory of the whole run
+RUN = {}  # "root": the scratch directory of the whole run, which main sets
 
 
 def fail(message):
@@ -114,7 +115,7 @@ def check(condition, message):
 
 
 def machines_data():
-    with open(SOURCE / ".chezmoidata" / "machines.toml", "rb") as handle:
+    with (SOURCE / ".chezmoidata" / "machines.toml").open("rb") as handle:
         return tomllib.load(handle)
 
 
@@ -137,7 +138,11 @@ def harness_source():
         and (KIT_HARNESS / ".git").exists()
     ):
         head = subprocess.run(
-            ["git", "rev-parse", "HEAD"], cwd=KIT_HARNESS, capture_output=True, text=True, check=True
+            ["git", "rev-parse", "HEAD"],  # noqa: S607 -- git runs from PATH
+            cwd=KIT_HARNESS,
+            capture_output=True,
+            text=True,
+            check=True,
         ).stdout.strip()
         return KIT_HARNESS, head
     return HOME_HARNESS, DATA["harness_commit"]
@@ -148,8 +153,7 @@ def harness_source():
 
 def scratch(name):
     """A new empty directory below the run's scratch root."""
-    path = pathlib.Path(tempfile.mkdtemp(prefix=f"{name}-", dir=ROOT))
-    return path
+    return pathlib.Path(tempfile.mkdtemp(prefix=f"{name}-", dir=RUN["root"]))
 
 
 def render(script, host, os_name, home, extra=None):
@@ -157,8 +161,7 @@ def render(script, host, os_name, home, extra=None):
     work = scratch("chezmoi")
     (work / "chezmoi.toml").write_text("")
     data = {"chezmoi": {"hostname": host, "os": os_name, "homeDir": str(home)}}
-    for key, value in (extra or {}).items():
-        data[key] = value
+    data.update(extra or {})
     cmd = [
         "chezmoi",
         "--config",
@@ -174,7 +177,9 @@ def render(script, host, os_name, home, extra=None):
         json.dumps(data),
         "execute-template",
     ]
-    result = subprocess.run(cmd, capture_output=True, text=True, input=(SCRIPTS / script).read_text())
+    result = subprocess.run(
+        cmd, capture_output=True, text=True, input=(SCRIPTS / script).read_text(), check=False
+    )
     return result.returncode, result.stdout, result.stderr
 
 
@@ -228,7 +233,7 @@ esac
 """
 
 
-def logging_stubs(home, bindir):
+def logging_stubs(bindir):
     """Stubs for every program that must not reach the machine: each logs to $HOME/<name>.log."""
     for name in ("launchctl", "systemctl", "chsh", "curl", "sudo"):
         exit_code = 1 if name in ("chsh", "curl", "sudo") else 0
@@ -242,11 +247,12 @@ def logging_stubs(home, bindir):
 
 def environment(home, bindir, gitconfig=None):
     """The whole environment of a script: no variable of this process leaks into it."""
-    assert str(home).startswith(str(ROOT)), home
+    if not str(home).startswith(str(RUN["root"])):
+        raise RuntimeError(f"{home} is not below the scratch root {RUN['root']}")
     env = {
         "HOME": str(home),
         "PATH": f"{bindir}:/usr/bin:/bin:/usr/sbin:/sbin",
-        "TMPDIR": str(ROOT),
+        "TMPDIR": str(RUN["root"]),
         "LANG": "C",
         "GIT_CONFIG_NOSYSTEM": "1",
         "GIT_TERMINAL_PROMPT": "0",
@@ -262,12 +268,19 @@ def run_script(text, env, cwd=None):
     path = scratch("script") / "script.sh"
     path.write_text(text)
     return subprocess.run(
-        ["/bin/bash", str(path)], capture_output=True, text=True, env=env, cwd=cwd or env["HOME"]
+        ["/bin/bash", str(path)], capture_output=True, text=True, env=env, cwd=cwd or env["HOME"], check=False
     )
 
 
 def git(env, *args, cwd=None):
-    result = subprocess.run(["git", *args], capture_output=True, text=True, env=env, cwd=cwd)
+    result = subprocess.run(
+        ["git", *args],  # noqa: S607 -- git runs from PATH
+        capture_output=True,
+        text=True,
+        env=env,
+        cwd=cwd,
+        check=False,
+    )
     if result.returncode != 0:
         raise RuntimeError(f"git {' '.join(args)}: {result.stderr.strip()}")
     return result.stdout.strip()
@@ -307,10 +320,10 @@ def make_remote(base, env, rel, files, branch="master"):
     return git(env, "rev-parse", "HEAD", cwd=work), work
 
 
-def add_commit(env, work, bare, name, content, message="next"):
+def add_commit(env, work, bare, name, content):
     (work / name).write_text(content)
     git(env, "add", name, cwd=work)
-    git(env, "commit", "-qm", message, cwd=work)
+    git(env, "commit", "-qm", "next", cwd=work)
     git(env, "push", "-q", str(bare), "HEAD", cwd=work)
     return git(env, "rev-parse", "HEAD", cwd=work)
 
@@ -361,7 +374,7 @@ def test_tool_check():
         required = COMMON_TOOLS + (LINUX_TOOLS if os_name == "linux" else [])
         everything = COMMON_TOOLS + LINUX_TOOLS
 
-        def run_with(present, old_python=False):
+        def run_with(present, *, old_python=False):
             bindir = scratch("bin")
             for tool in present:
                 if tool == "python3":
@@ -436,7 +449,7 @@ def clone_fixture():
 def clone_home(rewrites):
     home = scratch("home")
     bindir = home / ".test-bin"
-    logging_stubs(home, bindir)
+    logging_stubs(bindir)
     gitconfig = write_gitconfig(home / ".gitconfig-test", rewrites)
     return home, environment(home, bindir, gitconfig)
 
@@ -469,11 +482,12 @@ def test_clones():
         "fresh home: the meta repository's files are in ~/Research",
     )
     status = subprocess.run(
-        ["git", "--git-dir", str(meta), "status", "--porcelain", "--untracked-files=no"],
+        ["git", "--git-dir", str(meta), "status", "--porcelain", "--untracked-files=no"],  # noqa: S607 -- git runs from PATH
         capture_output=True,
         text=True,
         env=env,
         cwd=home / "Research",
+        check=False,
     )
     check(status.returncode == 0 and status.stdout == "", "fresh home: the meta checkout is clean")
 
@@ -541,7 +555,7 @@ def test_clones():
 
     # A remote that does not answer fails the run.
     home, env = clone_home(
-        {f"{ROOT}/no-such-remotes/{CLONE_KEYS[rel]}.git": url for rel, url in clone_urls().items()}
+        {f"{RUN['root']}/no-such-remotes/{CLONE_KEYS[rel]}.git": url for rel, url in clone_urls().items()}
     )
     result = run_script(text, env)
     check(
@@ -553,36 +567,42 @@ def test_clones():
 # ----------------------------------------------------------------- check 3 ----
 
 
+HARNESS_STUB = '#!/bin/sh\necho "$*" >> "$HOME/harness.log"\n'
+
+
+def harness_fixture():
+    """A scratch home with a clone of a harness remote, and the pin, one commit after the clone."""
+    base = scratch("remotes")
+    genv = git_env(base)
+    first, work = make_remote(
+        base, genv, "ResearchHarness.git", {"bin/harness": HARNESS_STUB, "README.md": "one\n"}
+    )
+    home = scratch("home")
+    bindir = home / ".test-bin"
+    logging_stubs(bindir)
+    env = environment(home, bindir, write_gitconfig(home / ".gitconfig-test", {}))
+    checkout = home / "Research/Harness"
+    checkout.parent.mkdir(parents=True)
+    git(env, "clone", "-q", str(base / "ResearchHarness.git"), str(checkout))
+    # The pin reaches the remote after the clone: only a fetch brings it.
+    pin = add_commit(genv, work, base / "ResearchHarness.git", "README.md", "two\n")
+    return home, env, checkout, first, pin
+
+
+def harness_head(env, checkout):
+    return git(env, "rev-parse", "HEAD", cwd=checkout)
+
+
 def test_harness():
     print("\n== check 3: the harness at its pin")
-    harness_stub = '#!/bin/sh\necho "$*" >> "$HOME/harness.log"\n'
-
-    def fixture():
-        base = scratch("remotes")
-        genv = git_env(base)
-        first, work = make_remote(
-            base, genv, "ResearchHarness.git", {"bin/harness": harness_stub, "README.md": "one\n"}
-        )
-        home = scratch("home")
-        bindir = home / ".test-bin"
-        logging_stubs(home, bindir)
-        env = environment(home, bindir, write_gitconfig(home / ".gitconfig-test", {}))
-        checkout = home / "Research/Harness"
-        checkout.parent.mkdir(parents=True)
-        git(env, "clone", "-q", str(base / "ResearchHarness.git"), str(checkout))
-        # The pin reaches the remote after the clone: only a fetch brings it.
-        pin = add_commit(genv, work, base / "ResearchHarness.git", "README.md", "two\n")
-        return home, env, checkout, first, pin
-
-    def head(env, checkout):
-        return git(env, "rev-parse", "HEAD", cwd=checkout)
-
-    home, env, checkout, first, pin = fixture()
+    home, env, checkout, first, pin = harness_fixture()
     text = rendered(HARNESS, LINUX_HOST, "linux", home, {"harness_commit": pin})
     result = run_script(text, env)
     log = home / "harness.log"
     check(
-        result.returncode == 0 and head(env, checkout) == pin and log.read_text() == "install --apply\n",
+        result.returncode == 0
+        and harness_head(env, checkout) == pin
+        and log.read_text() == "install --apply\n",
         f"clean checkout: exit {result.returncode}, HEAD at the pin, `harness install --apply` ran",
     )
     result = run_script(text, env)
@@ -592,7 +612,7 @@ def test_harness():
     )
 
     for kind in ("modified", "untracked"):
-        home, env, checkout, first, pin = fixture()
+        home, env, checkout, first, pin = harness_fixture()
         text = rendered(HARNESS, LINUX_HOST, "linux", home, {"harness_commit": pin})
         target = checkout / ("README.md" if kind == "modified" else "notes.txt")
         target.write_text("local work\n")
@@ -600,37 +620,39 @@ def test_harness():
         check(
             result.returncode != 0
             and "has local changes" in result.stderr
-            and head(env, checkout) == first
+            and harness_head(env, checkout) == first
             and target.read_text() == "local work\n"
             and not (home / "harness.log").exists(),
             f"{kind} file: exit {result.returncode}, stopped before the checkout, no install",
         )
 
-    home, env, checkout, first, pin = fixture()
+    home, env, checkout, first, pin = harness_fixture()
     text = rendered(HARNESS, LINUX_HOST, "linux", home, {"harness_commit": "0" * 40})
     result = run_script(text, env)
     check(
-        result.returncode != 0 and head(env, checkout) == first and not (home / "harness.log").exists(),
+        result.returncode != 0
+        and harness_head(env, checkout) == first
+        and not (home / "harness.log").exists(),
         f"a pin the remote lacks: exit {result.returncode}, no checkout, no install",
     )
 
     # The template host: the development checkout, never moved.
     template = DATA["template_host"]
     template_os = DATA["machines"][template]["os"]
-    home, env, checkout, first, pin = fixture()
+    home, env, checkout, first, pin = harness_fixture()
     git(env, "config", "user.name", "test", cwd=checkout)
     git(env, "config", "user.email", "test@example.invalid", cwd=checkout)
     (checkout / "local.txt").write_text("committed here\n")
     git(env, "add", "local.txt", cwd=checkout)
     git(env, "commit", "-qm", "ahead of the pin", cwd=checkout)
-    ahead = head(env, checkout)
+    ahead = harness_head(env, checkout)
     (checkout / "README.md").write_text("local work\n")
     (checkout / "notes.txt").write_text("untracked\n")
     text = rendered(HARNESS, template, template_os, home, {"harness_commit": first})
     result = run_script(text, env)
     check(
         result.returncode == 0
-        and head(env, checkout) == ahead
+        and harness_head(env, checkout) == ahead
         and git(env, "symbolic-ref", "--short", "HEAD", cwd=checkout) == "master"
         and (checkout / "README.md").read_text() == "local work\n"
         and (checkout / "notes.txt").is_file()
@@ -639,23 +661,25 @@ def test_harness():
         "the install ran, HEAD and the branch unchanged, the changes kept",
     )
 
-    home, env, checkout, first, pin = fixture()
+    home, env, checkout, first, pin = harness_fixture()
     text = rendered(HARNESS, template, template_os, home, {"harness_commit": pin})
     result = run_script(text, env)
     check(
         result.returncode == 1
         and "does not contain the pin" in result.stderr
-        and head(env, checkout) == first
+        and harness_head(env, checkout) == first
         and not (home / "harness.log").exists(),
         f"template host, HEAD lacks the pin: exit {result.returncode}, stopped, no install, HEAD unchanged",
     )
 
-    home, env, checkout, first, pin = fixture()
-    git(env, "remote", "set-url", "origin", str(ROOT / "no-such-remote.git"), cwd=checkout)
+    home, env, checkout, first, pin = harness_fixture()
+    git(env, "remote", "set-url", "origin", str(RUN["root"] / "no-such-remote.git"), cwd=checkout)
     text = rendered(HARNESS, LINUX_HOST, "linux", home, {"harness_commit": pin})
     result = run_script(text, env)
     check(
-        result.returncode != 0 and head(env, checkout) == first and not (home / "harness.log").exists(),
+        result.returncode != 0
+        and harness_head(env, checkout) == first
+        and not (home / "harness.log").exists(),
         f"no remote: exit {result.returncode}, no checkout, no install",
     )
 
@@ -687,11 +711,11 @@ UUID = '"00000000-0000-0000-0000-000000000000"'
 PKG_ADD = re.compile(r"^julia \+(\S+) --startup-file=no -e using Pkg; Pkg\.add\((.*)\)$")
 
 
-def julia_home(installed=(), envs=None, kaimon=False, julia_exit=0):
+def julia_home(*, installed=(), envs=None, kaimon=False, julia_exit=0):
     """A scratch home with juliaup and julia stubs; `envs` maps a channel to its Project.toml."""
     home = scratch("home")
     bindir = home / ".test-bin"
-    logging_stubs(home, bindir)
+    logging_stubs(bindir)
     jbin = home / ".juliaup/bin"
     stub(jbin, "juliaup", 'echo "juliaup $*" >> "$HOME/julia.log"')
     stub(jbin, "julia", f'echo "julia $*" >> "$HOME/julia.log"\nexit {julia_exit}')
@@ -771,17 +795,29 @@ def kaimon_line(default):
     return f'julia +{default} --startup-file=no -e using Pkg; Pkg.Apps.add("Kaimon")'
 
 
-def check_julia_run(
-    label, result, home, channels, default, package, present=None, skip_channels=(), kaimon=False
-):
+@dataclasses.dataclass
+class JuliaWant:
+    """What a run of the Julia script does for a host: its channels, its default channel, its GPU
+    package, the packages already in each channel's [deps], the channels juliaup already has, and
+    whether the Kaimon app is already there."""
+
+    channels: list
+    default: str
+    package: str | None
+    present: dict | None = None
+    skip_channels: tuple = ()
+    kaimon: bool = False
+
+
+def check_julia_run(label, result, home, want):
     """The run exits 0; juliaup adds the missing channels and sets the default; each X.Y channel
     gets one Pkg.add of exactly its missing packages; the Kaimon app unless it is there."""
     juliaup, adds, other = julia_calls(home)
-    want_adds = expected_adds(channels, package, present)
-    want_other = [] if kaimon else [kaimon_line(default)]
+    want_adds = expected_adds(want.channels, want.package, want.present)
+    want_other = [] if want.kaimon else [kaimon_line(want.default)]
     good = (
         result.returncode == 0
-        and juliaup == expected_juliaup(channels, default, skip_channels)
+        and juliaup == expected_juliaup(want.channels, want.default, want.skip_channels)
         and adds == want_adds
         and other == want_other
     )
@@ -793,7 +829,7 @@ def check_julia_run(
 def test_julia_packages_file():
     print("\n== check 4: the package set of .chezmoidata/julia.toml")
     path = SOURCE / ".chezmoidata" / "julia.toml"
-    with open(path, "rb") as handle:
+    with path.open("rb") as handle:
         data = tomllib.load(handle)
     check(
         data.get("julia_packages") == JULIA_PACKAGES,
@@ -806,8 +842,9 @@ def test_julia_packages_file():
     check(any(line.startswith("#") for line in path.read_text().splitlines()), "julia.toml carries a comment")
 
 
-def test_julia():
-    print("\n== check 4: Julia")
+def julia_hosts():
+    """The test hosts of check 4: their five channels, one host per gpu value with them, a host
+    with channels that are not X.Y, and the data that adds them to machines.toml."""
     five = ["1.10", "1.11", "1.12", "1.13", "nightly"]
     hosts = {
         f"test-julia-{gpu}": {
@@ -827,6 +864,12 @@ def test_julia():
         "julia_channels": ["1.12", "release", "lts", "1.13.1", "nightly", "1.x"],
     }
     extra = {"machines": dict(hosts, **{"test-julia-odd": odd})}
+    return five, hosts, odd, extra
+
+
+def test_julia():
+    print("\n== check 4: Julia")
+    five, hosts, odd, extra = julia_hosts()
 
     # Empty environments: 1.10 and 1.11 get the 13 packages of minimum 1.10, 1.12 and 1.13 the
     # 14, each with the GPU package; nightly nothing.
@@ -834,7 +877,7 @@ def test_julia():
         package = GPU_PACKAGE[entry["gpu"]]
         home, env = julia_home()
         result = run_script(rendered(JULIA, host, "linux", home, extra), env)
-        adds = check_julia_run(f"{host}, empty environments", result, home, five, "1.13", package)
+        adds = check_julia_run(f"{host}, empty environments", result, home, JuliaWant(five, "1.13", package))
         gpu = 1 if package else 0
         check(
             [len(adds.get(c, [[]])[0]) for c in five] == [13 + gpu, 13 + gpu, 14 + gpu, 14 + gpu, 0],
@@ -862,9 +905,7 @@ def test_julia():
             f"{host} (gpu {entry['gpu']}), empty environments",
             result,
             home,
-            entry["julia_channels"],
-            entry["julia_default"],
-            GPU_PACKAGE[entry["gpu"]],
+            JuliaWant(entry["julia_channels"], entry["julia_default"], GPU_PACKAGE[entry["gpu"]]),
         )
 
     # A channel that is not X.Y gets no package.
@@ -874,9 +915,7 @@ def test_julia():
         "channels 1.12, release, lts, 1.13.1, nightly, 1.x",
         result,
         home,
-        odd["julia_channels"],
-        "1.12",
-        "CUDA",
+        JuliaWant(odd["julia_channels"], "1.12", "CUDA"),
     )
     check(list(adds) == ["1.12"], f"only 1.12 gets a Pkg.add: {sorted(adds)}")
 
@@ -884,13 +923,17 @@ def test_julia():
     present = {"1.12": ["Aqua", "JET", "CUDA", "KaimonGate"], "1.10": ["Revise"]}
     home, env = julia_home(envs={c: project_toml(names) for c, names in present.items()})
     result = run_script(rendered(JULIA, "test-julia-cuda", "linux", home, extra), env)
-    check_julia_run("some packages in [deps] of 1.10 and 1.12", result, home, five, "1.13", "CUDA", present)
+    check_julia_run(
+        "some packages in [deps] of 1.10 and 1.12", result, home, JuliaWant(five, "1.13", "CUDA", present)
+    )
 
     # Every package present: no Pkg.add, and a skipped line per X.Y channel.
-    every = {c: list(JULIA_PACKAGES) + ["CUDA"] for c in five[:4]}
+    every = {c: [*JULIA_PACKAGES, "CUDA"] for c in five[:4]}
     home, env = julia_home(envs={c: project_toml(names) for c, names in every.items()}, kaimon=True)
     result = run_script(rendered(JULIA, "test-julia-cuda", "linux", home, extra), env)
-    check_julia_run("every package present", result, home, five, "1.13", "CUDA", every, kaimon=True)
+    check_julia_run(
+        "every package present", result, home, JuliaWant(five, "1.13", "CUDA", every, kaimon=True)
+    )
     check(
         not any("Pkg.add(" in line for line in julia_log(home))
         and all(
@@ -908,16 +951,18 @@ def test_julia():
         "1.13 with Aqua in [deps], Revise and JET in [compat], YAML in a comment",
         result,
         home,
-        five,
-        "1.13",
-        "CUDA",
-        {"1.13": ["Aqua"]},
+        JuliaWant(five, "1.13", "CUDA", {"1.13": ["Aqua"]}),
     )
     check(
         all(n in adds.get("1.13", [[]])[0] for n in ("Revise", "JET", "YAML"))
         and "Aqua" not in adds.get("1.13", [[]])[0],
         "a package named only under [compat] or in a comment counts as missing",
     )
+
+
+def test_julia_stops():
+    """Check 4 on the template host with channels installed, and the runs and renders that stop."""
+    _, _, odd, extra = julia_hosts()
 
     # The template host with some channels installed, its GPU package in 1.10, and the Kaimon app.
     entry = DATA["machines"][TEMPLATE_HOST]
@@ -933,12 +978,14 @@ def test_julia():
         f"{TEMPLATE_HOST} with 1.10, 1.13 and release installed, {package} in 1.10 and Kaimon",
         result,
         home,
-        entry["julia_channels"],
-        entry["julia_default"],
-        package,
-        in_110,
-        skip_channels=("1.10", "1.13", "release"),
-        kaimon=True,
+        JuliaWant(
+            entry["julia_channels"],
+            entry["julia_default"],
+            package,
+            in_110,
+            skip_channels=("1.10", "1.13", "release"),
+            kaimon=True,
+        ),
     )
 
     home, env = julia_home()
@@ -952,7 +999,7 @@ def test_julia():
     # A failing julia stops the run at the first channel and names it.
     home, env = julia_home(julia_exit=1)
     result = run_script(rendered(JULIA, "test-julia-cuda", "linux", home, extra), env)
-    juliaup, adds, other = julia_calls(home)
+    _, adds, other = julia_calls(home)
     check(
         result.returncode != 0
         and "Julia 1.10" in result.stderr
@@ -1002,7 +1049,7 @@ def harness_clone(home, env, checkout, pin):
 def services_home(host, os_name, checkout, pin, extra=None):
     home = scratch("home")
     bindir = home / ".test-bin"
-    logging_stubs(home, bindir)
+    logging_stubs(bindir)
     env = environment(home, bindir, write_gitconfig(home / ".gitconfig-test", {}))
     harness = harness_clone(home, env, checkout, pin)
     profile = rendered_profile(host, os_name, home, extra)
@@ -1018,7 +1065,7 @@ def rendered_profile(host, os_name, home, extra=None):
     data = {"chezmoi": {"hostname": host, "os": os_name, "homeDir": str(home)}}
     data.update(extra or {})
     result = subprocess.run(
-        [
+        [  # noqa: S607 -- chezmoi runs from PATH
             "chezmoi",
             "--config",
             str(work / "chezmoi.toml"),
@@ -1036,6 +1083,7 @@ def rendered_profile(host, os_name, home, extra=None):
         capture_output=True,
         text=True,
         input=(SOURCE / "dot_config/research-harness/profile.toml.tmpl").read_text(),
+        check=False,
     )
     if result.returncode != 0:
         raise RuntimeError(result.stderr)
@@ -1044,7 +1092,7 @@ def rendered_profile(host, os_name, home, extra=None):
 
 def launchd_prefix(home):
     """The launchd_prefix of the profile in the scratch home."""
-    with open(home / ".config/research-harness/profile.toml", "rb") as handle:
+    with (home / ".config/research-harness/profile.toml").open("rb") as handle:
         return tomllib.load(handle)["launchd_prefix"]
 
 
@@ -1054,6 +1102,7 @@ def harness_render(env, harness, template):
         capture_output=True,
         text=True,
         env=env,
+        check=False,
     )
     if result.returncode != 0:
         raise RuntimeError(f"harness render {template}: {result.stderr.strip()}")
@@ -1091,8 +1140,24 @@ def test_services():
         return
     print(f"  the harness: {checkout} at {pin}")
     pinned = {"harness_commit": pin}
+    services_linux(checkout, pinned)
+    for loaded in (False, True):
+        services_template_mac(checkout, pinned, loaded=loaded)
+    services_other_mac(checkout, pinned)
 
-    # Linux.
+    # The run_onchange key: the text changes with the pin and with the profile.
+    base = rendered(SERVICES, LINUX_HOST, "linux", "/home/example")
+    other_pin = rendered(SERVICES, LINUX_HOST, "linux", "/home/example", {"harness_commit": "1" * 40})
+    other_profile = rendered(SERVICES, LINUX_HOST, "linux", "/home/example/other")
+    check(
+        base not in (other_pin, other_profile),
+        "the services script's text changes with harness_commit and with the profile",
+    )
+
+
+def services_linux(checkout, pinned):
+    """Check 5 on Linux: the copies, the five units, and the systemctl calls."""
+    pin = pinned["harness_commit"]
     host = LINUX_HOST
     home, env, harness = services_home(host, "linux", checkout, pin, pinned)
     text = rendered(SERVICES, host, "linux", home, pinned)
@@ -1125,56 +1190,61 @@ def test_services():
         "linux: no launchctl, no ~/Library",
     )
 
-    # macOS, the template host.
-    host = TEMPLATE_HOST
-    for loaded in (False, True):
-        home, env, harness = services_home(host, "darwin", checkout, pin, pinned)
-        prefix = launchd_prefix(home)
-        labels = [f"{prefix}.{job}" for job in JOBS]
-        if loaded:
-            (home / "loaded").write_text("\n".join(labels) + "\n")
-        text = rendered(SERVICES, host, "darwin", home, pinned)
-        result = run_script(text, env)
-        state = "loaded" if loaded else "not loaded"
-        check(
-            result.returncode == 0,
-            f"macOS template host, jobs {state}: exit {result.returncode} {result.stderr.strip()}",
-        )
-        check_copies(home, harness, f"macOS, jobs {state}")
-        agents = home / "Library/LaunchAgents"
-        for job in JOBS:
-            path = agents / f"{prefix}.{job}.plist"
-            check(
-                path.is_file()
-                and path.read_text() == harness_render(env, harness, f"launchagents/{job}.plist")
-                and (home / "Library/Logs" / job).is_dir(),
-                f"macOS: {path.name} equals `harness render launchagents/{job}.plist`, "
-                "its log directory exists",
-            )
-        domain = f"gui/{os.getuid()}"
-        want = []
-        for label in labels:
-            want.append(f"print {domain}/{label}")
-            if loaded:
-                want += [f"bootout {domain}/{label}", f"print {domain}/{label}"]
-            want.append(f"bootstrap {domain} {agents / (label + '.plist')}")
-        got = log_lines(home, "launchctl")
-        then = "bootout, then " if loaded else ""
-        check(
-            got == want,
-            f"macOS, jobs {state}: {then}bootstrap of each job{'' if got == want else f'; got {got}'}",
-        )
-        check(
-            sorted((home / "loaded").read_text().split()) == sorted(labels),
-            f"macOS, jobs {state}: every job loaded at the end",
-        )
-        check(not log_lines(home, "systemctl"), "macOS: no systemctl")
-        autocommit = (agents / f"{prefix}.claude-autocommit.plist").read_text()
-        check("<string>main</string>" in autocommit, "macOS template host: claude-autocommit pushes to main")
 
-    # macOS, not the template host.
+def services_template_mac(checkout, pinned, *, loaded):
+    """Check 5 on macOS, the template host, with the jobs loaded or not: the copies, the plists,
+    and the launchctl calls."""
+    pin = pinned["harness_commit"]
+    host = TEMPLATE_HOST
+    home, env, harness = services_home(host, "darwin", checkout, pin, pinned)
+    prefix = launchd_prefix(home)
+    labels = [f"{prefix}.{job}" for job in JOBS]
+    if loaded:
+        (home / "loaded").write_text("\n".join(labels) + "\n")
+    text = rendered(SERVICES, host, "darwin", home, pinned)
+    result = run_script(text, env)
+    state = "loaded" if loaded else "not loaded"
+    check(
+        result.returncode == 0,
+        f"macOS template host, jobs {state}: exit {result.returncode} {result.stderr.strip()}",
+    )
+    check_copies(home, harness, f"macOS, jobs {state}")
+    agents = home / "Library/LaunchAgents"
+    for job in JOBS:
+        path = agents / f"{prefix}.{job}.plist"
+        check(
+            path.is_file()
+            and path.read_text() == harness_render(env, harness, f"launchagents/{job}.plist")
+            and (home / "Library/Logs" / job).is_dir(),
+            f"macOS: {path.name} equals `harness render launchagents/{job}.plist`, its log directory exists",
+        )
+    domain = f"gui/{os.getuid()}"
+    want = []
+    for label in labels:
+        want.append(f"print {domain}/{label}")
+        if loaded:
+            want += [f"bootout {domain}/{label}", f"print {domain}/{label}"]
+        want.append(f"bootstrap {domain} {agents / (label + '.plist')}")
+    got = log_lines(home, "launchctl")
+    then = "bootout, then " if loaded else ""
+    check(
+        got == want,
+        f"macOS, jobs {state}: {then}bootstrap of each job{'' if got == want else f'; got {got}'}",
+    )
+    check(
+        sorted((home / "loaded").read_text().split()) == sorted(labels),
+        f"macOS, jobs {state}: every job loaded at the end",
+    )
+    check(not log_lines(home, "systemctl"), "macOS: no systemctl")
+    autocommit = (agents / f"{prefix}.claude-autocommit.plist").read_text()
+    check("<string>main</string>" in autocommit, "macOS template host: claude-autocommit pushes to main")
+
+
+def services_other_mac(checkout, pinned):
+    """Check 5 on macOS, not the template host, and a bootout that launchd finishes late."""
+    pin = pinned["harness_commit"]
     mac = {"machines": {"test-second-mac": dict(DATA["machines"][TEMPLATE_HOST])}, **pinned}
-    home, env, harness = services_home("test-second-mac", "darwin", checkout, pin, mac)
+    home, env, _ = services_home("test-second-mac", "darwin", checkout, pin, mac)
     prefix = launchd_prefix(home)
     result = run_script(rendered(SERVICES, "test-second-mac", "darwin", home, mac), env)
     check(
@@ -1197,7 +1267,7 @@ def test_services():
     end = next(i for i in range(start, len(lines)) if lines[i].strip() == "done")
     no_wait = "".join(lines[:start] + lines[end + 1 :])
     for name, script in (("the script", text), ("a mutant with no wait", no_wait)):
-        home, env, harness = services_home("test-second-mac", "darwin", checkout, pin, mac)
+        home, env, _ = services_home("test-second-mac", "darwin", checkout, pin, mac)
         (home / "loaded").write_text("\n".join(labels) + "\n")
         (home / "linger").write_text("3\n")
         (home / "bootstrap-failures").write_text("1\n")
@@ -1217,15 +1287,6 @@ def test_services():
                 f"a late bootout, {name}: exit {result.returncode}, {labels[0]} not loaded, "
                 f"the stop names it: {result.stderr.strip()}",
             )
-
-    # The run_onchange key: the text changes with the pin and with the profile.
-    base = rendered(SERVICES, LINUX_HOST, "linux", "/home/example")
-    other_pin = rendered(SERVICES, LINUX_HOST, "linux", "/home/example", {"harness_commit": "1" * 40})
-    other_profile = rendered(SERVICES, LINUX_HOST, "linux", "/home/example/other")
-    check(
-        base != other_pin and base != other_profile,
-        "the services script's text changes with harness_commit and with the profile",
-    )
 
 
 # ----------------------------------------------------------------- check 6 ----
@@ -1260,9 +1321,13 @@ def test_lint():
             text = rendered(script, host, entry["os"], home)
             path = scratch("lint") / script.removesuffix(".tmpl")
             path.write_text(text)
-            syntax = subprocess.run(["/bin/bash", "-n", str(path)], capture_output=True, text=True)
+            syntax = subprocess.run(
+                ["/bin/bash", "-n", str(path)], capture_output=True, text=True, check=False
+            )
             lint = (
-                subprocess.run([shellcheck, "-s", "bash", str(path)], capture_output=True, text=True)
+                subprocess.run(
+                    [shellcheck, "-s", "bash", str(path)], capture_output=True, text=True, check=False
+                )
                 if shellcheck
                 else None
             )
@@ -1295,25 +1360,33 @@ def test_lint():
 
 
 def main():
-    global ROOT
     if LINUX_HOST is None:
         fail(f"machines.toml lists no Linux host besides the template host {TEMPLATE_HOST}")
         print(f"\nscript-check: {len(failures)} failure(s)")
         return 1
     with tempfile.TemporaryDirectory(prefix="script-check-") as tmp:
-        ROOT = pathlib.Path(tmp).resolve()
+        RUN["root"] = pathlib.Path(tmp).resolve()
         for test in (
             test_tool_check,
             test_clones,
             test_harness,
             test_julia_packages_file,
             test_julia,
+            test_julia_stops,
             test_services,
             test_lint,
         ):
             try:
                 test()
-            except Exception as error:  # a broken fixture is a failure, not a crash
+            except (
+                RuntimeError,
+                OSError,
+                subprocess.SubprocessError,
+                KeyError,
+                IndexError,
+                ValueError,
+                StopIteration,
+            ) as error:  # a broken fixture is a failure, not a crash
                 fail(f"{test.__name__}: {type(error).__name__}: {error}")
     if failures:
         print(f"\nscript-check: {len(failures)} failure(s)")

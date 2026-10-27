@@ -47,8 +47,14 @@ class Refusal(Exception):
     pass
 
 
-def git(*args, cwd):
-    proc = subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True)
+def git(*args: str, cwd: Path) -> str:
+    proc = subprocess.run(
+        ["git", *args],  # noqa: S607 -- the `git` on PATH, as every other call in this hook runs it
+        cwd=cwd,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
     sys.stderr.write(proc.stderr)
     if proc.returncode != 0:
         raise Refusal(f"`git {' '.join(args)}` in {cwd} exited {proc.returncode}")
@@ -60,10 +66,11 @@ def owning_repository(start):
     if not Path(start).is_dir():
         raise Refusal(f"{start} is not a directory")
     probe = subprocess.run(
-        ["git", "rev-parse", "--path-format=absolute", "--git-common-dir"],
+        ["git", "rev-parse", "--path-format=absolute", "--git-common-dir"],  # noqa: S607 -- git on PATH
         cwd=start,
         capture_output=True,
         text=True,
+        check=False,
     )
     if probe.returncode != 0:
         raise Refusal(f"{start} is not inside a git repository; `cd` into the repository first")
@@ -89,18 +96,20 @@ def registered(repo, path):
 
 def base_ref(repo):
     head = subprocess.run(
-        ["git", "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"],
+        ["git", "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"],  # noqa: S607 -- git on PATH
         cwd=repo,
         capture_output=True,
         text=True,
+        check=False,
     )
     if head.returncode == 0:
         return head.stdout.strip()
     main = subprocess.run(
-        ["git", "rev-parse", "--verify", "--quiet", "refs/remotes/origin/main"],
+        ["git", "rev-parse", "--verify", "--quiet", "refs/remotes/origin/main"],  # noqa: S607 -- git on PATH
         cwd=repo,
         capture_output=True,
         text=True,
+        check=False,
     )
     if main.returncode == 0:
         return "origin/main"
@@ -126,10 +135,11 @@ def create(payload):
         return path
     branch_exists = (
         subprocess.run(
-            ["git", "rev-parse", "--verify", "--quiet", f"refs/heads/{name}"],
+            ["git", "rev-parse", "--verify", "--quiet", f"refs/heads/{name}"],  # noqa: S607 -- git on PATH
             cwd=repo,
             capture_output=True,
             text=True,
+            check=False,
         ).returncode
         == 0
     )

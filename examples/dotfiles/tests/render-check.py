@@ -97,7 +97,7 @@ def chezmoi(work, args, data=None, stdin=None):
     `apply` and `managed` exclude the scripts of .chezmoiscripts: a script acts on $HOME, which
     is the real home directory here, and tests/script-check.py tests the scripts on their own."""
     if args and args[0] in ("apply", "managed"):
-        args = [args[0], "--exclude=scripts"] + args[1:]
+        args = [args[0], "--exclude=scripts", *args[1:]]
     cmd = [
         "chezmoi",
         "--config",
@@ -112,7 +112,7 @@ def chezmoi(work, args, data=None, stdin=None):
     ]
     if data is not None:
         cmd += ["--override-data", json.dumps(data)]
-    return subprocess.run(cmd + args, capture_output=True, text=True, input=stdin)
+    return subprocess.run(cmd + args, capture_output=True, text=True, input=stdin, check=False)
 
 
 def scratch(root, name):
@@ -126,26 +126,40 @@ def override(host, os_name, home):
     return {"chezmoi": {"hostname": host, "os": os_name, "homeDir": home}}
 
 
-def check_host(root, host, os_name, home, live_home, template_host):
+def check_host(root, data, live_home, template_host):
+    """The checks of one host, whose `override` is `data`."""
+    host, os_name, home = (data["chezmoi"][k] for k in ("hostname", "os", "homeDir"))
     print(f"\n== {host} ({os_name}, home {home})")
     work = scratch(root, host)
-    data = override(host, os_name, home)
 
     applied = chezmoi(work, ["apply"], data)
     if applied.returncode != 0:
         fail(f"{host}: chezmoi apply exited {applied.returncode}: {applied.stderr.strip()}")
         return
 
-    # Check 1: the managed targets of the kit. A target outside the kit is allowed.
+    files = expected_files(host, template_host)
+    dest = work / "home"
+    if not check_managed(work, data, files, template_host):
+        return
+    check_other_os(host, os_name, dest, files)
+    check_toml(host, dest, template_host)
+    check_provider(host, dest, files, template_host)
+    if live_home is not None:
+        check_live(host, dest, files, live_home)
+
+
+def check_managed(work, data, files, template_host):
+    """Check 1: the managed targets of the kit, and they render. A target outside the kit is
+    allowed. False when `chezmoi managed` fails."""
+    host = data["chezmoi"]["hostname"]
     managed = chezmoi(work, ["managed"], data)
     if managed.returncode != 0:
         fail(f"{host}: chezmoi managed exited {managed.returncode}: {managed.stderr.strip()}")
-        return
+        return False
     listed = [line for line in managed.stdout.splitlines() if line]
     print("  chezmoi managed:")
     for line in listed:
         print(f"    {line}")
-    files = expected_files(host, template_host)
     want = expected_managed(files)
     got = set(listed)
     if not want <= got:
@@ -156,27 +170,30 @@ def check_host(root, host, os_name, home, live_home, template_host):
     for f in files:
         if not (dest / f).is_file():
             fail(f"{host}: {f} is not rendered")
+    return True
 
-    # Check 3: no path of the other OS.
+
+def check_other_os(host, os_name, dest, files):
+    """Check 3: no path of the other OS."""
     hits = []
     for f in files:
         path = dest / f
         if not path.is_file():
             continue
         for number, line in enumerate(path.read_text(errors="replace").splitlines(), 1):
-            for bad in FORBIDDEN[os_name]:
-                if bad in line:
-                    hits.append(f"{f}:{number}: {bad}")
+            hits.extend(f"{f}:{number}: {bad}" for bad in FORBIDDEN[os_name] if bad in line)
     if hits:
         fail(f"{host}: the render names a path of the other OS: {hits}")
     else:
         print(f"  no {' or '.join(FORBIDDEN[os_name])} in the kit's targets")
 
-    # Check 4: the TOML files parse.
+
+def check_toml(host, dest, template_host):
+    """Check 4: the TOML files parse, and the profile names the host's autocommit branch."""
     parsed = {}
     for f in TOML_TARGETS:
         try:
-            with open(dest / f, "rb") as handle:
+            with (dest / f).open("rb") as handle:
                 parsed[f] = tomllib.load(handle)
             print(f"  {f} parses")
         except (OSError, tomllib.TOMLDecodeError) as error:
@@ -193,7 +210,9 @@ def check_host(root, host, os_name, home, live_home, template_host):
         else:
             print(f"  autocommit_branch: {got or 'none, so main'}")
 
-    # Check 5: SSH_SK_PROVIDER only in dotfiles-merge; the scripts are executable.
+
+def check_provider(host, dest, files, template_host):
+    """Check 5: SSH_SK_PROVIDER only in dotfiles-merge; the scripts are executable."""
     provider = [
         f for f in files if (dest / f).is_file() and SK_PROVIDER in (dest / f).read_text(errors="replace")
     ]
@@ -206,9 +225,9 @@ def check_host(root, host, os_name, home, live_home, template_host):
         if f.startswith(".local/bin/") and (dest / f).is_file() and not os.access(dest / f, os.X_OK):
             fail(f"{host}: {f} is not executable")
 
-    # Check 2: the render of this machine equals its live files. Read-only on the live side.
-    if live_home is None:
-        return
+
+def check_live(host, dest, files, live_home):
+    """Check 2: the render of this machine equals its live files. Read-only on the live side."""
     before = len(failures)
     for f in files:
         rendered, live = dest / f, live_home / f
@@ -282,7 +301,7 @@ def check_unknown_host(root):
 
 def main():
     machines_file = SOURCE / ".chezmoidata" / "machines.toml"
-    with open(machines_file, "rb") as handle:
+    with machines_file.open("rb") as handle:
         data = tomllib.load(handle)
     machines = data["machines"]
     template_host = data.get("template_host")
@@ -317,7 +336,7 @@ def main():
             else:
                 home = f"/Users/{user}" if os_name == "darwin" else f"/home/{user}"
                 live = None
-            check_host(root, host, os_name, home, live, template_host)
+            check_host(root, override(host, os_name, home), live, template_host)
 
         check_unknown_host(root)
 

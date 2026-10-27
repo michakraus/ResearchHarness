@@ -51,6 +51,9 @@ import sys
 import tempfile
 import types
 import unicodedata
+from importlib.abc import Loader
+from importlib.machinery import ModuleSpec
+from typing import cast
 
 from . import REPO, HarnessError, changing, frontends, outcome, sources
 from . import profile as profile_module
@@ -89,6 +92,7 @@ def behind_origin(repo=REPO):
         capture_output=True,
         text=True,
         env=env,
+        check=False,
     )
     behind = int(p.stdout) if p.returncode == 0 and p.stdout.strip().isdigit() else 0
     if not behind:
@@ -149,9 +153,13 @@ def unreadable(error):
 
 def drift_hook():
     """The `SessionStart` hook hooks/install-drift.py as a module, for its `digest_of`."""
-    spec = importlib.util.spec_from_file_location("install_drift", REPO / "hooks" / "install-drift.py")
+    # A path that ends in `.py` always gets a spec with a source loader.
+    spec = cast(
+        "ModuleSpec",
+        importlib.util.spec_from_file_location("install_drift", REPO / "hooks" / "install-drift.py"),
+    )
     module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    cast("Loader", spec.loader).exec_module(module)
     return module
 
 
@@ -211,6 +219,7 @@ def check_targets(root, shown, plan):
     below directories; `shown` is `root` as the messages name it."""
     for dst, *_ in plan:
         parts = pathlib.PurePosixPath(dst).parts
+        path = cast(pathlib.Path, root)
         for i in range(len(parts) + 1):
             path = root.joinpath(*parts[:i])
             if path.is_symlink():
@@ -274,7 +283,8 @@ def install_julia_env(apply):
                     "-e",
                     "using Pkg; isempty(Pkg.Registry.reachable_registries()) && "
                     'Pkg.Registry.add("General"); Pkg.resolve(); Pkg.instantiate()',
-                ]
+                ],
+                check=False,
             )
         except OSError as e:
             raise HarnessError(
@@ -454,7 +464,7 @@ def selftest():
             ),
         ]:
             bad.write_bytes(data)
-            p = subprocess.run(harness + argv, capture_output=True, text=True)
+            p = subprocess.run(harness + argv, capture_output=True, text=True, check=False)
             check(
                 p.returncode == 2 and str(bad) in p.stderr and "Traceback" not in p.stderr,
                 f"{label} exits 2 and names the file: {p.returncode}, {p.stderr.strip()[-200:]!r}",
@@ -475,6 +485,7 @@ def selftest():
                 harness + ["--profile", str(profile_module.DUMMY), "--models", str(bad), "install"],
                 capture_output=True,
                 text=True,
+                check=False,
             )
             check(
                 p.returncode == 2
@@ -495,6 +506,7 @@ def selftest():
             harness + ["--profile", str(profile_module.DUMMY), "--models", str(bad), "install"],
             capture_output=True,
             text=True,
+            check=False,
         )
         check(
             p.returncode == 2
@@ -623,6 +635,7 @@ def load_cases(check, tmp):
             text=True,
             env=env,
             cwd=base,
+            check=False,
         )
         after = sorted(base.rglob("*"))
         where = f"{path}:{line}: " if name != middle else f"{path}: "

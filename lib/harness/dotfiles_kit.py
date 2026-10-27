@@ -361,6 +361,7 @@ def selftest():
                     capture_output=True,
                     text=True,
                     timeout=20,
+                    check=False,
                 )
                 code, out, error = p.returncode, p.stdout, p.stderr.strip()
             except subprocess.TimeoutExpired:
@@ -566,6 +567,7 @@ def selftest():
             capture_output=True,
             text=True,
             env=env,
+            check=False,
         )
         names = set(tomllib.loads((KIT / "kit.toml").read_text())["files"])
         check(
