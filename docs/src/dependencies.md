@@ -84,7 +84,7 @@ The sections follow the order of the tables.
 
 Python is the language of the `harness` command, the guard hooks and the hook probe. The
 command uses the standard library only. The tools that check the Python code come from the `dev`
-group of `uv.lock`, which only a profile with `develop = true` installs.
+group of `uv.lock`, which only a [profile](concepts.md#profile) with `develop = true` installs.
 
 Every subcommand runs on the interpreter of the Python environment of the harness, which
 `bin/harness` makes with [uv](#uv). The pre-push hook runs `bin/harness test` on `python3` and on
@@ -94,7 +94,7 @@ are Python scripts, which Claude Code, OpenCode, oh-my-pi and Antigravity call b
 [tool call](concepts.md#tool-call).
 
 The harness needs Python 3.14 or later because 3.14 is the one version that it is tested on, in
-its environment, in CI and in the pre-push hook. The [profile](concepts.md#profile) and the model
+its environment, in CI and in the pre-push hook. The profile and the model
 tables are TOML, which `tomllib` of the standard library reads. A shell script cannot parse TOML
 or JSON safely, and a compiled tool needs a build step on each machine.
 

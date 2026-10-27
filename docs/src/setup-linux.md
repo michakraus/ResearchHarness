@@ -188,10 +188,10 @@ describes. Ubuntu 26.04 packages Python 3.14 and Node.js 22.22, which meet their
 gitleaks only in version 8.16.0, below the minimum 8.21. So gitleaks comes from its release. A
 release of a distribution can package an older version than the minimum that Dependencies gives.
 Then install that tool from its own site. Ubuntu 26.04 packages no uv: the first run of `harness`
-outside a session fetches the uv release that `bin/harness` pins into `~/.local/bin`, checks its
-sha256, and makes the Python environment of the harness with it. The pre-push hook also runs
-`python3.14`; where `python3.14` is missing, the hook skips that run with one line, because CI
-runs it. bubblewrap and
+outside a [session](concepts.md#session) fetches the uv release that `bin/harness` pins into
+`~/.local/bin`, checks its sha256, and makes the Python environment of the harness with it. The
+pre-push hook also runs `python3.14`; where `python3.14` is missing, the hook skips that run with
+one line, because CI runs it. bubblewrap and
 socat are the tools of [The sandbox of Claude Code](#the-sandbox-of-claude-code). The Julia update
 job of [The jobs](#the-jobs) calls `lsof`. jq is optional: the status line of Claude Code reads
 its data with jq, and without it, the status line shows no values. You need Julia even if you
