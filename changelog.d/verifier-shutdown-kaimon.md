@@ -1,0 +1,1 @@
+- **`julia-branch-verifier` shuts down the Kaimon session it starts.** It has `manage_repl` and stops its own session before it returns, so a pre-PR gate no longer leaves a Julia process running for the user to find.
