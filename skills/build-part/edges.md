@@ -672,3 +672,15 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   member: the sentence keeps its number and the page is wrong in a way no test reads. Grep the
   sentence's own phrase from the delta's check (M6 round 1a, *Simplify the optimiser package and
   the learning package for 0.9*)
+- a decided bound whose evidence was measured in another metric: the clause said "2e-6 absolute"
+  while the audit's gradient column is a relative difference, and one `Float32` ULP already exceeds
+  2e-6 at a value of 32, so no correct implementation meets it on gradients that reach 1e5. Read
+  the metric of the evidence the decision quotes, and state the bound in that metric before the
+  build (*M7 verify 2, the arbitrator's ruling, Simplify the optimiser package and the learning
+  package for 0.9*)
+- a testset moved into an existing `for T in REAL_ELTYPES` loop of a file that seeds once: the
+  moved calls now draw from the stream before the networks the file already built, and a
+  seed-dependent comparison elsewhere in the file flips (`projection_error(rs1) <
+  projection_error(rs2)` at one seed in twelve). Give the moved calls their own loop after the
+  existing ones, and keep the draw order (*M7 verify 2, Simplify the optimiser package and the
+  learning package for 0.9*)
