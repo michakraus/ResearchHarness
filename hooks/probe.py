@@ -528,6 +528,43 @@ RMSCOPE_PAYLOADS = [
     ('{"tool_input":{"command":"rm -rf ~/Research/Papers"}}', "deny"),
 ]
 
+# `edit-scope.py`, in this order, because `--record` writes the grants that later cases read:
+# (record, session, path or None, extra input fields, expected). A gated path below a worktree asks
+# until `--record` grants it to the session; a main checkout always asks.
+WT2 = R + "/.worktrees/Foo-other"
+EDITSCOPE = HOOKS + "edit-scope.py"
+EDITSCOPE_CASES = [
+    (False, "a", WT + "/.githooks/pre-commit", {}, "ask"),
+    (False, "a", WT + "/.github/workflows/CI.yml", {}, "ask"),
+    (False, "a", PKG + "/.githooks/pre-commit", {}, "ask"),
+    (False, "a", WT + "/src/Foo.jl", {}, "pass"),
+    (False, "a", HOME + "/elsewhere/x/.githooks/pre-commit", {}, "pass"),
+    # A grant comes only from `--record`, and only below a worktree.
+    (True, "a", PKG + "/.githooks/pre-commit", {}, "pass"),
+    (False, "a", PKG + "/.githooks/pre-commit", {}, "ask"),
+    (True, "a", WT + "/.githooks/pre-commit", {}, "pass"),
+    (False, "a", WT + "/.githooks/pre-commit", {}, "pass"),
+    (False, "a", WT + "/.github/workflows/CI.yml", {}, "pass"),
+    (False, "a", WT + "/docs/.github/workflows/x.yml", {}, "pass"),
+    (False, "a", ".githooks/pre-push", {"cwd": WT}, "pass"),
+    (False, "a", WT + "/../Foo-other/.githooks/pre-commit", {}, "ask"),
+    (False, "a", WT2 + "/.githooks/pre-commit", {}, "ask"),
+    (False, "b", WT + "/.githooks/pre-commit", {}, "ask"),
+    (False, "", WT + "/.githooks/pre-commit", {}, "ask"),
+    (False, "a", PKG + "/.githooks/pre-commit", {}, "ask"),
+    (False, "a", None, {"notebook_path": WT2 + "/.github/workflows/n.ipynb"}, "ask"),
+    # Fail closed before the edit; never block after it.
+    (False, "a", ".githooks/pre-push", {}, "ask"),
+    (True, "a", ".githooks/pre-push", {}, "pass"),
+]
+EDITSCOPE_PAYLOADS = [
+    ((), "not json at all", "ask"),
+    ((), '{"tool_input":{}}', "pass"),
+    ((), '{"session_id":"a"}', "ask"),
+    (("--record",), "not json at all", "pass"),
+    (("--record",), '{"session_id":"a"}', "pass"),
+]
+
 # `prompt-log.py` decides nothing: every payload exits 0 with no output.
 PROMPTLOG = HOOKS + "prompt-log.py"
 PROMPTLOG_CASES = [
@@ -1859,10 +1896,10 @@ FAIL_OPEN = [
 ]
 
 
-def call(script, payload, env=None):
+def call(script, payload, env=None, args=()):
     """Run a Python hook with this interpreter on the fixture; None after the timeout."""
     try:
-        return subprocess.run([sys.executable, script], input=payload, capture_output=True, text=True,
+        return subprocess.run([sys.executable, script, *args], input=payload, capture_output=True, text=True,
                               env=env or ENV, timeout=TIMEOUT)
     except subprocess.TimeoutExpired:
         return None
@@ -1873,9 +1910,9 @@ def run(script, payload):
     return "timeout" if proc is None else proc.returncode
 
 
-def decision(script, payload):
+def decision(script, payload, args=()):
     """Return 'deny', 'ask' or 'pass' for a hook that may answer with a JSON decision."""
-    proc = call(script, payload)
+    proc = call(script, payload, args=args)
     if proc is None:
         return "timeout"
     if proc.returncode == 2:
@@ -2216,6 +2253,23 @@ def payload_cases():
         wrong += got != expected
         mark = "ok " if got == expected else "BAD"
         print(f"{mark} exp {expected} got {got}  [rm-scope ]  payload {payload!r}")
+    for record, session, path, fields, expected in EDITSCOPE_CASES:
+        tool_input = {"file_path": path} if path is not None else {}
+        tool_input.update({k: v for k, v in fields.items() if k != "cwd"})
+        payload = {"session_id": session, "tool_input": tool_input}
+        if "cwd" in fields:
+            payload["cwd"] = fields["cwd"]
+        got = decision(EDITSCOPE, json.dumps(payload), ("--record",) if record else ())
+        total += 1
+        wrong += got != expected
+        mark = "ok " if got == expected else "BAD"
+        print(f"{mark} exp {expected} got {got}  [edit-scop]  {'record ' if record else ''}{session!r} {path or tool_input}")
+    for args, payload, expected in EDITSCOPE_PAYLOADS:
+        got = decision(EDITSCOPE, payload, args)
+        total += 1
+        wrong += got != expected
+        mark = "ok " if got == expected else "BAD"
+        print(f"{mark} exp {expected} got {got}  [edit-scop]  {' '.join(args)} payload {payload!r}")
     log = os.path.join(FIXTURE.name, "probe-prompt-log.jsonl")
     for payload in PROMPTLOG_CASES:
         proc = call(PROMPTLOG, payload, {**ENV, "LOG": log})

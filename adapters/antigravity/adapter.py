@@ -346,6 +346,7 @@ def guard_paths(profile):
     home = render("{home}", profile)
     roots = tuple(home + root.removeprefix("~") for root in frontends.SHARED_ROOTS)
     edits = {key: [re.sub(r"^//+", "/", p) for p in bodies["Edit", key]] for key in ("deny", "ask")}
+    edits["ask"] += [render(p, profile) for p in frontends.EDIT_SCOPE_ASKS]
     copies = {key: [home + relocate(("~" + p[len(home):]).encode(), "~/.gemini/config").decode()[1:]
                     for p in paths if p.startswith(roots)] for key, paths in edits.items()}
     globals_ = [render(p, profile) for p in ("{home}/.gemini/config/GEMINI.md", "{home}/.gemini/config/AGENTS.md",
@@ -967,6 +968,8 @@ def layer_cases(scratch):
     template = json.loads(profile_module.render_file(SETTINGS, profile))["permissions"]
     edits = {key: [re.sub(r"^//+", "/", e[len("Edit("):-1]) for e in template[key] if e.startswith("Edit(")]
              for key in ("deny", "ask")}
+    # The asks that the template leaves to Claude Code's hook edit-scope.py follow its own.
+    edits["ask"] += [f"{h}/Research/**/.githooks/**", f"{h}/Research/**/.github/workflows/**"]
     bash = {key: [e[len("Bash("):-1] for e in template[key] if e.startswith("Bash(")] for key in ("deny", "ask")}
     # The Edit rules of Claude Code's copied files, below Antigravity's copies, written out: RTK.md and
     # the files of instructions/ are in rules/, the other roots at the same path.
