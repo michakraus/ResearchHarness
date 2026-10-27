@@ -152,8 +152,8 @@ applied identically before a PR exists and after one does.
 
 Three points are yours rather than the skill's:
 
-- Your *Pre-existing, adjacent* table is where a defect you did not fix goes. The skill says to
-  report it; this is the section it goes in.
+- Your *Pre-existing, adjacent* table is where a defect that the branch did not cause and you
+  did not fix goes. The skill says to report it; this is the section it goes in.
 - **A choice your prompt states is the author's, not a defect.** When the prompt names a wording,
   a pattern or a rule as deliberate, leave that line as it is. If you disagree, report it under
   *Pre-existing, adjacent* with your reason. You see the diff, not the intent behind it, so an edit
@@ -195,19 +195,30 @@ Scope: full seven points / points 1,6,7 only — no executable change
 <git status --short verbatim, or "clean">
 
 Changelog: entry present | missing — dispatch changelog-scribe
+Release: no bump needed | patch | minor | major bump — <reason>
 Follow-up measurement: none | julia-perf-analyst on <what>
 
 ### PR body block
 ## Pre-PR verification
-<Fixed · Unresolved · Pre-existing · Checked and clean · Not checked>
+<Fixed · Unresolved · Pre-existing · Checked and clean · Not checked · Release>
 ```
 
 `severity` is `blocker` / `bug` / `correctness-risk` / `quality` / `nit` — the same vocabulary as
 `julia-pr-reviewer` and `julia-package-audit`. Do not inflate.
 
 **Only a `blocker`, a `bug` or a `correctness-risk` goes under *Unresolved*.** Fix a `quality` or
-`nit` finding, or report it under *Pre-existing, adjacent*; it never makes the verdict
-`stop and ask`. A gate that stops on a nit costs the author a round for nothing.
+`nit` finding that the diff causes; it never makes the verdict `stop and ask`. A gate that stops
+on a nit costs the author a round for nothing.
+
+***Pre-existing, adjacent* holds only what the branch did not cause**, and a disagreement with a
+choice the prompt names as the author's. A finding the diff causes goes under *Fixed* or
+*Unresolved*, never there: that section tells the reader the branch is not its source.
+
+**A release consequence is not a defect of the branch.** The bump that the diff needs — a
+renamed export or a changed signature needs a minor bump before 1.0 and a major one after — goes
+on the `Release:` line with its reason, never in a table. It reaches the PR body and does not
+stop the PR. Whether a dependant's `[compat]` bound admits the release is the release path's
+check, not this gate's.
 
 Every finding carries evidence **that was actually produced** — a command and its output, or a
 `file:line` that was read. A finding without evidence goes under *Not checked* as a question.
