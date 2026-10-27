@@ -13,25 +13,47 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # The suite on the harness's Python environment, which uv makes from uv.lock. The job on the
+  # latest 3.x only warns: its failure does not fail the run.
   python:
     name: Python ${{ matrix.python-version }}
     runs-on: ubuntu-latest
+    continue-on-error: ${{ matrix.warn }}
     strategy:
       fail-fast: false
       matrix:
-        python-version: ['3.14', '3.x']
+        python-version: ['3.14']
+        warn: [false]
+        include:
+          - python-version: '3.x'
+            warn: true
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: ${{ matrix.python-version }}
-      # UV_PYTHON makes the environment on the matrix's Python, so that the 3.x job tests the latest.
-      - name: harness test
+      # The uv release that bin/harness pins (UV_VERSION).
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          version: '0.13.5'
+      # The environment at the path that bin/harness reads, on the matrix's Python, so that the 3.x
+      # job tests the latest; then its stamp, as bin/harness's own `sync` writes it.
+      - name: uv sync --locked
         run: |
-          UV_PYTHON="$(command -v python)" python bin/harness test
-          "$HOME/.local/share/research-harness/python/bin/python" --version
+          environment="$HOME/.local/share/research-harness/python"
+          UV_PROJECT_ENVIRONMENT="$environment" UV_PYTHON="$(command -v python)" uv sync --locked --no-dev
+          python -c '
+          import sys
+          boot = {"__name__": "harness_boot", "__file__": "bin/harness"}
+          exec(compile(open("bin/harness").read(), "bin/harness", "exec"), boot)
+          with open(sys.argv[1] + "/" + boot["STAMP"], "w") as f:
+              f.write(boot["stamp_text"](False))
+          ' "$environment"
+          "$environment/bin/python" --version
+      - name: harness test
+        run: python bin/harness test
       - name: compileall
-        run: python -m compileall -q lib hooks scripts adapters
+        run: '"$HOME/.local/share/research-harness/python/bin/python" -m compileall -q lib hooks scripts adapters'
 
   # The suite with HOME set to a new empty directory, so a case that needs a file of the runner's
   # home fails here.

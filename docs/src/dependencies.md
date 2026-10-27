@@ -87,20 +87,18 @@ command uses the standard library only. The tools that check the Python code com
 group of `uv.lock`, which only a [profile](concepts.md#profile) with `develop = true` installs.
 
 Every subcommand runs on the interpreter of the Python environment of the harness, which
-`bin/harness` makes with [uv](#uv). The pre-push hook runs `bin/harness test` on `python3` and on
-`python3.14`; when the environment works, `bin/harness` restarts both runs on its interpreter, so
-the second run repeats the first. CI runs it on Python 3.14 and the latest 3.x. The guard hooks
-are Python scripts, which Claude Code, OpenCode, oh-my-pi and Antigravity call before a
-[tool call](concepts.md#tool-call).
+`bin/harness` makes with [uv](#uv). The pre-push hook runs `bin/harness test` once, which runs
+on that interpreter. CI runs it on Python 3.14 and the latest 3.x. The guard hooks are Python
+scripts, which Claude Code, OpenCode, oh-my-pi and Antigravity call before a
+[tool call](concepts.md#tool-call); the commands that `harness install` writes for Claude Code
+and Antigravity run them on the environment's interpreter.
 
 The harness needs Python 3.14 or later because 3.14 is the one version that it is tested on, in
 its environment, in CI and in the pre-push hook. The profile and the model
 tables are TOML, which `tomllib` of the standard library reads. A shell script cannot parse TOML
 or JSON safely, and a compiled tool needs a build step on each machine.
 
-Call sites: every subcommand (`bin/harness`); the pre-push hook (`.githooks/pre-push`, also for
-`python3.14`, which the hook skips when it is missing, because the CI job `python` runs Python
-3.14);
+Call sites: every subcommand (`bin/harness`); the pre-push hook (`.githooks/pre-push`);
 the guard hooks, which oh-my-pi calls (`adapters/omp/guards.ts`) and Antigravity's guard hook runs
 (`adapters/antigravity/guard.py`).
 
@@ -125,7 +123,8 @@ environment, `bin/harness` runs the subcommand on the interpreter that started i
 line that names `harness install --apply`.
 
 Call sites: the start of every subcommand (`bin/harness`); `harness install`
-(`lib/harness/install.py`).
+(`lib/harness/install.py`); the CI job `python` (`.github/workflows/test.yml`), which runs
+`uv sync --locked --no-dev` before the suite.
 
 ### git
 

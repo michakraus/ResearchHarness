@@ -391,7 +391,8 @@ directory `~/.gemini/config/`. The adapter writes:
 
 - `config/hooks.json`, with one `SessionStart` handler, which runs `install-drift.py` and gives its
   warning to the session, and one `PreToolUse` group with the matcher `*`, which runs `guard.py`
-  by its absolute path on every tool call;
+  by its absolute path on every tool call, each on the interpreter of the harness's Python
+  environment;
 - `guard.py`, the seven guard scripts and `install-drift.py` in `config/hooks/`, and the path list
   `config/guard-paths.json`;
 - `config/GEMINI.md`, from `ANTIGRAVITY-DELTA.md`;

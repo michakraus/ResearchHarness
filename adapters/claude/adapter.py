@@ -132,6 +132,7 @@ import json
 import os
 import pathlib
 import re
+import shlex
 import shutil
 import stat
 import subprocess
@@ -562,17 +563,33 @@ def dumps(obj, **kwargs):
     return escaped(json.dumps(obj, ensure_ascii=False, **kwargs))
 
 
-def settings_template(profile, overlay):
+def hook_command(command, profile, python):
+    """The template's hook command `command` rendered with `profile`, word by word, each word
+    quoted with `shlex.quote`, so that a path below a home whose name holds a space stays one
+    shell word; a command whose program is a `.py` hook gets the interpreter `python` as its
+    program, so that the hook runs on the Python environment and not on the `python3` of the
+    `PATH`."""
+    words = [render_profile.render_line(w, profile) for w in shlex.split(command)]
+    return shlex.join([python, *words] if words[0].endswith(".py") else words)
+
+
+def settings_template(profile, overlay, python=None):
     """The settings template parsed, rendered with `profile` when it holds a placeholder, and with
     the network rules of settings/network.toml and the overlay at `overlay`, as `read_settings`
-    renders it."""
+    renders it. Then each command of its `hooks` is rendered by `hook_command`, which
+    `read_settings` does not do, with the interpreter `python`, by default the Python
+    environment's (`install.python_interpreter`)."""
     text = PROPOSAL.read_text()
-    cfg = json.loads(text)
-    if render_profile.PLACEHOLDER.search(text):
-        try:
-            cfg = render_profile.render_data(cfg, profile)
-        except (KeyError, TypeError, ValueError) as e:
-            raise HarnessError(f"{PROPOSAL}: {e.args[0]}") from e
+    template = json.loads(text)
+    python = install.python_interpreter() if python is None else python
+    try:
+        cfg = render_profile.render_data(template, profile) if render_profile.PLACEHOLDER.search(text) else template
+        for event, groups in template.get("hooks", {}).items():
+            for i, group in enumerate(groups):
+                for j, handler in enumerate(group["hooks"]):
+                    cfg["hooks"][event][i]["hooks"][j]["command"] = hook_command(handler["command"], profile, python)
+    except (KeyError, TypeError, ValueError) as e:
+        raise HarnessError(f"{PROPOSAL}: {e.args[0]}") from e
     return network.apply(cfg, profile, overlay)
 
 
@@ -1474,14 +1491,40 @@ def layer_cases(check, tmp):
     settings_line = re.compile(r"^~/\.claude/settings\.json\s+(.*)$", re.M)
     home = fresh()[0]
     profile = render_profile.load(home / "profile.toml")
-    template = settings_template(profile, home / "network.toml")
-    owned = {k: template[k] for k in OWNED}
+
+    def hook_commands(hooks):
+        """The `command` of each handler of the `hooks` section `hooks`, in order."""
+        return [h["command"] for groups in hooks.values() for group in groups for h in group["hooks"]]
+
+    # Each command that runs a .py hook names the interpreter first, and each word of a command
+    # stays one shell word when the profile's home and the interpreter's path hold a space.
+    spaced, python = "/home/ex ample", "/env with space/bin/python"
+    raw = hook_commands(json.loads(PROPOSAL.read_text())["hooks"])
+    rendered = hook_commands(settings_template({**profile, "home": spaced}, home / "network.toml", python)["hooks"])
+    want = [([python] if c.split()[0].endswith(".py") else []) + [w.replace("{home}", spaced) for w in c.split()]
+            for c in raw]
+    case(lambda: [shlex.split(c) for c in rendered] == want
+         and sum(w[0] == python for w in want) == sum(c.split()[0].endswith(".py") for c in raw) > 0
+         and any(w == [f"{spaced}/.claude/hooks/cc-status"] for w in want)
+         and not any(c.startswith("python3") for c in rendered),
+         f"each hook command of the template that runs a .py hook renders as the environment's interpreter and the "
+         f"hook's path, each one shell word under a home with a space, and every other command keeps its words: "
+         f"{rendered}")
+
+    def owned_of(b):
+        """The owned sections of the template as the install in the scratch `b` renders them: its
+        hook commands run on the interpreter of the scratch's environment."""
+        rendered = settings_template(profile, home / "network.toml", str(b / "python" / "bin" / "python"))
+        return {k: rendered[k] for k in OWNED}
+
+    base, claude, tree = fresh()
+    template = settings_template(profile, home / "network.toml", str(base / "python" / "bin" / "python"))
+    owned = owned_of(base)
     others = {k: v for k, v in template.items() if k not in OWNED}
 
     def lacked(cfg):
         """The keys of `others` that `cfg` lacks, with the template's values, in its order."""
         return {k: v for k, v in others.items() if k not in cfg}
-    base, claude, tree = fresh()
     state = base / "home" / ".claude.json"
     state.write_text('{"state": 1}\n')
     state.chmod(0)
@@ -1574,7 +1617,8 @@ def layer_cases(check, tmp):
     # An `env` variable that the file sets keeps its value; one that the file lacks is added.
     base, claude, tree = fresh()
     first = next(iter(others["env"]))
-    (claude / "settings.json").write_text(json.dumps({**owned, **others, "env": {first: "own"}}, indent=2) + "\n")
+    (claude / "settings.json").write_text(json.dumps({**owned_of(base), **others, "env": {first: "own"}}, indent=2)
+                                          + "\n")
     dry, text = run(base)
     code, _ = run(base, "--apply")
     again, _ = run(base)
@@ -1598,7 +1642,7 @@ def layer_cases(check, tmp):
         os.umask(umask)
     case(lambda: code == 0 and list(json.loads((claude / "settings.json").read_text())) == [*owned, *others]
          and (claude / "settings.json").read_text()
-         == json.dumps({**owned, **others}, indent=2, ensure_ascii=False) + "\n"
+         == json.dumps({**owned_of(base), **others}, indent=2, ensure_ascii=False) + "\n"
          and mode(claude / "settings.json") == 0o644,
          f"--apply writes a missing settings.json with the owned sections, then the template's other keys, "
          f"indented by 2, mode 0644 under a umask of 077: {code}, {tail(text)}")
@@ -1654,7 +1698,7 @@ def layer_cases(check, tmp):
         code, text = run(base, "--apply")
         written = (claude / "settings.json").read_text()
         cfg = json.loads(data)
-        expected = json.dumps({**cfg, "env": {**cfg["env"], **others["env"]}, **owned, **lacked(cfg)},
+        expected = json.dumps({**cfg, "env": {**cfg["env"], **others["env"]}, **owned_of(base), **lacked(cfg)},
                               indent=indent, ensure_ascii=False) + "\n"
         case(lambda: code == 0 and written == expected and written.count("\n") == (1 if indent is None else
                                                                                    expected.count("\n")),
@@ -1690,7 +1734,7 @@ def layer_cases(check, tmp):
          f"the numbers 1.5, 10 and -0.0 pass unchanged, and one in an owned section is replaced: {dry}, {code}, "
          f"{tail(text + text2)}")
     # A file that the merge leaves as it is keeps its numbers: there is nothing to check.
-    kept = json.dumps({**owned, **others}, indent=2, ensure_ascii=False)[:-2] + ',\n  "x": 1.10\n}\n'
+    kept = json.dumps({**owned_of(base), **others}, indent=2, ensure_ascii=False)[:-2] + ',\n  "x": 1.10\n}\n'
     live.write_text(kept)
     code, text = run(base, "--apply")
     case(lambda: code == 0 and live.read_text() == kept,

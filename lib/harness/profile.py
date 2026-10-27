@@ -923,15 +923,21 @@ PREPUSH_TOOLS = ["bash", "sh", "git", "mktemp", "rm", "cat", "tail", "head", "gr
 
 KIT_TESTS = ["update-check", "check-check", "driver-check", "render-check", "script-check"]
 KIT_SKIP = "skip  chezmoi: not found; CI runs the kit's tests"
-PYTHON_SKIP = "skip  python3.14: not found; CI runs bin/harness test and the compile check on Python 3.14"
+COMPILE = "-m compileall -q lib hooks scripts adapters"
 
 
-def prepush_case(path=None, kit_fails=None):
+NO_INTERPRETER = "pre-push: bin/harness names no interpreter of the Python environment"
+
+
+def prepush_case(path=None, kit_fails=None, no_environment=False):
     """`.githooks/pre-push` on a fixture checkout whose `origin` is a GitHub URL, for a push to
-    main, with stubs of gitleaks and of `bin/harness` and no python3.14, shellcheck, julia or
-    chezmoi on the PATH: `harness leaks` runs in the hook's clone with that URL as its `origin`,
-    not the path of the checkout, and the run on python3.14 and the kit's tests are skipped with
-    one line each. With `kit_fails`,
+    main, with stubs of gitleaks, of `bin/harness` and of the Python environment's interpreter,
+    and no shellcheck, julia or chezmoi on the PATH: `harness leaks` runs in the hook's clone with
+    that URL as its `origin`, not the path of the checkout, `bin/harness test` runs once, the
+    compile check runs on the interpreter that the stub's `interpreter(environment_path())`
+    names, and the kit's tests are skipped with one line. With `no_environment`, the stub's
+    `environment_path` raises: the hook prints NO_INTERPRETER, runs no compile check and refuses
+    the push. With `kit_fails`,
     the name of one of KIT_TESTS, a stub of chezmoi is on the PATH and the fixture holds the five
     kit tests, of which that one exits 1: the hook runs all five and refuses the push with one
     line that names it. The tools are linked from `path`, this process's PATH by default, without a
@@ -960,12 +966,25 @@ def prepush_case(path=None, kit_fails=None):
                                         '[ "$1" = stdin ] && cat >/dev/null\nexit 0\n')
         (tools / "gitleaks").chmod(0o755)
         (repo / "bin").mkdir(parents=True)
+        # The stub names the environment's interpreter as bin/harness does, by `environment_path`
+        # and `interpreter`, and runs its commands only as a script.
         (repo / "bin" / "harness").write_text(
             "import os, subprocess, sys\n"
-            "if sys.argv[1] == 'leaks':\n"
-            "    url = subprocess.run(['git', 'remote', 'get-url', 'origin'], capture_output=True, text=True).stdout\n"
-            "    open(os.environ['ORIGIN_SEEN'], 'w').write(url.strip())\n"
-            "print('0 cases, 0 wrong')\n")
+            "def environment_path():\n"
+            "    return os.environ['STUB_ENVIRONMENT']\n"
+            "def interpreter(environment):\n"
+            "    return os.path.join(environment, 'bin', 'python')\n"
+            "if __name__ == '__main__':\n"
+            "    open(os.environ['HARNESS_RAN'], 'a').write(sys.argv[1] + '\\n')\n"
+            "    if sys.argv[1] == 'leaks':\n"
+            "        url = subprocess.run(['git', 'remote', 'get-url', 'origin'], capture_output=True,\n"
+            "                             text=True).stdout\n"
+            "        open(os.environ['ORIGIN_SEEN'], 'w').write(url.strip())\n"
+            "    print('0 cases, 0 wrong')\n")
+        environment, harness_ran, compiled = tmp / "environment with space", tmp / "harness-ran", tmp / "compiled"
+        (environment / "bin").mkdir(parents=True)
+        (environment / "bin" / "python").write_text(f"#!/bin/sh\necho \"$*\" >> '{compiled}'\n")
+        (environment / "bin" / "python").chmod(0o755)
         ran = tmp / "kit-ran"
         if kit_fails:
             (tools / "chezmoi").write_text("#!/bin/sh\nexit 0\n")
@@ -990,13 +1009,16 @@ def prepush_case(path=None, kit_fails=None):
             p = subprocess.run([str(REPO / ".githooks" / "pre-push"), "origin", url],
                                input=f"refs/heads/main {sha} refs/heads/main {'0' * 40}\n", cwd=repo,
                                env={**env, "PATH": str(tools), "ORIGIN_SEEN": str(seen), "TMPDIR": str(tmp),
-                                    "KIT_RAN": str(ran)},
+                                    "KIT_RAN": str(ran), "HARNESS_RAN": str(harness_ran),
+                                    **({} if no_environment else {"STUB_ENVIRONMENT": str(environment)})},
                                capture_output=True, text=True, timeout=60)
             code, text = p.returncode, p.stdout + p.stderr
         except subprocess.TimeoutExpired:
             code, text = None, "TIMEOUT"
         got = seen.read_text() if seen.exists() else None
         tests = ran.read_text().split() if ran.exists() else []
+        commands = harness_ran.read_text().split() if harness_ran.exists() else []
+        compile_runs = compiled.read_text().splitlines() if compiled.exists() else []
     lines = text.strip().splitlines() or ["no output"]
     if kit_fails:
         refusal = f"pre-push: refused, the kit's tests failed: examples/dotfiles/tests/{kit_fails}.py"
@@ -1004,10 +1026,20 @@ def prepush_case(path=None, kit_fails=None):
         print(f"{'ok ' if ok else 'BAD'}  pre-push: with chezmoi on the PATH, the kit's tests run and "
               f"{kit_fails}.py exiting 1 refuses the push -> exit {code}, ran {tests}, {lines[-1]!r}")
         return 1, int(not ok)
-    ok = code == 0 and got == url and KIT_SKIP in lines and PYTHON_SKIP in lines and tests == []
+    if no_environment:
+        ok = (code == 1 and NO_INTERPRETER in lines and compile_runs == [] and commands == ["leaks", "test"]
+              and any(line.startswith("pre-push: refused;") for line in lines))
+        print(f"{'ok ' if ok else 'BAD'}  pre-push: when bin/harness names no interpreter of the environment, the "
+              f"hook says so, runs no compile check and refuses the push -> exit {code}, compile {compile_runs}, "
+              f"{[line for line in lines if line.startswith('pre-push:')]}")
+        return 1, int(not ok)
+    ok = (code == 0 and got == url and KIT_SKIP in lines and tests == [] and commands == ["leaks", "test"]
+          and compile_runs == [COMPILE] and not any("python3.14" in line for line in lines))
     print(f"{'ok ' if ok else 'BAD'}  pre-push: harness leaks runs in the clone with the checkout's "
-          f"origin URL, and without python3.14 and chezmoi their runs skip with one line each "
-          f"-> exit {code}, origin {got!r}, skip lines {PYTHON_SKIP in lines} {KIT_SKIP in lines}, {lines[-1]!r}")
+          f"origin URL, bin/harness test runs once, the compile check runs on the environment's interpreter, "
+          f"and without chezmoi the kit's tests skip with one line "
+          f"-> exit {code}, origin {got!r}, harness {commands}, compile {compile_runs}, skip line {KIT_SKIP in lines}, "
+          f"{lines[-1]!r}")
     return 1, int(not ok)
 
 
@@ -1261,7 +1293,8 @@ def branch_cases():
 
 def selftest():
     """The render's cases, the tree-name cases, the cases of `home` and `~`, the cases of
-    `--commits`, and the `origin` case, the kit case and the branch cases of the pre-push hook:
+    `--commits`, and the `origin` case, the kit case, the case with no environment and the branch
+    cases of the pre-push hook:
     (number of cases, number wrong)."""
     wrong = 0
     for template, profile, expected in CASES:
@@ -1286,7 +1319,8 @@ def selftest():
     n3, w3 = prepush_case(exec_path + os.pathsep + os.environ.get("PATH", ""))
     n4, w4 = prepush_branch_cases()
     n5, w5 = prepush_case(kit_fails="update-check")
-    return len(CASES) + len(NAME_CASES) + n + n2 + n3 + n4 + n5, wrong + w + w2 + w3 + w4 + w5
+    n6, w6 = prepush_case(no_environment=True)
+    return len(CASES) + len(NAME_CASES) + n + n2 + n3 + n4 + n5 + n6, wrong + w + w2 + w3 + w4 + w5 + w6
 
 
 def register(sub):

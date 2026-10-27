@@ -1819,22 +1819,34 @@ def agy_cases():
         ok = got == "deny" and want in reason
         report(ok, f"exp deny got {got}  [agy-guard]  fail-closed, {label}: {tool} {args}"
                    f"{'' if ok else ' ' + repr(reason[:160])}")
-    # The handler of hooks.json, rendered for a home whose name holds a space, runs guard.py from
-    # any working directory.
-    handler = json.loads(agy.render_hooks(pathlib.Path(spaced) / ".gemini"))[agy.HOOK]["PreToolUse"][0]["hooks"][0]
+    # The handler of hooks.json, rendered for a home whose name holds a space, runs guard.py on the
+    # interpreter that it names, from any working directory and with no python3 on the PATH.
+    def pre_tool_use(python):
+        return json.loads(agy.render_hooks(pathlib.Path(spaced) / ".gemini", python))[agy.HOOK]["PreToolUse"][0][
+            "hooks"][0]
+
+    # The interpreter's path holds a space too: a link to this interpreter below the spaced home.
+    interpreter = spaced + "/python env/bin/python"
+    os.makedirs(os.path.dirname(interpreter), exist_ok=True)
+    if not os.path.lexists(interpreter):
+        os.symlink(sys.executable, interpreter)
+    handler = pre_tool_use(interpreter)
     status_call = json.dumps({"toolCall": {"name": "run_command", "args": {"CommandLine": "git status"}},
                               "workspacePaths": [CWD]})
     p = subprocess.run(["/bin/sh", "-c", handler["command"]], input=status_call, capture_output=True, text=True,
-                       cwd=elsewhere, env={**CLEAN, "HOME": spaced}, timeout=TIMEOUT)
+                       cwd=elsewhere, env={**CLEAN, "HOME": spaced, "PATH": "/nonexistent"}, timeout=TIMEOUT)
     got = p.stdout.strip()
     report(got == '{"decision": "ask", "overwrite": {"BypassSandbox": true}}',
-           f"exp ask got {got!r}  [agy-guard]  the handler {handler['command']} from another directory")
-    # With no python3 on the PATH, the handler fails and prints nothing, which Antigravity reads as
-    # a block.
+           f"exp ask got {got!r}  [agy-guard]  the handler {handler['command']} from another directory, with no "
+           f"python3 on the PATH")
+    # With no interpreter at the path that the handler names, the handler fails and prints nothing,
+    # which Antigravity reads as a block.
+    handler = pre_tool_use(spaced + "/no environment/bin/python")
     p = subprocess.run(["/bin/sh", "-c", handler["command"]], input="{}", capture_output=True, text=True,
-                       cwd=elsewhere, env={**CLEAN, "HOME": spaced, "PATH": "/nonexistent"}, timeout=TIMEOUT)
+                       cwd=elsewhere, env={**CLEAN, "HOME": spaced}, timeout=TIMEOUT)
     report(p.returncode != 0 and p.stdout == "",
-           f"exp exit!=0 got {p.returncode}  [agy-guard]  fail-closed, python3 is not on PATH: no output {p.stdout!r}")
+           f"exp exit!=0 got {p.returncode}  [agy-guard]  fail-closed, the handler's interpreter is missing: no output "
+           f"{p.stdout!r}")
     return total, wrong
 
 

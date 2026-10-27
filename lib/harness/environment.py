@@ -713,7 +713,7 @@ def install_cases_of(case, tmp):
 
 def prepush_cases(case, tmp):
     """The Python of `.githooks/pre-push`, for a push of a branch: a `python3` that reports 3.13
-    and no `python3.14` refuse the push with one line; a `python3` of 3.14 passes, and the hook
+    refuses the push with one line; a `python3` of 3.14 passes, and the hook
     goes on to the next step, which refuses a checkout with no `origin`. The PATH holds the tools
     that the hook runs up to there, and the `python3`."""
     repo, tools = tmp / "pre-push-repo", tmp / "pre-push-tools"

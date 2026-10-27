@@ -9,19 +9,19 @@
 # than main gets `harness leaks --commits` only, over the tree at its SHA and the commits that the
 # push sends (remote..local, or the commits that origin/main lacks for a new branch), so a PR
 # branch cannot bring a private string to main; its gitleaks checks and its suite run in CI. A
-# hit, no Python of 3.14 or later, or a check that fails refuses the push with one line.
+# hit, no python3 of 3.14 or later, or a check that fails refuses the push with one line.
 #
 # A push to main gets the full gate. First the leak checks: gitleaks over the commits
 # that the push sends, gitleaks stdin over their messages, which gitleaks git does not read,
 # gitleaks over the tree at the SHA, and `harness leaks --commits` over both, messages included.
 # They fail closed: no gitleaks of 8.21 or later, no profile, an empty `leak` list or a check that
-# fails each refuse the push with one line. Then it runs `bin/harness test` on the first Python of
-# 3.14 or later among python3 and python3.14, and on python3.14, the compile check on
-# python3.14, shellcheck over the shell files, the kit's tests
+# fails each refuse the push with one line. Then it runs `bin/harness test` once, which runs on
+# the interpreter of the harness's Python environment, the compile check on that interpreter,
+# then shellcheck over the shell files, the kit's tests
 # examples/dotfiles/tests/{update-check,check-check,driver-check,render-check,script-check}.py on
-# that first Python, and the Julia test files that the changed paths of the pushed range select.
-# A missing tool among python3.14, shellcheck, chezmoi and julia prints one skip line, because CI
-# runs them; no Python of 3.14 or later refuses the push.
+# python3, and the Julia test files that the changed paths of the pushed range select.
+# A missing tool among shellcheck, chezmoi and julia prints one skip line, because CI runs them;
+# no python3 of 3.14 or later refuses the push.
 
 # No `set -u`: macOS ships bash 3.2, whose handling of unset expansions differs from bash 4+.
 set -o pipefail
@@ -75,17 +75,13 @@ leak_check() {
     esac
 }
 
-# A Homebrew upgrade can drop the unversioned python3 link, which leaves the system's 3.9 first.
+# bin/harness starts on python3, which must be 3.14 or later, and runs each command on the
+# interpreter of the Python environment.
 find_python() {
-    python=
-    for candidate in python3 python3.14; do
-        if command -v "$candidate" >/dev/null &&
-            "$candidate" -c 'import sys; sys.exit(sys.version_info < (3, 14))' 2>/dev/null; then
-            python=$candidate
-            break
-        fi
-    done
-    [ -n "$python" ] || refuse "no python3 of 3.14 or later"
+    python=python3
+    command -v "$python" >/dev/null &&
+        "$python" -c 'import sys; sys.exit(sys.version_info < (3, 14))' 2>/dev/null ||
+        refuse "no python3 of 3.14 or later"
 }
 
 # A branch gets `harness leaks` only; gitleaks and the suite run in CI. The commits that the push
@@ -188,34 +184,37 @@ changed=$(git diff --name-only --no-renames "$base" HEAD) || exit 1
 
 fail=0
 
-# The Python steps.
-pythons=("$python")
-[ "$python" = python3.14 ] || pythons+=(python3.14)
-for py in "${pythons[@]}"; do
-    if ! command -v "$py" >/dev/null; then
-        echo "skip  $py: not found; CI runs bin/harness test and the compile check on Python 3.14"
-        continue
-    fi
-    echo "$py bin/harness test"
-    if "$py" bin/harness test >"$tmp/$py.log" 2>&1; then
-        tail -n 1 "$tmp/$py.log"
-    else
-        # Each wrong case with the lines that follow it up to the next case or the summary: a
-        # case can span several lines, and the BAD line of a crashed probe is followed by its
-        # traceback. The lines of a passing case are left out.
-        awk '/^BAD/ { p = 1 } /^ok / || /^[0-9]+ cases, [0-9]+ wrong$/ { p = 0 } p' "$tmp/$py.log"
-        last=$(tail -n 1 "$tmp/$py.log")
-        case "$last" in
-            *" cases, "*" wrong") echo "$last" ;;
-            *) tail -n 20 "$tmp/$py.log" ;; # no summary line: a crash, and its traceback ends the log
-        esac
-        fail=1
-    fi
-    if [ "$py" = python3.14 ]; then
-        echo "python3.14 -m compileall -q lib hooks scripts adapters"
-        python3.14 -m compileall -q lib hooks scripts adapters || fail=1
-    fi
-done
+# The Python steps: the suite once, which bin/harness runs on the environment's interpreter, then
+# the compile check on that interpreter, at the path that bin/harness's own `interpreter` and
+# `environment_path` give.
+echo "$python bin/harness test"
+if "$python" bin/harness test >"$tmp/test.log" 2>&1; then
+    tail -n 1 "$tmp/test.log"
+else
+    # Each wrong case with the lines that follow it up to the next case or the summary: a
+    # case can span several lines, and the BAD line of a crashed probe is followed by its
+    # traceback. The lines of a passing case are left out.
+    awk '/^BAD/ { p = 1 } /^ok / || /^[0-9]+ cases, [0-9]+ wrong$/ { p = 0 } p' "$tmp/test.log"
+    last=$(tail -n 1 "$tmp/test.log")
+    case "$last" in
+        *" cases, "*" wrong") echo "$last" ;;
+        *) tail -n 20 "$tmp/test.log" ;; # no summary line: a crash, and its traceback ends the log
+    esac
+    fail=1
+fi
+environment_python=$("$python" -c '
+import sys
+boot = {"__name__": "harness_boot", "__file__": sys.argv[1]}
+exec(compile(open(sys.argv[1]).read(), sys.argv[1], "exec"), boot)
+print(boot["interpreter"](boot["environment_path"]()))
+' bin/harness)
+if [ -n "$environment_python" ]; then
+    echo "$environment_python -m compileall -q lib hooks scripts adapters"
+    "$environment_python" -m compileall -q lib hooks scripts adapters || fail=1
+else
+    echo "pre-push: bin/harness names no interpreter of the Python environment"
+    fail=1
+fi
 
 # The lint of every tracked file with a sh or bash shebang.
 if command -v shellcheck >/dev/null; then

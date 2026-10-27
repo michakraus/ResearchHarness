@@ -20,6 +20,16 @@ through its plugin `adapters/opencode/plugins/guards.ts`. These are the five she
 `~/.config/opencode/hooks/`. Each hook still has one source. `hooks/probe.py` holds the test cases
 of the hooks, and `harness test` runs it.
 
+`harness install --apply` writes the command of each Python hook, in `~/.claude/settings.json`
+and in Antigravity's `hooks.json`, as the absolute path of the interpreter of the harness's Python
+environment, then the hook's path, each one shell word, quoted where the path holds a space. So a
+hook runs on the environment's Python, not on the `python3` that comes first on the `PATH`. Each
+Python hook keeps the shebang `#!/usr/bin/env python3`, for a run by hand such as the examples on
+this page. When the environment is missing, the command of a hook fails to start, with exit
+status 127. Claude Code reads an exit status other than 2 as a hook error that does not refuse
+the call, so under Claude Code a guard fails open while the environment is missing. Antigravity
+reads a handler that prints nothing as a block.
+
 The hooks prevent accidents. They are not a security boundary: each one reads the text of a
 command. [The security model](../security.md) says what they stop and what they do not stop. The
 page groups the hooks: first the five shell guards and `sandbox-semantics.py`, then the hooks of
