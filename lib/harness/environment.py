@@ -304,8 +304,8 @@ def syntax_cases(case, tmp):
 
 
 def start_cases(case, tmp):
-    """The start of bin/harness on macOS and in a session: each refusal, the sync, the restart and
-    the marker."""
+    """The start of bin/harness apart from the Linux download of uv: each refusal, the sync, the
+    restart and the marker."""
     n = 0
 
     def box(**options):

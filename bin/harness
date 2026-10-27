@@ -63,7 +63,7 @@ REDIRECT = ("https", "release-assets.githubusercontent.com")
 # of the directory that holds the release's archives.
 TEST_PLATFORM = "RESEARCH_HARNESS_TEST_PLATFORM"
 TEST_UV_URL = "RESEARCH_HARNESS_TEST_UV_URL"
-TIMEOUT = 60  # seconds for the start check of an interpreter and for the download
+TIMEOUT = 60  # seconds for the start check of an interpreter and for each network wait of the download
 
 
 class Refusal(Exception):

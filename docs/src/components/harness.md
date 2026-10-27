@@ -68,10 +68,11 @@ inherits. A process that finds it set does no lookup: it runs when it runs on th
 and otherwise starts itself there once; a process that such a restart started and that still runs
 elsewhere exits with status 2, so the restart never loops. Two paths name one interpreter when
 their real paths and the directories of their environments, where a `pyvenv.cfg` lies, are equal.
-Each refusal is one line on stderr and exit status 2: no uv on macOS, a relative
-`$RESEARCH_HARNESS_PYTHON`, a sync that fails or that leaves no working environment, and on
-Linux a download that fails, a checksum that is not the pinned one, an architecture other than
-`x86_64` and `aarch64`, and a redirect to another host.
+Each refusal is one line on stderr and exit status 2: no uv on macOS or on a system other than
+Linux, a relative `$RESEARCH_HARNESS_PYTHON`, a sync that fails or that leaves no working
+environment, and on Linux a download that fails, a checksum that is not the pinned one, an
+archive with no `uv`, an architecture other than `x86_64` and `aarch64`, and a redirect to another
+host.
 
 Last, the script adds `lib/` to the module path and calls `main` of `cli.py`. It follows a symbolic
 link to find `lib/`, so a link to the script in another directory also works. `install.py` loads
