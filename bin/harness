@@ -1,18 +1,315 @@
 #!/usr/bin/env python3
-# The front door of the harness tooling: `harness --help` lists the subcommands. The version check
-# comes first and uses no syntax newer than Python 3.0, so an old interpreter prints the version
-# it found and the one it needs instead of a syntax error.
+# The front door of the harness tooling: `harness --help` lists the subcommands.
+#
+# The version check comes first, and the whole file uses no syntax newer than Python 3.0, so an
+# old interpreter prints the version it found and the one it needs instead of a syntax error.
+#
+# Then the start. Every command runs on the interpreter of the harness's Python environment, which
+# `uv sync --locked` makes from pyproject.toml and uv.lock at $RESEARCH_HARNESS_PYTHON (an absolute
+# path), else at ~/.local/share/research-harness/python (`environment_path`). A working
+# environment is one whose bin/python exists and starts.
+#
+# - A process that finds RESEARCH_HARNESS_INTERPRETER set does no lookup and starts no uv: it runs
+#   when it runs on that interpreter, and otherwise starts itself there once. A process that such a
+#   restart started, and that still does not run on it, exits 2: the restart never loops.
+# - With a working environment, the command runs on its bin/python, and the script starts itself
+#   there with the same arguments when it runs on another interpreter.
+# - In a session (SANDBOX_RUNTIME or CLAUDECODE set) with no working environment, the command runs
+#   on the current interpreter after one line on stderr. A session never starts uv and never
+#   fetches: its sandbox cannot write the environment.
+# - Otherwise the script finds uv on the PATH or in ~/.local/bin, fetches the pinned release into
+#   ~/.local/bin on Linux when there is none, runs `uv sync --locked --no-dev` into the
+#   environment on Python 3.14, or on $UV_PYTHON, and starts itself on the new interpreter.
+#
+# Each refusal is one line on stderr and exit status 2. Before the restart, the script imports
+# nothing outside the standard library. lib/harness reads the environment's path, the stamp and
+# the sync from this file (`install.boot`); the start runs only when the file runs as a script.
 
 import os
 import sys
 
-NEED = (3, 11)  # tomllib
+NEED = (3, 14)
 if sys.version_info < NEED:
     sys.stderr.write("harness: Python %d.%d found, %d.%d or later needed\n" % (sys.version_info[:2] + NEED))
     sys.exit(2)
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "lib"))
+import hashlib
+import platform
+import shutil
+import subprocess
+import tarfile
+import tempfile
 
-from harness.cli import main  # noqa: E402
+ROOT = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+LIB = os.path.join(ROOT, "lib")
+# The environment's path, when it is not the default.
+VARIABLE = "RESEARCH_HARNESS_PYTHON"
+# The interpreter that the command runs on, which each child process inherits.
+MARKER = "RESEARCH_HARNESS_INTERPRETER"
+# Set by a restart for the process that it starts, and removed by that process.
+RESTARTED = "RESEARCH_HARNESS_RESTARTED"
+# A file in the environment: the sha256 of the uv.lock that the last sync installed, and its group.
+STAMP = ".harness-sync"
+# The pinned uv release that the bootstrap fetches on Linux: {platform.machine(): sha256 of its
+# archive}. The release URL answers with one redirect to REDIRECT, over https.
+UV_VERSION = "0.13.5"
+UV_RELEASE = "https://github.com/astral-sh/uv/releases/download/" + UV_VERSION
+UV_SHA256 = {
+    "x86_64": "f68d291c75783122dad58ab77def0e13f3233f358731db5d6d7e8715603b928f",
+    "aarch64": "4bb69cf95ed13f23713bb7bc09f241896ea0c75b7c557e615a20604b82f9c403",
+}
+REDIRECT = ("https", "release-assets.githubusercontent.com")
+# Only the cases set these: the system and the architecture, "<system> <machine>", and the URL
+# of the directory that holds the release's archives.
+TEST_PLATFORM = "RESEARCH_HARNESS_TEST_PLATFORM"
+TEST_UV_URL = "RESEARCH_HARNESS_TEST_UV_URL"
+TIMEOUT = 60  # seconds for the start check of an interpreter and for each network wait of the download
 
-sys.exit(main())
+
+class Refusal(Exception):
+    """A refusal of the start: one line on stderr, exit status 2."""
+
+
+def environment_path():
+    """The path of the Python environment: $RESEARCH_HARNESS_PYTHON, which must be absolute, else
+    ~/.local/share/research-harness/python. A relative path raises Refusal."""
+    given = os.environ.get(VARIABLE)
+    if given:
+        if not os.path.isabs(given):
+            raise Refusal("$%s is %r, not an absolute path" % (VARIABLE, given))
+        return given
+    return os.path.join(os.path.expanduser("~"), ".local", "share", "research-harness", "python")
+
+
+def interpreter(environment):
+    return os.path.join(environment, "bin", "python")
+
+
+def identity(python):
+    """The interpreter at the path `python`, as Python itself tells two apart: its real path, and
+    the directory of the environment that it starts in, the nearest of its own directory and the
+    one above that holds a pyvenv.cfg, or None. An environment's bin/python is a link to the base
+    interpreter, so the real path alone does not tell the two apart; a link such as
+    /opt/homebrew/bin/python3.14 is the interpreter that it names."""
+    python = os.path.abspath(python)
+    for directory in (os.path.dirname(python), os.path.dirname(os.path.dirname(python))):
+        if os.path.isfile(os.path.join(directory, "pyvenv.cfg")):
+            return os.path.realpath(python), os.path.realpath(directory)
+    return os.path.realpath(python), None
+
+
+def same(a, b):
+    """Whether the interpreter paths `a` and `b` name one interpreter (`identity`)."""
+    return identity(a) == identity(b)
+
+
+def starts(python):
+    """Whether `python` exists and starts."""
+    try:
+        return subprocess.call([python, "-c", ""], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                               stderr=subprocess.DEVNULL, timeout=TIMEOUT) == 0
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+
+
+def session():
+    """Whether the process runs in a session of a frontend."""
+    return bool(os.environ.get("SANDBOX_RUNTIME") or os.environ.get("CLAUDECODE"))
+
+
+def lock_digest():
+    with open(os.path.join(ROOT, "uv.lock"), "rb") as f:
+        return hashlib.sha256(f.read()).hexdigest()
+
+
+def stamp_text(dev):
+    return "%s %s\n" % (lock_digest(), "dev" if dev else "no-dev")
+
+
+def synced(environment, dev):
+    """Whether the stamp of `environment` names this uv.lock and the group `dev`."""
+    try:
+        with open(os.path.join(environment, STAMP)) as f:
+            return f.read() == stamp_text(dev)
+    except (OSError, UnicodeDecodeError):
+        return False
+
+
+def platform_of():
+    """(system, machine), as `platform` gives them, or as $RESEARCH_HARNESS_TEST_PLATFORM sets them."""
+    given = os.environ.get(TEST_PLATFORM)
+    if given:
+        system, machine = given.split(" ", 1)
+        return system, machine
+    return platform.system(), platform.machine()
+
+
+def find_uv():
+    """uv on the PATH, else the copy that the bootstrap fetches into ~/.local/bin, else None."""
+    found = shutil.which("uv")
+    if found:
+        return found
+    fetched = os.path.join(os.path.expanduser("~"), ".local", "bin", "uv")
+    return fetched if os.path.isfile(fetched) and os.access(fetched, os.X_OK) else None
+
+
+def download(url, path):
+    """Write the body at `url` to `path`, following one redirect to REDIRECT and no other."""
+    import http.client
+    import urllib.error
+    import urllib.parse
+    import urllib.request
+
+    class Redirects(urllib.request.HTTPRedirectHandler):
+        followed = 0
+
+        def redirect_request(self, req, fp, code, msg, headers, newurl):
+            target = urllib.parse.urlsplit(newurl)
+            if self.followed or (target.scheme, target.hostname) != REDIRECT:
+                raise Refusal("the download of %s redirects to %s; only one redirect to %s://%s is followed"
+                              % (url, newurl, REDIRECT[0], REDIRECT[1]))
+            self.followed += 1
+            return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+    try:
+        with urllib.request.build_opener(Redirects()).open(url, timeout=TIMEOUT) as response:
+            with open(path, "wb") as f:
+                shutil.copyfileobj(response, f)
+    except (OSError, ValueError, http.client.HTTPException) as e:
+        raise Refusal("cannot download %s: %s" % (url, e))
+
+
+def fetch_uv(home=None):
+    """Fetch the pinned uv release into ~/.local/bin and check its sha256; the path of uv. The
+    archive goes to a temporary directory, which is removed at the end, so a refusal writes
+    nothing below ~/.local/bin and leaves no archive."""
+    machine = platform_of()[1]
+    digest = UV_SHA256.get(machine)
+    if digest is None:
+        raise Refusal("no uv on the PATH, and no uv release is pinned for the architecture %s; "
+                      "install uv %s or later on the PATH" % (machine, UV_VERSION))
+    name = "uv-%s-unknown-linux-gnu" % machine
+    url = (os.environ.get(TEST_UV_URL) or UV_RELEASE) + "/" + name + ".tar.gz"
+    scratch = tempfile.mkdtemp(prefix="harness-uv-")
+    try:
+        archive = os.path.join(scratch, name + ".tar.gz")
+        download(url, archive)
+        with open(archive, "rb") as f:
+            got = hashlib.sha256(f.read()).hexdigest()
+        if got != digest:
+            raise Refusal("the archive at %s has sha256 %s, not the pinned %s; it is removed" % (url, got, digest))
+        try:
+            with tarfile.open(archive, "r:gz") as tar:
+                data = tar.extractfile(tar.getmember(name + "/uv")).read()
+        except (KeyError, OSError, tarfile.TarError) as e:
+            raise Refusal("cannot read %s/uv from %s: %s" % (name, url, e))
+        directory = os.path.join(home or os.path.expanduser("~"), ".local", "bin")
+        target = os.path.join(directory, "uv")
+        part = target + ".part"
+        try:
+            os.makedirs(directory, exist_ok=True)
+            with open(part, "wb") as f:
+                f.write(data)
+            os.chmod(part, 0o755)
+            os.replace(part, target)
+        except OSError as e:
+            raise Refusal("cannot write %s: %s" % (target, e.strerror or e))
+        return target
+    finally:
+        shutil.rmtree(scratch, ignore_errors=True)
+
+
+def sync(uv, environment, dev):
+    """`uv sync --locked` into `environment` on Python 3.14, or on the caller's $UV_PYTHON, with the
+    `dev` group when `dev`, else `--no-dev`; then the stamp. A sync that fails, or that leaves no
+    working environment, raises Refusal, and first removes `environment` when the sync made it."""
+    command = [uv, "sync", "--locked", "--project", ROOT] + ([] if dev else ["--no-dev"])
+    env = dict(os.environ)
+    env["UV_PROJECT_ENVIRONMENT"] = environment
+    env.setdefault("UV_PYTHON", "%d.%d" % NEED)
+    existed = os.path.lexists(environment)
+
+    def refuse(message):
+        if not existed and os.path.lexists(environment):
+            try:
+                shutil.rmtree(environment)
+            except OSError as e:
+                message = "%s; cannot remove %s: %s" % (message, environment, e.strerror or e)
+        raise Refusal(message)
+
+    try:
+        p = subprocess.run(command, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                           env=env, universal_newlines=True)
+    except OSError as e:
+        refuse("cannot start %s: %s" % (uv, e.strerror or e))
+    if p.returncode != 0:
+        lines = [line.strip() for line in p.stderr.splitlines() if line.strip()]
+        refuse("uv sync exits %d: %s" % (p.returncode, lines[-1] if lines else "no output"))
+    if not starts(interpreter(environment)):
+        refuse("uv sync left no working environment at %s: %s does not start"
+               % (environment, interpreter(environment)))
+    try:
+        with open(os.path.join(environment, STAMP), "w") as f:
+            f.write(stamp_text(dev))
+    except OSError as e:
+        raise Refusal("cannot write the stamp of %s: %s" % (environment, e.strerror or e))
+
+
+def restart(python, argv):
+    """Start this script on `python` with the arguments `argv`, as the same process."""
+    os.environ[MARKER] = python
+    os.environ[RESTARTED] = "1"
+    try:
+        os.execv(python, [python, os.path.realpath(__file__)] + argv)
+    except OSError as e:
+        raise Refusal("cannot start %s: %s" % (python, e.strerror or e))
+
+
+def run():
+    sys.path.insert(0, LIB)
+    from harness.cli import main
+    return main()
+
+
+def start(argv):
+    """Choose the interpreter of the command, and run the command on it."""
+    here = os.path.abspath(sys.executable)
+    restarted = os.environ.pop(RESTARTED, None)
+    chosen = os.environ.get(MARKER)
+    if chosen:
+        if same(here, chosen):
+            return run()
+        if restarted:
+            raise Refusal("started again on %s, but runs on %s" % (chosen, here))
+        restart(chosen, argv)
+    environment = environment_path()
+    python = interpreter(environment)
+    if same(here, python):
+        os.environ[MARKER] = python
+        return run()
+    if starts(python):
+        restart(python, argv)
+    if session():
+        sys.stderr.write("harness: no Python environment at %s; this command runs on %s. Run `harness install "
+                         "--apply` outside a session to make it\n" % (environment, here))
+        os.environ[MARKER] = here
+        return run()
+    uv = find_uv()
+    if uv is None:
+        system = platform_of()[0]
+        if system == "Darwin":
+            raise Refusal("no uv on the PATH: install it with `brew install uv`")
+        if system != "Linux":
+            raise Refusal("no uv on the PATH: install uv %s or later" % UV_VERSION)
+        uv = fetch_uv()
+    sync(uv, environment, False)
+    sys.stderr.write("harness: made the Python environment at %s\n" % environment)
+    restart(python, argv)
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(start(sys.argv[1:]))
+    except Refusal as e:
+        sys.stderr.write("harness: %s\n" % e)
+        sys.exit(2)

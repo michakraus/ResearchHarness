@@ -69,5 +69,10 @@ protected_dir = ["Nextcloud"]
 # `~` is the path of the home directory.
 leak = ["~", "example-user"]
 
+# Whether this machine develops the harness: with `true`, `harness install --apply` adds the `dev`
+# group of uv.lock, the tools that check the Python code, to the Python environment of the
+# harness. Optional: without it, `false`, and the environment holds no package.
+# develop = true
+
 # The model servers and accounts of OpenCode and oh-my-pi are in providers.toml beside this file,
 # which examples/providers.toml shows.

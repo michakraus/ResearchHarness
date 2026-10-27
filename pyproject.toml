@@ -1,0 +1,18 @@
+# The Python environment of the harness. `bin/harness` makes it with `uv sync --locked --no-dev`
+# at ~/.local/share/research-harness/python/ ($RESEARCH_HARNESS_PYTHON) and runs every command on
+# its interpreter; `harness install --apply` syncs it again, with the `dev` group where the
+# profile sets `develop = true`. The lock is uv.lock, committed beside this file. The harness
+# itself needs no package beyond the standard library, so `dependencies` stays empty: a runtime
+# dependency goes there with a one-line reason.
+
+[project]
+name = "research-harness"
+version = "0"
+requires-python = ">=3.14"
+dependencies = []
+
+[dependency-groups]
+dev = [
+    "ruff==0.17.2",  # formats and lints the Python code, at one pinned version on every machine
+    "basedpyright==1.40.2",  # checks the types of the Python code, at one pinned version on every machine
+]

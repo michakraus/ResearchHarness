@@ -8,7 +8,8 @@ The checks, in this order:
   namespaces, a sandbox of `bwrap` and `socat`;
 - the tools of docs/src/dependencies.md: each found on the PATH, and at or above its minimum where
   the page states one (MINIMUMS); the Julia packages of Project.toml in the Manifest.toml of the
-  Julia environment of the scripts;
+  Julia environment of the scripts; the Python environment of the harness, whose interpreter must
+  start at or above the minimum of Python, and which is a WARN when it lags uv.lock;
 - the profile: it loads, the `tree_agents` directory and OpenCode's configuration directory exist,
   and its `autocommit_branch`;
 - the install: the dry run of `harness install`, and each of its warnings;
@@ -69,7 +70,7 @@ TIMEOUT, INSTALL_TIMEOUT, TEST_TIMEOUT, REVISE_TIMEOUT = 60, 300, 3600, 600
 # last one, or at or above an earlier one of the same major release: Node.js 20.16 in 20.x, else
 # 22.3. A case compares them with the page.
 MINIMUMS = {
-    "Python": ("3.11",), "gitleaks": ("8.21",), "Node.js": ("20.16", "22.3"), "actionlint": ("1.7.12",),
+    "Python": ("3.14",), "gitleaks": ("8.21",), "Node.js": ("20.16", "22.3"), "actionlint": ("1.7.12",),
     "Julia": ("1.13",), "ExplicitImports": ("1.15",), "JSON": ("1.10",), "JuliaFormatter": ("2.14",),
     "JuliaSyntax": ("1.0.2",), "TestEnv": ("1.103.7",), "YAML": ("0.4.17",), "fatou": ("0.22.0",),
 }
@@ -77,6 +78,7 @@ MINIMUMS = {
 # such text is required: a FAIL when it is missing, a WARN for the others.
 TOOLS = [
     ("Python", "python3", ["--version"], None),
+    ("uv", "uv", ["--version"], "harness install cannot sync the Python environment"),
     ("git", "git", ["--version"], None),
     ("gh", "gh", ["--version"], None),
     ("Node.js", "node", ["--version"], None),
@@ -265,14 +267,15 @@ class Doctor:
         out = [self.tool(*t) for t in TOOLS]
         if self.system == "Darwin":
             out.append(self.iterm())
-        return out + self.packages()
+        return out + self.packages() + [self.python_environment()]
 
     def tool(self, name, command, flags, without):
         """A tool of TOOLS: missing, or a version flag that exits non-zero, is a FAIL for a required
         tool (`without` None) and a WARN for an optional one; a non-zero exit is a SKIP in a
         session's sandbox, which can refuse the flag. A version below its minimum is a FAIL, and
-        output with no version a WARN."""
-        path = shutil.which(command)
+        output with no version a WARN. uv is found as `harness install --apply` finds it, on the
+        PATH or in ~/.local/bin."""
+        path = install.boot().find_uv() if command == "uv" else shutil.which(command)
         if path is None:
             if without is None:
                 return self.fail(name, f"{command} not found", "tools")
@@ -330,6 +333,33 @@ class Doctor:
             else:
                 out.append(self.minimum(name, version, version, "install"))
         return out
+
+    def python_environment(self):
+        """The Python environment that bin/harness runs on: a FAIL when its interpreter does not
+        start or is below the minimum of Python, a SKIP in a session's sandbox for an interpreter
+        that exits non-zero, a WARN when its stamp names another uv.lock, or another group than
+        the profile's `develop`, else a PASS."""
+        name, boot = "Python environment", install.boot()
+        try:
+            environment = boot.environment_path()
+        except boot.Refusal as e:
+            return self.fail(name, str(e), "install")
+        python = boot.interpreter(environment)
+        r = run([python, "-c", "import sys; print('%d.%d.%d' % sys.version_info[:3])"])
+        if r is None:
+            return self.fail(name, f"no interpreter at {python}: the environment is not made", "install")
+        if r[0] != 0:
+            return self.refused(name, said(python, r), "install")
+        m = VERSION.search(r[1] + r[2])
+        if m is None:
+            return Result("WARN", name, f"cannot read a version from {python}: {first(r[1] + r[2])!r}")
+        if not meets(numbers_of(m.group(0)), MINIMUMS["Python"]):
+            return self.fail(name, f"{m.group(0)} ({python}), below {MINIMUMS['Python'][-1]}", "install")
+        develop = profile_module.develop(self.profile) if self.profile is not None else False
+        if not boot.synced(environment, develop):
+            return Result("WARN", name, f"{environment} lags uv.lock {'with' if develop else 'without'} the dev "
+                                        f"group: run `harness install --apply`")
+        return Result("PASS", name, f"{m.group(0)} ({environment})")
 
     # The profile and the install.
 
@@ -582,7 +612,8 @@ TOKEN = "kaimon_" + "5e" * 20
 # those of a machine with Ubuntu 26.04 set up with setup-linux.md, each in its tool's form: the
 # lines of gh, shellcheck and rsync are the form of their upstream releases, and those of
 # systemctl, loginctl and bwrap are written from their known form around the answers that the
-# machine gave, such as `Linger=no` and `active`.
+# machine gave, such as `Linger=no` and `active`. The Linux line of uv is written: the version of
+# the release that bin/harness fetches, without the build note that follows it.
 SHELLCHECK = ("ShellCheck - shell script analysis tool\nversion: 0.11.0\nlicense: GNU General Public License, "
               "version 3\nwebsite: https://www.shellcheck.net\n")
 SYSTEMD_TIMERS = (
@@ -601,6 +632,7 @@ COMMON = {
 }
 LINUX = COMMON | {
     "python3": [("--version", "Python 3.14.4\n", "", 0)],
+    "uv": [("--version", "uv 0.13.5\n", "", 0)],
     "gh": [("--version", "gh version 2.46.0 (2024-03-01)\nhttps://github.com/cli/cli/releases/tag/v2.46.0\n", "", 0)],
     "node": [("--version", "v22.22.1\n", "", 0)],
     "actionlint": [("--version", "1.7.12\ninstalled by downloading from release page\n"
@@ -622,6 +654,7 @@ LAUNCHCTL = ('{\n\t"LimitLoadToSessionType" = "Aqua";\n\t"Label" = "org.example.
              '\t"ProgramArguments" = (\n\t\t"/Users/me/.local/bin/{job}";\n\t);\n};\n')
 MACOS = COMMON | {
     "python3": [("--version", "Python 3.14.8\n", "", 0)],
+    "uv": [("--version", "uv 0.13.5 (Homebrew 2026-10-22 aarch64-apple-darwin)\n", "", 0)],
     "gh": [("--version", "gh version 2.102.0 (2026-09-30)\nhttps://github.com/cli/cli/releases/tag/v2.102.0\n", "", 0)],
     "node": [("--version", "v26.12.0\n", "", 0)],
     "actionlint": [("--version", "1.7.12\ninstalled by downloading from release page\n"
@@ -709,6 +742,11 @@ class Fixture:
         shutil.copytree(claude, self.home / ".claude", symlinks=True)
         self.julia.mkdir()
         (self.julia / "Manifest.toml").write_text(manifest(PACKAGES))
+        # The Python environment, synced without the dev group, with a stub of its interpreter.
+        self.python = root / "python-env"
+        (self.python / "bin").mkdir(parents=True)
+        stub(self.python / "bin" / "python", [("*", "3.14.8\n", "", 0)])
+        (self.python / install.boot().STAMP).write_text(install.boot().stamp_text(False))
         self.kernel.mkdir()
         (self.kernel / "unprivileged_userns_clone").write_text("1\n")
         self.os_release.write_text('PRETTY_NAME="Ubuntu 26.04.1 LTS"\nNAME="Ubuntu"\nVERSION_ID="26.04"\n')
@@ -727,8 +765,9 @@ class Fixture:
         env = {k: v for k, v in os.environ.items()
                if k not in (SANDBOX, "OPENCODE_CONFIG_DIR", "RESEARCH_HARNESS_PROFILE", "RESEARCH_HARNESS_MODELS")
                and not k.startswith("GIT_")}
-        env.update(GIT_ENV, HOME=str(self.home), PATH=str(self.bin), **({SANDBOX: "1"} if sandbox else {}),
-                   **(extra or {}))
+        env.update(GIT_ENV, HOME=str(self.home), PATH=str(self.bin), RESEARCH_HARNESS_PYTHON=str(self.python),
+                   **({SANDBOX: "1"} if sandbox else {}))
+        env.update(extra or {})
         self.out = io.StringIO()
         with (mock.patch.dict(os.environ, env, clear=True), mock.patch(f"{__name__}.system", lambda: self.system),
               mock.patch(f"{__name__}.machine", lambda: arch or ("x86_64" if self.system == "Linux" else "arm64")),
@@ -810,7 +849,8 @@ def status_cases(check, root, system_name):
         return got, text
 
     # The whole run on a machine with every step done: no FAIL, and each line in the format.
-    got, text = case("every step done", {name: "PASS" for name in ("system", "Python", "Kaimon", "profile",
+    got, text = case("every step done", {name: "PASS" for name in ("system", "Python", "Python environment",
+                                                                     "Kaimon", "profile",
                                                                      "install", "kaimon job", "julia-update job",
                                                                      "autocommit job", "~/.claude repository",
                                                                      "Kaimon token")} | {"install warning 1": "WARN",
@@ -893,6 +933,19 @@ def status_cases(check, root, system_name):
                 text = out.replace(at, version, 1)
                 case(f"{command} at {version}, minimum {' or '.join(MINIMUMS[name])}", {name: want},
                      lambda f, c=command, a=flags, t=text: f.tool(c, (" ".join(a), t, "", 0)), ("tools",), **one)
+    # A working environment runs without uv, so a missing uv is a WARN; the loop above derives
+    # the status from the row, and this case states it.
+    case("no uv", {"uv": "WARN"}, lambda f: (f.bin / "uv").unlink(), ("tools",), only=("uv",))
+
+    # uv in ~/.local/bin, where the bootstrap fetches it, and not on the PATH: the lookup of the sync.
+    def local_uv(f):
+        (f.bin / "uv").unlink()
+        (f.home / ".local" / "bin").mkdir(parents=True, exist_ok=True)
+        stub(f.home / ".local" / "bin" / "uv", [("--version", "uv 0.13.5\n", "", 0)])
+
+    got, _ = case("uv in ~/.local/bin only", {"uv": "PASS"}, local_uv, ("tools",), only=("uv",))
+    check(".local/bin/uv" in got["uv"].detail,
+          f"{system_name}: the uv line names ~/.local/bin/uv -> {got['uv'].detail!r}")
     for version, want in (("21.7.3", "FAIL"), ("20.18.0", "PASS"), ("18.20.4", "FAIL"), ("23.0.0", "PASS")):
         case(f"node at {version}", {"Node.js": want},
              lambda f, v=version: f.tool("node", ("--version", f"v{v}\n", "", 0)), ("tools",), only=("Node.js",))
@@ -939,6 +992,39 @@ def status_cases(check, root, system_name):
         for sandbox, want in ((False, "FAIL"), (True, "SKIP")):
             case(f"a manifest that cannot be read, sandbox {sandbox}", {name: want for name in PACKAGES},
                  lambda f: (f.julia / "Manifest.toml").chmod(0), ("tools",), sandbox=sandbox, **none)
+
+    # The Python environment: an interpreter that starts at or above the minimum and the stamp of
+    # this uv.lock pass; no interpreter, one that exits non-zero, one below 3.14 and a relative path
+    # fail; a stamp of another lock or group warns.
+    python = lambda f: f.python / "bin" / "python"
+    stamp = lambda f: f.python / install.boot().STAMP
+    env_name = "Python environment"
+    case("a synced Python environment", {env_name: "PASS"}, sections=("tools",), **none)
+    case("no Python environment", {env_name: "FAIL"}, lambda f: shutil.rmtree(f.python), ("tools",), **none)
+    case("an interpreter of the environment that is a broken link", {env_name: "FAIL"},
+         lambda f: (python(f).unlink(), python(f).symlink_to(f.python / "gone")), ("tools",), **none)
+    exits = lambda f: stub(python(f), [("*", "", "dyld: Library not loaded\n", 6)])
+    case("an interpreter of the environment that exits 6", {env_name: "FAIL"}, exits, ("tools",), **none)
+    got, _ = case("an interpreter of the environment that exits 6 in a session's sandbox", {env_name: "SKIP"}, exits,
+                  ("tools",), sandbox=True, **none)
+    check("sandbox" in got[env_name].detail, f"{system_name}: the SKIP names the sandbox -> {got[env_name].detail!r}")
+    for version, want in (("3.13.9", "FAIL"), ("3.14.0", "PASS"), ("3.15.1", "PASS")):
+        case(f"an interpreter of the environment at {version}", {env_name: want},
+             lambda f, v=version: stub(python(f), [("*", f"{v}\n", "", 0)]), ("tools",), **none)
+    case("an interpreter of the environment that prints no version", {env_name: "WARN"},
+         lambda f: stub(python(f), [("*", "no number\n", "", 0)]), ("tools",), **none)
+    case("a stamp of another uv.lock", {env_name: "WARN"},
+         lambda f: stamp(f).write_text("0" * 64 + " no-dev\n"), ("tools",), **none)
+    case("no stamp", {env_name: "WARN"}, lambda f: stamp(f).unlink(), ("tools",), **none)
+    case("develop = true and a stamp without the dev group", {env_name: "WARN"},
+         lambda f: f.profile.write_text(f.profile.read_text() + "develop = true\n"), ("tools",), **none)
+    case("develop = true and a stamp with the dev group", {env_name: "PASS"},
+         lambda f: (f.profile.write_text(f.profile.read_text() + "develop = true\n"),
+                    stamp(f).write_text(install.boot().stamp_text(True))), ("tools",), **none)
+    got, _ = case("a relative $RESEARCH_HARNESS_PYTHON", {env_name: "FAIL"}, sections=("tools",),
+                  extra={"RESEARCH_HARNESS_PYTHON": "relative/env"}, **none)
+    check("relative/env" in got[env_name].detail and "not an absolute path" in got[env_name].detail,
+          f"{system_name}: the line names the relative path, which is not absolute -> {got[env_name].detail!r}")
 
     # The profile.
     for label, text in (("no profile", None), ("a profile that is not TOML", "home = \n"),

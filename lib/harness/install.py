@@ -1,5 +1,5 @@
-"""Install the configuration of each frontend that lib/harness/frontends.py names, and the Julia
-environment of the scripts.
+"""Install the configuration of each frontend that lib/harness/frontends.py names, the Julia
+environment of the scripts and the Python environment of the harness.
 
     harness install [--apply] [--force]
 
@@ -12,6 +12,9 @@ and launchagents/.
 What it installs:
   Project.toml                     -> ~/.local/share/research-harness/julia/ ($RESEARCH_HARNESS_JULIA),
                                       instantiated: the packages the Julia scripts load
+  pyproject.toml, uv.lock          -> ~/.local/share/research-harness/python/ ($RESEARCH_HARNESS_PYTHON),
+                                      by `uv sync --locked`, with the `dev` group where the
+                                      profile sets `develop = true`: the interpreter of `harness`
   each frontend's files            -> as the docstring of its adapters/<frontend>/adapter.py says
 
 It loads the profile and the model tables, `--models F`, else $RESEARCH_HARNESS_MODELS, else
@@ -21,11 +24,12 @@ with exit status 2, comes before anything is written. `check_files` then checks 
 the Julia environment and of each plan, and refuses a symbolic link or a directory at a target,
 also before anything is written. A target with a change
 that cannot be written exits 2 there under `--apply`; a dry run prints its whole plan and count
-line first, then that refusal, and exits 2. Then it installs the Julia environment and the files
-of each plan in that order, prints the warnings, and runs the steps of each plan that follow the
-files. It prints the installed files with no source, then the count line. After an `--apply`, it
-prints the restart line of each frontend whose files or steps changed something, in that order;
-the Julia environment belongs to no frontend. A plan's own refusal exits 2 after these lines, once
+line first, then that refusal, and exits 2. Then it installs the Julia environment, the Python
+environment (`install_python_env`) and the files of each plan in that order, prints the
+warnings, and runs the steps of each plan that follow the files. It prints the installed files
+with no source, then the count line. After an `--apply`, it prints the restart line of each
+frontend whose files or steps changed something, in that order; the two environments belong to
+no frontend. A plan's own refusal exits 2 after these lines, once
 the rest is installed.
 
 A file that differs from the plan, in its bytes or in its mode, is a change. The plan's check of
@@ -35,6 +39,7 @@ here, for the adapter that installs such a layer.
 """
 
 import datetime
+import functools
 import importlib.util
 import json
 import os
@@ -251,17 +256,68 @@ def install_julia_env(apply):
     return changes
 
 
+@functools.cache
+def boot():
+    """bin/harness as a module, made once per process: the path of the Python environment, its
+    stamp and `sync`, which the start of `harness` uses too. Only a run as a script starts it."""
+    path = REPO / "bin" / "harness"
+    module = types.ModuleType("harness_boot")
+    module.__file__ = str(path)
+    exec(compile(path.read_text(), str(path), "exec"), module.__dict__)
+    return module
+
+
+def python_env():
+    """The path of the Python environment, as bin/harness finds it; a relative
+    $RESEARCH_HARNESS_PYTHON exits 2."""
+    try:
+        return pathlib.Path(boot().environment_path())
+    except boot().Refusal as e:
+        raise HarnessError(str(e)) from None
+
+
+def install_python_env(apply, develop, environment):
+    """Plan the Python environment at `environment` as one line, and under `apply` sync it with
+    `uv sync --locked`, with the `dev` group when `develop`, else `--no-dev`; the number of changes.
+    An environment whose interpreter does not start, or whose stamp names another uv.lock or group,
+    is a change. A sync that fails exits 2 with its last stderr line."""
+    b, environment = boot(), str(environment)
+    label = f"{'python environment':<{WIDTH}}"
+    if not b.starts(b.interpreter(environment)):
+        print(f"{label}  SYNC: no interpreter that starts at {b.interpreter(environment)}")
+    elif not b.synced(environment, develop):
+        print(f"{label}  SYNC: it was not synced with this uv.lock {'with' if develop else 'without'} the dev group")
+    else:
+        print(f"{label}  already synced")
+        return 0
+    if apply:
+        uv = b.find_uv()
+        if uv is None:
+            raise HarnessError("uv is not found on the PATH or in ~/.local/bin; install it (on Linux x86_64 and "
+                               "aarch64, bin/harness fetches it into ~/.local/bin when it starts outside a "
+                               "session and finds no environment that starts)")
+        try:
+            b.sync(uv, environment, develop)
+        except b.Refusal as e:
+            raise HarnessError(str(e)) from None
+    return 1
+
+
 def cmd_install(args):
     global WIDTH
     adapters = frontends.load()
     profile = profile_module.load(args.profile)
+    develop = profile_module.develop(profile)
+    # A relative $RESEARCH_HARNESS_PYTHON exits 2 here, before anything is written.
+    python = python_env()
     models = profile_module.models_path(args)
     profile_module.read_models(models)
     ctx = types.SimpleNamespace(args=args, profile=profile, models=models, agents=sources.AGENTS, plans={})
     for adapter in adapters:
         ctx.plans[adapter.NAME] = adapter.plan(ctx)
     plans = list(ctx.plans.values())
-    WIDTH = max(len(label) for label in ["julia/Manifest.toml", *(f[3] for plan in plans for f in plan.files),
+    WIDTH = max(len(label) for label in ["julia/Manifest.toml", "python environment",
+                                         *(f[3] for plan in plans for f in plan.files),
                                          *(r[0] for plan in plans for r in plan.refused)])
     # Every target, the Julia environment's and each plan's, is checked before anything is written.
     # A target that cannot be written stops an --apply here, and a dry run after its count line,
@@ -271,8 +327,8 @@ def cmd_install(args):
                               *(check_files(plan.files) for plan in plans)] if r]
     if unwritable and args.apply:
         raise HarnessError(unwritable[0])
-    # The Julia environment belongs to no frontend, so its changes count in no plan's.
-    julia = install_julia_env(args.apply)
+    # The two environments belong to no frontend, so their changes count in no plan's.
+    environments = install_julia_env(args.apply) + install_python_env(args.apply, develop, python)
     changed = [0] * len(plans)
 
     for i, plan in enumerate(plans):
@@ -298,7 +354,7 @@ def cmd_install(args):
         for text in plan.extra:
             print(text)
 
-    changes = julia + sum(changed)
+    changes = environments + sum(changed)
     print(f"\n{changes} change(s) {'made' if args.apply else 'to make'}.")
     # `plans`, and so `changed`, are in the order of `adapters`.
     restarts = [adapter.RESTART for adapter, n in zip(adapters, changed) if n] if args.apply else []

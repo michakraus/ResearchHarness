@@ -1989,6 +1989,11 @@ def drift_cases(install=install):
     with open(REPO + "/Project.toml", "rb") as f, open(base + "/julia/Project.toml", "wb") as g:
         g.write(f.read())
     open(base + "/julia/Manifest.toml", "w").close()
+    # A synced Python environment, so that the install starts no uv.
+    sys.path.insert(0, REPO + "/lib")
+    from harness import install_cases
+
+    install_cases.python_env(pathlib.Path(base, "python"))
     for name in ("instructions/research-tree.md", "rules/meta-repository.md", "README.md"):
         os.makedirs(os.path.dirname(os.path.join(tree, name)), exist_ok=True)
         with open(os.path.join(tree, name), "w") as f:
@@ -2001,7 +2006,7 @@ def drift_cases(install=install):
     with open(base + "/profile.toml", "w") as f:
         f.write("\n".join(lines) + "\n")
     env = {**CLEAN, "HOME": home, "OPENCODE_CONFIG_DIR": base + "/opencode", "RESEARCH_HARNESS_JULIA": base + "/julia",
-           "PI_CODING_AGENT_DIR": base + "/omp"}
+           "RESEARCH_HARNESS_PYTHON": base + "/python", "PI_CODING_AGENT_DIR": base + "/omp"}
 
     def apply():
         """`harness install --apply` on the fixture; an exit other than 0 raises SetupFailed."""

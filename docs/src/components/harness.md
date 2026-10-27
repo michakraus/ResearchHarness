@@ -29,10 +29,10 @@ subcommands live in the adapters: `settings` and `trust` in `adapters/claude/ada
 | `changelog` | `changelog.py` |
 | `test` | `testrun.py` |
 
-`frontmatter.py`, `docs.py` and `sweep.py` have no subcommand. Their cases run only in
-`harness test`. `install_cases.py` holds helpers for the cases of other modules. The sections
-start with the entry point and the parser, then the subcommands, then the shared modules, then the
-modules of the tests.
+`frontmatter.py`, `docs.py`, `sweep.py` and `environment.py` have no subcommand. Their cases run
+only in `harness test`. `install_cases.py` holds helpers for the cases of other modules. The
+sections start with the entry point and the parser, then the subcommands, then the shared modules,
+then the modules of the tests.
 
 ## `harness`
 
@@ -40,14 +40,44 @@ The executable script `bin/harness`, the entry point of the harness. Put `bin/` 
 run `harness --help` for the list of subcommands, or `harness <subcommand> --help` for one
 subcommand.
 
-The script first checks the version of Python. It needs Python 3.11 or later, because the profile
-and the model tables are TOML and `tomllib` came into the standard library with 3.11. An older
-interpreter prints the version that it found and the version that it needs, and the script exits
-with status 2. The check uses no new syntax, so an old interpreter reads it without a syntax
-error.
+The script first checks the version of Python. It needs Python 3.14 or later, the one version that
+the harness is tested on. An older interpreter prints the version that it found and the version
+that it needs, and the script exits with status 2. The script uses no syntax newer than Python
+3.0, so an old interpreter reads it without a syntax error.
 
-Then the script adds `lib/` to the module path and calls `main` of `cli.py`. It follows a symbolic
-link to find `lib/`, so a link to the script in another directory also works.
+Then the script chooses the interpreter of the command. The Python environment of the harness is
+at `$RESEARCH_HARNESS_PYTHON`, an absolute path, or else at
+`~/.local/share/research-harness/python/`; it is working when its `bin/python` exists and starts.
+
+- With a working environment, the command runs on its `bin/python`. On another interpreter, the
+  script starts itself there with the same arguments, in the same process.
+- In a session, where `SANDBOX_RUNTIME` or `CLAUDECODE` is set, with no working environment, the
+  command runs on the interpreter that started it, after one line on stderr that names the
+  environment and `harness install --apply`. A session never starts uv.
+- Otherwise the script finds `uv` on the `PATH` or in `~/.local/bin`. On Linux without one, it
+  fetches the uv release that it pins into `~/.local/bin` and checks the sha256 of the archive;
+  the download follows one redirect, to `release-assets.githubusercontent.com`, and no other. Then
+  it runs `uv sync --locked --no-dev` into the environment, writes the environment's stamp, the
+  sha256 of `uv.lock` and the group, and starts itself on the new interpreter. The environment is
+  made on Python 3.14 (`UV_PYTHON` overrides it), and uv downloads a managed 3.14 where none is
+  installed. A sync that fails, or that leaves no working environment, removes the environment
+  when the sync made it; a uv that the fetch wrote and checked stays in `~/.local/bin`.
+
+The chosen interpreter goes into `RESEARCH_HARNESS_INTERPRETER`, which each child process
+inherits. A process that finds it set does no lookup: it runs when it runs on that interpreter,
+and otherwise starts itself there once; a process that such a restart started and that still runs
+elsewhere exits with status 2, so the restart never loops. Two paths name one interpreter when
+their real paths and the directories of their environments, where a `pyvenv.cfg` lies, are equal.
+Each refusal is one line on stderr and exit status 2: no uv on macOS or on a system other than
+Linux, a relative `$RESEARCH_HARNESS_PYTHON`, a sync that fails or that leaves no working
+environment, and on Linux a download that fails, a checksum that is not the pinned one, an
+archive with no `uv`, an architecture other than `x86_64` and `aarch64`, and a redirect to another
+host.
+
+Last, the script adds `lib/` to the module path and calls `main` of `cli.py`. It follows a symbolic
+link to find `lib/`, so a link to the script in another directory also works. `install.py` loads
+the script as a module, `boot`, for the environment's path, its stamp and the sync; only a run as
+a script starts the command.
 
 ## `__init__.py`
 
@@ -131,6 +161,11 @@ count line first, then that refusal, and exits with status 2.
 
 Then the subcommand installs the Julia environment of the scripts: it copies `Project.toml` to
 `~/.local/share/research-harness/julia/`, or to `$RESEARCH_HARNESS_JULIA`, and instantiates it.
+Then it plans the Python environment of the harness as one line, `python environment`
+(`install_python_env`): a change when its interpreter does not start or when its stamp names
+another `uv.lock` or group. Under `--apply` it runs `uv sync --locked` into it, with the `dev`
+group when the profile sets `develop = true` and with `--no-dev` otherwise; a sync that fails
+exits with status 2 and its last stderr line.
 Then it installs the files of each plan, prints the warnings, and runs the steps after the files.
 The subcommand adds one warning of its own: `behind_origin` warns when the checkout is behind its
 local `origin/main`. It fetches nothing.
@@ -153,10 +188,11 @@ The helpers for the test cases that run `harness install` end to end. It has no 
 no `selftest` of its own.
 
 `Scratch` creates a scratch `HOME` below a temporary directory: `~/.claude/skills/`, an OpenCode
-directory, a Julia directory with a copy of `Project.toml`, the tree instructions, and the dummy
-profile with `tree_agents` set. `Scratch.run` runs `harness install` in a process of its own, with
-`HOME`, `OPENCODE_CONFIG_DIR`, `RESEARCH_HARNESS_JULIA` and `PI_CODING_AGENT_DIR` in the scratch
-directory. A run that takes more than 60 s is a timeout.
+directory, a Julia directory with a copy of `Project.toml`, a Python environment that the install
+plans as synced (`python_env`), the tree instructions, and the dummy profile with `tree_agents`
+set. `Scratch.run` runs `harness install` in a process of its own, with `HOME`,
+`OPENCODE_CONFIG_DIR`, `RESEARCH_HARNESS_JULIA`, `RESEARCH_HARNESS_PYTHON` and
+`PI_CODING_AGENT_DIR` in the scratch directory. A run that takes more than 60 s is a timeout.
 
 `restart_cases` checks the restart lines of `harness install`. Each case changes the files of one
 frontend, or of no frontend, and checks that only the restart lines of the frontends that changed
@@ -359,13 +395,20 @@ It checks, in this order:
 - the tools of [Dependencies](../dependencies.md): each required tool is on the `PATH`, and each
   tool with a minimum on that page is at or above it; below it, or missing, is a `FAIL`. A missing
   tool that serves one frontend, one job or a push to the harness (the frontends, RTK, jq,
-  juliaup, iTerm2 and gitleaks) is a `WARN` that says what stops without it. When the version flag
+  juliaup, iTerm2 and gitleaks), or that only the sync of the Python environment needs (uv), is a
+  `WARN` that says what stops without it. uv is looked for as the sync looks for it, on the `PATH`
+  or in `~/.local/bin`. When the version flag
   of a tool exits with a status other than 0, the check is a `FAIL` for a required tool and a
   `WARN` for an optional one. In a session's sandbox, which can refuse the flag, the check is a
   `SKIP`. When the flag exits with status 0 but the subcommand cannot read a version from its
   output, the check is a `WARN` with the tool's own text. The minimums are in
   `MINIMUMS`, and a case compares each with the page. The six Julia packages are read from the
-  `Manifest.toml` of the Julia environment of the scripts.
+  `Manifest.toml` of the Julia environment of the scripts. The Python environment of the harness
+  is a `FAIL` when its interpreter does not start or is below the minimum of Python, a `WARN`
+  when its stamp names another `uv.lock` or another group than the profile's `develop`, and
+  otherwise a `PASS`. A lagging environment is also one change of the dry run of
+  `harness install`, so the same run gives a `FAIL` on the install line, and `doctor` exits 1;
+  `harness install --apply` fixes both.
 - the profile: it loads, the `tree_agents` directory and the OpenCode configuration directory
   exist, and the line `autocommit_branch` prints the value.
 - the install: the dry run of `harness install` reports `0 change(s)`, otherwise a `FAIL` with
@@ -489,6 +532,29 @@ repository. Then:
 
 It does not run `format`, `ci-protection`, `skill-triggers`, `doctor` or `test`.
 [Development](../development.md) describes the tests.
+
+## `environment.py`
+
+The cases of the Python environment of the harness. The module has no subcommand. Its cases run
+`bin/harness` as a child process under a scratch `HOME`, with a fake `uv` that logs its arguments
+and makes the environment with `python -m venv`: a session with no environment, the marker, the
+first sync and a second run, the Python that uv is asked for, the restart with its arguments onto
+a working environment, in a session too, each refusal of the start, a failed sync that removes
+the environment that it made and keeps a directory that was there, and a restart that lands on
+another interpreter, which exits with status 2 instead of a loop. In the process of the cases,
+they check the marker that a start exports to its children. They also run the script, under a
+scratch `HOME`, on an interpreter that reports 3.13, and check that the script uses only a closed
+set of forms, each of which Python 3.0 reads.
+
+The cases of the Linux download set the platform and the release URL through
+`RESEARCH_HARNESS_TEST_PLATFORM` and `RESEARCH_HARNESS_TEST_UV_URL`, which only they set, and
+serve fake archives from a local `http.server`: an unknown architecture, a download that fails, a
+checksum that is not the pinned one and a redirect to another host. No fake archive has the pinned
+sha256, so the download that succeeds, and the redirects, run in the process of the cases, with a
+patched checksum, and so does a start whose fetched uv makes no environment: the start refuses,
+and the uv stays in `~/.local/bin`. Last, the cases run `harness install` on `Scratch`: the plan
+line, the sync with and without the `dev` group, an interpreter that does not start, a sync that
+fails, no uv, and a `develop` that is not `true` or `false`.
 
 ## `docs.py`
 

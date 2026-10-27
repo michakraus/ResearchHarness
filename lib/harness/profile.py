@@ -25,6 +25,8 @@ grant or a deny that silently matches nothing. The one exception is a key of DEF
 `harness install` fills from providers.toml, renders no provider. `autocommit_branch` is never
 missing: without it, `load` gives `main` on the machine whose short host name is `template_host`
 or without `template_host`, and `memory/<short host name>` on every other (`branch_default`).
+`develop`, optional, is true or false, false without it: with true, `harness install --apply` adds
+the `dev` group of uv.lock to the Python environment; any other value exits 2.
 `render` of the settings template also generates its network rules from `settings/network.toml`
 and the overlay `network.toml` beside the profile (`network.py`).
 
@@ -109,7 +111,15 @@ def load(path=None, home=None, host=None):
         raise HarnessError(f"{path} is not UTF-8") from None
     except tomllib.TOMLDecodeError as e:
         raise HarnessError(f"{path} is not TOML: {e}") from None
+    if not isinstance(data.get("develop", False), bool):
+        raise HarnessError(f"{path}: `develop` is {data['develop']!r}, not true or false")
     return branch_default(expand_home(data, path, home), path, host)
+
+
+def develop(profile):
+    """The profile's `develop`: whether `harness install --apply` syncs the Python environment with
+    its `dev` group; false without the key."""
+    return profile.get("develop", False)
 
 
 def branch_default(data, path, host=None):
@@ -913,13 +923,15 @@ PREPUSH_TOOLS = ["bash", "sh", "git", "mktemp", "rm", "cat", "tail", "head", "gr
 
 KIT_TESTS = ["update-check", "check-check", "driver-check", "render-check", "script-check"]
 KIT_SKIP = "skip  chezmoi: not found; CI runs the kit's tests"
+PYTHON_SKIP = "skip  python3.14: not found; CI runs bin/harness test and the compile check on Python 3.14"
 
 
 def prepush_case(path=None, kit_fails=None):
     """`.githooks/pre-push` on a fixture checkout whose `origin` is a GitHub URL, for a push to
-    main, with stubs of gitleaks and of `bin/harness` and no python3.11, shellcheck, julia or
+    main, with stubs of gitleaks and of `bin/harness` and no python3.14, shellcheck, julia or
     chezmoi on the PATH: `harness leaks` runs in the hook's clone with that URL as its `origin`,
-    not the path of the checkout, and the kit's tests are skipped with one line. With `kit_fails`,
+    not the path of the checkout, and the run on python3.14 and the kit's tests are skipped with
+    one line each. With `kit_fails`,
     the name of one of KIT_TESTS, a stub of chezmoi is on the PATH and the fixture holds the five
     kit tests, of which that one exits 1: the hook runs all five and refuses the push with one
     line that names it. The tools are linked from `path`, this process's PATH by default, without a
@@ -992,10 +1004,10 @@ def prepush_case(path=None, kit_fails=None):
         print(f"{'ok ' if ok else 'BAD'}  pre-push: with chezmoi on the PATH, the kit's tests run and "
               f"{kit_fails}.py exiting 1 refuses the push -> exit {code}, ran {tests}, {lines[-1]!r}")
         return 1, int(not ok)
-    ok = code == 0 and got == url and KIT_SKIP in lines and tests == []
+    ok = code == 0 and got == url and KIT_SKIP in lines and PYTHON_SKIP in lines and tests == []
     print(f"{'ok ' if ok else 'BAD'}  pre-push: harness leaks runs in the clone with the checkout's "
-          f"origin URL, and without chezmoi the kit's tests skip with one line "
-          f"-> exit {code}, origin {got!r}, skip line {KIT_SKIP in lines}, {lines[-1]!r}")
+          f"origin URL, and without python3.14 and chezmoi their runs skip with one line each "
+          f"-> exit {code}, origin {got!r}, skip lines {PYTHON_SKIP in lines} {KIT_SKIP in lines}, {lines[-1]!r}")
     return 1, int(not ok)
 
 

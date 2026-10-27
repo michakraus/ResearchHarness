@@ -96,7 +96,7 @@ Add the `export` line to `~/.zshrc` too, so that each new shell finds the tools.
 This command installs the tools that Homebrew packages:
 
 ```bash
-brew install python python@3.11 git gh node shellcheck actionlint rsync jq rtk
+brew install python python@3.14 uv git gh node shellcheck actionlint rsync jq rtk
 ```
 
 **Optional: jq and RTK.** Leave `jq` or `rtk` out of the line if you do not want it. RTK shortens
@@ -137,22 +137,25 @@ The six Julia packages of [Dependencies](dependencies.md#julia-and-its-packages)
 the first install adds them.
 
 **Why.** Each tool has the job that [Dependencies](dependencies.md#what-each-tool-does)
-describes. `harness` runs on the `python3` of the `PATH`, which must be 3.11 or later. `python`
-supplies a current `python3`, and `python@3.11` supplies `python3.11`, which the pre-push hook
-also runs; where `python3.11` is missing, the hook skips that run with one line, because CI runs
-it. Homebrew's `rsync` replaces the `rsync` of macOS on the `PATH`. jq is optional: the status
-line of Claude Code reads its data with jq, and without it, the status line shows no values. You
-need Julia even if you write no Julia code: the first install instantiates the Julia environment
-of the harness's scripts, and it stops without `julia`. macOS supplies `lsof`, `launchctl` and the
-other system tools of [Dependencies](dependencies.md#optional).
+describes. `harness` starts on the `python3` of the `PATH`, which must be 3.14 or later, and then
+runs on the interpreter of its Python environment, which it makes with `uv` the first time that it
+runs outside a session. `python` supplies a current `python3`, and `python@3.14` supplies
+`python3.14`, which the pre-push hook also runs; where `python3.14` is missing, the hook skips
+that run with one line, because CI runs it. Homebrew's `rsync` replaces the `rsync` of macOS on
+the `PATH`. jq is optional: the status line of Claude Code reads its data with jq, and without it,
+the status line shows no values. You need Julia even if you write no Julia code: the first install
+instantiates the Julia environment of the harness's scripts, and it stops without `julia`. macOS
+supplies `lsof`, `launchctl` and the other system tools of
+[Dependencies](dependencies.md#optional).
 
-**Check.** Each command prints the version of one tool: Python 3.11 or later, Python 3.11, Node.js
-22.3 or later, RTK 1.0.1 or later, actionlint 1.7.12 or later, fatou 0.22.0 or later, and Julia
-1.13 or later.
+**Check.** Each command prints the version of one tool: Python 3.14 or later, Python 3.14, uv,
+Node.js 22.3 or later, RTK 1.0.1 or later, actionlint 1.7.12 or later, fatou 0.22.0 or later, and
+Julia 1.13 or later.
 
 ```bash
 python3 --version
-python3.11 --version
+python3.14 --version
+uv --version
 node --version
 jq --version
 rtk --version
@@ -283,8 +286,11 @@ Add the `export` line to `~/.zshrc` too, so that each new shell finds `harness`.
 **Why.** Every step after this one uses `harness`, and the installed configuration names files of
 the checkout.
 
-**Check.** `harness --help` lists the subcommands. A Python older than 3.11 makes `harness` stop
-with exit status 2, an error, and the message names the version that it found.
+**Check.** `harness --help` lists the subcommands. A Python older than 3.14 makes `harness` stop
+with exit status 2, an error, and the message names the version that it found. The first run
+outside a session also makes the Python environment of the harness, with `uv sync`, and prints
+one line that names it; in a session, `harness` instead prints one line that names
+`harness install --apply`, which makes it.
 
 ```bash
 harness --help

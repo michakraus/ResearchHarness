@@ -81,6 +81,7 @@ to `harness get` and `harness render`.
 | `docs_additions` | the repositories that add steps to the canonical documentation workflow | `workflows`; `ci-protection`, through `githooks/verify-workflows.jl` |
 | `protected_dir` | the directories below `home` that no session can edit, each as a path relative to `home`, such as `Nextcloud` | `install`, in the settings template and the OpenCode configuration; `settings` |
 | `leak` | the strings that must never appear in the repository, such as your user name and the hosts of your institution. The item `~` stands for the path of your home directory, as each `~` of the profile does | `leaks` |
+| `develop` | `true` on a machine that develops the harness: the Python environment of the harness then also holds the `dev` group of `uv.lock`, the tools that check the Python code. Optional: without it, `false`. A value that is not `true` or `false` stops every subcommand that reads the profile, and the message names the key | `install`, which syncs the environment; `doctor`, which checks it |
 
 `install` reads the settings template too, because it writes the permission layer of oh-my-pi
 from it. So each key of the settings template is a key that `install` reads.
