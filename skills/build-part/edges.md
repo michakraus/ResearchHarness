@@ -687,3 +687,16 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   projection_error(rs2)` at one seed in twelve). Give the moved calls their own loop after the
   existing ones, and keep the draw order (*M7 verify 2, Simplify the optimiser package and the
   learning package for 0.9*)
+- **a test helper that stands for a reference value and copies the number instead of taking the
+  constant as an argument:** a fix moved `newton_tolerance` into `testsetup.jl` and wrote
+  `8 * eps(T)`, the current value of the oracle's `f_abstol`, so the clause that says "read
+  `SOLVER_OPTIONS.f_abstol`" was met by copy, and the number cannot follow the oracle. Give the
+  helper the options tuple (`f(T, SOLVER_OPTIONS)`), let the calling test file include the oracle,
+  and test the helper on a second options tuple whose value differs, so a helper that ignores its
+  argument fails (D verify 3 and 4, the plan that revives the multisymplectic package)
+- **a mutant that only an error bound over a window can kill, where a boundary effect inside that
+  window masks the term:** dropping the `∂L/∂u` term moved the `SineGordon` solution by `1e-3`, and
+  the free boundary's own error travelled inward at `1/√c` and swamped it, so the bound over
+  `3:end-2` gave `5.21e-3` clean against `5.77e-3` mutated. Bound the interior the boundary error
+  has not reached by the final time (`7:end-6`), and state why that window is outside the boundary's
+  reach (`D`, the plan that revives the multisymplectic package)
