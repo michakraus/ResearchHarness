@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- **The settings template allows `WebSearch`.** It asked in `default` mode only, 3 times in 23
+  days of the prompt log; its query leaves the machine as a `WebFetch` URL does. No `ask` or
+  `deny` rule names the tool.
+
 - **`run-tests.jl` takes the path of a test file relative to the package root, too.** A unit
   `test/utils.jl` named no file, because a path was read relative to `test/` alone: the run
   stopped with exit status 2 and "no test file is the group, the path or the label of …", and ran
