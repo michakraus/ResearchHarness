@@ -293,8 +293,9 @@ def install_python_env(apply, develop):
     if apply:
         uv = b.find_uv()
         if uv is None:
-            raise HarnessError("uv is not found on the PATH or in ~/.local/bin; install it, or run bin/harness "
-                               "outside a session once, which fetches it on Linux")
+            raise HarnessError("uv is not found on the PATH or in ~/.local/bin; install it (on Linux x86_64 and "
+                               "aarch64, bin/harness fetches it into ~/.local/bin when it starts outside a "
+                               "session and finds no environment that starts)")
         try:
             b.sync(uv, environment, develop)
         except b.Refusal as e:
