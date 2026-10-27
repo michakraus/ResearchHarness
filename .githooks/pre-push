@@ -7,7 +7,7 @@
 # It tests the pushed commit, never the working tree: a `git clone --shared` of this repository in
 # a temporary directory under $TMPDIR, at the pushed SHA, removed on exit. A push of any ref other
 # than main gets `harness leaks --commits` only, over the tree at its SHA and the commits that the
-# push sends (remote..local, or the commits that origin/main lacks for a new branch), so a PR
+# push sends (those that neither the remote SHA nor a branch of origin holds), so a PR
 # branch cannot bring a private string to main; its gitleaks checks and its suite run in CI. A
 # hit, no python3 of 3.14 or later, or a check that fails refuses the push with one line.
 #
@@ -87,8 +87,9 @@ find_python() {
 }
 
 # A branch gets `harness leaks` only; gitleaks and the suite run in CI. The commits that the push
-# sends are remote..local, or, for a new branch or a remote SHA that the checkout lacks, the
-# commits that origin/main does not hold, the whole history without one.
+# sends are those of local that neither the remote SHA nor a branch of origin holds: a commit that
+# origin holds is on the remote already, such as one of main that the branch merges. With no
+# remote branch and a new branch, that is the whole history.
 if [ "${#branches[@]}" -gt 0 ]; then
     find_python
     origin_url=$(git remote get-url origin) || refuse "the checkout has no origin remote"
@@ -96,18 +97,12 @@ if [ "${#branches[@]}" -gt 0 ]; then
     for entry in "${branches[@]}"; do
         read -r ref local_sha remote_sha <<<"$entry"
         n=$((n + 1))
-        exclude=
+        exclude=(--remotes=origin)
         case "$remote_sha" in
-            *[!0]*) git cat-file -e "$remote_sha^{commit}" 2>/dev/null && exclude=$remote_sha ;;
+            *[!0]*) git cat-file -e "$remote_sha^{commit}" 2>/dev/null && exclude+=("$remote_sha") ;;
         esac
-        if [ -z "$exclude" ] && git rev-parse -q --verify refs/remotes/origin/main >/dev/null; then
-            exclude=refs/remotes/origin/main
-        fi
-        if [ -n "$exclude" ]; then
-            git rev-list "$local_sha" --not "$exclude" >"$tmp/branch-$n.commits"
-        else
-            git rev-list "$local_sha" >"$tmp/branch-$n.commits"
-        fi || refuse "git rev-list of the commits pushed to $ref failed"
+        git rev-list "$local_sha" --not "${exclude[@]}" >"$tmp/branch-$n.commits" ||
+            refuse "git rev-list of the commits pushed to $ref failed"
         git clone --shared --quiet --no-checkout "$root" "$tmp/branch-$n" || exit 1
         cd "$tmp/branch-$n" || exit 1
         git checkout --quiet --detach "$local_sha" || exit 1

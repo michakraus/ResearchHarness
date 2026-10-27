@@ -104,8 +104,9 @@ environment without `ruff` or `basedpyright` refuses the commit with one line: s
 
 `.githooks/pre-push` gates a push to `main` with the leak checks and the suite. A push of any
 other ref gets `harness leaks --commits` only, over the tree at the pushed commit and the commits
-that the push sends (`<remote sha>..<sha>`, or the commits that `origin/main` lacks for a new
-branch), so a pull request cannot bring a private string to `main`; its gitleaks checks and its
+that the push sends (those that neither the remote SHA nor a branch of `origin` holds, so a
+merge of a newer `main` sends none of its commits), so a pull request cannot bring a private
+string to `main`; its gitleaks checks and its
 suite run in CI. The hook tests the pushed commit, never the working tree: it clones the
 repository with `git clone --shared` into a temporary directory under `$TMPDIR`, checks out the
 pushed commit and runs there.
