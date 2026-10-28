@@ -1,0 +1,1 @@
+- **Three edge classes that a part finds late.** A manual page's bare `@ref` to a binding its package does not export, a testset label that states more than the testset shows, and a `KNOWN_ISSUES.md` entry that attributes a `core` file's budget overrun to the branch without a paired measurement of the base.
