@@ -1,8 +1,9 @@
 # The edge catalogue
 
 The edges that critics found after round 1, by kind of part. `plan-parts` writes a part's *Decided
-at the edges* from this list, one line per edge with its answer. The round-1 critic of
-`julia-critic` probes every edge of the part's kind that the section does not decide.
+at the edges* from this list, one line per edge with its answer. The round-1 critic,
+`julia-critic`, `python-critic` or `part-critic`, probes every edge of the part's kind that the
+section does not decide.
 
 **An edge that a later round finds joins this list.** After a loop, the dispatcher adds each class
 of a *found late* defect that is not here yet, in one line, with the part that found it, to the

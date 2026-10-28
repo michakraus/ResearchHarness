@@ -2,7 +2,7 @@
 name: part-critic
 model: large
 effort: medium
-description: "Judge one built part of tier reviewed against its Done when, blind, once, and return PASS or FAIL with the defects. Use when: critique this reviewed part, judge part T against its Done when. It blocks only on a failure inside a clause's domain; everything else is an other defect for the record. It edits nothing. The build-reviewed skill spawns it once per part; use julia-critic for a part of tier build, and julia-pr-reviewer for a pull request that already exists."
+description: "Judge one built part against its Done when, blind, and return PASS or FAIL with the defects: a part of tier reviewed, or a part of tier build in a repository with neither a Project.toml nor a pyproject.toml. Use when: critique this reviewed part, judge part T against its Done when. It blocks only on a failure inside a clause's domain; everything else is an other defect for the record. It edits nothing. The build-reviewed skill spawns it once per reviewed part, and the build-part skill spawns it for each critic round of such a build part; use julia-critic for a Julia part and python-critic for a Python part of tier build, and julia-pr-reviewer for a pull request that already exists."
 tools:
   - read
   - grep

@@ -2,7 +2,7 @@
 name: part-builder
 model: large
 effort: medium
-description: "Build one part of a decomposed task file whose tier cell is reviewed, in any language: tests first, the plan's own gate, a commit, and a report for one critic. Use when: build this reviewed part, take part T, work this small part. The build-reviewed skill spawns it for the build, and a new one for each later round — the fix after the critic, the finish — with the last builder's report as the handoff note. It runs every command under 5 minutes itself and leaves longer runs to its caller. Use julia-builder for a part of tier build, which runs the full builder-critic loop, and worker for a task with no part and no critic."
+description: "Build one part of a decomposed task file in any language — a part whose tier cell is reviewed, or a part of tier build in a repository with neither a Project.toml nor a pyproject.toml: tests first, the plan's own gate, a commit, and a report for the critic. Use when: build this reviewed part, take part T, work this small part. The build-reviewed skill spawns it for the build of a reviewed part, and the build-part skill for the build of such a build part; each spawns a new one for each later round — the fix after the critic, the finish — with the last builder's report as the handoff note. It runs every command under 5 minutes itself and leaves longer runs to its caller. Use julia-builder for a Julia part and python-builder for a Python part of tier build, and worker for a task with no part and no critic."
 tools:
   - read
   - edit

@@ -1124,7 +1124,7 @@ def omp_cases(case, fresh, run):
 
     case(
         lambda: {s.name: rendered_rule(s) for s in sources} == {s.name: [] for s in sources},
-        "each of the 8 rules is rendered with globs equal to its paths, its description, no paths key, and the "
+        "each of the 9 rules is rendered with globs equal to its paths, its description, no paths key, and the "
         "body byte for byte: "
         + ", ".join(f"{s.name} {rendered_rule(s)}" for s in sources if rendered_rule(s)),
     )

@@ -5,10 +5,11 @@ that does not apply. `spec-bundle.py` finds these sections by their headings and
 every part's bundle, up to the next heading: keep a section's text above its first subheading, and
 file no handover below §L.
 
-The generic rules are not repeated here: the build steps are in `julia-builder`, the judging rules
-in `julia-critic`, the evidence table and its rules in `~/.claude/skills/build-part/evidence.md`,
-and the loop in the `build-part` skill. A rule in this plan's §V adds to them; where it differs,
-the plan's rule holds for this plan.
+The generic rules are not repeated here: the build steps are in the part's builder,
+`julia-builder`, `python-builder` or `part-builder`, the judging rules in its critic,
+`julia-critic`, `python-critic` or `part-critic`, the evidence table and its rules in
+`~/.claude/skills/build-part/evidence.md`, and the loop in the `build-part` skill. A rule in this
+plan's §V adds to them; where it differs, the plan's rule holds for this plan.
 
 ---
 

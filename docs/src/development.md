@@ -121,9 +121,11 @@ that enforces it, and loads on every `.py` file. This section gives the reason f
   does, so a guard that decides on its tokens can allow a command that the real shell runs
   differently. A secret file that is written and then given mode `0600` is readable by others in
   between.
-- **Standard-library-only hooks.** A hook starts as `#!/usr/bin/env python3`, on the first
-  `python3` of the `PATH`, not in the harness's Python environment, so a module that only that
-  environment holds does not import, and the hook fails each call that it guards.
+- **Standard-library-only hooks.** Claude Code and Antigravity run a hook on the interpreter of
+  the harness's Python environment. The oh-my-pi frontend starts a hook as `python3`, and the
+  OpenCode frontend by its `#!/usr/bin/env python3` line: both run it on the first `python3` of
+  the `PATH`. There, a module that only the harness's environment holds does not import, and the
+  hook fails each call that it guards.
 
 ## The pre-commit hook
 

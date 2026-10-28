@@ -127,9 +127,9 @@ effort, and each one sees only the branch, never the builder's report. In each l
 round, which checks only the fix, the critic sees only the fix. Beside each
 critic, `julia-test-runner` runs the full test suite of a Julia part; for any other part the
 skill's session runs the repository's own suite in the background. A question inside the loop goes to the
-`advisor`, and a loop that does not converge goes to the `arbitrator`. Before the pull request,
-the builder spawns `julia-branch-verifier`, and it can spawn `changelog-scribe` for a fix of the
-CHANGELOG.
+`advisor`, and a loop that does not converge goes to the `arbitrator`. Before the pull request of
+a Julia part, `julia-builder` spawns `julia-branch-verifier`, and it can spawn `changelog-scribe`
+for a fix of the CHANGELOG.
 
 The work is split because a context that wrote the code does not judge it well. A fresh critic
 with no knowledge of the builder's reasons finds more defects. A long test run goes to an agent
