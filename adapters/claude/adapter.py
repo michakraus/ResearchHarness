@@ -2591,6 +2591,12 @@ def layer_cases(check, tmp):
         f"each of the {len(MOVED)} moved paths has its source in this repository, and none is EXTRA: "
         f"{[rel for rel in MOVED if not repo_source(rel).is_file()]}, {tail(text)}",
     )
+    # MOVED names each agent and each rule of this repository.
+    own = sorted(f"{d}/{p.name}" for d in ("agents", "rules") for p in (REPO / d).glob("*.md"))
+    unlisted = [rel for rel in own if rel not in MOVED]
+    case(
+        lambda: bool(own) and not unlisted, f"MOVED names each agent and rule of this repository: {unlisted}"
+    )
 
     # The tree instructions' file is research-tree.md: CLAUDE.md imports it, and OpenCode lists it.
     def imports():

@@ -540,4 +540,10 @@ def selftest() -> tuple[int, int]:
     # the control: without the section, the case finds the gap
     gap = fix_round_mutants(lambda path: "" if path.endswith("evidence.md") else (REPO / path).read_text())
     check(bool(gap), f"evidence.md without the section is a problem -> {gap}")
+    builders = sorted(f"agents/{p.name}" for p in (REPO / "agents").glob("*-builder.md"))
+    missing = [b for b in builders if b not in FIX_ROUND_FILES]
+    check(
+        len(builders) > 1 and not missing,
+        f"each builder of agents/ is in FIX_ROUND_FILES: {builders} -> {missing or 'holds'}",
+    )
     return total, wrong

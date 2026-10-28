@@ -115,7 +115,7 @@ sources, and the docs build draws the figures from it. So a figure changes when 
 
 ```calls build-part
 title: The calls of build-part
-desc: The build-part skill spawns the builder and the critic of the part's language — julia-builder and julia-critic, python-builder and python-critic, or part-builder and part-critic — each critic in round 1 at high effort and in each verify round at its own effort, and julia-test-runner, advisor and arbitrator. julia-builder spawns julia-branch-verifier and changelog-scribe.
+desc: The build-part skill spawns julia-builder or python-builder, julia-critic or python-critic in round 1 at high effort and in each verify round at its own effort, julia-test-runner, advisor and arbitrator. julia-builder spawns julia-branch-verifier and changelog-scribe.
 ```
 
 A part is one pull request of a plan. You start `build-part` in your session when a part is ready

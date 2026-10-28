@@ -92,8 +92,9 @@ def dispatch(text: str, language: str | None, manifests: frozenset[str]) -> tupl
     `**Language:**` line names `language` (None for a spec without the line) and whose repository
     holds `manifests`. A row's condition, its first cell, holds when the language that it names, if
     any, is `language`, and each manifest that it names in backticks is in `manifests`; the first
-    row whose condition holds gives the first code span of its second and third cells. None when
-    `text` has no such table or no row holds."""
+    row whose condition holds gives the first code span of its second and third cells. The table
+    ends at its first line that is not a row of three cells. None when `text` has no such table, when
+    no row holds, or when the second or third cell of the row that holds has no code span."""
     lines = text.splitlines()
     if DISPATCH_HEADER not in lines:
         return None
