@@ -704,3 +704,17 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   `3:end-2` gave `5.21e-3` clean against `5.77e-3` mutated. Bound the interior the boundary error
   has not reached by the final time (`7:end-6`), and state why that window is outside the boundary's
   reach (`D`, the plan that revives the multisymplectic package)
+- a manual page's bare `@ref` to a name the package does not export: Documenter resolves a bare
+  target through the package's exports, so the reference fails while the same name's `@docs` entry
+  renders, and the explicit target, which names the binding's module, resolves. Build the docs before
+  and after the page's edit and compare the two error sets: a `Documentation` job that is already red
+  on the base hides the class a page adds (C3, the Hamiltonian and Lagrangian networks' package)
+- a testset label that states more than the testset shows: a label claimed that no monolithic
+  expression builds a two-integrator chain, and one builds at width 2, while every assertion of the
+  testset passed. Write the label from what the testset compares, and probe the claim the label
+  makes (C3, the Hamiltonian and Lagrangian networks' package)
+- a `KNOWN_ISSUES.md` entry that attributes a `core` file's budget overrun to the branch: the file's
+  time follows the machine's load, so the entry needs a paired measurement of the same file on a tree
+  of `origin/main` and on the branch, each run alone from a cold process. Without it the entry
+  records the load, and the verifier can only call it unverified (C3, the Hamiltonian and Lagrangian
+  networks' package)
