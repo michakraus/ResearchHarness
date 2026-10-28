@@ -547,7 +547,7 @@ repository. Then:
 - it runs `--apply` of `githooks`, `wiki-lint-hook`, `workflows` and `trust`, and checks that the
   dry run after it exits with status 0.
 
-It does not run `format`, `ci-protection`, `skill-triggers`, `doctor` or `test`.
+It does not run `format`, `ci-protection`, `skill-triggers`, `doctor`, `test` or `mutate`.
 [Development](../development.md) describes the tests.
 
 ## `environment.py`

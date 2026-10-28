@@ -63,7 +63,8 @@ from . import REPO, HarnessError, fmt
 KEYS = ("file", "anchor", "old", "new", "tests")
 # The BAD line that `harness test` prints for a part that it stops after its timeout.
 TIMEOUT_LINE = re.compile(r"BAD  .+: runs longer than \d+ s and is stopped")
-GIT_TIMEOUT = 60  # seconds for a local git command
+# Seconds for a local command: a git command, `harness test --list`, the stop of a child.
+GIT_TIMEOUT = 60
 
 Check = collections.abc.Callable[[bool, str], None]
 
@@ -337,7 +338,8 @@ def register(sub: fmt.Subcommands) -> None:
 # The stub `bin/harness` of the selftest's fixture: `test --list` prints its parts, and `test NAME…`
 # runs NAME… with docs and sweep on the fixture's m.py and prints `ok`/`BAD` lines and, last,
 # `<n> cases, <w> wrong`, as `harness test` does. Its `docs` part fails where `git ls-files` fails
-# in its root, as the real one does, and its `sweep` part where PYTHONDONTWRITEBYTECODE is not 1.
+# in its root, as the real `docs` does; its `sweep` part fails where PYTHONDONTWRITEBYTECODE is not
+# 1, which the real `sweep` does not check.
 # Each call appends its arguments to $STUB_LOG and its root to $STUB_ROOTS; `test --list` exits
 # $STUB_LIST_EXIT where it is set.
 STUB = """\
