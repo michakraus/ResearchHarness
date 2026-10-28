@@ -558,7 +558,10 @@ def run_cases(check: Check, base: pathlib.Path) -> None:  # noqa: PLR0915 -- one
     dest.mkdir()
     caller = {"GIT_DIR": str(base / "nowhere"), "GIT_INDEX_FILE": str(base / "no"), "HOME": str(home)}
     names = copy(root, dest, env | caller)
-    listed = git(["ls-files"], dest, env).split()
+    try:
+        listed = git(["ls-files"], dest, env).split()
+    except HarnessError as e:
+        listed = [str(e)]
     (root / ".gitattributes").unlink()
     files = [".gitattributes", ".gitignore", ":(exclude)m.py", "bin/harness", "kept.log", "link.py"]
     check(
