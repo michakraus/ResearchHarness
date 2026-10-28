@@ -4,6 +4,10 @@
 #
 # A value that is `~`, or starts with `~/`, means the home directory, and so does such an item of
 # a list. A `~` anywhere else stays as written. With the paths below, the file works as copied.
+#
+# `memory_project`, `tree_agents`, `org`, `repository_roots` and `leak` are required, each list
+# with one item or more; every other key is optional. A key that this file does not show, a table,
+# a missing required key and a value of the wrong type stop each subcommand that reads the profile.
 
 # The home directory, as an absolute path. Optional: without it, the home directory of the user
 # who runs `harness`. Set it only to use another directory as `~`.

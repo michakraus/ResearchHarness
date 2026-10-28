@@ -31,8 +31,8 @@ it in `<provider>/<model>`:
   opencode, omp  optional: the frontend's own keys of the provider, merged over the rest
 
 A frontend's own table merges table by table; any other value replaces the generated one. Any
-other key, a value of the wrong type, and a profile that still holds `opencode_providers` or
-`omp_providers`, exit 2 and name the file.
+other key and a value of the wrong type exit 2 and name the file. The profile's loader refuses the
+retired keys `opencode_providers` and `omp_providers` (`profile.load`).
 
 The module has no subcommand; its cases run in `harness test`.
 """
@@ -41,7 +41,7 @@ import pathlib
 import re
 import tempfile
 import tomllib
-from typing import cast
+from typing import Any, cast
 
 from . import HarnessError
 
@@ -58,19 +58,11 @@ LEVELS = ("minimal", "low", "medium", "high", "xhigh", "max")
 # A `key`: an environment variable, or a file whose path oh-my-pi's shell reads as written.
 ENV_KEY = re.compile(r"\{env:([A-Z_][A-Z0-9_]*)\}")
 FILE_KEY = re.compile(r"\{file:([A-Za-z0-9_./~+-]+)\}")
-# The profile keys that providers.toml replaces.
-OLD_KEYS = ("opencode_providers", "omp_providers")
 
 
-def load(path, profile=None):
-    """The provider tables of `path`, checked as the docstring says; {} when the file is missing.
-    `profile`, the loaded profile, must not hold a key of OLD_KEYS."""
+def load(path: str | pathlib.Path) -> dict[str, Any]:
+    """The provider tables of `path`, checked as the docstring says; {} when the file is missing."""
     path = pathlib.Path(path)
-    if old := [k for k in OLD_KEYS if k in (profile or {})]:
-        raise HarnessError(
-            f"the profile holds {', '.join(old)}, which {path} replaces: write each provider "
-            "once there, as examples/providers.toml shows, and remove the key from the profile"
-        )
     if not path.is_file():
         return {}
     try:
@@ -152,7 +144,7 @@ def chosen(providers, frontend):
     return {n: p for n, p in providers.items() if frontend in p.get("frontends", FRONTENDS)}
 
 
-def opencode(providers):
+def opencode(providers: dict[str, Any]) -> dict[str, Any]:
     """{name: entry} of the `provider` object of opencode.jsonc."""
     out = {}
     for name, p in chosen(providers, "opencode").items():
@@ -174,7 +166,7 @@ def opencode(providers):
     return out
 
 
-def omp(providers):
+def omp(providers: dict[str, Any]) -> dict[str, Any]:
     """{name: entry} of the `providers` of oh-my-pi's models.yml."""
     out = {}
     for name, p in chosen(providers, "omp").items():
@@ -429,7 +421,7 @@ CASES = [
 
 
 def selftest():
-    """CASES, the missing file, and the profile's old keys: (number of cases, number wrong)."""
+    """CASES and the missing file: (number of cases, number wrong)."""
     n = wrong = 0
 
     def report(ok, label):
@@ -455,14 +447,4 @@ def selftest():
             else:
                 report(got == (expected_opencode, expected_omp), f"{label}: {got}")
         report(load(pathlib.Path(tmp) / "missing.toml") == {}, "a missing file holds no provider")
-        for key in OLD_KEYS:
-            try:
-                load(path, {key: {}})
-                message = ""
-            except HarnessError as e:
-                message = str(e)
-            report(
-                key in message and str(path) in message and "examples/providers.toml" in message,
-                f"a profile with {key} exits 2 and names providers.toml: {message}",
-            )
     return n, wrong

@@ -168,9 +168,7 @@ def cmd_workflows(args):
         if not (WORKFLOWS / f).is_file():
             raise HarnessError(f"missing template: {WORKFLOWS / f}")
     profile = profile_module.load(args.profile)
-    own_docs = set(profile_module.get(profile, "docs_exceptions")) | set(
-        profile_module.get(profile, "docs_additions")
-    )
+    own_docs = set(profile.docs_exceptions) | set(profile.docs_additions)
     written = removed = skipped = 0
     for repo, kind in repositories(require_project=True):
         print(f"{repo.name:<28} {kind}")

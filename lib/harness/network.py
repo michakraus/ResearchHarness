@@ -28,9 +28,9 @@ entry the template gets no `deniedDomains` and no `deniedDomainReasons`.
 Exit 2, naming the file and the key: an unknown key; a value of the wrong type; an entry that is
 not a string, is a URL, or is no host name; a port outside `deny`; `*` outside `deny`; `*.` in
 `allow`; a host in `allow` or `infrastructure` and in `deny` of the same file; a `deny_reasons` key
-that is no `deny` entry of either file. So does a profile that still has the key `extra_domain`,
-and a settings template that holds a network rule of its own or has no
-`sandbox.network.allowedDomains`.
+that is no `deny` entry of either file. So does a settings template that holds a network rule of
+its own or has no `sandbox.network.allowedDomains`. The profile's loader refuses the retired key
+`extra_domain` (`profile.load`).
 
 The other frontends read the template, not these lists: the lists are Claude Code's alone.
 
@@ -181,14 +181,9 @@ def generate(lists):
     )
 
 
-def apply(cfg, profile, overlay):
+def apply(cfg: dict[str, Any], overlay: str | pathlib.Path) -> dict[str, Any]:
     """`cfg`, the rendered settings template, with the network rules of the harness list and the
     overlay at `overlay` in place."""
-    if "extra_domain" in profile:
-        raise HarnessError(
-            f"the profile key extra_domain is retired: move its hosts into the allow array of "
-            f"{overlay} and remove the key"
-        )
     permissions = cfg.get("permissions", {})
     network = cfg.get("sandbox", {}).get("network", {})
     if "allowedDomains" not in network:
@@ -254,10 +249,10 @@ def selftest():
             path.write_text(text)
             return path
 
-        def rendered(text, profile=dummy):
-            """The template rendered with `profile` and the overlay `text`."""
-            cfg = json.loads(profile_module.render_file(TEMPLATE, profile))
-            return apply(cfg, profile, overlay(text))
+        def rendered(text: str) -> dict[str, Any]:
+            """The template rendered with the dummy profile and the overlay `text`."""
+            cfg = json.loads(profile_module.render_file(TEMPLATE, dummy))
+            return apply(cfg, overlay(text))
 
         def net(cfg):
             return cfg["sandbox"]["network"]
@@ -266,7 +261,7 @@ def selftest():
             return [r for r in cfg["permissions"][kind] if r.startswith(WEBFETCH)]
 
         base = rendered("")
-        missing = apply(json.loads(profile_module.render_file(TEMPLATE, dummy)), dummy, tmp / "absent.toml")
+        missing = apply(json.loads(profile_module.render_file(TEMPLATE, dummy)), tmp / "absent.toml")
 
         # The harness list itself, and the template that keeps no host.
         template = json.loads(TEMPLATE.read_text())
@@ -458,13 +453,6 @@ def selftest():
                 ),
                 f"an overlay with {label} exits 2 and names the file and the key: {message!r}",
             )
-        message = refused(lambda: rendered("", {**dummy, "extra_domain": ["x.org"]}))
-        case(
-            lambda: (
-                message is not None and "extra_domain" in message and str(tmp / "network.toml") in message
-            ),
-            f"a profile with extra_domain exits 2 and names network.toml: {message!r}",
-        )
         for label, edit in [
             ("a WebFetch(domain:…) rule", lambda c: c["permissions"]["allow"].append(f"{WEBFETCH}x.org)")),
             ("an allowedDomains entry", lambda c: net(c)["allowedDomains"].append("x.org")),
@@ -472,7 +460,7 @@ def selftest():
         ]:
             cfg = json.loads(profile_module.render_file(TEMPLATE, dummy))
             edit(cfg)
-            message = refused(lambda: apply(cfg, dummy, tmp / "absent.toml"))
+            message = refused(lambda: apply(cfg, tmp / "absent.toml"))
             case(
                 lambda: message is not None and str(TEMPLATE) in message,
                 f"a settings template with {label} exits 2 and names the template: {message!r}",

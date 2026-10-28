@@ -64,22 +64,31 @@ user: write it once, keep it in a private place, and copy it to each machine.
 ## The keys of the profile
 
 The table names each key of `examples/profile.toml` and the subcommands that read it, in addition
-to `harness get` and `harness render`.
+to `harness get` and `harness render`. The keys `memory_project` and `tree_agents`, each a string,
+and `org`, `repository_roots` and `leak`, each a list of one string or more, are required. Every
+other key is optional, and the table gives its value without the key.
+
+Every subcommand that reads the profile checks it first. An unknown key, a table such as
+`[setup]` among them, a missing required key, a value of the wrong type and an empty required list
+stop the subcommand with exit status 2. The message names the file, the key and, except for an
+unknown key, the type that the key takes. The retired keys `extra_domain`, `opencode_providers` and
+`omp_providers` stop it too, and the message names the file that replaces each. `doctor` reports
+each of these as a FAIL of its `profile` check, which quotes the message.
 
 | key | what it holds | read by |
 |:--|:--|:--|
 | `home` | the home directory, an absolute path. Optional: without it, the home directory of the user who runs `harness` | `install` and `settings` |
-| `harness` | the path of the checkout of this repository | `install`, in the OpenCode configuration |
+| `harness` | the path of the checkout of this repository. Optional: without it, the checkout that runs `harness` | `install`, in the OpenCode configuration |
 | `memory_project` | a label, not a path: the settings set `autoMemoryDirectory` to `~/.claude/projects/<memory_project>/memory`, so Claude Code keeps the tree's memory there, whatever the tree's path is. The same value on every machine that shares one memory pool, such as Claude Code's name of the tree's project on the first machine (its path with each `/` replaced by `-`); it need not match the path on another machine | `install` and `settings`, in the settings template |
 | `tree_agents` | the directory of the [tree instructions](concepts.md#tree-instructions) | `install`, which [installs](concepts.md#install) them into `~/.claude/` |
-| `launchd_prefix` | the reverse-domain prefix of the labels of the launchd jobs in `launchagents/`, such as `org.example`: the label of the Kaimon server is `<launchd_prefix>.kaimon`. macOS only; nothing on Linux reads it | `render` of the `launchagents/` templates; `doctor`; the update job `scripts/julia-update.jl` on macOS |
+| `launchd_prefix` | the reverse-domain prefix of the labels of the launchd jobs in `launchagents/`, such as `org.example`: the label of the Kaimon server is `<launchd_prefix>.kaimon`. macOS only; nothing on Linux reads it. Optional: without it, a template that names it stops the subcommand | `render` of the `launchagents/` templates; `doctor`; the update job `scripts/julia-update.jl` on macOS |
 | `template_host` | the short host name of the template host. Optional | every subcommand that reads the profile, for the value of `autocommit_branch` |
 | `autocommit_branch` | the branch of the `origin` of `~/.claude` that `claude-autocommit` pushes to: `main` on the template host, a branch of its own on each other machine. Optional: without it, `main` on the machine of `template_host` or without `template_host`, otherwise `memory/<short host name>`, as [One profile for every machine](#one-profile-for-every-machine) says | `render` of `launchagents/claude-autocommit.plist` and `systemd/claude-autocommit.service` |
 | `org` | the GitHub accounts and organisations where a [session](concepts.md#session) can open and comment on a pull request or an issue with no prompt | `install` and `settings`, in the settings template; `leaks`, which also searches for each of them |
 | `repository_roots` | the directories that hold the repositories of the [research tree](concepts.md#research-tree) | `leaks`, which searches for the name of each directory below them |
-| `docs_exceptions` | the repositories that keep a documentation workflow of their own | `workflows`; `ci-protection`, through `githooks/verify-workflows.jl` |
-| `docs_additions` | the repositories that add steps to the canonical documentation workflow | `workflows`; `ci-protection`, through `githooks/verify-workflows.jl` |
-| `protected_dir` | the directories below `home` that no session can edit, each as a path relative to `home`, such as `Nextcloud` | `install`, in the settings template and the OpenCode configuration; `settings` |
+| `docs_exceptions` | the repositories that keep a documentation workflow of their own. Optional: without it, none | `workflows`; `ci-protection`, through `githooks/verify-workflows.jl` |
+| `docs_additions` | the repositories that add steps to the canonical documentation workflow. Optional: without it, none | `workflows`; `ci-protection`, through `githooks/verify-workflows.jl` |
+| `protected_dir` | the directories below `home` that no session can edit, each as a path relative to `home`, such as `Nextcloud`. Optional: without it, none | `install`, in the settings template and the OpenCode configuration; `settings` |
 | `leak` | the strings that must never appear in the repository, such as your user name and the hosts of your institution. The item `~` stands for the path of your home directory, as each `~` of the profile does | `leaks` |
 | `develop` | `true` on a machine that develops the harness: the Python environment of the harness then also holds the `dev` group of `uv.lock`, the tools that check the Python code. Optional: without it, `false`. A value that is not `true` or `false` stops every subcommand that reads the profile, and the message names the key | `install`, which syncs the environment; `doctor`, which checks it |
 
@@ -112,7 +121,12 @@ OpenCode and oh-my-pi share every table but `[claude]` and `[antigravity]`, Anti
 the tiers, so that their agents run on the same models.
 
 A table that names a tier by an old name, `opus`, `sonnet` or `haiku`, stops `harness install`
-with exit status 2, an error, and the message names the rename.
+with exit status 2, an error, and the message names the rename. `install` then checks the whole
+file before it plans any frontend: a table that no frontend reads, a key that a table does not
+name, a `[claude]` without one of the three tiers and a value of the wrong type stop it with exit
+status 2, and the message names the file, the table and the key. Each table is optional, and a
+missing one is empty; a frontend that needs it stops `install` then, as `[claude]` does, and
+`[antigravity]` once `~/.gemini/` exists.
 [architecture.md](architecture.md#the-neutral-vocabulary) shows how each frontend reads a tier.
 
 ## The providers
@@ -134,8 +148,9 @@ object of OpenCode's `opencode.jsonc` and into oh-my-pi's `models.yml`. The file
 | `effort` of a model | the reasoning effort that the model always gets, such as `"none"`; optional | `options.reasoningEffort` | `reasoning = true`, and in `compat` a `reasoningEffortMap` that maps each thinking level to it and `reasoningDisableMode = "none-effort"`; an agent that turns thinking off sends `"none"` |
 | `opencode`, `omp` | a frontend's own keys, of a provider or of a model, merged over the rest | merged | merged |
 
-A key that the table does not name stops `install` with exit status 2, and so does the profile key
-`opencode_providers` or `omp_providers`: move its providers into `providers.toml`.
+A key that the table does not name stops `install` with exit status 2. The profile key
+`opencode_providers` or `omp_providers` stops every subcommand that reads the profile: move its
+providers into `providers.toml`.
 
 ## The network overlay
 
@@ -162,7 +177,9 @@ These cases stop the subcommand with exit status 2:
 - an entry that is a URL;
 - an entry with a port outside `deny`;
 - a host in both `allow` and `deny` of one file;
-- a key that the table does not name;
-- the profile key `extra_domain`: move its hosts into the overlay's `allow`.
+- a key that the table does not name.
+
+The profile key `extra_domain` stops every subcommand that reads the profile: move its hosts into
+the overlay's `allow`.
 
 The lists apply to Claude Code only. OpenCode and oh-my-pi have no network allowlist.

@@ -471,7 +471,7 @@ def path_rule(action, body):
 
 
 def render_permissions(
-    cfg: dict[str, Any], profile: dict[str, Any]
+    cfg: dict[str, Any], profile: profile_module.Profile
 ) -> tuple[dict[str, list[str]], list[tuple[str, str, str | None]]]:
     """({list: [rule]}, [(list, entry, reason)]) of the `permissions` of `cfg`, the rendered
     settings template: the Antigravity rules in the template's lists and order, MCP_CONFIG as a
@@ -679,32 +679,29 @@ def merge_grants(path, rules):
         raise HarnessError(f"{path} is JSON nested too deep to write again{refused}") from None
 
 
-def load_models(path, agents):
-    """({tier: word}, {agent: word}) of the table [antigravity] of the model tables at `path`: the
+def load_models(
+    path: str | pathlib.Path, agents: str | pathlib.Path
+) -> tuple[dict[str, str], dict[str, str]]:
+    """({tier: word}, {agent: word}) of the table [antigravity] of the model tables at `path`
+    (profile.read_models, which refuses any other key and a value that is not a string): the
     tiers of frontmatter.TIERS, each one of WORDS, and its optional sub-table `model_overrides`,
     each key an agent of the directory `agents` and each value one of WORDS. The table is read on
     its own, as [claude] is, and its overrides are not merged with the shared [model_overrides],
-    whose values are provider models. A missing table or tier, any other key, and any other value
-    exit 2, naming the table and the key."""
-    table = profile_module.read_models(path).get("antigravity")
+    whose values are provider models. A missing table or tier, and any other value, exit 2,
+    naming the table and the key."""
+    models = profile_module.read_models(path)
+    table, overrides = models.antigravity, models.antigravity_overrides
     tiers, words = frontmatter.TIERS, ", ".join(WORDS)
-    if not isinstance(table, dict):
+    if not table and not overrides:
         raise HarnessError(
             f"{path} has no [antigravity] table, which maps the tiers {', '.join(tiers)} to "
             f"Antigravity's tiers {words} — examples/models.toml shows it"
         )
-    missing, unknown = [t for t in tiers if t not in table], sorted(set(table) - {*tiers, "model_overrides"})
-    if missing or unknown:
+    if missing := [t for t in tiers if t not in table]:
         raise HarnessError(
             f"{path}: [antigravity] holds the tiers {', '.join(tiers)} and model_overrides; "
-            + "; ".join(
-                [f"it has no {', '.join(missing)}"] * bool(missing)
-                + [f"{', '.join(unknown)} is no key of it"] * bool(unknown)
-            )
+            f"it has no {', '.join(missing)}"
         )
-    overrides = table.get("model_overrides", {})
-    if not isinstance(overrides, dict):
-        raise HarnessError(f"{path}: [antigravity.model_overrides] is not a table of agent = tier")
     wrong = [f"[antigravity] {t} = {table[t]!r}" for t in tiers if table[t] not in WORDS] + [
         f"[antigravity.model_overrides] {a} = {v!r}" for a, v in overrides.items() if v not in WORDS
     ]
@@ -910,16 +907,12 @@ def merge_mcp(path, kaimon):
         raise HarnessError(f"{path} is JSON nested too deep to write again{refused}") from None
 
 
-def council_warnings(path):
+def council_warnings(path: str | pathlib.Path) -> list[tuple[str]]:
     """[(line, …)]: one warning for each agent that a council of the model tables at `path` names,
     in [councils] or in [<frontend>.councils] of a frontend of profile.SHARING. Antigravity runs
     the agent alone and writes no seat."""
-    data = profile_module.read_models(path)
-    tables = [
-        data.get("councils"),
-        *(data[f].get("councils") if isinstance(data.get(f), dict) else None for f in profile_module.SHARING),
-    ]
-    agents = sorted({a for t in tables if isinstance(t, dict) for a in t})
+    models = profile_module.read_models(path)
+    agents = sorted({a for t in (models.shared, models.opencode, models.omp) for a in t.councils})
     return [
         (f"{path} gives {a} a council. Antigravity runs {a} alone, on its own tier, and writes no seat.",)
         for a in agents
@@ -1254,7 +1247,7 @@ def layer_cases(scratch):
     )
     profile = profile_module.load(base / "profile.toml")
     opencode = json.loads(profile_module.render_file(GUARD_PATHS, profile))["deny"]
-    h = profile["home"]
+    h = profile.home
     template = json.loads(profile_module.render_file(SETTINGS, profile))["permissions"]
     edits = {
         key: [re.sub(r"^//+", "/", e[len("Edit(") : -1]) for e in template[key] if e.startswith("Edit(")]
@@ -1849,11 +1842,11 @@ def rule_cases(case):
 
     claude = frontends.adapter("claude")
     with tempfile.TemporaryDirectory() as tmp:
-        profile = profile_module.load(scratch_profile(pathlib.Path(tmp) / "profile.toml", None))
+        profile = profile_module.load(scratch_profile(pathlib.Path(tmp) / "profile.toml", tmp))
         cfg = claude.settings_template(profile, pathlib.Path(tmp) / "network.toml")
     rules, dropped = render_permissions(cfg, profile)
     reasons = {(key, entry): reason for key, entry, reason in dropped}
-    h = profile["home"]
+    h = profile.home
     extras = [
         f"read_file({h}/.gemini/config/mcp_config.json)",
         f"write_file({h}/.gemini/config/hooks.json)",
@@ -2005,7 +1998,7 @@ def rule_cases(case):
             "ask": ["mcp__kaimon__debug_eval"],
         }
     }
-    rendered = render_permissions(small, cast(dict[str, Any], profile))
+    rendered = render_permissions(small, profile)
     case(
         lambda: (
             rendered[0]
@@ -2822,6 +2815,11 @@ def model_cases(scratch):
         ),
         ("no tier small", models_text('large = "inherit"\nmedium = "flash"\n'), ["[antigravity]", "small"]),
         (
+            "overrides and no tier",
+            models_text("", '\n[antigravity.model_overrides]\nreader = "flash"\n'),
+            ["[antigravity]", "it has no large, medium, small"],
+        ),
+        (
             "a model name as a tier",
             models_text(tiers.replace('"inherit"', '"gemini-4-argon"')),
             ["[antigravity]", "large", "gemini-4-argon"],
@@ -2883,7 +2881,8 @@ def model_cases(scratch):
     )
     case(
         lambda: all(
-            profile_module.model_tables(words, f)["model_overrides"] == {"builder": "provider-b/medium-model"}
+            profile_module.model_tables(cast("pathlib.Path", words), f).model_overrides
+            == {"builder": "provider-b/medium-model"}
             for f in profile_module.SHARING
         ),
         "the overrides of [antigravity.model_overrides] are not merged with the shared [model_overrides]",
@@ -3008,7 +3007,7 @@ def agent_cases(scratch):
             list(head) != ["name", "description", "model", "tools", "subagent", *["inheritMcp"] * kaimon]
             or head["name"] != src.stem
             or head["description"] != meta["description"]
-            or head["model"] != EXAMPLE_TIERS.get(cast(dict[str, Any], meta).get("model", ""), "inherit")
+            or head["model"] != EXAMPLE_TIERS.get(meta.get("model", ""), "inherit")
             or head["tools"] != tools
             or head["subagent"] is not True
             or head.get("inheritMcp", True) is not True

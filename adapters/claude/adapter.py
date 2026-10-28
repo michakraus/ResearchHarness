@@ -125,6 +125,7 @@ Caveats of the measurement:
 import argparse
 import collections
 import contextlib
+import dataclasses
 import errno
 import functools
 import io
@@ -195,7 +196,7 @@ SKIP = {".git", ".scratch", ".worktrees", "node_modules"}
 PROJECTS = pathlib.Path.home() / ".claude" / "projects"
 LIVE = pathlib.Path.home() / ".claude" / "settings.json"
 PROPOSAL = REPO / "settings" / "settings.proposal.json"
-PROFILE = None  # `harness --profile`; None lets the profile module choose
+PROFILE: str | None = None  # `harness --profile`; None lets the profile module choose
 
 
 def read_settings(path):
@@ -220,10 +221,8 @@ def read_settings(path):
         raise HarnessError(f"{path}: the value of permissions is not a JSON object")
     if render_profile.PLACEHOLDER.search(text):
         profile = render_profile.load(PROFILE)
-        cfg = network.apply(
-            render_profile.render_data(cfg, profile), profile, render_profile.network_path(PROFILE)
-        )
-    return cast("dict[str, Any]", cfg)
+        cfg = network.apply(render_profile.render_data(cfg, profile), render_profile.network_path(PROFILE))
+    return cfg
 
 
 def json_object(path: str | os.PathLike[str], text: str) -> dict[str, Any]:
@@ -595,7 +594,9 @@ def hook_command(command, profile, python):
     return shlex.join([python, *words] if words[0].endswith(".py") else words)
 
 
-def settings_template(profile, overlay, python=None):
+def settings_template(
+    profile: render_profile.Profile, overlay: str | pathlib.Path, python: str | None = None
+) -> dict[str, Any]:
     """The settings template parsed, rendered with `profile` when it holds a placeholder, and with
     the network rules of settings/network.toml and the overlay at `overlay`, as `read_settings`
     renders it. Then each command of its `hooks` is rendered by `hook_command`, which
@@ -619,7 +620,7 @@ def settings_template(profile, overlay, python=None):
                     )
     except (KeyError, TypeError, ValueError) as e:
         raise HarnessError(f"{PROPOSAL}: {e.args[0]}") from e
-    return network.apply(cfg, profile, overlay)
+    return network.apply(cfg, overlay)
 
 
 def settings_file(root, profile, overlay):
@@ -923,10 +924,10 @@ def cmd_trust(args):
 # The layer of `harness install`
 
 
-def tree_agents(profile):
+def tree_agents(profile: render_profile.Profile) -> pathlib.Path:
     """The tree instructions, the directory that the profile key `tree_agents` names."""
-    value = render_profile.get(profile, "tree_agents")
-    if not isinstance(value, str) or not pathlib.Path(value).is_absolute():
+    value = profile.tree_agents
+    if not pathlib.Path(value).is_absolute():
         raise HarnessError(f"tree_agents: {value!r} is not an absolute path")
     tree = pathlib.Path(value)
     if not tree.is_dir():
@@ -934,13 +935,11 @@ def tree_agents(profile):
     return tree
 
 
-def harness_checkout(profile):
+def harness_checkout(profile: render_profile.Profile) -> pathlib.Path:
     """The checkout of this repository that the profile key `harness` names, which the stamp names
-    the sources below; None with no such key, and the stamp then names this checkout."""
-    if "harness" not in profile:
-        return None
-    value = profile["harness"]
-    if not isinstance(value, str) or not pathlib.Path(value).is_absolute():
+    the sources below; this checkout without the key (`profile.load`)."""
+    value = profile.harness
+    if not pathlib.Path(value).is_absolute():
         raise HarnessError(f"harness: {value!r} is not an absolute path")
     return pathlib.Path(value)
 
@@ -1035,23 +1034,21 @@ def claude_extras(root, plan):
     return extra
 
 
-def load_models(path):
+def load_models(path: str | pathlib.Path) -> dict[str, str]:
     """{tier: model} of the [claude] table of the models.toml at `path`: exactly the tiers of
     frontmatter.TIERS, each a model with no control character of MODEL_CONTROL that is not a word
-    of YAML_WORDS; any other table exits 2 (profile.tier_table)."""
-    models = render_profile.tier_table(path, "claude", "Claude Code")
-    wrong = [
-        t for t in frontmatter.TIERS if MODEL_CONTROL.search(models[t]) or models[t].lower() in YAML_WORDS
-    ]
+    of YAML_WORDS; any other table exits 2 (profile.tier_table, profile.read_models)."""
+    tiers = render_profile.tier_table(path, "Claude Code")
+    wrong = [t for t in frontmatter.TIERS if MODEL_CONTROL.search(tiers[t]) or tiers[t].lower() in YAML_WORDS]
     if wrong:
         raise HarnessError(
             f"{path}: the tier {', '.join(wrong)} of [claude] is "
-            + ", ".join(repr(models[t]) for t in wrong)
+            + ", ".join(repr(tiers[t]) for t in wrong)
             + ", which the install does not write "
             "into `model:`: a model holds no control character and is no word that YAML reads "
             "as a boolean or null"
         )
-    return models
+    return tiers
 
 
 def neutral_source(src):
@@ -1060,9 +1057,9 @@ def neutral_source(src):
     return src.parent == neutral.AGENTS or (src.name == "SKILL.md" and src.parent.parent == neutral.SKILLS)
 
 
-def render_source(src, data, models):
+def render_source(src: pathlib.Path, data: bytes, tiers: dict[str, str]) -> bytes:
     """`data`, the bytes of the agent or skill at `src`, with the value of `model:` replaced by its
-    model in `models`, load_models' table, each `tools:` item by its name in TOOLS, and the
+    model in `tiers`, load_models' table, each `tools:` item by its name in TOOLS, and the
     `cacheTtl:` line indented below a new `experimental:` line; every other byte as it is. A model
     is written bare where MODEL matches it and the source's value is not quoted, else as JSON
     writes it. A value outside the neutral vocabulary exits 2 (frontmatter.parse_file)."""
@@ -1077,7 +1074,7 @@ def render_source(src, data, models):
             if key == "model":
                 rest = line.split(":", 1)[1]
                 value = rest.strip(" ")
-                model = models[fm.meta["model"]]
+                model = tiers[fm.meta["model"]]
                 bare = MODEL.fullmatch(model) and not value.startswith('"')
                 lines[i] = "model:" + rest.replace(value, model if bare else json.dumps(model), 1)
             elif key == "cacheTtl":
@@ -1097,14 +1094,14 @@ def plan(ctx):
     oh-my-pi and Antigravity, and its `shared` the [(installed path, rendered bytes, mode)] of each
     file that frontends.shared names, which OpenCode, oh-my-pi and Antigravity copy.
 
-    Exits 2 before anything is written: on a missing `tree_agents` key, or a value that is not
-    the absolute path of a directory; on a source that holds the Claude Code settings, a symbolic
-    link, an entry that is neither a file nor a directory, or a directory or file that cannot be
-    read; on a file of adapters/claude/ below a directory that a neutral directory or hooks/
-    installs; on a path that two sources hold, compared with case and Unicode form folded on
-    every platform, as the default macOS volume compares them; on an installed path, or a
-    directory above one, that is a symbolic link; and on an installed path that is not a readable
-    file below directories."""
+    Exits 2 before anything is written: on a `tree_agents` that is not the absolute path of a
+    directory (the profile's loader refuses a profile without the key); on a source that holds
+    the Claude Code settings, a symbolic link, an entry that is neither a file nor a directory,
+    or a directory or file that cannot be read; on a file of adapters/claude/ below a directory
+    that a neutral directory or hooks/ installs; on a path that two sources hold, compared with
+    case and Unicode form folded on every platform, as the default macOS volume compares them; on
+    an installed path, or a directory above one, that is a symbolic link; and on an installed path
+    that is not a readable file below directories."""
     root = pathlib.Path.home() / ".claude"
     # The settings go first, so that a new deny rule is in place before the files it protects.
     settings = settings_file(root, ctx.profile, render_profile.network_path(ctx.args.profile))
@@ -1519,7 +1516,7 @@ def layer_cases(check, tmp):
         written = line.removeprefix("model: ")
         case(
             lambda: (
-                load_models(models)["small"] == value
+                load_models(cast("pathlib.Path", models))["small"] == value
                 and line.startswith("model: ")
                 and (
                     written == value
@@ -1645,7 +1642,7 @@ def layer_cases(check, tmp):
         (source / name).parent.mkdir(parents=True, exist_ok=True)
         (source / name).write_text(f"{RULE_HEAD}{name}: written at {{home}}\n")
     code, text = inproc(base, source, apply=True, templates={"rules/t.md"})
-    home = render_profile.load(base / "profile.toml")["home"]
+    home = render_profile.load(base / "profile.toml").home
     case(
         lambda: (
             code == 0
@@ -1941,7 +1938,7 @@ def layer_cases(check, tmp):
     spaced, python = "/home/ex ample", "/env with space/bin/python"
     raw = hook_commands(json.loads(PROPOSAL.read_text())["hooks"])
     rendered = hook_commands(
-        settings_template({**profile, "home": spaced}, home / "network.toml", python)["hooks"]
+        settings_template(dataclasses.replace(profile, home=spaced), home / "network.toml", python)["hooks"]
     )
     want = [
         ([python] if c.split()[0].endswith(".py") else []) + [w.replace("{home}", spaced) for w in c.split()]
@@ -2757,13 +2754,19 @@ def layer_cases(check, tmp):
     )
 
     # In the adapter's plan: the profile's `harness` path names the repository's sources; with no
-    # `harness` key the running checkout does; a value that is not an absolute path exits 2.
-    def planned_stamp(value):
+    # `harness` key the running checkout does; a value that is not an absolute path exits 2, and so
+    # does one that is not a string, in the loader.
+    unset = base / "profile-without-harness.toml"
+    unset.write_text(re.sub(r"(?m)^harness = .*\n", "", (base / "profile.toml").read_text()))
+
+    def planned_stamp(value: str | None) -> list[str] | str:
         """The source directories of the planned stamp with the profile's `harness` set to `value`,
         or with no such key for None, or the message of a refusal."""
-        prof = {k: v for k, v in render_profile.load(base / "profile.toml").items() if k != "harness"}
-        if value is not None:
-            prof["harness"] = value
+        try:
+            loaded = render_profile.load(unset)
+        except HarnessError as e:
+            return str(e)
+        prof = loaded if value is None else dataclasses.replace(loaded, harness=value)
         ctx = argparse.Namespace(
             profile=prof,
             models=REPO / "examples" / "models.toml",
@@ -2794,12 +2797,22 @@ def layer_cases(check, tmp):
             lambda: got == expected,
             f"the planned stamp with harness = {value!r} names the sources {got if isinstance(got, str) else got[:1]}",
         )
-    for value in ["relative/Harness", ["/elsewhere/Harness"], ""]:
+    for value in ["relative/Harness", ""]:
         got = planned_stamp(value)
         case(
             lambda: isinstance(got, str) and got.startswith("harness: ") and "absolute path" in got,
             f"a profile with harness = {value!r} exits 2 and names the key: {got if isinstance(got, str) else got[:1]}",
         )
+    listed = base / "profile-harness-list.toml"
+    listed.write_text(unset.read_text() + 'harness = ["/elsewhere/Harness"]\n')
+    try:
+        refusal = f"loaded {render_profile.load(listed)}"
+    except HarnessError as e:
+        refusal = str(e)
+    case(
+        lambda: str(listed) in refusal and "`harness`" in refusal and "a string" in refusal,
+        f"a profile with harness = ['/elsewhere/Harness'] exits 2 and names the key: {refusal}",
+    )
 
     # Every installed path, the stamp included, is an `Edit` deny of the settings template, and the
     # paths the desktop app and the sessions write below ~/.claude stay writable.
@@ -2815,10 +2828,10 @@ def layer_cases(check, tmp):
     denies = [
         edit_rule(r[len("Edit(") : -1]) for r in proposal["permissions"]["deny"] if r.startswith("Edit(")
     ]
-    root = "/" + profile["home"] + "/.claude/"
+    root = "/" + profile.home + "/.claude/"
     open_paths = [
         "skills/synced/s/SKILL.md",
-        f"projects/{profile['memory_project']}/memory/m.md",
+        f"projects/{profile.memory_project}/memory/m.md",
         "plans/p.md",
         "workflows/w.md",
         "skills/.claude/.cc-writes/x",

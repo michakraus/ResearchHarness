@@ -97,11 +97,14 @@ harness.yml is JSON below a comment header: JSON is YAML, and the cases read it 
 standard library.
 """
 
+import argparse
+import dataclasses
 import json
 import os
 import pathlib
 import re
 import tempfile
+import types
 from typing import Any, cast
 
 from harness import REPO, HarnessError, frontends, frontmatter, install, providers, sources
@@ -193,14 +196,14 @@ def bash_patterns(permissions):
     return patterns, rewritten
 
 
-def agent_models(models):
+def agent_models(models: profile_module.ModelTables) -> list[str]:
     """The models that an agent or a council seat can run on, sorted, from load_models' tables
     `models`: each tier's model, each override and each seat's model."""
-    seats = [s["model"] for council in models["councils"].values() for s in council]
-    return sorted({*models["models"].values(), *models["model_overrides"].values(), *seats})
+    seats = [s.model for council in models.councils.values() for s in council]
+    return sorted({*models.tiers.values(), *models.model_overrides.values(), *seats})
 
 
-def config_chains(text):
+def config_chains(text: str) -> dict[str, list[str]]:
     """{key: [selector]} of `retry.fallbackChains` in `text`, oh-my-pi's config.yml, in the block
     form that oh-my-pi writes: `retry:`, `  fallbackChains:`, `    <key>:`, `      - <selector>`,
     each key and selector plain or quoted. A key in any other form is left out, and so gets the
@@ -254,7 +257,11 @@ def same_model(model, chain):
     return bool(chain)
 
 
-def render_config(profile, models, chains=None):
+def render_config(
+    profile: profile_module.Profile,
+    models: profile_module.ModelTables,
+    chains: dict[str, list[str]] | None = None,
+) -> str:
     """The text of the overlay OVERLAY, with the settings template rendered with `profile`,
     `modelRoles.default` the model of DEFAULT_TIER in `models`, load_models' tables, and an empty
     fallback chain for each model of agent_models except one whose chain in `chains`, config.yml's
@@ -268,7 +275,7 @@ def render_config(profile, models, chains=None):
             "allowCompoundCommands": False,
             "patterns": [{"match": match, "approval": approval} for match, approval in patterns + OMP_LAST],
         },
-        "modelRoles": {"default": models["models"][DEFAULT_TIER]},
+        "modelRoles": {"default": models.tiers[DEFAULT_TIER]},
         "retry": {
             "fallbackChains": {
                 model: []
@@ -280,7 +287,9 @@ def render_config(profile, models, chains=None):
     return HEADER + json.dumps(config, indent=2, ensure_ascii=False) + "\n"
 
 
-def render_models(models, own, where="providers.toml"):
+def render_models(
+    models: profile_module.ModelTables, own: dict[str, Any], where: str | pathlib.Path = "providers.toml"
+) -> str | None:
     """The text of models.yml: `own`, oh-my-pi's entries of the providers of `where`
     (harness.providers), then each context limit of `models` as the `contextWindow` of its model,
     `providers.<provider>.modelOverrides.<model>`; None when both are empty. A context limit of a
@@ -303,15 +312,15 @@ def render_models(models, own, where="providers.toml"):
             '"AZURE_COGNITIVE_SERVICES_API_KEY", and set that variable in ~/.omp/agent/.env'
         )
     providers = json.loads(json.dumps(own))  # a copy, so that the limits do not change `own`
-    for selector, limit in models["context_limits"].items():
+    for selector, limit in models.context_limits.items():
         provider, sep, model = selector.partition("/")
         if not (sep and provider and model):
             raise HarnessError(
-                f"{models['path']}: the context limit of {selector!r} names no `<provider>/<model>`"
+                f"{models.path}: the context limit of {selector!r} names no `<provider>/<model>`"
             )
         if provider in own:
             raise HarnessError(
-                f"{models['path']}: a context limit names the provider {json.dumps(provider)}, "
+                f"{models.path}: a context limit names the provider {json.dumps(provider)}, "
                 f"which {where} defines too; put the limit there, as the model's `context`"
             )
         override = providers.setdefault(provider, {}).setdefault("modelOverrides", {}).setdefault(model, {})
@@ -425,17 +434,17 @@ def render_rule(path, data=None):
     return "\n".join(head).encode() + b"\n" + b"\n".join(raw.split(b"\n")[end:])
 
 
-def load_models(path):
+def load_models(path: str | pathlib.Path) -> profile_module.ModelTables:
     """oh-my-pi's model tables at `path`, the shared ones with [omp]'s over them
     (profile.model_tables), whose `models` maps every tier of TIERS, so that oh-my-pi picks no
     model by itself; any other table exits 2."""
     models = profile_module.model_tables(path, "omp")
-    if missing := [t for t in TIERS if t not in models["models"]]:
+    if missing := [t for t in TIERS if t not in models.tiers]:
         raise HarnessError(
             f"{path}: [models] with [omp.models] holds the tiers {', '.join(TIERS)}, one "
             f"oh-my-pi model each; it has no {', '.join(missing)}"
         )
-    if unknown := sorted(set(models["models"]) - set(TIERS)):
+    if unknown := sorted(set(models.tiers) - set(TIERS)):
         raise HarnessError(f"{path}: [models] or [omp.models]: {', '.join(unknown)} is no tier")
     return models
 
@@ -478,7 +487,9 @@ def under_omp(meta, body, seats=0):
     return "## Under oh-my-pi\n\n" + rules["intro"] + "\n\n" + "\n".join("- " + l for l in lines) + "\n"
 
 
-def render_agent(path, models, root="~/.omp/agent"):
+def render_agent(
+    path: pathlib.Path, models: profile_module.ModelTables, root: str = "~/.omp/agent"
+) -> list[tuple[str, bytes]]:
     """[(name, bytes)] of the oh-my-pi agent of the agent at `path`, then of its council seats,
     with `models` from load_models: the frontmatter `name`, `description`, `tools` mapped by
     TOOLS, `model` the model of profile.agent_model, `thinking-level` the effort of
@@ -518,7 +529,7 @@ def render_agent(path, models, root="~/.omp/agent"):
             if mapped not in tools:
                 tools.append(mapped)
         head["tools"] = tools
-    seats = models["councils"].get(name, [])
+    seats: tuple[profile_module.Seat, ...] = models.councils.get(name, ())
     section = under_omp(meta, fm.body, len(seats))
     rest = (
         f"<!-- Generated by `harness install` from agents/{name}.md of the harness repository. Do not "
@@ -528,7 +539,7 @@ def render_agent(path, models, root="~/.omp/agent"):
     )
     rest = frontends.relocate(rest.encode(), root)
 
-    def render(agent, description, model):
+    def render(agent: str, description: str, model: str | None) -> tuple[str, bytes]:
         fields = {**head, "name": agent, "description": description}
         if model is not None:
             fields["model"] = model
@@ -548,7 +559,7 @@ def render_agent(path, models, root="~/.omp/agent"):
 
     model = profile_module.agent_model(name, meta.get("model"), models, path)
     return [render(name, meta["description"], model)] + [
-        render(s["name"], profile_module.council_description(name, s, "oh-my-pi"), s["model"]) for s in seats
+        render(s.name, profile_module.council_description(name, s, "oh-my-pi"), s.model) for s in seats
     ]
 
 
@@ -565,30 +576,39 @@ def render_mcp():
     return json.dumps({"mcpServers": {"kaimon": kaimon}}, indent=2) + "\n"
 
 
-def render_agents(agents, models, root):
+def render_agents(
+    agents: pathlib.Path, models: profile_module.ModelTables, root: str
+) -> list[tuple[str, bytes]]:
     """[(name, bytes)] of every agent of the directory `agents` and of its council seats
     (render_agent). A council keyed by a name that is no agent there, and a seat with the name of
     an agent, exit 2."""
     paths = sorted(agents.glob("*.md"))
     names = {p.stem for p in paths}
-    for agent, seats in models["councils"].items():
+    for agent, seats in models.councils.items():
         if agent not in names:
             raise HarnessError(
-                f"{models['path']}: councils.{agent} names no agent of {agents}; "
+                f"{models.path}: councils.{agent} names no agent of {agents}; "
                 "a council is keyed by the agent it copies"
             )
         for seat in seats:
-            if seat["name"] in names:
+            if seat.name in names:
                 raise HarnessError(
-                    f"{models['path']}: the seat {seat['name']!r} of councils.{agent} has "
-                    "the name of an agent"
+                    f"{models.path}: the seat {seat.name!r} of councils.{agent} has the name of an agent"
                 )
     return [a for p in paths for a in render_agent(p, models, root)]
 
 
 def render_files(
-    profile, rules, models, agents, shared, root="~/.omp/agent", chains=None, own=None, where="providers.toml"
-):
+    profile: profile_module.Profile,
+    rules: list[tuple[pathlib.Path, bytes]],
+    models: profile_module.ModelTables,
+    agents: pathlib.Path,
+    shared: list[tuple[str, bytes, int]],
+    root: str = "~/.omp/agent",
+    chains: dict[str, list[str]] | None = None,
+    own: dict[str, Any] | None = None,
+    where: str = "providers.toml",
+) -> list[tuple[str, bytes, int | None]]:
     """[(path relative to the agent directory, bytes, mode)] of the files: the overlay OVERLAY, the
     permission layer with the default model of `models` and the fallback chains of render_config
     over config.yml's `chains`, models.yml when `own`, oh-my-pi's entries of the providers of
@@ -613,7 +633,7 @@ def render_files(
     ]
 
 
-def plan(ctx):
+def plan(ctx: types.SimpleNamespace | argparse.Namespace):
     """oh-my-pi's part of `harness install`, as the docstring of this module says; the rules are
     those of the Claude Code layer's plan in `ctx.plans`."""
     models = load_models(ctx.models)
@@ -637,7 +657,7 @@ def plan(ctx):
     except FileNotFoundError:
         chains = {}
     where = profile_module.providers_path(ctx.args.profile)
-    own = providers.omp(providers.load(where, ctx.profile))
+    own = providers.omp(providers.load(where))
     files = render_files(
         ctx.profile,
         rules,
@@ -973,10 +993,8 @@ def omp_cases(case, fresh, run):
         for p in claude.rglob("*")
         if p.is_file() and frontends.shared(p.relative_to(claude).as_posix())
     )
-    councils = cast(
-        "dict[str, list[dict[str, object]]]", load_models(REPO / "examples" / "models.toml")["councils"]
-    )
-    seats = [str(s["name"]) for council in councils.values() for s in council]
+    councils = load_models(REPO / "examples" / "models.toml").councils
+    seats = [s.name for council in councils.values() for s in council]
     installed = sorted(p.relative_to(agent).as_posix() for p in agent.rglob("*") if p.is_file())
     case(
         lambda: (
@@ -1024,7 +1042,7 @@ def omp_cases(case, fresh, run):
         "each copy is the Claude Code layer's file, a text with its shared paths relocated, and each guard script "
         "is executable",
     )
-    limits = load_models(REPO / "examples" / "models.toml")["context_limits"]
+    limits = load_models(REPO / "examples" / "models.toml").context_limits
     yml = omp_config(agent / "models.yml")
     own = providers.omp(providers.load(base / "providers.toml"))
     case(
@@ -1045,7 +1063,7 @@ def omp_cases(case, fresh, run):
         f"contextWindow: {yml}",
     )
     # A context limit on a provider of providers.toml exits 2: the model's `context` holds it.
-    joined = dict(load_models(REPO / "examples" / "models.toml"), context_limits={"p/m": 7})
+    joined = dataclasses.replace(load_models(REPO / "examples" / "models.toml"), context_limits={"p/m": 7})
     try:
         render_models(joined, {"p": {"baseUrl": "u"}}, "/x/providers.toml")
         refusal = None
@@ -1055,7 +1073,7 @@ def omp_cases(case, fresh, run):
         lambda: refusal is not None and "/x/providers.toml" in refusal and '"p"' in refusal,
         f"a context limit on a provider of providers.toml exits 2 and names the file: {refusal}",
     )
-    empty = dict(joined, context_limits={})
+    empty = dataclasses.replace(joined, context_limits={})
     case(lambda: render_models(empty, {}) is None, "no provider and no context limit: no models.yml")
     # An apiKey, which oh-my-pi's own keys of a provider may set, is a variable name or a command;
     # a literal key exits 2 and is not in the message.
@@ -1376,10 +1394,7 @@ def omp_cases(case, fresh, run):
             f"{tail(out)}",
         )
     case(
-        lambda: (
-            profile["home"] + "/.claude/hooks/**" in edit_list
-            and profile["home"] + "/.config/**" in edit_list
-        ),
+        lambda: profile.home + "/.claude/hooks/**" in edit_list and profile.home + "/.config/**" in edit_list,
         f"the edit list holds ~/.claude/hooks/** and ~/.config/**: {edit_list[:3]}",
     )
     case(
@@ -1550,16 +1565,16 @@ def omp_agent_cases(case, fresh, run, agent):
         "web_search": "web_search",
         "web_fetch": "read",
     }
-    models = load_models(REPO / "examples" / "models.toml")
+    tables = load_models(REPO / "examples" / "models.toml")
     sources = sorted((REPO / "agents").glob("*.md"))
-    seats = {s["name"]: (a, s) for a, council in models["councils"].items() for s in council}
+    seats = {s.name: (a, s) for a, council in tables.councils.items() for s in council}
 
-    def differences(src, seat=None):
+    def differences(src: pathlib.Path, seat: profile_module.Seat | None = None) -> list[str]:
         """Each difference of the rendered agent of `src`, or of its council seat `seat`, from its
         contract; none when it holds."""
         fm = frontmatter.parse_file(src)
         meta = fm.meta
-        name = seat["name"] if seat else src.stem
+        name = seat.name if seat else src.stem
         try:
             head, rest = omp_head((agent / "agents" / f"{name}.md").read_text())
         except OSError as e:
@@ -1570,19 +1585,19 @@ def omp_agent_cases(case, fresh, run, agent):
             )
         )
         want = {"name": name, "description": meta["description"], "tools": tools}
-        model = profile_module.agent_model(src.stem, meta.get("model"), models, src)
+        model = profile_module.agent_model(src.stem, meta.get("model"), tables, src)
         if seat:
             want["description"] = profile_module.council_description(src.stem, seat, "oh-my-pi")
-            model = seat["model"]
+            model = seat.model
         if model is not None:
             want["model"] = model
-        if (effort := profile_module.agent_effort(name, model, models)) in THINKING_LEVELS:
+        if (effort := profile_module.agent_effort(name, model, tables)) in THINKING_LEVELS:
             want["thinking-level"] = effort
         if "skills" in meta:
             want["autoloadSkills"] = meta["skills"]
         worktree = meta.get("isolation") == "worktree" or "isolation" in fm.body
         kaimon = any(t.startswith("mcp/kaimon/") for t in meta["tools"])
-        council = src.stem in models["councils"]
+        council = src.stem in tables.councils
         opens = re.search(r"(?i)open the pull request", fm.body) is not None
         uses = (
             bool(meta.get("skills"))
@@ -1664,13 +1679,11 @@ def omp_agent_cases(case, fresh, run, agent):
         lambda: all(differences(by_stem[a], s) == [] for a, s in seats.values()),
         "each council seat is its agent with the seat's name, model and description, and the agent's body: "
         + "; ".join(
-            f"{s['name']} {differences(by_stem[a], s)}"
-            for a, s in seats.values()
-            if differences(by_stem[a], s)
+            f"{s.name} {differences(by_stem[a], s)}" for a, s in seats.values() if differences(by_stem[a], s)
         )[:1500],
     )
-    councils = cast("dict[str, list[dict[str, object]]]", models["councils"])
-    verify = [str(s["name"]) for council in councils.values() for s in council if s.get("verify")]
+    councils = tables.councils
+    verify = [s.name for council in councils.values() for s in council if s.verify]
     rendered_agents = cast("pathlib.Path", agent) / "agents"
     case(
         lambda: (
@@ -1686,7 +1699,7 @@ def omp_agent_cases(case, fresh, run, agent):
     except (OSError, ValueError) as e:
         roles = f"{type(e).__name__}: {e}"
     case(
-        lambda: roles == {"default": models["models"]["medium"]},
+        lambda: roles == {"default": tables.tiers["medium"]},
         f"the overlay's modelRoles holds the default on the medium tier's model: {roles}",
     )
     # No silent fallback: every model that a rendered agent or seat names has an empty chain, and

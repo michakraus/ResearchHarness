@@ -540,7 +540,7 @@ harness get KEY
 Prints the profile value of `KEY`, one line per item of a list. A path that starts with `~` is
 printed with the home directory.
 
-**Exit status:** 0; 2 when the profile has no `KEY`.
+**Exit status:** 0; 2 when the profile does not load or has no `KEY`.
 
 ```bash
 harness get repository_roots

@@ -33,6 +33,7 @@ import sys
 import tempfile
 import types
 from collections.abc import Callable
+from dataclasses import replace
 from typing import Any, Literal, TypedDict, Unpack
 
 HOOKS = os.path.dirname(os.path.abspath(__file__)) + "/"
@@ -1094,7 +1095,7 @@ def omp_cases():
         with open(h + "/ext/guards.mjs", "w") as f:
             f.write(source)
         if paths is not False:
-            rendered = omp.guard_paths({**dummy, "home": h})
+            rendered = omp.guard_paths(replace(dummy, home=h))
             with open(h + "/ext/guard-paths.json", "w") as f:
                 f.write(paths(rendered, h) if callable(paths) else paths if paths is not None else rendered)
         return h
@@ -1455,7 +1456,7 @@ def oc_cases():
                     paths
                     if paths is not None
                     else profile.render_file(
-                        REPO + "/adapters/opencode/plugins/guard-paths.json", {**dummy, "home": h}
+                        REPO + "/adapters/opencode/plugins/guard-paths.json", replace(dummy, home=h)
                     )
                 )
         return h
@@ -2119,7 +2120,7 @@ def agy_cases():
         with open(config + "/hooks/guard.py", "w") as f:
             f.write(source)
         if paths is not False:
-            rendered = agy.guard_paths({**dummy, "home": rendered_for or h})
+            rendered = agy.guard_paths(replace(dummy, home=rendered_for or h))
             with open(config + "/guard-paths.json", "w") as f:
                 f.write(paths(rendered) if callable(paths) else paths if paths is not None else rendered)
         return h

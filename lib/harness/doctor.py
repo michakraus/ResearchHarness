@@ -418,7 +418,7 @@ class Doctor:
             return Result("WARN", name, f"cannot read a version from {python}: {first(r[1] + r[2])!r}")
         if not meets(numbers_of(m.group(0)), MINIMUMS["Python"]):
             return self.fail(name, f"{m.group(0)} ({python}), below {MINIMUMS['Python'][-1]}", "install")
-        develop = profile_module.develop(self.profile) if self.profile is not None else False
+        develop = self.profile.develop if self.profile is not None else False
         if not boot.synced(environment, develop):
             return Result(
                 "WARN",
@@ -440,18 +440,16 @@ class Doctor:
                 self.opencode(),
                 Result("SKIP", "autocommit_branch", skip),
             ]
-        tree = self.profile.get("tree_agents")
-        if not isinstance(tree, str):
-            agents = self.fail("tree_agents", "the profile has no tree_agents", "tree")
-        elif os.path.isdir(tree):
+        tree = self.profile.tree_agents
+        if pathlib.Path(tree).is_dir():
             agents = Result("PASS", "tree_agents", tree)
         else:
             agents = self.fail("tree_agents", f"{tree} is not a directory", "tree")
         return [
-            Result("PASS", "profile", f"{where} (home {self.profile['home']})"),
+            Result("PASS", "profile", f"{where} (home {self.profile.home})"),
             agents,
             self.opencode(),
-            Result("PASS", "autocommit_branch", str(self.profile["autocommit_branch"])),
+            Result("PASS", "autocommit_branch", self.profile.autocommit_branch),
         ]
 
     def opencode(self):
@@ -516,7 +514,7 @@ class Doctor:
                 + [self.token(installed)]
             )
         else:
-            ask = self.launchd(self.profile.get("launchd_prefix"))
+            ask = self.launchd(self.profile.launchd_prefix)
         for name, job, topic in (
             ("kaimon job", "kaimon", "kaimon job"),
             ("julia-update job", "julia-update", "update job"),
@@ -580,7 +578,7 @@ class Doctor:
 
         return ask
 
-    def launchd(self, prefix):
+    def launchd(self, prefix: str) -> Callable[[str], tuple[str, str]]:
         """The `ask` of launchd: `launchctl list` of the job's label."""
         launchctl = shutil.which("launchctl")
 
@@ -1481,7 +1479,7 @@ def status_cases(check, root, system_name):
     for label, text in (
         ("no profile", None),
         ("a profile that is not TOML", "home = \n"),
-        ("a relative home", 'home = "h"\n'),
+        ("a relative home", 'home = "h"\n' + profile_module.DUMMY.read_text()),
     ):
 
         def change(f, text=text):
@@ -1512,7 +1510,7 @@ def status_cases(check, root, system_name):
     )
     case(
         "no tree_agents key",
-        {"tree_agents": "FAIL"},
+        {"profile": "FAIL", "tree_agents": "SKIP"},
         lambda f: f.profile.write_text(re.sub(r"^tree_agents = .*$", "", f.profile.read_text(), flags=re.M)),
         ("profile_checks",),
     )
