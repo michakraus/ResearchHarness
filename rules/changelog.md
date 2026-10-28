@@ -55,7 +55,8 @@ A changelog records what changed. A known defect, a deferred fix and a decision 
 statements about the present. A known defect and a deferred fix go to the repository's
 `KNOWN_ISSUES.md`, in every repository under `~/Research`, not to its issue tracker. A body of work
 goes to a `Tasks/` file. Anything else goes to the issue tracker of a repository on GitHub. A
-repository on GitLab gets no issue: a single decision for it goes to `Tasks/Decisions pending.md`.
+repository on GitLab gets no issue: a decision for it goes into the `Tasks/` file of the work that
+raises it.
 
 The two rules compound where a standing note sits in a changelog anyway. The rule above then
 applies to text that is not history: the next measurement lands as a correction stacked under the

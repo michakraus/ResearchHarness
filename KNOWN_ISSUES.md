@@ -195,13 +195,12 @@
 - kind: defect
 - found: 2026-10-16, the critic of publish part P5
 
-### K73 · Four public files cite a task file that the repository does not hold.
+### K73 · Three public files cite a task file that the repository does not hold.
 
 - location: `adapters/opencode/opencode.jsonc:30`
 - evidence: `adapters/opencode/opencode.jsonc:30` cites `Tasks/Migrate the Claude Code project
   memory.md`, `agents/ci-triage.md:21` cites `~/Research/Tasks/Fix the packages that do not
-  load.md`, `rules/changelog.md:57` cites `Tasks/Decisions pending.md`, and
-  `scripts/parts-table.awk:39` cites `Tasks/Rewrite the reduced basis packages.md`;
+  load.md`, and `scripts/parts-table.awk:39` cites `Tasks/Rewrite the reduced basis packages.md`;
   `git ls-files` lists no `Tasks/` file. A reader of the
   public repository cannot open them. The harness's own `Tasks/` convention (`Tasks/CLAUDE.md`,
   `Board.base`, the test fixtures) is not such a citation.
