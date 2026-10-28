@@ -66,6 +66,30 @@ Each blocking defect has a reproducer and one cause, for example `wrong result`,
 does not run the full suite, does not start a sub-agent, and does not comment on a pull request.
 Use `julia-pr-reviewer` for a pull request that exists.
 
+## `python-builder`
+
+The builder of the builder-critic loop for a part in a Python repository. The `build-part` skill
+starts it in place of `julia-builder` when the part's spec says `**Language:** python`, or, without
+that line, when the repository holds a `pyproject.toml` and no `Project.toml`. It has the tiers,
+the steps and the report of `julia-builder`, and reads the same spec bundle.
+
+Its gate is the one that the plan's §V names; in the Harness that is `harness test`, with the
+parts that a change reaches while it edits and the full suite once before it reports, and
+`ruff format --check`, `ruff check` and `basedpyright`, which the pre-commit hook also runs. The
+lines that it adds or changes meet the strict profile with the generated records removed. It runs
+the named mutants and its own with `harness mutate`, and breaks a file that is not Python by hand.
+After a PASS it rereads the text of the whole branch, pushes the branch and opens the pull
+request; it starts no sub-agent.
+
+## `python-critic`
+
+The critic of the builder-critic loop for a part in a Python repository, in place of
+`julia-critic`. It has the rounds, the blocking rules, the causes and the report of
+`julia-critic`. It runs the parts of `harness test` that the diff reaches, the three checks of the
+strict profile and the spec's checks, runs each named mutant and its own doubted ones with
+`harness mutate`, and checks each idiom of the `python-code` rule on the lines of the diff. It
+edits nothing in the worktree, does not run the full suite, and does not start a sub-agent.
+
 ## `advisor`
 
 The advisor decides one question in an autonomous loop, in place of a question to the user. Only

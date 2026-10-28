@@ -838,8 +838,12 @@ def omp_cases(case, fresh, run):
         key=lambda p: p.name,
     )
     case(
-        lambda: all(listed.get(f"rules/{s.name}") == "INSTALL" for s in sources) and len(sources) == 8,
-        f"the dry run lists one rules/<name>.md per rule source, 8: {sorted(k for k in listed if k.startswith('rules/'))}",
+        lambda: (
+            all(listed.get(f"rules/{s.name}") == "INSTALL" for s in cast("list[pathlib.Path]", sources))
+            and len(cast("list[pathlib.Path]", sources)) == 9
+        ),
+        "the dry run lists one rules/<name>.md per rule source, 9: "
+        f"{sorted(k for k in listed if k.startswith('rules/'))}",
     )
     code, text = run(base, "--apply")
     # The cases below read and edit the files that this install writes: a failed one leaves them
@@ -969,7 +973,10 @@ def omp_cases(case, fresh, run):
         for p in claude.rglob("*")
         if p.is_file() and frontends.shared(p.relative_to(claude).as_posix())
     )
-    seats = [s["name"] for s in load_models(REPO / "examples" / "models.toml")["councils"]["julia-critic"]]
+    councils = cast(
+        "dict[str, list[dict[str, object]]]", load_models(REPO / "examples" / "models.toml")["councils"]
+    )
+    seats = [str(s["name"]) for council in councils.values() for s in council]
     installed = sorted(p.relative_to(agent).as_posix() for p in agent.rglob("*") if p.is_file())
     case(
         lambda: (
@@ -1640,16 +1647,16 @@ def omp_agent_cases(case, fresh, run, agent):
     case(
         lambda: (
             rendered == sorted([s.name for s in sources] + [f"{s}.md" for s in seats])
-            and len(sources) == 20
+            and len(sources) == 22
             and seats
         ),
-        f"--apply renders one oh-my-pi agent per agent of agents/, 20, and one per council seat: {rendered}",
+        f"--apply renders one oh-my-pi agent per agent of agents/, 22, and one per council seat: {rendered}",
     )
     case(
         lambda: {s.stem: differences(s) for s in sources} == {s.stem: [] for s in sources},
-        "each of the 20 agents has its name, its description, its tools mapped by the table, its model and its "
-        "effort as thinking-level from [omp], its skills as autoloadSkills, and its body, with an Under oh-my-pi "
-        "section where it uses a Claude Code mechanism: "
+        "each of the 22 agents has its name, its description, its tools mapped by the table, its model and "
+        "its effort as thinking-level from [omp], its skills as autoloadSkills, and its body, with an Under "
+        "oh-my-pi section where it uses a Claude Code mechanism: "
         + "; ".join(f"{s.stem} {differences(s)}" for s in sources if differences(s))[:1500],
     )
     by_stem = {s.stem: s for s in sources}
@@ -1662,13 +1669,15 @@ def omp_agent_cases(case, fresh, run, agent):
             if differences(by_stem[a], s)
         )[:1500],
     )
-    verify = [s["name"] for _, s in seats.values() if s.get("verify")]
+    councils = cast("dict[str, list[dict[str, object]]]", models["councils"])
+    verify = [str(s["name"]) for council in councils.values() for s in council if s.get("verify")]
+    rendered_agents = cast("pathlib.Path", agent) / "agents"
     case(
         lambda: (
-            len(verify) == 1
-            and "judges each verify round" in (agent / "agents" / f"{verify[0]}.md").read_text()
+            len(verify) == len(councils) > 0
+            and all("judges each verify round" in (rendered_agents / f"{v}.md").read_text() for v in verify)
         ),
-        f"the verify seat's description says that it judges each verify round: {verify}",
+        f"each council's verify seat's description says that it judges each verify round: {verify}",
     )
 
     # The model roles: the default on the `medium` tier's model, and no other.

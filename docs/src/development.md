@@ -89,6 +89,40 @@ machine and CI run the same versions. `harness install --apply` syncs the `dev` 
 harness's Python environment only where the profile sets `develop = true`; set it on every
 machine where you commit to the harness.
 
+## The Python rule
+
+`rules/python-code.md` states the idioms of the strict profile for an agent, each with the tool
+that enforces it, and loads on every `.py` file. This section gives the reason for each idiom.
+
+- **One layout.** `ruff format` decides every line break, so a diff holds only changes of
+  meaning, and no review argues about layout.
+- **New code is strict.** The records admit the findings of the code that the profile met. A
+  finding on a line that a change adds or changes is a defect that the records would hide, so the
+  records only shrink.
+- **A dataclass at every input boundary.** A `dict` from `json.loads` or `tomllib` has values of
+  unknown type, and `basedpyright` cannot follow a key. A typed dataclass, filled where the input
+  enters, turns a missing or mistyped key into one error at that place, not a `KeyError` or a
+  wrong value three calls later.
+- **`pathlib`.** One type for a path; `os.path` and string joins mix separators and lose the
+  difference between a path and a text.
+- **The form of `subprocess.run`.** Without `check=`, a failed program reads as a success unless
+  the caller reads `returncode`; `check=` says which of the two the call means. `text=True` decodes
+  the output once, as UTF-8. A program outside the harness, such as `git`, `gh` or `node`, can wait
+  on a prompt or the network, and a `timeout=` turns that wait into a failure that names it.
+- **`HarnessError` for a reported failure.** The `harness` command catches it, prints its one line
+  and exits 2, the status that the sweep checks for a missing precondition. A traceback tells the
+  user nothing they can act on.
+- **No blind `except`.** An `except Exception` also catches the bug that the code did not expect,
+  and turns it into a wrong result.
+- **The banned APIs.** `os.system` and `os.popen` run a command line through the shell,
+  so its quoting decides what runs. `json.load` at each call site spreads the parsing of one kind of file over many
+  functions. `shlex` splits as POSIX `sh` does, so a guard that decides on its tokens can allow a
+  command that the real shell runs differently. A secret file that is written and then given mode
+  `0600` is readable by others in between.
+- **Standard-library-only hooks.** A hook starts as `#!/usr/bin/env python3`, on the first
+  `python3` of the `PATH`, not in the harness's Python environment, so a module that only that
+  environment holds does not import, and the hook fails each call that it guards.
+
 ## The pre-commit hook
 
 `.githooks/pre-commit` runs the three checks of the strict profile on each commit:

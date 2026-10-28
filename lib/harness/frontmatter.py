@@ -431,8 +431,8 @@ def selftest():
     agents = [f for f in sources if f.parent.name == "agents"]
     inside = [f for f in sources if f.is_relative_to(REPO / "agents") or f.is_relative_to(skills)]
     check(
-        len(agents) == 20 and inside == sources,
-        f"the sources are the 20 agents of agents/ and the curated skills of skills/: {len(agents)} agents, "
+        len(agents) == 22 and inside == sources,
+        f"the sources are the 22 agents of agents/ and the curated skills of skills/: {len(agents)} agents, "
         f"{[str(f) for f in sources if f not in inside]} outside",
     )
     bad = []

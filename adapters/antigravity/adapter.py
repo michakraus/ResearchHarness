@@ -3198,19 +3198,29 @@ def council_cases(scratch):
     base, _, _ = scratch.fresh()
     (base / "home" / ".gemini").mkdir()
     code, text = run(base, models=path)
-    warned = [w for w in text.split("WARNING: ")[1:] if "council" in w and "Antigravity" in w]
+    warned = [w for w in cast("str", text).split("WARNING: ")[1:] if "council" in w and "Antigravity" in w]
     listed = re.findall(r"^antigravity/config/agents/(\S+)\s", text, re.M)
     case(
         lambda: (
             code in (0, 1)
-            and len(warned) == 2
+            and len(warned) == 3
             and sum("julia-critic" in w for w in warned) == 1
+            and sum("python-critic" in w for w in warned) == 1
             and sum("reader" in w for w in warned) == 1
-            and not {"critic-b.md", "critic-c.md", "critic-x.md", "reader-b.md"} & set(listed)
-            and "julia-critic.md" in listed
+            and not {
+                "critic-b.md",
+                "critic-c.md",
+                "critic-x.md",
+                "python-critic-b.md",
+                "python-critic-c.md",
+                "reader-b.md",
+            }
+            & set(listed)
+            and {"julia-critic.md", "python-critic.md"} <= set(listed)
         ),
-        f"julia-critic, in [councils] and [opencode.councils], and reader, in [opencode.councils], give one "
-        f"warning each, and no seat file is listed: {code}, {warned}, {tail(text)!r}",
+        f"julia-critic, in [councils] and [opencode.councils], python-critic, in [councils], and reader, in "
+        f"[opencode.councils], give one warning each, and no seat file is listed: {code}, {warned}, "
+        f"{tail(text)!r}",
     )
 
 

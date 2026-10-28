@@ -1176,6 +1176,8 @@ MOVED = [
             "literature-scout",
             "part-builder",
             "part-critic",
+            "python-builder",
+            "python-critic",
             "reader",
             "worker",
         ]
@@ -1192,6 +1194,7 @@ MOVED = [
             "julia-docs",
             "julia-tests",
             "known-issues",
+            "python-code",
         ]
     ),
     "skills/build-part/SKILL.md",
@@ -1252,7 +1255,11 @@ def layer_cases(check, tmp):
     # A scratch source holds no agent that a council could copy, so its model tables have none.
     no_council = tmp / "models-no-council.toml"
     no_council.write_text(
-        re.sub(r"(?ms)^julia-critic = \[$.*?^\]\n", "", (REPO / "examples" / "models.toml").read_text())
+        re.sub(
+            r"(?ms)^(?:julia|python)-critic = \[$.*?^\]\n",
+            "",
+            (REPO / "examples" / "models.toml").read_text(),
+        )
     )
 
     def inproc(base, source, apply=False, templates=None):

@@ -66,8 +66,12 @@ spec bundle with `scripts/spec-bundle.py` and passes its path; a name that the b
 resolve holds the part back. The frontmatter model tier `medium` does not apply when the user
 types `/build-part`, so run the loop in a session on the medium model.
 
-In round 1, the first critic round, two `julia-critic` agents judge the part beside a full-suite
-run. After each round, a fresh `julia-builder` fixes the blocking defects. A question inside the
+The part's language picks the builder and the critic: the `**Language:**` line of the part's spec
+first, then the repository's manifests. A Python part gets `python-builder` and `python-critic`, a
+Julia part `julia-builder` and `julia-critic`, and a repository with both a `pyproject.toml` and a
+`Project.toml` the Julia pair. A repository with neither gets `part-builder` and `part-critic`.
+In round 1, the first critic round, two critics judge the part beside a full-suite run. After each
+round, a fresh builder fixes the blocking defects. A question inside the
 loop goes to the `advisor` agent, not to the user. A loop that does not converge goes to the
 `arbitrator` agent. For a part whose spec is in the spec-delta format, each round also pushes the
 branch, waits for its CI jobs, and runs every `check:` of the delta with `spec-validate.py --head`;

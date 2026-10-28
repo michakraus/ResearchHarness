@@ -8,8 +8,8 @@ description: "Plan work as parts that are each one pull request, and write each 
 
 A **part** is one pull request. One branch, one worktree, one *Done when*. The parts table is the
 plan's machine-readable half: a later session reads one row and builds it without reading the rest
-of the file. Each part's own section is its **spec**: what `julia-builder` builds to and what
-`julia-critic` judges against, blind.
+of the file. Each part's own section is its **spec**: what the builder builds to and what the
+critic judges against, blind.
 
 Two entry paths, same output.
 
@@ -90,7 +90,7 @@ sections that §L names. It does not read the whole file.
 `state` is one of `open · in progress · waiting for the user · PR #NN in review · merged ·
 declined`.
 
-**Every `sections` cell ends in `§V, §L`.** `julia-builder` and `julia-critic` read only the
+**Every `sections` cell ends in `§V, §L`.** The builder and the critic of a part read only the
 spec bundle that `spec-bundle.py` writes from the task file: the sections a cell names, §V, §L,
 and the sections that §L's lines **The builder also reads:** and **The critic also reads:** name.
 A rule in any other section does not reach them. So a decision block of a parent part, a *Traps*
@@ -146,7 +146,7 @@ file names out of them rather than guessing.
 | tier | role | who |
 |:--|:--|:--|
 | **`opus-high`** | decisions and planning | the user's own session, on opus at high effort. This skill runs here. A question inside a build part's loop goes to the `advisor` agent, at the same tier |
-| **`opus-medium`** | the builder and the critic | `julia-builder`, `julia-critic`; `part-builder`, `part-critic` |
+| **`opus-medium`** | the builder and the critic | `julia-builder`, `julia-critic`; `part-builder`, `part-critic`; `python-builder`, `python-critic` |
 
 The planner, the builder, the critic and the advisor never run on sonnet or haiku. The dispatcher's
 session and the suite runner are not tiers of a part, and `build-part` sets them. A change to a
@@ -202,6 +202,11 @@ block below has its place there: the *Done when* and the decided edges are the d
 the change proposal, and *Traps* in §4. The rules of the blocks hold for it. **Planning ends when
 `spec-validate.py` passes the spec**, its premises run on the base. A plan whose parts already have
 their spec sections keeps them, and a new part of that plan gets a section too.
+
+**The header of a `build` part's spec names its language**: `**Language:** python` or
+`**Language:** julia`, beside `**Tier:**`. `build-part` picks the builder and the critic by that
+line, and by the repository's manifests only where the line is missing; a repository with both a
+`pyproject.toml` and a `Project.toml` then gets the Julia pair.
 
 The part's own section opens with its spec, in this order. Keep it out of the table: the table
 stays scannable, and a done-condition that fits in a cell is usually too weak.
@@ -260,14 +265,22 @@ advisor call or a critic round. A clause that a builder cannot meet, or that two
 ways, passes it.
 
 A spec is not a workflow. Do not prescribe the order of the builder's work: its steps are in
-`julia-builder`, and a longer brief improves the first build more than the final result.
+`julia-builder` and `python-builder`, and a longer brief improves the first build more than the final result.
 
 ## 7 · The plan's §V and §L hold only what the plan adds
 
-The generic build steps are in `julia-builder`, the judging rules in `julia-critic`, the evidence
-table and its rules in `build-part/evidence.md`, and the loop in the `build-part` skill. **Copy
-none of them into the plan.** Write §V and §L from `plan-sections.md` beside this skill, after the
+The generic build steps are in `julia-builder` and `python-builder`, the judging rules in
+`julia-critic` and `python-critic`, the evidence table and its rules in `build-part/evidence.md`,
+and the loop in the `build-part` skill. **Copy none of them into the plan.** Write §V and §L from `plan-sections.md` beside this skill, after the
 collision map: the plan's own rules, one sentence each, and the extra sections the critic reads.
+
+**A facts section longer than 150 lines gets a summary.** A section of measurements or other facts
+that §L's *also reads* lines name goes into every spec bundle whole. Above 150 lines, open it with
+a summary of the facts that the parts rest on, each with the line of the section that holds its
+evidence, under a heading of its own whose title no other heading of the file has and holds no `§`,
+such as `### Measurements in brief`, and put the rest of the section under a heading of the same
+level after it, because a heading's text ends at the next heading of its level. Name the summary in the *also reads* lines in italics,
+`*Measurements in brief*`, in place of the section, so that the bundle copies the summary.
 
 ## What this skill does not do
 

@@ -1,4 +1,4 @@
-# The walk-through of a part of tier build, from a task to the pull request with the skills
+# The walk-through of a Julia part of tier build, from a task to the pull request with the skills
 # plan-parts and build-part: the builder, round 1 with two critics and the suite, the verdict, a
 # fix and a verify round, the arbitrator at the second FAIL, a ruling, the PASS, the finish and the
 # pull request. After each round the skill spawns a new julia-builder, so the builder of the fix
@@ -151,38 +151,38 @@ from = "dispatch"
 to = "builder"
 route = ["bottom", "top"]
 label = "build"
-at = "skills/build-part/SKILL.md:149"
+at = "skills/build-part/SKILL.md:167"
 
 [[edge]]
 from = "builder"
 to = "round-1"
 route = ["left", "right"]
-at = "skills/build-part/SKILL.md:192"
+at = "skills/build-part/SKILL.md:210"
 
 [[edge]]
 from = "round-1"
 to = "verdict-1"
 route = ["left", "right"]
-at = "skills/build-part/SKILL.md:236"
+at = "skills/build-part/SKILL.md:261"
 
 [[edge]]
 from = "verdict-1"
 to = "fixer"
 route = ["bottom", "top"]
 label = "FAIL: a fix round"
-at = "skills/build-part/SKILL.md:251"
+at = "skills/build-part/SKILL.md:276"
 
 [[edge]]
 from = "fixer"
 to = "verify"
 route = ["right", "left"]
-at = "skills/build-part/SKILL.md:204"
+at = "skills/build-part/SKILL.md:223"
 
 [[edge]]
 from = "verify"
 to = "verdict-2"
 route = ["right", "left"]
-at = "skills/build-part/SKILL.md:236"
+at = "skills/build-part/SKILL.md:261"
 
 [[edge]]
 from = "verdict-2"
@@ -190,25 +190,25 @@ to = "arbitrator"
 route = ["left+20", "x 1.5", "y 3", "right"]
 label = "second FAIL"
 label_at = 0.6
-at = "skills/build-part/SKILL.md:272"
+at = "skills/build-part/SKILL.md:297"
 
 [[edge]]
 from = "arbitrator"
 to = "fixer"
 route = ["left", "x 0", "bottom"]
 label = "a ruling, then a fix"
-at = "skills/build-part/SKILL.md:290"
+at = "skills/build-part/SKILL.md:313"
 
 [[edge]]
 from = "verdict-2"
 to = "finisher"
 route = ["bottom", "top"]
 label = "PASS: the finish"
-at = "skills/build-part/SKILL.md:262"
+at = "skills/build-part/SKILL.md:287"
 
 [[edge]]
 from = "finisher"
 to = "pr"
 route = ["bottom", "top"]
 label = "the pull request"
-at = "skills/build-part/SKILL.md:264"
+at = "skills/build-part/SKILL.md:289"

@@ -35,6 +35,11 @@ from a caller that a skill or agent box of the same walk-through shows.
 Research tree. `harness test` checks that, on `docs/src/research-tree.md`, each code span that has
 the shape of a component's name (COMPONENT_SHAPE) names a component of some page, unless
 NOT_COMPONENTS lists it.
+
+Dispatch. `skills/build-part/SKILL.md` picks the builder and the critic of a part from a table
+under the header row DISPATCH_HEADER: the first row whose condition holds names the pair.
+`harness test` reads that table for a part whose spec names its language, and for repositories
+with each set of manifests, and checks the pair that each gets.
 """
 
 import pathlib
@@ -73,6 +78,39 @@ SPAWNING_SKILLS = ("build-part", "build-reviewed")
 # and the header row of each.
 TABLES = ("Generic tools", "Julia and its packages", "Optional")
 TABLE_HEADER = "| tool | minimum | used for |"
+# The skill that dispatches a part, the header row of its dispatch table, the manifests that a
+# row's condition can name, and the `**Language:**` line of a spec's header.
+DISPATCH_SKILL = REPO / "skills" / "build-part" / "SKILL.md"
+DISPATCH_HEADER = "| the part | builder | critic |"
+MANIFESTS = ("pyproject.toml", "Project.toml")
+LANGUAGE = re.compile(r"\*\*Language:\*\* ([a-z]+)")
+TICKED = re.compile(r"`([^`]+)`")
+
+
+def dispatch(text: str, language: str | None, manifests: frozenset[str]) -> tuple[str, str] | None:
+    """The builder and the critic that the dispatch table of `text` picks for a part whose spec's
+    `**Language:**` line names `language` (None for a spec without the line) and whose repository
+    holds `manifests`. A row's condition, its first cell, holds when the language that it names, if
+    any, is `language`, and each manifest that it names in backticks is in `manifests`; the first
+    row whose condition holds gives the first code span of its second and third cells. None when
+    `text` has no such table or no row holds."""
+    lines = text.splitlines()
+    if DISPATCH_HEADER not in lines:
+        return None
+    for line in lines[lines.index(DISPATCH_HEADER) + 2 :]:
+        if not line.startswith("|"):
+            break
+        cells = [cell.strip() for cell in line.strip("|").split("|")]
+        if len(cells) != 3:
+            break
+        named = LANGUAGE.search(cells[0])
+        if named and named.group(1) != language:
+            continue
+        if not {s for s in TICKED.findall(cells[0]) if s in MANIFESTS} <= manifests:
+            continue
+        builder, critic = (TICKED.findall(cell) for cell in cells[1:])
+        return (builder[0], critic[0]) if builder and critic else None
+    return None
 
 
 def stem(path):
@@ -737,5 +775,52 @@ def selftest():
         check(
             not problems,
             f"{path}" + (": " + "; ".join(problems) if problems else ": its boxes and cited lines exist"),
+        )
+
+    # The dispatch table: on a fixed table, then on the skill of this checkout.
+    both = frozenset(MANIFESTS)
+    table = [
+        DISPATCH_HEADER,
+        "|:--|:--|:--|",
+        "| `**Language:** python` | `p-b` | `p-c` |",
+        "| a `Project.toml` | `j-b` | `j-c` |",
+        "| a `pyproject.toml` | `p-b` | `p-c` |",
+        "| neither | `x-b` | `x-c` |",
+    ]
+    fixed = "\n".join(["text", *table, "", "| `a` | `b` | `c` |"])
+    for language, manifests, expected in [
+        ("python", both, ("p-b", "p-c")),
+        (None, both, ("j-b", "j-c")),
+        (None, frozenset({"pyproject.toml"}), ("p-b", "p-c")),
+        (None, frozenset[str](), ("x-b", "x-c")),
+        ("julia", frozenset[str](), ("x-b", "x-c")),
+    ]:
+        found = dispatch(fixed, language, manifests)
+        check(
+            found == expected,
+            f"dispatch: language {language}, manifests {sorted(manifests)} pick {expected}: {found}",
+        )
+    for label, text in [
+        ("no table", "text\n| `a` | `b` | `c` |\n"),
+        ("a row of four cells ends it", "\n".join([*table[:2], "| a | `b` | `c` | d |", *table[2:]])),
+        ("a pair without a code span", "\n".join([*table[:2], "| a | b | `c` |"])),
+        ("a blank line ends it", "\n".join([*table[:2], "", "| a | `b` | `c` |"])),
+    ]:
+        found = dispatch(text, None, both)
+        check(found is None, f"dispatch: {label}, so no pair: {found}")
+    skill = DISPATCH_SKILL.read_text()
+    for language, manifests, expected in [
+        (None, frozenset({"pyproject.toml"}), ("python-builder", "python-critic")),
+        (None, both, ("julia-builder", "julia-critic")),
+        (None, frozenset({"Project.toml"}), ("julia-builder", "julia-critic")),
+        (None, frozenset[str](), ("part-builder", "part-critic")),
+        ("python", both, ("python-builder", "python-critic")),
+        ("julia", frozenset({"pyproject.toml"}), ("julia-builder", "julia-critic")),
+    ]:
+        found = dispatch(skill, language, manifests)
+        check(
+            found == expected,
+            f"skills/build-part/SKILL.md: a part with language {language} in a repository with "
+            f"{sorted(manifests)} gets {expected}: {found}",
         )
     return total, wrong

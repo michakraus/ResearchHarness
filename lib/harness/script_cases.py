@@ -176,6 +176,7 @@ LEFT_OUT = [".env", ".env.ts", "test/.env.local", ".git/HEAD", ".claude/scratch/
 FIX_ROUND_FILES = [
     "agents/julia-builder.md",
     "agents/part-builder.md",
+    "agents/python-builder.md",
     "skills/build-part/SKILL.md",
     "skills/build-reviewed/SKILL.md",
 ]
