@@ -301,6 +301,14 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   width, and write the growth into the premise and into the clause that rests on it (P39, *Rewrite
   the reduced basis packages*: 7.2 s to build at `m = 10` against 762 s for the first gradient
   call, so the check that times the build saw neither)
+- **an allocation reading taken through an entry point that rebuilds its state every call:** each
+  call allocates about 32 MB in a few discrete buckets, so a single reading of the per-epoch cost
+  moves by a whole bucket, and the difference of two lengths cannot be trusted once. Test the
+  public entry and not only the inner function — a reading of the inner one passes while the public
+  one is free to stop calling it — take the minimum of ten calls at each of two lengths, and then
+  the lesser of two consecutive readings: on the floor one reading failed 1 of 60 and 1 of 240,
+  while the lesser of two failed 0 of 120 (P39, verify 2 and the two advisor rulings,
+  *Rewrite the reduced basis packages*)
 
 ## A tool that reads files or a tree
 
@@ -737,3 +745,14 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   "Four scripts in `scripts/`" and the branch added a fifth, and no clause saw it because the list
   owned `scripts/` alone. Read every page that counts, lists or tabulates what the diff adds, and
   put it in the part's files (P39, *Rewrite the reduced basis packages*)
+- **a docstring `@extref` link where the docs define no `DocumenterInterLinks`:** Documenter 1.19's
+  `XREF_REGEX` matches only `@ref`, so `[`f`](@extref)` falls through to the local-file path, and
+  `makedocs` stops with `invalid local link/image: file does not exist` and `[:cross_references]`.
+  A build that merely warns on the base fails here, because one unresolved link is an error. Write
+  the name in plain backticks, or give `docs/make.jl` the plugin (P39 round 1,
+  *Rewrite the reduced basis packages*)
+- **a text fix that generalises from the one instance it verified to its neighbours:** the sentence
+  said `--seed` names the run "like every other option here", and of the four neighbours it named
+  only the seed did. Read the source of every claim a generalising phrase covers — `run_id(o)` named
+  six options and none of those four — and write the list out instead of "every other" (P39 verify 3,
+  *Rewrite the reduced basis packages*)
