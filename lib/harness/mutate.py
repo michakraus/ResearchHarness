@@ -17,13 +17,15 @@ untracked files that git does not ignore, with their working-tree bytes, in its 
 removed after the run, also after an error, an interrupt, a SIGTERM or a SIGHUP; nothing is
 written into the repository or its `.git`.
 
-Before any test runs, a spec that cannot be applied stops the run with exit 2 and a message that
-names the mutant: an empty spec; a table without one of the five keys, with another key, or with
-a value of the wrong type; a `file` that the copy does not hold; an `anchor` on no line or on more
-than one; an `old` that does not occur exactly once after the anchor's line; an empty `tests`; a
-part that `harness test --list` of the copy does not name. Then the copy runs `harness test` with
-the union of the parts, unmutated, and a result other than `0 wrong` stops the run with exit 2 and
-its first BAD line, because every mutant would then be killed by a failure that is not its own.
+Before any test runs, a spec that cannot be applied stops the run with exit 2. A spec that cannot
+be read, or that holds no mutant, is refused with a message that names the spec. These are refused
+with a message that names the mutant: a table without one of the five keys, with another key, or
+with a value of the wrong type; an empty `old`; a `file` that the copy does not hold; an `anchor`
+on no line or on more than one; an `old` that does not occur exactly once after the anchor's line;
+an empty `tests`; a part that `harness test --list` of the copy does not name. A line ends at a
+newline only. Then the copy runs `harness test` with the union of the parts, unmutated, and a
+result other than `0 wrong` stops the run with exit 2 and its first BAD line, because every mutant
+would then be killed by a failure that is not its own.
 
 Each mutant is then applied alone to the unmutated file, and reverted after its run. A mutated
 file that `ast.parse` refuses is `invalid` and runs no test. One line per mutant, in the order of
@@ -94,8 +96,8 @@ def load(spec: pathlib.Path) -> list[Mutant]:
 
 
 def mutant(name: str, table: object) -> Mutant:
-    """The mutant of the table `name`; a table without one of KEYS, with another key, or with a
-    value of the wrong type raises."""
+    """The mutant of the table `name`; a table without one of KEYS, with another key, with a value
+    of the wrong type, or with an empty `old` raises."""
     if not isinstance(table, dict):
         raise HarnessError(f"{name}: not a table")
     entries = cast("dict[str, object]", table)
@@ -111,6 +113,8 @@ def mutant(name: str, table: object) -> Mutant:
         if not isinstance(value, str):
             raise HarnessError(f"{name}: {key} is not a string")
         texts[key] = value
+    if not texts["old"]:
+        raise HarnessError(f"{name}: old is empty")
     tests = entries["tests"]
     if not isinstance(tests, list):
         raise HarnessError(f"{name}: tests is not a list")
@@ -125,8 +129,10 @@ def mutant(name: str, table: object) -> Mutant:
 
 def mutated(m: Mutant, text: str) -> str:
     """`text` with the one `old` after the anchor's line replaced by `new`; an anchor on no line or on
-    more than one, and an `old` that does not occur exactly once after that line, raise."""
-    lines = text.splitlines(keepends=True)
+    more than one, and an `old` that does not occur exactly once after that line, raise. A line ends
+    at a newline only: a form feed or another separator of `str.splitlines` does not end it."""
+    *ended, last = text.split("\n")
+    lines = [line + "\n" for line in ended] + ([last] if last else [])
     hits = [i for i, line in enumerate(lines) if m.anchor in line]
     if len(hits) != 1:
         where = "no line" if not hits else f"{len(hits)} lines"
@@ -420,6 +426,7 @@ def spec_cases(check: Check, base: pathlib.Path) -> None:
         ("an anchor that is no string", t.replace("'a'", "[]"), "m: anchor is not a string"),
         ("an old that is no string", t.replace("'o'", "true"), "m: old is not a string"),
         ("a new that is no string", t.replace("'n'", "2"), "m: new is not a string"),
+        ("an empty old", t.replace("'o'", "''"), "m: old is empty"),
         ("tests that is no list", t.replace("['x']", "'x'"), "m: tests is not a list"),
         ("an empty tests", t.replace("['x']", "[]"), "m: tests is empty"),
         ("a test that is no string", t.replace("['x']", "['x', 1]"), "m: tests holds a value"),
@@ -478,6 +485,16 @@ def mutation_cases(check: Check) -> None:
             "refused: m: '1' occurs 0 times after the anchor's line",
         ),
         ("a carriage return stays", "b =", "a", "a = 1\r\nb = a\r\nc = a\r\n", "a = 1\r\nb = a\r\nc = N\r\n"),
+        *[
+            (
+                f"a line runs on past {sep!r}",
+                "b =",
+                "a",
+                f"b = 1{sep}c = a\nd = a\n",
+                f"b = 1{sep}c = a\nd = N\n",
+            )
+            for sep in ["\x0c", "\x1c", "\x1d", "\x1e", "\x85", chr(0x2028), chr(0x2029), "\x0b"]
+        ],
     ]:
         got = apply(anchor, old, src)
         check(

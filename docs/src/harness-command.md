@@ -666,12 +666,14 @@ its parts, and the file is reverted. It prints one line per mutant and, last,
 | `<name> SURVIVED` | every case of the mutant's parts passes |
 | `<name> invalid: <error>` | `ast.parse` refuses the mutated file; no test runs |
 
-`mutate` stops before any mutant runs, and the message names the mutant, when the spec is empty;
-a table lacks one of the five keys, has another key, or has a value of the wrong type; `file` is
-not a file of the copy or is not UTF-8; `anchor` is on no line or on more than one; `old` does not
-occur exactly once after the anchor's line; `tests` is empty, or names a part that
-`harness test --list` does not name. It also stops, with the first `BAD` line, when the unmutated
-copy fails the parts of the spec.
+A line of `file` ends at a newline only; a form feed does not end it. `mutate` stops before any
+mutant runs, and the message names the mutant, when a table lacks one of the five keys, has
+another key, or has a value of the wrong type; `old` is empty; `file` is not a file of the copy or
+is not UTF-8; `anchor` is on no line or on more than one; `old` does not occur exactly once after
+the anchor's line; `tests` is empty, or names a part that `harness test --list` does not name. It
+also stops when the spec cannot be read or holds no mutant, with a message that names the spec;
+when `harness test --list` of the copy fails, with its exit status; and when the unmutated copy
+fails the parts of the spec, with the first `BAD` line.
 
 **Exit status:** 0 when every mutant is killed, 1 when a mutant survives or is invalid, 2 when it
 stops.
