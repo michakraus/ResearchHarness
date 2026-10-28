@@ -107,18 +107,20 @@ that enforces it, and loads on every `.py` file. This section gives the reason f
   difference between a path and a text.
 - **The form of `subprocess.run`.** Without `check=`, a failed program reads as a success unless
   the caller reads `returncode`; `check=` says which of the two the call means. `text=True` decodes
-  the output once, as UTF-8. A program outside the harness, such as `git`, `gh` or `node`, can wait
-  on a prompt or the network, and a `timeout=` turns that wait into a failure that names it.
+  the output once, so the code that reads it handles `str`, not `bytes`. A program outside the
+  harness, such as `git`, `gh` or `node`, can wait on a prompt or the network, and a `timeout=`
+  turns that wait into a failure that names it.
 - **`HarnessError` for a reported failure.** The `harness` command catches it, prints its one line
   and exits 2, the status that the sweep checks for a missing precondition. A traceback tells the
   user nothing they can act on.
 - **No blind `except`.** An `except Exception` also catches the bug that the code did not expect,
   and turns it into a wrong result.
-- **The banned APIs.** `os.system` and `os.popen` run a command line through the shell,
-  so its quoting decides what runs. `json.load` at each call site spreads the parsing of one kind of file over many
-  functions. `shlex` splits as POSIX `sh` does, so a guard that decides on its tokens can allow a
-  command that the real shell runs differently. A secret file that is written and then given mode
-  `0600` is readable by others in between.
+- **The banned APIs, and the APIs that review keeps in their place.** `os.system` and `os.popen`
+  run a command line through the shell, so its quoting decides what runs. `json.load` at each call
+  site spreads the parsing of one kind of file over many functions. `shlex` splits as POSIX `sh`
+  does, so a guard that decides on its tokens can allow a command that the real shell runs
+  differently. A secret file that is written and then given mode `0600` is readable by others in
+  between.
 - **Standard-library-only hooks.** A hook starts as `#!/usr/bin/env python3`, on the first
   `python3` of the `PATH`, not in the harness's Python environment, so a module that only that
   environment holds does not import, and the hook fails each call that it guards.

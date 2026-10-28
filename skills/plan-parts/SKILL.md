@@ -265,22 +265,25 @@ advisor call or a critic round. A clause that a builder cannot meet, or that two
 ways, passes it.
 
 A spec is not a workflow. Do not prescribe the order of the builder's work: its steps are in
-`julia-builder` and `python-builder`, and a longer brief improves the first build more than the final result.
+`julia-builder` and `python-builder`, and a longer brief improves the first build more than the
+final result.
 
 ## 7 · The plan's §V and §L hold only what the plan adds
 
 The generic build steps are in `julia-builder` and `python-builder`, the judging rules in
 `julia-critic` and `python-critic`, the evidence table and its rules in `build-part/evidence.md`,
-and the loop in the `build-part` skill. **Copy none of them into the plan.** Write §V and §L from `plan-sections.md` beside this skill, after the
-collision map: the plan's own rules, one sentence each, and the extra sections the critic reads.
+and the loop in the `build-part` skill. **Copy none of them into the plan.** Write §V and §L from
+`plan-sections.md` beside this skill, after the collision map: the plan's own rules, one sentence
+each, and the extra sections the critic reads.
 
 **A facts section longer than 150 lines gets a summary.** A section of measurements or other facts
 that §L's *also reads* lines name goes into every spec bundle whole. Above 150 lines, open it with
 a summary of the facts that the parts rest on, each with the line of the section that holds its
 evidence, under a heading of its own whose title no other heading of the file has and holds no `§`,
 such as `### Measurements in brief`, and put the rest of the section under a heading of the same
-level after it, because a heading's text ends at the next heading of its level. Name the summary in the *also reads* lines in italics,
-`*Measurements in brief*`, in place of the section, so that the bundle copies the summary.
+level after it, because a section ends at the next heading of its level or above. Name the summary
+in the *also reads* lines in italics, `*Measurements in brief*`, in place of the section, so that
+the bundle copies the summary.
 
 ## What this skill does not do
 

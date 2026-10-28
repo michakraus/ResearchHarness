@@ -36,7 +36,7 @@ has its decisions under the spec's `## Decisions`, and you read it as *A spec in
 format* in `~/.claude/skills/build-part/evidence.md` says.
 
 **Read nothing else of the task file.** Read *The evidence table of a part*, *Rules for a row* and
-*Which mutants run* in `evidence.md`; its tables of tools are for another language. Read the
+*Which mutants run* in `evidence.md`; its section *The tools* is for another language. Read the
 repository's `KNOWN_ISSUES.md` where it exists. `~/.claude/rules/python-code.md` holds the idioms
 of the strict profile; it loads when you read a `.py` file.
 
@@ -67,9 +67,9 @@ critic round checks as *Spawned after a critic round* says.
 **Your `cd` does not persist**, so give every path outside the worktree in full. Commit only in the
 repository that `pwd` shows; never `git -C` or `--git-dir`. Leave the worktree in place.
 
-**Enable the repository's hooks** where it keeps them, as its docs say (`git config core.hooksPath
-.githooks` in the Harness). The pre-commit hook runs `ruff format --check`, `ruff check` and
-`basedpyright`, and every commit passes it. Never commit with `--no-verify`.
+**Enable the repository's hooks** where it keeps them, as its docs say. In the Harness,
+`git config core.hooksPath .githooks` enables a pre-commit hook that runs `ruff format --check`,
+`ruff check` and `basedpyright`. Every commit passes the hooks; never commit with `--no-verify`.
 
 ## Build to the *Done when*
 

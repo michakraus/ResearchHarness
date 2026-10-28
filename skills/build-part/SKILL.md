@@ -166,8 +166,8 @@ exist, set the state to `waiting for the user — the bundle lacks <name>`.
 
 **1 · Spawn the builder** of the part's pair: `python-builder`, `julia-builder` or `part-builder`.
 Pass it the task file, the part, and the path of the part's spec bundle. Pass nothing else: the
-bundle holds the rows and every section the builder reads. It cannot write the bundle itself: it runs in a worktree, and the worktree guard refuses
-`awk -f`.
+bundle holds the rows and every section the builder reads. It cannot write the bundle itself: it
+runs in a worktree, and the worktree guard refuses `awk -f`.
 
 **A part in `Packages/` or `Experiments/` is spawned with `isolation: "worktree"`, from its
 repository.** First `cd ~/Research/Packages/<Repository>` as a Bash call of its own, then the
@@ -265,13 +265,13 @@ beside the critics' defects. Where the finish builder commits a change of code a
 the gate again on the pull request's head; a failure goes to the arbitrator with the trigger
 `stop after PASS`.
 
-**After each critic round, spawn a new builder of the part's pair; never `SendMessage` the last one.** A
+**After each critic round, spawn a new builder; never `SendMessage` the last one.** A
 resumed builder writes its whole context again (456–458 k tokens in round 4), and a new one starts from
 the reports: in the C1 replay it cost a quarter to a half as much, with fewer blocking defects left.
 First `cd <worktree>` as a Bash call of its own,
 then the `Agent` call, without isolation. Pass the task file, the part, the path of its spec
 bundle, written again, the worktree, the branch, the base, the head that the critic judged, and the
-last builder's report as the handoff note. From here on, *the builder* is the builder of the current round.
+last builder's report as the handoff note. From here on, *the builder* is the one of this round.
 
 - **FAIL** — spawn it with `Round: fix <N>`, and add the critic's *Blocking defects*, *Other
   defects* and *Fix first*, verbatim — both critics' in round 1 — every failing testset of the

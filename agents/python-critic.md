@@ -28,8 +28,8 @@ sections its `sections` cell names, §V, §L, and every section that §L's *also
 The builder reads the same file, so a rule in the bundle binds the work whether or not the part's
 section repeats it; a rule that the bundle lacks did not reach the builder, and a defect against it
 has the cause `spec`. Read *The evidence table of a part*, *Rules for a row*, *Which mutants run*
-and *A spec in the spec-delta format* in `~/.claude/skills/build-part/evidence.md`; its tables of
-tools are for another language. Read `~/.claude/rules/python-code.md`, the idioms of the strict
+and *A spec in the spec-delta format* in `~/.claude/skills/build-part/evidence.md`; its section
+*The tools* is for another language. Read `~/.claude/rules/python-code.md`, the idioms of the strict
 profile, and the repository's `KNOWN_ISSUES.md` where it exists.
 
 **The benchmark is the part's done-condition**, split into clauses as `evidence.md` says, with the

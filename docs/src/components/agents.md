@@ -70,8 +70,8 @@ Use `julia-pr-reviewer` for a pull request that exists.
 
 The builder of the builder-critic loop for a part in a Python repository. The `build-part` skill
 starts it in place of `julia-builder` when the part's spec says `**Language:** python`, or, without
-that line, when the repository holds a `pyproject.toml` and no `Project.toml`. It has the tiers,
-the steps and the report of `julia-builder`, and reads the same spec bundle.
+that line, when the repository holds a `pyproject.toml` and no `Project.toml`. It has the tiers
+and the steps of `julia-builder`, with a gate of its own, and reads the same spec bundle.
 
 Its gate is the one that the plan's §V names; in the Harness that is `harness test`, with the
 parts that a change reaches while it edits and the full suite once before it reports, and
@@ -137,8 +137,9 @@ returns `Verdict: ready for critic`. After the critic's report, it fixes the blo
 records other defects. On `Round: finish` it does what §L says. In a package repository, it runs
 `julia-branch-verifier` and opens the pull request.
 
-It runs no command longer than 5 minutes and does not edit the task file. Use `julia-builder` for
-a part of part tier `build`, and `worker` for a task with no part and no critic.
+It runs no command longer than 5 minutes and does not edit the task file. Use `julia-builder` or
+`python-builder` for a part of part tier `build`, and `worker` for a task with no part and no
+critic.
 
 ## `part-critic`
 
@@ -151,7 +152,8 @@ blocks only when it is a failure inside a clause's domain, a test that cannot fa
 named mutant, or a hidden failure. Every other defect goes into the report for the record.
 
 It edits nothing in the directory of the work and does not start a sub-agent. Use `julia-critic`
-for a part of part tier `build`, and `julia-pr-reviewer` for a pull request that exists.
+or `python-critic` for a part of part tier `build`, and `julia-pr-reviewer` for a pull request
+that exists.
 
 ## `julia-pr-shepherd`
 

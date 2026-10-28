@@ -5,9 +5,10 @@ description: The idioms of the strict Python profile, each with the tool that en
 
 # Working on Python code here
 
-The repository's `pyproject.toml` sets the strict profile, and its pre-commit hook runs the three
-checks on every commit: `ruff format --check`, `ruff check` and `basedpyright`. Each idiom below
-names the tool that enforces it; "review" means that the critic checks it and no tool does.
+The Harness sets the strict profile in its `pyproject.toml`, and its pre-commit hook runs the
+three checks on every commit: `ruff format --check`, `ruff check` and `basedpyright`. A repository
+that sets the same profile follows the same idioms. Each idiom below names the tool that enforces
+it; "review" means that the critic checks it and no tool does.
 
 ## The checks
 
@@ -22,7 +23,8 @@ names the tool that enforces it; "review" means that the critic checks it and no
 
 ## The idioms
 
-- **A dataclass at every input boundary** (`basedpyright`). Parse JSON, TOML, a hook payload or a
+- **A dataclass at every input boundary** (review; `basedpyright` flags each value of unknown
+  type that its absence leaves). Parse JSON, TOML, a hook payload or a
   command line once, where it enters, into a frozen `dataclass` with typed fields; the code behind
   it reads fields, never `dict` keys of unknown type.
 - **`pathlib` for paths** (`ruff check`, `PTH`). No `os.path`, and no string joins of paths.

@@ -6,7 +6,8 @@
   Python pair has the Julia pair's tiers; its gate is `harness test`, ruff and basedpyright, and
   its named mutants run with `harness mutate`. The rule names each idiom of the strict profile with
   the tool that enforces it, and `docs/src/development.md` gives the reasons. `python-critic` has a
-  council in `examples/models.toml`, and the OpenCode and Antigravity rule tables list the rule.
+  council in `examples/models.toml`, which the round-1 text of OpenCode and oh-my-pi names, and
+  the OpenCode and Antigravity rule tables list the rule.
   `plan-parts` gives a facts section longer than 150 lines a summary that the spec bundle copies
   in place of the section. A case of the `docs` part reads the skill's dispatch table for each set
   of manifests. Run `harness install --apply` to install the two agents and the rule.
