@@ -139,8 +139,8 @@ def mutated(m: Mutant, text: str) -> str:
 
 
 def source(m: Mutant, copy: pathlib.Path) -> tuple[pathlib.Path, bytes, str]:
-    """The path of the mutant's file in `copy`, its bytes, and its mutated text; a file that the copy
-    does not hold, or that is not UTF-8, raises."""
+    """The path of the mutant's file in `copy`, its bytes now, and its mutated text; a file that the
+    copy does not hold, or that is not UTF-8, raises."""
     path = copy / m.file
     if not path.resolve().is_relative_to(copy.resolve()) or not path.is_file():
         raise HarnessError(f"{m.name}: {m.file} is no file of the repository")
@@ -262,7 +262,8 @@ def run(
             dest = pathlib.Path(tmp) / "repository"
             dest.mkdir()
             copy(root, dest, env)
-            texts = {m.name: source(m, dest) for m in mutants}
+            for m in mutants:
+                source(m, dest)
             listed = subprocess.run(
                 [sys.executable, str(dest / "bin" / "harness"), "test", "--list"],
                 cwd=dest,
@@ -283,23 +284,18 @@ def run(
             failure = verdict(*tested(dest, union, child))
             if failure is not None:
                 raise HarnessError(f"the unmutated copy fails harness test {' '.join(union)}: {failure[1]}")
-            return each(mutants, texts, dest, child)
+            return each(mutants, dest, child)
     finally:
         for s, handler in previous.items():
             signal.signal(s, handler)
 
 
-def each(
-    mutants: list[Mutant],
-    texts: dict[str, tuple[pathlib.Path, bytes, str]],
-    dest: pathlib.Path,
-    child: dict[str, str],
-) -> int:
-    """Apply each mutant alone to the copy `dest`, run its parts, revert it, and print its line and
-    the summary: 1 when a mutant survives or is invalid, else 0."""
+def each(mutants: list[Mutant], dest: pathlib.Path, child: dict[str, str]) -> int:
+    """Apply each mutant to its file of the copy `dest` as the file is then, run its parts, revert
+    it, and print its line and the summary: 1 when a mutant survives or is invalid, else 0."""
     killed = survived = invalid = 0
     for m in mutants:
-        path, original, text = texts[m.name]
+        path, original, text = source(m, dest)
         try:
             ast.parse(text, filename=m.file)
         except SyntaxError as e:
@@ -342,13 +338,16 @@ def register(sub: fmt.Subcommands) -> None:
 # runs NAME… with docs and sweep on the fixture's m.py and prints `ok`/`BAD` lines and, last,
 # `<n> cases, <w> wrong`, as `harness test` does. Its `docs` part fails where `git ls-files` fails
 # in its root, as the real one does, and its `sweep` part where PYTHONDONTWRITEBYTECODE is not 1.
-# Each call appends its arguments to $STUB_LOG; `test --list` exits $STUB_LIST_EXIT where it is set.
+# Each call appends its arguments to $STUB_LOG and its root to $STUB_ROOTS; `test --list` exits
+# $STUB_LIST_EXIT where it is set.
 STUB = """\
 import os, pathlib, subprocess, sys, time
 root = pathlib.Path(__file__).resolve().parent.parent
 args = sys.argv[1:]
 with open(os.environ["STUB_LOG"], "a") as log:
     log.write(" ".join(args) + "\\n")
+with open(os.environ["STUB_ROOTS"], "a") as roots:
+    roots.write(str(root) + "\\n")
 PARTS = ["a", "broken", "docs", "hang", "slow", "sweep"]
 if args == ["test", "--list"]:
     print("\\n".join(PARTS))
@@ -519,8 +518,10 @@ def run_cases(check: Check, base: pathlib.Path) -> None:  # noqa: PLR0915 -- one
     """The cases of the copy and of whole runs, on a fixture git repository with a stub `bin/harness`."""
     log, scratch, root = base / "stub.log", base / "scratch", base / "repository"
     scratch.mkdir()
-    env = clean(os.environ) | {
+    # Without the caller's PYTHONDONTWRITEBYTECODE, so that the stub sees the one that `run` sets.
+    env = {k: v for k, v in clean(os.environ).items() if k != "PYTHONDONTWRITEBYTECODE"} | {
         "STUB_LOG": str(log),
+        "STUB_ROOTS": str(base / "roots"),
         "GIT_CONFIG_GLOBAL": os.devnull,
         "GIT_CONFIG_NOSYSTEM": "1",
         "GIT_AUTHOR_NAME": "mutate",
@@ -536,6 +537,8 @@ def run_cases(check: Check, base: pathlib.Path) -> None:  # noqa: PLR0915 -- one
     (root / "gone.py").write_text("gone\n")
     (root / "kept.log").write_text("tracked, and ignored by .gitignore\n")
     (root / "link.py").symlink_to("m.py")
+    # A name that is pathspec magic, which excludes m.py and matches nothing.
+    (root / ":(exclude)m.py").write_text("MAGIC = 1\n")
     git(["init", "-q", "-b", "main"], root, env)
     git(["add", "."], root, env)
     git(["add", "-f", "kept.log"], root, env)
@@ -543,22 +546,31 @@ def run_cases(check: Check, base: pathlib.Path) -> None:  # noqa: PLR0915 -- one
     (root / "gone.py").unlink()
     (root / "ignored.log").write_text("ignored\n")
 
-    # The copy; a GIT_DIR of the caller does not send it to another repository.
+    # The copy; a GIT_DIR of the caller does not send it to another repository, and a filter of the
+    # caller's global configuration, which refuses every file, does not run on it.
     (root / "new.py").write_text("NEW = 1\n")
     (root / "m.py").write_text(FIXTURE + "# changed\n")
+    (root / ".gitattributes").write_text("m.py filter=refuse\n")
+    home = base / "home"
+    home.mkdir()
+    (home / ".gitconfig").write_text('[filter "refuse"]\n\tclean = false\n\trequired = true\n')
     dest = base / "copy"
     dest.mkdir()
-    names = copy(root, dest, env | {"GIT_DIR": str(base / "nowhere"), "GIT_INDEX_FILE": str(base / "no")})
+    caller = {"GIT_DIR": str(base / "nowhere"), "GIT_INDEX_FILE": str(base / "no"), "HOME": str(home)}
+    names = copy(root, dest, env | caller)
     listed = git(["ls-files"], dest, env).split()
+    (root / ".gitattributes").unlink()
+    files = [".gitattributes", ".gitignore", ":(exclude)m.py", "bin/harness", "kept.log", "link.py"]
     check(
-        sorted(names) == listed == [".gitignore", "bin/harness", "kept.log", "link.py", "m.py", "new.py"]
+        sorted(names) == listed == [*files, "m.py", "new.py"]
         and (dest / "m.py").read_text() == FIXTURE + "# changed\n"
         and (dest / "link.py").is_symlink()
         and (dest / "link.py").readlink() == pathlib.Path("m.py")
         and not (dest / "ignored.log").exists(),
         "the copy holds the tracked files, an ignored one too, and the untracked files that git does "
-        "not ignore, with their working-tree bytes, a symlink as a symlink, and no deleted file, and "
-        f"git ls-files lists them -> {listed}",
+        "not ignore, with their working-tree bytes, a symlink as a symlink, a name that is pathspec "
+        "magic as itself, and no deleted file, and git ls-files lists them; no GIT_DIR or global "
+        f"filter of the caller acts on it -> {listed}",
     )
     (root / "new.py").unlink()
     (root / "m.py").write_text(FIXTURE)
@@ -654,7 +666,14 @@ def run_cases(check: Check, base: pathlib.Path) -> None:  # noqa: PLR0915 -- one
         f"the unmutated run takes the union of the parts, in the order of the spec -> {calls}",
     )
     check(state() == before, "the runs leave every file of the repository and of its .git as it was")
-    check(not any(scratch.iterdir()), "the runs remove their copies")
+    roots = {pathlib.Path(line) for line in (base / "roots").read_text().splitlines()}
+    copies = 4  # one per run above
+    check(
+        len(roots) == copies
+        and all(r.is_relative_to(scratch.resolve()) and not r.exists() for r in roots)
+        and not any(scratch.iterdir()),
+        f"each run makes its copy below the scratch directory and removes it -> {sorted(roots)}",
+    )
 
     for label, tables, expected, runs in [
         ("an empty spec", [""], "holds no mutant", []),
@@ -738,7 +757,7 @@ def run_cases(check: Check, base: pathlib.Path) -> None:  # noqa: PLR0915 -- one
         log.write_text("")
         p = subprocess.Popen(
             [sys.executable, "-c", code, str(lib), str(path), str(root), str(scratch)],
-            env=env,
+            env=env | {"PYTHONDONTWRITEBYTECODE": "1"},
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
