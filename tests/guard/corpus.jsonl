@@ -1,0 +1,409 @@
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "echo 'x = 1' > src/Foo.jl"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "cat template.jl >> src/Foo.jl"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "printf 'a' > CHANGELOG.md"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "cd ~/Research && echo x > Packages/Example/Project.toml"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "echo x >src/Foo.jl"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "sed -i.bak 's/a/b/' src/Foo.jl"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "sed -Ei 's/a/b/' src/Foo.jl"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "sed --in-place=.bak 's/a/b/' f.jl"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "perl -i.bak -pe 's/a/b/' src/Foo.jl"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "perl -ni -e 'print' src/Foo.jl"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "awk -i inplace '{print}' f.jl"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "julia x.jl | tee report.md"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "cat a.md b.md > combined.md"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh pr view 3 > notes.md"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "cat > docs/src/index.md <<'EOF'"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "julia script.jl > $TMPDIR/out.log"}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "echo '{\"a\":1}' > $TMPDIR/x.json"}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh pr view 3 > /tmp/claude/pr.json"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "julia x.jl > results.txt"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "ls -la > /dev/null"}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "julia x.jl 2>&1 | tail -5"}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "perl -Ilib -e 'print 1'"}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "sed -n '5,10p' src/Foo.jl"}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "sed -e 's/a/b/' src/Foo.jl"}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "awk -f script.awk data.txt"}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git commit -m 'fix > bug in notes.md'"}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "julia -e 'println(\"a > b.md\")'"}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "grep -n pattern src/Foo.jl | tee $TMPDIR/hits.txt"}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "cat src/Foo.jl"}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "echo x > $OUT"}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "echo \"unbalanced > f.jl"}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "cat > ~/Research/.scratch/pr3/probe.jl <<'EOF'"}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "cat > $HOME/Research/.scratch/probe.jl <<'EOF'"}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "cat > @@SCRATCH@@/probe.jl <<'EOF'"}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "cat > ~/Research/Packages/Example/src/Foo.jl <<'EOF'"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "cat > static.jl <<'EOF'\nx = 1\nEOF"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "cd ~/Research/Packages/Example/src && cat > static.jl <<'EOF'\nx = 1\nEOF"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "cd ~/Research/Packages/Example; printf '%s\\n' '' '- floor τ / |φ′(0)|; `α > 0`' >> CHANGELOG.md"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "python3 - <<'EOF'\np='backtracking.jl'\ns=open(p).read()\nopen(p,'w').write(s)\nEOF"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "python3 - <<'EOF' 2>&1\nopen('src/x.jl', mode='a')\nEOF"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "python3 -c \"open('src/x.jl','w').write('x')\""}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "python3 -c \"from pathlib import Path; Path('README.md').write_text('x')\""}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "echo x &> out.log"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "echo x >| notes.txt"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "echo x >& notes.txt"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "echo x | tee -a CHANGELOG.md"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "(cd .. && echo x) > f.md"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "echo x > f.jl; echo \"it's"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "cd $W && echo x > src/Foo.jl"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "cd ~/Research/.scratch/loop-bench/l3/grade-1 && cat > probe_budget.jl <<'EOF'\nx > 1\nEOF"}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "julia x.jl > ~/Research/.scratch/loop-bench/l1/run.log 2>&1"}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git show origin/main:src/X.jl > ~/Research/.scratch/l1/GS_main.jl"}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "julia x.jl 2>&1 | tee /tmp/claude/test.log"}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "cat > /private/tmp/claude/p.jl <<'EOF'\necho y > z.jl\nEOF"}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "cd $W && echo x > out.log"}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "cd \"$TMPDIR\" && jq '.a | .b; .c' s.json > clean.json"}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "S=/private/tmp/claude/scratchpad; cd $S && python3 -c \"open('dump.jl','w')\""}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "cd @@TOOL@@ && julia x.jl > hooks/__pycache__/a3.log 2>&1"}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "cd @@TOOL@@ && cat > .scratch/q.graphql <<'EOF'\nquery\nEOF"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "awk -F'include' '{split($1,a,\":\"); print a[1]}' f.txt"}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "sed -i.bak 's/a/b/; s/c/d/' \"$TMPDIR/check.jl\""}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "cd \"$TMPDIR\" && sed -i '' -e 's|a|b|' seam_probe.jl"}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "SP=/private/tmp/claude/x; sed -i.bak 's|a|b|' $SP/probe.jl"}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "perl -pi -e 's/a/b/' *.jl"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "cd ~/Research/Packages/Example && sed -i '' 's|a|b|; s|c|d|' Project.toml"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "cd ~/.claude && printf '%s\\n' '- a; b' >> CLAUDE.md"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "cd ~/Research && echo x > census.txt"}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "cd ~/Research && cat >> CLAUDE.md <<'EOF'\nx\nEOF"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "echo x >&2"}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "julia x.jl 2>/dev/null"}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "echo x # > f.jl"}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "grep -n 'a > b' src/Foo.jl"}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "julia -e 'f = x -> x > 1; println(f(2) >= 1)'"}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git commit -m \"a > b.md; echo x > c.jl\""}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git commit -m \"$(cat <<'EOF'\nfix: echo x > f.jl\nEOF\n)\""}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "python3 -c \"open('@@SCRATCH@@/l1/sw_head.txt','w').write('x')\""}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "python3 - <<'EOF'\nprint(open('src/x.jl').read())\nEOF"}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "python3 -c \"import sys; open(sys.argv[1],'w')\" f.jl"}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "python3 - <<'EOF'\nfor p in ['a.jl']:\n    open(p, 'w')\nEOF"}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "julia -e 'write(\"f.jl\", \"x\")'"}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "echo $(gh run view 1)"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "for r in a b; do gh run list -R x/$r; done"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "until gh run view 1 --json status; do sleep 30; done"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "while ! glab ci status; do sleep 10; done"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "x=$(git commit -m msg)"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "echo \"$(cd repo && git push origin main)\""}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "echo `gh api repos/x`"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "julia x.jl ; echo \"exit=$?\""}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "julia x.jl; echo $?"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git commit -m msg ; echo \"exit=$?\""}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "ps aux ; echo $?"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git status; echo $?"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "cd ~/Research/Packages/Foo && git add src/Foo.jl"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "cd ~/Research/Packages/Foo && gh pr create --fill"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh pr list | cat"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh run watch 1 --exit-status | tail -20"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api rate_limit > out.json"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api rate_limit 2>/dev/null"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api rate_limit < /dev/null"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh pr create --body-file - <<'EOF'\nbody\nEOF"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git fetch origin 2>&1 | tail -5"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git fetch origin; echo done"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh pr comment 3 -R o/r --body 'see `f` here'"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh pr review 3 -R o/r --comment --body 'a\n\n`b`\n'"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh pr create --title \"Fix `f`\" --body 'it doesn't'"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "julia -e 'x = \"`\"' 'it doesn't"}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh pr view 34 -R \"$(git remote get-url origin)\" --json state"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git commit -m \"$(cat <<'EOF'\nuse `f`\nEOF\n)\""}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh pr comment 3 -R o/r --body-file /tmp/claude/body.md"}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git log -1 --format='`%h`'"}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "echo $(git rev-parse HEAD)"}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "echo $(git branch --show-current)"}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh pr view 3"}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api rate_limit 2>&1"}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh pr view 3 >&2"}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git fetch origin 2>&1"}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git fetch origin && git status --short"}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git fetch origin | git status --short"}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "cd @@CWD@@ && git fetch origin"}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git commit -m \"a; b > c\""}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git log --oneline | head -5"}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git status > $TMPDIR/status.txt"}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "ps aux"}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "for f in *.jl; do julia $f; done"}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "echo $(ls -1 | wc -l)"}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "echo \"what? $x\""}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git init ~/Research/.scratch/r48probe"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git init -q -b main @@SCRATCH@@/gitinit-probe"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git init \"$HOME/Research/.scratch/x\""}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git clone -q https://github.com/example-org/Example.jl.git @@PKG@@"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git clone @@R@@/.worktrees/X-origin.git X"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git worktree add ~/Research/.worktrees/X-y -b fix/y origin/main"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git worktree add --detach @@R@@/.worktrees/X-probe origin/main"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git worktree add ../X-y -b y origin/main"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git worktree move wt $HOME/wt"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git bundle create /tmp/x.bundle main"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git worktree list"}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git worktree remove @@R@@/.worktrees/X-y"}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git bundle verify /tmp/x.bundle"}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git log -- ../x"}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git init --bare --initial-branch=main @@R@@/.worktrees/X-origin.git"}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git clone --mirror https://github.com/example-org/X.jl.git @@SCRATCH@@/X.git"}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git add -nA"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git add src/Foo.jl src/Bar.jl"}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git add src/Abc.jl"}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git commit -m \"record the probes\ngit add -nA is still refused\n\nCo-Authored-By: x\""}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git commit -m 'a; git add -A | b'"}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git status && git add -nA"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git status\ngit add -nA"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "(git add -nA)"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git add -nA; echo \"it's"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git archive -o base.tar origin/main"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git archive --format=tar --prefix=base/ origin/main -o @@SCRATCH@@/base.tar"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git archive --output=@@SCRATCH@@/base.tar origin/main"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git archive --output @@SCRATCH@@/base.tar origin/main"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git archive --out=base.tar HEAD"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git archive -obase.tar HEAD"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git archive -vo base.tar HEAD"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git archive -9o base.tar HEAD"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git -C @@WT@@ archive -o base.tar HEAD"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "GIT_PAGER=cat git archive -o base.tar HEAD"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "/usr/bin/git archive -o base.tar HEAD"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "mkdir -p base && cd @@WT@@ && git archive -o ../base.tar origin/main && tar -xf ../base.tar"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git archive origin/main | tar -x -C base"}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git archive --format=tar --prefix=pkg/ HEAD -- src"}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git archive HEAD -- docs/-o.md"}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git archive HEAD -- -o"}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git archive -l"}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git archive --remote=origin HEAD"}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git log -o x"}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git commit -m 'git archive -o x.tar HEAD'"}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "tar -cf archive.tar -o src"}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git init"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git init -q r48probe"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git init"}, "cwd": "@@TOOL@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git init probe"}, "cwd": "@@PKG@@/src"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git clone https://github.com/example-org/X.jl.git X"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git clone git@github.com:example-org/X.jl.git"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git -c init.defaultBranch=main init probe"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git init"}, "cwd": "@@SCRATCH@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git init -q r48probe"}, "cwd": "@@SCRATCH@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git clone https://github.com/example-org/X.jl.git X"}, "cwd": "@@SCRATCH@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git clone git@github.com:example-org/X.jl.git"}, "cwd": "@@SCRATCH@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git clone https://github.com/example-org/X.jl.git X"}, "cwd": "@@R@@/Packages"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git init --bare @@R@@/.worktrees/X-origin.git"}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git status"}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git diff --no-index a.jl b.jl"}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api -X GET search/code -f q=foo"}}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api search/issues -f q=is:open"}}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api repos/o/r/pulls/3"}}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api 'repos/o/r/pulls?state=open'"}}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api graphql -f query='{viewer{login}}'"}}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api repos/o/r/pulls/3/reviews --input review.json"}}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api -X PUT repos/o/r/pulls/3/reviews/77 -f body=x"}}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api repos/o/r/pulls/3/reviews/77/events -f event=COMMENT"}}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api repos/o/r/pulls/3/comments -F line=4 -f body=x"}}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api repos/o/r/pulls/3/comments/991/replies -f body=x"}}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api repos/{owner}/{repo}/pulls/3/comments/$ID/replies --input r.json"}}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api --method POST /repos/o/r/issues/3/comments -f body=x"}}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api repos/o/r/commits/abc123/comments --input notes.json"}}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api graphql -f query='query { search(query:\"is:pr\", type: ISSUE, first: 5) { issueCount } }'"}}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api graphql -f query='{ search(query:\"mutation\", type: ISSUE, first: 1) { issueCount } }'"}}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api graphql -F owner=o -f query='query($owner:String!){ repository(owner:$owner, name:\"r\"){ id } }'"}}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api graphql -f query='mutation { addPullRequestReviewThreadReply(input:{pullRequestReviewThreadId:\"T\", body:\"x\"}) { comment { id } } }'"}}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api graphql -f query='mutation($t:ID!){ a: resolveReviewThread(input:{threadId:$t}){ thread { id } } b: resolveReviewThread(input:{threadId:\"U\"}){ thread { id } } }' -f t=T"}}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api graphql -f query='mutation { mergePullRequest(input:{pullRequestId:\"P\"}) { clientMutationId } }'"}}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api graphql -f query='mutation { resolveReviewThread(input:{threadId:\"T\"}) { thread { id } } updateIssueComment(input:{id:\"C\", body:\"x\"}) { issueComment { id } } }'"}}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api graphql -f query='mutation { ...F }'"}}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api graphql -F query=@mutation.graphql"}}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api graphql --input request.json"}}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api graphql -f owner=o"}}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api repos/o/r/issues -f title=x"}}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api repos/o/r/issues --raw-field title=x"}}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api repos/o/r/issues --field=title=x"}}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api --method=PUT repos/o/r/branches/main/protection --input p.json"}}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api -XPATCH repos/o/r -F has_wiki=false"}}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api repos/o/r/contents/README.md -X PUT -f message=x"}}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api -X PATCH repos/o/r/issues/comments/5 -f body=x"}}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api repos/o/r/pulls/3/reviews -X DELETE"}}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "cd /x && gh api repos/o/r/labels -f name=x"}}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api repos/o/r/git/refs/heads/x -X DELETE"}}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api -XDELETE repos/o/r/issues/comments/5"}}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api --method=delete repos/o/r/git/refs/heads/x"}}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api -X DELETE repos/o/r/branches/main/protection"}}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "glab api -X DELETE projects/1/repository/branches/topic"}}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "glab api projects/grp%2Fproj/repository/branches/fix%2Fx -X DELETE"}}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "glab api -X DELETE projects/1"}}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "glab api -XDELETE projects/1/protected_branches/main"}}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "glab api --method delete projects/1/issues/4"}}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "glab api projects/1/repository/branches"}}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "glab api projects/1/issues -f title=x"}}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git commit -m 'gh api repos/o/r/issues -f title=x'"}}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "echo gh api"}}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "rm -rf @@WT@@/build"}, "cwd": "@@PKG@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "rm -rf ~/Research/.worktrees/Foo-bar/docs/build"}, "cwd": "@@PKG@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "rm -r $HOME/Research/.worktrees/Foo-bar/x ${HOME}/Research/.scratch/y"}, "cwd": "@@PKG@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "rm -rf ~/Research/.scratch/pr3"}, "cwd": "@@PKG@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "rm -Rf -- ~/Research/.scratch/probe-env/"}, "cwd": "@@PKG@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "rm -rf ~/Research/.scratch/pr3/* ~/Research/.worktrees/Foo-bar/build/*"}, "cwd": "@@PKG@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "rm -fr @@WT@@/src/../build"}, "cwd": "@@PKG@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "rm -rf build docs/build"}, "cwd": "@@WT@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "rm -rf *"}, "cwd": "@@WT@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "rm -rf pr3"}, "cwd": "@@SCRATCH@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "cd @@WT@@ && rm -rf build"}, "cwd": "@@PKG@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "cd ~/Research/.scratch && rm -rf pr3 && cd -"}, "cwd": "@@PKG@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "rm -rf @@WT@@"}, "cwd": "@@PKG@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "rm -rf @@WT@@/"}, "cwd": "@@PKG@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "rm -rf ~/Research/.worktrees"}, "cwd": "@@PKG@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "rm -rf ~/Research/.worktrees/*"}, "cwd": "@@PKG@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "rm -rf ~/Research/.scratch"}, "cwd": "@@PKG@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "rm -rf ."}, "cwd": "@@WT@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "rm -rf ../Foo-baz"}, "cwd": "@@WT@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "rm -rf ../../Foo-baz"}, "cwd": "@@WT@@/src"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "rm -rf ../../Foo-baz/build"}, "cwd": "@@WT@@/src"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "rm -rf ../Other"}, "cwd": "@@PKG@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "rm -r docs/build"}, "cwd": "@@PKG@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "rm -rf Packages/Example/docs/build"}, "cwd": "@@R@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "rm -rf ~/.julia/compiled"}, "cwd": "@@PKG@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "rm -fr ~"}, "cwd": "@@PKG@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "rm -R /@@FIXTURE@@"}, "cwd": "@@PKG@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "rm -rf /"}, "cwd": "@@PKG@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "rm --recursive --force ~/Research/Tasks"}, "cwd": "@@PKG@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "cd ~/Research && rm -rf Packages"}, "cwd": "@@PKG@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "/bin/rm -rf ~/Research/Papers"}, "cwd": "@@PKG@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "X=1 rm -rf ~/Research/Papers"}, "cwd": "@@PKG@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "ls && rm -rf @@WT@@/x ~/Research/Books"}, "cwd": "@@PKG@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "rm docs/build/index.html"}, "cwd": "@@PKG@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "rm -f Manifest.toml"}, "cwd": "@@PKG@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "rm -rf $W/build"}, "cwd": "@@PKG@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "rm -rf \"$TMPDIR/probe\""}, "cwd": "@@PKG@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "rm -rf $(mktemp -d)"}, "cwd": "@@PKG@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "rm -rf /tmp/claude/x"}, "cwd": "@@PKG@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "cd $W && rm -rf build"}, "cwd": "@@PKG@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "rm -rf build 2>/dev/null"}, "cwd": "@@PKG@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "rm -rf build 2>/dev/null"}, "cwd": "@@WT@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git commit -m 'rm -rf ~/Research'"}, "cwd": "@@PKG@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "echo rm -rf ~"}, "cwd": "@@PKG@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "grep -rn 'rm -rf' ."}, "cwd": "@@PKG@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "python3 - <<'EOF'\nrm -rf ~/Research\nEOF"}, "cwd": "@@PKG@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "julia -e 'rm(\"x\"; recursive=true)'"}, "cwd": "@@PKG@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git rm src/old.jl"}, "cwd": "@@WT@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git rm -r --cached docs/build"}, "cwd": "@@WT@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git rm old.jl"}, "cwd": "@@WT@@/src"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git rm -f src/old.jl"}, "cwd": "@@WT@@"}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git rm -rf docs"}, "cwd": "@@WT@@"}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git rm --force src/old.jl"}, "cwd": "@@WT@@"}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git rm -- -f"}, "cwd": "@@WT@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git rm src/old.jl"}, "cwd": "@@PKG@@"}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git rm x"}, "cwd": "@@R@@/.worktrees"}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git -C @@PKG@@ rm src/old.jl"}, "cwd": "@@WT@@"}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git --git-dir=@@PKG@@/.git rm x"}, "cwd": "@@WT@@"}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "cd @@WT@@ && git rm src/old.jl"}, "cwd": "@@PKG@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git merge --no-ff --no-commit origin/main"}, "cwd": "@@WT@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git merge --no-ff origin/main -m 'Merge main'"}, "cwd": "@@WT@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git merge --squash topic"}, "cwd": "@@WT@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git merge origin/main"}, "cwd": "@@WT@@/src"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git -C @@PKG@@ merge --no-ff topic"}, "cwd": "@@WT@@"}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git merge --no-ff topic"}, "cwd": "@@PKG@@"}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git merge topic --no-commit"}, "cwd": "@@PKG@@"}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git merge -mMerge topic"}, "cwd": "@@PKG@@"}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git merge --message=Merge topic"}, "cwd": "@@PKG@@"}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git merge --squash topic"}, "cwd": "@@PKG@@"}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git merge topic"}, "cwd": "@@PKG@@"}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git merge --no-edit --no-ff topic"}, "cwd": "@@PKG@@"}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git merge --ff-only origin/main"}, "cwd": "@@PKG@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git merge --no-edit topic"}, "cwd": "@@PKG@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git merge --abort"}, "cwd": "@@PKG@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git merge-base HEAD origin/main"}, "cwd": "@@PKG@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git merge --ff-only -- --no-ff"}, "cwd": "@@PKG@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "cd @@WT@@ && git merge --no-ff origin/main"}, "cwd": "@@PKG@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git merge --no-ff topic"}, "cwd": "@@R@@/.worktrees"}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "rm -rf 'unbalanced"}, "cwd": "@@WT@@"}, "decision": "ask"}
+{"tool": "Bash", "stdin": "not json at all", "decision": "deny", "differs": "The guard denies a payload that is not JSON; rm-scope.py and directory-scope.py asked on it, and kaimon-session.py and the other Bash scripts let it through."}
+{"tool": "Bash", "stdin": "", "decision": "deny", "differs": "The guard denies an empty payload; rm-scope.py and directory-scope.py asked on it, and the other scripts let it through."}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {}}, "decision": "deny", "differs": "The guard denies a Bash payload without a command; rm-scope.py asked on it, and the other Bash scripts let it through."}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": 123}}, "decision": "deny", "differs": "The guard denies a Bash payload whose command is no string; rm-scope.py asked on it, and the other Bash scripts let it through."}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "ls"}}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "rm -rf build"}}, "decision": "deny", "differs": "The rm check denies a recursive rm of a relative operand when the payload names no working directory; rm-scope.py could not resolve the operand and let it through."}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "rm -rf ~/Research/Papers"}}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git merge --no-ff topic"}}, "decision": "deny", "differs": "The rm check denies a git merge when the payload names no working directory, which decides whether the merge runs in a worktree; rm-scope.py asked."}
+{"tool": "mcp__kaimon__ex", "stdin": {"tool_name": "mcp__kaimon__ex", "tool_input": {"e": "1 + 1"}}, "decision": "deny"}
+{"tool": "mcp__kaimon__ex", "stdin": {"tool_name": "mcp__kaimon__ex", "tool_input": {"e": "1 + 1", "ses": ""}}, "decision": "deny"}
+{"tool": "mcp__kaimon__ex", "stdin": {"tool_name": "mcp__kaimon__ex", "tool_input": {"e": "1 + 1", "session": "a1b2c3d4"}}, "decision": "deny"}
+{"tool": "mcp__kaimon__ex", "stdin": {"tool_name": "mcp__kaimon__manage_repl", "tool_input": {"command": "shutdown"}}, "decision": "deny"}
+{"tool": "mcp__kaimon__ex", "stdin": {"tool_name": "mcp__kaimon__manage_repl", "tool_input": {"command": "restart", "ses": "a1b2c3d4"}}, "decision": "deny"}
+{"tool": "mcp__kaimon__ex", "stdin": {"tool_name": "mcp__kaimon__ex", "tool_input": {"e": "1 + 1", "q": false, "ses": "a1b2c3d4"}}, "decision": "pass"}
+{"tool": "mcp__kaimon__ex", "stdin": {"tool_name": "mcp__kaimon__manage_repl", "tool_input": {"command": "shutdown", "session": "a1b2c3d4"}}, "decision": "pass"}
+{"tool": "mcp__kaimon__ex", "stdin": {"tool_name": "mcp__kaimon__check_eval", "tool_input": {"eval_id": "e1f2a3b4"}}, "decision": "pass"}
+{"tool": "mcp__kaimon__ex", "stdin": {"tool_name": "mcp__kaimon__start_session", "tool_input": {"project_path": "/x"}}, "decision": "pass"}
+{"tool": "mcp__kaimon__ex", "stdin": {"tool_name": "mcp__other__ex", "tool_input": {"e": "1"}}, "decision": "pass"}
+{"tool": "mcp__kaimon__ex", "stdin": {"tool_name": "mcp__kaimon__ex", "tool_input": "e"}, "decision": "deny", "differs": "The guard denies a Kaimon payload whose tool_input is no object; kaimon-session.py let it through."}
+{"tool": "mcp__kaimon__ex", "stdin": {"tool_name": "mcp__kaimon__ex", "tool_input": {"e": "1"}}, "decision": "deny"}
+{"tool": "mcp__kaimon__ex", "stdin": "not json at all", "decision": "deny", "differs": "The guard denies a payload that is not JSON; rm-scope.py and directory-scope.py asked on it, and kaimon-session.py and the other Bash scripts let it through."}
+{"tool": "EnterWorktree", "stdin": {"tool_name": "EnterWorktree", "tool_input": {"path": "~/Research"}}, "decision": "pass"}
+{"tool": "EnterWorktree", "stdin": {"tool_name": "EnterWorktree", "tool_input": {"path": "~/Research/"}}, "decision": "pass"}
+{"tool": "EnterWorktree", "stdin": {"tool_name": "EnterWorktree", "tool_input": {"path": "~/Research/Packages/Other"}}, "decision": "pass"}
+{"tool": "EnterWorktree", "stdin": {"tool_name": "EnterWorktree", "tool_input": {"path": "~/Research/.worktrees/Foo-bar"}}, "decision": "pass"}
+{"tool": "EnterWorktree", "stdin": {"tool_name": "EnterWorktree", "tool_input": {"path": "@@PKG@@/src/"}}, "decision": "pass"}
+{"tool": "EnterWorktree", "stdin": {"tool_name": "EnterWorktree", "tool_input": {"path": "~/Research/does/not/exist"}}, "decision": "pass"}
+{"tool": "EnterWorktree", "stdin": {"tool_name": "EnterWorktree", "tool_input": {"path": "~/ResearchX"}}, "decision": "ask"}
+{"tool": "EnterWorktree", "stdin": {"tool_name": "EnterWorktree", "tool_input": {"path": "~/Research/../.ssh"}}, "decision": "ask"}
+{"tool": "EnterWorktree", "stdin": {"tool_name": "EnterWorktree", "tool_input": {"path": "~/Research/Packages/../../Downloads"}}, "decision": "ask"}
+{"tool": "EnterWorktree", "stdin": {"tool_name": "EnterWorktree", "tool_input": {"path": "@@LINK@@"}}, "decision": "ask"}
+{"tool": "EnterWorktree", "stdin": {"tool_name": "EnterWorktree", "tool_input": {"path": "@@LINK@@/etc"}}, "decision": "ask"}
+{"tool": "EnterWorktree", "stdin": {"tool_name": "EnterWorktree", "tool_input": {"path": "~"}}, "decision": "ask"}
+{"tool": "EnterWorktree", "stdin": {"tool_name": "EnterWorktree", "tool_input": {"path": "/"}}, "decision": "ask"}
+{"tool": "EnterWorktree", "stdin": {"tool_name": "EnterWorktree", "tool_input": {"path": "~/.claude"}}, "decision": "ask"}
+{"tool": "EnterWorktree", "stdin": {"tool_name": "EnterWorktree", "tool_input": {"path": "Research/Packages"}}, "decision": "ask"}
+{"tool": "EnterWorktree", "stdin": {"tool_name": "EnterWorktree", "tool_input": {"path": ""}}, "decision": "ask"}
+{"tool": "EnterWorktree", "stdin": {"tool_name": "EnterWorktree", "tool_input": {"path": 123}}, "decision": "ask"}
+{"tool": "EnterWorktree", "stdin": {"tool_name": "EnterWorktree", "tool_input": {}}, "decision": "ask"}
+{"tool": "EnterWorktree", "stdin": {"tool_name": "EnterWorktree", "other": 1}, "decision": "deny", "differs": "The guard denies a directory payload without a tool_input; directory-scope.py asked on it."}
+{"tool": "EnterWorktree", "stdin": "not json at all", "decision": "deny", "differs": "The guard denies a payload that is not JSON; rm-scope.py and directory-scope.py asked on it, and kaimon-session.py and the other Bash scripts let it through."}
+{"tool": "EnterWorktree", "stdin": "", "decision": "deny", "differs": "The guard denies an empty payload; rm-scope.py and directory-scope.py asked on it, and the other scripts let it through."}
+{"tool": "EnterWorktree", "stdin": "[1]", "decision": "deny", "differs": "The guard denies a payload whose top level is no object; directory-scope.py asked on it."}
+{"tool": "EnterWorktree", "stdin": {"tool_name": "EnterWorktree", "tool_input": {"name": "ci/metal"}}, "decision": "pass"}
+{"tool": "EnterWorktree", "stdin": {"tool_name": "EnterWorktree", "tool_input": {"path": "~/Downloads"}}, "decision": "ask"}
+{"tool": "EnterWorktree", "stdin": {"tool_name": "EnterWorktree", "tool_input": {"name": 1}}, "decision": "ask"}
+{"tool": "EnterWorktree", "stdin": {"tool_name": "ExitWorktree", "tool_input": {"action": "keep"}}, "decision": "pass"}
+{"tool": "EnterWorktree", "stdin": {"tool_name": "ExitWorktree", "tool_input": {"action": "keep", "discard_changes": true}}, "decision": "ask"}
+{"tool": "EnterWorktree", "stdin": {"tool_name": "ExitWorktree", "tool_input": {"action": "remove"}}, "decision": "ask"}
+{"tool": "EnterWorktree", "stdin": {"tool_name": "ExitWorktree", "tool_input": {"action": "remove", "discard_changes": true}}, "decision": "ask"}
+{"tool": "EnterWorktree", "stdin": {"tool_name": "ExitWorktree", "tool_input": {}}, "decision": "ask"}
+{"tool": "EnterWorktree", "stdin": {"tool_name": "mcp__ccd_directory__change_directory", "tool_input": {"path": "~/Research/Tasks"}}, "decision": "pass"}
+{"tool": "EnterWorktree", "stdin": {"tool_name": "mcp__ccd_directory__request_directory", "tool_input": {}}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "other": 1}, "decision": "deny", "differs": "The guard denies a Bash payload without a tool_input; rm-scope.py asked on it, and the other Bash scripts let it through."}
+{"tool": "WebFetch", "stdin": {"tool_name": "WebFetch", "tool_input": {"url": "https://example.org"}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": ""}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "echo x > f.txt"}}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api -X POST repos/example-org/X/issues -f title=t && git add -A"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_input": {"command": "ls"}, "cwd": "@@CWD@@"}, "decision": "deny", "differs": "The guard denies a payload without a tool_name; the Bash scripts read only the command and let it through."}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": "ls", "cwd": "@@CWD@@"}, "decision": "deny", "differs": "The guard denies a Bash payload whose tool_input is no object; rm-scope.py asked on it, and the other Bash scripts let it through."}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "cd /x && git init"}}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git status"}}, "decision": "pass"}
+{"tool": "mcp__kaimon__manage_repl", "stdin": {"tool_name": "mcp__kaimon__manage_repl", "tool_input": {"command": "x", "session": " "}}, "decision": "deny"}
+{"tool": "ExitWorktree", "stdin": {"tool_name": "ExitWorktree", "tool_input": []}, "decision": "deny", "differs": "The guard denies a directory payload whose tool_input is no object; directory-scope.py asked on it."}
+{"tool": "Edit", "stdin": {"tool_name": "Edit", "tool_input": {"file_path": "x.jl"}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "echo x # c\ngit add -A"}, "cwd": "@@CWD@@"}, "decision": "deny", "differs": "The guard ends a comment at the newline, as the shell does, so `git add -A` is a segment of its own; shlex read the comment through the newline and joined the next line to the echo."}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git add $'-A'"}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git add \\\n-A"}, "cwd": "@@CWD@@"}, "decision": "deny", "differs": "The guard joins a backslash-newline, as the shell does, so `-A` is an argument of `git add`; shlex kept the newline in the word `\\n-A`."}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "cat <<'EOF'\ngit add -A\nEOF"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git add \"-\"A"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git add foo#bar -A"}, "cwd": "@@CWD@@"}, "decision": "deny", "differs": "The guard reads a `#` inside a word as part of the word, as the shell does; shlex read it as a comment and hid `-A`."}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git add ';' -A"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git status # $(gh pr list)"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh pr view 3 \\\n| cat"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "echo $'x' && git push"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "cat <<EOF\n$(gh pr list)\nEOF"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh pr list '|' cat"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git push # ; ls"}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git fetch \"origin\" '>' x"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api repos/o/r/issues -f title=x # a comment"}, "cwd": "@@CWD@@"}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api $'repos/o/r/issues' -f title=x"}, "cwd": "@@CWD@@"}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api repos/o/r/issues \\\n -f title=x"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api -X \\\nDELETE repos/o/r"}, "cwd": "@@CWD@@"}, "decision": "deny", "differs": "The guard joins a backslash-newline, as the shell does, so the method is DELETE; shlex kept the newline in the word `\\nDELETE`, and the write asked."}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api \"repos/o/r/pulls/3/comments\" -f body=\"a \\\"b\\\"\""}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api graphql --input - <<'EOF'\n{\"query\": \"mutation { x }\"}\nEOF"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "rm -rf ~/Research/Papers # x"}, "cwd": "@@PKG@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "rm -rf $'~/Research/Papers'"}, "cwd": "@@PKG@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "rm -rf \\\n~/Research/Papers"}, "cwd": "@@PKG@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "cat <<'EOF'\nrm -rf ~/Research\nEOF"}, "cwd": "@@PKG@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "rm -rf \"$HOME\"/Research/Papers"}, "cwd": "@@PKG@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "ls foo#bar; rm -rf ~/Research/Papers"}, "cwd": "@@PKG@@"}, "decision": "deny", "differs": "The guard reads a `#` inside a word as part of the word, as the shell does; shlex read it as a comment and hid the rm."}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git archive HEAD # -o x.tar"}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git archive $'-o' x.tar HEAD"}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git archive \\\n-o x.tar HEAD"}, "cwd": "@@CWD@@"}, "decision": "deny", "differs": "The guard joins a backslash-newline, as the shell does, so `-o` is an option of `git archive`; shlex kept the newline in the word `\\n-o`."}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git archive HEAD#x -o x.tar"}, "cwd": "@@CWD@@"}, "decision": "deny", "differs": "The guard reads a `#` inside a word as part of the word, as the shell does; shlex read it as a comment and hid `-o`."}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git archive \"-o\" x.tar HEAD"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "cat <<'EOF'\ngit archive -o x.tar HEAD\nEOF"}, "cwd": "@@CWD@@"}, "decision": "deny"}

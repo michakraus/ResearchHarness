@@ -9,23 +9,26 @@ hide a case that went the wrong way. Exit status is 1 when any case is wrong.
 With no argument it runs every group of GROUPS; with names, only those groups. Each run
 builds its own fixture.
 
-A case is (script, command, expected exit). Exit 2 refuses the call; exit 0 lets it
-through. The fail-open block at the end matters more than the refusals: a `PreToolUse`
-hook on the `Bash` matcher runs before every shell command in every session, so an input
-its author did not foresee must exit 0.
+A case gives a hook a payload and compares its answer: exit 2 refuses the call, exit 0
+lets it through or answers with a JSON decision. The group `commands` runs the guard
+package on each record of `tests/guard/corpus.jsonl` and on its edges; the guard fails
+closed, so a payload it cannot read is refused.
 
 The hooks run against a fixture `HOME`, never the real one, so the cases mean the same on
 every machine and in CI. Each Python hook runs with this interpreter, `sys.executable`, not
 with its shebang, and each call has a timeout.
 """
 
+import contextlib
 import getpass
 import importlib.util
+import io
 import json
 import os
 import pathlib
 import pwd
 import re
+import runpy
 import shlex
 import shutil
 import subprocess
@@ -34,7 +37,7 @@ import tempfile
 import types
 from collections.abc import Callable
 from dataclasses import replace
-from typing import Any, Literal, TypedDict, Unpack
+from typing import Any, Literal, TextIO, TypedDict, Unpack, cast
 
 HOOKS = os.path.dirname(os.path.abspath(__file__)) + "/"
 
@@ -62,321 +65,14 @@ ENV = {**CLEAN, "HOME": HOME}
 q = shlex.quote  # a fixture path spliced into a command, for a `$TMPDIR` with a space
 TIMEOUT = 30  # seconds per hook call; a timeout is a wrong case
 
-WRITE = HOOKS + "no-shell-file-write.py"
-SANDBOX = HOOKS + "sandbox-semantics.py"
-STAGE = HOOKS + "no-blind-stage.py"
 WORKTREE = HOOKS + "worktree.py"
-GHAPI = HOOKS + "gh-api-writes.py"
-DIRSCOPE = HOOKS + "directory-scope.py"
-ARCHIVE = HOOKS + "git-archive-output.py"
 
-CASES = [
-    (WRITE, "echo 'x = 1' > src/Foo.jl", 2),
-    (WRITE, "cat template.jl >> src/Foo.jl", 2),
-    (WRITE, "printf 'a' > CHANGELOG.md", 2),
-    (WRITE, "cd ~/Research && echo x > Packages/Example/Project.toml", 2),
-    (WRITE, "echo x >src/Foo.jl", 2),
-    (WRITE, "sed -i.bak 's/a/b/' src/Foo.jl", 2),
-    (WRITE, "sed -Ei 's/a/b/' src/Foo.jl", 2),
-    (WRITE, "sed --in-place=.bak 's/a/b/' f.jl", 2),
-    (WRITE, "perl -i.bak -pe 's/a/b/' src/Foo.jl", 2),
-    (WRITE, "perl -ni -e 'print' src/Foo.jl", 2),
-    (WRITE, "awk -i inplace '{print}' f.jl", 2),
-    (WRITE, "julia x.jl | tee report.md", 2),
-    (WRITE, "cat a.md b.md > combined.md", 2),
-    (WRITE, "gh pr view 3 > notes.md", 2),
-    (WRITE, "cat > docs/src/index.md <<'EOF'", 2),
-    (WRITE, "julia script.jl > $TMPDIR/out.log", 0),
-    (WRITE, "echo '{\"a\":1}' > $TMPDIR/x.json", 0),
-    (WRITE, "gh pr view 3 > /tmp/claude/pr.json", 0),
-    (WRITE, "julia x.jl > results.txt", 2),
-    (WRITE, "ls -la > /dev/null", 0),
-    (WRITE, "julia x.jl 2>&1 | tail -5", 0),
-    (WRITE, "perl -Ilib -e 'print 1'", 0),
-    (WRITE, "sed -n '5,10p' src/Foo.jl", 0),
-    (WRITE, "sed -e 's/a/b/' src/Foo.jl", 0),
-    (WRITE, "awk -f script.awk data.txt", 0),
-    (WRITE, "git commit -m 'fix > bug in notes.md'", 0),
-    (WRITE, "julia -e 'println(\"a > b.md\")'", 0),
-    (WRITE, "grep -n pattern src/Foo.jl | tee $TMPDIR/hits.txt", 0),
-    (WRITE, "cat src/Foo.jl", 0),
-    (WRITE, "echo x > $OUT", 0),
-    (WRITE, 'echo "unbalanced > f.jl', 0),
-    (WRITE, "cat > ~/Research/.scratch/pr3/probe.jl <<'EOF'", 0),
-    (WRITE, "cat > $HOME/Research/.scratch/probe.jl <<'EOF'", 0),
-    (WRITE, "cat > " + q(HOME + "/Research/.scratch/probe.jl") + " <<'EOF'", 0),
-    (WRITE, "cat > ~/Research/Packages/Example/src/Foo.jl <<'EOF'", 2),
-    # The loop benchmark's builders, 2026-09-29, and the shapes around them. The cwd is `CWD`,
-    # which is in the fixture's `Harness` work tree.
-    (WRITE, "cat > static.jl <<'EOF'\nx = 1\nEOF", 2),
-    (WRITE, "cd ~/Research/Packages/Example/src && cat > static.jl <<'EOF'\nx = 1\nEOF", 2),
-    (
-        WRITE,
-        "cd ~/Research/Packages/Example; printf '%s\\n' '' '- floor τ / |φ′(0)|; `α > 0`' >> CHANGELOG.md",
-        2,
-    ),
-    (WRITE, "python3 - <<'EOF'\np='backtracking.jl'\ns=open(p).read()\nopen(p,'w').write(s)\nEOF", 2),
-    (WRITE, "python3 - <<'EOF' 2>&1\nopen('src/x.jl', mode='a')\nEOF", 2),
-    (WRITE, "python3 -c \"open('src/x.jl','w').write('x')\"", 2),
-    (WRITE, "python3 -c \"from pathlib import Path; Path('README.md').write_text('x')\"", 2),
-    (WRITE, "echo x &> out.log", 2),
-    (WRITE, "echo x >| notes.txt", 2),
-    (WRITE, "echo x >& notes.txt", 2),
-    (WRITE, "echo x | tee -a CHANGELOG.md", 2),
-    (WRITE, "(cd .. && echo x) > f.md", 2),
-    (WRITE, "echo x > f.jl; echo \"it's", 2),
-    (WRITE, "cd $W && echo x > src/Foo.jl", 2),
-    (WRITE, "cd ~/Research/.scratch/loop-bench/l3/grade-1 && cat > probe_budget.jl <<'EOF'\nx > 1\nEOF", 0),
-    (WRITE, "julia x.jl > ~/Research/.scratch/loop-bench/l1/run.log 2>&1", 0),
-    (WRITE, "git show origin/main:src/X.jl > ~/Research/.scratch/l1/GS_main.jl", 0),
-    (WRITE, "julia x.jl 2>&1 | tee /tmp/claude/test.log", 0),
-    (WRITE, "cat > /private/tmp/claude/p.jl <<'EOF'\necho y > z.jl\nEOF", 0),
-    (WRITE, "cd $W && echo x > out.log", 0),
-    (WRITE, "cd \"$TMPDIR\" && jq '.a | .b; .c' s.json > clean.json", 0),
-    (WRITE, "S=/private/tmp/claude/scratchpad; cd $S && python3 -c \"open('dump.jl','w')\"", 0),
-    (WRITE, "cd " + q(TOOL) + " && julia x.jl > hooks/__pycache__/a3.log 2>&1", 0),
-    (WRITE, "cd " + q(TOOL) + " && cat > .scratch/q.graphql <<'EOF'\nquery\nEOF", 2),
-    (WRITE, "awk -F'include' '{split($1,a,\":\"); print a[1]}' f.txt", 0),
-    (WRITE, "sed -i.bak 's/a/b/; s/c/d/' \"$TMPDIR/check.jl\"", 0),
-    (WRITE, "cd \"$TMPDIR\" && sed -i '' -e 's|a|b|' seam_probe.jl", 0),
-    (WRITE, "SP=/private/tmp/claude/x; sed -i.bak 's|a|b|' $SP/probe.jl", 0),
-    (WRITE, "perl -pi -e 's/a/b/' *.jl", 2),
-    (WRITE, "cd ~/Research/Packages/Example && sed -i '' 's|a|b|; s|c|d|' Project.toml", 2),
-    (WRITE, "cd ~/.claude && printf '%s\\n' '- a; b' >> CLAUDE.md", 2),
-    (WRITE, "cd ~/Research && echo x > census.txt", 0),
-    (WRITE, "cd ~/Research && cat >> CLAUDE.md <<'EOF'\nx\nEOF", 2),
-    (WRITE, "echo x >&2", 0),
-    (WRITE, "julia x.jl 2>/dev/null", 0),
-    (WRITE, "echo x # > f.jl", 0),
-    (WRITE, "grep -n 'a > b' src/Foo.jl", 0),
-    (WRITE, "julia -e 'f = x -> x > 1; println(f(2) >= 1)'", 0),
-    (WRITE, 'git commit -m "a > b.md; echo x > c.jl"', 0),
-    (WRITE, "git commit -m \"$(cat <<'EOF'\nfix: echo x > f.jl\nEOF\n)\"", 0),
-    (WRITE, "python3 -c \"open('" + HOME + "/Research/.scratch/l1/sw_head.txt','w').write('x')\"", 0),
-    (WRITE, "python3 - <<'EOF'\nprint(open('src/x.jl').read())\nEOF", 0),
-    (WRITE, "python3 -c \"import sys; open(sys.argv[1],'w')\" f.jl", 0),
-    (WRITE, "python3 - <<'EOF'\nfor p in ['a.jl']:\n    open(p, 'w')\nEOF", 0),
-    (WRITE, 'julia -e \'write("f.jl", "x")\'', 0),
-    (SANDBOX, "echo $(gh run view 1)", 2),
-    (SANDBOX, "for r in a b; do gh run list -R x/$r; done", 2),
-    (SANDBOX, "until gh run view 1 --json status; do sleep 30; done", 2),
-    (SANDBOX, "while ! glab ci status; do sleep 10; done", 2),
-    (SANDBOX, "x=$(git commit -m msg)", 2),
-    (SANDBOX, 'echo "$(cd repo && git push origin main)"', 2),
-    (SANDBOX, "echo `gh api repos/x`", 2),
-    (SANDBOX, 'julia x.jl ; echo "exit=$?"', 2),
-    (SANDBOX, "julia x.jl; echo $?", 2),
-    (SANDBOX, 'git commit -m msg ; echo "exit=$?"', 2),
-    (SANDBOX, "ps aux ; echo $?", 2),
-    (SANDBOX, "git status; echo $?", 2),
-    (SANDBOX, "cd ~/Research/Packages/Foo && git add src/Foo.jl", 2),
-    (SANDBOX, "cd ~/Research/Packages/Foo && gh pr create --fill", 2),
-    (SANDBOX, "gh pr list | cat", 2),
-    (SANDBOX, "gh run watch 1 --exit-status | tail -20", 2),
-    (SANDBOX, "gh api rate_limit > out.json", 2),
-    (SANDBOX, "gh api rate_limit 2>/dev/null", 2),
-    (SANDBOX, "gh api rate_limit < /dev/null", 2),
-    (SANDBOX, "gh pr create --body-file - <<'EOF'\nbody\nEOF", 2),
-    (SANDBOX, "git fetch origin 2>&1 | tail -5", 2),
-    (SANDBOX, "git fetch origin; echo done", 2),
-    (SANDBOX, "gh pr comment 3 -R o/r --body 'see `f` here'", 2),
-    (SANDBOX, "gh pr review 3 -R o/r --comment --body 'a\n\n`b`\n'", 2),
-    (SANDBOX, "gh pr create --title \"Fix `f`\" --body 'it doesn't'", 2),
-    (SANDBOX, "julia -e 'x = \"`\"' 'it doesn't", 0),
-    (SANDBOX, 'gh pr view 34 -R "$(git remote get-url origin)" --json state', 2),
-    (SANDBOX, "git commit -m \"$(cat <<'EOF'\nuse `f`\nEOF\n)\"", 0),
-    (SANDBOX, "gh pr comment 3 -R o/r --body-file /tmp/claude/body.md", 0),
-    (SANDBOX, "git log -1 --format='`%h`'", 0),
-    (SANDBOX, "echo $(git rev-parse HEAD)", 0),
-    (SANDBOX, "echo $(git branch --show-current)", 0),
-    (SANDBOX, "gh pr view 3", 0),
-    (SANDBOX, "gh api rate_limit 2>&1", 0),
-    (SANDBOX, "gh pr view 3 >&2", 0),
-    (SANDBOX, "git fetch origin 2>&1", 0),
-    (SANDBOX, "git fetch origin && git status --short", 0),
-    (SANDBOX, "git fetch origin | git status --short", 0),
-    (SANDBOX, "cd " + q(CWD) + " && git fetch origin", 0),
-    (SANDBOX, 'git commit -m "a; b > c"', 0),
-    (SANDBOX, "git log --oneline | head -5", 0),
-    (SANDBOX, "git status > $TMPDIR/status.txt", 0),
-    (SANDBOX, "ps aux", 0),
-    (SANDBOX, "for f in *.jl; do julia $f; done", 0),
-    (SANDBOX, "echo $(ls -1 | wc -l)", 0),
-    (SANDBOX, 'echo "what? $x"', 0),
-    (SANDBOX, "git init ~/Research/.scratch/r48probe", 2),
-    (SANDBOX, "git init -q -b main " + q(HOME + "/Research/.scratch/gitinit-probe"), 2),
-    (SANDBOX, 'git init "$HOME/Research/.scratch/x"', 2),
-    (
-        SANDBOX,
-        "git clone -q https://github.com/example-org/Example.jl.git "
-        + q(HOME + "/Research/Packages/Example"),
-        2,
-    ),
-    (SANDBOX, "git clone " + q(HOME + "/Research/.worktrees/X-origin.git") + " X", 2),
-    (SANDBOX, "git worktree add ~/Research/.worktrees/X-y -b fix/y origin/main", 2),
-    (SANDBOX, "git worktree add --detach " + q(HOME + "/Research/.worktrees/X-probe") + " origin/main", 2),
-    (SANDBOX, "git worktree add ../X-y -b y origin/main", 2),
-    (SANDBOX, "git worktree move wt $HOME/wt", 2),
-    (SANDBOX, "git bundle create /tmp/x.bundle main", 2),
-    (SANDBOX, "git worktree list", 0),
-    (SANDBOX, "git worktree remove " + q(HOME + "/Research/.worktrees/X-y"), 0),
-    (SANDBOX, "git bundle verify /tmp/x.bundle", 0),
-    (SANDBOX, "git log -- ../x", 0),
-    (SANDBOX, "git init --bare --initial-branch=main " + q(HOME + "/Research/.worktrees/X-origin.git"), 0),
-    (
-        SANDBOX,
-        "git clone --mirror https://github.com/example-org/X.jl.git " + q(HOME + "/Research/.scratch/X.git"),
-        0,
-    ),
-    (STAGE, "git add -nA", 2),
-    (STAGE, "git add src/Foo.jl src/Bar.jl", 0),
-    (STAGE, "git add src/Abc.jl", 0),
-    (STAGE, 'git commit -m "record the probes\ngit add -nA is still refused\n\nCo-Authored-By: x"', 0),
-    (STAGE, "git commit -m 'a; git add -A | b'", 0),
-    (STAGE, "git status && git add -nA", 2),
-    (STAGE, "git status\ngit add -nA", 2),
-    (STAGE, "(git add -nA)", 2),
-    (STAGE, "git add -nA; echo \"it's", 2),
-    (ARCHIVE, "git archive -o base.tar origin/main", 2),
-    (ARCHIVE, "git archive --format=tar --prefix=base/ origin/main -o " + q(R + "/.scratch/base.tar"), 2),
-    (ARCHIVE, "git archive --output=" + q(R + "/.scratch/base.tar") + " origin/main", 2),
-    (ARCHIVE, "git archive --output " + q(R + "/.scratch/base.tar") + " origin/main", 2),
-    (ARCHIVE, "git archive --out=base.tar HEAD", 2),
-    (ARCHIVE, "git archive -obase.tar HEAD", 2),
-    (ARCHIVE, "git archive -vo base.tar HEAD", 2),
-    (ARCHIVE, "git archive -9o base.tar HEAD", 2),
-    (ARCHIVE, "git -C " + q(WT) + " archive -o base.tar HEAD", 2),
-    (ARCHIVE, "GIT_PAGER=cat git archive -o base.tar HEAD", 2),
-    (ARCHIVE, "/usr/bin/git archive -o base.tar HEAD", 2),
-    (
-        ARCHIVE,
-        "mkdir -p base && cd " + q(WT) + " && git archive -o ../base.tar origin/main && tar -xf ../base.tar",
-        2,
-    ),
-    (ARCHIVE, "git archive origin/main | tar -x -C base", 0),
-    (ARCHIVE, "git archive --format=tar --prefix=pkg/ HEAD -- src", 0),
-    (ARCHIVE, "git archive HEAD -- docs/-o.md", 0),
-    (ARCHIVE, "git archive HEAD -- -o", 0),
-    (ARCHIVE, "git archive -l", 0),
-    (ARCHIVE, "git archive --remote=origin HEAD", 0),
-    (ARCHIVE, "git log -o x", 0),
-    (ARCHIVE, "git commit -m 'git archive -o x.tar HEAD'", 0),
-    (ARCHIVE, "tar -cf archive.tar -o src", 0),
-]
-
-# `kaimon-session.py`: (payload, expected exit). An `ex` without `ses` and a `manage_repl` without
-# `session` are refused; a call with its key, `check_eval`, another tool and unreadable input pass.
-KAIMON = HOOKS + "kaimon-session.py"
-KAIMON_CASES = [
-    ('{"tool_name":"mcp__kaimon__ex","tool_input":{"e":"1 + 1"}}', 2),
-    ('{"tool_name":"mcp__kaimon__ex","tool_input":{"e":"1 + 1","ses":""}}', 2),
-    ('{"tool_name":"mcp__kaimon__ex","tool_input":{"e":"1 + 1","session":"a1b2c3d4"}}', 2),
-    ('{"tool_name":"mcp__kaimon__manage_repl","tool_input":{"command":"shutdown"}}', 2),
-    ('{"tool_name":"mcp__kaimon__manage_repl","tool_input":{"command":"restart","ses":"a1b2c3d4"}}', 2),
-    ('{"tool_name":"mcp__kaimon__ex","tool_input":{"e":"1 + 1","q":false,"ses":"a1b2c3d4"}}', 0),
-    ('{"tool_name":"mcp__kaimon__manage_repl","tool_input":{"command":"shutdown","session":"a1b2c3d4"}}', 0),
-    ('{"tool_name":"mcp__kaimon__check_eval","tool_input":{"eval_id":"e1f2a3b4"}}', 0),
-    ('{"tool_name":"mcp__kaimon__start_session","tool_input":{"project_path":"/x"}}', 0),
-    ('{"tool_name":"mcp__other__ex","tool_input":{"e":"1"}}', 0),
-    ('{"tool_name":"mcp__kaimon__ex","tool_input":"e"}', 0),
-    ('{"tool_input":{"e":"1"}}', 0),
-    ("not json at all", 0),
-]
-
-# `sandbox-semantics.py` with another working directory: a `git init` or `git clone` inside a work
-# tree is refused, one in a directory that is no work tree passes. `CWD` is a work tree of the
-# fixture; `.scratch` and `Packages` are not.
+# The guard package, run as the settings template runs it, on the differential corpus that holds
+# the cases of the guard scripts it replaced for Claude Code. Each record is one JSON object per line:
+# `stdin` (an object, sent as its JSON text, or a string, sent as it is) and `decision`, the guard's
+# expected decision; a placeholder `@@<NAME>@@` in a string stands for the fixture's value of NAME.
+GUARD = HOOKS + "guard"
 SCRATCH = R + "/.scratch"
-SANDBOX_CWD_CASES = [
-    (CWD, "git init", 2),
-    (CWD, "git init -q r48probe", 2),
-    (TOOL, "git init", 2),
-    (PKG + "/src", "git init probe", 2),
-    (CWD, "git clone https://github.com/example-org/X.jl.git X", 2),
-    (CWD, "git clone git@github.com:example-org/X.jl.git", 2),
-    (CWD, "git -c init.defaultBranch=main init probe", 2),
-    (SCRATCH, "git init", 0),
-    (SCRATCH, "git init -q r48probe", 0),
-    (SCRATCH, "git clone https://github.com/example-org/X.jl.git X", 0),
-    (SCRATCH, "git clone git@github.com:example-org/X.jl.git", 0),
-    (R + "/Packages", "git clone https://github.com/example-org/X.jl.git X", 0),
-    (CWD, "git init --bare " + q(R + "/.worktrees/X-origin.git"), 0),
-    (CWD, "git clone --mirror https://github.com/example-org/X.jl.git " + q(SCRATCH + "/X.git"), 0),
-    (CWD, "git status", 0),
-    (CWD, "git diff --no-index a.jl b.jl", 0),
-]
-
-# `gh-api-writes.py` answers on stdout as well as by exit status: "ask" is a JSON decision
-# with exit 0, "deny" is exit 2, and "pass" is exit 0 with no output.
-GHAPI_CASES = [
-    ("gh api -X GET search/code -f q=foo", "pass"),
-    ("gh api search/issues -f q=is:open", "pass"),
-    ("gh api repos/o/r/pulls/3", "pass"),
-    ("gh api 'repos/o/r/pulls?state=open'", "pass"),
-    ("gh api graphql -f query='{viewer{login}}'", "pass"),
-    ("gh api repos/o/r/pulls/3/reviews --input review.json", "pass"),
-    ("gh api -X PUT repos/o/r/pulls/3/reviews/77 -f body=x", "pass"),
-    ("gh api repos/o/r/pulls/3/reviews/77/events -f event=COMMENT", "pass"),
-    ("gh api repos/o/r/pulls/3/comments -F line=4 -f body=x", "pass"),
-    ("gh api repos/o/r/pulls/3/comments/991/replies -f body=x", "pass"),
-    ("gh api repos/{owner}/{repo}/pulls/3/comments/$ID/replies --input r.json", "pass"),
-    ("gh api --method POST /repos/o/r/issues/3/comments -f body=x", "pass"),
-    ("gh api repos/o/r/commits/abc123/comments --input notes.json", "pass"),
-    (
-        "gh api graphql -f query='query { search(query:\"is:pr\", type: ISSUE, first: 5) { issueCount } }'",
-        "pass",
-    ),
-    (
-        "gh api graphql -f query='{ search(query:\"mutation\", type: ISSUE, first: 1) { issueCount } }'",
-        "pass",
-    ),
-    (
-        "gh api graphql -F owner=o -f query='query($owner:String!){ repository(owner:$owner, name:\"r\"){ id } }'",
-        "pass",
-    ),
-    (
-        'gh api graphql -f query=\'mutation { addPullRequestReviewThreadReply(input:{pullRequestReviewThreadId:"T", body:"x"}) { comment { id } } }\'',
-        "pass",
-    ),
-    (
-        "gh api graphql -f query='mutation($t:ID!){ a: resolveReviewThread(input:{threadId:$t}){ thread { id } } b: resolveReviewThread(input:{threadId:\"U\"}){ thread { id } } }' -f t=T",
-        "pass",
-    ),
-    (
-        "gh api graphql -f query='mutation { mergePullRequest(input:{pullRequestId:\"P\"}) { clientMutationId } }'",
-        "ask",
-    ),
-    (
-        'gh api graphql -f query=\'mutation { resolveReviewThread(input:{threadId:"T"}) { thread { id } } updateIssueComment(input:{id:"C", body:"x"}) { issueComment { id } } }\'',
-        "ask",
-    ),
-    ("gh api graphql -f query='mutation { ...F }'", "ask"),
-    ("gh api graphql -F query=@mutation.graphql", "ask"),
-    ("gh api graphql --input request.json", "ask"),
-    ("gh api graphql -f owner=o", "ask"),
-    ("gh api repos/o/r/issues -f title=x", "ask"),
-    ("gh api repos/o/r/issues --raw-field title=x", "ask"),
-    ("gh api repos/o/r/issues --field=title=x", "ask"),
-    ("gh api --method=PUT repos/o/r/branches/main/protection --input p.json", "ask"),
-    ("gh api -XPATCH repos/o/r -F has_wiki=false", "ask"),
-    ("gh api repos/o/r/contents/README.md -X PUT -f message=x", "ask"),
-    ("gh api -X PATCH repos/o/r/issues/comments/5 -f body=x", "ask"),
-    ("gh api repos/o/r/pulls/3/reviews -X DELETE", "deny"),
-    ("cd /x && gh api repos/o/r/labels -f name=x", "ask"),
-    ("gh api repos/o/r/git/refs/heads/x -X DELETE", "deny"),
-    ("gh api -XDELETE repos/o/r/issues/comments/5", "deny"),
-    ("gh api --method=delete repos/o/r/git/refs/heads/x", "deny"),
-    ("gh api -X DELETE repos/o/r/branches/main/protection", "deny"),
-    ("glab api -X DELETE projects/1/repository/branches/topic", "deny"),
-    ("glab api projects/grp%2Fproj/repository/branches/fix%2Fx -X DELETE", "deny"),
-    ("glab api -X DELETE projects/1", "deny"),
-    ("glab api -XDELETE projects/1/protected_branches/main", "deny"),
-    ("glab api --method delete projects/1/issues/4", "deny"),
-    ("glab api projects/1/repository/branches", "pass"),
-    ("glab api projects/1/issues -f title=x", "pass"),
-    ("git commit -m 'gh api repos/o/r/issues -f title=x'", "pass"),
-    ("echo gh api", "pass"),
-]
 
 # `worktree.py` is not a `PreToolUse` hook: it fails closed, so every case here expects 1.
 # Creation needs an unsandboxed git and is probed by `EnterWorktree`, not here.
@@ -484,149 +180,8 @@ def manifest_cases():
     return total, wrong
 
 
-# `directory-scope.py` fails closed to "ask", so a payload it cannot read expects "ask".
 # `LINK` is a symlink inside the tree that points out of it, made by `fixture`.
 LINK = R + "/probe-link-out"
-DIRSCOPE_CASES = [
-    ('{"tool_input":{"path":"~/Research"}}', "pass"),
-    ('{"tool_input":{"path":"~/Research/"}}', "pass"),
-    ('{"tool_input":{"path":"~/Research/Packages/Other"}}', "pass"),
-    ('{"tool_input":{"path":"~/Research/.worktrees/Foo-bar"}}', "pass"),
-    ('{"tool_input":{"path":"' + PKG + '/src/"}}', "pass"),
-    ('{"tool_input":{"path":"~/Research/does/not/exist"}}', "pass"),
-    ('{"tool_input":{"path":"~/ResearchX"}}', "ask"),
-    ('{"tool_input":{"path":"~/Research/../.ssh"}}', "ask"),
-    ('{"tool_input":{"path":"~/Research/Packages/../../Downloads"}}', "ask"),
-    ('{"tool_input":{"path":"' + LINK + '"}}', "ask"),
-    ('{"tool_input":{"path":"' + LINK + '/etc"}}', "ask"),
-    ('{"tool_input":{"path":"~"}}', "ask"),
-    ('{"tool_input":{"path":"/"}}', "ask"),
-    ('{"tool_input":{"path":"~/.claude"}}', "ask"),
-    ('{"tool_input":{"path":"Research/Packages"}}', "ask"),
-    ('{"tool_input":{"path":""}}', "ask"),
-    ('{"tool_input":{"path":123}}', "ask"),
-    ('{"tool_input":{}}', "ask"),
-    ('{"other":1}', "ask"),
-    ("not json at all", "ask"),
-    ("", "ask"),
-    ("[1]", "ask"),
-    ('{"tool_name":"EnterWorktree","tool_input":{"name":"ci/metal"}}', "pass"),
-    ('{"tool_name":"EnterWorktree","tool_input":{"path":"~/Research/.worktrees/Foo-bar"}}', "pass"),
-    ('{"tool_name":"EnterWorktree","tool_input":{"path":"~/Downloads"}}', "ask"),
-    ('{"tool_name":"EnterWorktree","tool_input":{}}', "ask"),
-    ('{"tool_name":"EnterWorktree","tool_input":{"name":1}}', "ask"),
-    ('{"tool_name":"ExitWorktree","tool_input":{"action":"keep"}}', "pass"),
-    ('{"tool_name":"ExitWorktree","tool_input":{"action":"keep","discard_changes":true}}', "ask"),
-    ('{"tool_name":"ExitWorktree","tool_input":{"action":"remove"}}', "ask"),
-    ('{"tool_name":"ExitWorktree","tool_input":{"action":"remove","discard_changes":true}}', "ask"),
-    ('{"tool_name":"ExitWorktree","tool_input":{}}', "ask"),
-    ('{"tool_name":"mcp__ccd_directory__change_directory","tool_input":{"path":"~/Research/Tasks"}}', "pass"),
-    ('{"tool_name":"mcp__ccd_directory__request_directory","tool_input":{}}', "ask"),
-]
-
-# `rm-scope.py` takes the working directory from the payload: (cwd, command, expected).
-# A "deny" is exit 2, an "ask" a JSON decision, a "pass" exit 0 with no output.
-RMSCOPE = HOOKS + "rm-scope.py"
-RMSCOPE_CASES = [
-    # Recursive, absolute or `~`, in the two zones: the twelve denies refuse these today.
-    (PKG, "rm -rf " + q(WT + "/build"), "pass"),
-    (PKG, "rm -rf ~/Research/.worktrees/Foo-bar/docs/build", "pass"),
-    (PKG, "rm -r $HOME/Research/.worktrees/Foo-bar/x ${HOME}/Research/.scratch/y", "pass"),
-    (PKG, "rm -rf ~/Research/.scratch/pr3", "pass"),
-    (PKG, "rm -Rf -- ~/Research/.scratch/probe-env/", "pass"),
-    (PKG, "rm -rf ~/Research/.scratch/pr3/* ~/Research/.worktrees/Foo-bar/build/*", "pass"),
-    (PKG, "rm -fr " + q(WT + "/src/../build"), "pass"),
-    # Recursive, relative, in the zones.
-    (WT, "rm -rf build docs/build", "pass"),
-    (WT, "rm -rf *", "pass"),
-    (R + "/.scratch", "rm -rf pr3", "pass"),
-    (PKG, "cd " + q(WT) + " && rm -rf build", "pass"),
-    (PKG, "cd ~/Research/.scratch && rm -rf pr3 && cd -", "pass"),
-    # The roots of the zones, and above them.
-    (PKG, "rm -rf " + q(WT), "deny"),
-    (PKG, "rm -rf " + q(WT + "/"), "deny"),
-    (PKG, "rm -rf ~/Research/.worktrees", "deny"),
-    (PKG, "rm -rf ~/Research/.worktrees/*", "deny"),
-    (PKG, "rm -rf ~/Research/.scratch", "deny"),
-    (WT, "rm -rf .", "deny"),
-    (WT, "rm -rf ../Foo-baz", "deny"),
-    (WT + "/src", "rm -rf ../../Foo-baz", "deny"),
-    (WT + "/src", "rm -rf ../../Foo-baz/build", "pass"),
-    # Elsewhere under the parent of `HOME`, `/Users` on macOS, relative spellings included.
-    (PKG, "rm -rf ../Other", "deny"),
-    (PKG, "rm -r docs/build", "deny"),
-    (R, "rm -rf Packages/Example/docs/build", "deny"),
-    (PKG, "rm -rf ~/.julia/compiled", "deny"),
-    (PKG, "rm -fr ~", "deny"),
-    (PKG, "rm -R " + q(os.path.dirname(HOME)), "deny"),
-    (PKG, "rm -rf /", "deny"),
-    (PKG, "rm --recursive --force ~/Research/Tasks", "deny"),
-    (PKG, "cd ~/Research && rm -rf Packages", "deny"),
-    (PKG, "/bin/rm -rf ~/Research/Papers", "deny"),
-    (PKG, "X=1 rm -rf ~/Research/Papers", "deny"),
-    (PKG, "ls && rm -rf " + q(WT + "/x") + " ~/Research/Books", "deny"),
-    # Plain `rm` outside the zones, an unresolved operand, and paths outside `/Users`: no decision.
-    (PKG, "rm docs/build/index.html", "pass"),
-    (PKG, "rm -f Manifest.toml", "pass"),
-    (PKG, "rm -rf $W/build", "pass"),
-    (PKG, 'rm -rf "$TMPDIR/probe"', "pass"),
-    (PKG, "rm -rf $(mktemp -d)", "pass"),
-    (PKG, "rm -rf /tmp/claude/x", "pass"),
-    (PKG, "cd $W && rm -rf build", "pass"),
-    (PKG, "rm -rf build 2>/dev/null", "deny"),
-    (WT, "rm -rf build 2>/dev/null", "pass"),
-    # Text that only mentions `rm`.
-    (PKG, "git commit -m 'rm -rf ~/Research'", "pass"),
-    (PKG, "echo rm -rf ~", "pass"),
-    (PKG, "grep -rn 'rm -rf' .", "pass"),
-    (PKG, "python3 - <<'EOF'\nrm -rf ~/Research\nEOF", "pass"),
-    (PKG, "julia -e 'rm(\"x\"; recursive=true)'", "pass"),
-    # `git rm`: free in a worktree without `-f`, else "ask".
-    (WT, "git rm src/old.jl", "pass"),
-    (WT, "git rm -r --cached docs/build", "pass"),
-    (WT + "/src", "git rm old.jl", "pass"),
-    (WT, "git rm -f src/old.jl", "ask"),
-    (WT, "git rm -rf docs", "ask"),
-    (WT, "git rm --force src/old.jl", "ask"),
-    (WT, "git rm -- -f", "pass"),
-    (PKG, "git rm src/old.jl", "ask"),
-    (R + "/.worktrees", "git rm x", "ask"),
-    (WT, "git -C " + q(PKG) + " rm src/old.jl", "ask"),
-    (WT, "git --git-dir=" + q(PKG + "/.git") + " rm x", "ask"),
-    (PKG, "cd " + q(WT) + " && git rm src/old.jl", "pass"),
-    # `git merge`: free in a worktree; elsewhere it asks, except a plain `--ff-only` or `--no-edit`.
-    (WT, "git merge --no-ff --no-commit origin/main", "pass"),
-    (WT, "git merge --no-ff origin/main -m 'Merge main'", "pass"),
-    (WT, "git merge --squash topic", "pass"),
-    (WT + "/src", "git merge origin/main", "pass"),
-    (WT, "git -C " + q(PKG) + " merge --no-ff topic", "ask"),
-    (PKG, "git merge --no-ff topic", "ask"),
-    (PKG, "git merge topic --no-commit", "ask"),
-    (PKG, "git merge -mMerge topic", "ask"),
-    (PKG, "git merge --message=Merge topic", "ask"),
-    (PKG, "git merge --squash topic", "ask"),
-    (PKG, "git merge topic", "ask"),
-    (PKG, "git merge --no-edit --no-ff topic", "ask"),
-    (PKG, "git merge --ff-only origin/main", "pass"),
-    (PKG, "git merge --no-edit topic", "pass"),
-    (PKG, "git merge --abort", "pass"),
-    (PKG, "git merge-base HEAD origin/main", "pass"),
-    (PKG, "git merge --ff-only -- --no-ff", "pass"),
-    (PKG, "cd " + q(WT) + " && git merge --no-ff origin/main", "pass"),
-    (R + "/.worktrees", "git merge --no-ff topic", "ask"),
-    # Fail closed: an `rm` it cannot read asks.
-    (WT, "rm -rf 'unbalanced", "ask"),
-]
-RMSCOPE_PAYLOADS = [
-    ("not json at all", "ask"),
-    ("", "ask"),
-    ('{"tool_input":{}}', "ask"),
-    ('{"tool_input":{"command":123}}', "ask"),
-    ('{"tool_input":{"command":"ls"}}', "pass"),
-    ('{"tool_input":{"command":"rm -rf build"}}', "pass"),
-    ('{"tool_input":{"command":"rm -rf ~/Research/Papers"}}', "deny"),
-    ('{"tool_input":{"command":"git merge --no-ff topic"}}', "ask"),
-]
 
 # `edit-scope.py`, in this order, because `--record` writes the grants that later cases read:
 # (record, session, path or None, extra input fields, expected). A gated path below a worktree asks
@@ -2573,15 +2128,6 @@ def agy_cases():
     return total, wrong
 
 
-FAIL_OPEN = [
-    "not json at all",
-    "",
-    '{"tool_input":{}}',
-    '{"tool_input":{"command":123}}',
-    '{"other":1}',
-]
-
-
 def call(script, payload, env=None, args: tuple[str, ...] = ()):
     """Run a Python hook with this interpreter on the fixture; None after the timeout."""
     try:
@@ -3014,59 +2560,184 @@ def cases(names):
     return 1 if wrong else 0
 
 
+def guard_run(data: bytes) -> tuple[str, str]:
+    """The guard's decision on the payload bytes `data`, run as the settings template runs it but from
+    the fixture's directory, and its stdout and stderr: `deny` for exit 2, the `permissionDecision` of
+    stdout for exit 0, `pass` for exit 0 with no output, `exit <n>` or `timeout` otherwise."""
+    try:
+        proc = subprocess.run(
+            [sys.executable, GUARD, "--from", "claude"],
+            input=data,
+            capture_output=True,
+            env=ENV,
+            cwd=FIXTURE.name,
+            timeout=TIMEOUT,
+            check=False,
+        )
+    except subprocess.TimeoutExpired:
+        return "timeout", ""
+    stdout = proc.stdout.decode("utf-8", "replace")
+    output = stdout + proc.stderr.decode("utf-8", "replace")
+    if proc.returncode == 2:
+        return "deny", output
+    if proc.returncode != 0:
+        return f"exit {proc.returncode}", output
+    if not stdout.strip():
+        return "pass", output
+    try:
+        return str(json.loads(stdout)["hookSpecificOutput"]["permissionDecision"]), output
+    except ValueError, KeyError, TypeError:
+        return "unreadable output", output
+
+
+def corpus_records() -> list[tuple[str, str]]:
+    """(payload text, expected decision) of each record of the corpus, its placeholders replaced by the
+    fixture's values."""
+    table = {
+        "FIXTURE": FIXTURE.name,
+        "HOME": HOME,
+        "R": R,
+        "WT": WT,
+        "PKG": PKG,
+        "TOOL": TOOL,
+        "CWD": CWD,
+        "SCRATCH": SCRATCH,
+        "LINK": LINK,
+    }
+    records: list[tuple[str, str]] = []
+    for line in pathlib.Path(REPO, "tests", "guard", "corpus.jsonl").read_text(encoding="utf-8").splitlines():
+        placed = line
+        for name, value in table.items():
+            placed = placed.replace(f"@@{name}@@", json.dumps(value)[1:-1])
+        record = json.loads(placed)
+        stdin = record["stdin"]
+        records.append((stdin if isinstance(stdin, str) else json.dumps(stdin), str(record["decision"])))
+    return records
+
+
+class RaisingStdin(io.TextIOBase):
+    """A stdin whose every read raises, also through its `buffer`."""
+
+    def read(self, size: int | None = -1, /) -> str:
+        raise RuntimeError(f"probe: a read of {size} raises")
+
+    @property
+    def buffer(self) -> RaisingStdin:
+        return self
+
+
+def guard_raises() -> tuple[object, str]:
+    """The exit status and stderr of the guard run in this process with a stdin whose read raises."""
+    saved = sys.argv, sys.stdin, list(sys.path)
+    stderr = io.StringIO()
+    sys.argv, sys.stdin = [GUARD, "--from", "claude"], cast("TextIO", RaisingStdin())
+    try:
+        with contextlib.redirect_stderr(stderr), contextlib.redirect_stdout(io.StringIO()):
+            runpy.run_path(GUARD, run_name="__main__")
+    except SystemExit as e:
+        return e.code, stderr.getvalue()
+    except RuntimeError as e:  # the raise escaped the guard: the case reports it as wrong
+        return f"raised {e}", stderr.getvalue()
+    finally:
+        sys.argv, sys.stdin = saved[0], saved[1]
+        sys.path[:] = saved[2]
+    return "no exit", stderr.getvalue()
+
+
+def guard_entry(missing: str) -> tuple[list[str], str]:
+    """The commands of the `Bash` group of the settings template as the Claude Code adapter renders them
+    with the dummy profile, a home `missing` and this interpreter, and the guard's command among them."""
+    sys.path.insert(0, REPO + "/lib")
+    frontends = importlib.import_module("harness.frontends")
+    profile = importlib.import_module("harness.profile")
+    dummy = replace(profile.load(REPO + "/examples/profile.toml"), home=missing)
+    cfg = frontends.adapter("claude").settings_template(
+        dummy, FIXTURE.name + "/no-network.toml", sys.executable
+    )
+    group = next(g for g in cfg["hooks"]["PreToolUse"] if g.get("matcher") == "Bash")
+    guard = shlex.join([sys.executable, missing + "/.claude/hooks/guard", "--from", "claude"]) + " || exit 2"
+    return [str(h["command"]) for h in group["hooks"]], guard
+
+
 def command_cases():
-    """Each guard of CASES on one shell command."""
+    """The guard on each record of the corpus, and on the edges that a line of it cannot hold."""
     wrong = 0
     total = 0
-    for script, command, expected in CASES:
-        got = run(script, json.dumps({"tool_input": {"command": command}, "cwd": CWD}))
-        total += 1
-        wrong += got != expected
-        mark = "ok " if got == expected else "BAD"
-        print(f"{mark} exp {expected} got {got}  [{script.rsplit('/', 1)[-1][:9]}]  {command}")
+
+    def report(*, ok: bool, line: str) -> None:
+        nonlocal total, wrong
+        total, wrong = total + 1, wrong + (not ok)
+        print(f"{'ok ' if ok else 'BAD'} {line}")
+
+    for stdin, expected in corpus_records():
+        got, _ = guard_run(stdin.encode("utf-8"))
+        report(ok=got == expected, line=f"exp {expected} got {got}  [guard    ]  {stdin[:200]!r}")
+
+    mib = 1024 * 1024
+    for size, expected in ((mib, "pass"), (mib + 1, "deny")):
+        payload = {"tool_name": "Bash", "tool_input": {"command": "echo " + "a" * (size - 5)}, "cwd": CWD}
+        got, output = guard_run(json.dumps(payload).encode("utf-8"))
+        ok = got == expected and (expected == "pass" or "more than" in output)
+        report(ok=ok, line=f"exp {expected} got {got}  [guard    ]  a command of {size} bytes")
+    got, output = guard_run(b'{"tool_name":"Bash","tool_input":{"command":"echo \xff"},"cwd":"/"}')
+    report(
+        ok=got == "deny" and "UTF-8" in output, line=f"exp deny got {got}  [guard    ]  a payload byte 0xFF"
+    )
+    mixed = {
+        "tool_name": "Bash",
+        "tool_input": {"command": "gh api -X POST repos/o/r/issues -f title=t && git add -A"},
+    }
+    got, output = guard_run(json.dumps({**mixed, "cwd": CWD}).encode("utf-8"))
+    ok = (
+        got == "deny"
+        and "stages files this session did not write" in output
+        and "review and comment" not in output
+    )
+    report(
+        ok=ok,
+        line=f"exp deny got {got}  [guard    ]  the reason of the winner, the staging check's: {output[:80]!r}",
+    )
+    code, stderr = guard_raises()
+    report(
+        ok=code == 2 and "RuntimeError" in stderr,
+        line=f"exp 2 got {code}  [guard    ]  the guard raises: {stderr!r}",
+    )
+    copy, source = pathlib.Path(GUARD, "jsonio.py"), pathlib.Path(REPO, "lib", "harness", "jsonio.py")
+    same = copy.read_bytes() == source.read_bytes()
+    report(
+        ok=same,
+        line=f"exp same got {'same' if same else 'other'}  [guard    ]  the guard's jsonio.py, byte for byte",
+    )
+
+    try:
+        commands, guard = guard_entry(FIXTURE.name + "/missing-home")
+    except (ImportError, OSError, ValueError, LookupError, TypeError) as e:
+        report(ok=False, line=f"exp render got {type(e).__name__}  [guard    ]  {e}")
+        return total, wrong
+    report(
+        ok=commands == ["rtk hook claude", guard],
+        line=f"exp rtk and guard got {commands}  [guard    ]  the rendered Bash group",
+    )
+    # Claude Code runs a hook command through a shell, the payload on stdin.
+    try:
+        proc = subprocess.run(
+            [shutil.which("bash") or "/bin/bash", "-c", guard],
+            input=b'{"tool_name":"Bash","tool_input":{"command":"ls"}}',
+            capture_output=True,
+            timeout=TIMEOUT,
+            check=False,
+        )
+        got = str(proc.returncode)
+    except subprocess.TimeoutExpired:
+        got = "timeout"
+    report(ok=got == "2", line=f"exp 2 got {got}  [guard    ]  the guard cannot start: {guard}")
     return total, wrong
 
 
 def payload_cases():
-    """The other hooks on their payloads, and each guard on the payloads it must let through."""
+    """The other hooks on their payloads."""
     wrong = 0
     total = 0
-    for payload, expected in KAIMON_CASES:
-        got = run(KAIMON, payload)
-        total += 1
-        wrong += got != expected
-        mark = "ok " if got == expected else "BAD"
-        print(f"{mark} exp {expected} got {got}  [kaimon-se]  {payload}")
-    for cwd, command, expected in SANDBOX_CWD_CASES:
-        got = run(SANDBOX, json.dumps({"tool_input": {"command": command}, "cwd": cwd}))
-        total += 1
-        wrong += got != expected
-        mark = "ok " if got == expected else "BAD"
-        print(f"{mark} exp {expected} got {got}  [sandbox-s]  {command} in {cwd}")
-    for command, expected in GHAPI_CASES:
-        got = decision(GHAPI, json.dumps({"tool_input": {"command": command}}))
-        total += 1
-        wrong += got != expected
-        mark = "ok " if got == expected else "BAD"
-        print(f"{mark} exp {expected} got {got}  [gh-api-wr]  {command}")
-    for payload, expected in DIRSCOPE_CASES:
-        got = decision(DIRSCOPE, payload)
-        total += 1
-        wrong += got != expected
-        mark = "ok " if got == expected else "BAD"
-        print(f"{mark} exp {expected} got {got}  [dir-scope]  {payload!r}")
-    for cwd, command, expected in RMSCOPE_CASES:
-        got = decision(RMSCOPE, json.dumps({"tool_input": {"command": command}, "cwd": cwd}))
-        total += 1
-        wrong += got != expected
-        mark = "ok " if got == expected else "BAD"
-        print(f"{mark} exp {expected} got {got}  [rm-scope ]  {command!r} in {cwd}")
-    for payload, expected in RMSCOPE_PAYLOADS:
-        got = decision(RMSCOPE, payload)
-        total += 1
-        wrong += got != expected
-        mark = "ok " if got == expected else "BAD"
-        print(f"{mark} exp {expected} got {got}  [rm-scope ]  payload {payload!r}")
     for record, session, path, fields, expected in EDITSCOPE_CASES:
         tool_input = {"file_path": path} if path is not None else {}
         tool_input.update({k: v for k, v in fields.items() if k != "cwd"})
@@ -3105,13 +2776,6 @@ def payload_cases():
     total += 1
     wrong += logged != 2
     print(f"{'ok ' if logged == 2 else 'BAD'} exp 2 got {logged}  [prompt-lo]  lines logged")
-    for payload in FAIL_OPEN:
-        for script in (WRITE, SANDBOX, STAGE, GHAPI, ARCHIVE):
-            got = run(script, payload)
-            total += 1
-            wrong += got != 0
-            mark = "ok " if got == 0 else "BAD"
-            print(f"{mark} exp 0 got {got}  [{script.rsplit('/', 1)[-1][:9]}]  fail-open: {payload!r}")
     for payload in WORKTREE_CASES:
         got = run(WORKTREE, payload)
         total += 1

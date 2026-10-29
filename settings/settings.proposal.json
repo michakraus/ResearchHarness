@@ -713,32 +713,7 @@
           },
           {
             "type": "command",
-            "command": "{home}/.claude/hooks/no-blind-stage.py",
-            "timeout": 5
-          },
-          {
-            "type": "command",
-            "command": "{home}/.claude/hooks/no-shell-file-write.py",
-            "timeout": 5
-          },
-          {
-            "type": "command",
-            "command": "{home}/.claude/hooks/sandbox-semantics.py",
-            "timeout": 5
-          },
-          {
-            "type": "command",
-            "command": "{home}/.claude/hooks/gh-api-writes.py",
-            "timeout": 5
-          },
-          {
-            "type": "command",
-            "command": "{home}/.claude/hooks/rm-scope.py",
-            "timeout": 5
-          },
-          {
-            "type": "command",
-            "command": "{home}/.claude/hooks/git-archive-output.py",
+            "command": "{home}/.claude/hooks/guard --from claude || exit 2",
             "timeout": 5
           }
         ]
@@ -748,7 +723,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "{home}/.claude/hooks/directory-scope.py",
+            "command": "{home}/.claude/hooks/guard --from claude || exit 2",
             "timeout": 5
           }
         ]
@@ -768,7 +743,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "{home}/.claude/hooks/kaimon-session.py",
+            "command": "{home}/.claude/hooks/guard --from claude || exit 2",
             "timeout": 5
           }
         ]
