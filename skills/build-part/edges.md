@@ -354,6 +354,13 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   C1 or line-separator character, or a space or tab at the edge of a value, which YAML reads
   differently and the port accepts (D1 verify 2, verify 3 and the verifier, *Unify the agent
   configuration*)
+- a port whose messages print a parsed value: the source language spells a list, a mapping entry
+  and a float its own way (`["a"]` against `Any["a", 1]`, `Pair{Any, Any}(…)`, `1.0e10`), and a
+  fixture of strings only shows none of it. Run a differential over the value classes, not only
+  the fixtures (P1 round 1, *Make the Harness enforce strict Python*)
+- a decided edge on a parsed value that the port checks for one node kind only: a YAML 1.1
+  conversion recorded for a mapping value and not for a list item or a key. Test the edge in each
+  place a value can stand (P1 round 1, *Make the Harness enforce strict Python*)
 - a malformed configuration file or one that is not UTF-8: a traceback exits 1, which the
   subcommand contract reserves for "changes to make" (D1 round 1, *Unify the agent configuration*)
 - a well-formed file with a value of the wrong type, such as a list or a table where a string is
