@@ -2813,9 +2813,10 @@ def command_cases():
         got, stats, spawns = guard_counted(
             json.dumps({"tool_name": "Bash", "tool_input": {"command": command}, "cwd": cwd}).encode("utf-8")
         )
+        bound = f"at most {starts} x {names} + {WALK_READS} reads"
         report(
             ok=got == "pass" and 0 <= stats <= starts * names + WALK_READS,
-            line=f"exp pass, at most {starts} x {names} + {WALK_READS} reads got {got}, {stats}  [guard    ]  {shape}",
+            line=f"exp pass, {bound} got {got}, {stats}  [guard    ]  {shape}",
         )
     command, shape = mib_command("echo x > __pycache__/a{}.log; ", "true")
     got, stats, spawns = guard_counted(
