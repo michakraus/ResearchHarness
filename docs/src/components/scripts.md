@@ -14,8 +14,7 @@ in `~/.local/share/research-harness/julia/` (see
 `--startup-file=no`: the startup file can load Revise, and its errors then fill the output.
 
 The sections come in groups: the test layout and the test runs, the mutation tests and the
-gate, the structure of Julia code, the task files, the lint of the prose repositories, the
-token use of sessions, and the update job.
+gate, the structure of Julia code, the task files, the token use of sessions, and the update job.
 
 ## `test-layout.jl` and `test-layout-test.jl`
 
@@ -388,32 +387,6 @@ It only proposes. A person decides whether a pair is one issue. The script exits
 when Ollama fails, the model is missing, or a `--pair` needle does not match exactly one entry;
 it then writes nothing.
 No skill or agent calls it.
-
-## `wiki-lint.jl`
-
-`wiki-lint.jl` checks the structure of the Markdown in the prose repositories of the research
-tree: the vaults `Knowledge/` and `Environment/`, and the reference trees `Tasks/`
-and `Library/`. It finds text that a later change of the tree made false, for
-example a broken link, a path that does not exist, or a line citation past the end of its file.
-
-```bash
-julia --startup-file=no wiki-lint.jl
-julia --startup-file=no wiki-lint.jl Knowledge  # one of them
-julia --startup-file=no wiki-lint.jl --strict   # warnings fail too
-julia --startup-file=no wiki-lint.jl --quiet    # findings and totals only
-```
-
-Without a name, the script checks every tree.
-
-A vault gets every check. A reference tree gets the checks of paths and line citations; `Tasks/`
-gets the schema of the task board too. The script skips each `CHANGELOG.md`. A finding is an
-ERROR or a WARN. The exit status is 0 when there is no ERROR, and with `--strict` no WARN; 1 on a
-finding at the failing level; and 2 when the lint could not run. It reads only the working tree:
-no model, no index, no network. The research root is `$RESEARCH_ROOT`, or `~/Research` if it is
-not set.
-
-The hook `pre-commit-wiki` (see [Git hooks and workflows](githooks.md)) runs it with `--quiet`
-before each commit in a prose repository.
 
 ## `startup-tokens.py`
 

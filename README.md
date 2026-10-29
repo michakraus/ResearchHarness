@@ -43,8 +43,8 @@ shows how the install turns the sources into the configuration of each frontend.
   gets its own rules and agents.
 - **[Research memory.](docs/src/memory.md)** A session starts with an empty context. Instruction
   files, task files, a knowledge base and project memory carry what earlier sessions learned into
-  the next one, and `wiki-lint.jl` finds the notes that a later change made false. This feature is
-  in development.
+  the next one, and `harness wiki-lint` finds the notes that a later change made false. This
+  feature is in development.
 - **[Agentic software engineering.](docs/src/agentic-engineering.md)** A plan is split into parts,
   and each part becomes one pull request. A builder writes the tests and the code of a part. A
   critic that has not seen the builder's reasoning judges it against the part's acceptance
