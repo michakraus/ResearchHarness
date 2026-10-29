@@ -8,7 +8,8 @@
   command that takes longer than 10 minutes gets a SIGTERM and ends the run with one `ERROR:` line
   and exit 1. A path whose name is not UTF-8 is printed as its bytes in every locale. The plist and
   the systemd unit run it on the interpreter of the harness's Python environment,
-  `~/.local/share/research-harness/python/bin/python`, and CI's job `systemd` puts a stub there.
+  `~/.local/share/research-harness/python/bin/python`, and CI's job `systemd` verifies the unit
+  against the environment that its render makes.
   Python cases of `harness test`, in `lib/harness/autocommit.py`, replace
   `launchagents/claude-autocommit-test.jl`, with its seven cases under their titles and 36 more,
   so the script's tests run on every machine without Julia; julia.yml drops the file and its
