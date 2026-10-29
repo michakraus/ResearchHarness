@@ -96,7 +96,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: render each unit and verify it
         run: |
-          for program in .julia/bin/kaimon .juliaup/bin/julia .local/bin/claude-autocommit; do
+          for program in .julia/bin/kaimon .juliaup/bin/julia .local/share/research-harness/python/bin/python .local/bin/claude-autocommit; do
             mkdir -p "$HOME/$(dirname "$program")"
             printf '#!/bin/sh\nexit 0\n' > "$HOME/$program"
             chmod +x "$HOME/$program"

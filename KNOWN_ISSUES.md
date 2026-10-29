@@ -143,7 +143,7 @@
 
 ### K38 · `gitleaks git` exits 0 on a `--log-opts` range that it cannot read.
 
-- location: `.github/workflows/test.yml:230`, `.githooks/pre-push:158`
+- location: `.github/workflows/test.yml:230`, `.githooks/pre-push:318-321`
 - evidence: `gitleaks git --log-opts=<a range it cannot read>` prints `fatal: Invalid revision
   range` and still exits 0 with "no leaks found". Both `gitleaks git` calls, of the CI step
   *gitleaks over the pushed range* and of the pre-push hook, rely on its status. The CI step
@@ -332,7 +332,7 @@
 
 - location: `lib/harness/profile.py:1679`
 - evidence: `prepush_branch_cases` puts no `chezmoi` on the `PATH` of its cases. So a hook that
-  moves the kit step above the branch exit at `.githooks/pre-push:122-125` passes every case. A
+  moves the kit step above the branch exit at `.githooks/pre-push:524-526` passes every case. A
   removed `exit 0` is still caught, because the stub suite prints "the suite ran"
   (`lib/harness/profile.py:1718`, `1824`).
 - kind: missing test
@@ -340,7 +340,7 @@
 
 ### K85 · With chezmoi and without shellcheck, the pre-push hook refuses a push to `main` while its own shellcheck step prints `skip`.
 
-- location: `.githooks/pre-push:261`
+- location: `.githooks/pre-push:478`
 - evidence: with chezmoi and without shellcheck, the kit tests exit 1 with "<test>: shellcheck is
   not on the PATH" (`examples/dotfiles/tests/update-check.py:1236-1239`,
   `examples/dotfiles/tests/check-check.py:1119-1122`,
@@ -541,3 +541,19 @@
   `CalledProcessError`.
 - kind: missing test
 - found: 2026-10-27, the critic of the strict-Python part
+
+### K112 · Six branches of the pre-push hook have no case that fails when they change.
+
+- location: `.githooks/pre-push:236`
+- evidence: each of these mutants, applied alone with `harness mutate` and the parts `profile`
+  and `environment`, survives, and the differential of the hook's 24 pushes (nine early pushes and
+  the 15 runs of the profile part's cases) gives `0 differ` for each: the remote SHA of a branch
+  never excluded (`:236`), the range of a push to `main` always the SHA alone (`:294`), the
+  messages of an empty commit list sent to `git log` (`:328`), a leak found on a push to `main`
+  not refusing it (`:359`), the `BAD` lines of a failed suite not printed (`:381`), and a change
+  of `Project.toml` selecting no Julia test (`:496`). The cases of the hook are
+  `prepush_case` and `prepush_branch_cases` of `lib/harness/profile.py`, which run no push to
+  `main` with a leak, with an earlier `main` or with a failing suite, and no branch push whose
+  remote SHA is on no branch of `origin`; the bash hook had the same cases.
+- kind: missing test
+- found: 2026-10-29

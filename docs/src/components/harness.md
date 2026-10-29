@@ -468,8 +468,24 @@ which means the working directory, is a problem. The cases also apply a mutant t
 templates and expect a problem: for example a removed restart, an extra trigger or a
 session-writable directory on the `PATH`. Last, they check that `render` gives
 `autocommit_branch` its default when the profile has no such key: `main`, and
-`memory/<short host name>` on a host that is not the template host.
+`memory/<short host name>` on a host that is not the template host. One case checks that the
+plist and the unit of `claude-autocommit` start the interpreter that `bin/harness` names by
+default for the profile's home, with the installed copy of the script as its argument.
 [Jobs and configuration](other.md) describes the units.
+
+## `autocommit.py`
+
+The cases of `launchagents/claude-autocommit`. The module has no subcommand. Each case builds a
+fixture `.claude` repository in a scratch HOME, with a bare remote, and runs the script on it on
+this interpreter, with HOME, TMPDIR, the git identity and `XDG_STATE_HOME` set in the child's
+environment. The cases check the commit and its message, the staged file that the commit leaves
+alone, the branch that receives the push, the lock's path on this system, a held, a stale and a
+fresh lock, a SIGTERM during a run, the dry run, the deferral of a memory that is still settling,
+and each refusal: a rename, too many deletions, a repository with no tracked plan or memory, a
+missing directory, a setting that is not an integer, and a git that fails. A git on the `PATH`
+that fails one command stands for the failures that a fixture cannot make.
+[Jobs and configuration](other.md#claude-autocommit-and-claude-autocommit-plist) describes the
+script.
 
 ## `script_cases.py`
 

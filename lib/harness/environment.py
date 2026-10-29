@@ -1051,7 +1051,8 @@ def prepush_cases(case, tmp):
     """The Python of `.githooks/pre-push`, for a push of a branch: a `python3` that reports 3.13
     refuses the push with one line; a `python3` of 3.14 passes, and the hook
     goes on to the next step, which refuses a checkout with no `origin`. The PATH holds the tools
-    that the hook runs up to there, and the `python3`."""
+    that the hook runs up to there, and the `python3`, a stub that reports the version both to
+    `python3 -c` and to a script, as the hook runs on it through its shebang."""
     repo, tools = tmp / "pre-push-repo", tmp / "pre-push-tools"
     tools.mkdir()
     for tool in ("git", "bash", "mktemp", "rm"):
@@ -1082,7 +1083,8 @@ def prepush_cases(case, tmp):
         python.unlink(missing_ok=True)
         python.write_text(
             f'#!/bin/sh\n[ "$1" = -c ] && exec \'{sys.executable}\' -c "import sys; {patch}'
-            f'exec(sys.argv[1])" "$2"\nexec \'{sys.executable}\' "$@"\n'
+            f'exec(sys.argv[1])" "$2"\nexec \'{sys.executable}\' -c "import runpy, sys; {patch}'
+            f'sys.argv = sys.argv[1:]; runpy.run_path(sys.argv[0], run_name=\'__main__\')" "$@"\n'
         )
         python.chmod(0o755)
         p = subprocess.run(

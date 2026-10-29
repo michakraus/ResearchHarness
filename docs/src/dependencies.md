@@ -198,9 +198,8 @@ shellcheck finds errors in shell scripts: a missing quote, an unset variable, a 
 does not work in the given shell.
 
 The pre-push hook and the CI job `lint` run `shellcheck -S warning` over each tracked file with a
-sh or bash shebang, for example the git hooks, the hook `hooks/cc-status`, the status line script
-and `launchagents/claude-autocommit`. The pre-push hook skips shellcheck when it is missing,
-because CI runs it.
+sh or bash shebang, for example the shared git hooks, the hook `hooks/cc-status` and the status
+line script. The pre-push hook skips shellcheck when it is missing, because CI runs it.
 
 The harness needs shellcheck because the git hooks run in every repository of the tree, and an
 error in a hook can let a commit through unchecked. The shell does not report most of these

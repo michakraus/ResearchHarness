@@ -19,13 +19,15 @@ dev = [
 
 # The strict profile. `ruff format --check`, `ruff check` and `basedpyright` gate every commit
 # (.githooks/pre-commit), every push to main (.githooks/pre-push) and CI. Besides the *.py files,
-# ruff reads the two Python files without a suffix: bin/harness, whose syntax is the closed set of
+# ruff reads the four Python files without a suffix: bin/harness, whose syntax is the closed set of
 # Python 3.0 forms that `environment.syntax_cases` checks, so the formatter and the UP family
-# leave it alone, and the pre-commit hook.
+# leave it alone, the two hooks and claude-autocommit. The pre-push hook parses as Python 3.9, so
+# that the python3 of macOS refuses a push with the hook's own line, not a SyntaxError.
 [tool.ruff]
 line-length = 110
 target-version = "py314"
-extend-include = ["bin/harness", ".githooks/pre-commit"]
+extend-include = ["bin/harness", ".githooks/pre-commit", ".githooks/pre-push", "launchagents/claude-autocommit"]
+per-file-target-version = { ".githooks/pre-push" = "py39" }
 
 [tool.ruff.format]
 exclude = ["bin/harness"]

@@ -17,7 +17,7 @@ The sections follow the purpose of the files:
 - the leak check, `.gitleaks.toml`;
 - the test queries of the skills, `tests/skill-triggers/`.
 
-## `claude-autocommit`, `claude-autocommit-test.jl` and `claude-autocommit.plist`
+## `claude-autocommit` and `claude-autocommit.plist`
 
 A macOS launch agent is a job that launchd, the service manager of macOS, runs for one user: on a
 schedule, at login, or as a server that it keeps alive. Each job is a plist file in
@@ -25,7 +25,7 @@ schedule, at login, or as a server that it keeps alive. Each job is a plist file
 profile key `launchd_prefix`, and their paths hold `{home}`. The harness has no subcommand that
 installs them. `harness render launchagents/<name>` prints the rendered plist.
 
-`claude-autocommit` is a bash script that commits the plan files and the project memories of
+`claude-autocommit` is a Python program that commits the plan files and the project memories of
 `~/.claude/`, which must be a git repository. It commits `plans/` and `projects/*/memory/` only, and
 pushes the local `main` to the branch of `origin` that `CLAUDE_AUTOCOMMIT_BRANCH` names, `main`
 when the variable is unset. The plist and the unit set it from the profile key
@@ -42,14 +42,17 @@ claude-autocommit [--dry-run] [--no-push] [--help]
 ```
 
 `claude-autocommit.plist` runs the installed copy `~/.local/bin/claude-autocommit` at load and every
-15 minutes. Edit the script here, then copy it there again.
+15 minutes, on the interpreter of the harness's Python environment,
+`~/.local/share/research-harness/python/bin/python`. The script imports only the standard library.
+Edit the script here, then copy it there again.
 
-The script runs on macOS and on Linux, under bash 3.2 too. A lock directory stops a second run.
-On macOS the lock is `~/Library/Logs/claude-autocommit/lock`, beside the job's log. On Linux it is
-`$XDG_STATE_HOME/claude-autocommit/lock`, or `~/.local/state/claude-autocommit/lock` when
-`XDG_STATE_HOME` is unset or empty. `claude-autocommit-test.jl` runs the script on a fixture
-repository with a bare remote, on the system it runs on, and checks the branch that receives the
-push.
+The script runs on macOS and on Linux. A lock directory stops a second run, and the script
+removes it on exit and on a SIGTERM. On macOS the lock is `~/Library/Logs/claude-autocommit/lock`,
+beside the job's log. On Linux it is `$XDG_STATE_HOME/claude-autocommit/lock`, or
+`~/.local/state/claude-autocommit/lock` when `XDG_STATE_HOME` is unset or empty. The cases of
+`lib/harness/autocommit.py` in `harness test` run the script on fixture repositories with a bare
+remote, on the system that runs them, and check the commit, the branch that receives the push, the
+lock and the refusals.
 
 ## `julia-update.plist`
 
