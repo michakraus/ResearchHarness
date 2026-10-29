@@ -67,10 +67,11 @@ q = shlex.quote  # a fixture path spliced into a command, for a `$TMPDIR` with a
 TIMEOUT = 30  # seconds per hook call; a timeout is a wrong case
 MIB = 1024 * 1024  # bytes: the largest command that the guard decides by its checks
 MIB_LIMIT = 10  # seconds: the bound within which the guard decides a command of 1 MiB
-# stat and lstat calls of a payload beside those of the names of its `cd` word: the walk of its
-# working directory, the roots of the checks, the `.git` above a write. 57 on macOS with the fixture
-# below `/tmp/<one name>/`; the margin holds a fixture below a deeper `$TMPDIR`.
-WALK_READS = 200
+# stat and lstat calls of a payload beside two for each distinct name of its `cd` words: the walk of
+# its working directory, the roots of the checks, the `.git` above a write. 57 and 176 for the
+# counted payloads on macOS with the fixture below `/tmp/<one name>/`; the margin holds a fixture
+# below a deeper `$TMPDIR`.
+WALK_READS = 400
 
 WORKTREE = HOOKS + "worktree.py"
 
@@ -2796,14 +2797,18 @@ def command_cases():
             ok=got == expected, line=f"exp {expected} got {got}  [guard    ]  {shape}, 1 MiB: {took:.1f} s"
         )
     # The work per payload: each check and each reading takes a walk of a `cd` word from the memo of
-    # `paths.py`, and a walk reads each name once from each directory, so a payload reads each distinct
-    # name of a word at most once in each of the two modes; and the writes of a command ask git once
-    # per work tree.
-    for unit in ("d{}/../", "a/../"):
-        command, shape = mib_command(unit, four, "cd ")
-        names = len({name for name in command[3:].split(" ")[0].split("/") if name not in ("", "..")})
+    # `paths.py`, an absolute word is walked once whatever the start, and a walk reads each name once
+    # from each directory, so a payload reads each distinct name of its `cd` words at most once in each
+    # of the two modes; and the writes of a command ask git once per work tree.
+    for cwd, (command, shape) in (
+        (LOGS, mib_command("d{}/../", four, "cd ")),
+        (LOGS, mib_command("a/../", four, "cd ")),
+        (DEEP, mib_command(f"cd d{{}}; cd {DEEP}; ", four.removeprefix("; "))),
+    ):
+        words = re.findall(r"(?:^|; )cd (\S+)", command)
+        names = len({name for word in words for name in word.split("/") if name not in ("", "..")})
         got, stats, spawns = guard_counted(
-            json.dumps({"tool_name": "Bash", "tool_input": {"command": command}, "cwd": LOGS}).encode("utf-8")
+            json.dumps({"tool_name": "Bash", "tool_input": {"command": command}, "cwd": cwd}).encode("utf-8")
         )
         report(
             ok=got == "pass" and 0 <= stats <= 2 * names + WALK_READS,
