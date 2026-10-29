@@ -11,5 +11,6 @@
   a tier and a value of the wrong type exit 2; each table is optional. `doctor` reports a profile
   without `tree_agents` as a FAIL of its `profile` check. `lib/harness/profile.py` passes
   basedpyright in strict mode and leaves the baseline; the readers in `lib/` and `adapters/` read
-  attributes. A profile that `harness get` loaded before can now stop with exit 2: run
+  attributes. `harness get develop` prints `true` or `false`; before, it ended in a traceback for
+  `develop = true`. A profile that `harness get` loaded before can now stop with exit 2: run
   `harness get org` once after the update, and remove or rename each key that it names.

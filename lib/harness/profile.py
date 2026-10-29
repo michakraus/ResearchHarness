@@ -344,7 +344,10 @@ def value(name: str, given: Context, where: str) -> Value:
 
 
 def get(profile: Profile, key: str) -> str | list[str]:
-    """The profile's value of `key` (`values`); a missing key is a `HarnessError`."""
+    """The profile's value of `key` (`values`), and `develop` as "true" or "false"; a missing key is
+    a `HarnessError`."""
+    if key == "develop":
+        return "true" if profile.develop else "false"
     found = values(profile)
     if key not in found:
         raise HarnessError(f"the profile has no key {key!r} — examples/profile.toml shows it")
@@ -2294,6 +2297,23 @@ def home_cases():
                 isinstance(got, Profile) and getattr(got, key) == value,
                 f"{key} -> {getattr(got, key, got)!r}, expected {value!r}",
             )
+        # `harness get develop` prints `true` or `false`; the render's values hold no `develop`.
+        (tmp / "default.toml").write_text(profile_text(home='"/h"'))
+        for name, expected in (("profile.toml", "true\n"), ("default.toml", "false\n")):
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                try:
+                    status = cmd_get(argparse.Namespace(profile=tmp / name, key="develop"))
+                except HarnessError as e:
+                    status = f"error: {e}"
+            check(
+                status == 0 and out.getvalue() == expected,
+                f"{name}: harness get develop -> {status}, {out.getvalue()!r}, expected {expected!r}",
+            )
+        check(
+            isinstance(got, Profile) and "develop" not in values(got),
+            f"the render's values hold no `develop` -> {sorted(values(got)) if isinstance(got, Profile) else got}",
+        )
         # The values of no string or list: each a refusal that names the file and the key.
         for text, key in (
             ("harness = 3\n", "harness"),
