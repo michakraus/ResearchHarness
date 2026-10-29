@@ -1,7 +1,7 @@
 ---
 name: build-part
 model: medium
-description: "Run the next part of a decomposed task file through the builder-critic loop. Triggers on: work on this task file, build the next part, take the next open part, build part D, what is next in this task file, which parts can run now, run the open parts. Dispatches julia-builder to build, and critics beside a full-suite run: in round 1 two critics judge the whole part blind, and in each verify round one critic judges only the fix. After each round a new builder on the same worktree fixes the blocking defects and the defects that the branch causes, and records the rest in KNOWN_ISSUES.md, until a critic passes the part on a green suite; then a builder opens the pull request. A question inside the loop goes to the advisor agent, not to the user. A loop that does not converge goes to the arbitrator agent: the second critic FAIL, a code change after a PASS, or a defect that turns on a rule outside the part. Use the plan-parts skill to write the table, and the julia-pr-shepherd agent to take a pull request to green."
+description: "Run the next part of a decomposed task file through the builder-critic loop. Triggers on: work on this task file, build the next part, take the next open part, build part D, what is next in this task file, which parts can run now, run the open parts. Dispatches the builder to build, and critics beside a full-suite run: in round 1 two critics judge the whole part blind, and in each verify round one critic judges only the fix. After each round a new builder on the same worktree fixes the blocking defects and the defects that the branch causes, and records the rest in KNOWN_ISSUES.md, until a critic passes the part on a green suite; then a builder opens the pull request. A question inside the loop goes to the advisor agent, not to the user. A loop that does not converge goes to the arbitrator agent: the second critic FAIL, a code change after a PASS, or a defect that turns on a rule outside the part. Use the plan-parts skill to write the table, and the julia-pr-shepherd agent to take a pull request to green."
 ---
 
 # Running a part through the builder-critic loop
@@ -96,12 +96,30 @@ available*. A part `waiting for the user` is not available until the user writes
 | `decision` | **do not start it unprompted.** Report the part: it holds a decision. Start the loop when the user names the part and says its decisions are recorded |
 | empty, or anything else | treat as `decision`, and name the cell so the user can fix it |
 
-**The roles have fixed tiers.** The builder is `julia-builder` at `opus-medium`; every critic is
-`julia-critic`, at `opus-high` in round 1 and at `opus-medium` in a verify round; the advisor is
-`advisor` and the arbitrator is `arbitrator`, both at `opus-high`. Their frontmatter sets the
-effort, except for a round-1 critic: its `Agent` call passes `effort: "high"` over the frontmatter's
-`medium`. Pass `model: opus` on every spawn of these four, and never spawn one of them on sonnet or
-haiku.
+**The part's language picks the builder and the critic.** Read the `**Language:**` line of the
+header of the part's spec first. Where the spec has no such line, read the root of the part's
+repository for its manifests. The first row whose condition holds picks the pair:
+
+| the part | builder | critic |
+|:--|:--|:--|
+| its spec's header holds `**Language:** python` | `python-builder` | `python-critic` |
+| its spec's header holds `**Language:** julia` | `julia-builder` | `julia-critic` |
+| its repository holds a `Project.toml` | `julia-builder` | `julia-critic` |
+| its repository holds a `pyproject.toml` | `python-builder` | `python-critic` |
+| its repository holds neither manifest | `part-builder` | `part-critic` |
+
+A spec without the line in a repository with both a `pyproject.toml` and a `Project.toml` gets
+`julia-builder` and `julia-critic`, not `python-builder` and `python-critic`. Name that choice in
+the part's `state` cell: `in progress — the Julia pair, no **Language:** line`. With neither
+manifest, `part-builder` and `part-critic` run this loop as the pair of a `build` part. *The
+builder* and *the critic* below are the agents of the part's pair.
+
+**The roles have fixed tiers.** The builder, `python-builder`, `julia-builder` or `part-builder`,
+runs at `opus-medium`; every critic, `python-critic`, `julia-critic` or `part-critic`, runs at
+`opus-high` in round 1 and at `opus-medium` in a verify round; the advisor is `advisor` and the
+arbitrator is `arbitrator`, both at `opus-high`. Their frontmatter sets the effort, except for a
+round-1 critic: its `Agent` call passes `effort: "high"` over the frontmatter's `medium`. Pass
+`model: opus` on every spawn of these roles, and never spawn one of them on sonnet or haiku.
 
 **A decision part is the user's.** Name the part, its repository and its `Done when`, and say it
 waits for the user's decisions. Where its section holds no recommendation yet, spawn the `advisor`
@@ -146,10 +164,10 @@ exist, set the state to `waiting for the user — the bundle lacks <name>`.
 
 ## The loop
 
-**1 · Spawn the builder.** Pass `julia-builder` the task file, the part, and the path of the
-part's spec bundle. Pass nothing else: the bundle holds the rows and every section the builder
-reads. It cannot write the bundle itself: it runs in a worktree, and the worktree guard refuses
-`awk -f`.
+**1 · Spawn the builder** of the part's pair: `python-builder`, `julia-builder` or `part-builder`.
+Pass it the task file, the part, and the path of the part's spec bundle. Pass nothing else: the
+bundle holds the rows and every section the builder reads. It cannot write the bundle itself: it
+runs in a worktree, and the worktree guard refuses `awk -f`.
 
 **A part in `Packages/` or `Experiments/` is spawned with `isolation: "worktree"`, from its
 repository.** First `cd ~/Research/Packages/<Repository>` as a Bash call of its own, then the
@@ -189,9 +207,10 @@ the totals line and every line that is not CAUGHT, verbatim. `SendMessage` the b
 and nothing else. When it returns `ready for critic` again, go to 3. The sweep runs once per part;
 a verify round runs no sweep.
 
-**3 · Spawn a new critic and a suite run, in one message.** Spawn the critic as `julia-critic`,
-without isolation: with `effort: "high"` on the `Agent` call in round 1, and with no `effort` in a
-verify round, so that its frontmatter's `medium` holds.
+**3 · Spawn a new critic and a suite run, in one message.** Spawn `python-critic`, `julia-critic`
+or `part-critic`, the critic of the part's pair, without isolation: with `effort: "high"` on the
+`Agent` call in round 1, and with no `effort` in a verify round, so that its frontmatter's
+`medium` holds.
 **A new critic for every round**: never `SendMessage` a critic, and never pass it the builder's
 report.
 
@@ -210,11 +229,15 @@ Beside the critic, spawn `julia-test-runner` on the worktree: `run-tests.jl <wor
 every command under the builder's *Left for the dispatcher* except the generated sweep. The critic runs only the test files
 the diff reaches; the whole suite is this run's, because a suite of 20–100 minutes in the builder's
 or the critic's context writes that context again in full after every 5 minutes of waiting.
+**For a part of another pair, run the repository's own suite yourself instead**, in the
+background, with its log in a file: the suite that the plan's §V names, such as
+`harness test --log <file>`. `julia-test-runner` runs the suite of the Julia pair only.
 
 **The gate of a spec-delta part.** For a part whose cell names `spec`, each round also runs the
 spec's checks and CI, so that a mechanical failure blocks the round whatever the critic finds:
 
-- **The checks.** The same `julia-test-runner` runs, after the suite and never beside it,
+- **The checks.** Whoever runs the suite, `julia-test-runner` or you, also runs, after the suite
+  and never beside it,
   `python3 ~/Research/Harness/scripts/spec-validate.py <spec> --head <worktree> --out "$TMPDIR/gate-<Repository>-<part>-round-<N>"`,
   and returns the totals and every failure, verbatim. It runs every `check:` of the delta on the
   head, and fails a check that writes into the worktree. The output goes below `$TMPDIR`, because
@@ -242,19 +265,19 @@ beside the critics' defects. Where the finish builder commits a change of code a
 the gate again on the pull request's head; a failure goes to the arbitrator with the trigger
 `stop after PASS`.
 
-**After each critic round, spawn a new `julia-builder`; never `SendMessage` the last one.** A
+**After each critic round, spawn a new builder; never `SendMessage` the last one.** A
 resumed builder writes its whole context again (456–458 k tokens in round 4), and a new one starts from
 the reports: in the C1 replay it cost a quarter to a half as much, with fewer blocking defects left.
 First `cd <worktree>` as a Bash call of its own,
 then the `Agent` call, without isolation. Pass the task file, the part, the path of its spec
 bundle, written again, the worktree, the branch, the base, the head that the critic judged, and the
-last builder's report as the handoff note. From here on, *the builder* is the `julia-builder` of the current round.
+last builder's report as the handoff note. From here on, *the builder* is the one of this round.
 
 - **FAIL** — spawn it with `Round: fix <N>`, and add the critic's *Blocking defects*, *Other
   defects* and *Fix first*, verbatim — both critics' in round 1 — every failing testset of the
   suite run with its output, and the critics' reproducer directories. The builder fixes the
   blocking defects and the other defects that its branch causes, records the rest
-  (`~/.claude/rules/known-issues.md`; `julia-builder`), and rereads the text that its fix adds,
+  (`~/.claude/rules/known-issues.md`; the builder's agent), and rereads the text that its fix adds,
   changes or makes false. **Add no instruction of your own.** A
   decision goes into the task file first, by the advisor's route, then into the bundle you write
   again, and your prompt names its line.

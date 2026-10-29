@@ -318,8 +318,9 @@ through `parts-table.awk`. The skills `build-part`, `build-reviewed` and `plan-p
 ## `spec-bundle.py`
 
 `spec-bundle.py` writes the spec bundle of one part: every text of the task file that the part's
-builder and critics read, in one file. `julia-builder` and `julia-critic` read the bundle and
-nothing else of the task file, so a rule reaches them only through it.
+builder and critics read, in one file. `julia-builder`, `julia-critic`, `python-builder` and
+`python-critic` read the bundle and nothing else of the task file, so a rule reaches them only
+through it.
 
 ```bash
 python3 spec-bundle.py "<task file>" <part> [--out <file>]

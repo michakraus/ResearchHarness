@@ -13,6 +13,7 @@ that kind of work:
 | `julia-code.md` | any `.jl` file |
 | `julia-tests.md` | a file under `test/` |
 | `julia-docs.md` | `docs/make.jl`, a file under `docs/src/`, or `docs/Project.toml` |
+| `python-code.md` | any `.py` file |
 | `changelog.md` | a `CHANGELOG.md` |
 | `known-issues.md` | a `KNOWN_ISSUES.md` |
 | `generated-hooks-and-workflows.md` | a git hook or a CI workflow |
@@ -101,11 +102,12 @@ To `SendMessage` an agent, call `task` again with the `task_id` that its first c
 
 ## `build-part`: round 1 is a council of critics
 
-Where step 3 spawns two critics, spawn the council of `julia-critic` in one message:
-`julia-critic` as `Round: 1a`, and each of its council copies as `1b`, `1c`, … in the
-alphabetical order of their names. A council copy is a hidden agent whose description says "The
-same agent as julia-critic". Each critic runs on a different model. The `task` tool takes no
-effort, so `1a` runs at the variant of `julia-critic`, and each copy at its own. Everything else
-in step 3 holds for every critic: the round fails when any critic fails, its findings are the
-union of the reports, and you wait for all of them. A verify round spawns one critic alone: the
-council copy whose description says that it judges each verify round, else `julia-critic`.
+Where step 3 spawns two critics, spawn the council of the part's critic, `julia-critic` or
+`python-critic`, in one message: the critic as `Round: 1a`, and each of its council copies as
+`1b`, `1c`, … in the alphabetical order of their names. A council copy is a hidden agent whose
+description says "The same agent as julia-critic" or "The same agent as python-critic". Each
+critic runs on a different model. The `task` tool takes no effort, so `1a` runs at the variant of
+the critic, and each copy at its own. Everything else in step 3 holds for every critic: the round
+fails when any critic fails, its findings are the union of the reports, and you wait for all of
+them. A verify round spawns one critic alone: the council copy whose description says that it
+judges each verify round, else the critic.

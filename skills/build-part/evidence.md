@@ -10,9 +10,10 @@
 - [Hostile inputs](#hostile-inputs)
 - [Allocation assertions](#allocation-assertions)
 
-`julia-builder` writes this table before it changes code, `julia-critic` writes its own before it
-reads the diff, and `plan-parts` writes each *Done when* so that the table can be filled. The
-builder's table goes into its report and into the pull-request body.
+The part's builder, `julia-builder`, `python-builder` or `part-builder`, writes this table before
+it changes code; its critic, `julia-critic`, `python-critic` or `part-critic`, writes its own
+before it reads the diff; and `plan-parts` writes each *Done when* so that the table can be
+filled. The builder's table goes into its report and into the pull-request body.
 
 **A part is done when every clause has a row, and every row says PASS.** A clause with no row is
 not done. A row without a command and its output is not evidence.

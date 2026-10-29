@@ -58,6 +58,7 @@ judge = "high"
 # `reasoningEffort:`. oh-my-pi writes it as `thinking-level`, as it writes a variant.
 [reasoning_effort]
 critic-c = "high"
+python-critic-c = "high"
 
 # Copies of an agent on other models, in order: each is written as `<name>.md`, with its own
 # model and the agent's body. A council is keyed by an agent of agents/; any other key stops the
@@ -66,6 +67,10 @@ critic-c = "high"
 julia-critic = [
     { name = "critic-b", model = "provider-c/other-model", verify = true },
     { name = "critic-c", model = "provider-b/medium-model" },
+]
+python-critic = [
+    { name = "python-critic-b", model = "provider-c/other-model", verify = true },
+    { name = "python-critic-c", model = "provider-b/medium-model" },
 ]
 
 # The input tokens that a model may hold: OpenCode's `limit` in the `provider` object of

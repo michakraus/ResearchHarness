@@ -75,6 +75,7 @@ you start that kind of work:
 | `julia-code.md` | any `.jl` file |
 | `julia-tests.md` | a `.jl` file under `test/` |
 | `julia-docs.md` | `docs/make.jl`, a file under `docs/src/`, or `docs/Project.toml` |
+| `python-code.md` | any `.py` file |
 | `changelog.md` | a `CHANGELOG.md` |
 | `known-issues.md` | a `KNOWN_ISSUES.md` |
 | `generated-hooks-and-workflows.md` | a file under `.githooks/`, `.github/workflows/` or `Harness/githooks/` |

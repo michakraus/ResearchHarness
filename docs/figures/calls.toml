@@ -11,43 +11,61 @@
 #
 # The model and the effort of each node come from its source's frontmatter and from
 # examples/models.toml, never from this file. A caller that spawns one callee at two efforts has
-# two entries.
+# two entries. One spawn has no entry: build-part's of part-builder and part-critic for a
+# repository with neither manifest, which the figures cannot draw without crossing edges; the
+# entries of build-reviewed draw that pair.
 
 [[call]]
 caller = "build-part"
 callee = "julia-builder"
-at = "skills/build-part/SKILL.md:149"
+at = "skills/build-part/SKILL.md:167"
 label = "build, fix, finish"
 
 [[call]]
 caller = "build-part"
 callee = "julia-critic"
-at = "skills/build-part/SKILL.md:192"
+at = "skills/build-part/SKILL.md:210"
 effort = "high"
 label = "round 1, two critics"
 
 [[call]]
 caller = "build-part"
 callee = "julia-critic"
-at = "skills/build-part/SKILL.md:100"
+at = "skills/build-part/SKILL.md:118"
 label = "verify round"
 
 [[call]]
 caller = "build-part"
+callee = "python-builder"
+at = "skills/build-part/SKILL.md:167"
+
+[[call]]
+caller = "build-part"
+callee = "python-critic"
+at = "skills/build-part/SKILL.md:210"
+effort = "high"
+
+[[call]]
+caller = "build-part"
+callee = "python-critic"
+at = "skills/build-part/SKILL.md:118"
+
+[[call]]
+caller = "build-part"
 callee = "julia-test-runner"
-at = "skills/build-part/SKILL.md:209"
+at = "skills/build-part/SKILL.md:228"
 label = "full suite"
 
 [[call]]
 caller = "build-part"
 callee = "advisor"
-at = "skills/build-part/SKILL.md:336"
+at = "skills/build-part/SKILL.md:359"
 label = "a question"
 
 [[call]]
 caller = "build-part"
 callee = "arbitrator"
-at = "skills/build-part/SKILL.md:274"
+at = "skills/build-part/SKILL.md:297"
 label = "no convergence"
 
 [[call]]
@@ -107,7 +125,7 @@ label = "red CI"
 [[call]]
 caller = "plan-parts"
 callee = "reader"
-at = "skills/plan-parts/SKILL.md:247"
+at = "skills/plan-parts/SKILL.md:251"
 label = "premise check, one per part"
 
 [[call]]

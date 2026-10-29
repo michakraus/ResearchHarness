@@ -133,3 +133,18 @@ block, and an unqualified `@ref` to a name that two modules export. A local buil
 when `docs/make.jl` uses InterLinks, because the sandbox blocks the fetch. The agent then reads
 the CI job. The rule says which marker shows a complete build, and how to confirm a deploy from
 `origin/gh-pages`.
+
+## `python-code`
+
+This rule gives the idioms of the strict Python profile. It loads on the path `**/*.py`, also for
+`part-builder` and `part-critic` in a Python repository.
+
+Each idiom names the tool that enforces it, or "review" where the critic checks it and no tool
+does: one layout from `ruff format`, the rule families of `ruff check`, and strict typing from
+`basedpyright`, with the lines of a change clean of the generated records. Then a dataclass at
+every input boundary, `pathlib`, the form of `subprocess.run` (`check=`, `text=True`,
+`timeout=`), `HarnessError` for a failure that exits 2, no blind `except`, the banned APIs
+`os.system` and `os.popen`, `json.load` only at the boundary, no guard decision on `shlex`, one
+helper for a secret file, and hooks that import only the standard library. The tests are cases of
+`harness test`, and a named mutant runs with `harness mutate`.
+[Development](../development.md#the-python-rule) gives the reason for each idiom.

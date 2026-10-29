@@ -20,8 +20,12 @@ The task file keeps the row, the collision map, §V, §L and the state; the spec
 **Running a check.** Every `check:` runs from the root of a <Repository> tree: the base for §1, the
 head for §3. `$SPEC` is the directory of this file. <What else a check needs.>
 
-**Tier:** <tier>. **Collision row:** <the files> | <part>; <the other parts that touch them, or none>.
+**Tier:** <tier>. **Language:** <python | julia>. **Collision row:** <the files> | <part>; <the other parts that touch them, or none>.
 ```
+
+**The `**Language:**` line picks the builder and the critic** of a `build` part: `python` gives
+`python-builder` and `python-critic`, `julia` gives `julia-builder` and `julia-critic`. Write it for
+every `build` part; `build-part` reads the repository's manifests only where the line is missing.
 
 ## The four sections
 

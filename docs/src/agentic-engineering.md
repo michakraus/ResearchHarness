@@ -115,18 +115,21 @@ sources, and the docs build draws the figures from it. So a figure changes when 
 
 ```calls build-part
 title: The calls of build-part
-desc: The build-part skill spawns julia-builder, julia-critic in round 1 at high effort and in each verify round at its own effort, julia-test-runner, advisor and arbitrator. julia-builder spawns julia-branch-verifier and changelog-scribe.
+desc: The build-part skill spawns julia-builder or python-builder, julia-critic or python-critic in round 1 at high effort and in each verify round at its own effort, julia-test-runner, advisor and arbitrator. julia-builder spawns julia-branch-verifier and changelog-scribe.
 ```
 
 A part is one pull request of a plan. You start `build-part` in your session when a part is ready
-to build. The skill does not write code. It spawns `julia-builder` to build the part, and then a
-new `julia-critic` to judge the result. In the first critic round, two critics judge at high
+to build. The skill does not write code. It spawns a builder to build the part, and then a new
+critic to judge the result: `julia-builder` and `julia-critic` for a Julia part,
+`python-builder` and `python-critic` for a Python part, and `part-builder` and `part-critic` in a
+repository with neither a `Project.toml` nor a `pyproject.toml`. In the first critic round, two critics judge at high
 effort, and each one sees only the branch, never the builder's report. In each later verify
 round, which checks only the fix, the critic sees only the fix. Beside each
-critic, `julia-test-runner` runs the full test suite. A question inside the loop goes to the
-`advisor`, and a loop that does not converge goes to the `arbitrator`. Before the pull request,
-the builder spawns `julia-branch-verifier`, and it can spawn `changelog-scribe` for a fix of the
-CHANGELOG.
+critic, `julia-test-runner` runs the full test suite of a Julia part; for any other part the
+skill's session runs the repository's own suite in the background. A question inside the loop goes to the
+`advisor`, and a loop that does not converge goes to the `arbitrator`. Before the pull request of
+a Julia part, `julia-builder` spawns `julia-branch-verifier`, and it can spawn `changelog-scribe`
+for a fix of the CHANGELOG.
 
 The work is split because a context that wrote the code does not judge it well. A fresh critic
 with no knowledge of the builder's reasons finds more defects. A long test run goes to an agent
