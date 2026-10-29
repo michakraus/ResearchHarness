@@ -88,9 +88,10 @@ jobs:
 
   # Each systemd --user unit, rendered with examples/profile.toml under this runner's home, where
   # stubs stand for the programs that the units start: systemd-analyze verify checks that each
-  # ExecStart is executable. The render makes the harness's Python environment in this home, whose
-  # bin/python claude-autocommit.service starts. The stubs come after the render: bin/harness runs
-  # on an environment's bin/python that starts, so a stub there would render every unit empty.
+  # ExecStart is executable. The stubs come after the render: bin/harness runs on the bin/python of
+  # its Python environment when that starts, so a stub there before the render would render every
+  # unit empty. The render makes that environment, whose bin/python is a link to the base
+  # interpreter, so the loop removes each path before it writes the stub there.
   systemd:
     name: systemd-analyze verify
     runs-on: ubuntu-latest
@@ -105,8 +106,9 @@ jobs:
             python3 bin/harness --profile examples/profile.toml render "$f" > "$units/$(basename "$f")"
             echo "rendered $f"
           done
-          for program in .julia/bin/kaimon .juliaup/bin/julia .local/bin/claude-autocommit; do
+          for program in .julia/bin/kaimon .juliaup/bin/julia .local/share/research-harness/python/bin/python .local/bin/claude-autocommit; do
             mkdir -p "$HOME/$(dirname "$program")"
+            rm -f "$HOME/$program"
             printf '#!/bin/sh\nexit 0\n' > "$HOME/$program"
             chmod +x "$HOME/$program"
           done
