@@ -579,7 +579,8 @@ The writer of a private file. It has no subcommand. Its cases run in `harness te
 `O_CREAT | O_EXCL` and `mode`, sets `mode` on the empty file, writes `data` and moves the file onto
 `path` with `os.replace`. So no file that holds `data` has more permission bits than `mode`, under
 any umask, and an existing file ends with `mode`. A symlink at `path` is replaced, not written
-through. A failed write removes the temporary name and raises a `HarnessError` that names `path`.
+through. Any failure removes the temporary name. An `OSError`, a NUL character in `path` and a
+path that names no file raise a `HarnessError` that names `path`.
 
 Its cases run the writes under umask 0, read the mode of each file that `os.open` creates and the
 mode before each `chmod`, and check that no other file stays beside `path`.

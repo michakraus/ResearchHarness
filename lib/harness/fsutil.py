@@ -24,8 +24,9 @@ type FilePath = str | os.PathLike[str]
 
 
 def write_private(path: FilePath, data: bytes, mode: int = 0o600) -> None:
-    """Write `data` to the file at `path` with the permission bits `mode`. A failure removes the
-    temporary name and raises HarnessError with the path."""
+    """Write `data` to the file at `path` with the permission bits `mode`. Any failure removes the
+    temporary name; an OSError, a NUL character in the path and a path that names no file raise
+    HarnessError with the path."""
     target = pathlib.Path(path)
     if not target.name:
         raise HarnessError(f"cannot write {os.fspath(path)!r}: the path names no file")
