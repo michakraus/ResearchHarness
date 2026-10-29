@@ -52,8 +52,9 @@ whose guard scripts, install-drift.py, instructions, rules and skills it copies.
 Each .md file but GEMINI.md names Antigravity's copies, not Claude Code's, RTK.md and the files of
 instructions/ in config/rules/ (relocate). A path of two sources, compared as `install.fold`
 compares names, exits 2; so does an instruction file or a rule that holds an include,
-`@[label](path)`, or of FILE_CAP bytes or more, and a set of them of BUDGET bytes or more
-(check_sizes): Antigravity would cut the file, or demote rules to path pointers. An installed
+`@[label](path)`, or of FILE_CAP bytes or more, and a global file and always-on rules of BUDGET
+bytes or more together (check_sizes): Antigravity would cut the file, or demote rules to path
+pointers. An installed
 file with no source below config/rules/, config/skills/, config/hooks/ and config/agents/ is
 EXTRA, with its removal command (extras); every other file below ~/.gemini/, Antigravity's own
 antigravity/, the app's per-project grants in config/projects/ and plugins/ among them, is neither
@@ -176,6 +177,8 @@ DELTA = SOURCE / "ANTIGRAVITY-DELTA.md"
 # always-on and global rules share 20,000 tokens, counted here at 4 bytes a token.
 FILE_CAP = 24000
 BUDGET = 20000 * 4
+# The first lines of a rule that render_rule gives `trigger: glob`.
+GLOB_RULE = b"---\ntrigger: glob\n"
 # Antigravity's include of another file, `@[label](path)`.
 INCLUDE = re.compile(rb"@\[[^\]\n]*\]\(")
 # The `SessionStart` handler: it runs install-drift.py, its path the first argument, and turns its
@@ -318,10 +321,12 @@ def render_skill(data):
     )
 
 
-def check_sizes(texts):
+def check_sizes(texts: list[tuple[str, bytes]]) -> None:
     """Exit 2 when a text of `texts`, [(label, bytes)], holds an include, `@[label](path)`, whose
-    expanded size is not known here; when one has FILE_CAP bytes or more; or when together they
-    have BUDGET bytes or more: Antigravity would cut the file, or demote rules to path pointers."""
+    expanded size is not known here; when one has FILE_CAP bytes or more; or when the global file
+    and the always-on rules among them, every text but a `trigger: glob` rule, have BUDGET bytes or
+    more together: Antigravity would cut the file, or demote rules to path pointers. A glob rule
+    loads only for a matching file, so it is not in the budget."""
     included = [label for label, data in texts if INCLUDE.search(data)]
     if included:
         raise HarnessError(
@@ -335,12 +340,12 @@ def check_sizes(texts):
             f"{'; '.join(over)}. Antigravity cuts an instruction file or a rule at 24,000 bytes, so "
             "the install writes none of that size"
         )
-    total = sum(len(data) for _, data in texts)
+    total = sum(len(data) for _, data in texts if not data.startswith(GLOB_RULE))
     if total >= BUDGET:
         raise HarnessError(
-            f"the instruction files and rules hold {total} bytes together. Antigravity's rules share "
-            f"20,000 tokens, {BUDGET} bytes at 4 bytes a token, and a rule over the budget becomes a "
-            "path pointer, so the install writes none over it"
+            f"the global file and the always-on rules hold {total} bytes together. Antigravity's "
+            f"always-on and global rules share 20,000 tokens, {BUDGET} bytes at 4 bytes a token, and a "
+            "rule over the budget becomes a path pointer, so the install writes none over it"
         )
 
 
@@ -1801,12 +1806,18 @@ def instruction_cases(scratch):
         except HarnessError as e:
             return str(e)
 
+    glob = GLOB_RULE + b'globs: "**/*.py"\n---\n'
+    on = b"---\ntrigger: always_on\n---\n"
     cases = [
         ([("a", b"x" * 23999)], None),
         ([("a", b"x" * 24000)], "a: 24000 bytes"),
         ([(str(i), b"x" * 19999) for i in range(4)] + [("e", b"x" * 3)], None),
         ([(str(i), b"x" * 20000) for i in range(4)], "80000 bytes"),
+        ([(str(i), on + b"x" * (20000 - len(on))) for i in range(4)], "80000 bytes"),
+        ([(str(i), b"x" * 20000) for i in range(3)] + [("g", glob + b"x" * 20000)], None),
+        ([("g", glob + b"x" * (24000 - len(glob)))], "g: 24000 bytes"),
         ([("a", b"x @[label](path) y")], "a holds an include"),
+        ([("g", glob + b"x @[label](path) y")], "g holds an include"),
         ([("a", b"x @[label] (path) y")], None),
     ]
     got = [refused(t) for t, _ in cases]
@@ -1815,7 +1826,14 @@ def instruction_cases(scratch):
             (g is None) if w is None else (g is not None and w in g) for g, (_, w) in zip(got, cases)
         ),
         f"a file of 23,999 bytes passes and one of 24,000 exits 2; a sum of 79,999 bytes passes and one of 80,000 "
-        f"exits 2; a text with an include `@[…](…)` exits 2, and one with `@[…]` alone passes: {got}",
+        f"exits 2, always-on rules counted; a glob rule is not in the sum, and one of 24,000 bytes or with an "
+        f"include exits 2; a text with an include `@[…](…)` exits 2, and one with `@[…]` alone passes: {got}",
+    )
+    src = REPO / "rules" / "python-code.md"
+    rendered = render_rule(src, src.read_bytes())
+    case(
+        lambda: rendered.startswith(GLOB_RULE),
+        f"render_rule gives a rule with paths the first lines that check_sizes leaves out: {rendered[:40]!r}",
     )
 
 

@@ -468,8 +468,9 @@ The install exits with status 2, before it writes a file, in these cases among o
 - the app's `userSettings` or `globalPermissionGrants` is not an object, or its `allow`, `deny` or
   `ask` is not a list;
 - two sources hold the same path;
-- an instruction file or a rule holds an include `@[…](…)` or has 24,000 bytes or more, or all of
-  them together reach the budget that Antigravity's rules share;
+- an instruction file or a rule holds an include `@[…](…)` or has 24,000 bytes or more, or the
+  global file and the always-on rules together reach the budget that they share, 80,000 bytes; a
+  rule with `paths` loads only for a matching file, so it is not in the budget;
 - `models.toml` has no `[antigravity]` table, or the table does not give each tier one of the
   words `inherit`, `flash`, `flash_lite` and `pro`;
 - `TOOLS` does not map a tool of an agent.
