@@ -46,7 +46,7 @@ if TYPE_CHECKING:
 
 # The seconds that each program the hook runs may take, but the suite and the kit's tests: those
 # are the harness's own, and a push waits for them without a limit, as the person who pushes can
-# stop them. A program that takes longer refuses the push.
+# stop them. A check that takes longer refuses the push.
 TIMEOUT = 3600
 # The python3 of the PATH, which runs this hook, bin/harness and the kit's tests.
 PYTHON = sys.executable

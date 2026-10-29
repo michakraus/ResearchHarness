@@ -165,7 +165,7 @@
 
 ### K71 · The PATH check of the units does not place a session's working directory, which the live sandbox lets the session write.
 
-- location: `lib/harness/units.py:164`
+- location: `lib/harness/units.py:166`
 - evidence: Claude Code's sandbox lets a session write its working directory, which no entry of
   `sandbox.filesystem.allowWrite` of `settings/settings.proposal.json` names. `path_problems`
   fails a `PATH` element at or below `$TMPDIR`, `/var/folders` or `/private/var/folders`, but a
@@ -513,7 +513,7 @@
 
 ### K109 · A SIGKILL of `harness test` leaves its running parts as orphans, and frees its slot while they run.
 
-- location: `lib/harness/testrun.py:164`
+- location: `lib/harness/testrun.py:165`
 - evidence: `run_part` starts each part with `start_new_session=True`, and the run stops the
   parts' process groups only from Python: on an error, an interrupt, a SIGTERM or a SIGHUP. A
   SIGKILL ends the run with no handler, so each running part goes on, and the 300 s limit, which
@@ -524,7 +524,7 @@
 
 ### K110 · `changed` runs `git diff` with no `timeout=`.
 
-- location: `lib/harness/testrun.py:113`
+- location: `lib/harness/testrun.py:114`
 - evidence: `subprocess.run(["git", "diff", "--name-status", …], cwd=root, capture_output=True,
   text=True, check=False)` names no `timeout`, so a `git` that does not end holds
   `harness test --changed` with it. No `git diff` that hangs is known, and no configuration of
