@@ -2162,7 +2162,7 @@ def models_schema_cases() -> tuple[int, int]:
         ]
         check(
             got_efforts == ["high", "low", "medium", None],
-            f"agent_effort: variants, then reasoning_effort, then the model's model_variants -> {got_efforts}",
+            f"agent_effort: variants, then reasoning_effort, then model_variants -> {got_efforts}",
         )
         got = models_loaded(models_example)
         check(
