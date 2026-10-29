@@ -27,7 +27,7 @@ import stat
 import tempfile
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from typing import cast
 
 from . import HarnessError, fsutil, jsonio
@@ -215,7 +215,11 @@ class Merge:
                 v = e.node.value
                 if type(v) is float:
                     token = text[e.node.start : e.node.end]
-                    if Decimal(token) == Decimal(v):
+                    try:
+                        exact = Decimal(token) == Decimal(v)
+                    except InvalidOperation:
+                        exact = False
+                    if exact:
                         self.numbers.setdefault(repr(v), token)
 
     def scalar(self, value: JsonValue) -> str:
@@ -594,6 +598,18 @@ CASES: list[tuple[str, str, Change, str]] = [
         '{"a": 1e-400}',
         setting("b", value=0.0),
         '{"a": 1e-400, "b": 0.0}',
+    ),
+    (
+        "a float whose exponent Decimal cannot hold keeps its text",
+        '{"a": 1e-99999999999999999999999}',
+        setting("b", value=2),
+        '{"a": 1e-99999999999999999999999, "b": 2}',
+    ),
+    (
+        "a float 0.0 added beside a float whose exponent Decimal cannot hold is written 0.0",
+        '{"a": 1e-99999999999999999999999}',
+        setting("b", value=0.0),
+        '{"a": 1e-99999999999999999999999, "b": 0.0}',
     ),
     (
         "a one-line array in a text of several lines gains a member",
