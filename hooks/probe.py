@@ -2799,11 +2799,14 @@ def command_cases():
     # The work per payload: each check and each reading takes a walk of a `cd` word from the memo of
     # `paths.py`, an absolute word is walked once whatever the start, and a walk reads each name once
     # from each directory, so a payload reads each distinct name of its `cd` words at most once in each
-    # of the two modes; and the writes of a command ask git once per work tree.
-    for cwd, (command, shape) in (
-        (LOGS, mib_command("d{}/../", four, "cd ")),
-        (LOGS, mib_command("a/../", four, "cd ")),
-        (DEEP, mib_command(f"cd d{{}}; cd {DEEP}; ", four.removeprefix("; "))),
+    # of the two modes from each start; and the writes of a command ask git once per work tree. The
+    # third command reads each `d<i>` from two starts in the `real` mode: from the directory of the
+    # chain of `cd`, and from the call's working directory, against which the sandbox check tests each
+    # `cd`; and the work tree check walks each `cd` to the deep directory from a new start.
+    for cwd, starts, (command, shape) in (
+        (LOGS, 2, mib_command("d{}/../", four, "cd ")),
+        (LOGS, 2, mib_command("a/../", four, "cd ")),
+        (LOGS, 3, mib_command(f"cd d{{}}; cd {DEEP}; ", four.removeprefix("; "))),
     ):
         words = re.findall(r"(?:^|; )cd (\S+)", command)
         names = len({name for word in words for name in word.split("/") if name not in ("", "..")})
@@ -2811,8 +2814,8 @@ def command_cases():
             json.dumps({"tool_name": "Bash", "tool_input": {"command": command}, "cwd": cwd}).encode("utf-8")
         )
         report(
-            ok=got == "pass" and 0 <= stats <= 2 * names + WALK_READS,
-            line=f"exp pass, at most 2 x {names} + {WALK_READS} reads got {got}, {stats}  [guard    ]  {shape}",
+            ok=got == "pass" and 0 <= stats <= starts * names + WALK_READS,
+            line=f"exp pass, at most {starts} x {names} + {WALK_READS} reads got {got}, {stats}  [guard    ]  {shape}",
         )
     command, shape = mib_command("echo x > __pycache__/a{}.log; ", "true")
     got, stats, spawns = guard_counted(
