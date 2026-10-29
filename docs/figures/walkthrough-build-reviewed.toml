@@ -1,9 +1,9 @@
 # The walk-through of a part of tier reviewed, from the part to the pull request with the skill
-# build-reviewed: one builder for the whole part, one critic, one fix round, your session's read
+# build-reviewed: a new part-builder for each round, one critic, one fix round, your session's read
 # and the finish. The keys are those of walkthrough-install.toml.
 
 title = "From a task to a pull request with build-reviewed"
-subtitle = "One builder holds the whole part. One critic judges it once, and your session reads the fix."
+subtitle = "One critic judges it once. A new builder takes each round, and your session reads the fix."
 steps = [
   "you -> skill",
   "skill -> builder",

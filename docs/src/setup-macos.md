@@ -427,7 +427,8 @@ harness install --apply
 copies each [agent](concepts.md#agent), [skill](concepts.md#skill), [rule](concepts.md#rule) and
 [instruction file](concepts.md#instruction-file) to the place where its frontend reads it. The
 first `--apply` also instantiates the Julia environment of the scripts, so it downloads the Julia
-packages of `Project.toml`. The warnings after the plan name what the install does not do for
+packages of `Project.toml`, and syncs the Python environment of the harness with `uv`. The warnings
+after the plan name what the install does not do for
 you. For example, the Kaimon entry of OpenCode needs the token file
 `~/.config/kaimon/auth-token`. Kaimon makes its key at its first start, so that warning stays
 until [The Kaimon token](#the-kaimon-token), after [The jobs](#the-jobs).
@@ -751,10 +752,10 @@ Run the harness's own test cases. The last line gives the number of cases, and i
 harness test
 ```
 
-At the start of each new Claude Code session, a hook compares `~/.claude/` with the sources. A
-session that starts with no warning has the installed layer of the sources. When a source changed
-after the last install, the session starts with a warning about [drift](concepts.md#drift).
-The [tutorial](tutorial.md) starts your first session.
+At the start of each new Claude Code or Antigravity session, a hook compares `~/.claude/` with the
+sources. A session that starts with no warning has the installed layer of the sources. When a
+source changed after the last install, the session starts with a warning about
+[drift](concepts.md#drift). The [tutorial](tutorial.md) starts your first session.
 
 Then check the whole machine in one command. `harness doctor` checks the machine, the tools, the
 profile, the install and the jobs, read-only, and prints one line for each check: `PASS`, `WARN`,

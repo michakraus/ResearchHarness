@@ -143,7 +143,7 @@ critics judge the work at high effort beside a run of
 the full suite. After a FAIL, a new builder fixes the work, and one critic judges the fix. The
 second FAIL goes to the arbitrator. After a PASS, a new builder finishes the part and opens the
 pull request. The figure shows the default models of Claude Code. Your `models.toml` can add a
-council of critics on other models for OpenCode.
+council of critics on other models for OpenCode and oh-my-pi.
 
 ### A smaller loop: `build-reviewed`
 

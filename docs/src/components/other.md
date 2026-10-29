@@ -159,8 +159,8 @@ keys of `settings.json`. These components read it:
 - `harness settings surface`, `compare` and `twins` measure and check it;
 - `harness permissions` writes the OpenCode permission block from its `ask` and `deny` rules;
 - `harness install` writes the `bash.patterns` and the path list of oh-my-pi from it;
-- `harness install` writes the permission rules of Antigravity's CLI and the path list of its
-  guard hook from it;
+- `harness install` writes the permission rules of Antigravity's CLI, the grants of its desktop
+  app and the path list of its guard hook from it;
 - `harness leaks` renders it with the example profile.
 
 Edit the template, never the installed `settings.json`, and commit it when you install it.
@@ -182,8 +182,9 @@ registries.
 `WebFetch(domain:…)` rules and the lists of `sandbox.network` from this file and from the overlay
 `network.toml` beside the profile, which `examples/network.toml` shows. A `deny` entry of either
 file wins over an `allow` or `infrastructure` entry of either file. OpenCode and oh-my-pi do not
-read the file. [Adapting the profile](../profile.md#the-network-overlay) gives the rules of each
-key.
+read the file; for Antigravity, `harness install` writes the `allow` hosts as
+`read_url(https://<host>/*)` rules. [Adapting the profile](../profile.md#the-network-overlay) gives
+the rules of each key.
 
 ## `profile.toml`
 

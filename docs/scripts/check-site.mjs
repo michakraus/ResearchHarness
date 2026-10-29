@@ -166,8 +166,8 @@ const WIDE_GRAPHS = ['Every spawn']
 // of the Claude Code plan. No box is the removed subcommand harness settings install.
 const FLOW = 'From the sources to the frontends'
 const INSTALL_STEPS = [
-  'Read the profile', 'Render the sources', 'Install Julia packages', 'Merge the settings',
-  'Write Claude Code', 'Write the stamp', 'Write the other layers', 'Link the skills'
+  'Read the profile', 'Render the sources', 'Install Julia packages', 'Sync Python environment',
+  'Merge the settings', 'Write Claude Code', 'Write the stamp', 'Write the other layers'
 ]
 let figures = 0
 let walkthroughs = 0

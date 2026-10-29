@@ -72,7 +72,7 @@ const install = {
   x: RIGHT_X, y: mid(layers[1]) - cardHeight(2) / 2, w: RIGHT_W, h: cardHeight(2)
 }
 const frontends = {
-  title: 'The frontends', icon: 'frontends', lines: ['~/.claude/, ~/.config/opencode/', '~/.omp/agent/'],
+  title: 'The frontends', icon: 'frontends', lines: ['~/.claude/, ~/.config/opencode/', '~/.omp/agent/, ~/.gemini/config/'],
   x: RIGHT_X, y: install.y + install.h + 60, w: RIGHT_W, h: cardHeight(2)
 }
 
@@ -101,7 +101,7 @@ const ARROWS: { from: string, to: string, points: Point[] }[] = [
     :width="WIDTH"
     :height="HEIGHT"
     title="The harness, the profile and the tree instructions"
-    desc="Three layers go into harness install. The harness is public and lives in this repository: the agents and skills, the rules and instructions, the guard hooks and the settings template. The profile is private and lives on your machine: profile.toml with your paths, accounts and private strings, and models.toml with the model of each tier for each frontend. The tree instructions are private and live in your own directory: research-tree.md with the facts about your tree, and optionally your own rules and skills. harness install reads the three layers and writes the configuration of each frontend into ~/.claude/, ~/.config/opencode/ and ~/.omp/agent/."
+    desc="Three layers go into harness install. The harness is public and lives in this repository: the agents and skills, the rules and instructions, the guard hooks and the settings template. The profile is private and lives on your machine: profile.toml with your paths, accounts and private strings, and models.toml with the model of each tier for each frontend. The tree instructions are private and live in your own directory: research-tree.md with the facts about your tree, and optionally your own rules and skills. harness install reads the three layers and writes the configuration of each frontend into ~/.claude/, ~/.config/opencode/, ~/.omp/agent/ and ~/.gemini/config/."
   >
     <FigPanel
       v-for="layer in layers"

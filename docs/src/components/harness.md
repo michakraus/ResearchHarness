@@ -30,7 +30,8 @@ subcommands live in the adapters: `settings` and `trust` in `adapters/claude/ada
 | `mutate` | `mutate.py` |
 | `test` | `testrun.py` |
 
-`frontmatter.py`, `docs.py`, `sweep.py` and `environment.py` have no subcommand. Their cases run
+`frontmatter.py`, `docs.py`, `units.py`, `script_cases.py`, `network.py`, `providers.py`,
+`sources.py`, `strict.py`, `sweep.py` and `environment.py` have no subcommand. Their cases run
 only in `harness test`. `install_cases.py` holds helpers for the cases of other modules. The
 sections start with the entry point and the parser, then the subcommands, then the shared modules,
 then the modules of the tests.

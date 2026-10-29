@@ -8,10 +8,11 @@ each skill. It loads the whole skill when a request matches a description, or wh
 The optional key `model:` names a model tier, `large`, `medium` or `small`, which each frontend
 maps to a model ([The neutral vocabulary](../architecture.md#the-neutral-vocabulary)).
 
-`harness install` copies each skill to `~/.claude/skills/<name>/`, and gives OpenCode and
-oh-my-pi each a copy of their own: `skills/<name>/` in OpenCode's configuration directory and in
-oh-my-pi's agent directory. In these copies, a path below `~/.claude/` names the same path in the
-frontend's own directory. Edit the source in `skills/`, not an installed copy. The description
+`harness install` copies each skill to `~/.claude/skills/<name>/`, and gives OpenCode, oh-my-pi
+and Antigravity each a copy of their own: `skills/<name>/` in OpenCode's configuration directory,
+in oh-my-pi's agent directory and in `~/.gemini/config/`. In these copies, a path below
+`~/.claude/` names the same path in the frontend's own directory. Edit the source in `skills/`,
+not an installed copy. The description
 decides when a skill loads, so its words are the trigger words of the requests.
 `harness skill-triggers` tests which skill loads on a query. The queries of each skill are in
 `tests/skill-triggers/<name>.toml`: `load` lists the queries that must load the skill, and `near`

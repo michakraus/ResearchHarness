@@ -182,4 +182,5 @@ These cases stop the subcommand with exit status 2:
 The profile key `extra_domain` stops every subcommand that reads the profile: move its hosts into
 the overlay's `allow`.
 
-The lists apply to Claude Code only. OpenCode and oh-my-pi have no network allowlist.
+OpenCode and oh-my-pi have no network allowlist. For Antigravity, `harness install` writes each
+`allow` host as `read_url(https://<host>/*)`.
