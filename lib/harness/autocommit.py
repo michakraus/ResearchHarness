@@ -118,7 +118,7 @@ def lock_dir(home: pathlib.Path, xdg: str | None) -> pathlib.Path:
 
 
 def julia_cases(case: Case, tmp: pathlib.Path) -> None:
-    """The seven cases of the Julia test that the script had as a bash script, with its titles."""
+    """Seven cases under fixed titles: the commit, the branch of the push, the lock's path, a held lock."""
     f = Fixture(tmp / "settled")
     f.write(f"{MEMORY}/one.md", "one fact\n")
     (f.repo / "settings.json").write_text('{"changed": true}\n', encoding="utf-8")
