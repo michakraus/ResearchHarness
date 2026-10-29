@@ -8,10 +8,11 @@ newline or its absence, and the text of every number that the change leaves stay
 is written with its characters, not their escapes, except a lone surrogate, which UTF-8 cannot
 encode and which stays a `\\u` escape. A key that the change adds goes at the end of its object,
 in the file's indentation and separators; a key that it removes goes with its separator. A value
-written into an object or an array on one line stays on that line, and a number that the change
-writes and the text holds keeps the text's spelling. An empty text, or one of whitespace only, is
-read as `{}`, and a key added to an empty object at the top level is indented by 2. A change that
-nests a value deeper than `jsonio.MAX_DEPTH`, or gives a text that `jsonio` refuses, is refused.
+written into an object or an array on one line stays on that line, and a float that the change
+writes and the text spells exactly keeps the text's spelling. An empty text, or one of whitespace
+only, is read as `{}`, and a key added to an empty object at the top level is indented by 2. A
+change that nests a value deeper than `jsonio.MAX_DEPTH`, or gives a text that `jsonio` refuses, is
+refused.
 
 `merge(path, change)` does the same to the file at `path`, through `fsutil.write_private` with the
 file's own mode. A missing file is read as an empty one and created with mode 0600, a path that is
@@ -26,6 +27,7 @@ import stat
 import tempfile
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from decimal import Decimal
 from typing import cast
 
 from . import HarnessError, fsutil, jsonio
@@ -202,8 +204,8 @@ def nested_deeper(value: JsonValue) -> bool:
 
 
 class Merge:
-    """The edits that turn the values of a text into the values of a changed object. A number that
-    the change writes and the text holds is written in the text's spelling of it."""
+    """The edits that turn the values of a text into the values of a changed object. A float that
+    the change writes and the text spells exactly is written in the text's spelling of it."""
 
     def __init__(self, text: str, top: Node, style: Style, where: str) -> None:
         self.text, self.style, self.where = text, style, where
@@ -211,8 +213,10 @@ class Merge:
         for n in walk(top):
             for e in n.entries or ():
                 v = e.node.value
-                if isinstance(v, (int, float)):
-                    self.numbers.setdefault(repr(v), text[e.node.start : e.node.end])
+                if type(v) is float:
+                    token = text[e.node.start : e.node.end]
+                    if Decimal(token) == Decimal(v):
+                        self.numbers.setdefault(repr(v), token)
 
     def scalar(self, value: JsonValue) -> str:
         """The JSON text of a value that is no object and no array: a string with its characters
@@ -221,7 +225,8 @@ class Merge:
             text = json.dumps(value, ensure_ascii=False, allow_nan=False)
         except (TypeError, ValueError) as e:
             raise HarnessError(
-                f"{self.where}: the change sets {value!r}, which is no JSON value: {e}"
+                f"{self.where}: the change sets a value of type {type(value).__name__}, "
+                f"which is no JSON value: {e}"
             ) from None
         if isinstance(value, str):
             return LONE_SURROGATE.sub(lambda m: f"\\u{ord(m[0]):04x}", text)
@@ -577,6 +582,19 @@ CASES: list[tuple[str, str, Change, str]] = [
     ),
     ("-0.0 that becomes 0.0", '{"d": -0.0}', setting("d", value=0.0), '{"d": 0.0}'),
     ("an integer -0 that the change leaves", '{"a": -0, "b": 1}', setting("b", value=2), '{"a": -0, "b": 2}'),
+    ("an integer 0 added beside -0 is written 0", '{"a": -0}', setting("b", value=0), '{"a": -0, "b": 0}'),
+    (
+        "an integer -0 that the change sets to 0 keeps its text",
+        '{"a": -0}',
+        setting("a", value=0),
+        '{"a": -0}',
+    ),
+    (
+        "a float 0.0 added beside 1e-400, which reads as 0.0, is written 0.0",
+        '{"a": 1e-400}',
+        setting("b", value=0.0),
+        '{"a": 1e-400, "b": 0.0}',
+    ),
     (
         "a one-line array in a text of several lines gains a member",
         '{\n  "a": ["x"],\n  "b": 1\n}\n',
@@ -626,6 +644,12 @@ CASES: list[tuple[str, str, Change, str]] = [
         '{\r  "a": 1,\r  "o": {"x": 1, "y": 3},\r  "b": 2\r}\r',
     ),
     (
+        "lone CR line ends and an object added with its nested lines indented",
+        '{\r  "a": 1\r}',
+        setting("o", value={"p": [1, 2]}),
+        '{\r  "a": 1,\r  "o": {\r    "p": [\r      1,\r      2\r    ]\r  }\r}',
+    ),
+    (
         f"a change that nests a value to a total depth of {jsonio.MAX_DEPTH}",
         '{"a":1}',
         setting("b", value=nested(jsonio.MAX_DEPTH - 1)),
@@ -655,15 +679,24 @@ REFUSED: list[tuple[str, str, Change]] = [
         '{"a": 1}',
         lambda data: cast("dict[str, JsonValue]", {**data, 1: 2}),
     ),
+    ("a change that sets an integer of 5000 digits", '{"a": 1}', setting("b", value=10**5000)),
 ]
+# A text that the message of a REFUSED row holds beside the path, by the row's label.
+REFUSED_SAYS = {
+    f"a change that nests a value to a total depth of {jsonio.MAX_DEPTH + 1}": "nests a value deeper than",
+}
 
 
 def refusal(path: pathlib.Path, change: Change) -> str:
-    """The message of the HarnessError that `merge(path, change)` raises, or `written`."""
+    """The message of the HarnessError that `merge(path, change)` raises, or `written`. A ValueError
+    or an ArithmeticError, which no input may raise, is returned as its type and message, so that
+    the case that meets it fails."""
     try:
         merge(path, change)
     except HarnessError as e:
         return str(e)
+    except (ValueError, ArithmeticError) as e:
+        return f"{type(e).__name__}: {e}"
     return "written"
 
 
@@ -680,9 +713,11 @@ def table_cases(case: fsutil.Case, root: pathlib.Path) -> None:
         path.write_bytes(before.encode("utf-8"))
         message = refusal(path, change)
         kept = path.read_bytes() == before.encode("utf-8")
+        says = REFUSED_SAYS.get(label, "")
         case(
-            f"merge: {label} is refused, names the file and keeps its bytes -> {message}, kept {kept}",
-            ok=str(path) in message and kept,
+            f"merge: {label} is refused, names the file{f' and says {says!r}' if says else ''} "
+            f"and keeps its bytes -> {message}, kept {kept}",
+            ok=str(path) in message and says in message and kept,
         )
 
 

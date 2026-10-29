@@ -544,8 +544,8 @@ UTF-8 file. Python's `json` keeps the last value of a key that occurs twice, and
 them with a `HarnessError` that names `where`, or the path, and the line. They also refuse a
 nesting deeper than 200, where the top-level value is depth 1, with its line, and an empty text, a
 byte order mark and a top level that is not an object. A path that cannot be read, is not a
-regular file or holds bytes that are not UTF-8 is refused with the path. No other exception leaves them. The module imports only the standard
-library and `HarnessError`.
+regular file or holds bytes that are not UTF-8 is refused with the path. No other exception leaves
+them. The module imports only the standard library and `HarnessError`.
 
 Its cases check a value, a file and CRLF line ends, each refusal and its line, and a depth of 200,
 201 and 100000.
@@ -559,12 +559,12 @@ The merge into a JSON file that another program owns. It has no subcommand. Its 
 to `change`, and returns the text in which only the changed values are written again. The key
 order, the indentation, the separators, a minified layout, CRLF line ends, the escapes, the final
 newline or its absence and the text of each number that the change leaves stay as they are. A
-number that the change writes and the text holds keeps the text's spelling. A changed string keeps
-its characters; a lone surrogate stays a `\u` escape. An added key goes at the end of its object,
-in the file's indentation and separators, and a removed key goes with its separator. A value
-written into an object or an array on one line stays on that line. An empty file is read as `{}`
-and written as `{}` and a newline. A change that nests a value deeper than 200, or gives a text
-that `jsonio.py` refuses, such as one with a key that is not a string, is refused.
+float that the change writes and the text spells exactly keeps the text's spelling. A changed
+string keeps its characters; a lone surrogate stays a `\u` escape. An added key goes at the end of
+its object, in the file's indentation and separators, and a removed key goes with its separator. A
+value written into an object or an array on one line stays on that line. An empty file is read as
+`{}` and written as `{}` and a newline. A change that nests a value deeper than 200, or gives a
+text that `jsonio.py` refuses, such as one with a key that is not a string, is refused.
 
 `merge(path, change)` does the same to a file, and writes it through `write_private` of
 `fsutil.py` with the file's own mode. A missing file is created with mode 0600. A symlink stays a

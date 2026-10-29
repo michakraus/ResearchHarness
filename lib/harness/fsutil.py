@@ -27,6 +27,8 @@ def write_private(path: FilePath, data: bytes, mode: int = 0o600) -> None:
     """Write `data` to the file at `path` with the permission bits `mode`. A failure removes the
     temporary name and raises HarnessError with the path."""
     target = pathlib.Path(path)
+    if not target.name:
+        raise HarnessError(f"cannot write {os.fspath(path)!r}: the path names no file")
     # 40 characters of the name are at most 160 bytes, so the temporary name fits where the name does.
     temporary = target.with_name(f".{target.name[:40]}.{secrets.token_hex(8)}.tmp")
     try:
@@ -198,6 +200,18 @@ def path_cases(case: Case, root: pathlib.Path) -> None:
         case(
             f"{label} raises HarnessError with the path and leaves no file -> {message!r}, {after}",
             ok=str(path) in message and after == before,
+        )
+    for given in ("", "/"):
+        try:
+            write_private(given, b"secret 6\n")
+            message = "written"
+        except HarnessError as e:
+            message = str(e)
+        except ValueError as e:
+            message = f"ValueError: {e}"
+        case(
+            f"the path {given!r} names no file and raises HarnessError with the path -> {message!r}",
+            ok=message.startswith("cannot write ") and repr(given) in message,
         )
 
 
