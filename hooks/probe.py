@@ -2214,7 +2214,7 @@ def fixture():
     os.symlink("/", LINK)
     # A link in a scratch zone to a guarded directory: a recursive `rm` of the link removes the link,
     # and of the link with a trailing `/` the directory.
-    os.symlink("/", SCRATCH + "/link-out")
+    pathlib.Path(SCRATCH, "link-out").symlink_to("/")
 
 
 def drift(env, payload="{}"):
@@ -2708,9 +2708,9 @@ def command_cases():
         start = time.monotonic()
         got, _ = guard_run(json.dumps(payload).encode("utf-8"), limit=HOOK_TIMEOUT)
         took = time.monotonic() - start
+        shape = f"{count} x {unit!r} then {tail!r}"
         report(
-            ok=got == expected,
-            line=f"exp {expected} got {got}  [guard    ]  {count} x {unit!r} then {tail!r}, 1 MiB: {took:.1f} s",
+            ok=got == expected, line=f"exp {expected} got {got}  [guard    ]  {shape}, 1 MiB: {took:.1f} s"
         )
     got, output = guard_run(b'{"tool_name":"Bash","tool_input":{"command":"echo \xff"},"cwd":"/"}')
     report(
