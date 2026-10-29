@@ -230,15 +230,15 @@ def root(start: Place) -> Place | None:
 
 @dataclass(frozen=True, slots=True)
 class Target:
-    """A write target, resolved: `scratch`, whether it lies under a scratch root; `root`, the work
-    tree that holds it, or None; `text`, its path, and `below`, its path relative to `root`, both
-    empty without a root; `source`, whether its name has a source suffix."""
+    """A write target, resolved: `root`, the work tree that holds it, or None; `text`, its path, and
+    `below`, its path relative to `root`, both empty without a root; `refused`, whether a write to
+    it outside a work tree is refused: it lies under no scratch root and its name has a source
+    suffix."""
 
-    scratch: bool
     root: str | None
     text: str
     below: str
-    source: bool
+    refused: bool
 
 
 @functools.cache
@@ -256,18 +256,15 @@ def target_of(start: Place | None, path: str) -> Target:
         above = place(directory, "plain") if start is None else start.go(directory, "plain")
         found = above.joined(pure.name)
     if scratch(found):
-        return Target(scratch=True, root=None, text="", below="", source=False)
+        return Target(root=None, text="", below="", refused=False)
     tree = root(found.parent().existing())
     if tree is None:
-        return Target(
-            scratch=False, root=None, text="", below="", source=found.name.lower().endswith(SOURCE_SUFFIXES)
-        )
+        return Target(root=None, text="", below="", refused=found.name.lower().endswith(SOURCE_SUFFIXES))
     return Target(
-        scratch=False,
         root=tree.text(),
         text=found.text(),
         below=str(PurePosixPath(*found.names()[tree.size :])),
-        source=found.name.lower().endswith(SOURCE_SUFFIXES),
+        refused=False,
     )
 
 
@@ -364,11 +361,9 @@ def tree_write(target: str, cwd: Cwd, variables: dict[str, str | None], ignores:
         written = target_of(cwd, path)
     else:
         written = target_of(None, path)
-    if written.scratch:
-        return False
     if written.root is not None:
         return not ignores.ignored(written.root, written.text, written.below)
-    return written.source
+    return written.refused
 
 
 def scratch_file(target: str, cwd: Cwd, variables: dict[str, str | None]) -> bool:
