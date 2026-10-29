@@ -464,9 +464,10 @@ the task board too. The lint skips each `CHANGELOG.md`. It reads only the workin
 no index, no network.
 
 A frontmatter is YAML. In the vaults and in `Tasks`, a block that does not parse is an ERROR on
-the line that PyYAML names, and so is a key that a block repeats. A value that YAML 1.1 converts, such as `draft: no` (false) or
-`mode: 0755` (493), is a WARN that names the key and the value; quote it to keep the text. The
-date of `verified:` is text of the form `YYYY-MM-DD`.
+the line that PyYAML names, and so is a key that a block repeats. A key or a value that YAML 1.1
+converts, an item of a list included, such as `draft: no` (false) or `mode: 0755` (493), is a
+WARN that names the key and the value; quote it to keep the text. The date of `verified:` is text
+of the form `YYYY-MM-DD`.
 
 It prints one line per finding, `<SEVERITY>  [<check>]  <file>[:<line>] — <message>`, then the
 counts by check and the totals. `--quiet` prints no WARN line, and the ERROR lines only when there

@@ -394,10 +394,13 @@ and gives the exit status. A tree that is no directory raises `HarnessError`.
 
 `yaml_reader` imports PyYAML when the first frontmatter is read, so an environment synced without
 it fails only this subcommand, with one line that names `harness install --apply`. Its loader,
-`FrontmatterLoader`, is a `SafeLoader` that keeps a date as its text, refuses a duplicate key and
-records each mapping value that YAML 1.1 converts, such as `no` or `0755`. The vault checks and
-the task board's check report the refusal as an ERROR on PyYAML's line, and each conversion as a
-WARN; the lint reads the frontmatter of the other trees only for their `aliases`.
+`FrontmatterLoader`, is a `SafeLoader` that keeps a date as its text, reads a float of YAML 1.2
+such as `1e3` as a float, refuses a duplicate key and records each plain key, mapping value and
+item of a list in a mapping value that YAML 1.1 converts, such as `no` or `0755`. The vault checks
+and the task board's check report the refusal as an ERROR on PyYAML's line, and each conversion as
+a WARN; the lint reads the frontmatter of the other trees only for their `aliases`, and a block
+that repeats a key keeps its last value for them. `shown` spells a value in a message as Julia's
+`string` spells the value that YAML.jl reads, such as `["a", "b"]` or `Any["a", 1]` for a list.
 
 Its cases run every check on a research root in a temporary directory, the exit statuses of
 `--strict` and `--quiet`, the reader's decisions, and the hook `githooks/pre-commit-wiki`, which

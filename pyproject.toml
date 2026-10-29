@@ -21,10 +21,10 @@ dev = [
 
 # The strict profile. `ruff format --check`, `ruff check` and `basedpyright` gate every commit
 # (.githooks/pre-commit), every push to main (.githooks/pre-push) and CI. Besides the *.py files,
-# ruff reads the three Python files without a suffix: bin/harness and the hook of the prose
-# repositories, githooks/pre-commit-wiki, whose syntax is the closed set of Python 3.0 forms that
-# `environment.outside_syntax` checks, so the formatter and the UP family leave them alone, and the
-# pre-commit hook.
+# ruff reads the three Python files without a suffix: .githooks/pre-commit, bin/harness, and
+# githooks/pre-commit-wiki, the hook of the prose repositories. The syntax of the last two is the
+# closed set of Python 3.0 forms that `environment.outside_syntax` checks, so the formatter and the
+# UP family leave them alone.
 [tool.ruff]
 line-length = 110
 target-version = "py314"

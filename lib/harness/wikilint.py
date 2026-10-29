@@ -37,13 +37,15 @@ a `.lint-records` file are records, which the checks of paths, line citations an
 skip. ERROR is a claim that is certainly false with an unambiguous fix; WARN needs a person.
 
 A frontmatter is YAML, read by PyYAML through `FrontmatterLoader`, a `SafeLoader` that keeps a
-date as its text, refuses a duplicate key (an ERROR on the line of the second key), and records
-each mapping value that YAML 1.1 converts where YAML 1.2 keeps the text or reads another value,
-such as `no`, `on`, `0755` or `1:30` (a WARN that names the key and the converted value). Both
-findings belong to the checks of the vaults' frontmatter and of the task board; the lint also
-reads the frontmatter of `Library/` for its `aliases`, and reports nothing there. PyYAML is
-imported when the first frontmatter is read, so an environment synced without it fails only this
-subcommand.
+date as its text, reads a float of YAML 1.2 such as `1e3` as a float, refuses a duplicate key (an
+ERROR on the line of the second key; the page keeps the last value for its `aliases`), and records
+each plain key, mapping value and item of a list in a mapping value that YAML 1.1 converts where
+YAML 1.2 keeps the text or reads another value, such as `no`, `on`, `0755` or `1:30` (a WARN that
+names the key and the converted value). Both findings belong to the checks of the vaults'
+frontmatter and of the task board; the lint also reads the frontmatter of `Library/` for its
+`aliases`, and reports nothing there. A value in a message is spelt as Julia's `string` spells the
+value that YAML.jl reads, `shown()`. PyYAML is imported when the first frontmatter is read, so an
+environment synced without it fails only this subcommand.
 
 The output is one line per finding, `<SEVERITY>  [<check>]  <file>[:<line>] — <message>`, sorted
 by severity, check, file and line, then a table of the counts by check and the totals. The exit
@@ -135,16 +137,20 @@ TASK_NOT_TASKS = ("README.md", "CLAUDE.md")
 # The `stop` of a frontmatter that opens and never closes, and of one that PyYAML refuses.
 UNCLOSED, REFUSED = -1, -2
 
-TIMESTAMP_TAG = "tag:yaml.org,2002:timestamp"
+TIMESTAMP_TAG, NULL_TAG = "tag:yaml.org,2002:timestamp", "tag:yaml.org,2002:null"
 BOOL_TAG, INT_TAG, FLOAT_TAG = "tag:yaml.org,2002:bool", "tag:yaml.org,2002:int", "tag:yaml.org,2002:float"
 # YAML 1.2's core schema, against which a YAML 1.1 value is a conversion.
 CORE_BOOL = {"true": True, "True": True, "TRUE": True, "false": False, "False": False, "FALSE": False}
 # (the form of a number, its value), in the order of the core schema's resolution.
+CORE_FLOAT = re.compile(r"[-+]?(?:\.[0-9]+|[0-9]+(?:\.[0-9]*)?)(?:[eE][-+]?[0-9]+)?")
+# The same form as an implicit resolver of PyYAML, and the characters that start it.
+CORE_FLOAT_RESOLVER = re.compile(rf"^(?:{CORE_FLOAT.pattern})$")
+FLOAT_FIRSTS = frozenset("-+.0123456789")
 CORE_NUMBERS: list[tuple[re.Pattern[str], Callable[[str], object]]] = [
     (re.compile(r"[-+]?[0-9]+"), int),
     (re.compile(r"0o[0-7]+"), lambda t: int(t[2:], 8)),
     (re.compile(r"0x[0-9a-fA-F]+"), lambda t: int(t[2:], 16)),
-    (re.compile(r"[-+]?(?:\.[0-9]+|[0-9]+(?:\.[0-9]*)?)(?:[eE][-+]?[0-9]+)?"), float),
+    (CORE_FLOAT, float),
     (re.compile(r"[-+]?\.(?:inf|Inf|INF)"), lambda t: -math.inf if t.startswith("-") else math.inf),
     (re.compile(r"\.(?:nan|NaN|NAN)"), lambda _: math.nan),
 ]
@@ -161,19 +167,22 @@ class Finding:
 
 @dataclasses.dataclass(frozen=True)
 class Conversion:
-    """A mapping value that YAML 1.1 reads otherwise than YAML 1.2: its key, its text, the value
-    that PyYAML gives, and its 0-based line in the YAML block."""
+    """A plain scalar that YAML 1.1 reads otherwise than YAML 1.2: the key of the mapping value
+    that it is or that holds it in a list, its text, the value that PyYAML gives, its 0-based line
+    in the YAML block, and whether it is the key itself."""
 
     key: str
     text: str
     value: object
     line: int
+    of_key: bool = False
 
 
 @dataclasses.dataclass(frozen=True)
 class YamlRead:
     """What `yaml_reader()` makes of a YAML block: the value, or a refusal with its 0-based line in
-    the block and the key that the block repeats (None for a block that does not parse)."""
+    the block and the key that the block repeats (None for a block that does not parse). A
+    refusal for a repeated key carries the value with the last of each repeated key."""
 
     data: object
     refused: bool = False
@@ -184,9 +193,10 @@ class YamlRead:
 
 @dataclasses.dataclass(frozen=True)
 class Front:
-    """The frontmatter of a page: its mapping ({} for none, a list, a scalar or a refusal), and
-    `stop`, the line of its closing `---`, 0 without a frontmatter, UNCLOSED or REFUSED. A refusal
-    carries its line in the file and the repeated key, if any."""
+    """The frontmatter of a page: its mapping ({} for none, a list, a scalar or a block that does
+    not parse; the last value of each key for a block that repeats one), and `stop`, the line of
+    its closing `---`, 0 without a frontmatter, UNCLOSED or REFUSED. A refusal carries its line in
+    the file and the repeated key, if any."""
 
     data: dict[object, object]
     stop: int
@@ -195,35 +205,213 @@ class Front:
     conversions: tuple[Conversion, ...] = ()
 
 
-def shown(value: object) -> str:
-    """The text of a frontmatter value in a message: a string as it is, `true` and `false`,
-    `nothing` for an empty value, `Inf` and `NaN`, a list as `Any[…]` and a mapping as
-    `Dict{Any, Any}(…)`, the forms that Julia's `string` gives."""
+@dataclasses.dataclass(frozen=True)
+class Pair:
+    """An item of a mapping, as a `for` over a Julia `Dict` visits it."""
+
+    key: object
+    value: object
+
+
+@dataclasses.dataclass(frozen=True)
+class JuliaType:
+    """The Julia type of a frontmatter value as YAML.jl builds it, which decides how Julia prints
+    a list. `name` is `String`, `Int64`, `Float64`, `Bool`, `Nothing`, `Integer`, `Real`, `Any`,
+    `Dict` (a `Dict{Any, Any}`) or `Vector`, whose `element` is its element type, or None for a
+    `Vector` of any element type; `nullable` makes it `Union{Nothing, …}`."""
+
+    name: str
+    element: JuliaType | None = None
+    nullable: bool = False
+
+
+ANY, NOTHING, BOOL, DICT = JuliaType("Any"), JuliaType("Nothing"), JuliaType("Bool"), JuliaType("Dict")
+INTEGERS = frozenset({"Bool", "Int64", "Integer"})
+REALS = INTEGERS | {"Float64", "Real"}
+# The types whose values Julia prints in a list without the list's element type: those that read
+# back as themselves (`typeinfo_implicit`).
+IMPLICIT = frozenset({"Float64", "Int64", "String", "Nothing"})
+# The Julia type of each value that PyYAML gives, but a list.
+SCALAR_TYPES: dict[type, str] = {
+    bool: "Bool",
+    int: "Int64",
+    float: "Float64",
+    str: "String",
+    type(None): "Nothing",
+    dict: "Dict",
+}
+# The places of the decimal point, counted from before the first significant digit, at which Julia
+# prints a float in plain decimals: -3 for `0.0001` up to 6 for `999999.9`.
+PLAIN_POINTS = range(-3, 7)
+# The Unicode categories of the characters that Julia's `isprint` accepts.
+PRINTABLE = frozenset(
+    {
+        *("Lu", "Ll", "Lt", "Lm", "Lo", "Mn", "Mc", "Me", "Nd", "Nl", "No", "Pc"),
+        *("Pd", "Ps", "Pe", "Pi", "Pf", "Po", "Sm", "Sc", "Sk", "So", "Zs"),
+    }
+)
+ESCAPES = {"\a": "a", "\b": "b", "\t": "t", "\n": "n", "\v": "v", "\f": "f", "\r": "r", "\x1b": "e"}
+HEXDIGITS = frozenset("0123456789abcdefABCDEF")
+# Julia escapes a character below ASCII_END as `\x`, below BMP_END as `\u`, else as `\U`, each with
+# its code in hexadecimal digits.
+ASCII_END, BMP_END = 0x80, 0x10000
+
+
+def julia_type(value: object) -> JuliaType:
+    """The type of a value as YAML.jl builds it; a list's element type is the `promote_typejoin`
+    of its items' types, as Julia's comprehension gives it, and `Any` for an empty list."""
+    if isinstance(value, list):
+        types = [julia_type(x) for x in cast("list[object]", value)]
+        return JuliaType("Vector", functools.reduce(promote_typejoin, types) if types else ANY)
+    return JuliaType(SCALAR_TYPES.get(type(value), "Any"))
+
+
+def typejoin(a: JuliaType | None, b: JuliaType | None) -> JuliaType | None:
+    """Julia's `typejoin` of two types that hold no `Nothing`; None is the empty type."""
+    if a is None or a == b:
+        return b
+    if b is None:
+        return a
+    if a.name in REALS and b.name in REALS:
+        return JuliaType("Integer" if a.name in INTEGERS and b.name in INTEGERS else "Real")
+    if a.name == b.name == "Vector":
+        return JuliaType("Vector")
+    return ANY
+
+
+def promote_typejoin(a: JuliaType, b: JuliaType) -> JuliaType:
+    """Julia's `promote_typejoin`: the `typejoin` of the two types without `Nothing`, in a
+    `Union{Nothing, …}` when either holds `Nothing`."""
+
+    def without_nothing(t: JuliaType) -> JuliaType | None:
+        return None if t == NOTHING else dataclasses.replace(t, nullable=False)
+
+    nothing = a.nullable or b.nullable or NOTHING in (a, b)
+    joined = typejoin(without_nothing(a), without_nothing(b))
+    if joined is None:
+        return NOTHING
+    return dataclasses.replace(joined, nullable=nothing and joined != ANY)
+
+
+def type_text(t: JuliaType) -> str:
+    """Julia's `print` of a type."""
+    match t:
+        case JuliaType(name="Dict"):
+            text = "Dict{Any, Any}"
+        case JuliaType(name="Vector", element=JuliaType() as element):
+            text = f"Vector{{{type_text(element)}}}"
+        case _:
+            text = t.name
+    return f"Union{{Nothing, {text}}}" if t.nullable else text
+
+
+def implicit(t: JuliaType) -> bool:
+    """Whether Julia prints a list of `t` without `t` (`typeinfo_implicit`)."""
+    return not t.nullable and (
+        t.name in IMPLICIT or (t.name == "Vector" and t.element is not None and implicit(t.element))
+    )
+
+
+def julia_float(x: float) -> str:
+    """Julia's `string` of a Float64: the shortest digits that read back as `x`, in plain
+    decimals for a magnitude from 1e-4 up to below 1e6 (`0.0001`, `999999.9`), else as `1.5e-7`
+    or `1.0e6`, with no `+` in the exponent."""
+    if math.isnan(x):
+        return "NaN"
+    if math.isinf(x):
+        return "Inf" if x > 0 else "-Inf"
+    sign = "-" if math.copysign(1.0, x) < 0 else ""
+    mantissa, _, exponent = repr(abs(x)).partition("e")
+    whole, _, fraction = mantissa.partition(".")
+    raw = whole + fraction
+    digits = raw.lstrip("0")
+    point = len(whole) + int(exponent or "0") - (len(raw) - len(digits))
+    digits = digits.rstrip("0")
+    if not digits:
+        return sign + "0.0"
+    if point in PLAIN_POINTS:
+        if point <= 0:
+            text = "0." + "0" * -point + digits
+        elif point < len(digits):
+            text = digits[:point] + "." + digits[point:]
+        else:
+            text = digits + "0" * (point - len(digits)) + ".0"
+    else:
+        text = f"{digits[0]}.{digits[1:] or '0'}e{point - 1}"
+    return sign + text
+
+
+def julia_quoted(s: str) -> str:
+    """Julia's `show` of a string: in double quotes, with `"`, `$` and `\\` escaped and each
+    character that `isprint` refuses spelt as an escape."""
+    out: list[str] = []
+    for i, c in enumerate(s):
+        following = s[i + 1] if i + 1 < len(s) else ""
+        code = ord(c)
+        if c in '"$\\':
+            out.append("\\" + c)
+        elif c == "\0":
+            out.append("\\x00" if following and following in "01234567" else "\\0")
+        elif c in ESCAPES:
+            out.append("\\" + ESCAPES[c])
+        elif unicodedata.category(c) in PRINTABLE:
+            out.append(c)
+        elif code < ASCII_END:
+            out.append(f"\\x{code:02x}")
+        else:
+            full = following in HEXDIGITS and following != ""
+            if code < BMP_END:
+                out.append(f"\\u{code:04x}" if full else f"\\u{code:02x}")
+            else:
+                out.append(f"\\U{code:08x}" if full else f"\\U{code:04x}")
+    return '"' + "".join(out) + '"'
+
+
+def julia_show(value: object, context: JuliaType) -> str:
+    """Julia's `show` of a frontmatter value inside a value whose element type is `context`: a
+    list carries its element type unless `context` or its items imply it, a `Bool` in a list of
+    `Bool` (or of `Bool` and `nothing`) is `1` or `0`, and a mapping in a list of mappings is
+    `Dict(…)`."""
     match value:
+        case str():
+            text = julia_quoted(value)
         case bool():
-            text = "true" if value else "false"
+            text = ("1" if value else "0") if context.name == "Bool" else ("true" if value else "false")
+        case float():
+            text = julia_float(value)
         case None:
             text = "nothing"
-        case float() if math.isnan(value) or math.isinf(value):
-            text = "NaN" if math.isnan(value) else "Inf" if value > 0 else "-Inf"
         case list():
-            text = "Any[" + ", ".join(quoted(x) for x in cast("list[object]", value)) + "]"
+            items = cast("list[object]", value)
+            element = julia_type(items).element or ANY
+            known = context.element if context.name == "Vector" and not context.nullable else None
+            prefix = "" if element == known or implicit(element) else type_text(element)
+            text = prefix + "[" + ", ".join(julia_show(x, element) for x in items) + "]"
         case dict():
             pairs = cast("dict[object, object]", value).items()
-            text = "Dict{Any, Any}(" + ", ".join(f"{quoted(k)} => {quoted(v)}" for k, v in pairs) + ")"
+            prefix = "Dict" if context == DICT else "Dict{Any, Any}"
+            text = (
+                prefix
+                + "("
+                + ", ".join(f"{julia_show(k, ANY)} => {julia_show(v, ANY)}" for k, v in pairs)
+                + ")"
+            )
+        case Pair():
+            text = f"Pair{{Any, Any}}({julia_show(value.key, ANY)}, {julia_show(value.value, ANY)})"
         case _:
             text = str(value)
     return text
 
 
-def quoted(value: object) -> str:
-    """`shown`, with a string in double quotes, as an element of a list or a mapping."""
-    return f'"{value}"' if isinstance(value, str) else shown(value)
+def shown(value: object) -> str:
+    """The text of a frontmatter value in a message, as Julia's `string` gives it: a string as it
+    is, and any other value as Julia's `show` prints it."""
+    return value if isinstance(value, str) else julia_show(value, ANY)
 
 
 def entries(value: object) -> list[object]:
     """The items that a `for` over a frontmatter value visits: a list's items, a string's
-    characters, a mapping's pairs as text, nothing for an empty value, else the value itself."""
+    characters, a mapping's pairs, nothing for an empty value, else the value itself."""
     match value:
         case None:
             return []
@@ -232,8 +420,7 @@ def entries(value: object) -> list[object]:
         case str():
             return list(value)
         case dict():
-            pairs = cast("dict[object, object]", value).items()
-            return [f"{quoted(k)} => {quoted(v)}" for k, v in pairs]
+            return [Pair(k, v) for k, v in cast("dict[object, object]", value).items()]
         case _:
             return [value]
 
@@ -266,47 +453,67 @@ def yaml_reader() -> Callable[[str], YamlRead]:
         ) from e
 
     class FrontmatterLoader(yaml.SafeLoader):
-        """A SafeLoader that keeps a date as its text, refuses a duplicate key and records each
-        mapping value that YAML 1.1 converts."""
+        """A SafeLoader that keeps a date as its text, refuses a duplicate key unless `lenient`,
+        and records each plain key and each plain value, or item of a list that is a value, that
+        YAML 1.1 converts."""
 
+        # Without the timestamp resolver, and with a float of YAML 1.2 that YAML 1.1 reads as text,
+        # such as `1e3` or `1.0e10`, read as a float, as YAML.jl reads it; that resolver comes
+        # after YAML 1.1's own forms, which win.
         yaml_implicit_resolvers: ClassVar = {
             first: [(tag, regexp) for tag, regexp in resolvers if tag != TIMESTAMP_TAG]
+            + ([(FLOAT_TAG, CORE_FLOAT_RESOLVER)] if first in FLOAT_FIRSTS else [])
             for first, resolvers in yaml.SafeLoader.yaml_implicit_resolvers.items()
         }
 
-        def __init__(self, stream: str) -> None:
+        def __init__(self, stream: str, *, lenient: bool = False) -> None:
             super().__init__(stream)
+            self.lenient = lenient
             self.duplicate: str | None = None
             self.conversions: list[Conversion] = []
-
-        @override
-        def construct_mapping(self, node: yaml.MappingNode, deep: bool = False) -> dict[Hashable, Any]:
-            converted: dict[str, Callable[[yaml.ScalarNode], object]] = {
+            self.converted: dict[str, Callable[[yaml.ScalarNode], object]] = {
                 BOOL_TAG: self.construct_yaml_bool,
                 INT_TAG: self.construct_yaml_int,
                 FLOAT_TAG: self.construct_yaml_float,
             }
-            seen: set[tuple[str, str]] = set()
+
+        def record(self, key: str, node: yaml.Node, *, of_key: bool = False) -> None:
+            """Record `node` when it is a plain scalar that the resolver of YAML 1.1 makes a bool,
+            an int or a float with another value than YAML 1.2's, and each item of a list. A
+            mapping records its own keys and values when it is built."""
+            if isinstance(node, yaml.SequenceNode):
+                for item in cast("list[yaml.Node]", node.value):
+                    self.record(key, item)
+            elif isinstance(node, yaml.ScalarNode) and node.style is None and node.tag in self.converted:
+                text = cast("str", node.value)
+                value = self.converted[node.tag](node)
+                if not same_value(core_value(text), value):
+                    self.conversions.append(Conversion(key, text, value, node.start_mark.line, of_key))
+
+        @override
+        def construct_mapping(self, node: yaml.MappingNode, deep: bool = False) -> dict[Hashable, Any]:
+            # A duplicate is a key that reads as the value of an earlier one, as the mapping's
+            # dict would merge them: `True` after `true` included.
+            seen: list[object] = []
             for key_node, value_node in node.value:
                 if not isinstance(key_node, yaml.ScalarNode):
                     continue
                 key = cast("str", key_node.value)
-                if (key_node.tag, key) in seen:
+                value = (
+                    self.converted[key_node.tag](key_node)
+                    if key_node.tag in self.converted
+                    else None
+                    if key_node.tag == NULL_TAG
+                    else key
+                )
+                if value in seen and not self.lenient:
                     self.duplicate = key
                     raise yaml.constructor.ConstructorError(
                         None, None, f"duplicate key `{key}`", key_node.start_mark
                     )
-                seen.add((key_node.tag, key))
-                # A plain scalar that the resolver of YAML 1.1 makes a bool, an int or a float.
-                if (
-                    isinstance(value_node, yaml.ScalarNode)
-                    and value_node.style is None
-                    and value_node.tag in converted
-                ):
-                    text = cast("str", value_node.value)
-                    value = converted[value_node.tag](value_node)
-                    if not same_value(core_value(text), value):
-                        self.conversions.append(Conversion(key, text, value, value_node.start_mark.line))
+                seen.append(value)
+                self.record(key, key_node, of_key=True)
+                self.record(key, value_node)
             return super().construct_mapping(node, deep=deep)
 
     def read(body: str) -> YamlRead:
@@ -315,7 +522,15 @@ def yaml_reader() -> Callable[[str], YamlRead]:
             data: object = loader.get_single_data()
         except yaml.MarkedYAMLError as e:
             mark = e.problem_mark or e.context_mark
-            return YamlRead(None, refused=True, line=mark.line if mark else -1, duplicate=loader.duplicate)
+            line = mark.line if mark else -1
+            if loader.duplicate is None:
+                return YamlRead(None, refused=True, line=line)
+            # A block that repeats a key keeps its last value for the aliases of the page.
+            try:
+                data = FrontmatterLoader(body, lenient=True).get_single_data()
+            except yaml.YAMLError:
+                data = None
+            return YamlRead(data, refused=True, line=line, duplicate=loader.duplicate)
         except yaml.YAMLError:
             return YamlRead(None, refused=True)
         return YamlRead(data, conversions=tuple(loader.conversions))
@@ -335,7 +550,8 @@ def frontmatter(text: str) -> Front:
     if got.refused:
         # The block starts on line 2 of the file; a refusal without a mark is on line 1.
         line = got.line + 2 if got.line >= 0 else 1
-        return Front({}, REFUSED, line, got.duplicate)
+        data = cast("dict[object, object]", got.data) if isinstance(got.data, dict) else {}
+        return Front(data, REFUSED, line, got.duplicate)
     data = cast("dict[object, object]", got.data) if isinstance(got.data, dict) else {}
     return Front(data, close + 1, conversions=got.conversions)
 
@@ -520,7 +736,8 @@ def front_findings(f: str, front: Front, check: str, refusal: str, findings: lis
             "frontmatter",
             f,
             c.line + 2,
-            f"`{c.key}: {c.text}` is {shown(c.value)} in YAML 1.1; quote it to keep the text",
+            (f"the key `{c.text}`" if c.of_key else f"`{c.key}: {c.text}`")
+            + f" is {shown(c.value)} in YAML 1.1; quote it to keep the text",
         )
         for c in front.conversions
     )
@@ -921,7 +1138,7 @@ RULES = {
         "<!-- generated: table-one -->\n"
     ),
     "Knowledge/Notes/B.md": (
-        "# B\n\n[[A]], the directory `Knowledge/Notes/Deep/` and `Rel.md`.\n"
+        "# B\n\n[[A]], the directory `Knowledge/Notes/Deep/` and `Rel.md`, and [[DupAlias]].\n"
         "The section `Knowledge/Notes/` and [[Good]], a task file.\n"
     ),
     "Knowledge/Notes/Two Words.md": "# Two Words\n",
@@ -931,7 +1148,7 @@ RULES = {
     "Knowledge/Notes/Orphan.md": "# Orphan\n\nOnly `Orphan.md` names me.\n",
     "Knowledge/Notes/Self/S/Only.md": "# Only\n\n`Knowledge/Notes/Self/` holds me alone.\n",
     "Knowledge/Notes/Pages.md": "---\ntitle: Pages\n---\n# Pages\n",
-    "Knowledge/Notes/Dup.md": "---\ntitle: a\ntitle: b\n---\n# Dup\n",
+    "Knowledge/Notes/Dup.md": "---\ntitle: a\ntitle: b\naliases: [DupAlias]\n---\n# Dup\n",
     "Knowledge/Notes/Bad.md": "---\ntitle: a\nbad: value: other\n---\n# Bad\n",
     "Knowledge/Notes/Conv.md": (
         "---\ndraft: no\nflag: on\nmode: 0755\ntime: 1:30\nbig: 1_000\nhex: 0x1F\nyes12: true\nn: 12\n"
@@ -1011,7 +1228,7 @@ RULE_LINES = [
     f"ERROR  [depends-on]  {A} — `Packages/P/gone.jl` does not exist",
     f"ERROR  [depends-on]  {A} — `depends_on` entry has no `path`",
     f"ERROR  [depends-on]  {A} — `depends_on` entry is not a mapping: plain",
-    f'ERROR  [depends-on]  {A} — `depends_on` entry is not a mapping: Any["a", "b"]',
+    f'ERROR  [depends-on]  {A} — `depends_on` entry is not a mapping: ["a", "b"]',
     "ERROR  [frontmatter]  Knowledge/Notes/Dates.md — `verified: 2026-9-1` is not a YYYY-MM-DD date",
     "ERROR  [frontmatter]  Knowledge/Notes/Dates2.md — `verified: 2026-02-30` is not a YYYY-MM-DD date",
     "ERROR  [frontmatter]  Knowledge/Notes/Dates4.md — `verified: 20260101` is not a YYYY-MM-DD date",
@@ -1071,6 +1288,7 @@ RULE_LINES = [
 # resolves or accepts.
 ABSENT = [
     "[[Code]]",
+    "[[DupAlias]]",
     "[[Alpha]]",
     "[[B]] names",
     "Nowhere2",
@@ -1176,7 +1394,7 @@ def rule_cases(check: Callable[[bool, str], None], tmp: pathlib.Path) -> None:
             "`Packages/P/gone.jl` does not exist",
             "`depends_on` entry has no `path`",
             "`depends_on` entry is not a mapping: plain",
-            '`depends_on` entry is not a mapping: Any["a", "b"]',
+            '`depends_on` entry is not a mapping: ["a", "b"]',
         ],
         f"findings of one check, file and line keep the order of the entries: {depends}",
     )
@@ -1240,6 +1458,34 @@ def rule_cases(check: Callable[[bool, str], None], tmp: pathlib.Path) -> None:
     )
     message = raised(lambda: output(root, ["Knowledge", "Nosuch"]))
     check(message == "no such vault: Nosuch", f"a tree that is no directory raises -> {message!r}")
+
+
+def value_cases(check: Callable[[bool, str], None], tmp: pathlib.Path) -> None:
+    """The text of a frontmatter value in a finding, and a conversion in a list or a key."""
+    root = write_tree(
+        tmp,
+        {
+            "Knowledge/README.md": "# K\n\n[[Conv]] [[Map]]\n",
+            "Knowledge/Conv.md": "---\ntags: [x, no]\nlist:\n  - off\non: k\n---\n# Conv\n",
+            "Knowledge/Map.md": (
+                "---\ndepends_on:\n  path: Knowledge/README.md\nchecks: [[a], 1.0e+10]\n---\n# Map\n"
+            ),
+        },
+    )
+    lines, _ = output(root, ["Knowledge"])
+    findings = sorted(line for line in lines if line.startswith(("ERROR  [", "WARN  [")))
+    want = sorted(
+        [
+            "ERROR  [checks]  Knowledge/Map.md — `1.0e10` does not exist",
+            'ERROR  [checks]  Knowledge/Map.md — `["a"]` does not exist',
+            "ERROR  [depends-on]  Knowledge/Map.md — `depends_on` entry is not a mapping: "
+            'Pair{Any, Any}("path", "Knowledge/README.md")',
+            f"WARN  [frontmatter]  Knowledge/Conv.md:2 — `tags: no` is false in YAML 1.1; {QUOTE}",
+            f"WARN  [frontmatter]  Knowledge/Conv.md:4 — `list: off` is false in YAML 1.1; {QUOTE}",
+            f"WARN  [frontmatter]  Knowledge/Conv.md:5 — the key `on` is true in YAML 1.1; {QUOTE}",
+        ]
+    )
+    check(findings == want, f"a value in a finding, and a conversion in a list or a key -> {findings}")
 
 
 def report_cases(check: Callable[[bool, str], None], tmp: pathlib.Path) -> None:
@@ -1313,7 +1559,7 @@ def report_cases(check: Callable[[bool, str], None], tmp: pathlib.Path) -> None:
 
 
 def yaml_cases(check: Callable[[bool, str], None]) -> None:
-    """The reader of a YAML block, and a stale environment."""
+    """The reader of a YAML block."""
     read = yaml_reader()
     got = read("a: 1\nb: 2\na: 3\n")
     check(
@@ -1391,17 +1637,128 @@ def yaml_cases(check: Callable[[bool, str], None]) -> None:
         got = read(f"k: {text}\n")
         check(got.conversions == (), f"`k: {text}` is no conversion -> {got.conversions}")
     got = read("- no\n- [on]\n")
-    check(got.conversions == (), f"an item of a list is no mapping value -> {got.conversions}")
+    check(got.conversions == (), f"an item of a list with no key is no conversion -> {got.conversions}")
+    for body, want in [
+        ("k: [no, on]\n", [("k", "no", False, 0), ("k", "on", True, 0)]),
+        ("k:\n  - x\n  - off\n", [("k", "off", False, 2)]),
+        ("k:\n  - [x, [0755]]\n", [("k", "0755", 493, 1)]),
+        ("k:\n  - a: yes\n", [("a", "yes", True, 1)]),
+    ]:
+        got = read(body)
+        check(
+            [(c.key, c.text, c.value, c.line) for c in got.conversions] == want and not got.refused,
+            f"an item of a list is a conversion of its key: {body!r} -> {got.conversions}",
+        )
+    got = read("on: x\n")
     check(
-        [shown(v) for v in (True, None, 1.5, math.inf, math.nan, ["a", 1], {"a": True})]
-        == ["true", "nothing", "1.5", "Inf", "NaN", 'Any["a", 1]', 'Dict{Any, Any}("a" => true)'],
-        "a value's text in a message",
+        [(c.key, c.text, c.value, c.line, c.of_key) for c in got.conversions]
+        == [("on", "on", True, 0, True)],
+        f"a plain key that YAML 1.1 converts is a conversion -> {got.conversions}",
     )
+    got = read("true: 1\nTrue: 2\n")
     check(
-        [entries(v) for v in (None, "ab", 5, ["x"], {"a": 1})] == [[], ["a", "b"], [5], ["x"], ['"a" => 1']],
-        "the items of a frontmatter value",
+        (got.refused, got.duplicate, got.line) == (True, "True", 1),
+        f"two keys that read as one value are a duplicate -> {got}",
+    )
+    got = read("~: 1\nnull: 2\n")
+    check(
+        (got.refused, got.duplicate, got.line) == (True, "null", 1),
+        f"two keys that read as null are a duplicate -> {got}",
+    )
+    got = read("a: &x {p: 1}\nb:\n  <<: *x\n  q: 2\n")
+    check(
+        not got.refused and got.data == {"a": {"p": 1}, "b": {"p": 1, "q": 2}},
+        f"a merge key is no key of its own -> {got}",
+    )
+    front = frontmatter("---\naliases: [x]\naliases: [y]\n---\n")
+    check(
+        (front.stop, front.line, front.duplicate, front.data) == (REFUSED, 3, "aliases", {"aliases": ["y"]}),
+        f"a block that repeats a key keeps its last value, for the aliases of a page -> {front}",
     )
 
+
+def shown_cases(check: Callable[[bool, str], None]) -> None:
+    """The text of a frontmatter value, as Julia's `string` gives it, and the items of a value."""
+    read = yaml_reader()
+    for body, want in [
+        ("v: [a, b]", '["a", "b"]'),
+        ("v: [1, 2]", "[1, 2]"),
+        ("v: [1.5, 2]", "Real[1.5, 2]"),
+        ("v: [a, 1]", 'Any["a", 1]'),
+        ("v: [[a]]", '[["a"]]'),
+        ("v: [[a], [1]]", 'Vector[["a"], [1]]'),
+        ("v: [[a], b]", 'Any[["a"], "b"]'),
+        ("v: [true, false]", "Bool[1, 0]"),
+        ("v: [true, 1]", "Integer[true, 1]"),
+        ("v: [true, 1.5]", "Real[true, 1.5]"),
+        ("v: [a, ~]", 'Union{Nothing, String}["a", nothing]'),
+        ("v: [~, a]", 'Union{Nothing, String}[nothing, "a"]'),
+        ("v: [1, 1.5, ~]", "Union{Nothing, Real}[1, 1.5, nothing]"),
+        ("v: [true, ~]", "Union{Nothing, Bool}[1, nothing]"),
+        ("v: [1e3, 1E-2, 1]", "Real[1000.0, 0.01, 1]"),
+        ("v: 1.0e10", "1.0e10"),
+        ("v: [[a], [1], ~]", 'Union{Nothing, Vector}[["a"], [1], nothing]'),
+        ("v: [[true], ~]", "Union{Nothing, Vector{Bool}}[Bool[1], nothing]"),
+        ("v: [a, ~, 1]", 'Any["a", nothing, 1]'),
+        ("v: [a, ~, b]", 'Union{Nothing, String}["a", nothing, "b"]'),
+        ("v: 0.5", "0.5"),
+        ("v: 125.0", "125.0"),
+        ("v: [~]", "[nothing]"),
+        ("v: []", "Any[]"),
+        ("v: [[]]", "Vector{Any}[[]]"),
+        ("v: [[], [a]]", 'Vector[Any[], ["a"]]'),
+        ("v: [[], [[]]]", "Vector[Any[], Vector{Any}[[]]]"),
+        ("v: [[true], [1]]", "Vector[Bool[1], [1]]"),
+        ("v: [[true]]", "Vector{Bool}[[1]]"),
+        ("v: [[1, ~]]", "Vector{Union{Nothing, Int64}}[[1, nothing]]"),
+        ("v: [[a, 1], [b]]", 'Vector[Any["a", 1], ["b"]]'),
+        ("v: [{a: 1}]", 'Dict{Any, Any}[Dict("a" => 1)]'),
+        ("v: [{a: 1}, x]", 'Any[Dict{Any, Any}("a" => 1), "x"]'),
+        ("v: [{a: 1}, ~]", 'Union{Nothing, Dict{Any, Any}}[Dict{Any, Any}("a" => 1), nothing]'),
+        ("v: [[{a: 1}]]", 'Vector{Dict{Any, Any}}[[Dict("a" => 1)]]'),
+        ("v: [{}]", "Dict{Any, Any}[Dict()]"),
+        ("v: {}", "Dict{Any, Any}()"),
+        ("v: {a: [true]}", 'Dict{Any, Any}("a" => Bool[1])'),
+        ("v: {a: {b: 1}}", 'Dict{Any, Any}("a" => Dict{Any, Any}("b" => 1))'),
+        ("v: 1.0e+10", "1.0e10"),
+        ("v: [1.0e+10]", "[1.0e10]"),
+        ("v: 100000.0", "100000.0"),
+        ("v: 1000000.0", "1.0e6"),
+        ("v: 123456.7", "123456.7"),
+        ("v: 123456789.0", "1.23456789e8"),
+        ("v: 0.0001", "0.0001"),
+        ("v: 0.00001", "1.0e-5"),
+        ("v: 1.5e-7", "1.5e-7"),
+        ("v: 1.0e+3", "1000.0"),
+        ("v: -0.0", "-0.0"),
+        ("v: 5.0e-324", "5.0e-324"),
+        ("v: [.inf, -.inf, .nan]", "[Inf, -Inf, NaN]"),
+        ("v: true", "true"),
+        ("v: ~", "nothing"),
+        ('v: ["a\\"b", "c\\\\d", "a$b"]', '["a\\"b", "c\\\\d", "a\\$b"]'),
+        ('v: ["a b", "\\U000E0001.", "\\U000E0001a"]', '["a b", "\\Ue0001.", "\\U000e0001a"]'),
+        (
+            'v: ["tab\\there", "\\u200bz", "\\x01a", "\\0", "\\x007", "\\u00e9", "\\u0085a", "\\u0085."]',
+            '["tab\\there", "\\u200bz", "\\x01a", "\\0", "\\x007", "é", "\\u0085a", "\\u85."]',
+        ),
+    ]:
+        data = read(body).data
+        text = shown(cast("dict[str, object]", data)["v"]) if isinstance(data, dict) else repr(data)
+        check(text == want, f"{body} is shown as Julia's string -> {text}")
+    check(
+        [entries(v) for v in (None, "ab", 5, ["x"], {"a": 1})]
+        == [[], ["a", "b"], [5], ["x"], [Pair("a", 1)]],
+        "the items of a frontmatter value",
+    )
+    check(
+        [shown(p) for p in entries({"path": "Knowledge/README.md", "n": [True]})]
+        == ['Pair{Any, Any}("path", "Knowledge/README.md")', 'Pair{Any, Any}("n", Bool[1])'],
+        "an item of a mapping is shown as Julia's Pair",
+    )
+
+
+def stale_cases(check: Callable[[bool, str], None]) -> None:
+    """An environment without PyYAML."""
     # A module that is None in sys.modules raises ImportError at its import.
     yaml_reader.cache_clear()
     try:
@@ -1669,6 +2026,9 @@ def selftest() -> tuple[int, int]:
         base = pathlib.Path(tmp)
         rule_cases(check, base)
         report_cases(check, base)
+        value_cases(check, base)
         yaml_cases(check)
+        shown_cases(check)
+        stale_cases(check)
         hook_cases(check, base)
     return total, wrong
