@@ -1,15 +1,17 @@
 # The Python environment of the harness. `bin/harness` makes it with `uv sync --locked --no-dev`
 # at ~/.local/share/research-harness/python/ ($RESEARCH_HARNESS_PYTHON) and runs every command on
 # its interpreter; `harness install --apply` syncs it again, with the `dev` group where the
-# profile sets `develop = true`. The lock is uv.lock, committed beside this file. The harness
-# itself needs no package beyond the standard library, so `dependencies` stays empty: a runtime
-# dependency goes there with a one-line reason.
+# profile sets `develop = true`. The lock is uv.lock, committed beside this file. Each runtime
+# dependency goes into `dependencies` with a one-line reason; the hooks and the guards import only
+# the standard library.
 
 [project]
 name = "research-harness"
 version = "0"
 requires-python = ">=3.14"
-dependencies = []
+dependencies = [
+    "pyyaml>=6.0.2",  # reads the YAML frontmatter of the prose trees in `harness wiki-lint`
+]
 
 [dependency-groups]
 dev = [
@@ -19,16 +21,17 @@ dev = [
 
 # The strict profile. `ruff format --check`, `ruff check` and `basedpyright` gate every commit
 # (.githooks/pre-commit), every push to main (.githooks/pre-push) and CI. Besides the *.py files,
-# ruff reads the two Python files without a suffix: bin/harness, whose syntax is the closed set of
-# Python 3.0 forms that `environment.syntax_cases` checks, so the formatter and the UP family
-# leave it alone, and the pre-commit hook.
+# ruff reads the three Python files without a suffix: .githooks/pre-commit, bin/harness, and
+# githooks/pre-commit-wiki, the hook of the prose repositories. The syntax of the last two is the
+# closed set of Python 3.0 forms that `environment.outside_syntax` checks, so the formatter and the
+# UP family leave them alone.
 [tool.ruff]
 line-length = 110
 target-version = "py314"
-extend-include = ["bin/harness", ".githooks/pre-commit"]
+extend-include = ["bin/harness", ".githooks/pre-commit", "githooks/pre-commit-wiki"]
 
 [tool.ruff.format]
-exclude = ["bin/harness"]
+exclude = ["bin/harness", "githooks/pre-commit-wiki"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "B", "BLE", "TRY", "PTH", "S", "UP", "SIM", "RET", "C4", "PERF", "PL", "RUF", "ARG",
@@ -43,9 +46,11 @@ ignore = ["S603", "TRY003"]
 
 # The profile's own ignores: a file that holds test cases (a `selftest`, a module of cases, the
 # hook probe, the kit's tests) calls each `case(lambda: …)` at once (B023) and compares with
-# literal values (PLR2004), and bin/harness keeps its Python 3.0 forms (UP).
+# literal values (PLR2004), and bin/harness and githooks/pre-commit-wiki keep their Python 3.0
+# forms (UP, and RUF005, whose unpacking in a list is no such form).
 [tool.ruff.lint.per-file-ignores]
 "bin/harness" = ["UP"]
+"githooks/pre-commit-wiki" = ["UP", "RUF005"]
 "lib/harness/{changelog,docs,doctor,dotfiles_kit,environment,frontmatter,install,install_cases,network,profile,protection,providers,repos,script_cases,skill_triggers,strict,sweep,testrun,units,update}.py" = [
     "B023",
     "PLR2004",

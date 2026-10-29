@@ -80,8 +80,9 @@ json` with the table removed, and the baseline with `basedpyright --writebaselin
 `basedpyright` with fewer errors than the baseline writes it too.
 
 The hooks and the guards import only the standard library: a case of `harness test`
-(`lib/harness/strict.py`) parses each `.py` file below `hooks/` and each `adapters/*/guard*.py`,
-and fails on an import of a module outside `sys.stdlib_module_names`. `hooks/probe.py` may also
+(`lib/harness/strict.py`) parses each `.py` file below `hooks/`, each `adapters/*/guard*.py` and
+the hook of the prose repositories, `githooks/pre-commit-wiki`, and fails on an import of a module
+outside `sys.stdlib_module_names`. `hooks/probe.py` may also
 import the harness's own package `harness`.
 
 The two tools are pinned in the `dev` group of `pyproject.toml` and locked in `uv.lock`, so every

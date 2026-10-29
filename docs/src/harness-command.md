@@ -57,6 +57,7 @@ These options come before the subcommand.
 | [`repos push`](#repos-push) | pushes each repository that is ahead of its upstream, one at a time | yes |
 | [`repos sync`](#repos-sync) | `repos pull`, then `repos push` | yes |
 | [`githooks`](#githooks) | installs the shared git hooks into every package and experiment | yes |
+| [`wiki-lint`](#wiki-lint) | lints the Markdown of the prose repositories: links, paths, line citations, frontmatter | no |
 | [`wiki-lint-hook`](#wiki-lint-hook) | installs the wiki-lint hook into the prose repositories | yes |
 | [`workflows`](#workflows) | installs the canonical GitHub workflows into every package and experiment | yes |
 | [`ci-protection`](#ci-protection) | protects every default branch on GitHub with a ruleset | yes |
@@ -447,6 +448,36 @@ change; 2 when `core.hooksPath` cannot be set. The subcommand then prints the co
 repository.
 
 **Where to run it:** in your own terminal. A session cannot write `.git/config`.
+
+### `wiki-lint`
+
+```text
+harness wiki-lint [TREE ...] [--strict] [--quiet]
+```
+
+Checks the structure of the Markdown in the prose repositories of the research tree: the vaults
+`Knowledge` and `Environment`, and the reference trees `Tasks` and `Library`, or the trees that
+`TREE` names. It finds text that a later change of the tree made false, for example a broken
+link, a path that does not exist, or a line citation past the end of its file. A vault gets every
+check. A reference tree gets the checks of paths and line citations; `Tasks` gets the schema of
+the task board too. The lint skips each `CHANGELOG.md`. It reads only the working tree: no model,
+no index, no network.
+
+A frontmatter is YAML. In the vaults and in `Tasks`, a block that does not parse is an ERROR on
+the line that PyYAML names, and so is a key that a block repeats. A key or a value that YAML 1.1
+converts, an item of a list included, such as `draft: no` (false) or `mode: 0755` (493), is a
+WARN that names the key and the value; quote it to keep the text. The date of `verified:` is text
+of the form `YYYY-MM-DD`.
+
+It prints one line per finding, `<SEVERITY>  [<check>]  <file>[:<line>] — <message>`, then the
+counts by check and the totals. `--quiet` prints no WARN line, and the ERROR lines only when there
+is one. The hook `pre-commit-wiki` (see [Git hooks and workflows](components/githooks.md)) runs
+it with `--quiet` before each commit in a prose repository.
+
+**Exit status:** 0 when there is no ERROR, and with `--strict` no WARN; 1 on a finding at the
+failing level; 2 for a `TREE` that is no directory, and when the Python environment lacks PyYAML.
+
+**Where to run it:** anywhere; it changes nothing.
 
 ### `wiki-lint-hook`
 
