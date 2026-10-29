@@ -2310,9 +2310,10 @@ def home_cases():
                 status == 0 and out.getvalue() == expected,
                 f"{name}: harness get develop -> {status}, {out.getvalue()!r}, expected {expected!r}",
             )
+        names = sorted(values(got)) if isinstance(got, Profile) else got
         check(
             isinstance(got, Profile) and "develop" not in values(got),
-            f"the render's values hold no `develop` -> {sorted(values(got)) if isinstance(got, Profile) else got}",
+            f"the render's values hold no `develop` -> {names}",
         )
         # The values of no string or list: each a refusal that names the file and the key.
         for text, key in (
