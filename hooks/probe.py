@@ -2723,12 +2723,14 @@ def command_cases():
         ok=commands == ["rtk hook claude", guard],
         line=f"exp rtk and guard got {commands}  [guard    ]  the rendered Bash group",
     )
-    # Claude Code runs a hook command through a shell, the payload on stdin. The guard's path is missing
-    # below the fixture's home, and then the interpreter is too, which exits 127 without the fallback.
+    # Claude Code runs the rendered hook command through a shell, the payload on stdin. The guard's path
+    # is missing below the fixture's home, and then the interpreter is too, which exits 127 without the
+    # fallback.
+    rendered = next((c for c in commands if "/.claude/hooks/guard" in c), "")
     missing_python = shlex.quote(FIXTURE.name + "/missing-env/bin/python")
     for what, command in (
-        ("the guard is missing", guard),
-        ("the interpreter is missing", guard.replace(shlex.quote(sys.executable), missing_python, 1)),
+        ("the guard is missing", rendered),
+        ("the interpreter is missing", rendered.replace(shlex.quote(sys.executable), missing_python, 1)),
     ):
         try:
             proc = subprocess.run(
