@@ -19,13 +19,14 @@ import os
 import pathlib
 import re
 import tempfile
-from typing import NoReturn, cast
+from typing import NoReturn, Protocol, cast
 
 from . import HarnessError
 
 type JsonValue = dict[str, JsonValue] | list[JsonValue] | str | int | float | bool | None
 
 MAX_DEPTH = 200
+BOM = chr(0xFEFF)
 # JSON's whitespace; a text of these alone is empty.
 WHITESPACE = " \t\r\n"
 # A string or a bracket: the depth scan counts the brackets outside the strings.
@@ -95,15 +96,15 @@ def too_deep(text: str) -> int | None:
 
 
 def located(text: str, error: OffenceError) -> int | None:
-    """The index of the first offence of the kind of `error` in `text`, or None. The parser has read
-    the text up to its offence, so the tokens up to there are valid JSON."""
+    """The index of the offence of `error` in `text`, or None. The parser reads the text in order
+    and raises at its first constant or overflow, so the first of these in the text is the one. It
+    meets a key twice only where the object ends, after any constant inside it, so a key twice
+    counts only for an `error` of that kind. The tokens up to the offence are valid JSON."""
     keys: list[set[str] | None] = []  # per open bracket: the keys of an object, None for an array
     expect_key = False
     for m in TOKEN.finditer(text):
         piece, kind = m.group(), m.lastgroup
-        if kind == "constant" and error.kind == "constant":
-            return m.start()
-        if kind == "number" and error.kind == "overflow" and math.isinf(float(piece)):
+        if kind == "constant" or (kind == "number" and math.isinf(float(piece))):
             return m.start()
         if piece in ("{", "["):
             keys.append(set() if piece == "{" else None)
@@ -136,7 +137,7 @@ def kind_of(value: object) -> str:
 
 def loads(text: str, *, where: str) -> dict[str, JsonValue]:
     """The JSON object of `text`; `where` names the text in a refusal."""
-    if text.startswith("﻿"):
+    if text.startswith(BOM):
         raise HarnessError(f"{where}: starts with a byte order mark (U+FEFF), which JSON does not allow")
     if not text.strip(WHITESPACE):
         raise HarnessError(f"{where}: empty, where a JSON object belongs")
@@ -181,7 +182,8 @@ def load(path: str | os.PathLike[str]) -> dict[str, JsonValue]:
 
 # The cases. Every fixture of a refusal puts its offence on line 7, and no other 7 is in it.
 WHERE = "the-where-text"
-HEAD = '{\n  "a": true,\n  "b": true,\n  "c": true,\n  "o": {\n    "x": true,\n'  # lines 1-6
+# Line 3 holds a finite number, so an overflow is told from the first number of the text.
+HEAD = '{\n  "a": true,\n  "b": 1.5,\n  "c": true,\n  "o": {\n    "x": true,\n'  # lines 1-6
 TAIL = "\n  }\n}\n"
 DUPLICATE = (
     '{\n  "a": true,\n  "b": true,\n  "c": true,\n  "o": {\n    "k": "first",\n    "k": "second"\n  }\n}\n'
@@ -216,15 +218,14 @@ def on_line_seven(message: str, where: str = WHERE) -> bool:
     return where in message and "line 7" in message.replace(where, "")
 
 
-def selftest() -> tuple[int, int]:
-    """The cases of the module docstring: (number of cases, number wrong)."""
-    total = wrong = 0
+class Case(Protocol):
+    """The recorder of one case: its label and its verdict."""
 
-    def case(label: str, *, ok: bool) -> None:
-        nonlocal total, wrong
-        total, wrong = total + 1, wrong + (not ok)
-        print(f"{'ok ' if ok else 'BAD'}  jsonio: {label}")
+    def __call__(self, label: str, *, ok: bool) -> None: ...
 
+
+def value_cases(case: Case) -> None:
+    """The signature of `loads`, a value, CRLF line ends, and the refusals that name a line."""
     params = inspect.signature(loads).parameters
     case(
         f"loads(text, *, where): {list(params)}",
@@ -238,18 +239,38 @@ def selftest() -> tuple[int, int]:
     case(f"CRLF line ends -> {got}", ok=got == {"a": 1, "b": [2]})
 
     message = refusal(DUPLICATE)
-    case(f"a key twice in a nested object, the second on line 7 -> {message}", ok=on_line_seven(message))
+    case(
+        f"a key twice in a nested object, the second on line 7, names the key -> {message}",
+        ok=on_line_seven(message) and '"k"' in message,
+    )
     message = refusal(at_seven('{"\\u006b": 1, "k": 2}'))
     case(f"a key twice, once as an escape -> {message}", ok=on_line_seven(message))
+    # The inner object's key "k" is no duplicate of the outer "k" on line 5.
+    message = refusal('{\n  "o": {\n    "k": 1\n  },\n  "k": 2,\n  "z": 1,\n  "z": 2\n}\n')
+    case(
+        f"a key of a closed inner object and the outer one; the key twice is named -> {message}",
+        ok=on_line_seven(message) and '"z"' in message,
+    )
     for token in ("NaN", "Infinity", "-Infinity", "1e400", "-1e400"):
         message = refusal(at_seven(token))
         case(f"{token} on line 7 -> {message}", ok=on_line_seven(message))
-    message = refusal(at_seven('"NaN Infinity 1e400 [[["'))
-    case(f"NaN, Infinity, 1e400 and brackets inside a string -> {message}", ok=message == "accepted")
+    # The parser meets NaN before the object with the key twice ends, so NaN is the offence.
+    message = refusal('{"k": 1, "k":' + "\n" * 6 + "NaN}")
+    case(
+        f"NaN on line 7 after a key twice on line 1 -> {message}",
+        ok=on_line_seven(message) and "NaN" in message,
+    )
+    message = refusal(at_seven('"NaN Infinity 1e400 ' + "[" * (MAX_DEPTH + 1) + '"'))
+    case(f"NaN, Infinity, 1e400 and 201 brackets inside a string -> {message}", ok=message == "accepted")
 
+
+def text_cases(case: Case) -> None:
+    """The depth, and the refusals of a whole text."""
     # Depth: the top-level object is 1, "o" is 2, and each bracket of line 7 one more.
     message = refusal(at_seven("[" * (MAX_DEPTH - 2) + "]" * (MAX_DEPTH - 2)))
     case(f"a nesting of depth {MAX_DEPTH} is read -> {message}", ok=message == "accepted")
+    message = refusal(at_seven("[" + "[], " * (MAX_DEPTH + 1) + "[]]"))
+    case(f"{MAX_DEPTH + 2} sibling arrays at depth 4 are read -> {message}", ok=message == "accepted")
     for depth in (MAX_DEPTH + 1, 100000):
         message = refusal(at_seven("[" * (depth - 2) + "]" * (depth - 2)))
         case(f"a nesting of depth {depth} on line 7 -> {message[:200]}", ok=on_line_seven(message))
@@ -260,7 +281,7 @@ def selftest() -> tuple[int, int]:
         ("a top-level array", "[1, 2]\n"),
         ("a top-level string", '"x"\n'),
         ("a top-level null", "null"),
-        ("a text that starts with U+FEFF", '﻿{"a": 1}\n'),
+        ("a text that starts with U+FEFF", BOM + '{"a": 1}\n'),
     ):
         message = refusal(text)
         case(f"{label} is refused and names where -> {message}", ok=WHERE in message)
@@ -269,24 +290,41 @@ def selftest() -> tuple[int, int]:
     message = refusal('{"a": ' + "1" * 5000 + "}")
     case(f"an integer of 5000 digits is refused, not a ValueError -> {message[:200]}", ok=WHERE in message)
 
+
+def file_cases(case: Case, root: pathlib.Path) -> None:
+    """The cases of `load`, on files below `root`."""
+    path = root / "a.json"
+    path.write_bytes(b'{"a": [1, 2.5, "x", true, null], "b": {"c": "\xc3\xa9"}}')
+    got = load(path)
+    case(f"load reads a file -> {got}", ok=got == {"a": [1, 2.5, "x", True, None], "b": {"c": "é"}})
+    path.write_bytes(DUPLICATE.encode())
+    message = load_refusal(path)
+    case(f"load: a key twice on line 7 -> {message}", ok=on_line_seven(message, str(path)))
+    path.write_bytes(b'\xef\xbb\xbf{"a": 1}\n')
+    message = load_refusal(path)
+    case(f"load: a file that starts with EF BB BF -> {message}", ok=str(path) in message)
+    path.write_bytes(b'{"a": "\xff"}')
+    message = load_refusal(path)
+    case(
+        f"load: a byte that is not UTF-8 names the path and the offset -> {message}",
+        ok=str(path) in message and "byte 7" in message,
+    )
+    missing = root / "missing.json"
+    message = load_refusal(missing)
+    case(f"load: a missing file names the path -> {message}", ok=str(missing) in message)
+
+
+def selftest() -> tuple[int, int]:
+    """The cases of the module docstring: (number of cases, number wrong)."""
+    total = wrong = 0
+
+    def case(label: str, *, ok: bool) -> None:
+        nonlocal total, wrong
+        total, wrong = total + 1, wrong + (not ok)
+        print(f"{'ok ' if ok else 'BAD'}  jsonio: {label}")
+
+    value_cases(case)
+    text_cases(case)
     with tempfile.TemporaryDirectory(prefix="harness-jsonio-") as tmp:
-        path = pathlib.Path(tmp) / "a.json"
-        path.write_bytes(b'{"a": [1, 2.5, "x", true, null], "b": {"c": "\xc3\xa9"}}')
-        got = load(path)
-        case(f"load reads a file -> {got}", ok=got == {"a": [1, 2.5, "x", True, None], "b": {"c": "é"}})
-        path.write_bytes(DUPLICATE.encode())
-        message = load_refusal(path)
-        case(f"load: a key twice on line 7 -> {message}", ok=on_line_seven(message, str(path)))
-        path.write_bytes(b'\xef\xbb\xbf{"a": 1}\n')
-        message = load_refusal(path)
-        case(f"load: a file that starts with EF BB BF -> {message}", ok=str(path) in message)
-        path.write_bytes(b'{"a": "\xff"}')
-        message = load_refusal(path)
-        case(
-            f"load: a byte that is not UTF-8 names the path and the offset -> {message}",
-            ok=str(path) in message and "byte 7" in message,
-        )
-        missing = pathlib.Path(tmp) / "missing.json"
-        message = load_refusal(missing)
-        case(f"load: a missing file names the path -> {message}", ok=str(missing) in message)
+        file_cases(case, pathlib.Path(tmp))
     return total, wrong

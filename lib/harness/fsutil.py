@@ -62,6 +62,7 @@ def mode_cases(case: Case, root: pathlib.Path) -> None:
     bits. Each file that os.open creates has its mode read at once, and each chmod reads the mode
     and the size of its target before it changes the mode."""
     created: list[int] = []
+    exclusive: list[bool] = []
     chmods: list[tuple[int, int]] = []
     real_open, real_fchmod, real_chmod = os.open, os.fchmod, os.chmod
 
@@ -69,6 +70,7 @@ def mode_cases(case: Case, root: pathlib.Path) -> None:
         fd = real_open(file, flags, mode)
         if flags & os.O_CREAT:
             created.append(stat.S_IMODE(os.fstat(fd).st_mode))
+            exclusive.append(bool(flags & os.O_EXCL))
         return fd
 
     def watched_fchmod(fd: int, mode: int) -> None:
@@ -107,6 +109,10 @@ def mode_cases(case: Case, root: pathlib.Path) -> None:
         case(
             f"the {name} file ends with mode {oct(want)} and its bytes -> {got}", ok=got == (oct(want), data)
         )
+    case(
+        f"each of the three files is opened with O_CREAT and O_EXCL -> O_EXCL {exclusive}",
+        ok=len(exclusive) == len(writes) and all(exclusive),
+    )
     modes = [oct(m) for m in created]
     case(
         f"under umask 0, each of the three files is created without group or other bits -> {modes}",
@@ -121,6 +127,15 @@ def mode_cases(case: Case, root: pathlib.Path) -> None:
     case(
         f"no other file is left beside the three -> {left}", ok=left == sorted(name for name, _, _ in writes)
     )
+
+    # Under umask 077, os.open alone would drop the group and other bits of mode 0644.
+    umask = os.umask(0o077)
+    try:
+        write_private(root / "shared", b"shared\n", mode=0o644)
+    finally:
+        os.umask(umask)
+    got = oct(mode_of(root / "shared"))
+    case(f"under umask 077, a file of mode 0o644 ends with mode 0o644 -> {got}", ok=got == oct(0o644))
 
 
 def path_cases(case: Case, root: pathlib.Path) -> None:

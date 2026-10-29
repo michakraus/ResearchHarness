@@ -155,7 +155,7 @@ def style_of(text: str, top: Node) -> Style:
             break
     containers = walk(top)
     keyed = [e for n in containers if isinstance(n.value, dict) for e in n.entries or ()]
-    key_separator = text[keyed[0].key_end : keyed[0].node.start] if keyed else ":" if unit is None else ": "
+    key_separator = text[keyed[0].key_end : keyed[0].node.start] if keyed else ": "
     between = [
         text[n.entries[0].node.end : n.entries[1].start]
         for n in containers
@@ -201,12 +201,12 @@ def render(value: JsonValue, indent: str, style: Style, where: str) -> str:
 
 def same(a: JsonValue, b: JsonValue) -> bool:
     """Whether `a` and `b` are one JSON value of one type: 1 and 1.0, 0.0 and -0.0, or 1 and true
-    are not."""
+    are not, as their `repr` tells."""
     if isinstance(a, dict) and isinstance(b, dict):
         return a.keys() == b.keys() and all(same(a[k], b[k]) for k in a)
     if isinstance(a, list) and isinstance(b, list):
         return len(a) == len(b) and all(same(x, y) for x, y in zip(a, b, strict=True))
-    return type(a) is type(b) and repr(a) == repr(b)
+    return repr(a) == repr(b)
 
 
 def indent_at(text: str, index: int) -> str:
@@ -233,8 +233,7 @@ class Merge:
         elif node.entries and isinstance(node.value, list) and isinstance(new, list):
             pairs = self.kept_elements(node.entries, new)
             if pairs:
-                count = len(node.entries)
-                added = [(None, v) for v in new[count:]] if len(pairs) == count else []
+                added = [(None, v) for v in new[len(node.entries) :]]
                 return self.entry_edits(node, node.entries, pairs, added)
         return [
             Edit(node.start, node.end, render(new, indent_at(self.text, node.start), self.style, self.where))
@@ -512,6 +511,39 @@ CASES: list[tuple[str, str, Change, str]] = [
     ),
     ("a value of another type", '{"a": [1, 2], "b": 1}', setting("a", value="x"), '{"a": "x", "b": 1}'),
     ("a number that keeps its value as another type", '{"a": 1.0}', setting("a", value=1), '{"a": 1}'),
+    (
+        "an object added to a text of several lines that indents nothing is indented by 2",
+        '{\n"a": 1\n}\n',
+        setting("o", value={"p": 1}),
+        '{\n"a": 1,\n"o": {\n  "p": 1\n}\n}\n',
+    ),
+    ("a key added to a one-line text with spaces", '{"a": 1}', setting("z", value=2), '{"a": 1, "z": 2}'),
+    (
+        "a key added to a one-line object keeps that object's separator",
+        '{"x": [1, 2], "o": {"a": 1,"b": 2}}',
+        setting("o", "c", value=3),
+        '{"x": [1, 2], "o": {"a": 1,"b": 2,"c": 3}}',
+    ),
+    ("-0.0 that becomes 0.0", '{"d": -0.0}', setting("d", value=0.0), '{"d": 0.0}'),
+    ("an integer -0 that the change leaves", '{"a": -0, "b": 1}', setting("b", value=2), '{"a": -0, "b": 2}'),
+    (
+        "a one-line array in a text of several lines gains a member",
+        '{\n  "a": ["x"],\n  "b": 1\n}\n',
+        appending("a", "y"),
+        '{\n  "a": ["x", "y"],\n  "b": 1\n}\n',
+    ),
+    (
+        "an array of the same length with a changed element keeps its spacing",
+        '{"a": [1,  2], "b": 0}',
+        setting("a", value=[1, 5]),
+        '{"a": [1,  5], "b": 0}',
+    ),
+    (
+        "an array that loses and reorders its elements is written again with the text's separator",
+        '{"a": [1,  2, 3]}',
+        setting("a", value=[3, 1]),
+        '{"a": [3,  1]}',
+    ),
 ]
 
 # (label, the text, the change): each raises HarnessError.
@@ -523,6 +555,7 @@ REFUSED: list[tuple[str, str, Change]] = [
     ("NaN", '{"a": NaN}', setting("z", value=1)),
     ("a nesting deeper than 200", '{"a": ' + "[" * 200 + "]" * 200 + "}", setting("z", value=1)),
     ("a change that sets NaN", '{"a": 1}', setting("a", value=float("nan"))),
+    ("a change that sets a value of no JSON type", '{"a": 1}', setting("a", value=cast("JsonValue", {1}))),
     ("a change that returns no object", '{"a": 1}', lambda _data: cast("dict[str, JsonValue]", [])),
 ]
 
@@ -604,6 +637,11 @@ def file_cases(case: Case, root: pathlib.Path) -> None:
     path.write_bytes(b'{"a": "\xe9"}')
     message = refusal(path, setting("a", value=2))
     case(f"merge refuses a file that is not UTF-8 and names it -> {message}", ok=str(path) in message)
+
+    path = root / "directory.json"
+    path.mkdir()
+    message = refusal(path, setting("a", value=2))
+    case(f"merge refuses a path that is a directory and names it -> {message}", ok=str(path) in message)
 
     path = root / "same.json"
     path.write_bytes(b'{"a": 1}')
