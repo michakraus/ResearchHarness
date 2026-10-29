@@ -274,10 +274,10 @@
 
 ### K79 · `harness render` reads a relative template path from the working directory, and a missing template ends in a traceback with exit 1.
 
-- location: `lib/harness/profile.py:483`
+- location: `lib/harness/profile.py:793`
 - evidence: `render_file` opens `pathlib.Path(path)`, so `harness render systemd/kaimon.service`
   run outside the checkout prints `FileNotFoundError: [Errno 2] No such file or directory:
-  'systemd/kaimon.service'` and exits 1: `cmd_render` (lines 496–505) catches nothing, and `main`
+  'systemd/kaimon.service'` and exits 1: `cmd_render` (lines 803–810) catches nothing, and `main`
   in `lib/harness/cli.py` catches only `HarnessError`. The verb contract of `harness --help` gives
   exit 1 to a dry run with something to change and exit 2 to a usage error or a failure. A
   redirect of the output leaves an empty file in place of the unit.
@@ -288,11 +288,11 @@
 
 ### K80 · A profile with no `home` key, loaded with `HOME` set to the empty string, gets `home = "/"`.
 
-- location: `lib/harness/profile.py:142`
+- location: `lib/harness/profile.py:280`
 - evidence: `expand_home` takes the default of `home` from `pathlib.Path.home()`, which gives
   `/` for an empty `HOME`, and `/` is an absolute path, so the profile loads and a `~/…` value
-  loses its home directory. A profile `x = "~/a"` loaded with `HOME=""` gives
-  `{'x': '/a', 'home': '/'}`, with no error.
+  loses its home directory. A profile of the required keys with `tree_agents = "~/a"`, loaded
+  with `HOME=""`, gives `home` `/` and `tree_agents` `/a`, with no error.
 - kind: defect
 - found: 2026-10-20
 
@@ -330,11 +330,11 @@
 
 ### K84 · No branch case of the pre-push hook has a stub chezmoi on its `PATH`.
 
-- location: `lib/harness/profile.py:1329`
+- location: `lib/harness/profile.py:1679`
 - evidence: `prepush_branch_cases` puts no `chezmoi` on the `PATH` of its cases. So a hook that
   moves the kit step above the branch exit at `.githooks/pre-push:122-125` passes every case. A
   removed `exit 0` is still caught, because the stub suite prints "the suite ran"
-  (`lib/harness/profile.py:1366`, `1438`).
+  (`lib/harness/profile.py:1718`, `1824`).
 - kind: missing test
 - found: #67
 

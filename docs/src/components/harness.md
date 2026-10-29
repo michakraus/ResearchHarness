@@ -220,7 +220,9 @@ host is the machine whose Claude Code memory is the template for the other machi
 key `template_host` names it by its short host name.
 `get` prints one value, one line for each item of a list; on a key that the profile does not
 have, it exits with status 2. `render` of the settings template also adds its network rules
-(`network.py`).
+(`network.py`). Each subcommand loads the profile into a frozen dataclass, `Profile`, and exits
+with status 2 on an unknown key, a missing required key, a value of the wrong type or a retired
+key, with one line that names the file and the key.
 
 `leaks` searches every tracked file and its path for each of the private strings (the profile's
 `leak` list), and for the name of each directory below a `repository_roots` entry and each `org`
@@ -230,9 +232,10 @@ entry. The repository's own `owner/name` and the host of its GitHub Pages site,
 the added lines and the message of each commit that `F` names. The pre-push hook calls it in
 this way. The subcommand exits with status 1 on a hit.
 
-The module also reads the model tables for the adapters. On a table that names a model tier by an
-old name, the subcommand exits with status 2. [Adapting the profile](../profile.md) describes the
-keys.
+The module also reads the model tables for the adapters, into frozen dataclasses. On a table that
+names a model tier by an old name, a table that no frontend reads, a key that a table does not
+name or a value of the wrong type, the subcommand exits with status 2.
+[Adapting the profile](../profile.md) describes the keys.
 
 ## `githooks.py`
 
@@ -488,9 +491,9 @@ rendered settings template the `WebFetch(domain:…)` rules of `permissions.allo
 `permissions.deny` and the lists `allowedDomains`, `deniedDomains` and `deniedDomainReasons` of
 `sandbox.network`. A `deny` entry removes each `allow` and `infrastructure` host that it matches.
 `install`, `render` of the settings template and `settings` call it. The module exits with status
-2 in three cases: a file breaks the schema, the profile has the key `extra_domain`, or the
-template holds a host of its own. Its cases check each rule, each of these exits, and that an
-overlay changes no file of OpenCode or oh-my-pi.
+2 in two cases: a file breaks the schema, or the template holds a host of its own. Its cases
+check each rule, each of these exits, and that an overlay changes no file of OpenCode or
+oh-my-pi. The profile's loader refuses the retired profile key `extra_domain`.
 [Adapting the profile](../profile.md#the-network-overlay) describes the keys.
 
 ## `providers.py`
@@ -499,9 +502,9 @@ The model providers of OpenCode and oh-my-pi. The module has no subcommand. It r
 `providers.toml` beside the profile, which may be missing, and gives each frontend its entries:
 the `provider` object of `opencode.jsonc` and the providers of oh-my-pi's `models.yml`. The
 OpenCode and oh-my-pi adapters call it in `install`. The module exits with status 2 on a literal
-key, an unknown key or a value of the wrong type, and on a profile with the key
-`opencode_providers` or `omp_providers`. Its cases check the mapping of each key, the merge of a
-frontend's own keys, and each of these exits.
+key, an unknown key or a value of the wrong type. Its cases check the mapping of each key, the
+merge of a frontend's own keys, and each of these exits. The profile's loader refuses the retired
+profile keys `opencode_providers` and `omp_providers`.
 [Adapting the profile](../profile.md#the-providers) describes the keys.
 
 ## `sources.py`

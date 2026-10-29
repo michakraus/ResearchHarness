@@ -357,7 +357,7 @@ def cmd_install(args):
     global WIDTH
     adapters = frontends.load()
     profile = profile_module.load(args.profile)
-    develop = profile_module.develop(profile)
+    develop = profile.develop
     # A relative $RESEARCH_HARNESS_PYTHON exits 2 here, before anything is written.
     python = python_env()
     models = profile_module.models_path(args)

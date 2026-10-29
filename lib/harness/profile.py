@@ -8,23 +8,34 @@
 
 The profile is a TOML file of every value that names a person, an institution or a machine:
 `harness --profile F`, else $RESEARCH_HARNESS_PROFILE, else ~/.config/research-harness/profile.toml.
-`examples/profile.toml` is a dummy that shows every key. `home` is optional: the running user's
-home directory without it. A string value that is `~` or starts with `~/`, an item of a list
-too, means `home` (`expand_home`).
+`examples/profile.toml` is a dummy that shows every key. `load` gives a `Profile`, a frozen
+dataclass. The keys of REQUIRED must be there, and every key is one of REQUIRED or OPTIONAL, of
+its type, and a required list is not empty; any other profile exits 2 with one line that names the
+file, the key and, but for an unknown key, the type, and a retired key with the step that
+replaces it (`checked`). `home` is optional: the running user's home directory without it. A
+string value that is `~` or starts with `~/`, an item of a list too, means `home`
+(`expand_home`).
+
+The model tables load into frozen dataclasses too: `read_models` checks the shape and the types of
+every table, refuses a table or a key that no frontend reads, and gives `Models`; `model_tables`
+gives one frontend's `ModelTables`. Every table is optional and empty without it; an adapter
+refuses one that its frontend needs.
 
 A placeholder is `{name}`: lower case, digits and `_`, no colon, so OpenCode's `{env:…}` and
-`{file:…}` pass through. `name` is a profile key. A string value substitutes. A list value
+`{file:…}` pass through. `name` is a key of the values that the template renders with: the
+profile's (`context`), or a case's own mapping. A string value substitutes. A list value
 repeats what holds it, once per item in profile order, and removes it for an empty list: in a
 parsed JSON list (`render_data`) the string element, in text (`render_text`) the line, which must
 then end in a comma. A table value renders in text only, on a line that holds the placeholder
 alone: the members of a JSON object, at that line's indentation, with no comma after the last.
 More than one list placeholder in one element or line is an error, and so is
 a placeholder that the profile does not define: a template that renders with a hole in it is a
-grant or a deny that silently matches nothing. The one exception is a key of DEFAULTS, which
-`render` and `leaks` fill with its default where the profile has none: `providers`, which
-`harness install` fills from providers.toml, renders no provider. `autocommit_branch` is never
-missing: without it, `load` gives `main` on the machine whose short host name is `template_host`
-or without `template_host`, and `memory/<short host name>` on every other (`branch_default`).
+grant or a deny that silently matches nothing; an optional string that the profile leaves unset
+is no value (`values`). The render-only `providers` is no key of the profile: `harness install`
+fills it from providers.toml, and `render` and `leaks` give it as {}, so that the template renders
+no provider (`context`). `autocommit_branch` is never missing: without it, `load` gives `main` on
+the machine whose short host name is `template_host` or without `template_host`, and
+`memory/<short host name>` on every other (`branch_default`).
 `develop`, optional, is true or false, false without it: with true, `harness install --apply` adds
 the `dev` group of uv.lock to the Python environment; any other value exits 2.
 `render` of the settings template also generates its network rules from `settings/network.toml`
@@ -44,6 +55,7 @@ pre-push hook passes the commits that a push sends.
 
 import argparse
 import contextlib
+import dataclasses
 import io
 import json
 import os
@@ -55,10 +67,12 @@ import subprocess
 import sys
 import tempfile
 import tomllib
-from typing import cast
+import types
+from collections.abc import Mapping, Sequence
+from typing import Any, Literal, cast
 from unittest import mock
 
-from . import REPO, HarnessError, frontends, frontmatter, network
+from . import REPO, HarnessError, fmt, frontends, frontmatter, network
 
 DEFAULT = pathlib.Path.home() / ".config" / "research-harness" / "profile.toml"
 DUMMY = REPO / "examples" / "profile.toml"
@@ -88,21 +102,71 @@ TEMPLATES = [
     "systemd/claude-autocommit.timer",
 ]
 
-# The keys that `render` and `leaks` give a value when the profile has none. `harness install`
-# fills `providers` from providers.toml. `load` sets `autocommit_branch` (`branch_default`).
-DEFAULTS = {"providers": {}}
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class Profile:
+    """The profile, as `load` gives it: every value with `~` expanded. A list is a tuple. Without
+    its key, `home`, `harness` and `autocommit_branch` have the values that `load` gives,
+    `template_host` and `launchd_prefix` are "", `develop` is false, and an optional list is ()."""
+
+    home: str
+    harness: str
+    memory_project: str
+    tree_agents: str
+    org: tuple[str, ...]
+    repository_roots: tuple[str, ...]
+    leak: tuple[str, ...]
+    autocommit_branch: str
+    template_host: str = ""
+    launchd_prefix: str = ""
+    develop: bool = False
+    docs_exceptions: tuple[str, ...] = ()
+    docs_additions: tuple[str, ...] = ()
+    protected_dir: tuple[str, ...] = ()
 
 
-def location(path=None):
+# The words of the expected type in a refusal.
+STRING, LIST, NONEMPTY, BOOL = "a string", "a list of strings", "a non-empty list of strings", "true or false"
+# The keys of the profile, each with its type. A required list holds one item or more.
+REQUIRED = {
+    "memory_project": STRING,
+    "tree_agents": STRING,
+    "org": NONEMPTY,
+    "repository_roots": NONEMPTY,
+    "leak": NONEMPTY,
+}
+OPTIONAL = {
+    "home": STRING,
+    "harness": STRING,
+    "template_host": STRING,
+    "autocommit_branch": STRING,
+    "launchd_prefix": STRING,
+    "develop": BOOL,
+    "docs_exceptions": LIST,
+    "docs_additions": LIST,
+    "protected_dir": LIST,
+}
+
+# A value of a template's placeholder: a string, a list of strings, or a table, which renders as
+# the members of a JSON object.
+type Value = str | list[str] | Mapping[str, object]
+# The values that a template renders with, by name: a profile's (`context`), or a case's own.
+type Context = Mapping[str, Value]
+
+
+def location(path: str | os.PathLike[str] | None = None) -> pathlib.Path:
     """The path of the profile: `path`, else the environment's, else the default path."""
     return pathlib.Path(path or os.environ.get("RESEARCH_HARNESS_PROFILE") or DEFAULT)
 
 
-def load(path=None, home=None, host=None):
-    """The profile at `path`, else the environment's, else the default path, with `~` expanded
-    (`expand_home`) and `autocommit_branch` set (`branch_default`); `home` is the home directory
-    of a profile that names none, the running user's by default, and `host` the host name, the
-    running machine's by default."""
+def load(
+    path: str | os.PathLike[str] | None = None, home: str | None = None, host: str | None = None
+) -> Profile:
+    """The profile at `path`, else the environment's, else the default path, checked against the
+    keys of REQUIRED and OPTIONAL (`checked`), with `~` expanded (`expand_home`) and
+    `autocommit_branch` set (`branch_default`); `home` is the home directory of a profile that
+    names none, the running user's by default, and `host` the host name, the running machine's by
+    default. `harness` is this checkout without the key."""
     path = location(path)
     if not path.is_file():
         raise HarnessError(f"no profile at {path} — copy examples/profile.toml there and fill it in")
@@ -112,134 +176,285 @@ def load(path=None, home=None, host=None):
         raise HarnessError(f"{path} is not UTF-8") from None
     except tomllib.TOMLDecodeError as e:
         raise HarnessError(f"{path} is not TOML: {e}") from None
-    if not isinstance(data.get("develop", False), bool):
-        raise HarnessError(f"{path}: `develop` is {data['develop']!r}, not true or false")
-    return branch_default(expand_home(data, path, home), path, host)
+    strings, lists, develop = checked(data, path)
+    strings, lists = expand_home(strings, lists, path, home)
+    return Profile(
+        home=strings["home"],
+        harness=strings.get("harness", str(REPO)),
+        memory_project=strings["memory_project"],
+        tree_agents=strings["tree_agents"],
+        org=lists["org"],
+        repository_roots=lists["repository_roots"],
+        leak=lists["leak"],
+        autocommit_branch=branch_default(strings, path, host),
+        template_host=strings.get("template_host", ""),
+        launchd_prefix=strings.get("launchd_prefix", ""),
+        develop=develop,
+        docs_exceptions=lists.get("docs_exceptions", ()),
+        docs_additions=lists.get("docs_additions", ()),
+        protected_dir=lists.get("protected_dir", ()),
+    )
 
 
-def develop(profile):
-    """The profile's `develop`: whether `harness install --apply` syncs the Python environment with
-    its `dev` group; false without the key."""
-    return profile.get("develop", False)
+def checked(
+    data: dict[str, Any], path: pathlib.Path
+) -> tuple[dict[str, str], dict[str, tuple[str, ...]], bool]:
+    """The strings, the lists and `develop` of `data`, the parsed profile at `path`. A retired key
+    exits 2 with the step that replaces it; then an unknown key, a table among them, a missing
+    key of REQUIRED, a value that is not of its key's type and an empty list of REQUIRED, each
+    naming `path`, the key and, but for an unknown key, the type."""
+    if "extra_domain" in data:
+        raise HarnessError(
+            f"{path}: the profile key extra_domain is retired: move its hosts into the allow array of "
+            f"{path.parent / 'network.toml'} and remove the key"
+        )
+    if old := [k for k in ("opencode_providers", "omp_providers") if k in data]:
+        raise HarnessError(
+            f"{path}: the profile holds {', '.join(old)}, which {path.parent / 'providers.toml'} "
+            "replaces: write each provider once there, as examples/providers.toml shows, and remove "
+            "the key from the profile"
+        )
+    if unknown := [k for k in data if k not in REQUIRED and k not in OPTIONAL]:
+        raise HarnessError(
+            f"{path}: {', '.join(f'`{k}`' for k in unknown)} is no key of the profile; "
+            "examples/profile.toml shows every key"
+        )
+    if missing := [k for k in REQUIRED if k not in data]:
+        raise HarnessError(
+            f"{path}: the profile has no "
+            + ", ".join(f"`{k}`, {REQUIRED[k]}" for k in missing)
+            + "; examples/profile.toml shows it"
+        )
+    strings: dict[str, str] = {}
+    lists: dict[str, tuple[str, ...]] = {}
+    develop = False
+    for key, v in data.items():
+        kind = REQUIRED.get(key) or OPTIONAL[key]
+        if kind == STRING and isinstance(v, str):
+            strings[key] = v
+        elif kind == BOOL and isinstance(v, bool):
+            develop = v
+        elif kind in (LIST, NONEMPTY) and isinstance(v, list):
+            items = cast("list[object]", v)
+            if not all(isinstance(x, str) for x in items) or (kind == NONEMPTY and not items):
+                raise HarnessError(f"{path}: `{key}` is {v!r}, not {kind}")
+            lists[key] = tuple(cast("list[str]", items))
+        else:
+            raise HarnessError(f"{path}: `{key}` is {v!r}, not {kind}")
+    return strings, lists, develop
 
 
-def branch_default(data, path, host=None):
-    """`data` with `autocommit_branch` set: the profile's own, else `main` without `template_host`
-    or on the machine whose short host name is `template_host`, else `memory/<short host name>`.
-    The short host name is `host`, else `socket.gethostname()`, up to its first `.`, as
-    `hostname -s` prints it; it compares exactly, and an empty one gives `main`. So one profile
-    works unedited on every machine. A `template_host` that is not a short host name, a string
-    that is not empty and holds no `.`, exits 2."""
-    template = data.get("template_host")
-    if template is not None and not (isinstance(template, str) and template and "." not in template):
+def branch_default(strings: Mapping[str, str], path: pathlib.Path, host: str | None = None) -> str:
+    """The `autocommit_branch` of the profile's `strings`: its own, else `main` without
+    `template_host` or on the machine whose short host name is `template_host`, else
+    `memory/<short host name>`. The short host name is `host`, else `socket.gethostname()`, up to
+    its first `.`, as `hostname -s` prints it; it compares exactly, and an empty one gives `main`.
+    So one profile works unedited on every machine. A `template_host` that is not a short host
+    name, a string that is not empty and holds no `.`, exits 2."""
+    template = strings.get("template_host")
+    if template is not None and (not template or "." in template):
         raise HarnessError(f"{path}: `template_host` is {template!r}, not a short host name without a `.`")
-    if "autocommit_branch" in data:
-        return data
+    if "autocommit_branch" in strings:
+        return strings["autocommit_branch"]
     short = (socket.gethostname() if host is None else host).split(".")[0]
-    branch = "main" if template is None or not short or short == template else f"memory/{short}"
-    return {**data, "autocommit_branch": branch}
+    return "main" if template is None or not short or short == template else f"memory/{short}"
 
 
-def expand_home(data, path, home=None):
-    """`data` with `home` set and `~` expanded. `home` is the profile's own, else `home`, else
-    `pathlib.Path.home()`; it must be an absolute path with no `~`, and loses a trailing slash, so
-    that `~/x` never gives `//x`. A string that is exactly `~`, or starts with `~/`, at the top
-    level or as an item of a top-level list, becomes `home`, or `home` and the rest. Any other
-    `~` stays, `~name/x` too, and so does every value inside a table or a nested list:
-    examples/profile.toml has none. A profile at `path` that breaks a rule of `home` exits 2."""
-    given = "home" in data
+def expand_home(
+    strings: Mapping[str, str],
+    lists: Mapping[str, tuple[str, ...]],
+    path: pathlib.Path,
+    home: str | None = None,
+) -> tuple[dict[str, str], dict[str, tuple[str, ...]]]:
+    """`strings` with `home` set and `~` expanded, and `lists` with `~` expanded. `home` is the
+    profile's own, else `home`, else `pathlib.Path.home()`; it must be an absolute path with no
+    `~`, and loses a trailing slash, so that `~/x` never gives `//x`. A string that is exactly
+    `~`, or starts with `~/`, as a value or as an item of a list, becomes `home`, or `home` and the
+    rest. Any other `~` stays, `~name/x` too. A profile at `path` that breaks a rule of `home`
+    exits 2."""
+    given = "home" in strings
     if given:
-        home = data["home"]
+        home = strings["home"]
     elif home is None:
         try:
             home = str(pathlib.Path.home())
         except RuntimeError:
             home = None
-    if not (isinstance(home, str) and "~" not in home and pathlib.PurePath(home).is_absolute()):
+    if not (home is not None and "~" not in home and pathlib.PurePath(home).is_absolute()):
         if given:
             raise HarnessError(f"{path}: `home` is {home!r}, not an absolute path without `~`")
         raise HarnessError(
             f"{path}: the home directory is not known ({home!r}); set `home` to an absolute path"
         )
-    home = home.rstrip("/") or "/"
+    root = home.rstrip("/") or "/"
 
-    def expanded(v):
+    def expanded(v: str) -> str:
         if v == "~":
-            return home
-        if isinstance(v, str) and v.startswith("~/"):
-            return home.rstrip("/") + v[1:]
+            return root
+        if v.startswith("~/"):
+            return root.rstrip("/") + v[1:]
         return v
 
-    out = {k: [expanded(x) for x in v] if isinstance(v, list) else expanded(v) for k, v in data.items()}
-    out["home"] = home
+    out = {k: expanded(v) for k, v in strings.items()}
+    out["home"] = root
+    return out, {k: tuple(map(expanded, v)) for k, v in lists.items()}
+
+
+def values(profile: Profile) -> dict[str, str | list[str]]:
+    """The values of `profile` by name, as a template reads them, and `harness get` for each key but
+    `develop`: each field but `develop`, a tuple as a list, and no optional string that the profile
+    leaves unset, so that a placeholder of one is an error, as for a key that the profile lacks."""
+    out: dict[str, str | list[str]] = {
+        "home": profile.home,
+        "harness": profile.harness,
+        "memory_project": profile.memory_project,
+        "tree_agents": profile.tree_agents,
+        "org": list(profile.org),
+        "repository_roots": list(profile.repository_roots),
+        "leak": list(profile.leak),
+        "autocommit_branch": profile.autocommit_branch,
+        "docs_exceptions": list(profile.docs_exceptions),
+        "docs_additions": list(profile.docs_additions),
+        "protected_dir": list(profile.protected_dir),
+    }
+    out |= {
+        k: v
+        for k, v in (("template_host", profile.template_host), ("launchd_prefix", profile.launchd_prefix))
+        if v
+    }
     return out
 
 
-def value(name, profile, where):
-    if name not in profile:
+def context(profile: Profile, **extra: Value) -> dict[str, Value]:
+    """The render's values of `profile` (`values`), with `extra` over them: the render-only
+    `providers`, which `harness install` fills from providers.toml and `render` and `leaks` give as
+    {}, so that the template renders no provider."""
+    return {**values(profile), **extra}
+
+
+def rendering(profile: Profile | Context) -> Context:
+    """The values that a template renders with: `context` of a profile, else `profile` itself."""
+    return context(profile) if isinstance(profile, Profile) else profile
+
+
+def value(name: str, given: Context, where: str) -> Value:
+    if name not in given:
         raise KeyError(f"placeholder {{{name}}} in {where!r}: the profile has no key {name!r}")
-    return profile[name]
+    return given[name]
 
 
-def get(profile, key):
-    """The profile's value of `key`; a missing key is a `HarnessError`."""
-    if key not in profile:
+def get(profile: Profile, key: str) -> str | list[str]:
+    """The profile's value of `key` (`values`), and `develop` as "true" or "false"; a missing key is
+    a `HarnessError`."""
+    if key == "develop":
+        return "true" if profile.develop else "false"
+    found = values(profile)
+    if key not in found:
         raise HarnessError(f"the profile has no key {key!r} — examples/profile.toml shows it")
-    return profile[key]
+    return found[key]
 
 
-def models_path(args):
+def models_path(args: argparse.Namespace) -> pathlib.Path:
     """The model tables: `--models`, else $RESEARCH_HARNESS_MODELS, else models.toml beside the profile."""
-    if getattr(args, "models", None):
-        return pathlib.Path(args.models)
+    given: str | None = getattr(args, "models", None)
+    if given:
+        return pathlib.Path(given)
     if os.environ.get("RESEARCH_HARNESS_MODELS"):
         return pathlib.Path(os.environ["RESEARCH_HARNESS_MODELS"])
-    profile = args.profile or os.environ.get("RESEARCH_HARNESS_PROFILE") or DEFAULT
+    profile: str | os.PathLike[str] = args.profile or os.environ.get("RESEARCH_HARNESS_PROFILE") or DEFAULT
     return pathlib.Path(profile).parent / "models.toml"
 
 
-def network_path(profile=None):
+def network_path(profile: str | os.PathLike[str] | None = None) -> pathlib.Path:
     """The overlay of the network lists: network.toml beside the profile `profile`, else beside
     the profile of `location`."""
     return location(profile).parent / "network.toml"
 
 
-def providers_path(profile=None):
+def providers_path(profile: str | os.PathLike[str] | None = None) -> pathlib.Path:
     """The model providers of OpenCode and oh-my-pi (`providers.py`): providers.toml beside the
     profile `profile`, else beside the profile of `location`."""
     return location(profile).parent / "providers.toml"
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class Seat:
+    """A seat of a council: a copy of its agent named `name` on `model`; `verify` for the seat
+    that also judges each verify round, alone."""
+
+    name: str
+    model: str
+    verify: bool = False
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class ModelTables:
+    """The tables of MODEL_TABLES of the model tables at `path`: the shared ones, the sub-tables of
+    [opencode] or of [omp], or one frontend's, the latter over the shared ones (`model_tables`).
+    Each field but `path` is the table of its name, but `tiers`, which is [models], {tier: model}.
+    An absent table is empty."""
+
+    path: pathlib.Path
+    tiers: Mapping[str, str] = dataclasses.field(default_factory=dict[str, str])
+    model_overrides: Mapping[str, str] = dataclasses.field(default_factory=dict[str, str])
+    model_variants: Mapping[str, str] = dataclasses.field(default_factory=dict[str, str])
+    variants: Mapping[str, str] = dataclasses.field(default_factory=dict[str, str])
+    reasoning_effort: Mapping[str, str] = dataclasses.field(default_factory=dict[str, str])
+    councils: Mapping[str, tuple[Seat, ...]] = dataclasses.field(default_factory=dict[str, tuple[Seat, ...]])
+    context_limits: Mapping[str, int] = dataclasses.field(default_factory=dict[str, int])
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class Models:
+    """The model tables at `path`, as `read_models` gives them: [claude] and [antigravity], each
+    {tier: model}, the sub-table [antigravity.model_overrides], the shared tables, and the
+    sub-tables of [opencode] and [omp]. An absent table is empty."""
+
+    path: pathlib.Path
+    claude: Mapping[str, str]
+    antigravity: Mapping[str, str]
+    antigravity_overrides: Mapping[str, str]
+    shared: ModelTables
+    opencode: ModelTables
+    omp: ModelTables
 
 
 # The old keys of a table of the tiers, Claude Code's names, and the neutral tier of each.
 OLD_TIERS = {"opus": "large", "sonnet": "medium", "haiku": "small"}
 
 
-def read_models(path):
-    """The model tables at `path`, parsed; a file that does not exist, cannot be read, is not
-    UTF-8 or is not TOML exits 2, and so does a table of the tiers, [claude], [models],
-    [opencode.models] or [omp.models], with a key of OLD_TIERS: one message names each rename of
-    each table, and a missing [claude]."""
-    path = pathlib.Path(path)
+def parsed_models(path: pathlib.Path) -> dict[str, Any]:
+    """The model tables at `path`, parsed; a file that does not exist, cannot be read, is not UTF-8
+    or is not TOML exits 2."""
     if not path.is_file():
         raise HarnessError(f"no model tables at {path} — copy examples/models.toml there and fill it in")
     try:
-        models = tomllib.loads(path.read_bytes().decode("utf-8"))
+        return tomllib.loads(path.read_bytes().decode("utf-8"))
     except OSError as e:
         raise HarnessError(f"{path} cannot be read: {e.strerror}") from None
     except UnicodeDecodeError:
         raise HarnessError(f"{path} is not UTF-8") from None
     except tomllib.TOMLDecodeError as e:
         raise HarnessError(f"{path} is not TOML: {e}") from None
-    opencode, omp = models.get("opencode"), models.get("omp")
-    renames = []
-    for name, table in [
-        ("claude", models.get("claude")),
-        ("models", models.get("models")),
-        ("omp.models", omp.get("models") if isinstance(omp, dict) else None),
-        ("opencode.models", opencode.get("models") if isinstance(opencode, dict) else None),
+
+
+def old_tier_names(path: pathlib.Path, models: Mapping[str, object]) -> None:
+    """Exit 2 when a table of the tiers of `models`, the parsed model tables at `path`, [claude],
+    [models], [opencode.models] or [omp.models], has a key of OLD_TIERS: one message names each
+    rename of each table, and a missing [claude]."""
+
+    def table(value: object) -> dict[str, object]:
+        return cast("dict[str, object]", value) if isinstance(value, dict) else {}
+
+    opencode, omp = table(models.get("opencode")), table(models.get("omp"))
+    renames: list[str] = []
+    for name, part in [
+        ("claude", table(models.get("claude"))),
+        ("models", table(models.get("models"))),
+        ("omp.models", table(omp.get("models"))),
+        ("opencode.models", table(opencode.get("models"))),
     ]:
-        old = [t for t in OLD_TIERS if isinstance(table, dict) and t in table]
-        if old:
+        if old := [t for t in OLD_TIERS if t in part]:
             renames.append(f"in [{name}] rename " + ", ".join(f"{t} to {OLD_TIERS[t]}" for t in old))
     if renames:
         add = (
@@ -248,35 +463,174 @@ def read_models(path):
             else ["add a [claude] table of the tiers, which examples/models.toml shows"]
         )
         raise HarnessError(f"{path} names tiers by their old names: " + "; ".join(renames + add))
-    return models
 
 
-def tier_table(path, name, frontend):
-    """{tier: model} of the table [`name`] of the model tables at `path`, which maps each tier to a
-    model of `frontend`: exactly the tiers of frontmatter.TIERS, each a string that is not blank;
-    any other table exits 2."""
-    tiers = frontmatter.TIERS
-    table = read_models(path).get(name)
-    if not isinstance(table, dict):
+def read_models(path: str | os.PathLike[str]) -> Models:
+    """The model tables at `path`, checked: a file that does not exist, cannot be read, is not
+    UTF-8 or is not TOML exits 2, and so does a table of the tiers, [claude], [models],
+    [opencode.models] or [omp.models], with a key of OLD_TIERS: one message names each rename of
+    each table, and a missing [claude]. Then a tier at the top level, a table that no frontend
+    reads, and a value of the wrong shape exit 2, naming `path`, the table and the key (`tiers`,
+    `tables`). Every table is optional."""
+    path = pathlib.Path(path)
+    models = parsed_models(path)
+    old_tier_names(path, models)
+    if top := [t for t in frontmatter.TIERS if t in models]:
         raise HarnessError(
-            f"{path} has no [{name}] table, which maps the tiers {', '.join(tiers)} to {frontend}'s "
-            "models — examples/models.toml shows it"
+            f"{path}: the tiers {', '.join(top)} are at the top level; move them into [models]"
         )
-    missing, unknown = [t for t in tiers if t not in table], sorted(set(table) - set(tiers))
+    tops = ["claude", "antigravity", *MODEL_TABLES, *SHARING]
+    if unknown := sorted(set(models) - set(tops)):
+        raise HarnessError(f"{path} has no table {', '.join(unknown)}; it has {', '.join(tops)}")
+    data: dict[str, dict[str, Any]] = {}
+    for name, table in models.items():
+        if not isinstance(table, dict):
+            raise HarnessError(f"{path}: [{name}] is not a table")
+        data[name] = cast("dict[str, Any]", table)
+    claude = tiers(path, "claude", data.get("claude", {}), complete=True)
+    agy = data.get("antigravity", {})
+    overrides = agy.get("model_overrides", {})
+    if not isinstance(overrides, dict):
+        raise HarnessError(f"{path}: [antigravity.model_overrides] is not a table of agent = tier")
+    if wrong := [a for a, v in cast("dict[str, object]", overrides).items() if not isinstance(v, str)]:
+        raise HarnessError(
+            f"{path}: [antigravity.model_overrides] {', '.join(wrong)} is not a string that names a tier"
+        )
+    shared = tables(path, "", {k: v for k, v in data.items() if k in MODEL_TABLES})
+    own: dict[str, ModelTables] = {}
+    for name in SHARING:
+        table = data.get(name, {})
+        if top := [t for t in frontmatter.TIERS if t in table]:
+            raise HarnessError(
+                f"{path}: [{name}] holds the tiers {', '.join(top)}; move them into [models], or "
+                f"into [{name}.models] for {name} alone"
+            )
+        if unknown := sorted(set(table) - set(MODEL_TABLES)):
+            raise HarnessError(
+                f"{path}: [{name}] has no sub-table {', '.join(unknown)}; it has {', '.join(MODEL_TABLES)}"
+            )
+        own[name] = tables(path, f"{name}.", table)
+    return Models(
+        path=path,
+        claude=claude,
+        antigravity=tiers(path, "antigravity", {k: v for k, v in agy.items() if k != "model_overrides"}),
+        antigravity_overrides=cast("dict[str, str]", overrides),
+        shared=shared,
+        opencode=own["opencode"],
+        omp=own["omp"],
+    )
+
+
+def tiers(
+    path: pathlib.Path, name: str, table: Mapping[str, object], *, complete: bool = False
+) -> dict[str, str]:
+    """{tier: model} of the table [`name`], `table`, of the model tables at `path`: the tiers of
+    frontmatter.TIERS, each a string that is not blank, and with `complete` every one of them in a
+    table that is not empty. Any other key, a missing tier and any other value exit 2."""
+    if not table:
+        return {}
+    names = frontmatter.TIERS
+    missing = [t for t in names if t not in table] if complete else []
+    unknown = sorted(set(table) - set(names))
+    extra = ["model_overrides"] if name == "antigravity" else []
     if missing or unknown:
         raise HarnessError(
-            f"{path}: [{name}] holds the tiers {', '.join(tiers)}, one {frontend} model each; "
+            f"{path}: [{name}] holds the tiers {' and '.join([', '.join(names), *extra])}; "
             + "; ".join(
-                [f"it has no {', '.join(missing)}"] * bool(missing)
+                [f"it has no {', '.join(missing)}, a string that names a model"] * bool(missing)
                 + [f"{', '.join(unknown)} is no tier"] * bool(unknown)
             )
         )
-    wrong = [t for t in tiers if not isinstance(table[t], str) or not table[t].strip()]
-    if wrong:
+    if wrong := [t for t, v in table.items() if not (isinstance(v, str) and v.strip())]:
         raise HarnessError(
             f"{path}: the tier {', '.join(wrong)} of [{name}] is not a string that names a model"
         )
-    return {t: table[t] for t in tiers}
+    return cast("dict[str, str]", dict(table))
+
+
+def tables(path: pathlib.Path, prefix: str, data: Mapping[str, object]) -> ModelTables:
+    """The tables of MODEL_TABLES in `data`, the shared ones of the model tables at `path` with the
+    `prefix` "", or the sub-tables of [opencode] or [omp] with the prefix `opencode.` or `omp.`.
+    Each is a table. A value of `models`, `model_overrides`, `model_variants`, `variants` or
+    `reasoning_effort` is a string that is not blank; a context limit is a positive integer; a
+    council is a list of one to eight seats {name, model}, at most one of them with `verify =
+    true`. Any other value exits 2, naming `path`, the table and the key."""
+    parts: dict[str, dict[str, object]] = {}
+    for sub in MODEL_TABLES:
+        part = data.get(sub, {})
+        if not isinstance(part, dict):
+            raise HarnessError(f"{path}: [{prefix}{sub}] is not a table")
+        parts[sub] = cast("dict[str, object]", part)
+    strings: dict[str, dict[str, str]] = {}
+    for sub in ("models", "model_overrides", "model_variants", "variants", "reasoning_effort"):
+        if wrong := [k for k, v in parts[sub].items() if not (isinstance(v, str) and v.strip())]:
+            raise HarnessError(
+                f"{path}: the value of {', '.join(wrong)} in [{prefix}{sub}] is not a string that is "
+                "not blank"
+            )
+        strings[sub] = cast("dict[str, str]", parts[sub])
+    limits = parts["context_limits"]
+    if wrong := [k for k, v in limits.items() if not (type(v) is int and v > 0)]:
+        raise HarnessError(
+            f"{path}: the value of {', '.join(wrong)} in [{prefix}context_limits] is not a positive integer"
+        )
+    councils = {
+        agent: council(path, f"{prefix}councils.{agent}", seats) for agent, seats in parts["councils"].items()
+    }
+    return ModelTables(
+        path=path,
+        tiers=strings["models"],
+        model_overrides=strings["model_overrides"],
+        model_variants=strings["model_variants"],
+        variants=strings["variants"],
+        reasoning_effort=strings["reasoning_effort"],
+        councils=councils,
+        context_limits=cast("dict[str, int]", limits),
+    )
+
+
+def council(path: pathlib.Path, where: str, seats: object) -> tuple[Seat, ...]:
+    """The seats of the council `where`, `seats`, of the model tables at `path`: a list of one to
+    eight tables {name, model}, each a string that is not blank, at most one of them with
+    `verify = true`; any other value exits 2."""
+    if not (
+        isinstance(seats, list)
+        and all(
+            isinstance(s, dict)
+            and {"name", "model"} <= set(cast("dict[str, object]", s)) <= {"name", "model", "verify"}
+            for s in cast("list[object]", seats)
+        )
+    ):
+        raise HarnessError(
+            f"{path}: {where} is a list of {{ name = …, model = … }}, and one seat may add `verify = true`"
+        )
+    tables = cast("list[dict[str, object]]", seats)
+    if len(tables) not in COUNCIL_SEATS:
+        raise HarnessError(f"{path}: {where} has {len(tables)} seats; a council has 1 to 8")
+    out: list[Seat] = []
+    for seat in tables:
+        name, model, verify = seat["name"], seat["model"], seat.get("verify", False)
+        for key, v in (("name", name), ("model", model)):
+            if not isinstance(v, str) or not v.strip():
+                raise HarnessError(f"{path}: the seat {key} {v!r} of {where} is not a string")
+        if not isinstance(verify, bool):
+            raise HarnessError(f"{path}: `verify` of the seat {name!r} of {where} is not true or false")
+        out.append(Seat(cast("str", name), cast("str", model), verify))
+    if sum(s.verify for s in out) > 1:
+        raise HarnessError(f"{path}: more than one seat of {where} has `verify = true`")
+    return tuple(out)
+
+
+def tier_table(path: str | os.PathLike[str], frontend: str) -> dict[str, str]:
+    """{tier: model} of [claude] of the model tables at `path` (`read_models`), which maps each
+    tier to a model of `frontend`; a models.toml without it exits 2."""
+    table = read_models(path).claude
+    if not table:
+        raise HarnessError(
+            f"{path} has no [claude] table, which maps the tiers {', '.join(frontmatter.TIERS)} to "
+            f"{frontend}'s models — examples/models.toml shows it"
+        )
+    return dict(table)
 
 
 # The model tables that OpenCode and oh-my-pi share, at the top level of models.toml; each is
@@ -297,136 +651,85 @@ MODEL_TABLES = [
     "context_limits",
 ]
 # The frontends that read MODEL_TABLES, each with a table of its own overrides.
-SHARING = ("opencode", "omp")
+SHARING: tuple[Literal["opencode", "omp"], ...] = ("opencode", "omp")
 # A council has one to eight seats beside its agent.
 COUNCIL_SEATS = range(1, 9)
 
 
-def model_tables(path, name):
-    """The shared tables MODEL_TABLES of the model tables at `path`, each with the keys of its
-    sub-table of [`name`] over its own, every one present, and `path`. A council is a list of seats
-    {name, model}, at most one of them with `verify = true`, the seat that judges each verify
-    round alone; no two seats share a name. A context limit is a positive integer. Any other table,
-    at the top level or in [`name`], exits 2."""
-    path = pathlib.Path(path)
-    data = read_models(path)
-    tops = ["claude", "antigravity", *MODEL_TABLES, *SHARING]
-    if tiers := [t for t in frontmatter.TIERS if t in data]:
-        raise HarnessError(
-            f"{path}: the tiers {', '.join(tiers)} are at the top level; move them into [models]"
-        )
-    if unknown := sorted(set(data) - set(tops)):
-        raise HarnessError(f"{path} has no table {', '.join(unknown)}; it has {', '.join(tops)}")
-    table = data.get(name, {})
-    if not isinstance(table, dict):
-        raise HarnessError(f"{path}: [{name}] is not a table")
-    if tiers := [t for t in frontmatter.TIERS if t in table]:
-        raise HarnessError(
-            f"{path}: [{name}] holds the tiers {', '.join(tiers)}; move them into [models], or "
-            f"into [{name}.models] for {name} alone"
-        )
-    if unknown := sorted(set(table) - set(MODEL_TABLES)):
-        raise HarnessError(
-            f"{path}: [{name}] has no sub-table {', '.join(unknown)}; it has {', '.join(MODEL_TABLES)}"
-        )
-    models = {}
-    for sub in MODEL_TABLES:
-        for label, part in ((f"[{sub}]", data.get(sub, {})), (f"[{name}.{sub}]", table.get(sub, {}))):
-            if not isinstance(part, dict):
-                raise HarnessError(f"{path}: {label} is not a table")
-        models[sub] = {**data.get(sub, {}), **table.get(sub, {})}
-    where = lambda sub: f"[{sub}] or [{name}.{sub}]"  # noqa: E731
-    for sub in ("models", "model_overrides", "model_variants", "variants", "reasoning_effort"):
-        if wrong := [k for k, v in models[sub].items() if not (isinstance(v, str) and v.strip())]:
-            raise HarnessError(
-                f"{path}: the value of {', '.join(wrong)} in {where(sub)} is not a string that is not blank"
-            )
-    if wrong := [k for k, v in models["context_limits"].items() if not (type(v) is int and v > 0)]:
-        raise HarnessError(
-            f"{path}: the value of {', '.join(wrong)} in {where('context_limits')} is not a positive integer"
-        )
-    # Each seat is installed as `<name>.md`, so a second seat of one name would replace the first.
-    seen = {}
-    for agent, seats in models["councils"].items():
-        if not (
-            isinstance(seats, list)
-            and all(
-                isinstance(s, dict) and {"name", "model"} <= set(s) <= {"name", "model", "verify"}
-                for s in seats
-            )
-        ):
-            raise HarnessError(
-                f"{path}: councils.{agent} is a list of {{ name = …, model = … }}, "
-                "and one seat may add `verify = true`"
-            )
-        if len(seats) not in COUNCIL_SEATS:
-            raise HarnessError(f"{path}: councils.{agent} has {len(seats)} seats; a council has 1 to 8")
+def model_tables(path: str | os.PathLike[str], name: Literal["opencode", "omp"]) -> ModelTables:
+    """The shared tables MODEL_TABLES of the model tables at `path` (`read_models`), each with the
+    keys of its sub-table of [`name`] over its own. No two seats of the councils share a name: each
+    seat is installed as `<name>.md`, so a second seat of one name would replace the first; such a
+    pair exits 2."""
+    models = read_models(path)
+    own = models.opencode if name == "opencode" else models.omp
+    merged = ModelTables(
+        path=models.path,
+        tiers={**models.shared.tiers, **own.tiers},
+        model_overrides={**models.shared.model_overrides, **own.model_overrides},
+        model_variants={**models.shared.model_variants, **own.model_variants},
+        variants={**models.shared.variants, **own.variants},
+        reasoning_effort={**models.shared.reasoning_effort, **own.reasoning_effort},
+        councils={**models.shared.councils, **own.councils},
+        context_limits={**models.shared.context_limits, **own.context_limits},
+    )
+    seen: dict[str, str] = {}
+    for agent, seats in merged.councils.items():
         for seat in seats:
-            for key in ("name", "model"):
-                if not isinstance(seat[key], str) or not seat[key].strip():
-                    raise HarnessError(
-                        f"{path}: the seat {key} {seat[key]!r} of councils.{agent} is not a string"
-                    )
-            if not isinstance(seat.get("verify", False), bool):
+            if seat.name in seen:
                 raise HarnessError(
-                    f"{path}: `verify` of the seat {seat['name']!r} of councils.{agent} is not true or false"
+                    f"{models.path}: the seat {seat.name!r} of councils.{agent} is also a seat "
+                    f"of councils.{seen[seat.name]}"
                 )
-            if seat["name"] in seen:
-                raise HarnessError(
-                    f"{path}: the seat {seat['name']!r} of councils.{agent} is also a seat "
-                    f"of councils.{seen[seat['name']]}"
-                )
-            seen[seat["name"]] = agent
-        if sum(s.get("verify", False) for s in seats) > 1:
-            raise HarnessError(f"{path}: more than one seat of councils.{agent} has `verify = true`")
-    models["path"] = path
-    return models
+            seen[seat.name] = agent
+    return merged
 
 
-def agent_model(name, tier, models, where):
+def agent_model(name: str, tier: object, models: ModelTables, where: object) -> str | None:
     """The model of the agent `name` of tier `tier` (None for an agent with no tier), with
     `models` from model_tables: its override, else its tier's model, else None, which leaves the
     agent on its caller's model. A tier with no model exits 2, naming `where`."""
     model = None
     if tier is not None:
-        if not isinstance(tier, str) or tier not in models["models"]:
-            raise HarnessError(f"{where}: the tier {tier!r} has no entry in the models of {models['path']}")
-        model = models["models"][tier]
-    return models["model_overrides"].get(name, model)
+        if not isinstance(tier, str) or tier not in models.tiers:
+            raise HarnessError(f"{where}: the tier {tier!r} has no entry in the models of {models.path}")
+        model = models.tiers[tier]
+    return models.model_overrides.get(name, model)
 
 
-def agent_effort(name, model, models):
+def agent_effort(name: str, model: str | None, models: ModelTables) -> str | None:
     """The effort of the agent or seat `name` on `model`: its `variants` entry, else its
     `reasoning_effort` entry, else the `model_variants` entry of `model`, else None."""
-    return models["variants"].get(
-        name, models["reasoning_effort"].get(name, models["model_variants"].get(model))
-    )
+    fallback = None if model is None else models.model_variants.get(model)
+    return models.variants.get(name, models.reasoning_effort.get(name, fallback))
 
 
-def council_description(source, seat, frontend):
+def council_description(source: str, seat: Seat, frontend: str) -> str:
     """The description of the council seat `seat` of the agent `source` under `frontend`."""
-    verify = " It also judges each verify round, alone." if seat.get("verify") else ""
+    verify = " It also judges each verify round, alone." if seat.verify else ""
     return (
-        f"A member of the round-1 critic council of build-part under {frontend}, on {seat['model']}.{verify} "
+        f"A member of the round-1 critic council of build-part under {frontend}, on {seat.model}.{verify} "
         f"The same agent as {source}, which has the full description. Spawn it only as the build-part "
         "dispatcher."
     )
 
 
-def render_line(line, profile):
-    """Substitute every string placeholder in one line; a list placeholder is an error."""
+def render_line(line: str, profile: Profile | Context) -> str:
+    """Substitute every string placeholder in one line, with the values of `profile`
+    (`rendering`); a list placeholder is an error."""
+    given = rendering(profile)
 
-    def substitute(m):
-        v = value(m.group(1), profile, m.group(0))
+    def substitute(m: re.Match[str]) -> str:
+        v = value(m.group(1), given, m.group(0))
         if not isinstance(v, str):
-            kind = "table" if isinstance(v, dict) else "list"
+            kind = "list" if isinstance(v, list) else "table"
             raise TypeError(f"placeholder {m.group(0)}: a {kind} renders only on a line of its own")
         return v
 
     return PLACEHOLDER.sub(substitute, line)
 
 
-def render_text(text, profile):
+def render_text(text: str, profile: Profile | Context) -> str:
     """Substitute string placeholders; repeat a line that holds a list placeholder.
 
     Such a line becomes one copy per item, and disappears for an empty list. It must end in a
@@ -434,100 +737,101 @@ def render_text(text, profile):
     list would otherwise need a comma it does not have, or leave one dangling. A line that holds a
     table placeholder alone becomes the table's members as JSON (`members`).
     """
-    out = []
+    given = rendering(profile)
+    out: list[str] = []
     for line in text.splitlines(keepends=True):
-        if (m := ALONE.fullmatch(line)) and isinstance(profile.get(m.group(2)), dict):
-            out.append(members(profile[m.group(2)], m.group(1)))
+        if (m := ALONE.fullmatch(line)) and isinstance(table := given.get(m.group(2)), Mapping):
+            out.append(members(table, m.group(1)))
             continue
-        copies = expand(line, profile)
+        copies = expand(line, given)
         if len(copies) != 1 and not line.rstrip().endswith(","):
             raise ValueError(f"{line.strip()!r}: a repeated line must end in a comma")
         out += copies
     return "".join(out)
 
 
-def members(table, indent):
+def members(table: Mapping[str, object], indent: str) -> str:
     """The members of `table` as the lines of a JSON object, each line after `indent`, with no
     comma after the last; "" for an empty table."""
-    lines = json.dumps(table, indent=2, ensure_ascii=False).splitlines()[1:-1]
+    lines = json.dumps(dict(table), indent=2, ensure_ascii=False).splitlines()[1:-1]
     return "".join(f"{indent}{line[2:]}\n" for line in lines)
 
 
-def expand(text, profile):
+def expand(text: str, given: Context) -> list[str]:
     """One string per item of the list placeholder in `text`, or `[text]` rendered."""
-    lists = {n for n in PLACEHOLDER.findall(text) if isinstance(value(n, profile, text), list)}
+    lists = {n: v for n in PLACEHOLDER.findall(text) if isinstance(v := value(n, given, text), list)}
     if not lists:
-        return [render_line(text, profile)]
+        return [render_line(text, given)]
     if len(lists) > 1:
         raise ValueError(f"{text!r}: more than one list placeholder")
-    (name,) = lists
-    return [render_line(text.replace("{" + name + "}", item), profile) for item in profile[name]]
+    ((name, items),) = lists.items()
+    return [render_line(text.replace("{" + name + "}", item), given) for item in items]
 
 
-def render_data(obj, profile):
+def render_data(obj: Any, profile: Profile | Context) -> Any:
     """Render a parsed JSON value: keys and strings substitute, list elements expand."""
+    given = rendering(profile)
     if isinstance(obj, dict):
-        return {render_line(k, profile): render_data(v, profile) for k, v in obj.items()}
+        return {render_line(k, given): render_data(v, given) for k, v in cast("dict[str, Any]", obj).items()}
     if isinstance(obj, list):
-        out = []
-        for item in obj:
+        out: list[Any] = []
+        for item in cast("list[Any]", obj):
             if isinstance(item, str):
-                out += expand(item, profile)
+                out += expand(item, given)
             else:
-                out.append(render_data(item, profile))
+                out.append(render_data(item, given))
         return out
     if isinstance(obj, str):
-        return render_line(obj, profile)
+        return render_line(obj, given)
     return obj
 
 
-def render_file(path, profile):
+def render_file(path: str | os.PathLike[str], profile: Profile | Context) -> str:
     """A template rendered as text, so its bytes stay; parsed and re-serialised only for a
     `.json` that holds a list placeholder, which needs the structure."""
+    given = rendering(profile)
     text = pathlib.Path(path).read_text()
-    lists = [n for n in PLACEHOLDER.findall(text) if isinstance(profile.get(n), list)]
+    lists = [n for n in PLACEHOLDER.findall(text) if isinstance(given.get(n), list)]
     try:
         if lists and pathlib.Path(path).suffix == ".json":
-            return json.dumps(render_data(json.loads(text), profile), indent=2, ensure_ascii=False) + "\n"
-        return render_text(text, profile)
+            return json.dumps(render_data(json.loads(text), given), indent=2, ensure_ascii=False) + "\n"
+        return render_text(text, given)
     except (KeyError, TypeError, ValueError) as e:
         raise HarnessError(f"{path}: {e.args[0]}") from e
 
 
-def cmd_render(args):
-    profile = DEFAULTS | load(args.profile)
+def cmd_render(args: argparse.Namespace | types.SimpleNamespace) -> int:
+    given = context(load(args.profile), providers={})
     if pathlib.Path(args.template).resolve() == network.TEMPLATE:
-        cfg = network.apply(
-            json.loads(render_file(args.template, profile)), profile, network_path(args.profile)
-        )
+        cfg = network.apply(json.loads(render_file(args.template, given)), network_path(args.profile))
         sys.stdout.write(json.dumps(cfg, indent=2, ensure_ascii=False) + "\n")
     else:
-        sys.stdout.write(render_file(args.template, profile))
+        sys.stdout.write(render_file(args.template, given))
     return 0
 
 
-def cmd_get(args):
+def cmd_get(args: argparse.Namespace) -> int:
     v = get(load(args.profile), args.key)
     print(v if isinstance(v, str) else "\n".join(v))
     return 0
 
 
-def tree_names(profile):
+def tree_names(profile: Profile) -> list[str]:
     """The directory names below every `repository_roots` entry, and the `org` entries."""
-    names = set(get(profile, "org"))
-    for root in map(pathlib.Path, get(profile, "repository_roots")):
+    names = set(profile.org)
+    for root in map(pathlib.Path, profile.repository_roots):
         if not root.is_dir():
             raise HarnessError(f"repository_roots entry {root} is not a directory")
         names |= {p.name for p in root.iterdir() if p.is_dir() and not p.name.startswith(".")}
     return sorted(names)
 
 
-def name_pattern(names):
+def name_pattern(names: list[str]) -> re.Pattern[str]:
     """A whole-word match of any of `names`: no letter, digit or `_` on either side."""
     return re.compile(r"(?<![A-Za-z0-9_])(?:" + "|".join(map(re.escape, names)) + r")(?![A-Za-z0-9_])")
 
 
-def own_repository(repo=REPO):
+def own_repository(repo: pathlib.Path = REPO) -> str | None:
     """`owner/name` of the `origin` URL, or None without one."""
     url = subprocess.run(
         ["git", "remote", "get-url", "origin"],  # noqa: S607 -- git runs from PATH
@@ -540,7 +844,7 @@ def own_repository(repo=REPO):
     return m.group(1) if m else None
 
 
-def name_hits(line, pattern, allowed):
+def name_hits(line: str, pattern: re.Pattern[str], allowed: str | None) -> list[str]:
     """The tree names in `line`, after removing every occurrence of `allowed`, the repository's own
     `owner/name`, and of `owner.github.io`, the host of its GitHub Pages site."""
     if allowed:
@@ -548,7 +852,7 @@ def name_hits(line, pattern, allowed):
     return pattern.findall(line)
 
 
-def templates():
+def templates() -> list[str]:
     """The templates that `leaks` renders with the dummy profile: TEMPLATES and each adapter's."""
     return TEMPLATES + [t for adapter in frontends.load() for t in adapter.TEMPLATES]
 
@@ -558,7 +862,7 @@ SHA = re.compile(r"[0-9a-f]{7,64}")
 HUNK = re.compile(r"(@@+) (?:-\S+ )+\+(\d+)")
 
 
-def read_commits(path):
+def read_commits(path: str | os.PathLike[str]) -> list[str]:
     """The SHAs of `path`, one per line; a file that cannot be read or a line that is no SHA
     exits 2."""
     try:
@@ -576,7 +880,7 @@ QUOTED = re.compile(rb"\\([0-7]{3}|.)")
 ESCAPES = {b"a": 7, b"b": 8, b"t": 9, b"n": 10, b"v": 11, b"f": 12, b"r": 13}
 
 
-def unquoted(path):
+def unquoted(path: str) -> str:
     """`path` of a diff header with git's quotes removed: git writes a path with a byte outside
     printable ASCII, a `"` or a `\\` in double quotes, with C escapes."""
     if len(path) < 2 or path[0] != '"' or path[-1] != '"':
@@ -668,7 +972,13 @@ def message_lines(sha: str, repo: pathlib.Path = REPO):
     ]
 
 
-def commit_hits(shas, leak, pattern, allowed, repo=REPO):
+def commit_hits(
+    shas: list[str],
+    leak: Sequence[str],
+    pattern: re.Pattern[str],
+    allowed: str | None,
+    repo: pathlib.Path = REPO,
+) -> list[tuple[str, str]]:
     """(where, string) for each private string and tree name in a path or on a line that one of `shas`
     adds, or on a line of its message."""
     return [
@@ -679,16 +989,14 @@ def commit_hits(shas, leak, pattern, allowed, repo=REPO):
     ]
 
 
-def cmd_leaks(args, repo=REPO):
+def cmd_leaks(args: argparse.Namespace, repo: pathlib.Path = REPO) -> int:
     """`harness leaks` on the tracked files and the commits of `repo`; the templates are this
     repository's."""
     profile = load(args.profile)
-    leak = profile.get("leak", [])
-    if not leak:
-        raise HarnessError("the profile's `leak` list is empty — nothing to check against")
+    leak = profile.leak
     names = tree_names(profile)
     pattern, allowed = name_pattern(names), own_repository(repo)
-    dummy = DEFAULTS | load(DUMMY, home=DUMMY_HOME, host=DUMMY_HOST)
+    dummy = context(load(DUMMY, home=DUMMY_HOME, host=DUMMY_HOST), providers={})
     files = subprocess.run(
         ["git", "ls-files", "-z"],  # noqa: S607 -- git runs from PATH
         cwd=repo,
@@ -719,7 +1027,7 @@ def cmd_leaks(args, repo=REPO):
     return 1 if hits else 0
 
 
-CASES = [
+CASES: list[tuple[Any, Context, Any]] = [
     # (template, profile, expected); expected None means an error.
     ("{home}/.ssh", {"home": "/h"}, "/h/.ssh"),
     ("{file:~/.config/x} {env:HOME}", {}, "{file:~/.config/x} {env:HOME}"),
@@ -744,7 +1052,7 @@ CASES = [
 ]
 
 
-NAME_CASES = [
+NAME_CASES: list[tuple[str, list[str]]] = [
     # (line, expected tree names), with the names Pkg, my-paper and org and the allowed org/Repo.
     ("Packages/Pkg/src", ["Pkg"]),
     ("Pkg.jl and Pkg's", ["Pkg", "Pkg"]),
@@ -785,7 +1093,7 @@ def commit_cases():
                 text=True,
             ).stdout.strip()
 
-        def commit(name, data=None, *move):
+        def commit(name: str, data: bytes | None = None, *move: str) -> str:
             if move:
                 git("mv", "--", name, *move)
             elif data is None:
@@ -796,7 +1104,7 @@ def commit_cases():
             git("commit", "-q", "-m", "change")  # a clean message: the cases of a message are below
             return git("rev-parse", "HEAD")
 
-        def note(message):
+        def note(message: bytes) -> str:
             """An empty commit with the message `message`, bytes taken as they are."""
             (pathlib.Path(tmp) / "message").write_bytes(message)
             git(
@@ -880,7 +1188,7 @@ def commit_cases():
             f"merge brings from its side parent -> {got}"
         )
         # (label, shas, tree names, allowed owner/name, expected places); the leak string is LEAK.
-        message_cases = [
+        message_cases: list[tuple[str, list[str], list[str], str | None, list[str]]] = [
             ("a leak in a message body", [body], ["Pkg"], None, [f"{body[:12]} message:3"]),
             ("a tree name in a message subject", [subject], ["Pkg"], None, [f"{subject[:12]} message:1"]),
             ("the own owner/name in a message", [own], ["Pkg", "org"], "org/Pkg", []),
@@ -917,11 +1225,10 @@ def commit_cases():
         print(f"{'ok ' if got == 'refused' else 'BAD'}  leaks --commits: a line that is not a SHA -> {got}")
         # `harness leaks` itself, on the fixture's clean tree, without and with the commits.
         (pathlib.Path(tmp) / "roots" / "Pkg").mkdir(parents=True)
-        (pathlib.Path(tmp) / "profile.toml").write_text(
-            f'leak = ["LEAK"]\norg = []\nrepository_roots = [{json.dumps(str(pathlib.Path(tmp) / "roots"))}]\n'
-        )
+        roots = f"[{json.dumps(str(pathlib.Path(tmp) / 'roots'))}]"
+        (pathlib.Path(tmp) / "profile.toml").write_text(profile_text(leak='["LEAK"]', repository_roots=roots))
         (pathlib.Path(tmp) / "commits").write_text(git("rev-list", "HEAD") + "\n")
-        runs = [
+        runs: list[tuple[str, pathlib.Path | None, int, list[str]]] = [
             ("the tree only", None, 0, []),
             (
                 "the tree and every commit",
@@ -946,7 +1253,7 @@ def commit_cases():
         # The home directory as a leak string, `~` in the profile: the templates render with the
         # dummy under a home that is not the running user's, so they hold no hit.
         (pathlib.Path(tmp) / "profile-home.toml").write_text(
-            f'leak = ["~"]\norg = []\nrepository_roots = [{json.dumps(str(pathlib.Path(tmp) / "roots"))}]\n'
+            profile_text(leak='["~"]', repository_roots=roots)
         )
         out = io.StringIO()
         with (
@@ -966,7 +1273,7 @@ def commit_cases():
         # The running host's name as a leak string: the dummy's `autocommit_branch` renders under a
         # host name that is not the running one, so the templates hold no hit.
         (pathlib.Path(tmp) / "profile-host.toml").write_text(
-            f'leak = ["leakhost"]\norg = []\nrepository_roots = [{json.dumps(str(pathlib.Path(tmp) / "roots"))}]\n'
+            profile_text(leak='["leakhost"]', repository_roots=roots)
         )
         out = io.StringIO()
         with (
@@ -986,8 +1293,7 @@ def commit_cases():
         # The templates that `harness leaks` renders: TEMPLATES and each adapter's. The leak string is
         # the suffix of a rendered template's name, so each template it renders is one hit on line 0.
         (pathlib.Path(tmp) / "profile-templates.toml").write_text(
-            f'leak = [" (rendered with the dummy)"]\norg = []\n'
-            f"repository_roots = [{json.dumps(str(pathlib.Path(tmp) / 'roots'))}]\n"
+            profile_text(leak='[" (rendered with the dummy)"]', repository_roots=roots)
         )
         out = io.StringIO()
         with contextlib.redirect_stdout(out):
@@ -1428,7 +1734,7 @@ def prepush_branch_cases():
                 text=True,
             ).stdout.strip()
 
-        def commit(name, content=None):
+        def commit(name: str, content: str | None = None) -> str:
             if content is None:
                 git("rm", "-q", "--", name)
             else:
@@ -1521,13 +1827,365 @@ def prepush_branch_cases():
     return len(cases), wrong
 
 
+# The required keys of the profile, with values of the example's form, for a case that writes a
+# profile of its own: TOML text, one `key = value` line each.
+REQUIRED_TEXT = {
+    "memory_project": '"-home-example-Research"',
+    "tree_agents": '"/t"',
+    "org": '["example-org"]',
+    "repository_roots": '["/r"]',
+    "leak": '["example-user"]',
+}
+
+
+def profile_text(**keys: str) -> str:
+    """A profile of REQUIRED_TEXT with `keys` over it, each a TOML value; a key given as "" is left
+    out."""
+    return "".join(f"{k} = {v}\n" for k, v in (REQUIRED_TEXT | keys).items() if v)
+
+
+def refused(got: object, name: str, key: str, kind: str | None) -> bool:
+    """Whether `got`, a case's result, is the message of one refusal, "error: " and one line, that
+    names the file `name`, the key `key` as a word, and the type word `kind` when given."""
+    return (
+        isinstance(got, str)
+        and got.startswith("error: ")
+        and "\n" not in got
+        and name in got
+        and re.search(rf"(?<![A-Za-z0-9_]){re.escape(key)}(?![A-Za-z0-9_])", got) is not None
+        and (kind is None or kind in got)
+    )
+
+
+def schema_cases() -> tuple[int, int]:
+    """The cases of the profile's schema: an unknown key, a missing required key, a value of the
+    wrong type, an empty required list, a `[setup]` table and the retired keys each exit 2 naming
+    the file, the key and, but for an unknown or a retired key, the expected type; an optional
+    value that is absent gives its default and no None. Each loads a scratch profile under a `HOME`
+    set inside this process, and one runs `harness get` in a child whose environment sets `HOME`:
+    (number of cases, number wrong)."""
+    wrong, n = 0, 0
+
+    def check(ok: bool, label: str) -> None:  # noqa: FBT001 -- the form of every selftest's check
+        nonlocal wrong, n
+        n += 1
+        wrong += not ok
+        print(f"{'ok ' if ok else 'BAD'}  profile: schema: {label}")
+
+    with tempfile.TemporaryDirectory(prefix="harness-schema-") as tmp_name:
+        tmp = pathlib.Path(tmp_name).resolve()
+        user = tmp / "user"
+        user.mkdir()
+
+        def loaded(text: str) -> object:
+            """`load` of the profile `text`, under `HOME` = `user`; a HarnessError's message, or
+            any other exception's type and message, in place of the profile."""
+            path = tmp / "profile.toml"
+            path.write_text(text)
+            with mock.patch.dict(os.environ, HOME=str(user)):
+                try:
+                    return load(path)
+                except HarnessError as e:
+                    return f"error: {e}"
+                except Exception as e:  # noqa: BLE001 -- the case reports what broke, and the next case runs
+                    return f"raised {type(e).__name__}: {e}"
+
+        example = DUMMY.read_text()
+        # (label, profile text, the key the refusal names, the type word it names)
+        refusals: list[tuple[str, str, str, str | None]] = [
+            ("an unknown key", example + 'nosuchkey = "x"\n', "nosuchkey", None),
+            ("a [setup] table", example + '\n[setup]\nfrontends = ["claude"]\n', "setup", None),
+            ("a nested table of an unknown key", profile_text() + '[table]\nk = "~/t"\n', "table", None),
+            ("a number as `harness`", profile_text(harness="1"), "harness", "str"),
+            ("a list as `home`", profile_text(home='["/h"]'), "home", "str"),
+            ("a number as `template_host`", profile_text(template_host="1"), "template_host", "str"),
+            ("a string as `org`", profile_text(org='"example-org"'), "org", "list"),
+            (
+                "a number in `repository_roots`",
+                profile_text(repository_roots='["/r", 1]'),
+                "repository_roots",
+                "list",
+            ),
+            (
+                "a nested list as `protected_dir`",
+                profile_text(protected_dir='[["~/n"]]'),
+                "protected_dir",
+                "list",
+            ),
+            ("an empty `leak`", profile_text(leak="[]"), "leak", "list"),
+            ("an empty `org`", profile_text(org="[]"), "org", "list"),
+            ("an empty `repository_roots`", profile_text(repository_roots="[]"), "repository_roots", "list"),
+            ("a string as `develop`", profile_text(develop='"yes"'), "develop", "true or false"),
+        ]
+        refusals += [
+            (f"no `{key}`", profile_text(**{key: ""}), key, "str" if kind.startswith('"') else "list")
+            for key, kind in REQUIRED_TEXT.items()
+        ]
+        # A key with no type word is refused as a key that the profile does not have, whatever its
+        # value.
+        for label, text, key, kind in refusals:
+            got = loaded(text)
+            check(
+                refused(got, "profile.toml", key, kind) and (kind is not None or "no key of" in str(got)),
+                f"{label} is refused, naming the file and {key} -> {got}",
+            )
+        # The retired keys exit 2 with the message of the file that replaces each.
+        for key, value, replacement in (
+            ("extra_domain", '["x.org"]', "network.toml"),
+            ("opencode_providers", "{}", "providers.toml"),
+            ("omp_providers", "{}", "providers.toml"),
+        ):
+            got = loaded(f"{profile_text()}{key} = {value}\n")
+            check(
+                refused(got, "profile.toml", key, None)
+                and str(tmp / replacement) in str(got)
+                and (replacement == "network.toml" or "examples/providers.toml" in str(got)),
+                f"the retired key {key} is refused, naming {replacement} beside the profile -> {got}",
+            )
+        # An absent optional value gives its default, and no field is None.
+        got = loaded(profile_text())
+        expected: dict[str, object] = {
+            "home": str(user),
+            "harness": str(REPO),
+            "template_host": "",
+            "autocommit_branch": "main",
+            "launchd_prefix": "",
+            "develop": False,
+            "docs_exceptions": (),
+            "docs_additions": (),
+            "protected_dir": (),
+        }
+        actual = {k: getattr(got, k, "missing") for k in expected}
+        check(
+            isinstance(got, Profile)
+            and actual == expected
+            and all(getattr(got, f.name) is not None for f in dataclasses.fields(got)),
+            f"the required keys alone: each optional value at its default, no field None -> {actual}",
+        )
+        # An optional string that the profile leaves unset is no value of a template or of `get`.
+        unset: list[str] = []
+        if isinstance(got, Profile):
+            bare = got
+            for call in (
+                lambda: get(bare, "template_host"),
+                lambda: get(bare, "launchd_prefix"),
+                lambda: render_file(REPO / "launchagents" / "kaimon.plist", bare),
+            ):
+                try:
+                    unset.append(f"rendered {call()!r}")
+                except HarnessError as e:
+                    unset.append(str(e))
+        check(
+            len(unset) == 3
+            and "'template_host'" in unset[0]
+            and "'launchd_prefix'" in unset[1]
+            and "{launchd_prefix}" in unset[2],
+            f"an unset optional string: harness get and a template that names it exit 2 -> {unset}",
+        )
+        got = loaded(profile_text(docs_exceptions="[]"))
+        check(
+            isinstance(got, Profile) and got.docs_exceptions == (),
+            f"an empty optional list loads -> {getattr(got, 'docs_exceptions', got)}",
+        )
+        got = loaded(example)
+        check(
+            isinstance(got, Profile) and got.org == ("example-org", "example-user") and got.develop is False,
+            f"examples/profile.toml loads -> {getattr(got, 'org', got)}",
+        )
+        # `harness get` with an unknown key: exit 2 and one line, under a scratch HOME in the child.
+        (tmp / "unknown.toml").write_text(example + 'nosuchkey = "x"\n')
+        env = {**os.environ, "HOME": str(user)}
+        env.pop("RESEARCH_HARNESS_PROFILE", None)
+        p = subprocess.run(
+            [
+                sys.executable,
+                str(REPO / "bin" / "harness"),
+                "--profile",
+                str(tmp / "unknown.toml"),
+                "get",
+                "org",
+            ],
+            env=env,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        said = [line for line in p.stderr.splitlines() if line.startswith("harness get: ")]
+        check(
+            p.returncode == 2
+            and len(said) == 1
+            and "unknown.toml" in said[0]
+            and "nosuchkey" in said[0]
+            and "Traceback" not in p.stderr,
+            f"harness get with an unknown key exits 2 with one line -> exit {p.returncode}, {said}",
+        )
+    return n, wrong
+
+
+def models_schema_cases() -> tuple[int, int]:
+    """The cases of the model tables' schema: a table that no frontend reads, an unknown key, a
+    missing tier and a value of the wrong type each exit 2 naming the file, the key and, but for an
+    unknown key, the expected type; an old tier name is named ahead of an unknown key; an absent
+    table gives its default and no None. Each loads a scratch models.toml: (number of cases, number
+    wrong)."""
+    wrong, n = 0, 0
+
+    def check(ok: bool, label: str) -> None:  # noqa: FBT001 -- the form of every selftest's check
+        nonlocal wrong, n
+        n += 1
+        wrong += not ok
+        print(f"{'ok ' if ok else 'BAD'}  profile: models schema: {label}")
+
+    with tempfile.TemporaryDirectory(prefix="harness-models-schema-") as tmp_name:
+        tmp = pathlib.Path(tmp_name).resolve()
+        models_example = (REPO / "examples" / "models.toml").read_text()
+
+        def models_loaded(text: str) -> object:
+            path = tmp / "models.toml"
+            path.write_text(text)
+            try:
+                return read_models(path)
+            except HarnessError as e:
+                return f"error: {e}"
+            except Exception as e:  # noqa: BLE001 -- the case reports what broke, and the next case runs
+                return f"raised {type(e).__name__}: {e}"
+
+        claude = '[claude]\nlarge = "opus"\nmedium = "sonnet"\nsmall = "haiku"\n'
+        # (label, text, the key the refusal names, the type word it names)
+        model_refusals: list[tuple[str, str, str, str | None]] = [
+            (
+                "a top-level table that no frontend reads",
+                models_example + '\n[nosuchtable]\nx = "y"\n',
+                "nosuchtable",
+                None,
+            ),
+            ("a key of [claude] that is no tier", claude + 'huge = "opus"\n', "huge", None),
+            ("[claude] without a tier", claude.replace('small = "haiku"\n', ""), "small", "str"),
+            ("a number as a tier of [claude]", claude.replace('large = "opus"', "large = 1"), "large", "str"),
+            (
+                "a key of [antigravity] that is no tier",
+                '[antigravity]\nlarge = "flash"\neffort = "x"\n',
+                "effort",
+                None,
+            ),
+            ("a number as a tier of [antigravity]", "[antigravity]\nlarge = 1\n", "large", "str"),
+            ("a number in [model_overrides]", claude + "[model_overrides]\nbuilder = 1\n", "builder", "str"),
+            ("a string as a context limit", claude + '[context_limits]\n"a/b" = "x"\n', "a/b", "integer"),
+            ("a [councils] entry that is no list", claude + '[councils]\njudge = "x"\n', "judge", "list"),
+            ("a sub-table of [omp] that no frontend reads", claude + "[omp.nosuch]\nx = 1\n", "nosuch", None),
+            ("a number in [omp.models]", claude + "[omp.models]\nsmall = 1\n", "small", "str"),
+            ("a top-level value that is no table", 'claude = "opus"\n', "claude", "table"),
+            (
+                "[antigravity.model_overrides] that is no table",
+                '[antigravity]\nmodel_overrides = "flash"\n',
+                "model_overrides",
+                "table",
+            ),
+            (
+                "a number in [antigravity.model_overrides]",
+                "[antigravity.model_overrides]\nbuilder = 1\n",
+                "builder",
+                "str",
+            ),
+            ("a blank tier of [claude]", claude.replace('large = "opus"', 'large = " "'), "large", "str"),
+            ("a [councils] entry that is a number", claude + "[councils]\njudge = 1\n", "judge", "list"),
+            (
+                "a blank seat model",
+                claude + '[councils]\njudge = [{ name = "s", model = " " }]\n',
+                "judge",
+                "str",
+            ),
+        ]
+        # A key with no type word is refused as a table, a sub-table or a tier that the file may not
+        # hold, whatever its value.
+        for label, text, key, kind in model_refusals:
+            got = models_loaded(text)
+            check(
+                refused(got, "models.toml", key, kind)
+                and (kind is not None or re.search(r"\bno (table|sub-table|tier)\b", str(got)) is not None),
+                f"{label} is refused, naming the file and {key} -> {got}",
+            )
+        got = models_loaded(claude.replace("small", "haiku") + 'huge = "x"\n')
+        check(
+            isinstance(got, str) and "rename haiku to small" in got and "huge" not in got,
+            f"an old tier name is named ahead of an unknown key -> {got}",
+        )
+        # An absent optional table gives its default, and no field is None.
+        got = models_loaded(claude + '[models]\nlarge = "a/l"\n')
+        shared = getattr(got, "shared", None)
+        tables = [getattr(got, name, None) for name in ("shared", "opencode", "omp")]
+        check(
+            isinstance(got, Models)
+            and got.antigravity == {}
+            and got.antigravity_overrides == {}
+            and isinstance(shared, ModelTables)
+            and shared.tiers == {"large": "a/l"}
+            and all(
+                isinstance(t, ModelTables)
+                and t.model_overrides == {}
+                and t.councils == {}
+                and t.context_limits == {}
+                and all(getattr(t, f.name) is not None for f in dataclasses.fields(t))
+                for t in tables
+            )
+            and all(getattr(got, f.name) is not None for f in dataclasses.fields(got)),
+            f"a models.toml without [antigravity], [model_overrides], [councils] and [opencode]: each "
+            f"table at its default, none None -> {got}",
+        )
+        (tmp / "no-claude.toml").write_text('[models]\nlarge = "a/l"\n')
+        try:
+            missing = f"loaded {tier_table(tmp / 'no-claude.toml', 'Claude Code')}"
+        except HarnessError as e:
+            missing = str(e)
+        check(
+            "has no [claude] table" in missing and str(tmp / "no-claude.toml") in missing,
+            f"tier_table of a models.toml without [claude] exits 2 -> {missing}",
+        )
+        tables = model_tables(tmp / "models.toml", "opencode") if isinstance(got, Models) else None
+        check(
+            isinstance(tables, ModelTables)
+            and tables.tiers == {"large": "a/l"}
+            and tables.councils == {}
+            and tables.path == tmp / "models.toml",
+            f"model_tables of a models.toml without [opencode]: the shared tables alone -> {tables}",
+        )
+        # The effort of an agent: its `variants` entry, else its `reasoning_effort` entry, else the
+        # `model_variants` entry of its model; none for an agent with no model.
+        efforts = ModelTables(
+            path=tmp / "models.toml",
+            model_variants={"a/l": "medium"},
+            variants={"judge": "high"},
+            reasoning_effort={"judge": "low", "seat": "low"},
+        )
+        got_efforts = [
+            agent_effort("judge", "a/l", efforts),
+            agent_effort("seat", "a/l", efforts),
+            agent_effort("builder", "a/l", efforts),
+            agent_effort("builder", None, efforts),
+        ]
+        check(
+            got_efforts == ["high", "low", "medium", None],
+            f"agent_effort: variants, then reasoning_effort, then model_variants -> {got_efforts}",
+        )
+        got = models_loaded(models_example)
+        check(
+            isinstance(got, Models)
+            and got.claude == {"large": "opus", "medium": "sonnet", "small": "haiku"}
+            and got.omp.tiers == {"small": "provider-d/small-model"}
+            and got.shared.councils["julia-critic"][0]
+            == Seat("critic-b", "provider-c/other-model", verify=True),
+            f"examples/models.toml loads -> {getattr(got, 'claude', got)}",
+        )
+    return n, wrong
+
+
 def home_cases():
     """The cases of `home` and of `~` in a value, each through `load` of a profile in a scratch
     directory whose `HOME` is set inside this process, and `harness get` on an unedited copy of
     examples/profile.toml: (number of cases, number wrong)."""
     wrong, n = 0, 0
 
-    def check(ok, label):
+    def check(ok: bool, label: str) -> None:  # noqa: FBT001 -- the form of every selftest's check
         nonlocal wrong, n
         n += 1
         wrong += not ok
@@ -1538,45 +2196,51 @@ def home_cases():
         user = tmp / "user"
         user.mkdir()
 
-        def loaded(text, home_env=str(user), **kwargs):
-            """`load` of the profile `text`, under `HOME` = `home_env`; a HarnessError's message
-            in place of the profile."""
-            (tmp / "profile.toml").write_text(text)
+        def loaded(text: str, home_env: str = str(user), home: str | None = None) -> Profile | str:
+            """`load` of the profile of REQUIRED_TEXT with `text` after it, under `HOME` =
+            `home_env`; a HarnessError's message, or any other exception's type and message, in
+            place of the profile."""
+            (tmp / "profile.toml").write_text(profile_text() + text)
             with mock.patch.dict(os.environ, HOME=home_env):
                 try:
-                    return load(tmp / "profile.toml", **kwargs)
+                    return load(tmp / "profile.toml", home=home)
                 except HarnessError as e:
                     return f"error: {e}"
+                except Exception as e:  # noqa: BLE001 -- the case reports what broke, and the next case runs
+                    return f"raised {type(e).__name__}: {e}"
 
-        def refused(got):
-            return isinstance(got, str) and got.startswith("error: ") and "`home`" in got
+        def refused(got: object, key: str = "home") -> bool:
+            return isinstance(got, str) and got.startswith("error: ") and f"`{key}`" in got
 
-        got = loaded('x = "~/a"\n')
+        got = loaded('harness = "~/a"\n')
         check(
-            isinstance(got, dict) and got.get("home") == str(user) and got.get("x") == f"{user}/a",
+            isinstance(got, Profile) and got.home == str(user) and got.harness == f"{user}/a",
             f"no `home`: the running user's home, and `~/a` below it -> {got}",
         )
-        got = loaded('x = "~/a"\n', home_env=str(user) + "/")
+        got = loaded('harness = "~/a"\n', home_env=str(user) + "/")
         check(
-            isinstance(got, dict) and got.get("home") == str(user),
+            isinstance(got, Profile) and got.home == str(user),
             f"no `home`, $HOME with a trailing slash: none in `home` -> {got}",
         )
-        got = loaded('home = "/h"\nx = "~/a"\n')
+        got = loaded('home = "/h"\nharness = "~/a"\n')
         check(
-            isinstance(got, dict) and got.get("home") == "/h" and got.get("x") == "/h/a",
+            isinstance(got, Profile) and got.home == "/h" and got.harness == "/h/a",
             f"a given `home` -> {got}",
         )
-        got = loaded('home = "/h/"\nx = "~/a"\ny = "~"\n')
+        got = loaded('home = "/h/"\nharness = "~/a"\nlaunchd_prefix = "~"\n')
         check(
-            isinstance(got, dict)
-            and got.get("home") == "/h"
-            and got.get("x") == "/h/a"
-            and got.get("y") == "/h",
+            isinstance(got, Profile)
+            and got.home == "/h"
+            and got.harness == "/h/a"
+            and got.launchd_prefix == "/h",
             f"a given `home` with a trailing slash: removed, so no `//` -> {got}",
         )
-        got = loaded('home = "/"\nx = "~/a"\ny = "~"\n')
+        got = loaded('home = "/"\nharness = "~/a"\nlaunchd_prefix = "~"\n')
         check(
-            isinstance(got, dict) and got.get("home") == "/" and got.get("x") == "/a" and got.get("y") == "/",
+            isinstance(got, Profile)
+            and got.home == "/"
+            and got.harness == "/a"
+            and got.launchd_prefix == "/",
             f"`home` the root directory -> {got}",
         )
         for text, label in (
@@ -1590,45 +2254,77 @@ def home_cases():
         ):
             got = loaded(text)
             check(refused(got), f"{label} is refused, naming the key -> {got}")
-        got = loaded('x = "~"\n', home_env="relative")
+        got = loaded('harness = "~"\n', home_env="relative")
         check(refused(got), f"no `home` and a relative $HOME: refused, naming the key -> {got}")
         with mock.patch.object(pathlib.Path, "home", mock.Mock(side_effect=RuntimeError("no home"))):
-            got = loaded('x = "~"\n')
+            got = loaded('harness = "~"\n')
         check(refused(got), f"no `home` and no home directory: refused, naming the key -> {got}")
-        got = loaded('x = "~"\n', home="/fallback")
+        got = loaded('harness = "~"\n', home="/fallback")
         check(
-            isinstance(got, dict) and got.get("home") == "/fallback" and got.get("x") == "/fallback",
+            isinstance(got, Profile) and got.home == "/fallback" and got.harness == "/fallback",
             f"no `home`, and the caller's home -> {got}",
         )
-        got = loaded('home = "/h"\nx = "~"\n', home="/fallback")
+        got = loaded('home = "/h"\nharness = "~"\n', home="/fallback")
         check(
-            isinstance(got, dict) and got.get("home") == "/h",
+            isinstance(got, Profile) and got.home == "/h",
             f"a given `home` over the caller's home -> {got}",
         )
-        text = (
-            'home = "/h"\nalone = "~"\nbelow = "~/x/y"\nlist = ["~/a", "b", "~", "a~b"]\nmid = "a~b"\n'
-            'tail = "a/~"\nslashless = "~x"\nuser = "~name/x"\nnumber = 3\nflag = true\n'
-            'nested = [["~/n"]]\n[table]\nk = "~/t"\n'
+        # `~` in each form, in a string and in a list item, on keys that the schema knows.
+        (tmp / "profile.toml").write_text(
+            'home = "/h"\nharness = "~"\ntree_agents = "~/x/y"\norg = ["~/a", "b", "~", "a~b"]\n'
+            'memory_project = "a~b"\nlaunchd_prefix = "a/~"\nautocommit_branch = "~x"\n'
+            'template_host = "~name/x"\ndevelop = true\nrepository_roots = ["/r"]\nleak = ["l"]\n'
         )
-        got = loaded(text)
-        expected = {
+        try:
+            got = load(tmp / "profile.toml")
+        except HarnessError as e:
+            got = f"error: {e}"
+        except Exception as e:  # noqa: BLE001 -- the case reports what broke, and the next case runs
+            got = f"raised {type(e).__name__}: {e}"
+        wanted: dict[str, object] = {
             "home": "/h",
-            "alone": "/h",
-            "below": "/h/x/y",
-            "list": ["/h/a", "b", "/h", "a~b"],
-            "mid": "a~b",
-            "tail": "a/~",
-            "slashless": "~x",
-            "user": "~name/x",
-            "number": 3,
-            "flag": True,
-            "nested": [["~/n"]],
-            "table": {"k": "~/t"},
+            "harness": "/h",
+            "tree_agents": "/h/x/y",
+            "org": ("/h/a", "b", "/h", "a~b"),
+            "memory_project": "a~b",
+            "launchd_prefix": "a/~",
+            "autocommit_branch": "~x",
+            "template_host": "~name/x",
+            "develop": True,
         }
-        for key, value in expected.items():
+        for key, value in wanted.items():
             check(
-                isinstance(got, dict) and got.get(key) == value,
-                f"{key} -> {got.get(key) if isinstance(got, dict) else got!r}, expected {value!r}",
+                isinstance(got, Profile) and getattr(got, key) == value,
+                f"{key} -> {getattr(got, key, got)!r}, expected {value!r}",
+            )
+        # `harness get develop` prints `true` or `false`; the render's values hold no `develop`.
+        (tmp / "default.toml").write_text(profile_text(home='"/h"'))
+        for name, expected in (("profile.toml", "true\n"), ("default.toml", "false\n")):
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                try:
+                    status = cmd_get(argparse.Namespace(profile=tmp / name, key="develop"))
+                except HarnessError as e:
+                    status = f"error: {e}"
+            check(
+                status == 0 and out.getvalue() == expected,
+                f"{name}: harness get develop -> {status}, {out.getvalue()!r}, expected {expected!r}",
+            )
+        names = sorted(values(got)) if isinstance(got, Profile) else got
+        check(
+            isinstance(got, Profile) and "develop" not in values(got),
+            f"the render's values hold no `develop` -> {names}",
+        )
+        # The values of no string or list: each a refusal that names the file and the key.
+        for text, key in (
+            ("harness = 3\n", "harness"),
+            ('protected_dir = [["~/n"]]\n', "protected_dir"),
+            ('[table]\nk = "~/t"\n', "table"),
+        ):
+            got = loaded(text)
+            check(
+                refused(got, key) and "profile.toml" in str(got),
+                f"{text.strip()!r} is refused, naming the file and the key -> {got}",
             )
         # examples/profile.toml as copied: `harness get` under the scratch HOME.
         copy = tmp / "copy.toml"
@@ -1667,7 +2363,7 @@ def branch_cases():
     `harness get autocommit_branch`: (number of cases, number wrong)."""
     wrong, n = 0, 0
 
-    def check(ok, label):
+    def check(ok: bool, label: str) -> None:  # noqa: FBT001 -- the form of every selftest's check
         nonlocal wrong, n
         n += 1
         wrong += not ok
@@ -1676,13 +2372,13 @@ def branch_cases():
     with tempfile.TemporaryDirectory(prefix="harness-branch-") as tmp:
         tmp = pathlib.Path(tmp)
 
-        def branch(text, host):
-            """`autocommit_branch` of the profile `text` loaded on the host `host`; a HarnessError's
-            message in its place."""
-            (tmp / "profile.toml").write_text('home = "/h"\n' + text)
+        def branch(text: str, host: str) -> str:
+            """`autocommit_branch` of the profile of REQUIRED_TEXT and `text` loaded on the host
+            `host`; a HarnessError's message in its place."""
+            (tmp / "profile.toml").write_text(profile_text(home='"/h"') + text)
             with mock.patch("socket.gethostname", return_value=host):
                 try:
-                    return load(tmp / "profile.toml").get("autocommit_branch")
+                    return load(tmp / "profile.toml").autocommit_branch
                 except HarnessError as e:
                     return f"error: {e}"
 
@@ -1733,11 +2429,11 @@ def branch_cases():
         ):
             got = branch(text, "beta")
             check(
-                isinstance(got, str) and got.startswith("error: ") and "`template_host`" in got,
+                got.startswith("error: ") and "`template_host`" in got,
                 f"{label} is refused, naming the key -> {got!r}",
             )
         # `harness get autocommit_branch` prints the default.
-        (tmp / "profile.toml").write_text('home = "/h"\ntemplate_host = "alpha"\n')
+        (tmp / "profile.toml").write_text(profile_text(home='"/h"', template_host='"alpha"'))
         out = io.StringIO()
         with (
             contextlib.redirect_stdout(out),
@@ -1761,8 +2457,9 @@ def branch_cases():
 
 
 def selftest():
-    """The render's cases, the tree-name cases, the cases of `home` and `~`, the cases of
-    `--commits`, and the `origin` case, the kit case, the case with no environment, the cases of an
+    """The render's cases, the tree-name cases, the cases of `home` and `~`, of `autocommit_branch`,
+    of the schema of the profile and of the model tables, the cases of `--commits`, and the
+    `origin` case, the kit case, the case with no environment, the cases of an
     environment without the tools of the strict profile, the cases of a check of the strict profile
     that fails and the branch cases of the pre-push hook:
     (number of cases, number wrong)."""
@@ -1786,7 +2483,9 @@ def selftest():
     n0, w0 = home_cases()
     n1, w1 = branch_cases()
     n, w = commit_cases()
-    n, w = n + n0 + n1, w + w0 + w1
+    ns, ws = schema_cases()
+    nm, wm = models_schema_cases()
+    n, w = n + n0 + n1 + ns + nm, w + w0 + w1 + ws + wm
     n2, w2 = prepush_case()
     # As inside a git hook: git's exec path first on the PATH.
     exec_path = subprocess.run(
@@ -1808,7 +2507,7 @@ def selftest():
     return len(CASES) + len(NAME_CASES) + n + n2 + n3 + n4 + n5 + n6, wrong + w + w2 + w3 + w4 + w5 + w6
 
 
-def register(sub):
+def register(sub: fmt.Subcommands) -> None:
     r = sub.add_parser(
         "render",
         help="print a template rendered with the profile",

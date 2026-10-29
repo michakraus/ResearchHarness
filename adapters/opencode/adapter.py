@@ -72,6 +72,7 @@ up. Three semantic differences:
 
 import argparse
 import contextlib
+import dataclasses
 import difflib
 import io
 import json
@@ -82,6 +83,8 @@ import shutil
 import stat
 import tempfile
 import tomllib
+import types
+from typing import Any
 from unittest import mock
 
 from harness import REPO, HarnessError, changing, frontends, frontmatter, install, outcome, providers, sources
@@ -199,7 +202,7 @@ OUTPUT_LIMIT = 32000
 # The model tables
 
 
-def load_models(path):
+def load_models(path: str | pathlib.Path) -> profile_module.ModelTables:
     """OpenCode's model tables at `path`, the shared ones with [opencode]'s over them, every
     sub-table present (profile.model_tables)."""
     return profile_module.model_tables(path, "opencode")
@@ -255,14 +258,14 @@ def council_rule(seats):
     )
 
 
-def preamble(name, meta, body, models):
+def preamble(name: str, meta: dict[str, Any], body: str, models: profile_module.ModelTables) -> str:
     tools = set(meta.get("tools", []))
     rules = [
         "There is no sandbox here. Where the text below gives a rule that exists only because of "
         "the Claude Code sandbox or its permission matcher, the global `AGENTS.md` overrides it.",
     ]
-    if name in models["councils"]:
-        rules.append(council_rule(len(models["councils"][name])))
+    if name in models.councils:
+        rules.append(council_rule(len(models.councils[name])))
     skills = meta.get("skills", [])
     if skills:
         rules.append(
@@ -304,7 +307,11 @@ def preamble(name, meta, body, models):
     )
 
 
-def port(path, models, root="~/.config/opencode"):
+def port(
+    path: str | pathlib.Path,
+    models: profile_module.ModelTables,
+    root: str = "~/.config/opencode",
+) -> list[tuple[str, str]]:
     """The OpenCode agent for one Claude Code agent, then its council copies: [(name, text), …].
     A copy differs from the agent in its name, its model, `hidden: true` and its description. The
     body names the copies below `root`, the configuration directory (frontends.relocate)."""
@@ -320,55 +327,59 @@ def port(path, models, root="~/.config/opencode"):
         (preamble(source, meta, body, models) + "\n" + body.lstrip("\n")).encode(), root
     ).decode()
 
-    def render(name, description, model, hidden):
+    def render(name: str, description: str, model: str | None, *, hidden: bool) -> str:
         head = ["---", description, "mode: subagent"]
         if hidden:
             head.append("hidden: true")
         if model is not None:
             head.append(f"model: {model}")
-        variant = models["variants"].get(name, models["model_variants"].get(model))
+        variant = models.variants.get(name, None if model is None else models.model_variants.get(model))
         if variant is not None:
             head.append(f"variant: {variant}")
-        if name in models["reasoning_effort"]:
-            head.append(f"reasoningEffort: {models['reasoning_effort'][name]}")
+        if name in models.reasoning_effort:
+            head.append(f"reasoningEffort: {models.reasoning_effort[name]}")
         head += [permission_block(source, meta), "---"]
         return "\n".join(head) + "\n\n" + generated_comment(source) + "\n\n" + rest
 
-    agents = [(source, render(source, fm.lines["description"], model, False))]
-    for seat in models["councils"].get(source, []):
+    agents = [(source, render(source, fm.lines["description"], model, hidden=False))]
+    for seat in models.councils.get(source, ()):
         agents.append(
             (
-                seat["name"],
+                seat.name,
                 render(
-                    seat["name"],
+                    seat.name,
                     "description: "
                     + json.dumps(
                         profile_module.council_description(source, seat, "OpenCode"), ensure_ascii=False
                     ),
-                    seat["model"],
-                    True,
+                    seat.model,
+                    hidden=True,
                 ),
             )
         )
     return agents
 
 
-def render_agents(source_dir, models, root="~/.config/opencode"):
+def render_agents(
+    source_dir: str | pathlib.Path,
+    models: profile_module.ModelTables,
+    root: str = "~/.config/opencode",
+) -> list[tuple[str, str]]:
     """Every agent of `source_dir` and its council copies, ported with `root` (port): [(name,
     text), …]. A council keyed by a name that no agent of `source_dir` has exits 2."""
     paths = sorted(pathlib.Path(source_dir).glob("*.md"))
     sources = {p.stem: p for p in paths}
-    for agent, seats in models["councils"].items():
+    for agent, seats in models.councils.items():
         if agent not in sources:
             raise HarnessError(
-                f"{models['path']}: councils.{agent} names no agent of {source_dir}; "
+                f"{models.path}: councils.{agent} names no agent of {source_dir}; "
                 "a council is keyed by the agent it copies"
             )
         for seat in seats:
-            if seat["name"] in sources:
+            if seat.name in sources:
                 raise HarnessError(
-                    f"{models['path']}: the seat {seat['name']!r} of councils.{agent} has the "
-                    f"name of the agent {sources[seat['name']]}"
+                    f"{models.path}: the seat {seat.name!r} of councils.{agent} has the "
+                    f"name of the agent {sources[seat.name]}"
                 )
     return [a for path in paths for a in port(path, models, root)]
 
@@ -566,16 +577,16 @@ def skill_links(home, apply):
     return out
 
 
-def context_providers(models):
+def context_providers(models: profile_module.ModelTables) -> dict[str, Any]:
     """A `provider` entry for each context limit of `models`, {provider: {"models": …}}, each
     model's `limit` with `context` and `input` the limit and `output` OUTPUT_LIMIT; {} when `models`
     holds none. A model with no `<provider>/` exits 2."""
     providers = {}
-    for selector, limit in models["context_limits"].items():
+    for selector, limit in models.context_limits.items():
         provider, sep, model = selector.partition("/")
         if not (sep and provider and model):
             raise HarnessError(
-                f"{models['path']}: the context limit of {selector!r} names no `<provider>/<model>`"
+                f"{models.path}: the context limit of {selector!r} names no `<provider>/<model>`"
             )
         providers.setdefault(provider, {"models": {}})["models"][model] = {
             "limit": {"context": limit, "input": limit, "output": OUTPUT_LIMIT}
@@ -638,7 +649,7 @@ def drift_checks():
     return warnings
 
 
-def plan(ctx):
+def plan(ctx: types.SimpleNamespace | argparse.Namespace):
     """OpenCode's part of `harness install`, as the docstring of this module says."""
     dest = destination()
     if not dest.is_dir():
@@ -668,15 +679,16 @@ def plan(ctx):
         # name the same provider: the provider's entry would replace the limit's.
         limits = context_providers(models)
         path = profile_module.providers_path(ctx.args.profile)
-        own = providers.opencode(providers.load(path, ctx.profile))
+        own = providers.opencode(providers.load(path))
         if clash := [json.dumps(p) for p in limits if p in own]:
             raise HarnessError(
-                f"{models['path']}: a context limit names the provider {', '.join(clash)}, "
+                f"{models.path}: a context limit names the provider {', '.join(clash)}, "
                 f"which {path} defines too; put the limit there, as the model's `context`"
             )
-        profile = {**ctx.profile, "providers": limits | own}
         # The rendered file names OpenCode's copies of the instructions, not Claude Code's.
-        text = profile_module.render_file(SOURCE / "opencode.jsonc", profile).encode()
+        text = profile_module.render_file(
+            SOURCE / "opencode.jsonc", profile_module.context(ctx.profile, providers=limits | own)
+        ).encode()
         files.append((config, frontends.relocate(text, root), None, "opencode.jsonc", True))
     # OpenCode loads the first that exists of AGENTS.md in its configuration directory and
     # ~/.claude/CLAUDE.md, so this file replaces the Claude Code one and leaves the directory-scoped
@@ -786,13 +798,13 @@ def selftest():
 
     # The example's council is on an agent of agents/; the fixtures' council is on `critic`.
     example = load_models(REPO / "examples" / "models.toml")
-    models = dict(
+    models = dataclasses.replace(
         example,
         councils={
-            "critic": [
-                {"name": "critic-b", "model": "provider-c/other-model"},
-                {"name": "critic-c", "model": "provider-b/medium-model"},
-            ]
+            "critic": (
+                profile_module.Seat("critic-b", "provider-c/other-model"),
+                profile_module.Seat("critic-c", "provider-b/medium-model"),
+            )
         },
     )
     # The expected files are the base Julia generator's on the dummy tables, with its
@@ -835,8 +847,9 @@ def selftest():
             "text below says; the text names only two because Claude Code runs two.\n",
         ),
     ]:
-        council = dict(
-            models, councils={"critic": [{"name": s, "model": "provider-c/other-model"} for s in seats]}
+        council = dataclasses.replace(
+            models,
+            councils={"critic": tuple(profile_module.Seat(s, "provider-c/other-model") for s in seats)},
         )
         try:
             ported = port(FIXTURES / "agents" / "critic.md", council)
@@ -862,13 +875,15 @@ def selftest():
             )
         # A council keyed by an agent with no source would be dropped with no error.
         for key in ("nosuch",):
-            orphan = dict(models, councils={key: [{"name": "seat-x", "model": "provider-c/other-model"}]})
+            orphan = dataclasses.replace(
+                models, councils={key: (profile_module.Seat("seat-x", "provider-c/other-model"),)}
+            )
             try:
                 render_agents(FIXTURES / "agents", orphan)
                 check(False, f"a council keyed by {key}, an agent with no source, exits 2")
             except HarnessError as e:
                 check(
-                    str(models["path"]) in str(e)
+                    str(models.path) in str(e)
                     and f"councils.{key}" in str(e)
                     and str(FIXTURES / "agents") in str(e),
                     f"a council keyed by {key}, an agent with no source, exits 2: {e}",
@@ -967,7 +982,7 @@ def selftest():
             + "]\n"
         )
         try:
-            check(len(load_models(path)["councils"]["critic"]) == 8, "a council of eight seats loads")
+            check(len(load_models(path).councils["critic"]) == 8, "a council of eight seats loads")
         except HarnessError as e:
             check(False, f"a council of eight seats loads: {e}")
         # The shared tables hold for every frontend; a key of [opencode] or [omp] replaces one for
@@ -979,10 +994,10 @@ def selftest():
         try:
             oc, omp = load_models(path), profile_module.model_tables(path, "omp")
             check(
-                oc["models"] == {"large": "a/l", "small": "b/s"}
-                and oc["variants"] == {"judge": "high"}
-                and omp["models"] == {"large": "a/l", "small": "a/s"}
-                and omp["variants"] == {"judge": "low"},
+                oc.tiers == {"large": "a/l", "small": "b/s"}
+                and oc.variants == {"judge": "high"}
+                and omp.tiers == {"large": "a/l", "small": "a/s"}
+                and omp.variants == {"judge": "low"},
                 "the shared tables hold for both frontends, and each frontend's key replaces the shared one for "
                 "it alone",
             )
@@ -1050,7 +1065,7 @@ def selftest():
         )
 
     # The context limits: one provider entry per provider.
-    limits = dict(models, context_limits={"p/a": 100, "p/b": 200, "q/c": 300})
+    limits = dataclasses.replace(models, context_limits={"p/a": 100, "p/b": 200, "q/c": 300})
     check(
         context_providers(limits)
         == {
@@ -1062,11 +1077,11 @@ def selftest():
             },
             "q": {"models": {"c": {"limit": {"context": 300, "input": 300, "output": 32000}}}},
         }
-        and context_providers(dict(models, context_limits={})) == {},
+        and context_providers(dataclasses.replace(models, context_limits={})) == {},
         "the context limits as provider entries",
     )
     try:
-        context_providers(dict(models, context_limits={"bare": 100}))
+        context_providers(dataclasses.replace(models, context_limits={"bare": 100}))
         check(False, "a context limit of a model with no provider exits 2")
     except HarnessError as e:
         check("'bare'" in str(e), f"a context limit of a model with no provider exits 2: {e}")
@@ -1081,7 +1096,9 @@ def selftest():
         )
     )
     entries = context_providers(limits) | own
-    text = profile_module.render_file(SOURCE / "opencode.jsonc", dict(dummy, providers=entries))
+    text = profile_module.render_file(
+        SOURCE / "opencode.jsonc", profile_module.context(dummy, providers=entries)
+    )
     try:
         provider = json.loads(re.sub(r"(?m)^\s*//.*$", "", text))["provider"]
     except ValueError as e:
@@ -1127,13 +1144,13 @@ def selftest():
             )
 
     # A verify seat says so in its description; the other seats do not.
-    verify = dict(
+    verify = dataclasses.replace(
         models,
         councils={
-            "critic": [
-                {"name": "critic-b", "model": "provider-c/other-model", "verify": True},
-                {"name": "critic-c", "model": "provider-b/medium-model"},
-            ]
+            "critic": (
+                profile_module.Seat("critic-b", "provider-c/other-model", verify=True),
+                profile_module.Seat("critic-c", "provider-b/medium-model"),
+            )
         },
     )
     ported = dict(port(FIXTURES / "agents" / "critic.md", verify))

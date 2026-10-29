@@ -537,10 +537,10 @@ Prints `TEMPLATE` with each placeholder `{key}` replaced by its profile value.
 harness get KEY
 ```
 
-Prints the profile value of `KEY`, one line per item of a list. A path that starts with `~` is
-printed with the home directory.
+Prints the profile value of `KEY`, one line per item of a list, and `develop` as `true` or
+`false`. A path that starts with `~` is printed with the home directory.
 
-**Exit status:** 0; 2 when the profile has no `KEY`.
+**Exit status:** 0; 2 when the profile does not load or has no `KEY`.
 
 ```bash
 harness get repository_roots

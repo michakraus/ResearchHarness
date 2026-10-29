@@ -27,6 +27,7 @@ the file.
 import pathlib
 import re
 import tempfile
+from typing import Any
 
 from . import HarnessError
 
@@ -65,7 +66,7 @@ class Frontmatter:
     """The parsed frontmatter of one file: `meta` maps a key to its value, `lines` to its raw
     line, and `body` is the text after the closing `---` line."""
 
-    def __init__(self, meta, lines, body):
+    def __init__(self, meta: dict[str, Any], lines: dict[str, str], body: str) -> None:
         self.meta, self.lines, self.body = meta, lines, body
 
 

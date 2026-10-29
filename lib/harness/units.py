@@ -37,6 +37,7 @@ import posixpath
 import shlex
 import tempfile
 import types
+from collections.abc import Callable
 from unittest import mock
 
 from . import REPO, HarnessError, profile
@@ -278,11 +279,13 @@ def job_problems(service, timer, plist, filesystem, home):
     return problems
 
 
-def render(path, data):
+def render(path: str, data: profile.Profile) -> str:
     return profile.render_file(REPO / path, data)
 
 
-def check_jobs(data, read=render):
+def check_jobs(
+    data: profile.Profile, read: Callable[[str, profile.Profile], str] = render
+) -> dict[str, list[str]]:
     """{service: problems} for every job of JOBS rendered with the profile `data`; `read(path,
     data)` gives the rendered text of a template."""
     filesystem = json.loads(read("settings/settings.proposal.json", data))["sandbox"]["filesystem"]
@@ -294,7 +297,7 @@ def check_jobs(data, read=render):
                 timer and parse_unit(read(timer, data)),
                 plistlib.loads(read(plist, data).encode()),
                 filesystem,
-                data["home"],
+                data.home,
             )
         except (ValueError, KeyError) as e:  # a line, a time span or a schedule the check cannot read
             out[service] = [f"cannot read: {e}"]
@@ -340,8 +343,8 @@ def selftest():
 
     # Each mutant changes one or more rendered templates, (path, old, new) each, and must give a
     # problem.
-    def mutant(*edits):
-        def read(path, data):
+    def mutant(*edits: tuple[str, str, str]) -> Callable[[str, profile.Profile], str]:
+        def read(path: str, data: profile.Profile) -> str:
             text = render(path, data)
             for target, old, new in edits:
                 if path == target:
@@ -352,7 +355,7 @@ def selftest():
 
         return read
 
-    home, branch = dummy["home"], dummy["autocommit_branch"]
+    home, branch = dummy.home, dummy.autocommit_branch
     kaimon_path = f"{home}/.juliaup/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin"
     autocommit_timer, update_timer = "systemd/claude-autocommit.timer", "systemd/julia-update.timer"
     update_service = "systemd/julia-update.service"
@@ -522,7 +525,7 @@ def selftest():
     # autocommit_branch: the profile's value, else `memory/<short host name>` on a host that is
     # not `template_host`, else `main`; a missing `home` is the running user's, and a relative one
     # exits 2.
-    base = 'home = "/h"\nlaunchd_prefix = "org.x"\n'
+    base = profile.profile_text(home='"/h"', launchd_prefix='"org.x"')
     for template in ("systemd/claude-autocommit.service", "launchagents/claude-autocommit.plist"):
         for text, branch in [
             (base, "main"),
@@ -539,13 +542,13 @@ def selftest():
             )
             check(got is not None and want in got, f"{template} renders branch {branch!r}")
         with mock.patch.dict(os.environ, HOME="/running/user"):
-            got = render_default(template, 'launchd_prefix = "org.x"\n')
+            got = render_default(template, profile.profile_text(launchd_prefix='"org.x"'))
         check(
             got is not None and "/running/user/" in got and "{home}" not in got,
             f"{template} with no home renders the running user's home",
         )
         check(
-            render_default(template, 'home = "h"\nlaunchd_prefix = "org.x"\n') is None,
+            render_default(template, profile.profile_text(home='"h"', launchd_prefix='"org.x"')) is None,
             f"{template} with a relative home exits 2",
         )
     return n, wrong
