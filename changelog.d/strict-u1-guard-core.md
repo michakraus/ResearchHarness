@@ -10,10 +10,14 @@
   directory that the payload does not name (a relative write target, a recursive `rm` of a
   relative path, a `git rm` or `git merge`, a `git init` or `git clone`), and a call on which it
   raises; a guard that cannot start refuses the call through `|| exit 2`. It reads a command
-  without `shlex`: a `#` inside a word and a backslash-newline are read as the shell reads them. It
-  decides a command of 1 MiB within the hook's 5 s timeout, a chain of `cd` and many `rm` operands
-  among them, and stops at the first check that refuses. `tests/guard/corpus.jsonl` holds 429
-  payloads, each case of the scripts' probe among them, and the probe's `commands` group runs them
-  through the guard; each payload that the guard decides otherwise than the scripts names its
-  reason there, and none is decided more loosely. `hooks/directory-scope.py` is removed; the seven
-  scripts that oh-my-pi, OpenCode and Antigravity run stay as they are.
+  without `shlex`: a `#` inside a word and a backslash-newline are read as the shell reads them.
+  Every check and every reading of a payload takes the walk of a `cd` word from one memo, so the
+  file-system reads of a payload grow with the distinct names of its words, not with its checks
+  and readings, and the write check asks git once per work tree; the probe counts both. On a Linux
+  CI runner the guard decides each of the probe's 16 timed commands of 1 MiB within 2.5 s, a chain
+  of `cd`, one `cd` word of 209,703 `a/..` steps, many `rm` operands and 50,461 writes that git
+  ignores among them, and it stops at the first check that refuses. `tests/guard/corpus.jsonl`
+  holds 429 payloads, each case of the scripts' probe among them, and the probe's `commands` group
+  runs them through the guard; each payload that the guard decides otherwise than the scripts names
+  its reason there, and none is decided more loosely. `hooks/directory-scope.py` is removed; the
+  seven scripts that oh-my-pi, OpenCode and Antigravity run stay as they are.

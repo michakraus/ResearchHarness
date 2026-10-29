@@ -73,9 +73,11 @@ with the error. The checks read a command without
 `shlex`: a `#` inside a word, a backslash-newline and a quoted operator are read as the shell
 reads them, and a quoted operator or a joined line is also read the other way, so that neither
 hides a part of the command. `tests/guard/corpus.jsonl` holds the decision of each payload that
-the probe checks, and each difference from the scripts with its reason. The checks follow a chain
-of `cd` and resolve each operand in time linear in the command's length, so the guard decides a
-command of 1 MiB within the 5 s that the settings template gives the hook. Test it from `hooks/`
+the probe checks, and each difference from the scripts with its reason. Every check and every
+reading takes the walk of a `cd` word from one memo per payload, and the write check asks git
+once per work tree, so the file-system reads and the `git` processes of a payload grow with the
+distinct names of its words, not with the number of checks and readings. The guard decides a
+command of 1 MiB within 10 s. Test it from `hooks/`
 with the environment's interpreter, which is Python 3.14; the guard exits with status 2 on a
 `deny`:
 
@@ -349,10 +351,11 @@ process, with a timeout, and prints one line per case: `ok` or `BAD`, the expect
 result. The last line gives the number of cases and the number of failed cases, and the exit
 status is 1 when any case fails. The group `commands` runs the guard package on each record of
 `tests/guard/corpus.jsonl` and on the cases that a line of it cannot hold: a command of 1 MiB and
-one byte more, commands of 1 MiB that the checks walk word by word, each held to the hook's 5 s
-timeout, a payload that is not UTF-8, the reason of the winning check, a frontend that the
-guard lacks, a guard that raises, the copy of `jsonio.py`, and the rendered `Bash` entry with a
-guard that cannot start. The groups
+one byte more, commands of 1 MiB that the checks walk word by word, each held to 10 s with its
+seconds on its line, the count of the file-system reads and `git` processes of such commands, a
+write target with a NUL, a payload that is not UTF-8, the reason of the winning check, a
+frontend that the guard lacks, a guard that raises, the copy of `jsonio.py`, and the rendered
+`Bash` entry with a guard that cannot start. The groups
 `omp`, `opencode` and `antigravity` run the seven guard scripts through those frontends. The probe
 also covers the other Python hooks of this page, the fail-closed cases of `worktree.py`, and the
 drift cases of `install-drift.py`. It also loads `adapters/omp/guards.ts` and the OpenCode

@@ -16,8 +16,8 @@ normalisation does. Both record whether the path names a file.
 One memo per process holds each walk: `go` walks a (start `Place`, word, mode) once, and `place`
 an absolute path text once in each mode, and every check and every reading of a payload takes the
 walk from the memo. The guard decides one payload per process, so a payload walks each (start,
-word, mode) at most once, and reads each name of a word at most once in each mode however many
-checks and readings walk it.
+word, mode) at most once however many checks and readings ask for it, and a walk reads each name
+at most once from each directory that it steps from.
 """
 
 import functools

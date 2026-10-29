@@ -243,11 +243,11 @@ class Target:
 
 @functools.cache
 def target_of(start: Place | None, path: str) -> Target:
-    """The write target `path` from the working directory `start`, or from `/` when `start` is
-    None, resolved once, so that both readings of a command take it from here. Its work tree is
-    the nearest directory at or above the target's directory that holds a `.git`; only a
+    """The write target `path`, relative to the working directory `start`, or absolute when
+    `start` is None, resolved once, so that both readings of a command take it from here. Its work
+    tree is the nearest directory at or above the target's directory that holds a `.git`; only a
     directory that exists can hold one. The verdict reads only the directories above the target,
-    so the target's last name is joined, not read."""
+    so the target's last name is joined, not read, unless it is `..`."""
     pure = PurePosixPath(path)
     if pure.name in ("", ".."):
         found = place(path, "plain") if start is None else start.go(path, "plain")

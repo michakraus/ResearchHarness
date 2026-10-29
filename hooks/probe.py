@@ -67,10 +67,10 @@ q = shlex.quote  # a fixture path spliced into a command, for a `$TMPDIR` with a
 TIMEOUT = 30  # seconds per hook call; a timeout is a wrong case
 MIB = 1024 * 1024  # bytes: the largest command that the guard decides by its checks
 MIB_LIMIT = 10  # seconds: the bound within which the guard decides a command of 1 MiB
-# stat and lstat calls of a payload beside two for each distinct name of its `cd` words: the walk of
-# its working directory, the roots of the checks, the `.git` above a write. 57 and 176 for the
-# counted payloads on macOS with the fixture below `/tmp/<one name>/`; the margin holds a fixture
-# below a deeper `$TMPDIR`.
+# stat and lstat calls of a payload beside those for the distinct names of its `cd` words: the walk
+# of its working directory, the roots of the checks, the `.git` above a write. 56 for the first two
+# counted payloads and 189 for the third on macOS with the fixture below `/tmp/<one name>/`; the
+# margin holds a fixture below a deeper `$TMPDIR`.
 WALK_READS = 400
 
 WORKTREE = HOOKS + "worktree.py"

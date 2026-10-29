@@ -544,7 +544,7 @@
 
 ### K112 · The shell-write check passes a target whose text starts with a scratch root and then climbs out of it with `..`.
 
-- location: `hooks/guard/no_shell_file_write.py:301`
+- location: `hooks/guard/no_shell_file_write.py:351`
 - evidence: `tree_write` returns False when the raw target starts with a scratch prefix, before it
   resolves `..`, so `echo x > /tmp/../<tree>/f.txt`, `echo x > $TMPDIR/../f.txt` and
   `echo x > ~/Research/.scratch/../Harness/f.jl` pass. `hooks/no-shell-file-write.py` passes them
@@ -554,7 +554,7 @@
 
 ### K113 · The shell-write check reads no `<>` redirection as a write.
 
-- location: `hooks/guard/no_shell_file_write.py:43`
+- location: `hooks/guard/no_shell_file_write.py:44`
 - evidence: `REDIRECT` matches `<>`, and `split` keeps a target only for an operator that does not
   start with `<`, so `echo x <> f.txt` in a work tree passes. `hooks/no-shell-file-write.py`
   passes it too.
@@ -563,7 +563,7 @@
 
 ### K114 · The shell-write check reads a command substitution inside a heredoc body as data.
 
-- location: `hooks/guard/no_shell_file_write.py:141`
+- location: `hooks/guard/no_shell_file_write.py:142`
 - evidence: `cut_heredocs` removes each body before the command is read, and the shell runs a
   `$( … )` in an unquoted heredoc body, so `cat <<EOF` with the body line `$(echo x > f.txt)`
   passes. `hooks/no-shell-file-write.py` passes it too.
@@ -621,6 +621,7 @@
 - location: `settings/settings.proposal.json:680`
 - evidence: the template gives each guard hook `"timeout": 5`. If Claude Code reads a timeout as
   a non-blocking error, a guard that runs longer lets the call run. The probe holds the guard's
-  commands of 1 MiB to 5 s, but no probe of Claude Code itself shows the effect.
+  commands of 1 MiB to 10 s, the bound of the size clause, and no probe of Claude Code itself
+  shows the effect.
 - kind: not verified
 - found: 2026-10-29, the critics of the guard core
