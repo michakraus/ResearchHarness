@@ -11,7 +11,7 @@
   relative path, a `git rm` or `git merge`, a `git init` or `git clone`, a `cd` in a `git` or `gh`
   command), and a call on which it raises; a guard that cannot start
   refuses the call through `|| exit 2`. It reads a command without `shlex`: a `#` inside a word
-  and a backslash-newline are read as the shell reads them. `tests/guard/corpus.jsonl` holds 418
+  and a backslash-newline are read as the shell reads them. `tests/guard/corpus.jsonl` holds 420
   payloads, each case of the scripts' probe among them, and the probe's `commands` group runs them
   through the guard; each payload that the guard decides otherwise than the scripts names its
   reason there, and none is decided more loosely. `hooks/directory-scope.py` is removed; the seven
