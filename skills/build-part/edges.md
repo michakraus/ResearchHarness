@@ -110,6 +110,15 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   it: a hook program that is not in the style of the packages' formatter makes the installed
   pre-commit hook refuse the commit of its own files. Run the target's gate on the installed copy
   in a case (P3 round 1, *Make the Harness enforce strict Python*)
+- a map that reuses a source text for a value, keyed by the value: two texts that the merger's
+  parser reads as one value can read differently for the file's owner, such as `-0` and `0`, which
+  Python reads as the integer 0 and a JavaScript reader as -0 and 0. Reuse a text only where it is
+  certain to denote the exact value written, and write every other value canonically (B1 verify 2,
+  *Make the Harness enforce strict Python*)
+- a second reader brought in to decide such a certainty, whose domain is narrower than the first
+  reader's: `Decimal` raises on a float exponent that `json` reads as 0.0, so the check itself
+  crashed every merge of such a file. A reader that judges must fail closed: an input it cannot
+  read is "not certain" (B1 verify 3, *Make the Harness enforce strict Python*)
 
 ## A numerical method
 
@@ -309,6 +318,10 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   the lesser of two consecutive readings: on the floor one reading failed 1 of 60 and 1 of 240,
   while the lesser of two failed 0 of 120 (P39, verify 2 and the two advisor rulings,
   *Rewrite the reduced basis packages*)
+- a lookup by name through a view that leaves a field out: `harness get develop` read the
+  profile's render values, which omit `develop`, and refused a profile that sets it with "the
+  profile has no key 'develop'". Give each reader of a field the view that holds it, and test the
+  lookup of every field of the type (B3 critic, *Make the Harness enforce strict Python*)
 
 ## A tool that reads files or a tree
 
@@ -447,6 +460,15 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   empty, a selection of changed paths selects nothing, and the run passes on no evidence. Refuse
   an empty base, and pass `--end-of-options` before a base that starts with `-` (T1 round 1,
   *Make the Harness enforce strict Python*)
+- an error located by a second walk of the text in another order than the parser's: `json` raises
+  a duplicate key at the first object to *close*, and a locator that takes the first repeat in text
+  order names the line of an outer object's repeat with the inner key. Mirror the parser's order,
+  and test an outer and an inner offence in one text (B1 round 1, *Make the Harness enforce strict
+  Python*)
+- a spec check that reads the standard output of a command whose option sends the lines elsewhere:
+  `harness test --log FILE` prints only the `BAD` lines and the summary, so a check that greps the
+  part lines from the output fails on every head. Read the option's help before a check rests on
+  the output, and grep the file that holds the lines (B3, *Make the Harness enforce strict Python*)
 
 ## A step that runs a user's script
 
