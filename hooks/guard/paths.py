@@ -85,14 +85,14 @@ class Place:
         key = (self, path, mode)
         found = WALKS.get(key)
         if found is None:
-            found = place(path, mode) if PurePosixPath(path).is_absolute() else self.walk(path, mode)
+            pure = PurePosixPath(path)
+            found = place(path, mode) if pure.is_absolute() else self.walk(pure, mode)
             WALKS[key] = found
         return found
 
-    def walk(self, path: str, mode: Mode) -> Place:
-        """The path that `path` names from this one, each name read once from each directory that it
-        steps from: an absolute `path` starts at the anchor."""
-        pure = PurePosixPath(path)
+    def walk(self, pure: PurePosixPath, mode: Mode) -> Place:
+        """The path that `pure` names from this one, each name read once from each directory that it
+        steps from: an absolute `pure` starts at the anchor."""
         found = start(pure, mode) if pure.is_absolute() else self
         steps: dict[tuple[Place, str], Place] = {}
         for name in pure.parts[1 if pure.is_absolute() else 0 :]:
@@ -179,4 +179,4 @@ WALKS: dict[tuple[Place, str, Mode], Place] = {}
 @functools.cache
 def place(path: str, mode: Mode) -> Place:
     """The `Place` of an absolute path, walked once in each mode."""
-    return Place.anchor().walk(path, mode)
+    return Place.anchor().walk(PurePosixPath(path), mode)

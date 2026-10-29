@@ -31,6 +31,7 @@ import os
 import re
 import shutil
 import subprocess
+from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
 from .contract import PASS, Call, Verdict, needs_cwd
@@ -215,22 +216,59 @@ def scratch(path: Place) -> bool:
     return any(path.starts(root) for root in SCRATCH_ROOTS)
 
 
-def work_tree(path: Place) -> str | None:
-    """The nearest directory at or above the directory of the path that holds a `.git`, or None.
-    Only a directory that exists can hold one."""
-    return root(path.parent().existing())
-
-
 @functools.cache
-def root(start: Place) -> str | None:
+def root(start: Place) -> Place | None:
     """The nearest directory at or above `start` that holds a `.git`, or None; asked once per
     directory, so the writes of one directory read its `.git` and those above it once."""
     directory: Place | None = start
     while directory is not None:
         if Path(directory.text(), ".git").exists():
-            return directory.text()
+            return directory
         directory = directory.up
     return None
+
+
+@dataclass(frozen=True, slots=True)
+class Target:
+    """A write target, resolved: `scratch`, whether it lies under a scratch root; `root`, the work
+    tree that holds it, or None; `text`, its path, and `below`, its path relative to `root`, both
+    empty without a root; `source`, whether its name has a source suffix."""
+
+    scratch: bool
+    root: str | None
+    text: str
+    below: str
+    source: bool
+
+
+@functools.cache
+def target_of(start: Place | None, path: str) -> Target:
+    """The write target `path` from the working directory `start`, or from `/` when `start` is
+    None, resolved once, so that both readings of a command take it from here. Its work tree is
+    the nearest directory at or above the target's directory that holds a `.git`; only a
+    directory that exists can hold one. The verdict reads only the directories above the target,
+    so the target's last name is joined, not read."""
+    pure = PurePosixPath(path)
+    if pure.name in ("", ".."):
+        found = place(path, "plain") if start is None else start.go(path, "plain")
+    else:
+        directory = str(pure.parent)
+        above = place(directory, "plain") if start is None else start.go(directory, "plain")
+        found = above.joined(pure.name)
+    if scratch(found):
+        return Target(scratch=True, root=None, text="", below="", source=False)
+    tree = root(found.parent().existing())
+    if tree is None:
+        return Target(
+            scratch=False, root=None, text="", below="", source=found.name.lower().endswith(SOURCE_SUFFIXES)
+        )
+    return Target(
+        scratch=False,
+        root=tree.text(),
+        text=found.text(),
+        below=str(PurePosixPath(*found.names()[tree.size :])),
+        source=found.name.lower().endswith(SOURCE_SUFFIXES),
+    )
 
 
 def ignored_alone(root: str, path: str) -> bool:
@@ -247,17 +285,16 @@ def ignored_alone(root: str, path: str) -> bool:
     return result.returncode == 0
 
 
-def ignored_together(root: str, paths: list[str]) -> dict[str, bool]:
-    """Whether git ignores each of `paths` in the work tree `root`, asked in one `git check-ignore`.
-    Each path lies below `root` and goes to git relative to it, which git reads many times faster
-    than an absolute path. A path with a NUL, which git cannot read from its input, is not ignored.
-    A path that the answer leaves open, after git stops on a path outside the work tree, is left
-    out."""
+def ignored_together(root: str, paths: dict[str, str]) -> dict[str, bool]:
+    """Whether git ignores each path of `paths` in the work tree `root`, asked in one `git
+    check-ignore`. Each path goes to git as its path relative to `root`, the value in `paths`,
+    which git reads many times faster than an absolute path. A path with a NUL, which git cannot
+    read from its input, is not ignored. A path that the answer leaves open, after git stops on a
+    path outside the work tree, is left out."""
     asked: dict[str, bytes] = {}
     unreadable: dict[str, bool] = {}
-    depth = len(PurePosixPath(root).parts)
-    for path in dict.fromkeys(paths):
-        encoded = os.fsencode(PurePosixPath(*PurePosixPath(path).parts[depth:]))
+    for path, below in paths.items():
+        encoded = os.fsencode(below)
         if b"\0" in encoded:
             unreadable[path] = False
         else:
@@ -295,12 +332,13 @@ class Ignores:
 
     def __init__(self) -> None:
         self.collecting = True
-        self.pending: dict[str, list[str]] = {}
+        self.pending: dict[str, dict[str, str]] = {}
         self.known: dict[str, bool] = {}
 
-    def ignored(self, root: str, path: str) -> bool:
+    def ignored(self, root: str, path: str, below: str) -> bool:
+        """Whether git ignores `path`, whose path relative to the work tree `root` is `below`."""
         if self.collecting:
-            self.pending.setdefault(root, []).append(path)
+            self.pending.setdefault(root, {})[path] = below
             return True
         found = self.known.get(path)
         return ignored_alone(root, path) if found is None else found
@@ -323,15 +361,14 @@ def tree_write(target: str, cwd: Cwd, variables: dict[str, str | None], ignores:
             raise NeedsCwdError
         if cwd is None:
             return path.lower().endswith(SOURCE_SUFFIXES)
-        found = cwd.go(path, "plain")
+        written = target_of(cwd, path)
     else:
-        found = place(path, "plain")
-    if scratch(found):
+        written = target_of(None, path)
+    if written.scratch:
         return False
-    root = work_tree(found)
-    if root is not None:
-        return not ignores.ignored(root, found.text())
-    return found.name.lower().endswith(SOURCE_SUFFIXES)
+    if written.root is not None:
+        return not ignores.ignored(written.root, written.text, written.below)
+    return written.source
 
 
 def scratch_file(target: str, cwd: Cwd, variables: dict[str, str | None]) -> bool:
