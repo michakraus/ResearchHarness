@@ -1918,10 +1918,12 @@ def schema_cases() -> tuple[int, int]:
             (f"no `{key}`", profile_text(**{key: ""}), key, "str" if kind.startswith('"') else "list")
             for key, kind in REQUIRED_TEXT.items()
         ]
+        # A key with no type word is refused as a key that the profile does not have, whatever its
+        # value.
         for label, text, key, kind in refusals:
             got = loaded(text)
             check(
-                refused(got, "profile.toml", key, kind),
+                refused(got, "profile.toml", key, kind) and (kind is not None or "no key of" in str(got)),
                 f"{label} is refused, naming the file and {key} -> {got}",
             )
         # The retired keys exit 2 with the message of the file that replaces each.
@@ -2091,10 +2093,13 @@ def models_schema_cases() -> tuple[int, int]:
                 "str",
             ),
         ]
+        # A key with no type word is refused as a table, a sub-table or a tier that the file may not
+        # hold, whatever its value.
         for label, text, key, kind in model_refusals:
             got = models_loaded(text)
             check(
-                refused(got, "models.toml", key, kind),
+                refused(got, "models.toml", key, kind)
+                and (kind is not None or re.search(r"\bno (table|sub-table|tier)\b", str(got)) is not None),
                 f"{label} is refused, naming the file and {key} -> {got}",
             )
         got = models_loaded(claude.replace("small", "haiku") + 'huge = "x"\n')
@@ -2140,6 +2145,24 @@ def models_schema_cases() -> tuple[int, int]:
             and tables.councils == {}
             and tables.path == tmp / "models.toml",
             f"model_tables of a models.toml without [opencode]: the shared tables alone -> {tables}",
+        )
+        # The effort of an agent: its `variants` entry, else its `reasoning_effort` entry, else the
+        # `model_variants` entry of its model; none for an agent with no model.
+        efforts = ModelTables(
+            path=tmp / "models.toml",
+            model_variants={"a/l": "medium"},
+            variants={"judge": "high"},
+            reasoning_effort={"judge": "low", "seat": "low"},
+        )
+        got_efforts = [
+            agent_effort("judge", "a/l", efforts),
+            agent_effort("seat", "a/l", efforts),
+            agent_effort("builder", "a/l", efforts),
+            agent_effort("builder", None, efforts),
+        ]
+        check(
+            got_efforts == ["high", "low", "medium", None],
+            f"agent_effort: variants, then reasoning_effort, then the model's model_variants -> {got_efforts}",
         )
         got = models_loaded(models_example)
         check(
