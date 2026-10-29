@@ -193,8 +193,10 @@ and a change to `README.md` none. It prints each file's name and its usual time 
 it; `scripts/run-tests-test.jl` is silent for about 11 minutes. Without a `python3` of 3.14 or
 later, the hook refuses the push. The hook parses as Python 3.9, so the `python3` of macOS runs
 it up to that check and refuses the push with the hook's own line. A missing `shellcheck`,
-`chezmoi` or `julia` prints one `skip` line, because CI runs them. Enable the hook once per
-checkout:
+`chezmoi` or `julia` prints one `skip` line, because CI runs them. A program that the hook cannot
+start, such as an environment's interpreter that does not exist, prints one line and fails its
+check, and the checks after it still run. A SIGTERM or a SIGHUP ends the hook and removes its
+clone. Enable the hook once per checkout:
 
 ```bash
 git config core.hooksPath .githooks

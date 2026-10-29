@@ -34,6 +34,7 @@ import fnmatch
 import os
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -147,6 +148,17 @@ def git_output(*args: str) -> str | None:
     stderr is the hook's."""
     p = subprocess.run([git_program(), *args], stdout=subprocess.PIPE, check=False, timeout=TIMEOUT)
     return p.stdout.decode(errors="surrogateescape").rstrip("\n") if p.returncode == 0 else None
+
+
+def status_of(argv: list[str]) -> int:
+    """The exit status of `argv`, which writes to the hook's stdout and stderr. A program that
+    cannot start prints one line and gives 127, as a shell does, so that the checks after it
+    still run."""
+    try:
+        return subprocess.run(argv, check=False, timeout=TIMEOUT).returncode
+    except OSError as e:
+        say(f"pre-push: cannot start {argv[0]}: {e.strerror}")
+        return 127
 
 
 def commit_exists(sha: str) -> bool:
@@ -340,6 +352,7 @@ def check_main_leaks(root: Path, tmp: Path, sha: str, old: str, gitleaks: str) -
         scan = subprocess.run(
             [gitleaks, "stdin", *flags],
             input=text,
+            cwd=root,
             stdout=log,
             stderr=subprocess.STDOUT,
             check=False,
@@ -408,12 +421,7 @@ def run_strict() -> bool:
         say("pre-push: bin/harness names no interpreter of the Python environment")
         return False
     say(f"{environment_python} -m compileall -q lib hooks scripts adapters")
-    compiled = subprocess.run(
-        [environment_python, "-m", "compileall", "-q", "lib", "hooks", "scripts", "adapters"],
-        check=False,
-        timeout=TIMEOUT,
-    )
-    ok = compiled.returncode == 0
+    ok = status_of([environment_python, "-m", "compileall", "-q", "lib", "hooks", "scripts", "adapters"]) == 0
     tools = environment_python.rpartition("/")[0] if "/" in environment_python else environment_python
     lacking = False
     for tool in ("ruff", "basedpyright"):
@@ -431,7 +439,7 @@ def run_strict() -> bool:
         ["basedpyright"],
     ):
         say(" ".join([f"{tools}/{args[0]}", *args[1:]]))
-        if subprocess.run([f"{tools}/{args[0]}", *args[1:]], check=False, timeout=TIMEOUT).returncode != 0:
+        if status_of([f"{tools}/{args[0]}", *args[1:]]) != 0:
             ok = False
     return ok
 
@@ -452,7 +460,7 @@ def run_shellcheck() -> bool:
         if SHELL.match(first):
             files.append(name)
     say(f"shellcheck -S warning {' '.join(files)}")
-    return subprocess.run([shellcheck, "-S", "warning", *files], check=False, timeout=TIMEOUT).returncode == 0
+    return status_of([shellcheck, "-S", "warning", *files]) == 0
 
 
 def run_kit_tests(tmp: Path) -> None:
@@ -512,7 +520,7 @@ def run_julia(selection: list[str]) -> bool:
         return True
     for test in selection:
         say(f"julia {test} ({DURATION.get(test, 'time not measured')})")
-        if subprocess.run([julia, "--startup-file=no", test], check=False, timeout=TIMEOUT).returncode != 0:
+        if status_of([julia, "--startup-file=no", test]) != 0:
             return False
     return True
 
@@ -553,6 +561,10 @@ def gate(root: Path, tmp: Path, sha: str, old: str, branches: list[tuple[str, st
     return 0
 
 
+def terminated(signum: int, _frame: object) -> NoReturn:
+    raise SystemExit(128 + signum)
+
+
 def main() -> int:
     root_name = git_output("rev-parse", "--show-toplevel")
     if root_name is None:
@@ -564,11 +576,15 @@ def main() -> int:
     if not sha and not branches:
         say("pre-push: no commit pushed, nothing to test")
         return 0
+    # A SIGTERM or a SIGHUP ends the hook through SystemExit, so that the clone goes with it.
+    for signum in (signal.SIGTERM, signal.SIGHUP):
+        signal.signal(signum, terminated)
     tmp = Path(tempfile.mkdtemp(prefix="harness-pre-push."))
     try:
         return gate(root, tmp, sha, old, branches)
     except subprocess.TimeoutExpired as e:
-        refuse(f"{e.cmd} did not finish within {TIMEOUT} s")
+        command = " ".join(map(str, e.cmd)) if isinstance(e.cmd, list) else str(e.cmd)
+        refuse(f"{command} did not finish within {TIMEOUT} s")
     finally:
         os.chdir(root)
         shutil.rmtree(tmp, ignore_errors=True)

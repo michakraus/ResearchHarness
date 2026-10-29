@@ -480,10 +480,12 @@ fixture `.claude` repository in a scratch HOME, with a bare remote, and runs the
 this interpreter, with HOME, TMPDIR, the git identity and `XDG_STATE_HOME` set in the child's
 environment. The cases check the commit and its message, the staged file that the commit leaves
 alone, the branch that receives the push, the lock's path on this system, a held, a stale and a
-fresh lock, a SIGTERM during a run, the dry run, the deferral of a memory that is still settling,
+fresh lock, a SIGTERM during a run and during `git commit`, a `git commit` that outlasts the
+timeout, the dry run, a path that is not UTF-8, the deferral of a memory that is still settling,
 and the refusals: a rename, too many deletions, a repository with no tracked plan or memory, a
 missing or plain directory, a setting that is not an integer, no git, and a git that fails. A git on the `PATH`
-that fails one command stands for the failures that a fixture cannot make.
+that fails one command, or reports a status, stands for the failures and the names that a fixture
+cannot make.
 [Jobs and configuration](other.md#claude-autocommit-and-claude-autocommit-plist) describes the
 script.
 

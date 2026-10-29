@@ -26,6 +26,7 @@ EXIT CODES
 """
 
 import contextlib
+import io
 import os
 import pathlib
 import shutil
@@ -100,19 +101,46 @@ def git_command(*args: str) -> list[str]:
     return [found, *args]
 
 
+class Run:
+    """The git that runs, and whether a SIGTERM has come. A killed git leaves its index.lock, and
+    every later run then defers without end, so a SIGTERM never kills git: the handler sends it on
+    to the running git, which removes its own lock, and the run stops after that git."""
+
+    child: subprocess.Popen[bytes] | None = None
+    terminated = False
+
+
+def run_git(args: Sequence[str], stdin: bytes | None, *, merged: bool) -> tuple[int, bytes, bytes]:
+    """git with `args` in the working directory and `stdin` on its stdin (None: this process's):
+    its exit status, stdout and stderr, with stderr in stdout where `merged`. A git that takes
+    longer than GIT_TIMEOUT gets a SIGTERM, and the run ends with one ERROR line once it has
+    ended. After a SIGTERM to the run, the run ends here once git has ended, with the lock removed
+    on the way out."""
+    with subprocess.Popen(
+        git_command(*args),
+        stdin=None if stdin is None else subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT if merged else subprocess.PIPE,
+    ) as p:
+        Run.child = p
+        try:
+            out, err = p.communicate(stdin, timeout=GIT_TIMEOUT)
+        except subprocess.TimeoutExpired:
+            p.terminate()
+            p.communicate()
+            die(f"git did not finish within {GIT_TIMEOUT} s: git {' '.join(args)}")
+        finally:
+            Run.child = None
+    if Run.terminated:
+        raise SystemExit(128 + signal.SIGTERM)
+    return p.returncode, out, err or b""
+
+
 def git(*args: str, message: str | None = None) -> subprocess.CompletedProcess[str]:
     """git with `args` in the working directory and `message` on its stdin; its stdout and stderr
     together in `stdout`."""
-    return subprocess.run(
-        git_command(*args),
-        input=message,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        errors="surrogateescape",
-        check=False,
-        timeout=GIT_TIMEOUT,
-    )
+    code, out, _ = run_git(args, None if message is None else os.fsencode(message), merged=True)
+    return subprocess.CompletedProcess(args, code, os.fsdecode(out))
 
 
 def lock_path() -> pathlib.Path:
@@ -221,15 +249,10 @@ def changes(repo: str, quiesce_min: int) -> tuple[list[str], int, int]:
         )
     # A failed status is *unknown*, never "nothing to commit". NUL-separated, so that a path with a
     # space or a non-ASCII name survives.
-    status = subprocess.run(
-        git_command("status", "--porcelain", "-z", "--", *SPEC),
-        capture_output=True,
-        check=False,
-        timeout=GIT_TIMEOUT,
-    )
-    if status.returncode != 0:
-        die(f"git status failed (rc={status.returncode}): {os.fsdecode(status.stderr).rstrip()}")
-    return classify(status.stdout, quiesce_min)
+    code, out, err = run_git(("status", "--porcelain", "-z", "--", *SPEC), None, merged=False)
+    if code != 0:
+        die(f"git status failed (rc={code}): {os.fsdecode(err).rstrip()}")
+    return classify(out, quiesce_min)
 
 
 def run(*, dry: bool, no_push: bool) -> int:
@@ -301,12 +324,20 @@ def commit(paths: Sequence[str], counts: str) -> bool:
     return True
 
 
-def terminated(signum: int, _frame: FrameType | None) -> NoReturn:
-    """A SIGTERM ends the run through SystemExit, so that the lock goes with it."""
-    raise SystemExit(128 + signum)
+def terminated(signum: int, _frame: FrameType | None) -> None:
+    """A SIGTERM goes on to the running git. The run ends through SystemExit when that git, or the
+    next git where none runs, has ended, so that the lock goes with it; a SIGTERM after the last
+    git lets the run finish."""
+    Run.terminated = True
+    if Run.child is not None:
+        Run.child.send_signal(signum)
 
 
 def main(argv: Sequence[str]) -> int:
+    # A path whose name is not UTF-8 is printed as its bytes, in every locale.
+    for stream in (sys.stdout, sys.stderr):
+        if isinstance(stream, io.TextIOWrapper):
+            stream.reconfigure(errors="surrogateescape")
     dry = no_push = False
     for arg in argv:
         if arg == "--dry-run":
@@ -328,8 +359,6 @@ def main(argv: Sequence[str]) -> int:
         signal.signal(signal.SIGTERM, terminated)
     try:
         return run(dry=dry, no_push=no_push)
-    except subprocess.TimeoutExpired as e:
-        die(f"git did not finish within {GIT_TIMEOUT} s: {e.cmd}")
     finally:
         if lock is not None:
             with contextlib.suppress(OSError):

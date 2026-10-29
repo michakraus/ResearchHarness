@@ -47,7 +47,9 @@ claude-autocommit [--dry-run] [--no-push] [--help]
 Edit the script here, then copy it there again.
 
 The script runs on macOS and on Linux. A lock directory stops a second run, and the script
-removes it on exit and on a SIGTERM. On macOS the lock is `~/Library/Logs/claude-autocommit/lock`,
+removes it on exit and on a SIGTERM. A SIGTERM goes on to the running git, which removes its own
+`index.lock`, and the run ends after that git. A git command that takes longer than 10 minutes
+also gets a SIGTERM, and the run exits 1 with one `ERROR:` line. On macOS the lock is `~/Library/Logs/claude-autocommit/lock`,
 beside the job's log. On Linux it is `$XDG_STATE_HOME/claude-autocommit/lock`, or
 `~/.local/state/claude-autocommit/lock` when `XDG_STATE_HOME` is unset or empty. The cases of
 `lib/harness/autocommit.py` in `harness test` run the script on fixture repositories with a bare

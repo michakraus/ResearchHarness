@@ -488,6 +488,127 @@ def lock_cases(case: Case, tmp: pathlib.Path) -> None:
     )
 
 
+def commit_sigterm_case(case: Case, tmp: pathlib.Path) -> None:
+    """A SIGTERM while `git commit` holds the index lock: git ends on the SIGTERM that the run
+    sends on, before it commits, and removes its own lock, so the next run commits. A pre-commit
+    hook that waits holds `git commit` when the SIGTERM comes."""
+    f = Fixture(tmp / "sigterm-commit")
+    f.write(f"{MEMORY}/one.md", "one fact\n")
+    # The hook marks that `git commit` runs; `git add` takes the index lock too, but briefly.
+    hook, marker = f.repo / ".git" / "hooks" / "pre-commit", f.home / "committing"
+    hook.write_text(f"#!/bin/sh\ntouch '{marker}'\nsleep 5\n", encoding="utf-8")
+    hook.chmod(0o755)
+    index_lock = f.repo / ".git" / "index.lock"
+    child = subprocess.Popen(
+        [sys.executable, str(SCRIPT), "--no-push"],
+        env={**f.env, "CLAUDE_AUTOCOMMIT_REPO": str(f.repo)},
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    deadline = time.monotonic() + TIMEOUT
+    while not marker.exists() and time.monotonic() < deadline:
+        time.sleep(0.02)
+    held = index_lock.exists()
+    child.send_signal(signal.SIGTERM)
+    try:
+        code = child.wait(timeout=TIMEOUT)
+    except subprocess.TimeoutExpired:
+        code = None
+    finally:
+        child.kill()
+    left = index_lock.exists()
+    count = f.git("rev-list", "--count", "HEAD")
+    hook.unlink()
+    p = f.run("--no-push")
+    case(
+        "a SIGTERM during `git commit` stops that git and exits 143, and leaves no index.lock and no "
+        "lock, and the next run commits",
+        ok=held
+        and code == 128 + signal.SIGTERM
+        and not left
+        and count == "1"
+        and not (lock_dir(f.home, None) / "lock").exists()
+        and p.returncode == 0
+        and f.git("rev-list", "--count", "HEAD") == "2",
+    )
+
+
+def undecodable_case(case: Case, tmp: pathlib.Path) -> None:
+    """A path whose name is not UTF-8, which a git on the PATH reports in `git status`, under
+    LC_ALL=en_US.UTF-8, a locale in which Python's stdout and stderr refuse such a name by
+    default: the dry run prints its bytes and exits 0, and a rename to it exits 1 with an ERROR
+    line that holds its bytes. A file system that refuses such a name, as APFS does, cannot hold
+    it, so the git of the case fakes the status."""
+    f = Fixture(tmp / "undecodable")
+    stub = f.home / "stub"
+    stub.mkdir()
+    (stub / "git").write_text(
+        '#!/bin/sh\n[ "$1" = status ] && { printf "$STUB_STATUS"; exit 0; }\n'
+        f'exec "{git_program()}" "$@"\n',
+        encoding="utf-8",
+    )
+    (stub / "git").chmod(0o755)
+    runs = [
+        subprocess.run(
+            [sys.executable, str(SCRIPT), "--dry-run"],
+            env={
+                **f.env,
+                "CLAUDE_AUTOCOMMIT_REPO": str(f.repo),
+                "PATH": f"{stub}{os.pathsep}{f.env['PATH']}",
+                "LC_ALL": "en_US.UTF-8",
+                "STUB_STATUS": status,
+            },
+            capture_output=True,
+            check=False,
+            timeout=TIMEOUT,
+        )
+        for status in ("?? plans/\\377.md\\0", "R  plans/\\377.md\\0plans/first.md\\0")
+    ]
+    case(
+        "a path that is not UTF-8 is printed as its bytes by the dry run, which exits 0",
+        ok=runs[0].returncode == 0 and b"\n  plans/\xff.md\n" in runs[0].stdout and runs[0].stderr == b"",
+    )
+    case(
+        "a rename to a path that is not UTF-8 exits 1 with an ERROR line that holds its bytes",
+        ok=runs[1].returncode == 1
+        and runs[1].stderr.endswith(
+            b"ERROR: rename under plans/ or memory/ (plans/\xff.md) " + "— commit it by hand\n".encode()
+        ),
+    )
+
+
+def commit_timeout_case(case: Case, tmp: pathlib.Path) -> None:
+    """A `git commit` that outlasts the timeout, in a copy of the script whose GIT_TIMEOUT is 1 s:
+    git ends on the SIGTERM that the run sends and removes its own index.lock, and the run exits 1
+    with one ERROR line that names the command, and leaves no lock."""
+    f = Fixture(tmp / "timeout-commit")
+    f.write(f"{MEMORY}/one.md", "one fact\n")
+    hook = f.repo / ".git" / "hooks" / "pre-commit"
+    hook.write_text("#!/bin/sh\nsleep 5\n", encoding="utf-8")
+    hook.chmod(0o755)
+    text = SCRIPT.read_text(encoding="utf-8")
+    script = f.home / "claude-autocommit"
+    script.write_text(text.replace("\nGIT_TIMEOUT = 600\n", "\nGIT_TIMEOUT = 1\n"), encoding="utf-8")
+    p = subprocess.run(
+        [sys.executable, str(script), "--no-push"],
+        env={**f.env, "CLAUDE_AUTOCOMMIT_REPO": str(f.repo)},
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=TIMEOUT,
+    )
+    case(
+        "a `git commit` that outlasts the timeout ends on a SIGTERM: exit 1 with one ERROR line, and "
+        "no index.lock and no lock is left",
+        ok="\nGIT_TIMEOUT = 600\n" in text
+        and p.returncode == 1
+        and p.stderr.endswith(f"ERROR: git did not finish within 1 s: git commit -F - -- {MEMORY}/one.md\n")
+        and not (f.repo / ".git" / "index.lock").exists()
+        and not (lock_dir(f.home, None) / "lock").exists()
+        and f.git("rev-list", "--count", "HEAD") == "1",
+    )
+
+
 def selftest() -> tuple[int, int]:
     """The cases of the module docstring: (number of cases, number wrong)."""
     total = wrong = 0
@@ -504,4 +625,7 @@ def selftest() -> tuple[int, int]:
         repository_cases(case, root)
         edge_cases(case, root)
         lock_cases(case, root)
+        commit_sigterm_case(case, root)
+        commit_timeout_case(case, root)
+        undecodable_case(case, root)
     return total, wrong
