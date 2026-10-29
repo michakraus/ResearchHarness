@@ -64,11 +64,13 @@ gives the layout, at line length 110; `.git-blame-ignore-revs` names the commit 
 the whole tree, so `git blame --ignore-revs-file .git-blame-ignore-revs` skips it.
 `ruff check` runs the rule families `E F W B BLE TRY PTH S UP SIM RET C4 PERF PL RUF ARG FBT DTZ N
 TID`, bans `os.system` and `os.popen`, and ignores `S603` and `TRY003`; a file that holds test
-cases also ignores `B023` and `PLR2004`. `bin/harness` and `.githooks/pre-commit` have no `.py`
-suffix, and `pyproject.toml` names both for ruff; the formatter and the `UP` family leave
-`bin/harness`, whose syntax is a closed set of Python 3.0 forms. `basedpyright` checks `lib`,
-`hooks`, `adapters`, `scripts` and `bin` in strict mode for Python 3.14; it reads only `.py`
-files, so it checks neither `bin/harness` nor `.githooks/pre-commit`.
+cases also ignores `B023` and `PLR2004`. `bin/harness`, `githooks/pre-commit-wiki`,
+`.githooks/pre-commit`, `.githooks/pre-push` and `launchagents/claude-autocommit` have no `.py`
+suffix, and `pyproject.toml` names all five for ruff; the formatter and the `UP` family leave
+`bin/harness` and `githooks/pre-commit-wiki`, whose syntax is a closed set of Python 3.0 forms,
+and ruff reads `.githooks/pre-push` as Python 3.9. `basedpyright` checks `lib`, `hooks`,
+`adapters`, `scripts` and `bin` in strict mode for Python 3.14; it reads only `.py` files, so it
+checks none of the five.
 
 The findings of the code that the profile met are recorded, not fixed: the table
 `[tool.ruff.lint.extend-per-file-ignores]` of `pyproject.toml`, and the baseline
@@ -80,8 +82,9 @@ json` with the table removed, and the baseline with `basedpyright --writebaselin
 `basedpyright` with fewer errors than the baseline writes it too.
 
 The hooks and the guards import only the standard library: a case of `harness test`
-(`lib/harness/strict.py`) parses each `.py` file below `hooks/` and each `adapters/*/guard*.py`,
-and fails on an import of a module outside `sys.stdlib_module_names`. `hooks/probe.py` may also
+(`lib/harness/strict.py`) parses each `.py` file below `hooks/`, each `adapters/*/guard*.py` and
+the hook of the prose repositories, `githooks/pre-commit-wiki`, and fails on an import of a module
+outside `sys.stdlib_module_names`. `hooks/probe.py` may also
 import the harness's own package `harness`.
 
 The two tools are pinned in the `dev` group of `pyproject.toml` and locked in `uv.lock`, so every

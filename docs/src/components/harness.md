@@ -6,8 +6,9 @@ prints its plan, and `--apply` makes the change. This page describes the code: w
 implements which subcommand, and which modules have only test cases.
 
 The entry point is `bin/harness`. The code is the Python package `lib/harness/`, which uses the
-standard library only. Each module that owns a subcommand has a function `register`, which adds
-its subcommand to the argument parser. Most modules also have a function `selftest`, which runs
+standard library and one package of the environment, PyYAML, with which `harness wiki-lint` reads
+a frontmatter. Each module that owns a subcommand has a function `register`, which adds its
+subcommand to the argument parser. Most modules also have a function `selftest`, which runs
 their own test cases. `harness test` runs every `selftest`, the groups of the hook probe
 `hooks/probe.py` and the contract sweep, each as a part in a process of its own. Three
 subcommands live in the adapters: `settings` and `trust` in `adapters/claude/adapter.py`, and
@@ -28,6 +29,7 @@ subcommands live in the adapters: `settings` and `trust` in `adapters/claude/ada
 | `doctor` | `doctor.py` |
 | `changelog` | `changelog.py` |
 | `mutate` | `mutate.py` |
+| `wiki-lint` | `wikilint.py` |
 | `test` | `testrun.py` |
 
 `frontmatter.py`, `docs.py`, `units.py`, `script_cases.py`, `network.py`, `providers.py`,
@@ -383,6 +385,28 @@ Its cases check the spec, the anchor, the verdicts and the copy, and run whole r
 refusal on a fixture git repository with a stub `bin/harness`; they never run the real suite. The
 sweep does not run it, because it needs a spec and runs `harness test`.
 
+## `wikilint.py`
+
+The subcommand `harness wiki-lint [TREE ...] [--strict] [--quiet]`, the lint of the prose
+repositories. `lint` reads the Markdown of each tree below the research root and runs the checks
+of the module docstring; `report` prints the finding lines, the counts by check and the totals,
+and gives the exit status. A tree that is no directory raises `HarnessError`.
+
+`yaml_reader` imports PyYAML when the first frontmatter is read, so an environment synced without
+it fails only this subcommand, with one line that names `harness install --apply`. Its loader,
+`FrontmatterLoader`, is a `SafeLoader` that keeps a date as its text, reads a float of YAML 1.2
+such as `1e3` as a float, refuses a duplicate key and records each plain key, mapping value and
+item of a list in a mapping value that YAML 1.1 converts, such as `no` or `0755`. The vault checks
+and the task board's check report the refusal as an ERROR on PyYAML's line, and each conversion as
+a WARN; the lint reads the frontmatter of the other trees only for their `aliases`, and a block
+that repeats a key keeps its last value for them. `shown` spells a value in a message as Julia's
+`string` spells the value that YAML.jl reads, such as `["a", "b"]` or `Any["a", 1]` for a list.
+
+Its cases run every check on a research root in a temporary directory, the exit statuses of
+`--strict` and `--quiet`, the reader's decisions, and the hook `githooks/pre-commit-wiki`, which
+they commit through in scratch repositories with stubs of `ruff` and `basedpyright`. The sweep
+runs `harness wiki-lint Knowledge` on its fixture.
+
 ## `skill_triggers.py`
 
 The subcommand `harness skill-triggers [--skill <name> …] [--apply --model <alias>]`, the test of
@@ -649,8 +673,8 @@ fails, no uv, and a `develop` that is not `true` or `false`.
 ## `strict.py`
 
 The cases of the strict profile of the Python code. The module has no subcommand. Its first cases
-parse each `.py` file below `hooks/` and each `adapters/*/guard*.py` with `ast` and fail on an
-import outside the standard library, in this repository and in scratch trees: `hooks/probe.py`
+parse each `.py` file below `hooks/`, each `adapters/*/guard*.py` and `githooks/pre-commit-wiki`
+with `ast` and fail on an import outside the standard library, in this repository and in scratch trees: `hooks/probe.py`
 may also import `harness`, and another file may not. The other cases run
 `.githooks/pre-commit` through `git commit` in scratch repositories, with stubs of `ruff` and
 `basedpyright` in a scratch Python environment and a second pair on the `PATH`: a clean commit, a

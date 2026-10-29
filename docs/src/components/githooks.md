@@ -80,12 +80,20 @@ repos push` runs this hook in each repository.
 `Environment`, `Tasks` and `Library`. `harness wiki-lint-hook --apply` installs it
 into each as `.githooks/pre-commit`, and sets `core.hooksPath`.
 
-The hook runs `scripts/wiki-lint.jl --quiet` from `$RESEARCH_ROOT/Harness`, or from
-`~/Research/Harness` if `RESEARCH_ROOT` is not set, over all four trees. An ERROR in any tree
-blocks the commit, even an ERROR in another repository: the trees link to each other, so an edit
-here can break a link there. A warning does not block. A missing lint script, or no `julia` on
-the `PATH`, blocks too. The run takes about three seconds. No Julia repository uses this hook; it
-uses `pre-commit`.
+The hook is a Python script that imports only the standard library, in the closed set of Python
+3.0 forms of `bin/harness`, so an old `python3` prints the version refusal of `bin/harness`
+instead of a syntax error. It runs `harness wiki-lint --quiet` with `bin/harness` of
+`$RESEARCH_ROOT/Harness`, or of `~/Research/Harness` if `RESEARCH_ROOT` is not set, over all four
+trees. An ERROR in any tree blocks the commit, even an ERROR in another repository: the trees
+link to each other, so an edit here can break a link there. A warning does not block. A missing
+`bin/harness` blocks too. The lint takes about a second.
+
+In a repository whose staged `pyproject.toml` holds a `[tool.ruff]` table, the hook also runs
+`ruff format --check`, `ruff check` and `basedpyright` on the staged Python files and the tools'
+configuration, which it writes into a temporary directory. The tools come from the `bin/` of the
+harness's Python environment; where the environment lacks one, the hook refuses the commit with
+one line that names `harness install --apply`. Every check runs, and the hook refuses the commit
+when one fails. No Julia repository uses this hook; it uses `pre-commit`.
 
 ## `nfc.jl`
 

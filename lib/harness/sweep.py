@@ -55,6 +55,7 @@ SUBCOMMANDS = [
     ("settings twins", ["settings", "twins"]),
     ("githooks", ["githooks"]),
     ("wiki-lint-hook", ["wiki-lint-hook"]),
+    ("wiki-lint", ["wiki-lint", "Knowledge"]),
     ("workflows", ["workflows"]),
     ("clone", ["clone"]),
     ("repos status", ["repos", "status", "--no-prs"]),

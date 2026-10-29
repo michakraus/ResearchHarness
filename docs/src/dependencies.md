@@ -37,7 +37,7 @@ needs it, and where the harness calls it.
 | JuliaFormatter | ≥ 2.14, `[compat]` in `Project.toml` | formats Julia code, in `harness format`, the installed pre-commit hook and the test gate |
 | JuliaSyntax | ≥ 1.0.2, `[compat]` in `Project.toml` | parses Julia code to make the mutants of a mutation test |
 | TestEnv | ≥ 1.103.7, `[compat]` in `Project.toml` | runs the tests of a package in its test environment, for the test runner and the mutation tests |
-| YAML | ≥ 0.4.17, `[compat]` in `Project.toml` | reads the CI workflows and the frontmatter of the wiki pages |
+| YAML | ≥ 0.4.17, `[compat]` in `Project.toml` | reads the CI workflows |
 | fatou | ≥ 0.22.0, the CI pin in `.github/workflows/julia.yml` | lints the staged Julia files before a commit, and rejects a mutant that uses an undefined name |
 | Kaimon | tested with 2.10.0, the `version` of its app project | gives an [agent](concepts.md#agent) a Julia [session](concepts.md#session) and tools for Julia code; without it, the update job stops with an error, and the agents have no Julia session |
 | juliaup | tested with 1.18.9 | updates the Julia releases, in the update job; without it, the job cannot update them |
@@ -45,7 +45,7 @@ needs it, and where the harness calls it.
 **For a reader who writes no Julia.** The rows of this table serve Julia code only: the formatter,
 the test runner and the mutation tests, the git hooks and workflows that `harness githooks` and
 `harness workflows` [install](concepts.md#install) into Julia packages, the workflow check of
-`harness ci-protection`, the wiki lint, the update job, and the Julia session of an agent through
+`harness ci-protection`, the update job, and the Julia session of an agent through
 Kaimon. Without them, a reader who writes no Julia loses these tools and nothing else: the
 instruction layer, the settings, the guard hooks, the leak checks and the warning about
 [drift](concepts.md#drift) work the same. Julia itself is
@@ -83,8 +83,10 @@ The sections follow the order of the tables.
 ### Python
 
 Python is the language of the `harness` command, the guard hooks and the hook probe. The
-command uses the standard library only. The tools that check the Python code come from the `dev`
-group of `uv.lock`, which only a [profile](concepts.md#profile) with `develop = true` installs.
+command uses the standard library and one package, PyYAML, with which `harness wiki-lint` reads
+the frontmatter of the prose repositories; `uv.lock` pins it. The tools that check the Python code
+come from the `dev` group of `uv.lock`, which only a [profile](concepts.md#profile) with
+`develop = true` installs.
 
 Every subcommand runs on the interpreter of the Python environment of the harness, which
 `bin/harness` makes with [uv](#uv). The pre-push hook runs `bin/harness test` once, which runs
@@ -236,8 +238,7 @@ Call sites: `scripts/run-tests.jl`, which the Julia tests in CI call through
 ### Julia
 
 Julia is the language of the research code in the tree. The harness's tools for Julia code are
-Julia scripts too: the test runner, the mutation tests, the formatter run, the workflow check and
-the wiki lint.
+Julia scripts too: the test runner, the mutation tests, the formatter run and the workflow check.
 
 `harness install` instantiates the Julia environment of the scripts. `harness format` and
 `harness ci-protection` run Julia scripts. The installed git hooks run Julia to check the format,
@@ -249,7 +250,7 @@ Julia does. Only Julia's own parser and loader give that result.
 
 Call sites: `harness install` (`lib/harness/install.py`), `harness format`
 (`lib/harness/fmt.py`) and `harness ci-protection` (`lib/harness/protection.py`); the installed
-git hooks (`githooks/pre-commit`, `githooks/pre-push`, `githooks/pre-commit-wiki`); the pre-push
+git hooks (`githooks/pre-commit`, `githooks/pre-push`); the pre-push
 hook (`.githooks/pre-push`), which skips it when it is missing, because the CI job `test` runs the
 Julia tests.
 
@@ -266,8 +267,8 @@ The scripts use them as follows. `explicit-imports.jl` uses ExplicitImports. `ga
 `mutate.jl` and `fatou-lsp.jl` use JSON for their reports and messages. `harness format`, the
 installed pre-commit hook and the format step of `gate.jl` use JuliaFormatter. `mutants.jl` uses JuliaSyntax to make the mutants,
 and `mutate.jl` uses it to read the names in a mutant. `run-tests.jl` and `mutate-worker.jl` use
-TestEnv to run a package's test files in its test environment. `verify-workflows.jl` and
-`wiki-lint.jl` use YAML to read the workflows and the frontmatter of the wiki pages.
+TestEnv to run a package's test files in its test environment. `verify-workflows.jl` uses YAML
+to read the workflows.
 
 The harness needs these packages because each does a task that Julia's standard library does not
 do. A copy of their code in the harness would be larger and less correct.
@@ -277,9 +278,8 @@ Call sites: ExplicitImports, `githooks/explicit-imports.jl`; JSON, `scripts/gate
 (`githooks/format-tree.jl`), the installed pre-commit hook (`githooks/pre-commit.jl`) and
 `scripts/gate.jl`; JuliaSyntax, `scripts/mutate.jl` and
 `scripts/mutants.jl`; TestEnv, `scripts/run-tests.jl` and `scripts/mutate-worker.jl`; YAML,
-`harness ci-protection` through `githooks/verify-workflows.jl`, and the installed wiki hook
-through `scripts/wiki-lint.jl`. `harness install` instantiates all six with
-`Project.toml`.
+`harness ci-protection` through `githooks/verify-workflows.jl`. `harness install` instantiates
+all six with `Project.toml`.
 
 ### fatou
 

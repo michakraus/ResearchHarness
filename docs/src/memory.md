@@ -63,7 +63,7 @@ text that a later change made false:
   no history. The rule [`instruction-files`](components/rules.md#instruction-files) requires it,
   and the audit script `tense-lint.jl` finds each word that dates a text. The history goes into
   `CHANGELOG.md`.
-- **The structure of the notes.** [`wiki-lint.jl`](components/scripts.md#wiki-lint-jl) checks the
+- **The structure of the notes.** [`harness wiki-lint`](harness-command.md#wiki-lint) checks the
   links, the paths and the line citations of the vaults, and the paths, the line citations and the
   schema of the task files, and
   [`pre-commit-wiki`](components/githooks.md#pre-commit-wiki) runs it before each commit there.
