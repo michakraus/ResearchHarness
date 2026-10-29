@@ -77,6 +77,12 @@ def finite(token: str) -> float:
     return value
 
 
+def overflows(number: str) -> bool:
+    """Whether a number token with a fraction or an exponent reads as infinity; an integer reads as
+    an `int`, which does not overflow."""
+    return any(c in number for c in ".eE") and math.isinf(float(number))
+
+
 def line_of(text: str, index: int) -> int:
     """The line of `text`, from 1, that holds the character at `index`."""
     return text.count("\n", 0, index) + 1
@@ -104,7 +110,7 @@ def located(text: str, error: OffenceError) -> int | None:
     expect_key = False
     for m in TOKEN.finditer(text):
         piece, kind = m.group(), m.lastgroup
-        if kind == "constant" or (kind == "number" and math.isinf(float(piece))):
+        if kind == "constant" or (kind == "number" and overflows(piece)):
             return m.start()
         if piece in ("{", "["):
             keys.append(set() if piece == "{" else None)
@@ -260,6 +266,9 @@ def value_cases(case: Case) -> None:
         f"NaN on line 7 after a key twice on line 1 -> {message}",
         ok=on_line_seven(message) and "NaN" in message,
     )
+    # Line 2 holds an integer of 400 digits, which `float` reads as infinity and JSON allows.
+    message = refusal('{\n  "i": ' + "1" * 400 + ",\n" + "\n" * 4 + '  "f": 1e400\n}\n')
+    case(f"1e400 on line 7 after an integer of 400 digits -> {message[:200]}", ok=on_line_seven(message))
     message = refusal(at_seven('"NaN Infinity 1e400 ' + "[" * (MAX_DEPTH + 1) + '"'))
     case(f"NaN, Infinity, 1e400 and 201 brackets inside a string -> {message}", ok=message == "accepted")
 
