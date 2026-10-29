@@ -54,11 +54,14 @@ PASS = Verdict("pass")
 
 def strongest(verdicts: Iterable[Verdict]) -> Verdict:
     """The first verdict whose decision ranks highest, so that its reason is the reason of the
-    check that gave the winning decision; `PASS` when there is none."""
+    check that gave the winning decision; `PASS` when there is none. It reads no verdict after the
+    first `deny`, which nothing outranks, so a lazy `verdicts` runs no check after it."""
     best = PASS
     for verdict in verdicts:
         if RANK[verdict.decision] > RANK[best.decision]:
             best = verdict
+        if best.decision == "deny":
+            break
     return best
 
 

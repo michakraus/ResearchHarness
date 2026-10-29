@@ -541,3 +541,86 @@
   `CalledProcessError`.
 - kind: missing test
 - found: 2026-10-27, the critic of the strict-Python part
+
+### K112 · The shell-write check passes a target whose text starts with a scratch root and then climbs out of it with `..`.
+
+- location: `hooks/guard/no_shell_file_write.py:301`
+- evidence: `tree_write` returns False when the raw target starts with a scratch prefix, before it
+  resolves `..`, so `echo x > /tmp/../<tree>/f.txt`, `echo x > $TMPDIR/../f.txt` and
+  `echo x > ~/Research/.scratch/../Harness/f.jl` pass. `hooks/no-shell-file-write.py` passes them
+  too.
+- kind: defect
+- found: 2026-10-29, the critics of the guard core
+
+### K113 · The shell-write check reads no `<>` redirection as a write.
+
+- location: `hooks/guard/no_shell_file_write.py:43`
+- evidence: `REDIRECT` matches `<>`, and `split` keeps a target only for an operator that does not
+  start with `<`, so `echo x <> f.txt` in a work tree passes. `hooks/no-shell-file-write.py`
+  passes it too.
+- kind: defect
+- found: 2026-10-29, the critics of the guard core
+
+### K114 · The shell-write check reads a command substitution inside a heredoc body as data.
+
+- location: `hooks/guard/no_shell_file_write.py:141`
+- evidence: `cut_heredocs` removes each body before the command is read, and the shell runs a
+  `$( … )` in an unquoted heredoc body, so `cat <<EOF` with the body line `$(echo x > f.txt)`
+  passes. `hooks/no-shell-file-write.py` passes it too.
+- kind: defect
+- found: 2026-10-29, the critics of the guard core
+
+### K115 · The staging check finds no `git add` behind a prefix word or inside a compound command, and misses some spellings of `.`.
+
+- location: `hooks/guard/no_blind_stage.py:41`
+- evidence: from a package work tree, `env git add -A`, `command git add -A`, `time git add -A`,
+  `X=1 git add -A`, `! git add -A`, `{ git add -A; }`, `if true; then git add -A; fi`,
+  `git add $'-A'`, `git add ./.` and `git add .//` pass the guard and
+  `hooks/no-blind-stage.py`. The corpus holds no `$'…'` record for the staging check.
+- kind: defect
+- found: 2026-10-29, the critics of the guard core
+
+### K116 · The rm check reads no recursive `rm` behind `sudo`, and none in `rm --r`.
+
+- location: `hooks/guard/rm_scope.py:187`
+- evidence: `decide` skips only assignments, `command`, `nohup` and `time` before the program,
+  and `rm_arguments` takes only `--recursive` of the long options, so `sudo rm -rf ~` and
+  `rm --r ~` pass the guard and `hooks/rm-scope.py`.
+- kind: defect
+- found: 2026-10-29, the critics of the guard core
+
+### K117 · The `gh api` and archive checks find no call behind `env` or an assignment.
+
+- location: `hooks/guard/gh_api_writes.py:204`
+- evidence: each part's first word must be the tool, so `env gh api -X DELETE x`,
+  `GH_HOST=x gh api -X DELETE x` and `env git archive -o x` pass the guard and the scripts
+  `hooks/gh-api-writes.py` and `hooks/git-archive-output.py`.
+- kind: defect
+- found: 2026-10-29, the critics of the guard core
+
+### K118 · The `gh api` check answers the first part that does not pass, so an `ask` before a `deny` is `ask`.
+
+- location: `hooks/guard/gh_api_writes.py:200`
+- evidence: `verdict_of` returns at the first part that asks, so
+  `gh api -X POST repos/example-org/X/issues && gh api -X DELETE repos/example-org/X` is `ask`, not
+  `deny`. `hooks/gh-api-writes.py` gives `ask` too.
+- kind: defect
+- found: 2026-10-29, the critics of the guard core
+
+### K119 · No check reads `Call.caller` or `Verdict.sandbox`, so no case shows either field.
+
+- location: `hooks/guard/contract.py:33`
+- evidence: `grep -rn '\.caller\|\.sandbox' hooks/guard/ hooks/probe.py` finds no line, so a
+  mutant of the table's `caller` survives every case. The contract holds both fields for the
+  frontends and the grammar of a sandbox lift that follow.
+- kind: missing test
+- found: 2026-10-29, the critics of the guard core
+
+### K120 · What Claude Code does with a `PreToolUse` hook that passes its `timeout` is not measured here.
+
+- location: `settings/settings.proposal.json:680`
+- evidence: the template gives each guard hook `"timeout": 5`. If Claude Code reads a timeout as
+  a non-blocking error, a guard that runs longer lets the call run. The probe holds the guard's
+  commands of 1 MiB to 5 s, but no probe of Claude Code itself shows the effect.
+- kind: not verified
+- found: 2026-10-29, the critics of the guard core

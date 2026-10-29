@@ -26,6 +26,7 @@ taken to persist after the `)`.
 """
 
 import ast
+import functools
 import os
 import re
 import shutil
@@ -33,6 +34,7 @@ import subprocess
 from pathlib import Path, PurePosixPath
 
 from .contract import PASS, Call, Verdict, needs_cwd
+from .paths import Place, place
 from .shell import SEGMENT, Tokens, lex
 
 # The redirection at the end of an operator run; what comes before it is a separator: `)>` closes
@@ -84,6 +86,8 @@ SCRATCH_PREFIXES = (
     HOME + "/Research/.scratch/",
     TMPDIR.rstrip("/") + "/",
 )
+# The absolute scratch roots, as names, for a path that the check has resolved.
+SCRATCH_ROOTS = tuple(PurePosixPath(prefix).parts for prefix in SCRATCH_PREFIXES if prefix.startswith("/"))
 
 # In-place editing is a flag on these, and the flag is what this check reads.
 INPLACE_TOOLS = frozenset({"sed", "gsed", "perl", "awk", "gawk"})
@@ -124,7 +128,7 @@ class Missing:
 
 
 MISSING = Missing()
-type Cwd = str | Missing | None  # None: a `cd` went to a directory that cannot be known
+type Cwd = Place | Missing | None  # None: a `cd` went to a directory that cannot be known
 
 
 class NeedsCwdError(Exception):
@@ -206,43 +210,93 @@ def expand(path: str, variables: dict[str, str | None]) -> str | None:
     return path
 
 
-def joined(cwd: str, path: str) -> str:
-    """`path` resolved against `cwd` and normalised, without following a link."""
-    return os.path.normpath(str(PurePosixPath(cwd) / path))
+def scratch(path: Place) -> bool:
+    """True when the path is a scratch root or lies below one."""
+    return any(path.starts(root) for root in SCRATCH_ROOTS)
 
 
-def in_work_tree(path: str) -> bool:
-    """True when a `.git` lies at or above the directory of the path."""
-    directory = PurePosixPath(path).parent
-    while True:
-        if Path(directory, ".git").exists():
-            return True
-        if directory.parent == directory:
-            return False
-        directory = directory.parent
+def work_tree(path: Place) -> str | None:
+    """The nearest directory at or above the directory of the path that holds a `.git`, or None.
+    Only a directory that exists can hold one."""
+    directory: Place | None = path.parent().existing()
+    while directory is not None:
+        if Path(directory.text(), ".git").exists():
+            return directory.text()
+        directory = directory.up
+    return None
 
 
-def ignored(path: str) -> bool:
+def ignored_alone(root: str, path: str) -> bool:
     """True when git ignores the path: a log under `runs/`, not a source file."""
-    directory = PurePosixPath(path).parent
-    while not Path(directory).is_dir():
-        directory = directory.parent
     git = shutil.which("git")
     if git is None:
         return False
     try:
         result = subprocess.run(
-            [git, "-C", str(directory), "check-ignore", "-q", path],
-            capture_output=True,
-            timeout=2,
-            check=False,
+            [git, "-C", root, "check-ignore", "-q", path], capture_output=True, timeout=2, check=False
         )
     except OSError, subprocess.TimeoutExpired:
         return False
     return result.returncode == 0
 
 
-def tree_write(target: str, cwd: Cwd, variables: dict[str, str | None]) -> bool:
+def ignored_together(root: str, paths: list[str]) -> dict[str, bool]:
+    """Whether git ignores each of `paths` in the work tree `root`, asked in one `git check-ignore`.
+    A path that the answer leaves open, after git stops on a path outside the work tree, or that
+    git cannot read from its input, is left out."""
+    asked: dict[str, bytes] = {}
+    for path in dict.fromkeys(paths):
+        try:
+            encoded = os.fsencode(path)
+        except UnicodeEncodeError:
+            continue
+        if b"\0" not in encoded:
+            asked[path] = encoded
+    git = shutil.which("git")
+    if git is None:
+        return dict.fromkeys(asked, False)
+    try:
+        result = subprocess.run(
+            [git, "-C", root, "check-ignore", "--stdin", "-z"],
+            input=b"".join(encoded + b"\0" for encoded in asked.values()),
+            capture_output=True,
+            timeout=3,
+            check=False,
+        )
+    except OSError, subprocess.TimeoutExpired:
+        return {}
+    found = set(result.stdout.split(b"\0"))
+    complete = result.returncode in (0, 1)
+    return {path: encoded in found for path, encoded in asked.items() if complete or encoded in found}
+
+
+class Ignores:
+    """The paths of a command that git ignores, asked once per work tree.
+
+    A first reading of the command collects each path that it asks about and takes it as ignored;
+    `ask` then runs one `git check-ignore` per work tree for all of them, and the second reading
+    finds each answer here, so a command that writes many files spawns git once per work tree. A
+    path that the answer leaves open is asked alone."""
+
+    def __init__(self) -> None:
+        self.collecting = True
+        self.pending: dict[str, list[str]] = {}
+        self.known: dict[str, bool] = {}
+
+    def ignored(self, root: str, path: str) -> bool:
+        if self.collecting:
+            self.pending.setdefault(root, []).append(path)
+            return True
+        found = self.known.get(path)
+        return ignored_alone(root, path) if found is None else found
+
+    def ask(self) -> None:
+        self.collecting = False
+        for root, paths in self.pending.items():
+            self.known.update(ignored_together(root, paths))
+
+
+def tree_write(target: str, cwd: Cwd, variables: dict[str, str | None], ignores: Ignores) -> bool:
     """True when writing the target writes a file inside a git working tree."""
     if not target or target.startswith(SCRATCH_PREFIXES):
         return False
@@ -254,13 +308,15 @@ def tree_write(target: str, cwd: Cwd, variables: dict[str, str | None]) -> bool:
             raise NeedsCwdError
         if cwd is None:
             return path.lower().endswith(SOURCE_SUFFIXES)
-        path = joined(cwd, path)
-    path = os.path.normpath(path)
-    if (path + "/").startswith(SCRATCH_PREFIXES):
+        found = cwd.go(path, "plain")
+    else:
+        found = place(path, "plain")
+    if scratch(found):
         return False
-    if in_work_tree(path):
-        return not ignored(path)
-    return path.lower().endswith(SOURCE_SUFFIXES)
+    root = work_tree(found)
+    if root is not None:
+        return not ignores.ignored(root, found.text())
+    return found.name.lower().endswith(SOURCE_SUFFIXES)
 
 
 def scratch_file(target: str, cwd: Cwd, variables: dict[str, str | None]) -> bool:
@@ -275,22 +331,28 @@ def scratch_file(target: str, cwd: Cwd, variables: dict[str, str | None]) -> boo
             raise NeedsCwdError
         if cwd is None:
             return False
-    return (joined(cwd if isinstance(cwd, str) else "/", path) + "/").startswith(SCRATCH_PREFIXES)
+    return scratch((cwd if isinstance(cwd, Place) else Place.anchor()).go(path, "plain"))
+
+
+@functools.cache
+def home() -> Place:
+    """The home directory, where a `cd` with no operand goes."""
+    return place(HOME, "plain")
 
 
 def change_directory(words: list[str], cwd: Cwd, variables: dict[str, str | None]) -> Cwd:
     """The directory after `cd`: None when it cannot be known, MISSING when it is relative to the
     call's missing working directory."""
     if len(words) == 1:
-        return HOME
+        return home()
     target = expand(words[1], variables)
     if target is None or target == "-":
         return None
     if PurePosixPath(target).is_absolute():
-        return os.path.normpath(target)
+        return place(target, "plain")
     if cwd is None or isinstance(cwd, Missing):
         return cwd
-    return joined(cwd, target)
+    return cwd.go(target, "plain")
 
 
 def inplace(tool: str, arguments: list[str]) -> str | None:
@@ -399,11 +461,13 @@ def python_writes(code: str) -> list[tuple[str, str]]:
     return found
 
 
-def offence(segment: Segment, bodies: list[str], cwd: Cwd, variables: dict[str, str | None]) -> str | None:
+def offence(
+    segment: Segment, bodies: list[str], cwd: Cwd, variables: dict[str, str | None], ignores: Ignores
+) -> str | None:
     """The text that makes this segment a shell file write, or None."""
     words, writes, docs = segment
     for target in writes:
-        if tree_write(target, cwd, variables):
+        if tree_write(target, cwd, variables, ignores):
             return "> " + target
     while words and ASSIGNMENT.match(words[0]):
         words = words[1:]
@@ -416,12 +480,12 @@ def offence(segment: Segment, bodies: list[str], cwd: Cwd, variables: dict[str, 
             return flag
     if head == "tee":
         for word in words[1:]:
-            if not word.startswith("-") and tree_write(word, cwd, variables):
+            if not word.startswith("-") and tree_write(word, cwd, variables, ignores):
                 return "tee " + word
     if PYTHON.match(head):
         code = python_code(words, [bodies[i] for i in docs])
         for path, detail in python_writes(code) if code else []:
-            if tree_write(path, cwd, {}):
+            if tree_write(path, cwd, {}, ignores):
                 return detail
     return None
 
@@ -449,24 +513,34 @@ def check(call: Call) -> Verdict:
         ">" in command or "tee" in command or "python" in command or any(t in command for t in INPLACE_TOOLS)
     ):
         return PASS
-    cwd: Cwd = MISSING if call.cwd is None else call.cwd
+    cwd: Cwd = MISSING if call.cwd is None else place(call.cwd, "plain")
     text, bodies = cut_heredocs(command)
-    placeholders = {PLACEHOLDER.format(i): i for i in range(len(bodies))}
-    # A variable set by a segment of its own persists; `$TMPDIR` is a scratch root.
-    variables: dict[str, str | None] = {"HOME": HOME, "TMPDIR": TMPDIR}
+    segments = segments_of(text, {PLACEHOLDER.format(i): i for i in range(len(bodies))})
+    ignores = Ignores()
     try:
-        for segment in segments_of(text, placeholders):
-            words = segment[0]
-            detail = offence(segment, bodies, cwd, variables)
-            if detail:
-                shown = " ".join(words + [">" + target for target in segment[1]])
-                return Verdict("deny", MESSAGE.format(segment=shown, detail=detail))
-            if words and words[0] == "cd":
-                cwd = change_directory(words, cwd, variables)
-            elif words and all(ASSIGNMENT.match(word) for word in words):
-                for word in words:
-                    key, value = word.split("=", 1)
-                    variables[key] = expand(value, variables)
+        verdict = scan(segments, bodies, cwd, ignores)
+        if ignores.pending:
+            ignores.ask()
+            verdict = scan(segments, bodies, cwd, ignores)
     except NeedsCwdError:
         return needs_cwd("shell-write", command)
+    return verdict
+
+
+def scan(segments: list[Segment], bodies: list[str], cwd: Cwd, ignores: Ignores) -> Verdict:
+    """The verdict on the segments of a command, read in order from the working directory `cwd`."""
+    # A variable set by a segment of its own persists; `$TMPDIR` is a scratch root.
+    variables: dict[str, str | None] = {"HOME": HOME, "TMPDIR": TMPDIR}
+    for segment in segments:
+        words = segment[0]
+        detail = offence(segment, bodies, cwd, variables, ignores)
+        if detail:
+            shown = " ".join(words + [">" + target for target in segment[1]])
+            return Verdict("deny", MESSAGE.format(segment=shown, detail=detail))
+        if words and words[0] == "cd":
+            cwd = change_directory(words, cwd, variables)
+        elif words and all(ASSIGNMENT.match(word) for word in words):
+            for word in words:
+                key, value = word.split("=", 1)
+                variables[key] = expand(value, variables)
     return PASS

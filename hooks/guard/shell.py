@@ -120,6 +120,23 @@ def readings(text: str) -> list[Tokens] | None:
     return found
 
 
+def parts(tokens: Tokens) -> list[list[str]]:
+    """The top-level parts of a command as word lists."""
+    result: list[list[str]] = []
+    current: list[str] = []
+    for kind, token in tokens:
+        if kind == "op":
+            bare = token.replace("(", "").replace(")", "")
+            if bare and set(bare) <= SEPARATORS and current:
+                result.append(current)
+                current = []
+            continue
+        current.append(token)
+    if current:
+        result.append(current)
+    return result
+
+
 def words(text: str) -> list[str] | None:
     """The words of `text`, its operators left out, or None when a quote is open."""
     tokens = lex(text)

@@ -412,9 +412,18 @@
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "echo x > f.txt"}, "cwd": "relative/dir"}, "decision": "deny"}
 {"tool": "ExitWorktree", "stdin": {"tool_name": "ExitWorktree", "tool_input": {"action": "keep", "discard_changes": false}}, "decision": "pass"}
 {"tool": "EnterWorktree", "stdin": {"tool_name": "EnterWorktree", "tool_input": {"path": 123, "name": "x"}}, "decision": "ask"}
-{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "cd /x && git status"}}, "decision": "deny", "differs": "The sandbox check denies a `cd` in a git command when the payload names no working directory, which decides whether Claude Code drops the `cd`; sandbox-semantics.py let a read through."}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "cd /x && git status"}}, "decision": "pass"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git init"}}, "decision": "deny", "differs": "The sandbox check denies a `git init` when the payload names no working directory, which decides whether it lands in a work tree; sandbox-semantics.py let it through."}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git commit -m 'rm x'"}}, "decision": "pass"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "cd sub && echo x > f.txt"}}, "decision": "deny"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "echo x > /dev/null"}}, "decision": "pass"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "rm -rf ~/Research/.scratch/pr3"}}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "cd sub && git status"}}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "cd @@WT@@ && git log"}}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git -C @@WT@@ merge --ff-only x"}}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "cd sub && git commit -m x"}}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "rm -rf a/b/c/../../.."}, "cwd": "@@SCRATCH@@/p"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "cd sub && rm -rf build"}}, "decision": "deny", "differs": "The rm check denies a recursive `rm` of a relative path after a relative `cd` when the payload names no working directory; rm-scope.py let it through."}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "cd $X && sed -i s/a/b/ f.txt"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "rm -rf @@SCRATCH@@/link-out"}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "rm -rf @@SCRATCH@@/link-out/"}, "cwd": "@@CWD@@"}, "decision": "deny"}

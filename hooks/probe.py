@@ -34,6 +34,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import types
 from collections.abc import Callable
 from dataclasses import replace
@@ -64,11 +65,12 @@ CLEAN = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
 ENV = {**CLEAN, "HOME": HOME}
 q = shlex.quote  # a fixture path spliced into a command, for a `$TMPDIR` with a space
 TIMEOUT = 30  # seconds per hook call; a timeout is a wrong case
+HOOK_TIMEOUT = 5  # seconds: the `timeout` of a guard hook in the settings template
 
 WORKTREE = HOOKS + "worktree.py"
 
 # The guard package, run as the settings template runs it, on the differential corpus that holds
-# the cases of the guard scripts it replaced for Claude Code. Each record is one JSON object per line:
+# the cases of the guard scripts whose checks it holds. Each record is one JSON object per line:
 # `stdin` (an object, sent as its JSON text, or a string, sent as it is) and `decision`, the guard's
 # expected decision; a placeholder `@@<NAME>@@` in a string stands for the fixture's value of NAME.
 GUARD = HOOKS + "guard"
@@ -2210,6 +2212,9 @@ def fixture():
                 capture_output=True,
             )
     os.symlink("/", LINK)
+    # A link in a scratch zone to a guarded directory: a recursive `rm` of the link removes the link,
+    # and of the link with a trailing `/` the directory.
+    os.symlink("/", SCRATCH + "/link-out")
 
 
 def drift(env, payload="{}"):
@@ -2560,10 +2565,10 @@ def cases(names):
     return 1 if wrong else 0
 
 
-def guard_run(data: bytes, frontend: str = "claude") -> tuple[str, str]:
+def guard_run(data: bytes, frontend: str = "claude", limit: float = TIMEOUT) -> tuple[str, str]:
     """The guard's decision on the payload bytes `data`, run as the settings template runs it but from
     the fixture's directory, and its stdout and stderr: `deny` for exit 2, the `permissionDecision` of
-    stdout for exit 0, `pass` for exit 0 with no output, `exit <n>` or `timeout` otherwise."""
+    stdout for exit 0, `pass` for exit 0 with no output, `exit <n>` or `timeout` after `limit` seconds."""
     try:
         proc = subprocess.run(
             [sys.executable, GUARD, "--from", frontend],
@@ -2571,7 +2576,7 @@ def guard_run(data: bytes, frontend: str = "claude") -> tuple[str, str]:
             capture_output=True,
             env=ENV,
             cwd=FIXTURE.name,
-            timeout=TIMEOUT,
+            timeout=limit,
             check=False,
         )
     except subprocess.TimeoutExpired:
@@ -2679,6 +2684,34 @@ def command_cases():
         got, output = guard_run(json.dumps(payload).encode("utf-8"))
         ok = got == expected and (expected == "pass" or "more than" in output)
         report(ok=ok, line=f"exp {expected} got {got}  [guard    ]  a command of {size} bytes")
+    # Commands of 1 MiB whose words each check walks: a chain of `cd`, through a link too, many
+    # operands of a recursive `rm`, four readings, loop words with no `do` or `done`, many writes that git
+    # ignores. Each is decided within the 5 s that the settings template gives the hook.
+    for cwd, unit, tail, expected in (
+        (CWD, "cd a; ", "echo x > /tmp/x", "pass"),
+        (CWD, "cd a && git status; ", "true", "pass"),
+        (CWD, "cd a; ", "git add -A; rm x", "deny"),
+        (CWD, "cd ../a; ", "rm -rf x", "deny"),
+        (SCRATCH, "cd a; rm -rf x; ", "true", "pass"),
+        (SCRATCH, "cd a; echo x > f.txt; ", "true", "pass"),
+        (CWD, "cd a; git status; ", "git init x", "deny"),
+        (CWD, f"cd {LINK}; cd ..; ", "rm -rf .", "deny"),
+        (CWD, "while git ", "x", "pass"),
+        (CWD, "for do ", "git status", "pass"),
+        (CWD, "echo x > __pycache__/a.log; ", "true", "pass"),
+        (WT, "rm -rf x ", "..", "deny"),
+        (WT, "rm -rf x ", ".. ';' \\\n", "deny"),
+    ):
+        count = (mib - len(tail)) // len(unit)
+        command = unit * count + " " * (mib - len(tail) - len(unit) * count) + tail
+        payload = {"tool_name": "Bash", "tool_input": {"command": command}, "cwd": cwd}
+        start = time.monotonic()
+        got, _ = guard_run(json.dumps(payload).encode("utf-8"), limit=HOOK_TIMEOUT)
+        took = time.monotonic() - start
+        report(
+            ok=got == expected,
+            line=f"exp {expected} got {got}  [guard    ]  {count} x {unit!r} then {tail!r}, 1 MiB: {took:.1f} s",
+        )
     got, output = guard_run(b'{"tool_name":"Bash","tool_input":{"command":"echo \xff"},"cwd":"/"}')
     report(
         ok=got == "deny" and "UTF-8" in output, line=f"exp deny got {got}  [guard    ]  a payload byte 0xFF"

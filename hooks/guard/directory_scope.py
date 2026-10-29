@@ -14,12 +14,11 @@ allow must not cover:
   * anything else: ask. A relative or missing path opens the folder picker.
 """
 
-import os
 from pathlib import Path, PurePosixPath
 
 from .contract import PASS, Call, Verdict
 
-ROOT = os.path.realpath(PurePosixPath(Path.home(), "Research"))
+ROOT = Path(Path.home(), "Research").resolve()
 HOME = str(Path.home())
 
 
@@ -29,8 +28,7 @@ def inside(path: str) -> bool:
         path = HOME + path[1:]
     if not PurePosixPath(path).is_absolute():
         return False
-    target = os.path.realpath(path)
-    return os.path.commonpath([ROOT, target]) == ROOT
+    return Path(path).resolve().is_relative_to(ROOT)
 
 
 def passes(call: Call) -> bool:

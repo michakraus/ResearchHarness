@@ -21,8 +21,8 @@ also catches a review post. The decision needs the method and the endpoint toget
 
 import re
 
-from .contract import PASS, RANK, Call, Verdict
-from .shell import SEPARATORS, Tokens, readings
+from .contract import PASS, Call, Verdict, strongest
+from .shell import Tokens, parts, readings
 
 # Flags of `gh api` that consume the token after them.
 TAKES_VALUE = frozenset(
@@ -85,23 +85,6 @@ DELETE_MESSAGE = """Refused: {tool} api DELETE {endpoint}
 A remote delete through `{tool} api` is refused. Give the user the command to run in their
 own terminal.
 """
-
-
-def parts(tokens: Tokens) -> list[list[str]]:
-    """The top-level parts of a command as word lists."""
-    result: list[list[str]] = []
-    current: list[str] = []
-    for kind, token in tokens:
-        if kind == "op":
-            bare = token.replace("(", "").replace(")", "")
-            if bare and set(bare) <= SEPARATORS and current:
-                result.append(current)
-                current = []
-            continue
-        current.append(token)
-    if current:
-        result.append(current)
-    return result
 
 
 def option(arguments: list[str], index: int) -> tuple[str | None, str, int]:
@@ -236,9 +219,4 @@ def check(call: Call) -> Verdict:
     command = call.command
     if "gh" not in command and "glab" not in command:
         return PASS
-    best = PASS
-    for tokens in readings(command) or []:
-        verdict = verdict_of(tokens)
-        if RANK[verdict.decision] > RANK[best.decision]:
-            best = verdict
-    return best
+    return strongest(verdict_of(tokens) for tokens in readings(command) or [])

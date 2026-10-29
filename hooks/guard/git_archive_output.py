@@ -9,7 +9,7 @@ global options (`git -C repo archive`), so no `permissions` glob can state it.
 """
 
 from .contract import PASS, Call, Verdict
-from .shell import SEPARATORS, Tokens, readings
+from .shell import parts, readings
 
 # Global options of `git` that consume the token after them.
 GLOBAL_VALUE = frozenset(
@@ -39,23 +39,6 @@ To read the tree of a commit, use a command that needs no guarded write:
 
 If the tar file itself is the result, give the user the command to run.
 """
-
-
-def parts(tokens: Tokens) -> list[list[str]]:
-    """The top-level parts of a command as word lists."""
-    result: list[list[str]] = []
-    current: list[str] = []
-    for kind, token in tokens:
-        if kind == "op":
-            bare = token.replace("(", "").replace(")", "")
-            if bare and set(bare) <= SEPARATORS and current:
-                result.append(current)
-                current = []
-            continue
-        current.append(token)
-    if current:
-        result.append(current)
-    return result
 
 
 def archive_arguments(words: list[str]) -> list[str] | None:

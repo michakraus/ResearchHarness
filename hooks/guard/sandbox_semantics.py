@@ -16,14 +16,16 @@ shapes that fail silently or misleadingly:
   * a `git init` or `git clone` whose working directory is inside an existing working tree.
 
 The `cd` to the working directory and the working tree of a `git init` or `git clone` need the
-call's working directory; when the call names none, such a command is denied.
+call's working directory. When the call names none, every `cd` stays a part of the command, and a
+`git init` or `git clone` is denied.
 """
 
 import os
 import re
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 
-from .contract import PASS, RANK, Call, Verdict, needs_cwd
+from .contract import PASS, Call, Verdict, needs_cwd, strongest
+from .paths import Place, place
 from .shell import SEGMENT, SEPARATORS, Tokens, readings, words
 
 # `$( … )` and `` ` … ` ``. Neither nests here: a substitution inside a substitution is read as
@@ -34,6 +36,8 @@ SUBSTITUTION = re.compile(r"\$\(([^()]*)\)|`([^`]*)`")
 LOOP_BODY = re.compile(r"\bdo\b(.*?)\bdone\b", re.DOTALL)
 LOOP_CONDITION = re.compile(r"\b(?:while|until)\b(.*?)\bdo\b", re.DOTALL)
 LOOP_HEAD = re.compile(r"\b(for|while|until)\b")
+DO = re.compile(r"\bdo\b")
+DONE = re.compile(r"\bdone\b")
 
 # The commands `sandbox.excludedCommands` lifts, and only when every part is one of them.
 EXCLUDED = frozenset({"git", "gh", "glab", "ps"})
@@ -262,19 +266,18 @@ def path_screened(heads: list[Head]) -> tuple[str, str] | None:
     return None
 
 
-def work_tree(path: str) -> str | None:
-    """The root of the working tree that holds `path`, or None."""
-    current = os.path.realpath(path)
-    while True:
-        if os.path.lexists(str(PurePosixPath(current, ".git"))):
-            return current
-        parent = str(PurePosixPath(current).parent)
-        if parent == current:
-            return None
-        current = parent
+def work_tree(path: Place) -> str | None:
+    """The root of the working tree that holds the resolved `path`, or None. Only a directory that
+    exists can hold a `.git`."""
+    current: Place | None = path.existing()
+    while current is not None:
+        if Path(current.text(), ".git").exists(follow_symlinks=False):
+            return current.text()
+        current = current.up
+    return None
 
 
-def in_work_tree(heads: list[Head], cwd: str | None) -> tuple[str, str, str] | None:
+def in_work_tree(heads: list[Head], cwd: Place | None) -> tuple[str, str, str] | None:
     """(command, root, directory) for a `git init` or `git clone` that lands in a work tree, or
     None. The target is the last argument that is not a flag, resolved against the working
     directory after each `cd` before it; without one it is that working directory. A clone's URL,
@@ -283,7 +286,7 @@ def in_work_tree(heads: list[Head], cwd: str | None) -> tuple[str, str, str] | N
     for head, arguments in heads:
         if head == "cd" and arguments:
             if cwd is not None:
-                cwd = str(PurePosixPath(cwd, expanded(arguments[0])))
+                cwd = cwd.go(expanded(arguments[0]), "real")
             continue
         if head != "git":
             continue
@@ -295,9 +298,9 @@ def in_work_tree(heads: list[Head], cwd: str | None) -> tuple[str, str, str] | N
         rest = arguments[arguments.index(sub) + 1 :]
         operands = [token for token in rest if not token.startswith("-")]
         target = expanded(operands[-1]) if operands else "."
-        root = work_tree(str(PurePosixPath(cwd, target)))
+        root = work_tree(cwd.go(target, "real"))
         if root:
-            return "git " + sub, root, cwd
+            return "git " + sub, root, cwd.text()
     return None
 
 
@@ -316,6 +319,11 @@ def offending(fragment: str) -> str | None:
     return None
 
 
+def last_end(word: re.Pattern[str], text: str) -> int:
+    """The index after the last match of `word` in `text`, or 0."""
+    return max((match.end() for match in word.finditer(text)), default=0)
+
+
 def nested(command: str) -> tuple[str, str] | None:
     """(command word, where) for the first nested call that will fail, or None."""
     for match in SUBSTITUTION.finditer(command):
@@ -324,11 +332,13 @@ def nested(command: str) -> tuple[str, str] | None:
         if found:
             return found, "a command substitution"
     if LOOP_HEAD.search(command):
-        for match in LOOP_BODY.finditer(command):
+        # Each search ends at the last word that can close a match, so that no lazy scan runs from
+        # every opening word to the end of a text with no closing word after it.
+        for match in LOOP_BODY.finditer(command, 0, last_end(DONE, command)):
             found = offending(match.group(1))
             if found:
                 return found, "a loop body"
-        for match in LOOP_CONDITION.finditer(command):
+        for match in LOOP_CONDITION.finditer(command, 0, last_end(DO, command)):
             found = offending(match.group(1).lstrip("! "))
             if found:
                 return found, "a loop condition"
@@ -357,16 +367,16 @@ def parts(tokens: Tokens) -> tuple[list[list[str]], bool]:
     return result, redirected
 
 
-def into_cwd(head: str | None, arguments: list[str], cwd: str | None) -> bool:
-    """True for a `cd` to the working directory, which Claude Code drops before matching."""
-    if head != "cd" or len(arguments) != 1:
+def into_cwd(head: str | None, arguments: list[str], cwd: Place | None) -> bool:
+    """True for a `cd` to the working directory, which Claude Code drops before matching. Without
+    a working directory no `cd` is known to go there, and each stays a part of the command; a part
+    only makes a command run sandboxed, so this reading denies whatever a working directory would."""
+    if head != "cd" or len(arguments) != 1 or cwd is None:
         return False
-    if cwd is None:
-        raise NeedsCwdError
-    return os.path.realpath(str(PurePosixPath(cwd, expanded(arguments[0])))) == os.path.realpath(cwd)
+    return cwd.go(expanded(arguments[0]), "real").same(cwd)
 
 
-def top_level(tokens: Tokens, cwd: str | None) -> tuple[list[Head], str | None]:
+def top_level(tokens: Tokens, cwd: Place | None) -> tuple[list[Head], str | None]:
     """The parts' (program, arguments), and why the command runs sandboxed or None."""
     split, redirected = parts(tokens)
     heads: list[Head] = [
@@ -406,7 +416,7 @@ def exposed(command: str, classified: tuple[list[Head], str | None] | None) -> t
     return None
 
 
-def decide(command: str, tokens: Tokens | None, cwd: str | None) -> Verdict:
+def decide(command: str, tokens: Tokens | None, cwd: Place | None) -> Verdict:
     """The verdict on one reading of the command; `tokens` None for a text that does not read."""
     if any(name in command for name in ("gh", "glab", "git")):
         found = nested(command)
@@ -436,12 +446,8 @@ def check(call: Call) -> Verdict:
     if not (any(name in command for name in ("gh", "glab", "git")) or "$?" in command):
         return PASS
     read = readings(command)
-    best = PASS
+    cwd = None if call.cwd is None else place(call.cwd, "real")
     try:
-        for tokens in read if read is not None else [None]:
-            verdict = decide(command, tokens, call.cwd)
-            if RANK[verdict.decision] > RANK[best.decision]:
-                best = verdict
+        return strongest(decide(command, tokens, cwd) for tokens in (read if read is not None else [None]))
     except NeedsCwdError:
         return needs_cwd("sandbox", command)
-    return best

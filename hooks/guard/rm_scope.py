@@ -18,18 +18,19 @@ A command that mentions `rm` or `merge` and cannot be read asks. An operand or a
 `git merge` that only the call's working directory resolves is denied when the call names none.
 """
 
-import os
+import functools
 import re
 from pathlib import Path, PurePosixPath
 
-from .contract import PASS, RANK, Call, Verdict, needs_cwd
+from .contract import PASS, Call, Verdict, needs_cwd, strongest
+from .paths import Place, place
 from .shell import Tokens, readings
 
-HOME = os.path.realpath(Path.home())
-ROOT = os.path.realpath(PurePosixPath(HOME, "Research"))
-WORKTREES = str(PurePosixPath(ROOT, ".worktrees"))
-SCRATCH = str(PurePosixPath(ROOT, ".scratch"))
-USERS = str(PurePosixPath(HOME).parent)
+HOME = str(Path.home().resolve())
+ROOT = Path(HOME, "Research").resolve()
+WORKTREES = ROOT.joinpath(".worktrees").parts
+SCRATCH = ROOT.joinpath(".scratch").parts
+USERS = PurePosixPath(HOME).parent.parts
 
 HEREDOC = re.compile(r"(?<!<)<<(-?)[ \t]*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\2")
 ASSIGNMENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
@@ -59,7 +60,7 @@ class Missing:
 
 
 MISSING = Missing()
-type Cwd = str | Missing | None  # None: a `cd` went to a directory that cannot be known
+type Cwd = Place | Missing | None  # None: a `cd` went to a directory that cannot be known
 
 
 class NeedsCwdError(Exception):
@@ -114,51 +115,73 @@ def expand(word: str) -> str | None:
     return word
 
 
-def resolve(word: str, cwd: Cwd) -> str | None:
-    """The absolute path an operand names, without following its last component.
+def normalised(path: PurePosixPath) -> tuple[int, list[str]]:
+    """(ups, downs): the names `..` that a relative `path` climbs, then the names it descends, after
+    each `..` dropped the name before it."""
+    ups, downs = 0, list[str]()
+    for name in path.parts[1 if path.is_absolute() else 0 :]:
+        if name != "..":
+            downs.append(name)
+        elif downs:
+            downs.pop()
+        else:
+            ups += 1
+    return ups, downs
 
-    A glob is replaced by the literal directory before it, plus one placeholder component for each
-    component from the glob on: every match lies at least that deep. None when the operand or the
-    working directory is unknown.
+
+def resolve(word: str, cwd: Cwd) -> Place | None:
+    """The absolute path an operand names, without following its last name.
+
+    A glob is replaced by the literal directory before it, plus one placeholder name for each name
+    from the glob on: every match lies at least that deep. None when the operand or the working
+    directory is unknown.
     """
     path = expand(word)
     if path is None:
         return None
-    if not PurePosixPath(path).is_absolute():
-        if isinstance(cwd, Missing):
-            raise NeedsCwdError
-        if cwd is None:
-            return None
-        path = cwd.rstrip("/") + "/" + path
-    parts = path.split("/")
-    for index, part in enumerate(parts):
-        if GLOB & set(part):
-            depth = len([p for p in parts[index:] if p])
-            base = os.path.realpath("/".join(parts[:index]) or "/")
-            return str(PurePosixPath(base, *(["*"] * depth)))
-    path = os.path.normpath(path)
-    head, tail = os.path.split(path)
-    if word.endswith("/") or tail in ("", ".", ".."):
-        return os.path.realpath(path)
-    return str(PurePosixPath(os.path.realpath(head), tail))
+    pure = PurePosixPath(path)
+    if pure.is_absolute():
+        base = Place.anchor()
+    elif isinstance(cwd, Missing):
+        raise NeedsCwdError
+    elif cwd is None:
+        return None
+    else:
+        base = cwd
+    names = path.split("/")
+    index = next((index for index, name in enumerate(names) if GLOB & set(name)), None)
+    if index is not None:
+        found = base.go(str(PurePosixPath(*names[:index])), "real")
+        for _ in range(len([name for name in names[index:] if name])):
+            found = found.joined("*")
+        return found
+    # The operand is normalised as text first, so a `..` drops the name before it, link or not.
+    ups, downs = normalised(pure)
+    found = base
+    for _ in range(ups):
+        found = found.parent()
+    if not downs:
+        return found
+    for name in downs[:-1]:
+        found = found.child(name, "real")
+    return found.child(downs[-1], "real") if word.endswith("/") else found.joined(downs[-1])
 
 
-def below(path: str, root: str) -> bool:
-    return path.startswith(root + "/")
+def below(path: Place, root: tuple[str, ...]) -> bool:
+    """True when the path lies strictly below `root`, a root other than `/`."""
+    return len(root) > 1 and path.below(root)
 
 
-def in_zone(path: str) -> bool:
+def in_zone(path: Place) -> bool:
     """True when the path lies strictly below a worktree, or strictly below `.scratch`."""
     if below(path, SCRATCH):
         return True
-    if below(path, WORKTREES):
-        return "/" in path[len(WORKTREES) + 1 :]
-    return False
+    return below(path, WORKTREES) and path.size > len(WORKTREES) + 1
 
 
-def guarded(path: str) -> bool:
+def guarded(path: Place) -> bool:
     """True when a recursive `rm` of the path is refused."""
-    return path in ("/", USERS) or below(path, USERS)
+    return path.size == 1 or (path.size == len(USERS) and path.starts(USERS)) or below(path, USERS)
 
 
 def rm_arguments(words: list[str]) -> tuple[bool, list[str]]:
@@ -229,19 +252,25 @@ def in_worktree(cwd: Cwd) -> bool:
     return cwd is not None and below(cwd, WORKTREES)
 
 
+@functools.cache
+def home() -> Place:
+    """The home directory, where a `cd` with no operand goes."""
+    return place(HOME, "real")
+
+
 def change_directory(words: list[str], cwd: Cwd) -> Cwd:
     """The working directory after `cd`: None when it cannot be known, MISSING when it is relative
     to the call's missing working directory."""
     if len(words) == 1:
-        return HOME
+        return home()
     target = expand(words[1])
     if target is None or target == "-":
         return None
     if PurePosixPath(target).is_absolute():
-        return os.path.realpath(target)
+        return place(target, "real")
     if cwd is None or isinstance(cwd, Missing):
         return cwd
-    return os.path.realpath(PurePosixPath(cwd, target))
+    return cwd.go(target, "real")
 
 
 def decide(tokens: Tokens, cwd: Cwd) -> Verdict:
@@ -263,13 +292,13 @@ def decide(tokens: Tokens, cwd: Cwd) -> Verdict:
                 path = resolve(operand, cwd)
                 if path is not None and not in_zone(path) and guarded(path):
                     return Verdict(
-                        "deny", MESSAGE.format(segment=" ".join(words), operand=operand, path=path)
+                        "deny", MESSAGE.format(segment=" ".join(words), operand=operand, path=path.text())
                     )
         elif head == "git":
             subcommand, arguments, elsewhere = git_subcommand(words)
             if subcommand not in ("rm", "merge"):
                 continue
-            local = in_worktree(cwd) and not elsewhere
+            local = not elsewhere and in_worktree(cwd)
             if subcommand == "rm" and (not local or git_rm_forced(arguments)):
                 return Verdict(
                     "ask", "`git rm` outside a worktree, with --force, or aimed at another repository."
@@ -287,13 +316,8 @@ def check(call: Call) -> Verdict:
     read = readings(cut_heredocs(command))
     if read is None:
         return Verdict("ask", UNREADABLE)
-    cwd: Cwd = MISSING if call.cwd is None else os.path.realpath(call.cwd)
-    best = PASS
+    cwd: Cwd = MISSING if call.cwd is None else place(call.cwd, "real")
     try:
-        for tokens in read:
-            verdict = decide(tokens, cwd)
-            if RANK[verdict.decision] > RANK[best.decision]:
-                best = verdict
+        return strongest(decide(tokens, cwd) for tokens in read)
     except NeedsCwdError:
         return needs_cwd("rm", command)
-    return best
