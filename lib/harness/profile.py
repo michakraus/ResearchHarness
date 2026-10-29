@@ -301,9 +301,9 @@ def expand_home(
 
 
 def values(profile: Profile) -> dict[str, str | list[str]]:
-    """The values of `profile` by name, as a template and `harness get` read them: each field but
-    `develop`, a tuple as a list, and no optional string that the profile leaves unset, so that a
-    placeholder of one is an error, as for a key that the profile lacks."""
+    """The values of `profile` by name, as a template reads them, and `harness get` for each key but
+    `develop`: each field but `develop`, a tuple as a list, and no optional string that the profile
+    leaves unset, so that a placeholder of one is an error, as for a key that the profile lacks."""
     out: dict[str, str | list[str]] = {
         "home": profile.home,
         "harness": profile.harness,
