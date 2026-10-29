@@ -10,8 +10,8 @@ A text whose quotes do not balance is split on the separators first, and each pi
 checked.
 """
 
-from ..contract import PASS, Call, Verdict
-from ..shell import SEGMENT, Tokens, readings, words
+from .contract import PASS, Call, Verdict
+from .shell import SEGMENT, Tokens, readings, words
 
 # `git` global options that consume the token after them. Anything else starting with `-` before
 # the subcommand is a flag that stands alone.

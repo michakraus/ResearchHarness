@@ -53,10 +53,6 @@ ignore = ["S603", "TRY003"]
 "adapters/*/adapter.py" = ["B023", "PLR2004"]
 "hooks/probe.py" = ["B023", "PLR2004"]
 "examples/dotfiles/tests/*.py" = ["B023", "PLR2004"]
-# The guard package imports its own modules by relative imports only, from parent packages too
-# (TID252): it runs from any directory as `<python> <path>/guard`, and `harness test` refuses an
-# absolute import of a module outside the standard library below hooks/.
-"hooks/guard/**/*.py" = ["TID252"]
 
 # Generated: the codes of each file's findings that the profile met in code that it did not fix,
 # from `ruff check --output-format json` with this table removed. ruff applies these beside the

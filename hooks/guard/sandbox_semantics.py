@@ -23,8 +23,8 @@ import os
 import re
 from pathlib import Path, PurePosixPath
 
-from ..contract import PASS, RANK, Call, Verdict, needs_cwd
-from ..shell import SEGMENT, SEPARATORS, Tokens, readings, words
+from .contract import PASS, RANK, Call, Verdict, needs_cwd
+from .shell import SEGMENT, SEPARATORS, Tokens, readings, words
 
 # `$( … )` and `` ` … ` ``. Neither nests here: a substitution inside a substitution is read as
 # the outer one, which is enough to find the command word.

@@ -21,8 +21,8 @@ also catches a review post. The decision needs the method and the endpoint toget
 
 import re
 
-from ..contract import PASS, RANK, Call, Verdict
-from ..shell import SEPARATORS, Tokens, readings
+from .contract import PASS, RANK, Call, Verdict
+from .shell import SEPARATORS, Tokens, readings
 
 # Flags of `gh api` that consume the token after them.
 TAKES_VALUE = frozenset(

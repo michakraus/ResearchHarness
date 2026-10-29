@@ -8,8 +8,8 @@ with its value attached (`-oout.tar`), as any unique prefix of `--output` (`--ou
 global options (`git -C repo archive`), so no `permissions` glob can state it.
 """
 
-from ..contract import PASS, Call, Verdict
-from ..shell import SEPARATORS, Tokens, readings
+from .contract import PASS, Call, Verdict
+from .shell import SEPARATORS, Tokens, readings
 
 # Global options of `git` that consume the token after them.
 GLOBAL_VALUE = frozenset(

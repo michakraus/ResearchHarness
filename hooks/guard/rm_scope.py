@@ -22,8 +22,8 @@ import os
 import re
 from pathlib import Path, PurePosixPath
 
-from ..contract import PASS, RANK, Call, Verdict, needs_cwd
-from ..shell import Tokens, readings
+from .contract import PASS, RANK, Call, Verdict, needs_cwd
+from .shell import Tokens, readings
 
 HOME = os.path.realpath(Path.home())
 ROOT = os.path.realpath(PurePosixPath(HOME, "Research"))

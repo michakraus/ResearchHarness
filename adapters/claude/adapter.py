@@ -1959,8 +1959,8 @@ def layer_cases(check, tmp):
             and not any(c.startswith("python3") for c in rendered)
         ),
         f"each hook command of the template that runs a .py hook renders as the environment's interpreter and the "
-        f"hook's path, as does the guard package, each one shell word under a home with a space, and every other "
-        f"command keeps its words: {rendered}",
+        f"hook's path, as does the guard package, each one shell word under a home with a space, and every "
+        f"other command keeps its words: {rendered}",
     )
 
     # The guard runs on the Bash, directory and Kaimon matchers, with `|| exit 2` as the shell's operator,

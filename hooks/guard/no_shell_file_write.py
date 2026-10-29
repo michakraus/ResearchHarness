@@ -32,8 +32,8 @@ import shutil
 import subprocess
 from pathlib import Path, PurePosixPath
 
-from ..contract import PASS, Call, Verdict, needs_cwd
-from ..shell import SEGMENT, Tokens, lex
+from .contract import PASS, Call, Verdict, needs_cwd
+from .shell import SEGMENT, Tokens, lex
 
 # The redirection at the end of an operator run; what comes before it is a separator: `)>` closes
 # a subshell and redirects it. `<` forms read, and are kept only to find the heredoc placeholder

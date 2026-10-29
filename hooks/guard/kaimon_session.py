@@ -8,7 +8,7 @@ in place of `ses` is refused too. `check_eval` takes only `eval_id`, which names
 table names it for this check.
 """
 
-from ..contract import PASS, Call, Verdict
+from .contract import PASS, Call, Verdict
 
 # The session parameter of each tool, by its neutral name.
 KEYS = {"kaimon.ex": "ses", "kaimon.manage_repl": "session"}

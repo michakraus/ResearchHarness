@@ -17,7 +17,7 @@ allow must not cover:
 import os
 from pathlib import Path, PurePosixPath
 
-from ..contract import PASS, Call, Verdict
+from .contract import PASS, Call, Verdict
 
 ROOT = os.path.realpath(PurePosixPath(Path.home(), "Research"))
 HOME = str(Path.home())
