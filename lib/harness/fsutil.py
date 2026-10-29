@@ -4,9 +4,9 @@
 `chmod`, and leaves an existing file's mode as it was. `write_private` creates a temporary name
 beside the file with `os.open`, `O_CREAT | O_EXCL` and the mode, sets that exact mode on the empty
 file, writes the bytes, and moves the file into place with `Path.replace`, which is `os.replace`.
-So no file that holds the bytes has a mode with more bits than the mode at any moment, whatever
-the umask, an existing file ends with the mode, and a symlink at the path is replaced, not written
-through.
+Any failure removes the temporary name. So no file that holds the bytes has a mode with more bits
+than the mode at any moment, whatever the umask, an existing file ends with the mode, and a symlink
+at the path is replaced, not written through.
 """
 
 import contextlib
@@ -15,7 +15,7 @@ import pathlib
 import secrets
 import stat
 import tempfile
-from typing import Protocol
+from typing import Protocol, cast
 from unittest import mock
 
 from . import HarnessError
@@ -27,11 +27,14 @@ def write_private(path: FilePath, data: bytes, mode: int = 0o600) -> None:
     """Write `data` to the file at `path` with the permission bits `mode`. A failure removes the
     temporary name and raises HarnessError with the path."""
     target = pathlib.Path(path)
-    temporary = target.with_name(f".{target.name}.{secrets.token_hex(8)}.tmp")
+    # 40 characters of the name are at most 160 bytes, so the temporary name fits where the name does.
+    temporary = target.with_name(f".{target.name[:40]}.{secrets.token_hex(8)}.tmp")
     try:
         fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_CLOEXEC, mode)
     except OSError as e:
         raise HarnessError(f"cannot write {target}: {e.strerror}") from None
+    except ValueError as e:  # a NUL character in the path
+        raise HarnessError(f"cannot write {target}: {e}") from None
     try:
         with os.fdopen(fd, "wb") as f:
             # The umask narrows the mode of os.open; fchmod sets it whole, before any byte is in.
@@ -41,15 +44,26 @@ def write_private(path: FilePath, data: bytes, mode: int = 0o600) -> None:
             os.fsync(f.fileno())
         temporary.replace(target)
     except OSError as e:
+        raise HarnessError(f"cannot write {target}: {e.strerror}") from None
+    finally:
+        # After the replace the temporary name is gone; after any failure it goes here.
         with contextlib.suppress(FileNotFoundError):
             temporary.unlink()
-        raise HarnessError(f"cannot write {target}: {e.strerror}") from None
 
 
 class Case(Protocol):
     """The recorder of one case: its label and its verdict."""
 
     def __call__(self, label: str, *, ok: bool) -> None: ...
+
+
+def written(path: pathlib.Path, data: bytes) -> str:
+    """`written`, or the message of the HarnessError that `write_private(path, data)` raises."""
+    try:
+        write_private(path, data)
+    except HarnessError as e:
+        return str(e)
+    return "written"
 
 
 def mode_of(p: pathlib.Path) -> int:
@@ -78,10 +92,11 @@ def mode_cases(case: Case, root: pathlib.Path) -> None:
         chmods.append((stat.S_IMODE(st.st_mode), st.st_size))
         real_fchmod(fd, mode)
 
-    def watched_chmod(file: FilePath, mode: int) -> None:
-        st = pathlib.Path(file).stat()
+    # Path.chmod calls os.chmod with follow_symlinks.
+    def watched_chmod(file: FilePath, mode: int, *, follow_symlinks: bool = True) -> None:
+        st = pathlib.Path(file).stat(follow_symlinks=follow_symlinks)
         chmods.append((stat.S_IMODE(st.st_mode), st.st_size))
-        real_chmod(file, mode)
+        real_chmod(file, mode, follow_symlinks=follow_symlinks)
 
     existing = root / "existing"
     existing.write_bytes(b"old\n")
@@ -152,20 +167,36 @@ def path_cases(case: Case, root: pathlib.Path) -> None:
         and link.read_bytes() == b"secret 4\n"
         and target.read_bytes() == b"target\n",
     )
+    for name in ("n" * 255, "é" * 127):
+        path = root / name
+        message = written(path, b"long\n")
+        case(
+            f"a name of {len(os.fsencode(name))} bytes is written -> {message[-60:]}",
+            ok=message == "written" and path.read_bytes() == b"long\n",
+        )
+        path.unlink(missing_ok=True)
+    before = sorted(p.name for p in root.iterdir())
+    try:
+        write_private(root / "text", cast("bytes", "not bytes"))
+        message = "written"
+    except TypeError as e:
+        message = f"TypeError: {e}"
+    after = sorted(p.name for p in root.iterdir())
+    case(
+        f"a failure that is no OSError raises it and leaves no file -> {message}, {after}",
+        ok=message.startswith("TypeError") and after == before,
+    )
     (root / "directory").mkdir()
     for label, path in (
         ("a path in a missing directory", root / "missing" / "f"),
         ("a path that is a directory", root / "directory"),
+        ("a path with a NUL character", root / "a\0b"),
     ):
         before = sorted(p.name for p in root.iterdir())
-        try:
-            write_private(path, b"secret 5\n")
-            message = "written"
-        except HarnessError as e:
-            message = str(e)
+        message = written(path, b"secret 5\n")
         after = sorted(p.name for p in root.iterdir())
         case(
-            f"{label} raises HarnessError with the path and leaves no file -> {message}, {after}",
+            f"{label} raises HarnessError with the path and leaves no file -> {message!r}, {after}",
             ok=str(path) in message and after == before,
         )
 

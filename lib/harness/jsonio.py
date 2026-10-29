@@ -12,13 +12,14 @@ The module imports only the standard library and `HarnessError` of its package, 
 any package that defines a `HarnessError`.
 """
 
-import inspect
 import json
 import math
 import os
 import pathlib
 import re
+import stat
 import tempfile
+import time
 from typing import NoReturn, Protocol, cast
 
 from . import HarnessError
@@ -29,12 +30,15 @@ MAX_DEPTH = 200
 BOM = chr(0xFEFF)
 # JSON's whitespace; a text of these alone is empty.
 WHITESPACE = " \t\r\n"
-# A string or a bracket: the depth scan counts the brackets outside the strings.
-BRACKET = re.compile(r'"(?:[^"\\]|\\.)*"|[\[\]{}]', re.DOTALL)
+# A string up to its closing quote, in a form that matches in one pass without backtracking.
+STRING = r'"[^"\\]*(?:\\.[^"\\]*)*"'
+# A string, the rest of a string that no quote closes, or a bracket: the depth scan counts the
+# brackets outside the strings, in time linear in the text.
+BRACKET = re.compile(STRING + r"?|[\[\]{}]", re.DOTALL)
 # The tokens that locate a refused value: a string, a number, a constant and the punctuation. The
 # letters of `true`, `false` and `null` match nothing and are skipped.
 TOKEN = re.compile(
-    r'(?P<string>"(?:[^"\\]|\\.)*")'
+    rf"(?P<string>{STRING})"
     r"|(?P<number>-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?)"
     r"|(?P<constant>-?Infinity|NaN)"
     r"|(?P<punctuation>[{}\[\]:,])",
@@ -101,12 +105,13 @@ def too_deep(text: str) -> int | None:
     return None
 
 
-def located(text: str, error: OffenceError) -> int | None:
-    """The index of the offence of `error` in `text`, or None. The parser reads the text in order
-    and raises at its first constant or overflow, so the first of these in the text is the one. It
-    meets a key twice only where the object ends, after any constant inside it, so a key twice
-    counts only for an `error` of that kind. The tokens up to the offence are valid JSON."""
+def located(text: str) -> int:
+    """The index in `text` of the offence that the parser meets first. The parser reads the text in
+    order: it raises at a constant or an overflow where it reads one, and at a key twice where the
+    object that holds the key ends, naming the first key of that object that repeats. The tokens up
+    to the offence are valid JSON."""
     keys: list[set[str] | None] = []  # per open bracket: the keys of an object, None for an array
+    repeats: list[int] = []  # per open bracket: the index of its first key that repeats, or -1
     expect_key = False
     for m in TOKEN.finditer(text):
         piece, kind = m.group(), m.lastgroup
@@ -114,20 +119,22 @@ def located(text: str, error: OffenceError) -> int | None:
             return m.start()
         if piece in ("{", "["):
             keys.append(set() if piece == "{" else None)
+            repeats.append(-1)
             expect_key = piece == "{"
         elif piece in ("}", "]"):
-            if keys:
-                keys.pop()
+            keys.pop()
+            if (repeat := repeats.pop()) >= 0:
+                return repeat
             expect_key = False
         elif piece in (",", ":"):
-            expect_key = piece == "," and bool(keys) and keys[-1] is not None
-        elif kind == "string" and expect_key and keys and (seen := keys[-1]) is not None:
+            expect_key = piece == ","
+        elif kind == "string" and expect_key and (seen := keys[-1]) is not None:
             key: str = DECODER.raw_decode(piece)[0]
-            if key in seen and error.kind == "duplicate":
-                return m.start()
+            if key in seen and repeats[-1] < 0:
+                repeats[-1] = m.start()
             seen.add(key)
             expect_key = False
-    return None
+    raise AssertionError(f"no offence in {len(text)} characters that the parser refused")
 
 
 def kind_of(value: object) -> str:
@@ -160,9 +167,7 @@ def loads(text: str, *, where: str) -> dict[str, JsonValue]:
             "constant": f"{e.token} is not a JSON number",
             "overflow": f"the number {e.token} overflows to infinity",
         }[e.kind]
-        index = located(text, e)
-        at = "" if index is None else f"line {line_of(text, index)}: "
-        raise HarnessError(f"{where}: {at}{what}") from None
+        raise HarnessError(f"{where}: line {line_of(text, located(text))}: {what}") from None
     except json.JSONDecodeError as e:
         raise HarnessError(f"{where}: line {e.lineno}: not JSON: {e.msg}") from None
     except ValueError as e:  # an integer of more digits than `int` reads
@@ -176,9 +181,15 @@ def load(path: str | os.PathLike[str]) -> dict[str, JsonValue]:
     """The JSON object of the UTF-8 file at `path`; a refusal names the path."""
     p = pathlib.Path(path)
     try:
-        data = p.read_bytes()
+        # A read of a FIFO or a device can block, so only a regular file is read.
+        regular = stat.S_ISREG(p.stat().st_mode)
+        data = p.read_bytes() if regular else b""
     except OSError as e:
         raise HarnessError(f"cannot read {p}: {e.strerror}") from None
+    except ValueError as e:  # a NUL character in the path
+        raise HarnessError(f"cannot read {p}: {e}") from None
+    if not regular:
+        raise HarnessError(f"cannot read {p}: not a regular file")
     try:
         text = data.decode("utf-8")
     except UnicodeDecodeError as e:
@@ -188,6 +199,8 @@ def load(path: str | os.PathLike[str]) -> dict[str, JsonValue]:
 
 # The cases. Every fixture of a refusal puts its offence on line 7, and no other 7 is in it.
 WHERE = "the-where-text"
+# The seconds that a refusal of a text of 400 KB takes at most; a linear scan takes milliseconds.
+SLOW = 10
 # Line 3 holds a finite number, so an overflow is told from the first number of the text.
 HEAD = '{\n  "a": true,\n  "b": 1.5,\n  "c": true,\n  "o": {\n    "x": true,\n'  # lines 1-6
 TAIL = "\n  }\n}\n"
@@ -232,10 +245,11 @@ class Case(Protocol):
 
 def value_cases(case: Case) -> None:
     """The signature of `loads`, a value, CRLF line ends, and the refusals that name a line."""
-    params = inspect.signature(loads).parameters
+    code = loads.__code__
+    params = code.co_varnames[: code.co_argcount + code.co_kwonlyargcount]
     case(
-        f"loads(text, *, where): {list(params)}",
-        ok=list(params) == ["text", "where"] and params["where"].kind is inspect.Parameter.KEYWORD_ONLY,
+        f"loads(text, *, where): {params}, {code.co_kwonlyargcount} keyword-only",
+        ok=params == ("text", "where") and code.co_kwonlyargcount == 1,
     )
     value: dict[str, JsonValue] = {"a": [1, 2.5, "x", True, None], "b": {"c": "é"}, "d": 0.0}
     text = '{"a": [1, 2.5, "x", true, null], "b": {"c": "é"}, "d": 1e-400}'
@@ -257,6 +271,20 @@ def value_cases(case: Case) -> None:
         f"a key of a closed inner object and the outer one; the key twice is named -> {message}",
         ok=on_line_seven(message) and '"z"' in message,
     )
+    # The parser names the first key of an object that repeats: "q" on line 7, not "r" on line 9.
+    message = refusal('{\n  "q": 1,\n' + "\n" * 4 + '  "q": 2,\n  "r": 1,\n  "r": 2\n}\n')
+    case(f"two keys twice in one object, the first on line 7 -> {message}", ok=on_line_seven(message))
+    # The parser meets the key twice of the inner object first, where that object ends.
+    for outer, inner in (("k", "x"), ("k", "k")):
+        text = (
+            f'{{\n  "{outer}": 1,\n  "{outer}": 2,\n  "o": {{\n    "a": 1,\n    "{inner}": 1,\n'
+            f'    "{inner}": 2\n  }}\n}}\n'
+        )
+        message = refusal(text)
+        case(
+            f"a key twice on lines 2-3 and {inner!r} twice on lines 6-7 of an inner object -> {message}",
+            ok=on_line_seven(message) and f'"{inner}"' in message,
+        )
     for token in ("NaN", "Infinity", "-Infinity", "1e400", "-1e400"):
         message = refusal(at_seven(token))
         case(f"{token} on line 7 -> {message}", ok=on_line_seven(message))
@@ -298,6 +326,15 @@ def text_cases(case: Case) -> None:
     case(f"a syntax error on line 7 -> {message}", ok=on_line_seven(message))
     message = refusal('{"a": ' + "1" * 5000 + "}")
     case(f"an integer of 5000 digits is refused, not a ValueError -> {message[:200]}", ok=WHERE in message)
+    # A scan that tries each quote of an unclosed string as a string's start takes minutes here.
+    start = time.perf_counter()
+    message = refusal('{"a": "' + '\\"' * 200000)
+    seconds = time.perf_counter() - start
+    case(
+        f"a string of 200000 escaped quotes that no quote closes is refused in {seconds:.2f} s -> "
+        f"{message[:200]}",
+        ok=WHERE in message and seconds < SLOW,
+    )
 
 
 def file_cases(case: Case, root: pathlib.Path) -> None:
@@ -321,6 +358,15 @@ def file_cases(case: Case, root: pathlib.Path) -> None:
     missing = root / "missing.json"
     message = load_refusal(missing)
     case(f"load: a missing file names the path -> {message}", ok=str(missing) in message)
+    message = load_refusal(root / "a\0b.json")
+    case(f"load: a path with a NUL character is refused -> {message!r}", ok="a\0b.json" in message)
+    fifo = root / "fifo.json"
+    os.mkfifo(fifo)
+    message = load_refusal(fifo)
+    case(
+        f"load: a FIFO is refused, not read -> {message}",
+        ok=str(fifo) in message and "not a regular file" in message,
+    )
 
 
 def selftest() -> tuple[int, int]:
