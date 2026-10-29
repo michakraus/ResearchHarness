@@ -65,7 +65,12 @@ CLEAN = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
 ENV = {**CLEAN, "HOME": HOME}
 q = shlex.quote  # a fixture path spliced into a command, for a `$TMPDIR` with a space
 TIMEOUT = 30  # seconds per hook call; a timeout is a wrong case
-HOOK_TIMEOUT = 5  # seconds: the `timeout` of a guard hook in the settings template
+MIB = 1024 * 1024  # bytes: the largest command that the guard decides by its checks
+MIB_LIMIT = 10  # seconds: the bound within which the guard decides a command of 1 MiB
+# stat and lstat calls of a payload beside those of the names of its `cd` word: the walk of its
+# working directory, the roots of the checks, the `.git` above a write. 57 on macOS with the fixture
+# below `/tmp/<one name>/`; the margin holds a fixture below a deeper `$TMPDIR`.
+WALK_READS = 200
 
 WORKTREE = HOOKS + "worktree.py"
 
@@ -75,6 +80,11 @@ WORKTREE = HOOKS + "worktree.py"
 # expected decision; a placeholder `@@<NAME>@@` in a string stands for the fixture's value of NAME.
 GUARD = HOOKS + "guard"
 SCRATCH = R + "/.scratch"
+# A work tree of the fixture in a worktree zone, whose `.gitignore` ignores `*.log`, with the
+# directories `a` and `d1/…/d40`: the working directory of the commands of 1 MiB that walk `cd`
+# words and write files that git ignores.
+LOGS = str(pathlib.PurePosixPath(R, ".worktrees", "Logs"))
+DEEP = str(pathlib.PurePosixPath(LOGS, *(f"d{i}" for i in range(1, 41))))
 
 # `worktree.py` is not a `PreToolUse` hook: it fails closed, so every case here expects 1.
 # Creation needs an unsandboxed git and is probed by `EnterWorktree`, not here.
@@ -2211,6 +2221,11 @@ def fixture():
                 check=True,
                 capture_output=True,
             )
+    pathlib.Path(DEEP).mkdir(parents=True)
+    pathlib.Path(LOGS, "a").mkdir()
+    pathlib.Path(LOGS, ".gitignore").write_text("*.log\n", encoding="utf-8")
+    git = shutil.which("git") or "git"
+    subprocess.run([git, "init", "-q", LOGS], env=git_env, check=True, capture_output=True)
     os.symlink("/", LINK)
     # A link in a scratch zone to a guarded directory: a recursive `rm` of the link removes the link,
     # and of the link with a trailing `/` the directory.
@@ -2595,6 +2610,73 @@ def guard_run(data: bytes, frontend: str = "claude", limit: float = TIMEOUT) -> 
         return "unreadable output", output
 
 
+# Runs the guard `sys.argv[1]` as the settings template runs it, with each `os.stat` and `os.lstat`
+# call and each spawn of `git` counted, and writes the counts as the last line of stderr after the
+# guard exits: `counts <stat and lstat calls> <git spawns>`.
+COUNTED = """
+import os, runpy, subprocess, sys
+counts = [0, 0]
+def counted(call):
+    def wrapped(*args, **kwargs):
+        counts[0] += 1
+        return call(*args, **kwargs)
+    return wrapped
+os.stat, os.lstat = counted(os.stat), counted(os.lstat)
+class Popen(subprocess.Popen):
+    def __init__(self, args, *rest, **kwargs):
+        counts[1] += os.path.basename(str(args[0])) == "git"
+        super().__init__(args, *rest, **kwargs)
+subprocess.Popen = Popen
+sys.argv = [sys.argv[1], "--from", "claude"]
+code = 0
+try:
+    runpy.run_path(sys.argv[0], run_name="__main__")
+except SystemExit as e:
+    code = e.code
+sys.stderr.write(f"\\ncounts {counts[0]} {counts[1]}\\n")
+sys.exit(code)
+"""
+
+
+def guard_counted(data: bytes) -> tuple[str, int, int]:
+    """The guard's decision on the payload bytes `data`, `deny`, `pass`, `exit <n>` or `timeout`, and
+    its count of `os.stat` and `os.lstat` calls and of `git` spawns; -1 for a count it did not print."""
+    try:
+        proc = subprocess.run(
+            [sys.executable, "-c", COUNTED, GUARD],
+            input=data,
+            capture_output=True,
+            env=ENV,
+            cwd=FIXTURE.name,
+            timeout=TIMEOUT,
+            check=False,
+        )
+    except subprocess.TimeoutExpired:
+        return "timeout", -1, -1
+    counts = re.search(rb"\ncounts (\d+) (\d+)\n$", proc.stderr)
+    stats, spawns = (int(counts.group(1)), int(counts.group(2))) if counts else (-1, -1)
+    if proc.returncode == 2:
+        return "deny", stats, spawns
+    if proc.returncode != 0 or proc.stdout.strip():
+        return f"exit {proc.returncode} {proc.stdout[:80]!r}", stats, spawns
+    return "pass", stats, spawns
+
+
+def mib_command(unit: str, tail: str, lead: str = "") -> tuple[str, str]:
+    """A command of exactly 1 MiB, `lead`, then `unit` as often as it fits, each `{}` in it filled with
+    0, 1, 2, …, then spaces and `tail`; and its shape for a case's line."""
+    units: list[str] = []
+    size = len(lead) + len(tail)
+    while size + len(filled := unit.format(len(units))) <= MIB:
+        units.append(filled)
+        size += len(filled)
+    text = lead + "".join(units)
+    shape = (
+        f"{lead!r} + {len(units)} x {unit!r} + {tail!r}" if lead else f"{len(units)} x {unit!r} + {tail!r}"
+    )
+    return text + " " * (MIB - len(text) - len(tail)) + tail, shape
+
+
 def corpus_records() -> list[tuple[str, str]]:
     """(payload text, expected decision) of each record of the corpus, its placeholders replaced by the
     fixture's values."""
@@ -2678,40 +2760,72 @@ def command_cases():
         got, _ = guard_run(stdin.encode("utf-8"))
         report(ok=got == expected, line=f"exp {expected} got {got}  [guard    ]  {stdin[:200]!r}")
 
-    mib = 1024 * 1024
-    for size, expected in ((mib, "pass"), (mib + 1, "deny")):
+    for size, expected in ((MIB, "pass"), (MIB + 1, "deny")):
         payload = {"tool_name": "Bash", "tool_input": {"command": "echo " + "a" * (size - 5)}, "cwd": CWD}
         got, output = guard_run(json.dumps(payload).encode("utf-8"))
         ok = got == expected and (expected == "pass" or "more than" in output)
         report(ok=ok, line=f"exp {expected} got {got}  [guard    ]  a command of {size} bytes")
-    # Commands of 1 MiB whose words each check walks: a chain of `cd`, through a link too, many
-    # operands of a recursive `rm`, four readings, loop words with no `do` or `done`, many writes that git
-    # ignores. Each is decided within the 5 s that the settings template gives the hook.
-    for cwd, unit, tail, expected in (
-        (CWD, "cd a; ", "echo x > /tmp/x", "pass"),
-        (CWD, "cd a && git status; ", "true", "pass"),
-        (CWD, "cd a; ", "git add -A; rm x", "deny"),
-        (CWD, "cd ../a; ", "rm -rf x", "deny"),
-        (SCRATCH, "cd a; rm -rf x; ", "true", "pass"),
-        (SCRATCH, "cd a; echo x > f.txt; ", "true", "pass"),
-        (CWD, "cd a; git status; ", "git init x", "deny"),
-        (CWD, f"cd {LINK}; cd ..; ", "rm -rf .", "deny"),
-        (CWD, "while git ", "x", "pass"),
-        (CWD, "for do ", "git status", "pass"),
-        (CWD, "echo x > __pycache__/a.log; ", "true", "pass"),
-        (WT, "rm -rf x ", "..", "deny"),
-        (WT, "rm -rf x ", ".. ';' \\\n", "deny"),
+    # Commands of 1 MiB whose words each check walks: a chain of `cd`, through a link too, one `cd`
+    # word of many names, a repeated `cd` to a deep directory, many operands of a recursive `rm`, four
+    # readings, loop words with no `do` or `done`, many distinct writes that git ignores. Each is
+    # decided within the clause's 10 s, and its line gives the seconds.
+    four = "; git status > /dev/null; rm -rf x; echo x > y.log ';' \\\n"
+    for cwd, (command, shape), expected in (
+        (CWD, mib_command("cd a; ", "echo x > /tmp/x"), "pass"),
+        (CWD, mib_command("cd a && git status; ", "true"), "pass"),
+        (CWD, mib_command("cd a; ", "git add -A; rm x"), "deny"),
+        (CWD, mib_command("cd ../a; ", "rm -rf x"), "deny"),
+        (SCRATCH, mib_command("cd a; rm -rf x; ", "true"), "pass"),
+        (SCRATCH, mib_command("cd a; echo x > f.txt; ", "true"), "pass"),
+        (CWD, mib_command("cd a; git status; ", "git init x"), "deny"),
+        (CWD, mib_command(f"cd {LINK}; cd ..; ", "rm -rf ."), "deny"),
+        (CWD, mib_command("while git ", "x"), "pass"),
+        (CWD, mib_command("for do ", "git status"), "pass"),
+        (CWD, mib_command("echo x > __pycache__/a{}.log; ", "true"), "pass"),
+        (WT, mib_command("rm -rf x ", ".."), "deny"),
+        (WT, mib_command("rm -rf x ", ".. ';' \\\n"), "deny"),
+        (LOGS, mib_command("a/../", four, "cd "), "pass"),
+        (LOGS, mib_command(f"cd {DEEP}; ", "git status > /dev/null; rm -rf x; echo x > y.log"), "pass"),
+        (DEEP, mib_command("echo x > f{}.log; ", "true"), "pass"),
     ):
-        count = (mib - len(tail)) // len(unit)
-        command = unit * count + " " * (mib - len(tail) - len(unit) * count) + tail
         payload = {"tool_name": "Bash", "tool_input": {"command": command}, "cwd": cwd}
         start = time.monotonic()
-        got, _ = guard_run(json.dumps(payload).encode("utf-8"), limit=HOOK_TIMEOUT)
+        got, _ = guard_run(json.dumps(payload).encode("utf-8"), limit=MIB_LIMIT)
         took = time.monotonic() - start
-        shape = f"{count} x {unit!r} then {tail!r}"
         report(
             ok=got == expected, line=f"exp {expected} got {got}  [guard    ]  {shape}, 1 MiB: {took:.1f} s"
         )
+    # The work per payload: each check and each reading takes a walk of a `cd` word from the memo of
+    # `paths.py`, and a walk reads each name once from each directory, so a payload reads each distinct
+    # name of a word at most once in each of the two modes; and the writes of a command ask git once
+    # per work tree.
+    for unit in ("d{}/../", "a/../"):
+        command, shape = mib_command(unit, four, "cd ")
+        names = len({name for name in command[3:].split(" ")[0].split("/") if name not in ("", "..")})
+        got, stats, spawns = guard_counted(
+            json.dumps({"tool_name": "Bash", "tool_input": {"command": command}, "cwd": LOGS}).encode("utf-8")
+        )
+        report(
+            ok=got == "pass" and 0 <= stats <= 2 * names + WALK_READS,
+            line=f"exp pass, at most 2 x {names} + {WALK_READS} reads got {got}, {stats}  [guard    ]  {shape}",
+        )
+    command, shape = mib_command("echo x > __pycache__/a{}.log; ", "true")
+    got, stats, spawns = guard_counted(
+        json.dumps({"tool_name": "Bash", "tool_input": {"command": command}, "cwd": CWD}).encode("utf-8")
+    )
+    report(
+        ok=got == "pass" and 0 <= spawns <= 2,
+        line=f"exp pass, at most 2 git spawns got {got}, {spawns}  [guard    ]  {shape}",
+    )
+    # A write target with a NUL, which git cannot read, is not ignored: the write check refuses it with
+    # its reason, and the guard does not raise. Git would read the NUL as the end of a path, and the
+    # absolute path after it, outside the work tree, as one that stops git.
+    payload = {"tool_name": "Bash", "tool_input": {"command": "echo x > a\x00/x.log"}, "cwd": CWD}
+    got, output = guard_run(json.dumps(payload).encode("utf-8"))
+    report(
+        ok=got == "deny" and "writes a file in a git working tree" in output,
+        line=f"exp deny got {got}  [guard    ]  a write to a path with a NUL: {output[:60]!r}",
+    )
     got, output = guard_run(b'{"tool_name":"Bash","tool_input":{"command":"echo \xff"},"cwd":"/"}')
     report(
         ok=got == "deny" and "UTF-8" in output, line=f"exp deny got {got}  [guard    ]  a payload byte 0xFF"

@@ -218,7 +218,14 @@ def scratch(path: Place) -> bool:
 def work_tree(path: Place) -> str | None:
     """The nearest directory at or above the directory of the path that holds a `.git`, or None.
     Only a directory that exists can hold one."""
-    directory: Place | None = path.parent().existing()
+    return root(path.parent().existing())
+
+
+@functools.cache
+def root(start: Place) -> str | None:
+    """The nearest directory at or above `start` that holds a `.git`, or None; asked once per
+    directory, so the writes of one directory read its `.git` and those above it once."""
+    directory: Place | None = start
     while directory is not None:
         if Path(directory.text(), ".git").exists():
             return directory.text()
@@ -242,16 +249,24 @@ def ignored_alone(root: str, path: str) -> bool:
 
 def ignored_together(root: str, paths: list[str]) -> dict[str, bool]:
     """Whether git ignores each of `paths` in the work tree `root`, asked in one `git check-ignore`.
-    A path that the answer leaves open, after git stops on a path outside the work tree, or that
-    git cannot read from its input, is left out."""
+    Each path lies below `root` and goes to git relative to it, which git reads many times faster
+    than an absolute path. A path with a NUL, which git cannot read from its input, is not ignored.
+    A path that the answer leaves open, after git stops on a path outside the work tree, is left
+    out."""
     asked: dict[str, bytes] = {}
+    unreadable: dict[str, bool] = {}
+    depth = len(PurePosixPath(root).parts)
     for path in dict.fromkeys(paths):
-        try:
-            encoded = os.fsencode(path)
-        except UnicodeEncodeError:
-            continue
-        if b"\0" not in encoded:
+        encoded = os.fsencode(PurePosixPath(*PurePosixPath(path).parts[depth:]))
+        if b"\0" in encoded:
+            unreadable[path] = False
+        else:
             asked[path] = encoded
+    return unreadable | asked_together(root, asked)
+
+
+def asked_together(root: str, asked: dict[str, bytes]) -> dict[str, bool]:
+    """Whether git ignores each path of `asked`, given with its bytes, in one `git check-ignore`."""
     git = shutil.which("git")
     if git is None:
         return dict.fromkeys(asked, False)

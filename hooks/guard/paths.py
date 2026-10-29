@@ -12,6 +12,12 @@ is the one that a read of the whole path gives.
 Two modes of a step: `real` resolves a symbolic link as `Path.resolve` does, and `..` then leaves
 the resolved directory; `plain` keeps every name, and `..` drops the last name, as a lexical
 normalisation does. Both record whether the path names a file.
+
+One memo per process holds each walk: `go` walks a (start `Place`, word, mode) once, and `place`
+an absolute path text once in each mode, and every check and every reading of a payload takes the
+walk from the memo. The guard decides one payload per process, so a payload walks each (start,
+word, mode) at most once, and reads each name of a word at most once in each mode however many
+checks and readings walk it.
 """
 
 import functools
@@ -63,9 +69,10 @@ class Place:
         joined = self.joined(name)
         if self.real is None:
             return joined
-        text = str(PurePosixPath(self.real, name))
+        path = Path(self.real, name)
+        text = str(path)
         try:
-            found = Path(text).lstat() if mode == "real" else Path(text).stat()
+            found = path.lstat() if mode == "real" else path.stat()
         except OSError, ValueError:
             return joined
         if mode == "real" and stat.S_ISLNK(found.st_mode):
@@ -73,12 +80,30 @@ class Place:
         return Place(self, name, joined.size, joined.head, text, None)
 
     def go(self, path: str, mode: Mode) -> Place:
-        """The path that `path` names from this one: an absolute `path` starts at the anchor."""
+        """The path that `path` names from this one, from the memo: an absolute `path` starts at the
+        anchor."""
+        key = (self, path, mode)
+        found = WALKS.get(key)
+        if found is None:
+            found = place(path, mode) if PurePosixPath(path).is_absolute() else self.walk(path, mode)
+            WALKS[key] = found
+        return found
+
+    def walk(self, path: str, mode: Mode) -> Place:
+        """The path that `path` names from this one, each name read once from each directory that it
+        steps from: an absolute `path` starts at the anchor."""
         pure = PurePosixPath(path)
-        place = start(pure, mode) if pure.is_absolute() else self
+        found = start(pure, mode) if pure.is_absolute() else self
+        steps: dict[tuple[Place, str], Place] = {}
         for name in pure.parts[1 if pure.is_absolute() else 0 :]:
-            place = place.parent() if name == ".." else place.child(name, mode)
-        return place
+            if name == "..":
+                found = found.parent()
+                continue
+            step = steps.get((found, name))
+            if step is None:
+                step = steps[found, name] = found.child(name, mode)
+            found = step
+        return found
 
     def names(self) -> list[str]:
         """Every name of the path, the anchor first."""
@@ -147,6 +172,11 @@ def settled(path: str) -> Place:
     return place
 
 
+# The memo of `Place.go`: a `Place` is its own key, by identity, so a key names one start.
+WALKS: dict[tuple[Place, str, Mode], Place] = {}
+
+
+@functools.cache
 def place(path: str, mode: Mode) -> Place:
-    """The `Place` of an absolute path."""
-    return Place.anchor().go(path, mode)
+    """The `Place` of an absolute path, walked once in each mode."""
+    return Place.anchor().walk(path, mode)
