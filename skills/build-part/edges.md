@@ -295,6 +295,20 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   `Any`. No clause names inference, so no critic sees it and the branch verifier finds it after a
   pass. A port keeps the source's type parameter (`ForcingLayer{…, CT, …}` at #207's `3b1775cd`),
   and the layer's own test file asserts `@inferred` on its forward pass (B2c, the learning package)
+- a cost premise that times the build of a generated function and never calls it: the run-time
+  compilation of the first call is two orders larger than the build, and it lands in the test file
+  and in the CI job's `timeout-minutes` instead of in the premise. Time the first call once per
+  width, and write the growth into the premise and into the clause that rests on it (P39, *Rewrite
+  the reduced basis packages*: 7.2 s to build at `m = 10` against 762 s for the first gradient
+  call, so the check that times the build saw neither)
+- **an allocation reading taken through an entry point that rebuilds its state every call:** each
+  call allocates about 32 MB in a few discrete buckets, so a single reading of the per-epoch cost
+  moves by a whole bucket, and the difference of two lengths cannot be trusted once. Test the
+  public entry and not only the inner function — a reading of the inner one passes while the public
+  one is free to stop calling it — take the minimum of ten calls at each of two lengths, and then
+  the lesser of two consecutive readings: on the floor one reading failed 1 of 60 and 1 of 240,
+  while the lesser of two failed 0 of 120 (P39, verify 2 and the two advisor rulings,
+  *Rewrite the reduced basis packages*)
 
 ## A tool that reads files or a tree
 
@@ -477,6 +491,12 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
 
 ## A migration of tests or of text
 
+- a page sentence, or a decided edge, that has `@docs` render a name which moved to another package:
+  Documenter keeps only docstrings defined in a module listed in `makedocs(modules = …)`, and adding
+  the owner to `modules` makes `missing_docs` cover every one of its docstrings; link to the owner's
+  manual instead, and check any claim about a block with
+  `Documenter.DocSystem.getdocs(binding, Union{}; modules = [the package])` (M10 verify 2, the plan that
+  simplifies the optimiser package and the learning package)
 - a set of lines that the spec defines by greps: the same fact also stands as a code literal
   (`claude`, `opencode` and `omp`), in another word order ("OpenCode and oh-my-pi" alone), and
   across a line break, and no grep sees those; read each page for the fact itself (G4 round 1,
@@ -719,3 +739,26 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   of `origin/main` and on the branch, each run alone from a cold process. Without it the entry
   records the load, and the verifier can only call it unverified (C3, the Hamiltonian and Lagrangian
   networks' package)
+- **a post-PASS fix committed on top of the release commit:** the tip is then no longer
+  `Release <version>`, and a spec clause that reads the last commit — subject, `1 1` numstat in two
+  files, a heading date equal to the commit date — fails on the head the pull request carries,
+  although the release commit met it when it was pushed. `record_head.sh` showed it only when the
+  dispatcher reran the gate on the new head. Put the fix beneath the release commit on
+  `<branch>-recut`: keep the content commits, add the fix as one commit, and cherry-pick the release
+  commit last, so its author date and the heading keep their day (P51 finish,
+  *Rewrite the reduced basis packages*; now a plan-wide rule in that plan's §L)
+- **a part's file list that excludes a page the branch makes false:** `docs/src/paper.md` counted
+  "Four scripts in `scripts/`" and the branch added a fifth, and no clause saw it because the list
+  owned `scripts/` alone. Read every page that counts, lists or tabulates what the diff adds, and
+  put it in the part's files (P39, *Rewrite the reduced basis packages*)
+- **a docstring `@extref` link where the docs define no `DocumenterInterLinks`:** Documenter 1.19's
+  `XREF_REGEX` matches only `@ref`, so `[`f`](@extref)` falls through to the local-file path, and
+  `makedocs` stops with `invalid local link/image: file does not exist` and `[:cross_references]`.
+  A build that merely warns on the base fails here, because one unresolved link is an error. Write
+  the name in plain backticks, or give `docs/make.jl` the plugin (P39 round 1,
+  *Rewrite the reduced basis packages*)
+- **a text fix that generalises from the one instance it verified to its neighbours:** the sentence
+  said `--seed` names the run "like every other option here", and of the four neighbours it named
+  only the seed did. Read the source of every claim a generalising phrase covers — `run_id(o)` named
+  six options and none of those four — and write the list out instead of "every other" (P39 verify 3,
+  *Rewrite the reduced basis packages*)
