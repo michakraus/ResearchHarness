@@ -2,11 +2,11 @@
 `Verdict` as Claude Code's answer.
 
 The payload is a JSON object with `tool_name`, `tool_input` and, as a rule, `cwd`; a sub-agent's
-payload also holds `agent_id`. A tool that no entry of `TABLE` names passes unread. For a tool that
-an entry names, a payload the table cannot read is refused: bytes that are not UTF-8, a text that
-`jsonio` refuses, a top level that is no object, no string `tool_name`, a `tool_input` that is no
-object, and a `Bash` call without a string `command` or with a command of more than `MAX_COMMAND`
-bytes of UTF-8.
+payload also holds `agent_id`. A payload that the table cannot read is refused: bytes that are not
+UTF-8, a text that `jsonio` refuses, a top level that is no object, and no string `tool_name`. A
+tool that no entry of `TABLE` names then passes, its `tool_input` unread. For a tool that an entry
+names, a `tool_input` that is no object is refused, and so is a `Bash` call without a string
+`command` or with a command of more than `MAX_COMMAND` bytes of UTF-8.
 
 Claude Code reads exit 2 as a denial and shows stderr to the model; exit 0 with a JSON
 `permissionDecision` on stdout as that decision; exit 0 with no output as no decision.

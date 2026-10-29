@@ -65,10 +65,11 @@ links. An `EnterWorktree` call with only a `name` passes, because `worktree.py` 
 place. An `ExitWorktree` call passes only with `action: "keep"` and no `discard_changes`. Every
 other such call gets an `ask` decision.
 
-The guard fails closed. It refuses a payload that is not UTF-8 or not a JSON object, that has no
-`tool_name`, or whose `tool_input` it cannot read, and a command of more than 1 MiB. A check that
-must resolve a path against the working directory refuses the command when the payload names
-none. A guard that raises refuses the call with the error. The checks read a command without
+The guard fails closed. It refuses a payload that is not UTF-8 or not a JSON object, or that has
+no `tool_name`; for a tool that it checks, a `tool_input` that is no object, a `Bash` call without
+a command, and a command of more than 1 MiB. A check that must resolve a path against the working
+directory refuses the command when the payload names none. A guard that raises refuses the call
+with the error. The checks read a command without
 `shlex`: a `#` inside a word, a backslash-newline and a quoted operator are read as the shell
 reads them, and a quoted operator or a joined line is also read the other way, so that neither
 hides a part of the command. `tests/guard/corpus.jsonl` holds the decision of each payload that
@@ -344,12 +345,13 @@ process, with a timeout, and prints one line per case: `ok` or `BAD`, the expect
 result. The last line gives the number of cases and the number of failed cases, and the exit
 status is 1 when any case fails. The group `commands` runs the guard package on each record of
 `tests/guard/corpus.jsonl` and on the cases that a line of it cannot hold: a command of 1 MiB and
-one byte more, a payload that is not UTF-8, the reason of the winning check, a guard that raises,
-the copy of `jsonio.py`, and the rendered `Bash` entry with a guard that cannot start. The groups
+one byte more, a payload that is not UTF-8, the reason of the winning check, a frontend that the
+guard lacks, a guard that raises, the copy of `jsonio.py`, and the rendered `Bash` entry with a
+guard that cannot start. The groups
 `omp`, `opencode` and `antigravity` run the seven guard scripts through those frontends. The probe
 also covers the other Python hooks of this page, the fail-closed cases of `worktree.py`, and the
-drift cases of `install-drift.py`. It also loads `adapters/omp/guards.ts` and the OpenCode plugins under `node`,
-so `node` must be on `PATH`. The hooks run against a fixture `HOME` in a temporary directory,
+drift cases of `install-drift.py`. It also loads `adapters/omp/guards.ts` and the OpenCode
+plugins under `node`, so `node` must be on `PATH`. The hooks run against a fixture `HOME` in a temporary directory,
 never the real one. With no argument it runs every group; with group names, only those groups.
 Each run builds its own fixture:
 

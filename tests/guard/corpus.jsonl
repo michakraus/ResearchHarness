@@ -407,3 +407,12 @@
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git archive HEAD#x -o x.tar"}, "cwd": "@@CWD@@"}, "decision": "deny", "differs": "The guard reads a `#` inside a word as part of the word, as the shell does; shlex read it as a comment and hid `-o`."}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git archive \"-o\" x.tar HEAD"}, "cwd": "@@CWD@@"}, "decision": "deny"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "cat <<'EOF'\ngit archive -o x.tar HEAD\nEOF"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "BashOutput", "stdin": {"tool_name": "BashOutput", "tool_input": {"bash_id": "x"}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "BashOutput", "stdin": {"tool_name": "BashOutput", "tool_input": "x", "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "echo x > f.txt"}, "cwd": "relative/dir"}, "decision": "deny"}
+{"tool": "ExitWorktree", "stdin": {"tool_name": "ExitWorktree", "tool_input": {"action": "keep", "discard_changes": false}}, "decision": "pass"}
+{"tool": "EnterWorktree", "stdin": {"tool_name": "EnterWorktree", "tool_input": {"path": 123, "name": "x"}}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "cd /x && git status"}}, "decision": "deny", "differs": "The sandbox check denies a `cd` in a git command when the payload names no working directory, which decides whether Claude Code drops the `cd`; sandbox-semantics.py let a read through."}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git init"}}, "decision": "deny", "differs": "The sandbox check denies a `git init` when the payload names no working directory, which decides whether it lands in a work tree; sandbox-semantics.py let it through."}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git commit -m 'rm x'"}}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "cd sub && echo x > f.txt"}}, "decision": "deny"}

@@ -17,8 +17,8 @@ and a leading variable that an earlier segment set on its own (`S=/x; cd $S`). A
 that only the call's working directory resolves is denied when the call names none. A scratch
 root passes first, whatever is below it: `$TMPDIR`, `/tmp/`, `/private/tmp/`, `/var/folders/`,
 `/dev/`, and `~/Research/.scratch/`. Then a target in a git working tree (a `.git` at or above it)
-is refused unless `git check-ignore` says git ignores it, and a target outside one is refused when
-it has a source suffix, or is relative after a `cd` whose directory is unknown.
+is refused unless `git check-ignore` says git ignores it. A target outside one, or relative after
+a `cd` whose directory is unknown, is refused when it has a source suffix.
 
 Out of its reach: a computed target (`> $OUT`, `open(f"{d}/x.jl", 'w')`, a name bound twice), a
 Julia one-off, any other writer inside a string argument, and a `cd` inside a subshell, which is

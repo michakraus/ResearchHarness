@@ -2560,13 +2560,13 @@ def cases(names):
     return 1 if wrong else 0
 
 
-def guard_run(data: bytes) -> tuple[str, str]:
+def guard_run(data: bytes, frontend: str = "claude") -> tuple[str, str]:
     """The guard's decision on the payload bytes `data`, run as the settings template runs it but from
     the fixture's directory, and its stdout and stderr: `deny` for exit 2, the `permissionDecision` of
     stdout for exit 0, `pass` for exit 0 with no output, `exit <n>` or `timeout` otherwise."""
     try:
         proc = subprocess.run(
-            [sys.executable, GUARD, "--from", "claude"],
+            [sys.executable, GUARD, "--from", frontend],
             input=data,
             capture_output=True,
             env=ENV,
@@ -2683,19 +2683,24 @@ def command_cases():
     report(
         ok=got == "deny" and "UTF-8" in output, line=f"exp deny got {got}  [guard    ]  a payload byte 0xFF"
     )
-    mixed = {
-        "tool_name": "Bash",
-        "tool_input": {"command": "gh api -X POST repos/o/r/issues -f title=t && git add -A"},
-    }
-    got, output = guard_run(json.dumps({**mixed, "cwd": CWD}).encode("utf-8"))
-    ok = (
-        got == "deny"
-        and "stages files this session did not write" in output
-        and "review and comment" not in output
-    )
+    # The `gh api` check asks, and a check before it (staging) or after it (archive) refuses: the
+    # answer is the refusal, with the reason of the check that refused.
+    for then, reason in (
+        ("git add -A", "stages files this session did not write"),
+        ("git archive -o x.tar HEAD", "writes its file outside the sandbox"),
+    ):
+        command = "gh api -X POST repos/o/r/issues -f title=t && " + then
+        payload = {"tool_name": "Bash", "tool_input": {"command": command}, "cwd": CWD}
+        got, output = guard_run(json.dumps(payload).encode("utf-8"))
+        ok = got == "deny" and reason in output and "review and comment" not in output
+        report(
+            ok=ok,
+            line=f"exp deny got {got}  [guard    ]  the reason of the winner on {command!r}: {output[:80]!r}",
+        )
+    got, output = guard_run(b'{"tool_name":"Bash","tool_input":{"command":"ls"},"cwd":"/"}', "other")
     report(
-        ok=ok,
-        line=f"exp deny got {got}  [guard    ]  the reason of the winner, the staging check's: {output[:80]!r}",
+        ok=got == "deny" and "usage" in output,
+        line=f"exp deny got {got}  [guard    ]  --from a frontend it lacks",
     )
     code, stderr = guard_raises()
     report(
@@ -2718,19 +2723,25 @@ def command_cases():
         ok=commands == ["rtk hook claude", guard],
         line=f"exp rtk and guard got {commands}  [guard    ]  the rendered Bash group",
     )
-    # Claude Code runs a hook command through a shell, the payload on stdin.
-    try:
-        proc = subprocess.run(
-            [shutil.which("bash") or "/bin/bash", "-c", guard],
-            input=b'{"tool_name":"Bash","tool_input":{"command":"ls"}}',
-            capture_output=True,
-            timeout=TIMEOUT,
-            check=False,
-        )
-        got = str(proc.returncode)
-    except subprocess.TimeoutExpired:
-        got = "timeout"
-    report(ok=got == "2", line=f"exp 2 got {got}  [guard    ]  the guard cannot start: {guard}")
+    # Claude Code runs a hook command through a shell, the payload on stdin. The guard's path is missing
+    # below the fixture's home, and then the interpreter is too, which exits 127 without the fallback.
+    missing_python = shlex.quote(FIXTURE.name + "/missing-env/bin/python")
+    for what, command in (
+        ("the guard is missing", guard),
+        ("the interpreter is missing", guard.replace(shlex.quote(sys.executable), missing_python, 1)),
+    ):
+        try:
+            proc = subprocess.run(
+                [shutil.which("bash") or "/bin/bash", "-c", command],
+                input=b'{"tool_name":"Bash","tool_input":{"command":"ls"}}',
+                capture_output=True,
+                timeout=TIMEOUT,
+                check=False,
+            )
+            got = str(proc.returncode)
+        except subprocess.TimeoutExpired:
+            got = "timeout"
+        report(ok=got == "2", line=f"exp 2 got {got}  [guard    ]  the guard cannot start, {what}: {command}")
     return total, wrong
 
 
