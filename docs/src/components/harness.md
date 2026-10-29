@@ -535,6 +535,57 @@ skill has at most 1,024 characters and no `<` or `>`.
 Its cases check each refused and each accepted form, and parse every agent of `agents/` and every
 curated skill of `skills/`.
 
+## `jsonio.py`
+
+The reader of JSON text. It has no subcommand. Its cases run in `harness test`.
+
+`loads(text, *, where)` returns the top-level object of `text`, and `load(path)` the one of a
+UTF-8 file. Python's `json` keeps the last value of a key that occurs twice, and reads `NaN`,
+`Infinity`, `-Infinity` and a number that overflows, such as `1e400`. These readers refuse each of
+them with a `HarnessError` that names `where`, or the path, and the line. They also refuse a
+nesting deeper than 200, where the top-level value is depth 1, with its line, and an empty text, a
+byte order mark and a top level that is not an object. A path that cannot be read, is not a
+regular file or holds bytes that are not UTF-8 is refused with the path. No other exception leaves
+them. The module imports only the standard library and `HarnessError`.
+
+Its cases check a value, a file and CRLF line ends, each refusal and its line, and a depth of 200,
+201 and 100000.
+
+## `ownedjson.py`
+
+The merge into a JSON file that another program owns. It has no subcommand. Its cases run in
+`harness test`.
+
+`merged(text, change, *, where)` reads `text` with the refusals of `jsonio.py`, passes the object
+to `change`, and returns the text in which only the changed values are written again. The key
+order, the indentation, the separators, a minified layout, CRLF line ends, the escapes, the final
+newline or its absence and the text of each number that the change leaves stay as they are. A
+float that the change writes and the text spells exactly keeps the text's spelling. A changed
+string keeps its characters; a lone surrogate stays a `\u` escape. An added key goes at the end of
+its object, in the file's indentation and separators, and a removed key goes with its separator. A
+value written into an object or an array on one line stays on that line. An empty file is read as
+`{}` and written as `{}` and a newline. A change that nests a value deeper than 200, or gives a
+text that `jsonio.py` refuses, such as one with a key that is not a string, is refused.
+
+`merge(path, change)` does the same to a file, and writes it through `write_private` of
+`fsutil.py` with the file's own mode. A missing file is created with mode 0600. A symlink stays a
+link, and its target is written. A file with a key twice, a byte order mark or a top level that is
+not an object is refused and keeps its bytes, and so is a path that is not a regular file.
+
+## `fsutil.py`
+
+The writer of a private file. It has no subcommand. Its cases run in `harness test`.
+
+`write_private(path, data, mode=0o600)` creates a temporary name beside `path` with `os.open`,
+`O_CREAT | O_EXCL` and `mode`, sets `mode` on the empty file, writes `data` and moves the file onto
+`path` with `os.replace`. So no file that holds `data` has more permission bits than `mode`, under
+any umask, and an existing file ends with `mode`. A symlink at `path` is replaced, not written
+through. Any failure removes the temporary name. An `OSError`, a NUL character in `path` and a
+path that names no file raise a `HarnessError` that names `path`.
+
+Its cases run the writes under umask 0, read the mode of each file that `os.open` creates and the
+mode before each `chmod`, and check that no other file stays beside `path`.
+
 ## `sweep.py`
 
 The contract sweep, the part `sweep` of `harness test`, which runs in every selection. It has no
