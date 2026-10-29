@@ -491,6 +491,12 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
 
 ## A migration of tests or of text
 
+- a page sentence, or a decided edge, that has `@docs` render a name which moved to another package:
+  Documenter keeps only docstrings defined in a module listed in `makedocs(modules = …)`, and adding
+  the owner to `modules` makes `missing_docs` cover every one of its docstrings; link to the owner's
+  manual instead, and check any claim about a block with
+  `Documenter.DocSystem.getdocs(binding, Union{}; modules = [the package])` (M10 verify 2, the plan that
+  simplifies the optimiser package and the learning package)
 - a set of lines that the spec defines by greps: the same fact also stands as a code literal
   (`claude`, `opencode` and `omp`), in another word order ("OpenCode and oh-my-pi" alone), and
   across a line break, and no grep sees those; read each page for the fact itself (G4 round 1,
