@@ -16,8 +16,8 @@ const WIDTH = 1080
 const GAP = 70
 const COLUMNS = [
   { title: 'Inputs', badge: 1, accent: 'violet', w: 330 },
-  { title: 'Install', badge: 2, accent: 'amber', w: 300 },
-  { title: 'Frontends', badge: 3, accent: 'blue', w: 310 }
+  { title: 'Install', badge: 2, accent: 'amber', w: 310 },
+  { title: 'Frontends', badge: 3, accent: 'blue', w: 300 }
 ]
 const columns = COLUMNS.map((c, i) => ({ ...c, x: COLUMNS.slice(0, i).reduce((s, d) => s + d.w + GAP, 0) }))
 const INNER = 16
