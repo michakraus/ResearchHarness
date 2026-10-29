@@ -82,7 +82,8 @@ json` with the table removed, and the baseline with `basedpyright --writebaselin
 The hooks and the guards import only the standard library: a case of `harness test`
 (`lib/harness/strict.py`) parses each `.py` file below `hooks/` and each `adapters/*/guard*.py`,
 and fails on an import of a module outside `sys.stdlib_module_names`. `hooks/probe.py` may also
-import the harness's own package `harness`.
+import the harness's own package `harness`, and `hooks/guard/frontends/claude.py` the guard
+package `guard`.
 
 The two tools are pinned in the `dev` group of `pyproject.toml` and locked in `uv.lock`, so every
 machine and CI run the same versions. `harness install --apply` syncs the `dev` group into the

@@ -18,10 +18,9 @@ from collections.abc import Callable
 from pathlib import PurePosixPath
 from typing import TextIO
 
-# The table imports its package by relative imports from the parent (TID252): the guard runs from
-# any directory as `<python> <path>/guard`, and `harness test` refuses an absolute import of a module
-# outside the standard library below hooks/.
-from .. import (  # noqa: TID252
+# The table imports its package by its absolute name `guard`: `__main__` puts the package's parent
+# directory first on `sys.path`, and the `OWN` entry of `lib/harness/strict.py` allows the name here.
+from guard import (
     HarnessError,
     directory_scope,
     gh_api_writes,
@@ -32,8 +31,8 @@ from .. import (  # noqa: TID252
     rm_scope,
     sandbox_semantics,
 )
-from ..contract import PASS, Call, Caller, Verdict, strongest  # noqa: TID252
-from ..jsonio import JsonValue, loads  # noqa: TID252
+from guard.contract import PASS, Call, Caller, Verdict, strongest
+from guard.jsonio import JsonValue, loads
 
 type Check = Callable[[Call], Verdict]
 

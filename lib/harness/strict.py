@@ -27,8 +27,12 @@ HOOK = REPO / ".githooks" / "pre-commit"
 TOOLS = ("ruff", "basedpyright")
 TIMEOUT = 60
 # The modules beyond the standard library that a file may import: the hook probe loads the
-# harness's own package.
-OWN = {"hooks/probe.py": frozenset({"harness"})}
+# harness's own package, and the guard's Claude Code table imports the guard package by its name
+# `guard`, whose parent directory the guard's `__main__` puts on `sys.path`.
+OWN = {
+    "hooks/probe.py": frozenset({"harness"}),
+    "hooks/guard/frontends/claude.py": frozenset({"guard"}),
+}
 # The three commands of the hook, as the stubs log them.
 COMMANDS = ["ruff format --check --no-cache .", "ruff check --no-cache .", "basedpyright"]
 

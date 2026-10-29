@@ -7,7 +7,8 @@ in the frontend's form: the first of `deny`, `ask`, `allow` and `pass` that a ch
 the reason of the check that gave it. `shell` holds the reading of a shell command that the shell
 checks share, and `jsonio` is a copy of the harness's JSON reader.
 
-The package imports only the standard library and its own modules, by relative imports.
+The package imports only the standard library and its own modules: by relative imports, and in the
+table of `frontends/` by the package's name `guard`.
 """
 
 

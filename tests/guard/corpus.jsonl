@@ -416,3 +416,5 @@
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git init"}}, "decision": "deny", "differs": "The sandbox check denies a `git init` when the payload names no working directory, which decides whether it lands in a work tree; sandbox-semantics.py let it through."}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git commit -m 'rm x'"}}, "decision": "pass"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "cd sub && echo x > f.txt"}}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "echo x > /dev/null"}}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "rm -rf ~/Research/.scratch/pr3"}}, "decision": "pass"}
