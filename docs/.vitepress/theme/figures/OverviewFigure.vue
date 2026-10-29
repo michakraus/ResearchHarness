@@ -34,10 +34,11 @@ const LAYERS: Layer[] = [
     ]
   },
   {
-    title: 'The frontends', icon: 'frontends', accent: 'blue', columns: 3, members: [
+    title: 'The frontends', icon: 'frontends', accent: 'blue', columns: 4, members: [
       { title: 'Claude Code', icon: 'terminal', lines: ['~/.claude/'] },
       { title: 'OpenCode', icon: 'code', lines: ['~/.config/opencode/'] },
-      { title: 'oh-my-pi', icon: 'pi', lines: ['~/.omp/agent/'] }
+      { title: 'oh-my-pi', icon: 'pi', lines: ['~/.omp/agent/'] },
+      { title: 'Antigravity', icon: 'frontends', lines: ['~/.gemini/config/'] }
     ]
   }
 ]
@@ -76,7 +77,7 @@ const HEIGHT = y
     :width="WIDTH"
     :height="HEIGHT"
     title="The research tree, the components and the frontends"
-    desc="The harness surrounds three parts. At the top is the research tree, with the library, the knowledge, the packages, the experiments, the projects and the papers. In the middle are the components: agents, skills, commands, rules, guard hooks, git hooks and workflows, scripts and settings. At the bottom are the frontends: Claude Code, OpenCode and oh-my-pi."
+    desc="The harness surrounds three parts. At the top is the research tree, with the library, the knowledge, the packages, the experiments, the projects and the papers. In the middle are the components: agents, skills, commands, rules, guard hooks, git hooks and workflows, scripts and settings. At the bottom are the frontends: Claude Code, OpenCode, oh-my-pi and Antigravity."
   >
     <FigPanel :x="0" :y="0" :w="WIDTH" :h="HEIGHT" title="Research Harness" icon="harness" accent="slate" />
     <FigPanel

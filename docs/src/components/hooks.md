@@ -11,14 +11,15 @@ events of a session.
 The sources are in `hooks/`. `harness install --apply` copies them to `~/.claude/hooks/`.
 Claude Code calls them through the `hooks` section of its settings, which
 `harness install --apply` writes from `settings/settings.proposal.json`. oh-my-pi calls seven
-scripts through its guard extension `adapters/omp/guards.ts`, and OpenCode calls the same seven
-through its plugin `adapters/opencode/plugins/guards.ts`. These are the five shell guards
+scripts through its guard extension `adapters/omp/guards.ts`, OpenCode calls the same seven
+through its plugin `adapters/opencode/plugins/guards.ts`, and Antigravity calls them through its
+guard hook `adapters/antigravity/guard.py`. These are the five shell guards
 (`no-blind-stage.py`, `no-shell-file-write.py`, `gh-api-writes.py`, `rm-scope.py` and
 `git-archive-output.py`), the working-tree check of `sandbox-semantics.py`, and
-`kaimon-session.py`. Each of the two frontends runs its own copy of the scripts, which
-`harness install` writes to `hooks/` in its directory: `~/.omp/agent/hooks/` and
-`~/.config/opencode/hooks/`. Each hook still has one source. `hooks/probe.py` holds the test cases
-of the hooks, and `harness test` runs it.
+`kaimon-session.py`. Each of the three frontends runs its own copy of the scripts, which
+`harness install` writes to `hooks/` in its directory: `~/.omp/agent/hooks/`,
+`~/.config/opencode/hooks/` and `~/.gemini/config/hooks/`. Each hook still has one source.
+`hooks/probe.py` holds the test cases of the hooks, and `harness test` runs it.
 
 `harness install --apply` writes the command of each Python hook, in `~/.claude/settings.json`
 and in Antigravity's `hooks.json`, as the absolute path of the interpreter of the harness's Python
@@ -38,7 +39,8 @@ the directory, worktree and Kaimon tools, then the session hooks, and last the p
 ## `no-blind-stage.py`
 
 This hook refuses a `git add` that stages more than the paths it names. Claude Code runs it as a
-`PreToolUse` hook on the `Bash` matcher. oh-my-pi and OpenCode run it on each shell call.
+`PreToolUse` hook on the `Bash` matcher. oh-my-pi, OpenCode and Antigravity run it on each shell
+call.
 
 It reads the command, splits it into segments, and finds each `git add`. It exits with status 2
 on `-A`, `-u`, `--all`, `--update`, `--no-ignore-removal`, a short-flag cluster that holds `A` or
@@ -56,7 +58,8 @@ echo '{"tool_input":{"command":"git add -nA"}}' | ./no-blind-stage.py ; echo "ex
 ## `no-shell-file-write.py`
 
 This hook refuses a shell command that writes a file in a git working tree. Claude Code runs it as
-a `PreToolUse` hook on the `Bash` matcher. oh-my-pi and OpenCode run it on each shell call.
+a `PreToolUse` hook on the `Bash` matcher. oh-my-pi, OpenCode and Antigravity run it on each shell
+call.
 
 It exits with status 2 on a redirection such as `>` or `>>`, on `tee`, on an in-place flag of
 `sed`, `perl` or `awk`, and on a `python3 -c` or a Python heredoc that opens a file to write. It
@@ -76,9 +79,10 @@ echo '{"tool_input":{"command":"echo x > src/Foo.jl"},"cwd":"/path/in/a/repo"}' 
 ## `sandbox-semantics.py`
 
 This hook refuses a command whose shape makes the Claude Code sandbox give a false result. Claude
-Code runs it as a `PreToolUse` hook on the `Bash` matcher. oh-my-pi and OpenCode run only its
-working-tree check, as `sandbox-semantics.py --work-tree`, on each shell call: they have no
-sandbox.
+Code runs it as a `PreToolUse` hook on the `Bash` matcher. oh-my-pi, OpenCode and Antigravity run
+its working-tree check, as `sandbox-semantics.py --work-tree`, on each shell call, and
+Antigravity's `guard.py` also imports its helpers to decide whether a command runs inside or
+outside the terminal sandbox.
 
 The settings let a command run outside the sandbox only when every part of it starts with `git`,
 `gh`, `glab` or `ps` and no part redirects a file. A sandboxed `gh` cannot reach the network, and
@@ -106,8 +110,8 @@ echo '{"tool_input":{"command":"echo $(gh run view 1)"}}' | ./sandbox-semantics.
 ## `gh-api-writes.py`
 
 This hook asks before a `gh api` write that is not a review or a comment, and refuses a remote
-delete. Claude Code runs it as a `PreToolUse` hook on the `Bash` matcher. oh-my-pi and OpenCode
-run it on each shell call.
+delete. Claude Code runs it as a `PreToolUse` hook on the `Bash` matcher. oh-my-pi, OpenCode and
+Antigravity run it on each shell call.
 
 It finds each top-level `gh api` and `glab api` call and determines the HTTP method in the same
 way as `gh`: `-X` or `--method`; otherwise POST when a body flag is present; otherwise GET. A GET,
@@ -127,8 +131,8 @@ echo '{"tool_input":{"command":"gh api repos/o/r/hooks -f url=x"}}' | ./gh-api-w
 ## `rm-scope.py`
 
 This hook refuses a recursive `rm` outside the scratch zones, and asks before a `git rm` or a
-`git merge` outside a worktree. Claude Code runs it as a `PreToolUse` hook on the `Bash` matcher. oh-my-pi and OpenCode
-run it on each shell call.
+`git merge` outside a worktree. Claude Code runs it as a `PreToolUse` hook on the `Bash` matcher.
+oh-my-pi, OpenCode and Antigravity run it on each shell call.
 
 It follows the working directory through each `cd` and resolves each operand. A recursive `rm`
 passes when every operand is strictly below a worktree, `~/Research/.worktrees/<name>/`, or
@@ -179,7 +183,8 @@ echo '{"session_id":"s","tool_input":{"file_path":"'"$HOME"'/Research/Harness/.g
 
 This hook refuses a `git archive` that writes its file with `-o` or `--output`, and names the
 commands that read the tree of a commit without a permission prompt. Claude Code runs it as a
-`PreToolUse` hook on the `Bash` matcher. oh-my-pi and OpenCode run it on each shell call.
+`PreToolUse` hook on the `Bash` matcher. oh-my-pi, OpenCode and Antigravity run it on each shell
+call.
 
 An agent writes the archive to read the unmodified tree of a commit, usually the base of its
 branch. `git` runs outside the sandbox, so `-o` can write to any path. For this reason the
@@ -222,8 +227,8 @@ echo '{"tool_input":{"path":"~/Research/Packages"}}' | ./directory-scope.py
 
 This hook refuses a Kaimon call that names no session. Claude Code runs it as a `PreToolUse` hook
 on the matcher `mcp__kaimon__ex|mcp__kaimon__manage_repl`. oh-my-pi runs it on
-`mcp__kaimon_ex` and `mcp__kaimon_manage_repl`, and OpenCode on `kaimon_ex` and
-`kaimon_manage_repl`, their names of the same tools.
+`mcp__kaimon_ex` and `mcp__kaimon_manage_repl`, OpenCode on `kaimon_ex` and `kaimon_manage_repl`,
+and Antigravity on `call_mcp_tool` calls to `kaimon` for `ex` and `manage_repl`.
 
 An `ex` call needs `ses`, and a `manage_repl` call needs `session`. Without the key, Kaimon uses
 the session that the agent is bound to, or otherwise the only one connected, which can be another
@@ -263,7 +268,7 @@ echo '{"hook_event_name":"WorktreeCreate","cwd":"/","name":"x"}' | ./worktree.py
 ## `install-drift.py`
 
 This hook warns when `~/.claude/` is behind the sources that `harness install` installs. Claude
-Code runs it on the event `SessionStart`.
+Code and Antigravity run it on the event `SessionStart`.
 
 `harness install --apply` writes the stamp `~/.claude/.harness-install.json`. The stamp holds the
 sources and a SHA-256 digest over the installed paths, their modes and the source bytes. The hook

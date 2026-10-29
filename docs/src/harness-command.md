@@ -46,7 +46,7 @@ These options come before the subcommand.
 
 | subcommand | does | changes something |
 |:--|:--|:--|
-| [`install`](#install) | installs the Julia environment of the scripts, the Claude Code layer with the sections `permissions`, `hooks`, `sandbox` and `modelSettings` of `settings.json`, the OpenCode configuration, the oh-my-pi permission layer, instructions, rules, agents, models and MCP entry, and the Antigravity guard hook, permission rules, instructions, rules, skills, agents and MCP entry | yes |
+| [`install`](#install) | installs the Julia environment of the scripts, syncs the Python environment of the harness, and installs the Claude Code layer with the sections `permissions`, `hooks`, `sandbox` and `modelSettings` of `settings.json`, the OpenCode configuration, the oh-my-pi permission layer, instructions, rules, agents, models and MCP entry, and the Antigravity guard hook, permission rules, instructions, rules, skills, agents and MCP entry | yes |
 | [`update`](#update) | brings the harness checkout up to `origin/main`, then runs `install --apply`. It does not move a checkout that is pinned to a commit | yes |
 | [`doctor`](#doctor) | checks the setup of this machine: the tools, the profile, the install and the jobs | no |
 | [`trust`](#trust) | sets Claude Code workspace trust for every repository of the tree | yes |
@@ -84,7 +84,8 @@ some writes and some network calls; a subcommand that needs them runs in your ow
 harness install [--apply] [--force]
 ```
 
-Installs the Julia environment of the scripts and the configuration of each frontend: Claude
+Installs the Julia environment of the scripts, syncs the Python environment of the harness, and
+installs the configuration of each frontend: Claude
 Code, OpenCode, oh-my-pi and Antigravity. The installed configuration is not writable from a
 session, so the sources live in the harness repository, and `install` copies them into place. It
 plans every frontend first and writes nothing while it plans. So a refusal stops the install
@@ -102,8 +103,10 @@ change; 2 when a plan refuses, or the profile or the model tables do not load.
 **Reads:** the profile, the model tables, `providers.toml` and `network.toml` beside the profile,
 the tree instructions (`tree_agents` of the profile), and the sources of the harness checkout.
 **Writes:** below `~/.claude/`, the OpenCode configuration directory, the oh-my-pi directory,
-`~/.gemini/` when Antigravity has made it, and the Julia environment (see
-[The Julia environment](#the-julia-environment)). It writes the stamp
+`~/.gemini/` when Antigravity has made it, the Julia environment (see
+[The Julia environment](#the-julia-environment)) and the Python environment
+(`~/.local/share/research-harness/python/`, with the `dev` group when the profile sets
+`develop = true`). It writes the stamp
 `~/.claude/.harness-install.json`, which the drift warning at session start reads.
 
 **Where to run it:** in your own terminal. A session cannot write the installed files.
@@ -568,7 +571,7 @@ tree. It matches a whole word. The pre-push hook of the harness runs it.
 
 ```text
 harness settings surface [--settings F] [--days N] [--head N]
-harness settings compare [--days N] OLD NEW
+harness settings compare OLD NEW [--days N]
 harness settings twins [--settings F] [--list allow|ask|deny]
 harness settings selftest
 ```
@@ -742,7 +745,9 @@ report to `$RESEARCH_ROOT/.scratch/skill-triggers/<date>-<model>.md`.
 | `RESEARCH_HARNESS_MODELS` | the model tables, when `--models` is not given |
 | `RESEARCH_HARNESS_REPOSITORIES` | the repository table of `clone` and `repos` |
 | `RESEARCH_HARNESS_JULIA` | the Julia environment of the scripts; `~/.local/share/research-harness/julia/` if it is not set |
+| `RESEARCH_HARNESS_PYTHON` | the Python environment of the harness; `~/.local/share/research-harness/python/` if it is not set |
 | `OPENCODE_CONFIG_DIR` | OpenCode's configuration directory; `~/.config/opencode` if it is not set |
+| `PI_CODING_AGENT_DIR` | oh-my-pi's agent directory; `~/.omp/agent` if it is not set |
 | `FMT_OUT` | the directory of the marker, the skip list and the log of `format` |
 | `SANDBOX_RUNTIME` | set by the Claude Code sandbox; `doctor` reports a refused check as `SKIP` |
 

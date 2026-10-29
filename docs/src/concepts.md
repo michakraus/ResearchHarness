@@ -95,8 +95,8 @@ and writes the configuration of each frontend.
 
 To [install](#install) is to copy the sources of the three layers into the configuration
 directory of each frontend. You edit a source, never its installed copy: the next install
-overwrites the copy. When a source changes after the last install, the installed copy is behind
-it. This is [drift](#drift). A hook at the start of each Claude Code session warns about it.
+overwrites the copy. When a source changes after the last install, the installed copy is behind it.
+This is [drift](#drift). A hook at the start of each Claude Code or Antigravity session warns about it.
 
 [Architecture](architecture.md#the-three-layers) describes the three layers in detail, and
 [Adapting the profile](profile.md) names each value of the profile.
@@ -153,8 +153,8 @@ before the call refuse it, ask you, or let it run. A shell command then runs ins
 4. **The Claude Code sandbox** puts limits that the operating system enforces on each shell
    command. It limits the files that a command can write and the hosts that it can reach,
    whatever the command text is. It is the only security boundary of the four. It does not wrap
-   the edit tools of the frontend, which the permission settings control. OpenCode has no
-   sandbox.
+   the edit tools of the frontend, which the permission settings control. OpenCode and oh-my-pi have
+   no sandbox; Antigravity has a terminal sandbox, and its guard hook sets each command's mode.
 
 [The security model](security.md) describes what each layer stops and what it does not.
 
@@ -289,4 +289,4 @@ configuration directory of each frontend. `harness install` shows what it would 
 ### Drift
 
 The state in which an installed copy is behind its source, because the source changed after the
-last install. A hook at the start of each Claude Code session warns about it.
+last install. A hook at the start of each Claude Code or Antigravity session warns about it.

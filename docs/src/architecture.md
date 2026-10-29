@@ -31,7 +31,8 @@ So a user adapts the harness without a change of the repository.
 
 `~/.claude.json` belongs to Claude Code too. Only `harness trust --apply` writes it, and it
 changes only the trust of each repository of the research tree. The Julia environment of the
-scripts is outside `~/.claude/`, in `~/.local/share/research-harness/julia/`.
+scripts is outside `~/.claude/`, in `~/.local/share/research-harness/julia/`, and the Python
+environment of the harness is in `~/.local/share/research-harness/python/`.
 
 ## The Claude Code layer
 
@@ -159,11 +160,26 @@ its own file. The model tables of
 `~/.config/kaimon/auth-token` by a command when oh-my-pi connects, so that no secret is in the
 file.
 
+## The Antigravity adapter
+
+Antigravity reads `~/.gemini/config/`. `harness install` writes
+`adapters/antigravity/ANTIGRAVITY-DELTA.md`, `RTK.md`, `instructions/core.md` and
+`instructions/research-tree.md` as always-on rules in `~/.gemini/config/rules/`, and the rules of
+`rules/` and the tree instructions as on-demand rules there. It copies the skills into
+`~/.gemini/config/skills/` and the seven guard scripts into `~/.gemini/config/hooks/`, and renders
+each agent of `agents/` into `~/.gemini/config/agents/<name>.md` with the tier from `[antigravity]`
+of `models.toml`, the mapped `tools:`, `inheritMcp: true` when the source names a Kaimon tool, and
+an "Under Antigravity" section from `adapters/antigravity/UNDER-ANTIGRAVITY.md` where needed. It
+also writes `hooks.json`, which runs `guard.py` on `PreToolUse` and `install-drift.py` on
+`SessionStart`, `guard.py` and `guard-paths.json`, `mcp_config.json` for Kaimon, the permission
+rules of the CLI `agy` in `~/.gemini/antigravity-cli/settings.json`, and the grants of the desktop
+app in `~/.gemini/config/config.json`.
+
 ## Layout
 
 The sources of the instruction layer are neutral: they belong to no one frontend. What is one
 frontend's own goes below `adapters/<frontend>/`. The other top-level directories belong to no
-frontend either: `hooks/` holds the guard hooks that Claude Code and oh-my-pi both call,
+frontend either: `hooks/` holds the guard hooks that all four frontends call,
 `settings/` the policy source of all four frontends, and the rest the tools.
 
 | directory | holds |
@@ -175,8 +191,8 @@ frontend either: `hooks/` holds the guard hooks that Claude Code and oh-my-pi bo
 | `adapters/antigravity/` | the Antigravity guard hook, global instruction file and agent text |
 | `bin/`, `lib/harness/` | the `harness` command |
 | `adapters/<frontend>/adapter.py` | each frontend's part of the `harness` command, which `lib/harness/frontends.py` loads: the Claude Code layer, the settings and the trust; the generators of the OpenCode agents and permission block; the generator of oh-my-pi's `harness.yml`, `models.yml`, rules, agents and `mcp.json`; the generator of Antigravity's `hooks.json`, permission rules, rules, skills, agents and `mcp_config.json` |
-| `hooks/` | the shared hooks: the guard hooks, Claude Code `PreToolUse` hooks that refuse unsafe shell commands, which oh-my-pi's `guards.ts` calls too, the `SessionStart` hook that warns when `~/.claude/` is behind its sources, the other hooks of Claude Code, such as `worktree.py` and `prompt-log.py`, and their test cases (`probe.py`) |
-| `settings/` | the permission and sandbox settings template, the policy source of all four frontends, and `network.toml`, the hosts from which the install generates the network rules of Claude Code |
+| `hooks/` | the shared hooks: the guard hooks, Claude Code `PreToolUse` hooks that refuse unsafe shell commands, which OpenCode, oh-my-pi and Antigravity call too, the `SessionStart` hook that warns when `~/.claude/` is behind its sources, which Antigravity runs too, the other hooks of Claude Code, such as `worktree.py` and `prompt-log.py`, and their test cases (`probe.py`) |
+| `settings/` | the permission and sandbox settings template, the policy source of all four frontends, and `network.toml`, the hosts from which the install generates the network rules of Claude Code and Antigravity |
 | `githooks/` | git hooks and GitHub Actions workflow templates for Julia packages, and the Julia scripts that check them; `lib/harness/githooks.py` installs them |
 | `scripts/` | Julia test, mutation, and code-structure tools; transcript and lint tools |
 | `launchagents/` | macOS launch agent templates |
