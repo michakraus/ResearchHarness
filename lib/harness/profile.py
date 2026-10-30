@@ -2144,7 +2144,7 @@ def schema_cases() -> tuple[int, int]:
                 f"{' '.join(table.split())} loads -> {getattr(got, 'setup', got)}",
             )
         try:
-            setattr(Setup(), "develop", True)  # noqa: B010 -- the assignment that a frozen dataclass refuses
+            Setup.__setattr__(Setup(), "develop", True)
             frozen = False
         except dataclasses.FrozenInstanceError:
             frozen = True

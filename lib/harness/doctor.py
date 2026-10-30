@@ -2045,12 +2045,11 @@ def setup_cases(
     }
     n = 0
 
-    def run(
-        label: str,
+    def checked_on(
         frontends_toml: str,
         components_toml: str,
-        files: tuple[str, ...],
-        dirs: tuple[str, ...],
+        files: tuple[str, ...] = (),
+        dirs: tuple[str, ...] = (),
         removed: tuple[str, ...] = (),
     ) -> tuple[dict[str, str], dict[str, str], bool]:
         """The status and the detail of each Result by name, of the sections `tools`, `profile_checks`
@@ -2072,7 +2071,7 @@ def setup_cases(
             (home / d).mkdir(parents=True, exist_ok=True)
         for name in files:
             (home / name).parent.mkdir(parents=True, exist_ok=True)
-            (home / name).write_text(f"{label}\n")
+            (home / name).write_text("a file of a layer\n")
         before = {p: p.read_bytes() for p in home.rglob("*") if p.is_file()}
         results, _ = f.results(
             "tools",
@@ -2095,7 +2094,7 @@ def setup_cases(
         }
 
     every = '["claude", "opencode", "omp", "antigravity"]'
-    statuses, details, changed = run("no julia", every, '["rtk"]', (), ())
+    statuses, details, changed = checked_on(every, '["rtk"]')
     packages = {name: statuses.get(name) for name in PACKAGES}
     check(
         all(s == "SKIP" for s in packages.values())
@@ -2105,7 +2104,7 @@ def setup_cases(
         f"{packages}, OpenCode directory {statuses.get('OpenCode directory')}",
     )
     # No OpenCode directory, whose plan then exits 2: no layer, and no WARN.
-    statuses, details, changed = run("no opencode", '["claude"]', '["julia"]', (), (), (".config/opencode",))
+    statuses, details, changed = checked_on('["claude"]', '["julia"]', removed=(".config/opencode",))
     check(
         statuses.get("OpenCode directory") == "SKIP"
         and "opencode" in details.get("OpenCode directory", "")
@@ -2114,7 +2113,7 @@ def setup_cases(
         f"{system_name}: [setup] without opencode: the OpenCode directory is SKIP, and the Julia "
         f"packages pass -> {statuses.get('OpenCode directory')}, {details.get('OpenCode directory')!r}",
     )
-    statuses, details, changed = run("on disk", '["claude"]', '["julia"]', tuple(layer_files.values()), ())
+    statuses, details, changed = checked_on('["claude"]', '["julia"]', files=tuple(layer_files.values()))
     found = layers(statuses, details)
     check(
         found == dict.fromkeys(layer_files, "WARN")
@@ -2123,14 +2122,14 @@ def setup_cases(
         f"{system_name}: claude alone, and a file of each other layer on disk: one WARN each, naming "
         f"[setup] and the frontend, none for claude, and no file changed -> {found}, changed {changed}",
     )
-    statuses, details, changed = run("empty", '["claude"]', '["julia"]', (), (".omp/agent", ".gemini/config"))
+    statuses, details, changed = checked_on('["claude"]', '["julia"]', dirs=(".omp/agent", ".gemini/config"))
     found = layers(statuses, details)
     check(
         not found and not changed,
         f"{system_name}: claude alone, and the other frontends' directories hold no file of a layer: "
         f"no WARN -> {found}",
     )
-    statuses, details, changed = run("chosen", every, '["julia"]', tuple(layer_files.values()), ())
+    statuses, details, changed = checked_on(every, '["julia"]', files=tuple(layer_files.values()))
     found = layers(statuses, details)
     check(
         not found and not changed,
