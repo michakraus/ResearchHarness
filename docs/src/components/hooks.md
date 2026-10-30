@@ -73,11 +73,15 @@ with the error. The checks read a command without
 `shlex`: a `#` inside a word, a backslash-newline and a quoted operator are read as the shell
 reads them, and a quoted operator or a joined line is also read the other way, so that neither
 hides a part of the command. `tests/guard/corpus.jsonl` holds the decision of each payload that
-the probe checks, and each difference from the scripts with its reason. Every check and every
-reading takes the walk of a `cd` word from one memo per payload, and the write check asks git
-once per work tree, so the file-system reads and the `git` processes of a payload grow with the
-distinct names of its words, not with the number of checks and readings. The guard decides a
-command of 1 MiB within 10 s. Test it from `hooks/`
+the probe checks, and each difference from the scripts with its reason. Every file-system read of
+a payload is a function of `hooks/guard/paths.py`, which reads each directory and name once in
+each mode and asks each directory once whether it holds a `.git`; every check and every reading
+takes the walk of a word from one memo; the write check asks git once per work tree. A probe case
+finds no file-system read elsewhere in the package but a few named ones, which read once per
+process or one path of a directory call. The probe counts the reads of ten commands of 1 MiB
+(a long `cd` word, many `rm` operands, many `git init` outside a work tree), each at most two or
+three reads per distinct name of the command plus a constant, and the guard decides each of its
+timed commands of 1 MiB within 10 s. Test it from `hooks/`
 with the environment's interpreter, which is Python 3.14; the guard exits with status 2 on a
 `deny`:
 
@@ -352,10 +356,11 @@ result. The last line gives the number of cases and the number of failed cases, 
 status is 1 when any case fails. The group `commands` runs the guard package on each record of
 `tests/guard/corpus.jsonl` and on the cases that a line of it cannot hold: a command of 1 MiB and
 one byte more, commands of 1 MiB that the checks walk word by word, each held to 10 s with its
-seconds on its line, the count of the file-system reads and `git` processes of such commands, a
-write target with a NUL, a payload that is not UTF-8, the reason of the winning check, a
-frontend that the guard lacks, a guard that raises, the copy of `jsonio.py`, and the rendered
-`Bash` entry with a guard that cannot start. The groups
+seconds on its line, the count of the file-system reads, walk steps and `git` processes of such
+commands, a write target with a NUL, a `.git` that is a dangling link, a link to itself, a
+payload that is not UTF-8, the reason of the winning check, a frontend that the guard lacks, a
+guard that raises, the copy of `jsonio.py`, the file-system reads outside `paths.py`, and the
+rendered `Bash` entry with a guard that cannot start. The groups
 `omp`, `opencode` and `antigravity` run the seven guard scripts through those frontends. The probe
 also covers the other Python hooks of this page, the fail-closed cases of `worktree.py`, and the
 drift cases of `install-drift.py`. It also loads `adapters/omp/guards.ts` and the OpenCode

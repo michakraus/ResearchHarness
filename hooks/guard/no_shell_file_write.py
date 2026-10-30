@@ -35,7 +35,7 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
 from .contract import PASS, Call, Verdict, needs_cwd
-from .paths import Place, place
+from .paths import Place, place, work_tree
 from .shell import SEGMENT, Tokens, lex
 
 # The redirection at the end of an operator run; what comes before it is a separator: `)>` closes
@@ -216,18 +216,6 @@ def scratch(path: Place) -> bool:
     return any(path.starts(root) for root in SCRATCH_ROOTS)
 
 
-@functools.cache
-def root(start: Place) -> Place | None:
-    """The nearest directory at or above `start` that holds a `.git`, or None; asked once per
-    directory, so the writes of one directory read its `.git` and those above it once."""
-    directory: Place | None = start
-    while directory is not None:
-        if Path(directory.text(), ".git").exists():
-            return directory
-        directory = directory.up
-    return None
-
-
 @dataclass(frozen=True, slots=True)
 class Target:
     """A write target, resolved: `root`, the work tree that holds it, or None; `text`, its path, and
@@ -241,13 +229,12 @@ class Target:
     refused: bool
 
 
-@functools.cache
 def target_of(start: Place | None, path: str) -> Target:
     """The write target `path`, relative to the working directory `start`, or absolute when
-    `start` is None, resolved once, so that both readings of a command take it from here. Its work
-    tree is the nearest directory at or above the target's directory that holds a `.git`; only a
-    directory that exists can hold one. The verdict reads only the directories above the target,
-    so the target's last name is joined, not read, unless it is `..`."""
+    `start` is None. Its work tree is the nearest directory at or above the target's directory that
+    holds a `.git`; only a directory that exists can hold one. The verdict reads only the
+    directories above the target, so the target's last name is joined, not read, unless it is
+    `..`."""
     pure = PurePosixPath(path)
     if pure.name in ("", ".."):
         found = place(path, "plain") if start is None else start.go(path, "plain")
@@ -257,7 +244,7 @@ def target_of(start: Place | None, path: str) -> Target:
         found = above.joined(pure.name)
     if scratch(found):
         return Target(root=None, text="", below="", refused=False)
-    tree = root(found.parent().existing())
+    tree = work_tree(found.parent(), "plain")
     if tree is None:
         return Target(root=None, text="", below="", refused=found.name.lower().endswith(SOURCE_SUFFIXES))
     return Target(

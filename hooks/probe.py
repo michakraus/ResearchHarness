@@ -19,6 +19,7 @@ every machine and in CI. Each Python hook runs with this interpreter, `sys.execu
 with its shebang, and each call has a timeout.
 """
 
+import ast
 import contextlib
 import getpass
 import importlib.util
@@ -67,10 +68,11 @@ q = shlex.quote  # a fixture path spliced into a command, for a `$TMPDIR` with a
 TIMEOUT = 30  # seconds per hook call; a timeout is a wrong case
 MIB = 1024 * 1024  # bytes: the largest command that the guard decides by its checks
 MIB_LIMIT = 10  # seconds: the bound within which the guard decides a command of 1 MiB
-# stat and lstat calls of a payload beside those for the distinct names of its `cd` words: the walk
-# of its working directory, the roots of the checks, the `.git` above a write. 56 for the first two
-# counted payloads and 189 for the third on macOS with the fixture below `/tmp/<one name>/`; the
-# margin holds a fixture below a deeper `$TMPDIR`.
+# stat and lstat calls of a payload beside those for the distinct names of its words: the walk of
+# its working directory, the roots of the checks, the `.git` above a write. 62 for the first two
+# counted `cd` payloads, 180 for the third and at most 74 for the payloads that resolve operands and
+# `git init` targets, on macOS with the fixture below `/tmp/<one name>/`; the margin holds a fixture
+# below a deeper `$TMPDIR`. Also the bound of the steps of a walk beside those of the distinct names.
 WALK_READS = 400
 
 WORKTREE = HOOKS + "worktree.py"
@@ -82,10 +84,15 @@ WORKTREE = HOOKS + "worktree.py"
 GUARD = HOOKS + "guard"
 SCRATCH = R + "/.scratch"
 # A work tree of the fixture in a worktree zone, whose `.gitignore` ignores `*.log`, with the
-# directories `a` and `d1/…/d40`: the working directory of the commands of 1 MiB that walk `cd`
-# words and write files that git ignores.
+# directories `a` and `d1/…/d40` and a link `loop` to itself: the working directory of the commands
+# of 1 MiB that walk `cd` words and write files that git ignores.
 LOGS = str(pathlib.PurePosixPath(R, ".worktrees", "Logs"))
 DEEP = str(pathlib.PurePosixPath(LOGS, *(f"d{i}" for i in range(1, 41))))
+# A directory 13 names below the fixture's directory, in no work tree: the working directory of a
+# `git init` whose work tree check climbs to `/`.
+OUTSIDE = str(pathlib.PurePosixPath(FIXTURE.name, "outside", *(f"o{i}" for i in range(1, 13))))
+# A directory whose `.git` is a link to a name that does not exist.
+DANGLING = HOME + "/dangling"
 
 # `worktree.py` is not a `PreToolUse` hook: it fails closed, so every case here expects 1.
 # Creation needs an unsandboxed git and is probed by `EnterWorktree`, not here.
@@ -2223,7 +2230,11 @@ def fixture():
                 capture_output=True,
             )
     pathlib.Path(DEEP).mkdir(parents=True)
+    pathlib.Path(OUTSIDE).mkdir(parents=True)
+    pathlib.Path(DANGLING).mkdir()
+    pathlib.Path(DANGLING, ".git").symlink_to("missing")
     pathlib.Path(LOGS, "a").mkdir()
+    pathlib.Path(LOGS, "loop").symlink_to("loop")
     pathlib.Path(LOGS, ".gitignore").write_text("*.log\n", encoding="utf-8")
     git = shutil.which("git") or "git"
     subprocess.run([git, "init", "-q", LOGS], env=git_env, check=True, capture_output=True)
@@ -2612,20 +2623,24 @@ def guard_run(data: bytes, frontend: str = "claude", limit: float = TIMEOUT) -> 
 
 
 # Runs the guard `sys.argv[1]` as the settings template runs it, with each `os.stat` and `os.lstat`
-# call and each spawn of `git` counted, and writes the counts as the last line of stderr after the
-# guard exits: `counts <stat and lstat calls> <git spawns>`.
+# call, each spawn of `git` and each step of a walk (a call of `Place.child` of the package's
+# `paths`, imported first so that the guard runs the counted class) counted, and writes the counts as
+# the last line of stderr after the guard exits: `counts <stat and lstat calls> <git spawns> <steps>`.
 COUNTED = """
-import os, runpy, subprocess, sys
-counts = [0, 0]
-def counted(call):
+import os, pathlib, runpy, subprocess, sys
+counts = [0, 0, 0]
+def counted(call, index):
     def wrapped(*args, **kwargs):
-        counts[0] += 1
+        counts[index] += 1
         return call(*args, **kwargs)
     return wrapped
-os.stat, os.lstat = counted(os.stat), counted(os.lstat)
+os.stat, os.lstat = counted(os.stat, 0), counted(os.lstat, 0)
+sys.path.insert(0, str(pathlib.Path(sys.argv[1]).resolve().parent))
+from guard import paths
+paths.Place.child = counted(paths.Place.child, 2)
 class Popen(subprocess.Popen):
     def __init__(self, args, *rest, **kwargs):
-        counts[1] += os.path.basename(str(args[0])) == "git"
+        counts[1] += pathlib.PurePath(str(args[0])).name == "git"
         super().__init__(args, *rest, **kwargs)
 subprocess.Popen = Popen
 sys.argv = [sys.argv[1], "--from", "claude"]
@@ -2634,14 +2649,15 @@ try:
     runpy.run_path(sys.argv[0], run_name="__main__")
 except SystemExit as e:
     code = e.code
-sys.stderr.write(f"\\ncounts {counts[0]} {counts[1]}\\n")
+sys.stderr.write(f"\\ncounts {counts[0]} {counts[1]} {counts[2]}\\n")
 sys.exit(code)
 """
 
 
-def guard_counted(data: bytes) -> tuple[str, int, int]:
+def guard_counted(data: bytes) -> tuple[str, int, int, int]:
     """The guard's decision on the payload bytes `data`, `deny`, `pass`, `exit <n>` or `timeout`, and
-    its count of `os.stat` and `os.lstat` calls and of `git` spawns; -1 for a count it did not print."""
+    its count of `os.stat` and `os.lstat` calls, of `git` spawns and of the steps of its walks; -1 for
+    a count it did not print."""
     try:
         proc = subprocess.run(
             [sys.executable, "-c", COUNTED, GUARD],
@@ -2653,14 +2669,16 @@ def guard_counted(data: bytes) -> tuple[str, int, int]:
             check=False,
         )
     except subprocess.TimeoutExpired:
-        return "timeout", -1, -1
-    counts = re.search(rb"\ncounts (\d+) (\d+)\n$", proc.stderr)
-    stats, spawns = (int(counts.group(1)), int(counts.group(2))) if counts else (-1, -1)
+        return "timeout", -1, -1, -1
+    counts = re.search(rb"\ncounts (\d+) (\d+) (\d+)\n$", proc.stderr)
+    stats, spawns, steps = (
+        (int(counts.group(1)), int(counts.group(2)), int(counts.group(3))) if counts else (-1, -1, -1)
+    )
     if proc.returncode == 2:
-        return "deny", stats, spawns
+        return "deny", stats, spawns, steps
     if proc.returncode != 0 or proc.stdout.strip():
-        return f"exit {proc.returncode} {proc.stdout[:80]!r}", stats, spawns
-    return "pass", stats, spawns
+        return f"exit {proc.returncode} {proc.stdout[:80]!r}", stats, spawns, steps
+    return "pass", stats, spawns, steps
 
 
 def mib_command(unit: str, tail: str, lead: str = "") -> tuple[str, str]:
@@ -2732,6 +2750,72 @@ def guard_raises() -> tuple[object, str]:
     return "no exit", stderr.getvalue()
 
 
+# The methods of a path and the names of `os` that read the file system.
+FS_METHODS = frozenset(
+    {
+        "stat",
+        "lstat",
+        "exists",
+        "resolve",
+        "is_dir",
+        "is_file",
+        "is_symlink",
+        "iterdir",
+        "readlink",
+        "samefile",
+        "glob",
+        "rglob",
+        "open",
+        "read_text",
+        "read_bytes",
+    }
+)
+OS_READS = frozenset(
+    {"stat", "lstat", "listdir", "scandir", "access", "readlink", "walk", "getcwd", "path", "open"}
+)
+# The reads of the guard outside `paths.py` and `jsonio.py` that the bound per payload leaves out, by
+# file and call: the package's own directory and the roots of the checks, each read once per process
+# at import, and the one path of a directory or worktree call, which holds no shell command.
+READS_ALLOWED = frozenset(
+    {
+        ("__main__.py", "Path(__file__).resolve()"),
+        ("directory_scope.py", "Path(Path.home(), 'Research').resolve()"),
+        ("directory_scope.py", "Path(path).resolve()"),
+        ("rm_scope.py", "Path.home().resolve()"),
+        ("rm_scope.py", "Path(HOME, 'Research').resolve()"),
+    }
+)
+
+
+def guard_reads() -> list[str]:
+    """Each read of the file system in the guard package outside `paths.py`, which memoises every read
+    of a payload, and `jsonio.py`, that `READS_ALLOWED` does not name: `<file>:<line> <call>`."""
+    found: list[str] = []
+    for path in sorted(pathlib.Path(GUARD).rglob("*.py")):
+        name = path.relative_to(GUARD).as_posix()
+        if name in ("paths.py", "jsonio.py"):
+            continue
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and node.func.attr in FS_METHODS
+            ):
+                read: ast.expr = node
+            elif (
+                isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name) and node.value.id == "os"
+            ):
+                if node.attr not in OS_READS:
+                    continue
+                read = node
+            else:
+                continue
+            text = ast.unparse(read)
+            if (name, text) not in READS_ALLOWED:
+                found.append(f"{name}:{read.lineno} {text}")
+    return found
+
+
 def guard_entry(missing: str) -> tuple[list[str], str]:
     """The commands of the `Bash` group of the settings template as the Claude Code adapter renders them
     with the dummy profile, a home `missing` and this interpreter, and the guard's command among them."""
@@ -2771,7 +2855,27 @@ def command_cases():
     # readings, loop words with no `do` or `done`, many distinct writes that git ignores. Each is
     # decided within the clause's 10 s, and its line gives the seconds.
     four = "; git status > /dev/null; rm -rf x; echo x > y.log ';' \\\n"
+    # Commands of 1 MiB whose operands and `git init` targets a check resolves many times: the same or
+    # distinct operands of a recursive `rm` below a directory ten names deep, operands in distinct
+    # directories below it and below an absolute directory 40 names deep, and a `git init` from a
+    # working directory in no work tree, whose work tree
+    # check climbs to `/`; in one and in four readings. The flag marks a command whose steps are bound.
+    ten = pathlib.PurePosixPath(*(f"d{i}" for i in range(1, 11)))
+    distinct, same, below = (str(ten / name) + " " for name in ("x{}", "x", "x{}/y"))
+    # The absolute directory is resolved, so that no link on its path (`/tmp` on macOS) settles its
+    # walks into one.
+    absolute = str(pathlib.PurePosixPath(pathlib.Path(DEEP).resolve(), "x{}", "y")) + " "
+    resolved = (
+        (LOGS, False, mib_command(distinct, "x", "rm -rf ")),
+        (LOGS, False, mib_command(distinct, "x ';' \\\n", "rm -rf ")),
+        (LOGS, False, mib_command(same, "x ';' \\\n", "rm -rf ")),
+        (LOGS, False, mib_command(below, "x", "rm -rf ")),
+        (LOGS, False, mib_command(absolute, "x", "rm -rf ")),
+        (OUTSIDE, True, mib_command("git init x; ", "git status")),
+        (OUTSIDE, True, mib_command("git init x; ", "git status ';' \\\n")),
+    )
     for cwd, (command, shape), expected in (
+        *((cwd, made, "pass") for cwd, _, made in resolved),
         (CWD, mib_command("cd a; ", "echo x > /tmp/x"), "pass"),
         (CWD, mib_command("cd a && git status; ", "true"), "pass"),
         (CWD, mib_command("cd a; ", "git add -A; rm x"), "deny"),
@@ -2803,23 +2907,40 @@ def command_cases():
     # third command reads each `d<i>` from two starts in the `real` mode: from the directory of the
     # chain of `cd`, and from the call's working directory, against which the sandbox check tests each
     # `cd`; and the work tree check walks each `cd` to the deep directory from a new start.
-    for cwd, starts, (command, shape) in (
-        (LOGS, 2, mib_command("d{}/../", four, "cd ")),
-        (LOGS, 2, mib_command("a/../", four, "cd ")),
-        (LOGS, 3, mib_command(f"cd d{{}}; cd {DEEP}; ", four.removeprefix("; "))),
+    # The first command's walks step once per name of its `cd` word in each mode, however many checks
+    # and readings take them.
+    for cwd, starts, stepped, (command, shape) in (
+        (LOGS, 2, True, mib_command("d{}/../", four, "cd ")),
+        (LOGS, 2, False, mib_command("a/../", four, "cd ")),
+        (LOGS, 3, False, mib_command(f"cd d{{}}; cd {DEEP}; ", four.removeprefix("; "))),
     ):
         words = re.findall(r"(?:^|; )cd (\S+)", command)
         names = len({name for word in words for name in word.split("/") if name not in ("", "..")})
-        got, stats, spawns = guard_counted(
+        got, stats, spawns, steps = guard_counted(
             json.dumps({"tool_name": "Bash", "tool_input": {"command": command}, "cwd": cwd}).encode("utf-8")
         )
-        bound = f"at most {starts} x {names} + {WALK_READS} reads"
+        bound = f"at most {starts} x {names} + {WALK_READS} reads" + (" and steps" if stepped else "")
+        ok = got == "pass" and 0 <= stats <= starts * names + WALK_READS
         report(
-            ok=got == "pass" and 0 <= stats <= starts * names + WALK_READS,
-            line=f"exp pass, {bound} got {got}, {stats}  [guard    ]  {shape}",
+            ok=ok and (not stepped or 0 <= steps <= starts * names + WALK_READS),
+            line=f"exp pass, {bound} got {got}, {stats} reads, {steps} steps  [guard    ]  {shape}",
+        )
+    # The commands that resolve an operand or a `git init` target many times read each (directory,
+    # name) once in each mode: at most two reads for each distinct name of the command. A `git init`
+    # climbs from each directory once, so its steps are bound too.
+    for cwd, stepped, (command, shape) in resolved:
+        names = len({name for name in re.split(r"[ /;]+", command) if name not in ("", "..")})
+        got, stats, spawns, steps = guard_counted(
+            json.dumps({"tool_name": "Bash", "tool_input": {"command": command}, "cwd": cwd}).encode("utf-8")
+        )
+        bound = f"at most 2 x {names} + {WALK_READS} reads" + (" and steps" if stepped else "")
+        ok = got == "pass" and 0 <= stats <= 2 * names + WALK_READS
+        report(
+            ok=ok and (not stepped or 0 <= steps <= 2 * names + WALK_READS),
+            line=f"exp pass, {bound} got {got}, {stats} reads, {steps} steps  [guard    ]  {shape}",
         )
     command, shape = mib_command("echo x > __pycache__/a{}.log; ", "true")
-    got, stats, spawns = guard_counted(
+    got, stats, spawns, steps = guard_counted(
         json.dumps({"tool_name": "Bash", "tool_input": {"command": command}, "cwd": CWD}).encode("utf-8")
     )
     report(
@@ -2835,6 +2956,21 @@ def command_cases():
         ok=got == "deny" and "writes a file in a git working tree" in output,
         line=f"exp deny got {got}  [guard    ]  a write to a path with a NUL: {output[:60]!r}",
     )
+    # A `.git` that is a dangling link: the sandbox check reads the link itself, so to it the directory
+    # is a work tree and a `git init` there is refused; the write check reads what the link names, so
+    # to it the directory lies in no work tree and a write there of a file that is no source passes.
+    for command, expected in (("git init x", "deny"), ("echo x > f.txt", "pass")):
+        payload = {"tool_name": "Bash", "tool_input": {"command": command}, "cwd": DANGLING}
+        got, _ = guard_run(json.dumps(payload).encode("utf-8"))
+        report(
+            ok=got == expected,
+            line=f"exp {expected} got {got}  [guard    ]  {command!r} beside a dangling .git",
+        )
+    # A link to itself, which `Path.resolve` leaves in the path it returns: the path is settled without
+    # following its links, so the guard decides the operand below it and does not raise.
+    payload = {"tool_name": "Bash", "tool_input": {"command": "rm -rf loop/x"}, "cwd": LOGS}
+    got, _ = guard_run(json.dumps(payload).encode("utf-8"))
+    report(ok=got == "pass", line=f"exp pass got {got}  [guard    ]  'rm -rf loop/x' below a link to itself")
     got, output = guard_run(b'{"tool_name":"Bash","tool_input":{"command":"echo \xff"},"cwd":"/"}')
     report(
         ok=got == "deny" and "UTF-8" in output, line=f"exp deny got {got}  [guard    ]  a payload byte 0xFF"
@@ -2869,6 +3005,10 @@ def command_cases():
         ok=same,
         line=f"exp same got {'same' if same else 'other'}  [guard    ]  the guard's jsonio.py, byte for byte",
     )
+    # Every read of the file system that a payload makes goes through `paths.py`, so no call site can
+    # read again what another check or reading has read.
+    reads = guard_reads()
+    report(ok=not reads, line=f"exp none got {reads}  [guard    ]  file-system reads outside paths.py")
 
     try:
         commands, guard = guard_entry(FIXTURE.name + "/missing-home")

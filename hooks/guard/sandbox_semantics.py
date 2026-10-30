@@ -25,7 +25,7 @@ import re
 from pathlib import Path
 
 from .contract import PASS, Call, Verdict, needs_cwd, strongest
-from .paths import Place, place
+from .paths import Place, place, work_tree
 from .shell import SEGMENT, SEPARATORS, Tokens, readings, words
 
 # `$( … )` and `` ` … ` ``. Neither nests here: a substitution inside a substitution is read as
@@ -266,17 +266,6 @@ def path_screened(heads: list[Head]) -> tuple[str, str] | None:
     return None
 
 
-def work_tree(path: Place) -> str | None:
-    """The root of the working tree that holds the resolved `path`, or None. Only a directory that
-    exists can hold a `.git`."""
-    current: Place | None = path.existing()
-    while current is not None:
-        if Path(current.text(), ".git").exists(follow_symlinks=False):
-            return current.text()
-        current = current.up
-    return None
-
-
 def in_work_tree(heads: list[Head], cwd: Place | None) -> tuple[str, str, str] | None:
     """(command, root, directory) for a `git init` or `git clone` that lands in a work tree, or
     None. The target is the last argument that is not a flag, resolved against the working
@@ -298,9 +287,9 @@ def in_work_tree(heads: list[Head], cwd: Place | None) -> tuple[str, str, str] |
         rest = arguments[arguments.index(sub) + 1 :]
         operands = [token for token in rest if not token.startswith("-")]
         target = expanded(operands[-1]) if operands else "."
-        root = work_tree(cwd.go(target, "real"))
-        if root:
-            return "git " + sub, root, cwd.text()
+        root = work_tree(cwd.go(target, "real"), "link")
+        if root is not None:
+            return "git " + sub, root.text(), cwd.text()
     return None
 
 

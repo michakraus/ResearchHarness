@@ -162,8 +162,8 @@ def resolve(word: str, cwd: Cwd) -> Place | None:
         found = found.parent()
     if not downs:
         return found
-    for name in downs[:-1]:
-        found = found.child(name, "real")
+    if len(downs) > 1:
+        found = found.go(str(PurePosixPath(*downs[:-1])), "real")
     return found.child(downs[-1], "real") if word.endswith("/") else found.joined(downs[-1])
 
 

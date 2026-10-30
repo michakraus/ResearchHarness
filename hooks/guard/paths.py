@@ -9,15 +9,19 @@ A step reads the file system only below a directory that exists, and only the pa
 directory and one name more. A path below a name that does not exist names no file, so the result
 is the one that a read of the whole path gives.
 
-Two modes of a step: `real` resolves a symbolic link as `Path.resolve` does, and `..` then leaves
+Two modes of a walk: `real` resolves a symbolic link as `Path.resolve` does, and `..` then leaves
 the resolved directory; `plain` keeps every name, and `..` drops the last name, as a lexical
-normalisation does. Both record whether the path names a file.
+normalisation does. Both record whether the path names a file. A third mode of a step, `link`,
+reads a name without following it, for a path that is resolved already and for a `.git` of any
+kind.
 
-One memo per process holds each walk: `go` walks a (start `Place`, word, mode) once, and `place`
-an absolute path text once in each mode, and every check and every reading of a payload takes the
-walk from the memo. The guard decides one payload per process, so a payload walks each (start,
-word, mode) at most once however many checks and readings ask for it, and a walk reads each name
-at most once from each directory that it steps from.
+Every read of the file system that a payload makes is a function of this module, and each is
+memoised once per process: `child` reads a (directory, name, mode) once and keeps one `Place` of
+it, the anchor is one `Place`, and `work_tree` asks a directory once whether it holds a `.git`.
+The guard decides one payload per process, so a payload reads each (directory, name, mode) at most
+once however many checks, readings and call sites ask for it. Above the reads, `go` walks a (start
+`Place`, word, mode) once, and `place` an absolute path text once in each mode, so a walk that
+every check and every reading asks for steps once.
 """
 
 import functools
@@ -27,6 +31,7 @@ from pathlib import Path, PurePosixPath
 from typing import Literal
 
 type Mode = Literal["real", "plain"]
+type Read = Literal["real", "plain", "link"]
 
 # The names that each `Place` keeps from the start of its path.
 HEAD = 64
@@ -48,8 +53,12 @@ class Place:
 
     @staticmethod
     def anchor(name: str = "/") -> Place:
-        """The anchor of every path, which names a file."""
-        return Place(None, name, 1, (name,), name, None)
+        """The anchor of every path, which names a file: one `Place` for each anchor, so that every
+        walk reads from the same `Place`s."""
+        found = ANCHORS.get(name)
+        if found is None:
+            found = ANCHORS[name] = Place(None, name, 1, (name,), name, None)
+        return found
 
     def existing(self) -> Place:
         """The longest path at or above this one that names a file."""
@@ -64,15 +73,25 @@ class Place:
         head = self.head if len(self.head) >= HEAD else (*self.head, name)
         return Place(self, name, self.size + 1, head, None, self.existing())
 
-    def child(self, name: str, mode: Mode) -> Place:
-        """The child `name` of this path, after a read of it when this path names a file."""
+    def child(self, name: str, mode: Read) -> Place:
+        """The child `name` of this path, from the memo: one read of it in `mode`, when this path
+        names a file, and one `Place`, for each (path, name, mode) of the process."""
+        key = (self, name, mode)
+        found = CHILDREN.get(key)
+        if found is None:
+            found = CHILDREN[key] = self.read(name, mode)
+        return found
+
+    def read(self, name: str, mode: Read) -> Place:
+        """The child `name` of this path, after a read of it when this path names a file: `real`
+        follows a symbolic link, `plain` reads what a link names, `link` reads the link itself."""
         joined = self.joined(name)
         if self.real is None:
             return joined
         path = Path(self.real, name)
         text = str(path)
         try:
-            found = path.lstat() if mode == "real" else path.stat()
+            found = path.stat() if mode == "plain" else path.lstat()
         except OSError, ValueError:
             return joined
         if mode == "real" and stat.S_ISLNK(found.st_mode):
@@ -91,18 +110,11 @@ class Place:
         return found
 
     def walk(self, pure: PurePosixPath, mode: Mode) -> Place:
-        """The path that `pure` names from this one, each name read once from each directory that it
-        steps from: an absolute `pure` starts at the anchor."""
+        """The path that `pure` names from this one, one step for each name: an absolute `pure` starts
+        at the anchor."""
         found = start(pure, mode) if pure.is_absolute() else self
-        steps: dict[tuple[Place, str], Place] = {}
         for name in pure.parts[1 if pure.is_absolute() else 0 :]:
-            if name == "..":
-                found = found.parent()
-                continue
-            step = steps.get((found, name))
-            if step is None:
-                step = steps[found, name] = found.child(name, mode)
-            found = step
+            found = found.parent() if name == ".." else found.child(name, mode)
         return found
 
     def names(self) -> list[str]:
@@ -154,25 +166,48 @@ def through(link: str) -> Place:
 
 
 def settled(path: str) -> Place:
-    """The `Place` of a resolved absolute path, each name read once without following a link."""
+    """The `Place` of a resolved absolute path, each name read from the memo without following a
+    link."""
     pure = PurePosixPath(path)
     place = start(pure, "real")
     for name in pure.parts[1:]:
-        joined = place.joined(name)
-        if place.real is None:
-            place = joined
-            continue
-        text = str(PurePosixPath(place.real, name))
-        try:
-            Path(text).lstat()
-        except OSError, ValueError:
-            place = joined
-            continue
-        place = Place(place, name, joined.size, joined.head, text, None)
+        place = place.child(name, "link")
     return place
 
 
-# The memo of `Place.go`: a `Place` is its own key, by identity, so a key names one start.
+def has_git(place: Place, mode: Read) -> bool:
+    """True when the directory `place` holds a `.git`, read from the memo: of any kind in `link`
+    mode, and one that names a file in `plain` mode."""
+    return place.child(".git", mode).real is not None
+
+
+def work_tree(place: Place, mode: Read) -> Place | None:
+    """The nearest directory at or above `place` that holds a `.git`, or None; only a directory that
+    exists can hold one. Each directory is asked once in each mode, and the answer of every
+    directory that a climb passes is kept, so a later climb from below stops where this one went."""
+    climbed: list[Place] = []
+    found: Place | None = None
+    current: Place | None = place.existing()
+    while current is not None:
+        if (current, mode) in TREES:
+            found = TREES[current, mode]
+            break
+        climbed.append(current)
+        if has_git(current, mode):
+            found = current
+            break
+        current = current.up
+    for each in climbed:
+        TREES[each, mode] = found
+    return found
+
+
+# The memos of a process: the one `Place` of each anchor; the child that each (path, name, mode)
+# reads; the work tree of each (directory, mode); the walk of each (start, word, mode). A `Place` is
+# its own key, by identity, so a key names one path of one walk.
+ANCHORS: dict[str, Place] = {}
+CHILDREN: dict[tuple[Place, str, Read], Place] = {}
+TREES: dict[tuple[Place, Read], Place | None] = {}
 WALKS: dict[tuple[Place, str, Mode], Place] = {}
 
 

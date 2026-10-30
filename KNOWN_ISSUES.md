@@ -544,7 +544,7 @@
 
 ### K112 · The shell-write check passes a target whose text starts with a scratch root and then climbs out of it with `..`.
 
-- location: `hooks/guard/no_shell_file_write.py:351`
+- location: `hooks/guard/no_shell_file_write.py:338`
 - evidence: `tree_write` returns False when the raw target starts with a scratch prefix, before it
   resolves `..`, so `echo x > /tmp/../<tree>/f.txt`, `echo x > $TMPDIR/../f.txt` and
   `echo x > ~/Research/.scratch/../Harness/f.jl` pass. `hooks/no-shell-file-write.py` passes them
