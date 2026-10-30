@@ -2,7 +2,7 @@
 
 `<python> hooks/guard --from <frontend>` reads the frontend's payload on stdin, turns it into the
 neutral contract of `contract` with the frontend's table in `frontends/`, runs each check that the
-table names for the call (one module each, named after the guard script it replaces), and answers
+table names for the call (one module each, named after its check), and answers
 in the frontend's form: the first of `deny`, `ask`, `allow` and `pass` that a check gives, with
 the reason of the check that gave it. `shell` holds the reading of a shell command that the shell
 checks share, and `jsonio` is a copy of the harness's JSON reader.

@@ -36,9 +36,8 @@ reads a handler that prints nothing as a block.
 
 The hooks prevent accidents. They are not a security boundary: each one reads the text of a
 command. [The security model](../security.md) says what they stop and what they do not stop. The
-page groups the hooks: first the guard package, then the five shell guards and
-`sandbox-semantics.py`, then the hooks of the edit, worktree and Kaimon tools, then the session
-hooks, and last the probe.
+page groups the hooks: first the guard package, then the guard scripts and `edit-scope.py`, then
+`worktree.py` and the session hooks, and last the probe.
 
 ## The guard package
 

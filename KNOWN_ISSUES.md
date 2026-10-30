@@ -589,12 +589,13 @@
 - kind: defect
 - found: 2026-10-29, the critics of the guard core
 
-### K117 · The `gh api` and archive checks find no call behind `env` or an assignment.
+### K117 · The `gh api` check finds no call behind `env` or an assignment, and the archive check none behind `env`.
 
 - location: `hooks/guard/gh_api_writes.py:204`
-- evidence: each part's first word must be the tool, so `env gh api -X DELETE x`,
-  `GH_HOST=x gh api -X DELETE x` and `env git archive -o x` pass the guard and the scripts
-  `hooks/gh-api-writes.py` and `hooks/git-archive-output.py`.
+- evidence: the `gh api` check needs the tool as a part's first word, and the archive check skips
+  only assignments before `git`, so `env gh api -X DELETE x`, `GH_HOST=x gh api -X DELETE x` and
+  `env git archive -o x HEAD` pass the guard and the scripts `hooks/gh-api-writes.py` and
+  `hooks/git-archive-output.py`.
 - kind: defect
 - found: 2026-10-29, the critics of the guard core
 
@@ -618,10 +619,10 @@
 
 ### K120 · What Claude Code does with a `PreToolUse` hook that passes its `timeout` is not measured here.
 
-- location: `settings/settings.proposal.json:680`
+- location: `settings/settings.proposal.json:717`
 - evidence: the template gives each guard hook `"timeout": 5`. If Claude Code reads a timeout as
   a non-blocking error, a guard that runs longer lets the call run. The probe holds the guard's
-  commands of 1 MiB to 10 s, the bound of the size clause, and no probe of Claude Code itself
+  commands of 1 MiB to 10 s, its `MIB_LIMIT`, and no probe of Claude Code itself
   shows the effect.
 - kind: not verified
 - found: 2026-10-29, the critics of the guard core
