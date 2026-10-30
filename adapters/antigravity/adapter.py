@@ -1101,8 +1101,9 @@ def guard_sources() -> list[str]:
     )
 
 
-def layer_cases(scratch: Any):
+def layer_cases(scratch):
     """The files of the layer, the warning with no ~/.gemini/, hooks.json and the copies."""
+    scratch = cast("Any", scratch)
     from harness.install_cases import rule_names, skill_names
 
     case, run, tail = scratch.case, scratch.run, scratch.tail
@@ -1224,9 +1225,9 @@ def layer_cases(scratch: Any):
             }
         ),
         f"hooks.json holds the one hook {HOOK}: one SessionStart handler, which runs install-drift.py and turns its "
-        f"warning into injectSteps, and one PreToolUse group, matcher *, the guard package by its absolute path "
-        f"with --from antigravity, each on "
-        f"the environment's interpreter with a timeout of 15 s: {hooks!r}",
+        f"warning into injectSteps, and one PreToolUse group, matcher *, the guard package by its "
+        f"absolute path with --from antigravity, each on the environment's interpreter with a timeout of "
+        f"15 s: {hooks!r}",
     )
 
     def commands_of(value):
@@ -1252,8 +1253,8 @@ def layer_cases(scratch: Any):
             len(runs_py) > 2
             and all(shlex.split(c)[0] == str(base / "python" / "bin" / "python") for c in runs_py)
         ),
-        f"each command of ~/.claude/settings.json and hooks.json that runs a .py hook or the guard package starts "
-        f"with the environment's interpreter: {runs_py}",
+        f"each command of ~/.claude/settings.json and hooks.json that runs a .py hook or the guard "
+        f"package starts with the environment's interpreter: {runs_py}",
     )
     case(
         lambda: (
@@ -1277,7 +1278,8 @@ def layer_cases(scratch: Any):
     scripts = [g for g in frontends.GUARDS if (config / "hooks" / g).exists()]
     case(
         lambda: scripts == [],
-        f"no guard script of frontends.GUARDS is installed in hooks/, which nothing of Antigravity runs: {scripts}",
+        f"no guard script of frontends.GUARDS is installed in hooks/, which nothing of Antigravity runs: "
+        f"{scripts}",
     )
     profile = profile_module.load(base / "profile.toml")
     opencode = json.loads(profile_module.render_file(GUARD_PATHS, profile))["deny"]
@@ -2005,7 +2007,7 @@ def rule_cases(case):
     ]
     case(
         lambda: not covered and any(e.startswith("Edit(") for _, e, _ in dropped),
-        f"each dropped Edit deny is in the `edit` list of the guard, and each dropped Edit ask in its `ask` list: "
+        f"each dropped Edit deny is in the guard's `edit` list, and each dropped Edit ask in its `ask` list: "
         f"{covered}",
     )
     others = [(key, e) for key, e, _ in dropped if not re.match(r"(Bash|Read|Edit)\(", e)]
@@ -2163,8 +2165,8 @@ def matcher_cases(case, bodies):
         return
     case(
         lambda: not differ and 0 < matching < total,
-        f"the path list's matcher of each Bash deny and ask decides as the reference regex on each of {total} "
-        f"word "
+        f"the path list's matcher of each Bash deny and ask decides as the reference regex on each of "
+        f"{total} word "
         f"lists, {matching} of them matching: {differ[:3]}",
     )
 

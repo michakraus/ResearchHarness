@@ -1648,7 +1648,8 @@ def agy_home_cases(report: AgyReport, fixture: AgyFixture) -> None:
     got = agy_reply(julia, agy_payload("run_command", {"CommandLine": "julia --version"}))
     report(
         ok=bypass_of(got.overwrite) is True,
-        line=f"exp True got {bypass_of(got.overwrite)}  [agy-bypass]  julia --version, with a rule that lifts julia",
+        line=f"exp True got {bypass_of(got.overwrite)}  [agy-bypass]  julia --version, with a rule that "
+        f"lifts julia",
     )
 
 
@@ -1752,8 +1753,8 @@ def agy_work_cases(report: AgyReport, home: str, limit: float) -> None:
         ok = got == "ask" and 0 <= stats <= 2 * units + WALK_READS and 0 <= git <= AGY_MAX_GIT and other == 0
         report(
             ok=ok and seconds <= limit,
-            line=f"exp ask, at most 2 x {units} + {WALK_READS} reads, {AGY_MAX_GIT} git, no other spawn got {got}, "
-            f"{stats} reads, {git} git, {other} other  [agy-work ]  {shape}: {seconds:.2f} seconds",
+            line=f"exp ask, at most 2 x {units} + {WALK_READS} reads, {AGY_MAX_GIT} git, no other spawn got "
+            f"{got}, {stats} reads, {git} git, {other} other  [agy-work ]  {shape}: {seconds:.2f} seconds",
         )
 
 
@@ -1813,7 +1814,8 @@ def agy_unit_cases(report: AgyReport, home: str) -> None:
     )
     report(
         ok=landed.decision == "deny" and "working directory" in landed.reason,
-        line=f"exp deny got {landed.decision}  [agy-guard]  the work-tree check on git init with no working directory",
+        line=f"exp deny got {landed.decision}  [agy-guard]  the work-tree check on git init with no working "
+        f"directory",
     )
     for shell, want in (
         (False, {"decision": "ask"}),
@@ -1841,8 +1843,8 @@ def agy_unit_cases(report: AgyReport, home: str) -> None:
     )
     report(
         ok=blocked,
-        line=f"exp a block got exit {proc.returncode}, output {proc.stdout[:80]!r}  [agy-guard]  under --from "
-        f"antigravity, a check that raises: {proc.stderr.strip()[-100:]!r}",
+        line=f"exp a block got exit {proc.returncode}, output {proc.stdout[:80]!r}  [agy-guard]  under "
+        f"--from antigravity, a check that raises: {proc.stderr.strip()[-100:]!r}",
     )
 
 
