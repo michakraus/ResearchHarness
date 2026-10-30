@@ -651,3 +651,7 @@
 {"frontend": "antigravity", "tool": "read_file", "args": {"Path": "~/.config/gh/hosts.yml"}, "decision": "deny", "bypass": null}
 {"frontend": "antigravity", "tool": "read_file", "args": {"Path": "@@TOOL@@/README.md"}, "decision": "ask", "bypass": null}
 {"frontend": "antigravity", "tool": "write_to_file", "args": {"TargetFile": "@@CWD@@notes.md", "CodeContent": "x"}, "decision": "ask", "bypass": null}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "cat /x/..@@AGYHOME@@/.netrc"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "git status", "Cwd": "sub"}, "decision": "ask", "bypass": true}
+{"frontend": "antigravity", "tool": "call_mcp_tool", "args": {"ServerName": "zotero", "ToolName": "ex", "Arguments": "{"}, "decision": "ask", "bypass": null}
+{"frontend": "antigravity", "tool": "send_message", "args": {"Message": "x", "Path": "~/.claude/skills/build-part/SKILL.md"}, "decision": "ask", "bypass": null}

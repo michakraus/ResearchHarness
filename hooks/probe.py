@@ -1600,6 +1600,7 @@ def agy_home_cases(report: AgyReport, fixture: AgyFixture) -> None:
         ("missing-message", None, ("send_message", {"Message": "x"}), "deny", "cannot be used"),
         ("not-json", "{", status, "deny", "cannot be used"),
         ("deny-text", '{"deny": "x"}', status, "deny", "no list of strings"),
+        ("deny-number", changed(deny=["x", 5]), status, "deny", "no list of strings"),
         ("bash-deny-text", changed(bash_deny="x"), status, "deny", "no list of strings"),
         ("bash-ask-missing", changed(bash_ask=None), status, "deny", "cannot be used"),
         (
@@ -1666,18 +1667,25 @@ def agy_payload_cases(report: AgyReport, home: str) -> None:
         got = agy_reply(home, payload)
         ok = got.decision == "deny" and bool(got.reason and "cannot read" in got.reason)
         report(ok=ok, line=f"exp deny got {got.decision}  [agy-guard]  fail-closed, {label}: {got.reason!r}")
-    for label, tool, args, expected in (
-        ("git status", "run_command", {"CommandLine": "git status"}, "deny"),
-        ("send_message", "send_message", {"Message": "x"}, "ask"),
-        ("read_file of an absolute path", "read_file", {"Path": "/etc/hosts"}, "ask"),
-        ("read_file of a relative path", "read_file", {"Path": "notes.md"}, "deny"),
+    for label, tool, args, workspace, expected in (
+        ("git status", "run_command", {"CommandLine": "git status"}, None, "deny"),
+        ("send_message", "send_message", {"Message": "x"}, None, "ask"),
+        ("read_file of an absolute path", "read_file", {"Path": "/etc/hosts"}, None, "ask"),
+        ("read_file of a relative path", "read_file", {"Path": "notes.md"}, None, "deny"),
+        (
+            "git status, a relative workspace path",
+            "run_command",
+            {"CommandLine": "git status"},
+            "sub",
+            "deny",
+        ),
     ):
-        got = agy_reply(home, agy_payload(tool, args, None))
+        got = agy_reply(home, agy_payload(tool, args, workspace))
         reasoned = got.reason is None if expected == "ask" else "working directory" in (got.reason or "")
         report(
             ok=got.decision == expected and reasoned and got.overwrite == "none",
-            line=f"exp {expected} got {got.decision}, overwrite {got.overwrite}  [agy-guard]  {label} with no "
-            f"workspacePaths",
+            line=f"exp {expected} got {got.decision}, overwrite {got.overwrite}  [agy-guard]  {label}, "
+            f"workspacePaths {[] if workspace is None else [workspace]}",
         )
     got = agy_reply(home, agy_payload("run_command", {"CommandLine": "git add -A"}))
     ok = got.decision == "deny" and bool(got.reason) and "fails closed" not in (got.reason or "")
@@ -1795,8 +1803,18 @@ def agy_unit_cases(report: AgyReport, home: str) -> None:
     try:
         table: Any = importlib.import_module("guard.frontends.antigravity")
         contract: Any = importlib.import_module("guard.contract")
+        semantics: Any = importlib.import_module("guard.sandbox_semantics")
     finally:
         sys.path.remove(HOOKS)
+    # The work-tree check refuses a `git init` that only a working directory places; through the
+    # table, the path list refuses such a call first, for its relative words.
+    landed: Any = semantics.work_tree_check(
+        contract.Call("shell", "/usr/bin/git init /tmp/x", (), None, "main")
+    )
+    report(
+        ok=landed.decision == "deny" and "working directory" in landed.reason,
+        line=f"exp deny got {landed.decision}  [agy-guard]  the work-tree check on git init with no working directory",
+    )
     for shell, want in (
         (False, {"decision": "ask"}),
         (True, {"decision": "ask", "overwrite": {"BypassSandbox": False}}),

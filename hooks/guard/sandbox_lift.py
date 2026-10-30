@@ -15,11 +15,11 @@ reads `git`, and the screen of an assignment below keeps that line inside. A lin
 reads stays inside.
 
 The other screens keep inside a command that the rule lifts but whose program is not the one it
-reads: a `#`, which starts a comment where a shell reads one and hides what follows; a NUL, which
-no shell runs; a part that `exposed` or `path_screened` refuses; an assignment or a path in front
-of a program, unless the part is a `cd` to the working directory; and a git option before the
-subcommand that takes a value, `-C` aside, or `--config-env`, which can name a program to run or
-another repository.
+reads: a `#` anywhere in the line, which PLAIN admits only inside quotes, kept inside so that no
+reading of a comment can differ from a shell's; a part that `exposed` or `path_screened` refuses;
+an assignment or a path in front of a program, unless the part is a `cd` to the working directory;
+and a git option before the subcommand that takes a value, `-C` aside, or `--config-env`, which
+can name a program to run or another repository.
 """
 
 import re
@@ -69,7 +69,7 @@ def check(call: Call) -> Verdict:
     """`pass` with `sandbox: lift` for a shell call that the rule lifts and no screen keeps inside,
     else `pass` with `keep`."""
     command = call.command
-    if call.action != "shell" or PLAIN.fullmatch(command) is None or "#" in command or "\0" in command:
+    if call.action != "shell" or PLAIN.fullmatch(command) is None or "#" in command:
         return PASS
     read = readings(command)
     if read is None:
