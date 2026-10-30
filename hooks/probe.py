@@ -11,8 +11,9 @@ builds its own fixture.
 
 A case gives a hook a payload and compares its answer: exit 2 refuses the call, exit 0
 lets it through or answers with a JSON decision. The group `commands` runs the guard
-package on each record of `tests/guard/corpus.jsonl` and on its edges; the guard fails
-closed, so a payload it cannot read is refused.
+package on each Claude Code record of `tests/guard/corpus.jsonl` and on its edges, and the
+group `antigravity` on each Antigravity record; the guard fails closed, so a payload it
+cannot read is refused.
 
 The hooks run against a fixture `HOME`, never the real one, so the cases mean the same on
 every machine and in CI. Each Python hook runs with this interpreter, `sys.executable`, not
@@ -81,6 +82,10 @@ WORKTREE = HOOKS + "worktree.py"
 # the cases of the guard scripts whose checks it holds. Each record is one JSON object per line:
 # `stdin` (an object, sent as its JSON text, or a string, sent as it is) and `decision`, the guard's
 # expected decision; a placeholder `@@<NAME>@@` in a string stands for the fixture's value of NAME.
+# A record with `"frontend": "antigravity"` is an Antigravity call instead: `tool`, `args`, an
+# optional `workspace`, Antigravity's `decision` and the `bypass` of its `overwrite`, and `differs`,
+# the reason, where the removed Antigravity hook answered otherwise; `@@AGYHOME@@` stands for the
+# fixture home of the Antigravity cases.
 GUARD = HOOKS + "guard"
 SCRATCH = R + "/.scratch"
 # A work tree of the fixture in a worktree zone, whose `.gitignore` ignores `*.log`, with the

@@ -22,7 +22,7 @@ the anchor is one `Place`, `work_tree` asks a directory once whether it holds a 
 a payload reads each (directory, name, mode) at most once however many checks, readings and call
 sites ask for it. Above the reads, `go` walks a (start `Place`, word, mode) once, and `place` an
 absolute path text once in each mode, so a walk that every check and every reading asks for steps
-once.
+once. `contents` reads the text of a file once per process, as the path list of a frontend.
 """
 
 import functools

@@ -55,8 +55,7 @@ below which the call reads, the working directory and the caller. Antigravity's 
 the path-list check `path_list.py` on every call, which reads the frontend's `guard-paths.json`,
 and the lift check `sandbox_lift.py` on a shell call that it does not deny, which lifts a command
 out of the sandbox only where the line matches a closed grammar and Claude Code's sandbox rule
-lifts it. One module per
-check reads that call: the checks of the seven scripts `no-blind-stage.py`,
+lifts it. One module per check reads that call: the checks of the seven scripts `no-blind-stage.py`,
 `no-shell-file-write.py`, `sandbox-semantics.py`, `gh-api-writes.py`, `rm-scope.py`,
 `git-archive-output.py` and `kaimon-session.py`, and the directory check. Each check gives
 `deny`, `ask`, `allow` or `pass` with a reason. The guard answers the first of `deny`, `ask`,
@@ -97,8 +96,8 @@ echo '{"tool_name":"Bash","tool_input":{"command":"git add -nA"},"cwd":"/"}' | ~
 
 ## `no-blind-stage.py`
 
-This hook refuses a `git add` that stages more than the paths it names. oh-my-pi, OpenCode and
-Antigravity run it on each shell call. Claude Code runs its check in the guard package instead.
+This hook refuses a `git add` that stages more than the paths it names. oh-my-pi and OpenCode run
+it on each shell call. Claude Code and Antigravity run its check in the guard package instead.
 
 It reads the command, splits it into segments, and finds each `git add`. It exits with status 2
 on `-A`, `-u`, `--all`, `--update`, `--no-ignore-removal`, a short-flag cluster that holds `A` or
@@ -115,8 +114,8 @@ echo '{"tool_input":{"command":"git add -nA"}}' | ./no-blind-stage.py ; echo "ex
 
 ## `no-shell-file-write.py`
 
-This hook refuses a shell command that writes a file in a git working tree. oh-my-pi, OpenCode and
-Antigravity run it on each shell call. Claude Code runs its check in the guard package instead.
+This hook refuses a shell command that writes a file in a git working tree. oh-my-pi and OpenCode
+run it on each shell call. Claude Code and Antigravity run its check in the guard package instead.
 
 It exits with status 2 on a redirection such as `>` or `>>`, on `tee`, on an in-place flag of
 `sed`, `perl` or `awk`, and on a `python3 -c` or a Python heredoc that opens a file to write. It
@@ -167,7 +166,7 @@ echo '{"tool_input":{"command":"echo $(gh run view 1)"}}' | ./sandbox-semantics.
 ## `gh-api-writes.py`
 
 This hook asks before a `gh api` write that is not a review or a comment, and refuses a remote
-delete. oh-my-pi, OpenCode and Antigravity run it on each shell call. Claude Code runs its check
+delete. oh-my-pi and OpenCode run it on each shell call. Claude Code and Antigravity run its check
 in the guard package instead.
 
 It finds each top-level `gh api` and `glab api` call and determines the HTTP method in the same
@@ -188,8 +187,8 @@ echo '{"tool_input":{"command":"gh api repos/o/r/hooks -f url=x"}}' | ./gh-api-w
 ## `rm-scope.py`
 
 This hook refuses a recursive `rm` outside the scratch zones, and asks before a `git rm` or a
-`git merge` outside a worktree. oh-my-pi, OpenCode and Antigravity run it on each shell call.
-Claude Code runs its check in the guard package instead.
+`git merge` outside a worktree. oh-my-pi and OpenCode run it on each shell call. Claude Code and
+Antigravity run its check in the guard package instead.
 
 It follows the working directory through each `cd` and resolves each operand. A recursive `rm`
 passes when every operand is strictly below a worktree, `~/Research/.worktrees/<name>/`, or
@@ -239,8 +238,8 @@ echo '{"session_id":"s","tool_input":{"file_path":"'"$HOME"'/Research/Harness/.g
 ## `git-archive-output.py`
 
 This hook refuses a `git archive` that writes its file with `-o` or `--output`, and names the
-commands that read the tree of a commit without a permission prompt. oh-my-pi, OpenCode and
-Antigravity run it on each shell call. Claude Code runs its check in the guard package instead.
+commands that read the tree of a commit without a permission prompt. oh-my-pi and OpenCode run it
+on each shell call. Claude Code and Antigravity run its check in the guard package instead.
 
 An agent writes the archive to read the unmodified tree of a commit, usually the base of its
 branch. `git` runs outside the sandbox, so `-o` can write to any path. For this reason the
@@ -264,9 +263,9 @@ echo '{"tool_input":{"command":"git archive -o base.tar origin/main"}}' | ./git-
 ## `kaimon-session.py`
 
 This hook refuses a Kaimon call that names no session. oh-my-pi runs it on `mcp__kaimon_ex` and
-`mcp__kaimon_manage_repl`, OpenCode on `kaimon_ex` and `kaimon_manage_repl`, and Antigravity on
-`call_mcp_tool` calls to `kaimon` for `ex` and `manage_repl`. Claude Code runs its check in the
-guard package, on the matcher `mcp__kaimon__ex|mcp__kaimon__manage_repl`.
+`mcp__kaimon_manage_repl`, and OpenCode on `kaimon_ex` and `kaimon_manage_repl`. Claude Code runs
+its check in the guard package, on the matcher `mcp__kaimon__ex|mcp__kaimon__manage_repl`, and
+Antigravity on `call_mcp_tool` calls to `kaimon` for `ex` and `manage_repl`.
 
 An `ex` call needs `ses`, and a `manage_repl` call needs `session`. Without the key, Kaimon uses
 the session that the agent is bound to, or otherwise the only one connected, which can be another

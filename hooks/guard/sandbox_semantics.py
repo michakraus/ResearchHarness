@@ -18,6 +18,8 @@ shapes that fail silently or misleadingly:
 The `cd` to the working directory and the working tree of a `git init` or `git clone` need the
 call's working directory. When the call names none, every `cd` stays a part of the command, and a
 `git init` or `git clone` is denied.
+
+`work_tree_check` runs the fifth shape alone, for a frontend whose sandbox is not Claude Code's.
 """
 
 import os

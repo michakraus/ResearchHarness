@@ -15,5 +15,5 @@
   `#` inside a word, a backslash-newline inside a word and a comment that ends in one are read as
   the shell reads them (K89, K90, K91); a command of more than 1 MiB, or one that holds a lone
   surrogate, is refused; and a call with no workspace path has no working directory, so a relative
-  path of it, every word of a command among them, is refused. A record of
+  path of it, a relative word of a command among them, is refused. A record of
   `rm -rf '/\<newline>'` covers the backslash-newline inside single quotes (K93).
