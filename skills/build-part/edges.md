@@ -476,6 +476,16 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   `harness test --log FILE` prints only the `BAD` lines and the summary, so a check that greps the
   part lines from the output fails on every head. Read the option's help before a check rests on
   the output, and grep the file that holds the lines (B3, *Make the Harness enforce strict Python*)
+- a scan that reads every refusal of a plan as "nothing there": a refusal for another cause, such
+  as a `settings.json` that is not JSON, hides a layer that is on disk, and no other check reports
+  it. Catch only the refusal that means absence, report every other one, and test a refusal with
+  the layer on disk (S1 round 1, *Make the Harness enforce strict Python*)
+- a spec check that compares files rendered in two scratch directories byte for byte: a rendered
+  file names its own directory, so the files differ on every head. Write each directory as one
+  placeholder before the compare (S1, *Make the Harness enforce strict Python*)
+- a spec check that holds a backtick: the check list is delimited by backticks, so the check
+  splits into pieces that the shell cannot parse. Match the backtick with `.` in an `-E` pattern
+  (S1, *Make the Harness enforce strict Python*)
 
 ## A step that runs a user's script
 
