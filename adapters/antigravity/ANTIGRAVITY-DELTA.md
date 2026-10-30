@@ -8,8 +8,8 @@ the tools.
 
 The CLI `agy` runs a command in its terminal sandbox, and the permission rules of its
 `settings.json` apply there; the desktop app reads no rule from that file. The guard hook
-`~/.gemini/config/hooks/guard.py` runs on every tool call, in the app and in `agy`: it runs the
-guard scripts on each `run_command`, refuses a path that the path list denies in any tool, and
+`~/.gemini/config/hooks/guard` runs on every tool call, in the app and in `agy`: it runs the
+shell checks on each `run_command`, refuses a path that the path list denies in any tool, and
 applies the settings template's Bash denies and asks to each segment of a command. A refusal is
 final for that path or command: do not reach it in another form. The hook fails closed: a guard
 that cannot run refuses the call. Change a file with the edit tool, never with `sed -i` or

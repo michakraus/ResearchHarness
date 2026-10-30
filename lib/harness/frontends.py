@@ -62,9 +62,9 @@ def Plan(**fields: object) -> types.SimpleNamespace:  # noqa: N802 -- the adapte
     )
 
 
-# The guard scripts that OpenCode's plugin, oh-my-pi's extension and Antigravity's guard.py run: the
-# first five on each shell call, `sandbox-semantics.py` with `--work-tree` only, and
-# `kaimon-session.py` on a Kaimon `ex` or `manage_repl` call.
+# The guard scripts that OpenCode's plugin and oh-my-pi's extension run: the first five on each shell
+# call, `sandbox-semantics.py` with `--work-tree` only, and `kaimon-session.py` on a Kaimon `ex` or
+# `manage_repl` call.
 GUARDS = (
     "no-blind-stage.py",
     "no-shell-file-write.py",

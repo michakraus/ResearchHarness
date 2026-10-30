@@ -12,15 +12,15 @@ The sources are in `hooks/`. `harness install --apply` copies them to `~/.claude
 Claude Code calls them through the `hooks` section of its settings, which
 `harness install --apply` writes from `settings/settings.proposal.json`. On the `Bash` matcher,
 the directory and worktree tools and the Kaimon tools, Claude Code runs one program, the guard
-package `hooks/guard/`, which holds the checks of the guard scripts below. oh-my-pi calls seven
-scripts through its guard extension `adapters/omp/guards.ts`, OpenCode calls the same seven
-through its plugin `adapters/opencode/plugins/guards.ts`, and Antigravity calls them through its
-guard hook `adapters/antigravity/guard.py`. These are the five shell guards
-(`no-blind-stage.py`, `no-shell-file-write.py`, `gh-api-writes.py`, `rm-scope.py` and
-`git-archive-output.py`), the working-tree check of `sandbox-semantics.py`, and
-`kaimon-session.py`. Each of the three frontends runs its own copy of the scripts, which
-`harness install` writes to `hooks/` in its directory: `~/.omp/agent/hooks/`,
-`~/.config/opencode/hooks/` and `~/.gemini/config/hooks/`. Each hook still has one source.
+package `hooks/guard/`, which holds the checks of the guard scripts below. Antigravity runs the
+same package, with `--from antigravity`, on every tool call. oh-my-pi calls seven scripts through
+its guard extension `adapters/omp/guards.ts`, and OpenCode calls the same seven through its plugin
+`adapters/opencode/plugins/guards.ts`. These are the five shell guards (`no-blind-stage.py`,
+`no-shell-file-write.py`, `gh-api-writes.py`, `rm-scope.py` and `git-archive-output.py`), the
+working-tree check of `sandbox-semantics.py`, and `kaimon-session.py`. Each of the two frontends
+runs its own copy of the scripts, which `harness install` writes to `hooks/` in its directory:
+`~/.omp/agent/hooks/` and `~/.config/opencode/hooks/`; Antigravity's copy of the package is in
+`~/.gemini/config/hooks/guard/`. Each hook still has one source.
 `hooks/probe.py` holds the test cases of the hooks, and `harness test` runs it.
 
 `harness install --apply` writes the command of each Python hook, in `~/.claude/settings.json`
@@ -45,10 +45,17 @@ The guard is one program in `hooks/guard/` that decides a tool call before it ru
 runs it as a `PreToolUse` hook on the matchers `Bash`,
 `mcp__ccd_directory__.*|EnterWorktree|ExitWorktree` and `mcp__kaimon__ex|mcp__kaimon__manage_repl`,
 with the command `<python> ~/.claude/hooks/guard --from claude || exit 2`. The `Bash` matcher runs
-`rtk hook claude` first, then the guard.
+`rtk hook claude` first, then the guard. Antigravity runs its copy as a `PreToolUse` hook on every
+tool call, with the command `<python> ~/.gemini/config/hooks/guard --from antigravity`;
+[the adapters page](adapters.md) describes its answers.
 
-A table for each frontend, `frontends/claude.py` for Claude Code, turns the payload into a neutral
-call: the action, the command, the paths, the working directory and the caller. One module per
+A table for each frontend, `frontends/claude.py` for Claude Code and `frontends/antigravity.py` for
+Antigravity, turns the payload into a neutral call: the action, the command, the paths, the paths
+below which the call reads, the working directory and the caller. Antigravity's table also runs
+the path-list check `path_list.py` on every call, which reads the frontend's `guard-paths.json`,
+and the lift check `sandbox_lift.py` on a shell call that it does not deny, which lifts a command
+out of the sandbox only where the line matches a closed grammar and Claude Code's sandbox rule
+lifts it. One module per
 check reads that call: the checks of the seven scripts `no-blind-stage.py`,
 `no-shell-file-write.py`, `sandbox-semantics.py`, `gh-api-writes.py`, `rm-scope.py`,
 `git-archive-output.py` and `kaimon-session.py`, and the directory check. Each check gives
@@ -129,10 +136,10 @@ echo '{"tool_input":{"command":"echo x > src/Foo.jl"},"cwd":"/path/in/a/repo"}' 
 ## `sandbox-semantics.py`
 
 This hook refuses a command whose shape makes the Claude Code sandbox give a false result. Claude
-Code runs its check in the guard package. oh-my-pi, OpenCode and Antigravity run
-its working-tree check, as `sandbox-semantics.py --work-tree`, on each shell call, and
-Antigravity's `guard.py` also imports its helpers to decide whether a command runs inside or
-outside the terminal sandbox.
+Code runs its check in the guard package. oh-my-pi and OpenCode run its working-tree check, as
+`sandbox-semantics.py --work-tree`, on each shell call. Antigravity runs the package's
+working-tree check alone on each shell call, and the package's lift check reads the same rule to
+decide whether a command runs inside or outside the terminal sandbox.
 
 The settings let a command run outside the sandbox only when every part of it starts with `git`,
 `gh`, `glab` or `ps` and no part redirects a file. A sandboxed `gh` cannot reach the network, and
@@ -360,7 +367,12 @@ commands, a write target with a NUL, a `.git` that is a dangling link, a link to
 payload that is not UTF-8, the reason of the winning check, a frontend that the guard lacks, a
 guard that raises, the copy of `jsonio.py`, the file-system reads outside `paths.py`, and the
 rendered `Bash` entry with a guard that cannot start. The groups
-`omp`, `opencode` and `antigravity` run the seven guard scripts through those frontends. The probe
+`omp` and `opencode` run the seven guard scripts through those frontends. The group `antigravity`
+runs the guard package with `--from antigravity` from a fixture home, on each Antigravity record
+of the corpus and on the cases that a record cannot hold: a broken path list, a payload that
+cannot be read, a call with no workspace, commands of many words and of 1 MiB with their seconds,
+the count of the reads and spawns of commands of 1 MiB (`[agy-work]`), the rendered handler, and
+a check that raises. The probe
 also covers the other Python hooks of this page, the fail-closed cases of `worktree.py`, and the
 drift cases of `install-drift.py`. It also loads `adapters/omp/guards.ts` and the OpenCode
 plugins under `node`, so `node` must be on `PATH`. The hooks run against a fixture `HOME` in a temporary directory,

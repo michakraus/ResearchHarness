@@ -166,14 +166,14 @@ Antigravity reads `~/.gemini/config/`. `harness install` writes
 `adapters/antigravity/ANTIGRAVITY-DELTA.md`, `RTK.md`, `instructions/core.md` and
 `instructions/research-tree.md` as always-on rules in `~/.gemini/config/rules/`, and the rules of
 `rules/` and the tree instructions as on-demand rules there. It copies the skills into
-`~/.gemini/config/skills/` and the seven guard scripts into `~/.gemini/config/hooks/`, and renders
+`~/.gemini/config/skills/` and the guard package into `~/.gemini/config/hooks/guard/`, and renders
 each agent of `agents/` into `~/.gemini/config/agents/<name>.md` with the tier from `[antigravity]`
 of `models.toml`, the mapped `tools:`, `inheritMcp: true` when the source names a Kaimon tool, and
 an "Under Antigravity" section from `adapters/antigravity/UNDER-ANTIGRAVITY.md` where needed. It
-also writes `hooks.json`, which runs `guard.py` on `PreToolUse` and `install-drift.py` on
-`SessionStart`, `guard.py` and `guard-paths.json`, `mcp_config.json` for Kaimon, the permission
-rules of the CLI `agy` in `~/.gemini/antigravity-cli/settings.json`, and the grants of the desktop
-app in `~/.gemini/config/config.json`.
+also writes `hooks.json`, which runs the guard package with `--from antigravity` on `PreToolUse`
+and `install-drift.py` on `SessionStart`, `guard-paths.json`, `mcp_config.json` for Kaimon, the
+permission rules of the CLI `agy` in `~/.gemini/antigravity-cli/settings.json`, and the grants of
+the desktop app in `~/.gemini/config/config.json`.
 
 ## Layout
 

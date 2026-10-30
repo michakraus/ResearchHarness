@@ -213,6 +213,13 @@ WALKS: dict[tuple[Place, str, Mode], Place] = {}
 
 
 @functools.cache
+def contents(path: str) -> str:
+    """The text of the file `path`, read once per process; an `OSError` or a `UnicodeDecodeError`
+    when it cannot be read as UTF-8."""
+    return Path(path).read_text(encoding="utf-8")
+
+
+@functools.cache
 def place(path: str, mode: Mode) -> Place:
     """The `Place` of an absolute path, walked once in each mode."""
     return Place.anchor().walk(PurePosixPath(path), mode)

@@ -390,11 +390,11 @@ plan holds no file and one warning. The desktop app, the IDE and the CLI `agy` r
 directory `~/.gemini/config/`. The adapter writes:
 
 - `config/hooks.json`, with one `SessionStart` handler, which runs `install-drift.py` and gives its
-  warning to the session, and one `PreToolUse` group with the matcher `*`, which runs `guard.py`
-  by its absolute path on every tool call, each on the interpreter of the harness's Python
-  environment;
-- `guard.py`, the seven guard scripts and `install-drift.py` in `config/hooks/`, and the path list
-  `config/guard-paths.json`;
+  warning to the session, and one `PreToolUse` group with the matcher `*`, which runs the guard
+  package with `--from antigravity` by its absolute path on every tool call, each on the
+  interpreter of the harness's Python environment;
+- the Claude Code layer's copy of the guard package in `config/hooks/guard/` and of
+  `install-drift.py` in `config/hooks/`, and the path list `config/guard-paths.json`;
 - `config/GEMINI.md`, from `ANTIGRAVITY-DELTA.md`;
 - `config/rules/<name>.md`: `RTK.md` and each file of `instructions/` as a rule with
   `trigger: always_on`, and each rule of `rules/` with its `paths` as `trigger: glob`;
@@ -423,7 +423,7 @@ The permission rules are the settings template's: a Bash entry becomes a `comman
 or Edit path a `read_file(…)` or `write_file(…)` rule, and an allow host of the network lists a
 `read_url(…)` rule. A `*` of an allow rule in regex form matches no text that ends a segment, so
 the rule never matches across `;`, `|`, `&`, a substitution or a redirection. A path with a glob
-that Antigravity cannot express is dropped, and the path lists of `guard.py` cover it. Each Kaimon
+that Antigravity cannot express is dropped, and the guard's path lists cover it. Each Kaimon
 tool of the template, `mcp__kaimon__<tool>`, becomes `mcp(kaimon/<tool>)` after the other rules
 of its list, in `deny` before the rules of `denyWrite` below: the app needs one grant per Kaimon
 tool, and the wildcard `mcp(kaimon/*)` has no effect there. A Kaimon tool that the template does
@@ -431,11 +431,32 @@ not name gets no rule, and the app asks for it.
 Last in `allow`, the first word of each command of the template's `sandbox.excludedCommands`,
 which Claude Code runs outside its sandbox, becomes a `command(<word>)` rule, unless the list
 holds it: `command(gh)`, `command(git)`, `command(glab)` and `command(ps)`, in the CLI's settings
-and in the app's grants. No `unsandboxed(…)` rule is written. `guard.py` applies the template's
+and in the app's grants. No `unsandboxed(…)` rule is written. The guard applies the template's
 Bash denies and asks before these rules, so `git push --force` and `git add -A` are still refused,
-and `gh pr merge` still asks. The path list of `guard.py` refuses a write to `config/config.json`
-by a tool that writes a file, so an agent cannot widen its own grants with one. A command or a
-`multi_replace_file_content` call that writes the file gets `ask` from the guard, not `deny`.
+and `gh pr merge` still asks. The guard's path list refuses a write to `config/config.json` by a
+tool that writes or edits a file, so an agent cannot widen its own grants with one. A command that
+writes the file gets `ask` from the guard, not `deny`.
+
+The guard hook is the guard package of `hooks/guard/` run with `--from antigravity`: its
+Antigravity table reads each tool call and answers with a decision. It runs the five shell checks
+and the working-tree check of the sandbox rule on `run_command`, the Kaimon check on a Kaimon `ex`
+or `manage_repl` call, and the `deny` list of `guard-paths.json` on each path argument and each
+word of a command. A glob in a word, a recursive command, a `cd`, the `Cwd` of a call and the
+`SearchPath` of a search also refuse a directory that holds a path of the list. On `run_command`
+it applies the template's Bash denies and asks, from the lists `bash_deny` and `bash_ask`, to each
+segment of the command, the bodies of `$(…)`, backticks and `( … )` included. A rule matches the
+words of a segment from any word, so an assignment, a wrapper such as `env` or a keyword such as
+`then` before the command does not hide it, and a quoted word is one word. On a tool that writes
+or edits a file, `multi_replace_file_content` included, it also applies the `edit` list, the
+template's Edit denies, and the `ask` list, its Edit asks. The `deny` list holds the files of the
+layer itself. A refusal becomes `deny`, an ask `force_ask`, and a pass `ask`, which leaves
+Antigravity's own rules in force. It fails closed: a payload that it cannot read, a path list that
+is missing or malformed, and a relative path of a call with no workspace give `deny`, and a guard
+that raises prints no decision, which Antigravity reads as a block. A `run_command` that it does
+not deny, a `force_ask` included, also gets `"overwrite": {"BypassSandbox": …}`: true only when
+the guard's lift check lifts the command, where Claude Code's sandbox rule lifts it, the whole line
+matches a closed grammar and none of the screens applies, else false; a deny and a call of any
+other tool carry no `overwrite`.
 
 Last in `deny`, each entry of the template's `sandbox.filesystem.denyWrite`, the paths that Claude
 Code's sandbox does not let a command write, becomes a `read_file(<path>)` rule, with `~` as the
@@ -480,26 +501,6 @@ installed rule, skill, hook or agent with no source is an EXTRA line.
 
 `fixtures/` holds the expected frontmatter and "Under Antigravity" section of four rendered agents,
 which the cases compare.
-
-## `antigravity/guard.py`
-
-The `PreToolUse` hook of Antigravity. It gets each tool call and answers with a decision. It runs
-the five shell guards and the working-tree check of `sandbox-semantics.py` on `run_command`,
-`kaimon-session.py` on a Kaimon `ex` or `manage_repl` call, and the `deny` list of
-`guard-paths.json` on each path argument and each word of a command. A glob in a word, a recursive
-command, a `cd`, the `Cwd` of a call and the `SearchPath` of `grep_search` also refuse a
-directory that holds a path of the list. On `run_command` it applies the template's Bash denies and
-asks, from the lists `bash_deny` and `bash_ask`, to each segment of the command, the bodies of
-`$(…)`, backticks and `( … )` included. A rule matches the words of a segment from any word, so
-an assignment, a wrapper such as `env` or a keyword such as `then` before the command does not
-hide it, and a quoted word is one word. On a tool that writes a file, it also applies the `edit`
-list, the template's Edit denies, and the `ask` list, its Edit asks. The `deny` list holds the
-files of the layer itself. A refusal of a guard becomes `deny`, an "ask" answer `force_ask`, and a
-pass `ask`, which leaves Antigravity's own rules in force. It fails closed: a guard that cannot
-run, fails, prints output that is not a JSON answer or times out gives `deny`. A `run_command`
-that it does not deny, a `force_ask` included, also gets `"overwrite": {"BypassSandbox": …}`: true
-only when `top_level` of `sandbox-semantics.py` lifts the command and none of the guard's screens
-applies, else false; a deny and a call of any other tool carry no `overwrite`.
 
 ## `antigravity/ANTIGRAVITY-DELTA.md`
 

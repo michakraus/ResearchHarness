@@ -33,6 +33,8 @@ class Call:
     caller: Caller
     # The arguments of an `mcp` call that its check reads, by name, each as a string.
     arguments: tuple[tuple[str, str], ...] = ()
+    # The paths below which the call reads, such as the directory that a search walks.
+    wide: tuple[str, ...] = ()
 
     def argument(self, name: str) -> str | None:
         """The argument `name`, or None when the call has none."""

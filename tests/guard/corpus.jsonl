@@ -427,3 +427,227 @@
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "cd $X && sed -i s/a/b/ f.txt"}, "cwd": "@@CWD@@"}, "decision": "deny"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "rm -rf @@SCRATCH@@/link-out"}, "cwd": "@@CWD@@"}, "decision": "pass"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "rm -rf @@SCRATCH@@/link-out/"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "git push --force origin x"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "sed -i s/a/b/ f"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "git add -A"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "cat ~/.config/gh/hosts.yml"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "cat ~/.gemini/config/mcp_config.json"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "cat .env"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "git status"}, "decision": "ask", "bypass": true}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "gh api -X POST repos/a/b/issues"}, "decision": "force_ask", "bypass": true}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "ls -la", "Cwd": "~/.ssh"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "sed -i s/a/b/ f", "Cwd": "@@CWD@@"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "env KEY=~/.netrc true"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "cat ~/.ssh/id_ed25519 \""}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "gh api -X POST repos/a/b/issues && git add -A"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "git init sub"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "echo $(gh run view 1)"}, "decision": "ask", "bypass": false}
+{"frontend": "antigravity", "tool": "read_file", "args": {"Path": "~/.ssh/id_ed25519"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "read_file", "args": {"Path": "~/.SSH/ID_ED25519"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "read_file", "args": {"Path": "~/.gemini/config/mcp_config.json"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "read_file", "args": {"Path": "src/Foo.jl"}, "decision": "ask", "bypass": null}
+{"frontend": "antigravity", "tool": "view_file", "args": {"AbsolutePath": "~/.ssh/id_ed25519"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "write_to_file", "args": {"TargetFile": "~/.aws/credentials", "CodeContent": "x"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "replace_file_content", "args": {"TargetFile": "~/.netrc", "TargetContent": "a", "ReplacementContent": "b"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "grep_search", "args": {"Query": "token", "SearchPath": "~/.gnupg"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "find_by_name", "args": {"Pattern": "*", "SearchDirectory": "~/.ssh"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "list_dir", "args": {"DirectoryPath": "~/.config/api-keys"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "write_file", "args": {"Path": "notes.md", "Content": "x"}, "decision": "ask", "bypass": null}
+{"frontend": "antigravity", "tool": "send_message", "args": {"Message": "done", "Recipient": "main"}, "decision": "ask", "bypass": null}
+{"frontend": "antigravity", "tool": "call_mcp_tool", "args": {"ServerName": "kaimon", "ToolName": "ex", "Arguments": {"e": "1"}}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "call_mcp_tool", "args": {"ServerName": "kaimon", "ToolName": "ex", "Arguments": {"e": "1", "ses": "abcd1234"}}, "decision": "ask", "bypass": null}
+{"frontend": "antigravity", "tool": "call_mcp_tool", "args": {"ServerName": "kaimon", "ToolName": "manage_repl", "Arguments": {"command": "restart"}}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "call_mcp_tool", "args": {"ServerName": "kaimon", "ToolName": "ex", "Arguments": "{\"e\": \"1\"}"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "call_mcp_tool", "args": {"ServerName": "kaimon", "ToolName": "ping", "Arguments": {}}, "decision": "ask", "bypass": null}
+{"frontend": "antigravity", "tool": "call_mcp_tool", "args": {"ServerName": "zotero", "ToolName": "ex", "Arguments": {}}, "decision": "ask", "bypass": null}
+{"frontend": "antigravity", "tool": "write_to_file", "args": {"TargetFile": "@@TOOL@@/.git/config", "CodeContent": "x"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "write_file", "args": {"Path": "~/.julia/juliaup/julia-1.11.5+0.aarch64.apple.darwin14/bin/julia", "Content": "x"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "view_file", "args": {"AbsolutePath": "@@TOOL@@/.git/config"}, "decision": "ask", "bypass": null}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "cat .git/HEAD"}, "decision": "ask", "bypass": false}
+{"frontend": "antigravity", "tool": "replace_file_content", "args": {"TargetFile": "~/Research/X/.github/workflows/ci.yml", "TargetContent": "a", "ReplacementContent": "b"}, "decision": "force_ask", "bypass": null}
+{"frontend": "antigravity", "tool": "edit_file", "args": {"Path": "~/.claude/skills/build-part/SKILL.md", "Target": "a", "Replacement": "b"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "write_to_file", "args": {"TargetFile": "~/.gemini/config/hooks.json", "CodeContent": "{}"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "edit_file", "args": {"Path": "~/.gemini/antigravity-cli/settings.json", "Target": "a", "Replacement": "b"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "echo {} > ~/.gemini/config/guard-paths.json"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "cat ~/.gemini/config/guard-paths.json"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "rm ~/.gemini/config/hooks/guard.py"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "write_file", "args": {"Path": "~/.gemini/config/GEMINI.md", "Content": "x"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "replace_file_content", "args": {"TargetFile": "~/.gemini/config/rules/julia-code.md", "TargetContent": "a", "ReplacementContent": "b"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "edit_file", "args": {"Path": "~/.gemini/config/skills/build-part/SKILL.md", "Target": "a", "Replacement": "b"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "write_to_file", "args": {"TargetFile": "~/.gemini/config/skills/new-skill/SKILL.md", "CodeContent": "x"}, "decision": "force_ask", "bypass": null}
+{"frontend": "antigravity", "tool": "view_file", "args": {"AbsolutePath": "~/.gemini/config/GEMINI.md"}, "decision": "ask", "bypass": null}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "cat ~/.gemini/config/rules/julia-code.md"}, "decision": "ask", "bypass": false}
+{"frontend": "antigravity", "tool": "write_file", "args": {"Path": "~/.gemini/config/AGENTS.md", "Content": "x"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "edit_file", "args": {"Path": "~/.gemini/GEMINI.md", "Target": "a", "Replacement": "b"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "view_file", "args": {"AbsolutePath": "~/.gemini/GEMINI.md"}, "decision": "ask", "bypass": null}
+{"frontend": "antigravity", "tool": "write_file", "args": {"Path": "~/.gemini/config/agents/julia-critic.md", "Content": "x"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "view_file", "args": {"AbsolutePath": "~/.gemini/config/agents/julia-critic.md"}, "decision": "ask", "bypass": null}
+{"frontend": "antigravity", "tool": "write_file", "args": {"Path": "~/.gemini/config/config.json", "Content": "{}"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "view_file", "args": {"AbsolutePath": "~/.gemini/config/config.json"}, "decision": "ask", "bypass": null}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "cat $HOME/.netrc"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "cat ${HOME}/.netrc"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "call_mcp_tool", "args": {"ServerName": "kaimon", "ToolName": "ex", "Arguments": "{\"e\": \"1\", \"ses\": \"abcd1234\"}"}, "decision": "ask", "bypass": null}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "cat ~/.gemini/config/mcp_conf*.json"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "cat ~/.gemini/config/*"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "cat ~/.netr[c]"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "cat ~/.config/gh/{hosts.yml,x}"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "grep -r Bearer ~/.gemini/config"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "cd ~/.gemini/config && cat mcp_config.json"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "rg Bearer", "Cwd": "~/.gemini/config"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "grep_search", "args": {"Query": "Bearer", "SearchPath": "~/.gemini/config"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "cat ~/.gemini/config/skills/x/SKILL.md"}, "decision": "ask", "bypass": false}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "cat ~/.gemini/config/skills/*/SKILL.md"}, "decision": "ask", "bypass": false}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "ls ~/.gemini/config"}, "decision": "ask", "bypass": false}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "ls src/*.jl"}, "decision": "ask", "bypass": false}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "grep -r foo src"}, "decision": "ask", "bypass": false}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "cd ~/Research && git status"}, "decision": "ask", "bypass": false}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "grep -r Bearer ~/.GEMINI/config"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "cat /*"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "ls /"}, "decision": "ask", "bypass": false}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "echo $(git push --force origin x)"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "echo `git push --force origin x`"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "(git push --force origin x)"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "git status && git push --force origin x"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "git status | git push --force origin x"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "gh pr merge 1"}, "decision": "force_ask", "bypass": true}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "sed -i 's/a;b/c/' f"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "echo 'a; git push --force origin x'"}, "decision": "ask", "bypass": false}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "git push origin main && ls -f"}, "decision": "ask", "bypass": false}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "git -C . reset --hard"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "git status; git push --force origin x"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "git status & git push --force origin x"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "git status\ngit push --force origin x"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "echo \\'; git push --force origin x"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "echo \"a \\\" ; git push --force origin x\""}, "decision": "ask", "bypass": false}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "git push \\\n--force origin x"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "git push --force\\\n origin x"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "echo \"a; git push --force origin x\""}, "decision": "ask", "bypass": false}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "git \"push\" --force origin x"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "git push --force origin x '"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "pushd ~/.gemini/config && cat mcp_config.json"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "FOO=1 git push --force origin x"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "env git push --force origin x"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "command git push --force origin x"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "time git push --force origin x"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "! git push --force origin x"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "{ git push --force origin x; }"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "if true; then git push --force origin x; fi"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "echo `date` git push --force origin x"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "git -C . \"reset\" --hard"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "FOO=1 git -C . reset --hard"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "git -C sub add .gitignore"}, "decision": "ask", "bypass": true}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "git commit -m \"git push --force\""}, "decision": "ask", "bypass": true}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "git commit -m \"x --amend\""}, "decision": "ask", "bypass": true}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "gh pr merge 1 && git init sub"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "git status # x\njulia --version"}, "decision": "ask", "bypass": false}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "git status#x; julia --version"}, "decision": "ask", "bypass": false}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "gh pr view $(echo 1)"}, "decision": "ask", "bypass": false}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "gh pr view '$(echo 1)'"}, "decision": "ask", "bypass": false}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "git -c alias.x='!julia -e 1' x"}, "decision": "ask", "bypass": false}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "git --git-dir=x status"}, "decision": "ask", "bypass": false}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "git -C x -c a=b log"}, "decision": "ask", "bypass": false}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "git -C log -c a=b log"}, "decision": "ask", "bypass": false}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "git --config-env=a=B status"}, "decision": "ask", "bypass": false}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "FOO=1 git status"}, "decision": "ask", "bypass": false}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "./git status"}, "decision": "ask", "bypass": false}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "git clone https://example.com/r.git /tmp/r"}, "decision": "ask", "bypass": false}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "cd a\u0000b"}, "decision": "ask", "bypass": false}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "gh pr create --title \"Fix #12\""}, "decision": "ask", "bypass": false}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "git log $'\\'' ; julia --version ; true \\'"}, "decision": "ask", "bypass": false}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "gh pr view 1 $'\\'' ; julia --version ; true \\'"}, "decision": "ask", "bypass": false}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "git status $'\\''\njulia --version\ntrue \\'"}, "decision": "ask", "bypass": false}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "git log =(julia --version)"}, "decision": "ask", "bypass": false}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "git log *(e:'julia --version':)"}, "decision": "ask", "bypass": false}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "git log -- *.md"}, "decision": "ask", "bypass": false}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "git log $'x'"}, "decision": "ask", "bypass": false}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "git log \"$(julia -e 1)\""}, "decision": "ask", "bypass": false}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "git log \"`julia`\""}, "decision": "ask", "bypass": false}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "git log a\\b"}, "decision": "ask", "bypass": false}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "git log ${x:-y}"}, "decision": "ask", "bypass": false}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "cd a\ud800b"}, "decision": "deny", "bypass": null, "differs": "The guard denies a command that holds a lone surrogate, which no UTF-8 encodes; the old hook asked on it."}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "git log \"a\\b\""}, "decision": "ask", "bypass": false}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "git log \"a!b\""}, "decision": "ask", "bypass": false}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "git log '\u00e9'"}, "decision": "ask", "bypass": false}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "git log \"\u00e9\""}, "decision": "ask", "bypass": false}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "git fetch & git status"}, "decision": "ask", "bypass": false}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "git fetch\ngit status"}, "decision": "ask", "bypass": false}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "git -C ~/Research/Harness status --short --branch"}, "decision": "ask", "bypass": true}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "gh auth status"}, "decision": "ask", "bypass": true}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "gh auth status --hostname github.com"}, "decision": "ask", "bypass": true}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "git commit -m \"Fix the parser's edge\""}, "decision": "ask", "bypass": true}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "git commit -m 'Use \"x\" here'"}, "decision": "ask", "bypass": true}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "git log --format=%H HEAD~1"}, "decision": "ask", "bypass": true}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "git add a && git commit -m \"x y\""}, "decision": "ask", "bypass": true}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": " git fetch || git status\t--short "}, "decision": "ask", "bypass": true}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "git fetch; git log --oneline | git status"}, "decision": "ask", "bypass": true}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "/usr/bin/cd @@CWD@@ && git status"}, "decision": "ask", "bypass": true}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "ps -c"}, "decision": "ask", "bypass": true}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "git status"}, "decision": "ask", "bypass": true}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "gh pr view 1"}, "decision": "ask", "bypass": true}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "git -C x log"}, "decision": "ask", "bypass": true}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "ps aux"}, "decision": "ask", "bypass": true}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "glab mr list"}, "decision": "ask", "bypass": true}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "git status 2>&1"}, "decision": "ask", "bypass": true}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "git fetch && git status"}, "decision": "ask", "bypass": true}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "cd @@CWD@@ && git status"}, "decision": "ask", "bypass": true}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "gh pr merge 1"}, "decision": "force_ask", "bypass": true}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "cd x && git status"}, "decision": "ask", "bypass": false}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "julia --version"}, "decision": "ask", "bypass": false}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "git status | cat"}, "decision": "ask", "bypass": false}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "git log --oneline '"}, "decision": "ask", "bypass": false}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "git log --format=\"%h"}, "decision": "force_ask", "bypass": false}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "julia --version", "BypassSandbox": true}, "decision": "ask", "bypass": false}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "git status", "BypassSandbox": false}, "decision": "ask", "bypass": true}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "cat ../.netrc", "Cwd": "."}, "workspace": "@@AGYHOME@@/sub", "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "cat .netrc", "Cwd": "~"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "cat .ne*"}, "workspace": "@@AGYHOME@@", "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "rg Bearer", "Cwd": "../.gemini/config"}, "workspace": "@@AGYHOME@@/Research", "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "rg Bearer", "Cwd": ".gemini/config"}, "workspace": "@@AGYHOME@@", "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "rg Bearer", "Cwd": "config"}, "workspace": "@@AGYHOME@@/.gemini", "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "cat .netrc", "Cwd": "@@AGYHOME@@"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "git status > f"}, "workspace": "@@AGYHOME@@", "decision": "ask", "bypass": false}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "cd @@AGYHOME@@/sub && git status", "Cwd": "@@AGYHOME@@/sub"}, "decision": "ask", "bypass": true}
+{"frontend": "antigravity", "tool": "call_mcp_tool", "args": {"ServerName": "kaimon", "ToolName": "ex"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "call_mcp_tool", "args": {"ServerName": "kaimon", "ToolName": "ex", "Arguments": "null"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "call_mcp_tool", "args": {"ServerName": "kaimon", "ToolName": "ex", "Arguments": "[1]"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "call_mcp_tool", "args": {"ServerName": "kaimon", "ToolName": "ex", "Arguments": "{"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "call_mcp_tool", "args": {"ServerName": "kaimon", "ToolName": "manage_repl", "Arguments": {"command": "restart", "session": "abcd1234"}}, "decision": "ask", "bypass": null}
+{"frontend": "antigravity", "tool": "call_mcp_tool", "args": {"ServerName": "kaimon", "ToolName": "ex", "Arguments": {"e": "1", "session": "abcd1234"}}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "ls -l ~/.gitconfig", "BypassSandbox": true}, "decision": "ask", "bypass": false}
+{"frontend": "antigravity", "tool": "multi_replace_file_content", "args": {"TargetFile": "~/.claude/skills/build-part/SKILL.md"}, "decision": "deny", "bypass": null, "differs": "The guard maps multi_replace_file_content onto the edit action, with TargetFile as its path, so the edit and ask lists apply to it as to replace_file_content (K87); the old hook checked it against the deny list alone."}
+{"frontend": "antigravity", "tool": "multi_replace_file_content", "args": {"TargetFile": "~/.gemini/config/skills/new-skill/SKILL.md"}, "decision": "force_ask", "bypass": null, "differs": "The guard maps multi_replace_file_content onto the edit action, with TargetFile as its path, so the edit and ask lists apply to it as to replace_file_content (K87); the old hook checked it against the deny list alone."}
+{"frontend": "antigravity", "tool": "multi_replace_file_content", "args": {"TargetFile": "@@TOOL@@/.git/config"}, "decision": "deny", "bypass": null, "differs": "The guard maps multi_replace_file_content onto the edit action, with TargetFile as its path, so the edit and ask lists apply to it as to replace_file_content (K87); the old hook checked it against the deny list alone."}
+{"frontend": "antigravity", "tool": "multi_replace_file_content", "args": {"TargetFile": "~/.ssh/config"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "multi_replace_file_content", "args": {"TargetFile": "notes.md"}, "decision": "ask", "bypass": null}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "cat x# ~/.netrc"}, "decision": "deny", "bypass": null, "differs": "The guard reads a # inside a word as the shell does, as no comment, so the path list sees ~/.netrc (K90); the old hook read the rest of the line as a comment."}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "echo #\\\ngit push --force origin x"}, "decision": "deny", "bypass": null, "differs": "The guard also reads a backslash-newline as a line break, so the comment ends there and the Bash rule sees the push on the next line (K91); the old hook joined the two lines into the comment."}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "git status # git push --force origin x"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "cat ~/.ssh/id_\\\ned25519"}, "decision": "deny", "bypass": null, "differs": "The guard joins a backslash-newline inside a word as the shell does, so the path list sees the whole path (K89); the old hook kept the newline in the word."}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "cat ~/.config/gh/hosts\\\n.yml"}, "decision": "deny", "bypass": null, "differs": "The guard joins a backslash-newline inside a word as the shell does, so the path list sees the whole path (K89); the old hook kept the newline in the word."}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "cat \"~/.ssh/id_ed25519"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "cat <<EOF\n~/.netrc\nEOF"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "cat <<'EOF'\ngit push --force origin x\nEOF"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "cat $'~/.netrc'"}, "decision": "ask", "bypass": false}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "git push $'--force' origin x"}, "decision": "ask", "bypass": false}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "rm -rf '/\\\n'"}, "decision": "ask", "bypass": false}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "cp /tmp/x ~/.gemini/config/config.json"}, "decision": "ask", "bypass": false}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "cat ~/.aws/credentials"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "tar czf x.tgz ~/.ssh"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "cat key.pem"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "cat a=~/.netrc"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "cat x:~/.netrc"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "echo $(cat ~/.netrc)"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "git log --oneline"}, "decision": "ask", "bypass": true}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "gh pr view 1 && julia --version"}, "decision": "ask", "bypass": false}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "git commit -m \"x # y\""}, "decision": "ask", "bypass": false}
+{"frontend": "antigravity", "tool": "view_file", "args": {"AbsolutePath": "~/.netrc"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "list_dir", "args": {"DirectoryPath": "~/.aws"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "find_by_name", "args": {"Pattern": "*.pem", "SearchDirectory": "~/.gnupg"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "codebase_search", "args": {"Query": "x", "SearchPath": "~/.ssh"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "write_file", "args": {"Path": "~/.ssh/authorized_keys", "Content": "x"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "edit_file", "args": {"Path": "~/.aws/config", "Target": "a", "Replacement": "b"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "invoke_subagent", "args": {"Prompt": "x"}, "decision": "ask", "bypass": null}
+{"frontend": "antigravity", "tool": "invoke_subagent", "args": {"Prompt": "x", "Path": "~/.ssh/id_ed25519"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "read_file", "args": {"Path": "~/.config/gh/hosts.yml"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "read_file", "args": {"Path": "@@TOOL@@/README.md"}, "decision": "ask", "bypass": null}
+{"frontend": "antigravity", "tool": "write_to_file", "args": {"TargetFile": "@@CWD@@notes.md", "CodeContent": "x"}, "decision": "ask", "bypass": null}
