@@ -708,8 +708,8 @@ def setup_cases(check: Callable[[bool, str], object], tmp: pathlib.Path) -> None
     ~/.claude or a SKIP; without the `julia` component, no line and no file of the Julia
     environment, and a directory at its Project.toml stops nothing; no frontend, no layer, the
     Python and the Julia environment listed, and a symbolic link in the tree instructions stops
-    nothing; an unknown frontend or component, exit 2 with one line that names it and nothing
-    written. Files compare by path and bytes, with the scratch base named
+    nothing; an unknown frontend or component, and OpenCode alone with the same link, exit 2 with
+    one line that names it and nothing written. Files compare by path and bytes, with the scratch base named
     `<base>`."""
     scratch = Scratch(check, tmp / "setup")
     every = '["claude", "opencode", "omp", "antigravity"]'
@@ -725,18 +725,20 @@ def setup_cases(check: Callable[[bool, str], object], tmp: pathlib.Path) -> None
         }
 
     def install(
-        setup: str | None, tree_files: tuple[str, ...] = ()
+        setup: str | None, tree_files: tuple[str, ...] = (), *, linked: bool = False
     ) -> tuple[pathlib.Path, int | None, str, int | None, str]:
         """A fresh scratch base whose profile has the `[setup]` table `setup`, none for None, whose
-        tree instructions hold `tree_files`, and with its Antigravity directory; the exit status
-        and output of the dry run and of the --apply after it, which does not run where the dry run
-        exits 2."""
+        tree instructions hold `tree_files`, and with its Antigravity directory; where `linked`, its
+        agents hold link.md, a symbolic link to the profile; the exit status and output of the dry
+        run and of the --apply after it, which does not run where the dry run exits 2."""
         base, _, _ = scratch.fresh(tree_files)
         (base / "home" / ".gemini").mkdir()
         profile = base / "profile.toml"
         text = profile.read_text()
         head = text[: text.index("\n[setup]\n")] + "\n"
         profile.write_text(head + ("" if setup is None else f"[setup]\n{setup}"))
+        if linked:
+            (base / "Agents" / "link.md").symlink_to(profile)
         code, text = Scratch.run(base)
         applied, applied_text = (None, "") if code == 2 else Scratch.run(base, "--apply")
         return base, code, text, applied, applied_text
@@ -827,12 +829,17 @@ def setup_cases(check: Callable[[bool, str], object], tmp: pathlib.Path) -> None
         f"[setup] with no frontend: no layer, both environments listed, and a link in the tree "
         f"instructions stops nothing: dry run {code}, --apply {applied}, then {again_code} {last!r}, {sizes}",
     )
-    for key, value, bad in (
-        ("frontends", '["claude", "nosuchfrontend"]', "nosuchfrontend"),
-        ("components", '["julia", "nosuchcomponent"]', "nosuchcomponent"),
+    # Without claude, the copies that OpenCode takes from the Claude Code layer's sources are still
+    # made: a symbolic link in the tree instructions stops OpenCode alone, like an unknown name.
+    for key, value, bad, linked in (
+        ("frontends", '["claude", "nosuchfrontend"]', "nosuchfrontend", False),
+        ("components", '["julia", "nosuchcomponent"]', "nosuchcomponent", False),
+        ("frontends", '["opencode"]', "link.md", True),
     ):
         table = {"frontends": '["claude"]', "components": '["julia"]'} | {key: value}
-        base, code, text, applied, _ = install("".join(f"{k} = {v}\n" for k, v in table.items()))
+        base, code, text, applied, _ = install(
+            "".join(f"{k} = {v}\n" for k, v in table.items()), linked=linked
+        )
         said = [line for line in text.splitlines() if line.startswith("harness install: ")]
         sizes = {name: len(layer(base, name)) for name in LAYER_DIRS}
         check(
@@ -842,6 +849,6 @@ def setup_cases(check: Callable[[bool, str], object], tmp: pathlib.Path) -> None
             and bad in said[0]
             and "Traceback" not in text
             and not any(sizes.values()),
-            f"[setup] with an unknown name in {key}: exit 2, one line that names it, nothing written: "
-            f"{code}, {said}, {sizes}",
+            f"[setup] with {key} = {value}{', and a link in the tree instructions' if linked else ''}: "
+            f"exit 2, one line that names {bad}, nothing written: {code}, {said}, {sizes}",
         )

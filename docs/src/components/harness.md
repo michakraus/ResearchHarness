@@ -468,8 +468,10 @@ It checks, in this order:
   the count. Each warning of the dry run is a `WARN` line. Each frontend that `[setup]` does not
   choose and whose layer is still on disk, one file or more that its plan installs, is a `WARN`
   line `<frontend> layer` that names `[setup]` and the frontend (`unchosen`). The check plans
-  each such frontend alone, as the install does, and a plan that refuses finds no layer; it
-  removes nothing.
+  OpenCode, oh-my-pi and Antigravity alone, as the install does; the Claude Code layer's files are
+  the Claude Code adapter's `copies`, its `settings.json` and its stamp, found without a read of
+  `settings.json`. OpenCode without its directory has no layer on disk. A plan that refuses for
+  another cause is a `WARN` that names the frontend and the refusal. The check removes nothing.
 - the jobs: Kaimon, `~/.julia/bin/kaimon`; its server and the update job, with `systemctl --user`
   on Linux and `launchctl list` with the profile's `launchd_prefix` on macOS; lingering on Linux.
   When the autocommit job is enabled, `~/.claude` must be the top of its own git repository, with

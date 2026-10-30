@@ -14,7 +14,8 @@ The checks, in this order:
 - the profile: it loads, the `tree_agents` directory and OpenCode's configuration directory exist,
   the latter SKIP where `[setup]` does not choose `opencode`, and its `autocommit_branch`;
 - the install: the dry run of `harness install`, and each of its warnings; and a WARN for each
-  frontend that `[setup]` does not choose and whose layer is still installed;
+  frontend that `[setup]` does not choose and whose layer is still installed or whose plan
+  refuses;
 - the jobs: Kaimon, its server and the update job; the autocommit job, and when it is enabled,
   `~/.claude` as the top of its own git repository with an `origin`; the Kaimon token file; on
   Linux also linger;
@@ -500,15 +501,20 @@ class Doctor:
     def unchosen(self, profile: profile_module.Profile) -> list[Result]:
         """A WARN for each frontend that `[setup]` of `profile`, the loaded profile, does not
         choose and whose layer is on disk: one file or more that its plan would install exists at
-        its destination. Each frontend is planned alone, as `harness install` plans it; a plan that
-        exits 2, such as OpenCode's without its directory, finds no layer. The lines of a plan are
-        not printed, and nothing is written or removed."""
+        its destination. OpenCode, oh-my-pi and Antigravity are planned alone, as `harness install`
+        plans them; the Claude Code layer's files are the Claude Code adapter's `copies`, its
+        settings.json and its stamp, which need no read below ~/.claude. OpenCode without its
+        directory has no layer on disk and is not planned. A plan that refuses is a WARN that names
+        the frontend and the refusal. The lines of a plan are not printed, and nothing is written
+        or removed."""
         args = argparse.Namespace(
             profile=self.args.profile, models=self.args.models, force=False, apply=False
         )
         out: list[Result] = []
         for name in frontends.FRONTENDS:
             if name in profile.setup.frontends:
+                continue
+            if name == "opencode" and not frontends.adapter(name).destination().is_dir():
                 continue
             ctx = types.SimpleNamespace(
                 args=args,
@@ -519,12 +525,26 @@ class Doctor:
             )
             try:
                 with contextlib.redirect_stdout(io.StringIO()):
-                    frontends.planned(ctx, (name,))
-            except HarnessError:
+                    if name == "claude":
+                        root = pathlib.Path.home() / ".claude"
+                        made = cast("types.SimpleNamespace", frontends.adapter(name).copies(ctx))
+                        destinations = [root / "settings.json", root / install.STAMP]
+                        destinations += [f[0] for f in cast("list[tuple[pathlib.Path, ...]]", made.files)]
+                    else:
+                        frontends.planned(ctx, (name,))
+                        plan = cast("types.SimpleNamespace", ctx.plans[name])
+                        destinations = [f[0] for f in cast("list[tuple[pathlib.Path, ...]]", plan.files)]
+            except HarnessError as e:
+                out.append(
+                    Result(
+                        "WARN",
+                        f"{name} layer",
+                        f"[setup] does not choose {name}, and its plan refuses, so whether its layer "
+                        f"is installed is not known: {e}",
+                    )
+                )
                 continue
-            plan = cast("types.SimpleNamespace", ctx.plans[name])
-            files = cast("list[tuple[pathlib.Path, ...]]", plan.files)
-            found = sum(1 for dst, *_ in files if dst.exists())
+            found = sum(1 for dst in destinations if dst.exists())
             if found:
                 out.append(
                     Result(
@@ -2033,9 +2053,11 @@ def setup_cases(
     `root` whose ~/.claude is a copy of `claude`: the Julia packages are SKIP without the `julia`
     component, and the OpenCode directory without `opencode`; a frontend that `[setup]` does not
     choose is a WARN that names `[setup]` and the frontend where one file or more of its layer is
-    on disk, and nothing where its directory holds no such file, where its directory is missing
-    and its plan refuses, or where it is chosen. The run changes no file of the fixture. Without a
-    profile that loads, the Julia packages are checked."""
+    on disk, also the Claude Code layer whose settings.json its plan refuses, and where its plan
+    refuses a symbolic link among the sources, naming the link; and nothing where its directory
+    holds no such file, where it is OpenCode without its directory, or where it is chosen. The run
+    changes no file of the fixture. Without a profile that loads, the Julia packages are
+    checked."""
     # A file of each layer as its plan installs it, relative to the fixture's HOME. oh-my-pi's
     # directory is $PI_CODING_AGENT_DIR, set to .omp/agent below the HOME.
     layer_files = {
@@ -2050,12 +2072,12 @@ def setup_cases(
         components_toml: str,
         files: tuple[str, ...] = (),
         dirs: tuple[str, ...] = (),
-        removed: tuple[str, ...] = (),
+        changes: tuple[Callable[[pathlib.Path], object], ...] = (),
     ) -> tuple[dict[str, str], dict[str, str], bool]:
         """The status and the detail of each Result by name, of the sections `tools`, `profile_checks`
         and `install`, on a fresh fixture whose [setup] chooses `frontends_toml` and
-        `components_toml`, with the directories `removed` removed, `files` written and `dirs` made
-        below its HOME; and whether the run changed a file below the HOME."""
+        `components_toml`, with each of `changes` called on its HOME, then `files` written and
+        `dirs` made below it; and whether the run changed a file below the HOME."""
         nonlocal n
         n += 1
         f = Fixture(root / f"case{n}", system_name, claude)
@@ -2065,8 +2087,8 @@ def setup_cases(
             + f"\n[setup]\nfrontends = {frontends_toml}\ncomponents = {components_toml}\n"
         )
         home = f.home
-        for d in removed:
-            shutil.rmtree(home / d)
+        for change in changes:
+            change(home)
         for d in dirs:
             (home / d).mkdir(parents=True, exist_ok=True)
         for name in files:
@@ -2093,6 +2115,15 @@ def setup_cases(
             if name.endswith(" layer") and "[setup]" in details[name]
         }
 
+    def no_opencode(home: pathlib.Path) -> None:
+        shutil.rmtree(home / ".config" / "opencode")
+
+    def linked(home: pathlib.Path) -> None:
+        """A symbolic link among the tree instructions' agents, which every layer's plan refuses."""
+        (home / "Research" / "Environment" / "Agents" / "linked.md").symlink_to(
+            home / ".config" / "research-harness" / "profile.toml"
+        )
+
     every = '["claude", "opencode", "omp", "antigravity"]'
     statuses, details, changed = checked_on(every, '["rtk"]')
     packages = {name: statuses.get(name) for name in PACKAGES}
@@ -2103,8 +2134,8 @@ def setup_cases(
         f"{system_name}: [setup] without the julia component: each Julia package is SKIP, naming julia -> "
         f"{packages}, OpenCode directory {statuses.get('OpenCode directory')}",
     )
-    # No OpenCode directory, whose plan then exits 2: no layer, and no WARN.
-    statuses, details, changed = checked_on('["claude"]', '["julia"]', removed=(".config/opencode",))
+    # No OpenCode directory: no layer, and no WARN.
+    statuses, details, changed = checked_on('["claude"]', '["julia"]', changes=(no_opencode,))
     check(
         statuses.get("OpenCode directory") == "SKIP"
         and "opencode" in details.get("OpenCode directory", "")
@@ -2135,6 +2166,56 @@ def setup_cases(
         not found and not changed,
         f"{system_name}: every frontend chosen, and a file of each layer on disk: no WARN -> {found}",
     )
+    # An unchosen Claude Code layer whose settings.json is not JSON, which its plan refuses: its
+    # files, the settings and the stamp among them, are found without that read, and counted. A
+    # plan that refuses for another cause than OpenCode's missing directory, a symbolic link among
+    # the sources that every layer copies: a WARN for each unchosen frontend that names it and the
+    # refusal, whatever is on disk; none for OpenCode without its directory.
+    for frontends_toml, files, changes, want, said, label in (
+        (
+            '["opencode"]',
+            (".claude/settings.json", ".claude/CLAUDE.md"),
+            (),
+            ("claude",),
+            "2 file(s)",
+            "claude",
+        ),
+        (
+            '["opencode"]',
+            (".claude/settings.json",),
+            (),
+            ("claude",),
+            "1 file(s)",
+            "claude, only settings.json",
+        ),
+        (
+            '["opencode"]',
+            (f".claude/{install.STAMP}",),
+            (),
+            ("claude",),
+            "1 file(s)",
+            "claude, only the stamp",
+        ),
+        ('["claude"]', (), (linked,), tuple(layer_files), "linked.md", "a link among the sources"),
+        (
+            '["claude"]',
+            (),
+            (linked, no_opencode),
+            ("omp", "antigravity"),
+            "linked.md",
+            "the link, no OpenCode",
+        ),
+    ):
+        statuses, details, changed = checked_on(frontends_toml, '["julia"]', files, changes=changes)
+        found = layers(statuses, details)
+        check(
+            found == dict.fromkeys(want, "WARN")
+            and all(name in details[f"{name} layer"] and said in details[f"{name} layer"] for name in want)
+            and not changed,
+            f"{system_name}: {frontends_toml}, {files} on disk, {label}: a WARN for each of "
+            f"{want}, naming [setup], the frontend and {said!r}, and no file changed -> {found}, "
+            f"{[details.get(f'{name} layer') for name in want]}, changed {changed}",
+        )
     # A profile that does not load chooses nothing to skip: the Julia packages are checked.
     f = Fixture(root / "no-profile", system_name, claude)
     f.profile.unlink()

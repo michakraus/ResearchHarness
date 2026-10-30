@@ -12,8 +12,8 @@
   `~/.claude/`. An
   unknown name, a name given twice, a missing `frontends` or `components` and an unknown key of
   `[setup]` exit 2 with one line that names it. `harness doctor` reports a layer of an unchosen
-  frontend that is still on disk as a WARN that names `[setup]` and the frontend, and removes
-  nothing; its OpenCode directory check is SKIP without `opencode`, and its Julia packages SKIP
+  frontend that is still on disk as a WARN that names `[setup]` and the frontend, and an unchosen
+  frontend whose plan refuses as a WARN that names the refusal, and removes nothing; its OpenCode directory check is SKIP without `opencode`, and its Julia packages SKIP
   without `julia`. A `develop` at the top level of the profile now stops every subcommand with
   exit 2: move the line `develop = true` into `[setup]`, which then also needs `frontends` and
   `components`, as `examples/profile.toml` shows.

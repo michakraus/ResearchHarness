@@ -170,8 +170,8 @@ setup page that fixes it. The checks are, in this order: the machine; the tools 
 `install` and its warnings; and the jobs (Kaimon, the update job, the autocommit job). Where the
 profile's `[setup]` does not choose `opencode`, the OpenCode directory check is a `SKIP`, and
 without the `julia` component so are the Julia packages. A layer of a frontend that `[setup]`
-does not choose and that is still on disk is a `WARN` that names `[setup]` and the frontend;
-`doctor` removes nothing.
+does not choose and that is still on disk is a `WARN` that names `[setup]` and the frontend, and
+so is such a frontend whose plan refuses, with the refusal; `doctor` removes nothing.
 
 | option | meaning |
 |:--|:--|
