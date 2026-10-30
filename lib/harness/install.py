@@ -26,12 +26,14 @@ installed.
 
 It loads the profile and the model tables, `--models F`, else $RESEARCH_HARNESS_MODELS, else
 models.toml beside the profile; examples/models.toml shows them. Then it plans each chosen
-frontend, in the order of FRONTENDS (`frontends.planned`). Planning writes nothing, so each refusal that stops the install at once,
-with exit status 2, comes before anything is written. `check_files` then checks every target of
-the Julia environment and of each plan, and refuses a symbolic link or a directory at a target,
-also before anything is written. A target with a change
+frontend, in the order of FRONTENDS (`frontends.planned`). Planning writes nothing, so each
+refusal that stops the install at once, with exit status 2, comes before anything is written.
+`check_files` then checks every target of the Julia environment, with the `julia` component, and
+of each plan, and refuses a symbolic link or a directory at a target, also before anything is
+written. A target with a change
 that cannot be written exits 2 there under `--apply`; a dry run prints its whole plan and count
-line first, then that refusal, and exits 2. Then it installs the Julia environment, the Python
+line first, then that refusal, and exits 2. Then it installs the Julia environment, with the
+`julia` component, the Python
 environment (`install_python_env`) and the files of each plan in that order, prints the
 warnings, and runs the steps of each plan that follow the files. It prints the installed files
 with no source, then the count line. After an `--apply`, it prints the restart line of each
@@ -63,7 +65,9 @@ from importlib.abc import Loader
 from importlib.machinery import ModuleSpec
 from typing import cast
 
-from . import REPO, HarnessError, changing, frontends, outcome, sources
+# `install_cases` imports this module too, and reads its names only when a case runs, so the cycle
+# resolves at import.
+from . import REPO, HarnessError, changing, frontends, install_cases, outcome, sources
 from . import profile as profile_module
 
 # The stamp that the `SessionStart` hook hooks/install-drift.py compares, at the top of the layer
@@ -361,7 +365,7 @@ def install_python_env(apply, develop, environment):
     return 1
 
 
-def cmd_install(args: argparse.Namespace):
+def cmd_install(args):
     global WIDTH
     frontends.load()
     profile = profile_module.load(args.profile)
@@ -403,9 +407,8 @@ def cmd_install(args: argparse.Namespace):
         raise HarnessError(unwritable[0])
     # The two environments belong to no frontend, so their changes count in no plan's. The Julia
     # environment is the `julia` component's.
-    environments = (install_julia_env(args.apply) if julia else 0) + install_python_env(
-        args.apply, develop, python
-    )
+    apply = cast(argparse.Namespace, args).apply
+    environments = (install_julia_env(apply) if julia else 0) + install_python_env(apply, develop, python)
     changed = [0] * len(plans)
 
     for i, plan in enumerate(plans):
@@ -450,7 +453,6 @@ def selftest():
     `install_cases.restart_cases`, `install_cases.precondition_cases`,
     `install_cases.target_cases`, `install_cases.setup_guard_cases` and `install_cases.setup_cases`."""
     from .install_cases import precondition_cases, restart_cases, setup_guard_cases, target_cases
-    from .install_cases import setup_cases
 
     total = wrong = 0
 
@@ -536,7 +538,7 @@ def selftest():
         precondition_cases(check, pathlib.Path(tmp))
         target_cases(check, pathlib.Path(tmp))
         setup_guard_cases(check, pathlib.Path(tmp))
-        setup_cases(check, pathlib.Path(tmp))
+        install_cases.setup_cases(check, pathlib.Path(tmp))
         behind_cases(check, pathlib.Path(tmp))
     return total, wrong
 

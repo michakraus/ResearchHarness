@@ -2561,7 +2561,8 @@ def home_cases():
             and "`develop`" in said[0]
             and "[setup]" in said[0]
             and not p.stdout,
-            f"harness get develop with a top-level `develop` exits 2 with one line -> exit {p.returncode}, {said}",
+            f"harness get develop with a top-level `develop` exits 2 with one line -> exit {p.returncode}, "
+            f"{said}",
         )
         # The values of no string or list: each a refusal that names the file and the key.
         for text, key in (

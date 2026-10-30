@@ -775,10 +775,11 @@ def setup_cases(check: Callable[[bool, str], object], tmp: pathlib.Path) -> None
     base, code, text, applied, _ = install('frontends = ["opencode", "omp"]\ncomponents = ["julia"]\n')
     (base / "home" / ".claude" / "settings.json").mkdir()
     again_code, again = Scratch.run(base)
+    last = (again.strip().splitlines() or ["no output"])[-1]
     check(
         applied == 0 and again_code == 0 and "~/.claude" not in again and ".claude/" not in again,
-        f"[setup] without claude, and a directory at ~/.claude/settings.json: the dry run after the --apply exits "
-        f"0 and names no file of ~/.claude: {again_code}, {(again.strip().splitlines() or ['no output'])[-1]!r}",
+        f"[setup] without claude, and a directory at ~/.claude/settings.json: the dry run after the "
+        f"--apply exits 0 and names no file of ~/.claude: {again_code}, {last!r}",
     )
     base, code, text, applied, _ = install(f"frontends = {every}\ncomponents = []\n")
     (base / "julia" / "Project.toml").unlink()
@@ -790,8 +791,8 @@ def setup_cases(check: Callable[[bool, str], object], tmp: pathlib.Path) -> None
         and not (base / "julia" / "Project.toml").exists()
         and lists(text, "python environment")
         and layer(base, "opencode") == whole["opencode"],
-        f"[setup] without julia: no julia/ line, the Julia environment not installed, every layer: dry run {code}, "
-        f"--apply {applied}",
+        f"[setup] without julia: no julia/ line, the Julia environment not installed, every layer: "
+        f"dry run {code}, --apply {applied}",
     )
     base, code, text, applied, applied_text = install('frontends = []\ncomponents = ["julia"]\n')
     sizes = {name: len(layer(base, name)) for name in LAYER_DIRS}
@@ -802,7 +803,8 @@ def setup_cases(check: Callable[[bool, str], object], tmp: pathlib.Path) -> None
         and lists(text, "julia/Project.toml")
         and lists(text, "python environment")
         and "0 change(s) made." in applied_text,
-        f"[setup] with no frontend: no layer, both environments listed: dry run {code}, --apply {applied}, {sizes}",
+        f"[setup] with no frontend: no layer, both environments listed: dry run {code}, --apply {applied}, "
+        f"{sizes}",
     )
     for key, value, bad in (
         ("frontends", '["claude", "nosuchfrontend"]', "nosuchfrontend"),
@@ -819,6 +821,6 @@ def setup_cases(check: Callable[[bool, str], object], tmp: pathlib.Path) -> None
             and bad in said[0]
             and "Traceback" not in text
             and not any(sizes.values()),
-            f"[setup] with an unknown name in {key}: exit 2, one line that names it, nothing written: {code}, "
-            f"{said}, {sizes}",
+            f"[setup] with an unknown name in {key}: exit 2, one line that names it, nothing written: "
+            f"{code}, {said}, {sizes}",
         )

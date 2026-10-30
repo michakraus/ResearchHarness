@@ -1129,7 +1129,8 @@ def plan(ctx: types.SimpleNamespace):
         f"       To remove it:  rm '{f}'"
         for f in claude_extras(root, layer)
     ]
-    return frontends.Plan(files=files, warnings=stray_warnings(), extra=extra, rules=rules, shared=shared)
+    warnings = cast("list[tuple[str, ...]]", stray_warnings())
+    return frontends.Plan(files=files, warnings=warnings, extra=extra, rules=rules, shared=shared)
 
 
 def copies(ctx: types.SimpleNamespace) -> types.SimpleNamespace:
@@ -1140,8 +1141,8 @@ def copies(ctx: types.SimpleNamespace) -> types.SimpleNamespace:
     `claude_plan`, for the stamp and the extras of `plan`. It exits 2 where `claude_plan` does."""
     root = pathlib.Path.home() / ".claude"
     models = load_models(ctx.models)
-    layer_sources = claude_sources(ctx.profile)
-    layer = claude_plan(ctx.profile, layer_sources)
+    layer_sources = cast("list[tuple[pathlib.Path, str, set[str], set[str]]]", claude_sources(ctx.profile))
+    layer = cast("list[tuple[str, bytes, int]]", claude_plan(ctx.profile, layer_sources))
     files: list[tuple[Any, ...]] = []
     for dst, data, mode in layer:
         src = source_of(layer_sources, dst)[0]

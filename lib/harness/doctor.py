@@ -1601,12 +1601,15 @@ def status_cases(check, root, system_name):
         sections=("profile_checks",),
         extra={"OPENCODE_CONFIG_DIR": str(root / "no-such-directory")},
     )
+
+    def branch_first(f: Fixture) -> None:
+        """The key goes first: the fixture's profile ends with its [setup] table."""
+        f.profile.write_text('autocommit_branch = "memory/case"\n' + f.profile.read_text())
+
     got, _ = case(
         "autocommit_branch",
         {"autocommit_branch": "PASS"},
-        lambda f: (p := cast(Fixture, f).profile).write_text(
-            'autocommit_branch = "memory/case"\n' + p.read_text()
-        ),
+        branch_first,
         ("profile_checks",),
     )
     check(
@@ -2100,8 +2103,8 @@ def setup_cases(
         statuses.get("OpenCode directory") == "SKIP"
         and "opencode" in details.get("OpenCode directory", "")
         and all(statuses.get(name) == "PASS" for name in PACKAGES),
-        f"{system_name}: [setup] without opencode: the OpenCode directory is SKIP, and the Julia packages pass -> "
-        f"{statuses.get('OpenCode directory')}, {details.get('OpenCode directory')!r}",
+        f"{system_name}: [setup] without opencode: the OpenCode directory is SKIP, and the Julia "
+        f"packages pass -> {statuses.get('OpenCode directory')}, {details.get('OpenCode directory')!r}",
     )
     statuses, details, changed = run("on disk", '["claude"]', '["julia"]', tuple(layer_files.values()), ())
     found = layers(statuses, details)
@@ -2109,15 +2112,15 @@ def setup_cases(
         found == dict.fromkeys(layer_files, "WARN")
         and all(name in details[f"{name} layer"] for name in layer_files)
         and not changed,
-        f"{system_name}: claude alone, and a file of each other layer on disk: one WARN each, naming [setup] and "
-        f"the frontend, none for claude, and no file changed -> {found}, changed {changed}",
+        f"{system_name}: claude alone, and a file of each other layer on disk: one WARN each, naming "
+        f"[setup] and the frontend, none for claude, and no file changed -> {found}, changed {changed}",
     )
     statuses, details, changed = run("empty", '["claude"]', '["julia"]', (), (".omp/agent", ".gemini/config"))
     found = layers(statuses, details)
     check(
         not found and not changed,
-        f"{system_name}: claude alone, and the other frontends' directories hold no file of a layer: no WARN -> "
-        f"{found}",
+        f"{system_name}: claude alone, and the other frontends' directories hold no file of a layer: "
+        f"no WARN -> {found}",
     )
     statuses, details, changed = run("chosen", every, '["julia"]', tuple(layer_files.values()), ())
     found = layers(statuses, details)
