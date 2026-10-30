@@ -2,9 +2,10 @@
 standard library, and `.githooks/pre-commit` refuses a commit that fails `ruff format --check`,
 `ruff check` or `basedpyright`.
 
-The import cases parse each `.py` file below `hooks/` and each `adapters/*/guard*.py` with `ast`,
-in this repository and in scratch trees. The hook cases commit in a scratch repository whose
-`core.hooksPath` is this checkout's `.githooks/`, with $RESEARCH_HARNESS_PYTHON set to a scratch
+The import cases parse each `.py` file below `hooks/`, each `adapters/*/guard*.py` and
+`githooks/pre-commit-wiki` with `ast`, in this repository and in scratch trees. The hook cases
+commit in a scratch repository whose `core.hooksPath` is this checkout's `.githooks/`, with
+$RESEARCH_HARNESS_PYTHON set to a scratch
 environment whose `bin/` holds stubs of `ruff` and `basedpyright`. A stub logs its arguments and
 its working directory, and fails on a marker in a `.py` file of that directory: BADFORMAT for
 `ruff format --check`, BADLINT for `ruff check`, BADTYPE for `basedpyright`. `ruff format`
@@ -66,9 +67,13 @@ sys.exit(1 if found else 0)
 
 
 def guarded_files(root: pathlib.Path) -> list[pathlib.Path]:
-    """The files that may import only the standard library: each `.py` file below `hooks/`, and each
-    `adapters/*/guard*.py`."""
-    return sorted(root.glob("hooks/**/*.py")) + sorted(root.glob("adapters/*/guard*.py"))
+    """The files that may import only the standard library: each `.py` file below `hooks/`, each
+    `adapters/*/guard*.py`, and the hook of the prose repositories, `githooks/pre-commit-wiki`."""
+    return (
+        sorted(root.glob("hooks/**/*.py"))
+        + sorted(root.glob("adapters/*/guard*.py"))
+        + sorted(root.glob("githooks/pre-commit-wiki"))
+    )
 
 
 def third_party_imports(root: pathlib.Path) -> list[str]:

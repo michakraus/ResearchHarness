@@ -64,11 +64,13 @@ gives the layout, at line length 110; `.git-blame-ignore-revs` names the commit 
 the whole tree, so `git blame --ignore-revs-file .git-blame-ignore-revs` skips it.
 `ruff check` runs the rule families `E F W B BLE TRY PTH S UP SIM RET C4 PERF PL RUF ARG FBT DTZ N
 TID`, bans `os.system` and `os.popen`, and ignores `S603` and `TRY003`; a file that holds test
-cases also ignores `B023` and `PLR2004`. `bin/harness` and `.githooks/pre-commit` have no `.py`
-suffix, and `pyproject.toml` names both for ruff; the formatter and the `UP` family leave
-`bin/harness`, whose syntax is a closed set of Python 3.0 forms. `basedpyright` checks `lib`,
-`hooks`, `adapters`, `scripts` and `bin` in strict mode for Python 3.14; it reads only `.py`
-files, so it checks neither `bin/harness` nor `.githooks/pre-commit`.
+cases also ignores `B023` and `PLR2004`. `bin/harness`, `githooks/pre-commit-wiki`,
+`.githooks/pre-commit`, `.githooks/pre-push` and `launchagents/claude-autocommit` have no `.py`
+suffix, and `pyproject.toml` names all five for ruff; the formatter and the `UP` family leave
+`bin/harness` and `githooks/pre-commit-wiki`, whose syntax is a closed set of Python 3.0 forms,
+and ruff reads `.githooks/pre-push` as Python 3.9. `basedpyright` checks `lib`, `hooks`,
+`adapters`, `scripts` and `bin` in strict mode for Python 3.14; it reads only `.py` files, so it
+checks none of the five.
 
 The findings of the code that the profile met are recorded, not fixed: the table
 `[tool.ruff.lint.extend-per-file-ignores]` of `pyproject.toml`, and the baseline
@@ -80,10 +82,10 @@ json` with the table removed, and the baseline with `basedpyright --writebaselin
 `basedpyright` with fewer errors than the baseline writes it too.
 
 The hooks and the guards import only the standard library: a case of `harness test`
-(`lib/harness/strict.py`) parses each `.py` file below `hooks/` and each `adapters/*/guard*.py`,
-and fails on an import of a module outside `sys.stdlib_module_names`. `hooks/probe.py` may also
-import the harness's own package `harness`, and `hooks/guard/frontends/claude.py` the guard
-package `guard`.
+(`lib/harness/strict.py`) parses each `.py` file below `hooks/`, each `adapters/*/guard*.py` and
+the hook of the prose repositories, `githooks/pre-commit-wiki`, and fails on an import of a module
+outside `sys.stdlib_module_names`. `hooks/probe.py` may also import the harness's own package
+`harness`, and `hooks/guard/frontends/claude.py` the guard package `guard`.
 
 The two tools are pinned in the `dev` group of `pyproject.toml` and locked in `uv.lock`, so every
 machine and CI run the same versions. `harness install --apply` syncs the `dev` group into the
@@ -144,7 +146,8 @@ environment without `ruff` or `basedpyright` refuses the commit with one line: s
 
 ## The pre-push hook
 
-`.githooks/pre-push` gates a push to `main` with the leak checks and the suite. A push of any
+`.githooks/pre-push` is a Python program that imports only the standard library and runs on the
+`python3` of the `PATH`. It gates a push to `main` with the leak checks and the suite. A push of any
 other ref gets `harness leaks --commits` only, over the tree at the pushed commit and the commits
 that the push sends (those that neither the remote SHA nor a branch of `origin` holds, so a
 merge of a newer `main` sends none of its commits), so a pull request cannot bring a private
@@ -188,11 +191,15 @@ Then, when `chezmoi` is on the `PATH`, it runs the kit's tests on `python3`:
 hook refuses the push with one line that names it. Without `chezmoi` it prints
 `skip  chezmoi: not found; CI runs the kit's tests`.
 Then it runs the Julia test files that the changed paths of the pushed range select: a change
-to `scripts/mutate.jl` selects `scripts/run-tests-test.jl`, a change to `Project.toml` all ten,
+to `scripts/mutate.jl` selects `scripts/run-tests-test.jl`, a change to `Project.toml` all nine,
 and a change to `README.md` none. It prints each file's name and its usual time before it runs
 it; `scripts/run-tests-test.jl` is silent for about 11 minutes. Without a `python3` of 3.14 or
-later, the hook refuses the push. A missing `shellcheck`, `chezmoi` or `julia` prints one `skip`
-line, because CI runs them. Enable the hook once per checkout:
+later, the hook refuses the push. The hook parses as Python 3.9, so the `python3` of macOS runs
+it up to that check and refuses the push with the hook's own line. A missing `shellcheck`,
+`chezmoi` or `julia` prints one `skip` line, because CI runs them. A program that the hook cannot
+start, such as an environment's interpreter that does not exist, prints one line and fails its
+check, and the checks after it still run. A SIGTERM or a SIGHUP ends the hook and removes its
+clone. Enable the hook once per checkout:
 
 ```bash
 git config core.hooksPath .githooks
@@ -228,9 +235,9 @@ same lines; `changelog.d/README.md` gives the form. The job fails when the branc
 below `lib/`, `hooks/`, `adapters/`, `bin/`, `scripts/`, `githooks/`, `agents/`, `skills/` or
 `rules/` and adds no fragment. At a release, `harness changelog --apply` joins the fragments into
 `## Unreleased`.
-`.github/workflows/julia.yml` runs the ten Julia test files on Julia 1.13 when a
-`.jl` file, `Project.toml`, a file of `launchagents/`, `githooks/pre-commit` or the workflow
-itself changes.
+`.github/workflows/julia.yml` runs the nine Julia test files on Julia 1.13 when a
+`.jl` file, `Project.toml`, `githooks/pre-commit`, `githooks/pre-push` or the workflow itself
+changes.
 `.github/workflows/docs.yml` builds the documentation site with VitePress when a file under
 `docs/`, `agents/`, `skills/`, `examples/models.toml` or the workflow itself changes.
 VitePress fails the build on a broken local link. On a push to `main`, the workflow also deploys

@@ -143,7 +143,7 @@
 
 ### K38 · `gitleaks git` exits 0 on a `--log-opts` range that it cannot read.
 
-- location: `.github/workflows/test.yml:230`, `.githooks/pre-push:158`
+- location: `.github/workflows/test.yml:230`, `.githooks/pre-push:330-333`
 - evidence: `gitleaks git --log-opts=<a range it cannot read>` prints `fatal: Invalid revision
   range` and still exits 0 with "no leaks found". Both `gitleaks git` calls, of the CI step
   *gitleaks over the pushed range* and of the pre-push hook, rely on its status. The CI step
@@ -165,7 +165,7 @@
 
 ### K71 · The PATH check of the units does not place a session's working directory, which the live sandbox lets the session write.
 
-- location: `lib/harness/units.py:164`
+- location: `lib/harness/units.py:166`
 - evidence: Claude Code's sandbox lets a session write its working directory, which no entry of
   `sandbox.filesystem.allowWrite` of `settings/settings.proposal.json` names. `path_problems`
   fails a `PATH` element at or below `$TMPDIR`, `/var/folders` or `/private/var/folders`, but a
@@ -330,17 +330,17 @@
 
 ### K84 · No branch case of the pre-push hook has a stub chezmoi on its `PATH`.
 
-- location: `lib/harness/profile.py:1679`
+- location: `lib/harness/profile.py:1712`
 - evidence: `prepush_branch_cases` puts no `chezmoi` on the `PATH` of its cases. So a hook that
-  moves the kit step above the branch exit at `.githooks/pre-push:122-125` passes every case. A
+  moves the kit step above the branch exit at `.githooks/pre-push:532-534` passes every case. A
   removed `exit 0` is still caught, because the stub suite prints "the suite ran"
-  (`lib/harness/profile.py:1718`, `1824`).
+  (`lib/harness/profile.py:1751`, `1857`).
 - kind: missing test
 - found: #67
 
 ### K85 · With chezmoi and without shellcheck, the pre-push hook refuses a push to `main` while its own shellcheck step prints `skip`.
 
-- location: `.githooks/pre-push:261`
+- location: `.githooks/pre-push:486`
 - evidence: with chezmoi and without shellcheck, the kit tests exit 1 with "<test>: shellcheck is
   not on the PATH" (`examples/dotfiles/tests/update-check.py:1236-1239`,
   `examples/dotfiles/tests/check-check.py:1119-1122`,
@@ -513,7 +513,7 @@
 
 ### K109 · A SIGKILL of `harness test` leaves its running parts as orphans, and frees its slot while they run.
 
-- location: `lib/harness/testrun.py:164`
+- location: `lib/harness/testrun.py:165`
 - evidence: `run_part` starts each part with `start_new_session=True`, and the run stops the
   parts' process groups only from Python: on an error, an interrupt, a SIGTERM or a SIGHUP. A
   SIGKILL ends the run with no handler, so each running part goes on, and the 300 s limit, which
@@ -524,7 +524,7 @@
 
 ### K110 · `changed` runs `git diff` with no `timeout=`.
 
-- location: `lib/harness/testrun.py:113`
+- location: `lib/harness/testrun.py:114`
 - evidence: `subprocess.run(["git", "diff", "--name-status", …], cwd=root, capture_output=True,
   text=True, check=False)` names no `timeout`, so a `git` that does not end holds
   `harness test --changed` with it. No `git diff` that hangs is known, and no configuration of
@@ -542,7 +542,23 @@
 - kind: missing test
 - found: 2026-10-27, the critic of the strict-Python part
 
-### K112 · The shell-write check passes a target whose text starts with a scratch root and then climbs out of it with `..`.
+### K112 · Six branches of the pre-push hook have no case that fails when they change.
+
+- location: `.githooks/pre-push:248`
+- evidence: each of these mutants, applied alone with `harness mutate` and the parts `profile`
+  and `environment`, survives, and the differential of the hook's 24 pushes (nine early pushes and
+  the 15 runs of the profile part's cases) gives `0 differ` for each: the remote SHA of a branch
+  never excluded (`:248`), the range of a push to `main` always the SHA alone (`:306`), the
+  messages of an empty commit list sent to `git log` (`:340`), a leak found on a push to `main`
+  not refusing it (`:372`), the `BAD` lines of a failed suite not printed (`:394`), and a change
+  of `Project.toml` selecting no Julia test (`:504`). The cases of the hook are
+  `prepush_case` and `prepush_branch_cases` of `lib/harness/profile.py`, which run no push to
+  `main` with a leak, with an earlier `main` or with a failing suite, and no branch push whose
+  remote SHA is on no branch of `origin`; the bash hook had the same cases.
+- kind: missing test
+- found: 2026-10-29
+
+### K113 · The shell-write check passes a target whose text starts with a scratch root and then climbs out of it with `..`.
 
 - location: `hooks/guard/no_shell_file_write.py:338`
 - evidence: `tree_write` returns False when the raw target starts with a scratch prefix, before it
@@ -552,7 +568,7 @@
 - kind: defect
 - found: 2026-10-29, the critics of the guard core
 
-### K113 · The shell-write check reads no `<>` redirection as a write.
+### K114 · The shell-write check reads no `<>` redirection as a write.
 
 - location: `hooks/guard/no_shell_file_write.py:44`
 - evidence: `REDIRECT` matches `<>`, and `split` keeps a target only for an operator that does not
@@ -561,7 +577,7 @@
 - kind: defect
 - found: 2026-10-29, the critics of the guard core
 
-### K114 · The shell-write check reads a command substitution inside a heredoc body as data.
+### K115 · The shell-write check reads a command substitution inside a heredoc body as data.
 
 - location: `hooks/guard/no_shell_file_write.py:142`
 - evidence: `cut_heredocs` removes each body before the command is read, and the shell runs a
@@ -570,7 +586,7 @@
 - kind: defect
 - found: 2026-10-29, the critics of the guard core
 
-### K115 · The staging check finds no `git add` behind a prefix word or inside a compound command, and misses some spellings of `.`.
+### K116 · The staging check finds no `git add` behind a prefix word or inside a compound command, and misses some spellings of `.`.
 
 - location: `hooks/guard/no_blind_stage.py:41`
 - evidence: from a package work tree, `env git add -A`, `command git add -A`, `time git add -A`,
@@ -580,7 +596,7 @@
 - kind: defect
 - found: 2026-10-29, the critics of the guard core
 
-### K116 · The rm check reads no recursive `rm` behind `sudo`, and none in `rm --r`.
+### K117 · The rm check reads no recursive `rm` behind `sudo`, and none in `rm --r`.
 
 - location: `hooks/guard/rm_scope.py:187`
 - evidence: `decide` skips only assignments, `command`, `nohup` and `time` before the program,
@@ -589,7 +605,7 @@
 - kind: defect
 - found: 2026-10-29, the critics of the guard core
 
-### K117 · The `gh api` check finds no call behind `env` or an assignment, and the archive check none behind `env`.
+### K118 · The `gh api` check finds no call behind `env` or an assignment, and the archive check none behind `env`.
 
 - location: `hooks/guard/gh_api_writes.py:204`
 - evidence: the `gh api` check needs the tool as a part's first word, and the archive check skips
@@ -599,7 +615,7 @@
 - kind: defect
 - found: 2026-10-29, the critics of the guard core
 
-### K118 · The `gh api` check answers the first part that does not pass, so an `ask` before a `deny` is `ask`.
+### K119 · The `gh api` check answers the first part that does not pass, so an `ask` before a `deny` is `ask`.
 
 - location: `hooks/guard/gh_api_writes.py:200`
 - evidence: `verdict_of` returns at the first part that asks, so
@@ -608,7 +624,7 @@
 - kind: defect
 - found: 2026-10-29, the critics of the guard core
 
-### K119 · No check reads `Call.caller` or `Verdict.sandbox`, so no case shows either field.
+### K120 · No check reads `Call.caller` or `Verdict.sandbox`, so no case shows either field.
 
 - location: `hooks/guard/contract.py:33`
 - evidence: `grep -rn '\.caller\|\.sandbox' hooks/guard/ hooks/probe.py` finds no line, so a
@@ -617,7 +633,7 @@
 - kind: missing test
 - found: 2026-10-29, the critics of the guard core
 
-### K120 · What Claude Code does with a `PreToolUse` hook that passes its `timeout` is not measured here.
+### K121 · What Claude Code does with a `PreToolUse` hook that passes its `timeout` is not measured here.
 
 - location: `settings/settings.proposal.json:717`
 - evidence: the template gives each guard hook `"timeout": 5`. If Claude Code reads a timeout as

@@ -82,7 +82,7 @@ plans and the memories of `~/.claude` every 15 minutes, and pushes them to the b
 `autocommit_branch`. That branch is `main` on the template host, and `memory/<short host name>` on
 each other machine. So no two machines push to one branch, and the memory of the template host is
 the memory that the others start from.
-[Jobs and configuration](components/other.md#claude-autocommit-claude-autocommit-test-jl-and-claude-autocommit-plist)
+[Jobs and configuration](components/other.md#claude-autocommit-and-claude-autocommit-plist)
 describes the job.
 
 ### The tree instructions and the repositories

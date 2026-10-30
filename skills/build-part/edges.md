@@ -354,6 +354,13 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   C1 or line-separator character, or a space or tab at the edge of a value, which YAML reads
   differently and the port accepts (D1 verify 2, verify 3 and the verifier, *Unify the agent
   configuration*)
+- a port whose messages print a parsed value: the source language spells a list, a mapping entry
+  and a float its own way (`["a"]` against `Any["a", 1]`, `Pair{Any, Any}(…)`, `1.0e10`), and a
+  fixture of strings only shows none of it. Run a differential over the value classes, not only
+  the fixtures (P1 round 1, *Make the Harness enforce strict Python*)
+- a decided edge on a parsed value that the port checks for one node kind only: a YAML 1.1
+  conversion recorded for a mapping value and not for a list item or a key. Test the edge in each
+  place a value can stand (P1 round 1, *Make the Harness enforce strict Python*)
 - a malformed configuration file or one that is not UTF-8: a traceback exits 1, which the
   subcommand contract reserves for "changes to make" (D1 round 1, *Unify the agent configuration*)
 - a well-formed file with a value of the wrong type, such as a list or a table where a string is
@@ -493,6 +500,21 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   leaves it as an orphan that holds no lock and no limit. Pass each signal that the parent receives
   on to the child's process group, and record SIGKILL as a limit (T1 round 1, P3, *Make the
   Harness enforce strict Python*)
+- a signal handler that raises inside a wait on a child: Python's `subprocess.run` then sends the
+  child SIGKILL, and a git killed so leaves its `index.lock`, so every later run defers without
+  end. Set a flag in the handler, pass the signal on to the running child, let it end, then stop;
+  test that no lock is left after a SIGTERM during the child (P2 round 1, *Make the Harness enforce
+  strict Python*)
+- a port of a shell script whose program cannot start: the shell printed "not found" and ran the
+  next check, but `subprocess.run` raises `OSError`, a traceback past every check and the refusal
+  line. Catch `OSError` at each start as a failed check with one line, and test a missing and a
+  non-executable program (P2 round 1)
+- a CI stub written at the path of a program that the same job then runs for real: the
+  stub `exit 0` at the environment's interpreter, made before `bin/harness render`, is an
+  interpreter that starts, so `bin/harness` runs on it, every rendered unit is empty, and
+  `systemd-analyze` reads each one as masked. Write the stubs after the steps that run the real
+  program, and run the changed CI job before the finish (P2 finish, *Make the Harness enforce
+  strict Python*)
 
 ## A lint cleanup
 

@@ -5,7 +5,9 @@
     <key>Label</key>
     <string>{launchd_prefix}.claude-autocommit</string>
     <key>ProgramArguments</key>
+    <!-- The interpreter of the harness's Python environment runs the installed copy. -->
     <array>
+        <string>{home}/.local/share/research-harness/python/bin/python</string>
         <string>{home}/.local/bin/claude-autocommit</string>
     </array>
     <key>StartInterval</key>

@@ -1,64 +1,174 @@
-#!/usr/bin/env bash
-#
-# Shared pre-commit hook for the four prose repositories: Knowledge, Environment, Tasks and
-# Library. Canonical copy:
-#
-#   ~/Research/Harness/githooks/pre-commit-wiki
-#
-# Installed byte-identical into each as `.githooks/pre-commit` by `harness wiki-lint-hook`, which
-# also sets `core.hooksPath=.githooks`. Edit this file and re-run the installer; never edit a copy.
-#
-# This is NOT the hook the Julia packages use. `pre-commit` beside it is theirs — JuliaFormatter,
-# fatou lint and a package load test on staged `.jl`. The two never meet: no repository is both a
-# Julia package and a prose repository.
-#
-# WHAT IT DOES
-#
-# Runs `wiki-lint.jl` over all four trees and blocks the commit if it reports an ERROR. About
-# three seconds. It does not filter to staged files, deliberately: a change to a *script* can
-# break a `checks:` or `depends_on:` pin in a page that is not in the commit, and the existing
-# `pre-commit` already demonstrates the cost of filtering — it exits 0 on a Markdown-only commit
-# and checks nothing.
-#
-# IT BLOCKS ON AN ERROR ANYWHERE, NOT ONLY IN THIS REPOSITORY
-#
-# That is a decision, and the alternative is one flag away. The four trees cross-reference each
-# other, so an edit here can only break a link over there: rename a `Knowledge/` page and the
-# error appears in `Tasks/`. A hook that failed only on its own repository would report that
-# error to nobody until someone happened to commit in `Tasks/`.
-#
-# The cost is that a pre-existing error in another repository blocks this commit. The tree is at
-# zero errors and errors here are rare and always real, so the cost should stay theoretical. If
-# it does not, narrow it rather than switching the hook off.
-#
-# Warnings never block. They are a backlog — orphans, dead paths in prose, unwritten link targets
-# — and several of them are not defects at all.
-#
-#   git commit --no-verify     skips this, and every other hook. Use it knowing that.
+#!/usr/bin/env python3
+"""Shared pre-commit hook for the four prose repositories: Knowledge, Environment, Tasks and
+Library. Canonical copy: githooks/pre-commit-wiki of the harness.
 
-set -o pipefail
+`harness wiki-lint-hook --apply` installs it byte-identical into each as .githooks/pre-commit, with
+the execute bit, and sets core.hooksPath=.githooks. Edit this file and run the installer again;
+never edit a copy. It is not the hook of the Julia packages: `pre-commit` beside it is theirs.
 
-root="${RESEARCH_ROOT:-$HOME/Research}"
-lint="$root/Harness/scripts/wiki-lint.jl"
+WHAT IT DOES
 
-if [ ! -f "$lint" ]; then
-    printf 'pre-commit: cannot find the lint at %s\n' "$lint" >&2
-    printf '            set RESEARCH_ROOT, or re-run harness wiki-lint-hook --apply\n' >&2
-    exit 1
-fi
+1. It runs `harness wiki-lint --quiet` over all four trees, with bin/harness of
+   $RESEARCH_ROOT/Harness, else of ~/Research/Harness, and refuses the commit with exit 1 when the
+   lint reports an ERROR. It does not filter to the staged files: a change to a script can break a
+   `checks:` or `depends_on:` pin in a page that is not in the commit.
+2. In a repository whose staged pyproject.toml holds a [tool.ruff] table, it also runs
+   `ruff format --check`, `ruff check` and `basedpyright` on the staged Python files and the
+   tools' configuration, which it writes into a temporary directory with `git checkout-index`.
+   Each tool comes from the bin/ of the harness's Python environment, beside the interpreter that
+   bin/harness's own `interpreter(environment_path())` names, never from the PATH; the environment
+   holds them where the profile sets `develop = true` and `harness install --apply` has run. A tool
+   that the environment lacks refuses the commit with one line, and so does a check that fails.
 
-if ! command -v julia > /dev/null 2>&1; then
-    printf 'pre-commit: julia is not on PATH, so the wiki lint cannot run\n' >&2
-    printf '            fix the PATH rather than committing unchecked\n' >&2
-    exit 1
-fi
+Every check runs, and the last line names each one that failed.
 
-if ! julia --startup-file=no "$lint" --quiet; then
-    printf '\n' >&2
-    printf 'pre-commit: the wiki lint reports an error. The commit is blocked.\n' >&2
-    printf '            Warnings do not block; only the ERROR lines above do.\n' >&2
-    printf '            An error in another repository blocks too — see this hook. \n' >&2
-    exit 1
-fi
+IT BLOCKS ON AN ERROR ANYWHERE, NOT ONLY IN THIS REPOSITORY
 
-exit 0
+The four trees cross-reference each other, so an edit here can break a link over there: rename a
+Knowledge page and the error appears in Tasks. A hook that failed only on its own repository would
+report that error to nobody until someone committed in Tasks. The cost is that an error in another
+repository blocks this commit; if that cost stops being theoretical, narrow the check rather than
+switch the hook off. Warnings never block: they are a backlog, and several are not defects.
+
+The file uses only the closed set of Python 3.0 forms of bin/harness and the standard library, so
+an old python3 reads it and prints bin/harness's own refusal of its version.
+
+    git commit --no-verify     skips this, and every other hook. Use it knowing that.
+"""
+
+import os
+import pathlib
+import subprocess
+import sys
+import tempfile
+
+TIMEOUT = 600  # seconds for each program that the hook waits on
+TOOLS = ["ruff", "basedpyright"]
+# (the name in the refusal, the tool, its arguments)
+CHECKS = [
+    ("ruff format --check", "ruff", ["format", "--check", "--no-cache", "."]),
+    ("ruff check", "ruff", ["check", "--no-cache", "."]),
+    ("basedpyright", "basedpyright", []),
+]
+# The files that the Python checks read, as git pathspecs.
+PYTHON_FILES = [
+    "*.py",
+    "*.pyi",
+    "pyproject.toml",
+    "ruff.toml",
+    ".ruff.toml",
+    "pyrightconfig.json",
+    ".basedpyright/*",
+]
+
+
+def say(line):
+    sys.stderr.write("pre-commit: " + line + "\n")
+    sys.stderr.flush()
+
+
+def harness_root():
+    root = os.environ.get("RESEARCH_ROOT")
+    if root:
+        return pathlib.Path(root).joinpath("Harness")
+    return pathlib.Path.home().joinpath("Research", "Harness")
+
+
+def environment_bin(harness):
+    """The bin/ of the harness's Python environment, by bin/harness's own `environment_path` and
+    `interpreter`, or None after one line when bin/harness refuses the path. On an interpreter older
+    than bin/harness needs, its version check prints one line and exits 2."""
+    boot = {"__name__": "harness_boot", "__file__": str(harness)}
+    exec(compile(harness.read_text(encoding="utf-8"), str(harness), "exec"), boot)  # noqa: S102 -- the harness's own code
+    try:
+        environment = boot["environment_path"]()
+    except boot["Refusal"] as e:
+        say("refused, %s" % e)
+        return None
+    return pathlib.Path(boot["interpreter"](environment)).parent
+
+
+def run(command, cwd=None):
+    """The exit status of `command`, or None when it outlives TIMEOUT."""
+    try:
+        return subprocess.run(command, cwd=cwd, check=False, timeout=TIMEOUT).returncode
+    except subprocess.TimeoutExpired:
+        return None
+
+
+def staged_pyproject():
+    """The text of the staged pyproject.toml; empty when none is staged, as `git show` then prints
+    nothing."""
+    # git is the program that runs this hook, so the PATH holds it.
+    return subprocess.run(
+        ["git", "show", ":pyproject.toml"],  # noqa: S607
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=TIMEOUT,
+    ).stdout
+
+
+def python_checks(tools):
+    """Run CHECKS on the staged files of PYTHON_FILES; the names of the checks that fail."""
+    missing = [tool for tool in TOOLS if not tools.joinpath(tool).is_file()]
+    if missing:
+        say(
+            "%s not in %s; set develop = true in the profile, then run harness install --apply"
+            % (" and ".join(missing), tools)
+        )
+        return [" and ".join(missing)]
+    failed = []
+    with tempfile.TemporaryDirectory(prefix="wiki-pre-commit-") as tree:
+        names = subprocess.run(
+            ["git", "ls-files", "-z", "--"] + PYTHON_FILES,
+            capture_output=True,
+            check=True,
+            timeout=TIMEOUT,
+        ).stdout
+        subprocess.run(
+            ["git", "checkout-index", "-z", "--stdin", "--prefix=" + tree + "/"],  # noqa: S607
+            input=names,
+            check=True,
+            timeout=TIMEOUT,
+        )
+        for name, tool, args in CHECKS:
+            say(name)
+            if run([str(tools.joinpath(tool))] + args, tree) != 0:
+                failed.append(name)
+    return failed
+
+
+def main():
+    harness = harness_root().joinpath("bin", "harness")
+    if not harness.is_file():
+        say("refused, no harness at %s; set RESEARCH_ROOT, or clone the harness there" % harness)
+        return 1
+    tools = environment_bin(harness)
+    if tools is None:
+        return 1
+    # Imported after bin/harness's version check, which an interpreter without tomllib fails first.
+    import tomllib  # noqa: PLC0415
+
+    failed = []
+    if run([sys.executable, str(harness), "wiki-lint", "--quiet"]) != 0:
+        say("the wiki lint reports an error or cannot run; only the ERROR lines above block.")
+        say("An error in another repository blocks too: see the head of this hook.")
+        failed.append("harness wiki-lint")
+    try:
+        tool = tomllib.loads(staged_pyproject()).get("tool")
+    except tomllib.TOMLDecodeError as e:
+        say("the staged pyproject.toml does not parse: %s" % e)
+        failed.append("pyproject.toml")
+        tool = None
+    table = tool.get("ruff") if isinstance(tool, dict) else None
+    if isinstance(table, dict):
+        failed = failed + python_checks(tools)
+    if failed:
+        say("refused, %s failed" % " and ".join(failed))
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

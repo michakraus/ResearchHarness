@@ -23,6 +23,7 @@ import os
 import pathlib
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import tarfile
@@ -1051,7 +1052,8 @@ def prepush_cases(case, tmp):
     """The Python of `.githooks/pre-push`, for a push of a branch: a `python3` that reports 3.13
     refuses the push with one line; a `python3` of 3.14 passes, and the hook
     goes on to the next step, which refuses a checkout with no `origin`. The PATH holds the tools
-    that the hook runs up to there, and the `python3`."""
+    that the hook runs up to there, and the `python3`, a stub that reports the version both to
+    `python3 -c` and to a script, as the hook runs on it through its shebang."""
     repo, tools = tmp / "pre-push-repo", tmp / "pre-push-tools"
     tools.mkdir()
     for tool in ("git", "bash", "mktemp", "rm"):
@@ -1082,7 +1084,8 @@ def prepush_cases(case, tmp):
         python.unlink(missing_ok=True)
         python.write_text(
             f'#!/bin/sh\n[ "$1" = -c ] && exec \'{sys.executable}\' -c "import sys; {patch}'
-            f'exec(sys.argv[1])" "$2"\nexec \'{sys.executable}\' "$@"\n'
+            f'exec(sys.argv[1])" "$2"\nexec \'{sys.executable}\' -c "import runpy, sys; {patch}'
+            f'sys.argv = sys.argv[1:]; runpy.run_path(sys.argv[0], run_name=\'__main__\')" "$@"\n'
         )
         python.chmod(0o755)
         p = subprocess.run(
@@ -1101,6 +1104,76 @@ def prepush_cases(case, tmp):
             f"pre-push with a python3 that reports {version or 'its own version'}: {want!r} -> {p.returncode}, "
             f"{lines}",
         )
+
+
+def prepush_signal_cases(tmp: pathlib.Path) -> list[tuple[bool, str]]:
+    """`.githooks/pre-push`, for a push to main, gets a SIGTERM and, in a second run, a SIGHUP while
+    a stub of `gitleaks version` waits, after the hook has made its directory under TMPDIR: the
+    hook ends with a status other than 0 and leaves no directory under TMPDIR. (verdict, label) of
+    each case."""
+    tools, repo, waits = tmp / "signal-tools", tmp / "signal-repo", tmp / "signal-waits"
+    for directory in (tools, repo):
+        directory.mkdir()
+    git = shutil.which("git")
+    if git is None:
+        return [(False, "pre-push and a signal: the cases need git on the PATH")]
+    (tools / "git").symlink_to(git)
+    (tools / "python3").symlink_to(sys.executable)
+    (tools / "gitleaks").write_text(
+        f"#!{sys.executable}\nimport pathlib, time\npathlib.Path({str(waits)!r}).touch()\ntime.sleep(30)\n"
+    )
+    (tools / "gitleaks").chmod(0o755)
+    env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+    env.update(
+        GIT_CONFIG_GLOBAL="/dev/null",
+        GIT_CONFIG_NOSYSTEM="1",
+        GIT_AUTHOR_NAME="case",
+        GIT_AUTHOR_EMAIL="case@example.org",
+        GIT_COMMITTER_NAME="case",
+        GIT_COMMITTER_EMAIL="case@example.org",
+    )
+    for args in (["init", "-q", "-b", "main"], ["commit", "-q", "--allow-empty", "-m", "c"]):
+        subprocess.run([git, *args], cwd=repo, env=env, check=True, capture_output=True)
+    sha = subprocess.run(
+        [git, "rev-parse", "HEAD"], cwd=repo, env=env, check=True, capture_output=True, text=True
+    ).stdout.strip()
+    pushes = tmp / "signal-pushes"
+    pushes.write_text(f"refs/heads/main {sha} refs/heads/main {'0' * 40}\n")
+    verdicts: list[tuple[bool, str]] = []
+    for signum in (signal.SIGTERM, signal.SIGHUP):
+        hook_tmp = tmp / f"signal-{signum.name}"
+        hook_tmp.mkdir()
+        waits.unlink(missing_ok=True)
+        with (
+            pushes.open("rb") as stdin,
+            subprocess.Popen(
+                [str(REPO / ".githooks" / "pre-push"), "origin", "https://github.com/owner/fixture.git"],
+                stdin=stdin,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                cwd=repo,
+                env={**env, "PATH": str(tools), "TMPDIR": str(hook_tmp)},
+            ) as child,
+        ):
+            deadline = time.monotonic() + TIMEOUT
+            while not waits.exists() and time.monotonic() < deadline:
+                time.sleep(0.05)
+            made = sorted(p.name for p in hook_tmp.iterdir())
+            child.send_signal(signum)
+            try:
+                code = child.wait(timeout=TIMEOUT)
+            except subprocess.TimeoutExpired:
+                child.kill()
+                code = None
+        left = sorted(p.name for p in hook_tmp.iterdir())
+        verdicts.append(
+            (
+                len(made) == 1 and left == [] and code not in (None, 0),
+                f"pre-push: a {signum.name} during a check ends the hook and removes its directory "
+                f"under TMPDIR -> exit {code}, made {made}, left {left}",
+            )
+        )
+    return verdicts
 
 
 def selftest():
@@ -1130,4 +1203,6 @@ def selftest():
         download_cases(case, tmp)
         install_cases_of(case, tmp)
         prepush_cases(case, tmp)
+        for ok, label in prepush_signal_cases(tmp):
+            check(ok, label)
     return total, wrong
