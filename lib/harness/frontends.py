@@ -2,8 +2,8 @@
 
 Each frontend of FRONTENDS has one module, adapters/<frontend>/adapter.py, which `load` loads by
 path, as `install.drift_hook` loads hooks/install-drift.py; `bin/harness` and `sys.path` stay as
-they are. FRONTENDS is also the order in which `harness install` plans and installs them. An
-adapter defines:
+they are. FRONTENDS is also the order in which `harness install` plans and installs the frontends
+that the profile's `[setup]` chooses (`planned`). An adapter defines:
 
   NAME               the frontend, as FRONTENDS names it; the label of its cases
   TEMPLATES          its templates, relative to the repository, that `harness leaks` renders
@@ -16,14 +16,17 @@ adapter defines:
 
 `ctx` holds `args`, the arguments, `--force` of `harness install` among them; `profile`, the
 profile; `models`, the path of the model tables; `agents`, the directory of the neutral agents; and
-`plans`, the Plan of each frontend planned before this one, by NAME.
+`plans`, the Plan of each frontend planned before this one, by NAME, and the Claude Code adapter's
+`copies` in place of its plan where `claude` is not chosen.
 
 An adapter that fails to load exits 2, with its path, its line and the exception's last line,
 before any subcommand runs; so does one that lacks a member of MEMBERS, with its path. No adapter
 is skipped.
 """
 
+import contextlib
 import importlib.util
+import io
 import pathlib
 import sys
 import traceback
@@ -155,3 +158,18 @@ def load() -> list[types.ModuleType]:
 def adapter(name: str) -> types.ModuleType:
     """The adapter of the frontend `name`."""
     return load()[FRONTENDS.index(name)]
+
+
+def planned(ctx: types.SimpleNamespace, chosen: tuple[str, ...]) -> list[types.ModuleType]:
+    """The adapter of each frontend of `chosen`, in the order of FRONTENDS, each with its plan in
+    `ctx.plans` by NAME. OpenCode, oh-my-pi and Antigravity copy files from the Claude Code
+    layer's plan: where `chosen` names one of them and not `claude`, `ctx.plans["claude"]` holds
+    the Claude Code adapter's `copies`, which read nothing below ~/.claude, and its lines are not
+    printed. An adapter that `chosen` does not name is not planned."""
+    chosen_adapters = [a for a in load() if a.NAME in chosen]
+    if "claude" not in chosen and chosen_adapters:
+        with contextlib.redirect_stdout(io.StringIO()):
+            ctx.plans["claude"] = adapter("claude").copies(ctx)
+    for a in chosen_adapters:
+        ctx.plans[a.NAME] = a.plan(ctx)
+    return chosen_adapters

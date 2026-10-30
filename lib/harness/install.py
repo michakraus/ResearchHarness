@@ -1,5 +1,6 @@
-"""Install the configuration of each frontend that lib/harness/frontends.py names, the Julia
-environment of the scripts and the Python environment of the harness.
+"""Install the configuration of each frontend that lib/harness/frontends.py names and the profile's
+`[setup]` chooses, the Julia environment of the scripts with the `julia` component, and the Python
+environment of the harness.
 
     harness install [--apply] [--force]
 
@@ -11,15 +12,21 @@ and launchagents/.
 
 What it installs:
   Project.toml                     -> ~/.local/share/research-harness/julia/ ($RESEARCH_HARNESS_JULIA),
-                                      instantiated: the packages the Julia scripts load
+                                      instantiated: the packages the Julia scripts load; only
+                                      where `[setup]` chooses the `julia` component
   pyproject.toml, uv.lock          -> ~/.local/share/research-harness/python/ ($RESEARCH_HARNESS_PYTHON),
-                                      by `uv sync --locked`, with the `dev` group where the
-                                      profile sets `develop = true`: the interpreter of `harness`
-  each frontend's files            -> as the docstring of its adapters/<frontend>/adapter.py says
+                                      by `uv sync --locked`, with the `dev` group where `[setup]`
+                                      of the profile sets `develop = true`: the interpreter of
+                                      `harness`; on every machine
+  each chosen frontend's files     -> as the docstring of its adapters/<frontend>/adapter.py says
+
+Without `[setup]`, every frontend and the Julia environment are chosen. A layer of a frontend
+that is not chosen is neither planned nor removed; `harness doctor` warns about one that is still
+installed.
 
 It loads the profile and the model tables, `--models F`, else $RESEARCH_HARNESS_MODELS, else
-models.toml beside the profile; examples/models.toml shows them. Then it plans each frontend, in
-the order of FRONTENDS. Planning writes nothing, so each refusal that stops the install at once,
+models.toml beside the profile; examples/models.toml shows them. Then it plans each chosen
+frontend, in the order of FRONTENDS (`frontends.planned`). Planning writes nothing, so each refusal that stops the install at once,
 with exit status 2, comes before anything is written. `check_files` then checks every target of
 the Julia environment and of each plan, and refuses a symbolic link or a directory at a target,
 also before anything is written. A target with a change
@@ -38,6 +45,7 @@ which the `SessionStart` hook hooks/install-drift.py computes again at each sess
 here, for the adapter that installs such a layer.
 """
 
+import argparse
 import datetime
 import functools
 import importlib.util
@@ -353,19 +361,21 @@ def install_python_env(apply, develop, environment):
     return 1
 
 
-def cmd_install(args):
+def cmd_install(args: argparse.Namespace):
     global WIDTH
-    adapters = frontends.load()
+    frontends.load()
     profile = profile_module.load(args.profile)
-    develop = profile.develop
+    develop = profile.setup.develop
+    julia = "julia" in profile.setup.components
     # A relative $RESEARCH_HARNESS_PYTHON exits 2 here, before anything is written.
     python = python_env()
     models = profile_module.models_path(args)
     profile_module.read_models(models)
     ctx = types.SimpleNamespace(args=args, profile=profile, models=models, agents=sources.AGENTS, plans={})
-    for adapter in adapters:
-        ctx.plans[adapter.NAME] = adapter.plan(ctx)
-    plans = list(ctx.plans.values())
+    # Only the chosen frontends are planned, listed and installed; `ctx.plans` can also hold the
+    # copies of an unchosen Claude Code layer, which the others read.
+    adapters = frontends.planned(ctx, profile.setup.frontends)
+    plans = [ctx.plans[adapter.NAME] for adapter in adapters]
     WIDTH = max(
         len(label)
         for label in [
@@ -378,27 +388,24 @@ def cmd_install(args):
     # Every target, the Julia environment's and each plan's, is checked before anything is written.
     # A target that cannot be written stops an --apply here, and a dry run after its count line,
     # so that a session, which cannot write the installed files, still sees the plan.
+    julia_files = [
+        (JULIA_ENV / "Project.toml", (REPO / "Project.toml").read_bytes(), None, "julia/Project.toml")
+    ]
     unwritable = [
         r
         for r in [
-            check_files(
-                [
-                    (
-                        JULIA_ENV / "Project.toml",
-                        (REPO / "Project.toml").read_bytes(),
-                        None,
-                        "julia/Project.toml",
-                    )
-                ]
-            ),
+            check_files(julia_files if julia else []),
             *(check_files(plan.files) for plan in plans),
         ]
         if r
     ]
     if unwritable and args.apply:
         raise HarnessError(unwritable[0])
-    # The two environments belong to no frontend, so their changes count in no plan's.
-    environments = install_julia_env(args.apply) + install_python_env(args.apply, develop, python)
+    # The two environments belong to no frontend, so their changes count in no plan's. The Julia
+    # environment is the `julia` component's.
+    environments = (install_julia_env(args.apply) if julia else 0) + install_python_env(
+        args.apply, develop, python
+    )
     changed = [0] * len(plans)
 
     for i, plan in enumerate(plans):
@@ -441,12 +448,13 @@ def cmd_install(args):
 def selftest():
     """A malformed profile or models.toml exits 2 with no traceback; then `load_cases`,
     `install_cases.restart_cases`, `install_cases.precondition_cases`,
-    `install_cases.target_cases` and `install_cases.setup_guard_cases`."""
+    `install_cases.target_cases`, `install_cases.setup_guard_cases` and `install_cases.setup_cases`."""
     from .install_cases import precondition_cases, restart_cases, setup_guard_cases, target_cases
+    from .install_cases import setup_cases
 
     total = wrong = 0
 
-    def check(ok, label):
+    def check(ok: object, label: str) -> None:
         nonlocal total, wrong
         total, wrong = total + 1, wrong + (not ok)
         print(f"{'ok ' if ok else 'BAD'}  install: {label}")
@@ -528,6 +536,7 @@ def selftest():
         precondition_cases(check, pathlib.Path(tmp))
         target_cases(check, pathlib.Path(tmp))
         setup_guard_cases(check, pathlib.Path(tmp))
+        setup_cases(check, pathlib.Path(tmp))
         behind_cases(check, pathlib.Path(tmp))
     return total, wrong
 
@@ -682,9 +691,9 @@ def register(sub):
         sub.add_parser(
             "install",
             help="install the configuration of each frontend",
-            description="Install the Julia environment of the scripts and the configuration "
-            "of each frontend: Claude Code, OpenCode, oh-my-pi and Antigravity. "
-            "Without --apply "
+            description="Install the Python environment, the Julia environment of the scripts and the "
+            "configuration of each frontend that the profile's [setup] chooses, of Claude Code, OpenCode, "
+            "oh-my-pi and Antigravity; without [setup], all four and the Julia environment. Without --apply "
             "it prints the plan and exits 1 when a file would change, 0 when none "
             "would; --apply installs. A refusal exits with status 2.",
         )

@@ -68,12 +68,14 @@ to `harness get` and `harness render`. The keys `memory_project` and `tree_agent
 and `org`, `repository_roots` and `leak`, each a list of one string or more, are required. Every
 other key is optional, and the table gives its value without the key.
 
-Every subcommand that reads the profile checks it first. An unknown key, a table such as
+Every subcommand that reads the profile checks it first. An unknown key, a table other than
 `[setup]` among them, a missing required key, a value of the wrong type and an empty required list
 stop the subcommand with exit status 2. The message names the file, the key and, except for an
 unknown key, the type that the key takes. The retired keys `extra_domain`, `opencode_providers` and
-`omp_providers` stop it too, and the message names the file that replaces each. `doctor` reports
-each of these as a FAIL of its `profile` check, which quotes the message.
+`omp_providers` stop it too, and the message names the file that replaces each. A `develop` at the
+top level stops it as well, and the message says to move the line into
+[`[setup]`](#the-setup-table). `doctor` reports each of these as a FAIL of its `profile` check,
+which quotes the message.
 
 | key | what it holds | read by |
 |:--|:--|:--|
@@ -90,7 +92,25 @@ each of these as a FAIL of its `profile` check, which quotes the message.
 | `docs_additions` | the repositories that add steps to the canonical documentation workflow. Optional: without it, none | `workflows`; `ci-protection`, through `githooks/verify-workflows.jl` |
 | `protected_dir` | the directories below `home` that no session can edit, each as a path relative to `home`, such as `Nextcloud`. Optional: without it, none | `install`, in the settings template and the OpenCode configuration; `settings` |
 | `leak` | the strings that must never appear in the repository, such as your user name and the hosts of your institution. The item `~` stands for the path of your home directory, as each `~` of the profile does | `leaks` |
-| `develop` | `true` on a machine that develops the harness: the Python environment of the harness then also holds the `dev` group of `uv.lock`, the tools that check the Python code. Optional: without it, `false`. A value that is not `true` or `false` stops every subcommand that reads the profile, and the message names the key | `install`, which syncs the environment; `doctor`, which checks it |
+| `[setup]` | the choices of this machine, a table with the keys of [The setup table](#the-setup-table). Optional: without it, every frontend and every component, and `develop` false | `install`, `doctor` and `get develop` |
+
+## The setup table
+
+The table `[setup]` holds what this machine gets. Put it at the end of the profile, as
+`examples/profile.toml` does: in TOML, each key after a table header belongs to the table.
+Without the table, every frontend and every component is chosen and `develop` is `false`. With
+the table, `frontends` and `components` are required.
+
+| key | what it holds | read by |
+|:--|:--|:--|
+| `frontends` | the frontends whose layers `harness install` plans and installs, each once: `claude`, `opencode`, `omp` and `antigravity`, in any order. An empty list installs no layer. A layer of a frontend that the list leaves out stays on disk: `install` removes nothing, and `doctor` reports it as a WARN that names `[setup]` and the frontend | `install`; `doctor`, whose OpenCode directory check is SKIP without `opencode` |
+| `components` | the components of this machine, each once: `julia`, `rtk`, `jq`, `iterm`, `jobs` and `dotfiles`. With `julia`, `install` installs the Julia environment of the scripts and `doctor` checks its packages; without it, neither does, and the packages are SKIP. No subcommand reads the other names | `install`; `doctor` |
+| `develop` | `true` on a machine that develops the harness: the Python environment of the harness then also holds the `dev` group of `uv.lock`, the tools that check the Python code. Optional: without it, `false` | `install`, which syncs the environment; `doctor`, which checks it; `get develop`, which prints it |
+
+A key of `[setup]` that the table does not show, a missing `frontends` or `components`, a value
+of the wrong type, a name that the table does not list and a name given twice stop every
+subcommand that reads the profile with exit status 2, and the message names the file, `[setup]`
+and the key or the name.
 
 `install` reads the settings template too, because it writes the permission layer of oh-my-pi
 from it. So each key of the settings template is a key that `install` reads.

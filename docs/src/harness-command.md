@@ -86,12 +86,15 @@ harness install [--apply] [--force]
 ```
 
 Installs the Julia environment of the scripts, syncs the Python environment of the harness, and
-installs the configuration of each frontend: Claude
-Code, OpenCode, oh-my-pi and Antigravity. The installed configuration is not writable from a
-session, so the sources live in the harness repository, and `install` copies them into place. It
-plans every frontend first and writes nothing while it plans. So a refusal stops the install
-before the first write. After `--apply`, it prints the restart line of each frontend whose files
-changed.
+installs the configuration of each frontend that the profile's
+[`[setup]`](profile.md#the-setup-table) chooses: Claude Code, OpenCode, oh-my-pi and
+Antigravity. Without `[setup]`, it installs all four and the Julia environment; with it, the Julia
+environment only with the `julia` component, and the Python environment always. A layer of a
+frontend that `[setup]` does not choose is neither planned nor removed. The installed
+configuration is not writable from a session, so the sources live in the harness repository, and
+`install` copies them into place. It plans every chosen frontend first and writes nothing while
+it plans. So a refusal stops the install before the first write. After `--apply`, it prints the
+restart line of each frontend whose files changed.
 
 | option | meaning |
 |:--|:--|
@@ -103,11 +106,11 @@ change; 2 when a plan refuses, or the profile or the model tables do not load.
 
 **Reads:** the profile, the model tables, `providers.toml` and `network.toml` beside the profile,
 the tree instructions (`tree_agents` of the profile), and the sources of the harness checkout.
-**Writes:** below `~/.claude/`, the OpenCode configuration directory, the oh-my-pi directory,
-`~/.gemini/` when Antigravity has made it, the Julia environment (see
-[The Julia environment](#the-julia-environment)) and the Python environment
-(`~/.local/share/research-harness/python/`, with the `dev` group when the profile sets
-`develop = true`). It writes the stamp
+**Writes:** for each chosen frontend, below `~/.claude/`, the OpenCode configuration directory,
+the oh-my-pi directory, and `~/.gemini/` when Antigravity has made it; the Julia environment with
+the `julia` component (see [The Julia environment](#the-julia-environment)); and the Python
+environment (`~/.local/share/research-harness/python/`, with the `dev` group when `[setup]` of
+the profile sets `develop = true`). With `claude` chosen, it writes the stamp
 `~/.claude/.harness-install.json`, which the drift warning at session start reads.
 
 **Where to run it:** in your own terminal. A session cannot write the installed files.
@@ -164,7 +167,11 @@ Checks this machine's setup and changes nothing. It prints one line per check: `
 `FAIL` or `SKIP`, the name of the check and a detail. A `FAIL` line also names the section of the
 setup page that fixes it. The checks are, in this order: the machine; the tools of
 [dependencies.md](dependencies.md), each with its minimum version; the profile; the dry run of
-`install` and its warnings; and the jobs (Kaimon, the update job, the autocommit job).
+`install` and its warnings; and the jobs (Kaimon, the update job, the autocommit job). Where the
+profile's `[setup]` does not choose `opencode`, the OpenCode directory check is a `SKIP`, and
+without the `julia` component so are the Julia packages. A layer of a frontend that `[setup]`
+does not choose and that is still on disk is a `WARN` that names `[setup]` and the frontend;
+`doctor` removes nothing.
 
 | option | meaning |
 |:--|:--|
@@ -571,8 +578,8 @@ Prints `TEMPLATE` with each placeholder `{key}` replaced by its profile value.
 harness get KEY
 ```
 
-Prints the profile value of `KEY`, one line per item of a list, and `develop` as `true` or
-`false`. A path that starts with `~` is printed with the home directory.
+Prints the profile value of `KEY`, one line per item of a list, and `develop` of `[setup]` as
+`true` or `false`. A path that starts with `~` is printed with the home directory.
 
 **Exit status:** 0; 2 when the profile does not load or has no `KEY`.
 

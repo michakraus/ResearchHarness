@@ -152,8 +152,13 @@ The adapters are described in [the adapters](adapters.md).
 ## `install.py`
 
 The subcommand `harness install [--apply] [--force]`. It reads the profile and the model tables,
-and asks each adapter for its plan, in the order of `frontends.py`. A plan writes nothing, so on a
-refusal the subcommand exits with status 2 before any file is written.
+and asks the adapter of each frontend that the profile's `[setup]` chooses for its plan, in the
+order of `frontends.py` (`frontends.planned`); without `[setup]`, every frontend is chosen. A
+plan writes nothing, so on a refusal the subcommand exits with status 2 before any file is
+written. Where `claude` is not chosen and another frontend is, the Claude Code adapter's `copies`
+stand in for its plan: the rules and the shared files that OpenCode, oh-my-pi and Antigravity
+copy, made from the sources alone, with nothing read below `~/.claude/` and nothing installed
+there. A layer of a frontend that is not chosen is neither planned nor removed.
 
 Before it writes, the subcommand checks every target of the Julia environment and of each plan
 (`check_files`). The subcommand exits with status 2 at once if a target is a symbolic link, a
@@ -163,13 +168,14 @@ Under `--apply`, it also exits with status 2 before anything is written if the i
 target that it cannot write, or whose mode it cannot change. A dry run prints its whole plan and
 count line first, then that refusal, and exits with status 2.
 
-Then the subcommand installs the Julia environment of the scripts: it copies `Project.toml` to
+Then the subcommand installs the Julia environment of the scripts, where the profile's `[setup]`
+chooses the `julia` component or the profile has no `[setup]`: it copies `Project.toml` to
 `~/.local/share/research-harness/julia/`, or to `$RESEARCH_HARNESS_JULIA`, and instantiates it.
 Then it plans the Python environment of the harness as one line, `python environment`
-(`install_python_env`): a change when its interpreter does not start or when its stamp names
-another `uv.lock` or group. Under `--apply` it runs `uv sync --locked` into it, with the `dev`
-group when the profile sets `develop = true` and with `--no-dev` otherwise; a sync that fails
-exits with status 2 and its last stderr line.
+(`install_python_env`), on every machine: a change when its interpreter does not start or when
+its stamp names another `uv.lock` or group. Under `--apply` it runs `uv sync --locked` into it,
+with the `dev` group when `[setup]` of the profile sets `develop = true` and with `--no-dev`
+otherwise; a sync that fails exits with status 2 and its last stderr line.
 Then it installs the files of each plan, prints the warnings, and runs the steps after the files.
 The subcommand adds one warning of its own: `behind_origin` warns when the checkout is behind its
 local `origin/main`. It fetches nothing.
@@ -448,16 +454,22 @@ It checks, in this order:
   `SKIP`. When the flag exits with status 0 but the subcommand cannot read a version from its
   output, the check is a `WARN` with the tool's own text. The minimums are in
   `MINIMUMS`, and a case compares each with the page. The six Julia packages are read from the
-  `Manifest.toml` of the Julia environment of the scripts. The Python environment of the harness
+  `Manifest.toml` of the Julia environment of the scripts; each is a `SKIP` where the profile's
+  `[setup]` does not choose the `julia` component. The Python environment of the harness
   is a `FAIL` when its interpreter does not start or is below the minimum of Python, a `WARN`
-  when its stamp names another `uv.lock` or another group than the profile's `develop`, and
-  otherwise a `PASS`. A lagging environment is also one change of the dry run of
+  when its stamp names another `uv.lock` or another group than `develop` of the profile's
+  `[setup]`, and otherwise a `PASS`. A lagging environment is also one change of the dry run of
   `harness install`, so the same run gives a `FAIL` on the install line, and `doctor` exits 1;
   `harness install --apply` fixes both.
 - the profile: it loads, the `tree_agents` directory and the OpenCode configuration directory
-  exist, and the line `autocommit_branch` prints the value.
+  exist, and the line `autocommit_branch` prints the value. The OpenCode directory is a `SKIP`
+  where `[setup]` does not choose `opencode`.
 - the install: the dry run of `harness install` reports `0 change(s)`, otherwise a `FAIL` with
-  the count. Each warning of the dry run is a `WARN` line.
+  the count. Each warning of the dry run is a `WARN` line. Each frontend that `[setup]` does not
+  choose and whose layer is still on disk, one file or more that its plan installs, is a `WARN`
+  line `<frontend> layer` that names `[setup]` and the frontend (`unchosen`). The check plans
+  each such frontend alone, as the install does, and a plan that refuses finds no layer; it
+  removes nothing.
 - the jobs: Kaimon, `~/.julia/bin/kaimon`; its server and the update job, with `systemctl --user`
   on Linux and `launchctl list` with the profile's `launchd_prefix` on macOS; lingering on Linux.
   When the autocommit job is enabled, `~/.claude` must be the top of its own git repository, with

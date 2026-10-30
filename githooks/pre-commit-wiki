@@ -17,8 +17,9 @@ WHAT IT DOES
    tools' configuration, which it writes into a temporary directory with `git checkout-index`.
    Each tool comes from the bin/ of the harness's Python environment, beside the interpreter that
    bin/harness's own `interpreter(environment_path())` names, never from the PATH; the environment
-   holds them where the profile sets `develop = true` and `harness install --apply` has run. A tool
-   that the environment lacks refuses the commit with one line, and so does a check that fails.
+   holds them where the profile's [setup] has `develop = true` and `harness install --apply` has
+   run. A tool that the environment lacks refuses the commit with one line, and so does a check
+   that fails.
 
 Every check runs, and the last line names each one that failed.
 
@@ -114,7 +115,7 @@ def python_checks(tools):
     missing = [tool for tool in TOOLS if not tools.joinpath(tool).is_file()]
     if missing:
         say(
-            "%s not in %s; set develop = true in the profile, then run harness install --apply"
+            "%s not in %s; set develop = true in [setup] of the profile, then run harness install --apply"
             % (" and ".join(missing), tools)
         )
         return [" and ".join(missing)]

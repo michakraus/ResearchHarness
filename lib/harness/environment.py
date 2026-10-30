@@ -904,6 +904,8 @@ def install_cases_of(case, tmp):
         ),
         f"a synced environment: one line, already synced: {code}, {plan_line(text)}",
     )
+    # A scratch profile ends with the [setup] table of examples/profile.toml, so an appended
+    # `develop` is a key of [setup].
     for develop, flag in ((None, True), ("false", True), ("true", False)):
         base, _, _ = scratch.fresh()
         if develop is not None:

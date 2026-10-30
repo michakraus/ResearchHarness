@@ -139,6 +139,7 @@ import stat
 import subprocess
 import sys
 import tempfile
+import types
 import unicodedata
 from datetime import datetime, timedelta, UTC
 from typing import Any, Literal, cast
@@ -1093,7 +1094,7 @@ def render_source(src: pathlib.Path, data: bytes, tiers: dict[str, str]) -> byte
     return "\n".join(lines).encode("utf-8")
 
 
-def plan(ctx):
+def plan(ctx: types.SimpleNamespace):
     """The Claude Code layer of `harness install`, as the docstring of this module says. Its
     `rules` are [(installed path, source, bytes)] of each planned file below rules/, for OpenCode,
     oh-my-pi and Antigravity, and its `shared` the [(installed path, rendered bytes, mode)] of each
@@ -1110,20 +1111,9 @@ def plan(ctx):
     root = pathlib.Path.home() / ".claude"
     # The settings go first, so that a new deny rule is in place before the files it protects.
     settings = settings_file(root, ctx.profile, render_profile.network_path(ctx.args.profile))
-    models = load_models(ctx.models)
-    layer_sources = claude_sources(ctx.profile)
-    layer = claude_plan(ctx.profile, layer_sources)
-    files: list[tuple[Any, ...]] = [settings]
-    for dst, data, mode in layer:
-        src = source_of(layer_sources, dst)[0]
-        files.append(
-            (
-                root / dst,
-                render_source(src, data, models) if neutral_source(src) else data,
-                mode,
-                f"~/.claude/{dst}",
-            )
-        )
+    made = copies(ctx)
+    layer_sources, layer, rules, shared = made.sources, made.layer, made.rules, made.shared
+    files: list[tuple[Any, ...]] = [cast("tuple[Any, ...]", settings), *made.files]
     # The stamp goes after the layer, so that an apply that stops before its end leaves the old one.
     # It is over the source bytes of `layer`, which the hook reads again, not over the rendered ones.
     files.append(
@@ -1139,12 +1129,37 @@ def plan(ctx):
         f"       To remove it:  rm '{f}'"
         for f in claude_extras(root, layer)
     ]
+    return frontends.Plan(files=files, warnings=stray_warnings(), extra=extra, rules=rules, shared=shared)
+
+
+def copies(ctx: types.SimpleNamespace) -> types.SimpleNamespace:
+    """The files of the Claude Code layer that its sources give, as `plan` installs them, without
+    the settings and the stamp; it reads the sources and nothing below ~/.claude. Its `files` are
+    [(destination, rendered bytes, mode, label)], and `rules` and `shared` are those of `plan`, which
+    OpenCode, oh-my-pi and Antigravity copy; `sources` and `layer` are `claude_sources` and
+    `claude_plan`, for the stamp and the extras of `plan`. It exits 2 where `claude_plan` does."""
+    root = pathlib.Path.home() / ".claude"
+    models = load_models(ctx.models)
+    layer_sources = claude_sources(ctx.profile)
+    layer = claude_plan(ctx.profile, layer_sources)
+    files: list[tuple[Any, ...]] = []
+    for dst, data, mode in layer:
+        src = source_of(layer_sources, dst)[0]
+        files.append(
+            (
+                root / dst,
+                render_source(src, data, models) if neutral_source(src) else data,
+                mode,
+                f"~/.claude/{dst}",
+            )
+        )
     rules = [
         (dst, source_of(layer_sources, dst)[0], data) for dst, data, _ in layer if dst.startswith("rules/")
     ]
     rendered = {str(f[0].relative_to(root)): f[1] for f in files}
     shared = [(dst, rendered[dst], mode) for dst, _, mode in layer if frontends.shared(dst)]
-    return frontends.Plan(files=files, warnings=stray_warnings(), extra=extra, rules=rules, shared=shared)
+    fields: dict[str, object] = {"rules": rules, "shared": shared, "sources": layer_sources, "layer": layer}
+    return frontends.Plan(files=files, **fields)
 
 
 # ---------------------------------------------------------------------------------------------
@@ -2840,7 +2855,8 @@ def layer_cases(check, tmp):
             f"a profile with harness = {value!r} exits 2 and names the key: {got if isinstance(got, str) else got[:1]}",
         )
     listed = base / "profile-harness-list.toml"
-    listed.write_text(unset.read_text() + 'harness = ["/elsewhere/Harness"]\n')
+    # The key goes first: the scratch profile ends with its [setup] table.
+    listed.write_text('harness = ["/elsewhere/Harness"]\n' + unset.read_text())
     try:
         refusal = f"loaded {render_profile.load(listed)}"
     except HarnessError as e:

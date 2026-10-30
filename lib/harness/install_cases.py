@@ -10,6 +10,7 @@ import shutil
 import stat
 import subprocess
 import sys
+from collections.abc import Callable, Iterable, Mapping
 from importlib.abc import Loader
 from importlib.machinery import ModuleSpec
 from typing import cast
@@ -103,7 +104,9 @@ class Scratch:
     def __init__(self, check, tmp):
         self.check, self.tmp, self.n = check, pathlib.Path(tmp), 0
 
-    def fresh(self, tree_files=(), key=True, raw=None):
+    def fresh(
+        self, tree_files: Iterable[str] = (), *, key: bool = True, raw: str | None = None
+    ) -> tuple[pathlib.Path, pathlib.Path, pathlib.Path]:
         """A scratch HOME, OpenCode and Julia directory, a synced Python environment, and tree
         instructions holding `tree_files`; `raw` is the value of `tree_agents` as written in the
         profile."""
@@ -138,7 +141,12 @@ class Scratch:
         )
 
     @staticmethod
-    def run(base, *argv, extra_env=None, models=REPO / "examples" / "models.toml"):
+    def run(
+        base: pathlib.Path,
+        *argv: str,
+        extra_env: Mapping[str, str | None] | None = None,
+        models: str | pathlib.Path = REPO / "examples" / "models.toml",
+    ) -> tuple[int | None, str]:
         """`harness install` in a process of its own, with HOME and the destinations in `base`, and
         `base` as the working directory, with the model tables `models`; `extra_env` sets variables
         of its environment, and removes each whose value is None. A run that takes more than 60 s is
@@ -684,3 +692,133 @@ def restart_cases(check, tmp):
         lambda: code == 2 and not any(l in text for l in lines.values()) and "\n0 change(s) made." in text,
         f"a refused opencode.jsonc, and nothing else different, prints no restart line: {code}, {after_count(text)}",
     )
+
+
+# The directory of each frontend's layer below a scratch base of `Scratch.fresh`, as `Scratch.env`
+# sets it.
+LAYER_DIRS = {"claude": "home/.claude", "opencode": "opencode", "omp": "omp", "antigravity": "home/.gemini"}
+
+
+def setup_cases(check: Callable[[bool, str], object], tmp: pathlib.Path) -> None:
+    """`harness install` of the profile's `[setup]` choices, each on a fresh scratch HOME with
+    Antigravity's directory, a dry run and an --apply: without `[setup]`, and with all four
+    frontends, every layer, the same files in both; each frontend alone, its own layer, the same
+    files as with all four, and no file in the other three directories; without `claude`, a
+    ~/.claude/settings.json that its plan refuses stops no other frontend; without the `julia`
+    component, no line and no file of the Julia environment; no frontend, no layer, and the Python
+    and the Julia environment listed; an unknown frontend or component, exit 2 with one line that
+    names it and nothing written. Files compare by path and bytes, with the scratch base named
+    `<base>`."""
+    scratch = Scratch(check, tmp / "setup")
+    every = '["claude", "opencode", "omp", "antigravity"]'
+
+    def layer(base: pathlib.Path, name: str) -> dict[str, bytes]:
+        """The files of `name`'s layer below `base`: each path relative to its directory, and its
+        bytes with `base` written as `<base>`."""
+        root = base / LAYER_DIRS[name]
+        return {
+            str(p.relative_to(root)): p.read_bytes().replace(str(base).encode(), b"<base>")
+            for p in root.rglob("*")
+            if p.is_file()
+        }
+
+    def install(setup: str | None) -> tuple[pathlib.Path, int | None, str, int | None, str]:
+        """A fresh scratch base whose profile has the `[setup]` table `setup`, none for None, and
+        its Antigravity directory; the exit status and output of the dry run and of the --apply
+        after it, which does not run where the dry run exits 2."""
+        base, _, _ = scratch.fresh()
+        (base / "home" / ".gemini").mkdir()
+        profile = base / "profile.toml"
+        text = profile.read_text()
+        head = text[: text.index("\n[setup]\n")] + "\n"
+        profile.write_text(head + ("" if setup is None else f"[setup]\n{setup}"))
+        code, text = Scratch.run(base)
+        applied, applied_text = (None, "") if code == 2 else Scratch.run(base, "--apply")
+        return base, code, text, applied, applied_text
+
+    def lists(text: str, label: str) -> bool:
+        return re.search(rf"(?m)^{re.escape(label)} ", text) is not None
+
+    none, code, text, applied, _ = install(None)
+    whole = {name: layer(none, name) for name in LAYER_DIRS}
+    check(
+        code == 1
+        and applied == 0
+        and all(whole.values())
+        and lists(text, "julia/Project.toml")
+        and lists(text, "python environment"),
+        f"no [setup]: every layer and both environments: dry run {code}, --apply {applied}, "
+        f"{ {name: len(files) for name, files in whole.items()} }",
+    )
+    base, code, text, applied, _ = install(f'frontends = {every}\ncomponents = ["julia"]\n')
+    got = {name: layer(base, name) for name in LAYER_DIRS}
+    check(
+        code == 1 and applied == 0 and got == whole,
+        f"[setup] with all four frontends: the files of no [setup]: dry run {code}, --apply {applied}, "
+        f"{ {name: len(files) for name, files in got.items()} }",
+    )
+    for name in LAYER_DIRS:
+        base, code, text, applied, _ = install(f'frontends = ["{name}"]\ncomponents = ["julia"]\n')
+        own = layer(base, name)
+        others = {other: len(layer(base, other)) for other in LAYER_DIRS if other != name}
+        check(
+            code == 1
+            and applied == 0
+            and own == whole[name]
+            and not any(others.values())
+            and lists(text, "julia/Project.toml"),
+            f"[setup] with {name} alone: its layer as with all four, and no file of another: dry run {code}, "
+            f"--apply {applied}, {len(own)} file(s), the others {others}",
+        )
+    # An unchosen Claude Code layer reads nothing below ~/.claude: a settings.json that its plan
+    # refuses, a directory, stops no other frontend, and no line names ~/.claude.
+    base, code, text, applied, _ = install('frontends = ["opencode", "omp"]\ncomponents = ["julia"]\n')
+    (base / "home" / ".claude" / "settings.json").mkdir()
+    again_code, again = Scratch.run(base)
+    check(
+        applied == 0 and again_code == 0 and "~/.claude" not in again and ".claude/" not in again,
+        f"[setup] without claude, and a directory at ~/.claude/settings.json: the dry run after the --apply exits "
+        f"0 and names no file of ~/.claude: {again_code}, {(again.strip().splitlines() or ['no output'])[-1]!r}",
+    )
+    base, code, text, applied, _ = install(f"frontends = {every}\ncomponents = []\n")
+    (base / "julia" / "Project.toml").unlink()
+    _, again = Scratch.run(base, "--apply")
+    check(
+        code == 1
+        and applied == 0
+        and not re.search(r"(?m)^julia/", text + again)
+        and not (base / "julia" / "Project.toml").exists()
+        and lists(text, "python environment")
+        and layer(base, "opencode") == whole["opencode"],
+        f"[setup] without julia: no julia/ line, the Julia environment not installed, every layer: dry run {code}, "
+        f"--apply {applied}",
+    )
+    base, code, text, applied, applied_text = install('frontends = []\ncomponents = ["julia"]\n')
+    sizes = {name: len(layer(base, name)) for name in LAYER_DIRS}
+    check(
+        code == 0
+        and applied == 0
+        and not any(sizes.values())
+        and lists(text, "julia/Project.toml")
+        and lists(text, "python environment")
+        and "0 change(s) made." in applied_text,
+        f"[setup] with no frontend: no layer, both environments listed: dry run {code}, --apply {applied}, {sizes}",
+    )
+    for key, value, bad in (
+        ("frontends", '["claude", "nosuchfrontend"]', "nosuchfrontend"),
+        ("components", '["julia", "nosuchcomponent"]', "nosuchcomponent"),
+    ):
+        table = {"frontends": '["claude"]', "components": '["julia"]'} | {key: value}
+        base, code, text, applied, _ = install("".join(f"{k} = {v}\n" for k, v in table.items()))
+        said = [line for line in text.splitlines() if line.startswith("harness install: ")]
+        sizes = {name: len(layer(base, name)) for name in LAYER_DIRS}
+        check(
+            code == 2
+            and applied is None
+            and len(said) == 1
+            and bad in said[0]
+            and "Traceback" not in text
+            and not any(sizes.values()),
+            f"[setup] with an unknown name in {key}: exit 2, one line that names it, nothing written: {code}, "
+            f"{said}, {sizes}",
+        )

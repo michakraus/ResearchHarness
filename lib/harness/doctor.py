@@ -8,11 +8,13 @@ The checks, in this order:
   namespaces, a sandbox of `bwrap` and `socat`;
 - the tools of docs/src/dependencies.md: each found on the PATH, and at or above its minimum where
   the page states one (MINIMUMS); the Julia packages of Project.toml in the Manifest.toml of the
-  Julia environment of the scripts; the Python environment of the harness, whose interpreter must
-  start at or above the minimum of Python, and which is a WARN when it lags uv.lock;
+  Julia environment of the scripts, SKIP where the profile's `[setup]` does not choose the `julia`
+  component; the Python environment of the harness, whose interpreter must start at or above the
+  minimum of Python, and which is a WARN when it lags uv.lock;
 - the profile: it loads, the `tree_agents` directory and OpenCode's configuration directory exist,
-  and its `autocommit_branch`;
-- the install: the dry run of `harness install`, and each of its warnings;
+  the latter SKIP where `[setup]` does not choose `opencode`, and its `autocommit_branch`;
+- the install: the dry run of `harness install`, and each of its warnings; and a WARN for each
+  frontend that `[setup]` does not choose and whose layer is still installed;
 - the jobs: Kaimon, its server and the update job; the autocommit job, and when it is enabled,
   `~/.claude` as the top of its own git repository with an `origin`; the Kaimon token file; on
   Linux also linger;
@@ -33,6 +35,7 @@ get its answer is SKIP with the reason; run the subcommand in a plain terminal f
 verdict.
 """
 
+import argparse
 import contextlib
 import io
 import os
@@ -51,10 +54,10 @@ import tomllib
 import types
 from collections import namedtuple
 from collections.abc import Callable
-from typing import cast
+from typing import Any, cast
 from unittest import mock
 
-from . import REPO, HarnessError, install
+from . import REPO, HarnessError, frontends, install, sources
 from . import profile as profile_module
 
 # The command of the harness itself, for the dry run of `install` and for `test`.
@@ -221,7 +224,7 @@ def meets(version, minimums):
 class Doctor:
     """The checks of one run, each a method that returns its Results."""
 
-    def __init__(self, args):
+    def __init__(self, args: argparse.Namespace):
         self.args = args
         self.system = system()
         self.linux = self.system == "Linux"
@@ -368,8 +371,12 @@ class Doctor:
         return Result("PASS", "iTerm2", f"{version} ({ITERM})")
 
     def packages(self):
-        """The Julia packages of Project.toml, in the Manifest.toml of the scripts' environment."""
+        """The Julia packages of Project.toml, in the Manifest.toml of the scripts' environment; each
+        a SKIP where `[setup]` does not choose the `julia` component, whose environment `harness
+        install` then does not install."""
         names = sorted(tomllib.loads((REPO / "Project.toml").read_text())["deps"])
+        if self.profile is not None and "julia" not in self.profile.setup.components:
+            return [Result("SKIP", n, "[setup] does not choose the julia component") for n in names]
         manifest = install.JULIA_ENV / "Manifest.toml"
         try:
             deps = tomllib.loads(manifest.read_text()).get("deps")
@@ -418,7 +425,7 @@ class Doctor:
             return Result("WARN", name, f"cannot read a version from {python}: {first(r[1] + r[2])!r}")
         if not meets(numbers_of(m.group(0)), MINIMUMS["Python"]):
             return self.fail(name, f"{m.group(0)} ({python}), below {MINIMUMS['Python'][-1]}", "install")
-        develop = self.profile.develop if self.profile is not None else False
+        develop = self.profile.setup.develop if self.profile is not None else False
         if not boot.synced(environment, develop):
             return Result(
                 "WARN",
@@ -453,13 +460,18 @@ class Doctor:
         ]
 
     def opencode(self):
+        """OpenCode's configuration directory, which its layer needs: a SKIP where `[setup]` does
+        not choose `opencode`, else a FAIL without it."""
+        if self.profile is not None and "opencode" not in self.profile.setup.frontends:
+            return Result("SKIP", "OpenCode directory", "[setup] does not choose opencode")
         directory = os.environ.get("OPENCODE_CONFIG_DIR") or str(self.home / ".config" / "opencode")
         if os.path.isdir(directory):
             return Result("PASS", "OpenCode directory", directory)
         return self.fail("OpenCode directory", f"{directory} is not a directory", "install")
 
     def install(self):
-        """The dry run of `harness install`: its count, and a WARN for each warning."""
+        """The dry run of `harness install`: its count, and a WARN for each warning; then the
+        layers of the frontends that `[setup]` does not choose (`unchosen`)."""
         if self.profile is None:
             return [Result("SKIP", "install", "the profile does not load")]
         options = [
@@ -479,9 +491,52 @@ class Doctor:
         else:
             result = self.fail("install", f"the dry run exits {code}: {last(err) or last(out)}", "install")
         warnings = re.findall(r"^WARNING: (.*)$", out, re.M)
-        return [result] + [
-            Result("WARN", f"install warning {n}", w.strip()) for n, w in enumerate(warnings, 1)
-        ]
+        return (
+            [result]
+            + [Result("WARN", f"install warning {n}", w.strip()) for n, w in enumerate(warnings, 1)]
+            + self.unchosen()
+        )
+
+    def unchosen(self) -> list[Result]:
+        """A WARN for each frontend that `[setup]` does not choose and whose layer is on disk: one
+        file or more that its plan would install exists at its destination. Each frontend is
+        planned alone, as `harness install` plans it; a plan that exits 2, such as OpenCode's
+        without its directory, finds no layer. The lines of a plan are not printed, and nothing is
+        written or removed."""
+        if self.profile is None:
+            return []
+        args = argparse.Namespace(
+            profile=self.args.profile, models=self.args.models, force=False, apply=False
+        )
+        out: list[Result] = []
+        for name in frontends.FRONTENDS:
+            if name in self.profile.setup.frontends:
+                continue
+            ctx = types.SimpleNamespace(
+                args=args,
+                profile=self.profile,
+                models=profile_module.models_path(args),
+                agents=sources.AGENTS,
+                plans={},
+            )
+            try:
+                with contextlib.redirect_stdout(io.StringIO()):
+                    frontends.planned(ctx, (name,))
+            except HarnessError:
+                continue
+            plan = cast("types.SimpleNamespace", ctx.plans[name])
+            files = cast("list[tuple[pathlib.Path, ...]]", plan.files)
+            found = sum(1 for dst, *_ in files if dst.exists())
+            if found:
+                out.append(
+                    Result(
+                        "WARN",
+                        f"{name} layer",
+                        f"{found} file(s) of its layer are installed, and [setup] does not choose "
+                        f"{name}: harness install leaves them; remove them by hand, or choose {name}",
+                    )
+                )
+        return out
 
     # The jobs.
 
@@ -909,7 +964,7 @@ class Fixture:
     # A patch that a case sets on its fixture and enters around `results`.
     patch: contextlib.AbstractContextManager[object]
 
-    def __init__(self, root, system_name, claude):
+    def __init__(self, root: pathlib.Path, system_name: str, claude: pathlib.Path):
         self.system = system_name
         self.home, self.bin, self.kernel = root / "home", root / "bin", root / "kernel"
         self.julia, self.os_release, self.iterm = root / "julia-env", root / "os-release", root / "iTerm.app"
@@ -985,7 +1040,7 @@ class Fixture:
         ):
             yield types.SimpleNamespace(profile=str(self.profile), models=models, full=full)
 
-    def results(self, *sections, **options):
+    def results(self, *sections: str, **options: Any) -> tuple[dict[str, Result], str]:
         """(the Results by name, the printed text) of `sections`, else of every section, on this
         fixture; `options` as `patched` takes them."""
         with self.patched(**options) as args:
@@ -1446,6 +1501,7 @@ def status_cases(check, root, system_name):
         **none,
     )
     case("no stamp", {env_name: "WARN"}, lambda f: stamp(f).unlink(), ("tools",), **none)
+    # The profile of a fixture ends with its [setup] table, so an appended `develop` is its key.
     case(
         "develop = true and a stamp without the dev group",
         {env_name: "WARN"},
@@ -1548,7 +1604,9 @@ def status_cases(check, root, system_name):
     got, _ = case(
         "autocommit_branch",
         {"autocommit_branch": "PASS"},
-        lambda f: f.profile.write_text(f.profile.read_text() + 'autocommit_branch = "memory/case"\n'),
+        lambda f: (p := cast(Fixture, f).profile).write_text(
+            'autocommit_branch = "memory/case"\n' + p.read_text()
+        ),
         ("profile_checks",),
     )
     check(
@@ -1958,6 +2016,114 @@ def status_cases(check, root, system_name):
         and all(got[name].status == "FAIL" and "not found" in got[name].detail for name in missing),
         f"{system_name}: with nothing on the PATH, each required tool is a FAIL that names it, and no check raises "
         f"-> {raised or [got.get(n) for n in missing if got[n].status != 'FAIL']}",
+    )
+    setup_cases(
+        cast("Callable[[bool, str], object]", check),
+        cast(pathlib.Path, root) / "setup",
+        cast(str, system_name),
+        cast(pathlib.Path, claude),
+    )
+
+
+def setup_cases(
+    check: Callable[[bool, str], object], root: pathlib.Path, system_name: str, claude: pathlib.Path
+) -> None:
+    """The checks that the profile's `[setup]` changes, each on a fixture of `system_name` below
+    `root` whose ~/.claude is a copy of `claude`: the Julia packages are SKIP without the `julia`
+    component, and the OpenCode directory without `opencode`; a frontend that `[setup]` does not
+    choose is a WARN that names `[setup]` and the frontend where one file or more of its layer is
+    on disk, and nothing where its directory holds no such file or where it is chosen. The run
+    changes no file of the fixture."""
+    # A file of each layer as its plan installs it, relative to the fixture's HOME. oh-my-pi's
+    # directory is $PI_CODING_AGENT_DIR, set to .omp/agent below the HOME.
+    layer_files = {
+        "opencode": ".config/opencode/AGENTS.md",
+        "omp": ".omp/agent/AGENTS.md",
+        "antigravity": ".gemini/config/GEMINI.md",
+    }
+    n = 0
+
+    def run(
+        label: str, frontends_toml: str, components_toml: str, files: tuple[str, ...], dirs: tuple[str, ...]
+    ) -> tuple[dict[str, str], dict[str, str], bool]:
+        """The status and the detail of each Result by name, of the sections `tools`, `profile_checks`
+        and `install`, on a fresh fixture whose [setup] chooses `frontends_toml` and
+        `components_toml`, with `files` written and `dirs` made below its HOME; and whether the
+        run changed a file below the HOME."""
+        nonlocal n
+        n += 1
+        f = Fixture(root / f"case{n}", system_name, claude)
+        text = f.profile.read_text()
+        f.profile.write_text(
+            text[: text.index("\n[setup]\n")]
+            + f"\n[setup]\nfrontends = {frontends_toml}\ncomponents = {components_toml}\n"
+        )
+        home = f.home
+        for d in dirs:
+            (home / d).mkdir(parents=True, exist_ok=True)
+        for name in files:
+            (home / name).parent.mkdir(parents=True, exist_ok=True)
+            (home / name).write_text(f"{label}\n")
+        before = {p: p.read_bytes() for p in home.rglob("*") if p.is_file()}
+        results, _ = f.results(
+            "tools",
+            "profile_checks",
+            "install",
+            only=(),
+            extra={"PI_CODING_AGENT_DIR": str(home / ".omp" / "agent")},
+        )
+        after = {p: p.read_bytes() for p in home.rglob("*") if p.is_file()}
+        statuses = {name: cast(str, r.status) for name, r in results.items()}
+        details = {name: cast(str, r.detail) for name, r in results.items()}
+        return statuses, details, before != after
+
+    def layers(statuses: dict[str, str], details: dict[str, str]) -> dict[str, str]:
+        """Each `<frontend> layer` Result that names `[setup]`: its frontend and its status."""
+        return {
+            name.removesuffix(" layer"): status
+            for name, status in statuses.items()
+            if name.endswith(" layer") and "[setup]" in details[name]
+        }
+
+    every = '["claude", "opencode", "omp", "antigravity"]'
+    statuses, details, changed = run("no julia", every, '["rtk"]', (), ())
+    packages = {name: statuses.get(name) for name in PACKAGES}
+    check(
+        all(s == "SKIP" for s in packages.values())
+        and all("julia" in details[name] for name in PACKAGES)
+        and statuses.get("OpenCode directory") == "PASS",
+        f"{system_name}: [setup] without the julia component: each Julia package is SKIP, naming julia -> "
+        f"{packages}, OpenCode directory {statuses.get('OpenCode directory')}",
+    )
+    statuses, details, changed = run("no opencode", '["claude"]', '["julia"]', (), ())
+    check(
+        statuses.get("OpenCode directory") == "SKIP"
+        and "opencode" in details.get("OpenCode directory", "")
+        and all(statuses.get(name) == "PASS" for name in PACKAGES),
+        f"{system_name}: [setup] without opencode: the OpenCode directory is SKIP, and the Julia packages pass -> "
+        f"{statuses.get('OpenCode directory')}, {details.get('OpenCode directory')!r}",
+    )
+    statuses, details, changed = run("on disk", '["claude"]', '["julia"]', tuple(layer_files.values()), ())
+    found = layers(statuses, details)
+    check(
+        found == dict.fromkeys(layer_files, "WARN")
+        and all(name in details[f"{name} layer"] for name in layer_files)
+        and not changed,
+        f"{system_name}: claude alone, and a file of each other layer on disk: one WARN each, naming [setup] and "
+        f"the frontend, none for claude, and no file changed -> {found}, changed {changed}",
+    )
+    statuses, details, changed = run("empty", '["claude"]', '["julia"]', (), (".omp/agent", ".gemini/config"))
+    found = layers(statuses, details)
+    check(
+        not found and not changed,
+        f"{system_name}: claude alone, and the other frontends' directories hold no file of a layer: no WARN -> "
+        f"{found}",
+    )
+    statuses, details, changed = run("chosen", every, '["julia"]', tuple(layer_files.values()), ())
+    found = layers(statuses, details)
+    check(
+        not found and not changed,
+        f"{system_name}: every frontend chosen, and a file of each layer on disk: no WARN -> {found}",
     )
 
 
