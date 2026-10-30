@@ -584,14 +584,19 @@ def dumps(obj, **kwargs):
     return escaped(json.dumps(obj, ensure_ascii=False, **kwargs))
 
 
-def hook_command(command, profile, python):
+def hook_command(command: str, profile: render_profile.Profile, python: str) -> str:
     """The template's hook command `command` rendered with `profile`, word by word, each word
     quoted with `shlex.quote`, so that a path below a home whose name holds a space stays one
-    shell word; a command whose program is a `.py` hook gets the interpreter `python` as its
-    program, so that the hook runs on the Python environment and not on the `python3` of the
-    `PATH`."""
+    shell word; a command whose program is a `.py` hook or the guard package gets the interpreter
+    `python` as its program, so that the hook runs on the Python environment and not on the
+    `python3` of the `PATH`. A `||` word stays the shell's operator, unquoted, so that the command
+    after it runs when the hook cannot start: the guard's `|| exit 2` blocks the call then."""
     words = [render_profile.render_line(w, profile) for w in shlex.split(command)]
-    return shlex.join([python, *words] if words[0].endswith(".py") else words)
+    cut = words.index("||") if "||" in words else len(words)
+    program = words[:cut]
+    if program[0].endswith((".py", "/.claude/hooks/guard")):
+        program = [python, *program]
+    return shlex.join(program) + (" || " + shlex.join(words[cut + 1 :]) if cut < len(words) else "")
 
 
 def settings_template(
@@ -604,7 +609,7 @@ def settings_template(
     environment's (`install.python_interpreter`)."""
     text = PROPOSAL.read_text()
     template = json.loads(text)
-    python = install.python_interpreter() if python is None else python
+    interpreter: str = install.python_interpreter() if python is None else python
     try:
         cfg = cast(
             "dict[str, Any]",
@@ -616,7 +621,7 @@ def settings_template(
             for i, group in enumerate(groups):
                 for j, handler in enumerate(group["hooks"]):
                     cfg["hooks"][event][i]["hooks"][j]["command"] = hook_command(
-                        handler["command"], profile, python
+                        handler["command"], profile, interpreter
                     )
     except (KeyError, TypeError, ValueError) as e:
         raise HarnessError(f"{PROPOSAL}: {e.args[0]}") from e
@@ -1940,20 +1945,51 @@ def layer_cases(check, tmp):
     rendered = hook_commands(
         settings_template(dataclasses.replace(profile, home=spaced), home / "network.toml", python)["hooks"]
     )
+    on_python = (".py", "/.claude/hooks/guard")
     want = [
-        ([python] if c.split()[0].endswith(".py") else []) + [w.replace("{home}", spaced) for w in c.split()]
+        ([python] if c.split()[0].endswith(on_python) else [])
+        + [w.replace("{home}", spaced) for w in c.split()]
         for c in raw
     ]
     case(
         lambda: (
             [shlex.split(c) for c in rendered] == want
-            and sum(w[0] == python for w in want) == sum(c.split()[0].endswith(".py") for c in raw) > 0
+            and sum(w[0] == python for w in want) == sum(c.split()[0].endswith(on_python) for c in raw) > 0
             and any(w == [f"{spaced}/.claude/hooks/cc-status"] for w in want)
             and not any(c.startswith("python3") for c in rendered)
         ),
         f"each hook command of the template that runs a .py hook renders as the environment's interpreter and the "
-        f"hook's path, each one shell word under a home with a space, and every other command keeps its words: "
-        f"{rendered}",
+        f"hook's path, as does the guard package, each one shell word under a home with a space, and every "
+        f"other command keeps its words: {rendered}",
+    )
+
+    # The guard runs on the Bash, directory and Kaimon matchers, with `|| exit 2` as the shell's operator,
+    # so that a guard that cannot start blocks the call; the Bash group runs `rtk hook claude` and the
+    # guard and nothing else; the Edit matcher runs edit-scope.py and not the guard.
+    groups = settings_template(dataclasses.replace(profile, home=spaced), home / "network.toml", python)[
+        "hooks"
+    ]
+    guard = f"{shlex.quote(python)} {shlex.quote(spaced + '/.claude/hooks/guard')} --from claude || exit 2"
+    by_matcher = {g.get("matcher"): [h["command"] for h in g["hooks"]] for g in groups["PreToolUse"]}
+    case(
+        lambda: (
+            by_matcher.get("Bash") == ["rtk hook claude", guard]
+            and by_matcher.get("mcp__ccd_directory__.*|EnterWorktree|ExitWorktree") == [guard]
+            and by_matcher.get("mcp__kaimon__ex|mcp__kaimon__manage_repl") == [guard]
+            and sum(c == guard for c in rendered) == 3
+        ),
+        f"the Bash group runs rtk hook claude and the guard, and the directory and Kaimon groups the guard, "
+        f"rendered as {guard!r} with the operator unquoted: {by_matcher}",
+    )
+    edit_matcher = "Edit|Write|MultiEdit|NotebookEdit"
+    case(
+        lambda: (
+            by_matcher.get(edit_matcher) == [shlex.join([python, f"{spaced}/.claude/hooks/edit-scope.py"])]
+            and [g["hooks"][0]["command"] for g in groups["PostToolUse"] if g.get("matcher") == edit_matcher]
+            == [shlex.join([python, f"{spaced}/.claude/hooks/edit-scope.py", "--record"])]
+        ),
+        f"the Edit matcher runs edit-scope.py before the call and edit-scope.py --record after it, and not "
+        f"the guard: {by_matcher.get(edit_matcher)}",
     )
 
     def owned_of(b):
