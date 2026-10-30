@@ -704,10 +704,12 @@ def setup_cases(check: Callable[[bool, str], object], tmp: pathlib.Path) -> None
     Antigravity's directory, a dry run and an --apply: without `[setup]`, and with all four
     frontends, every layer, the same files in both; each frontend alone, its own layer, the same
     files as with all four, and no file in the other three directories; without `claude`, a
-    ~/.claude/settings.json that its plan refuses stops no other frontend; without the `julia`
-    component, no line and no file of the Julia environment; no frontend, no layer, and the Python
-    and the Julia environment listed; an unknown frontend or component, exit 2 with one line that
-    names it and nothing written. Files compare by path and bytes, with the scratch base named
+    ~/.claude/settings.json that its plan refuses stops no other frontend, and no line names
+    ~/.claude or a SKIP; without the `julia` component, no line and no file of the Julia
+    environment, and a directory at its Project.toml stops nothing; no frontend, no layer, the
+    Python and the Julia environment listed, and a symbolic link in the tree instructions stops
+    nothing; an unknown frontend or component, exit 2 with one line that names it and nothing
+    written. Files compare by path and bytes, with the scratch base named
     `<base>`."""
     scratch = Scratch(check, tmp / "setup")
     every = '["claude", "opencode", "omp", "antigravity"]'

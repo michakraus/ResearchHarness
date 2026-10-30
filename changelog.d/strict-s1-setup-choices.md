@@ -8,7 +8,8 @@
   `~/.config/opencode` and needed Julia. An empty `frontends` installs no layer, and the Python
   environment is synced on every machine. A frontend's layer holds the same files whichever others
   are chosen; without `claude`, the files that OpenCode, oh-my-pi and Antigravity copy from the
-  Claude Code layer come from its sources, and nothing below `~/.claude/` is read or written. An
+  Claude Code layer come from its sources, and that layer reads and writes nothing below
+  `~/.claude/`. An
   unknown name, a name given twice, a missing `frontends` or `components` and an unknown key of
   `[setup]` exit 2 with one line that names it. `harness doctor` reports a layer of an unchosen
   frontend that is still on disk as a WARN that names `[setup]` and the frontend, and removes

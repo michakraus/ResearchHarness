@@ -1138,7 +1138,8 @@ def copies(ctx: types.SimpleNamespace) -> types.SimpleNamespace:
     the settings and the stamp; it reads the sources and nothing below ~/.claude. Its `files` are
     [(destination, rendered bytes, mode, label)], and `rules` and `shared` are those of `plan`, which
     OpenCode, oh-my-pi and Antigravity copy; `sources` and `layer` are `claude_sources` and
-    `claude_plan`, for the stamp and the extras of `plan`. It exits 2 where `claude_plan` does."""
+    `claude_plan`, for the stamp and the extras of `plan`. It exits 2 where `claude_plan` or the
+    model tables (`load_models`) refuse."""
     root = pathlib.Path.home() / ".claude"
     models = load_models(ctx.models)
     layer_sources = cast("list[tuple[pathlib.Path, str, set[str], set[str]]]", claude_sources(ctx.profile))

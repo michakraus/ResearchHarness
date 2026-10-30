@@ -2033,8 +2033,9 @@ def setup_cases(
     `root` whose ~/.claude is a copy of `claude`: the Julia packages are SKIP without the `julia`
     component, and the OpenCode directory without `opencode`; a frontend that `[setup]` does not
     choose is a WARN that names `[setup]` and the frontend where one file or more of its layer is
-    on disk, and nothing where its directory holds no such file or where it is chosen. The run
-    changes no file of the fixture."""
+    on disk, and nothing where its directory holds no such file, where its directory is missing
+    and its plan refuses, or where it is chosen. The run changes no file of the fixture. Without a
+    profile that loads, the Julia packages are checked."""
     # A file of each layer as its plan installs it, relative to the fixture's HOME. oh-my-pi's
     # directory is $PI_CODING_AGENT_DIR, set to .omp/agent below the HOME.
     layer_files = {
