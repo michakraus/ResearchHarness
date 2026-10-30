@@ -722,11 +722,14 @@ def setup_cases(check: Callable[[bool, str], object], tmp: pathlib.Path) -> None
             if p.is_file()
         }
 
-    def install(setup: str | None) -> tuple[pathlib.Path, int | None, str, int | None, str]:
-        """A fresh scratch base whose profile has the `[setup]` table `setup`, none for None, and
-        its Antigravity directory; the exit status and output of the dry run and of the --apply
-        after it, which does not run where the dry run exits 2."""
-        base, _, _ = scratch.fresh()
+    def install(
+        setup: str | None, tree_files: tuple[str, ...] = ()
+    ) -> tuple[pathlib.Path, int | None, str, int | None, str]:
+        """A fresh scratch base whose profile has the `[setup]` table `setup`, none for None, whose
+        tree instructions hold `tree_files`, and with its Antigravity directory; the exit status
+        and output of the dry run and of the --apply after it, which does not run where the dry run
+        exits 2."""
+        base, _, _ = scratch.fresh(tree_files)
         (base / "home" / ".gemini").mkdir()
         profile = base / "profile.toml"
         text = profile.read_text()
@@ -770,41 +773,57 @@ def setup_cases(check: Callable[[bool, str], object], tmp: pathlib.Path) -> None
             f"[setup] with {name} alone: its layer as with all four, and no file of another: dry run {code}, "
             f"--apply {applied}, {len(own)} file(s), the others {others}",
         )
-    # An unchosen Claude Code layer reads nothing below ~/.claude: a settings.json that its plan
-    # refuses, a directory, stops no other frontend, and no line names ~/.claude.
-    base, code, text, applied, _ = install('frontends = ["opencode", "omp"]\ncomponents = ["julia"]\n')
+    # An unchosen Claude Code layer reads nothing below ~/.claude and prints nothing: a
+    # settings.json that its plan refuses, a directory, stops no other frontend, no line names
+    # ~/.claude, and a file of the tree instructions' agents/, which the Claude Code plan prints as
+    # a SKIP line, prints none.
+    base, code, text, applied, applied_text = install(
+        'frontends = ["opencode", "omp"]\ncomponents = ["julia"]\n', ("agents/private.md",)
+    )
     (base / "home" / ".claude" / "settings.json").mkdir()
     again_code, again = Scratch.run(base)
     last = (again.strip().splitlines() or ["no output"])[-1]
     check(
-        applied == 0 and again_code == 0 and "~/.claude" not in again and ".claude/" not in again,
+        applied == 0
+        and again_code == 0
+        and not any(".claude" in t or "SKIP" in t for t in (text, applied_text, again)),
         f"[setup] without claude, and a directory at ~/.claude/settings.json: the dry run after the "
-        f"--apply exits 0 and names no file of ~/.claude: {again_code}, {last!r}",
+        f"--apply exits 0, and no line names ~/.claude or a SKIP: {again_code}, {last!r}",
     )
+    # Without julia, the Julia environment is neither listed nor checked: a directory at its
+    # Project.toml, which `check_files` refuses, stops nothing.
     base, code, text, applied, _ = install(f"frontends = {every}\ncomponents = []\n")
     (base / "julia" / "Project.toml").unlink()
-    _, again = Scratch.run(base, "--apply")
+    (base / "julia" / "Project.toml").mkdir()
+    again_code, again = Scratch.run(base, "--apply")
     check(
         code == 1
         and applied == 0
+        and again_code == 0
         and not re.search(r"(?m)^julia/", text + again)
-        and not (base / "julia" / "Project.toml").exists()
+        and (base / "julia" / "Project.toml").is_dir()
         and lists(text, "python environment")
         and layer(base, "opencode") == whole["opencode"],
-        f"[setup] without julia: no julia/ line, the Julia environment not installed, every layer: "
-        f"dry run {code}, --apply {applied}",
+        f"[setup] without julia: no julia/ line, the Julia environment neither checked nor installed, "
+        f"every layer: dry run {code}, --apply {applied}, then {again_code}",
     )
+    # No frontend plans no layer: a symbolic link in the tree instructions, which the Claude Code
+    # layer refuses, stops nothing.
     base, code, text, applied, applied_text = install('frontends = []\ncomponents = ["julia"]\n')
     sizes = {name: len(layer(base, name)) for name in LAYER_DIRS}
+    (base / "Agents" / "link.md").symlink_to(base / "profile.toml")
+    again_code, again = Scratch.run(base)
+    last = (again.strip().splitlines() or ["no output"])[-1]
     check(
         code == 0
         and applied == 0
+        and again_code == 0
         and not any(sizes.values())
         and lists(text, "julia/Project.toml")
         and lists(text, "python environment")
         and "0 change(s) made." in applied_text,
-        f"[setup] with no frontend: no layer, both environments listed: dry run {code}, --apply {applied}, "
-        f"{sizes}",
+        f"[setup] with no frontend: no layer, both environments listed, and a link in the tree "
+        f"instructions stops nothing: dry run {code}, --apply {applied}, then {again_code} {last!r}, {sizes}",
     )
     for key, value, bad in (
         ("frontends", '["claude", "nosuchfrontend"]', "nosuchfrontend"),

@@ -494,27 +494,25 @@ class Doctor:
         return (
             [result]
             + [Result("WARN", f"install warning {n}", w.strip()) for n, w in enumerate(warnings, 1)]
-            + self.unchosen()
+            + self.unchosen(self.profile)
         )
 
-    def unchosen(self) -> list[Result]:
-        """A WARN for each frontend that `[setup]` does not choose and whose layer is on disk: one
-        file or more that its plan would install exists at its destination. Each frontend is
-        planned alone, as `harness install` plans it; a plan that exits 2, such as OpenCode's
-        without its directory, finds no layer. The lines of a plan are not printed, and nothing is
-        written or removed."""
-        if self.profile is None:
-            return []
+    def unchosen(self, profile: profile_module.Profile) -> list[Result]:
+        """A WARN for each frontend that `[setup]` of `profile`, the loaded profile, does not
+        choose and whose layer is on disk: one file or more that its plan would install exists at
+        its destination. Each frontend is planned alone, as `harness install` plans it; a plan that
+        exits 2, such as OpenCode's without its directory, finds no layer. The lines of a plan are
+        not printed, and nothing is written or removed."""
         args = argparse.Namespace(
             profile=self.args.profile, models=self.args.models, force=False, apply=False
         )
         out: list[Result] = []
         for name in frontends.FRONTENDS:
-            if name in self.profile.setup.frontends:
+            if name in profile.setup.frontends:
                 continue
             ctx = types.SimpleNamespace(
                 args=args,
-                profile=self.profile,
+                profile=profile,
                 models=profile_module.models_path(args),
                 agents=sources.AGENTS,
                 plans={},
@@ -2047,12 +2045,17 @@ def setup_cases(
     n = 0
 
     def run(
-        label: str, frontends_toml: str, components_toml: str, files: tuple[str, ...], dirs: tuple[str, ...]
+        label: str,
+        frontends_toml: str,
+        components_toml: str,
+        files: tuple[str, ...],
+        dirs: tuple[str, ...],
+        removed: tuple[str, ...] = (),
     ) -> tuple[dict[str, str], dict[str, str], bool]:
         """The status and the detail of each Result by name, of the sections `tools`, `profile_checks`
         and `install`, on a fresh fixture whose [setup] chooses `frontends_toml` and
-        `components_toml`, with `files` written and `dirs` made below its HOME; and whether the
-        run changed a file below the HOME."""
+        `components_toml`, with the directories `removed` removed, `files` written and `dirs` made
+        below its HOME; and whether the run changed a file below the HOME."""
         nonlocal n
         n += 1
         f = Fixture(root / f"case{n}", system_name, claude)
@@ -2062,6 +2065,8 @@ def setup_cases(
             + f"\n[setup]\nfrontends = {frontends_toml}\ncomponents = {components_toml}\n"
         )
         home = f.home
+        for d in removed:
+            shutil.rmtree(home / d)
         for d in dirs:
             (home / d).mkdir(parents=True, exist_ok=True)
         for name in files:
@@ -2098,11 +2103,13 @@ def setup_cases(
         f"{system_name}: [setup] without the julia component: each Julia package is SKIP, naming julia -> "
         f"{packages}, OpenCode directory {statuses.get('OpenCode directory')}",
     )
-    statuses, details, changed = run("no opencode", '["claude"]', '["julia"]', (), ())
+    # No OpenCode directory, whose plan then exits 2: no layer, and no WARN.
+    statuses, details, changed = run("no opencode", '["claude"]', '["julia"]', (), (), (".config/opencode",))
     check(
         statuses.get("OpenCode directory") == "SKIP"
         and "opencode" in details.get("OpenCode directory", "")
-        and all(statuses.get(name) == "PASS" for name in PACKAGES),
+        and all(statuses.get(name) == "PASS" for name in PACKAGES)
+        and not layers(statuses, details),
         f"{system_name}: [setup] without opencode: the OpenCode directory is SKIP, and the Julia "
         f"packages pass -> {statuses.get('OpenCode directory')}, {details.get('OpenCode directory')!r}",
     )
@@ -2127,6 +2134,15 @@ def setup_cases(
     check(
         not found and not changed,
         f"{system_name}: every frontend chosen, and a file of each layer on disk: no WARN -> {found}",
+    )
+    # A profile that does not load chooses nothing to skip: the Julia packages are checked.
+    f = Fixture(root / "no-profile", system_name, claude)
+    f.profile.unlink()
+    results, _ = f.results("tools", only=())
+    packages = {name: cast(str, results[name].status) if name in results else None for name in PACKAGES}
+    check(
+        all(s == "PASS" for s in packages.values()),
+        f"{system_name}: no profile: each Julia package is checked and passes -> {packages}",
     )
 
 
