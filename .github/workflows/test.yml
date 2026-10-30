@@ -88,7 +88,10 @@ jobs:
 
   # Each systemd --user unit, rendered with examples/profile.toml under this runner's home, where
   # stubs stand for the programs that the units start: systemd-analyze verify checks that each
-  # ExecStart is executable.
+  # ExecStart is executable. The stubs come after the render: bin/harness runs on the bin/python of
+  # its Python environment when that starts, so a stub there before the render would render every
+  # unit empty. The render makes that environment, whose bin/python is a link to the base
+  # interpreter, so the loop removes each path before it writes the stub there.
   systemd:
     name: systemd-analyze verify
     runs-on: ubuntu-latest
@@ -96,17 +99,18 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: render each unit and verify it
         run: |
-          for program in .julia/bin/kaimon .juliaup/bin/julia .local/bin/claude-autocommit; do
-            mkdir -p "$HOME/$(dirname "$program")"
-            printf '#!/bin/sh\nexit 0\n' > "$HOME/$program"
-            chmod +x "$HOME/$program"
-          done
           mkdir -p "$HOME/Research"
           units="$RUNNER_TEMP/units"
           mkdir "$units"
           for f in systemd/*; do
             python3 bin/harness --profile examples/profile.toml render "$f" > "$units/$(basename "$f")"
             echo "rendered $f"
+          done
+          for program in .julia/bin/kaimon .juliaup/bin/julia .local/share/research-harness/python/bin/python .local/bin/claude-autocommit; do
+            mkdir -p "$HOME/$(dirname "$program")"
+            rm -f "$HOME/$program"
+            printf '#!/bin/sh\nexit 0\n' > "$HOME/$program"
+            chmod +x "$HOME/$program"
           done
           systemd-analyze --version | head -n 1
           systemd-analyze verify --user "$units"/*

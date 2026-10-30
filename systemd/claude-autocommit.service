@@ -7,8 +7,9 @@ Description=Commit the plans and memories of ~/.claude
 
 [Service]
 Type=oneshot
-# The installed copy, which a session cannot write.
-ExecStart={home}/.local/bin/claude-autocommit
+# The interpreter of the harness's Python environment runs the installed copy, which a session
+# cannot write.
+ExecStart={home}/.local/share/research-harness/python/bin/python {home}/.local/bin/claude-autocommit
 Nice=5
 IOSchedulingClass=idle
 # PATH holds no directory a session can write. A credential prompt has no terminal to answer it

@@ -34,10 +34,12 @@ import os
 import pathlib
 import plistlib
 import posixpath
+import runpy
 import shlex
 import tempfile
 import types
 from collections.abc import Callable
+from typing import cast
 from unittest import mock
 
 from . import REPO, HarnessError, profile
@@ -340,6 +342,27 @@ def selftest():
     dummy = profile.load(profile.DUMMY, home=profile.DUMMY_HOME)
     for service, problems in check_jobs(dummy).items():
         check(not problems, f"{service} describes the job of its plist -> {problems}")
+
+    # The plist and the unit of claude-autocommit start the interpreter that bin/harness names by
+    # default for the dummy's home, with the installed copy as its argument.
+    boot = runpy.run_path(str(REPO / "bin" / "harness"), run_name="harness_boot")
+    environment_path = cast("Callable[[], str]", boot["environment_path"])
+    interpreter = cast("Callable[[str], str]", boot["interpreter"])
+    clean = {k: v for k, v in os.environ.items() if k != "RESEARCH_HARNESS_PYTHON"}
+    with mock.patch.dict(os.environ, clean | {"HOME": dummy.home}, clear=True):
+        want = [interpreter(environment_path()), f"{dummy.home}/.local/bin/claude-autocommit"]
+    plist_args = cast(
+        "list[str]",
+        plistlib.loads(render("launchagents/claude-autocommit.plist", dummy).encode())["ProgramArguments"],
+    )
+    exec_start = cast(
+        "str", one(parse_unit(render("systemd/claude-autocommit.service", dummy)), "Service", "ExecStart")
+    )
+    check(
+        plist_args == want and shlex.split(exec_start) == want,
+        f"claude-autocommit runs on the interpreter of the Python environment "
+        f"-> {plist_args}, {exec_start!r}",
+    )
 
     # Each mutant changes one or more rendered templates, (path, old, new) each, and must give a
     # problem.

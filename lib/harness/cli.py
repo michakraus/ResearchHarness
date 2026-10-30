@@ -7,7 +7,7 @@ from . import HarnessError, __doc__ as CONTRACT
 from . import docs, fmt, frontends, frontmatter, githooks, install, network, profile, protection, repos
 from . import doctor, dotfiles_kit, providers, script_cases, skill_triggers, units, update
 from . import changelog, environment, mutate, strict, testrun
-from . import fsutil, jsonio, ownedjson
+from . import autocommit, fsutil, jsonio, ownedjson
 from . import wikilint
 
 # The modules of lib/harness/; the adapters of lib/harness/frontends.py follow `install`.
@@ -28,6 +28,7 @@ MODULES.append(strict)
 MODULES.append(jsonio)
 MODULES.append(ownedjson)
 MODULES.append(fsutil)
+MODULES.append(autocommit)
 MODULES.append(testrun)
 
 
@@ -67,6 +68,7 @@ def main(argv=None):
             jsonio,
             ownedjson,
             fsutil,
+            autocommit,
             testrun,
         ):
             module.register(sub)

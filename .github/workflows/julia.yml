@@ -2,9 +2,9 @@ name: julia
 
 on:
   push:
-    paths: ['**.jl', 'Project.toml', 'launchagents/**', 'githooks/pre-commit', 'githooks/pre-push', '.github/workflows/julia.yml']
+    paths: ['**.jl', 'Project.toml', 'githooks/pre-commit', 'githooks/pre-push', '.github/workflows/julia.yml']
   pull_request:
-    paths: ['**.jl', 'Project.toml', 'launchagents/**', 'githooks/pre-commit', 'githooks/pre-push', '.github/workflows/julia.yml']
+    paths: ['**.jl', 'Project.toml', 'githooks/pre-commit', 'githooks/pre-push', '.github/workflows/julia.yml']
 
 permissions:
   contents: read
@@ -27,7 +27,6 @@ jobs:
           - scripts/test-layout-test.jl
           - githooks/release-notes-test.jl
           - scripts/julia-update-test.jl
-          - launchagents/claude-autocommit-test.jl
           - githooks/pre-commit-test.jl
           - scripts/fatou-lsp-test.jl
           - scripts/base-tree-test.jl

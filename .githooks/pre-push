@@ -1,333 +1,594 @@
-#!/usr/bin/env bash
-#
-# The pre-push hook of the harness repository. Enable it once per checkout:
-#
-#   git config core.hooksPath .githooks
-#
-# It tests the pushed commit, never the working tree: a `git clone --shared` of this repository in
-# a temporary directory under $TMPDIR, at the pushed SHA, removed on exit. A push of any ref other
-# than main gets `harness leaks --commits` only, over the tree at its SHA and the commits that the
-# push sends (those that neither the remote SHA nor a branch of origin holds), so a PR
-# branch cannot bring a private string to main; its gitleaks checks and its suite run in CI. A
-# hit, no python3 of 3.14 or later, or a check that fails refuses the push with one line.
-#
-# A push to main gets the full gate. First the leak checks: gitleaks over the commits
-# that the push sends, gitleaks stdin over their messages, which gitleaks git does not read,
-# gitleaks over the tree at the SHA, and `harness leaks --commits` over both, messages included.
-# They fail closed: no gitleaks of 8.21 or later, no profile, an empty `leak` list or a check that
-# fails each refuse the push with one line. Then it runs `bin/harness test` once, which runs on
-# the interpreter of the harness's Python environment, the compile check on that interpreter,
-# the strict profile (`ruff format --check`, `ruff check` and `basedpyright`, from the
-# environment's bin/, where the profile's `develop = true` puts them; a tool that it lacks refuses
-# the push), then shellcheck over the shell files, the kit's tests
-# examples/dotfiles/tests/{update-check,check-check,driver-check,render-check,script-check}.py on
-# python3, and the Julia test files that the changed paths of the pushed range select.
-# A missing tool among shellcheck, chezmoi and julia prints one skip line, because CI runs them;
-# no python3 of 3.14 or later refuses the push.
+#!/usr/bin/env python3
+"""The pre-push hook of the harness repository. Enable it once per checkout:
 
-# No `set -u`: macOS ships bash 3.2, whose handling of unset expansions differs from bash 4+.
-set -o pipefail
+    git config core.hooksPath .githooks
 
-root=$(git rev-parse --show-toplevel) || exit 1
-# A hook inherits git's variables, and they would point the git commands in the clone back here.
-unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES
+It tests the pushed commit, never the working tree: a `git clone --shared` of this repository in a
+temporary directory under $TMPDIR, at the pushed SHA, removed on exit. A push of any ref other
+than main gets `harness leaks --commits` only, over the tree at its SHA and the commits that the
+push sends (those that neither the remote SHA nor a branch of origin holds), so a PR branch cannot
+bring a private string to main; its gitleaks checks and its suite run in CI. A hit, no python3 of
+3.14 or later, or a check that fails refuses the push with one line.
 
-# git feeds "<local ref> <local sha> <remote ref> <remote sha>" on stdin, one line per ref.
-sha=
-old=
-branches=()
-while read -r _local_ref local_sha remote_ref remote_sha; do
-    case "$local_sha" in
-        *[!0]*) ;;
-        *) continue ;; # a deleted ref: nothing to test
-    esac
-    if [ "$remote_ref" = refs/heads/main ]; then
-        sha=$local_sha
-        old=$remote_sha
-    else
-        branches+=("$remote_ref $local_sha $remote_sha")
-    fi
-done
-if [ -z "$sha" ] && [ "${#branches[@]}" -eq 0 ]; then
-    echo "pre-push: no commit pushed, nothing to test"
-    exit 0
-fi
+A push to main gets the full gate. First the leak checks: gitleaks over the commits that the push
+sends, gitleaks stdin over their messages, which gitleaks git does not read, gitleaks over the
+tree at the SHA, and `harness leaks --commits` over both, messages included. They fail closed: no
+gitleaks of 8.21 or later, no profile, an empty `leak` list or a check that fails each refuse the
+push with one line. Then it runs `bin/harness test` once, which runs on the interpreter of the
+harness's Python environment, the compile check on that interpreter, the strict profile
+(`ruff format --check`, `ruff check` and `basedpyright`, from the environment's bin/, where the
+profile's `develop = true` puts them; a tool that it lacks refuses the push), then shellcheck over
+the shell files, the kit's tests
+examples/dotfiles/tests/{update-check,check-check,driver-check,render-check,script-check}.py on
+python3, and the Julia test files that the changed paths of the pushed range select. A missing
+tool among shellcheck, chezmoi and julia prints one skip line, because CI runs them.
 
-refuse() {
-    echo "pre-push: refused, $1"
-    exit 1
-}
+The hook runs on the python3 of the PATH. It parses as Python 3.9, the python3 of macOS, and runs
+there up to its version check, so that an interpreter older than 3.14 refuses the push with the
+hook's own line.
+"""
 
-tmp=$(mktemp -d "${TMPDIR:-/tmp}/harness-pre-push.XXXXXX") || exit 1
-trap 'rm -rf "$tmp"' EXIT
+from __future__ import annotations
 
-# Each check that finds a leak (exit 1) or fails (any other exit) prints its output and refuses the
-# push with one line; every check runs, so the output names every check that refuses.
-leaks=0
-leak_check() {
-    local name=$1 status
-    shift
-    echo "$name"
-    "$@" >"$tmp/leaks.log" 2>&1
-    status=$?
-    case "$status" in
-        0) tail -n 1 "$tmp/leaks.log" ;;
-        1) cat "$tmp/leaks.log"; echo "pre-push: refused, $name found a leak"; leaks=1 ;;
-        *) cat "$tmp/leaks.log"; echo "pre-push: refused, $name failed with exit $status"; leaks=1 ;;
-    esac
-}
+import fnmatch
+import os
+import re
+import shutil
+import signal
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+from typing import IO, TYPE_CHECKING
 
-# bin/harness starts on python3, which must be 3.14 or later, and runs each command on the
-# interpreter of the Python environment.
-find_python() {
-    python=python3
-    command -v "$python" >/dev/null &&
-        "$python" -c 'import sys; sys.exit(sys.version_info < (3, 14))' 2>/dev/null ||
-        refuse "no python3 of 3.14 or later"
-}
+if TYPE_CHECKING:
+    from collections.abc import Callable
+    from typing import NoReturn
 
-# A branch gets `harness leaks` only; gitleaks and the suite run in CI. The commits that the push
-# sends are those of local that neither the remote SHA nor a branch of origin holds: a commit that
-# origin holds is on the remote already, such as one of main that the branch merges. With no
-# remote branch and a new branch, that is the whole history.
-if [ "${#branches[@]}" -gt 0 ]; then
-    find_python
-    origin_url=$(git remote get-url origin) || refuse "the checkout has no origin remote"
-    n=0
-    for entry in "${branches[@]}"; do
-        read -r ref local_sha remote_sha <<<"$entry"
-        n=$((n + 1))
-        exclude=(--remotes=origin)
-        case "$remote_sha" in
-            *[!0]*) git cat-file -e "$remote_sha^{commit}" 2>/dev/null && exclude+=("$remote_sha") ;;
-        esac
-        git rev-list "$local_sha" --not "${exclude[@]}" >"$tmp/branch-$n.commits" ||
-            refuse "git rev-list of the commits pushed to $ref failed"
-        git clone --shared --quiet --no-checkout "$root" "$tmp/branch-$n" || exit 1
-        cd "$tmp/branch-$n" || exit 1
-        git checkout --quiet --detach "$local_sha" || exit 1
-        # The clone's origin is the checkout; `harness leaks` allows the owner/name of the real one.
-        git remote set-url origin "$origin_url" || exit 1
-        leak_check "harness leaks, the tree at $(git rev-parse --short HEAD) and the commits that the push sends to $ref" \
-            "$python" bin/harness leaks --commits "$tmp/branch-$n.commits"
-        cd "$root" || exit 1
-    done
-    [ "$leaks" -eq 0 ] || exit 1
-fi
-if [ -z "$sha" ]; then
-    echo "pre-push: no commit pushed to main; the leak check of the branches passed"
-    exit 0
-fi
-
+# The seconds that each program the hook runs may take, but the suite and the kit's tests: those
+# are the harness's own, and a push waits for them without a limit, as the person who pushes can
+# stop them. A check that takes longer refuses the push.
+TIMEOUT = 3600
+# The python3 of the PATH, which runs this hook, bin/harness and the kit's tests.
+PYTHON = sys.executable
+# git's variables, which a hook inherits; they would point the git commands in the clone back here.
+GIT_VARIABLES = (
+    "GIT_DIR",
+    "GIT_WORK_TREE",
+    "GIT_INDEX_FILE",
+    "GIT_COMMON_DIR",
+    "GIT_OBJECT_DIRECTORY",
+    "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+)
 # gitleaks 8.19 added the `git`, `dir` and `stdin` commands; 8.21 is the first with
 # `[[rules.allowlists]]`, which `.gitleaks.toml` uses.
-command -v gitleaks >/dev/null || refuse "no gitleaks on PATH; install gitleaks 8.21 or later"
-gitleaks_version=$(gitleaks version 2>/dev/null)
-version_pattern='^v?([0-9]+)\.([0-9]+)\.[0-9]+'
-[[ $gitleaks_version =~ $version_pattern ]] ||
-    refuse "cannot read the gitleaks version from '$gitleaks_version'; gitleaks 8.21 or later is needed"
-major=${BASH_REMATCH[1]}
-minor=${BASH_REMATCH[2]}
-if [ "$major" -lt 8 ] || { [ "$major" -eq 8 ] && [ "$minor" -lt 21 ]; }; then
-    refuse "gitleaks $gitleaks_version is older than 8.21"
-fi
-find_python
-
-# The commits that the push brings to main: old..sha, as CI scans them. A commit that a branch of
-# origin already holds is scanned too, because main has not seen it. A forced push sends the
-# rewritten commits, and a new main, or an old main that the checkout lacks, the whole history.
-origin_url=$(git remote get-url origin) || refuse "the checkout has no origin remote"
-range=$sha
-case "$old" in
-    *[!0]*) git cat-file -e "$old^{commit}" 2>/dev/null && range="$old..$sha" ;;
-esac
-git rev-list "$range" >"$tmp/commits" || refuse "git rev-list of the pushed commits failed"
-git clone --shared --quiet --no-checkout "$root" "$tmp/repo" || exit 1
-cd "$tmp/repo" || exit 1
-git checkout --quiet --detach "$sha" || exit 1
-echo "pre-push: testing $(git rev-parse --short HEAD) for main, in a clone under $tmp"
-
-# The leak checks, before the suite, so a refused push costs seconds; all four run.
-# The config of the pushed commit; a `gitleaks:allow` comment has no effect.
-gitleaks_flags=(--config "$tmp/repo/.gitleaks.toml" --redact --ignore-gitleaks-allow --no-banner --no-color --verbose)
-leak_check "gitleaks git, the commits that the push brings to main" \
-    gitleaks git "${gitleaks_flags[@]}" --log-opts="$range" "$root"
-# gitleaks git reads no commit message, so the messages go to gitleaks stdin, read in the checkout.
-# No commit to send is empty input, which passes; without the test, git log would read HEAD.
-messages() (
-    cd "$root" || exit 2
-    if [ -s "$tmp/commits" ]; then
-        git log --no-walk --no-show-signature --format=%B --stdin <"$tmp/commits"
-    fi | gitleaks stdin "${gitleaks_flags[@]}"
-)
-leak_check "gitleaks stdin, the messages of the commits that the push sends" messages
-leak_check "gitleaks dir, the tree at the SHA" gitleaks dir "${gitleaks_flags[@]}" "$tmp/repo"
-# The clone's origin is the checkout; `harness leaks` allows the owner/name of the real one.
-git remote set-url origin "$origin_url" || exit 1
-leak_check "harness leaks, the tree at the SHA and the commits that the push sends" \
-    "$python" bin/harness leaks --commits "$tmp/commits"
-[ "$leaks" -eq 0 ] || exit 1
-
-# The changed paths of the range. A new main, or a remote SHA that this clone does not have,
-# starts at the empty tree.
-base=$old
-case "$old" in
-    *[!0]*) git cat-file -e "$old^{commit}" 2>/dev/null || base= ;;
-    *) base= ;;
-esac
-[ -n "$base" ] || base=$(git hash-object -t tree /dev/null)
-# --no-renames: a renamed file lists its old path too, so a moved source still selects its test.
-changed=$(git diff --name-only --no-renames "$base" HEAD) || exit 1
-
-fail=0
-
-# The Python steps: the suite once, which bin/harness runs on the environment's interpreter, then
-# the compile check on that interpreter, at the path that bin/harness's own `interpreter` and
-# `environment_path` give, and the three checks of the strict profile.
-echo "$python bin/harness test"
-if "$python" bin/harness test >"$tmp/test.log" 2>&1; then
-    tail -n 1 "$tmp/test.log"
-else
-    # Each wrong case with the lines that follow it up to the next case or the summary: a
-    # case can span several lines, and the BAD line of a crashed probe is followed by its
-    # traceback. The lines of a passing case are left out.
-    awk '/^BAD/ { p = 1 } /^ok / || /^[0-9]+ cases, [0-9]+ wrong$/ { p = 0 } p' "$tmp/test.log"
-    last=$(tail -n 1 "$tmp/test.log")
-    case "$last" in
-        *" cases, "*" wrong") echo "$last" ;;
-        *) tail -n 20 "$tmp/test.log" ;; # no summary line: a crash, and its traceback ends the log
-    esac
-    fail=1
-fi
-environment_python=$("$python" -c '
+GITLEAKS_VERSION = re.compile(r"v?([0-9]+)\.([0-9]+)\.[0-9]+")
+# The code that names the interpreter of the Python environment, by bin/harness's own
+# `interpreter` and `environment_path`.
+ENVIRONMENT_PYTHON = """
 import sys
 boot = {"__name__": "harness_boot", "__file__": sys.argv[1]}
 exec(compile(open(sys.argv[1]).read(), sys.argv[1], "exec"), boot)
 print(boot["interpreter"](boot["environment_path"]()))
-' bin/harness)
-if [ -n "$environment_python" ]; then
-    echo "$environment_python -m compileall -q lib hooks scripts adapters"
-    "$environment_python" -m compileall -q lib hooks scripts adapters || fail=1
-    # The strict profile, with the tools of the environment's bin/, never of the PATH. All three
-    # checks run; a tool that the environment lacks refuses the push and runs none.
-    tools=${environment_python%/*}
-    lacking=
-    for tool in ruff basedpyright; do
-        if [ ! -f "$tools/$tool" ]; then
-            echo "pre-push: no $tool in $tools; set develop = true in the profile, then run harness install --apply"
-            lacking=1
-        fi
-    done
-    if [ -n "$lacking" ]; then
-        fail=1
-    else
-        echo "$tools/ruff format --check --no-cache ."
-        "$tools/ruff" format --check --no-cache . || fail=1
-        echo "$tools/ruff check --no-cache ."
-        "$tools/ruff" check --no-cache . || fail=1
-        echo "$tools/basedpyright"
-        "$tools/basedpyright" || fail=1
-    fi
-else
-    echo "pre-push: bin/harness names no interpreter of the Python environment"
-    fail=1
-fi
-
-# The lint of every tracked file with a sh or bash shebang.
-if command -v shellcheck >/dev/null; then
-    shell_files=()
-    while IFS= read -r f; do
-        head -n 1 "$f" | grep -qE '^#!(/usr)?/bin/(env )?(ba)?sh' && shell_files+=("$f")
-    done < <(git ls-files)
-    echo "shellcheck -S warning ${shell_files[*]}"
-    shellcheck -S warning "${shell_files[@]}" || fail=1
-else
-    echo "skip  shellcheck: not found; CI runs it"
-fi
-
-if [ "$fail" -ne 0 ]; then
-    echo "pre-push: refused; fix the commit, because the hook tests the commit and not the working tree"
-    exit 1
-fi
-
-# The kit's tests need chezmoi; CI runs them in the job `dotfiles`. All five run, and each that
-# fails prints the end of its output.
-if command -v chezmoi >/dev/null; then
-    kit_failed=
-    for kit_test in update-check check-check driver-check render-check script-check; do
-        file=examples/dotfiles/tests/$kit_test.py
-        echo "$python $file"
-        if "$python" "$file" >"$tmp/$kit_test.log" 2>&1; then
-            tail -n 1 "$tmp/$kit_test.log"
-        else
-            tail -n 20 "$tmp/$kit_test.log"
-            kit_failed="$kit_failed $file"
-        fi
-    done
-    [ -z "$kit_failed" ] || refuse "the kit's tests failed:$kit_failed"
-else
-    echo "skip  chezmoi: not found; CI runs the kit's tests"
-fi
-
-# The Julia selection: the test files that the changed paths select.
-all="scripts/gate-test.jl scripts/mutants-test.jl scripts/run-tests-test.jl scripts/test-layout-test.jl githooks/release-notes-test.jl scripts/julia-update-test.jl launchagents/claude-autocommit-test.jl githooks/pre-commit-test.jl scripts/fatou-lsp-test.jl scripts/base-tree-test.jl"
-selection=
-select_test() {
-    case " $selection " in
-        *" $1 "*) ;;
-        *) selection="$selection $1" ;;
-    esac
-}
-while IFS= read -r path; do
-    case "$path" in
-        scripts/gate.jl) select_test scripts/gate-test.jl ;;
-        scripts/mutants.jl) select_test scripts/mutants-test.jl ;;
-        scripts/run-tests.jl | scripts/mutate.jl | scripts/mutate-worker.jl | scripts/test-census.jl | scripts/pins.jl)
-            select_test scripts/run-tests-test.jl ;;
-        scripts/test-layout.jl) select_test scripts/test-layout-test.jl ;;
-        githooks/release-notes.jl) select_test githooks/release-notes-test.jl ;;
-        scripts/julia-update.jl) select_test scripts/julia-update-test.jl ;;
-        launchagents/claude-autocommit) select_test launchagents/claude-autocommit-test.jl ;;
-        githooks/pre-commit | githooks/pre-commit.jl) select_test githooks/pre-commit-test.jl ;;
-        githooks/pre-push | githooks/pre-push.jl) select_test githooks/pre-commit-test.jl ;;
-        scripts/fatou-lsp.jl) select_test scripts/fatou-lsp-test.jl ;;
-        scripts/base-tree.jl) select_test scripts/base-tree-test.jl ;;
-        *-test.jl) [ -f "$path" ] && select_test "$path" ;; # a deleted test file selects nothing
-        Project.toml) for f in $all; do select_test "$f"; done ;;
-        *.jl) echo "Julia: $path selects no test file" ;;
-    esac
-done <<<"$changed"
-
+"""
+KIT_TESTS = ("update-check", "check-check", "driver-check", "render-check", "script-check")
+SHELL = re.compile(rb"^#!(/usr)?/bin/(env )?(ba)?sh")
+# The Julia test files, and the test file that each changed path selects, the first pattern that
+# matches.
+JULIA_TESTS = (
+    "scripts/gate-test.jl",
+    "scripts/mutants-test.jl",
+    "scripts/run-tests-test.jl",
+    "scripts/test-layout-test.jl",
+    "githooks/release-notes-test.jl",
+    "scripts/julia-update-test.jl",
+    "githooks/pre-commit-test.jl",
+    "scripts/fatou-lsp-test.jl",
+    "scripts/base-tree-test.jl",
+)
+SELECTS = (
+    (("scripts/gate.jl",), "scripts/gate-test.jl"),
+    (("scripts/mutants.jl",), "scripts/mutants-test.jl"),
+    (
+        (
+            "scripts/run-tests.jl",
+            "scripts/mutate.jl",
+            "scripts/mutate-worker.jl",
+            "scripts/test-census.jl",
+            "scripts/pins.jl",
+        ),
+        "scripts/run-tests-test.jl",
+    ),
+    (("scripts/test-layout.jl",), "scripts/test-layout-test.jl"),
+    (("githooks/release-notes.jl",), "githooks/release-notes-test.jl"),
+    (("scripts/julia-update.jl",), "scripts/julia-update-test.jl"),
+    (("githooks/pre-commit", "githooks/pre-commit.jl"), "githooks/pre-commit-test.jl"),
+    (("githooks/pre-push", "githooks/pre-push.jl"), "githooks/pre-commit-test.jl"),
+    (("scripts/fatou-lsp.jl",), "scripts/fatou-lsp-test.jl"),
+    (("scripts/base-tree.jl",), "scripts/base-tree-test.jl"),
+)
 # The time of each file on the author's machine: run-tests-test.jl is silent for 11 minutes.
-duration() {
-    case "$1" in
-        scripts/gate-test.jl | scripts/mutants-test.jl) echo "about 5 s" ;;
-        githooks/release-notes-test.jl) echo "about 4 s" ;;
-        launchagents/claude-autocommit-test.jl) echo "about 2 s" ;;
-        githooks/pre-commit-test.jl) echo "about 1 min" ;;
-        scripts/base-tree-test.jl) echo "about 3 s" ;;
-        scripts/fatou-lsp-test.jl) echo "about 7 s" ;;
-        scripts/julia-update-test.jl) echo "about 14 s" ;;
-        scripts/test-layout-test.jl) echo "about 2 min" ;;
-        scripts/run-tests-test.jl) echo "about 11 min, silent" ;;
-        *) echo "time not measured" ;;
-    esac
+DURATION = {
+    "scripts/gate-test.jl": "about 5 s",
+    "scripts/mutants-test.jl": "about 5 s",
+    "githooks/release-notes-test.jl": "about 4 s",
+    "githooks/pre-commit-test.jl": "about 1 min",
+    "scripts/base-tree-test.jl": "about 3 s",
+    "scripts/fatou-lsp-test.jl": "about 7 s",
+    "scripts/julia-update-test.jl": "about 14 s",
+    "scripts/test-layout-test.jl": "about 2 min",
+    "scripts/run-tests-test.jl": "about 11 min, silent",
 }
-if [ -n "$selection" ]; then
-    echo "Julia selection:$selection"
-    if ! command -v julia >/dev/null; then
-        echo "skip  julia: not found; CI runs the Julia tests"
-    else
-        for f in $selection; do
-            echo "julia $f ($(duration "$f"))"
-            julia --startup-file=no "$f" || { fail=1; break; }
-        done
-    fi
-fi
 
-if [ "$fail" -ne 0 ]; then
-    echo "pre-push: refused; a Julia test failed"
-    exit 1
-fi
-echo "pre-push: passed"
-exit 0
+
+def say(line: str) -> None:
+    """Print one line before any child writes to the same stdout."""
+    print(line, flush=True)
+
+
+def refuse(reason: str) -> NoReturn:
+    say(f"pre-push: refused, {reason}")
+    raise SystemExit(1)
+
+
+def git_program() -> str:
+    """The git of the PATH. git is the program that runs the hook, so the PATH holds it."""
+    return shutil.which("git") or "git"
+
+
+def git(*args: str, stdout: int | IO[bytes] | None = None, stderr: int | IO[bytes] | None = None) -> int:
+    """git with `args` in the working directory; its exit status."""
+    return subprocess.run(
+        [git_program(), *args], stdout=stdout, stderr=stderr, check=False, timeout=TIMEOUT
+    ).returncode
+
+
+def git_output(*args: str) -> str | None:
+    """The stdout of git with `args`, without its trailing newlines; None where git fails. Its
+    stderr is the hook's."""
+    p = subprocess.run([git_program(), *args], stdout=subprocess.PIPE, check=False, timeout=TIMEOUT)
+    return p.stdout.decode(errors="surrogateescape").rstrip("\n") if p.returncode == 0 else None
+
+
+def status_of(argv: list[str]) -> int:
+    """The exit status of `argv`, which writes to the hook's stdout and stderr. A program that
+    cannot start prints one line and gives 127, as a shell does, so that the checks after it
+    still run."""
+    try:
+        return subprocess.run(argv, check=False, timeout=TIMEOUT).returncode
+    except OSError as e:
+        say(f"pre-push: cannot start {argv[0]}: {e.strerror}")
+        return 127
+
+
+def commit_exists(sha: str) -> bool:
+    return git("cat-file", "-e", f"{sha}^{{commit}}", stderr=subprocess.DEVNULL) == 0
+
+
+def last_lines(data: bytes, n: int) -> bytes:
+    """The last `n` lines of `data`, as `tail -n` gives them."""
+    return b"".join(re.findall(rb"[^\n]*\n|[^\n]+$", data)[-n:])
+
+
+def write_out(data: bytes) -> None:
+    sys.stdout.flush()
+    sys.stdout.buffer.write(data)
+    sys.stdout.buffer.flush()
+
+
+def find_python() -> None:
+    """bin/harness starts on python3, which must be 3.14 or later, and runs each command on the
+    interpreter of the Python environment. This hook runs on that python3."""
+    if sys.version_info < (3, 14):
+        refuse("no python3 of 3.14 or later")
+
+
+class LeakChecks:
+    """The leak checks: each that finds a leak (exit 1) or fails (any other exit) prints its output
+    and refuses the push with one line; every check runs, so the output names every check that
+    refuses."""
+
+    def __init__(self, tmp: Path) -> None:
+        self.log = tmp / "leaks.log"
+        self.leaks = False
+
+    def check(self, name: str, run: Callable[[IO[bytes]], int]) -> None:
+        say(name)
+        with self.log.open("wb") as log:
+            status = run(log)
+        data = self.log.read_bytes()
+        if status == 0:
+            write_out(last_lines(data, 1))
+            return
+        write_out(data)
+        say(f"pre-push: refused, {name} {'found a leak' if status == 1 else f'failed with exit {status}'}")
+        self.leaks = True
+
+    def command(self, name: str, argv: list[str]) -> None:
+        self.check(
+            name,
+            lambda log: (
+                subprocess.run(
+                    argv, stdout=log, stderr=subprocess.STDOUT, check=False, timeout=TIMEOUT
+                ).returncode
+            ),
+        )
+
+
+def read_pushes() -> tuple[str, str, list[tuple[str, str, str]]]:
+    """git feeds "<local ref> <local sha> <remote ref> <remote sha>" on stdin, one line per ref: the
+    SHA and the remote SHA of main ("" where main is not pushed), and (remote ref, local SHA,
+    remote SHA) of each other ref. A deleted ref has nothing to test."""
+    sha = old = ""
+    branches: list[tuple[str, str, str]] = []
+    for line in sys.stdin:
+        fields = [*line.split(None, 3), "", "", "", ""]
+        local_sha, remote_ref, remote_sha = fields[1], fields[2], fields[3].strip()
+        if not local_sha.strip("0"):
+            continue
+        if remote_ref == "refs/heads/main":
+            sha, old = local_sha, remote_sha
+        else:
+            branches.append((remote_ref, local_sha, remote_sha))
+    return sha, old, branches
+
+
+def check_branches(root: Path, tmp: Path, branches: list[tuple[str, str, str]]) -> None:
+    """A branch gets `harness leaks` only; gitleaks and the suite run in CI. The commits that the
+    push sends are those of local that neither the remote SHA nor a branch of origin holds: a commit
+    that origin holds is on the remote already, such as one of main that the branch merges. With no
+    remote branch and a new branch, that is the whole history."""
+    find_python()
+    origin_url = git_output("remote", "get-url", "origin")
+    if origin_url is None:
+        refuse("the checkout has no origin remote")
+    leaks = LeakChecks(tmp)
+    for n, (ref, local_sha, remote_sha) in enumerate(branches, start=1):
+        exclude = ["--remotes=origin"]
+        if remote_sha.strip("0") and commit_exists(remote_sha):
+            exclude.append(remote_sha)
+        commits = tmp / f"branch-{n}.commits"
+        with commits.open("wb") as f:
+            if git("rev-list", local_sha, "--not", *exclude, stdout=f) != 0:
+                refuse(f"git rev-list of the commits pushed to {ref} failed")
+        clone = tmp / f"branch-{n}"
+        if git("clone", "--shared", "--quiet", "--no-checkout", str(root), str(clone)) != 0:
+            raise SystemExit(1)
+        os.chdir(clone)
+        if git("checkout", "--quiet", "--detach", local_sha) != 0:
+            raise SystemExit(1)
+        # The clone's origin is the checkout; `harness leaks` allows the owner/name of the real one.
+        if git("remote", "set-url", "origin", origin_url) != 0:
+            raise SystemExit(1)
+        leaks.command(
+            f"harness leaks, the tree at {git_output('rev-parse', '--short', 'HEAD')} and the commits "
+            f"that the push sends to {ref}",
+            [PYTHON, "bin/harness", "leaks", "--commits", str(commits)],
+        )
+        os.chdir(root)
+    if leaks.leaks:
+        raise SystemExit(1)
+
+
+def check_gitleaks() -> str:
+    """The path of a gitleaks of 8.21 or later; refuse the push without one."""
+    gitleaks = shutil.which("gitleaks")
+    if gitleaks is None:
+        refuse("no gitleaks on PATH; install gitleaks 8.21 or later")
+    version = (
+        subprocess.run(
+            [gitleaks, "version"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            check=False,
+            timeout=TIMEOUT,
+        )
+        .stdout.decode(errors="replace")
+        .rstrip("\n")
+    )
+    m = GITLEAKS_VERSION.match(version)
+    if m is None:
+        refuse(f"cannot read the gitleaks version from '{version}'; gitleaks 8.21 or later is needed")
+    if (int(m[1]), int(m[2])) < (8, 21):
+        refuse(f"gitleaks {version} is older than 8.21")
+    return gitleaks
+
+
+def check_main_leaks(root: Path, tmp: Path, sha: str, old: str, gitleaks: str) -> None:
+    """The leak checks of a push to main, in a clone at `sha`, which becomes the working directory;
+    all four run, before the suite, so a refused push costs seconds. The commits that the push
+    brings to main are old..sha, as CI scans them. A commit that a branch of origin already holds
+    is scanned too, because main has not seen it. A forced push sends the rewritten commits, and a
+    new main, or an old main that the checkout lacks, the whole history."""
+    origin_url = git_output("remote", "get-url", "origin")
+    if origin_url is None:
+        refuse("the checkout has no origin remote")
+    commit_range = f"{old}..{sha}" if old.strip("0") and commit_exists(old) else sha
+    commits = tmp / "commits"
+    with commits.open("wb") as f:
+        if git("rev-list", commit_range, stdout=f) != 0:
+            refuse("git rev-list of the pushed commits failed")
+    clone = tmp / "repo"
+    if git("clone", "--shared", "--quiet", "--no-checkout", str(root), str(clone)) != 0:
+        raise SystemExit(1)
+    os.chdir(clone)
+    if git("checkout", "--quiet", "--detach", sha) != 0:
+        raise SystemExit(1)
+    say(f"pre-push: testing {git_output('rev-parse', '--short', 'HEAD')} for main, in a clone under {tmp}")
+
+    # The config of the pushed commit; a `gitleaks:allow` comment has no effect.
+    flags = [
+        "--config",
+        str(clone / ".gitleaks.toml"),
+        "--redact",
+        "--ignore-gitleaks-allow",
+        "--no-banner",
+        "--no-color",
+        "--verbose",
+    ]
+    leaks = LeakChecks(tmp)
+    leaks.command(
+        "gitleaks git, the commits that the push brings to main",
+        [gitleaks, "git", *flags, f"--log-opts={commit_range}", str(root)],
+    )
+
+    def messages(log: IO[bytes]) -> int:
+        """gitleaks git reads no commit message, so the messages go to gitleaks stdin, read in the
+        checkout. No commit to send is empty input, which passes; without the test, git log would
+        read HEAD. The status is gitleaks's, else git log's where it fails."""
+        text, status = b"", 0
+        if commits.stat().st_size > 0:
+            with commits.open("rb") as f:
+                p = subprocess.run(
+                    [git_program(), "log", "--no-walk", "--no-show-signature", "--format=%B", "--stdin"],
+                    stdin=f,
+                    stdout=subprocess.PIPE,
+                    stderr=log,
+                    cwd=root,
+                    check=False,
+                    timeout=TIMEOUT,
+                )
+            text, status = p.stdout, p.returncode
+        scan = subprocess.run(
+            [gitleaks, "stdin", *flags],
+            input=text,
+            cwd=root,
+            stdout=log,
+            stderr=subprocess.STDOUT,
+            check=False,
+            timeout=TIMEOUT,
+        )
+        return scan.returncode or status
+
+    leaks.check("gitleaks stdin, the messages of the commits that the push sends", messages)
+    leaks.command("gitleaks dir, the tree at the SHA", [gitleaks, "dir", *flags, str(clone)])
+    # The clone's origin is the checkout; `harness leaks` allows the owner/name of the real one.
+    if git("remote", "set-url", "origin", origin_url) != 0:
+        raise SystemExit(1)
+    leaks.command(
+        "harness leaks, the tree at the SHA and the commits that the push sends",
+        [PYTHON, "bin/harness", "leaks", "--commits", str(commits)],
+    )
+    if leaks.leaks:
+        raise SystemExit(1)
+
+
+def run_suite(tmp: Path) -> bool:
+    """`bin/harness test` once, which runs on the environment's interpreter. Its lines go to a log;
+    a failure prints each wrong case with the lines that follow it up to the next case or the
+    summary, then the summary, or the end of the log where a crash left none. False: it failed."""
+    say("python3 bin/harness test")
+    log = tmp / "test.log"
+    with log.open("wb") as f:
+        # No timeout: the suite is the harness's own.
+        status = subprocess.run(
+            [PYTHON, "bin/harness", "test"], stdout=f, stderr=subprocess.STDOUT, check=False
+        )
+    data = log.read_bytes()
+    if status.returncode == 0:
+        write_out(last_lines(data, 1))
+        return True
+    printing = False
+    for line in re.findall(rb"[^\n]*\n|[^\n]+$", data):
+        body = line.rstrip(b"\n")
+        if body.startswith(b"BAD"):
+            printing = True
+        if body.startswith(b"ok ") or re.fullmatch(rb"[0-9]+ cases, [0-9]+ wrong", body):
+            printing = False
+        if printing:
+            write_out(body + b"\n")
+    last = last_lines(data, 1).rstrip(b"\n")
+    if re.fullmatch(rb".* cases, .* wrong", last, re.DOTALL):
+        write_out(last + b"\n")
+    else:
+        write_out(last_lines(data, 20))
+    return False
+
+
+def run_strict() -> bool:
+    """The compile check on the environment's interpreter, at the path that bin/harness's own
+    `interpreter` and `environment_path` give, and the three checks of the strict profile with the
+    tools of the environment's bin/, never of the PATH. All three run; a tool that the environment
+    lacks refuses the push and runs none. False: a check failed."""
+    named = subprocess.run(
+        [PYTHON, "-c", ENVIRONMENT_PYTHON, "bin/harness"],
+        stdout=subprocess.PIPE,
+        check=False,
+        timeout=TIMEOUT,
+    ).stdout.decode(errors="surrogateescape")
+    environment_python = named.rstrip("\n")
+    if not environment_python:
+        say("pre-push: bin/harness names no interpreter of the Python environment")
+        return False
+    say(f"{environment_python} -m compileall -q lib hooks scripts adapters")
+    ok = status_of([environment_python, "-m", "compileall", "-q", "lib", "hooks", "scripts", "adapters"]) == 0
+    tools = environment_python.rpartition("/")[0] if "/" in environment_python else environment_python
+    lacking = False
+    for tool in ("ruff", "basedpyright"):
+        if not Path(tools, tool).is_file():
+            say(
+                f"pre-push: no {tool} in {tools}; "
+                "set develop = true in the profile, then run harness install --apply"
+            )
+            lacking = True
+    if lacking:
+        return False
+    for args in (
+        ["ruff", "format", "--check", "--no-cache", "."],
+        ["ruff", "check", "--no-cache", "."],
+        ["basedpyright"],
+    ):
+        say(" ".join([f"{tools}/{args[0]}", *args[1:]]))
+        if status_of([f"{tools}/{args[0]}", *args[1:]]) != 0:
+            ok = False
+    return ok
+
+
+def run_shellcheck() -> bool:
+    """The lint of every tracked file with a sh or bash shebang. False: shellcheck found a problem."""
+    shellcheck = shutil.which("shellcheck")
+    if shellcheck is None:
+        say("skip  shellcheck: not found; CI runs it")
+        return True
+    files: list[str] = []
+    for name in (git_output("ls-files") or "").split("\n"):
+        try:
+            with Path(name).open("rb") as f:
+                first = f.readline()
+        except OSError:  # a tracked symlink to a directory, or a file that the clone lacks
+            continue
+        if SHELL.match(first):
+            files.append(name)
+    say(f"shellcheck -S warning {' '.join(files)}")
+    return status_of([shellcheck, "-S", "warning", *files]) == 0
+
+
+def run_kit_tests(tmp: Path) -> None:
+    """The kit's tests need chezmoi; CI runs them in the job `dotfiles`. All five run, and each that
+    fails prints the end of its output."""
+    if shutil.which("chezmoi") is None:
+        say("skip  chezmoi: not found; CI runs the kit's tests")
+        return
+    failed = ""
+    for kit_test in KIT_TESTS:
+        file = f"examples/dotfiles/tests/{kit_test}.py"
+        say(f"python3 {file}")
+        log = tmp / f"{kit_test}.log"
+        with log.open("wb") as f:
+            # No timeout: the kit's tests are the harness's own.
+            status = subprocess.run([PYTHON, file], stdout=f, stderr=subprocess.STDOUT, check=False)
+        if status.returncode == 0:
+            write_out(last_lines(log.read_bytes(), 1))
+        else:
+            write_out(last_lines(log.read_bytes(), 20))
+            failed += f" {file}"
+    if failed:
+        refuse(f"the kit's tests failed:{failed}")
+
+
+def julia_selection(changed: list[str]) -> list[str]:
+    """The Julia test files that the changed paths select, in the order of their first selection."""
+    selection: list[str] = []
+
+    def select(test: str) -> None:
+        if test not in selection:
+            selection.append(test)
+
+    for path in changed:
+        chosen = next((test for paths, test in SELECTS if path in paths), None)
+        if chosen is not None:
+            select(chosen)
+        elif fnmatch.fnmatchcase(path, "*-test.jl"):
+            if Path(path).is_file():  # a deleted test file selects nothing
+                select(path)
+        elif path == "Project.toml":
+            for test in JULIA_TESTS:
+                select(test)
+        elif fnmatch.fnmatchcase(path, "*.jl"):
+            say(f"Julia: {path} selects no test file")
+    return selection
+
+
+def run_julia(selection: list[str]) -> bool:
+    """The Julia selection, in order, up to the first that fails. False: one failed."""
+    if not selection:
+        return True
+    say(f"Julia selection:{''.join(f' {test}' for test in selection)}")
+    julia = shutil.which("julia")
+    if julia is None:
+        say("skip  julia: not found; CI runs the Julia tests")
+        return True
+    for test in selection:
+        say(f"julia {test} ({DURATION.get(test, 'time not measured')})")
+        if status_of([julia, "--startup-file=no", test]) != 0:
+            return False
+    return True
+
+
+def gate(root: Path, tmp: Path, sha: str, old: str, branches: list[tuple[str, str, str]]) -> int:
+    """The checks of a push: the exit status."""
+    if branches:
+        check_branches(root, tmp, branches)
+    if not sha:
+        say("pre-push: no commit pushed to main; the leak check of the branches passed")
+        return 0
+    gitleaks = check_gitleaks()
+    find_python()
+    check_main_leaks(root, tmp, sha, old, gitleaks)
+
+    # The changed paths of the range. A new main, or a remote SHA that this clone does not have,
+    # starts at the empty tree. --no-renames: a renamed file lists its old path too, so a moved
+    # source still selects its test.
+    base = (
+        old if old.strip("0") and commit_exists(old) else git_output("hash-object", "-t", "tree", "/dev/null")
+    )
+    changed = git_output("diff", "--name-only", "--no-renames", base or "", "HEAD")
+    if changed is None:
+        return 1
+
+    # Each check runs, whatever the one before it gave.
+    passed = run_suite(tmp)
+    passed = run_strict() and passed
+    passed = run_shellcheck() and passed
+    if not passed:
+        say("pre-push: refused; fix the commit, because the hook tests the commit and not the working tree")
+        return 1
+    run_kit_tests(tmp)
+    if not run_julia(julia_selection(changed.split("\n"))):
+        say("pre-push: refused; a Julia test failed")
+        return 1
+    say("pre-push: passed")
+    return 0
+
+
+def terminated(signum: int, _frame: object) -> NoReturn:
+    raise SystemExit(128 + signum)
+
+
+def main() -> int:
+    root_name = git_output("rev-parse", "--show-toplevel")
+    if root_name is None:
+        return 1
+    root = Path(root_name)
+    for name in GIT_VARIABLES:
+        os.environ.pop(name, None)
+    sha, old, branches = read_pushes()
+    if not sha and not branches:
+        say("pre-push: no commit pushed, nothing to test")
+        return 0
+    # A SIGTERM or a SIGHUP ends the hook through SystemExit, so that the clone goes with it.
+    for signum in (signal.SIGTERM, signal.SIGHUP):
+        signal.signal(signum, terminated)
+    tmp = Path(tempfile.mkdtemp(prefix="harness-pre-push."))
+    try:
+        return gate(root, tmp, sha, old, branches)
+    except subprocess.TimeoutExpired as e:
+        command = " ".join(map(str, e.cmd)) if isinstance(e.cmd, list) else str(e.cmd)
+        refuse(f"{command} did not finish within {TIMEOUT} s")
+    finally:
+        os.chdir(root)
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

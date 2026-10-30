@@ -1446,6 +1446,15 @@ NO_INTERPRETER = "pre-push: bin/harness names no interpreter of the Python envir
 STRICT = ["ruff format --check --no-cache .", "ruff check --no-cache .", "basedpyright"]
 
 
+def failing_tool(tools: pathlib.Path, repo: pathlib.Path, fails: str) -> None:
+    """Where `fails` is "shellcheck" or "julia": a stub of that tool in `tools` that exits 1, and a
+    Julia test file in `repo`, which selects julia."""
+    if fails in ("shellcheck", "julia"):
+        (tools / fails).write_text("#!/bin/sh\nexit 1\n")
+        (tools / fails).chmod(0o755)
+        (repo / "fixture-test.jl").write_text("")
+
+
 def prepush_case(
     path: str | None = None,
     kit_fails: str | None = None,
@@ -1457,16 +1466,23 @@ def prepush_case(
     """`.githooks/pre-push` on a fixture checkout whose `origin` is a GitHub URL, for a push to
     main, with stubs of gitleaks, of `bin/harness` and of the Python environment's interpreter,
     and no shellcheck, julia or chezmoi on the PATH: `harness leaks` runs in the hook's clone with
-    that URL as its `origin`, not the path of the checkout, `bin/harness test` runs once, the
+    that URL as its `origin`, not the path of the checkout, `gitleaks stdin` runs in the checkout,
+    where a `.gitleaksignore` of the working tree applies, `bin/harness test` runs once, the
     compile check runs on the interpreter that the stub's `interpreter(environment_path())`
     names, the three checks of STRICT run in the clone from the environment's bin/, and the kit's
     tests are skipped with one line. The environment's `ruff` and `basedpyright` and a second pair
     first on the PATH are stubs that log their arguments. With `no_environment`, the stub's
     `environment_path` raises: the hook prints NO_INTERPRETER, runs no compile check and no check
     of STRICT, and refuses the push. With `lacks`, the names of tools that the environment lacks:
-    the hook prints one line per tool that names `harness install --apply`, runs no check of
-    STRICT and no tool of the PATH, and refuses the push. With `fails`, one command of STRICT,
-    whose stub exits 1: the hook still runs all three and refuses the push. With `kit_fails`,
+    the hook prints one line per tool of `ruff` and `basedpyright` that names `harness install
+    --apply`, runs no check of STRICT and no tool of the PATH, and refuses the push with its last
+    line, without a traceback. With "python" in `lacks` the environment has no interpreter, and
+    with `fails` "python" one without the execute bit: the hook prints one line that it cannot
+    start the interpreter, goes on as with the other tools of `lacks` or runs the three checks of
+    STRICT where there are none, and refuses the push with its last line. With `fails`, one
+    command of STRICT, whose stub exits 1, or "shellcheck" or "julia", a stub on the PATH that
+    exits 1, with a Julia test file in the commit: the hook still runs all three checks of STRICT
+    and refuses the push. With `kit_fails`,
     the name of one of KIT_TESTS, a stub of chezmoi is on the PATH and the fixture holds the five
     kit tests, of which that one exits 1: the hook runs all five and refuses the push with one
     line that names it. The tools are linked from `path`, this process's PATH by default, without a
@@ -1500,8 +1516,11 @@ def prepush_case(
             # `missing` is empty, so each tool is found.
             (tools / tool).symlink_to(cast(str, shutil.which(tool, path=search)))
         (tools / "python3").symlink_to(sys.executable)
+        # The stub's `stdin` writes its working directory, where gitleaks reads `.gitleaksignore`.
+        stdin_dir = tmp / "stdin-dir"
         (tools / "gitleaks").write_text(
-            '#!/bin/sh\n[ "$1" = version ] && echo v8.24.0\n[ "$1" = stdin ] && cat >/dev/null\nexit 0\n'
+            '#!/bin/sh\n[ "$1" = version ] && echo v8.24.0\n'
+            f"[ \"$1\" = stdin ] && {{ cat >/dev/null; pwd -P > '{stdin_dir}'; }}\nexit 0\n"
         )
         (tools / "gitleaks").chmod(0o755)
         (repo / "bin").mkdir(parents=True)
@@ -1527,8 +1546,9 @@ def prepush_case(
             tmp / "compiled",
         )
         (environment / "bin").mkdir(parents=True)
-        (environment / "bin" / "python").write_text(f"#!/bin/sh\necho \"$*\" >> '{compiled}'\n")
-        (environment / "bin" / "python").chmod(0o755)
+        if "python" not in lacks:
+            (environment / "bin" / "python").write_text(f"#!/bin/sh\necho \"$*\" >> '{compiled}'\n")
+            (environment / "bin" / "python").chmod(0o644 if fails == "python" else 0o755)
         strict = tmp / "strict"
         for directory, prefix, names in (
             (environment / "bin", "", [t for t in ("ruff", "basedpyright") if t not in lacks]),
@@ -1541,6 +1561,7 @@ def prepush_case(
                     f"[ \"${{line% }}\" = '{fails}' ] && exit 1\nexit 0\n"
                 )
                 (directory / name).chmod(0o755)
+        failing_tool(tools, repo, fails)
         ran = tmp / "kit-ran"
         if kit_fails:
             (tools / "chezmoi").write_text("#!/bin/sh\nexit 0\n")
@@ -1568,6 +1589,7 @@ def prepush_case(
         git("commit", "-q", "-m", "fixture")
         git("remote", "add", "origin", url)
         sha = git("rev-parse", "HEAD")
+        named = {} if no_environment else {"STUB_ENVIRONMENT": str(environment)}
         try:
             p = subprocess.run(
                 [str(REPO / ".githooks" / "pre-push"), "origin", url],
@@ -1580,7 +1602,7 @@ def prepush_case(
                     "TMPDIR": str(tmp),
                     "KIT_RAN": str(ran),
                     "HARNESS_RAN": str(harness_ran),
-                    **({} if no_environment else {"STUB_ENVIRONMENT": str(environment)}),
+                    **named,
                 },
                 capture_output=True,
                 text=True,
@@ -1595,6 +1617,7 @@ def prepush_case(
         commands = harness_ran.read_text().split() if harness_ran.exists() else []
         compile_runs = compiled.read_text().splitlines() if compiled.exists() else []
         checks = strict.read_text().splitlines() if strict.exists() else []
+        in_checkout = stdin_dir.exists() and stdin_dir.read_text().strip() == str(repo.resolve())
     strict_runs = [line.partition(" | ")[0].strip() for line in checks]
     # The hook's clone is repo/ below the hook's own directory under TMPDIR, not the fixture's repo/.
     in_clone = all(
@@ -1625,21 +1648,29 @@ def prepush_case(
             f"{[line for line in lines if line.startswith('pre-push:')]}"
         )
         return 1, int(not ok)
-    if lacks:
+    unstarted = "python" in lacks or fails == "python"
+    if lacks or unstarted:
         said = [line for line in lines if line.startswith("pre-push: no ")]
+        absent = [tool for tool in lacks if tool != "python"]
         ok = (
             code == 1
-            and checks == []
-            and len(said) == len(lacks)
-            and all(f"pre-push: no {tool} in " in line for tool, line in zip(lacks, said, strict=True))
+            and strict_runs == ([] if absent else STRICT)
+            and len(said) == len(absent)
+            and all(f"pre-push: no {tool} in " in line for tool, line in zip(absent, said, strict=True))
             and all("harness install --apply" in line for line in said)
-            and any(line.startswith("pre-push: refused;") for line in lines)
+            and any(line.startswith("pre-push: cannot start ") for line in lines) == unstarted
+            and "Traceback" not in text
+            and lines[-1].startswith("pre-push: refused;")
         )
+        interpreter = "absent" if "python" in lacks else "not executable"
         print(
-            f"{'ok ' if ok else 'BAD'}  pre-push: an environment without {' and '.join(lacks)}, "
+            f"{'ok ' if ok else 'BAD'}  pre-push: "
+            + (f"an interpreter that is {interpreter}: one line says so; " if unstarted else "")
+            + f"an environment that lacks {' and '.join(absent) or 'neither tool'}, "
             f"with both tools on the PATH: one line per tool that names harness install --apply, "
-            f"no check runs, the push is refused -> exit {code}, checks {checks}, "
-            f"{[line for line in lines if line.startswith('pre-push:')]}"
+            f"the checks run where it lacks neither, the push is refused with the last line "
+            f"-> exit {code}, checks {strict_runs}, "
+            f"{[line for line in lines if line.startswith('pre-push:')]}, traceback {'Traceback' in text}"
         )
         return 1, int(not ok)
     if fails:
@@ -1649,8 +1680,8 @@ def prepush_case(
             and any(line.startswith("pre-push: refused;") for line in lines)
         )
         print(
-            f"{'ok ' if ok else 'BAD'}  pre-push: `{fails}` fails: all three checks run "
-            f"and the push is refused -> exit {code}, checks {strict_runs}, "
+            f"{'ok ' if ok else 'BAD'}  pre-push: `{fails}` fails: all three checks of the strict "
+            f"profile run and the push is refused -> exit {code}, checks {strict_runs}, "
             f"{[line for line in lines if line.startswith('pre-push:')]}"
         )
         return 1, int(not ok)
@@ -1663,15 +1694,17 @@ def prepush_case(
         and compile_runs == [COMPILE]
         and strict_runs == STRICT
         and in_clone
+        and in_checkout
         and not any("python3.14" in line for line in lines)
     )
     print(
         f"{'ok ' if ok else 'BAD'}  pre-push: harness leaks runs in the clone with the checkout's "
-        f"origin URL, bin/harness test runs once, the compile check runs on the environment's interpreter, "
+        f"origin URL, gitleaks stdin runs in the checkout, bin/harness test runs once, the compile "
+        f"check runs on the environment's interpreter, "
         f"the three checks of the strict profile run in the clone with the environment's tools, "
         f"and without chezmoi the kit's tests skip with one line "
         f"-> exit {code}, origin {got!r}, harness {commands}, compile {compile_runs}, checks {checks}, "
-        f"skip line {KIT_SKIP in lines}, {lines[-1]!r}"
+        f"gitleaks stdin in the checkout {in_checkout}, skip line {KIT_SKIP in lines}, {lines[-1]!r}"
     )
     return 1, int(not ok)
 
@@ -2498,10 +2531,10 @@ def selftest():
     n4, w4 = prepush_branch_cases()
     n5, w5 = prepush_case(kit_fails="update-check")
     n6, w6 = prepush_case(no_environment=True)
-    for lacks in (("ruff",), ("basedpyright",), ("ruff", "basedpyright")):
+    for lacks in (("ruff",), ("basedpyright",), ("ruff", "basedpyright"), ("python", "ruff", "basedpyright")):
         n7, w7 = prepush_case(lacks=lacks)
         n6, w6 = n6 + n7, w6 + w7
-    for fails in STRICT:
+    for fails in [*STRICT, "shellcheck", "julia", "python"]:
         n7, w7 = prepush_case(fails=fails)
         n6, w6 = n6 + n7, w6 + w7
     return len(CASES) + len(NAME_CASES) + n + n2 + n3 + n4 + n5 + n6, wrong + w + w2 + w3 + w4 + w5 + w6

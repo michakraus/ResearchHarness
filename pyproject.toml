@@ -21,14 +21,18 @@ dev = [
 
 # The strict profile. `ruff format --check`, `ruff check` and `basedpyright` gate every commit
 # (.githooks/pre-commit), every push to main (.githooks/pre-push) and CI. Besides the *.py files,
-# ruff reads the three Python files without a suffix: .githooks/pre-commit, bin/harness, and
-# githooks/pre-commit-wiki, the hook of the prose repositories. The syntax of the last two is the
-# closed set of Python 3.0 forms that `environment.outside_syntax` checks, so the formatter and the
-# UP family leave them alone.
+# ruff reads the five Python files without a suffix: bin/harness, githooks/pre-commit-wiki, the
+# hook of the prose repositories, the two hooks of this repository and claude-autocommit. The
+# syntax of bin/harness and githooks/pre-commit-wiki is the closed set of Python 3.0 forms that
+# `environment.outside_syntax` checks, so the formatter and the UP family leave them alone. The
+# pre-push hook parses as Python 3.9, so that the python3 of macOS refuses a push with the hook's
+# own line, not a SyntaxError.
 [tool.ruff]
 line-length = 110
 target-version = "py314"
-extend-include = ["bin/harness", ".githooks/pre-commit", "githooks/pre-commit-wiki"]
+extend-include = ["bin/harness", ".githooks/pre-commit", ".githooks/pre-push", "launchagents/claude-autocommit",
+                  "githooks/pre-commit-wiki"]
+per-file-target-version = { ".githooks/pre-push" = "py39" }
 
 [tool.ruff.format]
 exclude = ["bin/harness", "githooks/pre-commit-wiki"]
