@@ -73,9 +73,9 @@ with the error. The checks read a command without
 `shlex`: a `#` inside a word, a backslash-newline and a quoted operator are read as the shell
 reads them, and a quoted operator or a joined line is also read the other way, so that neither
 hides a part of the command. `tests/guard/corpus.jsonl` holds the decision of each payload that
-the probe checks, and each difference from the scripts with its reason. Every file-system read of
-a payload is a function of `hooks/guard/paths.py`, which reads each directory and name once in
-each mode and asks each directory once whether it holds a `.git`; every check and every reading
+the probe checks, and each difference from the scripts with its reason. A check of a shell
+command reads each path through `hooks/guard/paths.py`, which reads each directory and name once
+in each mode and asks each directory once whether it holds a `.git`; every check and every reading
 takes the walk of a word from one memo; the write check asks git once per work tree. A probe case
 finds no file-system read elsewhere in the package but a few named ones, which read once per
 process or one path of a directory call. The probe counts the reads of ten commands of 1 MiB

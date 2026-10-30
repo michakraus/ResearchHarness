@@ -11,13 +11,14 @@
   relative path, a `git rm` or `git merge`, a `git init` or `git clone`), and a call on which it
   raises; a guard that cannot start refuses the call through `|| exit 2`. It reads a command
   without `shlex`: a `#` inside a word and a backslash-newline are read as the shell reads them.
-  Every file-system read of a payload goes through `hooks/guard/paths.py`, which reads each
+  A check of a shell command reads each path through `hooks/guard/paths.py`, which reads each
   directory and name once in each mode and asks each directory once whether it holds a `.git`, and
   the write check asks git once per work tree. The probe counts the reads of ten commands of 1 MiB,
   a long `cd` word, many `rm` operands and many `git init` outside a work tree among them, each at
   most two or three reads per distinct name plus a constant, and finds no file-system read
-  elsewhere in the package but a few named ones. The guard decides each of the probe's 23 timed
-  commands of 1 MiB within its 10 s, and it stops at the first check that refuses. `tests/guard/corpus.jsonl`
+  elsewhere in the package but a few named ones. On a Linux CI runner the guard decides each of
+  the probe's 23 timed commands of 1 MiB within 2.7 s, and it stops at the first check that
+  refuses. `tests/guard/corpus.jsonl`
   holds 429 payloads, each case of the scripts' probe among them, and the probe's `commands` group
   runs them through the guard; each payload that the guard decides otherwise than the scripts names
   its reason there, and none is decided more loosely. `hooks/directory-scope.py` is removed; the

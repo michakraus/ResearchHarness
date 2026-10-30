@@ -15,13 +15,14 @@ normalisation does. Both record whether the path names a file. A third mode of a
 reads a name without following it, for a path that is resolved already and for a `.git` of any
 kind.
 
-Every read of the file system that a payload makes is a function of this module, and each is
-memoised once per process: `child` reads a (directory, name, mode) once and keeps one `Place` of
-it, the anchor is one `Place`, and `work_tree` asks a directory once whether it holds a `.git`.
-The guard decides one payload per process, so a payload reads each (directory, name, mode) at most
-once however many checks, readings and call sites ask for it. Above the reads, `go` walks a (start
-`Place`, word, mode) once, and `place` an absolute path text once in each mode, so a walk that
-every check and every reading asks for steps once.
+Every read of a path that a check of a shell command makes is a function of this module, and each
+is memoised per process: `child` reads a (directory, name, mode) once and keeps one `Place` of it,
+the anchor is one `Place`, `work_tree` asks a directory once whether it holds a `.git`, and
+`through` resolves each of the last 1024 links once. The guard decides one payload per process, so
+a payload reads each (directory, name, mode) at most once however many checks, readings and call
+sites ask for it. Above the reads, `go` walks a (start `Place`, word, mode) once, and `place` an
+absolute path text once in each mode, so a walk that every check and every reading asks for steps
+once.
 """
 
 import functools
