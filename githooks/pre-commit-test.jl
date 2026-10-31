@@ -255,6 +255,31 @@ alive(pid) = ccall(:kill, Cint, (Cint, Cint), pid, 0) == 0
         @test occursin("formatting: FAILED", out)
     end
 
+    # A stub of an older release that reports every file formatted and takes any keyword, so
+    # only the version check can refuse it.
+    @testset "a JuliaFormatter older than 2.14 is refused, naming its version" begin
+        root = mktempdir()
+        uuid = "98e50ef6-434e-11e9-1051-2b60c6c9e899"
+        pkg = joinpath(root, "JuliaFormatter")
+        mkpath(joinpath(pkg, "src"))
+        write(joinpath(pkg, "Project.toml"),
+              "name = \"JuliaFormatter\"\nuuid = \"$uuid\"\nversion = \"2.4.0\"\n")
+        write(joinpath(pkg, "src", "JuliaFormatter.jl"),
+              "module JuliaFormatter\nformat(f; kw...) = true\nend\n")
+        env = joinpath(root, "env")
+        mkpath(env)
+        write(joinpath(env, "Project.toml"), "[deps]\nJuliaFormatter = \"$uuid\"\n")
+        write(joinpath(env, "Manifest.toml"),
+              "manifest_format = \"2.0\"\n\n[[deps.JuliaFormatter]]\npath = \"$pkg\"\n" *
+              "uuid = \"$uuid\"\nversion = \"2.4.0\"\n")
+        code, out = run_hook(FORMATTED;
+                             vars = Dict("RESEARCH_HARNESS_JULIA" => env,
+                                         "JULIA_LOAD_PATH" => "@stdlib"))
+        @test code == 1
+        @test occursin("JuliaFormatter 2.4.0 is older than 2.14", out)
+        @test occursin("formatting: FAILED", out)
+    end
+
     @testset "a file that is not valid UTF-8 is no NFC finding" begin
         code, out = run_hook("module Fixture\n# \xff\nend\n")
         @test occursin("unicode: NFC", out)
@@ -309,6 +334,18 @@ alive(pid) = ccall(:kill, Cint, (Cint, Cint), pid, 0) == 0
 
     @testset "without julia on the PATH, a commit that touches test/ is refused" begin
         repo, env = fixture(nothing; extra = ["test/data.txt" => "1\n"])
+        env["PATH"] = without("julia")
+        code, _, err = capture(`$(Sys.which("bash")) $HOOK`, repo, env)
+        @test code == 1
+        @test err == "pre-commit: julia is not on the PATH.\n"
+    end
+
+    @testset "without julia on the PATH, a .jl file that becomes a symlink is refused" begin
+        repo, env = fixture(FORMATTED; extra = ["README.md" => "# Fixture\n"])
+        run(setenv(`git -C $repo commit -q -m base`, env))
+        rm(joinpath(repo, "src", "Fixture.jl"))
+        symlink("../README.md", joinpath(repo, "src", "Fixture.jl"))
+        run(setenv(`git -C $repo add src/Fixture.jl`, env))
         env["PATH"] = without("julia")
         code, _, err = capture(`$(Sys.which("bash")) $HOOK`, repo, env)
         @test code == 1
