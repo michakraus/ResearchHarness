@@ -76,9 +76,9 @@ harness setup --yes       # read [setup] of the profile, and ask nothing
 ```
 
 **When a step fails**, `harness setup` prints its output and stops with exit status 2. Fix the
-cause, then run `harness setup` again: it plans again and skips what is done. The step
-`harness trust --apply` needs `~/.claude.json`, which Claude Code writes at its first start: start
-`claude` once, or, where `[setup]` does not choose `claude`, run `echo {} > ~/.claude.json`.
+cause, then run `harness setup` again: it plans again and skips what is done. On a new machine,
+the step `harness trust --apply` waits for `~/.claude.json`, which Claude Code writes at its first
+start: the run names the step and goes on. Start `claude` once, then run `harness trust --apply`.
 
 **By hand.** `harness setup` prints the steps that it cannot do under *By hand*, before its last
 step. With the frontend `antigravity`, install the Antigravity app from

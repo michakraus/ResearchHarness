@@ -11,6 +11,3 @@
   install needs Julia only with the component `julia`. Each `FAIL` of `harness doctor` now names
   a section of `setup-reference.md`, or *The check that it worked* for `harness test`, and a case
   of `harness test doctor:minimum` holds every section that `FIX` names to a heading of its page.
-  Where `harness trust --apply` stops the run on a machine without `~/.claude.json` (K126), the
-  pages tell the user to start Claude Code once, or, without the frontend `claude`, to write `{}`
-  into that file.
