@@ -205,6 +205,16 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   suite. Record such a pin on both versions, and set the leaf to a fixed, exactly orthonormal
   matrix before the pinned pass (M5, *Simplify the optimiser package and the learning package for
   0.9*)
+- **a reference table of solver outcomes recorded on one machine and compared exactly on
+  another:** OpenBLAS picks its kernels by CPU, so a factor differs in its last bits between an
+  Apple ARM and an x86 runner, and between two x86 runners. A cell on a knife edge turns those bits
+  into another return code, or an iteration count off by up to 100: a stopping test or a
+  line-search acceptance decided on a few ulps, or a full-step orbit that is chaotic. A few-ulp
+  tolerance on the outcome cannot help. Rerun each cell with its start, its residual and its step
+  moved by a few ulps on the recording machine, mark the cells that move, compare only the others
+  exactly, and read the first CI run on every runner before the critic (AT round 1, *Design the
+  solver package*: 42 of 1206 cells on the x86 runners, 40 of them moved by a 1–4-ulp
+  perturbation against 3 of 100 controls)
 
 ## A type or an interface
 
