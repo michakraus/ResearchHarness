@@ -14,8 +14,9 @@ It then shows the plan and runs it after y/N; the first step of that plan writes
 or the defaults of a profile without it, asks nothing and never writes the profile; without a
 profile it exits 2. Without a terminal on stdin and without `--yes` it exits 2 and names
 `--yes`. `--dry-run`, alone or with `--yes`, prints the plan and changes nothing. Missing model
-tables are copied from examples/models.toml. A `setup` of the profile that is an inline table or
-dotted keys exits 2: `with_setup` writes only a table under its own header.
+tables are copied from examples/models.toml. `with_setup` writes only a table under its own
+header line, and checks its edit with tomllib: a `setup` of the profile that it cannot write in
+place, such as an inline table or dotted keys, exits 2 and names the table to write.
 
 The plan (`plan`), in this order: the directories that `harness install` needs (the tree
 instructions, each `repository_roots` entry, and the OpenCode directory with `opencode`); the
@@ -91,7 +92,7 @@ VERSION = re.compile(r"\d+(?:\.\d+)+")
 CANDIDATE = re.compile(r"^\s*Candidate:\s*(\S+)", re.MULTILINE)
 SHA256 = re.compile(r"[0-9a-f]{64}")
 # The header of the `[setup]` table, and a key of it, bare or quoted.
-HEADER = re.compile(r"\s*\[\s*setup\s*\]\s*(?:#.*)?")
+HEADER = re.compile(r"""\s*\[\s*(["']?)setup\1\s*\]\s*(?:#.*)?""")
 KEY = re.compile(r"""\s*(["']?)(frontends|components|develop)\1\s*=""")
 # The one redirect that a download of a pinned release follows, as bin/harness's download does.
 REDIRECT = ("https", "release-assets.githubusercontent.com")
@@ -747,11 +748,13 @@ def apt(machine: Machine, packages: Sequence[str], line: str) -> Action:
     return run
 
 
-def install_release(machine: Machine, program: str, release: Release) -> str | None:
-    """Download `release`, following one redirect to REDIRECT and no other, check its sha256, and
-    install its `program` into ~/.local/bin."""
+def install_release(
+    machine: Machine, program: str, release: Release, *, redirect: tuple[str, str] = REDIRECT
+) -> str | None:
+    """Download `release`, following one redirect to `redirect`, a scheme and a host, and no other,
+    check its sha256, and install its `program` into ~/.local/bin."""
     try:
-        with urllib.request.build_opener(Redirects()).open(release.url, timeout=TIMEOUT) as response:
+        with urllib.request.build_opener(Redirects(redirect)).open(release.url, timeout=TIMEOUT) as response:
             data = cast("bytes", response.read())
     except (OSError, ValueError, http.client.HTTPException, HarnessError) as e:
         return f"cannot download {release.url}: {e}"
@@ -775,9 +778,13 @@ def install_release(machine: Machine, program: str, release: Release) -> str | N
 
 
 class Redirects(urllib.request.HTTPRedirectHandler):
-    """A redirect handler that follows one redirect to REDIRECT and refuses every other one."""
+    """A redirect handler that follows one redirect to `allowed`, a scheme and a host, and refuses
+    every other one."""
 
-    followed: int = 0
+    def __init__(self, allowed: tuple[str, str] = REDIRECT) -> None:
+        super().__init__()
+        self.allowed = allowed
+        self.followed = 0
 
     @override
     def redirect_request(
@@ -790,10 +797,10 @@ class Redirects(urllib.request.HTTPRedirectHandler):
         newurl: str,
     ) -> urllib.request.Request | None:
         target = urllib.parse.urlsplit(newurl)
-        if self.followed or (target.scheme, target.hostname) != REDIRECT:
+        if self.followed or (target.scheme, target.hostname) != self.allowed:
             raise HarnessError(
-                f"the download redirects to {newurl}; only one redirect to {REDIRECT[0]}://{REDIRECT[1]} "
-                "is followed"
+                f"the download redirects to {newurl}; only one redirect to "
+                f"{self.allowed[0]}://{self.allowed[1]} is followed"
             )
         self.followed += 1
         return super().redirect_request(req, fp, code, msg, headers, newurl)
@@ -901,11 +908,16 @@ def kaimon_token(home: pathlib.Path) -> str | None:
 
 
 def ask_line(ask: Ask, question: str) -> str:
-    """The answer to `question`; the end of the input exits 2."""
+    """The answer to `question`; the end of the input, and an answer that is not valid UTF-8, exit 2."""
     try:
-        return ask(question).strip()
+        answer = ask(question).strip()
     except EOFError:
         raise HarnessError("the input ended before the answer to: " + question.strip()) from None
+    try:
+        answer.encode("utf-8")
+    except UnicodeEncodeError:
+        raise HarnessError("the answer to: " + question.strip() + " is not valid UTF-8") from None
+    return answer
 
 
 def pick(what: str, names: Sequence[str], current: Sequence[str], ask: Ask) -> tuple[str, ...]:
@@ -976,21 +988,16 @@ def new_profile(example: str, ask: Ask) -> str:
 def with_setup(text: str, choice: profile_module.Setup) -> str:
     """The profile `text`, which is TOML, with its `[setup]` table holding `choice`: each key's
     line replaced in place, a missing one added after the table's header, `develop` only where it
-    is true. Without a table, one is added at the end; a `setup` written as an inline table or as
-    dotted keys exits 2, naming the form."""
-    values = {"frontends": toml_value(choice.frontends), "components": toml_value(choice.components)}
-    if choice.develop:
-        values["develop"] = "true"
+    is true. Without a header line, a table is added at the end. A line scan finds the header and
+    the keys, and `checked_setup` holds the edit to what tomllib reads: any layout that the scan
+    does not edit right exits 2, naming the form to write."""
+    values = setup_values(choice)
     lines = text.splitlines(keepends=True)
     start = next((i for i, line in enumerate(lines) if HEADER.fullmatch(line.rstrip("\r\n"))), None)
     if start is None:
-        if "setup" in tomllib.loads(text):
-            raise HarnessError(
-                "the profile's setup is an inline table or dotted keys; write it as a table under a "
-                "line [setup], then run harness setup again"
-            )
         body = "".join(f"{k} = {v}\n" for k, v in values.items())
-        return text + ("" if text.endswith("\n") or not text else "\n") + "\n[setup]\n" + body
+        new = text + ("" if text.endswith("\n") or not text else "\n") + "\n[setup]\n" + body
+        return checked_setup(text, new, choice)
     out, i, written = lines[: start + 1], start + 1, set[str]()
     while i < len(lines) and not lines[i].lstrip().startswith("["):
         m = KEY.match(lines[i])
@@ -1008,7 +1015,53 @@ def with_setup(text: str, choice: profile_module.Setup) -> str:
         i = end + 1
     missing = "".join(f"{k} = {v}\n" for k, v in values.items() if k not in written)
     out.insert(start + 1, missing)
-    return "".join(out + lines[i:])
+    return checked_setup(text, "".join(out + lines[i:]), choice)
+
+
+def setup_values(choice: profile_module.Setup) -> dict[str, str]:
+    """The keys of `[setup]` that hold `choice`, each with its value as TOML: `develop` only where
+    it is true."""
+    values = {"frontends": toml_value(choice.frontends), "components": toml_value(choice.components)}
+    if choice.develop:
+        values["develop"] = "true"
+    return values
+
+
+# The start of the line with which `with_setup` refuses an edit.
+REFUSED = "cannot write [setup] into the profile in place"
+
+
+def checked_setup(old: str, new: str, choice: profile_module.Setup) -> str:
+    """`new`, the profile `old` with `[setup]` edited, when tomllib reads both and finds in `new`
+    the keys of SETUP_KEYS of `setup` equal to `choice`, `develop` only where it is true, and every
+    other key, inside and outside `setup`, as in `old`. Otherwise it exits 2 with one line that
+    names the form of `[setup]` to write."""
+    form = "; ".join(f"{k} = {v}" for k, v in setup_values(choice).items())
+    refused = HarnessError(
+        f"{REFUSED}; write it as a table under a line [setup] that holds the lines {form}, then run "
+        "harness setup again"
+    )
+    try:
+        before, after = tomllib.loads(old), tomllib.loads(new)
+    except tomllib.TOMLDecodeError:
+        raise refused from None
+    old_setup: object = before.pop("setup", {})
+    new_setup: object = after.pop("setup", None)
+    if not isinstance(old_setup, dict) or not isinstance(new_setup, dict):
+        raise refused
+    old_table, new_table = cast("dict[str, object]", old_setup), cast("dict[str, object]", new_setup)
+    want: dict[str, object] = {"frontends": list(choice.frontends), "components": list(choice.components)}
+    if choice.develop:
+        want["develop"] = True
+    keys = profile_module.SETUP_KEYS
+    if (
+        {k: v for k, v in new_table.items() if k in keys} != want
+        or {k: v for k, v in new_table.items() if k not in keys}
+        != {k: v for k, v in old_table.items() if k not in keys}
+        or after != before
+    ):
+        raise refused
+    return new
 
 
 def is_toml(text: str) -> bool:
@@ -2145,12 +2198,20 @@ def header_cases(case: Case) -> None:
             'a = 1\n[setup]\nfrontends = [\n  "claude", # one ]\n  "omp", # two ]\n]\ncomponents = []\n',
         ),
         ("quoted keys", 'a = 1\n[setup]\n"frontends" = ["claude"]\n\'components\' = []\n'),
+        ("a header in double quotes", 'a = 1\n["setup"]\nfrontends = ["claude"]\ncomponents = []\n'),
+        ("a header in single quotes", "a = 1\n['setup']\nfrontends = [\"claude\"]\ncomponents = []\n"),
+        (
+            "a quoted header with spaces and a comment",
+            'a = 1\n[ "setup" ]  # this machine\nfrontends = ["claude"]\ncomponents = []\n',
+        ),
     ):
         try:
-            got: object = cast("dict[str, object]", tomllib.loads(with_setup(text, choice))).get("setup")
+            new = with_setup(text, choice)
+            got: object = cast("dict[str, object]", tomllib.loads(new)).get("setup")
+            kept = new.splitlines()[:2] == text.splitlines()[:2] and new.count("setup") == 1
         except (HarnessError, tomllib.TOMLDecodeError) as e:
-            got = str(e)
-        case(f"with_setup writes [setup] in place on {name}: {got}", ok=got == want)
+            got, kept = str(e), False
+        case(f"with_setup writes [setup] in place on {name}: {got}", ok=got == want and kept)
     for name, text in (
         ("an inline table", 'a = 1\nsetup = { frontends = ["claude"], components = [] }\n'),
         ("dotted keys", 'a = 1\nsetup.frontends = ["claude"]\nsetup.components = []\n'),
@@ -2161,13 +2222,90 @@ def header_cases(case: Case) -> None:
             got = str(e)
         case(
             f"with_setup refuses [setup] as {name}, naming the form: {got!r}",
-            ok="inline table or dotted keys" in got,
+            ok=REFUSED in got and 'frontends = ["omp"]' in got,
         )
+    old = 'a = 1\n[setup]\nfrontends = ["claude"]\ncomponents = []\n'
+    for name, new in (
+        ("a wrong setup", 'a = 1\n[setup]\nfrontends = ["claude"]\ncomponents = ["jq"]\n'),
+        (
+            "a setup with develop = false",
+            'a = 1\n[setup]\nfrontends = ["omp"]\ncomponents = ["jq"]\ndevelop = false\n',
+        ),
+    ):
+        try:
+            got = checked_setup(old, new, choice)
+        except HarnessError as e:
+            got = str(e)
+        case(f"the check of with_setup refuses {name} beside an equal rest: {got!r}", ok=REFUSED in got)
+    new = 'a = 1\n[setup]\nfrontends = ["omp"]\ncomponents = ["jq"]\n'
+    try:
+        got = checked_setup(old, new, choice)
+    except HarnessError as e:
+        got = str(e)
+    case(f"the check of with_setup passes the chosen setup beside an equal rest: {got!r}", ok=got == new)
+    for name, before, new in (
+        ("another key changed", old, 'a = 2\n[setup]\nfrontends = ["omp"]\ncomponents = ["jq"]\n'),
+        ("a key added", old, 'a = 1\nb = 1\n[setup]\nfrontends = ["omp"]\ncomponents = ["jq"]\n'),
+        ("invalid TOML", old, 'a = 1\n[setup]\nfrontends = ["omp"]\ncomponents = ["jq"]\n[setup]\n'),
+        (
+            "another key of setup dropped",
+            'a = 1\n[setup]\nfrontends = ["claude"]\ncomponents = []\nx = 1\n',
+            'a = 1\n[setup]\nfrontends = ["omp"]\ncomponents = ["jq"]\n',
+        ),
+        (
+            "an old setup that is no table",
+            "a = 1\nsetup = 1\n",
+            'a = 1\n[setup]\nfrontends = ["omp"]\ncomponents = ["jq"]\n',
+        ),
+    ):
+        try:
+            got = checked_setup(before, new, choice)
+        except HarnessError as e:
+            got = str(e)
+        case(f"the check of with_setup refuses {name}: {got!r}", ok=REFUSED in got)
+
+
+def string_header_cases(case: Case, tmp: pathlib.Path, pins: Pins) -> None:
+    """A line `[setup]` inside a multi-line string before the table, and an answer that is not
+    valid UTF-8: each exits 2 with one line and changes nothing."""
+    for name, answers in (
+        ("a new choice", ("1", "3", "n")),
+        ("the choice the profile holds", ("", "", "")),
+    ):
+        s = scratch(tmp, f"string-header-{answers[0] or 'same'}", MACOS_FAKES)
+        text = s.profile.read_text(encoding="utf-8").replace(
+            'launchd_prefix = "org.example"', 'launchd_prefix = """\n[setup]\n"""'
+        )
+        s.profile.write_text(text, encoding="utf-8")
+        before = s.profile.read_bytes()
+        loads = profile_module.load(s.profile, home=str(s.home)).setup == profile_module.Setup()
+        code, _ = attempt(s.machine(), s.options(yes=False), Asker(*answers), terminal=True, pins=pins)
+        case(
+            f"a line [setup] in a multi-line string before the table, with {name}, exits 2 naming the "
+            f"form and leaves the profile byte for byte: {code!r}",
+            ok=loads and code.startswith("exit 2") and REFUSED in code and s.profile.read_bytes() == before,
+        )
+    s = scratch(tmp, "not-utf-8", MACOS_FAKES)
+    s.profile.unlink()
+    answers = ("x\udcff", *[""] * (len(profile_module.REQUIRED) - 1), "", "", "", "y")
+    try:
+        code, out = attempt(s.machine(), s.options(yes=False), Asker(*answers), terminal=True, pins=pins)
+        code.encode()
+    except UnicodeEncodeError as e:
+        code, out = f"raised {type(e).__name__}: {e.reason}", ""
+    case(
+        f"an answer that is not valid UTF-8 exits 2 with one line and no traceback: {code!r}",
+        ok=code.startswith("exit 2")
+        and "UTF-8" in code
+        and "\n" not in code
+        and "Traceback" not in out
+        and not s.profile.exists(),
+    )
 
 
 def edge_cases(case: Case, tmp: pathlib.Path) -> None:
     """An os-release value in single quotes, an answer with U+007F or empty list items, a
-    sha256 of 65 digits, a release that redirects, and a log directory that cannot be made."""
+    sha256 of 65 digits, and a log directory that cannot be made."""
     release = tmp / "os-release-quoted"
     release.write_text("ID='pop'\nID_LIKE='ubuntu debian'\n", encoding="utf-8")
     case(f"os-release in single quotes names Ubuntu: {distro(release)!r}", ok=distro(release) == "ubuntu")
@@ -2196,7 +2334,22 @@ def edge_cases(case: Case, tmp: pathlib.Path) -> None:
     except HarnessError as e:
         got = str(e)
     case(f"a sha256 of 65 digits exits 2 naming it: {got}", ok="sha256" in got)
+    s = scratch(tmp, "logs", MACOS_FAKES)
+    (s.home / "Library").mkdir(parents=True)
+    (s.home / "Library" / "Logs").write_text("in the way\n", encoding="utf-8")
+    try:
+        failure = load_agent(s.machine(), "kaimon", "org.example.kaimon", s.home / "a.plist")
+    except OSError as e:
+        failure = f"raised {e!r}"
+    case(
+        f"a log directory that cannot be made fails the step, naming it: {failure}",
+        ok=failure is not None and not failure.startswith("raised") and "Logs" in failure,
+    )
 
+
+def redirect_cases(case: Case, tmp: pathlib.Path) -> None:
+    """A release that redirects: to another host, once to the allowed host, twice, and once to the
+    allowed host by another scheme."""
     body = b"#!/bin/sh\n"
     archive = io.BytesIO()
     with tarfile.open(fileobj=archive, mode="w:gz") as tar:
@@ -2214,17 +2367,28 @@ def edge_cases(case: Case, tmp: pathlib.Path) -> None:
         f"a release that redirects to another host installs nothing: {failure}",
         ok=failure is not None and "redirect" in failure and not (home / ".local").exists(),
     )
-    s = scratch(tmp, "logs", MACOS_FAKES)
-    (s.home / "Library").mkdir(parents=True)
-    (s.home / "Library" / "Logs").write_text("in the way\n", encoding="utf-8")
-    try:
-        failure = load_agent(s.machine(), "kaimon", "org.example.kaimon", s.home / "a.plist")
-    except OSError as e:
-        failure = f"raised {e!r}"
-    case(
-        f"a log directory that cannot be made fails the step, naming it: {failure}",
-        ok=failure is not None and not failure.startswith("raised") and "Logs" in failure,
-    )
+    moved = {"/a.tar.gz": "/b.tar.gz", "/c.tar.gz": "/a.tar.gz"}
+    with release_server({"/b.tar.gz": data}, moved) as url:
+        for name, path, scheme, installs in (
+            ("one redirect to the allowed host", "a", "http", True),
+            ("two redirects to the allowed host", "c", "http", False),
+            ("one redirect to the allowed host by http, where https is allowed", "a", "https", False),
+        ):
+            home = tmp / f"redirect-{path}-{scheme}"
+            machine = Machine("Linux", "x86_64", "ubuntu", home, {}, tmp, (), tmp)
+            failure = install_release(
+                machine,
+                "gitleaks",
+                Release("1", f"{url}/{path}.tar.gz", hashlib.sha256(data).hexdigest()),
+                redirect=(scheme, "127.0.0.1"),
+            )
+            target = home / ".local" / "bin" / "gitleaks"
+            case(
+                f"{name}: {'installs' if installs else 'refused, installs nothing'}: {failure}",
+                ok=(failure is None and target.is_file() and target.read_bytes() == body)
+                if installs
+                else (failure is not None and "redirect" in failure and not (home / ".local").exists()),
+            )
 
 
 def apt_cache_cases(case: Case, tmp: pathlib.Path, pins: Pins) -> None:
@@ -2362,7 +2526,9 @@ def selftest() -> tuple[int, int]:
         token_cases(case, root)
         yes_cases(case, root, pins)
         header_cases(case)
+        string_header_cases(case, root, pins)
         edge_cases(case, root)
+        redirect_cases(case, root)
         apt_cache_cases(case, root, pins)
         recheck_cases(case, root, pins)
         doctor_cases(case, root, pins)

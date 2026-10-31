@@ -146,10 +146,11 @@ files. Each step that `setup` cannot do, such as the Antigravity app and
 the answer to the plan is no; 1 after the plan ran and `harness doctor` reported a FAIL; 2 when a
 step fails, which prints its output first, `harness doctor` with a status other than 0 or 1
 included; when stdin is no terminal and `--yes` is not given; when `--yes` finds no profile; when
-the profile's `setup` is an inline table or dotted keys; on Ubuntu when `apt-cache` fails, and
-without `sudo`, or when `sudo -n true` is refused, after the apt line is printed for an
-administrator; and on a system other than macOS and Ubuntu, or an unknown architecture. A second
-run plans again and starts from the first step; each step skips what is done.
+`[setup]` cannot be written into the profile in place, naming the table to write; when an answer
+is not valid UTF-8; on Ubuntu when `apt-cache` fails, and without `sudo`, or when `sudo -n true`
+is refused, after the apt line is printed for an administrator; and on a system other than macOS
+and Ubuntu, or an unknown architecture. A second run plans again and starts from the first step;
+each step skips what is done.
 
 **Reads:** the profile, `setup/tools.toml`, the versions of the installed tools, and on Ubuntu
 `apt-cache policy`. **Writes:** the profile (in a terminal), `models.toml` when it is missing, the
