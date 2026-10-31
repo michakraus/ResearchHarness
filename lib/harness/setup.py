@@ -13,8 +13,8 @@ It then shows the plan and runs it after y/N; the first step of that plan writes
 `[setup]` of the profile (`with_setup`), `develop` only where it is true. `--yes` reads `[setup]`,
 or the defaults of a profile without it, asks nothing and never writes the profile; without a
 profile it exits 2. Without a terminal on stdin and without `--yes` it exits 2 and names
-`--yes`. `--dry-run`, alone or with `--yes`, prints the plan and changes nothing. A missing
-models.toml beside the profile is copied from examples/models.toml.
+`--yes`. `--dry-run`, alone or with `--yes`, prints the plan and changes nothing. Missing model
+tables are copied from examples/models.toml.
 
 The plan (`plan`), in this order: the directories that `harness install` needs (the tree
 instructions, each `repository_roots` entry, and the OpenCode directory with `opencode`); the
@@ -70,8 +70,7 @@ from .fsutil import Case, write_private
 
 PINS = REPO / "setup" / "tools.toml"
 MODELS = REPO / "examples" / "models.toml"
-# Seconds: a version query, an apt-cache query, a check of sudo, a launchctl query, a download;
-# and an install, an installer or a harness step.
+# Seconds: a version query, an apt-cache query and a download; and every command of a step.
 TIMEOUT, INSTALL_TIMEOUT = 60, 3600
 # The architectures of each system, as `platform.machine()` names them.
 SYSTEMS = {"Darwin": ("arm64", "x86_64"), "Linux": ("x86_64", "aarch64")}
@@ -1648,8 +1647,8 @@ def step_cases(case: Case, tmp: pathlib.Path, pins: Pins) -> None:
 
 
 def helper_cases(case: Case, tmp: pathlib.Path) -> None:
-    """The os-release file, the PATH, a numbered list, an archive without its program, and a
-    minimum that is not a list."""
+    """The os-release file, the PATH, the y/N, a numbered list, an archive without its program, and
+    the types of setup/tools.toml."""
     release = tmp / "os-release"
     for text, want in (
         ('ID=ubuntu\nVERSION_ID="26.04"\n', "ubuntu"),
@@ -1894,7 +1893,7 @@ def token_cases(case: Case, tmp: pathlib.Path) -> None:
 
 
 def selftest() -> tuple[int, int]:
-    """The cases of the module docstring: (number of cases, number wrong)."""
+    """The cases of the functions above: (number of cases, number wrong)."""
     total = wrong = 0
 
     def case(label: str, *, ok: bool) -> None:

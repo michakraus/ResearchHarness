@@ -109,8 +109,9 @@ The plan holds these steps, in this order:
    `sudo apt-get install -y` line of each package whose apt candidate meets the tool's minimum;
 3. on Ubuntu, each tool that apt does not meet, from its pinned release of `setup/tools.toml`
    into `~/.local/bin`, after a check of the sha256 of the archive;
-4. the vendor installers: juliaup, Claude Code, and on Ubuntu OpenCode (with `--no-modify-path`),
-   oh-my-pi and fatou; then Kaimon as a Julia app;
+4. the vendor installers, in this order: juliaup, Julia through juliaup when juliaup is there,
+   fatou on Ubuntu, Kaimon as a Julia app, Claude Code, and on Ubuntu OpenCode (with
+   `--no-modify-path`) and oh-my-pi;
 5. `harness install --apply`;
 6. `git config core.hooksPath .githooks` in the clone;
 7. `harness trust --apply`;
@@ -125,8 +126,9 @@ A tool that is installed at or above its minimum of [dependencies.md](dependenci
 a tool with no minimum, only a version that it is tested with, is met by any version.
 `setup/tools.toml` holds the minimums and the pinned releases. The OpenCode installer runs only
 when `opencode` is not on the `PATH`, and the juliaup installer only when `juliaup` is not.
-`setup` changes no shell startup file: it prints the `PATH` line that a tool in
-`~/.opencode/bin` needs. Each step that `setup` cannot do, such as the Antigravity app and
+`setup` runs the OpenCode installer with `--no-modify-path` and prints the `PATH` line of
+`~/.opencode/bin` instead; the juliaup installer adds its own `PATH` block to the shell startup
+files. Each step that `setup` cannot do, such as the Antigravity app and
 `loginctl enable-linger` for the jobs on Linux, is printed under *By hand*.
 
 | option | meaning |
