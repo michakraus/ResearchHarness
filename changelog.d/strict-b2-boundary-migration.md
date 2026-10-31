@@ -1,8 +1,9 @@
 - **Every JSON read goes through `jsonio`, every merge into a file another program owns through
   `ownedjson`, every secret write through `write_private`, and every `subprocess.run` names a
-  timeout.** A key twice in one object, a `NaN` or a deep nesting is now refused with exit 2 and
-  the line at each read, where `json` kept the last value or read the constant; ruff bans
-  `json.load` and `json.loads` outside the two copies of `jsonio` and the dotfiles kit's tests.
+  timeout.** A key twice in one object, a `NaN` or a deep nesting is now refused at each read
+  with a message that names the text and the line, where `json` kept the last value, read the
+  constant or raised `RecursionError`; ruff bans `json.load` and `json.loads` outside the two
+  copies of `jsonio` and the dotfiles kit's tests.
   `jsonio.loads` takes `top=` for a top level that is an array, a string or any value. The merges
   of Claude Code's `settings.json`, `~/.claude.json` (`harness trust`), and Antigravity's CLI
   settings, `config.json` and `mcp_config.json` keep every byte that they do not change: a

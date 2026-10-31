@@ -125,9 +125,10 @@ that enforces it, and loads on every `.py` file. This section gives the reason f
   run a command line through the shell, so its quoting decides what runs. `json.load` and
   `json.loads` keep the last value of a key that an object holds twice, read `NaN` and fail on a
   deep nesting with `RecursionError`, so ruff bans them outside `lib/harness/jsonio.py` and the
-  guard's copy of it, which refuse each with a message that names the text; a merge into a file
-  that another program owns goes through `ownedjson.py`, which keeps every byte that it does not
-  change. `json.load` at each call site also spreads the parsing of one kind of file over many
+  guard's copy of it, which refuse each with a message that names the text, and outside the tests
+  of the dotfiles kit, which run with no harness beside them; a merge into a file that another
+  program owns goes through `ownedjson.py`, which keeps every byte that it does not change.
+  `json.load` at each call site also spreads the parsing of one kind of file over many
   functions. `shlex` splits as POSIX `sh` does, so a guard that decides on its tokens can allow a
   command that the real shell runs differently. A secret file that is written and then given mode
   `0600` is readable by others in between, so `write_private` of `fsutil.py` writes it, and a case
