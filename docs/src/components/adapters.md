@@ -232,9 +232,9 @@ The path list checks text only. A path that a command builds at run time passes 
 
 ## `opencode/plugins/guard-paths.json`
 
-The deny list of the path check that `guards.ts` runs. It holds the `read` denies of OpenCode's permission
-block: the `Read` denies of the settings template, and one deny that only OpenCode needs, its own
-data directory.
+The deny list of the guard's path check under OpenCode. It holds the `read` denies of OpenCode's
+permission block: the `Read` denies of the settings template, and one deny that only OpenCode
+needs, its own data directory.
 
 `harness permissions --apply` writes the file from the settings template. Do not edit it by hand.
 The paths hold `{home}`, so `harness install` renders the file with the profile and writes it to

@@ -52,7 +52,7 @@
 
 ### K22 · Under OpenCode, a verify critic carries the round-1 rule of the council.
 
-- location: `adapters/opencode/adapter.py:242-251`
+- location: `adapters/opencode/adapter.py:252-261`
 - evidence: `preamble` adds "Round 1 has three critics here, `1a`, `1b` and `1c` … your probe
   directory is `round-1a/`, `round-1b/` or `round-1c/`" to the agent that a council is keyed on.
   The council of `examples/models.toml` and the draft `models.toml` is keyed on `julia-critic`,
@@ -192,7 +192,7 @@
 
 ### K76 · Under OpenCode v2 an agent with `bash: deny` still has the `execute` tool, and no probe shows that a `permission` rule binds a tool called inside it.
 
-- location: `adapters/opencode/adapter.py:444`
+- location: `adapters/opencode/adapter.py:447`
 - evidence: v2 (2.0.30) gives an agent the `execute` tool of Code Mode. In a decoy probe of
   2026-10-16, agents with `bash`, `edit`, `task`, `webfetch` and `websearch` denied still had it.
   Its catalog listed 14 of Kaimon's 33 MCP tools, and `search` inside `execute` finds the rest. The
@@ -203,7 +203,7 @@
 
 ### K77 · Under OpenCode v2 no rule of the generated block stops the `read` tool on a credential file inside the session's project root.
 
-- location: `adapters/opencode/adapter.py:165`
+- location: `adapters/opencode/adapter.py:168`
 - evidence: v2 (2.0.30) binds a `read` deny only in project-relative form: an absolute or `~/`
   pattern, in an agent or in `opencode.jsonc`, did not stop the `read` tool on a decoy in decoy
   probes of 2026-10-16, and a project-relative one did. The credential denies are absolute, so
@@ -215,7 +215,7 @@
 
 ### K78 · Under OpenCode v2 a `**/` `edit` deny probably does not stop the `edit` tool on a file in the project root.
 
-- location: `adapters/opencode/adapter.py:425`
+- location: `adapters/opencode/adapter.py:428`
 - evidence: v2 (2.0.30) matches a `read` pattern against the path relative to the project root,
   with `*` crossing `/` and both ends anchored: `**/*.pem` did not stop a read of `x.pem` in the
   root, and its root form `*.pem` did, in decoy probes of 2026-10-16. `with_root_forms` adds the
@@ -339,17 +339,17 @@
 
 ### K96 · The worktree rule of the OpenCode and oh-my-pi agents fires on the bare word `isolation`.
 
-- location: `adapters/omp/adapter.py:453`
+- location: `adapters/omp/adapter.py:479`
 - evidence: `"isolation" in body` is true for any body that holds the word, so an agent that says
   "the caller spawned you without isolation" (`agents/julia-builder.md:86`) gets the worktree rule
   of its "Under OpenCode" or "Under oh-my-pi" section. The same test is at
-  `adapters/omp/adapter.py:1557` and `adapters/opencode/adapter.py:269`.
+  `adapters/omp/adapter.py:1625` and `adapters/opencode/adapter.py:279`.
 - kind: defect
 - found: #78
 
 ### K97 · The OpenCode skill rule says "Claude Code loads them for you" for a single skill.
 
-- location: `adapters/opencode/adapter.py:266`
+- location: `adapters/opencode/adapter.py:276`
 - evidence: the rule writes "Claude Code loads them for you" whatever the number of skills.
   `adapters/opencode/fixtures/expected/judge.md:23` shows it for the one skill `which-model`.
 - kind: docs
@@ -371,7 +371,7 @@
 - location: `adapters/antigravity/adapter.py:716`
 - evidence: `sections(text)` returns `{m.group(1): m.group(2).strip() for m in
   re.finditer(r"(?m)^## (\w+)\n(.*?)(?=^## |\Z)", text, re.S)}`, the same expression that
-  `adapters/omp/adapter.py:442` writes inline for `UNDER-OMP.md`.
+  `adapters/omp/adapter.py:469` writes inline for `UNDER-OMP.md`.
 - kind: dead code
 - found: #78
 
@@ -456,7 +456,7 @@
 
 ### K109 · A SIGKILL of `harness test` leaves its running parts as orphans, and frees its slot while they run.
 
-- location: `lib/harness/testrun.py:165`
+- location: `lib/harness/testrun.py:168`
 - evidence: `run_part` starts each part with `start_new_session=True`, and the run stops the
   parts' process groups only from Python: on an error, an interrupt, a SIGTERM or a SIGHUP. A
   SIGKILL ends the run with no handler, so each running part goes on, and the 300 s limit, which
@@ -467,7 +467,7 @@
 
 ### K110 · `changed` runs `git diff` with no `timeout=`.
 
-- location: `lib/harness/testrun.py:114`
+- location: `lib/harness/testrun.py:117`
 - evidence: `subprocess.run(["git", "diff", "--name-status", …], cwd=root, capture_output=True,
   text=True, check=False)` names no `timeout`, so a `git` that does not end holds
   `harness test --changed` with it. No `git diff` that hangs is known, and no configuration of
@@ -506,8 +506,7 @@
 - location: `hooks/guard/no_shell_file_write.py:338`
 - evidence: `tree_write` returns False when the raw target starts with a scratch prefix, before it
   resolves `..`, so `echo x > /tmp/../<tree>/f.txt`, `echo x > $TMPDIR/../f.txt` and
-  `echo x > ~/Research/.scratch/../Harness/f.jl` pass. `hooks/no-shell-file-write.py` passes them
-  too.
+  `echo x > ~/Research/.scratch/../Harness/f.jl` pass.
 - kind: defect
 - found: 2026-10-29, the critics of the guard core
 
@@ -515,8 +514,7 @@
 
 - location: `hooks/guard/no_shell_file_write.py:44`
 - evidence: `REDIRECT` matches `<>`, and `split` keeps a target only for an operator that does not
-  start with `<`, so `echo x <> f.txt` in a work tree passes. `hooks/no-shell-file-write.py`
-  passes it too.
+  start with `<`, so `echo x <> f.txt` in a work tree passes.
 - kind: defect
 - found: 2026-10-29, the critics of the guard core
 
@@ -525,7 +523,7 @@
 - location: `hooks/guard/no_shell_file_write.py:142`
 - evidence: `cut_heredocs` removes each body before the command is read, and the shell runs a
   `$( … )` in an unquoted heredoc body, so `cat <<EOF` with the body line `$(echo x > f.txt)`
-  passes. `hooks/no-shell-file-write.py` passes it too.
+  passes.
 - kind: defect
 - found: 2026-10-29, the critics of the guard core
 
@@ -534,8 +532,7 @@
 - location: `hooks/guard/no_blind_stage.py:41`
 - evidence: from a package work tree, `env git add -A`, `command git add -A`, `time git add -A`,
   `X=1 git add -A`, `! git add -A`, `{ git add -A; }`, `if true; then git add -A; fi`,
-  `git add $'-A'`, `git add ./.` and `git add .//` pass the guard and
-  `hooks/no-blind-stage.py`. The corpus holds no `$'…'` record for the staging check.
+  `git add $'-A'`, `git add ./.` and `git add .//` pass the guard. The corpus holds no `$'…'` record for the staging check.
 - kind: defect
 - found: 2026-10-29, the critics of the guard core
 
@@ -544,7 +541,7 @@
 - location: `hooks/guard/rm_scope.py:187`
 - evidence: `decide` skips only assignments, `command`, `nohup` and `time` before the program,
   and `rm_arguments` takes only `--recursive` of the long options, so `sudo rm -rf ~` and
-  `rm --r ~` pass the guard and `hooks/rm-scope.py`.
+  `rm --r ~` pass the guard.
 - kind: defect
 - found: 2026-10-29, the critics of the guard core
 
@@ -553,8 +550,7 @@
 - location: `hooks/guard/gh_api_writes.py:204`
 - evidence: the `gh api` check needs the tool as a part's first word, and the archive check skips
   only assignments before `git`, so `env gh api -X DELETE x`, `GH_HOST=x gh api -X DELETE x` and
-  `env git archive -o x HEAD` pass the guard and the scripts `hooks/gh-api-writes.py` and
-  `hooks/git-archive-output.py`.
+  `env git archive -o x HEAD` pass the guard.
 - kind: defect
 - found: 2026-10-29, the critics of the guard core
 
@@ -563,7 +559,7 @@
 - location: `hooks/guard/gh_api_writes.py:200`
 - evidence: `verdict_of` returns at the first part that asks, so
   `gh api -X POST repos/example-org/X/issues && gh api -X DELETE repos/example-org/X` is `ask`, not
-  `deny`. `hooks/gh-api-writes.py` gives `ask` too.
+  `deny`.
 - kind: defect
 - found: 2026-10-29, the critics of the guard core
 
@@ -600,3 +596,25 @@
   10 s, its `MIB_LIMIT`, below the 15 s.
 - kind: not verified
 - found: 2026-10-31, the spec of the OpenCode and oh-my-pi guard core
+
+### K124 · The oh-my-pi path guard reads no `cd` after `if`, and no `cd` whose directory a substitution makes empty, as a `cd` home.
+
+- location: `hooks/guard/path_list.py:356`
+- evidence: `cd_words` takes a `cd` as the first word of a part or after a word of `LEAD`, which
+  holds no `if`, and reads `$(true)` as a directory. On a fixture home, with `~/.netrc` denied and
+  the session in `~/Research`, the guard (`--from omp`) answers `deny` to ``cd `true`; cat .netrc``
+  and passes ``if cd `true`; then cat .netrc; fi`` and `cd $(true); cat .netrc`, which read
+  `~/.netrc`. The base's extension passes both too.
+- kind: defect
+- found: 2026-10-31, the critics of the OpenCode and oh-my-pi guard core
+
+### K125 · The OpenCode path guard reads no `cd`, so a relative path after a `cd` home passes.
+
+- location: `hooks/guard/frontends/opencode.py:114`
+- evidence: `shell_calls` gives the call the `workdir` or the session's directory as its working
+  directory, and the path list resolves a relative word against it, not against the directory
+  that a `cd` in the command sets. On a fixture home, with `~/.netrc` denied and the session in `~/Research`, the guard
+  (`--from opencode`) answers `deny` to `cat ~/.netrc` and passes `cd; cat .netrc` and
+  ``cd `true`; cat .netrc``, which read `~/.netrc`. The base's plugin passes both too.
+- kind: defect
+- found: 2026-10-31, the critics of the OpenCode and oh-my-pi guard core
