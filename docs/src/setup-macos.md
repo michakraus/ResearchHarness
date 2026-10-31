@@ -520,7 +520,7 @@ harness install
 
 `harness install` writes the Antigravity layer into `~/.gemini/config/`: the global instruction
 file `GEMINI.md`, the always-on rules and the rules, the skills, the agents, the guard hook
-`hooks.json` with `guard.py` and the guard scripts, the path list, and the Kaimon entry of
+`hooks.json` with the guard package, the path list, and the Kaimon entry of
 `mcp_config.json`. It also writes the permission rules into the settings of the CLI `agy`,
 `~/.gemini/antigravity-cli/settings.json`, and into the grants of the desktop app,
 `~/.gemini/config/config.json`, each after a backup.

@@ -2,8 +2,8 @@
 standard library, and `.githooks/pre-commit` refuses a commit that fails `ruff format --check`,
 `ruff check` or `basedpyright`.
 
-The import cases parse each `.py` file below `hooks/`, each `adapters/*/guard*.py` and
-`githooks/pre-commit-wiki` with `ast`, in this repository and in scratch trees. The hook cases
+The import cases parse each `.py` file below `hooks/` and `githooks/pre-commit-wiki` with `ast`,
+in this repository and in scratch trees. The hook cases
 commit in a scratch repository whose `core.hooksPath` is this checkout's `.githooks/`, with
 $RESEARCH_HARNESS_PYTHON set to a scratch
 environment whose `bin/` holds stubs of `ruff` and `basedpyright`. A stub logs its arguments and
@@ -28,11 +28,12 @@ HOOK = REPO / ".githooks" / "pre-commit"
 TOOLS = ("ruff", "basedpyright")
 TIMEOUT = 60
 # The modules beyond the standard library that a file may import: the hook probe loads the
-# harness's own package, and the guard's Claude Code table imports the guard package by its name
-# `guard`, whose parent directory the guard's `__main__` puts on `sys.path`.
+# harness's own package, and the guard's tables of Claude Code and Antigravity import the guard
+# package by its name `guard`, whose parent directory the guard's `__main__` puts on `sys.path`.
 OWN = {
     "hooks/probe.py": frozenset({"harness"}),
     "hooks/guard/frontends/claude.py": frozenset({"guard"}),
+    "hooks/guard/frontends/antigravity.py": frozenset({"guard"}),
 }
 # The three commands of the hook, as the stubs log them.
 COMMANDS = ["ruff format --check --no-cache .", "ruff check --no-cache .", "basedpyright"]
@@ -67,13 +68,9 @@ sys.exit(1 if found else 0)
 
 
 def guarded_files(root: pathlib.Path) -> list[pathlib.Path]:
-    """The files that may import only the standard library: each `.py` file below `hooks/`, each
-    `adapters/*/guard*.py`, and the hook of the prose repositories, `githooks/pre-commit-wiki`."""
-    return (
-        sorted(root.glob("hooks/**/*.py"))
-        + sorted(root.glob("adapters/*/guard*.py"))
-        + sorted(root.glob("githooks/pre-commit-wiki"))
-    )
+    """The files that may import only the standard library: each `.py` file below `hooks/`, and the
+    hook of the prose repositories, `githooks/pre-commit-wiki`."""
+    return sorted(root.glob("hooks/**/*.py")) + sorted(root.glob("githooks/pre-commit-wiki"))
 
 
 def third_party_imports(root: pathlib.Path) -> list[str]:
@@ -109,8 +106,8 @@ def import_cases(case: Callable[[Callable[[], bool], str], None], tmp: pathlib.P
         ("hooks/x.py", "import harness\n", ["hooks/x.py:1: harness"]),
         ("hooks/probe.py", "import harness\nfrom harness import install\n", []),
         ("hooks/sub/x.py", "import os.path, yaml\n", ["hooks/sub/x.py:1: yaml"]),
-        ("adapters/a/guard.py", "import yaml\n", ["adapters/a/guard.py:1: yaml"]),
-        ("adapters/a/guards.py", "import yaml\n", ["adapters/a/guards.py:1: yaml"]),
+        ("hooks/guard/frontends/antigravity.py", "from guard import path_list\n", []),
+        ("hooks/guard/x.py", "from guard import path_list\n", ["hooks/guard/x.py:1: guard"]),
         ("adapters/a/adapter.py", "import yaml\n", []),
         ("hooks/x.py", "from . import y\n", []),
         ("hooks/x.py", "from .yaml import y\n", []),

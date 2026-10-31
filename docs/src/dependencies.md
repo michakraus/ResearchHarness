@@ -103,7 +103,7 @@ or JSON safely, and a compiled tool needs a build step on each machine.
 Call sites: every subcommand (`bin/harness`); the pre-push hook (`.githooks/pre-push`);
 the guard hooks, which Claude Code calls (`~/.claude/settings.json`), OpenCode calls
 (`adapters/opencode/plugins/guards.ts`), oh-my-pi calls (`adapters/omp/guards.ts`) and
-Antigravity's guard hook runs (`adapters/antigravity/guard.py`).
+Antigravity calls (`~/.gemini/config/hooks.json`).
 
 ### uv
 

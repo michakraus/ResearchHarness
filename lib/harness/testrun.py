@@ -56,6 +56,8 @@ OWNERS = [
     # The probe groups of these three adapters load their guard files from the repository.
     (r"adapters/(omp|opencode|antigravity)/.+", [r"\1", r"probe:\1"]),
     (r"adapters/([^/]+)/.+", [r"\1"]),
+    # The Antigravity adapter installs the guard package and its cases read the path-list check.
+    (r"hooks/guard/.+", ["antigravity", "probe:*"]),
     (r"hooks/.+", ["probe:*"]),
     (r"launchagents/.+", ["autocommit", "units"]),
     (r"lib/harness/doctor\.py", ["doctor:*"]),
@@ -591,7 +593,7 @@ def selftest():
         ("lib/harness/doctor.py", sorted(f"doctor:{g}" for g in doctor.GROUPS)),
         ("hooks/rm-scope.py", sorted(f"probe:{g}" for g in PROBE_GROUPS)),
         ("adapters/omp/OMP-DELTA.md", ["omp", "probe:omp"]),
-        ("adapters/antigravity/guard.py", ["antigravity", "probe:antigravity"]),
+        ("hooks/guard/path_list.py", sorted(["antigravity", *(f"probe:{g}" for g in PROBE_GROUPS)])),
         ("adapters/omp/guards.ts", ["omp", "probe:omp"]),
         ("adapters/opencode/plugins/guards.ts", ["opencode", "probe:opencode"]),
         ("adapters/claude/adapter.py", ["claude"]),

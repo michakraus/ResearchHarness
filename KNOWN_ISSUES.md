@@ -29,70 +29,27 @@
 
 ### K88 · The Antigravity guard applies no Bash rule to a command that a string argument, ANSI-C or locale quoting, or a variable or substitution holds.
 
-- location: `adapters/antigravity/guard.py:267`
-- evidence: `guard.py` matches the template's Bash denies and asks on the words of each segment as
+- location: `hooks/guard/path_list.py:358`
+- evidence: the guard matches the template's Bash denies and asks on the words of each segment as
   the line writes them, and does not run the shell's expansions. On a fixture home it answers
   `deny` to `git push --force origin x` and `ask` to each of these lines, which run the same push:
   `bash -c 'git push --force origin x'`, the same with `sh -c` and `zsh -c`,
   `eval 'git push --force origin x'`, `git push $'--force' origin x`,
-  `git push $"--force" origin x`, `g=git; $g push --force origin x` and
-  `$(echo git) push --force origin x`. In the desktop app, which reads no `permissions`, such a
+  `git push $"--force" origin x` and `g=git; $g push --force origin x`. In the desktop app, which reads no `permissions`, such a
   push then runs unless the app's own settings refuse it. The user decided to land the guard with
   this limit of a text-pattern rule; the sandbox stays the containment.
 - kind: defect
 - found: 2026-10-23
 
-### K89 · The path check of the Antigravity guard keeps a backslash-newline inside a word.
-
-- location: `adapters/antigravity/guard.py:217`
-- evidence: `words()` splits the line with `shlex`, which keeps the newline of a backslash-newline
-  in the word (`~/.ssh/id_\ned25519`), where the shell joins the two lines. On a fixture home the
-  guard answers `deny` to `cat ~/.ssh/id_ed25519` and `ask` to `cat ~/.ssh/id_\<NL>ed25519` and
-  to `cat ~/.config/gh/hosts\<NL>.yml` (`<NL>` a newline), which read the same files.
-- kind: defect
-- found: 2026-10-23, PR #76
-
-### K90 · The path check of the Antigravity guard reads a `#` inside a word as a comment.
-
-- location: `adapters/antigravity/guard.py:217`
-- evidence: `shlex` starts a comment at a `#` inside a word, and the shell starts one only at the
-  start of a word. On a fixture home the guard answers `deny` to `cat ~/.netrc` and `ask` to
-  `cat x# ~/.netrc`, which reads `~/.netrc` (`bash -c 'echo x# ~/.netrc'` prints the expanded
-  path).
-- kind: defect
-- found: 2026-10-23, PR #76
-
-### K91 · A comment that ends in a backslash-newline hides the next line from the Bash rules of the Antigravity guard.
-
-- location: `adapters/antigravity/guard.py:251`
-- evidence: `segments()` reads no comment and drops the backslash-newline, so the first word of the
-  next line joins the comment's word (`#git`), and no rule sees the command word. The shell ends
-  the comment at the newline and runs the next line. On a fixture home the guard answers `deny`
-  to `git push --force origin x` and `ask` to `echo #\<NL>git push --force origin x` (`<NL>` a
-  newline), which runs the push.
-- kind: defect
-- found: 2026-10-23, PR #76
-
 ### K92 · The path check of the Antigravity guard reads no string argument and no substitution.
 
-- location: `adapters/antigravity/guard.py:225`
-- evidence: `refused_command()` checks the words of the line as it writes them. On a fixture home
+- location: `hooks/guard/path_list.py:210`
+- evidence: `command_words()` reads the words of the line as it writes them. On a fixture home
   the guard answers `deny` to `cat ~/.netrc` and `ask` to `bash -c 'cat ~/.netrc'`, to
   `sh -c "cat ~/.config/gh/hosts.yml"` and to `cat $(printf ~/.ne)trc`, which read the denied
   files.
 - kind: defect
 - found: 2026-10-23, PR #76; the same class as K88
-
-### K93 · No case covers the "outside single quotes" condition of the backslash-newline drop in `segments()` of the Antigravity guard.
-
-- location: `adapters/antigravity/guard.py:251`
-- evidence: the mutant that drops a backslash-newline inside single quotes too (`line[i:j]` →
-  `line[i:j].replace("\\\n", "")` at `guard.py:256`) passes the adapter selftest and the `agy`
-  cases of `hooks/probe.py`: "TOTAL 182 cases, 0 wrong". The mutant fails closed: it answers
-  `deny` to `rm -rf '/\<NL>'` (`<NL>` a newline), where the head answers `ask`. A case
-  `rm -rf '/\<NL>'` → `ask` closes the gap.
-- kind: missing test
-- found: 2026-10-23, PR #76
 
 ### K22 · Under OpenCode, a verify critic carries the round-1 rule of the council.
 
@@ -360,18 +317,6 @@
 - kind: found late
 - found: #67
 
-### K87 · A `multi_replace_file_content` call passes the `edit` and `ask` lists of the Antigravity guard.
-
-- location: `adapters/antigravity/guard.py:99`
-- evidence: `WRITE_TOOLS` names the four write tools that the G0 probe of Antigravity saw:
-  `write_file`, `edit_file`, `write_to_file` and `replace_file_content`. The binary also names
-  `multi_replace_file_content`, which the probe did not see, and its `TargetFile` meets only the
-  `deny` list. So `multi_replace_file_content` {`TargetFile`: `<repo>/.git/config`} gets `ask`,
-  where `write_to_file` with the same path gets `deny`. A probe of the tool's arguments decides
-  whether it joins `WRITE_TOOLS`.
-- kind: found late
-- found: 2026-10-23
-
 ### K94 · A new `mcp_config.json` holds Kaimon's token under the umask mode for a short time.
 
 - location: `lib/harness/install.py:119`
@@ -455,16 +400,16 @@
 - kind: defect
 - found: #80
 
-### K103 · The Antigravity guard answers `ask`, not `deny`, to a command or a `multi_replace_file_content` call that writes `config.json` or an installed agent.
+### K103 · The Antigravity guard answers `ask`, not `deny`, to a command that writes `config.json` or an installed agent.
 
-- location: `adapters/antigravity/adapter.py:382`
+- location: `adapters/antigravity/adapter.py:397`
 - evidence: `guard_paths` puts `~/.gemini/config/config.json` and `~/.gemini/config/agents/**` in
-  the `edit` list, which the guard applies to the write tools only, not to the words of a command
-  (`hooks/probe.py:1750`: "a read and a command word pass them"). On a fixture home the guard
-  answers `deny` to `write_to_file` {`TargetFile`: `~/.gemini/config/config.json`} and `ask` to
-  `run_command` {`CommandLine`: `cp /tmp/x ~/.gemini/config/config.json`}, to the same with
-  `~/.gemini/config/agents/julia-critic.md`, and to `multi_replace_file_content` {`TargetFile`:
-  either path}. The `multi_replace_file_content` half is K87.
+  the `edit` list, which the guard applies to the tools that write or edit a file only, not to the
+  words of a command (`hooks/guard/path_list.py:402`). On a fixture home the guard answers `deny`
+  to `write_to_file` and to `multi_replace_file_content` {`TargetFile`:
+  `~/.gemini/config/config.json`} and `ask` to `run_command` {`CommandLine`:
+  `cp /tmp/x ~/.gemini/config/config.json`} and to the same with
+  `~/.gemini/config/agents/julia-critic.md`.
 - kind: defect
 - found: #80
 
@@ -624,12 +569,12 @@
 - kind: defect
 - found: 2026-10-29, the critics of the guard core
 
-### K120 · No check reads `Call.caller` or `Verdict.sandbox`, so no case shows either field.
+### K120 · No check reads `Call.caller`, so no case shows the field.
 
 - location: `hooks/guard/contract.py:33`
-- evidence: `grep -rn '\.caller\|\.sandbox' hooks/guard/ hooks/probe.py` finds no line, so a
-  mutant of the table's `caller` survives every case. The contract holds both fields for the
-  frontends and the grammar of a sandbox lift that follow.
+- evidence: `grep -rn '\.caller' hooks/guard/ hooks/probe.py` finds no line, so a mutant of a
+  table's `caller` survives every case. The contract holds the field for the frontends that follow;
+  `Verdict.sandbox` is read by Antigravity's table.
 - kind: missing test
 - found: 2026-10-29, the critics of the guard core
 
@@ -642,3 +587,14 @@
   shows the effect.
 - kind: not verified
 - found: 2026-10-29, the critics of the guard core
+
+### K122 · The work-tree check passes a `git init` whose program name a quote splits, such as `g''it init x`.
+
+- location: `hooks/guard/sandbox_semantics.py:439`
+- evidence: `work_tree_check` reads the command only when its text holds `git`, and `g''it init x`
+  does not; the shell runs it as `git init x`. In a workspace that is a work tree, Antigravity's
+  guard answers `ask` with `BypassSandbox` true, where `git init x` is `deny`. The script's
+  `--work-tree` mode (`hooks/sandbox-semantics.py`) and the core's `check` filter the text the
+  same way.
+- kind: found late
+- found: 2026-10-31, the critics of the Antigravity guard

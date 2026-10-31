@@ -22,7 +22,7 @@ the anchor is one `Place`, `work_tree` asks a directory once whether it holds a 
 a payload reads each (directory, name, mode) at most once however many checks, readings and call
 sites ask for it. Above the reads, `go` walks a (start `Place`, word, mode) once, and `place` an
 absolute path text once in each mode, so a walk that every check and every reading asks for steps
-once.
+once. `contents` reads the text of a file once per process, as the path list of a frontend.
 """
 
 import functools
@@ -210,6 +210,13 @@ ANCHORS: dict[str, Place] = {}
 CHILDREN: dict[tuple[Place, str, Read], Place] = {}
 TREES: dict[tuple[Place, Read], Place | None] = {}
 WALKS: dict[tuple[Place, str, Mode], Place] = {}
+
+
+@functools.cache
+def contents(path: str) -> str:
+    """The text of the file `path`, read once per process; an `OSError` or a `UnicodeDecodeError`
+    when it cannot be read as UTF-8."""
+    return Path(path).read_text(encoding="utf-8")
 
 
 @functools.cache

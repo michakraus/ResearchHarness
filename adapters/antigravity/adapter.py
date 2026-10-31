@@ -3,7 +3,7 @@ settings, the instructions, rules and skills, the agents and Kaimon. Antigravity
 of its own.
 
 `harness install` writes these files below ~/.gemini/, after the Claude Code layer is planned,
-whose guard scripts, install-drift.py, instructions, rules and skills it copies. With no
+whose guard package, install-drift.py, instructions, rules and skills it copies. With no
 ~/.gemini/, Antigravity's directory, the plan holds no file and one warning:
 
   config/hooks.json              one named hook, `harness-guards`, with one `SessionStart`
@@ -12,14 +12,13 @@ whose guard scripts, install-drift.py, instructions, rules and skills it copies.
                                  is current, and a warning that names the script when it exits
                                  with an error or its output is not a JSON object with a text
                                  `systemMessage` (TRANSLATE); and one `PreToolUse` group, matcher
-                                 `*`, which runs config/hooks/guard.py; each by its absolute path,
-                                 on the Python environment's interpreter, with a timeout of 15 s
-                                 (render_hooks). The matcher names no tool,
-                                 so no tool is missed, and guard.py decides by the name of the tool
-  config/hooks/guard.py          adapters/antigravity/guard.py, byte for byte: the guard scripts
+                                 `*`, which runs config/hooks/guard `--from antigravity`; each by
+                                 its absolute path, on the Python environment's interpreter, with
+                                 a timeout of 15 s (render_hooks). The matcher names no tool, so
+                                 no tool is missed, and the guard decides by the name of the tool
+  config/hooks/guard/            the Claude Code layer's copy of the guard package, each file
+                                 byte for byte with its mode: its Antigravity table runs the checks
                                  and the path list on every tool call, failing closed
-  config/hooks/<script>          the guard scripts of frontends.GUARDS, copies of the Claude Code
-                                 layer's
   config/hooks/install-drift.py  the Claude Code layer's copy, with its mode; it checks the stamp
                                  of ~/.claude/ alone, and this layer writes no stamp of its own
   config/GEMINI.md               adapters/antigravity/ANTIGRAVITY-DELTA.md, byte for byte:
@@ -60,7 +59,7 @@ EXTRA, with its removal command (extras); every other file below ~/.gemini/, Ant
 antigravity/, the app's per-project grants in config/projects/ and plugins/ among them, is neither
 listed nor touched. The other files:
 
-  config/guard-paths.json        the path list of guard.py (guard_paths): under `deny` that of
+  config/guard-paths.json        the guard's path list (guard_paths): under `deny` that of
                                  adapters/opencode/plugins/guard-paths.json, MCP_CONFIG and the
                                  files of this layer, LAYER; under `edit` and `ask` the template's
                                  Edit denies and asks, then the same rules for this layer's copies
@@ -68,9 +67,9 @@ listed nor touched. The other files:
                                  under `edit` the global instruction files that Antigravity loads,
                                  config/GEMINI.md, config/AGENTS.md and ~/.gemini/GEMINI.md, the
                                  installed agents, config/agents/, and the app's grants,
-                                 config/config.json (APP_CONFIG); guard.py applies `edit`
+                                 config/config.json (APP_CONFIG); the guard applies `edit`
                                  and `ask` to the tools that write; under `bash_deny` and
-                                 `bash_ask` the bodies of its Bash denies and asks, which guard.py
+                                 `bash_ask` the bodies of its Bash denies and asks, which the guard
                                  applies to each segment of a command
   antigravity-cli/settings.json  the keys `permissions`, `toolPermission` and
                                  `enableTerminalSandbox` of the CLI's settings, set in the file
@@ -124,14 +123,16 @@ template's order:
 MCP_CONFIG is a `read_file` deny after the template's, and LAYER and MCP_CONFIG are `write_file`
 denies after that. The app needs one grant per Kaimon tool, and no wildcard covers them, so each
 Kaimon tool of the template is its own rule. Every other entry is dropped, with its reason. A
-dropped `Read(**/X)` deny is still in the `deny` list of guard.py, and a dropped Edit entry in its
+dropped `Read(**/X)` deny is still in the `deny` list of the guard, and a dropped Edit entry in its
 `edit` or `ask` list. A command with `$(…)` or a backtick matches only a full-line rule in
-Antigravity, so a `deny` does not reach it; guard.py applies the Bash denies and asks to each
+Antigravity, so a `deny` does not reach it; the guard applies the Bash denies and asks to each
 segment of the line, the bodies of `$(…)`, backticks and `( … )` included, and is the boundary.
 The desktop app reads no `permissions`; it keeps its grants in config/config.json, which gets the
 same rules.
 """
 
+import argparse
+import importlib
 import json
 import os
 import pathlib
@@ -139,7 +140,9 @@ import random
 import re
 import shlex
 import stat
+import sys
 import tempfile
+import types
 from collections.abc import Callable
 from typing import Any, cast
 
@@ -155,6 +158,8 @@ SOURCE = REPO / "adapters" / "antigravity"
 GUARD_PATHS = REPO / "adapters" / "opencode" / "plugins" / "guard-paths.json"
 HOOK = "harness-guards"
 HOOK_TIMEOUT = 15
+# The guard package of the Claude Code layer, by the label of its files in that layer's plan.
+GUARD_PACKAGE = "~/.claude/hooks/guard/"
 # The MCP configuration of Antigravity, which holds the Kaimon token in plain text.
 MCP_CONFIG = "{home}/.gemini/config/mcp_config.json"
 # The files of this layer, which an agent that rewrites them could use to switch off its guard.
@@ -244,10 +249,11 @@ def render(path, profile):
     return profile_module.render_line(path, profile)
 
 
-def render_hooks(root, python=None):
+def render_hooks(root: pathlib.Path, python: str | None = None) -> str:
     """The text of hooks.json for Antigravity's directory `root`: the hook HOOK, which runs
-    install-drift.py at the start of a session, its warning translated by TRANSLATE, and guard.py
-    on every tool call, each by its absolute path, so that it runs from any directory, and each on
+    install-drift.py at the start of a session, its warning translated by TRANSLATE, and the guard
+    package with `--from antigravity` on every tool call, each by its absolute path, so that it runs
+    from any directory, and each on
     the interpreter `python`, by default the Python environment's (`install.python_interpreter`),
     not on the `python3` of the `PATH`. Each path is one shell word (`shlex.quote`)."""
     hooks = root / "config" / "hooks"
@@ -265,7 +271,9 @@ def render_hooks(root, python=None):
                     "PreToolUse": [
                         {
                             "matcher": "*",
-                            "hooks": [handler(python + " " + shlex.quote(str(hooks / "guard.py")))],
+                            "hooks": [
+                                handler(f"{python} {shlex.quote(str(hooks / 'guard'))} --from antigravity")
+                            ],
                         }
                     ],
                 }
@@ -486,7 +494,7 @@ def render_permissions(
     `command(<word>)`, each rule once; and each entry that has no rule, with its reason. The app
     needs one grant per Kaimon tool, and no wildcard covers them. Claude Code runs the commands of
     `excludedCommands` outside its sandbox, and these rules let Antigravity run them with no
-    prompt; guard.py applies the template's Bash denies and asks to each of them before
+    prompt; the guard applies the template's Bash denies and asks to each of them before
     Antigravity's rules."""
     rules, dropped = {key: [] for key in LISTS}, []
     kaimon = {key: [] for key in LISTS}
@@ -924,9 +932,19 @@ def council_warnings(path: str | pathlib.Path) -> list[tuple[str]]:
     ]
 
 
-def plan(ctx):
+def guard_package(files: list[tuple[object, ...]]) -> list[tuple[str, object, object]]:
+    """(path below ~/.gemini/, bytes, mode) of each file of the Claude Code layer's plan `files`
+    below ~/.claude/hooks/guard/, at the same path below config/hooks/guard/."""
+    return [
+        (f"config/hooks/guard/{label.removeprefix(GUARD_PACKAGE)}", data, mode)
+        for _, data, mode, label, *_ in files
+        if isinstance(label, str) and label.startswith(GUARD_PACKAGE)
+    ]
+
+
+def plan(ctx: types.SimpleNamespace | argparse.Namespace):
     """Antigravity's part of `harness install`, as the docstring of this module says; the guard
-    scripts, install-drift.py, the instruction files, the rules and the skills are those of the
+    package, install-drift.py, the instruction files, the rules and the skills are those of the
     Claude Code layer's plan in `ctx.plans`."""
     root = gemini_dir()
     if not root.is_dir():
@@ -954,12 +972,10 @@ def plan(ctx):
     )
     rules["deny"] += denies
     layer = ctx.plans["claude"]
-    scripts = {f"hooks/{g}" for g in frontends.GUARDS}
     drift = next((f[1], f[2]) for f in layer.files if f[3] == "~/.claude/hooks/install-drift.py")
     files = [
         ("config/hooks.json", render_hooks(root).encode(), None),
-        ("config/hooks/guard.py", (SOURCE / "guard.py").read_bytes(), None),
-        *((f"config/{dst}", data, mode) for dst, data, mode in layer.shared if dst in scripts),
+        *guard_package(layer.files),
         ("config/hooks/install-drift.py", *drift),
         ("config/guard-paths.json", guard_paths(ctx.profile).encode(), None),
     ]
@@ -1074,8 +1090,21 @@ def selftest():
     return total, wrong
 
 
+def guard_sources() -> list[str]:
+    """Each file of the guard package of this repository, hooks/guard/, relative to it, without a
+    hidden name or a __pycache__ that a run leaves."""
+    root = REPO / "hooks" / "guard"
+    found = (path.relative_to(root) for path in root.rglob("*") if path.is_file())
+    return sorted(
+        path.as_posix()
+        for path in found
+        if not any(part.startswith(".") or part == "__pycache__" for part in path.parts)
+    )
+
+
 def layer_cases(scratch):
     """The files of the layer, the warning with no ~/.gemini/, hooks.json and the copies."""
+    scratch = cast("Any", scratch)
     from harness.install_cases import rule_names, skill_names
 
     case, run, tail = scratch.case, scratch.run, scratch.tail
@@ -1087,12 +1116,12 @@ def layer_cases(scratch):
         *(f"config/skills/{f}" for f in skills_files()),
         *(f"config/agents/{p.name}" for p in (REPO / "agents").glob("*.md")),
     ]
+    package = guard_sources()
     want = sorted(
         [
             "config/hooks.json",
             "config/guard-paths.json",
-            "config/hooks/guard.py",
-            *(f"config/hooks/{g}" for g in frontends.GUARDS),
+            *(f"config/hooks/guard/{f}" for f in package),
             "config/hooks/install-drift.py",
             "antigravity-cli/settings.json",
             "config/config.json",
@@ -1135,7 +1164,7 @@ def layer_cases(scratch):
             and set(listed.values()) == {"INSTALL"}
             and sorted(p.relative_to(gemini).as_posix() for p in gemini.rglob("*")) == []
         ),
-        f"the dry run lists hooks.json, guard-paths.json, hooks/guard.py, the seven scripts of frontends.GUARDS, "
+        f"the dry run lists hooks.json, guard-paths.json, each file of the guard package below hooks/guard/, "
         f"hooks/install-drift.py, antigravity-cli/settings.json, config/config.json, the instruction files, rules "
         f"and skills, and one "
         f"agents/<name>.md for each agent of agents/, each INSTALL, and writes nothing: {code}, "
@@ -1175,7 +1204,7 @@ def layer_cases(scratch):
     config = gemini / "config"
     hooks = (config / "hooks.json").read_text() if (config / "hooks.json").is_file() else None
     python = shlex.quote(str(base / "python" / "bin" / "python"))
-    handler = python + " " + shlex.quote(str(config / "hooks" / "guard.py"))
+    handler = f"{python} {shlex.quote(str(config / 'hooks' / 'guard'))} --from antigravity"
     start = (
         python
         + " -c "
@@ -1197,8 +1226,9 @@ def layer_cases(scratch):
             }
         ),
         f"hooks.json holds the one hook {HOOK}: one SessionStart handler, which runs install-drift.py and turns its "
-        f"warning into injectSteps, and one PreToolUse group, matcher *, guard.py by its absolute path, each on "
-        f"the environment's interpreter with a timeout of 15 s: {hooks!r}",
+        f"warning into injectSteps, and one PreToolUse group, matcher *, the guard package by its "
+        f"absolute path with --from antigravity, each on the environment's interpreter with a timeout of "
+        f"15 s: {hooks!r}",
     )
 
     def commands_of(value):
@@ -1211,21 +1241,21 @@ def layer_cases(scratch):
             ]
         return [c for v in value for c in commands_of(v)] if isinstance(value, list) else []
 
-    # Every command that the install writes for a .py hook, in either frontend's file, runs it on the
-    # scratch environment's interpreter.
+    # Every command that the install writes for a .py hook or the guard package, in either frontend's
+    # file, runs it on the scratch environment's interpreter.
     runs_py = [
         c
         for c in commands_of(json.loads((claude / "settings.json").read_text())["hooks"])
         + (commands_of(json.loads(cast(str, hooks))) if hooks is not None else [])
-        if ".py" in c
+        if ".py" in c or "/hooks/guard " in c
     ]
     case(
         lambda: (
             len(runs_py) > 2
             and all(shlex.split(c)[0] == str(base / "python" / "bin" / "python") for c in runs_py)
         ),
-        f"each command of ~/.claude/settings.json and hooks.json that runs a .py hook starts with the "
-        f"environment's interpreter: {runs_py}",
+        f"each command of ~/.claude/settings.json and hooks.json that runs a .py hook or the guard "
+        f"package starts with the environment's interpreter: {runs_py}",
     )
     case(
         lambda: (
@@ -1236,19 +1266,21 @@ def layer_cases(scratch):
         ),
         "hooks/install-drift.py is the Claude Code layer's copy, with its mode",
     )
+    copies = [
+        f
+        for f in package
+        if (config / "hooks" / "guard" / f).read_bytes() != (claude / "hooks" / "guard" / f).read_bytes()
+        or scratch.mode(config / "hooks" / "guard" / f) != scratch.mode(claude / "hooks" / "guard" / f)
+    ]
     case(
-        lambda: (
-            (config / "hooks" / "guard.py").read_bytes() == (SOURCE / "guard.py").read_bytes()
-            and all(
-                (config / "hooks" / g).read_bytes() == (claude / "hooks" / g).read_bytes()
-                for g in frontends.GUARDS
-            )
-        ),
-        "hooks/guard.py is adapters/antigravity/guard.py, and each guard script is the Claude Code layer's copy",
+        lambda: package != [] and copies == [],
+        f"each file of hooks/guard/ is the Claude Code layer's copy, with its mode: {copies}",
     )
+    scripts = [g for g in frontends.GUARDS if (config / "hooks" / g).exists()]
     case(
-        lambda: (lambda g: (*g.SHELL, g.WORK_TREE, g.KAIMON))(_guard_module()) == frontends.GUARDS,
-        f"guard.py runs the scripts of frontends.GUARDS, in its order: {frontends.GUARDS}",
+        lambda: scripts == [],
+        f"no guard script of frontends.GUARDS is installed in hooks/, which nothing of Antigravity runs: "
+        f"{scripts}",
     )
     profile = profile_module.load(base / "profile.toml")
     opencode = json.loads(profile_module.render_file(GUARD_PATHS, profile))["deny"]
@@ -1595,7 +1627,7 @@ def instruction_cases(scratch):
                 s in delta
                 for s in [
                     "sandbox",
-                    "guard.py",
+                    "config/hooks/guard",
                     "No RTK rewrite",
                     "git worktree add",
                     "~/Research/.worktrees/",
@@ -1842,16 +1874,14 @@ def skills_files():
     return [f.as_posix() for f in install.source_files(REPO / "skills")]
 
 
-def _guard_module():
-    """adapters/antigravity/guard.py as a module."""
-    import importlib.util
-
-    spec = importlib.util.spec_from_file_location("harness_antigravity_guard", SOURCE / "guard.py")
-    if spec is None or spec.loader is None:
-        raise HarnessError(f"{SOURCE / 'guard.py'} has no module loader")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+def _path_list() -> types.ModuleType:
+    """The guard's path-list check, hooks/guard/path_list.py, as a module of the package `guard`,
+    imported with the directory that holds the package first on `sys.path` for the import alone."""
+    sys.path.insert(0, str(REPO / "hooks"))
+    try:
+        return importlib.import_module("guard.path_list")
+    finally:
+        sys.path.remove(str(REPO / "hooks"))
 
 
 def rule_cases(case):
@@ -1967,7 +1997,7 @@ def rule_cases(case):
     paths = json.loads(guard_paths(profile))["deny"]
     case(
         lambda: recursive and all(e[len("Read(") : -1] in paths for e in recursive),
-        f"each dropped Read(**/X) deny is in the path list of guard.py: {recursive}",
+        f"each dropped Read(**/X) deny is in the guard's path list: {recursive}",
     )
     lists = json.loads(guard_paths(profile))
     covered = [
@@ -1978,7 +2008,7 @@ def rule_cases(case):
     ]
     case(
         lambda: not covered and any(e.startswith("Edit(") for _, e, _ in dropped),
-        f"each dropped Edit deny is in the `edit` list of guard.py, and each dropped Edit ask in its `ask` list: "
+        f"each dropped Edit deny is in the guard's `edit` list, and each dropped Edit ask in its `ask` list: "
         f"{covered}",
     )
     others = [(key, e) for key, e, _ in dropped if not re.match(r"(Bash|Read|Edit)\(", e)]
@@ -2098,7 +2128,7 @@ def rule_cases(case):
 
 
 def reference_matcher(body, word_break):
-    """The matcher of `Bash(body)` that the cases hold guard.py's against, a regular expression:
+    """The matcher of `Bash(body)` that the cases hold the path list's against, a regular expression:
     `Bash(x *)` when the words of `x` are a run of the words, any other body when its pattern
     full-matches the words from one of them to the last, joined by `word_break`, with `*` as any
     text and a trailing ` *` as no text too. Its cost grows with the square of the number of words,
@@ -2113,7 +2143,7 @@ def reference_matcher(body, word_break):
 
 
 def matcher_cases(case, bodies):
-    """guard.py's matcher of each Bash body against reference_matcher, on a fixed set of word lists
+    """The path list's matcher of each Bash body against reference_matcher, on a fixed set of word lists
     of up to 8 words for each body: the body with each `*` filled by nothing, `x`, `zz` or one of
     the body's own literal words, with up to two words put before it and after it and at times one
     word replaced; and lists drawn from the body's literal words, each also with `zz` before or
@@ -2130,19 +2160,22 @@ def matcher_cases(case, bodies):
         ValueError,
         re.error,
     ) as e:  # a case that crashes is BAD, and the next case still runs
-        case(lambda: False, f"guard.py's matcher of each Bash deny and ask runs: {type(e).__name__}: {e}")
+        case(
+            lambda: False, f"the path list's matcher of each Bash deny and ask runs: {type(e).__name__}: {e}"
+        )
         return
     case(
         lambda: not differ and 0 < matching < total,
-        f"guard.py's matcher of each Bash deny and ask decides as the reference regex on each of {total} word "
+        f"the path list's matcher of each Bash deny and ask decides as the reference regex on each of "
+        f"{total} word "
         f"lists, {matching} of them matching: {differ[:3]}",
     )
 
 
 def compare_matchers(bodies):
-    """(lists, lists that match, [(body, words, the reference's answer)] where guard.py's matcher
+    """(lists, lists that match, [(body, words, the reference's answer)] where the path list's matcher
     differs) of matcher_cases."""
-    guard = _guard_module()
+    guard = _path_list()
     total = matching = 0
     differ = []
     for body in bodies:

@@ -18,6 +18,8 @@ shapes that fail silently or misleadingly:
 The `cd` to the working directory and the working tree of a `git init` or `git clone` need the
 call's working directory. When the call names none, every `cd` stays a part of the command, and a
 `git init` or `git clone` is denied.
+
+`work_tree_check` runs the fifth shape alone, for a frontend whose sandbox is not Claude Code's.
 """
 
 import os
@@ -426,6 +428,27 @@ def decide(command: str, tokens: Tokens | None, cwd: Place | None) -> Verdict:
             return Verdict("deny", WORK_TREE_MESSAGE.format(found=landed[0], cwd=landed[2], root=landed[1]))
     if "$?" in command and tokens is not None and top_level(tokens, cwd)[1] is not None:
         return Verdict("deny", DOLLAR_MESSAGE.format(segment=command.strip()))
+    return PASS
+
+
+def work_tree_check(call: Call) -> Verdict:
+    """Deny a `git init` or `git clone` that lands in a work tree, the fifth shape alone: for a
+    frontend whose sandbox is not Claude Code's, where the other shapes describe nothing. A command
+    that does not read passes."""
+    command = call.command
+    read = readings(command) if "git" in command else None
+    if read is None:
+        return PASS
+    cwd = None if call.cwd is None else place(call.cwd, "real")
+    try:
+        for tokens in read:
+            landed = in_work_tree(top_level(tokens, cwd)[0], cwd)
+            if landed:
+                return Verdict(
+                    "deny", WORK_TREE_MESSAGE.format(found=landed[0], cwd=landed[2], root=landed[1])
+                )
+    except NeedsCwdError:
+        return needs_cwd("sandbox", command)
     return PASS
 
 
