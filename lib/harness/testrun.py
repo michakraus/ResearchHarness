@@ -29,6 +29,7 @@ import io
 import os
 import pathlib
 import re
+import shutil
 import signal
 import subprocess
 import sys
@@ -47,6 +48,7 @@ PROBE_GROUPS = ("commands", "payloads", "manifest", "drift", "omp", "opencode", 
 ALWAYS = ("docs", "sweep")
 SUMMARY = re.compile(r"(\d+) cases, (\d+) wrong")
 TIMEOUT = 300  # seconds per part
+GIT_TIMEOUT = 60  # seconds for the `git diff` of `--changed`
 SLOTS = 2
 
 # The owners of a path of the repository: the first pattern that matches the whole path gives
@@ -120,6 +122,7 @@ def changed(base, names, root=REPO):
         capture_output=True,
         text=True,
         check=False,
+        timeout=GIT_TIMEOUT,
     )
     if p.returncode != 0:
         message = p.stderr.strip().splitlines()
@@ -624,8 +627,10 @@ def selftest():
             "GIT_COMMITTER_EMAIL": "t@example.org",
         }
 
-        def git(*argv):
-            subprocess.run(["git", *argv], cwd=root, env=env, check=True, capture_output=True)
+        program = shutil.which("git") or "git"
+
+        def git(*argv: str) -> None:
+            subprocess.run([program, *argv], cwd=root, env=env, check=True, capture_output=True, timeout=60)
 
         def changed_here(base):
             with mock.patch.dict(os.environ, env, clear=True):
@@ -670,6 +675,27 @@ def selftest():
                 raised is not None and base in raised and not list(root.glob("x*")),
                 f"the base {base!r} raises and writes no file: {raised!r}",
             )
+        # K110: a `git diff` that does not end stops after GIT_TIMEOUT seconds. The stub replaces
+        # itself by the sleep, so that no child holds the output pipe after the kill.
+        stub = root / "stub"
+        stub.mkdir()
+        (stub / "git").write_text("#!/bin/sh\nexec sleep 30\n")
+        (stub / "git").chmod(0o755)
+        start = time.monotonic()
+        try:
+            with (
+                mock.patch(f"{__name__}.GIT_TIMEOUT", 1, create=True),
+                mock.patch.dict(os.environ, env | {"PATH": f"{stub}:{env['PATH']}"}, clear=True),
+            ):
+                changed("main", names, root)
+            stopped = "no TimeoutExpired"
+        except subprocess.TimeoutExpired as e:
+            stopped = f"TimeoutExpired after {e.timeout} s"
+        seconds = time.monotonic() - start
+        check(
+            stopped == "TimeoutExpired after 1 s" and seconds < 20,
+            f"K110: a git diff of --changed that does not end stops: {stopped}, in {seconds:.1f} s",
+        )
 
         # The slots: with both held, a run says once that it waits and holds a slot once one frees.
         slots = root / "slots"

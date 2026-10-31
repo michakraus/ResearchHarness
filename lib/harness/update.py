@@ -51,7 +51,7 @@ def plan(repo: pathlib.Path) -> int:
     upstream = git(repo, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}").stdout.strip()
     if upstream != "origin/main":
         raise HarnessError(f"main of {repo} tracks {upstream or 'nothing'}, not origin/main")
-    p = git(repo, "fetch", "--quiet", "origin")
+    p = git(repo, "fetch", "--quiet", "origin", timeout=300)
     if p.returncode:
         raise HarnessError(f"git fetch failed: {(p.stderr.strip().splitlines() or [''])[-1]}")
     counts = git(repo, "rev-list", "--left-right", "--count", "HEAD...origin/main").stdout.split()
@@ -73,7 +73,9 @@ def show_diff(repo: pathlib.Path) -> None:
     """The whole diff, through git's pager when the output is a terminal. Its exit status is not
     read: the diff only informs the question that follows, which still decides."""
     git_program = shutil.which("git") or "git"
-    subprocess.run([git_program, "-C", str(repo), "diff", "HEAD", "origin/main"], check=False)
+    subprocess.run(  # no timeout: git's pager waits for the user to read the diff
+        [git_program, "-C", str(repo), "diff", "HEAD", "origin/main"], check=False
+    )
 
 
 def install(args: argparse.Namespace) -> int:
@@ -84,7 +86,7 @@ def install(args: argparse.Namespace) -> int:
         if value
         for o in (flag, value)
     ]
-    return subprocess.run(
+    return subprocess.run(  # no timeout: the install instantiates the Julia environment, a long run
         [sys.executable, str(REPO / "bin" / "harness"), *options, "install", "--apply"], check=False
     ).returncode
 
@@ -147,7 +149,7 @@ def selftest():
         print(f"{'ok ' if ok else 'BAD'}  update: {label}")
 
     def run(*command: str, cwd: pathlib.Path) -> None:
-        subprocess.run(command, cwd=cwd, check=True, capture_output=True)
+        subprocess.run(command, cwd=cwd, check=True, capture_output=True, timeout=60)
 
     def attempt(
         repo: pathlib.Path, *, apply: bool = False, answer: str = "n", tty: bool = True

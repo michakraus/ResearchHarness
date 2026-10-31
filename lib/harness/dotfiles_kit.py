@@ -568,6 +568,7 @@ def selftest():
             text=True,
             env=env,
             check=False,
+            timeout=60,
         )
         names = set(tomllib.loads((KIT / "kit.toml").read_text())["files"])
         check(

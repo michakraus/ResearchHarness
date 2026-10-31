@@ -1109,12 +1109,14 @@ def status_cases(check, root, system_name):
         check=True,
         capture_output=True,
         env=environment() | GIT_ENV,
+        timeout=60,
     )
     subprocess.run(
         ["git", "-C", str(claude), "remote", "add", "origin", "https://user:url-secret@example.org/m.git"],
         check=True,
         capture_output=True,
         env=environment() | GIT_ENV,
+        timeout=60,
     )
     n = 0
 
@@ -1778,6 +1780,7 @@ def status_cases(check, root, system_name):
             ["git", "-C", str(f.home / ".claude"), "remote", "remove", "origin"],
             check=True,
             env=environment() | GIT_ENV,
+            timeout=60,
         ),
         ("jobs",),
     )
@@ -1789,7 +1792,8 @@ def status_cases(check, root, system_name):
             ["init", "-q", str(f.home)],
             ["-C", str(f.home), "remote", "add", "origin", "https://example.org/h.git"],
         ):
-            subprocess.run(["git", *command], check=True, env=environment() | GIT_ENV)
+            program = shutil.which("git") or "git"
+            subprocess.run([program, *command], check=True, env=environment() | GIT_ENV, timeout=60)
 
     got, _ = case(
         "~/.claude inside the home's repository", {"~/.claude repository": "FAIL"}, inside, ("jobs",)
@@ -2236,12 +2240,14 @@ def exit_cases(check, root):
         check=True,
         capture_output=True,
         env=environment() | GIT_ENV,
+        timeout=60,
     )
     subprocess.run(
         ["git", "-C", str(claude), "remote", "add", "origin", "https://example.org/m.git"],
         check=True,
         capture_output=True,
         env=environment() | GIT_ENV,
+        timeout=60,
     )
     this = system() if system() in ("Linux", "Darwin") else "Linux"
     for label, change, want in (
@@ -2260,7 +2266,7 @@ def exit_cases(check, root):
         statuses = sorted({line[:4] for line in f.out.getvalue().splitlines()[:-2]})
         check(code == want, f"{label}: exit {code} -> {statuses}")
     for argv in (["doctor", "--bogus"], ["doctor", "extra"]):
-        p = subprocess.run(HARNESS + argv, capture_output=True, text=True, check=False)
+        p = subprocess.run(HARNESS + argv, capture_output=True, text=True, check=False, timeout=60)
         check(
             p.returncode == 2 and "Traceback" not in p.stderr,
             f"harness {' '.join(argv)}: exit {p.returncode}",

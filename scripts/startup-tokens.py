@@ -15,10 +15,16 @@ Groups are main sessions by entry point, and subagents by agent type and entry p
 
 import argparse
 import glob
-import json
+import importlib
 import os
+import pathlib
 import statistics
+import sys
 from collections import defaultdict
+
+# The harness's JSON reader, from lib/ of this checkout.
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "lib"))
+jsonio = importlib.import_module("harness.jsonio")
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--days", type=float, default=7)
@@ -37,13 +43,13 @@ for path in paths:
     if subagent:
         meta = path[: -len(".jsonl")] + ".meta.json"
         if os.path.exists(meta):
-            agent_type = json.load(open(meta)).get("agentType")
+            agent_type = jsonio.load(meta).get("agentType")
     entrypoint = None
     with open(path) as f:
         for line in f:
             try:
-                record = json.loads(line)
-            except json.JSONDecodeError:
+                record = jsonio.loads(line, where=path)
+            except jsonio.HarnessError:
                 continue
             entrypoint = entrypoint or record.get("entrypoint")
             usage = record.get("message", {}).get("usage") if record.get("type") == "assistant" else None

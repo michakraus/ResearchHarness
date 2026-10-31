@@ -22,12 +22,18 @@ Exit status 0 on success; 1 when Ollama fails, a model is missing, an embedding 
 
 import argparse
 import http.client
+import importlib
 import json
 import math
 import os
+import pathlib
 import re
 import sys
 import urllib.request
+
+# The harness's JSON reader, from lib/ of this checkout.
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "lib"))
+jsonio = importlib.import_module("harness.jsonio")
 
 RESEARCH = os.path.expanduser("~/Research")
 OLLAMA = "http://localhost:11434/api/embed"
@@ -155,7 +161,7 @@ def embed(model, texts):
         body = json.dumps({"model": model, "input": texts[k : k + 16], "truncate": False}).encode()
         req = urllib.request.Request(OLLAMA, body, {"Content-Type": "application/json"})
         with urllib.request.urlopen(req, timeout=600) as r:
-            vecs += json.load(r)["embeddings"]
+            vecs += jsonio.loads(r.read().decode("utf-8"), where=OLLAMA)["embeddings"]
     if len(vecs) != len(texts):
         raise RuntimeError(f"{len(vecs)} embeddings for {len(texts)} entries")
     out = []
@@ -248,6 +254,7 @@ def main():
         TypeError,
         RuntimeError,
         http.client.HTTPException,
+        jsonio.HarnessError,
     ) as err:  # every failure is fatal, and nothing is written
         print(f"known-issues-similar: {err}", file=sys.stderr)
         return 1
