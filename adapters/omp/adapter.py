@@ -348,8 +348,9 @@ def guard_paths(profile):
     denies of OpenCode's path list, for `read`, `grep` and `bash`; under `edit` the template's
     `Edit` and `Write` denies, and under `ask` its `Edit` and `Write` asks and the paths of
     frontends.EDIT_SCOPE_ASKS, for `edit` and `write`, each `//` prefix of Claude Code's as `/`."""
-    deny = json_value(profile_module.render_file(GUARD_PATHS, profile), str(GUARD_PATHS))["deny"]
-    permissions = json_value(profile_module.render_file(SETTINGS, profile), str(SETTINGS))["permissions"]
+    rendering = cast("profile_module.Profile", profile)
+    deny = json_value(profile_module.render_file(GUARD_PATHS, rendering), str(GUARD_PATHS))["deny"]
+    permissions = json_value(profile_module.render_file(SETTINGS, rendering), str(SETTINGS))["permissions"]
     lists = {"deny": [], "ask": []}
     for action, paths in lists.items():
         for rule in permissions.get(action, []):
@@ -827,7 +828,7 @@ def omp_config(path):
 def omp_config_text(text):
     """A rendered overlay or models.yml, parsed: its `#` lines are comments, the rest JSON."""
     return json_value(
-        "".join(l for l in cast("str", text).splitlines(keepends=True) if not l.startswith("#")),
+        "".join(line for line in cast("str", text).splitlines(keepends=True) if not line.startswith("#")),
         "the overlay",
     )
 
@@ -1028,7 +1029,10 @@ def omp_cases(case, fresh, run):
             (agent / "extensions" / "guards.ts").read_bytes()
             == (REPO / "adapters" / "omp" / "guards.ts").read_bytes()
             and ask_list
-            and json_value((agent / "extensions" / "guard-paths.json").read_text(), "guard-paths.json")
+            and json_value(
+                cast("pathlib.Path", agent).joinpath("extensions", "guard-paths.json").read_text(),
+                "guard-paths.json",
+            )
             == {
                 "deny": guard_list,
                 "edit": edit_list,
@@ -1364,7 +1368,8 @@ def omp_cases(case, fresh, run):
                 lines[0] == b"---"
                 and lines[n + 2 :] == source[close:]
                 and all(l.startswith(b"globs: ") for l in lines[1 : n + 1])
-                and [json_value(l[len(b"globs: ") :].decode(), "globs") for l in lines[1 : n + 1]] == paths
+                and [json_value(row[len(b"globs: ") :].decode(), "globs") for row in lines[1 : n + 1]]
+                == paths
                 and lines[n + 1].startswith(b"description: ")
             ):
                 return json_value(lines[n + 1][len(b"description: ") :].decode(), "description")
@@ -1583,7 +1588,9 @@ def omp_head(text):
     lines = text.split("\n")
     try:
         end = lines.index("---", 1)
-        head = {k: json_value(v, k) for k, v in (l.split(": ", 1) for l in cast("list[str]", lines)[1:end])}
+        head = {
+            k: json_value(v, k) for k, v in (row.split(": ", 1) for row in cast("list[str]", lines)[1:end])
+        }
     except ValueError, HarnessError:
         return {}, text
     return (head, "\n".join(lines[end + 1 :])) if lines[0] == "---" else ({}, text)
@@ -1808,7 +1815,7 @@ def omp_agent_cases(case, fresh, run, agent):
         }
     }
     try:
-        mcp = json_value((agent / "mcp.json").read_text(), "mcp.json")
+        mcp = json_value(cast("pathlib.Path", agent).joinpath("mcp.json").read_text(), "mcp.json")
     except (OSError, ValueError, HarnessError) as e:
         mcp = f"{type(e).__name__}: {e}"
     oc = (REPO / "adapters" / "opencode" / "opencode.jsonc").read_text()

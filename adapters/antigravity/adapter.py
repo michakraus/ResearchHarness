@@ -408,8 +408,9 @@ def guard_paths(profile):
     does not write; then the installed agents, AGENTS, and the app's settings, APP_CONFIG, whose
     grants an agent could widen; under `bash_deny` and `bash_ask` the body of every `Bash` deny and
     ask of the template."""
-    deny = json_value(profile_module.render_file(GUARD_PATHS, profile), str(GUARD_PATHS))["deny"]
-    permissions = json_value(profile_module.render_file(SETTINGS, profile), str(SETTINGS))["permissions"]
+    rendering = cast("profile_module.Profile", profile)
+    deny = json_value(profile_module.render_file(GUARD_PATHS, rendering), str(GUARD_PATHS))["deny"]
+    permissions = json_value(profile_module.render_file(SETTINGS, rendering), str(SETTINGS))["permissions"]
     bodies = {
         (tool, key): [
             m.group(1) for e in permissions.get(key, []) if (m := re.fullmatch(rf"{tool}\((.*)\)", e, re.S))
@@ -1209,7 +1210,10 @@ def layer_cases(scratch):
     # file, runs it on the scratch environment's interpreter.
     runs_py = [
         c
-        for c in commands_of(json_value((claude / "settings.json").read_text(), "settings.json")["hooks"])
+        for c in cast(
+            "list[str]",
+            commands_of(json_value((claude / "settings.json").read_text(), "settings.json")["hooks"]),
+        )
         + (commands_of(json_value(cast(str, hooks), "hooks.json")) if hooks is not None else [])
         if ".py" in c or "/hooks/guard " in c
     ]
@@ -1285,7 +1289,7 @@ def layer_cases(scratch):
         f"{h}/.gemini/config/config.json",
     ]
     lists = config / "guard-paths.json"
-    written = json_value(lists.read_text(), "guard-paths.json") if lists.is_file() else {}
+    written = json_value(lists.read_text(), "guard-paths.json") if lists.is_file() else dict[str, Any]()
     case(
         lambda: (
             written["edit"][len(edits["deny"]) :] == [*copies["deny"], *globals_]
@@ -1339,7 +1343,7 @@ def layer_cases(scratch):
         f"of every Bash deny and ask, entry by entry: { {k: len(v) for k, v in written.items()} }",
     )
     new = gemini / "antigravity-cli" / "settings.json"
-    settings = json_value(new.read_text(), "settings.json") if new.is_file() else {}
+    settings = json_value(new.read_text(), "settings.json") if new.is_file() else dict[str, Any]()
     case(
         lambda: (
             settings["toolPermission"] == "proceed-in-sandbox"
@@ -1398,7 +1402,7 @@ def layer_cases(scratch):
         f"the list does not hold, and holds each once: {cli.get('allow', [])[-4:]}",
     )
     app = config / "config.json"
-    grants = json_value(app.read_text(), "config.json") if app.is_file() else {}
+    grants = json_value(app.read_text(), "config.json") if app.is_file() else dict[str, Any]()
     case(
         lambda: all(
             grants["userSettings"]["globalPermissionGrants"]["allow"].count(r) == 1 for r in unsandboxed
@@ -2221,7 +2225,7 @@ def merge_cases(scratch):
     settings.write_text(json.dumps(own, indent=4) + "\n")
     before = settings.read_bytes()
     code, text = run(base, "--apply")
-    merged = json_value(settings.read_text(), "settings.json")
+    merged = json_value(cast("pathlib.Path", settings).read_text(), "settings.json")
     backups = list(cli.glob("settings.json.bak-*"))
     case(
         lambda: (
@@ -2329,7 +2333,7 @@ def grants_cases(scratch):
         f"the dry run lists config/config.json as REPLACE and writes nothing: {code}, {listed}",
     )
     code, text = run(base, "--apply")
-    merged = json_value(app.read_text(encoding="utf-8"), "config.json") if app.is_file() else {}
+    merged = json_value(app.read_text(encoding="utf-8"), "config.json") if app.is_file() else dict[str, Any]()
     cli_settings = (base / "home" / ".gemini" / "antigravity-cli" / "settings.json").read_text()
     cli = json_value(cli_settings, "settings.json")["permissions"]
     grants = merged.get("userSettings", {}).get("globalPermissionGrants", {})
@@ -2722,10 +2726,11 @@ def deny_write_cases(scratch):
         f"the dry run names the number of clones in one warning: {code}, {count}, {tail(dry)!r}",
     )
     code, text = run(base, "--apply", extra_env=env)
-    cli = json_value((h / ".gemini" / "antigravity-cli" / "settings.json").read_text(), "settings.json")[
-        "permissions"
-    ]["deny"]
-    grants = json_value((config / "config.json").read_text(), "config.json")["userSettings"][
+    home_dir, config_dir = cast("pathlib.Path", h), cast("pathlib.Path", config)
+    cli = json_value(
+        (home_dir / ".gemini" / "antigravity-cli" / "settings.json").read_text(), "settings.json"
+    )["permissions"]["deny"]
+    grants = json_value((config_dir / "config.json").read_text(), "config.json")["userSettings"][
         "globalPermissionGrants"
     ]["deny"]
     ours = deny_write(template, str(h), research, [a])[0]
@@ -2951,7 +2956,7 @@ ROUND5 = {
 def rendered_head(data):
     """{key: value} of the frontmatter of the rendered agent `data`, each value read as JSON."""
     lines = data.decode().split("\n---\n", 1)[0].split("\n")[1:]
-    return dict((k, json_value(v, k)) for k, v in (line.split(": ", 1) for line in cast("list[str]", lines)))
+    return {k: json_value(v, k) for k, v in (line.split(": ", 1) for line in cast("list[str]", lines))}
 
 
 def agent_cases(scratch):
