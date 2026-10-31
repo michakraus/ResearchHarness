@@ -867,3 +867,17 @@
 {"frontend": "opencode", "tool": "shell", "input": {"command": "cat src/Foo.jl"}, "decision": "pass"}
 {"frontend": "opencode", "tool": "shell", "input": {"command": "cat .env"}, "decision": "deny", "differs": "The guard reads every word of a command as a path, a relative one too, and matches **/.env; the plugin read only home paths and absolute paths below a directory of user data."}
 {"frontend": "opencode", "tool": "shell", "input": {"command": "ls /[0-9]+/"}, "decision": "deny", "differs": "The guard reads every word as a path and cuts a glob path to its directory, here /, which holds denied paths; the plugin did not read a path below /."}
+{"frontend": "opencode", "tool": "shell", "input": {"command": "true", "workdir": "@@OCHOME@@"}, "decision": "deny"}
+{"frontend": "opencode", "tool": "shell", "input": {"command": "bash -c 'cd ~ && ls'"}, "decision": "deny"}
+{"frontend": "opencode", "tool": "shell", "input": {"command": "sed -i s/a/b/ f"}, "directory": "@@FIXTURE@@", "decision": "deny"}
+{"frontend": "opencode", "tool": "shell", "input": {"command": "cat /etc/h*"}, "local": {"allow": ["/etc/h*"]}, "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "bash -c 'cd ~ && ls'"}, "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "cat @@OMPHOME@@/{.ssh,x}/id_ed25519"}, "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "cat ~/.ss[!x]/config"}, "decision": "deny"}
+{"frontend": "omp", "tool": "read", "input": {"path": "~/.netrc:1-5"}, "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "ls @@OMPHOME@@/{.ss,x}h"}, "decision": "deny", "differs": "The guard reads a brace expansion as a glob segment that reaches every name below its directory, here the home, which holds ~/.ssh; the extension read the braces as text."}
+{"frontend": "omp", "tool": "bash", "input": {"command": "ls ~/'.s\\sh'*"}, "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "X=1 cd && cat .netrc"}, "cwd": "@@OMPHOME@@/Research", "decision": "deny", "differs": "The guard reads a cd after an assignment as a cd, which with no directory moves home (K14); the extension did not."}
+{"frontend": "omp", "tool": "bash", "input": {"command": "time cd; cat .netrc"}, "cwd": "@@OMPHOME@@/Research", "decision": "deny", "differs": "The guard reads a cd after time as a cd, which with no directory moves home (K14); the extension did not."}
+{"frontend": "omp", "tool": "grep", "input": {"pattern": "x"}, "cwd": "@@OMPHOME@@/Research", "decision": "pass"}
+{"frontend": "omp", "tool": "grep", "input": {"pattern": "x"}, "cwd": "@@OMPHOME@@", "decision": "deny"}

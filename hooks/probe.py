@@ -470,13 +470,15 @@ def guard_message(home: str, frontend: str, data: bytes) -> str:
 
 def fake_interpreters(frontend: str) -> dict[str, str]:
     """The interpreters of the transport cases of `frontend`, by label: one that is missing, and
-    scripts that run the guard and exit 3, print `{`, run the guard and are killed, or answer late."""
+    scripts that run the guard and exit 3, print `{` or a block with no reason, run the guard and
+    are killed, or answer late."""
     fakes = pathlib.Path(FIXTURE.name, f"fakes-{frontend}")
     fakes.mkdir()
     python = shlex.quote(sys.executable)
     texts = {
         "the guard exits 3 after its answer": f'#!/bin/sh\n{python} "$@"\nexit 3\n',
         "the guard prints {": "#!/bin/sh\ncat > /dev/null\necho '{'\n",
+        "the guard blocks with no reason": '#!/bin/sh\ncat > /dev/null\necho \'{"block": true, "reason": ""}\'\n',
         "the guard is killed after its answer": f'#!/bin/sh\n{python} "$@"\nkill -9 $$\n',
         "the guard answers after the timeout": f'#!/bin/sh\nsleep 1\nexec {python} "$@"\n',
     }
@@ -518,6 +520,7 @@ TRANSPORT_WANTS = {
     "the interpreter is missing": "could not start",
     "the guard exits 3 after its answer": "exited with status 3",
     "the guard prints {": "printed no valid answer",
+    "the guard blocks with no reason": "printed no valid answer",
     "the guard is killed after its answer": "SIGKILL",
     "the guard answers after the timeout": "did not answer within 0.3 s",
     "the path list has no python": "no string",
