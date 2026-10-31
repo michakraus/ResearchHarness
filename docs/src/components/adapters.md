@@ -213,38 +213,35 @@ hook probe `hooks/probe.py` loads it under `node`, so it holds JavaScript syntax
 
 ## `opencode/plugins/guards.ts`
 
-The OpenCode plugin of the guard hooks. It runs the install's copies in `hooks/` of OpenCode's
-configuration directory. On every `shell` call it runs the five shell guards, `no-blind-stage.py`,
-`no-shell-file-write.py`, `gh-api-writes.py`, `rm-scope.py` and `git-archive-output.py`, and the
-working-tree check of `sandbox-semantics.py`, as `sandbox-semantics.py --work-tree`. On every
-`kaimon_ex` and `kaimon_manage_repl` call it runs `kaimon-session.py`. It sends Claude Code's
-payload on standard input and reads the answer as Claude Code does. [Guard hooks](hooks.md)
-describes each script.
+The OpenCode plugin of the guard hook. On every tool call it runs the install's copy of the guard
+package in `hooks/guard/` of OpenCode's configuration directory, with `--from opencode` and the
+interpreter that `guard-paths.json` beside the plugin names under `python`. It sends the event
+and the session's directory as JSON on standard input, and throws the reason of an answer that
+blocks, which refuses the call. The guard's table checks the `shell` call and the two Kaimon calls
+`kaimon_ex` and `kaimon_manage_repl`, and lets every other tool pass; [Guard hooks](hooks.md)
+describes each check, the path list and its list in `$OPENCODE_CONFIG_DIR`, and the refusal of an
+in-place edit such as `sed -i`.
 
-The plugin adds two checks. The path guard refuses a command that names a path of
-`guard-paths.json` beside the plugin, and of `$OPENCODE_CONFIG_DIR/guard-paths.json` when it
-exists. It also refuses a directory that holds a denied path when the command recurses, globs or
-changes into it. A second check refuses an in-place edit, such as `sed -i`, with a short message.
-
-The plugin fails closed. A script that cannot start, fails or times out after 10 s refuses the
-command. A missing path list refuses every `shell` call. So does a
+The plugin fails closed. A list that is missing or holds no string `python`, a guard that cannot
+start, exits with another status than 0, prints no valid answer or does not answer within 10 s
+refuses the call. The guard refuses every call when its list cannot be used, and so does a
 `$OPENCODE_CONFIG_DIR/guard-paths.json` that is present and cannot be read or is not JSON. A
-guard that would ask refuses too, and the model must ask the user in chat.
+check that would ask refuses too, and the model must ask the user in chat.
 
-The path guard checks text only. A path that a command builds at run time, or a relative path,
-passes it.
+The path list checks text only. A path that a command builds at run time passes it.
 
 ## `opencode/plugins/guard-paths.json`
 
-The deny list of the path guard of `guards.ts`. It holds the `read` denies of OpenCode's permission
+The deny list of the path check that `guards.ts` runs. It holds the `read` denies of OpenCode's permission
 block: the `Read` denies of the settings template, and one deny that only OpenCode needs, its own
 data directory.
 
 `harness permissions --apply` writes the file from the settings template. Do not edit it by hand.
 The paths hold `{home}`, so `harness install` renders the file with the profile and writes it to
-`plugins/guard-paths.json` in OpenCode's configuration directory.
+`plugins/guard-paths.json` in OpenCode's configuration directory, with the environment's
+interpreter under `python`.
 
-A `read` deny binds only the file tools of OpenCode. With this list, `guards.ts` refuses a shell
+A `read` deny binds only the file tools of OpenCode. With this list, the guard refuses a shell
 command that names the same path, for example a `cat` of a credential file.
 
 The oh-my-pi adapter reads the list too. Its `deny` becomes the `deny` of oh-my-pi's path list.
@@ -356,29 +353,33 @@ adapter needs is missing, the install exits with status 2.
 ## `omp/guards.ts`
 
 The guard extension of oh-my-pi. `harness install` copies it to `extensions/guards.ts` in
-oh-my-pi's agent directory. It checks each tool call that a glob of `bash.patterns` cannot check:
+oh-my-pi's agent directory. On every tool call it runs the install's copy of the guard package in
+`~/.omp/agent/hooks/guard/`, with `--from omp` and the interpreter that `guard-paths.json` beside
+the extension names under `python`, sends the event, the working directory and the kind of the
+agent as JSON, and returns the answer `{block, reason}` when it blocks. The guard's table checks
+each tool call that a glob of `bash.patterns` cannot check:
 
-- `bash`: the five shell guards of `~/.omp/agent/hooks/` and the working-tree check of
-  `sandbox-semantics.py`, which it runs with `python3`, and the path list on the words of the
-  command and on its working directory;
-- `mcp__kaimon_ex` and `mcp__kaimon_manage_repl`: `kaimon-session.py`;
+- `bash`: the shell checks of the guard, the working-tree check of the sandbox check among them,
+  and the path list on the words of the command and on its working directory;
+- `mcp__kaimon_ex` and `mcp__kaimon_manage_repl`: the Kaimon check;
 - `read` and `grep`: the `deny` list on the path;
-- `edit` and `write`: the `edit` list, then the `ask` list, on each path that the call names;
+- `edit` and `write`: the `deny` list, then the `edit` list, then the `ask` list, on each path
+  that the call names;
 - `write` in a sub-agent: a path `agent://<name>`, which it refuses, because the write wakes a
   parked agent. oh-my-pi gives a sub-agent's context `agent.kind: "sub"`.
 
-A word with a glob character reaches only the names that its first glob segment matches, so a
-pattern such as `/[0-9]+/` reaches no denied path. The program argument of an awk, sed or grep is
-not checked as a path; a home path in it is still refused.
+A word with a glob character reaches only the names that its glob segment matches, so a pattern
+such as `/[0-9]+/` reaches no denied path below `/`.
 
 The path list is `guard-paths.json` beside the extension. The `deny` and `edit` lists also get
 `~/.omp/**`. The copies of the skills, the rules and the instructions below `~/.omp/agent/` stay
-readable. The match ignores case. An `ask` match and an "ask" answer of a guard refuse the
-call, and tell the model to ask the user in chat.
+readable. The match ignores case. An `ask` match and an "ask" answer of a check refuse the call,
+and tell the model to ask the user in chat.
 
-The extension fails closed: a guard that cannot run, fails or times out blocks the call, and so
-does a missing path list. It checks text only. A path that a command builds at run time passes,
-and the `find` and `ast_grep` tools are not checked.
+The extension fails closed: a list that is missing or holds no string `python`, a guard that
+cannot start, exits with another status than 0, prints no valid answer or does not answer within
+10 s blocks the call. The guard checks text only. A path that a command builds at run time
+passes, and the `find` and `ast_grep` tools are not checked.
 
 ## `antigravity/adapter.py`
 

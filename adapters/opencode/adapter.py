@@ -11,9 +11,12 @@ the permission block.
   adapters/opencode/OPENCODE-DELTA.md -> AGENTS.md         (OpenCode's global instruction file)
   agents/*.md                      -> agents/               (rendered with the model tables, below)
   adapters/opencode/plugins/*.ts   -> plugins/              (added; other plugins untouched)
-  adapters/opencode/plugins/guard-paths.json -> plugins/    (the path guard's deny list; rendered)
+  adapters/opencode/plugins/guard-paths.json -> plugins/    (the path guard's deny list; rendered,
+                                                             with the environment's interpreter
+                                                             as `python`, which runs the guard)
   the Claude Code layer's rules/, RTK.md, instructions/, hooks/ and skills/
-                                   -> the same paths        (OpenCode's own copies; frontends.shared)
+                                   -> the same paths        (OpenCode's own copies; frontends.shared:
+                                                             the guard package among them)
 
 After the files, the links that an earlier install wrote to ~/.agents/skills/ are removed
 (`skill_links`): OpenCode reads that directory too.
@@ -84,7 +87,7 @@ import stat
 import tempfile
 import tomllib
 import types
-from typing import Any
+from typing import Any, cast
 from unittest import mock
 
 from harness import REPO, HarnessError, changing, frontends, frontmatter, install, outcome, providers, sources
@@ -480,9 +483,9 @@ def render_block(emitted):
 
 
 def guard(emitted):
-    """`plugins/guard-paths.json`: the `read` denies, for the path guard of `plugins/guards.ts`,
-    which applies them to the paths a `bash` command names. A root form is left out: the guard
-    tests absolute paths, where its `**/X` already matches."""
+    """`plugins/guard-paths.json`: the `read` denies, for the path check of the guard that
+    `plugins/guards.ts` runs, which applies them to the paths of a `shell` call. A root form is left
+    out: the guard tests absolute paths, where its `**/X` already matches."""
     denies = [p for p, a in emitted["read"] if a == "deny"]
     return (
         json.dumps({"deny": [p for p in denies if "**/" + p not in denies]}, indent=2, ensure_ascii=False)
@@ -649,6 +652,16 @@ def drift_checks():
     return warnings
 
 
+def interpreted(text: str) -> bytes:
+    """The path list `text` with the environment's interpreter (install.python_interpreter) under
+    `python`: plugins/guards.ts runs the guard with it, and refuses every call without it."""
+    listed = {
+        **cast("dict[str, object]", json.loads(text)),
+        "python": str(install.python_interpreter()),
+    }
+    return (json.dumps(listed, indent=2, ensure_ascii=False) + "\n").encode()
+
+
 def plan(ctx: types.SimpleNamespace | argparse.Namespace):
     """OpenCode's part of `harness install`, as the docstring of this module says."""
     dest = destination()
@@ -740,8 +753,10 @@ def plan(ctx: types.SimpleNamespace | argparse.Namespace):
         (dest / "plugins" / f.name, f.read_bytes(), None, f"plugins/{f.name}")
         for f in sorted((SOURCE / "plugins").glob("*.ts"))
     ]
-    guard_list = profile_module.render_file(SOURCE / "plugins" / "guard-paths.json", ctx.profile).encode()
-    files.append((dest / "plugins" / "guard-paths.json", guard_list, None, "plugins/guard-paths.json"))
+    guard_list = profile_module.render_file(SOURCE / "plugins" / "guard-paths.json", ctx.profile)
+    files.append(
+        (dest / "plugins" / "guard-paths.json", interpreted(guard_list), None, "plugins/guard-paths.json")
+    )
 
     # The links that an earlier install wrote to ~/.agents/skills/ go, after every frontend's files.
     def links(apply):
@@ -1349,6 +1364,26 @@ def install_cases(check, tmp):
         lambda: instructions() == own and all(copied) and (claude / "RTK.md").is_file(),
         f"the rendered opencode.jsonc lists exactly OpenCode's own copies of RTK.md, the core and the tree "
         f"instructions, each installed where Claude Code's is: {instructions()}, {copied}",
+    )
+    # The plugin runs the guard package from OpenCode's own copy, with the interpreter of its list.
+    package = sorted(
+        p.relative_to(claude).as_posix() for p in (claude / "hooks" / "guard").rglob("*") if p.is_file()
+    )
+    hooks = sorted(
+        p.relative_to(base / "opencode").as_posix() for p in (base / "opencode" / "hooks").rglob("*")
+    )
+    listed = json.loads((base / "opencode" / "plugins" / "guard-paths.json").read_text())
+    case(
+        lambda: (
+            "hooks/guard/cli.py" in package
+            and "hooks/guard/frontends/opencode.py" in package
+            and [h for h in hooks if (base / "opencode" / h).is_file()] == package
+            and all((base / "opencode" / p).read_bytes() == (claude / p).read_bytes() for p in package)
+            and all(mode(base / "opencode" / p) == mode(claude / p) for p in package)
+            and listed.get("python") == str(base / "python" / "bin" / "python")
+        ),
+        f"hooks/ holds a copy of each file of the Claude Code layer's guard package, with its mode, and no "
+        f"other file, and guard-paths.json names the environment's interpreter: {hooks}, {listed.get('python')}",
     )
     # A builder spawns the verifier or a reader, so sub-agents nest two levels deep.
     depth = re.findall(

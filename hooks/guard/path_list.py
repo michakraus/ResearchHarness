@@ -30,15 +30,25 @@ THE BASH RULES apply to each segment of the command (segments), in each of its t
 written, and with each backslash-newline read as a line break. A rule matches the words of a
 segment from any of its words (bash_matcher): those of each reading of the segment, those of the
 reading that takes no `#` as a comment, or, when no reading reads it, the text between blanks. A
-`bash_deny` rule refuses, a `bash_ask` rule asks.
+`bash_deny` rule refuses, a `bash_ask` rule asks. A rule meets only the word lists that hold each of
+its needed texts (needed), which one search of the joined word lists per needed text finds.
+
+A TABLE WITHOUT BASH RULES (check_paths) takes its lists as `Lists`: `deny`, `edit` and `ask`, any
+rules that the table adds, and an `allow` list, which refuses each path outside it that ALLOW_PATH
+reads. Its `Reading` adds to the words of a command: each home path and each absolute path below a
+directory of user data that TEXT_PATH finds in the text, wherever it stands; every word of a part
+that runs `cd` or `pushd`, as a wide path, and the home, wide, for a `cd` with no directory or with
+`-`; and it lets a glob path reach only the names that its glob segment matches (segment_glob).
 
 It is a text check: a path that a command builds at run time passes it.
 """
 
+import bisect
 import functools
 import pwd
 import re
-from collections.abc import Callable, Iterable
+from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
@@ -71,10 +81,52 @@ INTO = frozenset({"cd", "pushd"})
 # of a command can hold, so that a blank inside a quoted word is no boundary.
 WORD_BREAK = "\0"
 CLOSED = "The guard fails closed. Tell the user, and do not run the call in another form."
+# A home path, or an absolute path below a directory that holds user data, wherever it stands in a
+# command: the union of the path forms of OpenCode's and oh-my-pi's guard plugins.
+TEXT_PATH = re.compile(
+    r"""(?:^|[\s'"`=(:,\[{<>])((?:~|\$HOME|\$\{HOME\})(?=[/\s'"`;|&)]|$)[^\s'"`;|&<>(){}\[\],]*"""
+    r"""|/(?:Users|Volumes|private|var|tmp|etc|home)(?:/[^\s'"`;|&<>(){}\[\],]*)?)"""
+)
+# The paths that an `allow` list reads: those of TEXT_PATH but below `/home`.
+ALLOW_PATH = re.compile(
+    r"""(?:^|[\s'"`=(:,\[{<>])((?:~|\$HOME|\$\{HOME\})(?=[/\s'"`;|&)]|$)[^\s'"`;|&<>(){}\[\],]*"""
+    r"""|/(?:Users|Volumes|private|var|tmp|etc)(?:/[^\s'"`;|&<>(){}\[\],]*)?)"""
+)
+# The words before a command name that leave it the command name, as `cd` in `then cd x`.
+LEAD = frozenset({"{", "!", "then", "do", "else", "builtin", "command", "time"})
+ASSIGNMENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*=")
+# A shell edit of a file in place: OpenCode's `deny` rules name these, and the refusal is short.
+IN_PLACE = re.compile(r"^(?:rtk\s+)?(?:(?:sed|gsed)\s+(?:-i|--in-place)|awk\s+-i|perl\s+-p?i)")
+IN_PLACE_PART = re.compile(r"&&|\|\||[;|\n]")
 
 
 class NeedsCwdError(Exception):
     """A relative path of a call that names no working directory."""
+
+
+@dataclass(frozen=True, slots=True)
+class Reading:
+    """What a table's path list reads in a command beyond the words of each reading: `text_paths`,
+    each path that TEXT_PATH finds; `cd_parts`, every word of a part that runs `cd` or `pushd` as a
+    wide path, and the home for a `cd` with no directory or with `-`; `segment_glob`, a glob path
+    that reaches only the names that its glob segment matches."""
+
+    text_paths: bool = False
+    cd_parts: bool = False
+    segment_glob: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class Lists:
+    """The rules of a table that runs no Bash rules: `deny` for every path of a call, `edit` and
+    then `ask` for each path of a call that writes or edits, `allow`, when not None, for each path
+    that ALLOW_PATH reads, and the `Reading` of a command."""
+
+    deny: tuple[Rule, ...]
+    edit: tuple[Rule, ...]
+    ask: tuple[Rule, ...]
+    allow: tuple[Rule, ...] | None
+    reading: Reading
 
 
 @functools.cache
@@ -105,8 +157,9 @@ def listed(location: str, key: str) -> list[str] | str:
     return strings
 
 
-def rule(glob: str) -> re.Pattern[str]:
-    """The path glob `glob` as a regular expression that ignores case, for `fullmatch`."""
+def rule(glob: str, *, ignore_case: bool = True) -> re.Pattern[str]:
+    """The path glob `glob` as a regular expression, for `fullmatch`, that ignores case unless
+    `ignore_case` is false."""
     out, index = "", 0
     while index < len(glob):
         if glob.startswith("**/", index):
@@ -119,7 +172,7 @@ def rule(glob: str) -> re.Pattern[str]:
             index += 1
     if out.endswith("/.*"):
         out = out[:-3] + "(?:/.*)?"
-    return re.compile(out, re.IGNORECASE)
+    return re.compile(out, re.IGNORECASE if ignore_case else re.NOFLAG)
 
 
 def literal_prefix(glob: str) -> str:
@@ -174,6 +227,13 @@ def normal(path: str) -> str:
     return "/" + "/".join(names)
 
 
+def kept(path: str) -> str:
+    """The absolute path `path` normalised as text, as `posixpath.normpath` does: a leading `//`
+    kept, which POSIX leaves to the system."""
+    lead = "//" if path.startswith("//") and not path.startswith("///") else "/"
+    return lead + normal(path)[1:]
+
+
 def absolute(raw: str, cwd: str | None) -> str:
     """`raw` as an absolute, normalised path: a home form expanded, a relative path joined to `cwd`."""
     path = expanded(raw)
@@ -184,39 +244,100 @@ def absolute(raw: str, cwd: str | None) -> str:
     return normal(path)
 
 
-def refused_path(raw: str, cwd: str | None, rules: tuple[Rule, ...], kind: str, *, wide: bool) -> str | None:
-    """The reason that `rules`, the list `kind`, refuse the path `raw`, or None. A path with a glob
-    character is checked as it is, and again cut to its directory before the first glob character,
-    which is wide. A wide path, one that the call reads below, is refused when it holds the literal
-    prefix of an absolute rule."""
+def segment_glob(segment: str) -> re.Pattern[str] | None:
+    """The shell glob `segment`, one name of a path, as a pattern that ignores case: `*` any text, a
+    leading dot too, `?` one character, `[…]` a bracket expression, `\\x` the character x. None for a
+    segment that it cannot read, a brace expansion included, which then reaches every name."""
+    out: list[str] = []
+    index = 0
+    while index < len(segment):
+        char = segment[index]
+        end = segment.find("]", index + 2) if char == "[" else -1
+        if char == "\\" and index + 1 < len(segment):
+            out.append(re.escape(segment[index + 1]))
+            index += 1
+        elif char == "{":
+            return None
+        elif char in "*?":
+            out.append(".*" if char == "*" else ".")
+        elif end >= 0:
+            body = segment[index + 1 : end]
+            out.append("[" + ("^" + body[1:] if body.startswith("!") else body).replace("\\", "\\\\") + "]")
+            index = end
+        else:
+            out.append(re.escape(char))
+        index += 1
+    try:
+        return re.compile("".join(out), re.IGNORECASE)
+    except re.error:
+        return None
+
+
+def refused_path(
+    raw: str, cwd: str | None, listed: tuple[str, tuple[Rule, ...]], *, wide: bool, by_segment: bool = False
+) -> str | None:
+    """The reason that the rules of `listed`, (the name of the list, its rules), refuse the path
+    `raw`, or None. A path with a glob character is checked as it is, and again cut to its directory
+    before the first glob character, which is wide. A wide path, one that the call reads below, is
+    refused when it holds the literal prefix of an absolute rule; with `by_segment`, the cut path
+    holds only the prefixes whose name below it the glob segment matches (segment_glob)."""
+    kind, rules = listed
     raw = expanded(raw)
-    paths = [(absolute(raw, cwd), wide)]
+    paths: list[tuple[str, bool, re.Pattern[str] | None]] = [(absolute(raw, cwd), wide, None)]
     glob = GLOB.search(raw)
     if glob is not None:
         cut = raw.rfind("/", 0, glob.start())
-        paths.append((absolute((raw[:cut] or "/") if cut >= 0 else ".", cwd), True))
-    for path, reads_below in paths:
+        after = raw.find("/", glob.start())
+        segment = segment_glob(raw[cut + 1 : len(raw) if after < 0 else after]) if by_segment else None
+        paths.append((absolute((raw[:cut] or "/") if cut >= 0 else ".", cwd), True, segment))
+    for path, reads_below, segment in paths:
         under = "/" if path == "/" else path.lower() + "/"
         for name, pattern, prefix in rules:
             if pattern.fullmatch(path):
                 return f"{path} matches the {kind} rule {name}"
-            if reads_below and prefix.startswith(under):
+            if (
+                reads_below
+                and prefix.startswith(under)
+                and (segment is None or segment.fullmatch(prefix[len(under) :].split("/")[0]))
+            ):
                 return (
                     f"the call reads below {path}, which holds {prefix}, which the {kind} rule {name} covers"
                 )
     return None
 
 
-def command_words(command: str) -> dict[tuple[str, bool], None]:
+def cd_words(sequence: list[tuple[bool, str]]) -> dict[tuple[str, bool], None]:
+    """(word, True) of each word of a part of `sequence` that runs `cd` or `pushd`, and ("~", True)
+    for each such `cd` with no directory or with `-`, which moves home."""
+    found: dict[tuple[str, bool], None] = {}
+    part: list[str] = []
+    for is_word, text in [*sequence, (False, ";")]:
+        if is_word:
+            part.append(text)
+            continue
+        for index, word in enumerate(part):
+            before = part[index - 1] if index else None
+            if word in INTO and (before is None or before in LEAD or ASSIGNMENT.match(before)):
+                found.update(dict.fromkeys((w, True) for w in part))
+                to = [w for w in part[index + 1 :] if not (w.startswith("-") and len(w) > 1)]
+                if not to or to[0] == "-":
+                    found["~", True] = None
+        part = []
+    return found
+
+
+def command_words(command: str, reading: Reading | None = None) -> dict[tuple[str, bool], None]:
     """(word, wide) of each word of `command` in any reading, and of each part of a word that `=`,
     `:`, `,` or `#` separates, in their first order. Every word is wide in a command that RECURSIVE
-    matches, and the word after `cd` or `pushd` is."""
+    matches, and the word after `cd` or `pushd` is. `reading` adds the words of TEXT_PATH and of the
+    parts that run `cd` (cd_words)."""
+    reading = reading or Reading()
     recursive = RECURSIVE.search(command) is not None
     read = readings(command)
-    sequences: Iterable[list[tuple[bool, str]]] = (
+    sequences: list[list[tuple[bool, str]]] = (
         [[(True, word) for word in FALLBACK.split(command) if word]]
         if read is None
-        else ([(kind == "word", text) for kind, text in tokens] for tokens in read)
+        else [[(kind == "word", text) for kind, text in tokens] for tokens in read]
     )
     found: dict[tuple[str, bool], None] = {}
     for sequence in sequences:
@@ -228,6 +349,13 @@ def command_words(command: str) -> dict[tuple[str, bool], None]:
                     if part:
                         found[part, wide] = None
             before = text if is_word else ""
+        if reading.cd_parts:
+            found.update(cd_words(sequence))
+    if reading.text_paths:
+        for match in TEXT_PATH.finditer(command):
+            raw = match.group(1)
+            cd = re.search(r"\bcd\s+['\"]?" + re.escape(raw), command) is not None
+            found[raw, recursive or cd] = None
     return found
 
 
@@ -357,10 +485,11 @@ def segment_words(segment: str) -> list[list[str]]:
 
 def matched(rules: tuple[BashRule, ...], command: str) -> str | None:
     """The body of the first of `rules` that matches a word list of a segment of `command`, as
-    written or with each backslash-newline as a line break, or None. A rule whose needed texts the
-    word lists do not all hold together matches none of them, so it meets no segment: such a rule
-    costs a command of many segments one search of their words for each needed text, and a rule
-    whose needed texts they hold is matched on each segment."""
+    written or with each backslash-newline as a line break, or None; rule by rule, and word list by
+    word list. A rule meets only the word lists that hold each of its needed texts: one search of the
+    joined word lists for each distinct needed text finds the lists that hold it, by the offset of
+    each hit, so a command of many segments costs each rule one matcher call per list that holds
+    all its needed texts. A needed text holds no newline, the text between two joined lists."""
     lines = dict.fromkeys((command, command.replace("\\\n", "\n")))
     split = [
         (words, WORD_BREAK.join(words))
@@ -369,16 +498,31 @@ def matched(rules: tuple[BashRule, ...], command: str) -> str | None:
         for words in segment_words(segment)
     ]
     joined = "\n".join(text for _words, text in split)
-    return next(
-        (
-            body
-            for body, matches, needs in rules
-            if all(need in joined for need in needs)
-            for words, text in split
-            if matches(words, text)
-        ),
-        None,
-    )
+    starts: list[int] = []
+    offset = 0
+    for _words, text in split:
+        starts.append(offset)
+        offset += len(text) + 1
+    holders: dict[str, frozenset[int]] = {}
+
+    def holding(need: str) -> frozenset[int]:
+        """The indices of the word lists that hold `need`, searched once per command."""
+        if need not in holders:
+            found: list[int] = []
+            at = joined.find(need)
+            while at >= 0:
+                found.append(bisect.bisect_right(starts, at) - 1)
+                after = found[-1] + 1
+                at = joined.find(need, starts[after]) if after < len(starts) else -1
+            holders[need] = frozenset(found)
+        return holders[need]
+
+    for body, matches, needs in rules:
+        held = [holding(need) for need in needs]
+        indices = sorted(held[0].intersection(*held[1:])) if held else range(len(split))
+        if any(matches(*split[index]) for index in indices):
+            return body
+    return None
 
 
 def refusal(reason: str) -> Verdict:
@@ -408,16 +552,17 @@ def check(call: Call, location: str) -> Verdict:
     return ruled(call.command, location) if call.action == "shell" else PASS
 
 
-def denied(call: Call, deny: tuple[Rule, ...]) -> str | None:
+def denied(call: Call, deny: tuple[Rule, ...], reading: Reading | None = None) -> str | None:
     """The reason that the `deny` list refuses a path of the call, a path that it reads below, or a
-    word of its shell command, or None."""
-    words = command_words(call.command) if call.action == "shell" else {}
+    word of its shell command, read as `reading` says, or None."""
+    reading = reading or Reading()
+    words = command_words(call.command, reading) if call.action == "shell" else {}
     for raw, wide in (
         *((path, False) for path in call.paths),
         *((path, True) for path in call.wide),
         *words,
     ):
-        refused = refused_path(raw, call.cwd, deny, "deny", wide=wide)
+        refused = refused_path(raw, call.cwd, ("deny", deny), wide=wide, by_segment=reading.segment_glob)
         if refused is not None:
             return refused
     return None
@@ -431,14 +576,19 @@ def written(call: Call, location: str) -> Verdict:
     ask = path_rules(location, "ask")
     if isinstance(ask, str):
         return Verdict("deny", ask)
+    return edited(call, edit, ask)
+
+
+def edited(call: Call, edit: tuple[Rule, ...], ask: tuple[Rule, ...]) -> Verdict:
+    """Deny a path of the call that `edit` refuses, else ask for one that `ask` matches."""
     for raw in call.paths:
-        refused = refused_path(raw, call.cwd, edit, "edit", wide=False)
+        refused = refused_path(raw, call.cwd, ("edit", edit), wide=False)
         if refused is not None:
             return Verdict(
                 "deny", f"Refused by the path guard: {refused}. Do not make the change in another form."
             )
     for raw in call.paths:
-        asked = refused_path(raw, call.cwd, ask, "ask", wide=False)
+        asked = refused_path(raw, call.cwd, ("ask", ask), wide=False)
         if asked is not None:
             return Verdict("ask", f"The path guard asks the user: {asked}.")
     return PASS
@@ -461,4 +611,84 @@ def ruled(command: str, location: str) -> Verdict:
     asked = matched(bash_ask, command)
     if asked is not None:
         return Verdict("ask", f"The settings template's rule Bash({asked}) asks the user.")
+    return PASS
+
+
+@functools.cache
+def present(location: str) -> dict[str, object] | str | None:
+    """The path list at `location`, read once per process; None when there is no file there, or the
+    reason that it cannot be used."""
+    try:
+        text = contents(location)
+    except FileNotFoundError:
+        return None
+    except (OSError, ValueError) as error:
+        return f"{type(error).__name__}: {error}"
+    try:
+        return dict(loads(text, where=location))
+    except (ValueError, HarnessError) as error:
+        return f"{type(error).__name__}: {error}"
+
+
+def local_rules(location: str) -> tuple[tuple[Rule, ...], tuple[Rule, ...] | None] | str:
+    """The `deny` rules and the `allow` rules of an optional path list at `location`: none when there
+    is no file there, and `allow` None when it holds no `allow`; the reason to refuse every call when
+    the file cannot be used. An `allow` rule matches with case."""
+    found = present(location)
+    if found is None:
+        return (), None
+    if isinstance(found, str):
+        return f"The path list {location} cannot be used ({found}), so the call is blocked. {CLOSED}"
+    lists: dict[str, list[str]] = {}
+    for key in ("deny", "allow"):
+        items = cast("list[object]", found[key]) if isinstance(found.get(key), list) else None
+        if key in found and (items is None or not all(isinstance(item, str) for item in items)):
+            why = f'it holds no list of strings under "{key}"'
+            return f"The path list {location} cannot be used ({why}), so the call is blocked. {CLOSED}"
+        if items is not None:
+            lists[key] = [item for item in items if isinstance(item, str)]
+    deny = tuple((glob, rule(glob), literal_prefix(glob).lower()) for glob in lists.get("deny", []))
+    if "allow" not in lists:
+        return deny, None
+    return deny, tuple((glob, rule(glob, ignore_case=False), literal_prefix(glob)) for glob in lists["allow"])
+
+
+def outside(call: Call, allow: tuple[Rule, ...] | None) -> str | None:
+    """The reason that a path of the call that ALLOW_PATH reads lies outside `allow`, or None: a path
+    with a glob character is cut to its directory before it."""
+    if allow is None:
+        return None
+    for text in (call.command if call.action == "shell" else "", *call.paths, *call.wide):
+        for found in ALLOW_PATH.finditer(text):
+            path = absolute(found.group(1), "/")
+            glob = re.search(r"[*?\[]", path)
+            if glob is not None:
+                path = path[: path.rfind("/", 0, glob.start())] or "/"
+            if not any(pattern.fullmatch(path) for _name, pattern, _prefix in allow):
+                names = ", ".join(name for name, _pattern, _prefix in allow)
+                return f"{path} is outside the paths this session may use: {names}"
+    return None
+
+
+def check_paths(call: Call, lists: Lists) -> Verdict:
+    """Deny a call that reaches a path of `lists.deny` or one outside `lists.allow`, or a write to a
+    path of `lists.edit`; ask for a write to a path of `lists.ask`."""
+    try:
+        refused = denied(call, lists.deny, lists.reading) or outside(call, lists.allow)
+        if refused is None and call.action in ("write", "edit"):
+            return edited(call, lists.edit, lists.ask)
+    except NeedsCwdError as error:
+        return needs_cwd("path list", call.command if call.action == "shell" else str(error))
+    return PASS if refused is None else refusal(refused)
+
+
+def in_place(call: Call) -> Verdict:
+    """Deny a shell command that edits a file in place, such as `sed -i`, with a short reason."""
+    parts = IN_PLACE_PART.split(call.command) if call.action == "shell" else []
+    if any(IN_PLACE.match(part.strip()) for part in parts):
+        return Verdict(
+            "deny",
+            "Refused: an in-place shell edit (sed -i, perl -pi, awk -i). Change a file with the edit tool, "
+            "or write a new file with the write tool.",
+        )
     return PASS

@@ -65,11 +65,12 @@ ends, so give it a `timeout` that covers it, or delegate it to `julia-test-runne
 
 `plugins/rtk.ts` does RTK's rewrite through `rtk hook check`, which differs from Claude Code's hook:
 it rewrites the first command of a pipeline too, so `grep -n p f | cat` stays at the cap of
-`rtk grep`. For a whole search, use the `grep` tool. `plugins/guards.ts` runs `no-blind-stage.py`, `no-shell-file-write.py`, `gh-api-writes.py`,
-`rm-scope.py` and `git-archive-output.py` from `~/.config/opencode/hooks/` on every `shell` tool call. A guard that would ask refuses
+`rtk grep`. For a whole search, use the `grep` tool. `plugins/guards.ts` runs the guard package of
+`~/.config/opencode/hooks/guard/` on every tool call; it checks each `shell` call and each Kaimon
+call. A check that would ask refuses
 instead: ask the user in chat, and give the user the command. The plugin fails closed: a guard that
-cannot start, exits with a status other than 0 or 2, prints output that is not JSON or times
-out refuses the command, and so does a missing path list. Such a refusal names the plugin; tell
+cannot start, exits with a status other than 0, prints no valid answer or does not answer within
+10 s refuses the call, and so does a missing path list. Such a refusal names the plugin; tell
 the user, and do not run the command in another form.
 
 The same plugin's path guard refuses a `shell` command that names a path the `read` tool may not

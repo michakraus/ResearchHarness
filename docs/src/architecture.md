@@ -118,8 +118,8 @@ directory names it, and the install warns until it does. Beside it go `extension
 from `adapters/omp/guards.ts`, and the rendered path list `extensions/guard-paths.json`. The
 extension does these checks:
 
-- On every `bash` call, it runs the five shell guards, `rm-scope.py` among them, from oh-my-pi's
-  own copy in `hooks/`.
+- On every tool call, it runs the guard package from oh-my-pi's own copy in `hooks/guard/`, with
+  `--from omp` and the interpreter that `guard-paths.json` names, and applies its answer.
 - It applies the template's read denies on `read`, `grep` and `bash`, and its Edit denies on
   `edit` and `write`. It adds `~/.omp/**` to both lists, but its copies of the skills, the rules
   and the instructions stay readable.

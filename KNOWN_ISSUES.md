@@ -2,10 +2,10 @@
 
 ### K13 · A `write` path in a header nested twice passes the oh-my-pi path guard.
 
-- location: `adapters/omp/guards.ts:327`
+- location: `hooks/guard/frontends/omp.py:198`
 - evidence: oh-my-pi's `write` tool unwraps a hashline header twice (`Zje` in `execute`, and again
   in `SL` when it resolves the path), so `{"path": "[[~/.omp/agent/config.yml]]"}` writes
-  `~/.omp/agent/config.yml`. `writePath` unwraps once, and the guard checks
+  `~/.omp/agent/config.yml`. `write_path` unwraps once, and the guard checks
   `[~/.omp/agent/config.yml]` as a relative path, which no rule matches. The same holds for
   `[[~/.claude/hooks/gh-api-writes.py#1A2B]#1A2B]`. The user decided to land the guard with this
   gap: oh-my-pi is not used before the sandbox launcher exists, and the launcher's profile then
@@ -13,17 +13,16 @@
 - kind: defect
 - found: 2026-10-06
 
-### K14 · The oh-my-pi path guard misreads a `cd` with a redirection, an assignment, `time`, or a chained `cd`.
+### K14 · The oh-my-pi path guard misreads a chained `cd`.
 
-- location: `adapters/omp/guards.ts:274`
-- evidence: from `~/Research`, the guard passes `cd >/dev/null && cat .netrc`,
-  `cd 2>/dev/null; cat .netrc`, `X=1 cd && cat .netrc` and `time cd; cat .netrc`: a redirection
-  target counts as the directory of the `cd`, and `X=1` and `time` are not in `LEAD`. From a
-  subdirectory, `cd .. && cd .. && cat .netrc` and `cd .. && cat ../.netrc` pass: each `cd` target
-  and each later word resolves against the session's directory, not against the directory that the
-  earlier `cd` set. Each command reads `~/.netrc`. No `bash.patterns` rule allows a bare `cd`
-  segment, so `omp -p` refuses the first four and an interactive run asks. The user decided to land
-  the guard with this gap, as for K13.
+- location: `hooks/guard/path_list.py:309`
+- evidence: from a subdirectory of `~/Research`, the guard (`--from omp`) passes
+  `cd .. && cd .. && cat .netrc` and `cd .. && cat ../.netrc`: each `cd` target and each later word
+  resolves against the session's directory, not against the directory that the earlier `cd` set.
+  Each command reads `~/.netrc`. No `bash.patterns` rule allows a bare `cd` segment, so an
+  interactive run asks. The user decided to land the guard with this gap, as for K13. The guard
+  refuses `cd >/dev/null && cat .netrc`, `cd 2>/dev/null; cat .netrc`, `X=1 cd && cat .netrc` and
+  `time cd; cat .netrc` from `~/Research`.
 - kind: defect
 - found: 2026-10-06
 
@@ -66,11 +65,10 @@
 
 ### K28 · A `file://~/…` path passes the `edit` and `ask` lists of the oh-my-pi path guard.
 
-- location: `adapters/omp/guards.ts:343`
-- evidence: `refusedToolPath` converts a `file://` URL with `fileURLToPath`, which throws
-  `ERR_INVALID_FILE_URL_HOST` on `file://~/.claude/hooks/x.py`, because `~` is read as a host. The
-  guard then checks the URL as written, as a path relative to the working directory, and no rule
-  matches it. So
+- location: `hooks/guard/frontends/omp.py:144`
+- evidence: `file_url` decodes a `file://` URL as Node's `fileURLToPath` does, which reads `~` in
+  `file://~/.claude/hooks/x.py` as a host and gives no path. The guard then checks the URL as
+  written, as a path relative to the working directory, and no rule matches it. So
   `write {"path": "file://~/.claude/hooks/x.py"}` passes the `edit` list, and
   `write {"path": "file://~/.claude/workflows/w.js"}` passes the `ask` list; each should block.
   Reproducer: the probe cases of `.scratch/critic/Harness-L/edges2.py` in the research root, which
@@ -182,9 +180,9 @@
 
 ### K75 · A `~` with no `/` after it passes the oh-my-pi path guard.
 
-- location: `adapters/omp/guards.ts:207`
-- evidence: `absolute()` expands `~` only before `/` or at the end of the path, and joins any
-  other path to the working directory. So `read {"path": "~.netrc"}` and
+- location: `hooks/guard/path_list.py:204`
+- evidence: `expanded()` reads `~.netrc` as the home of a user `.netrc`, finds none, and the guard
+  joins the path to the working directory. So `read {"path": "~.netrc"}` and
   `read {"path": ":~.netrc"}` from `~/Research` pass the guard, as `~/Research/~.netrc`, while the
   path utilities of oh-my-pi 18.11.1 map `~foo` to `$HOME/foo`. That the `read` tool resolves
   its path through that function is not verified. Reproducer: the probe cases of
@@ -569,15 +567,6 @@
 - kind: defect
 - found: 2026-10-29, the critics of the guard core
 
-### K120 · No check reads `Call.caller`, so no case shows the field.
-
-- location: `hooks/guard/contract.py:33`
-- evidence: `grep -rn '\.caller' hooks/guard/ hooks/probe.py` finds no line, so a mutant of a
-  table's `caller` survives every case. The contract holds the field for the frontends that follow;
-  `Verdict.sandbox` is read by Antigravity's table.
-- kind: missing test
-- found: 2026-10-29, the critics of the guard core
-
 ### K121 · What Claude Code does with a `PreToolUse` hook that passes its `timeout` is not measured here.
 
 - location: `settings/settings.proposal.json:717`
@@ -593,8 +582,21 @@
 - location: `hooks/guard/sandbox_semantics.py:439`
 - evidence: `work_tree_check` reads the command only when its text holds `git`, and `g''it init x`
   does not; the shell runs it as `git init x`. In a workspace that is a work tree, Antigravity's
-  guard answers `ask` with `BypassSandbox` true, where `git init x` is `deny`. The script's
-  `--work-tree` mode (`hooks/sandbox-semantics.py`) and the core's `check` filter the text the
-  same way.
+  guard answers `ask` with `BypassSandbox` true, where `git init x` is `deny`. The guard runs the
+  same check for oh-my-pi and OpenCode, and the core's `check` filters the text the same way.
 - kind: found late
 - found: 2026-10-31, the critics of the Antigravity guard
+
+### K123 · What Antigravity does when a `PreToolUse` handler passes its `timeout` is not measured.
+
+- location: `adapters/antigravity/adapter.py:160`
+- evidence: the rendered handler, `<python> <config>/hooks/guard --from antigravity`, has
+  `"timeout": 15` and no `|| exit 2`, and no source says whether Antigravity stops the call or
+  lets it run when a handler passes its timeout. A handler that exits 7 fails closed: the
+  Antigravity task measured "command failed: exit status 7" on such a handler, and `{}` denies.
+  The run that measures it: a `hooks.json` `PreToolUse` handler with `"timeout": 2` that sleeps
+  5 s and then answers `{"decision": "ask"}`, on a `run_command` of `echo timeout-probe`; the call
+  runs (fails open) or is stopped (fails closed). The probe holds the guard's commands of 1 MiB to
+  10 s, its `MIB_LIMIT`, below the 15 s.
+- kind: not verified
+- found: 2026-10-31, the spec of the OpenCode and oh-my-pi guard core

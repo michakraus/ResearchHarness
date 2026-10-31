@@ -85,8 +85,7 @@ The hooks and the guards import only the standard library: a case of `harness te
 (`lib/harness/strict.py`) parses each `.py` file below `hooks/` and the hook of the prose
 repositories, `githooks/pre-commit-wiki`, and fails on an import of a module outside
 `sys.stdlib_module_names`. `hooks/probe.py` may also import the harness's own package `harness`,
-and the tables `hooks/guard/frontends/claude.py` and `hooks/guard/frontends/antigravity.py` the
-guard package `guard`.
+and the four tables in `hooks/guard/frontends/` the guard package `guard`.
 
 The two tools are pinned in the `dev` group of `pyproject.toml` and locked in `uv.lock`, so every
 machine and CI run the same versions. `harness install --apply` syncs the `dev` group into the
