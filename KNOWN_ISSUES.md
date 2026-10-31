@@ -583,20 +583,6 @@
 - kind: found late
 - found: 2026-10-31, the critics of the Antigravity guard
 
-### K123 · What Antigravity does when a `PreToolUse` handler passes its `timeout` is not measured.
-
-- location: `adapters/antigravity/adapter.py:160`
-- evidence: the rendered handler, `<python> <config>/hooks/guard --from antigravity`, has
-  `"timeout": 15` and no `|| exit 2`, and no source says whether Antigravity stops the call or
-  lets it run when a handler passes its timeout. A handler that exits 7 fails closed: the
-  Antigravity task measured "command failed: exit status 7" on such a handler, and `{}` denies.
-  The run that measures it: a `hooks.json` `PreToolUse` handler with `"timeout": 2` that sleeps
-  5 s and then answers `{"decision": "ask"}`, on a `run_command` of `echo timeout-probe`; the call
-  runs (fails open) or is stopped (fails closed). The probe holds the guard's commands of 1 MiB to
-  10 s, its `MIB_LIMIT`, below the 15 s.
-- kind: not verified
-- found: 2026-10-31, the spec of the OpenCode and oh-my-pi guard core
-
 ### K124 · The oh-my-pi path guard reads no `cd` after `if`, and no `cd` whose directory a substitution makes empty, as a `cd` home.
 
 - location: `hooks/guard/path_list.py:356`
