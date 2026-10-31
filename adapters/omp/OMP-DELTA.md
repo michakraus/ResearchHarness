@@ -29,9 +29,7 @@ pattern refuses or a `prompt` pattern asks for, in the whole or in any part of i
 
 ## The guard extension
 
-`extensions/guards.ts` runs the guard package of `~/.omp/agent/hooks/guard/` on each tool call:
-its shell checks refuse a blind `git add`, a shell write to a file in a work tree, a recursive
-`rm` outside the scratch zones and a `git archive -o`, and ask for a `gh api` write. It refuses a sub-agent's write to
+`extensions/guards.ts` runs the guard of `~/.omp/agent/hooks/guard/` on each tool call. It refuses a sub-agent's write to
 `agent://`. It refuses a path that the `read`
 tool may not read, such as a credential file or oh-my-pi's own directory, in `read`, `grep` and
 `bash`; the copies of the skills, the rules and the instructions below `~/.omp/agent/` stay
