@@ -908,15 +908,22 @@ def kaimon_token(home: pathlib.Path) -> str | None:
 
 
 def ask_line(ask: Ask, question: str) -> str:
-    """The answer to `question`; the end of the input, and an answer that is not valid UTF-8, exit 2."""
+    """The answer to `question`; the end of the input, and an answer that is not valid UTF-8, exit 2.
+
+    A standard input that decodes strictly, as under a UTF-8 locale, raises while it reads such an
+    answer; one that decodes with `surrogateescape`, as under the C locale, returns it with a
+    surrogate, which does not encode."""
+    not_utf8 = "the answer to: " + question.strip() + " is not valid UTF-8"
     try:
         answer = ask(question).strip()
     except EOFError:
         raise HarnessError("the input ended before the answer to: " + question.strip()) from None
+    except UnicodeDecodeError:
+        raise HarnessError(not_utf8) from None
     try:
         answer.encode("utf-8")
     except UnicodeEncodeError:
-        raise HarnessError("the answer to: " + question.strip() + " is not valid UTF-8") from None
+        raise HarnessError(not_utf8) from None
     return answer
 
 
@@ -2285,22 +2292,30 @@ def string_header_cases(case: Case, tmp: pathlib.Path, pins: Pins) -> None:
             f"form and leaves the profile byte for byte: {code!r}",
             ok=loads and code.startswith("exit 2") and REFUSED in code and s.profile.read_bytes() == before,
         )
-    s = scratch(tmp, "not-utf-8", MACOS_FAKES)
-    s.profile.unlink()
-    answers = ("x\udcff", *[""] * (len(profile_module.REQUIRED) - 1), "", "", "", "y")
-    try:
-        code, out = attempt(s.machine(), s.options(yes=False), Asker(*answers), terminal=True, pins=pins)
-        code.encode()
-    except UnicodeEncodeError as e:
-        code, out = f"raised {type(e).__name__}: {e.reason}", ""
-    case(
-        f"an answer that is not valid UTF-8 exits 2 with one line and no traceback: {code!r}",
-        ok=code.startswith("exit 2")
-        and "UTF-8" in code
-        and "\n" not in code
-        and "Traceback" not in out
-        and not s.profile.exists(),
-    )
+    # The real `input` reads the answers through a standard input of each decoding: `strict`, as
+    # under a UTF-8 locale, raises while it reads; `surrogateescape`, as under the C locale,
+    # returns the byte as a surrogate.
+    for errors in ("strict", "surrogateescape"):
+        s = scratch(tmp, f"not-utf-8-{errors}", MACOS_FAKES)
+        s.profile.unlink()
+        stdin = io.TextIOWrapper(io.BytesIO(b"x\xff\n" + b"\n" * 12), encoding="utf-8", errors=errors)
+        real, sys.stdin = sys.stdin, stdin
+        try:
+            code, out = attempt(s.machine(), s.options(yes=False), input, terminal=True, pins=pins)
+            code.encode()
+        except UnicodeError as e:
+            code, out = f"raised {type(e).__name__}: {e}", ""
+        finally:
+            sys.stdin = real
+        case(
+            f"an answer that is not valid UTF-8, read with errors={errors}, exits 2 with one line and "
+            f"no traceback: {code!r}",
+            ok=code.startswith("exit 2")
+            and "is not valid UTF-8" in code
+            and "\n" not in code
+            and "Traceback" not in out
+            and not s.profile.exists(),
+        )
 
 
 def edge_cases(case: Case, tmp: pathlib.Path) -> None:
