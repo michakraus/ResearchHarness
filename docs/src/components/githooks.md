@@ -33,14 +33,16 @@ commit is refused with `pre-commit: julia is not on the PATH.` The program runs 
 | stage | what it checks | on a failure |
 |:--|:--|:--|
 | 0 | the `violations` of `test-layout.jl`, on a commit that touches `test/` | blocks |
-| 1 | JuliaFormatter, with the `.JuliaFormatter.toml` of the repository | blocks |
+| 1 | JuliaFormatter 2.14 or later, with the `.JuliaFormatter.toml` of the repository | blocks |
 | 2 | `fatou lint`, with a limit of 60 s | warns only |
 | 2.5 | each file is in Unicode NFC | blocks |
 | 3 | `using <package>` loads, for a repository with a package name | blocks |
 
-Stages 1 to 3 run on the staged `.jl` files only, a renamed file under its new name; a path with
-non-ASCII characters is read as it is, not in git's quoted form. A file that does not parse fails
-stage 1. Stage 0 reads `.githooks/test-layout.jl`, which `harness githooks` installs beside the
+Stages 1 to 3 run on the staged `.jl` files only, a renamed file under its new name and a file
+that became a symlink too; a path with non-ASCII characters is read as it is, not in git's quoted
+form. A file that does not parse fails stage 1. Stage 1 loads JuliaFormatter from the harness's
+Julia environment, which pins 2.14, and refuses an older release with one line that names its
+version; JuliaFormatter 2.14 supports Julia 1.10 and later. Stage 0 reads `.githooks/test-layout.jl`, which `harness githooks` installs beside the
 hook; a missing copy blocks the commit. Every stage reads the working tree, not the index
 (K128 of `KNOWN_ISSUES.md`). The lint only warns, because `fatou lint` reports false positives;
 without `fatou` on the `PATH`, the stage prints one line and is skipped. The NFC stage does not
@@ -53,8 +55,9 @@ no change below `test/` passes with no check. `git commit --no-verify` skips the
 (`julia --startup-file=no pre-commit-test.jl`). For `pre-commit`: a formatted file, also under a
 non-ASCII name, passes, and a misformatted file, a renamed misformatted file, a file that does not
 parse, a file that does not load, a file that is not NFC and a change below `test/` without
-`test-layout.jl` or out of its layout are refused; without `julia`, a commit with no `.jl` file
-and no `test/` path passes and any other is refused; a missing `fatou`, and the findings of
+`test-layout.jl` or out of its layout are refused, and so is a JuliaFormatter older than 2.14;
+without `julia`, a commit with no `.jl` file and no `test/` path passes and any other, a `.jl`
+file that became a symlink too, is refused; a missing `fatou`, and the findings of
 `fatou`, give their lines; a commit of one `.jl` file starts `julia` from the `PATH` once. It checks the time limit of the lint stage, and for `pre-push` each case of the gate and
 the suite. CI runs it on Linux.
 
