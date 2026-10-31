@@ -24,7 +24,6 @@ string `command` or with one of more than MAX_COMMAND bytes of UTF-8.
 """
 
 import functools
-import json
 import os
 import re
 from collections.abc import Callable
@@ -41,11 +40,12 @@ from guard import (
     no_blind_stage,
     no_shell_file_write,
     path_list,
+    plugin,
     rm_scope,
     sandbox_semantics,
 )
 from guard.contract import PASS, Call, Verdict, strongest
-from guard.jsonio import JsonValue, loads
+from guard.jsonio import JsonValue
 
 type Check = Callable[[Call], Verdict]
 
@@ -98,39 +98,18 @@ SHELL: tuple[Check, ...] = (
 
 def read(data: bytes) -> tuple[str, dict[str, JsonValue], str | None]:
     """The tool, the input and the session's directory of the message bytes `data`."""
-    try:
-        text = data.decode("utf-8")
-    except UnicodeDecodeError as error:
-        raise HarnessError(f"the message is not UTF-8: {error.reason} at byte {error.start}") from None
-    message = loads(text, where="the message")
-    event = message.get("event")
-    if not isinstance(event, dict):
-        raise HarnessError("the message has no object event")
+    found, event = plugin.message(data)
     tool = event.get("tool")
     if not isinstance(tool, str):
         raise HarnessError("the event has no string tool")
-    tool_input = event.get("input", {})
-    if not isinstance(tool_input, dict):
-        raise HarnessError(f"the input of {tool} is no object")
-    directory = message.get("directory")
-    if isinstance(directory, str) and PurePosixPath(directory).is_absolute():
-        return tool, tool_input, directory
-    return tool, tool_input, None
+    given = found.get("directory")
+    directory = given if isinstance(given, str) and PurePosixPath(given).is_absolute() else None
+    return tool, plugin.tool_input(event, tool), directory
 
 
 def shell_calls(tool_input: dict[str, JsonValue], directory: str | None) -> list[Call]:
     """The shell call of a `shell` input, and the same call with a leading `rtk ` removed."""
-    command = tool_input.get("command")
-    if not isinstance(command, str):
-        raise HarnessError("the shell call holds no string command")
-    try:
-        size = len(command.encode("utf-8"))
-    except UnicodeEncodeError as error:
-        raise HarnessError(f"the command is no UTF-8 text: {error.reason} at {error.start}") from None
-    if size > MAX_COMMAND:
-        raise HarnessError(
-            f"the command holds {size} bytes, more than the {MAX_COMMAND} that the guard reads"
-        )
+    command = plugin.command(tool_input, "shell", MAX_COMMAND)
     workdir = tool_input.get("workdir")
     cwd, wide = directory, ()
     if isinstance(workdir, str):
@@ -159,16 +138,7 @@ def decide(data: bytes) -> Verdict:
     return PASS
 
 
-def render(verdict: Verdict) -> dict[str, object]:
-    """The verdict as the plugin reads it: a block for `deny` and `ask`, an `ask` with ASK_USER."""
-    if verdict.decision == "deny":
-        return {"block": True, "reason": verdict.reason}
-    if verdict.decision == "ask":
-        return {"block": True, "reason": f"{verdict.reason.rstrip()}\n\n{ASK_USER}"}
-    return {"block": False, "reason": ""}
-
-
 def answer(verdict: Verdict, stdout: TextIO) -> int:
-    """Write the verdict as the plugin reads it, and return the exit status, 0."""
-    stdout.write(json.dumps(render(verdict)) + "\n")
-    return 0
+    """Write the verdict as the plugin reads it, an `ask` with ASK_USER, and return the exit status,
+    0."""
+    return plugin.answer(verdict, stdout, ASK_USER)

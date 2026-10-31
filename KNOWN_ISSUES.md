@@ -15,7 +15,7 @@
 
 ### K14 · The oh-my-pi path guard misreads a chained `cd`.
 
-- location: `hooks/guard/path_list.py:309`
+- location: `hooks/guard/path_list.py:356`
 - evidence: from a subdirectory of `~/Research`, the guard (`--from omp`) passes
   `cd .. && cd .. && cat .netrc` and `cd .. && cat ../.netrc`: each `cd` target and each later word
   resolves against the session's directory, not against the directory that the earlier `cd` set.
@@ -28,7 +28,7 @@
 
 ### K88 · The Antigravity guard applies no Bash rule to a command that a string argument, ANSI-C or locale quoting, or a variable or substitution holds.
 
-- location: `hooks/guard/path_list.py:358`
+- location: `hooks/guard/path_list.py:539`
 - evidence: the guard matches the template's Bash denies and asks on the words of each segment as
   the line writes them, and does not run the shell's expansions. On a fixture home it answers
   `deny` to `git push --force origin x` and `ask` to each of these lines, which run the same push:
@@ -42,7 +42,7 @@
 
 ### K92 · The path check of the Antigravity guard reads no string argument and no substitution.
 
-- location: `hooks/guard/path_list.py:210`
+- location: `hooks/guard/path_list.py:377`
 - evidence: `command_words()` reads the words of the line as it writes them. On a fixture home
   the guard answers `deny` to `cat ~/.netrc` and `ask` to `bash -c 'cat ~/.netrc'`, to
   `sh -c "cat ~/.config/gh/hosts.yml"` and to `cat $(printf ~/.ne)trc`, which read the denied
@@ -180,7 +180,7 @@
 
 ### K75 · A `~` with no `/` after it passes the oh-my-pi path guard.
 
-- location: `hooks/guard/path_list.py:204`
+- location: `hooks/guard/path_list.py:235`
 - evidence: `expanded()` reads `~.netrc` as the home of a user `.netrc`, finds none, and the guard
   joins the path to the working directory. So `read {"path": "~.netrc"}` and
   `read {"path": ":~.netrc"}` from `~/Research` pass the guard, as `~/Research/~.netrc`, while the
@@ -403,7 +403,7 @@
 - location: `adapters/antigravity/adapter.py:397`
 - evidence: `guard_paths` puts `~/.gemini/config/config.json` and `~/.gemini/config/agents/**` in
   the `edit` list, which the guard applies to the tools that write or edit a file only, not to the
-  words of a command (`hooks/guard/path_list.py:402`). On a fixture home the guard answers `deny`
+  words of a command (`hooks/guard/path_list.py:599`). On a fixture home the guard answers `deny`
   to `write_to_file` and to `multi_replace_file_content` {`TargetFile`:
   `~/.gemini/config/config.json`} and `ask` to `run_command` {`CommandLine`:
   `cp /tmp/x ~/.gemini/config/config.json`} and to the same with

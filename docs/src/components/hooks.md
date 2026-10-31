@@ -63,7 +63,8 @@ staging, write, sandbox, `gh api`, rm, archive, Kaimon and directory checks belo
 Claude Code exit 2 with the reason on standard error for `deny`, a JSON decision for `ask` and
 `allow`, and no output for `pass`. A tool that the table does not name passes. oh-my-pi and
 OpenCode cannot ask the user from a plugin, so their tables answer an `ask` as a block whose
-reason tells the model to ask the user in chat.
+reason tells the model to ask the user in chat; `plugin.py` holds what the two tables share: the
+reading of the message, the size check of the command and the answer.
 
 The directory check asks before a session leaves `~/Research`, or removes a worktree. A
 `change_directory` or `request_directory` call of the Claude desktop app, or an `EnterWorktree`
@@ -80,8 +81,8 @@ with the error. The checks read a command without
 `shlex`: a `#` inside a word, a backslash-newline and a quoted operator are read as the shell
 reads them, and a quoted operator or a joined line is also read the other way, so that neither
 hides a part of the command. `tests/guard/corpus.jsonl` holds the decision of each payload that
-the probe checks, and each difference from the hook scripts and the plugin checks that the
-package replaced, with its reason. A check of a shell
+the probe checks, and each difference from the base's hook scripts and plugin checks, with its
+reason. A check of a shell
 command reads each path through `hooks/guard/paths.py`, which reads each directory and name once
 in each mode and asks each directory once whether it holds a `.git`; every check and every reading
 takes the walk of a word from one memo; the write check asks git once per work tree. A probe case

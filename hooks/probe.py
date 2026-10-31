@@ -39,6 +39,7 @@ import sys
 import tempfile
 import time
 import types
+from collections.abc import Callable
 from dataclasses import replace
 from typing import Any, NamedTuple, TextIO, cast
 
@@ -281,8 +282,8 @@ STAMP = ".harness-install.json"
 # OpenCode record holds `tool`, `input`, the `decision` and, where it needs them, `directory`, the
 # session's directory (CWD by default; "" for a context with no `location`), `process_cwd`, the
 # working directory of `node`, and `local`, the list in `$OPENCODE_CONFIG_DIR/guard-paths.json`.
-# `covers` names the functions of the removed path guards that a record exercised, and `differs`
-# why the guard decides otherwise than they did. `@@OMPHOME@@` and `@@OCHOME@@` stand for the two
+# `covers` names the functions of the base's path guards that a record exercises, and `differs`
+# why the guard decides otherwise than they do. `@@OMPHOME@@` and `@@OCHOME@@` stand for the two
 # fixture homes. A decision is `pass`, `ask` (a refusal whose reason holds ASK_USER) or `deny`.
 #
 # The oh-my-pi driver hands the extension's `tool_call` handler one event and prints its answer.
@@ -518,6 +519,14 @@ def transport_homes(frontend: str) -> dict[str, tuple[str, str]]:
     return homes
 
 
+def unusable_list_home(frontend: str, key: str, value: object) -> str:
+    """A fixture home for `frontend` whose path list names this interpreter as its `python` but holds
+    `value`, no list of strings, under `key`, which the guard itself refuses."""
+    name = f"{frontend}-unusable-{key}"
+    listed = json.loads(rendered_list(frontend, str(pathlib.Path(FIXTURE.name, name)), sys.executable))
+    return plugin_home(frontend, name, listed=json.dumps({**listed, key: value}))
+
+
 # The text of the reason of each transport case.
 TRANSPORT_WANTS = {
     "the interpreter is missing": "could not start",
@@ -551,6 +560,9 @@ def omp_cases():
         patterns = patterns["bash"]["patterns"]
         good = plugin_home("omp", "omp-home")
         homes = transport_homes("omp")
+        unusable = {
+            key: unusable_list_home("omp", key, value) for key, value in (("deny", "x"), ("edit", [1]))
+        }
     # The adapter, the profile and the rendering fail with HarnessError, an input of an unexpected
     # shape with the others; the case reports it as wrong, and the probe goes on to its summary.
     except (ImportError, OSError, ValueError, LookupError, TypeError, AttributeError, RuntimeError) as e:
@@ -580,6 +592,16 @@ def omp_cases():
                 line=f"exp deny, {want!r} got {got.decision}  [omp-guard]  fail-closed, {label}: "
                 f"{tool} {data}: {got.seconds:.2f} seconds",
             )
+    # The guard reads its path list before the tool: a list that holds no list of strings under a key
+    # refuses every call, a tool that the table does not name too.
+    for key, home in unusable.items():
+        for tool, data in (("bash", status), ("read", {"path": "src/Foo.jl"}), ("lsp", {"action": "hover"})):
+            got = omp_reply(home, (tool, data))
+            report(
+                ok=got.decision == "deny" and "no list of strings" in got.reason,
+                line=f"exp deny got {got.decision}  [omp-guard]  a list whose {key} is no list of strings: "
+                f"{tool} {data}",
+            )
     got = omp_reply(good, ("bash", status), mode="throw")
     report(
         ok=got.decision == "deny" and "failed" in got.reason,
@@ -598,7 +620,34 @@ def omp_cases():
             ok=ok,
             line=f"exp a block got {got[:120]!r}  [omp-guard]  a message the table cannot read: {data!r}",
         )
+    # A relative `input.cwd` in a message whose `cwd` is not absolute has no place, so it is refused.
+    data = b'{"event": {"toolName": "bash", "input": {"command": "cat id", "cwd": "../.ssh"}}, "cwd": "rel"}'
+    got = guard_message(good, "omp", data)
+    report(
+        ok=got.startswith('exit 0: {"block": true'),
+        line=f"exp a block got {got[:120]!r}  [omp-guard]  a relative cwd with no working directory",
+    )
+    size_cases(
+        report,
+        good,
+        "omp",
+        lambda command: {"event": {"toolName": "bash", "input": {"command": command}}, "cwd": CWD},
+    )
     return report.total, report.wrong
+
+
+def size_cases(report: AgyReport, home: str, frontend: str, message: Callable[[str], object]) -> None:
+    """The guard of `frontend` in the home `home` reads a command of 1 MiB, and refuses one of a
+    byte more as a message that it cannot read; `message` gives the message of a command."""
+    limit = 1024 * 1024
+    for size, block in ((limit, False), (limit + 1, True)):
+        got = guard_message(home, frontend, json.dumps(message("x" * size)).encode())
+        ok = got.startswith(f'exit 0: {{"block": {str(block).lower()}') and (
+            not block or "cannot read" in got
+        )
+        report(
+            ok=ok, line=f"exp block {block} got {got[:120]!r}  [{frontend}-size]  a command of {size} bytes"
+        )
 
 
 # OpenCode v2's plugins, `adapters/opencode/plugins/*.ts`, run under `node` with a stub of the
@@ -740,6 +789,7 @@ def oc_cases():
             "no rtk": plugin_home("opencode", "oc-rtk-none"),
         }
         homes = transport_homes("opencode")
+        unusable = unusable_list_home("opencode", "deny", ["/etc/**", 1])
     # The profile and the rendering fail with HarnessError, an input of an unexpected shape with the
     # others; the case reports it as wrong, and the probe goes on to its summary.
     except (ImportError, OSError, ValueError, LookupError, TypeError, AttributeError, RuntimeError) as e:
@@ -843,16 +893,45 @@ def oc_cases():
             ok=ok,
             line=f"exp a block got {got[:120]!r}  [oc-guards]  a message the table cannot read: {data!r}",
         )
+    size_cases(
+        report,
+        good,
+        "opencode",
+        lambda command: {"event": {"tool": "shell", "input": {"command": command}}, "directory": CWD},
+    )
 
-    # A local list in `$OPENCODE_CONFIG_DIR` that is no JSON refuses every call, as one that holds
-    # no list of strings does (a record).
-    local = pathlib.Path(FIXTURE.name, "oc-local", "broken")
-    local.mkdir(parents=True)
-    (local / "guard-paths.json").write_text('{"allow": [', encoding="utf-8")
-    got = reply(good, status, config_dir=str(local))
+    # The guard reads its path lists before the tool: a list that holds no list of strings under
+    # `deny`, and a local list in `$OPENCODE_CONFIG_DIR` that is no JSON or holds no list of strings
+    # under `allow`, refuse every call, a tool that the table does not check too.
+    unread = [
+        status,
+        oc_event(None, tool="read", filePath="src/Foo.jl"),
+        oc_event(None, tool="kaimon_ex", e="1", ses="x"),
+    ]
+    for event in unread:
+        got = reply(unusable, event)
+        report(
+            ok=got.decision == "deny" and "no list of strings" in got.reason,
+            line=f"exp deny got {got.decision}  [oc-guards]  a list whose deny is no list of strings: "
+            f"{event['tool']}",
+        )
+    for label, text in (("is no JSON", '{"allow": ['), ("holds an allow that is no list", '{"allow": "x"}')):
+        local = pathlib.Path(FIXTURE.name, "oc-local", label.replace(" ", "-"))
+        local.mkdir(parents=True)
+        (local / "guard-paths.json").write_text(text, encoding="utf-8")
+        for event in unread:
+            got = reply(good, event, config_dir=str(local))
+            report(
+                ok=got.decision == "deny" and "so the call is blocked" in got.reason,
+                line=f"exp deny got {got.decision}  [oc-guards]  a local list that {label}: {event['tool']}",
+            )
+    # A `$OPENCODE_CONFIG_DIR` that holds no list adds no rule.
+    empty = pathlib.Path(FIXTURE.name, "oc-local", "empty")
+    empty.mkdir(parents=True)
+    got = reply(good, status, config_dir=str(empty))
     report(
-        ok=got.decision == "deny",
-        line=f"exp deny got {got.decision}  [oc-guards]  a local list that is no JSON",
+        ok=got.decision == "pass",
+        line=f"exp pass got {got.decision}  [oc-guards]  a config directory with no list: git status",
     )
 
     # The rewrite: (home, command after the hook, verdict). The plugin finds `rtk` on the PATH of

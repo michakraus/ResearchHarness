@@ -881,3 +881,22 @@
 {"frontend": "omp", "tool": "bash", "input": {"command": "time cd; cat .netrc"}, "cwd": "@@OMPHOME@@/Research", "decision": "deny", "differs": "The guard reads a cd after time as a cd, which with no directory moves home (K14); the extension did not."}
 {"frontend": "omp", "tool": "grep", "input": {"pattern": "x"}, "cwd": "@@OMPHOME@@/Research", "decision": "pass"}
 {"frontend": "omp", "tool": "grep", "input": {"pattern": "x"}, "cwd": "@@OMPHOME@@", "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "cd `true`; cat .netrc"}, "cwd": "@@OMPHOME@@/Research", "covers": ["words"], "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "cd ``; cat .netrc"}, "cwd": "@@OMPHOME@@/Research", "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "cd `echo` && cat .netrc"}, "cwd": "@@OMPHOME@@/Research", "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "cd `echo` && ls"}, "cwd": "@@OMPHOME@@/Research", "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "cd `true` @@OMPHOME@@/Research; cat .netrc"}, "cwd": "@@OMPHOME@@/Research", "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "cd src && echo `date`"}, "cwd": "@@OMPHOME@@/Research", "covers": ["words"], "decision": "pass"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "ls", "cwd": "~"}, "cwd": "@@OMPHOME@@/Research", "covers": ["refusedAt"], "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "git add -A"}, "cwd": "@@OMPHOME@@/Research", "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "sort -r ls.txt"}, "cwd": "@@OMPHOME@@", "decision": "pass"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "ls | sort -r"}, "cwd": "@@OMPHOME@@", "decision": "pass"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "ls -r"}, "cwd": "@@OMPHOME@@", "decision": "deny"}
+{"frontend": "omp", "tool": "edit", "input": {"input": "*** Begin Patch\n*** Update File: Notes/plan.md\n*** Move to: ../.claude/hooks/x.py\n@@\n-a\n+b\n*** End Patch\n"}, "cwd": "@@OMPHOME@@/Research", "covers": ["editPaths"], "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "ls ~"}, "cwd": "@@OMPHOME@@/Research", "decision": "pass"}
+{"frontend": "opencode", "tool": "shell", "input": {"command": "ls ~"}, "covers": ["refusedPath"], "decision": "pass"}
+{"frontend": "opencode", "tool": "shell", "input": {"command": "cd ~ && ls"}, "covers": ["refusedPath"], "decision": "deny"}
+{"frontend": "opencode", "tool": "shell", "input": {"command": "cd ~/Research && ls ~"}, "decision": "deny"}
+{"frontend": "opencode", "tool": "shell", "input": {"command": "cat /tmp/notes.txt"}, "local": {"deny": ["/etc/**"]}, "decision": "pass"}
+{"frontend": "opencode", "tool": "shell", "input": {"command": "cat /home/u/notes.txt"}, "local": {"allow": ["/etc/hosts"]}, "covers": ["lists"], "decision": "pass"}
+{"frontend": "opencode", "tool": "shell", "input": {"command": "cat /etc/HOSTS"}, "local": {"allow": ["/etc/hosts"]}, "covers": ["rule"], "decision": "deny"}
