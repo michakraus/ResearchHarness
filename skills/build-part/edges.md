@@ -838,3 +838,13 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   passes the assertion where the mutant fails it. A mutant whose term is zero to round-off makes the
   assertion compare two round-off values; give it a term above round-off beside it (H round 1,
   *Implement multi-modal symplectic autoencoders*)
+- **a written output series whose test checks only its length or type:** a run file held the field
+  energy, two drift series and a count every step, and the tests read their lengths. Mutants that
+  wrote zeros, or another series in place of one, survived. Recompute each written series at a few
+  steps from the stored state, by an independent route, and compare values; pick a case where the
+  series is not zero (I1 round 1, *Implement multi-modal symplectic autoencoders*)
+- **a constant factor of a formula tested only where it equals 1:** the one test of
+  $|E_1| = k\,(2/N_x)\,|\cdot|$ used $k = 1$, and every other check was a log slope, which a constant
+  factor does not change, so dropping $k$ survived. Give the fixture a value of each factor other
+  than 1, with the expected value worked by hand (I1 round 1, *Implement multi-modal symplectic
+  autoencoders*)
