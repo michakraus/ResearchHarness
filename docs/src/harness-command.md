@@ -26,8 +26,10 @@ Each subcommand of `harness`, such as `install` or `doctor`, keeps one contract:
   `harness <subcommand>: <reason>`.
 
 So a dry run in a script tells you whether there is work to do: exit 1 means "run it again with
-`--apply`". The two checks differ: `harness test` exits 1 when a test case fails, and
-`harness doctor` exits 1 when a check fails.
+`--apply`". [`setup`](#setup) is the one exception: it has no `--apply`, because its y/N in a
+terminal, or `--yes` in a script, is the confirmation, and `--dry-run` prints its plan. The two
+checks differ: `harness test` exits 1 when a test case fails, and `harness doctor` exits 1 when a
+check fails.
 
 [development.md](development.md) describes the cases of `harness test`, and
 [architecture.md](architecture.md) the Claude Code layer that `harness install` writes.
@@ -46,6 +48,7 @@ These options come before the subcommand.
 
 | subcommand | does | changes something |
 |:--|:--|:--|
+| [`setup`](#setup) | installs the tools and frontends that the profile's `[setup]` chooses, then runs `install --apply`, `trust --apply`, the jobs and `doctor` | yes, after y/N or with `--yes` |
 | [`install`](#install) | installs the Julia environment of the scripts, syncs the Python environment of the harness, and installs the Claude Code layer with the sections `permissions`, `hooks`, `sandbox` and `modelSettings` of `settings.json`, the OpenCode configuration, the oh-my-pi permission layer, instructions, rules, agents, models and MCP entry, and the Antigravity guard hook, permission rules, instructions, rules, skills, agents and MCP entry | yes |
 | [`update`](#update) | brings the harness checkout up to `origin/main`, then runs `install --apply`. It does not move a checkout that is pinned to a commit | yes |
 | [`doctor`](#doctor) | checks the setup of this machine: the tools, the profile, the install and the jobs | no |
@@ -78,6 +81,88 @@ an agent session can run the subcommand. A session runs in the Claude Code sandb
 some writes and some network calls; a subcommand that needs them runs in your own terminal.
 
 ## Set up and keep a machine
+
+### `setup`
+
+```text
+harness setup [--yes] [--dry-run]
+```
+
+Sets up a machine in one run: the tools and the frontends that the profile's
+[`[setup]`](profile.md#the-setup-table) chooses, then the harness's own steps. The machine needs
+Python 3.14, uv, git and the clone before it, and on macOS Homebrew. It runs on macOS and on
+Ubuntu, on the architectures `arm64` and `x86_64` of macOS and `x86_64` and `aarch64` of Linux.
+
+In a terminal, `setup` asks its questions. Without a profile, it copies `examples/profile.toml`
+and asks only for the keys that have no default, `memory_project`, `tree_agents`, `org`,
+`repository_roots` and `leak`; an empty answer keeps the example's value. It then asks for the
+frontends and the components, each from a numbered list, and whether this machine develops the
+harness (`develop`), y/N. It shows the plan and runs it after y/N. The plan's first step writes
+the answers into `[setup]` of the profile. A missing `models.toml` beside the profile is copied
+from `examples/models.toml`.
+
+The plan holds these steps, in this order:
+
+1. the directories that `install` needs: the tree instructions, each `repository_roots` entry,
+   and with `opencode` the OpenCode configuration directory;
+2. the packages. On macOS, one `brew install` line of the missing tools and of the tools below
+   their minimum that Homebrew does not list as installed, one `brew upgrade` line of the tools
+   below their minimum that it lists, and `brew install --cask iterm2`. On Ubuntu, one
+   `sudo apt-get install -y` line of each package whose apt candidate meets the tool's minimum;
+3. on Ubuntu, each tool that apt does not meet, from its pinned release of `setup/tools.toml`
+   into `~/.local/bin`, after a check of the sha256 of the archive;
+4. the vendor installers, in this order: juliaup, Julia through juliaup when juliaup is there
+   (`juliaup update` when Julia is below its minimum), fatou on Ubuntu, Kaimon as a Julia app,
+   Claude Code, and on Ubuntu OpenCode (with `--no-modify-path`) and oh-my-pi;
+5. `harness install --apply`;
+6. `git config core.hooksPath .githooks` in the clone;
+7. `harness trust --apply`;
+8. with the component `jobs`, the jobs as the dotfiles kit's services step does them: the copies
+   in `~/.local/bin`, then the launch agents or the `systemd --user` units, rendered with
+   `harness render` and loaded;
+9. with the component `julia`, the Kaimon token `~/.config/kaimon/auth-token`, mode 600, from the
+   first key of `~/.config/kaimon/config.json` when that file exists and the token does not;
+10. `harness doctor`, after the lines under *By hand*, so that its report ends the run.
+
+A tool that is installed at or above its minimum of [dependencies.md](dependencies.md) is skipped;
+a tool with no minimum, only a version that it is tested with, is met by any version. After a
+Homebrew line or `juliaup update` for a tool below its minimum, `setup` reads the tool's version
+again. When it is still below, the step fails: for Julia, whose `juliaup update` keeps the
+default channel, with the line `juliaup add release && juliaup default release`; for another
+tool, with the path of the copy that comes first on the `PATH`.
+`setup/tools.toml` holds the minimums and the pinned releases. The OpenCode installer runs only
+when `opencode` is not on the `PATH`, and the juliaup installer only when `juliaup` is not.
+`setup` runs the OpenCode installer with `--no-modify-path` and prints the `PATH` line of
+`~/.opencode/bin` instead; the juliaup installer adds its own `PATH` block to the shell startup
+files. Each step that `setup` cannot do, such as the Antigravity app and
+`loginctl enable-linger` for the jobs on Linux, is printed under *By hand*.
+
+| option | meaning |
+|:--|:--|
+| `--yes` | read `[setup]` of the profile, or the defaults of a profile without it, and ask nothing. It never writes the profile |
+| `--dry-run` | print every command of the plan and change nothing, not even the profile |
+
+**Exit status:** 0 after the plan ran and `harness doctor` passed, after the dry run, and when
+the answer to the plan is no; 1 after the plan ran and `harness doctor` reported a FAIL; 2 when a
+step fails, which prints its output first, `harness doctor` with a status other than 0 or 1
+included; when stdin is no terminal and `--yes` is not given; when `--yes` finds no profile; when
+`[setup]` cannot be written into the profile in place, naming the table to write; when an answer
+is not valid UTF-8; on Ubuntu when `apt-cache` fails, and without `sudo`, or when `sudo -n true`
+is refused, after the apt line is printed for an administrator; and on a system other than macOS
+and Ubuntu, or an unknown architecture. A second run plans again and starts from the first step;
+each step skips what is done.
+
+**Reads:** the profile, `setup/tools.toml`, the versions of the installed tools, and on Ubuntu
+`apt-cache policy`. **Writes:** the profile (in a terminal), `models.toml` when it is missing, the
+packages and programs that the steps install, and what `install`, `trust` and the jobs write.
+
+**Where to run it:** in your own terminal. A session runs only `--dry-run`.
+
+```bash
+harness setup --dry-run --yes   # the plan for [setup], with no question
+harness setup                   # ask, show the plan, run it after y/N
+harness setup --yes             # the dotfiles kit's harness step
+```
 
 ### `install`
 

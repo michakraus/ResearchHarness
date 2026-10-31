@@ -92,7 +92,7 @@ which quotes the message.
 | `docs_additions` | the repositories that add steps to the canonical documentation workflow. Optional: without it, none | `workflows`; `ci-protection`, through `githooks/verify-workflows.jl` |
 | `protected_dir` | the directories below `home` that no session can edit, each as a path relative to `home`, such as `Nextcloud`. Optional: without it, none | `install`, in the settings template and the OpenCode configuration; `settings` |
 | `leak` | the strings that must never appear in the repository, such as your user name and the hosts of your institution. The item `~` stands for the path of your home directory, as each `~` of the profile does | `leaks` |
-| `[setup]` | the choices of this machine, a table with the keys of [The setup table](#the-setup-table). Optional: without it, every frontend and every component, and `develop` false | `install`, `doctor` and `get develop` |
+| `[setup]` | the choices of this machine, a table with the keys of [The setup table](#the-setup-table). Optional: without it, every frontend and every component, and `develop` false | `install`, `doctor`, `setup` and `get develop` |
 
 ## The setup table
 
@@ -103,8 +103,8 @@ the table, `frontends` and `components` are required.
 
 | key | what it holds | read by |
 |:--|:--|:--|
-| `frontends` | the frontends whose layers `harness install` plans and installs, each once: `claude`, `opencode`, `omp` and `antigravity`, in any order. An empty list installs no layer. A layer of a frontend that the list leaves out stays on disk: `install` removes nothing, and `doctor` reports it as a WARN that names `[setup]` and the frontend | `install`; `doctor`, whose OpenCode directory check is SKIP without `opencode` |
-| `components` | the components of this machine, each once: `julia`, `rtk`, `jq`, `iterm`, `jobs` and `dotfiles`. With `julia`, `install` installs the Julia environment of the scripts and `doctor` checks its packages; without it, neither does, and the packages are SKIP. No subcommand reads the other names | `install`; `doctor` |
+| `frontends` | the frontends whose layers `harness install` plans and installs, each once: `claude`, `opencode`, `omp` and `antigravity`, in any order. An empty list installs no layer. A layer of a frontend that the list leaves out stays on disk: `install` removes nothing, and `doctor` reports it as a WARN that names `[setup]` and the frontend | `install`; `doctor`, whose OpenCode directory check is SKIP without `opencode`; `setup`, which installs each frontend |
+| `components` | the components of this machine, each once: `julia`, `rtk`, `jq`, `iterm`, `jobs` and `dotfiles`. With `julia`, `install` installs the Julia environment of the scripts and `doctor` checks its packages; without it, neither does, and the packages are SKIP. `setup` installs the tools of each component | `install`; `doctor`; `setup` |
 | `develop` | `true` on a machine that develops the harness: the Python environment of the harness then also holds the `dev` group of `uv.lock`, the tools that check the Python code. Optional: without it, `false` | `install`, which syncs the environment; `doctor`, which checks it; `get develop`, which prints it |
 
 A key of `[setup]` that the table does not show, a missing `frontends` or `components`, a value

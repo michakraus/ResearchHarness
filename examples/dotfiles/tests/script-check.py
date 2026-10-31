@@ -28,11 +28,11 @@ Checks, numbered as the section banners and the `== check N` lines of the output
      before the first clone and stays unchanged; a file in the way of the meta checkout stops the
      run, and a second run completes once it is gone; a remote that does not answer fails the
      run.
-  3. The harness: the pin is fetched and checked out, then `harness install --apply` runs; a
+  3. The harness: the pin is fetched and checked out, then `harness setup --yes` runs; a
      modified or an untracked file stops the run before the checkout; a pin the remote lacks and
-     a remote that does not answer fail the run with no install. On the template host the
-     checkout never moves: with HEAD containing the pin the install runs over local changes;
-     without it the run stops with no install.
+     a remote that does not answer fail the run with no setup. On the template host the
+     checkout never moves: with HEAD containing the pin the setup runs over local changes;
+     without it the run stops with no setup.
   4. Julia: .chezmoidata/julia.toml holds the package set and its minimum channels. Per GPU
      (metal, cuda, amdgpu, none), juliaup adds each missing channel and sets the default; each
      X.Y channel gets one Pkg.add of the packages of the set whose minimum is at most the
@@ -600,15 +600,13 @@ def test_harness():
     result = run_script(text, env)
     log = home / "harness.log"
     check(
-        result.returncode == 0
-        and harness_head(env, checkout) == pin
-        and log.read_text() == "install --apply\n",
-        f"clean checkout: exit {result.returncode}, HEAD at the pin, `harness install --apply` ran",
+        result.returncode == 0 and harness_head(env, checkout) == pin and log.read_text() == "setup --yes\n",
+        f"clean checkout: exit {result.returncode}, HEAD at the pin, `harness setup --yes` ran",
     )
     result = run_script(text, env)
     check(
-        result.returncode == 0 and log.read_text() == "install --apply\n" * 2,
-        f"second run at the pin: exit {result.returncode}, the install runs again",
+        result.returncode == 0 and log.read_text() == "setup --yes\n" * 2,
+        f"second run at the pin: exit {result.returncode}, the setup runs again",
     )
 
     for kind in ("modified", "untracked"):
@@ -656,9 +654,9 @@ def test_harness():
         and git(env, "symbolic-ref", "--short", "HEAD", cwd=checkout) == "master"
         and (checkout / "README.md").read_text() == "local work\n"
         and (checkout / "notes.txt").is_file()
-        and (home / "harness.log").read_text() == "install --apply\n",
+        and (home / "harness.log").read_text() == "setup --yes\n",
         f"template host, HEAD contains the pin, local changes: exit {result.returncode}, "
-        "the install ran, HEAD and the branch unchanged, the changes kept",
+        "the setup ran, HEAD and the branch unchanged, the changes kept",
     )
 
     home, env, checkout, first, pin = harness_fixture()
