@@ -11,9 +11,10 @@ with a comment on every key that says what its value is.
 | [`providers.toml`](#the-providers) | the model servers and accounts of OpenCode and oh-my-pi | no | beside the profile | `install` only |
 | [`network.toml`](#the-network-overlay), the network overlay | your own hosts for the network lists of Claude Code | no | beside the profile | `install`, `render` of the settings template, `settings` |
 
-Copy each example that you need and write your values into the copy, as the step
-*The profile and the model tables* of [setup-macos.md](setup-macos.md#the-profile-and-the-model-tables)
-and [setup-linux.md](setup-linux.md#the-profile-and-the-model-tables) shows. A template of the
+`harness setup` creates the profile and copies the model tables. To do it by hand, copy each
+example that you need and write your values into the copy, as the step
+*The profile and the model tables* of
+[setup-reference.md](setup-reference.md#the-profile-and-the-model-tables) shows. A template of the
 repository names a profile key as `{key}`, and a subcommand renders the template with the profile
 before it uses it. A template that names a key that the profile does not have stops the
 subcommand, and the message names the key.

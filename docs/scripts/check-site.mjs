@@ -2,7 +2,8 @@
 //
 // - each page of the menu is a link of the sidebar on every page, and its HTML file exists;
 // - the sidebar starts with Home, a top-level link, and then the group Getting started with the
-//   introduction, the dependencies page, the two setup pages and the tutorial, in this order;
+//   introduction, the dependencies page, the two setup pages, the setup reference and the
+//   tutorial, in this order;
 // - each link of a page's text to a heading of the site finds that heading, which VitePress's
 //   check of dead links does not test;
 // - the home page, whose home layout has no doc footer, has its own edit link;
@@ -33,8 +34,8 @@ const BASE = '/ResearchHarness/'
 
 // The menu of the site: every page of docs/src/.
 const MENU = [
-  'index.md', 'concepts.md', 'dependencies.md', 'setup-macos.md', 'setup-linux.md', 'tutorial.md',
-  'daily-use.md', 'research-tree.md', 'harness-command.md', 'dotfiles-command.md', 'profile.md',
+  'index.md', 'concepts.md', 'dependencies.md', 'setup-macos.md', 'setup-linux.md',
+  'setup-reference.md', 'tutorial.md', 'daily-use.md', 'research-tree.md', 'harness-command.md', 'dotfiles-command.md', 'profile.md',
   'architecture.md', 'private-data.md', 'security.md', 'memory.md', 'agentic-engineering.md',
   'components/agents.md', 'components/skills.md', 'components/commands.md',
   'components/rules.md', 'components/hooks.md', 'components/githooks.md',
@@ -44,7 +45,8 @@ const MENU = [
 
 // The start of the sidebar: Home, then the group Getting started in this order.
 const START = [
-  'index.md', 'concepts.md', 'dependencies.md', 'setup-macos.md', 'setup-linux.md', 'tutorial.md'
+  'index.md', 'concepts.md', 'dependencies.md', 'setup-macos.md', 'setup-linux.md',
+  'setup-reference.md', 'tutorial.md'
 ]
 
 const problems = []

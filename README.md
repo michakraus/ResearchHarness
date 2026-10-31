@@ -11,7 +11,7 @@ set of instructions, skills, sub-agents, permission settings and guard hooks. On
 
 The harness is for a researcher who wants a coding agent to keep the same rules in every
 repository of a research tree: the packages, the experiments, the papers. Its own tools are for
-Julia code, but most of its ideas transfer to any language. [Dependencies](docs/src/dependencies.md#julia-and-its-packages)
+Julia code, but most of its ideas transfer to any language. [Dependencies](docs/src/dependencies.md#harness-setup-installs)
 says what needs Julia. The [documentation site](https://michakraus.github.io/ResearchHarness/)
 has two figures. The first shows the research tree, the components and the frontends. The second
 shows how the install turns the sources into the configuration of each frontend.
@@ -58,8 +58,10 @@ shows how the install turns the sources into the configuration of each frontend.
 
 ## Getting started
 
-- [Setup on macOS](docs/src/setup-macos.md) and [Setup on Linux](docs/src/setup-linux.md) give
-  each step from a clean machine to a working harness, with the check of each step.
+- [Setup on macOS](docs/src/setup-macos.md) and [Setup on Linux](docs/src/setup-linux.md) take a
+  clean machine to a working harness: the prerequisites, the clone, `harness setup` and the check.
+  The [setup reference](docs/src/setup-reference.md) gives each step of `harness setup`, and how
+  to do it by hand.
 - [Tutorial: a first session](docs/src/tutorial.md) starts your first session and shows the
   guard hooks and the drift warning at work.
 - [Introduction](docs/src/concepts.md) explains the ideas and the terminology of the harness.

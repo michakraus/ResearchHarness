@@ -1704,9 +1704,9 @@ def linux_cases(case: Case, tmp: pathlib.Path, pins: Pins) -> None:
         f"and fatou run, as these lines: {[line for line in lines if line.startswith('curl')]}",
         ok=all(line in lines for line in installers),
     )
-    page = (REPO / "docs" / "src" / "setup-linux.md").read_text(encoding="utf-8").splitlines()
+    page = (REPO / "docs" / "src" / "setup-reference.md").read_text(encoding="utf-8").splitlines()
     case(
-        "the installers of Claude Code, oh-my-pi and juliaup are the lines of setup-linux.md",
+        "the installers of Claude Code, oh-my-pi and juliaup are the lines of setup-reference.md",
         ok=all(line in page for line in (installers[0], installers[2], installers[3])),
     )
     s.fake("gitleaks", 'echo "8.21"')

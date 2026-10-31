@@ -7,7 +7,7 @@ so.
 
 `harness install` writes the sandbox, the permission lists and the hooks from the settings
 template `settings/settings.proposal.json` into `~/.claude/settings.json`.
-[setup-macos.md](setup-macos.md#claude-code) gives the steps.
+[setup-reference.md](setup-reference.md#claude-code) gives the steps.
 
 <WalkThrough name="tool-call" />
 

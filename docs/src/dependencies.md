@@ -7,63 +7,96 @@ stops without it. Each minimum comes from one source, which the cell names: a ch
 CI pin, a `[compat]` entry, or the release note of a feature that the code uses. Where no minimum
 exists, the cell gives the version that the harness is tested with.
 
-The tools are in three tables. *Generic tools* are the required tools that serve any language.
-*Julia and its packages* are the tools that only Julia code needs; in this table, Kaimon and
-juliaup are optional, as their rows say. *Optional* lists the other optional tools. Below the
-tables, [What each tool does](#what-each-tool-does) says what each tool does, why the harness
-needs it, and where the harness calls it.
+The tools are in two tables. *You provide* holds the three tools that a machine needs before the
+clone of the harness. The second table holds every other tool:
+[`harness setup`](harness-command.md#setup) puts each one that the
+[profile](concepts.md#profile) chooses on the machine. The
+`used for` cell of each row starts with who needs the tool: every machine, a component of
+`[setup]`, or a [frontend](concepts.md#frontend). Below the tables,
+[What each tool does](#what-each-tool-does) says what each tool does, why the harness needs it,
+and where the harness calls it. [setup-reference.md](setup-reference.md) gives each step of
+`harness setup` and how to do it by hand. The [install](concepts.md#install) of the harness needs
+Julia only where the profile chooses the component `julia`, as the paragraph after the second
+table says.
 
-## Generic tools
+## You provide
+
+`harness setup` runs on Python, its environment comes from uv, and git makes the clone of the
+harness. So these three tools come first, and you get them yourself, before the clone.
+
+On macOS, Homebrew installs them. Homebrew is the package manager that `harness setup` calls on
+macOS, so it is a prerequisite too, and no row of the tables. Its installer, from
+<https://brew.sh>, needs an administrator once. Then this line installs the three tools, with no
+administrator:
+
+```bash
+brew install python@3.14 uv git
+```
+
+On Ubuntu, this line installs Python, its `venv` module, git and curl. It needs an administrator:
+a user who may run `sudo`. Without `sudo`, ask an administrator to run the line for you.
+
+```bash
+sudo apt-get install python3 python3-venv git curl
+```
+
+Ubuntu 26.04 packages no uv. The first run of `bin/harness` outside a
+[session](concepts.md#session) fetches the uv release that it pins into `~/.local/bin`, and checks
+its sha256 first, as [uv](#uv) says.
 
 | tool | minimum | used for |
 |:--|:--|:--|
-| Python | ≥ 3.14, the check in `bin/harness` and `requires-python` in `pyproject.toml` | runs the `harness` command, the guard hooks and the pre-push hook |
-| uv | tested with 0.13.5, the release that `bin/harness` fetches on Linux | makes the Python environment that the `harness` command runs on, from `uv.lock` |
-| git | tested with 2.54.0 | reads and pushes the repositories of the tree, makes the worktrees of Claude Code, and clones the pushed commit for the pre-push hook |
-| gh | tested with 2.102.0 | protects the default branch of each repository on GitHub, in `harness ci-protection` |
-| gitleaks | ≥ 8.21, the check in `.githooks/pre-push` | finds secrets in the commits of a push, in the pre-push hook and in CI; needed only to push to the harness, so `harness doctor` gives a `WARN`, not a `FAIL`, without it |
-| Node.js | ≥ 20.16 (20.x), ≥ 22.3, for `process.getBuiltinModule`, as the API documentation says: <https://nodejs.org/api/process.html#processgetbuiltinmoduleid> | loads the guard extensions of oh-my-pi and OpenCode in the hook probe of `harness test`, and builds the documentation site with npm and VitePress |
-| shellcheck | tested with 0.11.0 | checks the shell scripts, in the pre-push hook and in CI |
-| actionlint | ≥ 1.7.12, the CI pin in `.github/workflows/test.yml` | checks the GitHub workflow files, in CI |
-| rsync | tested with 3.5.1 | copies a package without its `.git` directory, for the test runner and the mutation tests |
+| Python | ≥ 3.14, the check in `bin/harness` and `requires-python` in `pyproject.toml` | needed by every machine: runs the `harness` command, the guard hooks and the pre-push hook |
+| uv | tested with 0.13.5, the release that `bin/harness` fetches on Linux | needed by every machine: makes the Python environment that the `harness` command runs on, from `uv.lock` |
+| git | tested with 2.54.0 | needed by every machine: reads and pushes the repositories of the tree, makes the worktrees of Claude Code, and clones the pushed commit for the pre-push hook |
 
-## Julia and its packages
+## `harness setup` installs
+
+`harness setup` installs each tool of this table that the profile chooses. A row that starts
+with *needed by every machine* is installed on each machine. A row that names a component or a
+frontend is installed only where `[setup]` of the profile chooses it: `components` holds the
+components, and `frontends` the frontends. The six Julia packages come with the Julia environment
+that `harness install --apply` makes, and `harness setup` runs that step. A tool that is
+installed and meets its minimum is not installed again.
 
 | tool | minimum | used for |
 |:--|:--|:--|
-| Julia | ≥ 1.13, `[compat]` in `Project.toml` | runs the Julia scripts: the formatter, the test runner, the mutation tests, the workflow check and the installed git hooks |
-| ExplicitImports | ≥ 1.15, `[compat]` in `Project.toml` | finds the names that a package uses without an explicit import, in the script `explicit-imports.jl` and the package audit |
-| JSON | ≥ 1.10, `[compat]` in `Project.toml` | writes the reports of the test gate and the mutation tests |
-| JuliaFormatter | ≥ 2.14, `[compat]` in `Project.toml` | formats Julia code, in `harness format`, the installed pre-commit hook and the test gate |
-| JuliaSyntax | ≥ 1.0.2, `[compat]` in `Project.toml` | parses Julia code to make the mutants of a mutation test |
-| TestEnv | ≥ 1.103.7, `[compat]` in `Project.toml` | runs the tests of a package in its test environment, for the test runner and the mutation tests |
-| YAML | ≥ 0.4.17, `[compat]` in `Project.toml` | reads the CI workflows |
-| fatou | ≥ 0.22.0, the CI pin in `.github/workflows/julia.yml` | lints the staged Julia files before a commit, and rejects a mutant that uses an undefined name |
-| Kaimon | tested with 2.10.0, the `version` of its app project | gives an [agent](concepts.md#agent) a Julia [session](concepts.md#session) and tools for Julia code; without it, the update job stops with an error, and the agents have no Julia session |
-| juliaup | tested with 1.18.9 | updates the Julia releases, in the update job; without it, the job cannot update them |
+| gh | tested with 2.102.0 | needed by every machine: protects the default branch of each repository on GitHub, in `harness ci-protection` |
+| gitleaks | ≥ 8.21, the check in `.githooks/pre-push` | needed by every machine: finds secrets in the commits of a push, in the pre-push hook and in CI; a machine that never pushes to the harness can do without it, so `harness doctor` gives a `WARN`, not a `FAIL`, without it |
+| Node.js | ≥ 20.16 (20.x), ≥ 22.3, for `process.getBuiltinModule`, as the API documentation says: <https://nodejs.org/api/process.html#processgetbuiltinmoduleid> | needed by every machine: loads the guard extensions of oh-my-pi and OpenCode in the hook probe of `harness test`, and builds the documentation site with npm and VitePress |
+| shellcheck | tested with 0.11.0 | needed by every machine: checks the shell scripts, in the pre-push hook and in CI |
+| actionlint | ≥ 1.7.12, the CI pin in `.github/workflows/test.yml` | needed by every machine: checks the GitHub workflow files, in CI |
+| rsync | tested with 3.5.1 | needed by every machine: copies a package without its `.git` directory, for the test runner and the mutation tests |
+| Julia | ≥ 1.13, `[compat]` in `Project.toml` | needed by the component `julia`: runs the Julia scripts: the formatter, the test runner, the mutation tests, the workflow check and the installed git hooks |
+| ExplicitImports | ≥ 1.15, `[compat]` in `Project.toml` | needed by the component `julia`: finds the names that a package uses without an explicit import, in the script `explicit-imports.jl` and the package audit |
+| JSON | ≥ 1.10, `[compat]` in `Project.toml` | needed by the component `julia`: writes the reports of the test gate and the mutation tests |
+| JuliaFormatter | ≥ 2.14, `[compat]` in `Project.toml` | needed by the component `julia`: formats Julia code, in `harness format`, the installed pre-commit hook and the test gate |
+| JuliaSyntax | ≥ 1.0.2, `[compat]` in `Project.toml` | needed by the component `julia`: parses Julia code to make the mutants of a mutation test |
+| TestEnv | ≥ 1.103.7, `[compat]` in `Project.toml` | needed by the component `julia`: runs the tests of a package in its test environment, for the test runner and the mutation tests |
+| YAML | ≥ 0.4.17, `[compat]` in `Project.toml` | needed by the component `julia`: reads the CI workflows |
+| fatou | ≥ 0.22.0, the CI pin in `.github/workflows/julia.yml` | needed by the component `julia`: lints the staged Julia files before a commit, and rejects a mutant that uses an undefined name |
+| Kaimon | tested with 2.10.0, the `version` of its app project | needed by the component `julia`: gives an [agent](concepts.md#agent) a Julia session and tools for Julia code; without it, the update job stops with an error, and the agents have no Julia session |
+| juliaup | tested with 1.18.9 | needed by the component `julia`: installs Julia, and updates the Julia releases in the update job; without it, the job cannot update them |
+| Claude Code | tested with 2.1.295 | needed by the frontend `claude`: reads the layer that `harness install` writes into `~/.claude/`, and runs the skill-trigger test, which checks which [skill](concepts.md#skill) loads on a query; without it, neither happens |
+| OpenCode | tested with 2.0.26 | needed by the frontend `opencode`: reads the configuration that `harness install` writes into `~/.config/opencode/`; without it, nothing reads that configuration |
+| oh-my-pi | tested with 18.8.6 | needed by the frontend `omp`: reads the configuration that `harness install` writes into `~/.omp/agent/`; without it, nothing reads that configuration |
+| Antigravity | no minimum; `harness setup` prints its step and installs nothing | needed by the frontend `antigravity`: reads the layer that `harness install` writes into `~/.gemini/config/`; without `~/.gemini/`, the install writes no file there |
+| RTK | tested with 0.51.0 | needed by the component `rtk`: shortens the output of shell commands in OpenCode; without it, the plugin passes each command unchanged |
+| jq | tested with 1.7.1 | needed by the component `jq`: reads the session data for the Claude Code status line; without it, the status line shows no values |
+| iTerm2 | tested with 3.7.3, the `CFBundleShortVersionString` of the app | needed by the component `iterm`: shows the state of a Claude Code session in the terminal tab; without it, the hook `hooks/cc-status` does nothing and exits 0, which blocks nothing |
+| chezmoi | no minimum | needed by the component `dotfiles`: applies the private copy of the dotfiles kit on each machine; without it, the kit cannot run |
 
-**For a reader who writes no Julia.** The rows of this table serve Julia code only: the formatter,
-the test runner and the mutation tests, the git hooks and workflows that `harness githooks` and
-`harness workflows` [install](concepts.md#install) into Julia packages, the workflow check of
-`harness ci-protection`, the update job, and the Julia session of an agent through
-Kaimon. Without them, a reader who writes no Julia loses these tools and nothing else: the
+**For a reader who writes no Julia.** The rows of the component `julia` serve Julia code only: the
+formatter, the test runner and the mutation tests, the git hooks and workflows that
+`harness githooks` and `harness workflows` [install](concepts.md#install) into Julia packages, the
+workflow check of `harness ci-protection`, the update job, and the Julia session of an agent
+through Kaimon. Without them, a reader who writes no Julia loses these tools and nothing else: the
 instruction layer, the settings, the guard hooks, the leak checks and the warning about
-[drift](concepts.md#drift) work the same. Julia itself is
-the one exception. `harness install --apply` instantiates the Julia environment of the scripts
-before it writes the configuration, and without `julia` it stops and writes nothing. So install
-Julia even if you write no Julia code; the install then adds the six packages itself, and fatou,
-Kaimon and juliaup can stay out.
-
-## Optional
-
-| tool | minimum | used for |
-|:--|:--|:--|
-| Claude Code | tested with 2.1.295 | reads the layer that `harness install` writes into `~/.claude/`, and runs the skill-trigger test, which checks which [skill](concepts.md#skill) loads on a query; without it, neither happens |
-| OpenCode | tested with 2.0.26 | reads the configuration that `harness install` writes into `~/.config/opencode/`; without it, nothing reads that configuration |
-| oh-my-pi | tested with 18.8.6 | reads the configuration that `harness install` writes into `~/.omp/agent/`; without it, nothing reads that configuration |
-| RTK | tested with 0.51.0 | shortens the output of shell commands in OpenCode; without it, the plugin passes each command unchanged |
-| jq | tested with 1.7.1 | reads the session data for the Claude Code status line; without it, the status line shows no values |
-| iTerm2 | tested with 3.7.3, the `CFBundleShortVersionString` of the app | shows the state of a Claude Code session in the terminal tab; without it, the hook `hooks/cc-status` does nothing and exits 0, which blocks nothing |
+[drift](concepts.md#drift) work the same. Leave `julia` out of `components` in `[setup]` of the
+profile. Then `harness setup` installs none of these tools, and `harness install --apply` makes no
+Julia environment and needs no Julia. With the component `julia`, or with a profile that has no
+`[setup]`, which chooses every component, `harness install --apply` makes the Julia environment
+of the scripts, and without `julia` it stops with an error.
 
 The tables leave out the system tools: the POSIX shell utilities, such as `awk`, `sed`, `grep`,
 `ps`, `kill`, `id` and `mktemp`; the tools that macOS supplies, `launchctl`, `security`,
@@ -72,7 +105,8 @@ The tables leave out the system tools: the POSIX shell utilities, such as `awk`,
 `systemctl` and `notify-send` in place of the macOS tools, and finds each on the `PATH`. Without
 `lsof` its server check fails; without `notify-send` it writes the log line only. On Linux, the
 Claude Code [sandbox](concepts.md#sandbox) needs bubblewrap, `bwrap`, and socat. The settings
-template sets `failIfUnavailable`, so without them Claude Code does not start.
+template sets `failIfUnavailable`, so without them Claude Code does not start. On Ubuntu,
+`harness setup` installs curl, bubblewrap, socat and lsof on every machine, in its `apt-get` line.
 
 ## What each tool does
 
@@ -314,12 +348,13 @@ Call site: the update job (`scripts/julia-update.jl`).
 juliaup installs and updates the Julia releases, and selects a release per command.
 
 The update job `julia-update.jl` runs `juliaup update` and finds the installed channels in the
-configuration of juliaup.
+configuration of juliaup. `harness setup` runs the juliaup installer, which installs Julia too,
+and runs `juliaup update` for a Julia below its minimum.
 
-The harness needs juliaup only for the update job. Without it, the job cannot update the Julia
-releases.
+The harness needs juliaup for the update job, and `harness setup` needs it to install Julia.
+Without it, the job cannot update the Julia releases.
 
-Call site: the update job (`scripts/julia-update.jl`).
+Call sites: the update job (`scripts/julia-update.jl`); `harness setup` (`lib/harness/setup.py`).
 
 ### Claude Code
 
@@ -361,6 +396,22 @@ The harness does not need oh-my-pi to run. Without it, nothing reads that config
 
 Call site: `harness install` (`adapters/omp/adapter.py`).
 
+### Antigravity
+
+Antigravity is a coding agent with a desktop app, an IDE and the CLI `agy`, which read one
+configuration directory. It is one of the four frontends that the harness configures.
+
+`harness install` writes the Antigravity layer into `~/.gemini/config/` once `~/.gemini/` exists:
+the instructions, the rules, the skills, the agents, the guard hook and the permission rules of
+the app and of `agy`. `harness setup` installs no Antigravity: with the frontend `antigravity`, it
+prints the step under *By hand*, to install the app from <https://antigravity.google/> and start it
+once.
+
+The harness does not need Antigravity to run. Without `~/.gemini/`, the install writes no file
+there and gives one warning.
+
+Call site: `harness install` (`adapters/antigravity/adapter.py`).
+
 ### RTK
 
 RTK (Rust Token Killer) rewrites shell commands so that their output uses fewer tokens: for
@@ -395,3 +446,18 @@ The harness does not need iTerm2. Without the utility, the hook does nothing and
 blocks nothing.
 
 Call site: `hooks/cc-status`.
+
+### chezmoi
+
+chezmoi manages the dotfiles of a user from a source directory, on several machines.
+
+The dotfiles kit of the harness, `examples/dotfiles/`, is a chezmoi source with placeholder data.
+Its private copy keeps the profile, the model tables and the commit of the harness the same on
+each machine, and chezmoi applies it there. The scripts of the kit, such as `dotfiles-update`, run
+chezmoi.
+[The `dotfiles` command](dotfiles-command.md) gives the steps.
+
+The harness does not need chezmoi to run. Only a user who keeps several machines the same with
+the kit needs it, and that user chooses the component `dotfiles`.
+
+Call sites: the scripts of the kit (`examples/dotfiles/dot_local/bin/`).

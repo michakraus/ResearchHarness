@@ -22,7 +22,7 @@ The checks, in this order:
 - with `--full`, `harness test` and `julia -e 'using Revise'`; without it, both are SKIP.
 
 Each line is `PASS`, `WARN`, `FAIL` or `SKIP`, the name of the check and a detail. A FAIL line
-also names the section of the setup page that fixes it (FIX). The subcommand exits 1 when a check
+also names the section of the setup pages that fixes it (FIX). The subcommand exits 1 when a check
 fails, else 0; a WARN or a SKIP does not count.
 
 It changes nothing: it reads files, and runs the version flags of the tools, the dry run of
@@ -110,21 +110,29 @@ TOOLS = [
     ("RTK", "rtk", ["--version"], "the OpenCode plugin passes each command unchanged"),
     ("jq", "jq", ["--version"], "the status line of Claude Code shows no values"),
 ]
-# The section that fixes a FAIL, {topic: (on Linux, on macOS)}.
+# The section that fixes a FAIL, {topic: (on Linux, on macOS)}: a page below docs/src/ and a
+# level-2 heading of it, which `fix_cases` checks. setup-reference.md gives each step for both
+# systems; the check that it worked is a section of each setup page.
 FIX = {
-    "machine": ("setup-linux.md, Check the machine", "setup-macos.md, Check the machine"),
-    "sandbox": ("setup-linux.md, The sandbox of Claude Code", "setup-macos.md, The sandbox of Claude Code"),
-    "tools": ("setup-linux.md, The dependencies", "setup-macos.md, The dependencies"),
-    "profile": (
-        "setup-linux.md, The profile and the model tables",
-        "setup-macos.md, The profile and the model tables",
+    "machine": ("setup-reference.md, Check the machine", "setup-reference.md, Check the machine"),
+    "sandbox": (
+        "setup-reference.md, The sandbox of Claude Code",
+        "setup-reference.md, The sandbox of Claude Code",
     ),
-    "tree": ("setup-linux.md, The tree instructions", "setup-macos.md, The tree instructions"),
-    "install": ("setup-linux.md, `harness install --apply`", "setup-macos.md, `harness install --apply`"),
-    "kaimon job": ("setup-linux.md, The jobs", "setup-macos.md, The jobs"),
-    "update job": ("setup-linux.md, The jobs", "setup-macos.md, The jobs"),
-    "autocommit": ("setup-linux.md, The jobs", "setup-macos.md, The jobs"),
-    "token": ("setup-linux.md, The Kaimon token", "setup-macos.md, The Kaimon token"),
+    "tools": ("setup-reference.md, The packages", "setup-reference.md, The packages"),
+    "profile": (
+        "setup-reference.md, The profile and the model tables",
+        "setup-reference.md, The profile and the model tables",
+    ),
+    "tree": ("setup-reference.md, The tree instructions", "setup-reference.md, The tree instructions"),
+    "install": (
+        "setup-reference.md, `harness install --apply`",
+        "setup-reference.md, `harness install --apply`",
+    ),
+    "kaimon job": ("setup-reference.md, The jobs", "setup-reference.md, The jobs"),
+    "update job": ("setup-reference.md, The jobs", "setup-reference.md, The jobs"),
+    "autocommit": ("setup-reference.md, The jobs", "setup-reference.md, The jobs"),
+    "token": ("setup-reference.md, The Kaimon token", "setup-reference.md, The Kaimon token"),
     "test": ("setup-linux.md, The check that it worked", "setup-macos.md, The check that it worked"),
 }
 # The answers of `systemctl is-active`; any other output is no answer.
@@ -308,7 +316,7 @@ class Doctor:
         return out
 
     def sandbox(self):
-        """The sandbox check of setup-linux.md, and socat beside it."""
+        """The sandbox check of setup-reference.md on Linux, and socat beside it."""
         bwrap = shutil.which("bwrap")
         if bwrap is None:
             out = [self.fail("sandbox", "bwrap not found", "sandbox")]
@@ -807,10 +815,11 @@ def cmd_doctor(args):
 # A token whose value must never reach the output.
 TOKEN = "kaimon_" + "5e" * 20
 # What each tool prints on each system, {command: [(pattern of its arguments, stdout, stderr,
-# exit status)]}. The macOS lines are recorded from the tools on a Mac with the setup page done,
-# but for actionlint, whose line is the form of its releases, and launchctl, whose lines are
-# written from its known form: in a session's sandbox it gives no answer. The Linux versions are
-# those of a machine with Ubuntu 26.04 set up with setup-linux.md, each in its tool's form: the
+# exit status)]}. The macOS lines are recorded from the tools on a Mac set up by the steps of
+# setup-reference.md, but for actionlint, whose line is the form of its releases, and launchctl,
+# whose lines are written from its known form: in a session's sandbox it gives no answer. The
+# Linux versions are those of a machine with Ubuntu 26.04 set up by the steps of
+# setup-reference.md, each in its tool's form: the
 # lines of gh, shellcheck and rsync are the form of their upstream releases, and those of
 # systemctl, loginctl and bwrap are written from their known form around the answers that the
 # machine gave, such as `Linger=no` and `active`. The Linux line of uv is written: the version of
@@ -1086,12 +1095,65 @@ def minimum_cases(check):
         set(MINIMUMS) <= set(found),
         f"every tool of MINIMUMS is a row of dependencies.md: {sorted(set(MINIMUMS) - set(found))} are not",
     )
-    names = {name for name, *_ in TOOLS} | set(PACKAGES) | {"Kaimon", "iTerm2"}
+    names = {name for name, *_ in TOOLS} | set(PACKAGES) | {"Kaimon", "iTerm2", "chezmoi", "Antigravity"}
     check(
         set(found) == names,
         f"the checks cover each tool of dependencies.md: missing {sorted(set(found) - names)}, "
         f"extra {sorted(names - set(found))}",
     )
+
+
+def level_two(text: str) -> list[str]:
+    """The level-2 headings of the Markdown `text`, outside code fences."""
+    found: list[str] = []
+    fenced = False
+    for line in text.splitlines():
+        if line.startswith("```"):
+            fenced = not fenced
+        elif not fenced and line.startswith("## "):
+            found.append(line[3:].strip())
+    return found
+
+
+def fix_problems(fix: dict[str, tuple[str, str]], pages: pathlib.Path) -> list[str]:
+    """Each section of `fix`, `<page>, <heading>`, that is no level-2 heading of `pages`/<page>, a
+    missing page included, as `<topic>: <section>`."""
+    problems: list[str] = []
+    for topic, pair in fix.items():
+        for where in dict.fromkeys(pair):
+            page, _, heading = where.partition(", ")
+            path = pages / page
+            if heading not in (level_two(path.read_text(encoding="utf-8")) if path.is_file() else []):
+                problems.append(f"{topic}: {where}")
+    return problems
+
+
+def fix_cases(check: Callable[[bool, str], None], root: pathlib.Path) -> None:
+    """The rules of `fix_problems` on a fixture in `root`, then each section of FIX against
+    docs/src/."""
+    check(
+        level_two("## A\n```\n## B\n```\n### C\n## D \n") == ["A", "D"],
+        "a heading in a code fence and a level-3 heading are no level-2 headings",
+    )
+    pages = root / "fix-pages"
+    pages.mkdir(parents=True, exist_ok=True)
+    (pages / "p.md").write_text("# P\n\n## A\n\n```\n## B\n```\n", encoding="utf-8")
+    found = fix_problems(
+        {"x": ("p.md, A", "p.md, B"), "y": ("q.md, A", "p.md, A"), "z": ("p.md, C", "p.md, C")}, pages
+    )
+    check(
+        found == ["x: p.md, B", "y: q.md, A", "z: p.md, C"],
+        "a section in a code fence and a section of a missing page are problems of FIX, and a section "
+        f"that both systems name is one: {found}",
+    )
+    problems = fix_problems(FIX, REPO / "docs" / "src")
+    check(not problems, f"each section of FIX is a level-2 heading of its page: not {problems}")
+
+
+def page_cases(check: Callable[[bool, str], None], root: pathlib.Path) -> None:
+    """The cases that read the pages of docs/src/: the minimums and the sections of FIX."""
+    minimum_cases(check)
+    fix_cases(check, root)
 
 
 def below(floor):
@@ -1253,9 +1315,23 @@ def status_cases(check, root, system_name):
             (f.bin / "julia").unlink()
 
         got, _ = case("another system without julia", {"Julia": "FAIL"}, other, ("tools",), only=("Julia",))
+        detail = cast("str", got["Julia"].detail)
         check(
-            got["Julia"].detail.endswith("(fix: setup-linux.md, The dependencies)"),
-            f"another system names the Linux page -> {got['Julia'].detail!r}",
+            detail.endswith("(fix: setup-reference.md, The packages)"),
+            f"another system names the section of FIX that fixes the tools -> {detail!r}",
+        )
+
+        def other_test(f: Fixture) -> None:
+            f.system = "FreeBSD"
+            stub(f.harness, [("test", "BAD  a case\n\n1861 cases, 1 wrong\n", "", 1)])
+
+        got, _ = case(
+            "another system with a wrong case", {"harness test": "FAIL"}, other_test, ("full",), full=True
+        )
+        detail = cast("str", got["harness test"].detail)
+        check(
+            detail.endswith("(fix: setup-linux.md, The check that it worked)"),
+            f"another system names the Linux entry of a pair of FIX that differs -> {detail!r}",
         )
 
     # The tools: each required one missing, each optional one missing, each minimum and the
@@ -2315,7 +2391,7 @@ def process_cases(check: Callable[[object, str], object], root: pathlib.Path):
 # The groups of cases, each a function of `check` and a scratch directory; `harness test` runs each
 # group as the part `doctor:<group>`.
 GROUPS = {
-    "minimum": lambda check, root: minimum_cases(check),
+    "minimum": page_cases,
     "linux": lambda check, root: status_cases(check, root / "Linux", "Linux"),
     "darwin": lambda check, root: status_cases(check, root / "Darwin", "Darwin"),
     "exit": lambda check, root: exit_cases(check, root / "exit"),
@@ -2324,12 +2400,13 @@ GROUPS = {
 
 
 def selftest(groups):
-    """The cases of the groups `groups` of GROUPS: the minimums against dependencies.md, each
-    status of each check on a fixture of Linux and of macOS, the exit status, and a run in a
-    process of its own: (number of cases, number wrong)."""
+    """The cases of the groups `groups` of GROUPS: the minimums against dependencies.md and the
+    sections of FIX against the setup pages, each status of each check on a fixture of Linux and
+    of macOS, the exit status, and a run in a process of its own: (number of cases, number
+    wrong)."""
     total = wrong = 0
 
-    def check(ok, label):
+    def check(ok: object, label: str) -> None:
         nonlocal total, wrong
         total, wrong = total + 1, wrong + (not ok)
         print(f"{'ok ' if ok else 'BAD'}  doctor: {label}")

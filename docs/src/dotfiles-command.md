@@ -6,8 +6,9 @@ up: the tool check, the clones, Julia, the harness at a pinned commit, and the j
 On each machine it installs the command `dotfiles` and the scripts that `dotfiles` runs, in
 `~/.local/bin`.
 
-The kit is optional. The setup pages for [macOS](setup-macos.md#dotfiles-optional) and
-[Linux](setup-linux.md#dotfiles-optional) work without it.
+The kit is optional. The setup pages for [macOS](setup-macos.md) and [Linux](setup-linux.md)
+work without it, and [Dotfiles (optional)](setup-reference.md#dotfiles-optional) says when to use
+it.
 
 The harness never installs these scripts itself. The scripts check and move the pin of the
 harness, so the checker must not come from the thing that it checks. You copy the kit into a
