@@ -15,5 +15,4 @@
   a few places, each a record of `tests/guard/corpus.jsonl` with its reason, and the forms of K14
   with a redirection, an assignment or `time` before a `cd` are refused. The Bash rules of the
   path list meet only the word lists that hold all their needed texts, so a crafted command of
-  1 MiB costs 484 matcher calls where it cost 36,438,620. K123 records that Antigravity's handler
-  timeout is not measured.
+  1 MiB costs 484 matcher calls where it cost 36,438,620.
