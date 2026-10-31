@@ -415,11 +415,12 @@ def refusal(reason: str, seconds: float) -> PluginReply:
 
 
 def omp_reply(
-    home: str, tool: str, data: object, *, cwd: str = CWD, mode: str = "", path: str | None = None
+    home: str, call: tuple[str, object], *, cwd: str = CWD, mode: str = "", path: str | None = None
 ) -> PluginReply:
-    """The extension's answer in the home `home` to one event of `tool` with the input `data`, in the
+    """The extension's answer in the home `home` to one event of the call (tool, input), in the
     working directory `cwd`, the driver in the mode `mode`; `path`, the `PATH` of `node`."""
     node = shutil.which("node") or "node"
+    tool, data = call
     event = json.dumps({"type": "tool_call", "toolCallId": "probe", "toolName": tool, "input": data})
     env = {**CLEAN, "HOME": home}
     if path is not None:
@@ -478,7 +479,8 @@ def fake_interpreters(frontend: str) -> dict[str, str]:
     texts = {
         "the guard exits 3 after its answer": f'#!/bin/sh\n{python} "$@"\nexit 3\n',
         "the guard prints {": "#!/bin/sh\ncat > /dev/null\necho '{'\n",
-        "the guard blocks with no reason": '#!/bin/sh\ncat > /dev/null\necho \'{"block": true, "reason": ""}\'\n',
+        "the guard blocks with no reason": "#!/bin/sh\ncat > /dev/null\n"
+        + 'echo \'{"block": true, "reason": ""}\'\n',
         "the guard is killed after its answer": f'#!/bin/sh\n{python} "$@"\nkill -9 $$\n',
         "the guard answers after the timeout": f'#!/bin/sh\nsleep 1\nexec {python} "$@"\n',
     }
@@ -543,7 +545,8 @@ def omp_cases():
         omp = importlib.import_module("harness.frontends").adapter("omp")
         dummy = importlib.import_module("harness.profile").load(REPO + "/examples/profile.toml")
         config = omp.render_config(dummy, omp.load_models(REPO + "/examples/models.toml"))
-        patterns = json.loads("".join(l for l in config.splitlines(keepends=True) if not l.startswith("#")))
+        lines = config.splitlines(keepends=True)
+        patterns = json.loads("".join(line for line in lines if not line.startswith("#")))
         patterns = patterns["bash"]["patterns"]
         good = plugin_home("omp", "omp-home")
         homes = transport_homes("omp")
@@ -554,7 +557,7 @@ def omp_cases():
         return report.total, report.wrong
     for record in plugin_records("omp"):
         cwd = str(record.get("cwd", CWD))
-        got = omp_reply(good, record["tool"], record["input"], cwd=cwd, mode=str(record.get("agent", "")))
+        got = omp_reply(good, (record["tool"], record["input"]), cwd=cwd, mode=str(record.get("agent", "")))
         report(
             ok=got.decision == record["decision"],
             line=f"exp {record['decision']} got {got.decision}  [omp-guard]  {record['tool']} "
@@ -570,19 +573,19 @@ def omp_cases():
             *([("read", {"path": "src/Foo.jl"})] if label == "the path list is missing" else []),
         ]
         for tool, data in calls:
-            got = omp_reply(home, tool, data)
+            got = omp_reply(home, (tool, data))
             report(
                 ok=got.decision == "deny" and want in got.reason,
-                line=f"exp deny, {want!r} got {got.decision}  [omp-guard]  fail-closed, {label}: {tool} {data}: "
-                f"{got.seconds:.2f} seconds",
+                line=f"exp deny, {want!r} got {got.decision}  [omp-guard]  fail-closed, {label}: "
+                f"{tool} {data}: {got.seconds:.2f} seconds",
             )
-    got = omp_reply(good, "bash", status, mode="throw")
+    got = omp_reply(good, ("bash", status), mode="throw")
     report(
         ok=got.decision == "deny" and "failed" in got.reason,
         line=f"exp deny got {got}  [omp-guard]  the handler throws",
     )
     # The extension runs the interpreter that the list names, never `python3` from the PATH.
-    got = omp_reply(good, "bash", status, path="/nonexistent")
+    got = omp_reply(good, ("bash", status), path="/nonexistent")
     report(
         ok=got.decision == "pass",
         line=f"exp pass got {got.decision}  [omp-guard]  python3 is not on the PATH: git status",
@@ -745,14 +748,15 @@ def oc_cases():
     def reply(
         home: str,
         event: object,
-        directory: str = CWD,
+        place: tuple[str, str | None] = (CWD, None),
         *,
-        process_cwd: str | None = None,
         config_dir: str | None = None,
         path: str | None = None,
     ) -> PluginReply:
-        """The guard plugin's answer in the home `home` to one event, with the options of `drive`."""
+        """The guard plugin's answer in the home `home` to one event, with the session's directory and
+        the directory of `node` of `place`, and the options of `drive`."""
         start = time.monotonic()
+        directory, process_cwd = place
         answer = drive(
             home, "guards", event, cwd=directory, process_cwd=process_cwd, config_dir=config_dir, path=path
         )
@@ -790,7 +794,7 @@ def oc_cases():
             config_dir = str(config)
         directory = str(record.get("directory", CWD))
         event = {**oc_event(None, tool=record["tool"]), "input": record["input"]}
-        got = reply(good, event, directory, process_cwd=record.get("process_cwd"), config_dir=config_dir)
+        got = reply(good, event, (directory, record.get("process_cwd")), config_dir=config_dir)
         report(
             ok=got.decision == record["decision"],
             line=f"exp {record['decision']} got {got.decision}  [oc-guards]  {record['tool']} "
@@ -814,8 +818,8 @@ def oc_cases():
             got = reply(home, event)
             report(
                 ok=got.decision == "deny" and want in got.reason and OC_GUARD in got.reason,
-                line=f"exp deny, {want!r} got {got.decision}  [oc-guards]  fail-closed, {label}: {event['tool']}: "
-                f"{got.seconds:.2f} seconds",
+                line=f"exp deny, {want!r} got {got.decision}  [oc-guards]  fail-closed, {label}: "
+                f"{event['tool']}: {got.seconds:.2f} seconds",
             )
     # With no path list, `setup` still resolves and registers its hook.
     answer = drive(homes["the path list is missing"][0], "guards", status)

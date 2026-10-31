@@ -753,10 +753,8 @@ def plan(ctx: types.SimpleNamespace | argparse.Namespace):
         (dest / "plugins" / f.name, f.read_bytes(), None, f"plugins/{f.name}")
         for f in sorted((SOURCE / "plugins").glob("*.ts"))
     ]
-    guard_list = profile_module.render_file(SOURCE / "plugins" / "guard-paths.json", ctx.profile)
-    files.append(
-        (dest / "plugins" / "guard-paths.json", interpreted(guard_list), None, "plugins/guard-paths.json")
-    )
+    guard_list = interpreted(profile_module.render_file(SOURCE / "plugins" / "guard-paths.json", ctx.profile))
+    files.append((dest / "plugins" / "guard-paths.json", guard_list, None, "plugins/guard-paths.json"))
 
     # The links that an earlier install wrote to ~/.agents/skills/ go, after every frontend's files.
     def links(apply):
@@ -1382,8 +1380,9 @@ def install_cases(check, tmp):
             and all(mode(base / "opencode" / p) == mode(claude / p) for p in package)
             and listed.get("python") == str(base / "python" / "bin" / "python")
         ),
-        f"hooks/ holds a copy of each file of the Claude Code layer's guard package, with its mode, and no "
-        f"other file, and guard-paths.json names the environment's interpreter: {hooks}, {listed.get('python')}",
+        "hooks/ holds a copy of each file of the Claude Code layer's guard package, with its mode, and no "
+        "other file, and guard-paths.json names the environment's interpreter: "
+        f"{hooks}, {listed.get('python')}",
     )
     # A builder spawns the verifier or a reader, so sub-agents nest two levels deep.
     depth = re.findall(

@@ -1042,9 +1042,9 @@ def omp_cases(case, fresh, run):
         ),
         f"--apply installs AGENTS.md, {OVERLAY}, models.yml, guards.ts, guard-paths.json, whose `deny` is "
         "OpenCode's list, whose `edit` is the template's Edit and Write denies, whose `ask` is its Edit and "
-        "Write asks and whose `python` is the environment's interpreter, mcp.json, the rules, the agents and the "
-        "council seats, and its own copies of RTK.md, the instructions, the guard package and the skills, and no "
-        f"guard script and nothing else: {installed}",
+        "Write asks and whose `python` is the environment's interpreter, mcp.json, the rules, the agents "
+        "and the council seats, and its own copies of RTK.md, the instructions, the guard package and the "
+        f"skills, and no guard script and nothing else: {installed}",
     )
     package = [name for name in names if name.startswith("hooks/guard/")]
     installed_at, source_at = cast("pathlib.Path", agent), cast("pathlib.Path", claude)
@@ -1066,8 +1066,8 @@ def omp_cases(case, fresh, run):
                 for name in package
             )
         ),
-        "each copy is the Claude Code layer's file, a text with its shared paths relocated, and each file of the "
-        "guard package has its mode",
+        "each copy is the Claude Code layer's file, a text with its shared paths relocated, and each file of "
+        "the guard package has its mode",
     )
     limits = load_models(REPO / "examples" / "models.toml").context_limits
     yml = omp_config(agent / "models.yml")
