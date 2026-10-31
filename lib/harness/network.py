@@ -44,9 +44,9 @@ import subprocess
 import sys
 import tempfile
 import tomllib
-from typing import Any
+from typing import Any, cast
 
-from . import REPO, HarnessError
+from . import REPO, HarnessError, jsonio
 
 LIST = REPO / "settings" / "network.toml"
 TEMPLATE = REPO / "settings" / "settings.proposal.json"
@@ -249,10 +249,16 @@ def selftest():
             path.write_text(text)
             return path
 
+        def rendered_template() -> dict[str, Any]:
+            """The template rendered with the dummy profile."""
+            return cast(
+                "dict[str, Any]",
+                jsonio.loads(profile_module.render_file(TEMPLATE, dummy), where=str(TEMPLATE)),
+            )
+
         def rendered(text: str) -> dict[str, Any]:
             """The template rendered with the dummy profile and the overlay `text`."""
-            cfg = json.loads(profile_module.render_file(TEMPLATE, dummy))
-            return apply(cfg, overlay(text))
+            return apply(rendered_template(), overlay(text))
 
         def net(cfg):
             return cfg["sandbox"]["network"]
@@ -261,10 +267,10 @@ def selftest():
             return [r for r in cfg["permissions"][kind] if r.startswith(WEBFETCH)]
 
         base = rendered("")
-        missing = apply(json.loads(profile_module.render_file(TEMPLATE, dummy)), tmp / "absent.toml")
+        missing = apply(rendered_template(), tmp / "absent.toml")
 
         # The harness list itself, and the template that keeps no host.
-        template = json.loads(TEMPLATE.read_text())
+        template = cast("dict[str, Any]", jsonio.load(TEMPLATE))
         case(
             lambda: (
                 not [
@@ -292,8 +298,7 @@ def selftest():
         case(
             lambda: (
                 allow == [f"{WEBFETCH}{h})" for h in harness_list["allow"]]
-                and base["permissions"]["allow"]
-                == json.loads(profile_module.render_file(TEMPLATE, dummy))["permissions"]["allow"] + allow
+                and base["permissions"]["allow"] == rendered_template()["permissions"]["allow"] + allow
             ),
             "each allow host is a WebFetch(domain:…) rule after the template's own allow rules",
         )
@@ -458,7 +463,7 @@ def selftest():
             ("an allowedDomains entry", lambda c: net(c)["allowedDomains"].append("x.org")),
             ("no allowedDomains", lambda c: net(c).pop("allowedDomains")),
         ]:
-            cfg = json.loads(profile_module.render_file(TEMPLATE, dummy))
+            cfg = rendered_template()
             edit(cfg)
             message = refused(lambda: apply(cfg, tmp / "absent.toml"))
             case(
@@ -485,8 +490,13 @@ def selftest():
             text=True,
             env=Scratch.env(home),
             check=False,
+            timeout=60,
         )
-        out = json.loads(p.stdout) if p.returncode == 0 else {}
+        out = (
+            cast("dict[str, Any]", jsonio.loads(p.stdout, where="harness render"))
+            if p.returncode == 0
+            else {}
+        )
         case(
             lambda: (
                 f"{WEBFETCH}library.example.org)" in fetch(out, "allow")
@@ -522,6 +532,7 @@ def selftest():
             text=True,
             env=Scratch.env(home),
             check=False,
+            timeout=60,
         )
         case(
             lambda: (
@@ -548,7 +559,7 @@ def selftest():
                 for p in sorted((base / root).rglob("*"))
                 if p.is_file()
             }
-            return code, output, files, json.loads((claude_dir / "settings.json").read_text())
+            return code, output, files, cast("dict[str, Any]", jsonio.load(claude_dir / "settings.json"))
 
         plain = install(None)
         changed = install(

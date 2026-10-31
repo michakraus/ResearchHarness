@@ -78,7 +78,7 @@ from collections.abc import Mapping, Sequence
 from typing import Any, Literal, cast
 from unittest import mock
 
-from . import REPO, HarnessError, fmt, frontends, frontmatter, network
+from . import REPO, HarnessError, fmt, frontends, frontmatter, jsonio, network
 
 DEFAULT = pathlib.Path.home() / ".config" / "research-harness" / "profile.toml"
 DUMMY = REPO / "examples" / "profile.toml"
@@ -875,7 +875,8 @@ def render_file(path: str | os.PathLike[str], profile: Profile | Context) -> str
     lists = [n for n in PLACEHOLDER.findall(text) if isinstance(given.get(n), list)]
     try:
         if lists and pathlib.Path(path).suffix == ".json":
-            return json.dumps(render_data(json.loads(text), given), indent=2, ensure_ascii=False) + "\n"
+            data = jsonio.loads(text, where=str(path), top=object)
+            return json.dumps(render_data(data, given), indent=2, ensure_ascii=False) + "\n"
         return render_text(text, given)
     except (KeyError, TypeError, ValueError) as e:
         raise HarnessError(f"{path}: {e.args[0]}") from e
@@ -884,7 +885,8 @@ def render_file(path: str | os.PathLike[str], profile: Profile | Context) -> str
 def cmd_render(args: argparse.Namespace | types.SimpleNamespace) -> int:
     given = context(load(args.profile), providers={})
     if pathlib.Path(args.template).resolve() == network.TEMPLATE:
-        cfg = network.apply(json.loads(render_file(args.template, given)), network_path(args.profile))
+        rendered = jsonio.loads(render_file(args.template, given), where=str(args.template))
+        cfg = network.apply(rendered, network_path(args.profile))
         sys.stdout.write(json.dumps(cfg, indent=2, ensure_ascii=False) + "\n")
     else:
         sys.stdout.write(render_file(args.template, given))
@@ -920,6 +922,7 @@ def own_repository(repo: pathlib.Path = REPO) -> str | None:
         capture_output=True,
         text=True,
         check=False,
+        timeout=60,
     ).stdout
     m = re.search(r"[:/]([^/:]+/[^/]+?)(?:\.git)?\s*$", url)
     return m.group(1) if m else None
@@ -994,6 +997,7 @@ def added_lines(sha: str, repo: pathlib.Path = REPO) -> list[tuple[str, str]]:
         cwd=repo,
         capture_output=True,
         check=False,
+        timeout=60,
     )
     if p.returncode:
         raise HarnessError(f"git diff-tree {sha}: {p.stderr.decode(errors='replace').strip()}")
@@ -1014,6 +1018,7 @@ def added_lines(sha: str, repo: pathlib.Path = REPO) -> list[tuple[str, str]]:
         cwd=repo,
         capture_output=True,
         check=False,
+        timeout=60,
     )
     if p.returncode:
         raise HarnessError(f"git show {sha}: {p.stderr.decode(errors='replace').strip()}")
@@ -1044,6 +1049,7 @@ def message_lines(sha: str, repo: pathlib.Path = REPO):
         cwd=repo,
         capture_output=True,
         check=False,
+        timeout=60,
     )
     if p.returncode:
         raise HarnessError(f"git show -s {sha}: {p.stderr.decode(errors='replace').strip()}")
@@ -1084,6 +1090,7 @@ def cmd_leaks(args: argparse.Namespace, repo: pathlib.Path = REPO) -> int:
         capture_output=True,
         text=True,
         check=True,
+        timeout=60,
     ).stdout.split("\0")
     sources = [(f, (repo / f).read_text(errors="replace")) for f in files if f and (repo / f).is_file()]
     tracked = len(sources)
@@ -1172,6 +1179,7 @@ def commit_cases():
                 check=True,
                 capture_output=True,
                 text=True,
+                timeout=60,
             ).stdout.strip()
 
         def commit(name: str, data: bytes | None = None, *move: str) -> str:
@@ -1458,6 +1466,7 @@ def commit_cases():
             env=env,
             capture_output=True,
             check=False,
+            timeout=60,
         )
         (repo / "f.txt").write_bytes(b"main\nLEAK\n")
         git("add", "--", "f.txt")
@@ -1663,6 +1672,7 @@ def prepush_case(
                 check=True,
                 capture_output=True,
                 text=True,
+                timeout=60,
             ).stdout.strip()
 
         git("init", "-q", "-b", "main")
@@ -1846,6 +1856,7 @@ def prepush_branch_cases():
                 check=True,
                 capture_output=True,
                 text=True,
+                timeout=60,
             ).stdout.strip()
 
         def commit(name: str, content: str | None = None) -> str:
@@ -2225,6 +2236,7 @@ def schema_cases() -> tuple[int, int]:
             capture_output=True,
             text=True,
             check=False,
+            timeout=60,
         )
         said = [line for line in p.stderr.splitlines() if line.startswith("harness get: ")]
         check(
@@ -2553,6 +2565,7 @@ def home_cases():
             capture_output=True,
             text=True,
             check=False,
+            timeout=60,
         )
         said = p.stderr.strip().splitlines()
         check(
@@ -2592,6 +2605,7 @@ def home_cases():
                 capture_output=True,
                 text=True,
                 check=False,
+                timeout=60,
             )
             check(
                 p.returncode == 0 and p.stdout.strip() == expected,
@@ -2742,6 +2756,7 @@ def selftest():
         capture_output=True,
         text=True,
         check=True,
+        timeout=60,
     ).stdout.strip()
     n3, w3 = prepush_case(exec_path + os.pathsep + os.environ.get("PATH", ""))
     n4, w4 = prepush_branch_cases()

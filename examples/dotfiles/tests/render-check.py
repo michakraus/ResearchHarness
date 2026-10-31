@@ -112,7 +112,7 @@ def chezmoi(work, args, data=None, stdin=None):
     ]
     if data is not None:
         cmd += ["--override-data", json.dumps(data)]
-    return subprocess.run(cmd + args, capture_output=True, text=True, input=stdin, check=False)
+    return subprocess.run(cmd + args, capture_output=True, text=True, input=stdin, check=False, timeout=60)
 
 
 def scratch(root, name):

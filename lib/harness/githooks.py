@@ -71,13 +71,15 @@ def repositories(require_project=False):
     return found
 
 
-def git(repo: str | os.PathLike[str], *args: str):
-    """Run `git -C repo args`; the completed process, never raising."""
+def git(repo: str | os.PathLike[str], *args: str, timeout: int = 60):
+    """Run `git -C repo args`; the completed process, whatever its exit status. A git that runs
+    longer than `timeout` seconds raises subprocess.TimeoutExpired."""
     return subprocess.run(
         ["git", "-C", str(repo), *args],  # noqa: S607 -- git runs from PATH
         capture_output=True,
         text=True,
         check=False,
+        timeout=timeout,
     )
 
 

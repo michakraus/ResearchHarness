@@ -145,8 +145,10 @@ from datetime import datetime, timedelta, UTC
 from typing import Any, Literal, cast
 from unittest import mock
 
-from harness import REPO, HarnessError, changing, frontends, frontmatter, install, network, outcome
+from harness import REPO, HarnessError, changing, frontends, frontmatter, fsutil, install, network, outcome
+from harness import jsonio, ownedjson
 from harness import profile as render_profile
+from harness.jsonio import JsonValue
 from harness import sources as neutral
 from harness.githooks import research_root
 from harness.sources import NEUTRAL
@@ -226,15 +228,22 @@ def read_settings(path):
     return cfg
 
 
+def json_value(text: str, where: str) -> Any:
+    """The JSON value of `text`, of any type, read by `jsonio`; a refusal raises HarnessError, which
+    names `where`. Each caller reads the keys of the value as its own code checks them."""
+    return jsonio.loads(text, where=where, top=object)
+
+
 def json_object(path: str | os.PathLike[str], text: str) -> dict[str, Any]:
-    """`text`, the contents of the file at `path`, parsed; exits 2 when it is not JSON, is nested
-    deeper than the parser reads, or is not a JSON object."""
+    """`text`, the contents of the file at `path`, read by `jsonio`; exits 2 when it is nested deeper
+    than `jsonio.MAX_DEPTH`, is not JSON that `jsonio` reads (a key twice in one object and `NaN`
+    are not), or is not a JSON object."""
+    if jsonio.too_deep(text) is not None:
+        raise HarnessError(f"{path} is JSON nested too deep: deeper than {jsonio.MAX_DEPTH}")
     try:
-        cfg = json.loads(text)
-    except ValueError as e:
-        raise HarnessError(f"{path} is not JSON: {e}") from None
-    except RecursionError:  # Python 3.11's recursion limit, or the stack limit of 3.12 and later
-        raise HarnessError(f"{path} is JSON nested too deep for the parser") from None
+        cfg = jsonio.loads(text, where=str(path), top=object)
+    except HarnessError as e:
+        raise HarnessError(f"{path} is not JSON: {str(e).removeprefix(f'{path}: ')}") from None
     if not isinstance(cfg, dict):
         raise HarnessError(f"{path} is not a JSON object")
     return cfg
@@ -285,8 +294,8 @@ def commands(days):
                 if '"tool_use"' not in line:
                     continue
                 try:
-                    rec = json.loads(line)
-                except ValueError:
+                    rec = json_value(line, str(path))
+                except HarnessError:
                     continue
                 if not isinstance(rec.get("timestamp"), str) or rec["timestamp"] < cutoff:
                     continue
@@ -521,51 +530,6 @@ def cmd_twins(args):
 OWNED = ("permissions", "hooks", "sandbox", "modelSettings")
 
 
-def indent_of(text):
-    """The indentation of a settings file's `text`, as the `indent` of json.dumps, so that a merge
-    does not reformat it: the spaces and tabs that open the first indented line after the first;
-    None, one line, for a file of one line; 2 when no line after the first is indented."""
-    # A line ends at "\n" only: JSON allows a raw U+2028 in a string, where splitlines breaks.
-    lines = text.rstrip("\n").split("\n")
-    if len(lines) == 1:
-        return None
-    for line in lines[1:]:
-        stripped = line.lstrip(" \t")
-        if stripped and stripped != line:
-            return line[: len(line) - len(stripped)]
-    return 2
-
-
-class Number:
-    """A number token of a JSON text, as `json.loads` gives it to `parse_int` and `parse_float`."""
-
-    def __init__(self, text):
-        self.text = text
-
-
-def rewritten_numbers(text, skip, path="the JSON text"):
-    """[(key, source text, emitted text)] of each number in the JSON object `text`, outside its
-    top-level keys `skip`, whose text json.dumps writes otherwise for its parsed value: `1.10` as
-    `1.1`, `1e400` as `Infinity`. A key is named as a path, `env.list[1]`. Exits 2, naming `path`,
-    the file of `text`, when this parse runs out of stack at a depth that `json_object` reads."""
-    try:
-        cfg = json.loads(text, parse_int=Number, parse_float=Number)
-    except RecursionError:  # Python 3.11's recursion limit, or the stack limit of 3.12 and later
-        raise HarnessError(f"{path} is JSON nested too deep for the parser") from None
-    found, stack = [], [(k, v) for k, v in reversed(cfg.items()) if k not in skip]
-    while stack:
-        key, value = stack.pop()
-        if isinstance(value, dict):
-            stack += [(f"{key}.{k}", v) for k, v in reversed(value.items())]
-        elif isinstance(value, list):
-            stack += [(f"{key}[{i}]", v) for i, v in reversed(list(enumerate(value)))]
-        elif isinstance(value, Number):
-            emitted = json.dumps(json.loads(value.text))
-            if emitted != value.text:
-                found.append((key, value.text, emitted))
-    return found
-
-
 LONE_SURROGATE = re.compile(r"[\ud800-\udfff]")
 
 
@@ -577,12 +541,17 @@ def escaped(text):
 def dumps(obj, **kwargs):
     """`obj` as JSON text in which no character is escaped but a lone surrogate.
 
-    The merge leaves every key it does not own as the app wrote it, and the default
-    `ensure_ascii=True` would write each non-ASCII character, an em-dash say, as `\\u2014`. A lone
-    surrogate stays an escape, because UTF-8 cannot encode it: it comes from a `\\ud800` in the
-    JSON text, which JavaScript's `JSON.stringify` writes for one.
+    The default `ensure_ascii=True` would write each non-ASCII character, an em-dash say, as
+    `\\u2014`. A lone surrogate stays an escape, because UTF-8 cannot encode it: it comes from a
+    `\\ud800` in the JSON text, which JavaScript's `JSON.stringify` writes for one.
     """
     return escaped(json.dumps(obj, ensure_ascii=False, **kwargs))
+
+
+def section_lines(section: dict[str, Any]) -> list[str]:
+    """The lines of the owned sections `section` as JSON with sorted keys, indented by 2, which the
+    dry run's diff of settings.json compares."""
+    return dumps(section, indent=2, sort_keys=True).splitlines()
 
 
 def hook_command(command: str, profile: render_profile.Profile, python: str) -> str:
@@ -609,7 +578,7 @@ def settings_template(
     `read_settings` does not do, with the interpreter `python`, by default the Python
     environment's (`install.python_interpreter`)."""
     text = PROPOSAL.read_text()
-    template = json.loads(text)
+    template = cast("dict[str, Any]", jsonio.loads(text, where=str(PROPOSAL)))
     interpreter: str = install.python_interpreter() if python is None else python
     try:
         cfg = cast(
@@ -637,15 +606,12 @@ def settings_file(root, profile, overlay):
     Each key of OWNED is replaced from the rendered template, or removed when the template lacks
     it. Each other key of the template that the file lacks is added after the file's keys, with
     the template's value, and so is each variable of the template's `env` that the file's `env`
-    object lacks; every other key keeps its value and its place, the file keeps its indent
-    (`indent_of`), and no character but a lone surrogate is escaped. Owned sections equal to the
-    template's, in a file that holds every key and `env` variable of the template, leave the file
-    as it is. A missing
-    file is created with the keys of the template, indented by 2, mode 0644. Exits 2, before
-    anything is written, on a file that is a symlink, is not a
-    regular file, cannot be read, is not UTF-8 or JSON (`json_object`), is not a JSON object, or
-    holds an owned key whose value is not an object, and, when the merge writes the file, on a
-    number outside the owned sections that it would write in other text (`rewritten_numbers`).
+    object lacks; `ownedjson.merged` writes the changed values again and keeps every other byte of
+    the file. Owned sections equal to the template's, in a file that holds every key and `env`
+    variable of the template, leave the file as it is. A missing file is created with the keys of
+    the template, indented by 2, mode 0644. Exits 2, before anything is written, on a file that is
+    a symlink, is not a regular file, cannot be read, is not UTF-8 or JSON (`json_object`), is not
+    a JSON object, or holds an owned key whose value is not an object.
     """
     import difflib
 
@@ -659,7 +625,7 @@ def settings_file(root, profile, overlay):
         raise HarnessError(f"{live} cannot be read: {e.strerror}") from None
     if st is not None and stat.S_ISLNK(st.st_mode):
         raise HarnessError(f"{live} is a symlink; `harness install` merges the settings into a file only")
-    cfg, indent, old = {}, 2, None
+    cfg, old = {}, None
     text = ""
     if st is not None:
         if stat.S_ISDIR(st.st_mode):
@@ -682,7 +648,6 @@ def settings_file(root, profile, overlay):
         wrong = [k for k in OWNED if k in cfg and not isinstance(cfg[k], dict)]
         if wrong:
             raise HarnessError(f"{live}: the value of {', '.join(wrong)} is not a JSON object")
-        indent = indent_of(text)
     template = settings_template(profile, overlay)
     added = [k for k in template if k not in OWNED and k not in cfg]
     env = cfg.get("env")
@@ -695,30 +660,28 @@ def settings_file(root, profile, overlay):
             s["env"] = {k: c["env"][k] for k in env_added if k in c["env"]}
         return s
 
-    a, b = (dumps(section(c), indent=2, sort_keys=True).splitlines() for c in (cfg, template))
+    a, b = (section_lines(section(c)) for c in (cfg, template))
     diff = list(
         difflib.unified_diff(a, b, "~/.claude/settings.json", "settings/settings.proposal.json", lineterm="")
     )
     if diff or old is None:
-        rewritten = rewritten_numbers(text, OWNED, live) if old is not None else []
-        if rewritten:
-            raise HarnessError(
-                f"{live}: the merge would rewrite "
-                + ", ".join(
-                    f"the number `{source}` of `{key}` as `{emitted}`" for key, source, emitted in rewritten
-                )
-                + "; write each as the merge writes it, then run the install again"
-            )
-        for key in OWNED:
-            if key in template:
-                cfg[key] = template[key]
-            else:
-                cfg.pop(key, None)
-        for key in added:
-            cfg[key] = template[key]
-        for key in env_added:
-            cfg["env"][key] = template["env"][key]
-        data = (dumps(cfg, indent=indent) + "\n").encode("utf-8")
+
+        def change(merged: dict[str, JsonValue]) -> dict[str, JsonValue]:
+            """The owned sections from the template, then its added keys and `env` variables."""
+            for key in OWNED:
+                if key in template:
+                    merged[key] = template[key]
+                else:
+                    merged.pop(key, None)
+            for key in added:
+                merged[key] = template[key]
+            for key in env_added:
+                cast("dict[str, JsonValue]", merged["env"])[key] = template["env"][key]
+            return merged
+
+        data = ownedjson.merged(cast("str", text), change, where=str(cast("pathlib.Path", live))).encode(
+            "utf-8"
+        )
     else:
         data = old
     return live, data, 0o644 if old is None else None, "~/.claude/settings.json", True, "\n".join(diff)
@@ -746,7 +709,7 @@ def stray_warnings():
         try:
             if not stat.S_ISREG(path.stat().st_mode):
                 continue
-            permissions = json.loads(path.read_text(encoding="utf-8")).get("permissions", {})
+            permissions = json_value(path.read_text(encoding="utf-8"), str(path)).get("permissions", {})
             for kind in ("allow", "ask", "deny"):
                 rules = permissions.get(kind, [])
                 if isinstance(rules, list):
@@ -762,7 +725,7 @@ def stray_warnings():
                     )
         except FileNotFoundError, NotADirectoryError:
             continue
-        except (OSError, ValueError, AttributeError, TypeError, RecursionError) as e:
+        except (OSError, ValueError, AttributeError, TypeError, HarnessError) as e:
             warnings.append((escaped(f"{path} cannot be read as a settings file: {type(e).__name__}: {e}"),))
     if found:
         warnings.insert(
@@ -915,14 +878,15 @@ def cmd_trust(args):
         print(("trust  " if args.apply else "untrusted  ") + path)
     print(f"{len(missing)} untrusted" + (", now trusted" if args.apply and missing else ""))
     if args.apply and missing:
-        for path in missing:
-            projects.setdefault(path, {})["hasTrustDialogAccepted"] = True
-        mode = os.stat(CONFIG).st_mode & 0o777
-        fd, tmp = tempfile.mkstemp(dir=os.path.dirname(CONFIG), prefix=".claude.json.")
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            json.dump(config, f, indent=2, ensure_ascii=False)
-        os.chmod(tmp, mode)
-        os.replace(tmp, CONFIG)
+
+        def trusted(merged: dict[str, JsonValue]) -> dict[str, JsonValue]:
+            """Each missing root with `hasTrustDialogAccepted`; every other byte of the file stays."""
+            entries = cast("dict[str, JsonValue]", merged.setdefault("projects", {}))
+            for path in missing:
+                cast("dict[str, JsonValue]", entries.setdefault(path, {}))["hasTrustDialogAccepted"] = True
+            return merged
+
+        ownedjson.merge(CONFIG, trusted)
     return outcome(args, len(missing))
 
 
@@ -1261,6 +1225,7 @@ def layer_cases(check, tmp):
 
     this = sys.modules[__name__]
     scratch = Scratch(check, tmp)
+    scratch = cast("Any", scratch)
     fresh, run, case, refused, tail, mode = (
         scratch.fresh,
         scratch.run,
@@ -1543,7 +1508,7 @@ def layer_cases(check, tmp):
                 and (
                     written == value
                     if MODEL.fullmatch(value)
-                    else written[:1] == '"' and json.loads(written) == value
+                    else written[:1] == '"' and json_value(written, "the model line") == value
                 )
             ),
             f"the model {value!r} of [claude] loads, and the rendered `model:` reads as it: {line!r}",
@@ -1823,7 +1788,7 @@ def layer_cases(check, tmp):
     # can be listed, but its entries cannot be examined.
     for rel, bits in [("rules", 0), ("rules", 0o444), ("rules/x.md", 0)]:
         base, claude, tree = fresh(["rules/x.md"])
-        (tree / rel).chmod(bits)
+        (tree / rel).chmod(bits)  # not private: a fixture made unreadable
         code, text = run(base)
         (tree / rel).chmod(0o755)
         case(
@@ -1958,7 +1923,7 @@ def layer_cases(check, tmp):
     # Each command that runs a .py hook names the interpreter first, and each word of a command
     # stays one shell word when the profile's home and the interpreter's path hold a space.
     spaced, python = "/home/ex ample", "/env with space/bin/python"
-    raw = hook_commands(json.loads(PROPOSAL.read_text())["hooks"])
+    raw = hook_commands(json_value(PROPOSAL.read_text(), str(PROPOSAL))["hooks"])
     rendered = hook_commands(
         settings_template(dataclasses.replace(profile, home=spaced), home / "network.toml", python)["hooks"]
     )
@@ -2037,8 +2002,7 @@ def layer_cases(check, tmp):
         "someFutureKey": [1, {"a": None}],
     }
     old = json.dumps(live_cfg, indent=4, ensure_ascii=False) + "\n"
-    (claude / "settings.json").write_text(old)
-    (claude / "settings.json").chmod(0o600)
+    fsutil.write_private(claude / "settings.json", old.encode())
     code, text = run(base)
     lines = text.splitlines()
     at = [i for i, line in enumerate(lines) if settings_line.fullmatch(line)]
@@ -2060,7 +2024,7 @@ def layer_cases(check, tmp):
         f"sections, one change, exit 1, and the dry run writes nothing: {first}, {code}, {at}, {tail(text)}",
     )
     code, text = run(base, "--apply")
-    merged = json.loads((claude / "settings.json").read_text())
+    merged = json_value((claude / "settings.json").read_text(), "settings.json")
     backups = sorted(claude.glob("settings.json.bak-*"))
     expected = {
         "model": "opus",
@@ -2110,7 +2074,7 @@ def layer_cases(check, tmp):
         f"the dry run after the --apply finds settings.json identical, prints no blank line after it, 0 changes, "
         f"exit 0: {again}, {after[:1]}, {tail(text2)}",
     )
-    state.chmod(0o600)
+    state.chmod(0o600)  # not private: gives back the read of a fixture made unreadable
     case(lambda: state.read_text() == '{"state": 1}\n', "~/.claude.json is neither read nor written")
     # Owned sections equal to the template's in another layout, in a file that holds every key of the
     # template, are no change: the file is left as it is, and a key with another value than the
@@ -2143,12 +2107,12 @@ def layer_cases(check, tmp):
     )
     # A key of the template that the file lacks is in the dry run's diff, and --apply adds it after the
     # file's keys and changes no other key.
-    lacking = json.loads(kept)
+    lacking = json_value(kept.decode(), "settings.json")
     del lacking["cleanupPeriodDays"]
     (claude / "settings.json").write_text(json.dumps(lacking) + "\n")
     dry, text = run(base)
     code, _ = run(base, "--apply")
-    merged = json.loads((claude / "settings.json").read_text())
+    merged = json_value((claude / "settings.json").read_text(), "settings.json")
     case(
         lambda: (
             dry == 1
@@ -2166,7 +2130,7 @@ def layer_cases(check, tmp):
     )
     # An effort or an auto-compact window that the UI wrote into modelSettings is in the diff, and
     # --apply replaces the section with the template's.
-    ui = json.loads(kept)
+    ui = json_value(kept.decode(), "settings.json")
     ui["modelSettings"] = {**ui["modelSettings"], "claude-ui-model": {"effortLevel": "low"}}
     (claude / "settings.json").write_text(json.dumps(ui) + "\n")
     dry, text = run(base)
@@ -2176,7 +2140,8 @@ def layer_cases(check, tmp):
             dry == 1
             and any(l.startswith("-") and "claude-ui-model" in l for l in text.splitlines())
             and code == 0
-            and json.loads((claude / "settings.json").read_text())["modelSettings"] == owned["modelSettings"]
+            and json_value((claude / "settings.json").read_text(), "settings.json")["modelSettings"]
+            == owned["modelSettings"]
         ),
         f"a modelSettings entry that the UI wrote is in the dry run's diff, and --apply replaces the section "
         f"with the template's: {dry}, {code}, {tail(text)}",
@@ -2191,7 +2156,7 @@ def layer_cases(check, tmp):
     dry, text = run(base)
     code, _ = run(base, "--apply")
     again, _ = run(base)
-    env = json.loads((claude / "settings.json").read_text())["env"]
+    env = json_value((claude / "settings.json").read_text(), "settings.json")["env"]
     case(
         lambda: (
             dry == 1
@@ -2225,7 +2190,7 @@ def layer_cases(check, tmp):
     case(
         lambda: (
             code == 0
-            and list(json.loads((claude / "settings.json").read_text())) == [*owned, *others]
+            and list(json_value((claude / "settings.json").read_text(), "settings.json")) == [*owned, *others]
             and (claude / "settings.json").read_text()
             == json.dumps({**owned_of(base), **others}, indent=2, ensure_ascii=False) + "\n"
             and mode(claude / "settings.json") == 0o644
@@ -2240,7 +2205,7 @@ def layer_cases(check, tmp):
     lacking = tmp / "settings-without-hooks.json"
     lacking.write_text(
         json.dumps(
-            {k: v for k, v in json.loads(PROPOSAL.read_text()).items() if k != "hooks"},
+            {k: v for k, v in json_value(PROPOSAL.read_text(), str(PROPOSAL)).items() if k != "hooks"},
             indent=2,
             ensure_ascii=False,
         )
@@ -2249,7 +2214,7 @@ def layer_cases(check, tmp):
     (claude / "settings.json").write_text(json.dumps({"model": "x", "hooks": {"Stop": []}}, indent=2) + "\n")
     with mock.patch.object(this, "PROPOSAL", lacking):
         code, text = inproc(base, None, apply=True)
-    merged = json.loads((claude / "settings.json").read_text())
+    merged = json_value((claude / "settings.json").read_text(), "settings.json")
     case(
         lambda: (
             code == 0
@@ -2267,7 +2232,7 @@ def layer_cases(check, tmp):
     ]:
         base, claude, tree = fresh()
         broken = tmp / "settings-unrenderable.json"
-        cfg = json.loads(PROPOSAL.read_text())
+        cfg = json_value(PROPOSAL.read_text(), str(PROPOSAL))
         cfg["permissions"][key] = value
         broken.write_text(json.dumps(cfg, indent=2, ensure_ascii=False) + "\n")
         with mock.patch.object(this, "PROPOSAL", broken):
@@ -2298,7 +2263,7 @@ def layer_cases(check, tmp):
             and "Traceback" not in text + text2
             and "\\udfff" in text
             and '"note": "\\ud800"' in written
-            and json.loads(written)["note"] == "\ud800"
+            and json_value(written, "settings.json")["note"] == "\ud800"
         ),
         f"a lone surrogate escape in settings.json stays an escape in the diff and in the merged file: {code}, "
         f"{applied}, {tail(text + text2)}",
@@ -2318,7 +2283,7 @@ def layer_cases(check, tmp):
         (claude / "settings.json").write_text(data)
         code, text = run(base, "--apply")
         written = (claude / "settings.json").read_text()
-        cfg = json.loads(data)
+        cfg = json_value(data, "settings.json")
         expected_text = (
             json.dumps(
                 {**cfg, "env": {**cfg["env"], **others["env"]}, **owned_of(base), **lacked(cfg)},
@@ -2336,36 +2301,47 @@ def layer_cases(check, tmp):
             f"a {label} settings.json is written in the same form: {code}, {written[:60]!r}, {tail(text)}",
         )
 
-    # A number outside the owned sections that the merge would write in other text exits 2, the dry run
-    # and --apply, with one line that names the key, and no file changes.
+    # A number outside the owned sections keeps its text, the dry run and --apply: the merge writes only
+    # the owned values again. A number that overflows to infinity is no number that jsonio reads: it
+    # exits 2 with one line that names it, and no file changes.
     def number_file(body):
         return "{\n" + body + ',\n  "permissions": {"allow": ["Bash(rm *)"]}\n}\n'
 
-    for body, key, literal in [
-        ('  "x": 1.10', "x", "1.10"),
-        ('  "y": 1e400', "y", "1e400"),
-        ('  "z": 1E5', "z", "1E5"),
-        ('  "env": {"list": [1, 2.50]}', "env.list[1]", "2.50"),
+    for body, kept in [
+        ('  "x": 1.10', '"x": 1.10,'),
+        ('  "z": 1E5', '"z": 1E5,'),
+        ('  "env": {"list": [1, 2.50]}', "[1, 2.50]"),
     ]:
         for argv in [(), ("--apply",)]:
             base, claude, tree = fresh(["rules/x.md"])
             live = claude / "settings.json"
             live.write_text(number_file(body))
-            before = scratch.snapshot(base)
             code, text = run(base, *argv)
-            lines = text.strip().splitlines()
+            written = live.read_text()
             case(
-                lambda: (
-                    refused(code, text)
-                    and len(lines) == 1
-                    and str(live) in lines[0]
-                    and f"`{key}`" in lines[0]
-                    and f"`{literal}`" in lines[0]
-                    and scratch.snapshot(base) == before
-                ),
-                f"a settings.json with {body.strip()} exits 2 {'under --apply' if argv else 'in the dry run'} with "
-                f"one line that names {key}, and no file changes: {code}, {lines[-3:]}",
+                lambda: code == (0 if argv else 1) and kept in written,
+                f"a settings.json with {body.strip()} keeps its text "
+                f"{'under --apply' if argv else 'in the dry run'}: "
+                f"{code}, {written[:80]!r}, {tail(text)}",
             )
+    for argv in [(), ("--apply",)]:
+        base, claude, tree = fresh(["rules/x.md"])
+        live = claude / "settings.json"
+        live.write_text(number_file('  "y": 1e400'))
+        before = scratch.snapshot(base)
+        code, text = run(base, *argv)
+        lines = text.strip().splitlines()
+        case(
+            lambda: (
+                refused(code, text)
+                and len(lines) == 1
+                and str(live) in lines[0]
+                and "1e400" in lines[0]
+                and scratch.snapshot(base) == before
+            ),
+            f"a settings.json with 1e400 exits 2 {'under --apply' if argv else 'in the dry run'} with one "
+            f"line that names it, and no file changes: {code}, {lines[-3:]}",
+        )
     # `1.5`, `10` and `-0.0` are written as their source text, and a number in an owned section is replaced.
     base, claude, tree = fresh(["rules/x.md"])
     live = claude / "settings.json"
@@ -2380,7 +2356,7 @@ def layer_cases(check, tmp):
             and '"x": 1.5,' in written
             and '"y": 10,' in written
             and "-0.0" in written
-            and json.loads(written)["sandbox"] == owned["sandbox"]
+            and json_value(written, "settings.json")["sandbox"] == owned["sandbox"]
         ),
         f"the numbers 1.5, 10 and -0.0 pass unchanged, and one in an owned section is replaced: {dry}, {code}, "
         f"{tail(text + text2)}",
@@ -2498,38 +2474,6 @@ def layer_cases(check, tmp):
         f"{code}, {lines[-3:]}",
     )
 
-    # The second parse, which keeps the text of each number, can run out of stack at a depth that
-    # json_object reads; the depth depends on the interpreter, so json.loads raises RecursionError
-    # for that parse at any depth, and the case holds on each Python.
-    base, claude, tree = fresh(["rules/x.md"])
-    live = claude / "settings.json"
-    live.write_text('{"model": "opus", "env": {"X": "1"}}\n')
-    before = snapshot(base)
-    loads = json.loads
-
-    def deep(*args, **kwargs):
-        if "parse_int" in kwargs or "parse_float" in kwargs:
-            raise RecursionError("maximum recursion depth exceeded")
-        return loads(*args, **kwargs)
-
-    json.loads = deep
-    try:
-        code, text = inproc(base, None, apply=True)
-    finally:
-        json.loads = loads
-    lines = text.strip().splitlines()
-    case(
-        lambda: (
-            code == 2
-            and len(lines) == 1
-            and str(live) in lines[0]
-            and "nested too deep" in lines[0]
-            and snapshot(base) == before
-        ),
-        f"a RecursionError of the parse that keeps the text of each number exits 2 with one line that names "
-        f"settings.json, and no file changes: {code}, {lines[-3:]}",
-    )
-
     # `harness settings install` and `harness settings domains` are gone; the subcommands of
     # `settings` that measure stay. The network lists are generated, so no command checks a mirror of them.
     p = subprocess.run(
@@ -2537,6 +2481,7 @@ def layer_cases(check, tmp):
         capture_output=True,
         text=True,
         check=False,
+        timeout=60,
     )
     gone = [
         subprocess.run(
@@ -2544,6 +2489,7 @@ def layer_cases(check, tmp):
             capture_output=True,
             text=True,
             check=False,
+            timeout=60,
         )
         for subcommand in ("install", "domains")
     ]
@@ -2682,7 +2628,7 @@ def layer_cases(check, tmp):
     again, text2 = run(base)
 
     def stamp():
-        return json.loads((claude / install.STAMP).read_text())
+        return json_value((claude / install.STAMP).read_text(), install.STAMP)
 
     sources = [
         *([str(REPO / d), d, [], []] for d in ["agents", "skills", "rules", "instructions", "commands"]),
@@ -2758,6 +2704,7 @@ def layer_cases(check, tmp):
         text=True,
         env=git_env,
         check=False,  # outside a git checkout the list is empty, and the case below is wrong
+        timeout=60,
     ).stdout
     for rel in filter(None, listed.split("\0")):
         if (REPO / rel).is_file():
@@ -2791,7 +2738,7 @@ def layer_cases(check, tmp):
     dry, text2 = run_other()
     applied, text3 = run_other("--apply")
     second = (claude / install.STAMP).read_bytes() if (claude / install.STAMP).is_file() else b""
-    named = [s[0] for s in json.loads(second)["sources"]] if second else []
+    named = [s[0] for s in json_value(second.decode(), install.STAMP)["sources"]] if second else []
     warning = hook.check(str(base / "home"))
     case(
         lambda: (
@@ -2833,7 +2780,8 @@ def layer_cases(check, tmp):
                 files = this.plan(ctx).files
         except HarnessError as e:
             return str(e)
-        return [s[0] for s in json.loads(next(f[1] for f in files if f[0].name == install.STAMP))["sources"]]
+        stamp = next(f[1] for f in files if f[0].name == install.STAMP)
+        return [s[0] for s in json_value(stamp.decode(), install.STAMP)["sources"]]
 
     repository = [str(REPO / d) for d in NEUTRAL] + [str(CLAUDE_ADAPTER), str(REPO / "hooks")]
     elsewhere = ["/elsewhere/Harness/" + d for d in NEUTRAL] + [
@@ -2878,7 +2826,8 @@ def layer_cases(check, tmp):
             + r"\Z"
         )
 
-    proposal = json.loads(render_profile.render_file(REPO / "settings" / "settings.proposal.json", profile))
+    template = REPO / "settings" / "settings.proposal.json"
+    proposal = json_value(render_profile.render_file(template, profile), str(template))
     denies = [
         edit_rule(r[len("Edit(") : -1]) for r in proposal["permissions"]["deny"] if r.startswith("Edit(")
     ]

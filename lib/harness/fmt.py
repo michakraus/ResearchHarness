@@ -44,7 +44,9 @@ def cmd_format(args: argparse.Namespace) -> int:
         with log.open("a") as f:
             f.write(f"\n---------- attempt {attempt} ----------\n")
             f.flush()
-            rc = subprocess.run(command, stdout=f, stderr=subprocess.STDOUT, env=env, check=False).returncode
+            rc = subprocess.run(  # no timeout: a Julia format run of the whole tree, a long run
+                command, stdout=f, stderr=subprocess.STDOUT, env=env, check=False
+            ).returncode
         if rc == 0:
             break
         if not marker.is_file() or not marker.read_text().strip():

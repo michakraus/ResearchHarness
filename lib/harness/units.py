@@ -29,7 +29,6 @@ The module has no subcommand; its cases run in `harness test`.
 import contextlib
 import fnmatch
 import io
-import json
 import os
 import pathlib
 import plistlib
@@ -39,10 +38,10 @@ import shlex
 import tempfile
 import types
 from collections.abc import Callable
-from typing import cast
+from typing import Any, cast
 from unittest import mock
 
-from . import REPO, HarnessError, profile
+from . import REPO, HarnessError, jsonio, profile
 
 UNITS = REPO / "systemd"
 SETTINGS = REPO / "settings" / "settings.proposal.json"
@@ -290,7 +289,10 @@ def check_jobs(
 ) -> dict[str, list[str]]:
     """{service: problems} for every job of JOBS rendered with the profile `data`; `read(path,
     data)` gives the rendered text of a template."""
-    filesystem = json.loads(read("settings/settings.proposal.json", data))["sandbox"]["filesystem"]
+    proposal = "settings/settings.proposal.json"
+    filesystem = cast("dict[str, Any]", jsonio.loads(read(proposal, data), where=proposal))["sandbox"][
+        "filesystem"
+    ]
     out = {}
     for service, timer, plist in JOBS:
         try:

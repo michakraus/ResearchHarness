@@ -132,7 +132,9 @@ same rules.
 """
 
 import argparse
+import contextlib
 import importlib
+import io
 import json
 import os
 import pathlib
@@ -146,8 +148,10 @@ import types
 from collections.abc import Callable
 from typing import Any, cast
 
-from harness import REPO, HarnessError, frontends, frontmatter, install, sources, units
+from harness import REPO, HarnessError, frontends, frontmatter, fsutil, install, sources, units
+from harness import jsonio, ownedjson
 from harness import profile as profile_module
+from harness.jsonio import JsonValue
 from harness.githooks import research_root
 
 NAME = "antigravity"
@@ -194,7 +198,7 @@ INCLUDE = re.compile(rb"@\[[^\]\n]*\]\(")
 TRANSLATE = """import json, subprocess, sys
 path = sys.argv[1]
 try:
-    p = subprocess.run([sys.executable, path], capture_output=True, text=True)
+    p = subprocess.run([sys.executable, path], capture_output=True, text=True, timeout=60)
     if p.returncode != 0:
         raise RuntimeError(f"exit {p.returncode}: {p.stderr.strip()[-300:]}")
     t = p.stdout.strip()
@@ -309,7 +313,7 @@ def render_rule(src, data):
     end = next(i for i, line in enumerate(lines) if i and line in (b"---", b"---\r"))
     fields = dict(line.split(b": ", 1) for line in lines[1:end])
     if b"globs" in fields:
-        globs = ", ".join(json.loads(fields[b"globs"]))
+        globs = ", ".join(json_value(fields[b"globs"].decode(), "globs"))
         trigger = [b"trigger: glob", b"globs: " + json.dumps(globs, ensure_ascii=False).encode()]
     else:
         trigger = [b"trigger: always_on"]
@@ -404,8 +408,9 @@ def guard_paths(profile):
     does not write; then the installed agents, AGENTS, and the app's settings, APP_CONFIG, whose
     grants an agent could widen; under `bash_deny` and `bash_ask` the body of every `Bash` deny and
     ask of the template."""
-    deny = json.loads(profile_module.render_file(GUARD_PATHS, profile))["deny"]
-    permissions = json.loads(profile_module.render_file(SETTINGS, profile))["permissions"]
+    rendering = cast("profile_module.Profile", profile)
+    deny = json_value(profile_module.render_file(GUARD_PATHS, rendering), str(GUARD_PATHS))["deny"]
+    permissions = json_value(profile_module.render_file(SETTINGS, rendering), str(SETTINGS))["permissions"]
     bodies = {
         (tool, key): [
             m.group(1) for e in permissions.get(key, []) if (m := re.fullmatch(rf"{tool}\((.*)\)", e, re.S))
@@ -603,6 +608,12 @@ def clones():
     ]
 
 
+def json_value(text: str, where: str) -> Any:
+    """The JSON value of `text`, of any type, read by `jsonio`; a refusal raises HarnessError, which
+    names `where`. Each caller reads the keys of the value as its own code checks them."""
+    return jsonio.loads(text, where=where, top=object)
+
+
 def read_regular(path, refused):
     """The text of the file at `path`, None when it does not exist. Exits 2 on a file that is not a
     regular file, cannot be read, or is not UTF-8, its message ended by `refused`. One lstat, so
@@ -625,71 +636,65 @@ def read_regular(path, refused):
 
 def merge_settings(path, rules):
     """The bytes of the CLI's settings at `path` with `permissions` set to `rules` and the keys of
-    POSTURE set, every other key kept in its place, with the file's indent and with no character
-    escaped but a lone surrogate, as Claude Code's merge writes them; a missing file holds no key.
-    Exits 2, before anything is written, on a file that is not a regular file, cannot be read, is
-    not UTF-8, is not a JSON object (`json_object`), is nested deeper than json writes, or holds a
-    number outside the three keys that json writes in other text (`rewritten_numbers`)."""
+    POSTURE set, and every other byte of the file kept (`ownedjson.merged`); a missing file holds
+    no key. Exits 2, before anything is written, on a file that is not a regular file, cannot be
+    read, is not UTF-8, or is not a JSON object that `jsonio` reads (`json_object`)."""
     claude = frontends.adapter("claude")
     refused = "; the install sets three keys of a JSON object in a regular file there, and writes nothing"
     text = read_regular(path, refused)
-    settings, indent = {}, 2
-    if text is not None:
-        settings, indent = claude.json_object(path, text), claude.indent_of(text)
-        numbers = claude.rewritten_numbers(text, ("permissions", *POSTURE), path)
-        if numbers:
-            raise HarnessError(
-                f"{path} holds numbers that JSON would write in other text: "
-                f"{', '.join(f'{k}: {old} as {new}' for k, old, new in numbers)}{refused}"
-            )
-    settings.update(permissions=rules, **POSTURE)
-    try:
-        return (claude.dumps(settings, indent=indent) + "\n").encode()
-    except RecursionError:  # a nesting that json.loads reads and json.dumps cannot write
-        raise HarnessError(f"{path} is JSON nested too deep to write again{refused}") from None
+    content, file = cast("str | None", text), cast("pathlib.Path", path)
+    if content is not None:
+        claude.json_object(file, content)
+
+    def change(settings: dict[str, JsonValue]) -> dict[str, JsonValue]:
+        settings.update(permissions=cast("JsonValue", rules), **POSTURE)
+        return settings
+
+    return ownedjson.merged(content or "", change, where=str(file)).encode()
 
 
 def merge_grants(path, rules):
     """The bytes of the app's settings at `path` with each rule of `rules` added once to its list,
     `allow`, `deny` or `ask`, of `userSettings.globalPermissionGrants`, after the entries that the
-    list holds: every other key and every entry stays in its place, and a missing key is created;
-    the file's indent is kept, as merge_settings keeps it. A missing file holds no key. Exits 2,
+    list holds: every other key, every entry and every other byte of the file stays
+    (`ownedjson.merged`), and a missing key is created. A missing file holds no key. Exits 2,
     before anything is written, on a file that is not a regular file, cannot be read, is not UTF-8,
-    is not a JSON object, has a `userSettings` or a `globalPermissionGrants` that is not an object
-    or one of the three lists that is not a list, is nested deeper than json writes, or holds a
-    number that json writes in other text. The install removes no entry, so a rule that it wrote
-    once stays."""
+    is not a JSON object that `jsonio` reads (`json_object`: a key twice in one object is refused),
+    or has a `userSettings` or a `globalPermissionGrants` that is not an object or one of the three
+    lists that is not a list. The install removes no entry, so a rule that it wrote once stays."""
     claude = frontends.adapter("claude")
     refused = (
         "; the install adds its rules to userSettings.globalPermissionGrants of a JSON object in a regular "
         "file there, and writes nothing"
     )
     text = read_regular(path, refused)
-    settings, indent = {}, 2
-    if text is not None:
-        settings, indent = claude.json_object(path, text), claude.indent_of(text)
-        numbers = claude.rewritten_numbers(text, (), path)
-        if numbers:
-            raise HarnessError(
-                f"{path} holds numbers that JSON would write in other text: "
-                f"{', '.join(f'{k}: {old} as {new}' for k, old, new in numbers)}{refused}"
-            )
-    node, where = settings, []
+    content, file = cast("str | None", text), cast("pathlib.Path", path)
+    settings: dict[str, Any] = {}
+    if content is not None:
+        settings = claude.json_object(file, content)
+    node = cast("object", settings)
+    where: list[str] = []
     for key in ("userSettings", "globalPermissionGrants"):
-        node, where = node.setdefault(key, {}), [*where, key]
+        node, where = cast("dict[str, Any]", node).get(key, {}), [*where, key]
         if not isinstance(node, dict):
             raise HarnessError(f"{path}: its {'.'.join(where)} is not a JSON object{refused}")
     for key in ("allow", "deny", "ask"):
-        entries = node.setdefault(key, [])
-        if not isinstance(entries, list):
+        if not isinstance(cast("dict[str, Any]", node).get(key, []), list):
             raise HarnessError(f"{path}: its {'.'.join(where)}.{key} is not a JSON list{refused}")
-        for rule in rules[key]:
-            if rule not in entries:
-                entries.append(rule)
-    try:
-        return (claude.dumps(settings, indent=indent) + "\n").encode()
-    except RecursionError:  # a nesting that json.loads reads and json.dumps cannot write
-        raise HarnessError(f"{path} is JSON nested too deep to write again{refused}") from None
+    wanted = cast("dict[str, list[str]]", rules)
+
+    def change(merged: dict[str, JsonValue]) -> dict[str, JsonValue]:
+        grants = merged
+        for key in ("userSettings", "globalPermissionGrants"):
+            grants = cast("dict[str, JsonValue]", grants.setdefault(key, {}))
+        for key in ("allow", "deny", "ask"):
+            entries = cast("list[JsonValue]", grants.setdefault(key, []))
+            for rule in wanted[key]:
+                if rule not in entries:
+                    entries.append(rule)
+        return merged
+
+    return ownedjson.merged(content or "", change, where=str(file)).encode()
 
 
 def load_models(
@@ -853,71 +858,31 @@ def render_mcp(home, config):
 
 
 def merge_mcp(path, kaimon):
-    """The bytes of the MCP configuration at `path` with `mcpServers.kaimon` set to `kaimon`, every
-    other server and every other top-level key kept in its place, with the file's indent, as
-    merge_settings writes a file. A missing file, an empty one, or one of whitespace only holds no
-    key. Exits 2, before anything is written and without the file's text, on a file that is not a
-    regular file, cannot be read, is not UTF-8, is not a JSON object, has a `mcpServers` that is
-    not an object, holds a key twice in one object outside the Kaimon entry, is nested deeper than
-    json reads or writes, or holds a number outside the Kaimon entry that json writes in other
-    text. The error names each such key and each such number by its path, a JSON list of the keys
-    and indices from the top, and prints no value."""
+    """The bytes of the MCP configuration at `path` with `mcpServers.kaimon` set to `kaimon`, and
+    every other byte of the file kept (`ownedjson.merged`). A missing file, an empty one, or one of
+    whitespace only holds no key. Exits 2, before anything is written and without the file's text,
+    on a file that is not a regular file, cannot be read, is not UTF-8, is not a JSON object that
+    `jsonio` reads (`json_object`: a key twice in one object, inside the Kaimon entry too, is
+    refused with its line and its name), or has a `mcpServers` that is not an object. No error
+    prints a value of the file."""
     claude = frontends.adapter("claude")
     refused = (
         "; the install sets mcpServers.kaimon of a JSON object in a regular file there, and writes nothing"
     )
     text = read_regular(path, refused)
-    cfg, indent = {}, 2
-    if text is not None and text.strip():
-        cfg, indent = claude.json_object(path, text), claude.indent_of(text)
+    content, file = cast("str | None", text), cast("pathlib.Path", path)
+    if content is not None and content.strip():
+        cfg = claude.json_object(file, content)
         if not isinstance(cfg.get("mcpServers", {}), dict):
             raise HarnessError(f"{path}: its mcpServers is not a JSON object{refused}")
 
-        # A second parse keeps, in each object, the keys that it holds twice, whose earlier values
-        # the merge would drop, and the text of each number, to compare it with the text json
-        # writes. The Kaimon entry is replaced as a whole, so its keys and numbers stop nothing.
-        class Pairs(dict):
-            def __init__(self, items):
-                super().__init__(items)
-                keys = [k for k, _ in items]
-                self.twice = {k for k in keys if keys.count(k) > 1}
+    def change(merged: dict[str, JsonValue]) -> dict[str, JsonValue]:
+        cast("dict[str, JsonValue]", merged.setdefault("mcpServers", {}))["kaimon"] = cast(
+            "JsonValue", kaimon
+        )
+        return merged
 
-        try:
-            tree = json.loads(
-                text, object_pairs_hook=Pairs, parse_int=claude.Number, parse_float=claude.Number
-            )
-        except (
-            RecursionError
-        ):  # with its hooks, this parse can run out of stack at a depth that the first reads
-            raise HarnessError(f"{path} is JSON nested too deep for the parser{refused}") from None
-        if "mcpServers" in tree:
-            tree["mcpServers"].pop("kaimon", None)
-            tree["mcpServers"].twice.discard("kaimon")
-        twice, numbers, stack = [], [], [([], tree)]
-        while stack:
-            key, value = stack.pop()
-            if isinstance(value, Pairs):
-                twice += [json.dumps([*key, k]) for k in value.twice]
-                stack += [([*key, k], v) for k, v in value.items()]
-            elif isinstance(value, list):
-                stack += [([*key, i], v) for i, v in enumerate(value)]
-            elif isinstance(value, claude.Number) and json.dumps(json.loads(value.text)) != value.text:
-                numbers.append(json.dumps(key))
-        found = [
-            f"{what}, at {', '.join(sorted(paths))}"
-            for what, paths in [
-                ("a key twice in one object", twice),
-                ("numbers that JSON would write in other text", numbers),
-            ]
-            if paths
-        ]
-        if found:
-            raise HarnessError(f"{path} holds {'; and '.join(found)}{refused}")
-    cfg.setdefault("mcpServers", {})["kaimon"] = kaimon
-    try:
-        return (claude.dumps(cfg, indent=indent) + "\n").encode()
-    except RecursionError:  # a nesting that json.loads reads and json.dumps cannot write
-        raise HarnessError(f"{path} is JSON nested too deep to write again{refused}") from None
+    return ownedjson.merged(content or "", change, where=str(file)).encode()
 
 
 def council_warnings(path: str | pathlib.Path) -> list[tuple[str]]:
@@ -1215,7 +1180,7 @@ def layer_cases(scratch):
     case(
         lambda: (
             hooks is not None
-            and json.loads(cast(str, hooks))
+            and json_value(cast(str, hooks), "hooks.json")
             == {
                 HOOK: {
                     "SessionStart": [{"type": "command", "command": start, "timeout": 15}],
@@ -1245,8 +1210,11 @@ def layer_cases(scratch):
     # file, runs it on the scratch environment's interpreter.
     runs_py = [
         c
-        for c in commands_of(json.loads((claude / "settings.json").read_text())["hooks"])
-        + (commands_of(json.loads(cast(str, hooks))) if hooks is not None else [])
+        for c in cast(
+            "list[str]",
+            commands_of(json_value((claude / "settings.json").read_text(), "settings.json")["hooks"]),
+        )
+        + (commands_of(json_value(cast(str, hooks), "hooks.json")) if hooks is not None else [])
         if ".py" in c or "/hooks/guard " in c
     ]
     case(
@@ -1282,9 +1250,9 @@ def layer_cases(scratch):
         f"hooks/ holds the guard package and install-drift.py, and no other file: {hooks}",
     )
     profile = profile_module.load(base / "profile.toml")
-    opencode = json.loads(profile_module.render_file(GUARD_PATHS, profile))["deny"]
+    opencode = json_value(profile_module.render_file(GUARD_PATHS, profile), str(GUARD_PATHS))["deny"]
     h = profile.home
-    template = json.loads(profile_module.render_file(SETTINGS, profile))["permissions"]
+    template = json_value(profile_module.render_file(SETTINGS, profile), str(SETTINGS))["permissions"]
     edits = {
         key: [re.sub(r"^//+", "/", e[len("Edit(") : -1]) for e in template[key] if e.startswith("Edit(")]
         for key in ("deny", "ask")
@@ -1321,7 +1289,7 @@ def layer_cases(scratch):
         f"{h}/.gemini/config/config.json",
     ]
     lists = config / "guard-paths.json"
-    written = json.loads(lists.read_text()) if lists.is_file() else {}
+    written = json_value(lists.read_text(), "guard-paths.json") if lists.is_file() else dict[str, Any]()
     case(
         lambda: (
             written["edit"][len(edits["deny"]) :] == [*copies["deny"], *globals_]
@@ -1375,7 +1343,7 @@ def layer_cases(scratch):
         f"of every Bash deny and ask, entry by entry: { {k: len(v) for k, v in written.items()} }",
     )
     new = gemini / "antigravity-cli" / "settings.json"
-    settings = json.loads(new.read_text()) if new.is_file() else {}
+    settings = json_value(new.read_text(), "settings.json") if new.is_file() else dict[str, Any]()
     case(
         lambda: (
             settings["toolPermission"] == "proceed-in-sandbox"
@@ -1395,7 +1363,8 @@ def layer_cases(scratch):
         for key in LISTS
     }
     cli = settings.get("permissions", {})
-    excluded = json.loads(profile_module.render_file(SETTINGS, profile))["sandbox"]["excludedCommands"]
+    rendered = json_value(profile_module.render_file(SETTINGS, profile), str(SETTINGS))
+    excluded = rendered["sandbox"]["excludedCommands"]
     unsandboxed = [f"command({w})" for w in dict.fromkeys(e.split()[0] for e in excluded)]
 
     def before_unsandboxed(key):
@@ -1433,7 +1402,7 @@ def layer_cases(scratch):
         f"the list does not hold, and holds each once: {cli.get('allow', [])[-4:]}",
     )
     app = config / "config.json"
-    grants = json.loads(app.read_text()) if app.is_file() else {}
+    grants = json_value(app.read_text(), "config.json") if app.is_file() else dict[str, Any]()
     case(
         lambda: all(
             grants["userSettings"]["globalPermissionGrants"]["allow"].count(r) == 1 for r in unsandboxed
@@ -1993,12 +1962,12 @@ def rule_cases(case):
         f"{ {key: (len(bash[key]), added[key], sum(r.startswith('command(') for r in rules[key])) for key in LISTS} }",
     )
     recursive = [e for key, e, _ in dropped if key == "deny" and e.startswith("Read(**/")]
-    paths = json.loads(guard_paths(profile))["deny"]
+    paths = json_value(guard_paths(profile), "guard-paths.json")["deny"]
     case(
         lambda: recursive and all(e[len("Read(") : -1] in paths for e in recursive),
         f"each dropped Read(**/X) deny is in the guard's path list: {recursive}",
     )
-    lists = json.loads(guard_paths(profile))
+    lists = json_value(guard_paths(profile), "guard-paths.json")
     covered = [
         (key, e)
         for key, e, _ in dropped
@@ -2120,7 +2089,7 @@ def rule_cases(case):
         ),
         "an allow regex rule stays in one segment, a deny regex rule does not, and a trailing * matches nothing too",
     )
-    lists = json.loads(guard_paths(profile))
+    lists = json_value(guard_paths(profile), "guard-paths.json")
     # `git push  *` is a body of one literal part with a trailing ` *`, a form that no template body
     # has: each such body is a prefix body.
     matcher_cases(case, [*lists["bash_deny"], *lists["bash_ask"], "git push  *"])
@@ -2256,7 +2225,7 @@ def merge_cases(scratch):
     settings.write_text(json.dumps(own, indent=4) + "\n")
     before = settings.read_bytes()
     code, text = run(base, "--apply")
-    merged = json.loads(settings.read_text())
+    merged = json_value(cast("pathlib.Path", settings).read_text(), "settings.json")
     backups = list(cli.glob("settings.json.bak-*"))
     case(
         lambda: (
@@ -2335,12 +2304,13 @@ def grants_cases(scratch):
     """The merge of the app's config.json: the rules added to userSettings.globalPermissionGrants
     once, every other key and every entry of the user's kept in its place, a backup, and exit 2
     before any write on a file or a key of the wrong type."""
+    scratch = cast("Any", scratch)
     case, run, tail = scratch.case, scratch.run, scratch.tail
     base, _, _ = scratch.fresh()
     config = base / "home" / ".gemini" / "config"
     config.mkdir(parents=True)
     app = config / "config.json"
-    own = {
+    own: dict[str, Any] = {
         "permissionGrantsV2Migrated": True,
         "remoteControlHostname": "host—1",
         "userSettings": {
@@ -2363,10 +2333,9 @@ def grants_cases(scratch):
         f"the dry run lists config/config.json as REPLACE and writes nothing: {code}, {listed}",
     )
     code, text = run(base, "--apply")
-    merged = json.loads(app.read_text(encoding="utf-8")) if app.is_file() else {}
-    cli = json.loads((base / "home" / ".gemini" / "antigravity-cli" / "settings.json").read_text())[
-        "permissions"
-    ]
+    merged = json_value(app.read_text(encoding="utf-8"), "config.json") if app.is_file() else dict[str, Any]()
+    cli_settings = (base / "home" / ".gemini" / "antigravity-cli" / "settings.json").read_text()
+    cli = json_value(cli_settings, "settings.json")["permissions"]
     grants = merged.get("userSettings", {}).get("globalPermissionGrants", {})
     mine = own["userSettings"]["globalPermissionGrants"]
 
@@ -2484,61 +2453,40 @@ def grants_cases(scratch):
             ),
             f"a config.json that {label} exits 2, names the file, and nothing is written: {code}, {tail(text)!r}",
         )
-    # The second parse, which keeps the text of each number, can run out of stack at a depth that
-    # json_object reads; the depth depends on the interpreter, so a child process makes that parse
-    # raise RecursionError at any depth, and the case holds on each Python.
-    import subprocess
-    import sys
-
-    deep = (
-        "import json, runpy, sys\n"
-        "loads = json.loads\n"
-        "def deep(*args, **kwargs):\n"
-        "    if 'parse_int' in kwargs or 'parse_float' in kwargs:\n"
-        "        raise RecursionError('maximum recursion depth exceeded')\n"
-        "    return loads(*args, **kwargs)\n"
-        "json.loads = deep\n"
-        "try:\n"
-        "    sys.argv = sys.argv[1:]\n"
-        "    runpy.run_path(sys.argv[0], run_name='__main__')\n"
-        "finally:\n"
-        "    json.loads = loads\n"
-    )
+    # K101: a key twice in one object is refused with the file and the key, before anything is written.
     base, _, _ = scratch.fresh()
     config = base / "home" / ".gemini" / "config"
     config.mkdir(parents=True)
-    (config / "config.json").write_bytes(b'{"userSettings": {"theme": "dark"}}\n')
+    (config / "config.json").write_bytes(b'{"userSettings": {"theme": "dark", "theme": "light"}}\n')
     snapshot = scratch.snapshot(base)
-    p = subprocess.run(
-        [
-            sys.executable,
-            "-c",
-            deep,
-            str(REPO / "bin" / "harness"),
-            "--profile",
-            str(base / "profile.toml"),
-            "--models",
-            str(REPO / "examples" / "models.toml"),
-            "install",
-            "--apply",
-        ],
-        capture_output=True,
-        text=True,
-        env=scratch.env(base),
-        cwd=base,
-        timeout=60,
-        check=False,
-    )
-    code, text = p.returncode, p.stdout + p.stderr
+    code, text = run(base, "--apply")
     case(
         lambda: (
             scratch.refused(code, text)
-            and "nested too deep" in text
             and str(config / "config.json") in text
+            and '"theme"' in text
             and scratch.snapshot(base) == snapshot
         ),
-        f"a RecursionError of the parse that keeps the text of each number exits 2, names config.json, and "
+        f"K101: a config.json with a key twice in one object exits 2, names the file and the key, and "
         f"nothing is written: {code}, {tail(text)!r}",
+    )
+    # K102: a minified config.json whose rule is present comes back byte for byte, and the plan finds it
+    # identical.
+    minified = (
+        b'{"a":1,"userSettings":{"globalPermissionGrants":'
+        b'{"allow":["command(git status)"],"deny":[],"ask":[]}}}'
+    )
+    (config / "config.json").write_bytes(minified)
+    again = merge_grants(config / "config.json", {"allow": ["command(git status)"], "deny": [], "ask": []})
+    out, install_file = io.StringIO(), cast("Callable[..., int]", install.install_file)
+    with contextlib.redirect_stdout(out):
+        changes = install_file(
+            apply=False, data=again, dst=config / "config.json", label="config.json", backup=True
+        )
+    case(
+        lambda: again == minified and changes == 0 and "already identical" in out.getvalue(),
+        f"K102: a minified config.json whose rule is present is merged byte for byte and planned as "
+        f"identical: {again[:60]!r}, {changes}, {out.getvalue().strip()!r}",
     )
 
 
@@ -2548,7 +2496,7 @@ def deny_write_cases(scratch):
     root silent, any other wildcard refused with a warning, the clones that the walk of the research
     root finds, and both files read back after an install, with the count line."""
     case, run, tail = scratch.case, scratch.run, scratch.tail
-    template = json.loads(SETTINGS.read_text())["sandbox"]["filesystem"]["denyWrite"]
+    template = json_value(SETTINGS.read_text(), str(SETTINGS))["sandbox"]["filesystem"]["denyWrite"]
     home, root = "/h", pathlib.Path("/h/Research")
     clones_ = [pathlib.Path("/h/Research/Packages/A.jl"), pathlib.Path("/h/Research/Knowledge")]
     got = deny_write(template, home, root, clones_)
@@ -2778,10 +2726,13 @@ def deny_write_cases(scratch):
         f"the dry run names the number of clones in one warning: {code}, {count}, {tail(dry)!r}",
     )
     code, text = run(base, "--apply", extra_env=env)
-    cli = json.loads((h / ".gemini" / "antigravity-cli" / "settings.json").read_text())["permissions"]["deny"]
-    grants = json.loads((config / "config.json").read_text())["userSettings"]["globalPermissionGrants"][
-        "deny"
-    ]
+    home_dir, config_dir = cast("pathlib.Path", h), cast("pathlib.Path", config)
+    cli = json_value(
+        (home_dir / ".gemini" / "antigravity-cli" / "settings.json").read_text(), "settings.json"
+    )["permissions"]["deny"]
+    grants = json_value((config_dir / "config.json").read_text(), "config.json")["userSettings"][
+        "globalPermissionGrants"
+    ]["deny"]
     ours = deny_write(template, str(h), research, [a])[0]
     after = max(i for i, r in enumerate(cli) if r.startswith("mcp(")) + 1
     case(
@@ -3005,7 +2956,7 @@ ROUND5 = {
 def rendered_head(data):
     """{key: value} of the frontmatter of the rendered agent `data`, each value read as JSON."""
     lines = data.decode().split("\n---\n", 1)[0].split("\n")[1:]
-    return dict((k, json.loads(v)) for k, v in (line.split(": ", 1) for line in lines))
+    return {k: json_value(v, k) for k, v in (line.split(": ", 1) for line in cast("list[str]", lines))}
 
 
 def agent_cases(scratch):
@@ -3276,6 +3227,7 @@ def council_cases(scratch):
 def kaimon_cases(scratch):
     """mcp_config.json: the Kaimon entry with the token of the token file, mode 600, the token never
     in the output; no entry and one warning with no token; and the permission allow of Kaimon."""
+    scratch = cast("Any", scratch)
     case, run, tail = scratch.case, scratch.run, scratch.tail
     line = re.compile(r"^antigravity/config/mcp_config\.json\s+(\S+)", re.M)
     base, _, _ = scratch.fresh()
@@ -3283,8 +3235,7 @@ def kaimon_cases(scratch):
     (home / ".gemini").mkdir()
     token = home / ".config" / "kaimon" / "auth-token"
     token.parent.mkdir(parents=True)
-    token.write_text("fake-token-of-the-cases\n")
-    token.chmod(0o600)
+    fsutil.write_private(cast("pathlib.Path", token), b"fake-token-of-the-cases\n")
     code, dry = run(base)
     case(
         lambda: line.findall(dry) == ["INSTALL"] and "fake-token-of-the-cases" not in dry,
@@ -3302,7 +3253,7 @@ def kaimon_cases(scratch):
     code, out = run(base, "--apply")
     # Each case below binds `got` to the file's parsed JSON or its text, and its lambda reads it.
     got: Any
-    got = json.loads(config.read_text()) if config.is_file() else None
+    got = json_value(config.read_text(), "mcp_config.json") if config.is_file() else None
     case(
         lambda: (
             code == 0
@@ -3314,7 +3265,7 @@ def kaimon_cases(scratch):
     )
     token.write_text("another-token\n")
     code, out = run(base, "--apply")
-    got = json.loads(config.read_text()) if config.is_file() else None
+    got = json_value(config.read_text(), "mcp_config.json") if config.is_file() else None
     case(
         lambda: (
             code == 0
@@ -3342,7 +3293,7 @@ def kaimon_cases(scratch):
     )
     code, out = run(base, "--apply")
     text = config.read_text()
-    got = json.loads(text)
+    got = json_value(text, "mcp_config.json")
     case(
         lambda: (
             code == 0
@@ -3371,7 +3322,7 @@ def kaimon_cases(scratch):
         + "\n"
     )
     code, out = run(base, "--apply")
-    got = json.loads(config.read_text())
+    got = json_value(config.read_text(), "mcp_config.json")
     case(
         lambda: (
             code == 0
@@ -3389,22 +3340,20 @@ def kaimon_cases(scratch):
         case(
             lambda: (
                 code == 0
-                and json.loads(got) == entry("fake-token-of-the-cases")
+                and json_value(got, "mcp_config.json") == entry("fake-token-of-the-cases")
                 and scratch.mode(config) == 0o600
             ),
             f"a mcp_config.json that {label} becomes Kaimon alone: {code}, {got!r}, {tail(out)!r}",
         )
     base, config = fresh()
-    config.write_text('{"mcpServers": {"kaimon": {"timeout": 1e400}, "other": {"timeout": 1.5}}}\n')
+    overflow = '{"mcpServers": {"kaimon": {"timeout": 1e400}, "other": {"timeout": 1.5}}}\n'
+    config.write_text(overflow)
     code, out = run(base, "--apply")
     got = config.read_text()
     case(
-        lambda: (
-            code == 0
-            and json.loads(got)["mcpServers"]
-            == {"kaimon": entry("fake-token-of-the-cases")["mcpServers"]["kaimon"], "other": {"timeout": 1.5}}
-        ),
-        f"a number of the Kaimon entry that the merge replaces stops nothing: {code}, {got!r}, {tail(out)!r}",
+        lambda: scratch.refused(code, out) and "1e400" in out and got == overflow,
+        f"a number that overflows to infinity, in the Kaimon entry too, exits 2 and names it: {code}, "
+        f"{tail(out)!r}",
     )
     new = entry("fake-token-of-the-cases")["mcpServers"]["kaimon"]
     base, config = fresh()
@@ -3412,90 +3361,53 @@ def kaimon_cases(scratch):
     code, out = run(base, "--apply")
     got = config.read_text()
     case(
-        lambda: code == 0 and json.loads(got) == {"extra": {"u": 1}, "mcpServers": {"kaimon": new}},
-        f"a file with no mcpServers gains it, with Kaimon alone: {code}, {got!r}, {tail(out)!r}",
-    )
-    base, config = fresh()
-    config.write_text('{"mcpServers": {"kaimon": {"u": 1, "u": 2}, "other": {"command": "x"}}}\n')
-    code, out = run(base, "--apply")
-    got = config.read_text()
-    case(
         lambda: (
             code == 0
-            and json.loads(got)["mcpServers"] == {"kaimon": new, "other": {"command": "x"}}
-            and json.dumps(json.loads(got)["mcpServers"]["other"]) == '{"command": "x"}'
+            and json_value(got, "mcp_config.json") == {"extra": {"u": 1}, "mcpServers": {"kaimon": new}}
         ),
-        f"a key twice in the Kaimon entry that the merge replaces stops nothing: {code}, {got!r}, {tail(out)!r}",
+        f"a file with no mcpServers gains it, with Kaimon alone: {code}, {got!r}, {tail(out)!r}",
     )
-    base, config = fresh()
-    config.write_text('{"mcpServers": {"kaimon": {"url": "a"}, "kaimon": {"url": "b"}}}\n')
-    code, out = run(base, "--apply")
-    got = config.read_text()
-    case(
-        lambda: code == 0 and json.loads(got)["mcpServers"] == {"kaimon": new} and got.count('"kaimon"') == 1,
-        f"a Kaimon entry twice in mcpServers becomes one Kaimon entry: {code}, {got!r}, {tail(out)!r}",
-    )
-    base, config = fresh()
-    config.write_bytes(b'{"mcpServers": {"a": {"url": "secret-u", "url": "secret-v"}}}\n')
-    code, out = run(base, "--apply")
-    case(
-        lambda: scratch.refused(code, out) and '["mcpServers", "a", "url"]' in out and "secret-" not in out,
-        f"a key twice in a server exits 2, names the key by its path and prints no value: {code}, {tail(out)!r}",
-    )
-    # The depth at which the second parse runs out of stack depends on the interpreter, so a child
-    # process makes that parse raise RecursionError at any depth, and the case holds on each Python.
-    import subprocess
-    import sys
-
-    deep = (
-        "import json, runpy, sys\n"
-        "loads = json.loads\n"
-        "def deep(*args, **kwargs):\n"
-        "    if 'object_pairs_hook' in kwargs:\n"
-        "        raise RecursionError('maximum recursion depth exceeded')\n"
-        "    return loads(*args, **kwargs)\n"
-        "json.loads = deep\n"
-        "try:\n"
-        "    sys.argv = sys.argv[1:]\n"
-        "    runpy.run_path(sys.argv[0], run_name='__main__')\n"
-        "finally:\n"
-        "    json.loads = loads\n"
-    )
-    base, config = fresh()
-    config.write_bytes(b'{"mcpServers": {"other": {"command": "x"}}}\n')
-    config.chmod(0o644)
-    snapshot = scratch.snapshot(base)
-    p = subprocess.run(
-        [
-            sys.executable,
-            "-c",
-            deep,
-            str(REPO / "bin" / "harness"),
-            "--profile",
-            str(base / "profile.toml"),
-            "--models",
-            str(REPO / "examples" / "models.toml"),
-            "install",
-            "--apply",
-        ],
-        capture_output=True,
-        text=True,
-        env=scratch.env(base),
-        cwd=base,
-        timeout=60,
-        check=False,
-    )
-    code, out = p.returncode, p.stdout + p.stderr
-    case(
-        lambda: (
-            scratch.refused(code, out)
-            and "nested too deep" in out
-            and str(config) in out
-            and scratch.snapshot(base) == snapshot
+    # A key twice, inside the Kaimon entry that the merge replaces too, and an entry twice, are refused
+    # with exit 2: `jsonio` reads no object that holds a key twice, and the error names the key, not a value.
+    for label, text in [
+        (
+            "a key twice in the Kaimon entry",
+            '{"mcpServers": {"kaimon": {"u": 1, "u": 2}, "other": {"command": "x"}}}\n',
         ),
-        f"a RecursionError of the parse that keeps the keys of each object exits 2, and nothing is written: "
-        f"{code}, {tail(out)!r}",
-    )
+        (
+            "a Kaimon entry twice in mcpServers",
+            '{"mcpServers": {"kaimon": {"url": "a"}, "kaimon": {"url": "b"}}}\n',
+        ),
+        ("a key twice in a server", '{"mcpServers": {"a": {"url": "secret-u", "url": "secret-v"}}}\n'),
+    ]:
+        base, config = fresh()
+        config.write_text(text)
+        code, out = run(base, "--apply")
+        case(
+            lambda: (
+                scratch.refused(code, out)
+                and str(config) in out
+                and "occurs twice" in out
+                and "secret-" not in out
+                and config.read_text() == text
+            ),
+            f"{label} exits 2, names the file and the key, prints no value, and writes nothing: {code}, "
+            f"{tail(out)!r}",
+        )
+    # A number keeps its text: the merge writes only the Kaimon entry again.
+    for text in [
+        '{"mcpServers": {"other": {"args": ["x", 1.10]}}}\n',
+        '{"mcpServers": {"kaimon[0]": {"timeout": 1.10}}}\n',
+    ]:
+        base, config = fresh()
+        config.write_text(text)
+        code, out = run(base, "--apply")
+        got = config.read_text()
+        case(
+            lambda: code == 0 and "1.10" in got and '"kaimon": {' in got,
+            f"a mcp_config.json with 1.10 outside the Kaimon entry keeps its text: {code}, {got!r}, "
+            f"{tail(out)!r}",
+        )
     truncated = b'{"mcpServers": {"kaimon": {"headers": {"Authorization": "Bearer fake-old'
     for label, make in [
         ("holds a JSON array", lambda p: p.write_bytes(b"[]\n")),
@@ -3507,16 +3419,8 @@ def kaimon_cases(scratch):
             lambda p: p.write_bytes(b'{"mcpServers": {"other": {"timeout": 1e400}}}\n'),
         ),
         (
-            "holds such a number in a list of a server",
-            lambda p: p.write_bytes(b'{"mcpServers": {"other": {"args": ["x", 1.10]}}}\n'),
-        ),
-        (
             "holds such a number in a server named kaimon.x",
             lambda p: p.write_bytes(b'{"mcpServers": {"kaimon.x": {"timeout": 1e400}}}\n'),
-        ),
-        (
-            "holds such a number in a server named kaimon[0]",
-            lambda p: p.write_bytes(b'{"mcpServers": {"kaimon[0]": {"timeout": 1.10}}}\n'),
         ),
         (
             "holds such a number in a top-level key named mcpServers.kaimon",

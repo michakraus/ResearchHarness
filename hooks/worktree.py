@@ -31,29 +31,35 @@ Test the parts that need no repository:
     echo '{"hook_event_name":"WorktreeCreate","cwd":"/","name":"x"}' | ./worktree.py ; echo "exit $?"
 """
 
-import json
 import re
 import shutil
 import subprocess
 import sys
 from pathlib import Path
 
+from guard import HarnessError
+from guard.jsonio import loads
+
 ROOT = Path.home() / "Research" / ".worktrees"
 SEGMENT = re.compile(r"^[A-Za-z0-9._-]+$")
 AGENT = re.compile(r"^agent-[0-9a-f]+$")
+# Seconds that a local git command may take, and a fetch, which reaches the network.
+LOCAL = 60
+NETWORK = 300
 
 
 class Refusal(Exception):
     pass
 
 
-def git(*args: str, cwd: Path) -> str:
+def git(*args: str, cwd: Path, timeout: int = LOCAL) -> str:
     proc = subprocess.run(
         ["git", *args],  # noqa: S607 -- the `git` on PATH, as every other call in this hook runs it
         cwd=cwd,
         capture_output=True,
         text=True,
         check=False,
+        timeout=timeout,
     )
     sys.stderr.write(proc.stderr)
     if proc.returncode != 0:
@@ -71,6 +77,7 @@ def owning_repository(start):
         capture_output=True,
         text=True,
         check=False,
+        timeout=LOCAL,
     )
     if probe.returncode != 0:
         raise Refusal(f"{start} is not inside a git repository; `cd` into the repository first")
@@ -101,6 +108,7 @@ def base_ref(repo):
         capture_output=True,
         text=True,
         check=False,
+        timeout=LOCAL,
     )
     if head.returncode == 0:
         return head.stdout.strip()
@@ -110,6 +118,7 @@ def base_ref(repo):
         capture_output=True,
         text=True,
         check=False,
+        timeout=LOCAL,
     )
     if main.returncode == 0:
         return "origin/main"
@@ -128,7 +137,7 @@ def create(payload):
             return path
         raise Refusal(f"{path} exists and is not a worktree of {repo}; look at it before removing it")
 
-    git("fetch", "--quiet", "origin", cwd=repo)
+    git("fetch", "--quiet", "origin", cwd=repo, timeout=NETWORK)
     if AGENT.match(name):
         git("worktree", "add", "--detach", str(path), base_ref(repo), cwd=repo)
         copy_manifest(repo, path)
@@ -140,6 +149,7 @@ def create(payload):
             capture_output=True,
             text=True,
             check=False,
+            timeout=LOCAL,
         ).returncode
         == 0
     )
@@ -288,9 +298,7 @@ def remove(payload):
 
 def main():
     try:
-        payload = json.loads(sys.stdin.read())
-        if not isinstance(payload, dict):
-            raise Refusal("hook input is not a JSON object")
+        payload = loads(sys.stdin.read(), where="hook input")
         event = payload.get("hook_event_name")
         if event == "WorktreeCreate":
             print(create(payload))
@@ -298,8 +306,11 @@ def main():
             remove(payload)
         else:
             raise Refusal(f"unexpected hook_event_name {event!r}")
-    except (Refusal, json.JSONDecodeError) as err:
+    except (Refusal, HarnessError) as err:
         sys.stderr.write(f"worktree hook: {err}\n")
+        return 1
+    except subprocess.TimeoutExpired as err:
+        sys.stderr.write(f"worktree hook: `{' '.join(map(str, err.cmd))}` took more than {err.timeout} s\n")
         return 1
     return 0
 

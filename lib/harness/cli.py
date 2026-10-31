@@ -1,7 +1,10 @@
 """The argument parser of `harness`: one subparser per subcommand."""
 
 import argparse
+import subprocess
 import sys
+from collections.abc import Callable, Sequence
+from typing import cast
 
 from . import HarnessError, __doc__ as CONTRACT
 from . import docs, fmt, frontends, frontmatter, githooks, install, network, profile, protection, repos
@@ -38,6 +41,18 @@ def modules():
     """The modules that register a subcommand or hold test cases (MODULES), with each adapter
     after `install`."""
     return [MODULES[0], *frontends.load(), *MODULES[1:]]
+
+
+def dispatch(args: argparse.Namespace) -> int:
+    """`args.run(args)`, the subcommand. A program that runs longer than its timeout raises
+    HarnessError, which names the program's command and the timeout."""
+    run = cast("Callable[[argparse.Namespace], int]", args.run)
+    try:
+        return run(args)
+    except subprocess.TimeoutExpired as e:
+        # The harness runs each program from a list of arguments, never from a shell string.
+        command = " ".join(map(str, cast("Sequence[object]", e.cmd)))
+        raise HarnessError(f"`{command}` takes more than {e.timeout:g} s") from None
 
 
 def main(argv=None):
@@ -77,7 +92,7 @@ def main(argv=None):
     testrun.register(sub, modules)
     args = ap.parse_args(argv)
     try:
-        return args.run(args)
+        return dispatch(args)
     except HarnessError as e:
         print(f"harness {args.subcommand}: {e}", file=sys.stderr)
         return 2

@@ -31,9 +31,9 @@ import pathlib
 import subprocess
 import tempfile
 import tomllib
-from typing import cast
+from typing import Any, cast
 
-from . import REPO, HarnessError, changing
+from . import REPO, HarnessError, changing, jsonio
 from .frontmatter import parse_file
 from .githooks import research_root
 from .sources import curated_skills
@@ -113,7 +113,7 @@ def read_queries(directory=QUERIES, skills_dir=SKILLS):
     return queries
 
 
-def verdict(stream):
+def verdict(stream: str):
     """(the skill that the first MESSAGES assistant messages of a `stream-json` output load, None,
     or UNKNOWN; the `result` event, or None).
 
@@ -124,10 +124,10 @@ def verdict(stream):
     error result, or with no assistant message is UNKNOWN; a result of `error_max_turns` is the
     normal end of a session that called a tool."""
     try:
-        events = [json.loads(line) for line in stream.splitlines() if line.strip()]
-    except json.JSONDecodeError:
-        return UNKNOWN, None
-    if not all(isinstance(e, dict) for e in events):
+        events: list[dict[str, Any]] = [
+            jsonio.loads(line, where="the stream") for line in stream.splitlines() if line.strip()
+        ]
+    except HarnessError:
         return UNKNOWN, None
     results = [e for e in events if e.get("type") == "result"]
     result = results[-1] if results else None
@@ -654,12 +654,12 @@ def selftest():
     # The subcommand's exits: the dry run exits 1 and counts the sessions; --apply without --model
     # exits 2.
     harness = [sys.executable, str(REPO / "bin" / "harness"), "skill-triggers"]
-    p = subprocess.run(harness, capture_output=True, text=True, check=False)
+    p = subprocess.run(harness, capture_output=True, text=True, check=False, timeout=60)
     check(
         p.returncode == 1 and "152 sessions" in p.stdout and "Traceback" not in p.stderr,
         f"the dry run exits {p.returncode}: {p.stdout.strip().splitlines()[-1:]!r}",
     )
-    p = subprocess.run([*harness, "--apply"], capture_output=True, text=True, check=False)
+    p = subprocess.run([*harness, "--apply"], capture_output=True, text=True, check=False, timeout=60)
     check(
         p.returncode == 2 and len(p.stderr.strip().splitlines()) == 1 and "--model" in p.stderr,
         f"--apply without --model exits {p.returncode}: {p.stderr.strip()!r}",
@@ -670,7 +670,11 @@ def selftest():
         (["wait-what"], "1 session,"),
     ]:
         p = subprocess.run(
-            harness + [a for n in names for a in ("--skill", n)], capture_output=True, text=True, check=False
+            harness + [a for n in names for a in ("--skill", n)],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=60,
         )
         rows = [
             line.split()[0]
@@ -687,7 +691,7 @@ def selftest():
         ["--skill", "build-part", "--skill", "no-such-skill"],
         ["--apply", "--model", "fixture-model", "--skill", "no-such-skill"],
     ):
-        p = subprocess.run(harness + argv, capture_output=True, text=True, check=False)
+        p = subprocess.run(harness + argv, capture_output=True, text=True, check=False, timeout=60)
         check(
             p.returncode == 2 and len(p.stderr.strip().splitlines()) == 1 and "no-such-skill" in p.stderr,
             f"{' '.join(argv)} exits {p.returncode}: {p.stderr.strip()!r}",
@@ -714,7 +718,10 @@ def selftest():
                     claude=str(claude),
                     timeout=timeout,
                 )
-            calls = [json.loads(line) for line in (tmp / "bin" / "calls.jsonl").read_text().splitlines()]
+            calls: list[dict[str, Any]] = [
+                jsonio.loads(line, where="calls.jsonl")
+                for line in (tmp / "bin" / "calls.jsonl").read_text().splitlines()
+            ]
             written = sorted(
                 str(p.relative_to(tmp / "root")) for p in (tmp / "root").rglob("*") if p.is_file()
             )
@@ -856,9 +863,13 @@ def apply_skill_case(check, harness):
             text=True,
             env=env,
             check=False,
+            timeout=60,
         )
         calls = (
-            [json.loads(line) for line in (tmp / "bin" / "calls.jsonl").read_text().splitlines()]
+            [
+                jsonio.loads(line, where="calls.jsonl")
+                for line in (tmp / "bin" / "calls.jsonl").read_text().splitlines()
+            ]
             if (tmp / "bin" / "calls.jsonl").is_file()
             else []
         )

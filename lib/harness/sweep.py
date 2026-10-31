@@ -34,6 +34,7 @@ import dataclasses
 import hashlib
 import os
 import pathlib
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -116,7 +117,7 @@ GIT = {
 }
 
 
-def make_fixture(home, env):
+def make_fixture(home: pathlib.Path, env: dict[str, str]) -> None:
     """The fixture below `home`; the dummy profile and model tables copied as they are, so that
     each `~` of the profile is `home`."""
     research = home / "Research"
@@ -146,12 +147,15 @@ def make_fixture(home, env):
     )
     package = research / "Packages" / "Example"
     (package / "Project.toml").write_text('name = "Example"\n')
+    git = shutil.which("git") or "git"
     for repository, files in ((package, ["Project.toml"]), (research / "Knowledge", [])):
         commands = [["init", "-q", "-b", "main"]]
         if files:
             commands += [["add", "--", *files], ["commit", "-q", "-m", "fixture"]]
         for command in commands:
-            subprocess.run(["git", "-C", str(repository), *command], env=env, check=True, capture_output=True)
+            subprocess.run(
+                [git, "-C", str(repository), *command], env=env, check=True, capture_output=True, timeout=60
+            )
 
 
 def digest(root):

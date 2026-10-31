@@ -150,7 +150,7 @@ def scratch(name):
 
 
 def must(cmd, env, cwd=None):
-    result = subprocess.run(cmd, capture_output=True, text=True, env=env, cwd=cwd, check=False)
+    result = subprocess.run(cmd, capture_output=True, text=True, env=env, cwd=cwd, check=False, timeout=60)
     if result.returncode != 0:
         raise RuntimeError(f"{' '.join(map(str, cmd))}: {result.stderr.strip()}")
     return result.stdout.strip()
@@ -181,7 +181,9 @@ def render(host, extra=None):
         json.dumps(data),
         "execute-template",
     ]
-    result = subprocess.run(cmd, capture_output=True, text=True, input=CHECK.read_text(), check=False)
+    result = subprocess.run(
+        cmd, capture_output=True, text=True, input=CHECK.read_text(), check=False, timeout=60
+    )
     return result.returncode, result.stdout, result.stderr
 
 
@@ -1019,6 +1021,7 @@ def kit_files():
         capture_output=True,
         text=True,
         check=False,
+        timeout=60,
     )
     if p.returncode == 0:
         return sorted({rel for rel in p.stdout.split("\0") if rel and (SOURCE / rel).is_file()})
@@ -1124,6 +1127,7 @@ def test_render():
             capture_output=True,
             text=True,
             check=False,
+            timeout=60,
         )
         check(syntax.returncode == 0, f"bash -n dotfiles-check ({host}) {syntax.stderr.strip()}")
         lint = subprocess.run(
@@ -1131,6 +1135,7 @@ def test_render():
             capture_output=True,
             text=True,
             check=False,
+            timeout=60,
         )
         check(lint.returncode == 0, f"shellcheck dotfiles-check ({host}) {lint.stdout.strip()}")
 
