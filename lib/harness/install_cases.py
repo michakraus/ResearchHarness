@@ -872,6 +872,7 @@ def replace_directory_cases(check: Callable[[bool, str], object], tmp: pathlib.P
         mode_only = install.check_files([(locked / "x.md", b"x\n", 0o600, "x.md")])
         plain = install.check_files([(locked / "x.md", b"y\n", None, "x.md")])
         kept = install.check_files([(locked / "x.md", b"x\n", 0o644, "x.md")])
+        backed = install.check_files([(locked / "x.md", b"y\n", None, "x.md", True)])
     finally:
         locked.chmod(0o755)
     check(
@@ -883,6 +884,10 @@ def replace_directory_cases(check: Callable[[bool, str], object], tmp: pathlib.P
         and kept is None,
         f"a target with a mode and a change in a directory of mode 0555 is refused and names the directory; "
         f"one with no mode, and one that stays, are not: {moded!r}, {mode_only!r}, {plain!r}, {kept!r}",
+    )
+    check(
+        backed is not None and f"its backup goes to {locked}" in backed,
+        f"a target with no mode whose backup goes to a directory of mode 0555 is refused: {backed!r}",
     )
 
 

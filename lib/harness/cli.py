@@ -50,8 +50,8 @@ def dispatch(args: argparse.Namespace) -> int:
     try:
         return run(args)
     except subprocess.TimeoutExpired as e:
-        given = cast("str | Sequence[object]", e.cmd)
-        command = given if isinstance(given, str) else " ".join(map(str, given))
+        # The harness runs each program from a list of arguments, never from a shell string.
+        command = " ".join(map(str, cast("Sequence[object]", e.cmd)))
         raise HarnessError(f"`{command}` takes more than {e.timeout:g} s") from None
 
 

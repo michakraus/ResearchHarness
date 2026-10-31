@@ -42,6 +42,7 @@ import types
 from collections.abc import Callable
 from dataclasses import replace
 from typing import Any, NamedTuple, TextIO, cast
+from unittest import mock
 
 HOOKS = os.path.dirname(os.path.abspath(__file__)) + "/"
 
@@ -204,6 +205,19 @@ def manifest_cases():
         print(
             f"{'ok ' if got == expected else 'BAD'} exp {expected} got {got}  [worktree ]  manifest {deps} for {names} {compat}"
         )
+    # A git that runs longer than its timeout fails closed: exit 1 and one line that names it.
+    err = io.StringIO()
+    payload = '{"hook_event_name":"WorktreeCreate","cwd":"' + CWD + '","name":"x"}'
+    with (
+        mock.patch.object(subprocess, "run", side_effect=subprocess.TimeoutExpired(["git", "rev-parse"], 60)),
+        mock.patch.object(sys, "stdin", io.StringIO(payload)),
+        contextlib.redirect_stderr(err),
+    ):
+        code = hook.main()
+    said = err.getvalue().strip()
+    ok = code == 1 and said == "worktree hook: `git rev-parse` took more than 60 s"
+    total, wrong = total + 1, wrong + (not ok)
+    print(f"{'ok ' if ok else 'BAD'} exp 1 got {code}  [worktree ]  a git past its timeout: {said!r}")
     return total, wrong
 
 

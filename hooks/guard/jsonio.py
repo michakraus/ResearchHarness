@@ -191,7 +191,7 @@ def loads(text: str, *, where: str, top: type[object] = dict) -> JsonValue:
         raise HarnessError(f"{where}: line {e.lineno}: not JSON: {e.msg}") from None
     except ValueError as e:  # an integer of more digits than `int` reads
         raise HarnessError(f"{where}: not JSON: {e}") from None
-    if top is not object and not isinstance(value, top):
+    if not isinstance(value, top):
         raise HarnessError(f"{where}: the top level is {kind_of(value)}, not {TOPS[top]}")
     return cast("JsonValue", value)
 

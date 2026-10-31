@@ -32,8 +32,10 @@ A hook keeps its mode, and every other file is installed with mode 0644.
 
 The first file of the layer is `~/.claude/settings.json`. The adapter merges four sections of the
 settings template into this file: `permissions`, `hooks`, `sandbox` and `modelSettings`. It adds
-each other key of the template, and each `env` variable, that the file does not have. It keeps
-all other keys and values, keeps the old file as a backup, and creates the file if it is missing.
+each other key of the template, and each `env` variable, that the file does not have. It writes
+only those values again, through `ownedjson.py`, and keeps every other byte of the file: the other
+keys and values, the layout and the text of each number. It keeps the old file as a backup, and
+creates the file if it is missing.
 The dry run prints the diff of those sections after the line of the file. After the layer, the
 adapter writes the stamp `~/.claude/.harness-install.json`.
 
@@ -42,7 +44,8 @@ The adapter exits with status 2, before it writes a file, in these cases:
 - two sources hold the same path;
 - a source or an installed path is a symbolic link;
 - a source holds `settings.json`;
-- `settings.json` is not a JSON object, or one of the four sections in it is not an object.
+- `settings.json` is not a JSON object that `jsonio.py` reads, such as one with a key twice in one
+  object, or one of the four sections in it is not an object.
 
 An installed file with no source is an EXTRA line with its removal command. The permission rules
 of the other settings files of the research tree are a warning.
@@ -51,8 +54,9 @@ of the other settings files of the research tree are a warning.
 `surface` reads the session transcripts below `~/.claude/projects/` and counts the Bash commands
 that reach a prompt.
 `harness trust` marks the research root and each git repository below it as trusted in
-`~/.claude.json`. It skips `.worktrees/` and `.scratch/`. A session cannot read that file, so run
-it in your own terminal.
+`~/.claude.json`. It skips `.worktrees/` and `.scratch/`. It writes only the entries that it
+adds, through `ownedjson.py`, and writes a symlinked `~/.claude.json` through to its target. A
+session cannot read that file, so run it in your own terminal.
 
 `fixtures/` holds the expected rendered output of two agents for Claude Code, which the cases
 compare.
@@ -403,17 +407,18 @@ directory `~/.gemini/config/`. The adapter writes:
 - `config/agents/<name>.md` for each agent of `agents/`, with its model from the table
   `[antigravity]` of `models.toml`, its tools from the table `TOOLS`, and the section of
   `UNDER-ANTIGRAVITY.md`;
-- `config/mcp_config.json`, with mode 600 and no backup: the file as it is, with the entry
-  `kaimon` set to Kaimon's URL and its token from `~/.config/kaimon/auth-token` written out,
+- `config/mcp_config.json`, with mode 600 from its first byte and no backup: the file as it is,
+  every other byte kept, with the entry `kaimon` set to Kaimon's URL and its token from
+  `~/.config/kaimon/auth-token` written out,
   because Antigravity expands no shell form in a header. With no token, the install leaves the
   file as it is and gives one warning;
 - three keys of the CLI's `antigravity-cli/settings.json`: `permissions`, `toolPermission` and
-  `enableTerminalSandbox`. The merge keeps every other key of that file and its indent, and backs
-  up the file it replaces;
+  `enableTerminalSandbox`. The merge keeps every other byte of that file (`ownedjson.py`), and
+  backs up the file it replaces;
 - the same permission rules in the desktop app's grants, `userSettings.globalPermissionGrants` of
   `config/config.json`: each rule once in its list, `allow`, `deny` or `ask`, after the entries
-  there. The merge keeps every other key and every grant of the user in its place, removes no
-  entry, and backs up the file it replaces. The app's grants per project, in `config/projects/`,
+  there. The merge keeps every other byte of the file, so a minified file stays minified, removes
+  no entry, and backs up the file it replaces. The app's grants per project, in `config/projects/`,
   stay as they are.
 
 In each text except `GEMINI.md`, a path below `~/.claude/` names Antigravity's copy, and
@@ -486,7 +491,7 @@ above it or below it, gives a warning that names it, and no rule.
 The install exits with status 2, before it writes a file, in these cases among others:
 
 - the CLI's `settings.json`, the app's `config.json` or `mcp_config.json` is not a regular file or
-  not a JSON object;
+  not a JSON object that `jsonio.py` reads, such as one with a key twice in one object;
 - the app's `userSettings` or `globalPermissionGrants` is not an object, or its `allow`, `deny` or
   `ask` is not a list;
 - two sources hold the same path;
