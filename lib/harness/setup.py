@@ -1610,6 +1610,12 @@ def plan_cases(case: Case, tmp: pathlib.Path, pins: Pins) -> None:
         f"in a terminal, unchanged answers on a profile write nothing: {code}",
         ok=code == "0" and str(s.profile) not in out,
     )
+
+
+def step_cases(case: Case, tmp: pathlib.Path, pins: Pins) -> None:
+    """The load of a launch agent, an apt line with nothing to install, and a failed render."""
+    s = scratch(tmp, "steps", MACOS_FAKES)
+    mac, linux, options = s.machine(), s.machine("Linux"), s.options()
     s.fake(
         "launchctl",
         'case "$1" in print) [ -e "$0.out" ] && exit 1; exit 0;; bootout) : > "$0.out";; '
@@ -1622,6 +1628,22 @@ def plan_cases(case: Case, tmp: pathlib.Path, pins: Pins) -> None:
         f"a loaded agent is booted out and waited for, and a failed bootstrap is tried once more: "
         f"{failure} {verbs}",
         ok=failure is None and verbs == ["print", "bootout", "print", "bootstrap", "bootstrap"],
+    )
+    for program, body in (
+        *((p, "exit 0") for p in ("gh", "shellcheck", "rsync", "bwrap", "socat", "lsof")),
+        ("node", 'echo "v22.3.0"'),
+        ("actionlint", 'echo "1.7.12"'),
+        ("gitleaks", 'echo "8.21.0"'),
+    ):
+        s.fake(program, body)
+    lines = shows(linux, profile_module.Setup(frontends=(), components=()), options, pins)
+    case(f"on Ubuntu with every tool there, no apt line: {lines}", ok=not any("apt-get" in x for x in lines))
+    s.fake("harness", 'echo "render: no such template" >&2; exit 2')
+    target = s.home / "rendered.plist"
+    failure = render(mac, "launchagents/kaimon.plist", target, dict(mac.env))
+    case(
+        f"a failed render is a failed step, and writes no file: {failure!r}",
+        ok=failure is not None and "no such template" in failure and not target.exists(),
     )
 
 
@@ -1678,14 +1700,19 @@ def helper_cases(case: Case, tmp: pathlib.Path) -> None:
             f"an archive whose gitleaks is no file ({name}) installs nothing: {failure}",
             ok=failure is not None and "gitleaks" in failure and not (tmp / "h" / ".local").exists(),
         )
-    path = tmp / "minimum.toml"
-    path.write_text('[minimum]\ngitleaks = "8.21"\n', encoding="utf-8")
-    try:
-        load_pins(path)
-        got = "loaded"
-    except HarnessError as e:
-        got = str(e)
-    case(f"a minimum that is not a list of versions exits 2 naming it: {got}", ok="minimum.gitleaks" in got)
+    for name, text, want in (
+        ("a string", '[minimum]\ngitleaks = "8.21"\n', "minimum.gitleaks"),
+        ("a list with a number", '[minimum]\ngitleaks = ["8.21", 9]\n', "minimum.gitleaks"),
+        ("a release without its version", '[release.x.linux-x86_64]\nurl = "https://a"\n', "no version"),
+    ):
+        path = tmp / "pins.toml"
+        path.write_text(text, encoding="utf-8")
+        try:
+            load_pins(path)
+            got = "loaded"
+        except HarnessError as e:
+            got = str(e)
+        case(f"{name} in setup/tools.toml exits 2 naming it: {got}", ok=want in got)
 
 
 def dry_run_cases(case: Case, tmp: pathlib.Path, pins: Pins) -> None:
@@ -1851,13 +1878,14 @@ def token_cases(case: Case, tmp: pathlib.Path) -> None:
         f"without config.json, the token step prints the step and writes nothing: {out.getvalue()!r}",
         ok=failure is None and "api_keys" in out.getvalue() and not (directory / "auth-token").exists(),
     )
-    (directory / "config.json").write_text('{"api_keys": []}\n', encoding="utf-8")
-    with contextlib.redirect_stdout(io.StringIO()):
-        failure = kaimon_token(home)
-    case(
-        "with no key, the token step writes nothing",
-        ok=failure is None and not (directory / "auth-token").exists(),
-    )
+    for keys in ("[]", '[""]', "[7]"):
+        (directory / "config.json").write_text(f'{{"api_keys": {keys}}}\n', encoding="utf-8")
+        with contextlib.redirect_stdout(io.StringIO()):
+            failure = kaimon_token(home)
+        case(
+            f"with api_keys {keys}, the token step writes nothing",
+            ok=failure is None and not (directory / "auth-token").exists(),
+        )
     (directory / "auth-token").write_text("mine", encoding="utf-8")
     (directory / "config.json").write_text('{"api_keys": ["other"]}\n', encoding="utf-8")
     with contextlib.redirect_stdout(io.StringIO()):
@@ -1884,6 +1912,7 @@ def selftest() -> tuple[int, int]:
         linux_cases(case, root, pins)
         linux_jobs_cases(case, root, pins)
         plan_cases(case, root, pins)
+        step_cases(case, root, pins)
         helper_cases(case, root)
         dry_run_cases(case, root, pins)
         release_cases(case, root)
