@@ -149,7 +149,7 @@ from collections.abc import Callable
 from typing import Any, cast
 
 from harness import REPO, HarnessError, frontends, frontmatter, fsutil, install, sources, units
-from harness import ownedjson
+from harness import jsonio, ownedjson
 from harness import profile as profile_module
 from harness.jsonio import JsonValue
 from harness.githooks import research_root
@@ -198,7 +198,7 @@ INCLUDE = re.compile(rb"@\[[^\]\n]*\]\(")
 TRANSLATE = """import json, subprocess, sys
 path = sys.argv[1]
 try:
-    p = subprocess.run([sys.executable, path], capture_output=True, text=True)
+    p = subprocess.run([sys.executable, path], capture_output=True, text=True, timeout=60)
     if p.returncode != 0:
         raise RuntimeError(f"exit {p.returncode}: {p.stderr.strip()[-300:]}")
     t = p.stdout.strip()
@@ -313,7 +313,7 @@ def render_rule(src, data):
     end = next(i for i, line in enumerate(lines) if i and line in (b"---", b"---\r"))
     fields = dict(line.split(b": ", 1) for line in lines[1:end])
     if b"globs" in fields:
-        globs = ", ".join(json.loads(fields[b"globs"]))
+        globs = ", ".join(json_value(fields[b"globs"].decode(), "globs"))
         trigger = [b"trigger: glob", b"globs: " + json.dumps(globs, ensure_ascii=False).encode()]
     else:
         trigger = [b"trigger: always_on"]
@@ -408,8 +408,8 @@ def guard_paths(profile):
     does not write; then the installed agents, AGENTS, and the app's settings, APP_CONFIG, whose
     grants an agent could widen; under `bash_deny` and `bash_ask` the body of every `Bash` deny and
     ask of the template."""
-    deny = json.loads(profile_module.render_file(GUARD_PATHS, profile))["deny"]
-    permissions = json.loads(profile_module.render_file(SETTINGS, profile))["permissions"]
+    deny = json_value(profile_module.render_file(GUARD_PATHS, profile), str(GUARD_PATHS))["deny"]
+    permissions = json_value(profile_module.render_file(SETTINGS, profile), str(SETTINGS))["permissions"]
     bodies = {
         (tool, key): [
             m.group(1) for e in permissions.get(key, []) if (m := re.fullmatch(rf"{tool}\((.*)\)", e, re.S))
@@ -607,6 +607,12 @@ def clones():
     ]
 
 
+def json_value(text: str, where: str) -> Any:
+    """The JSON value of `text`, of any type, read by `jsonio`; a refusal raises HarnessError, which
+    names `where`. Each caller reads the keys of the value as its own code checks them."""
+    return jsonio.loads(text, where=where, top=object)
+
+
 def read_regular(path, refused):
     """The text of the file at `path`, None when it does not exist. Exits 2 on a file that is not a
     regular file, cannot be read, or is not UTF-8, its message ended by `refused`. One lstat, so
@@ -665,7 +671,8 @@ def merge_grants(path, rules):
     settings: dict[str, Any] = {}
     if content is not None:
         settings = claude.json_object(file, content)
-    node, where = cast("object", settings), []
+    node = cast("object", settings)
+    where: list[str] = []
     for key in ("userSettings", "globalPermissionGrants"):
         node, where = cast("dict[str, Any]", node).get(key, {}), [*where, key]
         if not isinstance(node, dict):
@@ -1172,7 +1179,7 @@ def layer_cases(scratch):
     case(
         lambda: (
             hooks is not None
-            and json.loads(cast(str, hooks))
+            and json_value(cast(str, hooks), "hooks.json")
             == {
                 HOOK: {
                     "SessionStart": [{"type": "command", "command": start, "timeout": 15}],
@@ -1202,8 +1209,8 @@ def layer_cases(scratch):
     # file, runs it on the scratch environment's interpreter.
     runs_py = [
         c
-        for c in commands_of(json.loads((claude / "settings.json").read_text())["hooks"])
-        + (commands_of(json.loads(cast(str, hooks))) if hooks is not None else [])
+        for c in commands_of(json_value((claude / "settings.json").read_text(), "settings.json")["hooks"])
+        + (commands_of(json_value(cast(str, hooks), "hooks.json")) if hooks is not None else [])
         if ".py" in c or "/hooks/guard " in c
     ]
     case(
@@ -1239,9 +1246,9 @@ def layer_cases(scratch):
         f"hooks/ holds the guard package and install-drift.py, and no other file: {hooks}",
     )
     profile = profile_module.load(base / "profile.toml")
-    opencode = json.loads(profile_module.render_file(GUARD_PATHS, profile))["deny"]
+    opencode = json_value(profile_module.render_file(GUARD_PATHS, profile), str(GUARD_PATHS))["deny"]
     h = profile.home
-    template = json.loads(profile_module.render_file(SETTINGS, profile))["permissions"]
+    template = json_value(profile_module.render_file(SETTINGS, profile), str(SETTINGS))["permissions"]
     edits = {
         key: [re.sub(r"^//+", "/", e[len("Edit(") : -1]) for e in template[key] if e.startswith("Edit(")]
         for key in ("deny", "ask")
@@ -1278,7 +1285,7 @@ def layer_cases(scratch):
         f"{h}/.gemini/config/config.json",
     ]
     lists = config / "guard-paths.json"
-    written = json.loads(lists.read_text()) if lists.is_file() else {}
+    written = json_value(lists.read_text(), "guard-paths.json") if lists.is_file() else {}
     case(
         lambda: (
             written["edit"][len(edits["deny"]) :] == [*copies["deny"], *globals_]
@@ -1332,7 +1339,7 @@ def layer_cases(scratch):
         f"of every Bash deny and ask, entry by entry: { {k: len(v) for k, v in written.items()} }",
     )
     new = gemini / "antigravity-cli" / "settings.json"
-    settings = json.loads(new.read_text()) if new.is_file() else {}
+    settings = json_value(new.read_text(), "settings.json") if new.is_file() else {}
     case(
         lambda: (
             settings["toolPermission"] == "proceed-in-sandbox"
@@ -1352,7 +1359,8 @@ def layer_cases(scratch):
         for key in LISTS
     }
     cli = settings.get("permissions", {})
-    excluded = json.loads(profile_module.render_file(SETTINGS, profile))["sandbox"]["excludedCommands"]
+    rendered = json_value(profile_module.render_file(SETTINGS, profile), str(SETTINGS))
+    excluded = rendered["sandbox"]["excludedCommands"]
     unsandboxed = [f"command({w})" for w in dict.fromkeys(e.split()[0] for e in excluded)]
 
     def before_unsandboxed(key):
@@ -1390,7 +1398,7 @@ def layer_cases(scratch):
         f"the list does not hold, and holds each once: {cli.get('allow', [])[-4:]}",
     )
     app = config / "config.json"
-    grants = json.loads(app.read_text()) if app.is_file() else {}
+    grants = json_value(app.read_text(), "config.json") if app.is_file() else {}
     case(
         lambda: all(
             grants["userSettings"]["globalPermissionGrants"]["allow"].count(r) == 1 for r in unsandboxed
@@ -1950,12 +1958,12 @@ def rule_cases(case):
         f"{ {key: (len(bash[key]), added[key], sum(r.startswith('command(') for r in rules[key])) for key in LISTS} }",
     )
     recursive = [e for key, e, _ in dropped if key == "deny" and e.startswith("Read(**/")]
-    paths = json.loads(guard_paths(profile))["deny"]
+    paths = json_value(guard_paths(profile), "guard-paths.json")["deny"]
     case(
         lambda: recursive and all(e[len("Read(") : -1] in paths for e in recursive),
         f"each dropped Read(**/X) deny is in the guard's path list: {recursive}",
     )
-    lists = json.loads(guard_paths(profile))
+    lists = json_value(guard_paths(profile), "guard-paths.json")
     covered = [
         (key, e)
         for key, e, _ in dropped
@@ -2077,7 +2085,7 @@ def rule_cases(case):
         ),
         "an allow regex rule stays in one segment, a deny regex rule does not, and a trailing * matches nothing too",
     )
-    lists = json.loads(guard_paths(profile))
+    lists = json_value(guard_paths(profile), "guard-paths.json")
     # `git push  *` is a body of one literal part with a trailing ` *`, a form that no template body
     # has: each such body is a prefix body.
     matcher_cases(case, [*lists["bash_deny"], *lists["bash_ask"], "git push  *"])
@@ -2213,7 +2221,7 @@ def merge_cases(scratch):
     settings.write_text(json.dumps(own, indent=4) + "\n")
     before = settings.read_bytes()
     code, text = run(base, "--apply")
-    merged = json.loads(settings.read_text())
+    merged = json_value(settings.read_text(), "settings.json")
     backups = list(cli.glob("settings.json.bak-*"))
     case(
         lambda: (
@@ -2321,10 +2329,9 @@ def grants_cases(scratch):
         f"the dry run lists config/config.json as REPLACE and writes nothing: {code}, {listed}",
     )
     code, text = run(base, "--apply")
-    merged = json.loads(app.read_text(encoding="utf-8")) if app.is_file() else {}
-    cli = json.loads((base / "home" / ".gemini" / "antigravity-cli" / "settings.json").read_text())[
-        "permissions"
-    ]
+    merged = json_value(app.read_text(encoding="utf-8"), "config.json") if app.is_file() else {}
+    cli_settings = (base / "home" / ".gemini" / "antigravity-cli" / "settings.json").read_text()
+    cli = json_value(cli_settings, "settings.json")["permissions"]
     grants = merged.get("userSettings", {}).get("globalPermissionGrants", {})
     mine = own["userSettings"]["globalPermissionGrants"]
 
@@ -2456,8 +2463,8 @@ def grants_cases(scratch):
             and '"theme"' in text
             and scratch.snapshot(base) == snapshot
         ),
-        f"K101: a config.json with a key twice in one object exits 2, names the file and the key, and nothing "
-        f"is written: {code}, {tail(text)!r}",
+        f"K101: a config.json with a key twice in one object exits 2, names the file and the key, and "
+        f"nothing is written: {code}, {tail(text)!r}",
     )
     # K102: a minified config.json whose rule is present comes back byte for byte, and the plan finds it
     # identical.
@@ -2474,8 +2481,8 @@ def grants_cases(scratch):
         )
     case(
         lambda: again == minified and changes == 0 and "already identical" in out.getvalue(),
-        f"K102: a minified config.json whose rule is present is merged byte for byte and planned as identical: "
-        f"{again[:60]!r}, {changes}, {out.getvalue().strip()!r}",
+        f"K102: a minified config.json whose rule is present is merged byte for byte and planned as "
+        f"identical: {again[:60]!r}, {changes}, {out.getvalue().strip()!r}",
     )
 
 
@@ -2485,7 +2492,7 @@ def deny_write_cases(scratch):
     root silent, any other wildcard refused with a warning, the clones that the walk of the research
     root finds, and both files read back after an install, with the count line."""
     case, run, tail = scratch.case, scratch.run, scratch.tail
-    template = json.loads(SETTINGS.read_text())["sandbox"]["filesystem"]["denyWrite"]
+    template = json_value(SETTINGS.read_text(), str(SETTINGS))["sandbox"]["filesystem"]["denyWrite"]
     home, root = "/h", pathlib.Path("/h/Research")
     clones_ = [pathlib.Path("/h/Research/Packages/A.jl"), pathlib.Path("/h/Research/Knowledge")]
     got = deny_write(template, home, root, clones_)
@@ -2715,10 +2722,12 @@ def deny_write_cases(scratch):
         f"the dry run names the number of clones in one warning: {code}, {count}, {tail(dry)!r}",
     )
     code, text = run(base, "--apply", extra_env=env)
-    cli = json.loads((h / ".gemini" / "antigravity-cli" / "settings.json").read_text())["permissions"]["deny"]
-    grants = json.loads((config / "config.json").read_text())["userSettings"]["globalPermissionGrants"][
-        "deny"
-    ]
+    cli = json_value((h / ".gemini" / "antigravity-cli" / "settings.json").read_text(), "settings.json")[
+        "permissions"
+    ]["deny"]
+    grants = json_value((config / "config.json").read_text(), "config.json")["userSettings"][
+        "globalPermissionGrants"
+    ]["deny"]
     ours = deny_write(template, str(h), research, [a])[0]
     after = max(i for i, r in enumerate(cli) if r.startswith("mcp(")) + 1
     case(
@@ -2942,7 +2951,7 @@ ROUND5 = {
 def rendered_head(data):
     """{key: value} of the frontmatter of the rendered agent `data`, each value read as JSON."""
     lines = data.decode().split("\n---\n", 1)[0].split("\n")[1:]
-    return dict((k, json.loads(v)) for k, v in (line.split(": ", 1) for line in lines))
+    return dict((k, json_value(v, k)) for k, v in (line.split(": ", 1) for line in cast("list[str]", lines)))
 
 
 def agent_cases(scratch):
@@ -3239,7 +3248,7 @@ def kaimon_cases(scratch):
     code, out = run(base, "--apply")
     # Each case below binds `got` to the file's parsed JSON or its text, and its lambda reads it.
     got: Any
-    got = json.loads(config.read_text()) if config.is_file() else None
+    got = json_value(config.read_text(), "mcp_config.json") if config.is_file() else None
     case(
         lambda: (
             code == 0
@@ -3251,7 +3260,7 @@ def kaimon_cases(scratch):
     )
     token.write_text("another-token\n")
     code, out = run(base, "--apply")
-    got = json.loads(config.read_text()) if config.is_file() else None
+    got = json_value(config.read_text(), "mcp_config.json") if config.is_file() else None
     case(
         lambda: (
             code == 0
@@ -3279,7 +3288,7 @@ def kaimon_cases(scratch):
     )
     code, out = run(base, "--apply")
     text = config.read_text()
-    got = json.loads(text)
+    got = json_value(text, "mcp_config.json")
     case(
         lambda: (
             code == 0
@@ -3308,7 +3317,7 @@ def kaimon_cases(scratch):
         + "\n"
     )
     code, out = run(base, "--apply")
-    got = json.loads(config.read_text())
+    got = json_value(config.read_text(), "mcp_config.json")
     case(
         lambda: (
             code == 0
@@ -3326,7 +3335,7 @@ def kaimon_cases(scratch):
         case(
             lambda: (
                 code == 0
-                and json.loads(got) == entry("fake-token-of-the-cases")
+                and json_value(got, "mcp_config.json") == entry("fake-token-of-the-cases")
                 and scratch.mode(config) == 0o600
             ),
             f"a mcp_config.json that {label} becomes Kaimon alone: {code}, {got!r}, {tail(out)!r}",
@@ -3347,7 +3356,10 @@ def kaimon_cases(scratch):
     code, out = run(base, "--apply")
     got = config.read_text()
     case(
-        lambda: code == 0 and json.loads(got) == {"extra": {"u": 1}, "mcpServers": {"kaimon": new}},
+        lambda: (
+            code == 0
+            and json_value(got, "mcp_config.json") == {"extra": {"u": 1}, "mcpServers": {"kaimon": new}}
+        ),
         f"a file with no mcpServers gains it, with Kaimon alone: {code}, {got!r}, {tail(out)!r}",
     )
     # A key twice, inside the Kaimon entry that the merge replaces too, and an entry twice, are refused
@@ -3388,7 +3400,8 @@ def kaimon_cases(scratch):
         got = config.read_text()
         case(
             lambda: code == 0 and "1.10" in got and '"kaimon": {' in got,
-            f"a mcp_config.json with 1.10 outside the Kaimon entry keeps its text: {code}, {got!r}, {tail(out)!r}",
+            f"a mcp_config.json with 1.10 outside the Kaimon entry keeps its text: {code}, {got!r}, "
+            f"{tail(out)!r}",
         )
     truncated = b'{"mcpServers": {"kaimon": {"headers": {"Authorization": "Bearer fake-old'
     for label, make in [

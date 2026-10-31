@@ -21,6 +21,7 @@ import os
 import pathlib
 import stat
 import tomllib
+from typing import cast
 
 from . import REPO, HarnessError, changing, outcome
 
@@ -138,7 +139,7 @@ def copy(src, dst):
         mode = stat.S_IMODE(dst.stat().st_mode)
         want = mode | (mode & 0o444) >> 2 if executable(src) else mode & ~0o111
         if want != mode:
-            dst.chmod(want)  # not private: the file's own mode with the source's executable bits
+            cast("pathlib.Path", dst).chmod(want)  # not private: its own mode with the source's x bits
     except OSError as e:
         raise HarnessError(f"{dst} cannot be written: {e.strerror or e}") from None
 

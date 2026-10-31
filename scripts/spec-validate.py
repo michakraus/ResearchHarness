@@ -383,7 +383,7 @@ def main():
                     os.mkdir(tree)
                     error = export(cast("str", a.repo), cast("str", base), tree)
                     if error is not None:
-                        errors.append(error)
+                        cast("list[str]", errors).append(error)
                 if not errors:
                     run(premises, tree, env, "premise", errors, "rule 9", "base", devices, unmeasured)
 

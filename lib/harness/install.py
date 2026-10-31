@@ -550,6 +550,7 @@ def selftest():
         install_cases.setup_cases(check, pathlib.Path(tmp))
         behind_cases(check, pathlib.Path(tmp))
         install_cases.private_write_cases(check, pathlib.Path(tmp))
+        install_cases.replace_directory_cases(check, pathlib.Path(tmp))
     return total, wrong
 
 

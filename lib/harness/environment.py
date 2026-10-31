@@ -205,7 +205,7 @@ def make_env(directory, log=None):
     """A Python environment at `directory`, made with `python -m venv`; with `log`, a .pth file in
     it appends `sys.orig_argv` of each interpreter that starts there to `log`."""
     subprocess.run(
-        [sys.executable, "-m", "venv", "--without-pip", str(directory)],
+        [sys.executable, "-m", "venv", "--without-pip", str(cast("pathlib.Path", directory))],
         check=True,
         capture_output=True,
         timeout=60,
@@ -674,7 +674,7 @@ def start_cases(case, tmp):
         start = time.monotonic()
         with mock.patch.dict(os.environ, {"FAKE_UV": "hang"}), mock.patch.object(boot, "SYNC_TIMEOUT", 1):
             try:
-                boot.sync(str(uv), str(environment), False)
+                boot.sync(str(uv), str(environment), dev=False)
                 refused = None
             except boot.Refusal as e:
                 refused = str(e)

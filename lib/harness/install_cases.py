@@ -289,7 +289,7 @@ def precondition_cases(check, tmp):
         (base / "julia" / "Manifest.toml").unlink()
         if stub is not None:
             (stubs / "julia").write_text("#!/bin/sh\nexit 0\n")
-            (stubs / "julia").chmod(stub)  # not private: the executable bit of a stub, or its absence
+            cast("pathlib.Path", stubs / "julia").chmod(stub)  # not private: a stub's executable bit, or none
         code, text = run(base, "--apply", extra_env={"PATH": os.pathsep.join(directories)})
         last = scratch.tail(text)
         case(
@@ -315,7 +315,7 @@ def precondition_cases(check, tmp):
     )
 
 
-def target_cases(check: Callable[[object, str], None], tmp: pathlib.Path) -> None:
+def target_cases(check, tmp):
     """The targets that `harness install` cannot write, each on a fresh scratch HOME: a symlink and a
     directory at the OpenCode AGENTS.md and at ~/.claude/CLAUDE.md, a settings.json of mode 0444
     with a change, and a directory of mode 0555 where a new target goes. The dry run and --apply
@@ -447,33 +447,6 @@ def target_cases(check: Callable[[object, str], None], tmp: pathlib.Path) -> Non
         f"a byte change with a mode in the plan, of a writable target another user owns, is refused, and one "
         f"with no mode is not: {other!r}, {unnamed!r}",
     )
-    # `write_private` writes a temporary name beside the target and renames it, so a target with a
-    # mode and a change needs its directory writable; one with no mode, written in place, does not.
-    locked = tmp / "targets" / "locked"
-    locked.mkdir()
-    (locked / "x.md").write_bytes(b"x\n")
-    (locked / "x.md").chmod(0o644)
-    locked.chmod(0o555)
-    try:
-        moded = install.check_files([(locked / "x.md", b"y\n", 0o644, "x.md")])
-        mode_only = install.check_files([(locked / "x.md", b"x\n", 0o600, "x.md")])
-        plain = install.check_files([(locked / "x.md", b"y\n", None, "x.md")])
-        kept = install.check_files([(locked / "x.md", b"x\n", 0o644, "x.md")])
-    finally:
-        locked.chmod(0o755)
-    case(
-        lambda: (
-            moded is not None
-            and str(locked) in moded
-            and mode_only is not None
-            and str(locked) in mode_only
-            and plain is None
-            and kept is None
-        ),
-        f"a target with a mode and a change in a directory of mode 0555 is refused and names the directory; "
-        f"one with no mode, and one that stays, are not: {moded!r}, {mode_only!r}, {plain!r}, {kept!r}",
-    )
-
     # An OSError in the write itself, after the checks, as a full disk gives it: exit 2 with the target.
     # The plan line that `install_file` prints before the write goes into `out`, not into the case list.
     target = tmp / "targets" / "full" / "x.md"
@@ -513,7 +486,9 @@ def target_cases(check: Callable[[object, str], None], tmp: pathlib.Path) -> Non
     # is not JSON is, and the dry run exits as it does without it.
     stray.write_text("[" * 400000 + "]" * 400000)
     code, text = run(base)
-    warning = f"{stray} cannot be read as a settings file: RecursionError"
+    warning = (
+        f"{stray} cannot be read as a settings file: HarnessError: {stray}: line 1: nested deeper than 200"
+    )
     case(
         lambda: code == without and "Traceback" not in text and warning in text,
         f"a stray settings file nested 400000 deep is the warning line {warning!r}, and the dry run exits "
@@ -881,6 +856,34 @@ def setup_cases(check: Callable[[bool, str], object], tmp: pathlib.Path) -> None
             f"[setup] with {key} = {value}{', and a link in the tree instructions' if linked else ''}: "
             f"exit 2, one line that names {bad}, nothing written: {code}, {said}, {sizes}",
         )
+
+
+def replace_directory_cases(check: Callable[[bool, str], object], tmp: pathlib.Path) -> None:
+    """`write_private` writes a temporary name beside the target and renames it, so `check_files`
+    refuses a target with a mode and a change whose directory cannot be written; one with no mode,
+    written in place, and one that stays, pass."""
+    locked = tmp / "locked"
+    locked.mkdir()
+    (locked / "x.md").write_bytes(b"x\n")
+    (locked / "x.md").chmod(0o644)
+    locked.chmod(0o555)
+    try:
+        moded = install.check_files([(locked / "x.md", b"y\n", 0o644, "x.md")])
+        mode_only = install.check_files([(locked / "x.md", b"x\n", 0o600, "x.md")])
+        plain = install.check_files([(locked / "x.md", b"y\n", None, "x.md")])
+        kept = install.check_files([(locked / "x.md", b"x\n", 0o644, "x.md")])
+    finally:
+        locked.chmod(0o755)
+    check(
+        moded is not None
+        and str(locked) in moded
+        and mode_only is not None
+        and str(locked) in mode_only
+        and plain is None
+        and kept is None,
+        f"a target with a mode and a change in a directory of mode 0555 is refused and names the directory; "
+        f"one with no mode, and one that stays, are not: {moded!r}, {mode_only!r}, {plain!r}, {kept!r}",
+    )
 
 
 def private_write_cases(check: Callable[[bool, str], object], tmp: pathlib.Path) -> None:
