@@ -341,9 +341,10 @@ def candidate(machine: Machine, package: str) -> str | None:
     except OSError, subprocess.TimeoutExpired:
         return None
     m = CANDIDATE.search(p.stdout)
-    if not m or m.group(1) == "(none)":
+    if not m:
         return None
-    # The first dotted number: an epoch, `1:`, has no dot, and the revision follows a `-`.
+    # The first dotted number: `(none)` has none, an epoch, `1:`, has no dot, and the revision
+    # follows a `-`.
     version = VERSION.search(m.group(1))
     return version.group(0) if version else None
 
@@ -412,7 +413,8 @@ def plan(
             continue
         line = tool.upgrade if s == "below" and tool.upgrade else tool.installer
         result.steps.append(Step(line, shell(machine, line)))
-        if tool.name == "OpenCode" and machine.system == "Linux":
+        # Only Linux runs the OpenCode installer; Homebrew installs it on macOS.
+        if tool.name == "OpenCode":
             result.by_hand.append('add to your shell startup file: export PATH="$HOME/.opencode/bin:$PATH"')
     harness_steps(machine, choice, loaded, options, result)
     return result
@@ -1043,7 +1045,8 @@ MACOS_FAKES = {
     "curl": "exit 0",
     "launchctl": '[ "$1" = print ] && exit 1; exit 0',
     "julia": 'echo "julia version 1.13.0"',
-    "harness": '[ "$1" = render ] && echo "rendered $2"; exit 0',
+    "harness": '[ "$1" = render ] && echo "rendered $2"\n'
+    '[ "$1" = doctor ] && echo "doctor: all PASS"\nexit 0',
 }
 LINUX_FAKES = {
     "apt-cache": 'echo "  Candidate: 9.9.9-1"',
@@ -1246,6 +1249,7 @@ def version_cases(case: Case) -> None:
         ("22.3.0", ("20.16", "22.3"), True),
         ("24.0.0", ("20.16", "22.3"), True),
         ("0.1", (), True),
+        ("8.21", ("8.21.0",), True),
     ):
         case(f"{version} meets {minimum}: {want}", ok=meets(version, minimum) is want)
 
@@ -1342,6 +1346,7 @@ def macos_cases(case: Case, tmp: pathlib.Path, pins: Pins) -> None:
     got = (oct(token.stat().st_mode & 0o777), token.read_text()) if token.exists() else None
     case(f"the Kaimon token is the first key, mode 600: {got}", ok=got == ("0o600", "kaimon_key"))
     case("the output names the steps that the user does by hand", ok="antigravity.google" in out)
+    case("the output of harness doctor is printed", ok="doctor: all PASS" in out)
 
     s.fake("brew", '[ "$1" = install ] && { echo "brew: boom"; exit 1; }; exit 0')
     s.log.unlink()
@@ -1553,10 +1558,14 @@ def plan_cases(case: Case, tmp: pathlib.Path, pins: Pins) -> None:
     (s.home / ".gemini").mkdir(parents=True)
     the_plan = plan(mac, profile_module.Setup(), loaded, options, pins)
     case(
-        f"iTerm2 in the applications and ~/.gemini count as installed: {the_plan.by_hand}",
-        ok=not any("--cask" in step.show for step in the_plan.steps)
-        and not any("antigravity" in line for line in the_plan.by_hand),
+        f"iTerm2 in the applications and ~/.gemini count as installed, and no tool of Linux is a line "
+        f"by hand on macOS: {the_plan.by_hand}",
+        ok=not any("--cask" in step.show for step in the_plan.steps) and the_plan.by_hand == [],
     )
+    for d in (loaded.tree_agents, *loaded.repository_roots, s.home / ".config" / "opencode"):
+        pathlib.Path(d).mkdir(parents=True, exist_ok=True)
+    lines = shows(mac, profile_module.Setup(), options, pins)
+    case(f"with every directory there, no mkdir step: {lines[:2]}", ok=not any("mkdir" in x for x in lines))
     linux_plan = plan(linux, profile_module.Setup(), loaded, options, pins)
     case(
         f"on Linux, iTerm2 is a line by hand: {linux_plan.by_hand}",
@@ -1629,11 +1638,20 @@ def helper_cases(case: Case, tmp: pathlib.Path) -> None:
         case(f"os-release {text!r} is {want!r}: {distro(release)!r}", ok=distro(release) == want)
     case("without os-release, the distribution is empty", ok=distro(tmp / "none") == "")
     home = pathlib.Path("/h")
-    got = extended(home, f"/h/.local/bin{os.pathsep}/usr/bin")
+    got = extended(home, f"/h/.local/bin{os.pathsep}{os.pathsep}/usr/bin")
     case(
-        f"the PATH holds the directories of EXTRA_PATH first, each once: {got}",
+        f"the PATH holds the directories of EXTRA_PATH first, each once, and no empty entry: {got}",
         ok=got.split(os.pathsep) == [*(str(home / d) for d in EXTRA_PATH), "/usr/bin"],
     )
+    for answer, default, want in (
+        ("", True, True),
+        ("", False, False),
+        ("y", False, True),
+        ("no", True, False),
+    ):
+        with contextlib.redirect_stdout(io.StringIO()):
+            got_answer = confirm(Asker(answer), "?", default=default)
+        case(f"y/N: {answer!r} with the default {default} is {want}", ok=got_answer is want)
     out = io.StringIO()
     with contextlib.redirect_stdout(out):
         picked = pick("frontends", frontends.FRONTENDS, ("claude",), Asker("9", "x", "4 2 4"))
@@ -1644,20 +1662,22 @@ def helper_cases(case: Case, tmp: pathlib.Path) -> None:
         f"{picked} {nothing} {kept}",
         ok=picked == ("antigravity", "opencode") and nothing == () and kept == ("claude",),
     )
-    archive = io.BytesIO()
-    with tarfile.open(fileobj=archive, mode="w:gz") as tar:
-        info = tarfile.TarInfo("other")
-        tar.addfile(info, io.BytesIO(b""))
-    data = archive.getvalue()
-    with release_server({"/a.tar.gz": data}) as url:
-        machine = Machine("Linux", "x86_64", "ubuntu", tmp / "h", {}, tmp, (), tmp)
-        failure = install_release(
-            machine, "gitleaks", Release("1", f"{url}/a.tar.gz", hashlib.sha256(data).hexdigest())
+    for name, kind in (("other", tarfile.REGTYPE), ("gitleaks", tarfile.DIRTYPE)):
+        archive = io.BytesIO()
+        with tarfile.open(fileobj=archive, mode="w:gz") as tar:
+            info = tarfile.TarInfo(name)
+            info.type = kind
+            tar.addfile(info, io.BytesIO(b""))
+        data = archive.getvalue()
+        with release_server({"/a.tar.gz": data}) as url:
+            machine = Machine("Linux", "x86_64", "ubuntu", tmp / "h", {}, tmp, (), tmp)
+            failure = install_release(
+                machine, "gitleaks", Release("1", f"{url}/a.tar.gz", hashlib.sha256(data).hexdigest())
+            )
+        case(
+            f"an archive whose gitleaks is no file ({name}) installs nothing: {failure}",
+            ok=failure is not None and "gitleaks" in failure and not (tmp / "h" / ".local").exists(),
         )
-    case(
-        f"an archive without the program installs nothing: {failure}",
-        ok=failure is not None and "gitleaks" in failure,
-    )
     path = tmp / "minimum.toml"
     path.write_text('[minimum]\ngitleaks = "8.21"\n', encoding="utf-8")
     try:
