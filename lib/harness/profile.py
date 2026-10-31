@@ -109,8 +109,8 @@ TEMPLATES = [
 ]
 
 
-# The components that `[setup]` can choose. `harness install` reads `julia`; the others are names
-# that the loader checks.
+# The components that `[setup]` can choose. `harness install` reads `julia`, and `harness setup`
+# installs the tools of each.
 COMPONENTS = ("julia", "rtk", "jq", "iterm", "jobs", "dotfiles")
 
 

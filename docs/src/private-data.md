@@ -99,7 +99,8 @@ The tree instructions are a directory of a private repository, in the example
   gives the steps.
 - **The leak check knows only the strings that you give it.** A private string that is not in the
   `leak` list, and not a name of your tree, passes it.
-- **The kit installs no tool.** Its tool check names a missing tool and stops the first apply.
+- **The kit's tool check installs no tool.** It names a missing tool and stops the first apply;
+  later, its harness step runs `harness setup --yes`, which installs the tools of `[setup]`.
 - **The installed copies are not synchronised.** Each machine writes its own with
   `harness install --apply`, from its own checkout of the harness. The kit runs the install when
   the commit of the harness in `machines.toml` changes.

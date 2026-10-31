@@ -1,0 +1,54 @@
+# The tools of `harness setup` (lib/harness/setup.py) that have a minimum version or a pinned
+# release.
+#
+# [minimum] holds the minimum of each tool that has one, under its name in
+# docs/src/dependencies.md: the versions of its `≥` cell, in order. A version meets them at or
+# above the last one, or at or above an earlier one of the same major release, as Node.js 20.16 in
+# 20.x. A tool with no minimum is met by any version. A case of `harness test setup` holds each list
+# equal to the page.
+#
+# [release.<tool>] is a release that `harness setup` installs on Ubuntu into ~/.local/bin, where no
+# apt candidate meets the tool's minimum: `version`, and per system and architecture a table with
+# the `url` of a .tar.gz archive that holds the program at its top level, and the `sha256` of that
+# archive. A download whose sha256 differs installs nothing. Each sha256 is the one that the
+# project publishes in its checksum file of the release.
+
+[minimum]
+gitleaks = ["8.21"]
+"Node.js" = ["20.16", "22.3"]
+actionlint = ["1.7.12"]
+Julia = ["1.13"]
+fatou = ["0.22.0"]
+
+[release.gitleaks]
+version = "8.30.1"
+
+[release.gitleaks.linux-x86_64]
+url = "https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz"
+sha256 = "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb"
+
+[release.gitleaks.linux-aarch64]
+url = "https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_arm64.tar.gz"
+sha256 = "e4a487ee7ccd7d3a7f7ec08657610aa3606637dab924210b3aee62570fb4b080"
+
+[release.actionlint]
+version = "1.7.12"
+
+[release.actionlint.linux-x86_64]
+url = "https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz"
+sha256 = "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8"
+
+[release.actionlint.linux-aarch64]
+url = "https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_arm64.tar.gz"
+sha256 = "325e971b6ba9bfa504672e29be93c24981eeb1c07576d730e9f7c8805afff0c6"
+
+[release.RTK]
+version = "1.0.1"
+
+[release.RTK.linux-x86_64]
+url = "https://github.com/rtk-ai/rtk/releases/download/v1.0.1/rtk-x86_64-unknown-linux-musl.tar.gz"
+sha256 = "5b919c3bccb799b67a61866d0e617410a4fcdf173e2614440e59de2fa2003436"
+
+[release.RTK.linux-aarch64]
+url = "https://github.com/rtk-ai/rtk/releases/download/v1.0.1/rtk-aarch64-unknown-linux-gnu.tar.gz"
+sha256 = "cd627c4091ad90b5e5aca83ca5af66ee4b8aa8537a736533fa90544f461f1c2b"

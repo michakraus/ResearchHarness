@@ -208,9 +208,10 @@ key to the source's copy of `allowed_signers` does not make that key count.
 - **The harness moves only with the source.** `harness_commit` in `.chezmoidata/machines.toml` is
   the commit of the harness for every machine. When it changes, the harness script of
   `.chezmoiscripts/` checks out that commit in `~/Research/Harness` and runs
-  `harness install --apply`. On the template host, where `~/Research/Harness` is the development
-  checkout, it moves no checkout, and stops when `HEAD` does not contain the commit. So a machine
-  moves to a new harness only through a reviewed and signed change of that line.
+  `harness setup --yes`, which runs `harness install --apply`. On the template host, where
+  `~/Research/Harness` is the development checkout, it moves no checkout, and stops when `HEAD`
+  does not contain the commit. So a machine moves to a new harness only through a reviewed and
+  signed change of that line.
 
 ### A new machine
 

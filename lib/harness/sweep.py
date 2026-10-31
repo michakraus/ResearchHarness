@@ -26,7 +26,7 @@ Not swept: `format` runs Julia over the tree, `ci-protection` needs `gh` with a 
 `skill-triggers` runs its dry run and its `--apply` in its own cases, and `mutate` needs a SPEC
 and runs `harness test`.
 `install --apply` instantiates a Julia environment, `clone --apply` clones and `repos push --apply`
-pushes. `update` fetches the harness checkout itself; its own cases run it on a scratch remote.
+pushes. `setup` installs packages; its own cases run its plan with fake programs. `update` fetches the harness checkout itself; its own cases run it on a scratch remote.
 """
 
 import dataclasses

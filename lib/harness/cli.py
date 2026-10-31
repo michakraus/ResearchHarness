@@ -9,6 +9,7 @@ from . import doctor, dotfiles_kit, providers, script_cases, skill_triggers, uni
 from . import changelog, environment, mutate, strict, testrun
 from . import autocommit, fsutil, jsonio, ownedjson
 from . import wikilint
+from . import setup
 
 # The modules of lib/harness/; the adapters of lib/harness/frontends.py follow `install`.
 MODULES = [install, update, frontmatter, githooks, repos, protection, fmt, profile]
@@ -29,6 +30,7 @@ MODULES.append(jsonio)
 MODULES.append(ownedjson)
 MODULES.append(fsutil)
 MODULES.append(autocommit)
+MODULES.append(setup)
 MODULES.append(testrun)
 
 
