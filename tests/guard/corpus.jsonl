@@ -655,3 +655,10 @@
 {"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "git status", "Cwd": "sub"}, "decision": "ask", "bypass": true}
 {"frontend": "antigravity", "tool": "call_mcp_tool", "args": {"ServerName": "zotero", "ToolName": "ex", "Arguments": "{"}, "decision": "ask", "bypass": null}
 {"frontend": "antigravity", "tool": "send_message", "args": {"Message": "x", "Path": "~/.claude/skills/build-part/SKILL.md"}, "decision": "ask", "bypass": null}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "cat ~/.netrc#"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "cat ~/.netrc#x"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "cat ~/.ssh#/config"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "cat x.key#"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "git add -- ."}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "git -C . archive --output x.tar HEAD"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "git archive -o x.tar HEAD"}, "decision": "deny", "bypass": null}

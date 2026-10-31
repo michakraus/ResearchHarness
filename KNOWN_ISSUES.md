@@ -588,3 +588,14 @@
   shows the effect.
 - kind: not verified
 - found: 2026-10-29, the critics of the guard core
+
+### K122 · The work-tree check passes a `git init` whose program name a quote splits, such as `g''it init x`.
+
+- location: `hooks/guard/sandbox_semantics.py:439`
+- evidence: `work_tree_check` reads the command only when its text holds `git`, and `g''it init x`
+  does not; the shell runs it as `git init x`. In a workspace that is a work tree, Antigravity's
+  guard answers `ask` with `BypassSandbox` true, where `git init x` is `deny`. The script's
+  `--work-tree` mode (`hooks/sandbox-semantics.py`) and the core's `check` filter the text the
+  same way.
+- kind: found late
+- found: 2026-10-31, the critics of the Antigravity guard

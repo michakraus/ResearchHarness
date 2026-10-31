@@ -131,6 +131,7 @@ The desktop app reads no `permissions`; it keeps its grants in config/config.jso
 same rules.
 """
 
+import argparse
 import importlib
 import json
 import os
@@ -941,7 +942,7 @@ def guard_package(files: list[tuple[object, ...]]) -> list[tuple[str, object, ob
     ]
 
 
-def plan(ctx: Any):
+def plan(ctx: types.SimpleNamespace | argparse.Namespace):
     """Antigravity's part of `harness install`, as the docstring of this module says; the guard
     package, install-drift.py, the instruction files, the rules and the skills are those of the
     Claude Code layer's plan in `ctx.plans`."""

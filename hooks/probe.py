@@ -1486,9 +1486,9 @@ def bypass_of(overwrite: object) -> object:
     return value if set(found) == {"BypassSandbox"} and isinstance(value, bool) else f"{overwrite!r}"
 
 
-def agy_records(home: str) -> list[dict[str, object]]:
-    """Each Antigravity record of the corpus, its placeholders replaced by the fixture's values and
-    `@@AGYHOME@@` by `home`."""
+def corpus_lines(extra: dict[str, str]) -> list[str]:
+    """Each line of the corpus, each placeholder `@@NAME@@` replaced by the fixture's value of NAME,
+    or by that of `extra`, as JSON string text."""
     table = {
         "FIXTURE": FIXTURE.name,
         "HOME": HOME,
@@ -1499,13 +1499,22 @@ def agy_records(home: str) -> list[dict[str, object]]:
         "CWD": CWD,
         "SCRATCH": SCRATCH,
         "LINK": LINK,
-        "AGYHOME": home,
+        **extra,
     }
-    records: list[dict[str, object]] = []
+    found: list[str] = []
     for line in pathlib.Path(REPO, "tests", "guard", "corpus.jsonl").read_text(encoding="utf-8").splitlines():
         placed = line
         for name, value in table.items():
             placed = placed.replace(f"@@{name}@@", json.dumps(value)[1:-1])
+        found.append(placed)
+    return found
+
+
+def agy_records(home: str) -> list[dict[str, object]]:
+    """Each Antigravity record of the corpus, its placeholders replaced by the fixture's values and
+    `@@AGYHOME@@` by `home`."""
+    records: list[dict[str, object]] = []
+    for placed in corpus_lines({"AGYHOME": home}):
         record = json_object(placed)
         if record is not None and record.get("frontend") == "antigravity":
             records.append(record)
@@ -2434,22 +2443,8 @@ def mib_command(unit: str, tail: str, lead: str = "") -> tuple[str, str]:
 def corpus_records() -> list[tuple[str, str]]:
     """(payload text, expected decision) of each Claude Code record of the corpus, its placeholders
     replaced by the fixture's values; a record with a `frontend` is another frontend's."""
-    table = {
-        "FIXTURE": FIXTURE.name,
-        "HOME": HOME,
-        "R": R,
-        "WT": WT,
-        "PKG": PKG,
-        "TOOL": TOOL,
-        "CWD": CWD,
-        "SCRATCH": SCRATCH,
-        "LINK": LINK,
-    }
     records: list[tuple[str, str]] = []
-    for line in pathlib.Path(REPO, "tests", "guard", "corpus.jsonl").read_text(encoding="utf-8").splitlines():
-        placed = line
-        for name, value in table.items():
-            placed = placed.replace(f"@@{name}@@", json.dumps(value)[1:-1])
+    for placed in corpus_lines({}):
         record = json.loads(placed)
         if "frontend" in record:
             continue

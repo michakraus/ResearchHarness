@@ -21,9 +21,10 @@ after `cd` or `pushd`: a wide path is refused when it holds the literal prefix o
 (literal_prefix).
 
 THE WORDS of a command are those of each reading of `shell.readings`, and each part of a word that
-`=`, `:` or `,` separates; a command that no reading reads, as one with a quote that does not close,
-gives the text between blanks, quotes and control characters (FALLBACK). A word that any of them
-gives is checked, so a reading cannot hide one.
+`=`, `:`, `,` or `#` separates (zsh's `extendedglob` reads `a#` as a pattern that matches `a`); a
+command that no reading reads, as one with a quote that does not close, gives the text between
+blanks, quotes and control characters (FALLBACK). A word that any of them gives is checked, so a
+reading cannot hide one.
 
 THE BASH RULES apply to each segment of the command (segments), in each of its two lines: as
 written, and with each backslash-newline read as a line break. A rule matches the words of a
@@ -49,6 +50,7 @@ from .shell import lex, readings
 
 type Rule = tuple[str, re.Pattern[str], str]
 type Matcher = Callable[[list[str], str], bool]
+type BashRule = tuple[str, Matcher, tuple[str, ...]]
 
 # The home directory, as the shell expands a `~`.
 HOME = str(Path.home())
@@ -207,7 +209,7 @@ def refused_path(raw: str, cwd: str | None, rules: tuple[Rule, ...], kind: str, 
 
 def command_words(command: str) -> dict[tuple[str, bool], None]:
     """(word, wide) of each word of `command` in any reading, and of each part of a word that `=`,
-    `:` or `,` separates, in their first order. Every word is wide in a command that RECURSIVE
+    `:`, `,` or `#` separates, in their first order. Every word is wide in a command that RECURSIVE
     matches, and the word after `cd` or `pushd` is."""
     recursive = RECURSIVE.search(command) is not None
     read = readings(command)
@@ -222,7 +224,7 @@ def command_words(command: str) -> dict[tuple[str, bool], None]:
         for is_word, text in sequence:
             if is_word:
                 wide = recursive or before in INTO
-                for part in (text, *re.split(r"[=:,]", text)):
+                for part in (text, *re.split(r"[=:,#]", text)):
                     if part:
                         found[part, wide] = None
             before = text if is_word else ""
@@ -317,11 +319,25 @@ def placed(parts: list[str], text: str, *, trailing: bool) -> bool:
     return trailing and text.find(last + WORD_BREAK, at) >= 0
 
 
+def needed(body: str) -> tuple[str, ...]:
+    """The texts that a segment's words, joined by WORD_BREAK, hold whenever `Bash(body)` matches
+    them: the run of words of `Bash(x *)`, or each literal part of any other body."""
+    prefix = re.fullmatch(r"([^*]*[^*\s]) \*", body, re.DOTALL)
+    if prefix is not None:
+        return (WORD_BREAK.join(prefix.group(1).split()),)
+    trailing = body.endswith(" *")
+    parts = (WORD_BREAK.join(re.split(r"\s+", part)) for part in (body[:-2] if trailing else body).split("*"))
+    return tuple(part for part in parts if part)
+
+
 @functools.cache
-def bash_rules(location: str, key: str) -> tuple[tuple[str, Matcher], ...] | str:
-    """(body, bash_matcher(body)) of each Bash body of the list `key`, or the reason to refuse."""
+def bash_rules(location: str, key: str) -> tuple[BashRule, ...] | str:
+    """(body, bash_matcher(body), needed(body)) of each Bash body of the list `key`, or the reason to
+    refuse."""
     bodies = listed(location, key)
-    return bodies if isinstance(bodies, str) else tuple((body, bash_matcher(body)) for body in bodies)
+    if isinstance(bodies, str):
+        return bodies
+    return tuple((body, bash_matcher(body), needed(body)) for body in bodies)
 
 
 def segment_words(segment: str) -> list[list[str]]:
@@ -339,9 +355,11 @@ def segment_words(segment: str) -> list[list[str]]:
     return found
 
 
-def matched(rules: tuple[tuple[str, Matcher], ...], command: str) -> str | None:
+def matched(rules: tuple[BashRule, ...], command: str) -> str | None:
     """The body of the first of `rules` that matches a word list of a segment of `command`, as
-    written or with each backslash-newline as a line break, or None."""
+    written or with each backslash-newline as a line break, or None. A rule whose needed texts the
+    word lists do not all hold together matches none of them, so it meets no segment: the cost of a
+    command of many segments is one search of their words for each needed text."""
     lines = dict.fromkeys((command, command.replace("\\\n", "\n")))
     split = [
         (words, WORD_BREAK.join(words))
@@ -349,7 +367,17 @@ def matched(rules: tuple[tuple[str, Matcher], ...], command: str) -> str | None:
         for segment in dict.fromkeys(segments(line))
         for words in segment_words(segment)
     ]
-    return next((body for body, matches in rules for words, text in split if matches(words, text)), None)
+    joined = "\n".join(text for _words, text in split)
+    return next(
+        (
+            body
+            for body, matches, needs in rules
+            if all(need in joined for need in needs)
+            for words, text in split
+            if matches(words, text)
+        ),
+        None,
+    )
 
 
 def refusal(reason: str) -> Verdict:

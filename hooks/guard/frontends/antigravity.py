@@ -67,7 +67,7 @@ type Check = Callable[[Call], Verdict]
 # The longest command the guard reads: 1 MiB of UTF-8.
 MAX_COMMAND = 1024 * 1024
 # The path list that `harness install` renders beside the `hooks/` directory that holds the package.
-PATH_LIST = str(Path(__file__).parent.parent.parent.parent / "guard-paths.json")
+PATH_LIST = str(Path(__file__).parents[3] / "guard-paths.json")
 # The neutral action of each tool, of both tool families: the main agent's `read_file`,
 # `write_file` and `edit_file`, and a sub-agent's `view_file`, `write_to_file`,
 # `replace_file_content`, `multi_replace_file_content`, `grep_search`, `find_by_name` and
