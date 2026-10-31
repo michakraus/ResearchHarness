@@ -358,8 +358,9 @@ def segment_words(segment: str) -> list[list[str]]:
 def matched(rules: tuple[BashRule, ...], command: str) -> str | None:
     """The body of the first of `rules` that matches a word list of a segment of `command`, as
     written or with each backslash-newline as a line break, or None. A rule whose needed texts the
-    word lists do not all hold together matches none of them, so it meets no segment: the cost of a
-    command of many segments is one search of their words for each needed text."""
+    word lists do not all hold together matches none of them, so it meets no segment: such a rule
+    costs a command of many segments one search of their words for each needed text, and a rule
+    whose needed texts they hold is matched on each segment."""
     lines = dict.fromkeys((command, command.replace("\\\n", "\n")))
     split = [
         (words, WORD_BREAK.join(words))

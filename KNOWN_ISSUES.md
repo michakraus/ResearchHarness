@@ -29,14 +29,13 @@
 
 ### K88 · The Antigravity guard applies no Bash rule to a command that a string argument, ANSI-C or locale quoting, or a variable or substitution holds.
 
-- location: `hooks/guard/path_list.py:342`
+- location: `hooks/guard/path_list.py:358`
 - evidence: the guard matches the template's Bash denies and asks on the words of each segment as
   the line writes them, and does not run the shell's expansions. On a fixture home it answers
   `deny` to `git push --force origin x` and `ask` to each of these lines, which run the same push:
   `bash -c 'git push --force origin x'`, the same with `sh -c` and `zsh -c`,
   `eval 'git push --force origin x'`, `git push $'--force' origin x`,
-  `git push $"--force" origin x`, `g=git; $g push --force origin x` and
-  `$(echo git) push --force origin x`. In the desktop app, which reads no `permissions`, such a
+  `git push $"--force" origin x` and `g=git; $g push --force origin x`. In the desktop app, which reads no `permissions`, such a
   push then runs unless the app's own settings refuse it. The user decided to land the guard with
   this limit of a text-pattern rule; the sandbox stays the containment.
 - kind: defect
@@ -44,7 +43,7 @@
 
 ### K92 · The path check of the Antigravity guard reads no string argument and no substitution.
 
-- location: `hooks/guard/path_list.py:208`
+- location: `hooks/guard/path_list.py:210`
 - evidence: `command_words()` reads the words of the line as it writes them. On a fixture home
   the guard answers `deny` to `cat ~/.netrc` and `ask` to `bash -c 'cat ~/.netrc'`, to
   `sh -c "cat ~/.config/gh/hosts.yml"` and to `cat $(printf ~/.ne)trc`, which read the denied
@@ -403,10 +402,10 @@
 
 ### K103 · The Antigravity guard answers `ask`, not `deny`, to a command that writes `config.json` or an installed agent.
 
-- location: `adapters/antigravity/adapter.py:396`
+- location: `adapters/antigravity/adapter.py:397`
 - evidence: `guard_paths` puts `~/.gemini/config/config.json` and `~/.gemini/config/agents/**` in
   the `edit` list, which the guard applies to the tools that write or edit a file only, not to the
-  words of a command (`hooks/guard/path_list.py:397`). On a fixture home the guard answers `deny`
+  words of a command (`hooks/guard/path_list.py:402`). On a fixture home the guard answers `deny`
   to `write_to_file` and to `multi_replace_file_content` {`TargetFile`:
   `~/.gemini/config/config.json`} and `ask` to `run_command` {`CommandLine`:
   `cp /tmp/x ~/.gemini/config/config.json`} and to the same with
