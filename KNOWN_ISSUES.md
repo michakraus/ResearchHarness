@@ -572,3 +572,15 @@
   drift hook writes its output with `json.dumps`, so no such output of it is known.
 - kind: defect
 - found: 2026-10-31
+
+### K128 · The stages of the Julia packages' pre-commit hook read the working tree, not the staged content.
+
+- location: `githooks/pre-commit.jl:102`
+- evidence: `formatting`, `nfc`, `test_layout` and `load` read the files on disk. A file that is
+  staged and then edited again is judged on its later text: a formatted staged version with an
+  unformatted edit on top is refused, and an unformatted staged version with a formatted edit on
+  top passes. A fix checks a copy of the index, for example from `git checkout-index` into a
+  temporary directory, for every stage. The shell hook that `pre-commit.jl` replaced read the
+  working tree the same way.
+- kind: defect
+- found: 2026-10-31, a review of the hook rollout's pull requests

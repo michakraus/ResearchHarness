@@ -299,6 +299,44 @@ alive(pid) = ccall(:kill, Cint, (Cint, Cint), pid, 0) == 0
         @test out == ""
     end
 
+    @testset "without julia on the PATH, a commit with no .jl file and no test/ path passes" begin
+        repo, env = fixture(nothing; extra = ["README.md" => "# Fixture\n"])
+        env["PATH"] = without("julia")
+        code, out, err = capture(`$(Sys.which("bash")) $HOOK`, repo, env)
+        @test code == 0
+        @test out * err == ""
+    end
+
+    @testset "without julia on the PATH, a commit that touches test/ is refused" begin
+        repo, env = fixture(nothing; extra = ["test/data.txt" => "1\n"])
+        env["PATH"] = without("julia")
+        code, _, err = capture(`$(Sys.which("bash")) $HOOK`, repo, env)
+        @test code == 1
+        @test err == "pre-commit: julia is not on the PATH.\n"
+    end
+
+    @testset "a renamed .jl file is checked under its new name" begin
+        repo, env = fixture(MISFORMATTED)
+        run(setenv(`git -C $repo commit -q -m base`, env))
+        run(setenv(`git -C $repo mv src/Fixture.jl src/Moved.jl`, env))
+        code, out, err = capture(`bash $HOOK`, repo, env)
+        @test code == 1
+        @test occursin("src/Moved.jl", out * err)
+    end
+
+    @testset "a staged .jl file with a non-ASCII name is checked under that name" begin
+        code, out = run_hook(FORMATTED; extra = ["src/Größe.jl" => "size2(x) = 2x\n"])
+        @test code == 0
+        @test occursin("formatting: ok", out)
+        @test !occursin("\\303", out)
+    end
+
+    @testset "a staged .jl file that does not parse fails the formatting stage" begin
+        code, out = run_hook(FORMATTED; extra = ["scripts/broken.jl" => "function f(x\n    x +\nend\n"])
+        @test code == 1
+        @test occursin("scripts/broken.jl", out)
+    end
+
     @testset "without fatou on the PATH, the lint stage is skipped with one line" begin
         code, out = run_hook(FORMATTED; path = without("fatou"))
         @test code == 0
@@ -435,6 +473,24 @@ end
         @test code == 1
         @test err == "pre-push: julia is not on the PATH.\n"
         @test out == ""
+    end
+
+    @testset "without julia on the PATH, a push of a topic branch passes" begin
+        repo, env = fixture(FORMATTED)
+        env["PATH"] = without("julia")
+        code, out, err = capture(`$(Sys.which("bash")) $PREPUSH origin x`, repo, env; input = topic)
+        @test code == 0
+        @test occursin("not main/master — skipping the suite", out)
+        @test err == ""
+    end
+
+    @testset "without julia on the PATH, a push of main beside a topic branch is refused" begin
+        repo, env = fixture(FORMATTED)
+        env["PATH"] = without("julia")
+        code, _, err = capture(`$(Sys.which("bash")) $PREPUSH origin x`, repo, env;
+                               input = topic * main)
+        @test code == 1
+        @test err == "pre-push: julia is not on the PATH.\n"
     end
 
     # The suite writes its process id and waits; the test interrupts the hook. The hook passes
