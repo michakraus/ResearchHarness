@@ -250,7 +250,7 @@ harness doctor [--full]
 
 Checks this machine's setup and changes nothing. It prints one line per check: `PASS`, `WARN`,
 `FAIL` or `SKIP`, the name of the check and a detail. A `FAIL` line also names the section of the
-setup page that fixes it. The checks are, in this order: the machine; the tools of
+setup pages that fixes it. The checks are, in this order: the machine; the tools of
 [dependencies.md](dependencies.md), each with its minimum version; the profile; the dry run of
 `install` and its warnings; and the jobs (Kaimon, the update job, the autocommit job). Where the
 profile's `[setup]` does not choose `opencode`, the OpenCode directory check is a `SKIP`, and

@@ -604,3 +604,18 @@
   ``cd `true`; cat .netrc``, which read `~/.netrc`. The base's plugin passes both too.
 - kind: defect
 - found: 2026-10-31, the critics of the OpenCode and oh-my-pi guard core
+
+### K126 · `harness setup` stops at `harness trust --apply` on a machine without `~/.claude.json`.
+
+- location: `lib/harness/setup.py:612`
+- evidence: `harness_steps` adds the step `harness trust --apply` on every machine, whatever
+  `[setup]` chooses, and `cmd_trust` (`adapters/claude/adapter.py:901`) reads `~/.claude.json`,
+  which Claude Code writes at its first start. With `CONFIG` pointed at a missing file,
+  `cmd_trust(argparse.Namespace(apply=True))` raises `HarnessError: cannot read
+  …/.claude.json: No such file or directory — run it outside a session`, so the step exits 2 and
+  the run stops before the jobs, the Kaimon token and `harness doctor`. On a new machine, where
+  the plan has just installed Claude Code and nothing has started it, and on a machine whose
+  `[setup]` does not choose `claude`, every run stops there. The setup pages tell the user to
+  start `claude` once and run `harness setup` again.
+- kind: defect
+- found: 2026-10-31, the documentation of the installation

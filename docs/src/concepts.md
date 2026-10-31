@@ -128,7 +128,7 @@ components that serve each.
 
 **In another language.** The components are the same for any language. Of the eight kinds, the
 git hooks, the workflows and most scripts are for Julia packages.
-[Dependencies](dependencies.md#julia-and-its-packages) says what needs Julia.
+[Dependencies](dependencies.md#harness-setup-installs) says what needs Julia.
 
 ## The layers of control
 

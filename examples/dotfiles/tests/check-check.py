@@ -233,7 +233,7 @@ DOCTOR_FULL = [
     doctor_line("PASS", "Revise", "julia -e 'using Revise' loads it (/home/example/.juliaup/bin/julia)"),
 ]
 DOCTOR_FAIL = doctor_line(
-    "FAIL", "actionlint", "actionlint not found (fix: setup-linux.md, The dependencies)"
+    "FAIL", "actionlint", "actionlint not found (fix: setup-reference.md, The packages)"
 )
 
 
