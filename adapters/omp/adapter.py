@@ -1545,7 +1545,7 @@ def omp_cases(case, fresh, run):
     escaped = config_chains('retry:\n  fallbackChains:\n    "p/\\u0065scaped":\n      - "q/\\u006dodel"\n')
     case(
         lambda: escaped == {"p/escaped": ["q/model"]},
-        f"config_chains reads a double-quoted key and selector as JSON strings, with their escapes: {escaped}",
+        f"config_chains reads a double-quoted key and selector as JSON strings, escapes too: {escaped}",
     )
     for model, chain, want in [
         ("p/m", ["q/m"], True),
