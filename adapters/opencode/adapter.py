@@ -1407,7 +1407,7 @@ def install_cases(check, tmp):
         f"a hand-made AGENTS.md that differs from the source is REPLACE: {code}, {applied}, {line.findall(text)}",
     )
     # The same bytes at mode 0600 are a mode change to 0644, so the install sets the mode itself.
-    installed.chmod(0o600)
+    installed.chmod(0o600)  # not private: a mode that the install sets back to 0644
     code, text = run(base)
     applied, text2 = run(base, "--apply")
     case(

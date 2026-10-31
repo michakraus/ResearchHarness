@@ -2,6 +2,8 @@
 the helpers of its cases.
 """
 
+import contextlib
+import io
 import json
 import os
 import pathlib
@@ -14,8 +16,9 @@ from collections.abc import Callable, Iterable, Mapping
 from importlib.abc import Loader
 from importlib.machinery import ModuleSpec
 from typing import cast
+from unittest import mock
 
-from . import REPO, install
+from . import REPO, fsutil, install
 from . import profile as profile_module
 
 # The frontmatter of a rule that the cases write: oh-my-pi's rendering needs a `description`.
@@ -286,7 +289,7 @@ def precondition_cases(check, tmp):
         (base / "julia" / "Manifest.toml").unlink()
         if stub is not None:
             (stubs / "julia").write_text("#!/bin/sh\nexit 0\n")
-            (stubs / "julia").chmod(stub)
+            (stubs / "julia").chmod(stub)  # not private: the executable bit of a stub, or its absence
         code, text = run(base, "--apply", extra_env={"PATH": os.pathsep.join(directories)})
         last = scratch.tail(text)
         case(
@@ -312,7 +315,7 @@ def precondition_cases(check, tmp):
     )
 
 
-def target_cases(check, tmp):
+def target_cases(check: Callable[[object, str], None], tmp: pathlib.Path) -> None:
     """The targets that `harness install` cannot write, each on a fresh scratch HOME: a symlink and a
     directory at the OpenCode AGENTS.md and at ~/.claude/CLAUDE.md, a settings.json of mode 0444
     with a change, and a directory of mode 0555 where a new target goes. The dry run and --apply
@@ -419,9 +422,9 @@ def target_cases(check, tmp):
         f"{[oct(scratch.mode(b)) for b in backups]}, {scratch.tail(text)!r}",
     )
 
-    # A target whose bytes stay and whose mode changes is a chmod, which needs the owner: one that
+    # A target whose bytes stay and whose mode changes is written again by `write_private`: one that
     # another user owns is refused before anything is written, and one of mode 0444 that the user
-    # owns is not.
+    # owns, in a directory that the user can write, is not.
     owned = tmp / "targets" / "owned.md"
     owned.write_bytes(b"x\n")
     owned.chmod(0o444)
@@ -435,7 +438,7 @@ def target_cases(check, tmp):
         f"a mode change of a target another user owns is refused, and of a 0444 target the user owns is not: "
         f"{other!r}, {mine!r}",
     )
-    # A writable target whose bytes change, with a mode in the plan, is followed by a chmod too.
+    # A writable target whose bytes change, with a mode in the plan, is written by `write_private` too.
     with mock.patch.object(os, "geteuid", return_value=owned.stat().st_uid + 1):
         other = install.check_files([(owned, b"y\n", 0o644, "owned.md")])
         unnamed = install.check_files([(owned, b"y\n", None, "owned.md")])
@@ -443,6 +446,32 @@ def target_cases(check, tmp):
         lambda: other is not None and "owner" in other and unnamed is None,
         f"a byte change with a mode in the plan, of a writable target another user owns, is refused, and one "
         f"with no mode is not: {other!r}, {unnamed!r}",
+    )
+    # `write_private` writes a temporary name beside the target and renames it, so a target with a
+    # mode and a change needs its directory writable; one with no mode, written in place, does not.
+    locked = tmp / "targets" / "locked"
+    locked.mkdir()
+    (locked / "x.md").write_bytes(b"x\n")
+    (locked / "x.md").chmod(0o644)
+    locked.chmod(0o555)
+    try:
+        moded = install.check_files([(locked / "x.md", b"y\n", 0o644, "x.md")])
+        mode_only = install.check_files([(locked / "x.md", b"x\n", 0o600, "x.md")])
+        plain = install.check_files([(locked / "x.md", b"y\n", None, "x.md")])
+        kept = install.check_files([(locked / "x.md", b"x\n", 0o644, "x.md")])
+    finally:
+        locked.chmod(0o755)
+    case(
+        lambda: (
+            moded is not None
+            and str(locked) in moded
+            and mode_only is not None
+            and str(locked) in mode_only
+            and plain is None
+            and kept is None
+        ),
+        f"a target with a mode and a change in a directory of mode 0555 is refused and names the directory; "
+        f"one with no mode, and one that stays, are not: {moded!r}, {mode_only!r}, {plain!r}, {kept!r}",
     )
 
     # An OSError in the write itself, after the checks, as a full disk gives it: exit 2 with the target.
@@ -852,3 +881,54 @@ def setup_cases(check: Callable[[bool, str], object], tmp: pathlib.Path) -> None
             f"[setup] with {key} = {value}{', and a link in the tree instructions' if linked else ''}: "
             f"exit 2, one line that names {bad}, nothing written: {code}, {said}, {sizes}",
         )
+
+
+def private_write_cases(check: Callable[[bool, str], object], tmp: pathlib.Path) -> None:
+    """K94: under umask 0, where a file that a plain write creates has mode 0666, `install_file`
+    writes a new file with a mode, and the backup of a file it replaces, so that no file that holds
+    their bytes has a group or other bit at any chmod, any rename, or the end of the install."""
+    secret, old = b"token of the case\n", b"old token of the case\n"
+    root = tmp / "private"
+    root.mkdir()
+    fsutil.write_private(root / "kept.json", old)
+    exposed: list[str] = []
+    real_chmod, real_replace = os.chmod, os.replace
+
+    def look(when: str) -> None:
+        exposed.extend(
+            f"{p.name} {oct(stat.S_IMODE(p.lstat().st_mode))} at {when}"
+            for p in root.iterdir()
+            if p.read_bytes() in (secret, old) and stat.S_IMODE(p.lstat().st_mode) & 0o077
+        )
+
+    def watched_chmod(path: fsutil.FilePath, mode: int, **kwargs: bool) -> None:
+        look(f"a chmod of {pathlib.Path(path).name}")
+        real_chmod(path, mode, **kwargs)
+
+    def watched_replace(src: fsutil.FilePath, dst: fsutil.FilePath) -> None:
+        look(f"a rename to {pathlib.Path(dst).name}")
+        real_replace(src, dst)
+
+    install_file = cast("Callable[..., int]", install.install_file)
+    umask = os.umask(0)
+    try:
+        with (
+            mock.patch.object(os, "chmod", watched_chmod),
+            mock.patch.object(os, "replace", watched_replace),
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
+            install_file(apply=True, data=secret, dst=root / "new.json", label="new.json", mode=0o600)
+            install_file(
+                apply=True, data=secret, dst=root / "kept.json", label="kept.json", backup=True, mode=0o600
+            )
+    finally:
+        os.umask(umask)
+    look("the end")
+    modes = sorted(
+        (re.sub(r"\.bak-.*", ".bak", p.name), oct(stat.S_IMODE(p.stat().st_mode))) for p in root.iterdir()
+    )
+    check(
+        not exposed and modes == [("kept.json", "0o600"), ("kept.json.bak", "0o600"), ("new.json", "0o600")],
+        f"K94: a new file of mode 0600 and the backup of a file it replaces never hold their bytes under "
+        f"a wider mode -> exposed {exposed}, modes {modes}",
+    )

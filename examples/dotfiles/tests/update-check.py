@@ -897,9 +897,11 @@ def clause_13():
     # A signing_key under ~, as the host data writes it: git reads it below HOME.
     w, _ = merge_world("c13-tilde", signingkey="~/.ssh/signing", literal=True)
     (w.home / ".ssh").mkdir()
-    for suffix in ("", ".pub"):
-        shutil.copy(f"{KEYS['listed']}{suffix}", w.home / ".ssh" / f"signing{suffix}")
-    (w.home / ".ssh" / "signing").chmod(0o600)
+    shutil.copy(f"{KEYS['listed']}.pub", w.home / ".ssh" / "signing.pub")
+    # The private key has mode 0600 from its first byte, as ssh-keygen writes it.
+    key = os.open(w.home / ".ssh" / "signing", os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(key, "wb") as f:
+        f.write(pathlib.Path(KEYS["listed"]).read_bytes())
     code, out = w.run("dotfiles-merge", "topic", answers="y\nn\n")
     check(
         code == 0 and w.signature(w.head()) == f"G {PRINCIPAL}" and w.remote_main() == w.head(),

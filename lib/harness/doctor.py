@@ -58,7 +58,7 @@ from collections.abc import Callable
 from typing import Any, cast
 from unittest import mock
 
-from . import REPO, HarnessError, frontends, install, sources
+from . import REPO, HarnessError, frontends, fsutil, install, sources
 from . import profile as profile_module
 
 # The command of the harness itself, for the dry run of `install` and for `test`.
@@ -999,8 +999,7 @@ class Fixture:
         self.kaimon.chmod(0o755)
         self.token = self.home / ".config" / "kaimon" / "auth-token"
         self.token.parent.mkdir(parents=True)
-        self.token.write_text(TOKEN)
-        self.token.chmod(0o600)
+        fsutil.write_private(self.token, TOKEN.encode())
         shutil.copytree(claude, self.home / ".claude", symlinks=True)
         self.julia.mkdir()
         (self.julia / "Manifest.toml").write_text(manifest(PACKAGES))

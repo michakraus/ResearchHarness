@@ -812,7 +812,7 @@ def replaced(target: pathlib.Path, data: bytes, mode: int) -> None:
     target.parent.mkdir(parents=True, exist_ok=True)
     part = target.with_name(target.name + ".part")
     part.write_bytes(data)
-    part.chmod(mode)
+    part.chmod(mode)  # not private: each caller gives 0755 or 0644
     part.replace(target)
 
 
