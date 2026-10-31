@@ -826,3 +826,15 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   only the seed did. Read the source of every claim a generalising phrase covers — `run_id(o)` named
   six options and none of those four — and write the list out instead of "every other" (P39 verify 3,
   *Rewrite the reduced basis packages*)
+- **a clause met through a term outside the quantity the clause names:** the clause asked that
+  reconstruction plus a cross-modal loss fall to half its value after initialisation, and the script
+  asserted on its own training loss, which held a third term. Only the third term fell; the clause's
+  sum stayed at 1.0001, because the initialisation already put it at its optimum. Assert on the
+  clause's quantity, recomputed from the library's functions, and train on more only beside it
+  (H round 1, *Implement multi-modal symplectic autoencoders*)
+- **a named mutant whose test the correct code fails as well:** the test asserted that a mutant
+  term fails a reduction assertion, and the correct term failed the same assertion in the same
+  setting, so the test passed whichever term the code held. Add the contrast: the correct code
+  passes the assertion where the mutant fails it. A mutant whose term is zero to round-off makes the
+  assertion compare two round-off values; give it a term above round-off beside it (H round 1,
+  *Implement multi-modal symplectic autoencoders*)
