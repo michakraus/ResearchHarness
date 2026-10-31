@@ -461,7 +461,7 @@ Its cases run the parser, the verdict, the majority and the pass rule, and run `
 The subcommand `harness doctor [--full]`, the check that a machine's setup works. It is read-only,
 so it takes no `--apply`. It prints one line for each check: `PASS`, `WARN`, `FAIL` or `SKIP`, the
 name of the check and a detail, such as a version, a path or the reason. A `FAIL` line also names
-the section of the setup page that fixes it. The subcommand exits with status 1 when a check
+the section of the setup pages that fixes it. The subcommand exits with status 1 when a check
 fails, otherwise with status 0; a `WARN` or a `SKIP` does not count. On a usage error, it exits
 with status 2.
 
@@ -515,10 +515,10 @@ reason, so run the subcommand in a plain terminal for its real verdict.
 
 Its cases run each status of each check on a fixture: a scratch `HOME` and stub commands on the
 `PATH` that print what each tool prints on Linux and on macOS. They also check the exit status,
-the minimums against the page, that no token reaches the output, and one run of the subcommand on
-the fixture of the contract sweep, which changes no file. `GROUPS` splits them into five groups,
-`minimum`, `linux`, `darwin`, `exit` and `process`, and `harness test` runs each as the part
-`doctor:<group>`.
+the minimums against the page, that each section of `FIX` is a level-2 heading of its setup page,
+that no token reaches the output, and one run of the subcommand on the fixture of the contract
+sweep, which changes no file. `GROUPS` splits them into five groups, `minimum`, `linux`, `darwin`,
+`exit` and `process`, and `harness test` runs each as the part `doctor:<group>`.
 
 ## `units.py`
 
@@ -745,6 +745,6 @@ names in backticks in them. It fails when a component has no heading on its page
 when a heading names something that is not a component of its page, so a removed component leaves no
 old section.
 
-It also checks `docs/src/dependencies.md`: its three tables, and one level-3 heading below them
+It also checks `docs/src/dependencies.md`: its two tables, and one level-3 heading below them
 for each tool of the tables, with no heading that names a tool outside them. So a new agent,
 skill, hook, script or tool needs its section in the same change.

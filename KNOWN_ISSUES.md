@@ -562,7 +562,23 @@
 - kind: defect
 - found: 2026-10-31, the critics of the OpenCode and oh-my-pi guard core
 
-### K126 · The SessionStart handler of the Antigravity layer reads the drift hook's output with `json`, not `jsonio`.
+### K126 · `harness setup` stops at `harness trust --apply` on a machine without `~/.claude.json`.
+
+- location: `lib/harness/setup.py:612`
+- evidence: `harness_steps` adds the step `harness trust --apply` on every machine, whatever
+  `[setup]` chooses, and `cmd_trust` (`adapters/claude/adapter.py:901`) reads `~/.claude.json`,
+  which Claude Code writes at its first start. With `CONFIG` pointed at a missing file,
+  `cmd_trust(argparse.Namespace(apply=True))` raises `HarnessError: cannot read
+  …/.claude.json: No such file or directory — run it outside a session`, so the step exits 2 and
+  the run stops before the jobs, the Kaimon token and `harness doctor`. On a new machine, where
+  the plan has just installed Claude Code and nothing has started it, and on a machine whose
+  `[setup]` does not choose `claude`, every run stops there. The setup pages tell the user to
+  start `claude` once, or, without the frontend `claude`, to write `{}` into `~/.claude.json`,
+  and run `harness setup` again.
+- kind: defect
+- found: 2026-10-31, the documentation of the installation
+
+### K127 · The SessionStart handler of the Antigravity layer reads the drift hook's output with `json`, not `jsonio`.
 
 - location: `adapters/antigravity/adapter.py:205`
 - evidence: `TRANSLATE`, the handler that `hooks.json` runs as `python -c`, reads the output of

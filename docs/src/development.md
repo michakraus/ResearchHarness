@@ -270,19 +270,19 @@ npm run docs:check
 The site is then in `docs/build/`; `npm run docs:dev` serves it with live reload. `docs/build/`
 and `docs/node_modules/` are not tracked. A link from a page to a file outside `docs/src/` fails
 the build; link to the file on GitHub instead. Link to a section of another page with the
-heading's anchor: `[text](setup-macos.md#harness-install-apply)`. An anchor is the heading in lower
-case, with each run of spaces and punctuation as one `-`. VitePress does not check an anchor, but
-`npm run docs:check` does. It also checks that every page of the menu is in the sidebar, that each
-page has the table rows of its source, that the home page has its two figures, the introduction
-its three and the page `agentic-engineering` its four call graphs, that no edge of a figure crosses
-another edge or passes through a box that is not its end, and that every colour of the figures has
-a value for the dark theme. It finds the four walk-throughs by their titles, and checks each
-animated figure: its SVG parses as XML, it holds no script, it loops, it stops under
-`prefers-reduced-motion`, and its token and its steps keep their timing. It first runs the cases
-of `docs/scripts/figures.test.mjs` and `docs/scripts/newcomer.test.mjs`. Last,
-`docs/scripts/newcomer.mjs` checks the introductory pages for new readers, which it lists: the
-glossary of `concepts.md` has one entry for each of its terms, the first use of a term on each of
-these pages links to its entry, and none of these pages holds a `file:line`.
+heading's anchor: `[text](setup-reference.md#harness-install-apply)`. An anchor is the heading
+in lower case, with each run of spaces and punctuation as one `-`. VitePress does not check an
+anchor, but `npm run docs:check` does. It also checks that every page of the menu is in the
+sidebar, that each page has the table rows of its source, that the home page has its two
+figures, the introduction its three and the page `agentic-engineering` its four call graphs, that
+no edge of a figure crosses another edge or passes through a box that is not its end, and that
+every colour of the figures has a value for the dark theme. It finds the four walk-throughs by
+their titles, and checks each animated figure: its SVG parses as XML, it holds no script, it
+loops, it stops under `prefers-reduced-motion`, and its token and its steps keep their timing.
+It first runs the cases of `docs/scripts/figures.test.mjs` and `docs/scripts/newcomer.test.mjs`.
+Last, `docs/scripts/newcomer.mjs` checks the introductory pages for new readers, which it lists:
+the glossary of `concepts.md` has one entry for each of its terms, the first use of a term on each
+of these pages links to its entry, and none of these pages holds a `file:line`.
 
 The figures are Vue components in `docs/.vitepress/theme/figures/`, which the build renders to
 inline SVG, so a page shows them with JavaScript off. `FigCard`, `FigPanel` and `FigArrow` draw a

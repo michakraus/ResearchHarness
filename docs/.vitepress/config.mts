@@ -66,6 +66,7 @@ export default defineConfig({
           { text: 'Dependencies', link: '/dependencies' },
           { text: 'Setup on macOS', link: '/setup-macos' },
           { text: 'Setup on Linux', link: '/setup-linux' },
+          { text: 'Setup reference', link: '/setup-reference' },
           { text: 'Tutorial', link: '/tutorial' }
         ]
       },

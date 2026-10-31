@@ -8,7 +8,7 @@ test. KINDS says which tracked files are the components of each page and how eac
 in backticks in a level-2 heading is a component of that page. So a removed component leaves no
 stale section.
 
-Dependencies. `harness test` checks that `docs/src/dependencies.md` has three tables, under the
+Dependencies. `harness test` checks that `docs/src/dependencies.md` has two tables, under the
 level-2 headings of TABLES, with the columns `tool`, `minimum` and `used for`. Below them, one
 level-3 heading per description names its tools, "Python" or "JSON, YAML and TestEnv". Every
 tool of the tables is named by a heading, and every name in a heading is a tool of the tables.
@@ -49,7 +49,7 @@ import subprocess
 import tempfile
 import tomllib
 from collections.abc import Callable, Mapping, Sequence
-from typing import Any
+from typing import Any, cast
 
 from . import REPO, HarnessError
 from .frontmatter import parse_file
@@ -77,7 +77,7 @@ EFFORTS = ("low", "medium", "high", "xhigh", "max")
 SPAWNING_SKILLS = ("build-part", "build-reviewed")
 # The tables of the dependencies page, in this order, each under a level-2 heading of this text,
 # and the header row of each.
-TABLES = ("Generic tools", "Julia and its packages", "Optional")
+TABLES = ("You provide", "`harness setup` installs")
 TABLE_HEADER = "| tool | minimum | used for |"
 # The skill that dispatches a part, the header row of its dispatch table, the manifests that a
 # row's condition can name, and the `**Language:**` line of a spec's header.
@@ -493,17 +493,15 @@ def selftest():
 
     # The rules of the dependencies page on fixed inputs, then the page of this checkout.
     def dependencies_page(
-        generic="| A | 1 | a |\n| B | 2 | b |\n",
-        heads="### A\n### B and C\n### D, E\n",
-        header=TABLE_HEADER,
-        order=TABLES,
-    ):
-        bodies = {
-            "Generic tools": generic,
-            "Julia and its packages": "| C | 3 | c |\n",
-            "Optional": "| D | 4 | d |\n| E | 5 | e |\n",
-        }
-        tables = "".join(f"## {t}\n\n{header}\n|:--|:--|:--|\n{bodies[t]}\n" for t in order)
+        generic: str = "| A | 1 | a |\n| B | 2 | b |\n",
+        heads: str = "### A\n### B and C\n### D, E\n",
+        header: str = TABLE_HEADER,
+        order: tuple[str, ...] = TABLES,
+    ) -> str:
+        # The first table holds `generic`, the last one the other rows, and any table between
+        # them no row, so that the fixture fits TABLES of any length.
+        bodies = {TABLES[0]: generic, TABLES[-1]: "| C | 3 | c |\n| D | 4 | d |\n| E | 5 | e |\n"}
+        tables = "".join(f"## {t}\n\n{header}\n|:--|:--|:--|\n{bodies.get(t, '')}\n" for t in order)
         return f"# Dependencies\n\n{tables}## What each tool does\n\n```\n### Z\n```\n{heads}"
 
     check(dependency_problems(dependencies_page()) == [], "a true dependencies page has no problem")
@@ -530,14 +528,14 @@ def selftest():
         ),
         (
             "the tables out of order",
-            dependencies_page(order=(TABLES[1], TABLES[0], TABLES[2])),
+            dependencies_page(order=TABLES[::-1]),
             "the tables are under",
         ),
         ("another header", dependencies_page(header="| tool | minimum | needed by |"), "has the header"),
     ]:
-        found = dependency_problems(text)
+        found = cast("list[str]", dependency_problems(text))
         check(
-            len(found) == (3 if "header" in phrase else 1) and phrase in found[0],
+            len(found) == (len(TABLES) if "header" in phrase else 1) and phrase in found[0],
             f"a dependencies page with {label} gives {phrase!r}: {found}",
         )
     problems = (
