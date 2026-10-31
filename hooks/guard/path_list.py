@@ -66,7 +66,7 @@ type BashRule = tuple[str, Matcher, tuple[str, ...]]
 HOME = str(Path.home())
 # A leading `$HOME` or `${HOME}`, which the shell expands as `~`.
 HOME_VARIABLE = re.compile(r"(?:\$HOME|\$\{HOME\})(?=/|$)")
-# A command that reads below its paths: OpenCode's guard's `RECURSIVE`.
+# A command that reads below its paths.
 RECURSIVE = re.compile(
     r"\b(?:find|rg|tree|du|tar|zip|rsync|walkdir|readdir)\b"
     r"|\b(?:grep|egrep|ls|cp|chmod|chown)\b[^|;&\n]*\s(?:--recursive\b|-[A-Za-z]*[rR])"

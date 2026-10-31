@@ -714,7 +714,7 @@ def plan(ctx: types.SimpleNamespace | argparse.Namespace):
             "AGENTS.md from OPENCODE-DELTA.md",
         )
     )
-    # OpenCode's own copies of the Claude Code layer's rules, instructions, guard scripts and skills.
+    # OpenCode's own copies of the Claude Code layer's rules, instructions, guard package and skills.
     claude = ctx.plans["claude"]
     copies = [(dst, data, None) for dst, _, data in claude.rules] + claude.shared
     files += [

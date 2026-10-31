@@ -65,8 +65,8 @@ def Plan(**fields: object) -> types.SimpleNamespace:  # noqa: N802 -- the adapte
     )
 
 
-# The guard package below hooks/, which OpenCode's plugin, oh-my-pi's extension and Antigravity's
-# hook run with `--from opencode`, `--from omp` and `--from antigravity`.
+# The guard package below hooks/, which Claude Code, Antigravity, oh-my-pi and OpenCode each run
+# with their own `--from`; the other three hold a copy of it.
 GUARDS = ("guard",)
 # The edits that Claude Code leaves to its hook `edit-scope.py`, which asks once per worktree and
 # session, and so holds no `Edit` ask for: a git hook runs outside the sandbox at the next commit,

@@ -79,13 +79,14 @@ WALK_READS = 400
 WORKTREE = HOOKS + "worktree.py"
 
 # The guard package, run as the settings template runs it, on the differential corpus that holds
-# the cases of the guard scripts whose checks it holds. Each record is one JSON object per line:
+# the cases of the hook scripts whose checks it holds. Each record is one JSON object per line:
 # `stdin` (an object, sent as its JSON text, or a string, sent as it is) and `decision`, the guard's
 # expected decision; a placeholder `@@<NAME>@@` in a string stands for the fixture's value of NAME.
 # A record with `"frontend": "antigravity"` is an Antigravity call instead: `tool`, `args`, an
 # optional `workspace`, Antigravity's `decision` and the `bypass` of its `overwrite`, and `differs`,
 # the reason, where the removed Antigravity hook answered otherwise; `@@AGYHOME@@` stands for the
-# fixture home of the Antigravity cases.
+# fixture home of the Antigravity cases. The records of oh-my-pi and OpenCode are described above
+# OMP_DRIVER.
 GUARD = HOOKS + "guard"
 SCRATCH = R + "/.scratch"
 # A work tree of the fixture in a worktree zone, whose `.gitignore` ignores `*.log`, with the
