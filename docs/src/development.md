@@ -85,8 +85,7 @@ The hooks and the guards import only the standard library: a case of `harness te
 (`lib/harness/strict.py`) parses each `.py` file below `hooks/` and the hook of the prose
 repositories, `githooks/pre-commit-wiki`, and fails on an import of a module outside
 `sys.stdlib_module_names`. `hooks/probe.py` may also import the harness's own package `harness`,
-and the tables `hooks/guard/frontends/claude.py` and `hooks/guard/frontends/antigravity.py` the
-guard package `guard`.
+and the four tables in `hooks/guard/frontends/` the guard package `guard`.
 
 The two tools are pinned in the `dev` group of `pyproject.toml` and locked in `uv.lock`, so every
 machine and CI run the same versions. `harness install --apply` syncs the `dev` group into the
@@ -126,10 +125,10 @@ that enforces it, and loads on every `.py` file. This section gives the reason f
   differently. A secret file that is written and then given mode `0600` is readable by others in
   between.
 - **Standard-library-only hooks.** Claude Code and Antigravity run a hook on the interpreter of
-  the harness's Python environment. The oh-my-pi frontend starts a hook as `python3`, and the
-  OpenCode frontend by its `#!/usr/bin/env python3` line: both run it on the first `python3` of
-  the `PATH`. There, a module that only the harness's environment holds does not import, and the
-  hook fails each call that it guards.
+  the harness's Python environment, and oh-my-pi and OpenCode run the guard on the `python` that
+  the path list beside their plugin names. A hook that imports a module beyond the standard
+  library ties itself to that environment, and fails each call that it guards when it runs on any
+  other interpreter.
 
 ## The pre-commit hook
 

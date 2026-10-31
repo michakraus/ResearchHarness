@@ -114,8 +114,8 @@ start with a `.`, so they are not part of the layout above.
 - **`.scratch/`** holds the logs, the probe environments and the results of the tests that run
   outside a repository. It holds no checkout.
 
-The hook [`rm-scope.py`](components/hooks.md#rm-scope-py) lets a recursive `rm` run only below
-these two directories.
+The [rm check](components/hooks.md#the-rm-check) of the guard hook lets a recursive `rm` run only
+below these two directories.
 
 ## Clone, sync and trust
 

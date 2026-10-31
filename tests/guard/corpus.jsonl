@@ -662,3 +662,241 @@
 {"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "git add -- ."}, "decision": "deny", "bypass": null}
 {"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "git -C . archive --output x.tar HEAD"}, "decision": "deny", "bypass": null}
 {"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "git archive -o x.tar HEAD"}, "decision": "deny", "bypass": null}
+{"frontend": "omp", "tool": "bash", "input": {"command": "git push --force origin x"}, "decision": "pass"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "sed -i s/a/b/ f"}, "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "cat ~/.local/share/opencode/auth.json"}, "covers": ["refusedCommand"], "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "git status"}, "covers": ["refusedCommand", "refusedWords"], "decision": "pass"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "ls -la", "cwd": "~/.ssh"}, "covers": ["refusedAt"], "decision": "deny"}
+{"frontend": "omp", "tool": "read", "input": {"path": "~/.local/share/opencode/auth.json"}, "decision": "deny"}
+{"frontend": "omp", "tool": "read", "input": {"path": "~/.local/share/opencode/auth.json:1-5"}, "decision": "deny"}
+{"frontend": "omp", "tool": "read", "input": {"path": "@~/.ssh/id_ed25519"}, "covers": ["refusedToolPath"], "decision": "deny"}
+{"frontend": "omp", "tool": "read", "input": {"path": "file://@@OMPHOME@@/.netrc"}, "decision": "deny"}
+{"frontend": "omp", "tool": "read", "input": {"path": "src/Foo.jl"}, "covers": ["rule", "absolute", "refusedToolPath"], "decision": "pass"}
+{"frontend": "omp", "tool": "grep", "input": {"pattern": "token", "path": "~/.local/share/opencode"}, "decision": "deny"}
+{"frontend": "omp", "tool": "grep", "input": {"pattern": "token", "path": "~"}, "decision": "deny"}
+{"frontend": "omp", "tool": "grep", "input": {"pattern": "token", "path": "src,~/.ssh"}, "decision": "deny"}
+{"frontend": "omp", "tool": "grep", "input": {"pattern": "token", "path": "src"}, "decision": "pass"}
+{"frontend": "omp", "tool": "write", "input": {"path": "notes.md", "content": "x"}, "covers": ["writePath"], "decision": "pass"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "gh api -X POST repos/a/b/issues"}, "decision": "ask"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "gh pr create --repo example-org/X.jl --title T --body-file b.md"}, "decision": "pass"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "gh pr create -R example-user/X.jl --title T"}, "decision": "pass"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "gh pr create --title T --repo example-org/X.jl"}, "decision": "pass"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "gh pr create --repo other/X.jl --title T"}, "decision": "pass"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "gh pr create --title T --body-file b.md"}, "decision": "pass"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "gh pr create"}, "decision": "pass"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "cat ../.local/share/opencode/auth.json"}, "cwd": "@@OMPHOME@@/Research", "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "cat ../.netrc"}, "cwd": "@@OMPHOME@@/Research", "covers": ["absolute"], "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "cat .local/share/opencode/auth.json"}, "cwd": "@@OMPHOME@@", "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "cat .ssh/id_ed25519"}, "cwd": "@@OMPHOME@@", "covers": ["refusedWords"], "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "cat id_ed25519", "cwd": ".ssh"}, "cwd": "@@OMPHOME@@", "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "ls -la", "cwd": "../.ssh"}, "cwd": "@@OMPHOME@@/Research", "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "ls"}, "cwd": "@@OMPHOME@@/.ssh", "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "grep -r token", "cwd": "~"}, "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "find -name x"}, "cwd": "@@OMPHOME@@", "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "cat .env"}, "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "cat config/.env.local"}, "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "cat secrets/token"}, "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "cat deploy.pem"}, "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "cat tls.key"}, "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "cat <.env"}, "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "cat --file=../.netrc"}, "cwd": "@@OMPHOME@@/Research", "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "cd && cat .netrc"}, "cwd": "@@OMPHOME@@/Research", "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "(cd && cat .local/share/opencode/auth.json)"}, "cwd": "@@OMPHOME@@/Research", "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "cd - && cat .netrc"}, "cwd": "@@OMPHOME@@/Research", "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "pushd; cat .netrc"}, "cwd": "@@OMPHOME@@/Research", "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "cd -P .. && cat .netrc"}, "cwd": "@@OMPHOME@@/Research", "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "cat {~/.netrc,x}"}, "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "cat ~/'.netrc'"}, "covers": ["words"], "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "cat \"$HOME/.netrc\""}, "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "cat ~/.local/share/OpenCode/auth.json"}, "decision": "deny"}
+{"frontend": "omp", "tool": "read", "input": {"path": "~/.SSH/config"}, "covers": ["rule"], "decision": "deny"}
+{"frontend": "omp", "tool": "read", "input": {"path": "~/.omp/agent/agent.db"}, "covers": ["pathRules"], "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "cat ~/.omp/agent/agent.db"}, "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "cat agent/agent.db"}, "cwd": "@@OMPHOME@@/.omp", "decision": "deny"}
+{"frontend": "omp", "tool": "grep", "input": {"pattern": "token", "path": "~/.omp/agent"}, "decision": "deny"}
+{"frontend": "omp", "tool": "read", "input": {"path": "~/.omp/agent/skillsx/a.md"}, "decision": "deny"}
+{"frontend": "omp", "tool": "read", "input": {"path": "~/.omp/agent/hooks/rm-scope.py"}, "decision": "deny"}
+{"frontend": "omp", "tool": "read", "input": {"path": "~/.omp/agent/skills/build-part/edges.md"}, "decision": "pass"}
+{"frontend": "omp", "tool": "read", "input": {"path": "~/.omp/agent/rules/julia-code.md"}, "decision": "pass"}
+{"frontend": "omp", "tool": "read", "input": {"path": "~/.omp/agent/instructions/core.md"}, "decision": "pass"}
+{"frontend": "omp", "tool": "read", "input": {"path": "~/.omp/agent/RTK.md"}, "covers": ["pathRules"], "decision": "pass"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "cat ~/.omp/agent/skills/build-part/SKILL.md"}, "decision": "pass"}
+{"frontend": "omp", "tool": "grep", "input": {"pattern": "x", "path": "~/.omp/agent/skills"}, "decision": "pass"}
+{"frontend": "omp", "tool": "edit", "input": {"path": "~/.omp/agent/skills/build-part/edges.md", "old_string": "a", "new_string": "b"}, "decision": "deny"}
+{"frontend": "omp", "tool": "write", "input": {"path": "~/.omp/agent/rules/julia-code.md", "content": "x"}, "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "cat src/Foo.jl"}, "covers": ["absolute", "refusedAt"], "decision": "pass"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "ls -la"}, "decision": "pass"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "cd src && ls"}, "decision": "pass"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "grep -rn token src"}, "decision": "pass"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "git status"}, "cwd": "@@OMPHOME@@/Research", "decision": "pass"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "git commit -m \"the .key rules\""}, "covers": ["words"], "decision": "pass"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "git commit -m cd"}, "cwd": "@@OMPHOME@@/Research", "decision": "pass"}
+{"frontend": "omp", "tool": "edit", "input": {"path": "~/.omp/agent/config.yml", "old_string": "a", "new_string": "b"}, "cwd": "@@OMPHOME@@/Research", "decision": "deny"}
+{"frontend": "omp", "tool": "write", "input": {"path": "~/.omp/agent/config.yml", "content": "x"}, "cwd": "@@OMPHOME@@/Research", "decision": "deny"}
+{"frontend": "omp", "tool": "edit", "input": {"path": "~/.omp/agent/extensions/guards.ts", "old_string": "a", "new_string": "b"}, "cwd": "@@OMPHOME@@/Research", "decision": "deny"}
+{"frontend": "omp", "tool": "write", "input": {"path": "~/.omp/agent/extensions/guards.ts", "content": "x"}, "cwd": "@@OMPHOME@@/Research", "decision": "deny"}
+{"frontend": "omp", "tool": "edit", "input": {"path": "~/.claude/hooks/no-shell-file-write.py", "old_string": "a", "new_string": "b"}, "cwd": "@@OMPHOME@@/Research", "decision": "deny"}
+{"frontend": "omp", "tool": "write", "input": {"path": "~/.claude/hooks/no-shell-file-write.py", "content": "x"}, "cwd": "@@OMPHOME@@/Research", "decision": "deny"}
+{"frontend": "omp", "tool": "write", "input": {"path": "../.claude/hooks/no-shell-file-write.py", "content": "x"}, "cwd": "@@OMPHOME@@/Research", "decision": "deny"}
+{"frontend": "omp", "tool": "write", "input": {"path": ":../.claude/hooks/x.py", "content": "x"}, "cwd": "@@OMPHOME@@/Research", "decision": "deny"}
+{"frontend": "omp", "tool": "read", "input": {"path": ":../.netrc"}, "cwd": "@@OMPHOME@@/Research", "decision": "deny"}
+{"frontend": "omp", "tool": "read", "input": {"path": ":./../.netrc"}, "cwd": "@@OMPHOME@@/Research", "decision": "deny"}
+{"frontend": "omp", "tool": "write", "input": {"path": ":./Notes/plan.md", "content": "x"}, "cwd": "@@OMPHOME@@/Research", "covers": ["refusedToolPath"], "decision": "pass"}
+{"frontend": "omp", "tool": "write", "input": {"path": "~/.config/gh/config.yml", "content": "x"}, "cwd": "@@OMPHOME@@/Research", "decision": "deny"}
+{"frontend": "omp", "tool": "edit", "input": {"path": ".git/config", "old_string": "a", "new_string": "b"}, "decision": "deny"}
+{"frontend": "omp", "tool": "edit", "input": {"path": "Notes/plan.md", "old_string": "a", "new_string": "b"}, "cwd": "@@OMPHOME@@/Research", "covers": ["editPaths"], "decision": "pass"}
+{"frontend": "omp", "tool": "write", "input": {"path": "~/Research/Notes/plan.md", "content": "x"}, "decision": "pass"}
+{"frontend": "omp", "tool": "write", "input": {"path": "[~/.omp/agent/config.yml]", "content": "x"}, "cwd": "@@OMPHOME@@/Research", "decision": "deny"}
+{"frontend": "omp", "tool": "write", "input": {"path": "[~/.claude/hooks/no-shell-file-write.py#1A2B]", "content": "x"}, "cwd": "@@OMPHOME@@/Research", "decision": "deny"}
+{"frontend": "omp", "tool": "write", "input": {"path": "[~/.zshrc#1A2B]", "content": "x"}, "cwd": "@@OMPHOME@@/Research", "covers": ["writePath"], "decision": "deny"}
+{"frontend": "omp", "tool": "write", "input": {"path": "[Notes/plan.md#1A2B]", "content": "x"}, "cwd": "@@OMPHOME@@/Research", "decision": "pass"}
+{"frontend": "omp", "tool": "edit", "input": {"path": "Notes/plan.md", "edits": [{"op": "update", "rename": "~/.config/x.md"}]}, "cwd": "@@OMPHOME@@/Research", "decision": "deny"}
+{"frontend": "omp", "tool": "edit", "input": {"input": "*** Begin Patch\n[~/.omp/agent/config.yml#1A2B]\nPUT 1.=1:\n+x\n*** End Patch\n"}, "cwd": "@@OMPHOME@@/Research", "covers": ["editPaths"], "decision": "deny"}
+{"frontend": "omp", "tool": "edit", "input": {"input": "*** Begin Patch\n[Notes/plan.md#1A2B]\nMV ../.claude/hooks/x.py\n*** End Patch\n"}, "cwd": "@@OMPHOME@@/Research", "decision": "deny"}
+{"frontend": "omp", "tool": "edit", "input": {"input": "*** Begin Patch\n*** Update File: ../.claude/hooks/gh-api-writes.py\n@@\n-a\n+b\n*** End Patch\n"}, "cwd": "@@OMPHOME@@/Research", "decision": "deny"}
+{"frontend": "omp", "tool": "edit", "input": {"input": "[\"~/.omp/agent/config.yml\"#1A2B]\nPUT 1.=1:\n+x\n"}, "cwd": "@@OMPHOME@@/Research", "covers": ["headerPath"], "decision": "deny"}
+{"frontend": "omp", "tool": "edit", "input": {"input": "[Notes/plan.md#1A2B]\nPUT 1.=1:\n+x\n[~/.omp/agent/config.yml#1A2B\nPUT 1.=1:\n+x\n"}, "cwd": "@@OMPHOME@@/Research", "decision": "deny"}
+{"frontend": "omp", "tool": "edit", "input": {"input": "[Notes/plan.md#1A2B]\nMV '../.claude/hooks/x.py'\n"}, "cwd": "@@OMPHOME@@/Research", "decision": "deny"}
+{"frontend": "omp", "tool": "edit", "input": {"input": "*** Begin Patch\n[Notes/plan.md#1A2B]\nPUT 1.=1:\n+x\n*** End Patch\n"}, "cwd": "@@OMPHOME@@/Research", "covers": ["headerPath"], "decision": "pass"}
+{"frontend": "omp", "tool": "edit", "input": {"input": "PUT 1.=1:\n+x\n"}, "cwd": "@@OMPHOME@@/Research", "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "sed -n '/\\[compat\\]/,$p' Project.toml"}, "cwd": "@@OMPHOME@@/Research", "covers": ["programArguments"], "decision": "pass"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "git show v0.2.1:Project.toml | sed -n '/\\[compat\\]/,$p'"}, "cwd": "@@OMPHOME@@/Research", "decision": "pass"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "sed -n '/^## \\[Unreleased\\]/,+3p' CHANGELOG.md | head -6"}, "cwd": "@@OMPHOME@@/Research", "decision": "pass"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "awk '/^\\[\\[deps\\.(A|B)\\]\\]/{p=1;print;next} /^\\[\\[/{p=0} p&&/version|path/' Manifest.toml"}, "cwd": "@@OMPHOME@@/Research", "decision": "pass"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "awk -F'|' '/^\\| \\*\\*P[0-9]+\\*\\*/ {print $2}' plan.md"}, "cwd": "@@OMPHOME@@/Research", "decision": "pass"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "awk '/^\\[compat\\]/{f=1} f&&/^Base/{print $0; exit}' Project.toml"}, "cwd": "@@OMPHOME@@/Research", "decision": "pass"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "grep -rn token src | sed -n '/function f!/,/^[0-9]*-end/p'"}, "decision": "pass"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "grep -E '/[0-9]+/' notes.md"}, "cwd": "@@OMPHOME@@/Research", "decision": "pass"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "sed -e '/[a-z]*/d' -e 's/x/y/' f.txt"}, "cwd": "@@OMPHOME@@/Research", "decision": "deny", "differs": "The guard reads each word of a command as a path, the program of a sed, awk or grep too, so the glob segment [a-z]* below / reaches the denied paths of the home; the extension left out the program argument."}
+{"frontend": "omp", "tool": "bash", "input": {"command": "grep -n -e '/[*]/' f.txt"}, "cwd": "@@OMPHOME@@/Research", "decision": "pass"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "ls /[0-9]*/x"}, "cwd": "@@OMPHOME@@/Research", "covers": ["segmentGlob"], "decision": "pass"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "sed -n '/x/p' ~/.netrc"}, "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "awk '/^machine/' .netrc"}, "cwd": "@@OMPHOME@@", "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "awk 'BEGIN{while((getline l < \"~/.netrc\")>0) print l}'"}, "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "grep -f ~/.netrc notes.md"}, "covers": ["programArguments"], "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "find / -name x"}, "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "grep -r token /*"}, "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "cat ~/.ss*/config"}, "covers": ["segmentGlob"], "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "ls ~/*"}, "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "cat ~/[.]netrc"}, "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "rm -rf ~/Research/x"}, "cwd": "@@OMPHOME@@/Research", "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "rm -rf ~/Research/.scratch/x"}, "cwd": "@@OMPHOME@@/Research", "decision": "pass"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "git rm f"}, "cwd": "@@OMPHOME@@/Research/P", "decision": "ask"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "git archive -o base.tar origin/main"}, "cwd": "@@OMPHOME@@/Research/P", "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "git archive origin/main -- src"}, "cwd": "@@OMPHOME@@/Research/P", "decision": "pass"}
+{"frontend": "omp", "tool": "edit", "input": {"path": "~/Research/P/.githooks/pre-commit", "old_string": "a", "new_string": "b"}, "cwd": "@@OMPHOME@@/Research", "decision": "ask"}
+{"frontend": "omp", "tool": "edit", "input": {"path": ".github/workflows/test.yml", "old_string": "a", "new_string": "b"}, "cwd": "@@OMPHOME@@/Research/P", "decision": "ask"}
+{"frontend": "omp", "tool": "write", "input": {"path": "~/.claude/skills/x/SKILL.md", "content": "x"}, "cwd": "@@OMPHOME@@/Research", "decision": "ask"}
+{"frontend": "omp", "tool": "write", "input": {"path": "[~/.claude/workflows/x.js#1A2B]", "content": "x"}, "cwd": "@@OMPHOME@@/Research", "decision": "ask"}
+{"frontend": "omp", "tool": "edit", "input": {"input": "[Notes/plan.md#1A2B]\nMV ../.claude/skills/x/SKILL.md\n"}, "cwd": "@@OMPHOME@@/Research", "decision": "ask"}
+{"frontend": "omp", "tool": "edit", "input": {"path": "~/Research/P/src/a.jl", "old_string": "a", "new_string": "b"}, "cwd": "@@OMPHOME@@/Research", "decision": "pass"}
+{"frontend": "omp", "tool": "write", "input": {"path": "~/.claude/skills.md", "content": "x"}, "cwd": "@@OMPHOME@@/Research", "decision": "pass"}
+{"frontend": "omp", "tool": "edit", "input": {"path": "~/.claude/skills/build-part/SKILL.md", "old_string": "a", "new_string": "b"}, "cwd": "@@OMPHOME@@/Research", "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "git init probe"}, "cwd": "@@OMPHOME@@/Research/P", "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "git clone https://github.com/example-org/X.jl.git X"}, "cwd": "@@OMPHOME@@/Research/P", "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "git init probe"}, "cwd": "@@OMPHOME@@/Research", "decision": "pass"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "cd .. && git init probe"}, "cwd": "@@OMPHOME@@/Research/P", "decision": "pass"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "cd P && git init probe"}, "cwd": "@@OMPHOME@@/Research", "decision": "deny"}
+{"frontend": "omp", "tool": "mcp__kaimon_ex", "input": {"e": "1 + 1"}, "cwd": "@@OMPHOME@@/Research", "decision": "deny"}
+{"frontend": "omp", "tool": "mcp__kaimon_ex", "input": {"e": "1 + 1", "ses": "a1b2c3d4"}, "cwd": "@@OMPHOME@@/Research", "decision": "pass"}
+{"frontend": "omp", "tool": "mcp__kaimon_manage_repl", "input": {"command": "shutdown"}, "cwd": "@@OMPHOME@@/Research", "decision": "deny"}
+{"frontend": "omp", "tool": "mcp__kaimon_manage_repl", "input": {"command": "shutdown", "session": "a1b2c3d4"}, "cwd": "@@OMPHOME@@/Research", "decision": "pass"}
+{"frontend": "omp", "tool": "mcp__kaimon_check_eval", "input": {"eval_id": "e1f2a3b4"}, "cwd": "@@OMPHOME@@/Research", "decision": "pass"}
+{"frontend": "omp", "tool": "write", "input": {"path": "agent://CriticP13a", "content": "Your round is done."}, "cwd": "@@OMPHOME@@/Research", "agent": "sub", "decision": "deny"}
+{"frontend": "omp", "tool": "write", "input": {"path": " AGENT://SuiteP16a", "content": "Run the suite."}, "cwd": "@@OMPHOME@@/Research", "agent": "sub", "decision": "deny"}
+{"frontend": "omp", "tool": "write", "input": {"path": "agent://CriticP34b", "content": "Write the report."}, "cwd": "@@OMPHOME@@/Research", "agent": "main", "decision": "pass"}
+{"frontend": "omp", "tool": "write", "input": {"path": "agent://CriticP34b", "content": "Write the report."}, "cwd": "@@OMPHOME@@/Research", "decision": "pass"}
+{"frontend": "omp", "tool": "write", "input": {"path": "Notes/plan.md", "content": "x"}, "cwd": "@@OMPHOME@@/Research", "agent": "sub", "decision": "pass"}
+{"frontend": "omp", "tool": "read", "input": {"path": "agent://CriticP13a"}, "cwd": "@@OMPHOME@@/Research", "agent": "sub", "decision": "pass"}
+{"frontend": "omp", "tool": "read", "input": {"path": "~/.omp/agent/models.yml"}, "decision": "deny"}
+{"frontend": "omp", "tool": "read", "input": {"path": "~/.omp/agent/skills/x/SKILL.md"}, "decision": "pass"}
+{"frontend": "omp", "tool": "write", "input": {"path": "[~/.claude/hooks/x.py#1A2B]", "content": "x"}, "cwd": "@@OMPHOME@@/Research", "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "ls /[0-9]+/"}, "cwd": "@@OMPHOME@@/Research", "decision": "pass"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "cat @@OMPHOME@@/.ss[h]/x"}, "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "ls -R"}, "cwd": "@@OMPHOME@@", "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "git status"}, "cwd": "@@OMPHOME@@", "decision": "pass"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "cat '~/.netrc"}, "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "cat ~/.net\\rc"}, "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "cat<~/.netrc"}, "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "rm -rf @@HOME@@/Research/x"}, "decision": "deny"}
+{"frontend": "opencode", "tool": "shell", "input": {"command": "cat ~/.local/share/opencode/auth.json"}, "covers": ["rule", "refusedPath"], "decision": "deny"}
+{"frontend": "opencode", "tool": "shell", "input": {"command": "sed -i s/a/b/ f"}, "covers": ["inPlaceEdit"], "decision": "deny"}
+{"frontend": "opencode", "tool": "shell", "input": {"command": "sed -n p f"}, "covers": ["inPlaceEdit"], "decision": "pass"}
+{"frontend": "opencode", "tool": "shell", "input": {"command": "perl -pi -e s/a/b/ f"}, "decision": "deny"}
+{"frontend": "opencode", "tool": "shell", "input": {"command": "rtk sed -i s/a/b/ f"}, "decision": "deny"}
+{"frontend": "opencode", "tool": "shell", "input": {"command": "git add -A"}, "decision": "deny"}
+{"frontend": "opencode", "tool": "shell", "input": {"command": "gh api -X DELETE repos/o/r"}, "decision": "deny"}
+{"frontend": "opencode", "tool": "shell", "input": {"command": "rm -rf @@HOME@@/Research/x"}, "decision": "deny"}
+{"frontend": "opencode", "tool": "shell", "input": {"command": "rtk cat ~/.local/share/opencode/auth.json"}, "decision": "deny"}
+{"frontend": "opencode", "tool": "shell", "input": {"command": "rtk git add -A"}, "decision": "deny"}
+{"frontend": "opencode", "tool": "shell", "input": {"command": " rtk git add -A"}, "decision": "deny"}
+{"frontend": "opencode", "tool": "shell", "input": {"command": "rtk\tgit add -A"}, "decision": "deny"}
+{"frontend": "opencode", "tool": "shell", "input": {"command": "rtk  git add -A"}, "decision": "deny"}
+{"frontend": "opencode", "tool": "shell", "input": {"command": "git status"}, "covers": ["rule", "lists"], "decision": "pass"}
+{"frontend": "opencode", "tool": "shell", "input": {"command": "git push --force origin x"}, "decision": "pass"}
+{"frontend": "opencode", "tool": "read", "input": {"filePath": "~/.local/share/opencode/auth.json"}, "decision": "pass"}
+{"frontend": "opencode", "tool": "bash", "input": {"command": "git add -A"}, "decision": "pass"}
+{"frontend": "opencode", "tool": "read", "input": {"command": "git add -A"}, "decision": "pass"}
+{"frontend": "opencode", "tool": "shell", "input": {"command": "cat ~/.local/share/opencode/auth.json", "background": true}, "decision": "deny"}
+{"frontend": "opencode", "tool": "shell", "input": {"command": "ls -la", "workdir": "@@OCHOME@@/.ssh"}, "covers": ["refusedPath"], "decision": "deny"}
+{"frontend": "opencode", "tool": "shell", "input": {"command": "git status", "workdir": "@@TOOL@@"}, "covers": ["refusedPath"], "decision": "pass"}
+{"frontend": "opencode", "tool": "shell", "input": {"command": "ls", "workdir": "../.ssh"}, "directory": "@@OCHOME@@/proj", "decision": "deny", "differs": "The guard resolves a relative workdir against the session's directory and reads below it; the plugin read only a workdir that named a home or user-data path."}
+{"frontend": "opencode", "tool": "shell", "input": {"command": "gh api -X POST repos/o/r/issues"}, "decision": "ask"}
+{"frontend": "opencode", "tool": "shell", "input": {"command": "git archive -o base.tar origin/main"}, "directory": "@@TOOL@@", "decision": "deny"}
+{"frontend": "opencode", "tool": "shell", "input": {"command": "echo x > f"}, "directory": "@@PKG@@", "decision": "deny"}
+{"frontend": "opencode", "tool": "shell", "input": {"command": "echo x > f", "workdir": "@@PKG@@"}, "directory": "@@FIXTURE@@", "decision": "deny"}
+{"frontend": "opencode", "tool": "shell", "input": {"command": "git rm f"}, "directory": "@@PKG@@", "decision": "ask"}
+{"frontend": "opencode", "tool": "shell", "input": {"command": "git init probe"}, "directory": "@@PKG@@", "decision": "deny"}
+{"frontend": "opencode", "tool": "shell", "input": {"command": "git init probe", "workdir": "@@PKG@@"}, "directory": "@@FIXTURE@@", "decision": "deny"}
+{"frontend": "opencode", "tool": "shell", "input": {"command": "git init probe"}, "directory": "@@FIXTURE@@", "decision": "pass"}
+{"frontend": "opencode", "tool": "shell", "input": {"command": "git init probe"}, "directory": "", "process_cwd": "@@PKG@@", "decision": "deny"}
+{"frontend": "opencode", "tool": "kaimon_ex", "input": {"e": "1"}, "decision": "deny"}
+{"frontend": "opencode", "tool": "kaimon_ex", "input": {"e": "1", "ses": "a1b2c3d4"}, "decision": "pass"}
+{"frontend": "opencode", "tool": "kaimon_manage_repl", "input": {"command": "shutdown"}, "decision": "deny"}
+{"frontend": "opencode", "tool": "kaimon_check_eval", "input": {"eval_id": "e1f2a3b4"}, "decision": "pass"}
+{"frontend": "opencode", "tool": "shell", "input": {"command": "git status"}, "local": {"allow": "x"}, "covers": ["lists"], "decision": "deny"}
+{"frontend": "opencode", "tool": "shell", "input": {"command": "cat /etc/hosts"}, "local": {"deny": ["/etc/**"]}, "covers": ["lists"], "decision": "deny"}
+{"frontend": "opencode", "tool": "shell", "input": {"command": "git status"}, "local": {"deny": ["/etc/**"]}, "decision": "pass"}
+{"frontend": "opencode", "tool": "shell", "input": {"command": "cat hosts", "workdir": "/etc"}, "local": {"deny": ["/etc/**"]}, "decision": "deny"}
+{"frontend": "opencode", "tool": "shell", "input": {"command": "cat /etc/hosts 2>/dev/null"}, "local": {"allow": ["/etc/hosts"]}, "decision": "pass"}
+{"frontend": "opencode", "tool": "shell", "input": {"command": "cat /etc/passwd"}, "local": {"allow": ["/etc/hosts"]}, "decision": "deny"}
+{"frontend": "opencode", "tool": "shell", "input": {"command": "cat ~/.netrc"}, "decision": "deny"}
+{"frontend": "opencode", "tool": "shell", "input": {"command": "cd ~ && ls"}, "decision": "deny"}
+{"frontend": "opencode", "tool": "shell", "input": {"command": "grep -r token ~"}, "decision": "deny"}
+{"frontend": "opencode", "tool": "shell", "input": {"command": "ls -la"}, "decision": "pass"}
+{"frontend": "opencode", "tool": "shell", "input": {"command": "cat src/Foo.jl"}, "decision": "pass"}
+{"frontend": "opencode", "tool": "shell", "input": {"command": "cat .env"}, "decision": "deny", "differs": "The guard reads every word of a command as a path, a relative one too, and matches **/.env; the plugin read only home paths and absolute paths below a directory of user data."}
+{"frontend": "opencode", "tool": "shell", "input": {"command": "ls /[0-9]+/"}, "decision": "deny", "differs": "The guard reads every word as a path and cuts a glob path to its directory, here /, which holds denied paths; the plugin did not read a path below /."}
+{"frontend": "opencode", "tool": "shell", "input": {"command": "true", "workdir": "@@OCHOME@@"}, "decision": "deny"}
+{"frontend": "opencode", "tool": "shell", "input": {"command": "bash -c 'cd ~ && ls'"}, "decision": "deny"}
+{"frontend": "opencode", "tool": "shell", "input": {"command": "sed -i s/a/b/ f"}, "directory": "@@FIXTURE@@", "decision": "deny"}
+{"frontend": "opencode", "tool": "shell", "input": {"command": "cat /etc/h*"}, "local": {"allow": ["/etc/h*"]}, "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "bash -c 'cd ~ && ls'"}, "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "cat @@OMPHOME@@/{.ssh,x}/id_ed25519"}, "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "cat ~/.ss[!x]/config"}, "decision": "deny"}
+{"frontend": "omp", "tool": "read", "input": {"path": "~/.netrc:1-5"}, "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "ls @@OMPHOME@@/{.ss,x}h"}, "decision": "deny", "differs": "The guard reads a brace expansion as a glob segment that reaches every name below its directory, here the home, which holds ~/.ssh; the extension read the braces as text."}
+{"frontend": "omp", "tool": "bash", "input": {"command": "ls ~/'.s\\sh'*"}, "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "X=1 cd && cat .netrc"}, "cwd": "@@OMPHOME@@/Research", "decision": "deny", "differs": "The guard reads a cd after an assignment as a cd, which with no directory moves home (K14); the extension did not."}
+{"frontend": "omp", "tool": "bash", "input": {"command": "time cd; cat .netrc"}, "cwd": "@@OMPHOME@@/Research", "decision": "deny", "differs": "The guard reads a cd after time as a cd, which with no directory moves home (K14); the extension did not."}
+{"frontend": "omp", "tool": "grep", "input": {"pattern": "x"}, "cwd": "@@OMPHOME@@/Research", "decision": "pass"}
+{"frontend": "omp", "tool": "grep", "input": {"pattern": "x"}, "cwd": "@@OMPHOME@@", "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "cd `true`; cat .netrc"}, "cwd": "@@OMPHOME@@/Research", "covers": ["words"], "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "cd ``; cat .netrc"}, "cwd": "@@OMPHOME@@/Research", "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "cd `echo` && cat .netrc"}, "cwd": "@@OMPHOME@@/Research", "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "cd `echo` && ls"}, "cwd": "@@OMPHOME@@/Research", "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "cd `true` @@OMPHOME@@/Research; cat .netrc"}, "cwd": "@@OMPHOME@@/Research", "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "cd src && echo `date`"}, "cwd": "@@OMPHOME@@/Research", "covers": ["words"], "decision": "pass"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "ls", "cwd": "~"}, "cwd": "@@OMPHOME@@/Research", "covers": ["refusedAt"], "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "git add -A"}, "cwd": "@@OMPHOME@@/Research", "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "sort -r ls.txt"}, "cwd": "@@OMPHOME@@", "decision": "pass"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "ls | sort -r"}, "cwd": "@@OMPHOME@@", "decision": "pass"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "ls -r"}, "cwd": "@@OMPHOME@@", "decision": "deny"}
+{"frontend": "omp", "tool": "edit", "input": {"input": "*** Begin Patch\n*** Update File: Notes/plan.md\n*** Move to: ../.claude/hooks/x.py\n@@\n-a\n+b\n*** End Patch\n"}, "cwd": "@@OMPHOME@@/Research", "covers": ["editPaths"], "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "ls ~"}, "cwd": "@@OMPHOME@@/Research", "decision": "pass"}
+{"frontend": "opencode", "tool": "shell", "input": {"command": "ls ~"}, "covers": ["refusedPath"], "decision": "pass"}
+{"frontend": "opencode", "tool": "shell", "input": {"command": "cd ~ && ls"}, "covers": ["refusedPath"], "decision": "deny"}
+{"frontend": "opencode", "tool": "shell", "input": {"command": "cd ~/Research && ls ~"}, "decision": "deny"}
+{"frontend": "opencode", "tool": "shell", "input": {"command": "cat /tmp/notes.txt"}, "local": {"deny": ["/etc/**"]}, "decision": "pass"}
+{"frontend": "opencode", "tool": "shell", "input": {"command": "cat /home/u/notes.txt"}, "local": {"allow": ["/etc/hosts"]}, "covers": ["lists"], "decision": "pass"}
+{"frontend": "opencode", "tool": "shell", "input": {"command": "cat /etc/HOSTS"}, "local": {"allow": ["/etc/hosts"]}, "covers": ["rule"], "decision": "deny"}

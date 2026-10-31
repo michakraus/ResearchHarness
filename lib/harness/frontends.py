@@ -65,18 +65,9 @@ def Plan(**fields: object) -> types.SimpleNamespace:  # noqa: N802 -- the adapte
     )
 
 
-# The guard scripts that OpenCode's plugin and oh-my-pi's extension run: the first five on each shell
-# call, `sandbox-semantics.py` with `--work-tree` only, and `kaimon-session.py` on a Kaimon `ex` or
-# `manage_repl` call.
-GUARDS = (
-    "no-blind-stage.py",
-    "no-shell-file-write.py",
-    "gh-api-writes.py",
-    "rm-scope.py",
-    "git-archive-output.py",
-    "sandbox-semantics.py",
-    "kaimon-session.py",
-)
+# The guard package below hooks/, which Claude Code, Antigravity, oh-my-pi and OpenCode each run
+# with their own `--from`; the other three hold a copy of it.
+GUARDS = ("guard",)
 # The edits that Claude Code leaves to its hook `edit-scope.py`, which asks once per worktree and
 # session, and so holds no `Edit` ask for: a git hook runs outside the sandbox at the next commit,
 # a CI workflow with the repository's secrets. OpenCode, oh-my-pi and Antigravity run no such hook
@@ -95,13 +86,9 @@ SHARED_ROOTS = (
 
 def shared(dst: str) -> bool:
     """Whether the Claude Code layer's file at `dst`, relative to ~/.claude, is one that OpenCode,
-    oh-my-pi and Antigravity hold a copy of: RTK.md, an instruction file, a guard script, or a file
-    of a skill."""
-    return (
-        dst == "RTK.md"
-        or dst.startswith(("instructions/", "skills/"))
-        or dst in (f"hooks/{g}" for g in GUARDS)
-    )
+    oh-my-pi and Antigravity hold a copy of: RTK.md, an instruction file, a file of the guard
+    package, or a file of a skill."""
+    return dst == "RTK.md" or dst.startswith(("instructions/", "skills/", *(f"hooks/{g}/" for g in GUARDS)))
 
 
 def relocate(data: bytes, root: str) -> bytes:

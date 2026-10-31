@@ -109,7 +109,7 @@ Replace "old" with "new" in README.md with sed -i.
 ```
 
 **What you should see.** The agent tries the shell command `sed -i s/old/new/ README.md`. Before
-the command runs, the guard hook `no-shell-file-write.py` refuses it and gives the agent this
+the command runs, the write check of the guard hook refuses it and gives the agent this
 message:
 
 ```text

@@ -12,15 +12,13 @@ The sources are in `hooks/`. `harness install --apply` copies them to `~/.claude
 Claude Code calls them through the `hooks` section of its settings, which
 `harness install --apply` writes from `settings/settings.proposal.json`. On the `Bash` matcher,
 the directory and worktree tools and the Kaimon tools, Claude Code runs one program, the guard
-package `hooks/guard/`, which holds the checks of the guard scripts below. Antigravity runs the
-same package, with `--from antigravity`, on every tool call. oh-my-pi calls seven scripts through
-its guard extension `adapters/omp/guards.ts`, and OpenCode calls the same seven through its plugin
-`adapters/opencode/plugins/guards.ts`. These are the five shell guards (`no-blind-stage.py`,
-`no-shell-file-write.py`, `gh-api-writes.py`, `rm-scope.py` and `git-archive-output.py`), the
-working-tree check of `sandbox-semantics.py`, and `kaimon-session.py`. Each of the two frontends
-runs its own copy of the scripts, which `harness install` writes to `hooks/` in its directory:
-`~/.omp/agent/hooks/` and `~/.config/opencode/hooks/`; Antigravity's copy of the package is in
-`~/.gemini/config/hooks/guard/`. Each hook still has one source.
+package `hooks/guard/`, which holds every check of a tool call. Antigravity runs the same package,
+with `--from antigravity`, on every tool call. oh-my-pi runs it with `--from omp` through its guard
+extension `adapters/omp/guards.ts`, and OpenCode with `--from opencode` through its plugin
+`adapters/opencode/plugins/guards.ts`, on every tool call. Each of the three frontends runs its own
+copy of the package, which `harness install` writes below `hooks/guard/` in its directory:
+`~/.gemini/config/hooks/guard/`, `~/.omp/agent/hooks/guard/` and `~/.config/opencode/hooks/guard/`.
+Each hook still has one source.
 `hooks/probe.py` holds the test cases of the hooks, and `harness test` runs it.
 
 `harness install --apply` writes the command of each Python hook, in `~/.claude/settings.json`
@@ -36,7 +34,7 @@ reads a handler that prints nothing as a block.
 
 The hooks prevent accidents. They are not a security boundary: each one reads the text of a
 command. [The security model](../security.md) says what they stop and what they do not stop. The
-page groups the hooks: first the guard package, then the guard scripts and `edit-scope.py`, then
+page groups the hooks: first the guard package and its checks, then `edit-scope.py`, then
 `worktree.py` and the session hooks, and last the probe.
 
 ## The guard package
@@ -47,21 +45,26 @@ runs it as a `PreToolUse` hook on the matchers `Bash`,
 with the command `<python> ~/.claude/hooks/guard --from claude || exit 2`. The `Bash` matcher runs
 `rtk hook claude` first, then the guard. Antigravity runs its copy as a `PreToolUse` hook on every
 tool call, with the command `<python> ~/.gemini/config/hooks/guard --from antigravity`;
-[the adapters page](adapters.md) describes its answers.
+[the adapters page](adapters.md) describes its answers. The plugins of oh-my-pi and OpenCode run
+`<python> <their directory>/../hooks/guard --from omp` or `--from opencode` on every tool call,
+with the interpreter that `guard-paths.json` beside them names under `python`; they send the event
+as JSON and apply the answer `{"block": …, "reason": …}`.
 
-A table for each frontend, `frontends/claude.py` for Claude Code and `frontends/antigravity.py` for
-Antigravity, turns the payload into a neutral call: the action, the command, the paths, the paths
-below which the call reads, the working directory and the caller. Antigravity's table also runs
-the path-list check `path_list.py` on every call, which reads the frontend's `guard-paths.json`,
-and the lift check `sandbox_lift.py` on a shell call that it does not deny, which lifts a command
-out of the sandbox only where the line matches a closed grammar and Claude Code's sandbox rule
-lifts it. One module per check reads that call: the checks of the seven scripts `no-blind-stage.py`,
-`no-shell-file-write.py`, `sandbox-semantics.py`, `gh-api-writes.py`, `rm-scope.py`,
-`git-archive-output.py` and `kaimon-session.py`, and the directory check. Each check gives
+A table for each frontend, `frontends/claude.py`, `frontends/antigravity.py`, `frontends/omp.py`
+and `frontends/opencode.py`, turns the payload into a neutral call: the action, the command, the
+paths, the paths below which the call reads, the working directory and the caller. The tables of
+Antigravity, oh-my-pi and OpenCode also run the path-list check `path_list.py`, which reads the
+frontend's `guard-paths.json`; Antigravity's table runs the lift check `sandbox_lift.py` on a shell
+call that it does not deny, which lifts a command out of the sandbox only where the line matches a
+closed grammar and Claude Code's sandbox rule lifts it. One module per check reads that call: the
+staging, write, sandbox, `gh api`, rm, archive, Kaimon and directory checks below. Each check gives
 `deny`, `ask`, `allow` or `pass` with a reason. The guard answers the first of `deny`, `ask`,
-`allow` and `pass` that a check gives, with that check's reason: exit 2 with the reason on standard
-error for `deny`, a JSON decision for `ask` and `allow`, and no output for `pass`. A tool that the
-table does not name passes.
+`allow` and `pass` that a check gives, with that check's reason, in the form of the frontend: for
+Claude Code exit 2 with the reason on standard error for `deny`, a JSON decision for `ask` and
+`allow`, and no output for `pass`. A tool that the table does not name passes. oh-my-pi and
+OpenCode cannot ask the user from a plugin, so their tables answer an `ask` as a block whose
+reason tells the model to ask the user in chat; `plugin.py` holds what the two tables share: the
+reading of the message, the size check of the command and the answer.
 
 The directory check asks before a session leaves `~/Research`, or removes a worktree. A
 `change_directory` or `request_directory` call of the Claude desktop app, or an `EnterWorktree`
@@ -78,7 +81,8 @@ with the error. The checks read a command without
 `shlex`: a `#` inside a word, a backslash-newline and a quoted operator are read as the shell
 reads them, and a quoted operator or a joined line is also read the other way, so that neither
 hides a part of the command. `tests/guard/corpus.jsonl` holds the decision of each payload that
-the probe checks, and each difference from the scripts with its reason. A check of a shell
+the probe checks, and each difference from the base's hook scripts and plugin checks, with its
+reason. A check of a shell
 command reads each path through `hooks/guard/paths.py`, which reads each directory and name once
 in each mode and asks each directory once whether it holds a `.git`; every check and every reading
 takes the walk of a word from one memo; the write check asks git once per work tree. A probe case
@@ -94,56 +98,42 @@ with the environment's interpreter, which is Python 3.14; the guard exits with s
 echo '{"tool_name":"Bash","tool_input":{"command":"git add -nA"},"cwd":"/"}' | ~/.local/share/research-harness/python/bin/python guard --from claude
 ```
 
-## `no-blind-stage.py`
+### The staging check
 
-This hook refuses a `git add` that stages more than the paths it names. oh-my-pi and OpenCode run
-it on each shell call. Claude Code and Antigravity run its check in the guard package instead.
+`no_blind_stage.py` refuses a `git add` that stages more than the paths it names, on each shell
+call of every frontend.
 
-It reads the command, splits it into segments, and finds each `git add`. It exits with status 2
-on `-A`, `-u`, `--all`, `--update`, `--no-ignore-removal`, a short-flag cluster that holds `A` or
-`u`, and the pathspecs `.`, `./` and `:/`. The flag cluster is the reason for the hook: a deny
-glob cannot match `git add -nA` without also matching a file name that holds an `A`. The refusal
-tells the model to stage its paths by name.
+It reads the command, splits it into segments, and finds each `git add`. It refuses `-A`, `-u`,
+`--all`, `--update`, `--no-ignore-removal`, a short-flag cluster that holds `A` or `u`, and the
+pathspecs `.`, `./` and `:/`. The flag cluster is the reason for the check: a deny glob cannot
+match `git add -nA` without also matching a file name that holds an `A`. The refusal tells the
+model to stage its paths by name.
 
-It fails open: on an input that it cannot read, it exits with status 0. The deny list of the
-settings still refuses the common spellings. Test it without an install:
+### The write check
 
-```bash
-echo '{"tool_input":{"command":"git add -nA"}}' | ./no-blind-stage.py ; echo "exit $?"
-```
+`no_shell_file_write.py` refuses a shell command that writes a file in a git working tree, on
+each shell call of every frontend.
 
-## `no-shell-file-write.py`
+It refuses a redirection such as `>` or `>>`, `tee`, an in-place flag cluster of `sed`, `perl` or
+`awk`, and a `python3 -c` or a Python heredoc that opens a file to write. It resolves each target
+against the working directory and each `cd` of the command. A target under a scratch directory
+passes: `$TMPDIR`, `/tmp/`, `/private/tmp/`, `/var/folders/`, `/dev/` or `~/Research/.scratch/`.
+In a git working tree, every file is refused unless git ignores it. Outside one, only a file with
+a source suffix such as `.jl` or `.md` is refused. A quoted `>` is text, not a redirection. The
+refusal tells the model to use the `Edit` and `Write` tools. It does not see a target that the
+shell computes, a Julia one-liner, or a writer inside a string argument such as `perl -e`.
 
-This hook refuses a shell command that writes a file in a git working tree. oh-my-pi and OpenCode
-run it on each shell call. Claude Code and Antigravity run its check in the guard package instead.
+### The sandbox check
 
-It exits with status 2 on a redirection such as `>` or `>>`, on `tee`, on an in-place flag of
-`sed`, `perl` or `awk`, and on a `python3 -c` or a Python heredoc that opens a file to write. It
-resolves each target against the working directory and each `cd` of the command. A target under
-a scratch directory passes: `$TMPDIR`, `/tmp/`, `/private/tmp/`, `/var/folders/`, `/dev/` or
-`~/Research/.scratch/`. In a git working tree, every file is refused unless git ignores it.
-Outside one, only a file with a source suffix such as `.jl` or `.md` is refused. A quoted `>` is
-text, not a redirection. The refusal tells the model to use the `Edit` and `Write` tools.
-
-It fails open. It does not see a target that the shell computes, a Julia one-liner, or a writer
-inside a string argument such as `perl -e`. Test it without an install:
-
-```bash
-echo '{"tool_input":{"command":"echo x > src/Foo.jl"},"cwd":"/path/in/a/repo"}' | ./no-shell-file-write.py
-```
-
-## `sandbox-semantics.py`
-
-This hook refuses a command whose shape makes the Claude Code sandbox give a false result. Claude
-Code runs its check in the guard package. oh-my-pi and OpenCode run its working-tree check, as
-`sandbox-semantics.py --work-tree`, on each shell call. Antigravity runs the package's
-working-tree check alone on each shell call, and the package's lift check reads the same rule to
-decide whether a command runs inside or outside the terminal sandbox.
+`sandbox_semantics.py` refuses a command whose shape makes the Claude Code sandbox give a false
+result. Claude Code runs the whole check. Antigravity, oh-my-pi and OpenCode run its working-tree
+check alone on each shell call, and Antigravity's lift check reads the same rule to decide whether
+a command runs inside or outside the terminal sandbox.
 
 The settings let a command run outside the sandbox only when every part of it starts with `git`,
 `gh`, `glab` or `ps` and no part redirects a file. A sandboxed `gh` cannot reach the network, and
 a sandboxed `git` cannot write `.git`. The failure then looks like a negative result or a
-certificate error. The hook exits with status 2 on four shapes:
+certificate error. The check refuses four shapes:
 
 - a `gh`, `glab` or `git` write inside `$( … )`, backticks or a loop;
 - a top-level `gh`, `glab` or `git` write in a command that is not exempt, for example after
@@ -152,63 +142,88 @@ certificate error. The hook exits with status 2 on four shapes:
 - a path argument of `git init`, `git clone`, `git worktree add`, `git worktree move` or
   `git bundle create` that starts with `/`, `~` or `$`, or holds `..`.
 
-It also exits with status 2 on a `git init` or `git clone` whose target is inside a git working
-tree. The hook follows each `cd` of the command to find the target. Under Claude Code a `cd`
-outside the agent's working directories is reset before the next call, so such a command runs in
-the agent's root and leaves a repository in another working tree.
+It also refuses a `git init` or `git clone` whose target is inside a git working tree: the
+working-tree check. It follows each `cd` of the command to find the target. Under Claude Code a
+`cd` outside the agent's working directories is reset before the next call, so such a command runs
+in the agent's root and leaves a repository in another working tree. Each refusal gives the form
+that works, for example a separate Bash call.
 
-Each refusal gives the form that works, for example a separate Bash call. It fails open. Test it:
+### The `gh api` check
 
-```bash
-echo '{"tool_input":{"command":"echo $(gh run view 1)"}}' | ./sandbox-semantics.py ; echo "exit $?"
-```
-
-## `gh-api-writes.py`
-
-This hook asks before a `gh api` write that is not a review or a comment, and refuses a remote
-delete. oh-my-pi and OpenCode run it on each shell call. Claude Code and Antigravity run its check
-in the guard package instead.
+`gh_api_writes.py` asks before a `gh api` write that is not a review or a comment, and refuses a
+remote delete, on each shell call of every frontend.
 
 It finds each top-level `gh api` and `glab api` call and determines the HTTP method in the same
 way as `gh`: `-X` or `--method`; otherwise POST when a body flag is present; otherwise GET. A GET,
-a HEAD and a `search/…` endpoint pass. The hook exits with status 2 on a DELETE from `gh api` or
-`glab api`. Any other `glab api` call passes. A review, an inline comment, a reply, and a comment
-on a pull request, an issue or a commit pass, so the review agents can post. A GraphQL query
-passes when it holds no mutation, or when each mutation is a review or comment operation. Every
-other write gets an `ask` decision, and the user sees a prompt. An edit of an existing comment
-also asks.
+a HEAD and a `search/…` endpoint pass. It refuses a DELETE from `gh api` or `glab api`. Any other
+`glab api` call passes. A review, an inline comment, a reply, and a comment on a pull request, an
+issue or a commit pass, so the review agents can post. A GraphQL query passes when it holds no
+mutation, or when each mutation is a review or comment operation. Every other write gets an `ask`
+decision, and the user sees a prompt. An edit of an existing comment also asks.
 
-It fails open. Test it:
+### The rm check
 
-```bash
-echo '{"tool_input":{"command":"gh api repos/o/r/hooks -f url=x"}}' | ./gh-api-writes.py
-```
-
-## `rm-scope.py`
-
-This hook refuses a recursive `rm` outside the scratch zones, and asks before a `git rm` or a
-`git merge` outside a worktree. oh-my-pi and OpenCode run it on each shell call. Claude Code and
-Antigravity run its check in the guard package instead.
+`rm_scope.py` refuses a recursive `rm` outside the scratch zones, and asks before a `git rm` or a
+`git merge` outside a worktree, on each shell call of every frontend.
 
 It follows the working directory through each `cd` and resolves each operand. A recursive `rm`
 passes when every operand is strictly below a worktree, `~/Research/.worktrees/<name>/`, or
-strictly below `~/Research/.scratch/`. It exits with status 2 for a recursive `rm` of `/`, of the
-parent directory of the home directories, `/Users` or `/home`, or of any path below it. So a
+strictly below `~/Research/.scratch/`. It refuses a recursive `rm` of `/`, of the parent
+directory of the home directories, `/Users` or `/home`, or of any path below it. So a
 worktree itself goes through `git worktree remove`. A
 plain `rm`, and an operand that it cannot resolve, get no decision. A `git rm` gets an `ask`
 decision outside a worktree, with `-f` or `--force`, or with `-C`, `--git-dir` or `--work-tree`.
 A `git merge` in a worktree passes: the merge is local, and `git reset --hard ORIG_HEAD` undoes
 it. Outside a worktree, or with `-C`, `--git-dir` or `--work-tree`, it gets `ask`, except a
 `--ff-only` or `--no-edit` merge with none of `--no-ff`, `--squash`, `--no-commit` and `-m`. So
-the settings allow `git merge *`, and keep an `ask` only for `--abort`.
+the settings allow `git merge *`, and keep an `ask` only for `--abort`. A command that holds `rm`
+or `merge` and that it cannot read gets `ask`.
 
-It fails closed to a prompt: a command that holds `rm` or `merge` and that it cannot read gets
-`ask`. Test
-it:
+### The archive check
 
-```bash
-echo '{"tool_input":{"command":"rm -rf ../x"},"cwd":"/Users/me/Research/Packages/A"}' | ./rm-scope.py
-```
+`git_archive_output.py` refuses a `git archive` that writes its file with `-o` or `--output`, on
+each shell call of every frontend, and names the commands that read the tree of a commit without
+a permission prompt.
+
+An agent writes the archive to read the unmodified tree of a commit, usually the base of its
+branch. `git` runs outside the sandbox, so `-o` can write to any path. For this reason the
+settings have `ask` rules on `-o`, and the user gets a prompt for what is only a read. The check
+refuses the call, and its message names other commands. `scripts/base-tree.jl` puts the tree, or
+some paths of it, into a new directory. `git show <rev>:<path>` gives one file, and
+`git ls-tree -r --name-only <rev>` gives the list of files. A tar file that is itself the result
+goes to the user.
+
+It finds each top-level `git … archive` call, after global options such as `-C`, and reads the
+option in each spelling that git takes: `-o <file>`, `-o<file>`, behind other short options as in
+`-vo <file>`, `--output`, `--output=<file>`, and any prefix of `--output`. An argument after `--`
+is a path. A `git archive` to stdout passes.
+
+### The Kaimon check
+
+`kaimon_session.py` refuses a Kaimon call that names no session: Claude Code's
+`mcp__kaimon__ex` and `mcp__kaimon__manage_repl`, Antigravity's `call_mcp_tool` calls to `kaimon`
+for `ex` and `manage_repl`, oh-my-pi's `mcp__kaimon_ex` and `mcp__kaimon_manage_repl`, and
+OpenCode's `kaimon_ex` and `kaimon_manage_repl`.
+
+An `ex` call needs `ses`, and a `manage_repl` call needs `session`. Without the key, Kaimon uses
+the session that the agent is bound to, or otherwise the only one connected, which can be another
+agent's. `ex` ignores an unknown parameter, so the check also refuses an `ex` with `session` in
+place of `ses`. `check_eval` takes only the `eval_id` of its job, so no table names it for the
+check. The message names the rule of `skills/build-part/evidence.md`.
+
+### The path list and oh-my-pi's own rows
+
+`path_list.py` refuses a call that reaches a path of the frontend's `guard-paths.json`: for
+Antigravity, oh-my-pi and OpenCode, whose own permission rules bind only their file tools. Every
+path of a call and every word of a shell command meets the `deny` list; a write or an edit meets
+the `edit` list, which refuses, and then the `ask` list, which asks. OpenCode's table adds the
+list in `$OPENCODE_CONFIG_DIR/guard-paths.json`, whose `allow` refuses each home path and each
+absolute path below a directory of user data outside it, and refuses an in-place shell edit such
+as `sed -i` with a short message. oh-my-pi's table adds its own directory, `~/.omp`, as a `deny`
+rule but for the copies of the skills, the rules, the instructions and `RTK.md`, and as an `edit`
+rule whole; reads the paths of a hashline or patch header; and refuses a sub-agent's write to
+`agent://`, which wakes a parked agent. Each table reads a missing or unusable list as a refusal
+of every call. It is a text check: a path that a command builds at run time passes it.
 
 ## `edit-scope.py`
 
@@ -233,49 +248,6 @@ such edit through, because the settings hold no rule for them. Test it:
 
 ```bash
 echo '{"session_id":"s","tool_input":{"file_path":"'"$HOME"'/Research/Harness/.githooks/pre-push"}}' | ./edit-scope.py
-```
-
-## `git-archive-output.py`
-
-This hook refuses a `git archive` that writes its file with `-o` or `--output`, and names the
-commands that read the tree of a commit without a permission prompt. oh-my-pi and OpenCode run it
-on each shell call. Claude Code and Antigravity run its check in the guard package instead.
-
-An agent writes the archive to read the unmodified tree of a commit, usually the base of its
-branch. `git` runs outside the sandbox, so `-o` can write to any path. For this reason the
-settings have `ask` rules on `-o`, and the user gets a prompt for what is only a read. The hook
-exits with status 2, and its message names other commands. `scripts/base-tree.jl` puts the tree,
-or some paths of it, into a new directory. `git show <rev>:<path>` gives one file, and
-`git ls-tree -r --name-only <rev>` gives the list of files. A tar file that is itself the result
-goes to the user.
-
-It finds each top-level `git … archive` call, after global options such as `-C`, and reads the
-option in each spelling that git takes: `-o <file>`, `-o<file>`, behind other short options as in
-`-vo <file>`, `--output`, `--output=<file>`, and any prefix of `--output`. An argument after `--`
-is a path. A `git archive` to stdout passes.
-
-It fails open. Test it:
-
-```bash
-echo '{"tool_input":{"command":"git archive -o base.tar origin/main"}}' | ./git-archive-output.py
-```
-
-## `kaimon-session.py`
-
-This hook refuses a Kaimon call that names no session. oh-my-pi runs it on `mcp__kaimon_ex` and
-`mcp__kaimon_manage_repl`, and OpenCode on `kaimon_ex` and `kaimon_manage_repl`. Claude Code runs
-its check in the guard package, on the matcher `mcp__kaimon__ex|mcp__kaimon__manage_repl`, and
-Antigravity on `call_mcp_tool` calls to `kaimon` for `ex` and `manage_repl`.
-
-An `ex` call needs `ses`, and a `manage_repl` call needs `session`. Without the key, Kaimon uses
-the session that the agent is bound to, or otherwise the only one connected, which can be another
-agent's. `ex` ignores an unknown parameter, so the hook also exits with status 2 on an `ex` with
-`session` in place of `ses`.
-`check_eval` takes only the `eval_id` of its job, so the matcher leaves it out. The message names
-the rule of `skills/build-part/evidence.md`. It fails open. Test it:
-
-```bash
-echo '{"tool_name":"mcp__kaimon__ex","tool_input":{"e":"1"}}' | ./kaimon-session.py ; echo "exit $?"
 ```
 
 ## `worktree.py`
@@ -366,12 +338,16 @@ commands, a write target with a NUL, a `.git` that is a dangling link, a link to
 payload that is not UTF-8, the reason of the winning check, a frontend that the guard lacks, a
 guard that raises, the copy of `jsonio.py`, the file-system reads outside `paths.py`, and the
 rendered `Bash` entry with a guard that cannot start. The groups
-`omp` and `opencode` run the seven guard scripts through those frontends. The group `antigravity`
-runs the guard package with `--from antigravity` from a fixture home, on each Antigravity record
-of the corpus and on the cases that a record cannot hold: a broken path list, a payload that
-cannot be read, a call with no workspace, commands of many words and of 1 MiB with their seconds,
-the count of the reads and spawns of commands of 1 MiB (`[agy-work]`), the rendered handler, and
-a check that raises. The probe
+`omp` and `opencode` run each oh-my-pi or OpenCode record of the corpus through the extension or
+the plugin and the guard package, and the cases of the transport that a record cannot hold: an
+interpreter that is missing, a guard that exits 3, prints `{`, is killed or answers late, a path
+list that is missing, malformed or without `python`, and a message that the guard cannot read.
+The group `antigravity` runs the guard package with `--from antigravity` from a fixture home, on
+each Antigravity record of the corpus and on the cases that a record cannot hold: a broken path
+list, a payload that cannot be read, a call with no workspace, commands of many words and of 1 MiB
+with their seconds, the count of the reads and spawns of commands of 1 MiB (`[agy-work]`), the
+count of the matcher calls of the Bash rules on a crafted command of 1 MiB (`[mib-rules]`), the
+rendered handler, and a check that raises. The probe
 also covers the other Python hooks of this page, the fail-closed cases of `worktree.py`, and the
 drift cases of `install-drift.py`. It also loads `adapters/omp/guards.ts` and the OpenCode
 plugins under `node`, so `node` must be on `PATH`. The hooks run against a fixture `HOME` in a temporary directory,

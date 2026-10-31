@@ -17,12 +17,12 @@ leaves it:
                               (harness.providers), and each model of the `context_limits` with its
                               limit as `contextWindow` (`render_models`), after a backup; none
                               when both are empty
-  extensions/guards.ts        adapters/omp/guards.ts: the shared guard scripts on every `bash` call,
-                              and the path list on the paths of `read`, `grep`, `bash`, `edit` and
-                              `write`
+  extensions/guards.ts        adapters/omp/guards.ts: each tool call to the guard package in hooks/
+                              with `--from omp`, which checks it
   extensions/guard-paths.json the path list (`guard_paths`): the `deny` of
                               adapters/opencode/plugins/guard-paths.json, the template's Edit
-                              denies, and its Edit asks
+                              denies, and its Edit asks; and under `python` the environment's
+                              interpreter (install.python_interpreter), which runs the guard
   AGENTS.md                   adapters/omp/OMP-DELTA.md, byte for byte; its first lines import
                               oh-my-pi's copies of RTK.md, the core and the tree instructions
   rules/<name>.md             each rule that the Claude Code layer installs, as it renders it, with
@@ -36,7 +36,7 @@ leaves it:
                               section from adapters/omp/UNDER-OMP.md (`render_agent`); then a
                               copy of an agent for each seat of its council
   RTK.md, instructions/,      copies of the Claude Code layer's files that frontends.shared names:
-  hooks/, skills/             the guard scripts that guards.ts runs, and the skills that oh-my-pi
+  hooks/, skills/             the guard package that guards.ts runs, and the skills that oh-my-pi
                               reads from skills/ before ~/.agents/skills/
 
 Every text but AGENTS.md names oh-my-pi's copies, not Claude Code's (frontends.relocate).
@@ -103,6 +103,7 @@ import json
 import os
 import pathlib
 import re
+import stat
 import tempfile
 import types
 from typing import Any, cast
@@ -352,6 +353,16 @@ def guard_paths(profile):
     lists["ask"] += [p for p in scope_asks if p not in lists["ask"]]
     out = {"deny": deny, "edit": lists["deny"], "ask": lists["ask"]}
     return json.dumps(out, indent=2, ensure_ascii=False) + "\n"
+
+
+def interpreted(text: str) -> str:
+    """The path list `text` with the environment's interpreter (install.python_interpreter) under
+    `python`: guards.ts runs the guard with it, and refuses every call without it."""
+    listed = {
+        **cast("dict[str, object]", json.loads(text)),
+        "python": str(install.python_interpreter()),
+    }
+    return json.dumps(listed, indent=2, ensure_ascii=False) + "\n"
 
 
 def render_rule(path, data=None):
@@ -624,7 +635,7 @@ def render_files(
         (OVERLAY, render_config(profile, models, chains).encode(), None),
         *([("models.yml", model_file.encode(), None)] if model_file else []),
         ("extensions/guards.ts", (SOURCE / "guards.ts").read_bytes(), None),
-        ("extensions/guard-paths.json", guard_paths(profile).encode(), None),
+        ("extensions/guard-paths.json", interpreted(guard_paths(profile)).encode(), None),
         ("AGENTS.md", (SOURCE / "OMP-DELTA.md").read_bytes(), None),
         *((f"rules/{p.name}", text(render_rule(p, data)), None) for p, data in rules),
         ("mcp.json", render_mcp().encode(), None),
@@ -987,12 +998,13 @@ def omp_cases(case, fresh, run):
         for p in frontends.EDIT_SCOPE_ASKS
     ]
     ask_list += [p for p in scope_asks if p not in ask_list]
-    # The Claude Code layer's copies: RTK.md, the instructions, the guard scripts and the skills.
+    # The Claude Code layer's copies: RTK.md, the instructions, the guard package and the skills.
     shared = sorted(
         p.relative_to(claude).as_posix()
         for p in claude.rglob("*")
         if p.is_file() and frontends.shared(p.relative_to(claude).as_posix())
     )
+    names = cast("list[str]", shared)
     councils = load_models(REPO / "examples" / "models.toml").councils
     seats = [s.name for council in councils.values() for s in council]
     installed = sorted(p.relative_to(agent).as_posix() for p in agent.rglob("*") if p.is_file())
@@ -1002,7 +1014,12 @@ def omp_cases(case, fresh, run):
             == (REPO / "adapters" / "omp" / "guards.ts").read_bytes()
             and ask_list
             and json.loads((agent / "extensions" / "guard-paths.json").read_text())
-            == {"deny": guard_list, "edit": edit_list, "ask": ask_list}
+            == {
+                "deny": guard_list,
+                "edit": edit_list,
+                "ask": ask_list,
+                "python": str(cast("pathlib.Path", base) / "python" / "bin" / "python"),
+            }
             and installed
             == sorted(
                 [
@@ -1018,14 +1035,19 @@ def omp_cases(case, fresh, run):
                     *shared,
                 ]
             )
-            and {"RTK.md", "instructions/core.md", *(f"hooks/{g}" for g in frontends.GUARDS)} <= set(shared)
+            and {"RTK.md", "instructions/core.md", "hooks/guard/cli.py", "hooks/guard/frontends/omp.py"}
+            <= set(names)
+            and not any(name.startswith("hooks/") and name.count("/") == 1 for name in names)
             and any(s.startswith("skills/") for s in shared)
         ),
         f"--apply installs AGENTS.md, {OVERLAY}, models.yml, guards.ts, guard-paths.json, whose `deny` is "
-        "OpenCode's list, whose `edit` is the template's Edit and Write denies and whose `ask` is its Edit and "
-        "Write asks, mcp.json, the rules, the agents and the council seats, and its own copies of RTK.md, the "
-        f"instructions, the guard scripts and the skills, and nothing else: {installed}",
+        "OpenCode's list, whose `edit` is the template's Edit and Write denies, whose `ask` is its Edit and "
+        "Write asks and whose `python` is the environment's interpreter, mcp.json, the rules, the agents "
+        "and the council seats, and its own copies of RTK.md, the instructions, the guard package and the "
+        f"skills, and no guard script and nothing else: {installed}",
     )
+    package = [name for name in names if name.startswith("hooks/guard/")]
+    installed_at, source_at = cast("pathlib.Path", agent), cast("pathlib.Path", claude)
     case(
         lambda: (
             all(
@@ -1037,10 +1059,15 @@ def omp_cases(case, fresh, run):
                 )
                 for s in shared
             )
-            and all(os.access(agent / "hooks" / g, os.X_OK) for g in frontends.GUARDS)
+            and package != []
+            and all(
+                stat.S_IMODE((installed_at / name).stat().st_mode)
+                == stat.S_IMODE((source_at / name).stat().st_mode)
+                for name in package
+            )
         ),
-        "each copy is the Claude Code layer's file, a text with its shared paths relocated, and each guard script "
-        "is executable",
+        "each copy is the Claude Code layer's file, a text with its shared paths relocated, and each file of "
+        "the guard package has its mode",
     )
     limits = load_models(REPO / "examples" / "models.toml").context_limits
     yml = omp_config(agent / "models.yml")

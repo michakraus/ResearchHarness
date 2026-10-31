@@ -1276,11 +1276,10 @@ def layer_cases(scratch):
         lambda: package != [] and copies == [],
         f"each file of hooks/guard/ is the Claude Code layer's copy, with its mode: {copies}",
     )
-    scripts = [g for g in frontends.GUARDS if (config / "hooks" / g).exists()]
+    hooks = sorted(p.name for p in (config / "hooks").iterdir())
     case(
-        lambda: scripts == [],
-        f"no guard script of frontends.GUARDS is installed in hooks/, which nothing of Antigravity runs: "
-        f"{scripts}",
+        lambda: hooks == ["guard", "install-drift.py"],
+        f"hooks/ holds the guard package and install-drift.py, and no other file: {hooks}",
     )
     profile = profile_module.load(base / "profile.toml")
     opencode = json.loads(profile_module.render_file(GUARD_PATHS, profile))["deny"]

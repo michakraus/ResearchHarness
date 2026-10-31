@@ -29,8 +29,7 @@ pattern refuses or a `prompt` pattern asks for, in the whole or in any part of i
 
 ## The guard extension
 
-`extensions/guards.ts` runs `no-blind-stage.py`, `no-shell-file-write.py`, `gh-api-writes.py`,
-`rm-scope.py` and `git-archive-output.py` from `~/.omp/agent/hooks/` on each `bash` call. It refuses a sub-agent's write to
+`extensions/guards.ts` runs the guard of `~/.omp/agent/hooks/guard/` on each tool call. It refuses a sub-agent's write to
 `agent://`. It refuses a path that the `read`
 tool may not read, such as a credential file or oh-my-pi's own directory, in `read`, `grep` and
 `bash`; the copies of the skills, the rules and the instructions below `~/.omp/agent/` stay

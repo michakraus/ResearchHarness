@@ -1,10 +1,10 @@
 """The guard's command line: `guard --from <frontend>`, the payload on stdin, for the frontends
-`claude` and `antigravity`.
+`claude`, `antigravity`, `opencode` and `omp`.
 
 A payload that the frontend's table cannot read is denied with the reason. A guard that raises
 blocks too: it writes the reason on stderr and exits 2 with nothing on stdout, which Claude Code
-reads as a denial and Antigravity as a hook that failed, so no defect of the guard lets a call
-through.
+reads as a denial, Antigravity as a hook that failed, and the plugins of OpenCode and oh-my-pi as
+no answer, which they refuse, so no defect of the guard lets a call through.
 """
 
 import sys
@@ -12,9 +12,9 @@ from typing import BinaryIO, TextIO
 
 from . import HarnessError
 from .contract import Verdict
-from .frontends import antigravity, claude
+from .frontends import antigravity, claude, omp, opencode
 
-USAGE = "usage: guard --from claude|antigravity\n"
+USAGE = "usage: guard --from claude|antigravity|opencode|omp\n"
 
 
 def unreadable(error: HarnessError) -> Verdict:
@@ -36,6 +36,13 @@ def main(argv: list[str], stdin: BinaryIO, stdout: TextIO, stderr: TextIO) -> in
         except HarnessError as error:
             verdict, shell = unreadable(error), False
         return antigravity.answer(verdict, stdout, shell=shell)
+    for name, table in (("opencode", opencode), ("omp", omp)):
+        if argv == ["--from", name]:
+            try:
+                verdict = table.decide(stdin.read())
+            except HarnessError as error:
+                verdict = unreadable(error)
+            return table.answer(verdict, stdout)
     stderr.write(USAGE)
     return 2
 
