@@ -142,9 +142,11 @@ This rule gives the idioms of the strict Python profile. It loads on the path `*
 Each idiom names the tool that enforces it, or "review" where the critic checks it and no tool
 does: one layout from `ruff format`, the rule families of `ruff check`, and strict typing from
 `basedpyright`, with the lines of a change clean of the generated records. Then a dataclass at
-every input boundary, `pathlib`, the form of `subprocess.run` (`check=`, `text=True`,
-`timeout=`), `HarnessError` for a failure that exits 2, no blind `except`, the banned APIs
-`os.system` and `os.popen`, `json.load` only at the boundary, no guard decision on `shlex`, one
-helper for a secret file, and hooks that import only the standard library. The tests are cases of
-`harness test`, and a named mutant runs with `harness mutate`.
+every input boundary, `pathlib`, the form of `subprocess.run` (`check=`, `text=True`, and a
+`timeout=` that the `untimed_runs` case of `lib/harness/strict.py` checks), `HarnessError` for a
+failure that exits 2, no blind `except`, the banned APIs `os.system`, `os.popen`, `json.load` and
+`json.loads` (`ruff check`, `TID251`), JSON read only through `jsonio`, no guard decision on
+`shlex`, one helper for a secret file (the `chmods_after_writes` case of `strict.py`), and hooks
+that import only the standard library. The tests are cases of `harness test`, and a named mutant
+runs with `harness mutate`.
 [Development](../development.md#the-python-rule) gives the reason for each idiom.

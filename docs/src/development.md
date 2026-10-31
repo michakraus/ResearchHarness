@@ -63,14 +63,14 @@ The Python code of the harness follows one profile, which `pyproject.toml` sets.
 gives the layout, at line length 110; `.git-blame-ignore-revs` names the commit that formatted
 the whole tree, so `git blame --ignore-revs-file .git-blame-ignore-revs` skips it.
 `ruff check` runs the rule families `E F W B BLE TRY PTH S UP SIM RET C4 PERF PL RUF ARG FBT DTZ N
-TID`, bans `os.system` and `os.popen`, and ignores `S603` and `TRY003`; a file that holds test
-cases also ignores `B023` and `PLR2004`. `bin/harness`, `githooks/pre-commit-wiki`,
-`.githooks/pre-commit`, `.githooks/pre-push` and `launchagents/claude-autocommit` have no `.py`
-suffix, and `pyproject.toml` names all five for ruff; the formatter and the `UP` family leave
-`bin/harness` and `githooks/pre-commit-wiki`, whose syntax is a closed set of Python 3.0 forms,
-and ruff reads `.githooks/pre-push` as Python 3.9. `basedpyright` checks `lib`, `hooks`,
-`adapters`, `scripts` and `bin` in strict mode for Python 3.14; it reads only `.py` files, so it
-checks none of the five.
+TID`, bans `os.system`, `os.popen`, `json.load` and `json.loads`, and ignores `S603` and
+`TRY003`; a file that holds test cases also ignores `B023` and `PLR2004`. `bin/harness`,
+`githooks/pre-commit-wiki`, `.githooks/pre-commit`, `.githooks/pre-push` and
+`launchagents/claude-autocommit` have no `.py` suffix, and `pyproject.toml` names all five for
+ruff; the formatter and the `UP` family leave `bin/harness` and `githooks/pre-commit-wiki`, whose
+syntax is a closed set of Python 3.0 forms, and ruff reads `.githooks/pre-push` as Python 3.9.
+`basedpyright` checks `lib`, `hooks`, `adapters`, `scripts` and `bin` in strict mode for Python
+3.14; it reads only `.py` files, so it checks none of the five.
 
 The findings of the code that the profile met are recorded, not fixed: the table
 `[tool.ruff.lint.extend-per-file-ignores]` of `pyproject.toml`, and the baseline
