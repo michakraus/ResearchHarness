@@ -31,6 +31,9 @@ import json
 import pathlib
 import sys
 
+from guard import HarnessError
+from guard.jsonio import loads
+
 HOME = pathlib.Path.home().resolve()
 ROOT = HOME / "Research"
 WORKTREES = ROOT / ".worktrees"
@@ -78,14 +81,10 @@ def granted(session: str, tree: pathlib.Path) -> bool:
         with GRANTS.open(encoding="utf-8") as grants:
             for line in grants:
                 try:
-                    record = json.loads(line)
-                except ValueError:
+                    record = loads(line, where=str(GRANTS))
+                except HarnessError:
                     continue
-                if (
-                    isinstance(record, dict)
-                    and record.get("session_id") == session  # pyright: ignore[reportUnknownMemberType]
-                    and record.get("worktree") == str(tree)  # pyright: ignore[reportUnknownMemberType]
-                ):
+                if record.get("session_id") == session and record.get("worktree") == str(tree):
                     return True
     except FileNotFoundError:
         pass
@@ -123,10 +122,8 @@ def ask(reason: str) -> int:
 def main(argv: list[str]) -> int:
     record = argv == ["--record"]
     try:
-        payload = json.load(sys.stdin)
-        if not isinstance(payload, dict):
-            return 0 if record else ask("edit-scope could not read the call, and asks.")
-        call: dict[str, object] = payload  # pyright: ignore[reportUnknownVariableType]
+        # A payload that is empty, not JSON or no JSON object raises HarnessError, which asks below.
+        call: dict[str, object] = dict(loads(sys.stdin.read(), where="the payload"))
         path = target(call)
         if path is None or not gated(path):
             return 0

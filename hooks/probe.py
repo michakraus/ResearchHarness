@@ -356,6 +356,19 @@ class PluginReply(NamedTuple):
     seconds: float
 
 
+def json_value(text: str, where: str) -> Any:
+    """The JSON value of `text`, read by the harness's `jsonio` with `top=object`. A refusal names
+    `where` and raises ValueError, as `json` raises on a text that it cannot read."""
+    if REPO + "/lib" not in sys.path:
+        sys.path.insert(0, REPO + "/lib")
+    harness = importlib.import_module("harness")
+    jsonio = importlib.import_module("harness.jsonio")
+    try:
+        return jsonio.loads(text, where=where, top=object)
+    except harness.HarnessError as e:
+        raise ValueError(str(e)) from None
+
+
 def rendered_list(frontend: str, home: str, python: str | None) -> str:
     """The path list that `harness install` writes beside the plugin of `frontend` for the home
     `home`, with `python` as its interpreter, or with no `python` for None."""
@@ -367,7 +380,7 @@ def rendered_list(frontend: str, home: str, python: str | None) -> str:
         text = str(frontends.adapter("omp").guard_paths(dummy))
     else:
         text = str(profile.render_file(REPO + "/adapters/opencode/plugins/guard-paths.json", dummy))
-    listed = cast("dict[str, object]", json.loads(text))
+    listed = cast("dict[str, object]", json_value(text, "the rendered path list"))
     return json.dumps(listed if python is None else {**listed, "python": python}, indent=2) + "\n"
 
 
@@ -523,7 +536,9 @@ def unusable_list_home(frontend: str, key: str, value: object) -> str:
     """A fixture home for `frontend` whose path list names this interpreter as its `python` but holds
     `value`, no list of strings, under `key`, which the guard itself refuses."""
     name = f"{frontend}-unusable-{key}"
-    listed = json.loads(rendered_list(frontend, str(pathlib.Path(FIXTURE.name, name)), sys.executable))
+    listed = json_value(
+        rendered_list(frontend, str(pathlib.Path(FIXTURE.name, name)), sys.executable), "the path list"
+    )
     return plugin_home(frontend, name, listed=json.dumps({**listed, key: value}))
 
 
@@ -556,7 +571,7 @@ def omp_cases():
         dummy = importlib.import_module("harness.profile").load(REPO + "/examples/profile.toml")
         config = omp.render_config(dummy, omp.load_models(REPO + "/examples/models.toml"))
         lines = config.splitlines(keepends=True)
-        patterns = json.loads("".join(line for line in lines if not line.startswith("#")))
+        patterns = json_value("".join(line for line in lines if not line.startswith("#")), "the config")
         patterns = patterns["bash"]["patterns"]
         good = plugin_home("omp", "omp-home")
         homes = transport_homes("omp")
@@ -764,7 +779,7 @@ def oc_cases():
         if p.returncode != 0:
             return f"exit {p.returncode}: {p.stderr.strip()[-160:]!r}"
         try:
-            return json.loads(p.stdout)
+            return json_value(p.stdout, "the output")
         except ValueError:
             return f"unreadable output {p.stdout[-80:]!r}"
 
@@ -1028,7 +1043,7 @@ class AgyReport:
 def json_object(text: str) -> dict[str, object] | None:
     """The JSON object of `text`, or None when it holds no JSON object."""
     try:
-        value: object = json.loads(text)
+        value: object = json_value(text, "the text")
     except ValueError:
         return None
     return cast("dict[str, object]", value) if isinstance(value, dict) else None
@@ -1413,7 +1428,8 @@ def agy_rules_cases(report: AgyReport, home: str) -> None:
         sys.path.remove(HOOKS)
     config = pathlib.Path(home, ".gemini", "config")
     lists = cast(
-        "dict[str, list[str]]", json.loads((config / "guard-paths.json").read_text(encoding="utf-8"))
+        "dict[str, list[str]]",
+        json_value((config / "guard-paths.json").read_text(encoding="utf-8"), "guard-paths.json"),
     )
     needs = [path_list.needed(body) for body in (*lists["bash_deny"], *lists["bash_ask"])]
     words = (" ".join(w for need in needed for w in need.split(path_list.WORD_BREAK)) for needed in needs)
@@ -1604,7 +1620,7 @@ def decision(script, payload, args: tuple[str, ...] = ()):
     if not proc.stdout.strip():
         return "pass"
     try:
-        return json.loads(proc.stdout)["hookSpecificOutput"]["permissionDecision"]
+        return json_value(proc.stdout, "the output")["hookSpecificOutput"]["permissionDecision"]
     except ValueError, KeyError, TypeError:
         return "unreadable output"
 
@@ -1651,6 +1667,7 @@ def fixture():
                 env=git_env,
                 check=True,
                 capture_output=True,
+                timeout=60,
             )
     pathlib.Path(DEEP).mkdir(parents=True)
     pathlib.Path(OUTSIDE).mkdir(parents=True)
@@ -1660,7 +1677,7 @@ def fixture():
     pathlib.Path(LOGS, "loop").symlink_to("loop")
     pathlib.Path(LOGS, ".gitignore").write_text("*.log\n", encoding="utf-8")
     git = shutil.which("git") or "git"
-    subprocess.run([git, "init", "-q", LOGS], env=git_env, check=True, capture_output=True)
+    subprocess.run([git, "init", "-q", LOGS], env=git_env, check=True, capture_output=True, timeout=60)
     os.symlink("/", LINK)
     # A link in a scratch zone to a guarded directory: a recursive `rm` of the link removes the link,
     # and of the link with a trailing `/` the directory.
@@ -1677,7 +1694,7 @@ def drift(env, payload="{}"):
     if not proc.stdout.strip():
         return "quiet", ""
     try:
-        out = json.loads(proc.stdout)
+        out = json_value(proc.stdout, "the output")
         message = out["systemMessage"]
         context = out["hookSpecificOutput"]["additionalContext"]
     except ValueError, KeyError, TypeError:
@@ -1696,7 +1713,9 @@ def agy_drift(env, payload="{}"):
     other answer is its exit and its output."""
     config = env["HOME"] + "/.gemini/config"
     with open(config + "/hooks.json") as f:
-        handlers = [h for hook in json.load(f).values() for h in hook.get("SessionStart", [])]
+        handlers = [
+            h for hook in json_value(f.read(), "hooks.json").values() for h in hook.get("SessionStart", [])
+        ]
     if len(handlers) != 1:
         return f"{len(handlers)} SessionStart handlers", ""
     try:
@@ -1713,7 +1732,7 @@ def agy_drift(env, payload="{}"):
     except subprocess.TimeoutExpired:
         return "timeout", ""
     try:
-        out = json.loads(p.stdout)
+        out = json_value(p.stdout, "the output")
     except ValueError:
         return f"exit {p.returncode}, unreadable output", (p.stdout + p.stderr)[-200:]
     if p.returncode == 0 and out == {}:
@@ -1820,7 +1839,7 @@ def drift_cases(install=install):
 
     def read_stamp():
         with open(claude + "/" + STAMP) as f:
-            return json.load(f)
+            return json_value(f.read(), STAMP)
 
     def write_stamp(data):
         with open(claude + "/" + STAMP, "w") as f:
@@ -2040,7 +2059,7 @@ def guard_run(data: bytes, frontend: str = "claude", limit: float = TIMEOUT) -> 
     if not stdout.strip():
         return "pass", output
     try:
-        return str(json.loads(stdout)["hookSpecificOutput"]["permissionDecision"]), output
+        return str(json_value(stdout, "the output")["hookSpecificOutput"]["permissionDecision"]), output
     except ValueError, KeyError, TypeError:
         return "unreadable output", output
 
@@ -2125,7 +2144,7 @@ def corpus_records() -> list[tuple[str, str]]:
     replaced by the fixture's values; a record with a `frontend` is another frontend's."""
     records: list[tuple[str, str]] = []
     for placed in corpus_lines({}):
-        record = json.loads(placed)
+        record = json_value(placed, "a record of the corpus")
         if "frontend" in record:
             continue
         stdin = record["stdin"]

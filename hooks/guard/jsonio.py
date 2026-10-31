@@ -1,12 +1,13 @@
-"""The reader of JSON text: `loads` and `load` return the top-level object of a JSON text, and
+"""The reader of JSON text: `loads` and `load` return the top-level value of a JSON text, and
 refuse with `HarnessError` what Python's `json` accepts but another program reads otherwise.
 
 `json` keeps the last value of a key that an object holds twice, reads `NaN`, `Infinity` and
 `-Infinity`, reads a number that overflows as infinity, and raises `RecursionError` on a deep
 nesting. Here each of them is refused with a message that names the text's `where` and the line of
 the offence, as is a nesting deeper than MAX_DEPTH, where the top-level value is depth 1. An empty
-text, a text that starts with a byte order mark, and a top level that is not an object are refused
-with a message that names `where`. No other exception leaves `loads` or `load`.
+text, a text that starts with a byte order mark, and a top level of another type than `top` names
+(an object by default; `list`, `str`, or `object` for any value) are refused with a message that
+names `where`. No other exception leaves `loads` or `load`.
 
 The module imports only the standard library and `HarnessError` of its package, so that it runs in
 any package that defines a `HarnessError`.
@@ -20,7 +21,7 @@ import re
 import stat
 import tempfile
 import time
-from typing import NoReturn, Protocol, cast
+from typing import NoReturn, Protocol, cast, overload
 
 from . import HarnessError
 
@@ -46,6 +47,13 @@ TOKEN = re.compile(
 )
 # Decodes the key of an object, which the parser has read.
 DECODER = json.JSONDecoder()
+# The types that the `top` of `loads` names, with the kind of the top level that each takes.
+TOPS: dict[type[object], str] = {
+    dict: "a JSON object",
+    list: "a JSON array",
+    str: "a JSON string",
+    object: "a JSON value",
+}
 
 
 class OffenceError(Exception):
@@ -138,7 +146,9 @@ def located(text: str) -> int:
 
 
 def kind_of(value: object) -> str:
-    """The JSON kind of a top-level value that is not an object."""
+    """The JSON kind of a top-level value."""
+    if isinstance(value, dict):
+        return "a JSON object"
     if isinstance(value, list):
         return "an array"
     if isinstance(value, str):
@@ -148,12 +158,21 @@ def kind_of(value: object) -> str:
     return "null" if value is None else "a number"
 
 
-def loads(text: str, *, where: str) -> dict[str, JsonValue]:
-    """The JSON object of `text`; `where` names the text in a refusal."""
+@overload
+def loads(text: str, *, where: str, top: type[dict[str, object]] = ...) -> dict[str, JsonValue]: ...
+@overload
+def loads(text: str, *, where: str, top: type[list[object]]) -> list[JsonValue]: ...
+@overload
+def loads(text: str, *, where: str, top: type[str]) -> str: ...
+@overload
+def loads(text: str, *, where: str, top: type[object]) -> JsonValue: ...
+def loads(text: str, *, where: str, top: type[object] = dict) -> JsonValue:
+    """The JSON value of `text`, whose top level is of the type `top`: an object by default,
+    `list` or `str`, or any value for `object`; `where` names the text in a refusal."""
     if text.startswith(BOM):
         raise HarnessError(f"{where}: starts with a byte order mark (U+FEFF), which JSON does not allow")
     if not text.strip(WHITESPACE):
-        raise HarnessError(f"{where}: empty, where a JSON object belongs")
+        raise HarnessError(f"{where}: empty, where {TOPS[top]} belongs")
     deep = too_deep(text)
     if deep is not None:
         raise HarnessError(f"{where}: line {line_of(text, deep)}: nested deeper than {MAX_DEPTH}")
@@ -172,9 +191,9 @@ def loads(text: str, *, where: str) -> dict[str, JsonValue]:
         raise HarnessError(f"{where}: line {e.lineno}: not JSON: {e.msg}") from None
     except ValueError as e:  # an integer of more digits than `int` reads
         raise HarnessError(f"{where}: not JSON: {e}") from None
-    if not isinstance(value, dict):
-        raise HarnessError(f"{where}: the top level is {kind_of(value)}, not a JSON object")
-    return cast("dict[str, JsonValue]", value)
+    if top is not object and not isinstance(value, top):
+        raise HarnessError(f"{where}: the top level is {kind_of(value)}, not {TOPS[top]}")
+    return cast("JsonValue", value)
 
 
 def load(path: str | os.PathLike[str]) -> dict[str, JsonValue]:
@@ -243,14 +262,62 @@ class Case(Protocol):
     def __call__(self, label: str, *, ok: bool) -> None: ...
 
 
+def top_refusal(text: str, top: type[object]) -> str:
+    """The message of the HarnessError that `loads(text, top=top)` raises, or `accepted`."""
+    try:
+        loads(text, where=WHERE, top=top)
+    except HarnessError as e:
+        return str(e)
+    return "accepted"
+
+
+def top_cases(case: Case) -> None:
+    """Each type that `top` names takes its kind of top level and refuses every other kind."""
+    texts = {"object": '{"a": 1}', "array": "[1]", "string": '"s"', "number": "1", "null": "null"}
+    takes: dict[type[object], set[str]] = {
+        dict: {"object"},
+        list: {"array"},
+        str: {"string"},
+        object: set(texts),
+    }
+    for top, kinds in takes.items():
+        for kind, text in texts.items():
+            message = top_refusal(text, top)
+            want = "accepted" if kind in kinds else "refused"
+            got = "accepted" if message == "accepted" else "refused"
+            case(
+                f"top={top.__name__}: a top-level {kind} is {want} -> {message}",
+                ok=got == want and (got == "accepted" or (WHERE in message and TOPS[top] in message)),
+            )
+    for text, top, value in (
+        ('[1, {"b": null}]', list, [1, {"b": None}]),
+        ('"s"', str, "s"),
+        ("2.5", object, 2.5),
+        ("null", object, None),
+    ):
+        got: JsonValue = loads(text, where=WHERE, top=top)
+        case(f"top={top.__name__}: {text} -> {got!r}", ok=got == value and type(got) is type(value))
+    for label, text in (
+        ("a key twice inside the array", '[{"k": 1, "k": 2}]'),
+        ("NaN in the array", "[NaN]"),
+        ("the empty text", ""),
+        ("a text that starts with U+FEFF", BOM + "[1]"),
+    ):
+        message = top_refusal(text, list)
+        case(f"top=list: {label} is refused and names where -> {message}", ok=WHERE in message)
+
+
 def value_cases(case: Case) -> None:
     """The signature of `loads`, a value, CRLF line ends, and the refusals that name a line."""
     code = loads.__code__
-    params = code.co_varnames[: code.co_argcount + code.co_kwonlyargcount]
+    params = code.co_varnames[: code.co_argcount]
+    keywords = code.co_varnames[code.co_argcount : code.co_argcount + code.co_kwonlyargcount]
+    defaults = loads.__kwdefaults__
     case(
-        f"loads(text, *, where): {params}, {code.co_kwonlyargcount} keyword-only",
-        ok=params == ("text", "where") and code.co_kwonlyargcount == 1,
+        f"loads(text, *, where, top=dict): {params}, keyword-only {keywords}, {defaults}",
+        ok=params == ("text",) and keywords == ("where", "top") and defaults == {"top": dict},
     )
+    top_cases(case)
     value: dict[str, JsonValue] = {"a": [1, 2.5, "x", True, None], "b": {"c": "é"}, "d": 0.0}
     text = '{"a": [1, 2.5, "x", true, null], "b": {"c": "é"}, "d": 1e-400}'
     got = loads(text, where=WHERE)

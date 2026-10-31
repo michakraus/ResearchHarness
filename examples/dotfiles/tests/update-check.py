@@ -134,7 +134,7 @@ def scratch(name):
 
 
 def must(cmd, env, cwd=None):
-    result = subprocess.run(cmd, capture_output=True, text=True, env=env, cwd=cwd, check=False)
+    result = subprocess.run(cmd, capture_output=True, text=True, env=env, cwd=cwd, check=False, timeout=60)
     if result.returncode != 0:
         raise RuntimeError(f"{' '.join(map(str, cmd))}: {result.stderr.strip()}")
     return result.stdout.strip()
@@ -165,7 +165,9 @@ def render(template, host, entry=None, source=SOURCE):
         json.dumps(data),
         "execute-template",
     ]
-    result = subprocess.run(cmd, capture_output=True, text=True, input=template.read_text(), check=False)
+    result = subprocess.run(
+        cmd, capture_output=True, text=True, input=template.read_text(), check=False, timeout=60
+    )
     if result.returncode != 0:
         raise RuntimeError(f"{template.name} does not render for {host}: {result.stderr.strip()}")
     return result.stdout
@@ -886,6 +888,7 @@ def clause_13():
                 env=w.env,
                 cwd=w.source,
                 check=False,
+                timeout=60,
             ).returncode
             == 0
         )
@@ -942,7 +945,9 @@ def clause_13():
         )
         + 'printf "%s\\n" "$SIGNING_KEY" "$SK_PROVIDER"\n'
     )
-    result = subprocess.run(["/bin/bash", str(path)], capture_output=True, text=True, cwd=probe, check=False)
+    result = subprocess.run(
+        ["/bin/bash", str(path)], capture_output=True, text=True, cwd=probe, check=False, timeout=60
+    )
     check(
         result.stdout == f"{value}\n{value}\n" and not (probe / "pwned").exists(),
         f"signing_key and sk_provider with quotes and $( ): the script reads them as text "
@@ -966,6 +971,7 @@ def clause_14():
                 capture_output=True,
                 text=True,
                 check=False,
+                timeout=60,
             )
             return result.stdout.strip() if result.returncode == 0 else None
 
@@ -1202,6 +1208,7 @@ def clause_9():
                 capture_output=True,
                 text=True,
                 check=False,
+                timeout=60,
             )
             check(syntax.returncode == 0, f"bash -n {name} ({host}) {syntax.stderr.strip()}")
             lint = subprocess.run(
@@ -1210,6 +1217,7 @@ def clause_9():
                 text=True,
                 env=env,
                 check=False,
+                timeout=60,
             )
             check(lint.returncode == 0, f"shellcheck {name} ({host}) {lint.stdout.strip()}")
 

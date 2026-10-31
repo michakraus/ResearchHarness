@@ -28,10 +28,16 @@ HOOK = REPO / ".githooks" / "pre-commit"
 TOOLS = ("ruff", "basedpyright")
 TIMEOUT = 60
 # The modules beyond the standard library that a file may import: the hook probe loads the
-# harness's own package, and the guard's tables of its four frontends import the guard package by
-# its name `guard`, whose parent directory the guard's `__main__` puts on `sys.path`.
+# harness's own package, the guard's tables of its four frontends import the guard package by its
+# name `guard`, whose parent directory the guard's `__main__` puts on `sys.path`, and the four hooks
+# that read JSON import the guard's `jsonio` from `guard/`, which lies beside them wherever they
+# are installed.
 OWN = {
     "hooks/probe.py": frozenset({"harness"}),
+    "hooks/edit-scope.py": frozenset({"guard"}),
+    "hooks/install-drift.py": frozenset({"guard"}),
+    "hooks/prompt-log.py": frozenset({"guard"}),
+    "hooks/worktree.py": frozenset({"guard"}),
     "hooks/guard/frontends/claude.py": frozenset({"guard"}),
     "hooks/guard/frontends/antigravity.py": frozenset({"guard"}),
     "hooks/guard/frontends/opencode.py": frozenset({"guard"}),

@@ -143,6 +143,7 @@ def harness_source():
             capture_output=True,
             text=True,
             check=True,
+            timeout=60,
         ).stdout.strip()
         return KIT_HARNESS, head
     return HOME_HARNESS, DATA["harness_commit"]
@@ -178,7 +179,7 @@ def render(script, host, os_name, home, extra=None):
         "execute-template",
     ]
     result = subprocess.run(
-        cmd, capture_output=True, text=True, input=(SCRIPTS / script).read_text(), check=False
+        cmd, capture_output=True, text=True, input=(SCRIPTS / script).read_text(), check=False, timeout=60
     )
     return result.returncode, result.stdout, result.stderr
 
@@ -268,7 +269,13 @@ def run_script(text, env, cwd=None):
     path = scratch("script") / "script.sh"
     path.write_text(text)
     return subprocess.run(
-        ["/bin/bash", str(path)], capture_output=True, text=True, env=env, cwd=cwd or env["HOME"], check=False
+        ["/bin/bash", str(path)],
+        capture_output=True,
+        text=True,
+        env=env,
+        cwd=cwd or env["HOME"],
+        check=False,
+        timeout=60,
     )
 
 
@@ -280,6 +287,7 @@ def git(env, *args, cwd=None):
         env=env,
         cwd=cwd,
         check=False,
+        timeout=60,
     )
     if result.returncode != 0:
         raise RuntimeError(f"git {' '.join(args)}: {result.stderr.strip()}")
@@ -488,6 +496,7 @@ def test_clones():
         env=env,
         cwd=home / "Research",
         check=False,
+        timeout=60,
     )
     check(status.returncode == 0 and status.stdout == "", "fresh home: the meta checkout is clean")
 
@@ -1082,6 +1091,7 @@ def rendered_profile(host, os_name, home, extra=None):
         text=True,
         input=(SOURCE / "dot_config/research-harness/profile.toml.tmpl").read_text(),
         check=False,
+        timeout=60,
     )
     if result.returncode != 0:
         raise RuntimeError(result.stderr)
@@ -1101,6 +1111,7 @@ def harness_render(env, harness, template):
         text=True,
         env=env,
         check=False,
+        timeout=60,
     )
     if result.returncode != 0:
         raise RuntimeError(f"harness render {template}: {result.stderr.strip()}")
@@ -1320,11 +1331,15 @@ def test_lint():
             path = scratch("lint") / script.removesuffix(".tmpl")
             path.write_text(text)
             syntax = subprocess.run(
-                ["/bin/bash", "-n", str(path)], capture_output=True, text=True, check=False
+                ["/bin/bash", "-n", str(path)], capture_output=True, text=True, check=False, timeout=60
             )
             lint = (
                 subprocess.run(
-                    [shellcheck, "-s", "bash", str(path)], capture_output=True, text=True, check=False
+                    [shellcheck, "-s", "bash", str(path)],
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                    timeout=60,
                 )
                 if shellcheck
                 else None

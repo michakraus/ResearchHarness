@@ -165,6 +165,10 @@ def unreadable(error):
 
 def drift_hook():
     """The `SessionStart` hook hooks/install-drift.py as a module, for its `digest_of`."""
+    # The hook imports the guard's `jsonio` from `guard/` beside it, so hooks/ goes on the path.
+    hooks = str(REPO / "hooks")
+    if hooks not in sys.path:
+        sys.path.append(hooks)
     # A path that ends in `.py` always gets a spec with a source loader.
     spec = cast(
         "ModuleSpec",
