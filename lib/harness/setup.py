@@ -14,7 +14,8 @@ It then shows the plan and runs it after y/N; the first step of that plan writes
 or the defaults of a profile without it, asks nothing and never writes the profile; without a
 profile it exits 2. Without a terminal on stdin and without `--yes` it exits 2 and names
 `--yes`. `--dry-run`, alone or with `--yes`, prints the plan and changes nothing. Missing model
-tables are copied from examples/models.toml.
+tables are copied from examples/models.toml. A `setup` of the profile that is an inline table or
+dotted keys exits 2: `with_setup` writes only a table under its own header.
 
 The plan (`plan`), in this order: the directories that `harness install` needs (the tree
 instructions, each `repository_roots` entry, and the OpenCode directory with `opencode`); the
@@ -23,28 +24,36 @@ packages; the pinned releases; the vendor installers; then `harness install --ap
 `jobs` component, the Kaimon token with the `julia` component, and `harness doctor`. A tool of
 TOOLS belongs to every machine or to one component or frontend. A tool that is installed and meets
 its minimum is skipped; a tool with no minimum is met by any version, and one whose version cannot
-be read counts as below its minimum. On macOS a missing tool that
-Homebrew has goes into one `brew install` line, one below its minimum into one `brew upgrade`
-line, and iTerm2 into `brew install --cask`. On Ubuntu each package whose apt candidate meets the
-tool's minimum goes into one `sudo apt-get install -y` line; without sudo, or with `sudo -n true`
-refused, that step prints the line for an administrator and the run stops there. A tool that apt
-does not meet installs from its pinned release of setup/tools.toml (`load_pins`) into
-~/.local/bin, after a check of the archive's sha256; a mismatch installs nothing. Otherwise the
-vendor's installer runs, where one runs unattended: the OpenCode installer only when `opencode` is
-not on the PATH, with `--no-modify-path`, and the juliaup installer only when `juliaup` is not on
-the PATH. What runs no installer is a line under "by hand". An unknown system, a Linux that is not
-Ubuntu and an unknown architecture exit 2 and name it.
+be read counts as below its minimum. On macOS a missing tool that Homebrew has goes into one
+`brew install` line, and so does one below its minimum that Homebrew does not list as installed
+(`brew list`); one that it lists goes into one `brew upgrade` line, and iTerm2 into
+`brew install --cask`. On Ubuntu each package whose apt candidate meets the tool's minimum goes
+into one `sudo apt-get install -y` line; an apt-cache that fails exits 2. Without sudo, or with
+`sudo -n true` refused, that step prints the line for an administrator and the run stops there. A
+tool that apt does not meet installs from its pinned release of setup/tools.toml (`load_pins`)
+into ~/.local/bin, after a check of the archive's sha256; a mismatch installs nothing. Otherwise
+the vendor's installer runs, where one runs unattended: the OpenCode installer only when
+`opencode` is not on the PATH, with `--no-modify-path`, and the juliaup installer only when
+`juliaup` is not on the PATH. Julia below its minimum runs `juliaup update`. After a Homebrew line
+or `juliaup update` for a tool below its minimum, the tool's version is read again
+(`rechecked`): one still below it fails the step, with the fix for Julia, the default channel of
+juliaup, and otherwise with the path of the copy that comes first on the PATH. What runs no
+installer is a line under "by hand". An unknown system, a Linux that is not Ubuntu and an unknown
+architecture exit 2 and name it.
 
 The run goes step by step. A failed step prints its output and exits 2; a second run plans again
-and starts from the first step, and each step skips what is already done. Every lookup and every
-child process uses the PATH of the machine with the directories of EXTRA_PATH first, so that a
-tool that a step installs there is found by the next step.
+and starts from the first step, and each step skips what is already done. After the last step
+come the lines by hand, then `harness doctor`: its report ends the run, and the run exits with its
+status, 1 when it reports a FAIL; any other status of doctor is a failed step. Every lookup and
+every child process uses the PATH of the machine with the directories of EXTRA_PATH first, so that
+a tool that a step installs there is found by the next step.
 """
 
 import argparse
 import contextlib
 import dataclasses
 import hashlib
+import http.client
 import http.server
 import io
 import json
@@ -60,9 +69,10 @@ import tempfile
 import threading
 import time
 import tomllib
+import urllib.parse
 import urllib.request
 from collections.abc import Callable, Generator, Mapping, Sequence
-from typing import cast, override
+from typing import IO, cast, override
 
 from . import REPO, HarnessError, fmt, frontends, jsonio
 from . import profile as profile_module
@@ -80,6 +90,12 @@ EXTRA_PATH = (".local/bin", ".juliaup/bin", ".julia/bin", ".opencode/bin")
 VERSION = re.compile(r"\d+(?:\.\d+)+")
 CANDIDATE = re.compile(r"^\s*Candidate:\s*(\S+)", re.MULTILINE)
 SHA256 = re.compile(r"[0-9a-f]{64}")
+# The header of the `[setup]` table, and a key of it, bare or quoted.
+HEADER = re.compile(r"\s*\[\s*setup\s*\]\s*(?:#.*)?")
+KEY = re.compile(r"""\s*(["']?)(frontends|components|develop)\1\s*=""")
+# The one redirect that a download of a pinned release follows, as bin/harness's download does.
+REDIRECT = ("https", "release-assets.githubusercontent.com")
+DOCTOR = "harness doctor"
 JOBS = ("kaimon", "julia-update", "claude-autocommit")
 UNITS = (
     "kaimon.service",
@@ -100,6 +116,8 @@ KAIMON = """julia -e 'using Pkg; Pkg.Apps.add("Kaimon")'"""
 type Ask = Callable[[str], str]
 # A step's action: None when it succeeds, else the text that says why it failed.
 type Action = Callable[[], str | None]
+# The action of `harness doctor`: its status, 0 or 1, or the text that says why the step failed.
+type Doctor = Callable[[], int | str]
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -109,7 +127,8 @@ class Tool:
     directory), `need` the component or frontend that needs it ("" for every machine), `version`
     the arguments that print its version (none where any version meets it), the Homebrew `brew`
     formula or `cask`, the Ubuntu `apt` packages (the first one's candidate counts), the vendor's
-    `installer` and the `upgrade` line below its minimum, the tool whose installer brings it
+    `installer` and the `upgrade` line below its minimum, the line that names the fix (`stuck`)
+    when the tool is still below its minimum after that line, the tool whose installer brings it
     (`comes_with`), the `systems` it runs on, and the line that `by_hand` prints where nothing
     installs it."""
 
@@ -122,6 +141,7 @@ class Tool:
     apt: tuple[str, ...] = ()
     installer: str = ""
     upgrade: str = ""
+    stuck: str = ""
     comes_with: str = ""
     app: str = ""
     marker: str = ""
@@ -149,6 +169,8 @@ TOOLS = (
         version=("--version",),
         installer="juliaup add release",
         upgrade="juliaup update",
+        stuck="juliaup update keeps the default channel of juliaup: run "
+        "`juliaup add release && juliaup default release`, then harness setup again",
         comes_with="juliaup",
     ),
     Tool("fatou", "fatou", need="julia", version=("--version",), brew="jolars/tap/fatou", installer=FATOU),
@@ -233,8 +255,10 @@ class Step:
 
 @dataclasses.dataclass(slots=True)
 class Plan:
-    """The steps in their order, and the lines that the user does by hand."""
+    """The steps in their order, the lines that the user does by hand, and `harness doctor`,
+    which comes after both."""
 
+    doctor: Doctor
     steps: list[Step] = dataclasses.field(default_factory=list[Step])
     by_hand: list[str] = dataclasses.field(default_factory=list[str])
 
@@ -323,10 +347,11 @@ def installed_version(machine: Machine, program: str, arguments: tuple[str, ...]
 
 def candidate(machine: Machine, package: str) -> str | None:
     """The version of the apt candidate of `package`, without its epoch and revision, or None
-    when apt-cache has none."""
+    when apt-cache knows no candidate. An apt-cache that is missing, cannot start, takes too long
+    or exits non-zero exits 2, naming it and its error."""
     program = machine.which("apt-cache")
     if program is None:
-        return None
+        raise HarnessError("apt-cache is not on the PATH; Ubuntu has it in the package apt")
     try:
         p = subprocess.run(
             [program, "policy", package],
@@ -337,8 +362,11 @@ def candidate(machine: Machine, package: str) -> str | None:
             timeout=TIMEOUT,
             check=False,
         )
-    except OSError, subprocess.TimeoutExpired:
-        return None
+    except (OSError, subprocess.TimeoutExpired) as e:
+        raise HarnessError(f"cannot run apt-cache policy {package}: {e}") from None
+    if p.returncode != 0:
+        error = "; ".join(line.strip() for line in p.stderr.splitlines() if line.strip())
+        raise HarnessError(f"apt-cache policy {package} exits {p.returncode}: {error}")
     m = CANDIDATE.search(p.stdout)
     if not m:
         return None
@@ -395,7 +423,12 @@ def plan(
 ) -> Plan:
     """The plan of `setup` for `choice` on `machine`, with the profile `loaded`; see the module."""
     checked_machine(machine)
-    result = Plan()
+    env = {
+        **machine.env,
+        "RESEARCH_HARNESS_PROFILE": str(options.profile),
+        "RESEARCH_HARNESS_MODELS": str(options.models),
+    }
+    result = Plan(doctor(machine, env))
     for tool in TOOLS:
         if tool.need in {*choice.components, *choice.frontends} and machine.system not in tool.systems:
             result.by_hand.append(tool.by_hand)
@@ -403,19 +436,22 @@ def plan(
     tools = [(t, state(machine, t, pins.minimum.get(t.name, ()))) for t in chosen(choice, machine.system)]
     needed = [(t, s) for t, s in tools if s != "ok"]
     if machine.system == "Darwin":
-        installers = homebrew_steps(machine, needed, result)
+        installers = homebrew_steps(machine, needed, pins, result)
     else:
         installers = ubuntu_steps(machine, needed, pins, result)
     installing = {t.name for t, s in installers if s == "missing"}
     for tool, s in installers:
         if s == "missing" and tool.comes_with in installing:
             continue
-        line = tool.upgrade if s == "below" and tool.upgrade else tool.installer
-        result.steps.append(Step(line, shell(machine, line)))
+        if s == "below" and tool.upgrade:
+            action = rechecked(machine, shell(machine, tool.upgrade), [tool], pins)
+            result.steps.append(Step(tool.upgrade, action))
+        else:
+            result.steps.append(Step(tool.installer, shell(machine, tool.installer)))
         # Only Linux runs the OpenCode installer; Homebrew installs it on macOS.
         if tool.name == "OpenCode":
             result.by_hand.append('add to your shell startup file: export PATH="$HOME/.opencode/bin:$PATH"')
-    harness_steps(machine, choice, loaded, options, result)
+    harness_steps(machine, choice, loaded, env, result)
     return result
 
 
@@ -442,21 +478,71 @@ def directories_step(
         result.steps.append(Step("mkdir -p " + " ".join(str(d) for d in missing), make))
 
 
-def homebrew_steps(machine: Machine, needed: list[tuple[Tool, str]], result: Plan) -> list[tuple[Tool, str]]:
-    """The Homebrew steps of the tools `needed` on macOS; the tools left for their installers."""
-    install = [t.brew for t, s in needed if t.brew and s == "missing"]
-    upgrade = [t.brew for t, s in needed if t.brew and s == "below"]
+def homebrew_steps(
+    machine: Machine, needed: list[tuple[Tool, str]], pins: Pins, result: Plan
+) -> list[tuple[Tool, str]]:
+    """The Homebrew steps of the tools `needed` on macOS; the tools left for their installers. A
+    tool below its minimum upgrades through Homebrew when Homebrew lists its formula as installed,
+    and is installed by Homebrew otherwise; after either line its version is read again."""
+    formulas = [(t, s) for t, s in needed if t.brew]
     casks = [t.cask for t, _ in needed if t.cask]
-    if install or upgrade or casks:
+    if formulas or casks:
         brew = machine.which("brew")
         if brew is None:
             raise HarnessError("brew is not on the PATH: install Homebrew first, from https://brew.sh")
-        for verb, names in (("install", install), ("upgrade", upgrade), ("install --cask", casks)):
-            if names:
-                argv = [brew, *verb.split(), *names]
-                result.steps.append(Step(f"brew {verb} {' '.join(names)}", command(machine, argv)))
+        below = [t for t, s in formulas if s == "below"]
+        upgrade = [t for t in below if listed(machine, brew, t.brew)]
+        install = [t for t, _ in formulas if t not in upgrade]
+        for verb, tools in (("install", install), ("upgrade", upgrade)):
+            if tools:
+                names = [t.brew for t in tools]
+                action = rechecked(
+                    machine, command(machine, [brew, verb, *names]), [t for t in tools if t in below], pins
+                )
+                result.steps.append(Step(f"brew {verb} {' '.join(names)}", action))
+        if casks:
+            argv = [brew, "install", "--cask", *casks]
+            result.steps.append(Step(f"brew install --cask {' '.join(casks)}", command(machine, argv)))
     rest = [(t, s) for t, s in needed if not t.brew and not t.cask]
     return route_rest(rest, result)
+
+
+def listed(machine: Machine, brew: str, formula: str) -> bool:
+    """Whether Homebrew lists `formula` as installed: `brew list <formula>` exits 0."""
+    try:
+        p = subprocess.run(
+            [brew, "list", formula],
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            env=dict(machine.env),
+            timeout=TIMEOUT,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as e:
+        raise HarnessError(f"cannot run brew list {formula}: {e}") from None
+    return p.returncode == 0
+
+
+def rechecked(machine: Machine, action: Action, tools: Sequence[Tool], pins: Pins) -> Action:
+    """`action`, then the version of each of `tools` read again: a tool that is still below its
+    minimum fails the step, with its `stuck` line, or else with the path of the copy that comes
+    first on the PATH."""
+
+    def run() -> str | None:
+        if (failure := action()) is not None:
+            return failure
+        lines = [
+            tool.stuck
+            or f"{tool.name} at {machine.which(tool.command)} is still below its minimum "
+            f"{' or '.join(pins.minimum.get(tool.name, ()))}: this copy comes first on the PATH; remove it, "
+            "or put the Homebrew copy before it, then run harness setup again"
+            for tool in tools
+            if state(machine, tool, pins.minimum.get(tool.name, ())) == "below"
+        ]
+        return "\n".join(lines) or None
+
+    return run
 
 
 def ubuntu_steps(
@@ -506,15 +592,11 @@ def harness_steps(
     machine: Machine,
     choice: profile_module.Setup,
     loaded: profile_module.Profile,
-    options: Options,
+    env: Mapping[str, str],
     result: Plan,
 ) -> None:
-    """The steps after the installs, in their order."""
-    env = {
-        **machine.env,
-        "RESEARCH_HARNESS_PROFILE": str(options.profile),
-        "RESEARCH_HARNESS_MODELS": str(options.models),
-    }
+    """The steps after the installs, in their order, up to `harness doctor`, which the plan holds
+    apart; each harness step runs with `env`."""
     steps = result.steps
     steps.append(
         Step("harness install --apply", command(machine, [*machine.harness, "install", "--apply"], env))
@@ -537,7 +619,6 @@ def harness_steps(
                 lambda: kaimon_token(machine.home),
             )
         )
-    steps.append(Step("harness doctor", command(machine, [*machine.harness, "doctor"], env, echo=True)))
 
 
 def job_steps(machine: Machine, loaded: profile_module.Profile, env: Mapping[str, str], result: Plan) -> None:
@@ -594,11 +675,8 @@ def job_steps(machine: Machine, loaded: profile_module.Profile, env: Mapping[str
 # --------------------------------------------------------------------------- the actions ----
 
 
-def command(
-    machine: Machine, argv: Sequence[str], env: Mapping[str, str] | None = None, *, echo: bool = False
-) -> Action:
-    """The action that runs `argv` with `env`, the machine's by default, and prints its output
-    when `echo` is set."""
+def command(machine: Machine, argv: Sequence[str], env: Mapping[str, str] | None = None) -> Action:
+    """The action that runs `argv` with `env`, the machine's by default."""
 
     def run() -> str | None:
         try:
@@ -615,11 +693,34 @@ def command(
             return f"cannot start {argv[0]}: {e.strerror or e}"
         except subprocess.TimeoutExpired:
             return f"no end after {INSTALL_TIMEOUT} s"
-        if echo:
-            print(p.stdout + p.stderr, end="")
         if p.returncode != 0:
             return f"{p.stdout}{p.stderr}exit {p.returncode}"
         return None
+
+    return run
+
+
+def doctor(machine: Machine, env: Mapping[str, str]) -> Doctor:
+    """The action that runs `harness doctor` with `env` and prints its report: doctor's status
+    when it is 0 or 1 (a FAIL); any other status, or a doctor that cannot start, fails the step."""
+
+    def run() -> int | str:
+        try:
+            p = subprocess.run(
+                [*machine.harness, "doctor"],
+                stdin=subprocess.DEVNULL,
+                capture_output=True,
+                text=True,
+                env=dict(env),
+                timeout=INSTALL_TIMEOUT,
+                check=False,
+            )
+        except OSError as e:
+            return f"cannot start harness doctor: {e.strerror or e}"
+        except subprocess.TimeoutExpired:
+            return f"no end after {INSTALL_TIMEOUT} s"
+        print(p.stdout + p.stderr, end="")
+        return p.returncode if p.returncode in {0, 1} else f"exit {p.returncode}"
 
     return run
 
@@ -647,11 +748,12 @@ def apt(machine: Machine, packages: Sequence[str], line: str) -> Action:
 
 
 def install_release(machine: Machine, program: str, release: Release) -> str | None:
-    """Download `release`, check its sha256, and install its `program` into ~/.local/bin."""
+    """Download `release`, following one redirect to REDIRECT and no other, check its sha256, and
+    install its `program` into ~/.local/bin."""
     try:
-        with urllib.request.build_opener().open(release.url, timeout=TIMEOUT) as response:
+        with urllib.request.build_opener(Redirects()).open(release.url, timeout=TIMEOUT) as response:
             data = cast("bytes", response.read())
-    except (OSError, ValueError) as e:
+    except (OSError, ValueError, http.client.HTTPException, HarnessError) as e:
         return f"cannot download {release.url}: {e}"
     got = hashlib.sha256(data).hexdigest()
     if got != release.sha256:
@@ -666,24 +768,51 @@ def install_release(machine: Machine, program: str, release: Release) -> str | N
         return f"{release.url} holds no file {program}"
     target = machine.home / ".local" / "bin" / program
     try:
-        target.parent.mkdir(parents=True, exist_ok=True)
-        part = target.with_name(program + ".part")
-        part.write_bytes(body)
-        part.chmod(0o755)
-        part.replace(target)
+        replaced(target, body, 0o755)
     except OSError as e:
         return f"cannot write {target}: {e.strerror}"
     return None
 
 
+class Redirects(urllib.request.HTTPRedirectHandler):
+    """A redirect handler that follows one redirect to REDIRECT and refuses every other one."""
+
+    followed: int = 0
+
+    @override
+    def redirect_request(
+        self,
+        req: urllib.request.Request,
+        fp: IO[bytes],
+        code: int,
+        msg: str,
+        headers: http.client.HTTPMessage,
+        newurl: str,
+    ) -> urllib.request.Request | None:
+        target = urllib.parse.urlsplit(newurl)
+        if self.followed or (target.scheme, target.hostname) != REDIRECT:
+            raise HarnessError(
+                f"the download redirects to {newurl}; only one redirect to {REDIRECT[0]}://{REDIRECT[1]} "
+                "is followed"
+            )
+        self.followed += 1
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+def replaced(target: pathlib.Path, data: bytes, mode: int) -> None:
+    """`target` holding `data` with the permission bits `mode`, whole or not at all: the bytes go
+    to a `.part` file beside it, which then replaces it."""
+    target.parent.mkdir(parents=True, exist_ok=True)
+    part = target.with_name(target.name + ".part")
+    part.write_bytes(data)
+    part.chmod(mode)
+    part.replace(target)
+
+
 def copy(source: pathlib.Path, target: pathlib.Path, mode: int) -> str | None:
     """Copy `source` to `target` with the permission bits `mode`."""
     try:
-        target.parent.mkdir(parents=True, exist_ok=True)
-        part = target.with_name(target.name + ".part")
-        part.write_bytes(source.read_bytes())
-        part.chmod(mode)
-        part.replace(target)
+        replaced(target, source.read_bytes(), mode)
     except OSError as e:
         return f"cannot copy {source} to {target}: {e.strerror}"
     return None
@@ -706,10 +835,7 @@ def render(machine: Machine, template: str, target: pathlib.Path, env: Mapping[s
     if p.returncode != 0:
         return f"{p.stdout}{p.stderr}exit {p.returncode}"
     try:
-        target.parent.mkdir(parents=True, exist_ok=True)
-        part = target.with_name(target.name + ".part")
-        part.write_text(p.stdout, encoding="utf-8")
-        part.replace(target)
+        replaced(target, p.stdout.encode(), 0o644)
     except OSError as e:
         return f"cannot write {target}: {e.strerror}"
     return None
@@ -720,7 +846,11 @@ def load_agent(machine: Machine, job: str, label: str, plist: pathlib.Path) -> s
     then bootstrap it from `plist`, once more after 1 s when that fails."""
     launchctl = machine.which("launchctl") or "launchctl"
     domain = f"gui/{os.getuid()}"
-    (machine.home / "Library" / "Logs" / job).mkdir(parents=True, exist_ok=True)
+    logs = machine.home / "Library" / "Logs" / job
+    try:
+        logs.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        return f"cannot create {logs}: {e.strerror}"
 
     def loaded() -> bool:
         return command(machine, [launchctl, "print", f"{domain}/{label}"])() is None
@@ -812,15 +942,21 @@ def choose(current: profile_module.Setup, ask: Ask) -> profile_module.Setup:
 
 
 def toml_value(value: str | Sequence[str]) -> str:
-    """`value` as a TOML string or list of strings; a JSON string is a TOML basic string."""
+    """`value` as a TOML string or list of strings: a JSON string is a TOML basic string once
+    U+007F, which JSON leaves as it is and TOML refuses, is escaped."""
+
+    def basic(s: str) -> str:
+        return json.dumps(s, ensure_ascii=False).replace("\x7f", "\\u007f")
+
     if isinstance(value, str):
-        return json.dumps(value, ensure_ascii=False)
-    return "[" + ", ".join(json.dumps(v, ensure_ascii=False) for v in value) + "]"
+        return basic(value)
+    return "[" + ", ".join(basic(v) for v in value) + "]"
 
 
 def new_profile(example: str, ask: Ask) -> str:
     """The text of `example` with each key of REQUIRED set to the user's answer, the example's own
-    value for an empty line. A list is given as items separated by commas."""
+    value for an empty line. A list is given as items separated by commas; an empty item is
+    dropped."""
     text = example
     for key, kind in profile_module.REQUIRED.items():
         line = re.search(rf"^{key} = (.*)$", text, re.MULTILINE)
@@ -829,43 +965,59 @@ def new_profile(example: str, ask: Ask) -> str:
         answer = ask_line(ask, f"{key}, {kind} [{line.group(1)}]: ")
         if answer:
             value = toml_value(
-                answer if kind == profile_module.STRING else [a.strip() for a in answer.split(",")]
+                answer
+                if kind == profile_module.STRING
+                else [a.strip() for a in answer.split(",") if a.strip()]
             )
             text = text[: line.start(1)] + value + text[line.end(1) :]
     return text
 
 
 def with_setup(text: str, choice: profile_module.Setup) -> str:
-    """The profile `text` with its `[setup]` table holding `choice`: each key's line replaced in
-    place, a missing one added after the table's header, `develop` only where it is true. Without a
-    table, one is added at the end."""
+    """The profile `text`, which is TOML, with its `[setup]` table holding `choice`: each key's
+    line replaced in place, a missing one added after the table's header, `develop` only where it
+    is true. Without a table, one is added at the end; a `setup` written as an inline table or as
+    dotted keys exits 2, naming the form."""
     values = {"frontends": toml_value(choice.frontends), "components": toml_value(choice.components)}
     if choice.develop:
         values["develop"] = "true"
     lines = text.splitlines(keepends=True)
-    try:
-        start = next(i for i, line in enumerate(lines) if line.strip() == "[setup]")
-    except StopIteration:
+    start = next((i for i, line in enumerate(lines) if HEADER.fullmatch(line.rstrip("\r\n"))), None)
+    if start is None:
+        if "setup" in tomllib.loads(text):
+            raise HarnessError(
+                "the profile's setup is an inline table or dotted keys; write it as a table under a "
+                "line [setup], then run harness setup again"
+            )
         body = "".join(f"{k} = {v}\n" for k, v in values.items())
         return text + ("" if text.endswith("\n") or not text else "\n") + "\n[setup]\n" + body
     out, i, written = lines[: start + 1], start + 1, set[str]()
     while i < len(lines) and not lines[i].lstrip().startswith("["):
-        m = re.match(r"\s*(frontends|components|develop)\s*=\s*(.*)", lines[i])
+        m = KEY.match(lines[i])
         if m is None:
             out.append(lines[i])
             i += 1
             continue
-        # A list that does not close on its line goes on to the line that closes it.
-        if m.group(2).startswith("[") and "]" not in m.group(2):
-            while i < len(lines) - 1 and "]" not in lines[i]:
-                i += 1
-        if m.group(1) in values:
-            out.append(f"{m.group(1)} = {values[m.group(1)]}\n")
-            written.add(m.group(1))
-        i += 1
+        # A value of several lines goes on to the first line at which it is whole TOML.
+        end = i
+        while end < len(lines) - 1 and not is_toml("".join(lines[i : end + 1])):
+            end += 1
+        if m.group(2) in values:
+            out.append(f"{m.group(2)} = {values[m.group(2)]}\n")
+            written.add(m.group(2))
+        i = end + 1
     missing = "".join(f"{k} = {v}\n" for k, v in values.items() if k not in written)
     out.insert(start + 1, missing)
     return "".join(out + lines[i:])
+
+
+def is_toml(text: str) -> bool:
+    """Whether `text` is a whole TOML document."""
+    try:
+        tomllib.loads(text)
+    except tomllib.TOMLDecodeError:
+        return False
+    return True
 
 
 # ------------------------------------------------------------------------------- the run ----
@@ -883,8 +1035,8 @@ def loaded_from(text: str, home: pathlib.Path) -> profile_module.Profile:
 
 
 def setup(machine: Machine, options: Options, ask: Ask, *, terminal: bool, pins: Pins) -> int:
-    """One run of `harness setup`; see the module. 0 after the plan ran, after the dry run, or
-    when the answer to the plan is no."""
+    """One run of `harness setup`; see the module. After the plan ran, the status of
+    `harness doctor`, 0 or 1; 0 after the dry run, or when the answer to the plan is no."""
     if not options.yes and not terminal:
         raise HarnessError(
             "no terminal on stdin to ask the questions; `harness setup --yes` reads [setup] of the "
@@ -953,6 +1105,11 @@ def show(machine: Machine, choice: profile_module.Setup, the_plan: Plan) -> None
     print("\nThe plan, in this order:")
     for i, step in enumerate(the_plan.steps, 1):
         print(f"  {i}. {step.show}")
+    print(f"  {len(the_plan.steps) + 1}. {DOCTOR}")
+    by_hand(the_plan)
+
+
+def by_hand(the_plan: Plan) -> None:
     if the_plan.by_hand:
         print("\nBy hand:")
         for line in the_plan.by_hand:
@@ -960,22 +1117,28 @@ def show(machine: Machine, choice: profile_module.Setup, the_plan: Plan) -> None
 
 
 def run(the_plan: Plan) -> int:
-    """Each step in order; a failed step prints its output and exits 2."""
-    n = len(the_plan.steps)
+    """Each step in order, then the lines by hand, then `harness doctor`, whose status of 0 or 1
+    is the run's. A failed step prints its output and exits 2."""
+    n = len(the_plan.steps) + 1
+
+    def failed(i: int, show: str, failure: str) -> HarnessError:
+        print(failure.rstrip(), file=sys.stderr)
+        return HarnessError(f"step {i} of {n} failed: {show}; harness setup starts again from the first step")
+
     for i, step in enumerate(the_plan.steps, 1):
         print(f"\n[{i}/{n}] {step.show}", flush=True)
         failure = step.action()
         if failure is not None:
-            print(failure.rstrip(), file=sys.stderr)
-            raise HarnessError(
-                f"step {i} of {n} failed: {step.show}; harness setup starts again from the first step"
-            )
-    if the_plan.by_hand:
-        print("\nBy hand:")
-        for line in the_plan.by_hand:
-            print(f"  - {line}")
-    print("\nharness setup: done.")
-    return 0
+            raise failed(i, step.show, failure)
+    by_hand(the_plan)
+    print(f"\n[{n}/{n}] {DOCTOR}", flush=True)
+    status = the_plan.doctor()
+    if isinstance(status, str):
+        raise failed(n, DOCTOR, status)
+    print(
+        "\nharness setup: done." if status == 0 else "\nharness setup: done; harness doctor reports a FAIL."
+    )
+    return status
 
 
 def distro(path: pathlib.Path = pathlib.Path("/etc/os-release")) -> str:
@@ -985,7 +1148,10 @@ def distro(path: pathlib.Path = pathlib.Path("/etc/os-release")) -> str:
         text = path.read_text(encoding="utf-8")
     except OSError:
         return ""
-    fields = dict(re.findall(r'^(ID|ID_LIKE)="?([^"\n]*)"?$', text, re.MULTILINE))
+    fields = {
+        m.group(1): m.group(3)
+        for m in re.finditer(r"""^(ID|ID_LIKE)=(["']?)([^"'\n]*)\2\s*$""", text, re.MULTILINE)
+    }
     if "ubuntu" in fields.get("ID", "").split() + fields.get("ID_LIKE", "").split():
         return "ubuntu"
     return fields.get("ID", "")
@@ -1027,7 +1193,8 @@ def register(sub: fmt.Subcommands) -> None:
         description="Ask for the frontends and components in a terminal, write them into [setup] "
         "of the profile, show the plan and run it after y/N: the packages, the pinned releases, the "
         "vendor installers, harness install --apply, core.hooksPath, harness trust --apply, the "
-        "jobs, the Kaimon token and harness doctor. A failed step exits 2.",
+        "jobs, the Kaimon token and harness doctor. A failed step exits 2; a FAIL of harness doctor "
+        "exits 1.",
     )
     p.add_argument("--yes", action="store_true", help="read [setup] of the profile and ask nothing")
     p.add_argument(
@@ -1044,7 +1211,8 @@ MACOS_FAKES = {
     "curl": "exit 0",
     "launchctl": '[ "$1" = print ] && exit 1; exit 0',
     "julia": 'echo "julia version 1.13.0"',
-    "harness": '[ "$1" = render ] && echo "rendered $2"\n'
+    "harness": 'echo "$1 $RESEARCH_HARNESS_PROFILE $RESEARCH_HARNESS_MODELS" >> "$0.env"\n'
+    '[ "$1" = render ] && echo "rendered $2"\n'
     '[ "$1" = doctor ] && echo "doctor: all PASS"\nexit 0',
 }
 LINUX_FAKES = {
@@ -1103,6 +1271,12 @@ class Scratch:
 
     def calls(self) -> list[str]:
         return self.log.read_text(encoding="utf-8").splitlines() if self.log.exists() else []
+
+    def envs(self) -> list[str]:
+        """The lines of the fake harness of MACOS_FAKES: its subcommand, then the profile and
+        model tables of its environment."""
+        env = self.bin / "harness.env"
+        return env.read_text(encoding="utf-8").splitlines() if env.exists() else []
 
     def files(self) -> list[tuple[str, int, int]]:
         return sorted(
@@ -1189,7 +1363,7 @@ def shows(machine: Machine, choice: profile_module.Setup, options: Options, pins
     """The command lines of the plan of `choice`, or the refusal."""
     loaded = profile_module.load(options.profile, home=str(machine.home))
     try:
-        return [step.show for step in plan(machine, choice, loaded, options, pins).steps]
+        return [step.show for step in plan(machine, choice, loaded, options, pins).steps] + [DOCTOR]
     except HarnessError as e:
         return [f"exit 2: {e}"]
 
@@ -1296,7 +1470,7 @@ def macos_cases(case: Case, tmp: pathlib.Path, pins: Pins) -> None:
     s = scratch(tmp, "macos", MACOS_FAKES)
     kaimon = s.home / ".config" / "kaimon"
     kaimon.mkdir(parents=True)
-    (kaimon / "config.json").write_text('{"api_keys": ["kaimon_key"]}\n', encoding="utf-8")
+    (kaimon / "config.json").write_text('{"api_keys": ["kaimon_key", "second_key"]}\n', encoding="utf-8")
     profile_bytes = s.profile.read_bytes()
     asker = Asker("y", "y", "y")
     code, out = attempt(s.machine(), s.options(), asker, terminal=True, pins=pins)
@@ -1328,6 +1502,11 @@ def macos_cases(case: Case, tmp: pathlib.Path, pins: Pins) -> None:
         ok=order == ["install", "trust", "render", "render", "render", "doctor"]
         and harness[0] == "harness install --apply"
         and harness[1] == "harness trust --apply",
+    )
+    case(
+        f"each harness step gets the run's profile and model tables: {s.envs()}",
+        ok=len(s.envs()) == len(harness)
+        and all(e.split()[1:] == [str(s.profile), str(s.models)] for e in s.envs()),
     )
     case(f"core.hooksPath of the clone is .githooks: {s.hooks()!r}", ok=s.hooks() == ".githooks")
     plists = sorted(p.name for p in (s.home / "Library" / "LaunchAgents").glob("*.plist"))
@@ -1372,6 +1551,36 @@ def macos_cases(case: Case, tmp: pathlib.Path, pins: Pins) -> None:
         f"on macOS, a tool at its minimum is skipped, and one below it upgrades with brew: {lines[:4]}",
         ok="brew upgrade actionlint" in lines
         and not any(" gitleaks" in line or " node" in line for line in lines if line.startswith("brew ")),
+    )
+
+
+def yes_cases(case: Case, tmp: pathlib.Path, pins: Pins) -> None:
+    """The order of the jobs and the token; --yes on a profile whose [setup] chooses one frontend
+    and no component."""
+    s = scratch(tmp, "macos-order", MACOS_FAKES)
+    lines = shows(s.machine(), profile_module.Setup(), s.options(), pins)
+    at = next((i for i, line in enumerate(lines) if "auth-token" in line), -1)
+    agents = [i for i, line in enumerate(lines) if line.startswith("launchctl ")]
+    case(
+        f"the Kaimon token step comes after the jobs and before harness doctor: {lines[-6:]}",
+        ok=bool(agents) and max(agents) < at < len(lines) - 1 and lines[-1] == "harness doctor",
+    )
+    s = scratch(tmp, "macos-opencode", MACOS_FAKES)
+    chosen_profile(s, profile_module.Setup(frontends=("opencode",), components=()))
+    code, out = attempt(s.machine(), s.options(), pins=pins)
+    calls = s.calls()
+    brew = [c for c in calls if c.startswith("brew install ")]
+    case(
+        f"--yes plans the [setup] of the profile: OpenCode, and no other frontend or component: "
+        f"{code} {brew}",
+        ok=code == "0"
+        and len(brew) == 1
+        and "anomalyco/tap/opencode-v2" in brew[0].split()
+        and not any(
+            w in brew[0].split() for w in ("jq", "rtk", "chezmoi", "jolars/tap/fatou", "can1357/tap/omp")
+        )
+        and not any(c.startswith(("curl", "launchctl", "harness render")) for c in calls)
+        and "auth-token" not in out,
     )
 
 
@@ -1423,9 +1632,22 @@ def linux_cases(case: Case, tmp: pathlib.Path, pins: Pins) -> None:
             default=-1,
         ),
     )
+    installers = (
+        "curl -fsSL https://claude.ai/install.sh | bash",
+        "curl -fsSL https://opencode.ai/v2/install | bash -s -- --no-modify-path",
+        "curl -fsSL https://omp.sh/install | sh -s -- --binary",
+        "curl -fsSL https://install.julialang.org | sh -s -- --yes",
+        "curl --proto '=https' --tlsv1.2 -sSf https://fatou.dev/install | sh",
+    )
     case(
-        "the installers of Claude Code, OpenCode with --no-modify-path, oh-my-pi, juliaup and fatou run",
-        ok=all(line in lines for line in (CLAUDE, OPENCODE, OMP, JULIAUP, FATOU)),
+        f"the installers of Claude Code, OpenCode with --no-modify-path, oh-my-pi, juliaup with --yes "
+        f"and fatou run, as these lines: {[line for line in lines if line.startswith('curl')]}",
+        ok=all(line in lines for line in installers),
+    )
+    page = (REPO / "docs" / "src" / "setup-linux.md").read_text(encoding="utf-8").splitlines()
+    case(
+        "the installers of Claude Code, oh-my-pi and juliaup are the lines of setup-linux.md",
+        ok=all(line in page for line in (installers[0], installers[2], installers[3])),
     )
     s.fake("gitleaks", 'echo "8.21"')
     s.fake("node", 'echo "v20.16.0"')
@@ -1470,7 +1692,7 @@ def linux_cases(case: Case, tmp: pathlib.Path, pins: Pins) -> None:
     lines = shows(machine, opencode, s.options(), pins)
     case(
         f"without opencode on the PATH, its installer runs with --no-modify-path: {lines}",
-        ok=OPENCODE in lines,
+        ok=any(line.startswith("curl") and line.endswith("| bash -s -- --no-modify-path") for line in lines),
     )
     s.fake("opencode", "exit 0")
     lines = shows(machine, opencode, s.options(), pins)
@@ -1483,7 +1705,8 @@ def linux_cases(case: Case, tmp: pathlib.Path, pins: Pins) -> None:
     lines = shows(machine, julia, s.options(), pins)
     case(
         f"without juliaup, its installer runs, and brings Julia: {lines}",
-        ok=JULIAUP in lines and "juliaup add release" not in lines,
+        ok="curl -fsSL https://install.julialang.org | sh -s -- --yes" in lines
+        and "juliaup add release" not in lines,
     )
     s.fake("juliaup", "exit 0")
     lines = shows(machine, julia, s.options(), pins)
@@ -1531,6 +1754,7 @@ def linux_jobs_cases(case: Case, tmp: pathlib.Path, pins: Pins) -> None:
 def plan_cases(case: Case, tmp: pathlib.Path, pins: Pins) -> None:
     """What the choices, the installed programs and the profile put into the plan."""
     s = scratch(tmp, "plan", MACOS_FAKES)
+    s.fake("apt-cache", 'echo "  Candidate: 9.9-1"')
     mac, linux, options = s.machine(), s.machine("Linux"), s.options()
     loaded = profile_module.load(s.profile, home=str(s.home))
     opencode = profile_module.Setup(frontends=("opencode",), components=())
@@ -1779,11 +2003,18 @@ def release_cases(case: Case, tmp: pathlib.Path) -> None:
 
 
 @contextlib.contextmanager
-def release_server(files: Mapping[str, bytes]) -> Generator[str]:
-    """The URL of a local file server that serves `files` by path."""
+def release_server(files: Mapping[str, bytes], moved: Mapping[str, str] | None = None) -> Generator[str]:
+    """The URL of a local file server that serves `files` by path, and redirects each path of
+    `moved` to its path on the same server."""
 
     class Handler(http.server.BaseHTTPRequestHandler):
         def do_GET(self) -> None:
+            if moved and self.path in moved:
+                self.send_response(302)
+                self.send_header("Location", moved[self.path])
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return
             body = files.get(self.path)
             if body is None:
                 self.send_error(404)
@@ -1890,6 +2121,219 @@ def token_cases(case: Case, tmp: pathlib.Path) -> None:
     case("an existing token is kept", ok=(directory / "auth-token").read_text() == "mine")
 
 
+def chosen_profile(s: Scratch, choice: profile_module.Setup) -> None:
+    """Write `choice` into `[setup]` of the scratch profile."""
+    s.profile.write_text(with_setup(s.profile.read_text(encoding="utf-8"), choice), encoding="utf-8")
+
+
+def header_cases(case: Case) -> None:
+    """`with_setup` on each form of a `[setup]` table that TOML allows."""
+    choice = profile_module.Setup(frontends=("omp",), components=("jq",))
+    want = {"frontends": ["omp"], "components": ["jq"]}
+    for name, text in (
+        (
+            "a header with a comment",
+            'a = 1\n[setup]  # this machine\nfrontends = ["claude"]\ncomponents = []\n',
+        ),
+        ("a header with spaces", 'a = 1\n[ setup ]\nfrontends = ["claude"]\ncomponents = []\n'),
+        (
+            "a list whose first line holds a comment with ]",
+            'a = 1\n[setup]\nfrontends = [ # the ] frontends\n  "claude",\n]\ncomponents = []\n',
+        ),
+        (
+            "a list whose items hold comments with ]",
+            'a = 1\n[setup]\nfrontends = [\n  "claude", # one ]\n  "omp", # two ]\n]\ncomponents = []\n',
+        ),
+        ("quoted keys", 'a = 1\n[setup]\n"frontends" = ["claude"]\n\'components\' = []\n'),
+    ):
+        try:
+            got: object = cast("dict[str, object]", tomllib.loads(with_setup(text, choice))).get("setup")
+        except (HarnessError, tomllib.TOMLDecodeError) as e:
+            got = str(e)
+        case(f"with_setup writes [setup] in place on {name}: {got}", ok=got == want)
+    for name, text in (
+        ("an inline table", 'a = 1\nsetup = { frontends = ["claude"], components = [] }\n'),
+        ("dotted keys", 'a = 1\nsetup.frontends = ["claude"]\nsetup.components = []\n'),
+    ):
+        try:
+            got = with_setup(text, choice)
+        except HarnessError as e:
+            got = str(e)
+        case(
+            f"with_setup refuses [setup] as {name}, naming the form: {got!r}",
+            ok="inline table or dotted keys" in got,
+        )
+
+
+def edge_cases(case: Case, tmp: pathlib.Path) -> None:
+    """An os-release value in single quotes, an answer with U+007F or empty list items, a
+    sha256 of 65 digits, a release that redirects, and a log directory that cannot be made."""
+    release = tmp / "os-release-quoted"
+    release.write_text("ID='pop'\nID_LIKE='ubuntu debian'\n", encoding="utf-8")
+    case(f"os-release in single quotes names Ubuntu: {distro(release)!r}", ok=distro(release) == "ubuntu")
+    value = "a\x7fb"
+    try:
+        parsed: object = tomllib.loads(f"x = {toml_value(value)}\ny = {toml_value([value])}\n")
+    except tomllib.TOMLDecodeError as e:
+        parsed = str(e)
+    case(f"toml_value escapes U+007F: {parsed!r}", ok=parsed == {"x": value, "y": [value]})
+    example = profile_module.DUMMY.read_text(encoding="utf-8")
+    answers = [""] * len(profile_module.REQUIRED)
+    answers[list(profile_module.REQUIRED).index("org")] = "me,, "
+    with contextlib.redirect_stdout(io.StringIO()):
+        text = new_profile(example, Asker(*answers))
+    org = cast("dict[str, object]", tomllib.loads(text)).get("org")
+    case(f"a list answer drops its empty items: {org}", ok=org == ["me"])
+    path = tmp / "long.toml"
+    path.write_text(
+        '[release.x]\nversion = "1"\n[release.x.linux-x86_64]\nurl = "https://example.invalid/a.tar.gz"\n'
+        f'sha256 = "{"0" * 65}"\n',
+        encoding="utf-8",
+    )
+    try:
+        load_pins(path)
+        got = "loaded"
+    except HarnessError as e:
+        got = str(e)
+    case(f"a sha256 of 65 digits exits 2 naming it: {got}", ok="sha256" in got)
+
+    body = b"#!/bin/sh\n"
+    archive = io.BytesIO()
+    with tarfile.open(fileobj=archive, mode="w:gz") as tar:
+        info = tarfile.TarInfo("gitleaks")
+        info.size = len(body)
+        tar.addfile(info, io.BytesIO(body))
+    data = archive.getvalue()
+    with release_server({"/b.tar.gz": data}, {"/a.tar.gz": "/b.tar.gz"}) as url:
+        home = tmp / "redirect"
+        machine = Machine("Linux", "x86_64", "ubuntu", home, {}, tmp, (), tmp)
+        failure = install_release(
+            machine, "gitleaks", Release("1", f"{url}/a.tar.gz", hashlib.sha256(data).hexdigest())
+        )
+    case(
+        f"a release that redirects to another host installs nothing: {failure}",
+        ok=failure is not None and "redirect" in failure and not (home / ".local").exists(),
+    )
+    s = scratch(tmp, "logs", MACOS_FAKES)
+    (s.home / "Library").mkdir(parents=True)
+    (s.home / "Library" / "Logs").write_text("in the way\n", encoding="utf-8")
+    try:
+        failure = load_agent(s.machine(), "kaimon", "org.example.kaimon", s.home / "a.plist")
+    except OSError as e:
+        failure = f"raised {e!r}"
+    case(
+        f"a log directory that cannot be made fails the step, naming it: {failure}",
+        ok=failure is not None and not failure.startswith("raised") and "Logs" in failure,
+    )
+
+
+def apt_cache_cases(case: Case, tmp: pathlib.Path, pins: Pins) -> None:
+    """apt-cache that fails, is missing, or knows no package."""
+    s = scratch(tmp, "apt-cache", LINUX_FAKES)
+    machine, nothing = s.machine("Linux"), profile_module.Setup(frontends=(), components=())
+    s.fake("apt-cache", 'echo "E: The package lists could not be parsed" >&2; exit 100')
+    lines = shows(machine, nothing, s.options(), pins)
+    case(
+        f"apt-cache that exits 100 exits 2, naming apt-cache and its error: {lines[:1]}",
+        ok=lines[0].startswith("exit 2") and "apt-cache" in lines[0] and "could not be parsed" in lines[0],
+    )
+    (s.bin / "apt-cache").unlink()
+    lines = shows(machine, nothing, s.options(), pins)
+    case(
+        f"Ubuntu without apt-cache exits 2 naming it: {lines[:1]}",
+        ok=lines[0].startswith("exit 2") and "apt-cache" in lines[0],
+    )
+    s.fake("apt-cache", 'case "$2" in gh) exit 0;; *) echo "  Candidate: 9.9-1";; esac')
+    lines = shows(machine, nothing, s.options(), pins)
+    case(
+        f"a package that apt-cache does not know is no candidate, and no error: {lines[:2]}",
+        ok=not lines[0].startswith("exit 2") and not any("gh" in line.split() for line in lines),
+    )
+
+
+def recheck_cases(case: Case, tmp: pathlib.Path, pins: Pins) -> None:
+    """A tool below its minimum after its upgrade: Julia on its default channel, and a copy that
+    Homebrew did not install."""
+    s = scratch(tmp, "julia-below", LINUX_FAKES)
+    chosen_profile(s, profile_module.Setup(frontends=(), components=("julia",)))
+    s.fake("julia", 'echo "julia version 1.12.6"')
+    s.fake("juliaup", "exit 0")
+    code, out = attempt(s.machine("Linux"), s.options(), pins=pins)
+    calls = s.calls()
+    case(
+        f"juliaup update that leaves Julia below 1.13 fails the run at that step, naming juliaup "
+        f"default, and no later step runs: {code} {calls[-3:]}",
+        ok=code.startswith("exit 2")
+        and "juliaup update" in code
+        and "juliaup default release" in out
+        and not any(c.startswith(("harness", "fatou")) or "Kaimon" in c for c in calls),
+    )
+    s.fake(
+        "juliaup",
+        f'[ "$1" = update ] && printf \'#!/bin/sh\\necho "julia version 1.13.0"\\n\' > "{s.bin / "julia"}"; '
+        "exit 0",
+    )
+    s.log.unlink()
+    code, out = attempt(s.machine("Linux"), s.options(), pins=pins)
+    case(
+        f"juliaup update that raises Julia to 1.13.0 passes: {code} {out[-200:]!r}",
+        ok=code == "0" and "juliaup update" in s.calls(),
+    )
+
+    s = scratch(tmp, "node-below", MACOS_FAKES)
+    chosen_profile(s, profile_module.Setup(frontends=(), components=()))
+    s.fake("node", 'echo "v18.0.0"')
+    s.fake("brew", '[ "$1" = list ] && exit 1; exit 0')
+    lines = shows(s.machine(), profile_module.Setup(frontends=(), components=()), s.options(), pins)
+    case(
+        f"a Node.js below its minimum that Homebrew did not install gets brew install: {lines[:3]}",
+        ok=any(line.startswith("brew install ") and "node" in line.split() for line in lines)
+        and not any(line.startswith("brew upgrade") for line in lines),
+    )
+    code, out = attempt(s.machine(), s.options(), pins=pins)
+    case(
+        f"when another copy below the minimum comes first after brew install, the step fails naming "
+        f"its path: {code}",
+        ok=code.startswith("exit 2")
+        and "brew install" in code
+        and str(s.bin / "node") in out
+        and not any(c.startswith("harness") for c in s.calls()),
+    )
+    s.fake("brew", '[ "$1" = list ] && [ "$2" = node ] && exit 0; exit 0')
+    lines = shows(s.machine(), profile_module.Setup(frontends=(), components=()), s.options(), pins)
+    case(
+        f"a Node.js below its minimum that Homebrew lists gets brew upgrade: {lines[:3]}",
+        ok="brew upgrade node" in lines,
+    )
+    s.fake(
+        "brew",
+        f'[ "$1" = upgrade ] && printf \'#!/bin/sh\\necho v22.3.0\\n\' > "{s.bin / "node"}"; exit 0',
+    )
+    s.log.unlink()
+    code, _ = attempt(s.machine(), s.options(), pins=pins)
+    case(f"brew upgrade that raises Node.js passes: {code}", ok=code == "0")
+
+
+def doctor_cases(case: Case, tmp: pathlib.Path, pins: Pins) -> None:
+    """The status of `harness doctor` at the end of the run."""
+    for status, want in (("1", "1"), ("2", "exit 2: step")):
+        s = scratch(tmp, f"doctor-{status}", MACOS_FAKES)
+        s.fake("harness", f'[ "$1" = doctor ] && {{ echo "doctor: FAIL here"; exit {status}; }}; exit 0')
+        code, out = attempt(s.machine(), s.options(), pins=pins)
+        calls = [c.split()[1] for c in s.calls() if c.startswith("harness ")]
+        case(
+            f"a harness doctor that exits {status} gives {want}, after every earlier step: {code} {calls}",
+            ok=code.startswith(want)
+            and calls == ["install", "trust", "render", "render", "render", "doctor"],
+        )
+        if status == "1":
+            case(
+                f"doctor's output comes once, after the lines by hand: {out[-400:]!r}",
+                ok=out.count("doctor: FAIL here") == 1
+                and out.rfind("antigravity.google") < out.find("doctor: FAIL here"),
+            )
+
+
 def selftest() -> tuple[int, int]:
     """The cases of the functions above: (number of cases, number wrong)."""
     total = wrong = 0
@@ -1916,4 +2360,10 @@ def selftest() -> tuple[int, int]:
         release_cases(case, root)
         interactive_cases(case, root, pins)
         token_cases(case, root)
+        yes_cases(case, root, pins)
+        header_cases(case)
+        edge_cases(case, root)
+        apt_cache_cases(case, root, pins)
+        recheck_cases(case, root, pins)
+        doctor_cases(case, root, pins)
     return total, wrong

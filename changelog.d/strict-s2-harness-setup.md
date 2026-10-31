@@ -8,6 +8,11 @@
   and gitleaks, actionlint and RTK from the pinned releases of the new `setup/tools.toml`, each
   checked against its sha256. The vendor installers run unattended, the OpenCode one with
   `--no-modify-path` and only without `opencode` on the `PATH`, the juliaup one only without
-  `juliaup`. A failed step, a missing `sudo`, no terminal without `--yes`, and an unknown system or
-  architecture exit 2. The dotfiles kit's harness step now runs `harness setup --yes` in place of
-  `harness install --apply`.
+  `juliaup`. A tool that is still below its minimum after its upgrade fails its step; for Julia,
+  whose `juliaup update` keeps the default channel, the line names
+  `juliaup add release && juliaup default release`. A failed step, a missing `sudo`, no terminal
+  without `--yes`, and an unknown system or architecture exit 2; a FAIL of the final
+  `harness doctor` exits 1. The dotfiles kit's harness step now runs `harness setup --yes` in place
+  of `harness install --apply`, and the kit's example machines use the Julia channel 1.13, the
+  minimum of `dependencies.md`: a copy of the kit whose `julia_default` is below 1.13 must raise
+  it, or `harness setup --yes` stops at Julia.

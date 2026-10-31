@@ -315,7 +315,9 @@ releases of `setup/tools.toml` (`load_pins`) on Ubuntu, the vendor installers, t
 and `harness doctor`; `install`, `trust`, `render` and `doctor` each run in a child process of
 `bin/harness`. `TOOLS` names each tool, the
 component or frontend that needs it, and how each system installs it; a tool that is installed at
-its minimum is skipped. The run stops at the first failed step with status 2.
+its minimum is skipped, and one below it is read again after its upgrade (`rechecked`). The run
+stops at the first failed step with status 2, and otherwise exits with the status of
+`harness doctor`, 0 or 1.
 
 Its cases run every apply path on a scratch `HOME` with fake programs first on the `PATH`, `brew`,
 `apt-cache`, `apt-get`, `sudo`, `curl`, `launchctl`, `systemctl` and `harness` among them, each of
