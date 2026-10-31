@@ -15,6 +15,7 @@ file that it would change, and the hook changes no file.
 """
 
 import pathlib
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -54,10 +55,11 @@ def main() -> int:
     failed: list[str] = []
     with tempfile.TemporaryDirectory(prefix="harness-pre-commit-") as tree:
         # git is the program that runs this hook, so the PATH holds it.
-        subprocess.run(["git", "checkout-index", "--all", f"--prefix={tree}/"], check=True)  # noqa: S607
+        git = shutil.which("git") or "git"
+        subprocess.run([git, "checkout-index", "--all", f"--prefix={tree}/"], check=True, timeout=60)
         for name, tool, args in CHECKS:
             print(name, flush=True)
-            if subprocess.run([str(tools / tool), *args], cwd=tree, check=False).returncode != 0:
+            if subprocess.run([str(tools / tool), *args], cwd=tree, check=False, timeout=60).returncode != 0:
                 failed.append(name)
     if failed:
         print(f"pre-commit: refused, {' and '.join(failed)} failed")

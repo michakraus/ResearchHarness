@@ -24,6 +24,8 @@ import tempfile
 SOURCE = pathlib.Path(__file__).resolve().parent.parent
 DRIVER = SOURCE / "dot_local" / "bin" / "executable_dotfiles"
 OTHER = "https://git.example.org/me/dotfiles.git"
+GIT = shutil.which("git") or "git"
+BASH = shutil.which("bash") or "bash"
 
 failures = []
 
@@ -63,16 +65,18 @@ class Scratch:
         executable(self.stubs / "gh", answering("gh", "GH_ANSWER"))
         self.source = self.home / ".local" / "share" / "chezmoi"
         self.source.mkdir(parents=True)
-        subprocess.run(["git", "init", "-q", str(self.source)], check=True)  # noqa: S607 -- git runs from PATH
+        subprocess.run([GIT, "init", "-q", str(self.source)], check=True, timeout=60)
         subprocess.run(
             ["git", "-C", str(self.source), "remote", "add", "origin", OTHER],  # noqa: S607 -- git runs from PATH
             check=True,
+            timeout=60,
         )
 
     def origin(self, url):
         subprocess.run(
             ["git", "-C", str(self.source), "remote", "set-url", "origin", url],  # noqa: S607 -- git runs from PATH
             check=True,
+            timeout=60,
         )
 
     def log(self, name):
@@ -90,7 +94,12 @@ class Scratch:
             GH_ANSWER=gh,
         )
         return subprocess.run(
-            [str(self.bin_dir / "dotfiles"), *args], env=env, capture_output=True, text=True, check=False
+            [str(self.bin_dir / "dotfiles"), *args],
+            env=env,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=60,
         )
 
 
@@ -195,7 +204,7 @@ def main():
         github_cases(s)
         usage_cases(s)
 
-    p = subprocess.run(["bash", "-n", str(DRIVER)], check=False)  # noqa: S607 -- bash runs from PATH
+    p = subprocess.run([BASH, "-n", str(DRIVER)], check=False, timeout=60)
     check(p.returncode == 0, "bash -n")
     if shutil.which("shellcheck"):
         p = subprocess.run(
@@ -203,6 +212,7 @@ def main():
             capture_output=True,
             text=True,
             check=False,
+            timeout=60,
         )
         check(p.returncode == 0, "shellcheck -S warning" + (f": {p.stdout.strip()}" if p.returncode else ""))
     else:

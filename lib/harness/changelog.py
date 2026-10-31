@@ -20,8 +20,10 @@ import contextlib
 import io
 import os
 import pathlib
+import shutil
 import subprocess
 import tempfile
+from typing import cast
 
 from . import REPO, HarnessError, outcome
 
@@ -33,7 +35,12 @@ CODE = ("lib/", "hooks/", "adapters/", "bin/", "scripts/", "githooks/", "agents/
 
 def git(root, args, env=None):
     """One git command in `root`; the caller reads its exit status."""
-    return subprocess.run(["git", *args], cwd=root, env=env, capture_output=True, text=True, check=False)
+    # The callers pass a path, a list of strings and an environment or None.
+    command = [shutil.which("git") or "git", *cast("list[str]", args)]
+    where, environment = cast("pathlib.Path", root), cast("dict[str, str] | None", env)
+    return subprocess.run(
+        command, cwd=where, env=environment, capture_output=True, text=True, check=False, timeout=60
+    )
 
 
 def fragments(root):

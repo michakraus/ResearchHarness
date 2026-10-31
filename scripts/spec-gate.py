@@ -33,9 +33,12 @@ this script. The research root is $RESEARCH_ROOT, else ~/Research.
 """
 
 import os
+import pathlib
 import re
+import shutil
 import subprocess
 import sys
+from typing import cast
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 RESEARCH = os.environ.get("RESEARCH_ROOT") or os.path.expanduser("~/Research")
@@ -51,7 +54,11 @@ HEADING = re.compile(r"^(#{2,4})\s+§?([0-9A-Z][0-9A-Za-z.]*)")
 
 def parts(path):
     out = subprocess.run(
-        ["awk", "-f", os.path.join(HERE, "parts-table.awk"), path], capture_output=True, text=True, check=True
+        [shutil.which("awk") or "awk", "-f", str(pathlib.Path(HERE, "parts-table.awk")), cast("str", path)],
+        capture_output=True,
+        text=True,
+        check=True,
+        timeout=60,
     ).stdout
     for row in out.splitlines():
         f = row.split("\t")
@@ -136,7 +143,7 @@ def validate(spec, own, no_run, devices):
     """Run spec-validate.py on a spec: (its exit status, 0, 1 or 2, and its lines)."""
     checkout = os.path.join(RESEARCH, own)
     where = ["--no-run"] if no_run or not os.path.isdir(checkout) else ["--repo", checkout]
-    p = subprocess.run(
+    p = subprocess.run(  # no timeout: the checks of a spec may run a whole suite, which bounds each part
         [sys.executable, os.path.join(HERE, "spec-validate.py"), spec, *where, "--devices", devices],
         capture_output=True,
         text=True,

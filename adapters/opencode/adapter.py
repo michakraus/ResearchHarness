@@ -90,7 +90,8 @@ import types
 from typing import Any, cast
 from unittest import mock
 
-from harness import REPO, HarnessError, changing, frontends, frontmatter, install, outcome, providers, sources
+from harness import REPO, HarnessError, changing, frontends, frontmatter, install, jsonio, outcome, providers
+from harness import sources
 from harness import profile as profile_module
 
 NAME = "opencode"
@@ -422,7 +423,7 @@ def classify_mcp(rule):
 def collect_rules(settings=SETTINGS):
     """(emitted, dropped, permissions): `emitted` maps an OpenCode key to [(pattern, action)],
     `dropped` is [(rule, action, reason)], `permissions` the template's own object."""
-    permissions = json.loads(pathlib.Path(settings).read_text())["permissions"]
+    permissions = cast("dict[str, Any]", jsonio.load(cast("str", settings)))["permissions"]
     emitted, dropped = {}, []
     # `ask` first, then `deny`: OpenCode takes the last matching rule, so deny beats ask.
     for action in ("ask", "deny"):
@@ -656,7 +657,7 @@ def interpreted(text: str) -> bytes:
     """The path list `text` with the environment's interpreter (install.python_interpreter) under
     `python`: plugins/guards.ts runs the guard with it, and refuses every call without it."""
     listed = {
-        **cast("dict[str, object]", json.loads(text)),
+        **jsonio.loads(text, where="the path list"),
         "python": str(install.python_interpreter()),
     }
     return (json.dumps(listed, indent=2, ensure_ascii=False) + "\n").encode()
@@ -1113,8 +1114,9 @@ def selftest():
         SOURCE / "opencode.jsonc", profile_module.context(dummy, providers=entries)
     )
     try:
-        provider = json.loads(re.sub(r"(?m)^\s*//.*$", "", text))["provider"]
-    except ValueError as e:
+        config: dict[str, Any] = jsonio.loads(re.sub(r"(?m)^\s*//.*$", "", text), where="opencode.jsonc")
+        provider = config["provider"]
+    except HarnessError as e:
         provider = f"no JSON: {e}"
     check(
         isinstance(provider, dict)
@@ -1370,7 +1372,7 @@ def install_cases(check, tmp):
     hooks = sorted(
         p.relative_to(base / "opencode").as_posix() for p in (base / "opencode" / "hooks").rglob("*")
     )
-    listed = json.loads((base / "opencode" / "plugins" / "guard-paths.json").read_text())
+    listed = jsonio.load(base / "opencode" / "plugins" / "guard-paths.json")
     case(
         lambda: (
             "hooks/guard/cli.py" in package
@@ -1407,7 +1409,7 @@ def install_cases(check, tmp):
         f"a hand-made AGENTS.md that differs from the source is REPLACE: {code}, {applied}, {line.findall(text)}",
     )
     # The same bytes at mode 0600 are a mode change to 0644, so the install sets the mode itself.
-    installed.chmod(0o600)
+    installed.chmod(0o600)  # not private: a mode that the install sets back to 0644
     code, text = run(base)
     applied, text2 = run(base, "--apply")
     case(

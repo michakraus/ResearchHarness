@@ -47,6 +47,8 @@ ignore = ["S603", "TRY003"]
 [tool.ruff.lint.flake8-tidy-imports.banned-api]
 "os.system".msg = "runs a shell; use subprocess.run with an argument list"
 "os.popen".msg = "runs a shell; use subprocess.run with an argument list"
+"json.load".msg = "reads a key twice, NaN and a deep nesting without a word; use harness.jsonio.load"
+"json.loads".msg = "reads a key twice, NaN and a deep nesting without a word; use harness.jsonio.loads"
 
 # The profile's own ignores: a file that holds test cases (a `selftest`, a module of cases, the
 # hook probe, the kit's tests) calls each `case(lambda: …)` at once (B023) and compares with
@@ -61,7 +63,11 @@ ignore = ["S603", "TRY003"]
 ]
 "adapters/*/adapter.py" = ["B023", "PLR2004"]
 "hooks/probe.py" = ["B023", "PLR2004"]
-"examples/dotfiles/tests/*.py" = ["B023", "PLR2004"]
+# The kit's tests are copied into a user's own chezmoi source, with no harness beside them, and run
+# on the runner's own python3, so they read JSON with `json` (TID251). The two copies of jsonio are
+# the reader itself.
+"examples/dotfiles/tests/*.py" = ["B023", "PLR2004", "TID251"]
+"{lib/harness,hooks/guard}/jsonio.py" = ["TID251"]
 
 # Generated: the codes of each file's findings that the profile met in code that it did not fix,
 # from `ruff check --output-format json` with this table removed. ruff applies these beside the
@@ -69,18 +75,18 @@ ignore = ["S603", "TRY003"]
 # module is not in it, and a module leaves it when its last finding goes.
 [tool.ruff.lint.extend-per-file-ignores]
 "adapters/antigravity/adapter.py" = ["ARG005", "B905", "C402", "E501", "E741", "FBT002", "PLC0415", "PLR0912", "PLR0915", "PTH112", "PTH118", "RUF005", "S107", "S311", "TRY300"]
-"adapters/claude/adapter.py" = ["ARG001", "B905", "DTZ005", "E501", "E741", "FBT002", "FBT003", "PLC0415", "PLR0912", "PLR0915", "PLW0603", "PTH101", "PTH105", "PTH111", "PTH112", "PTH114", "PTH115", "PTH116", "PTH118", "PTH120", "PTH123", "RUF005", "RUF015", "UP031"]
+"adapters/claude/adapter.py" = ["ARG001", "B905", "DTZ005", "E501", "E741", "FBT002", "FBT003", "PLC0415", "PLR0912", "PLR0915", "PLW0603", "PTH111", "PTH112", "PTH114", "PTH115", "PTH118", "PTH123", "RUF005", "RUF015", "UP031"]
 "adapters/omp/adapter.py" = ["B905", "E501", "E741", "PLC0415", "PLR0912", "PLR0913", "PLR0915", "PLR0917", "PTH100", "PTH111", "S105", "TRY301"]
 "adapters/opencode/adapter.py" = ["ARG005", "E501", "E741", "FBT003", "PERF401", "PLC0415", "PLR0912", "PLR0915", "PTH115", "PTH118", "PTH208", "RUF003", "RUF005", "RUF059", "S108"]
 "bin/harness" = ["B904", "E402", "E501", "FBT003", "N818", "PLC0415", "PLR0913", "PLR0917", "PTH100", "PTH101", "PTH103", "PTH105", "PTH111", "PTH113", "PTH117", "PTH118", "PTH120", "PTH123", "RET503", "RUF005", "S103", "S606", "SIM117"]
 "hooks/probe.py" = ["E501", "E741", "N818", "PLC0415", "PLR0913", "PLR0915", "PLR0917", "PLW0108", "PTH100", "PTH101", "PTH103", "PTH104", "PTH107", "PTH110", "PTH116", "PTH118", "PTH120", "PTH123", "PTH211", "S103"]
 "hooks/worktree.py" = ["N818", "PLC0415", "PLR2004", "PLW2901", "PTH123", "TRY301"]
-"lib/harness/changelog.py" = ["E501", "FBT003", "PLR0915", "S607"]
+"lib/harness/changelog.py" = ["E501", "FBT003", "PLR0915"]
 "lib/harness/cli.py" = ["N812"]
-"lib/harness/docs.py" = ["ARG005", "E501", "E731", "FBT003", "PERF401", "PLC0415", "PLR0912", "PLR0915", "S607"]
+"lib/harness/docs.py" = ["ARG005", "E501", "E731", "FBT003", "PERF401", "PLC0415", "PLR0912", "PLR0915"]
 "lib/harness/doctor.py" = ["ARG005", "E501", "E731", "F841", "FBT002", "FBT003", "PLC0415", "PLR0911", "PLR0912", "PLR0913", "PLR0915", "PLR0917", "PTH112", "PTH113", "PTH116", "PTH123", "RUF005", "S607", "UP031"]
 "lib/harness/dotfiles_kit.py" = ["E501", "FBT002", "PLC0415", "PLR0912", "PLR0915", "PLW2901"]
-"lib/harness/environment.py" = ["ARG001", "ARG005", "B905", "BLE001", "E501", "FBT002", "FBT003", "PLR0912", "PLR0915", "PLW2901", "PTH100", "RUF005", "RUF012", "RUF059", "S607"]
+"lib/harness/environment.py" = ["ARG001", "ARG005", "B905", "BLE001", "E501", "FBT002", "FBT003", "PLR0912", "PLR0915", "PLW2901", "PTH100", "RUF005", "RUF012", "RUF059"]
 "lib/harness/frontmatter.py" = ["FBT003", "PLC0415", "PLR0912", "PLR0915", "RUF002"]
 "lib/harness/githooks.py" = ["FBT002", "PERF401", "PLR0912"]
 "lib/harness/install.py" = ["B905", "DTZ005", "E501", "FBT002", "PLC0415", "PLR0912", "PLR0913", "PLR0917", "PLW0603", "PLW2901", "PTH114", "PTH116", "PTH118", "RUF005", "S102", "S607"]
@@ -92,15 +98,15 @@ ignore = ["S603", "TRY003"]
 "lib/harness/repos.py" = ["ARG005", "B905", "E501", "F841", "FBT003", "PLC0415", "PLR0912", "PLR0915", "PLW2901", "RUF002"]
 "lib/harness/skill_triggers.py" = ["B905", "DTZ011", "E501", "E741", "FBT003", "PLC0415", "PLR0912", "PLR0913", "PLR0915", "PLR0917", "PLW2901", "RUF005", "RUF007"]
 "lib/harness/sources.py" = ["PTH208"]
-"lib/harness/sweep.py" = ["E501", "FBT003", "PLR0912", "PLR0915", "PTH113", "PTH114", "PTH115", "PTH118", "PTH123", "S607"]
+"lib/harness/sweep.py" = ["E501", "FBT003", "PLR0912", "PLR0915", "PTH113", "PTH114", "PTH115", "PTH118", "PTH123"]
 "lib/harness/testrun.py" = ["E501", "PLC0415", "PLR0912", "PLR0915", "PTH123", "S108", "S607", "SIM115"]
 "lib/harness/units.py" = ["FBT003", "PLR0912", "PLR0915", "PLW2901"]
 "scripts/known-issues-similar.py" = ["B007", "B905", "E741", "FBT002", "PERF401", "PLR0913", "PLR0917", "PLR2004", "PTH111", "PTH112", "PTH113", "PTH118", "PTH123", "PTH208", "RUF005", "S310"]
 "scripts/session-tokens.py" = ["PLR2004", "PTH111", "PTH119", "PTH123", "PTH204", "PTH207", "S324"]
-"scripts/spec-bundle.py" = ["B905", "E741", "FBT002", "FBT003", "PERF401", "PLR0912", "PLR0913", "PLR0917", "PLR2004", "PLW2901", "PTH100", "PTH103", "PTH113", "PTH118", "PTH119", "PTH120", "PTH123", "RUF001", "RUF002", "RUF005", "S607", "SIM115"]
-"scripts/spec-gate.py" = ["E501", "E741", "PLR0915", "PLR2004", "PTH100", "PTH110", "PTH111", "PTH112", "PTH113", "PTH117", "PTH118", "PTH119", "PTH120", "PTH122", "PTH123", "RUF005", "S607", "SIM115"]
+"scripts/spec-bundle.py" = ["B905", "E741", "FBT002", "FBT003", "PERF401", "PLR0912", "PLR0913", "PLR0917", "PLR2004", "PLW2901", "PTH100", "PTH103", "PTH113", "PTH118", "PTH120", "PTH123", "RUF001", "RUF002", "RUF005", "SIM115"]
+"scripts/spec-gate.py" = ["E501", "E741", "PLR0915", "PLR2004", "PTH100", "PTH110", "PTH111", "PTH112", "PTH113", "PTH117", "PTH118", "PTH119", "PTH120", "PTH122", "PTH123", "RUF005", "SIM115"]
 "scripts/spec-validate.py" = ["E501", "E741", "PLR0912", "PLR0913", "PLR0915", "PLR0917", "PTH102", "PTH111", "RUF002"]
-"scripts/startup-tokens.py" = ["PTH110", "PTH111", "PTH123", "PTH204", "PTH207", "SIM115"]
+"scripts/startup-tokens.py" = ["PTH110", "PTH111", "PTH123", "PTH204", "PTH207"]
 
 # basedpyright reads only *.py files, so it checks no file of `bin`. `lib` is on the search path,
 # as `bin/harness` puts it on `sys.path`. The errors of the code that strict mode met are in

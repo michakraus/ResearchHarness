@@ -16,10 +16,13 @@ runs them.
   each fail; with `--head`, a failing check and a check that writes into the head fail the gate.
   spec-gate.py validates a part whose cell names `spec` and finds a missing spec, and
   spec-bundle.py copies the spec and names `$SPEC`.
+- A git of spec-validate.py and spec-bundle.py that runs past its timeout gives the answer of a git
+  that fails: no status, a rule-9 error, and no commit.
 - The fix round's mutants: skills/build-part/evidence.md defines them in one section, with its
   four rules, and both builders and both build skills point at it.
 """
 
+import importlib.util
 import os
 import pathlib
 import re
@@ -28,7 +31,10 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import types
 from collections.abc import Callable
+from typing import cast
+from unittest import mock
 
 from . import REPO
 
@@ -242,7 +248,9 @@ def copied(excludes: list[str], tmp: str, name: str) -> list[str]:
             (src / f).parent.mkdir(parents=True, exist_ok=True)
             (src / f).write_text("x\n")
     rsync = shutil.which("rsync") or "rsync"
-    subprocess.run([rsync, "-a", *excludes, f"{src}/", f"{dst}/"], check=True, capture_output=True)
+    subprocess.run(
+        [rsync, "-a", *excludes, f"{src}/", f"{dst}/"], check=True, capture_output=True, timeout=60
+    )
     return sorted(str(p.relative_to(dst)) for p in dst.rglob("*") if p.is_file())
 
 
@@ -272,6 +280,7 @@ def spec_gate(tmp: str) -> tuple[dict[str, str], int, str]:
         text=True,
         env=env,
         check=False,
+        timeout=60,
     )
     lines = dict(line.split("\t", 1) for line in p.stdout.splitlines() if "\t" in line)
     return {part: rest.split("\t")[0] for part, rest in lines.items()}, p.returncode, p.stderr
@@ -287,6 +296,7 @@ def spec_bundle(tmp: str, plan: str) -> tuple[str, str, int]:
         capture_output=True,
         text=True,
         check=False,
+        timeout=60,
     )
     return (out.read_text() if out.exists() else ""), p.stderr, p.returncode
 
@@ -303,7 +313,11 @@ def write_spec(directory: pathlib.Path, **fields: str) -> pathlib.Path:
 def spec_validate(spec: pathlib.Path, *args: str) -> tuple[str, int]:
     """Run spec-validate.py: (stdout, exit status)."""
     p = subprocess.run(
-        [sys.executable, str(SPEC_VALIDATE), str(spec), *args], capture_output=True, text=True, check=False
+        [sys.executable, str(SPEC_VALIDATE), str(spec), *args],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=60,
     )
     return p.stdout + p.stderr, p.returncode
 
@@ -382,7 +396,7 @@ def spec_format(check: Callable[[object, str], None]) -> None:
         check(
             status == 1 and "gate:" in out, f"a check that fails on the head fails the gate -> {status} {out}"
         )
-        subprocess.run([shutil.which("git") or "git", "init", "-q", str(head)], check=True)
+        subprocess.run([shutil.which("git") or "git", "init", "-q", str(head)], check=True, timeout=60)
         out, status = spec_validate(
             write_spec(tmp / "gate-write", check="touch written"),
             "--head",
@@ -418,6 +432,7 @@ def spec_cell(check: Callable[[object, str], None], tmp: pathlib.Path) -> None:
         text=True,
         env=env,
         check=False,
+        timeout=60,
     )
     lines = dict(line.split("\t")[:2] for line in p.stdout.splitlines() if "\t" in line)
     check(
@@ -431,9 +446,14 @@ def spec_cell(check: Callable[[object, str], None], tmp: pathlib.Path) -> None:
         ["init", "-q"],
         ["-c", "user.name=x", "-c", "user.email=x@x", "commit", "-q", "--allow-empty", "-m", "base"],
     ):
-        subprocess.run([git, *cmd], cwd=repo, check=True, capture_output=True)
+        subprocess.run([git, *cmd], cwd=repo, check=True, capture_output=True, timeout=60)
     commit = subprocess.run(
-        [git, "rev-parse", "--short=7", "HEAD"], cwd=repo, capture_output=True, text=True, check=True
+        [git, "rev-parse", "--short=7", "HEAD"],
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        check=True,
+        timeout=60,
     ).stdout.strip()
     spec = root / "Tasks" / "Evidence" / "plan" / "S" / "spec.md"
     spec.write_text(
@@ -445,7 +465,12 @@ def spec_cell(check: Callable[[object, str], None], tmp: pathlib.Path) -> None:
         )
     )
     p = subprocess.run(
-        [sys.executable, str(SPEC_GATE), str(task), "S"], capture_output=True, text=True, env=env, check=False
+        [sys.executable, str(SPEC_GATE), str(task), "S"],
+        capture_output=True,
+        text=True,
+        env=env,
+        check=False,
+        timeout=60,
     )
     lines = dict(line.split("\t")[:2] for line in p.stdout.splitlines() if "\t" in line)
     check(
@@ -459,6 +484,7 @@ def spec_cell(check: Callable[[object, str], None], tmp: pathlib.Path) -> None:
         text=True,
         env=env,
         check=False,
+        timeout=60,
     )
     lines = dict(line.split("\t")[:2] for line in p.stdout.splitlines() if "\t" in line)
     check(
@@ -471,11 +497,44 @@ def spec_cell(check: Callable[[object, str], None], tmp: pathlib.Path) -> None:
         capture_output=True,
         text=True,
         check=False,
+        timeout=60,
     )
     text = out.read_text() if out.exists() else ""
     check(
         p.returncode == 0 and "## 3 · Delta" in text and "V-RULE" in text and "**$SPEC:**" in text,
         f"the bundle of S holds its spec, §V and $SPEC -> {p.returncode} {p.stderr.strip()}",
+    )
+
+
+def script(path: pathlib.Path) -> types.ModuleType:
+    """The script at `path` as a module, which runs no `main`."""
+    spec = importlib.util.spec_from_file_location(path.stem.replace("-", "_"), path)
+    if spec is None or spec.loader is None:  # a `.py` path always has a spec with a source loader
+        raise ImportError(f"no module spec for {path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def timeout_cases(check: Callable[[object, str], None], tmp: pathlib.Path) -> None:
+    """A git of spec-validate.py and spec-bundle.py that runs past its timeout is the failure that
+    each reports for a git that fails: no status, a rule-9 error, and no commit."""
+    validate, bundle = script(SPEC_VALIDATE), script(SPEC_BUNDLE)
+
+    def expired(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        raise subprocess.TimeoutExpired(command, cast("float", kwargs["timeout"]))
+
+    with mock.patch.object(subprocess, "run", expired):
+        got = (validate.status(str(tmp)), validate.export(str(tmp), "abc1234", str(tmp)))
+        commit = bundle.last_commit(str(tmp / "plan.md"))
+    check(
+        got == (None, f"rule 9: `git archive abc1234` takes more than 60 s in {tmp}") and commit == "",
+        f"a git past its 60 s: status None, the export's rule-9 error, the commit '' -> {got}, {commit!r}",
+    )
+    message = validate.export(str(tmp), "abc1234", str(tmp))
+    check(
+        isinstance(message, str) and message.startswith(f"rule 9: `git archive abc1234` fails in {tmp}: "),
+        f"a git archive outside a repository fails with a rule-9 error -> {message!r}",
     )
 
 
@@ -535,6 +594,8 @@ def selftest() -> tuple[int, int]:
             f"a name that matches nothing is unresolved, exit 1 -> {status} {stderr.strip()}",
         )
     spec_format(check)
+    with tempfile.TemporaryDirectory(prefix="harness-script-timeouts-") as tmp:
+        timeout_cases(check, pathlib.Path(tmp))
     problems = fix_round_mutants(lambda path: (REPO / path).read_text())
     check(not problems, f"a fix round runs only the mutants that its fix touches -> {problems or 'holds'}")
     # the control: without the section, the case finds the gap

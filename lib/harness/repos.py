@@ -306,6 +306,7 @@ def cmd_clone(args):
             capture_output=True,
             text=True,
             check=False,
+            timeout=300,
         )
         if p.returncode == 0:
             print(" done")
@@ -643,8 +644,8 @@ def selftest():
             )
         )
 
-    def run(*command, cwd=None):
-        subprocess.run(command, cwd=cwd, check=True, capture_output=True)
+    def run(*command: str, cwd: pathlib.Path | None = None) -> None:
+        subprocess.run(command, cwd=cwd, check=True, capture_output=True, timeout=60)
 
     with (
         tempfile.TemporaryDirectory() as tmp,

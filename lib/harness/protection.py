@@ -52,8 +52,9 @@ import json
 import re
 import subprocess
 import time
+from typing import Any
 
-from . import REPO, HarnessError, changing, outcome
+from . import REPO, HarnessError, changing, jsonio, outcome
 from .githooks import git, repositories
 
 # The required status checks: the non-experimental jobs of the canonical CI.yml, `test` over
@@ -111,6 +112,7 @@ def gh(*args: str, payload: str | None = None) -> str:
             capture_output=True,
             text=True,
             check=False,
+            timeout=300,
         )
         if p.returncode == 0:
             return p.stdout
@@ -119,6 +121,16 @@ def gh(*args: str, payload: str | None = None) -> str:
             break
         time.sleep(2 * (attempt + 1))
     raise GhError((out.splitlines() or ["no output"])[0][:100])
+
+
+def gh_object(*args: str) -> dict[str, Any]:
+    """The JSON object that `gh args` prints; a refusal of `jsonio` names the command."""
+    return jsonio.loads(gh(*args), where=f"gh {' '.join(args[:2])}")
+
+
+def gh_array(*args: str) -> list[Any]:
+    """The JSON array that `gh args` prints; a refusal of `jsonio` names the command."""
+    return jsonio.loads(gh(*args), where=f"gh {' '.join(args[:2])}", top=list)
 
 
 def ruleset_problem(ruleset):
@@ -148,7 +160,7 @@ def verify_workflows():
     """Refuse unless the workflows are canonical: the static check list depends on it."""
     print("verifying that the workflows are canonical...", flush=True)
     verifier = REPO / "githooks" / "verify-workflows.jl"
-    p = subprocess.run(
+    p = subprocess.run(  # no timeout: a Julia process, which compiles before it checks
         ["julia", "--startup-file=no", str(verifier), "--quiet"],  # noqa: S607 -- julia runs from PATH
         check=False,
     )
@@ -171,7 +183,7 @@ def resolve(repo):
         "query($o:String!, $n:String!) { repository(owner:$o, name:$n) "
         "{ nameWithOwner isPrivate viewerPermission defaultBranchRef { name } } }"
     )
-    data = json.loads(gh("api", "graphql", "-f", f"query={query}", "-F", f"o={owner}", "-F", f"n={name}"))
+    data = gh_object("api", "graphql", "-f", f"query={query}", "-F", f"o={owner}", "-F", f"n={name}")
     meta = (data.get("data") or {}).get("repository") or {}
     canonical = meta.get("nameWithOwner") or ""
     branch = (meta.get("defaultBranchRef") or {}).get("name") or ""
@@ -195,7 +207,7 @@ def ruleset_id(slug):
     """The id of the repository's own branch ruleset named `main`, or None."""
     ids = [
         r["id"]
-        for r in json.loads(gh("api", f"repos/{slug}/rulesets"))
+        for r in gh_array("api", f"repos/{slug}/rulesets")
         if r.get("name") == "main" and r.get("target") == "branch" and r.get("source_type") == "Repository"
     ]
     if len(ids) > 1:
@@ -209,10 +221,10 @@ def plan_ruleset(slug, rid):
     if rid is None:
         todo.append("create ruleset main")
     else:
-        problem = ruleset_problem(json.loads(gh("api", f"repos/{slug}/rulesets/{rid}")))
+        problem = ruleset_problem(gh_object("api", f"repos/{slug}/rulesets/{rid}"))
         if problem:
             todo.append(f"update ruleset {rid} ({problem})")
-    flags = json.loads(gh("api", f"repos/{slug}"))
+    flags = gh_object("api", f"repos/{slug}")
     if not (flags.get("allow_auto_merge") and flags.get("delete_branch_on_merge")):
         todo.append("turn on auto-merge and the deletion of merged branches")
     return todo
@@ -242,7 +254,7 @@ def plan_classic(slug, branch, rid):
     """What `--remove-classic` would change; a GhError when the ruleset is not right yet."""
     if rid is None:
         raise GhError("no ruleset named main; run `harness ci-protection --apply` first")
-    problem = ruleset_problem(json.loads(gh("api", f"repos/{slug}/rulesets/{rid}")))
+    problem = ruleset_problem(gh_object("api", f"repos/{slug}/rulesets/{rid}"))
     if problem:
         raise GhError(f"classic protection kept: ruleset {rid}: {problem}")
     try:
@@ -288,10 +300,12 @@ def cmd_ci_protection(args):
 
 def selftest():
     """Cases for `ruleset_problem`: the RULESET as GitHub returns it, and one break of each check."""
-    good = json.loads(json.dumps(RULESET)) | {"current_user_can_bypass": "always"}
+    good: dict[str, Any] = jsonio.loads(json.dumps(RULESET), where="RULESET") | {
+        "current_user_can_bypass": "always"
+    }
 
     def broken(change):
-        r = json.loads(json.dumps(good))
+        r = jsonio.loads(json.dumps(good), where="RULESET")
         change(r)
         return r
 

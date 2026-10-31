@@ -134,7 +134,7 @@ def scratch(name):
 
 
 def must(cmd, env, cwd=None):
-    result = subprocess.run(cmd, capture_output=True, text=True, env=env, cwd=cwd, check=False)
+    result = subprocess.run(cmd, capture_output=True, text=True, env=env, cwd=cwd, check=False, timeout=60)
     if result.returncode != 0:
         raise RuntimeError(f"{' '.join(map(str, cmd))}: {result.stderr.strip()}")
     return result.stdout.strip()
@@ -165,7 +165,9 @@ def render(template, host, entry=None, source=SOURCE):
         json.dumps(data),
         "execute-template",
     ]
-    result = subprocess.run(cmd, capture_output=True, text=True, input=template.read_text(), check=False)
+    result = subprocess.run(
+        cmd, capture_output=True, text=True, input=template.read_text(), check=False, timeout=60
+    )
     if result.returncode != 0:
         raise RuntimeError(f"{template.name} does not render for {host}: {result.stderr.strip()}")
     return result.stdout
@@ -886,6 +888,7 @@ def clause_13():
                 env=w.env,
                 cwd=w.source,
                 check=False,
+                timeout=60,
             ).returncode
             == 0
         )
@@ -894,9 +897,11 @@ def clause_13():
     # A signing_key under ~, as the host data writes it: git reads it below HOME.
     w, _ = merge_world("c13-tilde", signingkey="~/.ssh/signing", literal=True)
     (w.home / ".ssh").mkdir()
-    for suffix in ("", ".pub"):
-        shutil.copy(f"{KEYS['listed']}{suffix}", w.home / ".ssh" / f"signing{suffix}")
-    (w.home / ".ssh" / "signing").chmod(0o600)
+    shutil.copy(f"{KEYS['listed']}.pub", w.home / ".ssh" / "signing.pub")
+    # The private key has mode 0600 from its first byte, as ssh-keygen writes it.
+    key = os.open(w.home / ".ssh" / "signing", os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(key, "wb") as f:
+        f.write(pathlib.Path(KEYS["listed"]).read_bytes())
     code, out = w.run("dotfiles-merge", "topic", answers="y\nn\n")
     check(
         code == 0 and w.signature(w.head()) == f"G {PRINCIPAL}" and w.remote_main() == w.head(),
@@ -942,7 +947,9 @@ def clause_13():
         )
         + 'printf "%s\\n" "$SIGNING_KEY" "$SK_PROVIDER"\n'
     )
-    result = subprocess.run(["/bin/bash", str(path)], capture_output=True, text=True, cwd=probe, check=False)
+    result = subprocess.run(
+        ["/bin/bash", str(path)], capture_output=True, text=True, cwd=probe, check=False, timeout=60
+    )
     check(
         result.stdout == f"{value}\n{value}\n" and not (probe / "pwned").exists(),
         f"signing_key and sk_provider with quotes and $( ): the script reads them as text "
@@ -966,6 +973,7 @@ def clause_14():
                 capture_output=True,
                 text=True,
                 check=False,
+                timeout=60,
             )
             return result.stdout.strip() if result.returncode == 0 else None
 
@@ -1202,6 +1210,7 @@ def clause_9():
                 capture_output=True,
                 text=True,
                 check=False,
+                timeout=60,
             )
             check(syntax.returncode == 0, f"bash -n {name} ({host}) {syntax.stderr.strip()}")
             lint = subprocess.run(
@@ -1210,6 +1219,7 @@ def clause_9():
                 text=True,
                 env=env,
                 check=False,
+                timeout=60,
             )
             check(lint.returncode == 0, f"shellcheck {name} ({host}) {lint.stdout.strip()}")
 

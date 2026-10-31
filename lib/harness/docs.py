@@ -44,6 +44,7 @@ with each set of manifests, and checks the pair that each gets.
 
 import pathlib
 import re
+import shutil
 import subprocess
 import tempfile
 import tomllib
@@ -255,7 +256,10 @@ def dependency_problems(text):
 
 def tracked():
     """The paths that git tracks in the repository."""
-    out = subprocess.run(["git", "ls-files"], cwd=REPO, capture_output=True, text=True, check=True).stdout
+    program = shutil.which("git") or "git"
+    out = subprocess.run(
+        [program, "ls-files"], cwd=REPO, capture_output=True, text=True, check=True, timeout=60
+    ).stdout
     return out.splitlines()
 
 

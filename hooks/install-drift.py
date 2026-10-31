@@ -27,7 +27,10 @@ import sys
 import unicodedata
 from collections.abc import Collection, Iterable
 from pathlib import Path
-from typing import NoReturn
+from typing import NoReturn, cast
+
+from guard import HarnessError
+from guard.jsonio import loads
 
 STAMP = ".harness-install.json"
 
@@ -108,11 +111,12 @@ def check(home: str | os.PathLike[str]) -> str | None:
     apply = "Run `harness install` to see the changes, then `harness install --apply`."
     try:
         with stamp.open(encoding="utf-8") as f:
-            recorded = json.load(f)
-        sources, expected = recorded["sources"], recorded["digest"]
+            recorded = loads(f.read(), where=str(stamp))
+        # A source of another shape raises TypeError or ValueError where `digest` reads it.
+        sources, expected = cast("list[Source]", recorded["sources"]), recorded["digest"]
     except FileNotFoundError:
         return f"{stamp} does not exist: no `harness install --apply` recorded what ~/.claude holds. {apply}"
-    except (OSError, ValueError, KeyError, TypeError) as e:
+    except (OSError, ValueError, KeyError, TypeError, HarnessError) as e:
         return f"{stamp} cannot be read ({type(e).__name__}: {e}); the installation is not checked. {apply}"
     try:
         current = digest(sources)
@@ -129,8 +133,8 @@ def check(home: str | os.PathLike[str]) -> str | None:
 def main() -> int:
     try:
         message = check(Path("~").expanduser())
-    # The hook only warns: a stamp or a source of a shape that `check` does not name, a stamp nested
-    # too deep for `json` (RecursionError), and a home that cannot be found are warnings too.
+    # The hook only warns: a stamp or a source of a shape that `check` does not name, and a home
+    # that cannot be found (RuntimeError), are warnings too.
     except (OSError, ValueError, LookupError, TypeError, RuntimeError) as e:
         message = f"install-drift.py failed ({type(e).__name__}: {e}); the installation is not checked."
     if message:

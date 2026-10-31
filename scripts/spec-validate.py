@@ -54,6 +54,7 @@ fail, and 3 when this script fails.
 import argparse
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -271,15 +272,41 @@ def structure(spec, lines):
 
 
 def status(tree: str) -> str | None:
-    """`git status --porcelain --ignored` of a git tree, or None for any other tree."""
-    p = subprocess.run(
-        ["git", "status", "--porcelain", "--ignored"],  # noqa: S607 -- git runs from PATH
-        cwd=tree,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    """`git status --porcelain --ignored` of a git tree, or None for any other tree and for a git
+    that runs longer than 60 s."""
+    try:
+        p = subprocess.run(
+            [shutil.which("git") or "git", "status", "--porcelain", "--ignored"],
+            cwd=tree,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=60,
+        )
+    except subprocess.TimeoutExpired:
+        return None
     return p.stdout if p.returncode == 0 else None
+
+
+def export(repo: str, base: str, tree: str) -> str | None:
+    """Write the files of the commit `base` of the checkout `repo` into `tree`; the error, or None.
+    A `git archive` that fails or runs longer than 60 s is an error; a `tar` that fails raises."""
+    try:
+        archive = subprocess.run(
+            [shutil.which("git") or "git", "archive", base],
+            cwd=repo,
+            capture_output=True,
+            check=False,
+            timeout=60,
+        )
+    except subprocess.TimeoutExpired:
+        return f"rule 9: `git archive {base}` takes more than 60 s in {repo}"
+    if archive.returncode != 0:
+        return f"rule 9: `git archive {base}` fails in {repo}: {archive.stderr.decode().strip()}"
+    subprocess.run(
+        [shutil.which("tar") or "tar", "-x", "-C", tree], input=archive.stdout, check=True, timeout=60
+    )
+    return None
 
 
 def run(cmds, tree, env, label, errors, rule, on, devices, unmeasured):
@@ -291,7 +318,7 @@ def run(cmds, tree, env, label, errors, rule, on, devices, unmeasured):
             print(f"{label}: not run (needs {', '.join(missing)}): {c}")
             unmeasured.append((c, missing))
             continue
-        p = subprocess.run(
+        p = subprocess.run(  # no timeout: a check may run a whole suite, which bounds each part itself
             ["bash", "-c", cast("str", c)],  # noqa: S607 -- bash runs from PATH
             cwd=cast("str", tree),
             env=cast("dict[str, str]", env),
@@ -354,23 +381,9 @@ def main():
                 if a.repo:
                     tree = str(Path(tmp) / "base")
                     os.mkdir(tree)
-                    archive = subprocess.run(
-                        ["git", "archive", cast("str", base)],  # noqa: S607 -- git runs from PATH
-                        cwd=a.repo,
-                        capture_output=True,
-                        check=False,
-                    )
-                    if archive.returncode != 0:
-                        errors.append(
-                            f"rule 9: `git archive {base}` fails in {a.repo}: "
-                            f"{archive.stderr.decode().strip()}"
-                        )
-                    else:
-                        subprocess.run(
-                            ["tar", "-x", "-C", tree],  # noqa: S607 -- tar runs from PATH
-                            input=archive.stdout,
-                            check=True,
-                        )
+                    error = export(cast("str", a.repo), cast("str", base), tree)
+                    if error is not None:
+                        cast("list[str]", errors).append(error)
                 if not errors:
                     run(premises, tree, env, "premise", errors, "rule 9", "base", devices, unmeasured)
 

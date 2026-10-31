@@ -26,6 +26,9 @@ import sys
 from pathlib import Path
 from typing import cast
 
+from guard import HarnessError
+from guard.jsonio import loads
+
 LOG = Path(os.environ.get("LOG") or Path("~/.claude/logs/permission-requests.jsonl").expanduser())
 
 # A `Write` or `Edit` input carries whole file contents. The log needs the call's shape,
@@ -57,14 +60,10 @@ def shorten(value: object) -> object:
 
 
 def main() -> int:
-    # A payload that is not JSON, or nested too deep for `json` (RecursionError), and a log that
-    # cannot be written, are passed over: the hook decides nothing.
-    with contextlib.suppress(OSError, ValueError, RecursionError):
-        payload: object = json.load(sys.stdin)
-        # A payload that is no JSON object holds none of the fields, and is not logged.
-        if not isinstance(payload, dict):
-            return 0
-        fields = cast("dict[str, object]", payload)
+    # A payload that is not JSON or no JSON object (HarnessError), which holds none of the fields,
+    # and a log that cannot be written, are passed over: the hook decides nothing.
+    with contextlib.suppress(OSError, ValueError, HarnessError):
+        fields: dict[str, object] = dict(loads(sys.stdin.read(), where="the payload"))
         record: dict[str, object] = {
             "time": datetime.datetime.now().astimezone().isoformat(timespec="seconds")
         }

@@ -27,9 +27,16 @@ measured for this tree's text. Usage figures are the API's own.
 import argparse
 import glob
 import hashlib
+import importlib
 import json
 import os
+import pathlib
+import sys
 from collections import defaultdict
+
+# The harness's JSON reader, from lib/ of this checkout.
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "lib"))
+jsonio = importlib.import_module("harness.jsonio")
 
 CHARS_PER_TOKEN = 3.5
 # Cache-read multiplier where it is not the standard 0.1: the pricing page, platform.claude.com.
@@ -94,8 +101,8 @@ for path in paths:
     with open(path) as f:
         for line in f:
             try:
-                record = json.loads(line)
-            except json.JSONDecodeError:
+                record = jsonio.loads(line, where=path)
+            except jsonio.HarnessError:
                 continue
             kind = record.get("type")
             if kind == "system" and record.get("subtype") == "compact_boundary":

@@ -110,7 +110,9 @@ The argument parser of `harness`. `main` loads the adapters through `frontends.p
 When an adapter fails to load, `harness` exits with status 2 before any subcommand runs. Then
 `main` adds the global options `--profile F` and `--models F`, each subcommand of the modules and
 the adapters, and `harness test` from `testrun.py`. On a `HarnessError` of a subcommand,
-`harness` prints one line, `harness <subcommand>: <message>`, and exits with status 2.
+`harness` prints one line, `harness <subcommand>: <message>`, and exits with status 2. A program
+that a subcommand runs and that runs longer than its timeout is such an error, and the line names
+the program's command and the timeout (`dispatch`).
 
 ## `testrun.py`
 
@@ -166,8 +168,10 @@ Before it writes, the subcommand checks every target of the Julia environment an
 directory or a file that cannot be read, or if a directory above a target is a symbolic link or a
 file.
 Under `--apply`, it also exits with status 2 before anything is written if the install changes a
-target that it cannot write, or whose mode it cannot change. A dry run prints its whole plan and
-count line first, then that refusal, and exits with status 2.
+target that it cannot write, or whose mode it cannot change. A target with a mode, and a backup,
+are written by `write_private` of `fsutil.py`, which renames a temporary name in the target's
+directory, so that directory must be writable too. A dry run prints its whole plan and count line
+first, then that refusal, and exits with status 2.
 
 Then the subcommand installs the Julia environment of the scripts, where the profile's `[setup]`
 chooses the `julia` component or the profile has no `[setup]`: it copies `Project.toml` to
@@ -191,7 +195,9 @@ computes again.
 Its cases check that the install exits with status 2 and names the file on a broken profile or
 `models.toml`, and that it exits with status 2 and writes nothing when an adapter fails to load.
 They also run the restart cases of `install_cases.py`, and `behind_origin` on a scratch
-repository whose `origin/main` is ahead of, level with and behind its `HEAD`.
+repository whose `origin/main` is ahead of, level with and behind its `HEAD`. Under umask 0, they
+check that no file that holds the bytes of a new file of mode 0600, or of its backup, has a group
+or other bit at any `chmod`, any rename or the end.
 
 ## `install_cases.py`
 
@@ -616,17 +622,21 @@ curated skill of `skills/`.
 
 The reader of JSON text. It has no subcommand. Its cases run in `harness test`.
 
-`loads(text, *, where)` returns the top-level object of `text`, and `load(path)` the one of a
-UTF-8 file. Python's `json` keeps the last value of a key that occurs twice, and reads `NaN`,
-`Infinity`, `-Infinity` and a number that overflows, such as `1e400`. These readers refuse each of
-them with a `HarnessError` that names `where`, or the path, and the line. They also refuse a
-nesting deeper than 200, where the top-level value is depth 1, with its line, and an empty text, a
-byte order mark and a top level that is not an object. A path that cannot be read, is not a
-regular file or holds bytes that are not UTF-8 is refused with the path. No other exception leaves
-them. The module imports only the standard library and `HarnessError`.
+`loads(text, *, where, top=dict)` returns the top-level object of `text`, and `load(path)` the one
+of a UTF-8 file. With `top=list` or `top=str`, `loads` returns a top-level array or string, and
+with `top=object` a value of any type. Python's `json` keeps the last value of a key that occurs
+twice, and reads `NaN`, `Infinity`, `-Infinity` and a number that overflows, such as `1e400`.
+These readers refuse each of them with a `HarnessError` that names `where`, or the path, and the
+line. They also refuse a nesting deeper than 200, where the top-level value is depth 1, with its
+line, and an empty text, a byte order mark and a top level of another type than `top` names. A
+path that cannot be read, is not a regular file or holds bytes that are not UTF-8 is refused with
+the path. No other exception leaves them. The module imports only the standard library and
+`HarnessError`.
 
-Its cases check a value, a file and CRLF line ends, each refusal and its line, and a depth of 200,
-201 and 100000.
+Its cases check a value, a file and CRLF line ends, each refusal and its line, a depth of 200, 201
+and 100000, and each kind of top level under each `top`. `hooks/guard/jsonio.py` is a copy of the
+module, byte for byte, and a case of `hooks/probe.py` holds the copy; ruff bans `json.load` and
+`json.loads` outside the two copies and the tests of the dotfiles kit.
 
 ## `ownedjson.py`
 
@@ -710,7 +720,13 @@ fails, no uv, and a `develop` that is not `true` or `false`.
 The cases of the strict profile of the Python code. The module has no subcommand. Its first cases
 parse each `.py` file below `hooks/`, each `adapters/*/guard*.py` and `githooks/pre-commit-wiki`
 with `ast` and fail on an import outside the standard library, in this repository and in scratch trees: `hooks/probe.py`
-may also import `harness`, and another file may not. The other cases run
+may also import `harness`, the guard's tables of its frontends and the four hooks that read JSON
+may import `guard`, and another file may not. The timeout and chmod cases read each file
+that ruff reads with `ast`, in this repository and in scratch trees: each call of `subprocess.run`
+names a `timeout=` or carries `# no timeout: <reason>` on the line where it starts, and no `chmod`
+to a private mode follows a file write in one function outside `fsutil.py`, but one that carries
+`# not private: <reason>`. A handler case runs `harness` with a subcommand whose program sleeps
+past its timeout, and checks exit 2 and one line that names the program. The other cases run
 `.githooks/pre-commit` through `git commit` in scratch repositories, with stubs of `ruff` and
 `basedpyright` in a scratch Python environment and a second pair on the `PATH`: a clean commit, a
 staged file that each check refuses, a staged file that the formatter would change, which stays

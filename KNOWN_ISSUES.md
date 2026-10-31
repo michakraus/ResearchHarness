@@ -315,16 +315,6 @@
 - kind: found late
 - found: #67
 
-### K94 · A new `mcp_config.json` holds Kaimon's token under the umask mode for a short time.
-
-- location: `lib/harness/install.py:119`
-- evidence: `install_file` writes the bytes with `dst.write_bytes(data)` (line 125) and sets the
-  mode with `dst.chmod(mode)` (line 127) after it. A file that does not exist yet is created with
-  the mode of the umask, 644 under the usual umask 022, so between the two calls another user can
-  read the token that the Antigravity plan writes into `~/.gemini/config/mcp_config.json`.
-- kind: defect
-- found: #78
-
 ### K95 · The worktree rule of the Antigravity agents matches only `isolation: worktree`, with or without double quotes.
 
 - location: `adapters/antigravity/adapter.py:737`
@@ -374,29 +364,6 @@
   `adapters/omp/adapter.py:469` writes inline for `UNDER-OMP.md`.
 - kind: dead code
 - found: #78
-
-### K101 · A `config.json` with a key twice in one object loses the first value when the install merges the app's grants.
-
-- location: `adapters/antigravity/adapter.py:652`
-- evidence: `merge_grants` reads the file with `json_object`, which keeps the last value of a key.
-  On `{"userSettings": {"theme": "dark", "theme": "light"}}` it returns
-  `{"userSettings": {"theme": "light", "globalPermissionGrants": {…}}}` and raises no error, so
-  the install exits 0. `merge_settings` of the CLI's `settings.json` does the same, and
-  `merge_mcp` refuses a key twice in one object of `mcp_config.json` with exit 2.
-- kind: defect
-- found: #80
-
-### K102 · A minified `config.json` comes back with spaces after each separator, so every install replaces it.
-
-- location: `adapters/antigravity/adapter.py:672`
-- evidence: `merge_grants` writes the file with `claude.dumps` and the file's indent, which is none
-  for a file on one line, and `json` then writes `", "` and `": "`. On
-  `{"a":1,"userSettings":{"globalPermissionGrants":{"allow":["command(git status)"],"deny":[],"ask":[]}}}`
-  with that rule already in `allow`, it returns the same object with the spaces and a final
-  newline added, so the bytes differ and the install lists the file as REPLACE and keeps a backup
-  each time. Whether the app writes its `config.json` minified is not measured.
-- kind: defect
-- found: #80
 
 ### K103 · The Antigravity guard answers `ask`, not `deny`, to a command that writes `config.json` or an installed agent.
 
@@ -463,16 +430,6 @@
   the run keeps, no longer applies to it. The kernel frees the run's slot at once, so a third run
   can start beside the orphans.
 - kind: defect
-- found: 2026-10-26, the critic of the test runner
-
-### K110 · `changed` runs `git diff` with no `timeout=`.
-
-- location: `lib/harness/testrun.py:117`
-- evidence: `subprocess.run(["git", "diff", "--name-status", …], cwd=root, capture_output=True,
-  text=True, check=False)` names no `timeout`, so a `git` that does not end holds
-  `harness test --changed` with it. No `git diff` that hangs is known, and no configuration of
-  the repository checks for a `timeout=` yet.
-- kind: not verified
 - found: 2026-10-26, the critic of the test runner
 
 ### K111 · No case of the `protection` part runs `gh()`.
@@ -620,3 +577,14 @@
   and run `harness setup` again.
 - kind: defect
 - found: 2026-10-31, the documentation of the installation
+
+### K127 · The SessionStart handler of the Antigravity layer reads the drift hook's output with `json`, not `jsonio`.
+
+- location: `adapters/antigravity/adapter.py:205`
+- evidence: `TRANSLATE`, the handler that `hooks.json` runs as `python -c`, reads the output of
+  `install-drift.py` with `json.loads(t)`, which keeps the last value of a key that an object
+  holds twice and reads `NaN`. A `python -c` text has no `guard` package on its path, so it
+  cannot import `guard.jsonio`, and ruff's ban of `json.loads` reads no code inside a string. The
+  drift hook writes its output with `json.dumps`, so no such output of it is known.
+- kind: defect
+- found: 2026-10-31

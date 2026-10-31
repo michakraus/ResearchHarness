@@ -380,8 +380,7 @@ def run_suite(tmp: Path) -> bool:
     say("python3 bin/harness test")
     log = tmp / "test.log"
     with log.open("wb") as f:
-        # No timeout: the suite is the harness's own.
-        status = subprocess.run(
+        status = subprocess.run(  # no timeout: the suite is the harness's own, and bounds each part
             [PYTHON, "bin/harness", "test"], stdout=f, stderr=subprocess.STDOUT, check=False
         )
     data = log.read_bytes()
@@ -475,8 +474,9 @@ def run_kit_tests(tmp: Path) -> None:
         say(f"python3 {file}")
         log = tmp / f"{kit_test}.log"
         with log.open("wb") as f:
-            # No timeout: the kit's tests are the harness's own.
-            status = subprocess.run([PYTHON, file], stdout=f, stderr=subprocess.STDOUT, check=False)
+            status = subprocess.run(  # no timeout: the kit's tests are the harness's own, each call timed
+                [PYTHON, file], stdout=f, stderr=subprocess.STDOUT, check=False
+            )
         if status.returncode == 0:
             write_out(last_lines(log.read_bytes(), 1))
         else:

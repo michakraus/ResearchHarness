@@ -61,13 +61,14 @@ import sys
 import tempfile
 import types
 import unicodedata
+from collections.abc import Sequence
 from importlib.abc import Loader
 from importlib.machinery import ModuleSpec
-from typing import cast
+from typing import Any, cast
 
 # `install_cases` imports this module too, and reads its names only when a case runs, so the cycle
 # resolves at import.
-from . import REPO, HarnessError, changing, frontends, install_cases, outcome, sources
+from . import REPO, HarnessError, changing, frontends, fsutil, install_cases, outcome, sources
 from . import profile as profile_module
 
 # The stamp that the `SessionStart` hook hooks/install-drift.py compares, at the top of the layer
@@ -105,6 +106,7 @@ def behind_origin(repo=REPO):
         text=True,
         env=env,
         check=False,
+        timeout=60,
     )
     behind = int(p.stdout) if p.returncode == 0 and p.stdout.strip().isdigit() else 0
     if not behind:
@@ -117,7 +119,8 @@ def behind_origin(repo=REPO):
 
 def install_file(apply, data, dst, label, backup=False, mode=None):
     """Install `data` (bytes) at `dst`, with `mode` when given; 1 when either differs, after the
-    change under `apply`. A backup has mode 0600, whatever the mode of the file it keeps. An
+    change under `apply`. A file with a mode, and a backup, which has mode 0600 whatever the mode of
+    the file it keeps, are written by `write_private`, so each has its mode from its first byte. An
     OSError in the write exits 2 with `dst`: `check_files` has run, but a disk can fill after it."""
     same = dst.is_file() and dst.read_bytes() == data
     old = stat.S_IMODE(dst.stat().st_mode) if dst.is_file() else None
@@ -133,14 +136,14 @@ def install_file(apply, data, dst, label, backup=False, mode=None):
     if apply:
         try:
             dst.parent.mkdir(parents=True, exist_ok=True)
+            # The callers give a path, bytes and a mode or None.
+            target, mode_bits = cast("pathlib.Path", dst), cast("int | None", mode)
             if note:
-                copy = dst.with_name(f"{dst.name}.bak-{stamp}")
-                shutil.copyfile(dst, copy)
-                copy.chmod(0o600)
-            if not same:
+                fsutil.write_private(target.with_name(f"{target.name}.bak-{stamp}"), target.read_bytes())
+            if mode_bits is not None:
+                fsutil.write_private(target, cast("bytes", data), mode_bits)
+            elif not same:
                 dst.write_bytes(data)
-            if mode is not None:
-                dst.chmod(mode)
         except OSError as e:
             where = "" if e.filename in (None, str(dst)) else f" ({e.filename})"
             raise HarnessError(f"{dst} cannot be written: {e.strerror or e}{where}") from None
@@ -165,6 +168,10 @@ def unreadable(error):
 
 def drift_hook():
     """The `SessionStart` hook hooks/install-drift.py as a module, for its `digest_of`."""
+    # The hook imports the guard's `jsonio` from `guard/` beside it, so hooks/ goes on the path.
+    hooks = str(REPO / "hooks")
+    if hooks not in sys.path:
+        sys.path.append(hooks)
     # A path that ends in `.py` always gets a spec with a source loader.
     spec = cast(
         "ModuleSpec",
@@ -244,14 +251,14 @@ def check_targets(root, shown, plan):
             raise HarnessError(f"{path} is not a file that can be read, where the install writes a file")
 
 
-def check_files(files):
+def check_files(files: Sequence[tuple[Any, ...]]) -> str | None:
     """Exit 2, before anything is written, on a target of `files`, [(destination, bytes, mode,
     label, backup, …)] as a Plan holds them, that `check_targets` refuses below the directory that
     holds them all. Then the refusal of the first target that the install cannot change, or None:
     a target whose bytes change and that cannot be written (an existing file, its directory when it
-    is backed up, or the nearest directory above a new file), and a target with a change that
-    `install_file` follows with a `chmod` and that another user owns: a `chmod` needs the owner (or
-    root), not write access, so an owned file of mode 0444 can still change its mode."""
+    is backed up, or the nearest directory above a new file), a target with a mode and a change
+    whose directory cannot be written, as `write_private` writes a temporary name there and renames
+    it, and a target with a mode and a change that another user owns."""
     if not files:
         return None
     root = pathlib.Path(os.path.commonpath([dst.parent for dst, *_ in files]))
@@ -265,14 +272,14 @@ def check_files(files):
         same, st = dst.read_bytes() == data, dst.stat()
         if not same and not os.access(dst, os.W_OK):
             return f"{dst} cannot be written, and the install changes it"
-        if not same and rest and rest[0] and not os.access(dst.parent, os.W_OK | os.X_OK):
-            return f"{dst} cannot be written: its backup goes to {dst.parent}, which cannot be written"
-        # `install_file` runs a chmod on a changed file whenever the plan names a mode.
-        if (
-            mode is not None
-            and (not same or mode != stat.S_IMODE(st.st_mode))
-            and os.geteuid() not in (0, st.st_uid)
-        ):
+        # `install_file` writes a backup, and a changed file whenever the plan names a mode, through
+        # `write_private`, which writes a temporary name in the directory and renames it.
+        backed_up = not same and bool(rest) and bool(rest[0])
+        changed = mode is not None and (not same or mode != stat.S_IMODE(st.st_mode))
+        if (backed_up or changed) and not os.access(dst.parent, os.W_OK | os.X_OK):
+            how = "its backup goes to" if backed_up else "it is replaced in"
+            return f"{dst} cannot be written: {how} {dst.parent}, which cannot be written"
+        if changed and os.geteuid() not in (0, st.st_uid):
             return f"{dst} cannot change its mode to {mode:04o}: another user is its owner"
     return None
 
@@ -288,7 +295,7 @@ def install_julia_env(apply):
     if apply and changes:
         # `Pkg.resolve` adds no registry, so a new depot needs General first.
         try:
-            p = subprocess.run(
+            p = subprocess.run(  # no timeout: Pkg.instantiate downloads and compiles, a long run
                 [
                     *JULIA,
                     f"--project={JULIA_ENV}",
@@ -474,7 +481,7 @@ def selftest():
             ),
         ]:
             bad.write_bytes(data)
-            p = subprocess.run(harness + argv, capture_output=True, text=True, check=False)
+            p = subprocess.run(harness + argv, capture_output=True, text=True, check=False, timeout=60)
             check(
                 p.returncode == 2 and str(bad) in p.stderr and "Traceback" not in p.stderr,
                 f"{label} exits 2 and names the file: {p.returncode}, {p.stderr.strip()[-200:]!r}",
@@ -496,6 +503,7 @@ def selftest():
                 capture_output=True,
                 text=True,
                 check=False,
+                timeout=60,
             )
             check(
                 p.returncode == 2
@@ -517,6 +525,7 @@ def selftest():
             capture_output=True,
             text=True,
             check=False,
+            timeout=60,
         )
         check(
             p.returncode == 2
@@ -540,6 +549,8 @@ def selftest():
         setup_guard_cases(check, pathlib.Path(tmp))
         install_cases.setup_cases(check, pathlib.Path(tmp))
         behind_cases(check, pathlib.Path(tmp))
+        install_cases.private_write_cases(check, pathlib.Path(tmp))
+        install_cases.replace_directory_cases(check, pathlib.Path(tmp))
     return total, wrong
 
 
@@ -559,9 +570,11 @@ def behind_cases(check, tmp):
         "GIT_COMMITTER_EMAIL": "case@example.org",
     }
 
-    def git(*args):
+    program, where = shutil.which("git") or "git", cast("pathlib.Path", repo)
+
+    def git(*args: str) -> str:
         return subprocess.run(
-            ["git", *args], cwd=repo, env=env, check=True, capture_output=True, text=True
+            [program, *args], cwd=where, env=env, check=True, capture_output=True, text=True, timeout=60
         ).stdout.strip()
 
     git("init", "-q", "-b", "main")
@@ -647,6 +660,7 @@ def load_cases(check, tmp):
             env=env,
             cwd=base,
             check=False,
+            timeout=60,
         )
         after = sorted(base.rglob("*"))
         where = f"{path}:{line}: " if name != middle else f"{path}: "

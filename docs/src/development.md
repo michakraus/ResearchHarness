@@ -63,14 +63,14 @@ The Python code of the harness follows one profile, which `pyproject.toml` sets.
 gives the layout, at line length 110; `.git-blame-ignore-revs` names the commit that formatted
 the whole tree, so `git blame --ignore-revs-file .git-blame-ignore-revs` skips it.
 `ruff check` runs the rule families `E F W B BLE TRY PTH S UP SIM RET C4 PERF PL RUF ARG FBT DTZ N
-TID`, bans `os.system` and `os.popen`, and ignores `S603` and `TRY003`; a file that holds test
-cases also ignores `B023` and `PLR2004`. `bin/harness`, `githooks/pre-commit-wiki`,
-`.githooks/pre-commit`, `.githooks/pre-push` and `launchagents/claude-autocommit` have no `.py`
-suffix, and `pyproject.toml` names all five for ruff; the formatter and the `UP` family leave
-`bin/harness` and `githooks/pre-commit-wiki`, whose syntax is a closed set of Python 3.0 forms,
-and ruff reads `.githooks/pre-push` as Python 3.9. `basedpyright` checks `lib`, `hooks`,
-`adapters`, `scripts` and `bin` in strict mode for Python 3.14; it reads only `.py` files, so it
-checks none of the five.
+TID`, bans `os.system`, `os.popen`, `json.load` and `json.loads`, and ignores `S603` and
+`TRY003`; a file that holds test cases also ignores `B023` and `PLR2004`. `bin/harness`,
+`githooks/pre-commit-wiki`, `.githooks/pre-commit`, `.githooks/pre-push` and
+`launchagents/claude-autocommit` have no `.py` suffix, and `pyproject.toml` names all five for
+ruff; the formatter and the `UP` family leave `bin/harness` and `githooks/pre-commit-wiki`, whose
+syntax is a closed set of Python 3.0 forms, and ruff reads `.githooks/pre-push` as Python 3.9.
+`basedpyright` checks `lib`, `hooks`, `adapters`, `scripts` and `bin` in strict mode for Python
+3.14; it reads only `.py` files, so it checks none of the five.
 
 The findings of the code that the profile met are recorded, not fixed: the table
 `[tool.ruff.lint.extend-per-file-ignores]` of `pyproject.toml`, and the baseline
@@ -112,18 +112,28 @@ that enforces it, and loads on every `.py` file. This section gives the reason f
   the caller reads `returncode`; `check=` says which of the two the call means. `text=True` decodes
   the output once, so the code that reads it handles `str`, not `bytes`. A program outside the
   harness, such as `git`, `gh` or `node`, can wait on a prompt or the network, and a `timeout=`
-  turns that wait into a failure that names it.
+  turns that wait into a failure that names it. So every call names a `timeout=`, or carries
+  `# no timeout: <reason>` on its first line for a run that is long by design, such as a Julia
+  process, and a case of `lib/harness/strict.py` reads every file that ruff reads for a call with
+  neither. The `harness` command turns a `subprocess.TimeoutExpired` into one line and exit 2.
 - **`HarnessError` for a reported failure.** The `harness` command catches it, prints its one line
   and exits 2, the status that the sweep checks for a missing precondition. A traceback tells the
   user nothing they can act on.
 - **No blind `except`.** An `except Exception` also catches the bug that the code did not expect,
   and turns it into a wrong result.
 - **The banned APIs, and the APIs that review keeps in their place.** `os.system` and `os.popen`
-  run a command line through the shell, so its quoting decides what runs. `json.load` at each call
-  site spreads the parsing of one kind of file over many functions. `shlex` splits as POSIX `sh`
-  does, so a guard that decides on its tokens can allow a command that the real shell runs
-  differently. A secret file that is written and then given mode `0600` is readable by others in
-  between.
+  run a command line through the shell, so its quoting decides what runs. `json.load` and
+  `json.loads` keep the last value of a key that an object holds twice, read `NaN` and fail on a
+  deep nesting with `RecursionError`, so ruff bans them outside `lib/harness/jsonio.py` and the
+  guard's copy of it, which refuse each with a message that names the text, and outside the tests
+  of the dotfiles kit, which run with no harness beside them; a merge into a file that another
+  program owns goes through `ownedjson.py`, which keeps every byte that it does not change.
+  `json.load` at each call site also spreads the parsing of one kind of file over many
+  functions. `shlex` splits as POSIX `sh` does, so a guard that decides on its tokens can allow a
+  command that the real shell runs differently. A secret file that is written and then given mode
+  `0600` is readable by others in between, so `write_private` of `fsutil.py` writes it, and a case
+  of `lib/harness/strict.py` refuses a `chmod` to a private mode after a file write in one
+  function, but one that carries `# not private: <reason>`.
 - **Standard-library-only hooks.** Claude Code and Antigravity run a hook on the interpreter of
   the harness's Python environment, and oh-my-pi and OpenCode run the guard on the `python` that
   the path list beside their plugin names. A hook that imports a module beyond the standard

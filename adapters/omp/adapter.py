@@ -108,7 +108,7 @@ import tempfile
 import types
 from typing import Any, cast
 
-from harness import REPO, HarnessError, frontends, frontmatter, install, providers, sources
+from harness import REPO, HarnessError, frontends, frontmatter, install, jsonio, providers, sources
 from harness import profile as profile_module
 
 NAME = "omp"
@@ -204,12 +204,24 @@ def agent_models(models: profile_module.ModelTables) -> list[str]:
     return sorted({*models.tiers.values(), *models.model_overrides.values(), *seats})
 
 
+def json_value(text: str, where: str) -> Any:
+    """The JSON value of `text`, of any type, read by `jsonio`; a refusal raises HarnessError, which
+    names `where`. Each caller reads the keys of the value as its own code checks them."""
+    return jsonio.loads(text, where=where, top=object)
+
+
 def config_chains(text: str) -> dict[str, list[str]]:
     """{key: [selector]} of `retry.fallbackChains` in `text`, oh-my-pi's config.yml, in the block
     form that oh-my-pi writes: `retry:`, `  fallbackChains:`, `    <key>:`, `      - <selector>`,
     each key and selector plain or quoted. A key in any other form is left out, and so gets the
     empty chain of render_config."""
-    unquote = lambda s: json.loads(s) if s[:1] == '"' else s[1:-1] if s[:1] == "'" else s  # noqa: E731
+
+    def unquote(s: str) -> str:
+        """`s` without its quotes: a double-quoted `s` read as a JSON string, a single-quoted one cut."""
+        if s[:1] == '"':
+            return jsonio.loads(s, where="config.yml", top=str)
+        return s[1:-1] if s[:1] == "'" else s
+
     chains, section, key = {}, None, None
     for line in text.splitlines():
         if not line.strip() or line.lstrip().startswith("#"):
@@ -226,7 +238,7 @@ def config_chains(text: str) -> dict[str, list[str]]:
             if body.endswith(":"):
                 try:
                     key = unquote(body[:-1].strip())
-                except ValueError:
+                except HarnessError:
                     key = None
                 if key is not None:
                     chains[key] = []
@@ -235,7 +247,7 @@ def config_chains(text: str) -> dict[str, list[str]]:
                 if not body.startswith("- "):
                     raise ValueError(body)
                 chains[key].append(unquote(body[2:].strip()))
-            except ValueError:
+            except ValueError, HarnessError:
                 chains.pop(key, None)
                 key = None
     return chains
@@ -268,7 +280,7 @@ def render_config(
     fallback chain for each model of agent_models except one whose chain in `chains`, config.yml's
     (config_chains), only names the same model through another provider."""
     chains = chains or {}
-    permissions = json.loads(profile_module.render_file(SETTINGS, profile))["permissions"]
+    permissions = json_value(profile_module.render_file(SETTINGS, profile), str(SETTINGS))["permissions"]
     patterns, _ = bash_patterns(permissions)
     config = {
         "tools": {"approvalMode": "yolo", "approval": {"eval": "deny", "edit": "allow", "write": "allow"}},
@@ -312,7 +324,7 @@ def render_models(
             "`!command`: name the variable that holds the key, such as "
             '"AZURE_COGNITIVE_SERVICES_API_KEY", and set that variable in ~/.omp/agent/.env'
         )
-    providers = json.loads(json.dumps(own))  # a copy, so that the limits do not change `own`
+    providers = json_value(json.dumps(own), "the providers")  # a copy, so that the limits do not change `own`
     for selector, limit in models.context_limits.items():
         provider, sep, model = selector.partition("/")
         if not (sep and provider and model):
@@ -336,8 +348,9 @@ def guard_paths(profile):
     denies of OpenCode's path list, for `read`, `grep` and `bash`; under `edit` the template's
     `Edit` and `Write` denies, and under `ask` its `Edit` and `Write` asks and the paths of
     frontends.EDIT_SCOPE_ASKS, for `edit` and `write`, each `//` prefix of Claude Code's as `/`."""
-    deny = json.loads(profile_module.render_file(GUARD_PATHS, profile))["deny"]
-    permissions = json.loads(profile_module.render_file(SETTINGS, profile))["permissions"]
+    rendering = cast("profile_module.Profile", profile)
+    deny = json_value(profile_module.render_file(GUARD_PATHS, rendering), str(GUARD_PATHS))["deny"]
+    permissions = json_value(profile_module.render_file(SETTINGS, rendering), str(SETTINGS))["permissions"]
     lists = {"deny": [], "ask": []}
     for action, paths in lists.items():
         for rule in permissions.get(action, []):
@@ -359,7 +372,7 @@ def interpreted(text: str) -> str:
     """The path list `text` with the environment's interpreter (install.python_interpreter) under
     `python`: guards.ts runs the guard with it, and refuses every call without it."""
     listed = {
-        **cast("dict[str, object]", json.loads(text)),
+        **jsonio.loads(text, where="the path list"),
         "python": str(install.python_interpreter()),
     }
     return json.dumps(listed, indent=2, ensure_ascii=False) + "\n"
@@ -416,7 +429,7 @@ def render_rule(path, data=None):
                 f"{where}: an HTML comment, which oh-my-pi removes before it reads the frontmatter{suffix}"
             )
         if re.fullmatch(r'paths: \["[^"\\\x00-\x1f]*"(?:, "[^"\\\x00-\x1f]*")*\]', line):
-            key, value = "paths", json.loads(line[len("paths: ") :])
+            key, value = "paths", jsonio.loads(cast("str", line)[len("paths: ") :], where=where, top=list)
         elif line.startswith("description: "):
             key, value = (
                 "description",
@@ -755,7 +768,9 @@ def env_warning(agent):
     which it loads the `.env`. The `.env` is read for those keys, and no value of it is printed."""
     env = agent / ".env"
     want = {
-        k: v for k, v in json.loads(SETTINGS.read_text())["env"].items() if not k.startswith("CLAUDE_CODE_")
+        k: v
+        for k, v in json_value(SETTINGS.read_text(), str(SETTINGS))["env"].items()
+        if not k.startswith("CLAUDE_CODE_")
     }
     try:
         text = env.read_text(encoding="utf-8", errors="replace")
@@ -812,7 +827,10 @@ def omp_config(path):
 
 def omp_config_text(text):
     """A rendered overlay or models.yml, parsed: its `#` lines are comments, the rest JSON."""
-    return json.loads("".join(l for l in text.splitlines(keepends=True) if not l.startswith("#")))
+    return json_value(
+        "".join(line for line in cast("str", text).splitlines(keepends=True) if not line.startswith("#")),
+        "the overlay",
+    )
 
 
 def omp_cases(case, fresh, run):
@@ -937,7 +955,9 @@ def omp_cases(case, fresh, run):
     # The template's shell variables: a warning with the .env lines until the .env or the
     # environment sets each; the variables of Claude Code itself are not asked for.
     shell = {
-        k: v for k, v in json.loads(SETTINGS.read_text())["env"].items() if not k.startswith("CLAUDE_CODE_")
+        k: v
+        for k, v in json_value(SETTINGS.read_text(), str(SETTINGS))["env"].items()
+        if not k.startswith("CLAUDE_CODE_")
     }
     saved = {k: os.environ.pop(k) for k in list(shell) if k in os.environ}
     try:
@@ -973,16 +993,12 @@ def omp_cases(case, fresh, run):
             os.environ.pop(k, None)
         os.environ.update(saved)
     (agent / "config.yml").unlink()
-    permissions = json.loads(
-        profile_module.render_file(REPO / "settings" / "settings.proposal.json", profile)
-    )["permissions"]
+    permissions = json_value(profile_module.render_file(SETTINGS, profile), str(SETTINGS))["permissions"]
     # The path list: OpenCode's `read` denies under `deny`, the template's Edit and Write denies
     # under `edit` and its Edit and Write asks under `ask`, each `//` prefix as `/`, in the
     # template's order; then under `ask` the paths of frontends.EDIT_SCOPE_ASKS, which the template
     # leaves to Claude Code's hook.
-    guard_list = json.loads(
-        profile_module.render_file(REPO / "adapters" / "opencode" / "plugins" / "guard-paths.json", profile)
-    )["deny"]
+    guard_list = json_value(profile_module.render_file(GUARD_PATHS, profile), str(GUARD_PATHS))["deny"]
     edit_list, ask_list = (
         list(
             dict.fromkeys(
@@ -1013,7 +1029,10 @@ def omp_cases(case, fresh, run):
             (agent / "extensions" / "guards.ts").read_bytes()
             == (REPO / "adapters" / "omp" / "guards.ts").read_bytes()
             and ask_list
-            and json.loads((agent / "extensions" / "guard-paths.json").read_text())
+            and json_value(
+                cast("pathlib.Path", agent).joinpath("extensions", "guard-paths.json").read_text(),
+                "guard-paths.json",
+            )
             == {
                 "deny": guard_list,
                 "edit": edit_list,
@@ -1152,9 +1171,11 @@ def omp_cases(case, fresh, run):
             # The body names oh-my-pi's copies of the shared paths (frontends.relocate).
             source = frontends.relocate(src.read_bytes(), str(agent)).decode()
             (meta, body), (got, got_body) = front(source), front((agent / "rules" / src.name).read_text())
-            globs, paths = json.loads(got.get("globs", "null")), json.loads(meta.get("paths", "null"))
-            description = json.loads(got.get("description", "null"))
-        except (OSError, ValueError) as e:
+            fields = cast("dict[str, str]", got)
+            globs = json_value(fields.get("globs", "null"), "globs")
+            paths = json_value(meta.get("paths", "null"), "paths")
+            description = json_value(fields.get("description", "null"), "description")
+        except (OSError, ValueError, HarnessError) as e:
             return [f"{type(e).__name__}: {e}"]
         return [
             d
@@ -1337,7 +1358,7 @@ def omp_cases(case, fresh, run):
         source, lines = data.split(b"\n"), out.split(b"\n")
         close = next(i for i, l in enumerate(source[1:], 1) if l in (b"---", b"---\r"))
         paths = [
-            json.loads(l[len(b"paths: ") :].rstrip(b"\r"))
+            json_value(cast("bytes", l)[len(b"paths: ") :].rstrip(b"\r").decode(), "paths")
             for l in source[1:close]
             if l.startswith(b"paths: ")
         ]
@@ -1347,11 +1368,12 @@ def omp_cases(case, fresh, run):
                 lines[0] == b"---"
                 and lines[n + 2 :] == source[close:]
                 and all(l.startswith(b"globs: ") for l in lines[1 : n + 1])
-                and [json.loads(l[len(b"globs: ") :]) for l in lines[1 : n + 1]] == paths
+                and [json_value(row[len(b"globs: ") :].decode(), "globs") for row in lines[1 : n + 1]]
+                == paths
                 and lines[n + 1].startswith(b"description: ")
             ):
-                return json.loads(lines[n + 1][len(b"description: ") :])
-        except ValueError:
+                return json_value(lines[n + 1][len(b"description: ") :].decode(), "description")
+        except ValueError, HarnessError:
             pass
         return f"not the rendered form: {out!r}"
 
@@ -1520,6 +1542,11 @@ def omp_cases(case, fresh, run):
         f"config_chains reads retry.fallbackChains of the block form, a quoted key too, and leaves out an "
         f"inline value: {parsed}",
     )
+    escaped = config_chains('retry:\n  fallbackChains:\n    "p/\\u0065scaped":\n      - "q/\\u006dodel"\n')
+    case(
+        lambda: escaped == {"p/escaped": ["q/model"]},
+        f"config_chains reads a double-quoted key and selector as JSON strings, escapes too: {escaped}",
+    )
     for model, chain, want in [
         ("p/m", ["q/m"], True),
         ("p/m", ["q/m:high", "r/*"], True),
@@ -1566,8 +1593,10 @@ def omp_head(text):
     lines = text.split("\n")
     try:
         end = lines.index("---", 1)
-        head = {k: json.loads(v) for k, v in (l.split(": ", 1) for l in lines[1:end])}
-    except ValueError:
+        head = {
+            k: json_value(v, k) for k, v in (row.split(": ", 1) for row in cast("list[str]", lines)[1:end])
+        }
+    except ValueError, HarnessError:
         return {}, text
     return (head, "\n".join(lines[end + 1 :])) if lines[0] == "---" else ({}, text)
 
@@ -1732,7 +1761,7 @@ def omp_agent_cases(case, fresh, run, agent):
     # No silent fallback: every model that a rendered agent or seat names has an empty chain, and
     # the overlay holds no other chain, so it neither adds a fallback nor hides config.yml's.
     named = {
-        json.loads(m)
+        json_value(m, "model")
         for p in (agent / "agents").glob("*.md")
         for m in re.findall(r"(?m)^model: (\".*\")$", p.read_text())
     }
@@ -1791,8 +1820,8 @@ def omp_agent_cases(case, fresh, run, agent):
         }
     }
     try:
-        mcp = json.loads((agent / "mcp.json").read_text())
-    except (OSError, ValueError) as e:
+        mcp = json_value(cast("pathlib.Path", agent).joinpath("mcp.json").read_text(), "mcp.json")
+    except (OSError, ValueError, HarnessError) as e:
         mcp = f"{type(e).__name__}: {e}"
     oc = (REPO / "adapters" / "opencode" / "opencode.jsonc").read_text()
     case(
