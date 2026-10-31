@@ -38,8 +38,9 @@ export PATH="$HOME/Research/Harness/bin:$PATH"
 Add the `export` line to your shell startup file too, `~/.bashrc` for bash or `~/.zshrc` for zsh,
 so that each new shell finds `harness`. The first run of `harness` outside a
 [session](concepts.md#session) fetches uv into `~/.local/bin`, checks its sha256, makes the Python
-environment of the harness with `uv sync`, and prints one line that names it. A Python older than
-3.14 makes `harness` stop with exit status 2, an error. This line lists the subcommands:
+environment of the harness with `uv sync`, and names it in one line; in a session, its line names
+`harness install --apply`, which makes it. A Python older than 3.14 stops `harness` with exit
+status 2, an error that names the version found. This line lists the subcommands:
 
 ```bash
 harness --help
@@ -73,15 +74,15 @@ harness setup --yes       # read [setup] of the profile, and ask nothing
 **When a step fails**, `harness setup` prints its output and stops with exit status 2. Fix the
 cause, then run `harness setup` again: it plans again and skips what is done. Without `sudo`, or
 when `sudo -n true` is refused, it prints the `apt-get` line for an administrator and stops there:
-run `sudo -v` first, or have an administrator run the line. On a new machine,
-the step `harness trust --apply` fails until Claude Code has started once, because Claude Code
-writes `~/.claude.json` at its first start. Start `claude` once, then run `harness setup` again.
+run `sudo -v` first, or have an administrator run the line. The step `harness trust --apply` needs
+`~/.claude.json`, which Claude Code writes at its first start: start `claude` once, or, where
+`[setup]` does not choose `claude`, run `echo {} > ~/.claude.json`.
 
 **By hand.** `harness setup` prints the steps that it cannot do under *By hand*, before its last
-step: with the component `jobs`, the lingering line for an administrator; with the frontend
-`opencode`, the `PATH` line of `~/.opencode/bin`; with the frontend `antigravity`, the
-Antigravity app. Add these lines to your shell startup file, so that each new shell finds the
-programs of `~/.local/bin`, `~/.julia/bin` and `~/.opencode/bin`:
+step: with `iterm`, a default, that iTerm2 runs on macOS only; with `jobs`, the lingering line for
+an administrator; with `opencode`, the `PATH` line of `~/.opencode/bin`; with `antigravity`, the
+Antigravity app; and each tool with no package, release or installer. Add these lines to your shell
+startup file, so that each new shell finds the programs of the three directories:
 
 ```bash
 export PATH="$HOME/.local/bin:$PATH"

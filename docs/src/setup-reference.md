@@ -918,7 +918,9 @@ repositories of your research tree in one step, so that a session in any of them
 Claude Code writes `~/.claude.json` at its first start. Without that file, `harness trust` stops
 with exit status 2, an error, and so does the run of `harness setup` at this step. Start
 `claude` once in a terminal, then run `harness setup` again: it plans again and skips what is
-done. Run `harness trust --apply` again after `harness clone`, because a new clone is not trusted.
+done. When `[setup]` does not choose the frontend `claude`, nothing installs Claude Code: write an
+empty JSON object into the file with `echo {} > ~/.claude.json` instead. Run
+`harness trust --apply` again after `harness clone`, because a new clone is not trusted.
 
 **Check.** `harness trust` prints `0 untrusted` and exits with status 0.
 
@@ -1145,8 +1147,9 @@ are `SKIP`. `--full` also runs `harness test`.
 harness doctor
 ```
 
-**Why.** One command shows the state of the whole machine, and each `FAIL` names the section of
-this page that fixes it.
+**Why.** One command shows the state of the whole machine, and each `FAIL` names the section that
+fixes it: a section of this page, or, for `harness test`, *The check that it worked* of
+[setup-linux.md](setup-linux.md) or [setup-macos.md](setup-macos.md).
 
 **Check.** Its last lines name no `FAIL`, and it exits with status 0.
 

@@ -616,6 +616,7 @@
   the run stops before the jobs, the Kaimon token and `harness doctor`. On a new machine, where
   the plan has just installed Claude Code and nothing has started it, and on a machine whose
   `[setup]` does not choose `claude`, every run stops there. The setup pages tell the user to
-  start `claude` once and run `harness setup` again.
+  start `claude` once, or, without the frontend `claude`, to write `{}` into `~/.claude.json`,
+  and run `harness setup` again.
 - kind: defect
 - found: 2026-10-31, the documentation of the installation

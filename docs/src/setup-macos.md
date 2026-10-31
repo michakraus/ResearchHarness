@@ -42,8 +42,9 @@ export PATH="$HOME/Research/Harness/bin:$PATH"
 
 Add the `export` line to `~/.zshrc` too, so that each new shell finds `harness`. The first run of
 `harness` outside a [session](concepts.md#session) makes the Python environment of the harness,
-with `uv sync`, and prints one line that names it. A Python older than 3.14 makes `harness` stop
-with exit status 2, an error. This line lists the subcommands:
+with `uv sync`, and names it in one line; in a session, its line names `harness install --apply`,
+which makes it. A Python older than 3.14 stops `harness` with exit status 2, an error that names
+the version found. This line lists the subcommands:
 
 ```bash
 harness --help
@@ -75,9 +76,9 @@ harness setup --yes       # read [setup] of the profile, and ask nothing
 ```
 
 **When a step fails**, `harness setup` prints its output and stops with exit status 2. Fix the
-cause, then run `harness setup` again: it plans again and skips what is done. On a new machine,
-the step `harness trust --apply` fails until Claude Code has started once, because Claude Code
-writes `~/.claude.json` at its first start. Start `claude` once, then run `harness setup` again.
+cause, then run `harness setup` again: it plans again and skips what is done. The step
+`harness trust --apply` needs `~/.claude.json`, which Claude Code writes at its first start: start
+`claude` once, or, where `[setup]` does not choose `claude`, run `echo {} > ~/.claude.json`.
 
 **By hand.** `harness setup` prints the steps that it cannot do under *By hand*, before its last
 step. With the frontend `antigravity`, install the Antigravity app from

@@ -1321,6 +1321,19 @@ def status_cases(check, root, system_name):
             f"another system names the section of FIX that fixes the tools -> {detail!r}",
         )
 
+        def other_test(f: Fixture) -> None:
+            f.system = "FreeBSD"
+            stub(f.harness, [("test", "BAD  a case\n\n1861 cases, 1 wrong\n", "", 1)])
+
+        got, _ = case(
+            "another system with a wrong case", {"harness test": "FAIL"}, other_test, ("full",), full=True
+        )
+        detail = cast("str", got["harness test"].detail)
+        check(
+            detail.endswith("(fix: setup-linux.md, The check that it worked)"),
+            f"another system names the Linux entry of a pair of FIX that differs -> {detail!r}",
+        )
+
     # The tools: each required one missing, each optional one missing, each minimum and the
     # release before it, and output with no version.
     stubs = LINUX if linux else MACOS
