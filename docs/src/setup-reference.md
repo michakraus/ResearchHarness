@@ -901,7 +901,9 @@ push of any other branch. Its leak checks run gitleaks.
 
 ## `harness trust --apply`
 
-**What `harness setup` does.** It runs `harness trust --apply` on every machine.
+**What `harness setup` does.** With the frontend `claude`, it runs `harness trust --apply` once
+`~/.claude.json` exists. Without that file, it prints the step by hand and goes on. Without
+`claude`, it has no such step.
 
 **What it does.** `harness trust` marks the research root and every git repository below it as
 trusted in Claude Code's state file, `~/.claude.json`, so that Claude Code shows no trust dialog
@@ -915,11 +917,9 @@ harness trust --apply
 **Why.** Claude Code asks once for each workspace whether you trust it. The harness trusts the
 repositories of your research tree in one step, so that a session in any of them starts at once.
 
-Claude Code writes `~/.claude.json` at its first start. Without that file, `harness trust` stops
-with exit status 2, an error, and so does the run of `harness setup` at this step. Start
-`claude` once in a terminal, then run `harness setup` again: it plans again and skips what is
-done. When `[setup]` does not choose the frontend `claude`, nothing installs Claude Code: write an
-empty JSON object into the file with `echo {} > ~/.claude.json` instead. Run
+Claude Code writes `~/.claude.json` at its first start, and the harness does not write that file
+before Claude Code has made it. On a new machine, start `claude` once in a terminal, then run
+`harness trust --apply`; `harness trust` alone, without that file, stops with exit status 2. Run
 `harness trust --apply` again after `harness clone`, because a new clone is not trusted.
 
 **Check.** `harness trust` prints `0 untrusted` and exits with status 0.

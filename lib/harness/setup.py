@@ -21,7 +21,8 @@ place, such as an inline table or dotted keys, exits 2 and names the table to wr
 The plan (`plan`), in this order: the directories that `harness install` needs (the tree
 instructions, each `repository_roots` entry, and the OpenCode directory with `opencode`); the
 packages; the pinned releases; the vendor installers; then `harness install --apply`,
-`git config core.hooksPath .githooks` in the clone, `harness trust --apply`, the jobs with the
+`git config core.hooksPath .githooks` in the clone, `harness trust --apply` with the `claude`
+frontend once Claude Code has written `~/.claude.json` (before that, the step by hand), the jobs with the
 `jobs` component, the Kaimon token with the `julia` component, and `harness doctor`. A tool of
 TOOLS belongs to every machine or to one component or frontend. A tool that is installed and meets
 its minimum is skipped; a tool with no minimum is met by any version, and one whose version cannot
@@ -609,7 +610,8 @@ def harness_steps(
             command(machine, [git, "-C", str(machine.clone), "config", "core.hooksPath", ".githooks"]),
         )
     )
-    steps.append(Step("harness trust --apply", command(machine, [*machine.harness, "trust", "--apply"], env)))
+    if "claude" in choice.frontends:
+        steps.append(Step("harness trust --apply", trust(machine, env)))
     if "jobs" in choice.components:
         job_steps(machine, loaded, env, result)
     if "julia" in choice.components:
@@ -620,6 +622,22 @@ def harness_steps(
                 lambda: kaimon_token(machine.home),
             )
         )
+
+
+def trust(machine: Machine, env: Mapping[str, str]) -> Action:
+    """`harness trust --apply`, once Claude Code has written ~/.claude.json at its first start;
+    before that, the step by hand. The harness never writes a state file that Claude Code has not
+    made, and an untrusted root costs a dialog, not a refusal."""
+    run = command(machine, [*machine.harness, "trust", "--apply"], env)
+
+    def act() -> str | None:
+        state = machine.home / ".claude.json"
+        if not state.exists():
+            print(f"{state} does not exist yet: start claude once, then run harness trust --apply")
+            return None
+        return run()
+
+    return act
 
 
 def job_steps(machine: Machine, loaded: profile_module.Profile, env: Mapping[str, str], result: Plan) -> None:
@@ -1252,9 +1270,9 @@ def register(sub: fmt.Subcommands) -> None:
         help="install the tools and frontends of [setup], then run install, trust, the jobs and doctor",
         description="Ask for the frontends and components in a terminal, write them into [setup] "
         "of the profile, show the plan and run it after y/N: the packages, the pinned releases, the "
-        "vendor installers, harness install --apply, core.hooksPath, harness trust --apply, the "
-        "jobs, the Kaimon token and harness doctor. A failed step exits 2; a FAIL of harness doctor "
-        "exits 1.",
+        "vendor installers, harness install --apply, core.hooksPath, harness trust --apply (with "
+        "claude), the jobs, the Kaimon token and harness doctor. A failed step exits 2; a FAIL of "
+        "harness doctor exits 1.",
     )
     p.add_argument("--yes", action="store_true", help="read [setup] of the profile and ask nothing")
     p.add_argument(
@@ -1372,6 +1390,7 @@ def scratch(tmp: pathlib.Path, name: str, fakes: Mapping[str, str]) -> Scratch:
     s.profile.parent.mkdir(parents=True)
     shutil.copyfile(profile_module.DUMMY, s.profile)
     shutil.copyfile(MODELS, s.models)
+    (s.home / ".claude.json").write_text("{}\n", encoding="utf-8")
     for program, body in fakes.items():
         s.fake(program, body)
     for program in ("sh", "bash", "git"):
@@ -2513,6 +2532,36 @@ def doctor_cases(case: Case, tmp: pathlib.Path, pins: Pins) -> None:
             )
 
 
+def trust_cases(case: Case, tmp: pathlib.Path, pins: Pins) -> None:
+    """`harness trust --apply` runs only with the frontend `claude`, and only once Claude Code has
+    written ~/.claude.json (K126)."""
+    s = scratch(tmp, "trust-no-state", MACOS_FAKES)
+    (s.home / ".claude.json").unlink()
+    code, out = attempt(s.machine(), s.options(), pins=pins)
+    calls = [c.split()[1] for c in s.calls() if c.startswith("harness ")]
+    case(
+        f"without ~/.claude.json the run skips harness trust, names the step by hand, and goes on to "
+        f"harness doctor: {code} {calls}",
+        ok=code == "0"
+        and "trust" not in calls
+        and calls[-1] == "doctor"
+        and "start claude once, then run harness trust --apply" in out
+        and not (s.home / ".claude.json").exists(),
+    )
+    s = scratch(tmp, "trust-no-claude", MACOS_FAKES)
+    chosen_profile(s, profile_module.Setup(frontends=("omp",), components=()))
+    lines = shows(s.machine(), profile_module.Setup(frontends=("omp",), components=()), s.options(), pins)
+    code, out = attempt(s.machine(), s.options(), pins=pins)
+    calls = [c.split()[1] for c in s.calls() if c.startswith("harness ")]
+    case(
+        f"without the frontend claude the plan has no trust step, and the run runs none: {code} {calls}",
+        ok=code == "0"
+        and not any("harness trust" in line for line in lines)
+        and "trust" not in calls
+        and "harness trust" not in out,
+    )
+
+
 def selftest() -> tuple[int, int]:
     """The cases of the functions above: (number of cases, number wrong)."""
     total = wrong = 0
@@ -2547,4 +2596,5 @@ def selftest() -> tuple[int, int]:
         apt_cache_cases(case, root, pins)
         recheck_cases(case, root, pins)
         doctor_cases(case, root, pins)
+        trust_cases(case, root, pins)
     return total, wrong
