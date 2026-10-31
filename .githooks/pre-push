@@ -16,9 +16,9 @@ tree at the SHA, and `harness leaks --commits` over both, messages included. The
 gitleaks of 8.21 or later, no profile, an empty `leak` list or a check that fails each refuse the
 push with one line. Then it runs `bin/harness test` once, which runs on the interpreter of the
 harness's Python environment, the compile check on that interpreter, the strict profile
-(`ruff format --check`, `ruff check` and `basedpyright`, from the environment's bin/, where the
-profile's `develop = true` puts them; a tool that it lacks refuses the push), then shellcheck over
-the shell files, the kit's tests
+(`ruff format --check`, `ruff check` and `basedpyright`, from the environment's bin/, where
+`develop = true` of the profile's [setup] puts them; a tool that it lacks refuses the push), then
+shellcheck over the shell files, the kit's tests
 examples/dotfiles/tests/{update-check,check-check,driver-check,render-check,script-check}.py on
 python3, and the Julia test files that the changed paths of the pushed range select. A missing
 tool among shellcheck, chezmoi and julia prints one skip line, because CI runs them.
@@ -428,7 +428,7 @@ def run_strict() -> bool:
         if not Path(tools, tool).is_file():
             say(
                 f"pre-push: no {tool} in {tools}; "
-                "set develop = true in the profile, then run harness install --apply"
+                "set develop = true in [setup] of the profile, then run harness install --apply"
             )
             lacking = True
     if lacking:

@@ -86,7 +86,7 @@ Python is the language of the `harness` command, the guard hooks and the hook pr
 command uses the standard library and one package, PyYAML, with which `harness wiki-lint` reads
 the frontmatter of the prose repositories; `uv.lock` pins it. The tools that check the Python code
 come from the `dev` group of `uv.lock`, which only a [profile](concepts.md#profile) with
-`develop = true` installs.
+`develop = true` in its `[setup]` table installs.
 
 Every subcommand runs on the interpreter of the Python environment of the harness, which
 `bin/harness` makes with [uv](#uv). The pre-push hook runs `bin/harness test` once, which runs
@@ -112,8 +112,8 @@ harness is at `~/.local/share/research-harness/python/`, or at `$RESEARCH_HARNES
 absolute path. The first time that `bin/harness` runs outside a session, it makes the
 environment with `uv sync --locked --no-dev` from `pyproject.toml` and `uv.lock`, and from then on
 it runs every subcommand on the environment's interpreter. `harness install --apply` syncs the
-environment again when it lags `uv.lock`, with the `dev` group where the profile sets
-`develop = true`, and `harness doctor` checks it. The environment is made on Python 3.14
+environment again when it lags `uv.lock`, with the `dev` group where `[setup]` of the profile
+sets `develop = true`, and `harness doctor` checks it. The environment is made on Python 3.14
 (`UV_PYTHON` overrides it), and uv downloads a managed 3.14 where none is installed.
 
 The harness needs uv because the environment comes from a committed lock, so that every machine

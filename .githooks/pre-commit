@@ -8,10 +8,10 @@ It checks the commit, not the working tree: it writes the index into a temporary
 `git checkout-index` and runs `ruff format --check`, `ruff check` and `basedpyright` there. Each
 tool comes from the bin/ of the harness's Python environment, beside the interpreter that
 bin/harness's own `interpreter(environment_path())` names, never from the PATH; the environment
-holds them where the profile sets `develop = true` and `harness install --apply` has run. A tool
-that the environment lacks refuses the commit with one line. All three checks run, and one that
-fails refuses the commit with exit 1. The formatter only checks: it names each staged file that it
-would change, and the hook changes no file.
+holds them where the profile's [setup] has `develop = true` and `harness install --apply` has
+run. A tool that the environment lacks refuses the commit with one line. All three checks run, and
+one that fails refuses the commit with exit 1. The formatter only checks: it names each staged
+file that it would change, and the hook changes no file.
 """
 
 import pathlib
@@ -48,7 +48,7 @@ def main() -> int:
     if missing:
         print(
             f"pre-commit: refused, {' and '.join(missing)} not in {tools}; "
-            "set develop = true in the profile, then run harness install --apply"
+            "set develop = true in [setup] of the profile, then run harness install --apply"
         )
         return 1
     failed: list[str] = []

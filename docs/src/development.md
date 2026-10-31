@@ -89,8 +89,8 @@ outside `sys.stdlib_module_names`. `hooks/probe.py` may also import the harness'
 
 The two tools are pinned in the `dev` group of `pyproject.toml` and locked in `uv.lock`, so every
 machine and CI run the same versions. `harness install --apply` syncs the `dev` group into the
-harness's Python environment only where the profile sets `develop = true`; set it on every
-machine where you commit to the harness.
+harness's Python environment only where `[setup]` of the profile sets `develop = true`; set it
+on every machine where you commit to the harness.
 
 ## The Python rule
 
@@ -141,7 +141,7 @@ there, so a change that is not staged neither fails nor passes a commit. The too
 with exit 1 and a line that names it. The formatter only checks: it names each staged file that it
 would change, and the hook changes no file; run `ruff format` yourself, then stage again. An
 environment without `ruff` or `basedpyright` refuses the commit with one line: set
-`develop = true` in the profile, then run `harness install --apply`. The cases of
+`develop = true` in `[setup]` of the profile, then run `harness install --apply`. The cases of
 `lib/harness/strict.py` run the hook in scratch repositories with stub tools.
 
 ## The pre-push hook

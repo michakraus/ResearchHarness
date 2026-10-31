@@ -6,8 +6,9 @@
 # a list. A `~` anywhere else stays as written. With the paths below, the file works as copied.
 #
 # `memory_project`, `tree_agents`, `org`, `repository_roots` and `leak` are required, each list
-# with one item or more; every other key is optional. A key that this file does not show, a table,
-# a missing required key and a value of the wrong type stop each subcommand that reads the profile.
+# with one item or more; every other key is optional. A key that this file does not show, a table
+# other than [setup], a missing required key and a value of the wrong type stop each subcommand
+# that reads the profile.
 
 # The home directory, as an absolute path. Optional: without it, the home directory of the user
 # who runs `harness`. Set it only to use another directory as `~`.
@@ -73,10 +74,24 @@ protected_dir = ["Nextcloud"]
 # `~` is the path of the home directory.
 leak = ["~", "example-user"]
 
+# The model servers and accounts of OpenCode and oh-my-pi are in providers.toml beside this file,
+# which examples/providers.toml shows.
+
+# The choices of this machine. The table is optional: without it, every frontend and every
+# component is chosen, and `develop` is false. It stays the last table of the file, so that a key
+# above it is a key of the profile. With the table, `frontends` and `components` are required, and
+# a name that is not listed below, or a name given twice, stops each subcommand that reads the
+# profile.
+[setup]
+# The frontends whose layers `harness install` installs: claude, opencode, omp and antigravity.
+# `harness doctor` warns about a layer of another frontend that is still installed, and nothing
+# removes it. An empty list installs no layer.
+frontends = ["claude", "opencode", "omp", "antigravity"]
+# The components: julia, rtk, jq, iterm, jobs and dotfiles. With `julia`, `harness install`
+# installs the Julia environment of the scripts, and `harness doctor` checks its packages; the
+# install reads no other component.
+components = ["julia", "rtk", "jq", "iterm", "jobs", "dotfiles"]
 # Whether this machine develops the harness: with `true`, `harness install --apply` adds the `dev`
 # group of uv.lock, the tools that check the Python code, to the Python environment of the
 # harness. Optional: without it, `false`, and the environment holds no package.
 # develop = true
-
-# The model servers and accounts of OpenCode and oh-my-pi are in providers.toml beside this file,
-# which examples/providers.toml shows.

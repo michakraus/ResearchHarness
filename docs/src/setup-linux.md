@@ -836,7 +836,7 @@ git config core.hooksPath .githooks
 ```
 
 **Why.** The pre-commit hook runs `ruff format --check`, `ruff check` and `basedpyright` on each
-commit, with the tools that `develop = true` in the profile puts into the Python environment at
+commit, with the tools that `develop = true` in `[setup]` of the profile puts into the Python environment at
 the next `harness install --apply`; without them it refuses every commit. The pre-push hook runs
 the leak checks, the tests and the same three checks before a push to `main`, and
 `harness leaks` before a push of any other branch. Its leak checks run gitleaks. [development.md](development.md#the-pre-commit-hook) describes the hooks.

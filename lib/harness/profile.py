@@ -36,8 +36,14 @@ fills it from providers.toml, and `render` and `leaks` give it as {}, so that th
 no provider (`context`). `autocommit_branch` is never missing: without it, `load` gives `main` on
 the machine whose short host name is `template_host` or without `template_host`, and
 `memory/<short host name>` on every other (`branch_default`).
-`develop`, optional, is true or false, false without it: with true, `harness install --apply` adds
-the `dev` group of uv.lock to the Python environment; any other value exits 2.
+The optional table `[setup]` holds the choices of this machine (`setup_table`): `frontends`, the
+frontends whose layers `harness install` installs, and `components`, of which `julia` makes
+`harness install` install the Julia environment; both are required in the table, each a list of
+distinct names of FRONTENDS and of COMPONENTS. `develop`, optional, is true or false, false without
+it: with true, `harness install --apply` adds the `dev` group of uv.lock to the Python environment.
+Without the table, every frontend and every component is chosen and `develop` is false. Any other
+value, an unknown name and a repeated one exit 2, and so does a `develop` at the top level, with
+the step that moves it into `[setup]`.
 `render` of the settings template also generates its network rules from `settings/network.toml`
 and the overlay `network.toml` beside the profile (`network.py`).
 
@@ -103,11 +109,29 @@ TEMPLATES = [
 ]
 
 
+# The components that `[setup]` can choose. `harness install` reads `julia`; the others are names
+# that the loader checks.
+COMPONENTS = ("julia", "rtk", "jq", "iterm", "jobs", "dotfiles")
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class Setup:
+    """The `[setup]` table of the profile, as `setup_table` gives it: the chosen frontends and
+    components, each a tuple in the order of the profile, and `develop`. The defaults are those of
+    a profile without the table: every frontend of FRONTENDS, every component of COMPONENTS, and
+    `develop` false."""
+
+    frontends: tuple[str, ...] = frontends.FRONTENDS
+    components: tuple[str, ...] = COMPONENTS
+    develop: bool = False
+
+
 @dataclasses.dataclass(frozen=True, slots=True)
 class Profile:
     """The profile, as `load` gives it: every value with `~` expanded. A list is a tuple. Without
     its key, `home`, `harness` and `autocommit_branch` have the values that `load` gives,
-    `template_host` and `launchd_prefix` are "", `develop` is false, and an optional list is ()."""
+    `template_host` and `launchd_prefix` are "", `setup` is `Setup()`, and an optional list is
+    ()."""
 
     home: str
     harness: str
@@ -119,7 +143,7 @@ class Profile:
     autocommit_branch: str
     template_host: str = ""
     launchd_prefix: str = ""
-    develop: bool = False
+    setup: Setup = dataclasses.field(default_factory=Setup)
     docs_exceptions: tuple[str, ...] = ()
     docs_additions: tuple[str, ...] = ()
     protected_dir: tuple[str, ...] = ()
@@ -127,6 +151,7 @@ class Profile:
 
 # The words of the expected type in a refusal.
 STRING, LIST, NONEMPTY, BOOL = "a string", "a list of strings", "a non-empty list of strings", "true or false"
+TABLE = "a table"
 # The keys of the profile, each with its type. A required list holds one item or more.
 REQUIRED = {
     "memory_project": STRING,
@@ -141,11 +166,13 @@ OPTIONAL = {
     "template_host": STRING,
     "autocommit_branch": STRING,
     "launchd_prefix": STRING,
-    "develop": BOOL,
+    "setup": TABLE,
     "docs_exceptions": LIST,
     "docs_additions": LIST,
     "protected_dir": LIST,
 }
+# The keys of `[setup]`, each with its type; `develop` is the one optional key.
+SETUP_KEYS = {"frontends": LIST, "components": LIST, "develop": BOOL}
 
 # A value of a template's placeholder: a string, a list of strings, or a table, which renders as
 # the members of a JSON object.
@@ -176,7 +203,7 @@ def load(
         raise HarnessError(f"{path} is not UTF-8") from None
     except tomllib.TOMLDecodeError as e:
         raise HarnessError(f"{path} is not TOML: {e}") from None
-    strings, lists, develop = checked(data, path)
+    strings, lists, setup = checked(data, path)
     strings, lists = expand_home(strings, lists, path, home)
     return Profile(
         home=strings["home"],
@@ -189,7 +216,7 @@ def load(
         autocommit_branch=branch_default(strings, path, host),
         template_host=strings.get("template_host", ""),
         launchd_prefix=strings.get("launchd_prefix", ""),
-        develop=develop,
+        setup=setup,
         docs_exceptions=lists.get("docs_exceptions", ()),
         docs_additions=lists.get("docs_additions", ()),
         protected_dir=lists.get("protected_dir", ()),
@@ -198,11 +225,17 @@ def load(
 
 def checked(
     data: dict[str, Any], path: pathlib.Path
-) -> tuple[dict[str, str], dict[str, tuple[str, ...]], bool]:
-    """The strings, the lists and `develop` of `data`, the parsed profile at `path`. A retired key
-    exits 2 with the step that replaces it; then an unknown key, a table among them, a missing
-    key of REQUIRED, a value that is not of its key's type and an empty list of REQUIRED, each
-    naming `path`, the key and, but for an unknown key, the type."""
+) -> tuple[dict[str, str], dict[str, tuple[str, ...]], Setup]:
+    """The strings, the lists and the `[setup]` table (`setup_table`) of `data`, the parsed profile
+    at `path`. A retired key exits 2 with the step that replaces it; then an unknown key, a table
+    other than `[setup]` among them, a missing key of REQUIRED, a value that is not of its key's
+    type and an empty list of REQUIRED, each naming `path`, the key and, but for an unknown key,
+    the type."""
+    if "develop" in data:
+        raise HarnessError(
+            f"{path}: the top-level key `develop` is retired: move the line `develop = …` into the "
+            "[setup] table at the end of the profile, as examples/profile.toml shows"
+        )
     if "extra_domain" in data:
         raise HarnessError(
             f"{path}: the profile key extra_domain is retired: move its hosts into the allow array of "
@@ -227,13 +260,13 @@ def checked(
         )
     strings: dict[str, str] = {}
     lists: dict[str, tuple[str, ...]] = {}
-    develop = False
+    setup = Setup()
     for key, v in data.items():
         kind = REQUIRED.get(key) or OPTIONAL[key]
         if kind == STRING and isinstance(v, str):
             strings[key] = v
-        elif kind == BOOL and isinstance(v, bool):
-            develop = v
+        elif kind == TABLE and isinstance(v, dict):
+            setup = setup_table(cast("dict[str, object]", v), path)
         elif kind in (LIST, NONEMPTY) and isinstance(v, list):
             items = cast("list[object]", v)
             if not all(isinstance(x, str) for x in items) or (kind == NONEMPTY and not items):
@@ -241,7 +274,55 @@ def checked(
             lists[key] = tuple(cast("list[str]", items))
         else:
             raise HarnessError(f"{path}: `{key}` is {v!r}, not {kind}")
-    return strings, lists, develop
+    return strings, lists, setup
+
+
+def setup_table(table: Mapping[str, object], path: pathlib.Path) -> Setup:
+    """The `[setup]` table `table` of the profile at `path`, as a Setup. `frontends` and
+    `components` are required, `develop` is optional. A key that is no key of SETUP_KEYS, a missing
+    required key, a value that is not of its key's type, a name that is not one of FRONTENDS or of
+    COMPONENTS and a name that the list repeats exit 2, each naming `path`, `[setup]` and the key
+    or the name."""
+    if unknown := [k for k in table if k not in SETUP_KEYS]:
+        raise HarnessError(
+            f"{path}: {', '.join(f'`{k}`' for k in unknown)} is no key of [setup]; "
+            "examples/profile.toml shows every key"
+        )
+    if missing := [k for k in ("frontends", "components") if k not in table]:
+        raise HarnessError(
+            f"{path}: [setup] has no "
+            + ", ".join(f"`{k}`, {SETUP_KEYS[k]}" for k in missing)
+            + "; examples/profile.toml shows it"
+        )
+    develop = table.get("develop", False)
+    if not isinstance(develop, bool):
+        raise HarnessError(f"{path}: `develop` of [setup] is {develop!r}, not {BOOL}")
+    return Setup(
+        frontends=setup_names(table["frontends"], "frontends", frontends.FRONTENDS, path),
+        components=setup_names(table["components"], "components", COMPONENTS, path),
+        develop=develop,
+    )
+
+
+def setup_names(value: object, key: str, known: tuple[str, ...], path: pathlib.Path) -> tuple[str, ...]:
+    """The list `value` of the key `key` of `[setup]` in the profile at `path`, as a tuple: each
+    item a name of `known`, and none twice; any other value exits 2, naming the key and the name."""
+    if not isinstance(value, list):
+        raise HarnessError(f"{path}: `{key}` of [setup] is {value!r}, not {LIST}")
+    items = cast("list[object]", value)
+    names = tuple(x for x in items if isinstance(x, str))
+    if len(names) != len(items):
+        raise HarnessError(f"{path}: `{key}` of [setup] is {value!r}, not {LIST}")
+    if unknown := [x for x in names if x not in known]:
+        raise HarnessError(
+            f"{path}: `{key}` of [setup] names {', '.join(map(repr, unknown))}, which is not one of "
+            f"{', '.join(known)}"
+        )
+    if repeated := sorted({x for x in names if names.count(x) > 1}):
+        raise HarnessError(
+            f"{path}: `{key}` of [setup] names {', '.join(map(repr, repeated))} more than once"
+        )
+    return names
 
 
 def branch_default(strings: Mapping[str, str], path: pathlib.Path, host: str | None = None) -> str:
@@ -302,7 +383,7 @@ def expand_home(
 
 def values(profile: Profile) -> dict[str, str | list[str]]:
     """The values of `profile` by name, as a template reads them, and `harness get` for each key but
-    `develop`: each field but `develop`, a tuple as a list, and no optional string that the profile
+    `develop`: each field but `setup`, a tuple as a list, and no optional string that the profile
     leaves unset, so that a placeholder of one is an error, as for a key that the profile lacks."""
     out: dict[str, str | list[str]] = {
         "home": profile.home,
@@ -344,10 +425,10 @@ def value(name: str, given: Context, where: str) -> Value:
 
 
 def get(profile: Profile, key: str) -> str | list[str]:
-    """The profile's value of `key` (`values`), and `develop` as "true" or "false"; a missing key is
-    a `HarnessError`."""
+    """The profile's value of `key` (`values`), and `develop` of `[setup]` as "true" or "false"; a
+    missing key is a `HarnessError`."""
     if key == "develop":
-        return "true" if profile.develop else "false"
+        return "true" if profile.setup.develop else "false"
     found = values(profile)
     if key not in found:
         raise HarnessError(f"the profile has no key {key!r} — examples/profile.toml shows it")
@@ -1877,6 +1958,13 @@ def profile_text(**keys: str) -> str:
     return "".join(f"{k} = {v}\n" for k, v in (REQUIRED_TEXT | keys).items() if v)
 
 
+def setup_text(**keys: str) -> str:
+    """A `[setup]` table that chooses `claude` and no component, with `keys` over it, each a TOML
+    value; a key given as "" is left out. It goes after every top-level key."""
+    table = {"frontends": '["claude"]', "components": "[]"} | keys
+    return "[setup]\n" + "".join(f"{k} = {v}\n" for k, v in table.items() if v)
+
+
 def refused(got: object, name: str, key: str, kind: str | None) -> bool:
     """Whether `got`, a case's result, is the message of one refusal, "error: " and one line, that
     names the file `name`, the key `key` as a word, and the type word `kind` when given."""
@@ -1892,9 +1980,10 @@ def refused(got: object, name: str, key: str, kind: str | None) -> bool:
 
 def schema_cases() -> tuple[int, int]:
     """The cases of the profile's schema: an unknown key, a missing required key, a value of the
-    wrong type, an empty required list, a `[setup]` table and the retired keys each exit 2 naming
-    the file, the key and, but for an unknown or a retired key, the expected type; an optional
-    value that is absent gives its default and no None. Each loads a scratch profile under a `HOME`
+    wrong type, an empty required list, the refusals of a `[setup]` table and the retired keys each
+    exit 2 naming the file, the key and, but for an unknown or a retired key, the expected type; a
+    `[setup]` table loads into a Setup; an optional value that is absent gives its default and no
+    None. Each loads a scratch profile under a `HOME`
     set inside this process, and one runs `harness get` in a child whose environment sets `HOME`:
     (number of cases, number wrong)."""
     wrong, n = 0, 0
@@ -1926,8 +2015,7 @@ def schema_cases() -> tuple[int, int]:
         example = DUMMY.read_text()
         # (label, profile text, the key the refusal names, the type word it names)
         refusals: list[tuple[str, str, str, str | None]] = [
-            ("an unknown key", example + 'nosuchkey = "x"\n', "nosuchkey", None),
-            ("a [setup] table", example + '\n[setup]\nfrontends = ["claude"]\n', "setup", None),
+            ("an unknown key", 'nosuchkey = "x"\n' + example, "nosuchkey", None),
             ("a nested table of an unknown key", profile_text() + '[table]\nk = "~/t"\n', "table", None),
             ("a number as `harness`", profile_text(harness="1"), "harness", "str"),
             ("a list as `home`", profile_text(home='["/h"]'), "home", "str"),
@@ -1948,7 +2036,57 @@ def schema_cases() -> tuple[int, int]:
             ("an empty `leak`", profile_text(leak="[]"), "leak", "list"),
             ("an empty `org`", profile_text(org="[]"), "org", "list"),
             ("an empty `repository_roots`", profile_text(repository_roots="[]"), "repository_roots", "list"),
-            ("a string as `develop`", profile_text(develop='"yes"'), "develop", "true or false"),
+            ("a number as `setup`", profile_text(setup="1"), "setup", "a table"),
+            ("an unknown key of [setup]", profile_text() + setup_text(nosuchkey='"x"'), "nosuchkey", None),
+            ("[setup] without `frontends`", profile_text() + setup_text(frontends=""), "frontends", "list"),
+            (
+                "[setup] without `components`",
+                profile_text() + setup_text(components=""),
+                "components",
+                "list",
+            ),
+            (
+                "a string as `frontends` of [setup]",
+                profile_text() + setup_text(frontends='"claude"'),
+                "frontends",
+                "list",
+            ),
+            (
+                "a number in `components` of [setup]",
+                profile_text() + setup_text(components='["julia", 1]'),
+                "components",
+                "list",
+            ),
+            (
+                "an unknown frontend",
+                profile_text() + setup_text(frontends='["claude", "nosuchfrontend"]'),
+                "nosuchfrontend",
+                "claude, opencode, omp, antigravity",
+            ),
+            (
+                "an unknown component",
+                profile_text() + setup_text(components='["julia", "nosuchcomponent"]'),
+                "nosuchcomponent",
+                "julia, rtk, jq, iterm, jobs, dotfiles",
+            ),
+            (
+                "a frontend named twice",
+                profile_text() + setup_text(frontends='["omp", "claude", "omp"]'),
+                "omp",
+                "more than once",
+            ),
+            (
+                "a component named twice",
+                profile_text() + setup_text(components='["jq", "jq"]'),
+                "jq",
+                "more than once",
+            ),
+            (
+                "a string as `develop` of [setup]",
+                profile_text() + setup_text(develop='"yes"'),
+                "develop",
+                "true or false",
+            ),
         ]
         refusals += [
             (f"no `{key}`", profile_text(**{key: ""}), key, "str" if kind.startswith('"') else "list")
@@ -1975,6 +2113,47 @@ def schema_cases() -> tuple[int, int]:
                 and (replacement == "network.toml" or "examples/providers.toml" in str(got)),
                 f"the retired key {key} is refused, naming {replacement} beside the profile -> {got}",
             )
+        # A top-level `develop` is retired too, with or without a [setup] table: the refusal names
+        # the key and the table it moves into.
+        for text in (
+            profile_text() + "develop = true\n",
+            profile_text() + "develop = false\n" + setup_text(),
+        ):
+            got = loaded(text)
+            check(
+                refused(got, "profile.toml", "develop", "[setup]") and "retired" in str(got),
+                f"a top-level `develop` is refused, naming [setup] -> {got}",
+            )
+        # A [setup] table loads into a Setup, in the order of the profile; an empty `frontends` too.
+        for table, want in (
+            (
+                setup_text(frontends='["omp", "claude"]', components='["jq", "julia"]', develop="true"),
+                Setup(("omp", "claude"), ("jq", "julia"), develop=True),
+            ),
+            (setup_text(frontends="[]", components="[]"), Setup((), (), develop=False)),
+            (
+                setup_text(
+                    frontends='["claude", "opencode", "omp", "antigravity"]', components=f"{list(COMPONENTS)}"
+                ),
+                Setup(),
+            ),
+        ):
+            got = loaded(profile_text() + table)
+            check(
+                isinstance(got, Profile) and got.setup == want,
+                f"{' '.join(table.split())} loads -> {getattr(got, 'setup', got)}",
+            )
+        try:
+            Setup.__setattr__(Setup(), "develop", True)
+            frozen = False
+        except dataclasses.FrozenInstanceError:
+            frozen = True
+        check(
+            Setup() == Setup(frontends.FRONTENDS, COMPONENTS, develop=False)
+            and frozen
+            and not hasattr(Setup(), "__dict__"),
+            f"Setup() chooses every frontend and every component, and is frozen ({frozen}) with slots",
+        )
         # An absent optional value gives its default, and no field is None.
         got = loaded(profile_text())
         expected: dict[str, object] = {
@@ -1983,7 +2162,7 @@ def schema_cases() -> tuple[int, int]:
             "template_host": "",
             "autocommit_branch": "main",
             "launchd_prefix": "",
-            "develop": False,
+            "setup": Setup(),
             "docs_exceptions": (),
             "docs_additions": (),
             "protected_dir": (),
@@ -2022,11 +2201,15 @@ def schema_cases() -> tuple[int, int]:
         )
         got = loaded(example)
         check(
-            isinstance(got, Profile) and got.org == ("example-org", "example-user") and got.develop is False,
-            f"examples/profile.toml loads -> {getattr(got, 'org', got)}",
+            isinstance(got, Profile)
+            and got.org == ("example-org", "example-user")
+            and got.setup == Setup()
+            and "\n[setup]\n" in example,
+            f"examples/profile.toml loads, with a [setup] table that chooses everything -> "
+            f"{getattr(got, 'org', got)}, {getattr(got, 'setup', got)}",
         )
         # `harness get` with an unknown key: exit 2 and one line, under a scratch HOME in the child.
-        (tmp / "unknown.toml").write_text(example + 'nosuchkey = "x"\n')
+        (tmp / "unknown.toml").write_text('nosuchkey = "x"\n' + example)
         env = {**os.environ, "HOME": str(user)}
         env.pop("RESEARCH_HARNESS_PROFILE", None)
         p = subprocess.run(
@@ -2306,7 +2489,8 @@ def home_cases():
         (tmp / "profile.toml").write_text(
             'home = "/h"\nharness = "~"\ntree_agents = "~/x/y"\norg = ["~/a", "b", "~", "a~b"]\n'
             'memory_project = "a~b"\nlaunchd_prefix = "a/~"\nautocommit_branch = "~x"\n'
-            'template_host = "~name/x"\ndevelop = true\nrepository_roots = ["/r"]\nleak = ["l"]\n'
+            'template_host = "~name/x"\nrepository_roots = ["/r"]\nleak = ["l"]\n'
+            + setup_text(develop="true")
         )
         try:
             got = load(tmp / "profile.toml")
@@ -2323,16 +2507,21 @@ def home_cases():
             "launchd_prefix": "a/~",
             "autocommit_branch": "~x",
             "template_host": "~name/x",
-            "develop": True,
         }
         for key, value in wanted.items():
             check(
                 isinstance(got, Profile) and getattr(got, key) == value,
                 f"{key} -> {getattr(got, key, got)!r}, expected {value!r}",
             )
-        # `harness get develop` prints `true` or `false`; the render's values hold no `develop`.
+        # `harness get develop` prints `develop` of [setup], `true` or `false`, and `false` without
+        # the key or the table; the render's values hold no `develop`.
         (tmp / "default.toml").write_text(profile_text(home='"/h"'))
-        for name, expected in (("profile.toml", "true\n"), ("default.toml", "false\n")):
+        (tmp / "unset.toml").write_text(profile_text(home='"/h"') + setup_text())
+        for name, expected in (
+            ("profile.toml", "true\n"),
+            ("default.toml", "false\n"),
+            ("unset.toml", "false\n"),
+        ):
             out = io.StringIO()
             with contextlib.redirect_stdout(out):
                 try:
@@ -2345,8 +2534,35 @@ def home_cases():
             )
         names = sorted(values(got)) if isinstance(got, Profile) else got
         check(
-            isinstance(got, Profile) and "develop" not in values(got),
-            f"the render's values hold no `develop` -> {names}",
+            isinstance(got, Profile) and "develop" not in values(got) and "setup" not in values(got),
+            f"the render's values hold no `develop` and no `setup` -> {names}",
+        )
+        # `harness get develop` of a profile with a top-level `develop`: exit 2 and one line that
+        # names the key and [setup], in a child under the scratch HOME.
+        (tmp / "top.toml").write_text(profile_text(home='"/h"') + "develop = true\n")
+        p = subprocess.run(
+            [
+                sys.executable,
+                str(REPO / "bin" / "harness"),
+                "--profile",
+                str(tmp / "top.toml"),
+                "get",
+                "develop",
+            ],
+            env={**os.environ, "HOME": str(user)},
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        said = p.stderr.strip().splitlines()
+        check(
+            p.returncode == 2
+            and len(said) == 1
+            and "`develop`" in said[0]
+            and "[setup]" in said[0]
+            and not p.stdout,
+            f"harness get develop with a top-level `develop` exits 2 with one line -> exit {p.returncode}, "
+            f"{said}",
         )
         # The values of no string or list: each a refusal that names the file and the key.
         for text, key in (
