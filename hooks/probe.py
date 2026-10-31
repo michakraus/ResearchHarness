@@ -218,6 +218,18 @@ def manifest_cases():
     ok = code == 1 and said == "worktree hook: `git rev-parse` took more than 60 s"
     total, wrong = total + 1, wrong + (not ok)
     print(f"{'ok ' if ok else 'BAD'} exp 1 got {code}  [worktree ]  a git past its timeout: {said!r}")
+    # A payload that is no JSON object fails closed with one line that names the hook input.
+    for payload in ("not json at all", "[1]"):
+        err = io.StringIO()
+        with mock.patch.object(sys, "stdin", io.StringIO(payload)), contextlib.redirect_stderr(err):
+            try:
+                code = hook.main()
+            except hook.HarnessError as e:
+                code = f"{type(e).__name__}: {e}"
+        said = err.getvalue().strip()
+        ok = code == 1 and said.startswith("worktree hook: hook input: ") and "\n" not in said
+        total, wrong = total + 1, wrong + (not ok)
+        print(f"{'ok ' if ok else 'BAD'} exp 1 got {code}  [worktree ]  {payload!r} is one line: {said!r}")
     return total, wrong
 
 
@@ -2492,6 +2504,10 @@ def payload_cases():
     """The other hooks on their payloads."""
     wrong = 0
     total = 0
+    # A line of the grants that is not JSON is passed over, and the grants after it count.
+    grants = pathlib.Path(HOME, ".claude", "logs", "edit-scope.jsonl")
+    grants.parent.mkdir(parents=True, exist_ok=True)
+    grants.write_text("not json\n", encoding="utf-8")
     for record, session, path, fields, expected in EDITSCOPE_CASES:
         tool_input = {"file_path": path} if path is not None else {}
         tool_input.update({k: v for k, v in fields.items() if k != "cwd"})

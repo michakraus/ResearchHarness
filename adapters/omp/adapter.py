@@ -1542,6 +1542,11 @@ def omp_cases(case, fresh, run):
         f"config_chains reads retry.fallbackChains of the block form, a quoted key too, and leaves out an "
         f"inline value: {parsed}",
     )
+    escaped = config_chains('retry:\n  fallbackChains:\n    "p/\\u0065scaped":\n      - "q/\\u006dodel"\n')
+    case(
+        lambda: escaped == {"p/escaped": ["q/model"]},
+        f"config_chains reads a double-quoted key and selector as JSON strings, with their escapes: {escaped}",
+    )
     for model, chain, want in [
         ("p/m", ["q/m"], True),
         ("p/m", ["q/m:high", "r/*"], True),
