@@ -1391,7 +1391,6 @@ def offline_pins(pins: Pins) -> Pins:
 
 def linux_cases(case: Case, tmp: pathlib.Path, pins: Pins) -> None:
     """The plan on Ubuntu: the apt line against the minimums, the skips, sudo and the installers."""
-    offline = offline_pins(pins)
     s = scratch(tmp, "linux", LINUX_FAKES)
     s.fake(
         "apt-cache",
@@ -1454,7 +1453,7 @@ def linux_cases(case: Case, tmp: pathlib.Path, pins: Pins) -> None:
         (s.bin / "sudo").unlink(missing_ok=True)
         if body is not None:
             s.fake("sudo", body)
-        code, out = attempt(machine, s.options(), pins=offline)
+        code, out = attempt(machine, s.options(), pins=pins)
         calls = s.calls()
         case(
             f"{name}: the apt line is printed for an administrator, and the run stops before every "
@@ -1499,7 +1498,6 @@ def linux_cases(case: Case, tmp: pathlib.Path, pins: Pins) -> None:
 
 def linux_jobs_cases(case: Case, tmp: pathlib.Path, pins: Pins) -> None:
     """A whole run of the jobs on Ubuntu, with sudo."""
-    offline = offline_pins(pins)
     s = scratch(tmp, "linux-jobs", LINUX_FAKES)
     machine = s.machine("Linux")
     jobs = profile_module.Setup(frontends=(), components=("jobs",))
@@ -1507,7 +1505,7 @@ def linux_jobs_cases(case: Case, tmp: pathlib.Path, pins: Pins) -> None:
     out = io.StringIO()
     with contextlib.redirect_stdout(out), contextlib.redirect_stderr(out):
         try:
-            code = str(run(plan(machine, jobs, loaded, s.options(), offline)))
+            code = str(run(plan(machine, jobs, loaded, s.options(), pins)))
         except HarnessError as e:
             code = f"exit 2: {e}"
     calls = s.calls()
@@ -1602,7 +1600,7 @@ def plan_cases(case: Case, tmp: pathlib.Path, pins: Pins) -> None:
     )
     s.models.write_text("# mine\n", encoding="utf-8")
     shutil.copyfile(profile_module.DUMMY, s.profile)
-    attempt(mac, options, pins=offline_pins(pins))
+    attempt(mac, options, pins=pins)
     case("an existing models.toml is kept", ok=s.models.read_text(encoding="utf-8") == "# mine\n")
     code, out = attempt(mac, s.options(yes=False, dry_run=True), Asker(*[""] * 3), terminal=True, pins=pins)
     case(
@@ -1901,7 +1899,8 @@ def selftest() -> tuple[int, int]:
         total, wrong = total + 1, wrong + (not ok)
         print(f"{'ok ' if ok else 'BAD'}  setup: {label}")
 
-    pins = load_pins()
+    # No case reaches the network, a mutated one neither: each release is at a port that refuses.
+    pins = offline_pins(load_pins())
     with tempfile.TemporaryDirectory(prefix="harness-setup-") as tmp:
         root = pathlib.Path(tmp).resolve()
         pins_cases(case, root)
