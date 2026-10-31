@@ -32,9 +32,12 @@ bundle goes to stdout and the summary to stderr.
 import hashlib
 import importlib.util
 import os
+import pathlib
 import re
+import shutil
 import subprocess
 import sys
+from typing import cast
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 _spec = importlib.util.spec_from_file_location("spec_gate", os.path.join(HERE, "spec-gate.py"))
@@ -141,12 +144,39 @@ def also_reads(text):
     return names, skipped
 
 
+def parts_table(path: str) -> str:
+    """The rows that parts-table.awk prints for the task file at `path`; a failure raises."""
+    return subprocess.run(
+        [shutil.which("awk") or "awk", "-f", str(pathlib.Path(HERE, "parts-table.awk")), path],
+        capture_output=True,
+        text=True,
+        check=True,
+        timeout=60,
+    ).stdout
+
+
+def last_commit(path: str) -> str:
+    """The short hash of the last commit of the file at `path`, or "" when git fails or runs longer
+    than 60 s."""
+    file = pathlib.Path(path).absolute()
+    try:
+        p = subprocess.run(
+            [shutil.which("git") or "git", "log", "-1", "--format=%h", "--", file.name],
+            cwd=file.parent,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=60,
+        )
+    except subprocess.TimeoutExpired:
+        return ""
+    return p.stdout.strip()
+
+
 def bundle(path, part):
     lines = open(path, encoding="utf-8").read().split("\n")
     heads = headings(lines)
-    rows = subprocess.run(
-        ["awk", "-f", os.path.join(HERE, "parts-table.awk"), path], capture_output=True, text=True, check=True
-    ).stdout.splitlines()
+    rows = parts_table(cast("str", path)).splitlines()
     mine = [r for r in rows if r.split("\t")[:2] == ["PART", part]]
     if not mine:
         return None, [f"part {part} is not in the parts table"]
@@ -218,13 +248,7 @@ def render(path, part, lines, rows, ranges, labels, sources, skipped):
         body.append("")
     text = "\n".join(body)
     digest = hashlib.sha256(text.encode()).hexdigest()[:16]
-    commit = subprocess.run(
-        ["git", "log", "-1", "--format=%h", "--", os.path.basename(path)],
-        cwd=os.path.dirname(os.path.abspath(path)),
-        capture_output=True,
-        text=True,
-        check=False,
-    ).stdout.strip()
+    commit = last_commit(cast("str", path))
     head = [
         f"# Spec bundle — part {part}",
         "",

@@ -186,8 +186,8 @@ class Box:
 def fake_uv(path, log):
     """A uv that appends `<arguments> | <UV_PROJECT_ENVIRONMENT> | <UV_PYTHON>` to `log` and, by
     $FAKE_UV, makes the environment anew (ok, the default), makes a venv in it and then exits 1
-    after two stderr lines, as a real `uv sync --locked` that fails can (fail), or exits 0 and makes
-    nothing (empty)."""
+    after two stderr lines, as a real `uv sync --locked` that fails can (fail), exits 0 and makes
+    nothing (empty), or makes the environment's directory and waits 30 s (hang)."""
     path.write_text(f"""#!/bin/sh
 echo "$* | ${{UV_PROJECT_ENVIRONMENT:-unset}} | ${{UV_PYTHON:-unset}}" >> '{log}'
 case "${{FAKE_UV:-ok}}" in
@@ -195,6 +195,7 @@ ok) rm -rf "$UV_PROJECT_ENVIRONMENT" && exec '{sys.executable}' -m venv --withou
 fail) '{sys.executable}' -m venv --without-pip "$UV_PROJECT_ENVIRONMENT"
   echo "first line" >&2; echo "the lock does not resolve" >&2; exit 1 ;;
 empty) exit 0 ;;
+hang) mkdir -p "$UV_PROJECT_ENVIRONMENT" && exec sleep 30 ;;
 esac
 """)
     path.chmod(0o755)
@@ -204,7 +205,10 @@ def make_env(directory, log=None):
     """A Python environment at `directory`, made with `python -m venv`; with `log`, a .pth file in
     it appends `sys.orig_argv` of each interpreter that starts there to `log`."""
     subprocess.run(
-        [sys.executable, "-m", "venv", "--without-pip", str(directory)], check=True, capture_output=True
+        [sys.executable, "-m", "venv", "--without-pip", str(directory)],
+        check=True,
+        capture_output=True,
+        timeout=60,
     )
     if log is not None:
         purelib = subprocess.run(
@@ -216,6 +220,7 @@ def make_env(directory, log=None):
             check=True,
             capture_output=True,
             text=True,
+            timeout=60,
         ).stdout.strip()
         pathlib.Path(purelib, "harness-case.pth").write_text(
             f"import sys; open({str(log)!r}, 'a').write(repr(sys.orig_argv[1:]) + '\\n')\n"
@@ -660,6 +665,32 @@ def start_cases(case, tmp):
         ),
         f"a failed removal of the environment of a failed sync is part of its one Refusal: {refused!r}",
     )
+    # A uv sync that runs past its timeout is a Refusal that names the command, and the environment
+    # that it made goes, as after a sync that fails.
+    boot = install.boot()
+    with tempfile.TemporaryDirectory(prefix="harness-sync-timeout-") as scratch:
+        uv, environment = pathlib.Path(scratch, "uv"), pathlib.Path(scratch, "env")
+        fake_uv(uv, pathlib.Path(scratch, "uv.log"))
+        start = time.monotonic()
+        with mock.patch.dict(os.environ, {"FAKE_UV": "hang"}), mock.patch.object(boot, "SYNC_TIMEOUT", 1):
+            try:
+                boot.sync(str(uv), str(environment), False)
+                refused = None
+            except boot.Refusal as e:
+                refused = str(e)
+        seconds = time.monotonic() - start
+        left = environment.exists()
+    case(
+        lambda: (
+            refused is not None
+            and f"{uv} sync --locked" in refused
+            and "more than 1 s" in refused
+            and not left
+            and seconds < 20
+        ),
+        f"a uv sync past its timeout is one Refusal that names the command, and leaves no environment: "
+        f"{refused!r} in {seconds:.1f} s, environment {left}",
+    )
 
     # The marker that a process exports to its children: the environment's interpreter when it
     # runs there, and the current interpreter in the session fallback, after one line.
@@ -967,7 +998,7 @@ def install_cases_of(case, tmp):
         lambda: (
             code == 0
             and len(uv_lines()) == 1
-            and subprocess.run([str(python), "-c", ""], check=False).returncode == 0
+            and subprocess.run([str(python), "-c", ""], check=False, timeout=60).returncode == 0
         ),
         f"--apply makes an environment whose interpreter starts: {code}, {scratch.tail(text)!r}",
     )
@@ -1069,13 +1100,19 @@ def prepush_cases(case, tmp):
         GIT_COMMITTER_NAME="case",
         GIT_COMMITTER_EMAIL="case@example.org",
     )
+    program = shutil.which("git") or "git"
     for args in (
         ["init", "-q", "-b", "main", str(repo)],
         ["-C", str(repo), "commit", "-q", "--allow-empty", "-m", "c"],
     ):
-        subprocess.run(["git", *args], check=True, capture_output=True, env=env)
+        subprocess.run([program, *args], check=True, capture_output=True, env=env, timeout=60)
     sha = subprocess.run(
-        ["git", "-C", str(repo), "rev-parse", "HEAD"], check=True, capture_output=True, text=True, env=env
+        [program, "-C", str(cast("pathlib.Path", repo)), "rev-parse", "HEAD"],
+        check=True,
+        capture_output=True,
+        text=True,
+        env=env,
+        timeout=60,
     ).stdout.strip()
     for version, want in (
         ("(3, 13, 9, 'final', 0)", "pre-push: refused, no python3 of 3.14 or later"),
@@ -1135,9 +1172,9 @@ def prepush_signal_cases(tmp: pathlib.Path) -> list[tuple[bool, str]]:
         GIT_COMMITTER_EMAIL="case@example.org",
     )
     for args in (["init", "-q", "-b", "main"], ["commit", "-q", "--allow-empty", "-m", "c"]):
-        subprocess.run([git, *args], cwd=repo, env=env, check=True, capture_output=True)
+        subprocess.run([git, *args], cwd=repo, env=env, check=True, capture_output=True, timeout=60)
     sha = subprocess.run(
-        [git, "rev-parse", "HEAD"], cwd=repo, env=env, check=True, capture_output=True, text=True
+        [git, "rev-parse", "HEAD"], cwd=repo, env=env, check=True, capture_output=True, text=True, timeout=60
     ).stdout.strip()
     pushes = tmp / "signal-pushes"
     pushes.write_text(f"refs/heads/main {sha} refs/heads/main {'0' * 40}\n")

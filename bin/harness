@@ -64,6 +64,7 @@ REDIRECT = ("https", "release-assets.githubusercontent.com")
 TEST_PLATFORM = "RESEARCH_HARNESS_TEST_PLATFORM"
 TEST_UV_URL = "RESEARCH_HARNESS_TEST_UV_URL"
 TIMEOUT = 60  # seconds for the start check of an interpreter and for each network wait of the download
+SYNC_TIMEOUT = 300  # seconds for `uv sync`, which downloads the packages
 
 
 class Refusal(Exception):
@@ -221,8 +222,9 @@ def fetch_uv(home=None):
 
 def sync(uv, environment, dev):
     """`uv sync --locked` into `environment` on Python 3.14, or on the caller's $UV_PYTHON, with the
-    `dev` group when `dev`, else `--no-dev`; then the stamp. A sync that fails, or that leaves no
-    working environment, raises Refusal, and first removes `environment` when the sync made it."""
+    `dev` group when `dev`, else `--no-dev`; then the stamp. A sync that fails, runs longer than
+    SYNC_TIMEOUT seconds or leaves no working environment raises Refusal, and first removes
+    `environment` when the sync made it."""
     command = [uv, "sync", "--locked", "--project", ROOT] + ([] if dev else ["--no-dev"])
     env = dict(os.environ)
     env["UV_PROJECT_ENVIRONMENT"] = environment
@@ -239,9 +241,11 @@ def sync(uv, environment, dev):
 
     try:
         p = subprocess.run(command, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                           env=env, universal_newlines=True, check=False)
+                           env=env, universal_newlines=True, check=False, timeout=SYNC_TIMEOUT)
     except OSError as e:
         refuse("cannot start %s: %s" % (uv, e.strerror or e))
+    except subprocess.TimeoutExpired:
+        refuse("`%s` takes more than %s s" % (" ".join(command), SYNC_TIMEOUT))
     if p.returncode != 0:
         lines = [line.strip() for line in p.stderr.splitlines() if line.strip()]
         refuse("uv sync exits %d: %s" % (p.returncode, lines[-1] if lines else "no output"))

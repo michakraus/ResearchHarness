@@ -105,6 +105,7 @@ def behind_origin(repo=REPO):
         text=True,
         env=env,
         check=False,
+        timeout=60,
     )
     behind = int(p.stdout) if p.returncode == 0 and p.stdout.strip().isdigit() else 0
     if not behind:
@@ -292,7 +293,7 @@ def install_julia_env(apply):
     if apply and changes:
         # `Pkg.resolve` adds no registry, so a new depot needs General first.
         try:
-            p = subprocess.run(
+            p = subprocess.run(  # no timeout: Pkg.instantiate downloads and compiles, a long run
                 [
                     *JULIA,
                     f"--project={JULIA_ENV}",
@@ -478,7 +479,7 @@ def selftest():
             ),
         ]:
             bad.write_bytes(data)
-            p = subprocess.run(harness + argv, capture_output=True, text=True, check=False)
+            p = subprocess.run(harness + argv, capture_output=True, text=True, check=False, timeout=60)
             check(
                 p.returncode == 2 and str(bad) in p.stderr and "Traceback" not in p.stderr,
                 f"{label} exits 2 and names the file: {p.returncode}, {p.stderr.strip()[-200:]!r}",
@@ -500,6 +501,7 @@ def selftest():
                 capture_output=True,
                 text=True,
                 check=False,
+                timeout=60,
             )
             check(
                 p.returncode == 2
@@ -521,6 +523,7 @@ def selftest():
             capture_output=True,
             text=True,
             check=False,
+            timeout=60,
         )
         check(
             p.returncode == 2
@@ -563,9 +566,11 @@ def behind_cases(check, tmp):
         "GIT_COMMITTER_EMAIL": "case@example.org",
     }
 
-    def git(*args):
+    program, where = shutil.which("git") or "git", cast("pathlib.Path", repo)
+
+    def git(*args: str) -> str:
         return subprocess.run(
-            ["git", *args], cwd=repo, env=env, check=True, capture_output=True, text=True
+            [program, *args], cwd=where, env=env, check=True, capture_output=True, text=True, timeout=60
         ).stdout.strip()
 
     git("init", "-q", "-b", "main")
@@ -651,6 +656,7 @@ def load_cases(check, tmp):
             env=env,
             cwd=base,
             check=False,
+            timeout=60,
         )
         after = sorted(base.rglob("*"))
         where = f"{path}:{line}: " if name != middle else f"{path}: "

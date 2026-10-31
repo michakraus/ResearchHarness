@@ -644,7 +644,7 @@ def selftest():
             )
         )
 
-    def run(*command, cwd=None):
+    def run(*command: str, cwd: pathlib.Path | None = None) -> None:
         subprocess.run(command, cwd=cwd, check=True, capture_output=True, timeout=60)
 
     with (

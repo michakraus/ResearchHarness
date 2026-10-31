@@ -2537,6 +2537,7 @@ def layer_cases(check, tmp):
         capture_output=True,
         text=True,
         check=False,
+        timeout=60,
     )
     gone = [
         subprocess.run(
@@ -2544,6 +2545,7 @@ def layer_cases(check, tmp):
             capture_output=True,
             text=True,
             check=False,
+            timeout=60,
         )
         for subcommand in ("install", "domains")
     ]
@@ -2758,6 +2760,7 @@ def layer_cases(check, tmp):
         text=True,
         env=git_env,
         check=False,  # outside a git checkout the list is empty, and the case below is wrong
+        timeout=60,
     ).stdout
     for rel in filter(None, listed.split("\0")):
         if (REPO / rel).is_file():
