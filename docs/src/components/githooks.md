@@ -26,9 +26,9 @@ This repository has a pre-commit and a pre-push hook of its own, `.githooks/pre-
 ## `pre-commit`, `pre-commit.jl` and `pre-commit-test.jl`
 
 `pre-commit` is the shared pre-commit hook of the Julia repositories. It is a short bash
-launcher: without `julia` on the `PATH` it prints `pre-commit: julia is not on the PATH.` and
-refuses the commit; otherwise it starts `pre-commit.jl` beside it, in one Julia process. That
-program runs these stages:
+launcher that starts `pre-commit.jl` beside it, in one Julia process. Without `julia` on the
+`PATH`, a commit with no staged `.jl` file and no change below `test/` passes, and any other
+commit is refused with `pre-commit: julia is not on the PATH.` The program runs these stages:
 
 | stage | what it checks | on a failure |
 |:--|:--|:--|
@@ -38,9 +38,11 @@ program runs these stages:
 | 2.5 | each file is in Unicode NFC | blocks |
 | 3 | `using <package>` loads, for a repository with a package name | blocks |
 
-Stages 1 to 3 run on the staged `.jl` files only. Stage 0 reads `.githooks/test-layout.jl`, which
-`harness githooks` installs beside the hook; a missing copy blocks the commit. Stage 0 checks the
-working tree, not the index. The lint only warns, because `fatou lint` reports false positives;
+Stages 1 to 3 run on the staged `.jl` files only, a renamed file under its new name; a path with
+non-ASCII characters is read as it is, not in git's quoted form. A file that does not parse fails
+stage 1. Stage 0 reads `.githooks/test-layout.jl`, which `harness githooks` installs beside the
+hook; a missing copy blocks the commit. Every stage reads the working tree, not the index
+(K128 of `KNOWN_ISSUES.md`). The lint only warns, because `fatou lint` reports false positives;
 without `fatou` on the `PATH`, the stage prints one line and is skipped. The NFC stage does not
 change a file; run `nfc.jl --apply` to fix one. Stage 3 loads the package in a child process, in
 the environment of the repository, so that the versions of JuliaFormatter's dependencies in the
@@ -48,18 +50,20 @@ hook's own process do not change what the package loads. A commit with no staged
 no change below `test/` passes with no check. `git commit --no-verify` skips the hook.
 
 `pre-commit-test.jl` runs both hooks, unchanged, in fixture package repositories
-(`julia --startup-file=no pre-commit-test.jl`). For `pre-commit`: a formatted file passes, and a
-misformatted file, a file that does not load, a file that is not NFC and a change below `test/`
-without `test-layout.jl` or out of its layout are refused; a missing `julia` or `fatou`, and the
-findings of `fatou`, give their lines; a commit of one `.jl` file starts `julia` from the `PATH`
-once. It checks the time limit of the lint stage, and for `pre-push` each case of the gate and
+(`julia --startup-file=no pre-commit-test.jl`). For `pre-commit`: a formatted file, also under a
+non-ASCII name, passes, and a misformatted file, a renamed misformatted file, a file that does not
+parse, a file that does not load, a file that is not NFC and a change below `test/` without
+`test-layout.jl` or out of its layout are refused; without `julia`, a commit with no `.jl` file
+and no `test/` path passes and any other is refused; a missing `fatou`, and the findings of
+`fatou`, give their lines; a commit of one `.jl` file starts `julia` from the `PATH` once. It checks the time limit of the lint stage, and for `pre-push` each case of the gate and
 the suite. CI runs it on Linux.
 
 ## `pre-push` and `pre-push.jl`
 
 `pre-push` is the shared pre-push hook of the Julia repositories. Like `pre-commit`, it is a bash
-launcher: without `julia` on the `PATH` it prints `pre-push: julia is not on the PATH.` and
-refuses the push; otherwise it starts `pre-push.jl` beside it. The program runs the full test
+launcher that starts `pre-push.jl` beside it. Without `julia` on the `PATH`, a push that updates
+no `main` or `master` passes, and a push of either is refused with
+`pre-push: julia is not on the PATH.` The program runs the full test
 suite, but only on a push to `main` or `master`. A push to another branch passes at once, and CI
 tests it.
 
