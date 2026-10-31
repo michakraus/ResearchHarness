@@ -343,7 +343,8 @@ def candidate(machine: Machine, package: str) -> str | None:
     m = CANDIDATE.search(p.stdout)
     if not m or m.group(1) == "(none)":
         return None
-    version = VERSION.search(re.sub(r"^\d+:", "", m.group(1)))
+    # The first dotted number: an epoch, `1:`, has no dot, and the revision follows a `-`.
+    version = VERSION.search(m.group(1))
     return version.group(0) if version else None
 
 
@@ -976,10 +977,11 @@ def run(the_plan: Plan) -> int:
     return 0
 
 
-def distro() -> str:
-    """`ubuntu` when /etc/os-release names Ubuntu in ID or ID_LIKE, else its ID."""
+def distro(path: pathlib.Path = pathlib.Path("/etc/os-release")) -> str:
+    """`ubuntu` when the os-release file at `path` names Ubuntu in ID or ID_LIKE, else its ID, and
+    "" without the file."""
     try:
-        text = pathlib.Path("/etc/os-release").read_text(encoding="utf-8")
+        text = path.read_text(encoding="utf-8")
     except OSError:
         return ""
     fields = dict(re.findall(r'^(ID|ID_LIKE)="?([^"\n]*)"?$', text, re.MULTILINE))
@@ -1369,9 +1371,23 @@ def macos_cases(case: Case, tmp: pathlib.Path, pins: Pins) -> None:
     )
 
 
+def offline_pins(pins: Pins) -> Pins:
+    """`pins` with each release at a local port that refuses: a case's run that reaches a release
+    never reaches the network."""
+    return Pins(
+        pins.minimum,
+        {
+            name: {
+                key: Release(r.version, f"http://127.0.0.1:9/{name}", r.sha256) for key, r in by_key.items()
+            }
+            for name, by_key in pins.releases.items()
+        },
+    )
+
+
 def linux_cases(case: Case, tmp: pathlib.Path, pins: Pins) -> None:
-    """The plan on Ubuntu: the apt line against the minimums, the skips, sudo, the installers and
-    the jobs."""
+    """The plan on Ubuntu: the apt line against the minimums, the skips, sudo and the installers."""
+    offline = offline_pins(pins)
     s = scratch(tmp, "linux", LINUX_FAKES)
     s.fake(
         "apt-cache",
@@ -1434,7 +1450,7 @@ def linux_cases(case: Case, tmp: pathlib.Path, pins: Pins) -> None:
         (s.bin / "sudo").unlink(missing_ok=True)
         if body is not None:
             s.fake("sudo", body)
-        code, out = attempt(machine, s.options(), pins=pins)
+        code, out = attempt(machine, s.options(), pins=offline)
         calls = s.calls()
         case(
             f"{name}: the apt line is printed for an administrator, and the run stops before every "
@@ -1475,6 +1491,181 @@ def linux_cases(case: Case, tmp: pathlib.Path, pins: Pins) -> None:
     s.fake("julia", 'echo "julia version 1.12.6"')
     lines = shows(machine, julia, s.options(), pins)
     case(f"Julia below 1.13 updates through juliaup: {lines}", ok="juliaup update" in lines)
+
+
+def linux_jobs_cases(case: Case, tmp: pathlib.Path, pins: Pins) -> None:
+    """A whole run of the jobs on Ubuntu, with sudo."""
+    offline = offline_pins(pins)
+    s = scratch(tmp, "linux-jobs", LINUX_FAKES)
+    machine = s.machine("Linux")
+    jobs = profile_module.Setup(frontends=(), components=("jobs",))
+    loaded = profile_module.load(s.profile, home=str(s.home))
+    out = io.StringIO()
+    with contextlib.redirect_stdout(out), contextlib.redirect_stderr(out):
+        try:
+            code = str(run(plan(machine, jobs, loaded, s.options(), offline)))
+        except HarnessError as e:
+            code = f"exit 2: {e}"
+    calls = s.calls()
+    case(
+        f"with sudo, the apt line runs through sudo -n: {code} {[c for c in calls if c.startswith('sudo')]}",
+        ok=code == "0" and any(c.startswith("sudo -n apt-get install -y ") for c in calls),
+    )
+    units = sorted(p.name for p in (s.home / ".config" / "systemd" / "user").glob("*"))
+    case(f"the five units are rendered into ~/.config/systemd/user: {units}", ok=units == sorted(UNITS))
+    systemctl = [c for c in calls if c.startswith("systemctl")]
+    case(
+        f"the units are reloaded, enabled and restarted: {systemctl}",
+        ok=systemctl
+        == [
+            "systemctl --user daemon-reload",
+            "systemctl --user enable --now " + " ".join(ENABLED),
+            "systemctl --user restart " + " ".join(ENABLED),
+        ],
+    )
+    case("the linger line is printed by hand", ok="loginctl enable-linger" in out.getvalue())
+
+
+def plan_cases(case: Case, tmp: pathlib.Path, pins: Pins) -> None:
+    """What the choices, the installed programs and the profile put into the plan."""
+    s = scratch(tmp, "plan", MACOS_FAKES)
+    mac, linux, options = s.machine(), s.machine("Linux"), s.options()
+    loaded = profile_module.load(s.profile, home=str(s.home))
+    opencode = profile_module.Setup(frontends=("opencode",), components=())
+    the_plan = plan(mac, opencode, loaded, options, pins)
+    lines = [step.show for step in the_plan.steps]
+    case(
+        f"only the chosen frontend's tools are planned, with no jobs and no token: {lines}",
+        ok=any(
+            line.startswith("brew install ") and "anomalyco/tap/opencode-v2" in line.split() for line in lines
+        )
+        and not any(
+            x in " ".join(lines) for x in ("claude.ai", "julialang", "fatou", "render", "kaimon", "rtk")
+        )
+        and any(line.startswith("mkdir -p ") and ".config/opencode" in line for line in lines),
+    )
+    none = plan(mac, profile_module.Setup(frontends=(), components=()), loaded, options, pins)
+    case(
+        "without opencode, the OpenCode directory is not made",
+        ok=not any(".config/opencode" in step.show for step in none.steps),
+    )
+    (s.root / "Applications" / "iTerm.app").mkdir(parents=True)
+    (s.home / ".gemini").mkdir(parents=True)
+    the_plan = plan(mac, profile_module.Setup(), loaded, options, pins)
+    case(
+        f"iTerm2 in the applications and ~/.gemini count as installed: {the_plan.by_hand}",
+        ok=not any("--cask" in step.show for step in the_plan.steps)
+        and not any("antigravity" in line for line in the_plan.by_hand),
+    )
+    linux_plan = plan(linux, profile_module.Setup(), loaded, options, pins)
+    case(
+        f"on Linux, iTerm2 is a line by hand: {linux_plan.by_hand}",
+        ok=any("macOS only" in line for line in linux_plan.by_hand),
+    )
+    s.fake(
+        "apt-cache", 'case "$2" in chezmoi) echo "  Candidate: (none)";; *) echo "  Candidate: 9.9-1";; esac'
+    )
+    linux_plan = plan(linux, profile_module.Setup(), loaded, options, pins)
+    case(
+        f"chezmoi without an apt candidate is a line by hand: {linux_plan.by_hand}",
+        ok=any(line.startswith("install chezmoi") for line in linux_plan.by_hand),
+    )
+    linux_plan = plan(linux, opencode, loaded, options, pins)
+    case(
+        f"the OpenCode installer comes with its PATH line by hand: {linux_plan.by_hand}",
+        ok=any(".opencode/bin" in line for line in linux_plan.by_hand),
+    )
+    s.fake("gitleaks", 'echo "no version here"')
+    lines = shows(mac, profile_module.Setup(), options, pins)
+    case(
+        f"a tool whose version cannot be read is upgraded: {lines[:3]}",
+        ok=any(line.startswith("brew upgrade") and "gitleaks" in line.split() for line in lines),
+    )
+    (s.bin / "brew").unlink()
+    lines = shows(mac, profile_module.Setup(), options, pins)
+    case(f"on macOS without brew, setup exits 2 naming Homebrew: {lines}", ok="Homebrew" in lines[0])
+    s.fake("brew", "exit 0")
+    s.profile.write_text(
+        s.profile.read_text(encoding="utf-8").replace('launchd_prefix = "org.example"', ""), encoding="utf-8"
+    )
+    lines = shows(mac, profile_module.Setup(), options, pins)
+    case(
+        f"the jobs on macOS without launchd_prefix exit 2 naming it: {lines}", ok="launchd_prefix" in lines[0]
+    )
+    s.models.write_text("# mine\n", encoding="utf-8")
+    shutil.copyfile(profile_module.DUMMY, s.profile)
+    attempt(mac, options, pins=offline_pins(pins))
+    case("an existing models.toml is kept", ok=s.models.read_text(encoding="utf-8") == "# mine\n")
+    code, out = attempt(mac, s.options(yes=False, dry_run=True), Asker(*[""] * 3), terminal=True, pins=pins)
+    case(
+        f"in a terminal, unchanged answers on a profile write nothing: {code}",
+        ok=code == "0" and str(s.profile) not in out,
+    )
+    s.fake(
+        "launchctl",
+        'case "$1" in print) [ -e "$0.out" ] && exit 1; exit 0;; bootout) : > "$0.out";; '
+        'bootstrap) [ -e "$0.once" ] && exit 0; : > "$0.once"; exit 1;; esac',
+    )
+    s.log.unlink(missing_ok=True)
+    failure = load_agent(mac, "kaimon", "org.example.kaimon", s.home / "a.plist")
+    verbs = [c.split()[1] for c in s.calls()]
+    case(
+        f"a loaded agent is booted out and waited for, and a failed bootstrap is tried once more: "
+        f"{failure} {verbs}",
+        ok=failure is None and verbs == ["print", "bootout", "print", "bootstrap", "bootstrap"],
+    )
+
+
+def helper_cases(case: Case, tmp: pathlib.Path) -> None:
+    """The os-release file, the PATH, a numbered list, an archive without its program, and a
+    minimum that is not a list."""
+    release = tmp / "os-release"
+    for text, want in (
+        ('ID=ubuntu\nVERSION_ID="26.04"\n', "ubuntu"),
+        ('ID=pop\nID_LIKE="ubuntu debian"\n', "ubuntu"),
+        ("ID=fedora\n", "fedora"),
+    ):
+        release.write_text(text, encoding="utf-8")
+        case(f"os-release {text!r} is {want!r}: {distro(release)!r}", ok=distro(release) == want)
+    case("without os-release, the distribution is empty", ok=distro(tmp / "none") == "")
+    home = pathlib.Path("/h")
+    got = extended(home, f"/h/.local/bin{os.pathsep}/usr/bin")
+    case(
+        f"the PATH holds the directories of EXTRA_PATH first, each once: {got}",
+        ok=got.split(os.pathsep) == [*(str(home / d) for d in EXTRA_PATH), "/usr/bin"],
+    )
+    out = io.StringIO()
+    with contextlib.redirect_stdout(out):
+        picked = pick("frontends", frontends.FRONTENDS, ("claude",), Asker("9", "x", "4 2 4"))
+        nothing = pick("frontends", frontends.FRONTENDS, ("claude",), Asker("none"))
+        kept = pick("frontends", frontends.FRONTENDS, ("claude",), Asker(""))
+    case(
+        f"a numbered list asks again on a wrong answer, takes each name once, `none` and Enter: "
+        f"{picked} {nothing} {kept}",
+        ok=picked == ("antigravity", "opencode") and nothing == () and kept == ("claude",),
+    )
+    archive = io.BytesIO()
+    with tarfile.open(fileobj=archive, mode="w:gz") as tar:
+        info = tarfile.TarInfo("other")
+        tar.addfile(info, io.BytesIO(b""))
+    data = archive.getvalue()
+    with release_server({"/a.tar.gz": data}) as url:
+        machine = Machine("Linux", "x86_64", "ubuntu", tmp / "h", {}, tmp, (), tmp)
+        failure = install_release(
+            machine, "gitleaks", Release("1", f"{url}/a.tar.gz", hashlib.sha256(data).hexdigest())
+        )
+    case(
+        f"an archive without the program installs nothing: {failure}",
+        ok=failure is not None and "gitleaks" in failure,
+    )
+    path = tmp / "minimum.toml"
+    path.write_text('[minimum]\ngitleaks = "8.21"\n', encoding="utf-8")
+    try:
+        load_pins(path)
+        got = "loaded"
+    except HarnessError as e:
+        got = str(e)
+    case(f"a minimum that is not a list of versions exits 2 naming it: {got}", ok="minimum.gitleaks" in got)
 
 
 def dry_run_cases(case: Case, tmp: pathlib.Path, pins: Pins) -> None:
@@ -1671,6 +1862,9 @@ def selftest() -> tuple[int, int]:
         refusal_cases(case, root, pins)
         macos_cases(case, root, pins)
         linux_cases(case, root, pins)
+        linux_jobs_cases(case, root, pins)
+        plan_cases(case, root, pins)
+        helper_cases(case, root)
         dry_run_cases(case, root, pins)
         release_cases(case, root)
         interactive_cases(case, root, pins)
