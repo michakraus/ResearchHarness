@@ -17,6 +17,7 @@ subcommands live in the adapters: `settings` and `trust` in `adapters/claude/ada
 
 | subcommand | module |
 |:--|:--|
+| `setup` | `setup.py` |
 | `install` | `install.py` |
 | `render`, `get`, `leaks` | `profile.py` |
 | `githooks`, `wiki-lint-hook`, `workflows` | `githooks.py` |
@@ -303,6 +304,24 @@ and exits 1 when there is one. `--apply` needs a terminal: it shows the whole di
 merges `--ff-only` and runs `harness install --apply` in a process of its own, from the merged
 checkout. It stops at a detached HEAD, a pinned checkout, at changes to tracked files, and at
 commits that `origin/main` lacks. The `selftest` runs it on a scratch remote and its clone.
+
+## `setup.py`
+
+The subcommand `harness setup [--yes] [--dry-run]`. It asks for the choices of `[setup]` in a
+terminal, or reads them with `--yes`, and makes one plan (`plan`) for the machine (`Machine`):
+the directories that `install` needs, the Homebrew lines on macOS, or the apt line and the pinned
+releases of `setup/tools.toml` (`load_pins`) on Ubuntu, the vendor installers, then
+`harness install --apply`, `core.hooksPath`, `harness trust --apply`, the jobs, the Kaimon token
+and `harness doctor`; `install`, `trust`, `render` and `doctor` each run in a child process of
+`bin/harness`. `TOOLS` names each tool, the
+component or frontend that needs it, and how each system installs it; a tool that is installed at
+its minimum is skipped. The run stops at the first failed step with status 2.
+
+Its cases run every apply path on a scratch `HOME` with fake programs first on the `PATH`, `brew`,
+`apt-cache`, `apt-get`, `sudo`, `curl`, `launchctl`, `systemctl` and `harness` among them, each of
+which logs its call, and serve a pinned release from a local file server; a case reaches no
+network and runs `git config` only in a scratch clone. They also hold the minimums of
+`setup/tools.toml` equal to the `≥` cells of [dependencies.md](../dependencies.md).
 
 ## `dotfiles_kit.py`
 
