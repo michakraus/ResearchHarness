@@ -913,7 +913,7 @@ def ask_line(ask: Ask, question: str) -> str:
     A standard input that decodes strictly, as under a UTF-8 locale, raises while it reads such an
     answer; one that decodes with `surrogateescape`, as under the C locale, returns it with a
     surrogate, which does not encode."""
-    not_utf8 = "the answer to: " + question.strip() + " is not valid UTF-8"
+    not_utf8 = "an answer that is not valid UTF-8 to: " + question.strip()
     try:
         answer = ask(question).strip()
     except EOFError:
