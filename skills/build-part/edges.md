@@ -215,6 +215,13 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   exactly, and read the first CI run on every runner before the critic (AT round 1, *Design the
   solver package*: 42 of 1206 cells on the x86 runners, 40 of them moved by a 1–4-ulp
   perturbation against 3 of 100 controls)
+- **a control of a seeded problem generator asserted over the whole generated set, when the set
+  also holds fixed entries:** an assertion that a drawn quantity varies, such as a degree, a cell
+  count or a quadrature count per direction, passes when the draw loses a value that the fixed
+  entries supply, and a mutant that pins the draw survives. Two fix rounds closed the critic's
+  reproducers one at a time. Split the set into its drawn and fixed entries, assert each drawn
+  control as an equality with its full range over the drawn entries in each direction, and assert
+  the fixed entries exactly (R0, *Revive the multisymplectic integrator package*)
 
 ## A type or an interface
 
