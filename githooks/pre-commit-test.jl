@@ -170,6 +170,26 @@ without(name) = join(filter(d -> !isfile(joinpath(d, name)), [Sys.BINDIR; split(
 "Whether the process `pid` exists: `kill` with signal 0 sends nothing and checks."
 alive(pid) = ccall(:kill, Cint, (Cint, Cint), pid, 0) == 0
 
+"""
+Start a julia process that includes pre-push.jl and calls its `run_suite` on `sh -c suite`, with
+the keywords of `kwargs` (source text), with interrupts caught as the hook's `main` catches them.
+The script goes into `dir`. Returns the process.
+"""
+function suite_driver(suite, dir; kwargs = "")
+    script = joinpath(dir, "driver.jl")
+    write(script, """
+        include($(repr(joinpath(@__DIR__, "pre-push.jl"))))
+        Base.exit_on_sigint(false)
+        run_suite(`sh -c \$(ARGS[1])`$kwargs)
+        """)
+    return run(pipeline(ignorestatus(`$(Base.julia_cmd()) --startup-file=no $script $suite`);
+                        stdout = devnull, stderr = devnull); wait = false)
+end
+
+# One testset holds the four below, so a failure in one of them does not stop the file before
+# the others run: the outer one reports every failure, and throws, at the end of the file. The
+# four keep the indentation of top-level testsets.
+@testset "the hooks" begin
 @testset "pre-commit" begin
     @testset "a formatted file that loads passes" begin
         code, out = run_hook(FORMATTED)
@@ -417,6 +437,100 @@ alive(pid) = ccall(:kill, Cint, (Cint, Cint), pid, 0) == 0
         @test occursin("loads: ok", out)
         @test readlines(count_file) == ["start"]
     end
+
+    @testset "a formatted file beside one that does not parse: only the unparsable one is listed" begin
+        repo, env = fixture(FORMATTED; extra = ["scripts/broken.jl" => "function f(x\n    x +\nend\n"])
+        code, _, err = capture(`bash $HOOK`, repo, env)
+        @test code == 1
+        @test occursin("not formatted:\nscripts/broken.jl\n", err)
+        @test !occursin("src/Fixture.jl", err)
+        @test occursin(r"^scripts/broken.jl: \S"m, err)
+    end
+
+    @testset "a staged .jl symlink to a missing file is refused with one line" begin
+        repo, env = fixture(FORMATTED)
+        symlink("missing.jl", joinpath(repo, "src", "Link.jl"))
+        run(setenv(`git -C $repo add src/Link.jl`, env))
+        code, out, err = capture(`bash $HOOK`, repo, env)
+        @test code == 1
+        @test count(l -> occursin("src/Link.jl", l), split(out * err, '\n')) == 1
+        @test occursin("src/Link.jl is not a file", out * err)
+        @test !occursin("Stacktrace", out * err)
+        @test !occursin("formatting", out * err)
+    end
+
+    @testset "a staged .jl symlink to a directory is refused with one line" begin
+        repo, env = fixture(FORMATTED)
+        mkpath(joinpath(repo, "docs"))
+        symlink("../docs", joinpath(repo, "src", "Dir.jl"))
+        run(setenv(`git -C $repo add src/Dir.jl`, env))
+        code, out, err = capture(`bash $HOOK`, repo, env)
+        @test code == 1
+        @test count(l -> occursin("src/Dir.jl", l), split(out * err, '\n')) == 1
+        @test occursin("src/Dir.jl is not a file", out * err)
+        @test !occursin("Stacktrace", out * err)
+    end
+
+    @testset "an indented, single-quoted name runs the load test" begin
+        code, out = run_hook(FORMATTED; project = replace(PROJECT, "name = \"Fixture\"" => "  name = 'Fixture'"))
+        @test code == 0
+        @test occursin("loads: ok", out)
+    end
+
+    @testset "a Project.toml that does not parse is refused" begin
+        code, out = run_hook(FORMATTED; project = replace(PROJECT, "\"Fixture\"" => "\"Fixture"))
+        @test code == 1
+        @test count(l -> occursin("Project.toml", l), split(out, '\n')) == 1
+        @test occursin("Project.toml: does not parse", out)
+        @test !occursin("Stacktrace", out)
+    end
+
+    @testset "a commit that only deletes a .jl file runs the load test" begin
+        repo, env = fixture("module Fixture\n\ninclude(\"extra.jl\")\n\nend\n";
+                            extra = ["src/extra.jl" => "double(x) = 2x\n"])
+        run(setenv(`git -C $repo commit -q -m base`, env))
+        run(setenv(`git -C $repo rm -q src/extra.jl`, env))
+        code, out, err = capture(`bash $HOOK`, repo, env)
+        @test code == 1
+        @test occursin("loads: FAILED", out)
+        @test !occursin("formatting", out * err)
+        @test !occursin("fatou lint", out * err)
+        @test !occursin("unicode", out * err)
+    end
+
+    # bash's `exec` does not try a second julia on the PATH, so this one fails to start.
+    @testset "a julia that cannot start: a commit with no .jl file and no test/ path passes" begin
+        repo, env = fixture(nothing; extra = ["README.md" => "# Fixture\n"])
+        env["PATH"] = bindir("julia", "#!/nonexistent/interpreter\n") * ":" * without("julia")
+        code, out, err = capture(`$(Sys.which("bash")) $HOOK`, repo, env)
+        @test code == 0
+        @test out * err == ""
+    end
+
+    # The load writes its process id and sleeps; the test interrupts the hook during the load.
+    @testset "an interrupted commit stops its load test" begin
+        repo, env = fixture("""
+            module Fixture
+
+            write(joinpath(@__DIR__, "..", "load.pid"), string(getpid()))
+            sleep(120)
+
+            end
+            """)
+        pidfile = joinpath(repo, "load.pid")
+        p = run(pipeline(ignorestatus(setenv(`bash $HOOK`, env; dir = repo)); stdout = devnull,
+                         stderr = devnull); wait = false)
+        timedwait(() -> filesize(pidfile) > 0 || !process_running(p), 300.0)
+        @test filesize(pidfile) > 0
+        if filesize(pidfile) > 0
+            child = parse(Int, read(pidfile, String))
+            kill(p, Base.SIGINT)
+            @test timedwait(() -> !process_running(p), 30.0) === :ok
+            @test timedwait(() -> !alive(child), 5.0) === :ok
+            alive(child) && ccall(:kill, Cint, (Cint, Cint), child, 9)
+        end
+        process_running(p) && kill(p, Base.SIGKILL)
+    end
 end
 
 # Functions of the programs, called in this process: each program runs only as a program file,
@@ -436,6 +550,12 @@ end
         @test sort(split(chomp(out), '\n')) == ["err", "out"]
     end
 
+    # A box that reads the PID after a yield throws ESRCH for a program reaped by then: about 2
+    # runs in 300 on macOS, and more on a Linux runner.
+    @testset "the lint time box runs a program that ends at once" begin
+        @test all(run_boxed(`true`, 60) == (0, "") for _ in 1:1000)
+    end
+
     @testset "the lint time box stops a program that runs too long" begin
         t = @elapsed code, _ = run_boxed(`sleep 60`, 1)
         @test code === nothing
@@ -446,6 +566,118 @@ end
         t = @elapsed code, _ = run_boxed(`sh -c 'trap "" TERM; sleep 60 >/dev/null 2>&1 & wait'`, 1)
         @test code === nothing
         @test 5 <= t < 20
+    end
+
+    # The child of `sh` keeps the output open after `sh` ends. The case waits at most 30 s for
+    # the box, so a box that waits for the pipe fails here rather than hangs.
+    @testset "the lint time box returns when a child of the program holds the output" begin
+        pidfile = joinpath(mktempdir(), "child.pid")
+        task = @async run_boxed(`sh -c "sleep 120 & echo \$! > '$pidfile'; wait"`, 1)
+        t = @elapsed done = timedwait(() -> istaskdone(task), 30.0)
+        @test done === :ok
+        @test t < 1 + 5 + 3
+        child = parse(Int, read(pidfile, String))
+        @test istaskdone(task) && fetch(task)[1] === nothing
+        @test timedwait(() -> !alive(child), 5.0) === :ok
+        alive(child) && ccall(:kill, Cint, (Cint, Cint), child, 9)
+    end
+
+    @testset "the lint time box returns when the program ends and its child holds the output" begin
+        pidfile = joinpath(mktempdir(), "child.pid")
+        task = @async run_boxed(`sh -c "sleep 120 & echo \$! > '$pidfile'"`, 1)
+        @test timedwait(() -> istaskdone(task), 30.0) === :ok
+        child = parse(Int, read(pidfile, String))
+        @test istaskdone(task) && fetch(task)[1] === nothing
+        @test timedwait(() -> !alive(child), 5.0) === :ok
+        alive(child) && ccall(:kill, Cint, (Cint, Cint), child, 9)
+    end
+
+    # `sh` ends on the SIGTERM; the `sleep` that ignores it holds the output until the SIGKILL.
+    @testset "the lint time box kills a child that ignores the stop signal" begin
+        pidfile = joinpath(mktempdir(), "child.pid")
+        t = @elapsed code, _ = run_boxed(`sh -c "(trap '' TERM; exec sleep 120) & echo \$! > '$pidfile'; wait"`, 1)
+        child = parse(Int, read(pidfile, String))
+        @test code === nothing
+        @test 5 <= t < 20
+        @test timedwait(() -> !alive(child), 5.0) === :ok
+        alive(child) && ccall(:kill, Cint, (Cint, Cint), child, 9)
+    end
+
+    # The program's child forks a process that ends at once, then leaves the group with `setsid`
+    # and keeps the output open without reaping that process: the group keeps a zombie, and the
+    # stream stays open.
+    @testset "the lint time box returns when a process that left the group holds the output" begin
+        pidfile = joinpath(mktempdir(), "perl.pid")
+        perl = """
+            use POSIX;
+            if (fork() == 0) {
+                exit 0 if fork() == 0;
+                POSIX::setsid();
+                open(my \$f, '>', \$ARGV[0]); print \$f \$\$; close(\$f);
+                sleep 120;
+                exit 0;
+            }
+            wait();
+            """
+        task = @async run_boxed(`perl -e $perl $pidfile`, 1)
+        t = @elapsed done = timedwait(() -> istaskdone(task), 30.0)
+        @test done === :ok
+        @test t < 1 + 6 + 3
+        @test istaskdone(task) && fetch(task)[1] === nothing
+        isfile(pidfile) && ccall(:kill, Cint, (Cint, Cint), parse(Int, read(pidfile, String)), 9)
+    end
+
+    @testset "the lint time box reports a program that a signal ends as failed" begin
+        code, _ = run_boxed(`sh -c 'kill -SEGV $$'`, 30)
+        @test code == 128 + 11
+    end
+
+    @testset "the load test stops a load that runs past its limit" begin
+        repo, env = fixture("""
+            module Fixture
+
+            write(joinpath(@__DIR__, "..", "load.pid"), string(getpid()))
+            sleep(120)
+
+            end
+            """)
+        printed = mktemp() do path, io
+            withenv("JULIA_DEPOT_PATH" => env["JULIA_DEPOT_PATH"]) do
+                cd(repo) do
+                    t = @elapsed ok = redirect_stdout(io) do
+                        Base.invokelatest(hook.load, "Fixture"; seconds = 3)
+                    end
+                    @test ok == false
+                    @test t < 3 + 5 + 3
+                end
+            end
+            flush(io)
+            read(path, String)
+        end
+        @test occursin(r"^\e\[0;31mloads: FAILED\e\[0m — `using Fixture` timed out after 3s"m, printed)
+        pidfile = joinpath(repo, "load.pid")
+        @test isfile(pidfile)
+        if isfile(pidfile)
+            child = parse(Int, read(pidfile, String))
+            @test timedwait(() -> !alive(child), 5.0) === :ok
+            alive(child) && ccall(:kill, Cint, (Cint, Cint), child, 9)
+        end
+    end
+
+    # `format` with no style uses JuliaFormatter's default style: githooks/ has no
+    # .JuliaFormatter.toml, so the style is named.
+    @testset "the hook programs are in SciML style" begin
+        pushfirst!(LOAD_PATH, get(ENV, "RESEARCH_HARNESS_JULIA",
+                                  joinpath(homedir(), ".local", "share", "research-harness", "julia")))
+        formatter = try
+            Base.require(Base.identify_package("JuliaFormatter"))
+        finally
+            popfirst!(LOAD_PATH)
+        end
+        style = Base.invokelatest(() -> formatter.SciMLStyle())
+        for program in (PROGRAM, joinpath(@__DIR__, "pre-push.jl"))
+            @test Base.invokelatest(formatter.format, program, style; overwrite = false)
+        end
     end
 end
 
@@ -558,8 +790,99 @@ end
         t = @elapsed wait(p)
         @test t < 30
         @test p.exitcode == 130
-        @test !alive(suite)
+        @test timedwait(() -> !alive(suite), 5.0) === :ok
         alive(suite) && ccall(:kill, Cint, (Cint, Cint), suite, 9)
+    end
+
+    @testset "pre-push: a last ref line without a newline is read" begin
+        repo, env = fixture(FORMATTED; extra = ["test/runtests.jl" => passing])
+        code, out, _ = capture(`bash $PREPUSH origin https://example.org/x.git`, repo, env;
+                               input = topic * chomp(main))
+        @test code == 0
+        @test occursin("Suite passed.", out)
+    end
+
+    @testset "pre-push: a refused push to master says main or master" begin
+        repo, env = fixture(FORMATTED; extra = ["test/runtests.jl" => "error(\"the suite failed\")\n"])
+        code, out, _ = capture(`bash $PREPUSH origin https://example.org/x.git`, repo, env;
+                               input = replace(main, "main" => "master"))
+        @test code == 1
+        @test occursin("tests must pass before pushing to main or master.", out)
+    end
+
+    # bash's `exec` does not try a second julia on the PATH, so this one fails to start.
+    @testset "a julia that cannot start: a push of a topic branch passes" begin
+        repo, env = fixture(FORMATTED)
+        env["PATH"] = bindir("julia", "#!/nonexistent/interpreter\n") * ":" * without("julia")
+        code, out, err = capture(`$(Sys.which("bash")) $PREPUSH origin x`, repo, env; input = topic)
+        @test code == 0
+        @test occursin("not main/master — skipping the suite", out)
+        @test err == ""
+    end
+
+    # Pkg.test prints "Testing Fixture tests passed"; a run of test/runtests.jl does not.
+    @testset "pre-push: an indented, single-quoted name runs Pkg.test" begin
+        repo, env = fixture(FORMATTED; extra = ["test/runtests.jl" => passing],
+                            project = replace(PROJECT, "name = \"Fixture\"" => "  name = 'Fixture'"))
+        code, out, err = capture(`bash $PREPUSH origin https://example.org/x.git`, repo, env;
+                                 input = main)
+        @test code == 0
+        @test occursin("Testing Fixture tests passed", out * err)
+    end
+
+    @testset "pre-push: a Project.toml that does not parse is refused" begin
+        repo, env = fixture(FORMATTED; extra = ["test/runtests.jl" => passing],
+                            project = replace(PROJECT, "\"Fixture\"" => "\"Fixture"))
+        code, out, err = capture(`bash $PREPUSH origin https://example.org/x.git`, repo, env;
+                                 input = main)
+        @test code == 1
+        @test occursin("pre-push: Project.toml does not parse", out)
+        @test !occursin("Suite passed.", out)
+        @test !occursin("Stacktrace", out * err)
+    end
+
+    # The suite ignores SIGINT, and so does the `sleep` that it becomes.
+    @testset "pre-push: a suite that ignores the interrupt is killed after the grace time" begin
+        dir = mktempdir()
+        pidfile = joinpath(dir, "suite.pid")
+        p = suite_driver("trap '' INT; echo \$\$ > '$pidfile'; exec sleep 120", dir;
+                         kwargs = "; grace = 2")
+        timedwait(() -> filesize(pidfile) > 0 || !process_running(p), 120.0)
+        @test filesize(pidfile) > 0
+        if filesize(pidfile) > 0
+            suite = parse(Int, read(pidfile, String))
+            kill(p, Base.SIGINT)
+            t = @elapsed done = timedwait(() -> !process_running(p), 30.0)
+            @test done === :ok
+            @test 2 <= t < 15
+            @test timedwait(() -> !alive(suite), 5.0) === :ok
+            alive(suite) && ccall(:kill, Cint, (Cint, Cint), suite, 9)
+        end
+        process_running(p) && kill(p, Base.SIGKILL)
+        wait(p)
+        @test p.exitcode == 130
+    end
+
+    # The suite takes 3 s to stop after the interrupt; a second interrupt reaches the hook 1 s in.
+    @testset "pre-push: a second interrupt during the wait still stops the suite" begin
+        dir = mktempdir()
+        pidfile = joinpath(dir, "suite.pid")
+        p = suite_driver("trap 'sleep 3; exit 7' INT; echo \$\$ > '$pidfile'; while :; do sleep 0.1; done",
+                         dir)
+        timedwait(() -> filesize(pidfile) > 0 || !process_running(p), 120.0)
+        @test filesize(pidfile) > 0
+        if filesize(pidfile) > 0
+            suite = parse(Int, read(pidfile, String))
+            kill(p, Base.SIGINT)
+            sleep(1)
+            kill(p, Base.SIGINT)
+            @test timedwait(() -> !process_running(p), 30.0) === :ok
+            @test timedwait(() -> !alive(suite), 5.0) === :ok
+            alive(suite) && ccall(:kill, Cint, (Cint, Cint), suite, 9)
+        end
+        process_running(p) && kill(p, Base.SIGKILL)
+        wait(p)
+        @test p.exitcode == 130
     end
 end
 
@@ -583,4 +906,5 @@ end
     @test "--check-bounds=auto" in cmd.exec
     @test "--project=." in cmd.exec
     @test cmd.exec[end] == "using Pkg; Pkg.test(\"Fixture\"; julia_args = `--check-bounds=auto`)"
+end
 end

@@ -527,6 +527,14 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   leaves it as an orphan that holds no lock and no limit. Pass each signal that the parent receives
   on to the child's process group, and record SIGKILL as a limit (T1 round 1, P3, *Make the
   Harness enforce strict Python*)
+- a test that a killed child is gone, run straight after the box or the suite returns: on macOS
+  `kill(-group, 0)` fails for a group that holds only an unreaped zombie, while `kill(pid, 0)`
+  still finds the zombie, so the check fails by chance under load. Wait for the reap with a bound,
+  as `timedwait(() -> !alive(pid), 5.0)` (P5 critic, *Make the Harness enforce strict Python*)
+- a PID read from a Julia `Process` after a call that yields, such as `close` of a pipe end: a
+  program that ends at once is reaped in between, and `getpid` throws `ESRCH`. It failed 2 runs in
+  300 on macOS and three cases on the Linux runner. Read the PID straight after `run`, and test a
+  program that ends at once in a loop (P5 CI, *Make the Harness enforce strict Python*)
 - a signal handler that raises inside a wait on a child: Python's `subprocess.run` then sends the
   child SIGKILL, and a git killed so leaves its `index.lock`, so every later run defers without
   end. Set a flag in the handler, pass the signal on to the running child, let it end, then stop;

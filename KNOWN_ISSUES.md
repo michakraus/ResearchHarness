@@ -402,22 +402,13 @@
 
 ### K107 · A terminal hangup or a SIGTERM to the pre-push hook does not reach its suite.
 
-- location: `githooks/pre-push.jl:56`
+- location: `githooks/pre-push.jl:59`
 - evidence: `run_suite` starts the suite with `Cmd(cmd; detach = true)`, in a session of its own,
   and passes an interrupt on to the suite's process group: the case "pre-push: an interrupted hook
   stops its suite" sends SIGINT to the hook and sees the suite end. A hangup of the terminal goes
   to the terminal's session, which does not hold the suite, and a SIGTERM ends the hook's `julia`,
   which has no handler for it. In both cases the suite and the test process of `Pkg.test` go on as
   orphans. A handler that passes these signals on as well trades one orphan case for another.
-- kind: defect
-- found: 2026-10-26, the critic of the hook programs
-
-### K108 · The 60 s box of `fatou lint` signals `fatou` alone, so a child of `fatou` that holds the output pipe holds the stage past the box.
-
-- location: `githooks/pre-commit.jl:43`
-- evidence: `run_boxed` sends SIGTERM, and SIGKILL 5 s later, to the process `p` only, and then
-  reads the pipe to its end. A child that inherits the pipe and outlives `p` keeps the pipe open,
-  and the read waits for it. `fatou` is one native binary, and no child of it is known.
 - kind: defect
 - found: 2026-10-26, the critic of the hook programs
 
@@ -575,26 +566,29 @@
 
 ### K128 · The stages of the Julia packages' pre-commit hook read the working tree, not the staged content.
 
-- location: `githooks/pre-commit.jl:102`
+- location: `githooks/pre-commit.jl:141`
 - evidence: `formatting`, `nfc`, `test_layout` and `load` read the files on disk. A file that is
   staged and then edited again is judged on its later text: a formatted staged version with an
   unformatted edit on top is refused, and an unformatted staged version with a formatted edit on
   top passes. A fix checks a copy of the index, for example from `git checkout-index` into a
-  temporary directory, for every stage. The shell hook that `pre-commit.jl` replaced read the
-  working tree the same way. A `.jl` file that becomes a symlink to a file that is not tracked
-  passes the formatting and load stages on that file, and a fresh checkout has the symlink
-  without its target, so the package can fail to load there.
+  temporary directory, for every stage. A cheaper mitigation refuses a commit in which a staged
+  `.jl` file is partly staged, that is, one that `git diff --name-only` also lists with changes
+  that are not staged; it leaves the symlink case below. The shell hook that `pre-commit.jl`
+  replaced read the working tree the same way. A `.jl` file that becomes a symlink to a file that
+  is not tracked passes the formatting and load stages on that file, and a fresh checkout has the
+  symlink without its target, so the package can fail to load there.
 - kind: defect
 - found: 2026-10-31, a review of the hook rollout's pull requests
 
-### K129 · The lint stage of the Julia packages' pre-commit hook can wait forever after its time limit.
+### K130 · The formatting stage of the Julia packages' pre-commit hook has no time limit.
 
-- location: `githooks/pre-commit.jl:43`
-- evidence: `run_boxed` kills only the process that it started, then reads its output to the end.
-  When `fatou` on the `PATH` is a launcher that starts the real program as a child that shares
-  its output, such as the npm launcher, the time limit kills the launcher and the child keeps the
-  pipe open: `fetch(reader)` never returns, the 60 s limit has no effect, and the commit hangs
-  until the user stops it. A fix returns before the read when the time ran out, and kills the
-  process group of `fatou`, not only the process.
+- location: `githooks/pre-commit.jl:121`
+- evidence: `formatted` calls JuliaFormatter's `format` in the hook's own process, one staged
+  file at a time, with no limit. The lint stage and the load test run in `run_boxed`, with a
+  limit of 60 s and 600 s; a staged file on which `format` does not end holds the commit until
+  the user stops it. A whole-tree JuliaFormatter run has died inside SciML's `nest!` after 62
+  minutes of CPU, as the header of `pre-commit.jl` records. The shell hook that `pre-commit.jl`
+  replaced had no limit either. A fix runs the formatter in a child process under `run_boxed`,
+  which loads JuliaFormatter once more per commit.
 - kind: defect
 - found: 2026-11-01, a review of the hook rollout's pull requests
