@@ -396,6 +396,15 @@ alive(pid) = ccall(:kill, Cint, (Cint, Cint), pid, 0) == 0
         @test occursin("fatou lint: clean", out)
     end
 
+    # No other fatou on the PATH: execvp would start the next one when this one cannot start.
+    @testset "a fatou that cannot start skips the lint stage, and the later stages run" begin
+        fatou = bindir("fatou", "#!/nonexistent/interpreter\n")
+        code, out = run_hook(FORMATTED; path = fatou * ":" * without("fatou"))
+        @test code == 0
+        @test occursin("fatou lint: could not start — stage skipped, not a failure", out)
+        @test occursin("loads: ok", out)
+    end
+
     # The wrapper comes before Sys.BINDIR and starts the real julia by its absolute path, so it
     # counts the starts by the name `julia` and not itself. A child that the program starts with
     # Base.julia_cmd(), and its precompile workers, start by an absolute path and are not counted.
