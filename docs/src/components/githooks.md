@@ -45,7 +45,8 @@ Julia environment, which pins 2.14, and refuses an older release with one line t
 version; JuliaFormatter 2.14 supports Julia 1.10 and later. Stage 0 reads `.githooks/test-layout.jl`, which `harness githooks` installs beside the
 hook; a missing copy blocks the commit. Every stage reads the working tree, not the index
 (K128 of `KNOWN_ISSUES.md`). The lint only warns, because `fatou lint` reports false positives;
-without `fatou` on the `PATH`, the stage prints one line and is skipped. The NFC stage does not
+without `fatou` on the `PATH`, or with a `fatou` that cannot start, the stage prints one line and
+is skipped. The NFC stage does not
 change a file; run `nfc.jl --apply` to fix one. Stage 3 loads the package in a child process, in
 the environment of the repository, so that the versions of JuliaFormatter's dependencies in the
 hook's own process do not change what the package loads. A commit with no staged `.jl` file and
@@ -57,8 +58,8 @@ non-ASCII name, passes, and a misformatted file, a renamed misformatted file, a 
 parse, a file that does not load, a file that is not NFC and a change below `test/` without
 `test-layout.jl` or out of its layout are refused, and so is a JuliaFormatter older than 2.14;
 without `julia`, a commit with no `.jl` file and no `test/` path passes and any other, a `.jl`
-file that became a symlink too, is refused; a missing `fatou`, and the findings of
-`fatou`, give their lines; a commit of one `.jl` file starts `julia` from the `PATH` once. It checks the time limit of the lint stage, and for `pre-push` each case of the gate and
+file that became a symlink too, is refused; a missing `fatou`, a `fatou` that cannot start, and
+the findings of `fatou`, give their lines; a commit of one `.jl` file starts `julia` from the `PATH` once. It checks the time limit of the lint stage, and for `pre-push` each case of the gate and
 the suite. CI runs it on Linux.
 
 ## `pre-push` and `pre-push.jl`
