@@ -581,6 +581,20 @@
   unformatted edit on top is refused, and an unformatted staged version with a formatted edit on
   top passes. A fix checks a copy of the index, for example from `git checkout-index` into a
   temporary directory, for every stage. The shell hook that `pre-commit.jl` replaced read the
-  working tree the same way.
+  working tree the same way. A `.jl` file that becomes a symlink to a file that is not tracked
+  passes the formatting and load stages on that file, and a fresh checkout has the symlink
+  without its target, so the package can fail to load there.
 - kind: defect
 - found: 2026-10-31, a review of the hook rollout's pull requests
+
+### K129 · The lint stage of the Julia packages' pre-commit hook can wait forever after its time limit.
+
+- location: `githooks/pre-commit.jl:43`
+- evidence: `run_boxed` kills only the process that it started, then reads its output to the end.
+  When `fatou` on the `PATH` is a launcher that starts the real program as a child that shares
+  its output, such as the npm launcher, the time limit kills the launcher and the child keeps the
+  pipe open: `fetch(reader)` never returns, the 60 s limit has no effect, and the commit hangs
+  until the user stops it. A fix returns before the read when the time ran out, and kills the
+  process group of `fatou`, not only the process.
+- kind: defect
+- found: 2026-11-01, a review of the hook rollout's pull requests
