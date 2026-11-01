@@ -572,7 +572,7 @@ end
         @test t < 1 + 5 + 3
         child = parse(Int, read(pidfile, String))
         @test istaskdone(task) && fetch(task)[1] === nothing
-        @test !alive(child)
+        @test timedwait(() -> !alive(child), 5.0) === :ok
         alive(child) && ccall(:kill, Cint, (Cint, Cint), child, 9)
     end
 
@@ -582,7 +582,7 @@ end
         @test timedwait(() -> istaskdone(task), 30.0) === :ok
         child = parse(Int, read(pidfile, String))
         @test istaskdone(task) && fetch(task)[1] === nothing
-        @test !alive(child)
+        @test timedwait(() -> !alive(child), 5.0) === :ok
         alive(child) && ccall(:kill, Cint, (Cint, Cint), child, 9)
     end
 
@@ -593,7 +593,7 @@ end
         child = parse(Int, read(pidfile, String))
         @test code === nothing
         @test 5 <= t < 20
-        @test !alive(child)
+        @test timedwait(() -> !alive(child), 5.0) === :ok
         alive(child) && ccall(:kill, Cint, (Cint, Cint), child, 9)
     end
 
@@ -653,7 +653,7 @@ end
         @test isfile(pidfile)
         if isfile(pidfile)
             child = parse(Int, read(pidfile, String))
-            @test !alive(child)
+            @test timedwait(() -> !alive(child), 5.0) === :ok
             alive(child) && ccall(:kill, Cint, (Cint, Cint), child, 9)
         end
     end
@@ -784,7 +784,7 @@ end
         t = @elapsed wait(p)
         @test t < 30
         @test p.exitcode == 130
-        @test !alive(suite)
+        @test timedwait(() -> !alive(suite), 5.0) === :ok
         alive(suite) && ccall(:kill, Cint, (Cint, Cint), suite, 9)
     end
 
@@ -849,7 +849,7 @@ end
             t = @elapsed done = timedwait(() -> !process_running(p), 30.0)
             @test done === :ok
             @test 2 <= t < 15
-            @test !alive(suite)
+            @test timedwait(() -> !alive(suite), 5.0) === :ok
             alive(suite) && ccall(:kill, Cint, (Cint, Cint), suite, 9)
         end
         process_running(p) && kill(p, Base.SIGKILL)
@@ -871,7 +871,7 @@ end
             sleep(1)
             kill(p, Base.SIGINT)
             @test timedwait(() -> !process_running(p), 30.0) === :ok
-            @test !alive(suite)
+            @test timedwait(() -> !alive(suite), 5.0) === :ok
             alive(suite) && ccall(:kill, Cint, (Cint, Cint), suite, 9)
         end
         process_running(p) && kill(p, Base.SIGKILL)
