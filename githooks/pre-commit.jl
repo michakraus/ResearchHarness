@@ -57,10 +57,12 @@ function run_boxed(cmd, seconds)
     p = run(
         pipeline(ignorestatus(Cmd(cmd; detach = true)); stdin = devnull, stdout = out, stderr = out);
         wait = false)
+    # `detach` starts a new session, whose group ID is the PID of `p`. Read before anything
+    # yields: once a program that ends at once is reaped, `getpid` throws.
+    group = getpid(p)
+    push!(BOXED, group)
     close(out.in)
     reader = @async read(out, String)
-    group = getpid(p)  # `detach` starts a new session, whose group ID is the PID of `p`
-    push!(BOXED, group)
     stopped = Ref{Union{Nothing, Float64}}(nothing)
     stop = Timer(seconds) do _
         stopped[] = time()

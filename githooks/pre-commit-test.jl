@@ -550,6 +550,12 @@ end
         @test sort(split(chomp(out), '\n')) == ["err", "out"]
     end
 
+    # A box that reads the PID after a yield throws ESRCH for a program reaped by then: about 2
+    # runs in 300 on macOS, and more on a Linux runner.
+    @testset "the lint time box runs a program that ends at once" begin
+        @test all(run_boxed(`true`, 60) == (0, "") for _ in 1:1000)
+    end
+
     @testset "the lint time box stops a program that runs too long" begin
         t = @elapsed code, _ = run_boxed(`sleep 60`, 1)
         @test code === nothing
