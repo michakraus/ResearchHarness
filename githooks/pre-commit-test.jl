@@ -326,7 +326,7 @@ end
         @test !occursin("load line 30", out)
     end
 
-    # The load prints 25 lines before its error, so the report's first 20 lines hold no error.
+    # The load prints 25 lines before its error, so the first 20 lines of its output hold no error.
     @testset "a failed load report starts at its ERROR: line" begin
         code, out = run_hook("""
             module Fixture

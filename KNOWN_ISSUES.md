@@ -402,7 +402,7 @@
 
 ### K107 · A terminal hangup or a SIGTERM to the pre-push hook does not reach its suite.
 
-- location: `githooks/pre-push.jl:59`
+- location: `githooks/pre-push.jl:78`
 - evidence: `run_suite` starts the suite with `Cmd(cmd; detach = true)`, in a session of its own,
   and passes an interrupt on to the suite's process group: the case "pre-push: an interrupted hook
   stops its suite" sends SIGINT to the hook and sees the suite end. A hangup of the terminal goes
@@ -566,7 +566,7 @@
 
 ### K128 · The stages of the Julia packages' pre-commit hook read the working tree, not the staged content.
 
-- location: `githooks/pre-commit.jl:141`
+- location: `githooks/pre-commit.jl:156`
 - evidence: `formatting`, `nfc`, `test_layout` and `load` read the files on disk. A file that is
   staged and then edited again is judged on its later text: a formatted staged version with an
   unformatted edit on top is refused, and an unformatted staged version with a formatted edit on
@@ -582,7 +582,7 @@
 
 ### K130 · The formatting stage of the Julia packages' pre-commit hook has no time limit.
 
-- location: `githooks/pre-commit.jl:121`
+- location: `githooks/pre-commit.jl:136`
 - evidence: `formatted` calls JuliaFormatter's `format` in the hook's own process, one staged
   file at a time, with no limit. The lint stage and the load test run in `run_boxed`, with a
   limit of 60 s and 600 s; a staged file on which `format` does not end holds the commit until
@@ -592,3 +592,50 @@
   which loads JuliaFormatter once more per commit.
 - kind: defect
 - found: 2026-11-01, a review of the hook rollout's pull requests
+
+### K131 · The time box of the Julia packages' pre-commit hook does not cap the output that it captures.
+
+- location: `githooks/pre-commit.jl:67`
+- evidence: `run_boxed` reads the whole output of the lint stage and of the load test into one
+  string, `read(out, String)`, and its limit is one of time only: 60 s for `fatou lint` and 600 s
+  for the load. A program that prints without end within the limit fills the hook's memory before
+  the limit stops it. A fix reads the stream in blocks and keeps the first part only, for example
+  the first megabyte, which the stages print from anyway: the lint stage prints its lines, and the
+  load test at most 20 of them.
+- kind: defect
+- found: 2026-11-02, a review of the hook rollout's pull requests
+
+### K132 · The time box of the Julia packages' pre-commit hook has no bound for a process in uninterruptible I/O.
+
+- location: `githooks/pre-commit.jl:76`
+- evidence: `run_boxed` sends the group SIGTERM at the limit and SIGKILL 5 s later, and waits
+  for the program with `wait(p)`, which has no limit of its own. A process in uninterruptible
+  I/O, such as a read from a network file system that does not answer, does not end on SIGKILL
+  until the I/O returns, so the commit waits as long as the I/O does. The bound of 6 s after the
+  SIGTERM covers the wait for the rest of the group, which comes after `wait(p)`, and not the
+  wait for the program itself.
+- kind: defect
+- found: 2026-11-02, a review of the hook rollout's pull requests
+
+### K133 · The pre-push hook of the Julia packages tests the working tree, not the commit that it pushes.
+
+- location: `githooks/pre-push.jl:57`
+- evidence: `suite` runs the tests in the repository's working tree, and `main` reads from the
+  ref lines only whether a line pushes to `main` or `master`. The local SHA of the line is not
+  checked out. So `git push origin topic:main` from a checkout of another branch tests that
+  branch, and a change that is not committed takes part in the suite. A fix checks the pushed
+  SHA out into a temporary worktree and runs the suite there, which costs a precompilation of
+  the package in that tree.
+- kind: defect
+- found: 2026-11-02, a review of the hook rollout's pull requests
+
+### K134 · The pre-push hook of a Julia project that is not a package ignores `test/Project.toml`.
+
+- location: `githooks/pre-push.jl:61`
+- evidence: for a `Project.toml` without a `name` or a `uuid`, `suite` runs
+  `julia --project=. test/runtests.jl` in the root environment. `Pkg.test`, which a package
+  gets, runs the tests in the environment of `test/Project.toml`; the fallback does not, so a test
+  dependency that only `test/Project.toml` lists loads from the user's default environment where
+  it is installed there, and fails to load otherwise.
+- kind: defect
+- found: 2026-11-02, a review of the hook rollout's pull requests
