@@ -64,9 +64,22 @@ PKG = R + "/Packages/Example"
 TOOL = R + "/Harness"
 CWD = TOOL + "/hooks/"
 # No `GIT_*` variable of the caller: a `GIT_DIR`, as git exports it to a hook, would send the
-# fixture's git commands and the hooks' to the caller's repository.
-CLEAN = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+# fixture's git commands and the hooks' to the caller's repository. No `RESEARCH_HARNESS_PROFILE`
+# either: the guard would read the caller's profile in place of the fixture home's.
+CLEAN = {k: v for k, v in os.environ.items() if not k.startswith("GIT_") and k != "RESEARCH_HARNESS_PROFILE"}
 ENV = {**CLEAN, "HOME": HOME}
+# The profile of each fixture home, whose `org` list the `gh api` check reads: an own organisation
+# and an own account. A record's `profile` names another file in place of it, through
+# `RESEARCH_HARNESS_PROFILE`: one of PROFILES below the fixture's `profiles/`, or a missing one.
+OWN_PROFILE = 'org = ["own-org", "own-user"]\n'
+PROFILES = {
+    "not-toml.toml": b"org = [\n",
+    "not-utf8.toml": b'org = ["own-org"] # \xff\n',
+    "no-org.toml": b'leak = ["x"]\n',
+    "org-text.toml": b'org = "own-org"\n',
+    "org-mixed.toml": b'org = ["own-org", 1]\n',
+    "other.toml": b'org = ["other-org"]\n',
+}
 q = shlex.quote  # a fixture path spliced into a command, for a `$TMPDIR` with a space
 TIMEOUT = 30  # seconds per hook call; a timeout is a wrong case
 MIB = 1024 * 1024  # bytes: the largest command that the guard decides by its checks
@@ -84,6 +97,8 @@ WORKTREE = HOOKS + "worktree.py"
 # the cases of the hook scripts whose checks it holds. Each record is one JSON object per line:
 # `stdin` (an object, sent as its JSON text, or a string, sent as it is) and `decision`, the guard's
 # expected decision; a placeholder `@@<NAME>@@` in a string stands for the fixture's value of NAME.
+# A record of any frontend may hold `profile`, the path that `RESEARCH_HARNESS_PROFILE` names for its
+# call; without it, the guard reads OWN_PROFILE in the fixture home.
 # A record with `"frontend": "antigravity"` is an Antigravity call instead: `tool`, `args`, an
 # optional `workspace`, Antigravity's `decision` and the `bypass` of its `overwrite`, and `differs`,
 # the reason, where the removed Antigravity hook answered otherwise; `@@AGYHOME@@` stands for the
@@ -154,6 +169,18 @@ MANIFEST_CASES = [
     ({"A": "0.4.1"}, ["A"], {"A": "<= 1"}, False),
     ({"A": "0.4.1"}, ["A"], {"julia": "1.11"}, True),
 ]
+
+
+def own_profile(home: str) -> None:
+    """Write OWN_PROFILE as the profile of the fixture home `home`."""
+    config = pathlib.Path(home, ".config", "research-harness")
+    config.mkdir(parents=True, exist_ok=True)
+    (config / "profile.toml").write_text(OWN_PROFILE, encoding="utf-8")
+
+
+def profile_env(record: dict[str, Any]) -> dict[str, str]:
+    """The `RESEARCH_HARNESS_PROFILE` of a corpus record that names a `profile`, else none."""
+    return {"RESEARCH_HARNESS_PROFILE": str(record["profile"])} if "profile" in record else {}
 
 
 def load_module(name: str, path: str) -> types.ModuleType:
@@ -425,6 +452,7 @@ def plugin_home(
     )
     for directory in (layout, ".ssh", ".omp", "Research/P/.git", "bin"):
         (home / directory).mkdir(parents=True)
+    own_profile(str(home))
     shutil.copytree(GUARD, home / "hooks" / "guard", ignore=shutil.ignore_patterns("__pycache__"))
     for plugin, source in sources.items():
         text = pathlib.Path(REPO, source).read_text(encoding="utf-8")
@@ -456,14 +484,21 @@ def refusal(reason: str, seconds: float) -> PluginReply:
 
 
 def omp_reply(
-    home: str, call: tuple[str, object], *, cwd: str = CWD, mode: str = "", path: str | None = None
+    home: str,
+    call: tuple[str, object],
+    *,
+    cwd: str = CWD,
+    mode: str = "",
+    path: str | None = None,
+    extra: dict[str, str] | None = None,
 ) -> PluginReply:
     """The extension's answer in the home `home` to one event of the call (tool, input), in the
-    working directory `cwd`, the driver in the mode `mode`; `path`, the `PATH` of `node`."""
+    working directory `cwd`, the driver in the mode `mode`; `path`, the `PATH` of `node`; `extra`,
+    further variables of its environment."""
     node = shutil.which("node") or "node"
     tool, data = call
     event = json.dumps({"type": "tool_call", "toolCallId": "probe", "toolName": tool, "input": data})
-    env = {**CLEAN, "HOME": home}
+    env = {**CLEAN, "HOME": home, **(extra or {})}
     if path is not None:
         env["PATH"] = path
     start = time.monotonic()
@@ -611,11 +646,18 @@ def omp_cases():
         return report.total, report.wrong
     for record in plugin_records("omp"):
         cwd = str(record.get("cwd", CWD))
-        got = omp_reply(good, (record["tool"], record["input"]), cwd=cwd, mode=str(record.get("agent", "")))
+        got = omp_reply(
+            good,
+            (record["tool"], record["input"]),
+            cwd=cwd,
+            mode=str(record.get("agent", "")),
+            extra=profile_env(record),
+        )
         report(
             ok=got.decision == record["decision"],
             line=f"exp {record['decision']} got {got.decision}  [omp-guard]  {record['tool']} "
-            f"{json.dumps(record['input'])[:160]} in {cwd} {record.get('agent', '')}",
+            f"{json.dumps(record['input'])[:160]} in {cwd} {record.get('agent', '')}"
+            + (f" with the profile {record['profile']}" if "profile" in record else ""),
         )
     for command, expected in OMP_PATTERNS:
         got = omp_pattern(command, patterns)
@@ -766,13 +808,14 @@ def oc_cases():
         process_cwd: str | None = None,
         path: str | None = None,
         config_dir: str | None = None,
+        extra: dict[str, str] | None = None,
     ) -> Any:
         """The driver's answer for one event, or the text of what went wrong. `cwd` is the
         session's directory, `ctx.location.directory`, or "" for a context with no `location`;
         `process_cwd`, the working directory of the `node` process, or None for this one's; `path`,
         the `PATH` of the `node` process, or None for this one's; `config_dir`, its
-        `OPENCODE_CONFIG_DIR`, or None for none."""
-        env = {k: v for k, v in CLEAN.items() if k != "OPENCODE_CONFIG_DIR"}
+        `OPENCODE_CONFIG_DIR`, or None for none; `extra`, further variables of its environment."""
+        env = {k: v for k, v in CLEAN.items() if k != "OPENCODE_CONFIG_DIR"} | (extra or {})
         if path is not None:
             env["PATH"] = path
         if config_dir is not None:
@@ -844,13 +887,21 @@ def oc_cases():
         *,
         config_dir: str | None = None,
         path: str | None = None,
+        extra: dict[str, str] | None = None,
     ) -> PluginReply:
         """The guard plugin's answer in the home `home` to one event, with the session's directory and
         the directory of `node` of `place`, and the options of `drive`."""
         start = time.monotonic()
         directory, process_cwd = place
         answer = drive(
-            home, "guards", event, cwd=directory, process_cwd=process_cwd, config_dir=config_dir, path=path
+            home,
+            "guards",
+            event,
+            cwd=directory,
+            process_cwd=process_cwd,
+            config_dir=config_dir,
+            path=path,
+            extra=extra,
         )
         seconds = time.monotonic() - start
         if isinstance(answer, str) or "setup" in answer:
@@ -886,12 +937,19 @@ def oc_cases():
             config_dir = str(config)
         directory = str(record.get("directory", CWD))
         event = {**oc_event(None, tool=record["tool"]), "input": record["input"]}
-        got = reply(good, event, (directory, record.get("process_cwd")), config_dir=config_dir)
+        got = reply(
+            good,
+            event,
+            (directory, record.get("process_cwd")),
+            config_dir=config_dir,
+            extra=profile_env(record),
+        )
         report(
             ok=got.decision == record["decision"],
             line=f"exp {record['decision']} got {got.decision}  [oc-guards]  {record['tool']} "
             f"{json.dumps(record['input'])[:160]} in {directory or record.get('process_cwd')}"
-            + (f" with the local list {record['local']}" if "local" in record else ""),
+            + (f" with the local list {record['local']}" if "local" in record else "")
+            + (f" with the profile {record['profile']}" if "profile" in record else ""),
         )
 
     # It fails closed: each refuses `git status`, and a missing list a read too, with a reason that
@@ -1089,9 +1147,11 @@ def agy_payload(tool: object, args: object, workspace: str | None = CWD) -> str:
     )
 
 
-def agy_reply(home: str, payload: str, *, limit: float = TIMEOUT) -> AgyReply:
+def agy_reply(
+    home: str, payload: str, *, limit: float = TIMEOUT, extra: dict[str, str] | None = None
+) -> AgyReply:
     """The guard's answer to `payload`, run as `hooks.json` runs it from the fixture home `home`
-    within `limit` seconds."""
+    within `limit` seconds; `extra`, further variables of its environment."""
     config = pathlib.Path(home, ".gemini", "config")
     start = time.monotonic()
     try:
@@ -1102,7 +1162,7 @@ def agy_reply(home: str, payload: str, *, limit: float = TIMEOUT) -> AgyReply:
             text=True,
             timeout=limit,
             cwd=config,
-            env={**CLEAN, "HOME": "/" + home},
+            env={**CLEAN, "HOME": "/" + home, **(extra or {})},
             check=False,
         )
     except subprocess.TimeoutExpired:
@@ -1191,6 +1251,7 @@ class AgyFixture:
         home = FIXTURE.name + "/" + name
         config = pathlib.Path(home, ".gemini", "config")
         config.mkdir(parents=True)
+        own_profile(home)
         shutil.copytree(GUARD, config / "hooks" / "guard", ignore=shutil.ignore_patterns("__pycache__"))
         if excluded is not None:
             rule = config / "hooks" / "guard" / "sandbox_semantics.py"
@@ -1215,7 +1276,11 @@ def agy_record_cases(report: AgyReport, home: str) -> None:
     `BypassSandbox`, a reason with each `deny` and `force_ask`, and none with an `ask`."""
     for record in agy_records(home):
         workspace = record.get("workspace", CWD)
-        got = agy_reply(home, agy_payload(record["tool"], record["args"], str(workspace)))
+        got = agy_reply(
+            home,
+            agy_payload(record["tool"], record["args"], str(workspace)),
+            extra=profile_env(cast("dict[str, Any]", record)),
+        )
         bypass = bypass_of(got.overwrite)
         reasoned = (got.reason is None) if got.decision == "ask" else bool(got.reason and got.reason.strip())
         want = (record["decision"], record["bypass"])
@@ -1223,7 +1288,8 @@ def agy_record_cases(report: AgyReport, home: str) -> None:
             ok=(got.decision, bypass) == want and reasoned,
             line=f"exp {want} got {(got.decision, bypass)}, reason {got.reason is not None}  [agy-guard]  "
             f"{record['tool']} {json.dumps(record['args'])[:160]}"
-            + (f" in {workspace}" if "workspace" in record else ""),
+            + (f" in {workspace}" if "workspace" in record else "")
+            + (f" with the profile {record['profile']}" if "profile" in record else ""),
         )
 
 
@@ -1708,6 +1774,11 @@ def fixture():
     # A link in a scratch zone to a guarded directory: a recursive `rm` of the link removes the link,
     # and of the link with a trailing `/` the directory.
     pathlib.Path(SCRATCH, "link-out").symlink_to("/")
+    own_profile(home)
+    profiles = pathlib.Path(FIXTURE.name, "profiles")
+    profiles.mkdir()
+    for name, data in PROFILES.items():
+        (profiles / name).write_bytes(data)
 
 
 def drift(env, payload="{}"):
@@ -2060,16 +2131,19 @@ def cases(names):
     return 1 if wrong else 0
 
 
-def guard_run(data: bytes, frontend: str = "claude", limit: float = TIMEOUT) -> tuple[str, str]:
+def guard_run(
+    data: bytes, frontend: str = "claude", limit: float = TIMEOUT, env: dict[str, str] | None = None
+) -> tuple[str, str]:
     """The guard's decision on the payload bytes `data`, run as the settings template runs it but from
-    the fixture's directory, and its stdout and stderr: `deny` for exit 2, the `permissionDecision` of
-    stdout for exit 0, `pass` for exit 0 with no output, `exit <n>` or `timeout` after `limit` seconds."""
+    the fixture's directory, with the environment `env`, ENV by default, and its stdout and stderr:
+    `deny` for exit 2, the `permissionDecision` of stdout for exit 0, `pass` for exit 0 with no
+    output, `exit <n>` or `timeout` after `limit` seconds."""
     try:
         proc = subprocess.run(
             [sys.executable, GUARD, "--from", frontend],
             input=data,
             capture_output=True,
-            env=ENV,
+            env=ENV if env is None else env,
             cwd=FIXTURE.name,
             timeout=limit,
             check=False,
@@ -2165,16 +2239,23 @@ def mib_command(unit: str, tail: str, lead: str = "") -> tuple[str, str]:
     return text + " " * (MIB - len(text) - len(tail)) + tail, shape
 
 
-def corpus_records() -> list[tuple[str, str]]:
-    """(payload text, expected decision) of each Claude Code record of the corpus, its placeholders
-    replaced by the fixture's values; a record with a `frontend` is another frontend's."""
-    records: list[tuple[str, str]] = []
+def corpus_records() -> list[tuple[str, str, dict[str, str]]]:
+    """(payload text, expected decision, the variables of its `profile`) of each Claude Code record
+    of the corpus, its placeholders replaced by the fixture's values; a record with a `frontend` is
+    another frontend's."""
+    records: list[tuple[str, str, dict[str, str]]] = []
     for placed in corpus_lines({}):
         record = json_value(placed, "a record of the corpus")
         if "frontend" in record:
             continue
         stdin = record["stdin"]
-        records.append((stdin if isinstance(stdin, str) else json.dumps(stdin), str(record["decision"])))
+        records.append(
+            (
+                stdin if isinstance(stdin, str) else json.dumps(stdin),
+                str(record["decision"]),
+                profile_env(record),
+            )
+        )
     return records
 
 
@@ -2298,9 +2379,10 @@ def command_cases():
         total, wrong = total + 1, wrong + (not ok)
         print(f"{'ok ' if ok else 'BAD'} {line}")
 
-    for stdin, expected in corpus_records():
-        got, _ = guard_run(stdin.encode("utf-8"))
-        report(ok=got == expected, line=f"exp {expected} got {got}  [guard    ]  {stdin[:200]!r}")
+    for stdin, expected, profile in corpus_records():
+        got, _ = guard_run(stdin.encode("utf-8"), env={**ENV, **profile})
+        named = f" with the profile {profile['RESEARCH_HARNESS_PROFILE']}" if profile else ""
+        report(ok=got == expected, line=f"exp {expected} got {got}  [guard    ]  {stdin[:200]!r}{named}")
 
     for size, expected in ((MIB, "pass"), (MIB + 1, "deny")):
         payload = {"tool_name": "Bash", "tool_input": {"command": "echo " + "a" * (size - 5)}, "cwd": CWD}
