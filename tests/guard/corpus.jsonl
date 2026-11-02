@@ -222,6 +222,39 @@
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api -XDELETE repos/o/r/issues/comments/5"}}, "decision": "deny"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api --method=delete repos/o/r/git/refs/heads/x"}}, "decision": "deny"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api -X DELETE repos/o/r/branches/main/protection"}}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api repos/own-org/r/git/blobs -f content=x -f encoding=utf-8"}}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api repos/own-org/r/git/trees --input tree.json"}}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api -X POST repos/own-org/r/git/commits -f message=m -f tree=t -f 'parents[]=p'"}}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api repos/own-org/r/git/refs -f ref=refs/heads/topic -f sha=s"}}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api --method=post /repos/own-user/r.jl/git/refs -f ref=refs/heads/topic -f sha=s"}}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api repos/OWN-ORG/r/git/refs -f ref=refs/heads/topic -f sha=s"}}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api repos/Own-Org/r/git/trees --input tree.json"}}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api repos/own-org/r/git/trees --input t.json && gh api repos/own-org/r/git/refs -f ref=refs/heads/x -f sha=s"}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api repos/other-org/r/git/refs -f ref=refs/heads/topic -f sha=s"}}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api repos/other-org/r/git/trees --input tree.json"}}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api repos/own-orgx/r/git/refs -f ref=refs/heads/topic -f sha=s"}}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api repos/{owner}/{repo}/git/refs -f ref=refs/heads/topic -f sha=s"}}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api repos/own-org/../git/refs -f ref=refs/heads/topic -f sha=s"}}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api repos/own-org/r%2F..%2F..%2Fother-org%2Fr/git/refs -f ref=refs/heads/topic -f sha=s"}}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api --hostname git.example.org repos/own-org/r/git/refs -f ref=refs/heads/topic -f sha=s"}}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api repos/own-org/r/git/trees --input t.json && gh api repos/other-org/r/git/refs -f ref=refs/heads/x -f sha=s"}, "cwd": "@@CWD@@"}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api -X PATCH repos/own-org/r/git/refs/heads/main -f sha=s -F force=true"}}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api -X PATCH repos/own-org/r/git/refs -f sha=s"}}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api -X PUT repos/own-org/r/git/refs -f ref=refs/heads/topic -f sha=s"}}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api repos/own-org/r/git/refs/heads/main -f sha=s"}}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api repos/own-org/r/git/tags -f tag=v1 -f object=s"}}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api -X DELETE repos/own-org/r/git/refs/heads/topic"}}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api repos/own-org/r/issues -f title=x"}}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api -X POST repos/own-org/r/pulls/3/merge"}}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api repos/own-org/r/git/refs -f ref=refs/heads/topic -f sha=s"}}, "profile": "@@FIXTURE@@/profiles/missing.toml", "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api repos/own-org/r/git/refs -f ref=refs/heads/topic -f sha=s"}}, "profile": "@@FIXTURE@@/profiles", "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api repos/own-org/r/git/refs -f ref=refs/heads/topic -f sha=s"}}, "profile": "@@FIXTURE@@/profiles/not-toml.toml", "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api repos/own-org/r/git/refs -f ref=refs/heads/topic -f sha=s"}}, "profile": "@@FIXTURE@@/profiles/not-utf8.toml", "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api repos/own-org/r/git/refs -f ref=refs/heads/topic -f sha=s"}}, "profile": "@@FIXTURE@@/profiles/no-org.toml", "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api repos/own-org/r/git/refs -f ref=refs/heads/topic -f sha=s"}}, "profile": "@@FIXTURE@@/profiles/org-text.toml", "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api repos/own-org/r/git/refs -f ref=refs/heads/topic -f sha=s"}}, "profile": "@@FIXTURE@@/profiles/org-mixed.toml", "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api repos/own-org/r/git/refs -f ref=refs/heads/topic -f sha=s"}}, "profile": "@@FIXTURE@@/profiles/other.toml", "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api repos/other-org/r/git/refs -f ref=refs/heads/topic -f sha=s"}}, "profile": "@@FIXTURE@@/profiles/other.toml", "decision": "pass"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "glab api -X DELETE projects/1/repository/branches/topic"}}, "decision": "deny"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "glab api projects/grp%2Fproj/repository/branches/fix%2Fx -X DELETE"}}, "decision": "deny"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "glab api -X DELETE projects/1"}}, "decision": "deny"}
@@ -435,6 +468,10 @@
 {"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "cat .env"}, "decision": "deny", "bypass": null}
 {"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "git status"}, "decision": "ask", "bypass": true}
 {"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "gh api -X POST repos/a/b/issues"}, "decision": "force_ask", "bypass": true}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "gh api repos/Own-Org/r/git/refs -f ref=refs/heads/topic -f sha=s"}, "decision": "ask", "bypass": true}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "gh api repos/other-org/r/git/refs -f ref=refs/heads/topic -f sha=s"}, "decision": "force_ask", "bypass": true}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "gh api -X PATCH repos/own-org/r/git/refs/heads/main -f sha=s"}, "decision": "force_ask", "bypass": true}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "gh api repos/own-org/r/git/refs -f ref=refs/heads/topic -f sha=s"}, "profile": "@@FIXTURE@@/profiles/missing.toml", "decision": "force_ask", "bypass": true}
 {"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "ls -la", "Cwd": "~/.ssh"}, "decision": "deny", "bypass": null}
 {"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "sed -i s/a/b/ f", "Cwd": "@@CWD@@"}, "decision": "deny", "bypass": null}
 {"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "env KEY=~/.netrc true"}, "decision": "deny", "bypass": null}
@@ -678,6 +715,10 @@
 {"frontend": "omp", "tool": "grep", "input": {"pattern": "token", "path": "src"}, "decision": "pass"}
 {"frontend": "omp", "tool": "write", "input": {"path": "notes.md", "content": "x"}, "covers": ["writePath"], "decision": "pass"}
 {"frontend": "omp", "tool": "bash", "input": {"command": "gh api -X POST repos/a/b/issues"}, "decision": "ask"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "gh api repos/Own-Org/r/git/refs -f ref=refs/heads/topic -f sha=s"}, "decision": "pass"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "gh api repos/other-org/r/git/refs -f ref=refs/heads/topic -f sha=s"}, "decision": "ask"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "gh api -X PATCH repos/own-org/r/git/refs/heads/main -f sha=s"}, "decision": "ask"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "gh api repos/own-org/r/git/refs -f ref=refs/heads/topic -f sha=s"}, "profile": "@@FIXTURE@@/profiles/missing.toml", "decision": "ask"}
 {"frontend": "omp", "tool": "bash", "input": {"command": "gh pr create --repo example-org/X.jl --title T --body-file b.md"}, "decision": "pass"}
 {"frontend": "omp", "tool": "bash", "input": {"command": "gh pr create -R example-user/X.jl --title T"}, "decision": "pass"}
 {"frontend": "omp", "tool": "bash", "input": {"command": "gh pr create --title T --repo example-org/X.jl"}, "decision": "pass"}
@@ -842,6 +883,10 @@
 {"frontend": "opencode", "tool": "shell", "input": {"command": "git status", "workdir": "@@TOOL@@"}, "covers": ["refusedPath"], "decision": "pass"}
 {"frontend": "opencode", "tool": "shell", "input": {"command": "ls", "workdir": "../.ssh"}, "directory": "@@OCHOME@@/proj", "decision": "deny", "differs": "The guard resolves a relative workdir against the session's directory and reads below it; the plugin read only a workdir that named a home or user-data path."}
 {"frontend": "opencode", "tool": "shell", "input": {"command": "gh api -X POST repos/o/r/issues"}, "decision": "ask"}
+{"frontend": "opencode", "tool": "shell", "input": {"command": "gh api repos/Own-Org/r/git/refs -f ref=refs/heads/topic -f sha=s"}, "decision": "pass"}
+{"frontend": "opencode", "tool": "shell", "input": {"command": "gh api repos/other-org/r/git/refs -f ref=refs/heads/topic -f sha=s"}, "decision": "ask"}
+{"frontend": "opencode", "tool": "shell", "input": {"command": "gh api -X PATCH repos/own-org/r/git/refs/heads/main -f sha=s"}, "decision": "ask"}
+{"frontend": "opencode", "tool": "shell", "input": {"command": "gh api repos/own-org/r/git/refs -f ref=refs/heads/topic -f sha=s"}, "profile": "@@FIXTURE@@/profiles/missing.toml", "decision": "ask"}
 {"frontend": "opencode", "tool": "shell", "input": {"command": "git archive -o base.tar origin/main"}, "directory": "@@TOOL@@", "decision": "deny"}
 {"frontend": "opencode", "tool": "shell", "input": {"command": "echo x > f"}, "directory": "@@PKG@@", "decision": "deny"}
 {"frontend": "opencode", "tool": "shell", "input": {"command": "echo x > f", "workdir": "@@PKG@@"}, "directory": "@@FIXTURE@@", "decision": "deny"}
