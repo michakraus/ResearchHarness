@@ -37,7 +37,7 @@ Without `julia` on the `PATH`, any other commit is refused with
 | 1 | JuliaFormatter 2.14 or later, with the `.JuliaFormatter.toml` of the repository | blocks |
 | 2 | `fatou lint`, with a limit of 60 s | warns only |
 | 2.5 | each file is in Unicode NFC | blocks |
-| 3 | `using <package>` loads, with a limit of 600 s, for a repository with a package name | blocks |
+| 3 | `using <package>` loads, with a limit of 600 s, for a repository with a package | blocks |
 
 Stages 1 to 2.5 run on the staged `.jl` files only, a renamed file under its new name and a file
 that became a symlink too; a path with non-ASCII characters is read as it is, not in git's quoted
@@ -45,22 +45,31 @@ form. A staged `.jl` path that is not a file, such as a symlink to a missing fil
 directory, is refused with one line that names it, before any stage runs. Stage 3 runs when a
 `.jl` file is staged, and also when only the deletion of one is: a deletion can break an
 `include`. Stage 1 checks each file on its own: a file that does not parse fails stage 1, with
-the first line of its error on stderr, and the other files are still checked. Stage 1 loads
+the first two lines of its error on stderr, the message and its location, and the other files
+are still checked. Stage 1 loads
 JuliaFormatter from the harness's Julia environment, which pins 2.14, and refuses an older
 release with one line that names its version, marking every staged file; JuliaFormatter 2.14
 supports Julia 1.10 and later. Stage 1 has no time limit (K130 of `KNOWN_ISSUES.md`). Stage 0 reads
 `.githooks/test-layout.jl`, which `harness githooks` installs beside the hook; a missing copy
 blocks the commit. Every stage reads the working tree, not the index (K128). The lint only
 warns, because `fatou lint` reports false positives; without `fatou` on the `PATH`, or with a
-`fatou` that cannot start, the stage prints one line and is skipped. The NFC stage does not
-change a file; run `nfc.jl --apply` to fix one. Stage 3 loads the package in a child process, in
-the environment of the repository, so that the versions of JuliaFormatter's dependencies in the
-hook's own process do not change what the package loads. The package name comes from
-`Project.toml`, read as TOML; a `Project.toml` that does not parse refuses the commit with one
-line. The lint stage and the load test run in a process group of their own: when the limit runs
-out, the hook sends the group SIGTERM, and SIGKILL 5 s later, and does not wait for the output
-of a process that left the group. When you interrupt the hook, it kills that group on its way
-out. A commit with no staged `.jl` path and no change below `test/` passes with no check.
+`fatou` that cannot start, the stage prints one line and is skipped. The staged paths reach
+`fatou` after `--`. A finding is a line of the form `<path>:<line>:<col>: …`; a non-zero exit of
+`fatou` with no such line is a failure of `fatou`, which the stage reports with its exit status
+and skips. The NFC stage does not change a file; run `nfc.jl --apply` to fix one. Stage 3 loads
+the package in a child process, in the environment of the repository, so that the versions of
+JuliaFormatter's dependencies in the hook's own process do not change what the package loads. A
+failed load shows at most 20 lines of its output, from the first line that holds `ERROR:`, or
+from its first line when no line does. A
+repository has a package when its `Project.toml`, read as TOML, has a `name` and a `uuid`. A
+`Project.toml` that does not parse refuses the commit with one line that holds the first two
+lines of the error, the message and its location. A package name that `Base.isidentifier`
+refuses, or that the parser of the running Julia does not read as that one name, such as the
+keyword `end`, refuses the commit with one line, and no load test runs. The lint stage and the
+load test run in a process group of their own: when the limit runs out, the hook sends the
+group SIGTERM, and SIGKILL 5 s later, and does not wait for the output of a process that left the
+group. When you interrupt the hook, it kills that group on its way out. A commit with no staged
+`.jl` path and no change below `test/` passes with no check.
 `git commit --no-verify` skips the hook.
 
 `pre-commit-test.jl` runs both hooks, unchanged, in fixture package repositories
@@ -70,15 +79,19 @@ parse, a file that does not load, a file that is not NFC and a change below `tes
 `test-layout.jl` or out of its layout are refused, and so is a JuliaFormatter older than 2.14; a
 file that does not parse beside a formatted one is listed alone; a staged symlink to a missing
 file or to a directory is refused with one line; a `Project.toml` with an indented, single-quoted
-name runs the load test, and one that does not parse is refused; a commit that only deletes a
-`.jl` file runs the load test; without `julia`, or with a `julia` that cannot start, a commit with
-no `.jl` file and no `test/` path passes; without `julia`, any other commit, a `.jl` file that
-became a symlink too, is refused; a missing `fatou`, a `fatou` that cannot start, and the findings
-of `fatou`, give their lines; a commit of one `.jl` file starts `julia` from the `PATH` once; an
-interrupted commit stops its load test. It checks the time limits of the lint stage and the load
-test, also for a child that holds the output and for a process that leaves the group, and that
-`pre-commit.jl` and `pre-push.jl` are in SciML style. For `pre-push` it checks each case of the
-gate and the suite. CI runs it on Linux.
+name runs the load test, one with a `name` and no `uuid` runs none, one that does not parse is
+refused with the error's location, and so is one whose name is not an identifier, without running
+the code that the name holds, or is the keyword `end`; a file that does not parse is listed with
+the error's location; a failed load report starts at its `ERROR:` line; a commit that only deletes
+a `.jl` file runs the load test; without `julia`, or with a `julia` that cannot start, a commit
+with no `.jl` file and no `test/` path passes; without `julia`, any other commit, a `.jl` file
+that became a symlink too, is refused; a missing `fatou`, a `fatou` that cannot start, a `fatou`
+that fails, and the findings of `fatou`, give their lines, and the staged paths reach `fatou`
+after `--`; a commit of one `.jl` file starts `julia` from the `PATH` once; an interrupted commit
+stops its load test. It checks the time limits of the lint stage and the load test, also for a
+child that holds the output and for a process that leaves the group, that the time box sends no
+SIGKILL after it returns, and that `pre-commit.jl` and `pre-push.jl` are in SciML style. For
+`pre-push` it checks each case of the gate and the suite. CI runs it on Linux.
 
 ## `pre-push` and `pre-push.jl`
 
@@ -91,17 +104,22 @@ once, and CI tests it.
 
 For a package, the hook runs `Pkg.test("<package>")` with `--check-bounds=auto`, and passes the
 flag to the test process through `julia_args`: up to Julia 1.12, `Pkg.test` gives the test
-process `--check-bounds=yes` whatever the calling process uses. For a repository
-with no package name, it runs `test/runtests.jl`. With neither, it runs nothing and passes. The
-package name comes from `Project.toml`, read as TOML; a `Project.toml` that does not parse
-refuses the push. A failure of the suite refuses the push with
-`ERROR — tests must pass before pushing to main or master.`
+process `--check-bounds=yes` whatever the calling process uses. A repository has a package when
+its `Project.toml`, read as TOML, has a `name` and a `uuid`. For a repository with no package, it
+runs `test/runtests.jl` in the root environment, which ignores `test/Project.toml` (K134). With
+neither, it runs nothing and passes. A `Project.toml` that does not parse refuses the push with
+one line that holds the first two lines of the error, the message and its location. A package
+name that `Base.isidentifier` refuses, or that the parser of the running Julia does not read as
+that one name, such as a keyword, refuses the push with one line before any suite starts. A
+failure of the suite refuses the push with
+`ERROR — tests must pass before pushing to main or master.` The suite runs in the working tree,
+not on the pushed commit (K133).
 
 The suite takes 10 to 30 minutes and prints nothing until it ends. That is not a hang. The suite
 runs in a process group of its own. When you interrupt the hook with Ctrl-C or `SIGINT`, it sends
-the interrupt to that group, waits for the suite to stop, and exits with status 130. When the
-suite still runs 30 s after the interrupt, the hook sends SIGKILL to the group. A second
-interrupt does not end the wait.
+the interrupt to that group, waits until no process of the group is left, and exits with status
+130. When a process of the group still runs 30 s after the interrupt, also after the suite itself
+has ended, the hook sends SIGKILL to the group. A second interrupt does not end the wait.
 `harness repos push` runs this hook in each repository.
 
 ## `pre-commit-wiki`
