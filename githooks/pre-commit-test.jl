@@ -323,8 +323,22 @@ end
             end
             """)
         @test code == 1
-        @test occursin("    load line 1\n", out)
         @test !occursin("load line 30", out)
+    end
+
+    # The load prints 25 lines before its error, so the report's first 20 lines hold no error.
+    @testset "a failed load report starts at its ERROR: line" begin
+        code, out = run_hook("""
+            module Fixture
+
+            foreach(i -> println(stderr, "load line ", i), 1:25)
+
+            const VALUE = undefined_name + 1
+
+            end
+            """)
+        @test code == 1
+        @test occursin(r"^    ERROR: .*undefined_name"m, out)
     end
 
     @testset "a commit with no staged file passes with no stage" begin
@@ -402,11 +416,11 @@ end
     end
 
     @testset "fatou findings warn and do not block" begin
-        fatou = bindir("fatou", "#!/bin/sh\necho 'src/Fixture.jl:1:1 one' >&2\necho 'src/Fixture.jl:2:1 two' >&2\nexit 1\n")
+        fatou = bindir("fatou", "#!/bin/sh\necho 'src/Fixture.jl:1:1: warning[w] one' >&2\necho 'src/Fixture.jl:2:1: warning[w] two' >&2\nexit 1\n")
         code, out = run_hook(FORMATTED; path = fatou * ":" * Sys.BINDIR * ":" * ENV["PATH"])
         @test code == 0
         @test occursin("fatou lint: 2 finding(s) — advisory, not blocking", out)
-        @test occursin("    src/Fixture.jl:2:1 two", out)
+        @test occursin("    src/Fixture.jl:2:1: warning[w] two", out)
     end
 
     @testset "fatou with no finding reports clean" begin
@@ -414,6 +428,26 @@ end
         code, out = run_hook(FORMATTED; path = fatou * ":" * Sys.BINDIR * ":" * ENV["PATH"])
         @test code == 0
         @test occursin("fatou lint: clean", out)
+    end
+
+    # The stub writes each of its arguments on a line of its own.
+    @testset "the staged paths reach fatou after --" begin
+        args = joinpath(mktempdir(), "args")
+        fatou = bindir("fatou", "#!/bin/sh\nprintf '%s\\n' \"\$@\" > '$args'\nexit 0\n")
+        code, out = run_hook(FORMATTED; path = fatou * ":" * Sys.BINDIR * ":" * ENV["PATH"])
+        @test code == 0
+        @test readlines(args) == ["lint", "--force-exclude", "--output", "concise", "--", "src/Fixture.jl"]
+    end
+
+    # fatou exits 2 for an unknown option, and prints no line of the form <path>:<line>:<col>: .
+    @testset "a fatou error is reported as a failure of fatou, not as findings" begin
+        fatou = bindir("fatou", "#!/bin/sh\necho 'error: unexpected argument' >&2\nexit 2\n")
+        code, out = run_hook(FORMATTED; path = fatou * ":" * Sys.BINDIR * ":" * ENV["PATH"])
+        @test code == 0
+        @test occursin("fatou lint: fatou failed with exit status 2 — stage skipped, not a failure", out)
+        @test occursin("    error: unexpected argument", out)
+        @test !occursin("finding(s)", out)
+        @test occursin("loads: ok", out)
     end
 
     # No other fatou on the PATH: execvp would start the next one when this one cannot start.
@@ -445,6 +479,13 @@ end
         @test occursin("not formatted:\nscripts/broken.jl\n", err)
         @test !occursin("src/Fixture.jl", err)
         @test occursin(r"^scripts/broken.jl: \S"m, err)
+    end
+
+    @testset "a file that does not parse is listed with the error's location" begin
+        repo, env = fixture(FORMATTED; extra = ["scripts/broken.jl" => "function f(x\n    x +\nend\n"])
+        code, _, err = capture(`bash $HOOK`, repo, env)
+        @test code == 1
+        @test occursin(r"^scripts/broken.jl: .*# Error @ line \d+:\d+"m, err)
     end
 
     @testset "a staged .jl symlink to a missing file is refused with one line" begin
@@ -483,6 +524,36 @@ end
         @test count(l -> occursin("Project.toml", l), split(out, '\n')) == 1
         @test occursin("Project.toml: does not parse", out)
         @test !occursin("Stacktrace", out)
+    end
+
+    # TOML.parsefile names the file: <path>:<line>:<col> error: …, where the column can be -1.
+    @testset "a Project.toml that does not parse is refused with the error's location" begin
+        code, out = run_hook(FORMATTED; project = replace(PROJECT, "\"Fixture\"" => "\"Fixture"))
+        @test code == 1
+        @test occursin(r"Project\.toml:\d+:-?\d+ error: ", out)
+    end
+
+    # Put into `using <name>`, the first name writes `ran` and loads. The second is no string.
+    @testset "a package name that is not an identifier is refused" begin
+        repo, env = fixture(FORMATTED;
+                            project = replace(PROJECT, "name = \"Fixture\"" => "name = 'Base; write(\"ran\", \"1\")'"))
+        code, out, err = capture(`bash $HOOK`, repo, env)
+        @test code == 1
+        @test !isfile(joinpath(repo, "ran"))
+        @test occursin("is not a Julia identifier", out)
+        @test count(l -> occursin("Project.toml", l), split(out * err, '\n')) == 1
+        @test !occursin("loads:", out)
+        code, out = run_hook(FORMATTED; project = replace(PROJECT, "name = \"Fixture\"" => "name = 1"))
+        @test code == 1
+        @test occursin("is not a Julia identifier", out)
+        @test !occursin("loads:", out)
+    end
+
+    @testset "a Project.toml with a name and no uuid runs no load test" begin
+        code, out = run_hook(FORMATTED; project = "name = \"Fixture\"\n")
+        @test code == 0
+        @test occursin("unicode: NFC", out)
+        @test !occursin("loads:", out)
     end
 
     @testset "a commit that only deletes a .jl file runs the load test" begin
@@ -601,6 +672,28 @@ end
         @test 5 <= t < 20
         @test timedwait(() -> !alive(child), 5.0) === :ok
         alive(child) && ccall(:kill, Cint, (Cint, Cint), child, 9)
+    end
+
+    # A module of its own whose `signal_group` records each signal with its time. `sleep` ends
+    # on the SIGTERM, so the box returns at once; the SIGKILL timer would fire 5 s after the
+    # SIGTERM. After the return, a signal is recorded and not sent.
+    @testset "the lint time box closes its kill timer when it returns" begin
+        box = Module(:PreCommitSignals)
+        Base.include(box, PROGRAM)
+        sent = Tuple{Int, Float64}[]
+        returned = Ref(false)
+        function record(group, signal)
+            push!(sent, (signal, time()))
+            return returned[] ? Cint(-1) : ccall(:kill, Cint, (Cint, Cint), -group, signal)
+        end
+        Core.eval(box, :(signal_group(group, signal) = $record(group, signal)))
+        code, _ = Base.invokelatest(box.run_boxed, `sleep 60`, 1)
+        returned[] = true
+        at = time()
+        sleep(6)
+        @test code === nothing
+        @test any(s == Base.SIGTERM for (s, _) in sent)
+        @test !any(s == Base.SIGKILL && t >= at for (s, t) in sent)
     end
 
     # The program's child forks a process that ends at once, then leaves the group with `setsid`
@@ -841,6 +934,40 @@ end
         @test !occursin("Stacktrace", out * err)
     end
 
+    @testset "pre-push: a Project.toml that does not parse is refused with the error's location" begin
+        repo, env = fixture(FORMATTED; extra = ["test/runtests.jl" => passing],
+                            project = replace(PROJECT, "\"Fixture\"" => "\"Fixture"))
+        code, out, _ = capture(`bash $PREPUSH origin https://example.org/x.git`, repo, env;
+                               input = main)
+        @test code == 1
+        @test occursin(r"Project\.toml:\d+:-?\d+ error: ", out)
+    end
+
+    # Put into `Pkg.test("<name>")`, the name writes `ran`.
+    @testset "pre-push: a package name that is not an identifier is refused" begin
+        repo, env = fixture(FORMATTED; extra = ["test/runtests.jl" => passing],
+                            project = replace(PROJECT, "name = \"Fixture\"" => "name = '\$(write(\"ran\", \"1\"))'"))
+        code, out, err = capture(`bash $PREPUSH origin https://example.org/x.git`, repo, env;
+                                 input = main)
+        @test code == 1
+        @test !isfile(joinpath(repo, "ran"))
+        @test occursin("is not a Julia identifier", out)
+        @test count(l -> occursin("Project.toml", l), split(out * err, '\n')) == 1
+        @test !occursin("running the full suite", out)
+    end
+
+    # Pkg.test prints "Testing Fixture"; a run of test/runtests.jl does not.
+    @testset "pre-push: a Project.toml with a name and no uuid runs test/runtests.jl" begin
+        repo, env = fixture(nothing; project = "name = \"Fixture\"\n",
+                            extra = ["test/runtests.jl" => "println(\"runtests ran\"); " * passing])
+        code, out, err = capture(`bash $PREPUSH origin https://example.org/x.git`, repo, env;
+                                 input = main)
+        @test code == 0
+        @test occursin("runtests ran", out)
+        @test !occursin("Testing Fixture", out * err)
+        @test occursin("Suite passed.", out)
+    end
+
     # The suite ignores SIGINT, and so does the `sleep` that it becomes.
     @testset "pre-push: a suite that ignores the interrupt is killed after the grace time" begin
         dir = mktempdir()
@@ -857,6 +984,29 @@ end
             @test 2 <= t < 15
             @test timedwait(() -> !alive(suite), 5.0) === :ok
             alive(suite) && ccall(:kill, Cint, (Cint, Cint), suite, 9)
+        end
+        process_running(p) && kill(p, Base.SIGKILL)
+        wait(p)
+        @test p.exitcode == 130
+    end
+
+    # The leader `sh` ends at once on the interrupt; its background `sleep`, in the same group,
+    # ignores it.
+    @testset "pre-push: a group member that ignores the interrupt after the leader ends is killed at the grace time" begin
+        dir = mktempdir()
+        pidfile = joinpath(dir, "member.pid")
+        p = suite_driver("(trap '' INT; exec sleep 120) & echo \$! > '$pidfile'; trap 'exit 0' INT; wait",
+                         dir; kwargs = "; grace = 2")
+        timedwait(() -> filesize(pidfile) > 0 || !process_running(p), 120.0)
+        @test filesize(pidfile) > 0
+        if filesize(pidfile) > 0
+            member = parse(Int, read(pidfile, String))
+            kill(p, Base.SIGINT)
+            t = @elapsed done = timedwait(() -> !process_running(p), 30.0)
+            @test done === :ok
+            @test 2 <= t < 15
+            @test timedwait(() -> !alive(member), 5.0) === :ok
+            alive(member) && ccall(:kill, Cint, (Cint, Cint), member, 9)
         end
         process_running(p) && kill(p, Base.SIGKILL)
         wait(p)
