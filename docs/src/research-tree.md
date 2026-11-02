@@ -73,7 +73,8 @@ Some subcommands do not take their directories from the profile. They find them 
 below the research tree, `$RESEARCH_ROOT`, or `~/Research` if it is not set:
 
 - `harness githooks`, `harness workflows`, `harness ci-protection` and `harness format` look in
-  `Packages` and `Experiments`.
+  `Packages` and `Experiments`. `harness ci-protection` also protects the Harness checkout that
+  runs it.
 - `harness clone` and `harness repos` look in the group directories `Packages`, `Experiments`,
   `Papers`, `Books`, `Talks` and `Projects`, and for the fixed repositories `Knowledge`,
   `Environment`, `Tasks` and `Library`.

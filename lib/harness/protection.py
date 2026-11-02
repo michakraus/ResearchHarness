@@ -168,7 +168,7 @@ def gh_array(*args: str) -> list[Any]:
     return jsonio.loads(gh(*args), where=f"gh {' '.join(args[:2])}", top=list)
 
 
-def ruleset_problem(ruleset, contexts: list[str]):
+def ruleset_problem(ruleset: dict[str, Any], contexts: list[str]) -> str | None:
     """The first reason a ruleset read back from GitHub is not `ruleset_for(contexts)`, or None
     when it is."""
     rules = ruleset.get("rules", [])
@@ -185,9 +185,8 @@ def ruleset_problem(ruleset, contexts: list[str]):
         return "deletion or force-push is not blocked"
     if [c.get("strict_required_status_checks_policy") for c in checks] != [True]:
         return "required checks missing or not strict"
-    if sorted(c.get("context") for c in checks[0].get("required_status_checks", [])) != sorted(contexts):
-        return "required checks differ"
-    return None
+    required = sorted(c.get("context") for c in checks[0].get("required_status_checks", []))
+    return None if required == sorted(contexts) else "required checks differ"
 
 
 def verify_workflows():
@@ -205,7 +204,7 @@ def verify_workflows():
     print("workflows are canonical.\n")
 
 
-def resolve(repo):
+def resolve(repo: pathlib.Path) -> tuple[str, str]:
     """(slug, branch) of a repository that can be protected; a skip or a failure otherwise."""
     url = git(repo, "remote", "get-url", "origin").stdout.strip()
     m = re.match(r"(?:git@github\.com:|https://github\.com/)(.+?)(?:\.git)?$", url)
@@ -249,9 +248,9 @@ def ruleset_id(slug):
     return ids[0] if ids else None
 
 
-def plan_ruleset(slug, rid, checks: list[str]):
+def plan_ruleset(slug: str, rid: int | None, checks: list[str]) -> list[str]:
     """What the ruleset step would change: a list of short descriptions."""
-    todo = []
+    todo: list[str] = []
     if rid is None:
         todo.append("create ruleset main")
     else:
@@ -264,7 +263,7 @@ def plan_ruleset(slug, rid, checks: list[str]):
     return todo
 
 
-def apply_ruleset(slug, rid, todo, checks: list[str]):
+def apply_ruleset(slug: str, rid: int | None, todo: list[str], checks: list[str]) -> None:
     body = json.dumps(ruleset_for(checks))
     if any(t.startswith(("create", "update")) for t in todo):
         if rid is None:
@@ -284,7 +283,7 @@ def apply_ruleset(slug, rid, todo, checks: list[str]):
         )
 
 
-def plan_classic(slug, branch, rid, checks: list[str]):
+def plan_classic(slug: str, branch: str, rid: int | None, checks: list[str]) -> list[str]:
     """What `--remove-classic` would change; a GhError when the ruleset is not right yet."""
     if rid is None:
         raise GhError("no ruleset named main; run `harness ci-protection --apply` first")
@@ -401,7 +400,8 @@ def workflow_checks(path: pathlib.Path) -> list[str]:
     """The sorted contexts of the workflow at `path` that a ruleset can require: for each job and
     each combination of its matrix, the job's name, or its ID without one, with each matrix value
     filled in, unless `continue-on-error` makes the combination a warning. A job may carry no `if:`
-    but `github.event_name == 'pull_request'`; one with another is refused with its ID. It reads
+    but `github.event_name == 'pull_request'`; one with another is refused with its ID, and a file
+    that is not YAML is refused with the parser's reason. It reads
     `jobs` only, because YAML 1.1 reads the key `on` as `True`."""
     try:
         import yaml  # noqa: PLC0415 -- only this function needs PyYAML
@@ -409,7 +409,13 @@ def workflow_checks(path: pathlib.Path) -> list[str]:
         raise HarnessError(
             "PyYAML is not in the harness's Python environment; run harness install --apply"
         ) from e
-    data: object = yaml.safe_load(path.read_text())
+    try:
+        data: object = yaml.safe_load(path.read_text())
+    except yaml.MarkedYAMLError as e:
+        line = f" at line {e.problem_mark.line + 1}" if e.problem_mark else ""
+        raise HarnessError(f"{path}: not valid YAML{line}: {e.problem}") from e
+    except yaml.YAMLError as e:
+        raise HarnessError(f"{path}: not valid YAML: {str(e).splitlines()[0]}") from e
     jobs = cast("dict[object, object]", data).get("jobs") if isinstance(data, dict) else None
     if not jobs:
         raise HarnessError(f"{path}: no jobs")
@@ -682,7 +688,8 @@ def workflow_cases() -> tuple[int, int]:
             "an include that matches a combination adds none of its own",
             "jobs:\n  t:\n    name: T ${{ matrix.v }} ${{ matrix.os }}\n"
             + matrix
-            + "        v: ['1']\n        os: [a]\n        include:\n          - os: a\n            extra: e\n",
+            + "        v: ['1']\n        os: [a]\n"
+            + "        include:\n          - os: a\n            extra: e\n",
             ["T 1 a"],
         ),
         (
@@ -699,6 +706,16 @@ def workflow_cases() -> tuple[int, int]:
         ("a workflow with no jobs is refused", "on: push\n", "no jobs"),
         ("a workflow with an empty table of jobs is refused", "jobs: {}\n", "no jobs"),
         ("a workflow that is not a table is refused", "- a\n", "no jobs"),
+        (
+            "a workflow that is not YAML is refused",
+            "jobs: [\n",
+            "not valid YAML at line 2: expected the node content, but found '<stream end>'",
+        ),
+        (
+            "a workflow with a character that YAML refuses is refused",
+            "jobs: \x01\n",
+            "not valid YAML: unacceptable character #x0001: special characters are not allowed",
+        ),
     ]
     wrong = 0
     with tempfile.TemporaryDirectory() as tmp:
