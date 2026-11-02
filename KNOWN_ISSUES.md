@@ -639,3 +639,16 @@
   it is installed there, and fails to load otherwise.
 - kind: defect
 - found: 2026-11-02, a review of the hook rollout's pull requests
+
+### K135 · The time box of the Julia packages' pre-commit hook can signal a freed group ID after a normal return.
+
+- location: `githooks/pre-commit.jl:80`
+- evidence: `run_boxed` closes its `stop` timer after the program and the output reader end. A
+  timer that fires before `close` still runs its callback: Julia's `_trywait`
+  (`base/asyncevent.jl:164` on 1.13.3) returns `true` for a timer that is set, also when it is
+  closed. So a program that ends within the last yield before `close(stop)` gets a normal
+  return, and the callback then sends SIGTERM to its group ID, which the system can have given to
+  another group, and starts a SIGKILL timer that nothing closes. A probe of 300 runs, each with
+  the limit at the program's end time, found no late signal, so the race is not seen to happen.
+- kind: not verified
+- found: 2026-11-02, a review of the hook rollout's pull requests

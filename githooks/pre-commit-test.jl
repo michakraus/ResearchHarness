@@ -902,8 +902,11 @@ end
         @test isfile(pidfile)
         suite = parse(Int, read(pidfile, String))
         kill(p, Base.SIGINT)
-        t = @elapsed wait(p)
+        t = @elapsed done = timedwait(() -> !process_running(p), 30.0)
+        @test done === :ok
         @test t < 30
+        process_running(p) && kill(p, Base.SIGKILL)
+        wait(p)
         @test p.exitcode == 130
         @test timedwait(() -> !alive(suite), 5.0) === :ok
         alive(suite) && ccall(:kill, Cint, (Cint, Cint), suite, 9)
