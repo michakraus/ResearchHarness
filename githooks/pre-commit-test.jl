@@ -580,6 +580,15 @@ end
         @test !occursin("loads:", out)
     end
 
+    # The parser reads U+00B5 MICRO SIGN as U+03BC GREEK SMALL LETTER MU.
+    @testset "a package name that the parser reads as another name is refused" begin
+        code, out = run_hook(FORMATTED; project = replace(PROJECT, "name = \"Fixture\"" => "name = \"µ\""))
+        @test code == 1
+        @test occursin("is not a Julia identifier", out)
+        @test count(l -> occursin("Project.toml", l), split(out, '\n')) == 1
+        @test !occursin("loads:", out)
+    end
+
     @testset "a Project.toml with a name and no uuid runs no load test" begin
         code, out = run_hook(FORMATTED; project = "name = \"Fixture\"\n")
         @test code == 0
@@ -985,6 +994,18 @@ end
                                  input = main)
         @test code == 1
         @test !isfile(joinpath(repo, "ran"))
+        @test occursin("is not a Julia identifier", out)
+        @test count(l -> occursin("Project.toml", l), split(out * err, '\n')) == 1
+        @test !occursin("running the full suite", out)
+    end
+
+    # Base.isidentifier accepts `end`; the parser does not read it as a name.
+    @testset "pre-push: a package name that is a keyword is refused" begin
+        repo, env = fixture(FORMATTED; extra = ["test/runtests.jl" => passing],
+                            project = replace(PROJECT, "name = \"Fixture\"" => "name = \"end\""))
+        code, out, err = capture(`bash $PREPUSH origin https://example.org/x.git`, repo, env;
+                                 input = main)
+        @test code == 1
         @test occursin("is not a Julia identifier", out)
         @test count(l -> occursin("Project.toml", l), split(out * err, '\n')) == 1
         @test !occursin("running the full suite", out)
