@@ -1,4 +1,5 @@
-"""Protect the default branch of every package and experiment with a repository ruleset.
+"""Protect the default branch of every package and experiment, and of the Harness itself, with a
+repository ruleset.
 
     harness ci-protection [--apply]                    # ruleset `main`, auto-merge, delete merged heads
     harness ci-protection --remove-classic [--apply]   # delete classic protection where the ruleset is right
@@ -12,9 +13,9 @@ Where to run it. Run this yourself, not from an agent shell. In the agent sandbo
 `gh` call of a process succeeds; every later one dies with `x509: OSStatus -26276`, a keychain
 XPC failure, not a certificate problem. A call that fails that way is retried four times.
 
-Required checks. There is one static list of required checks. CI.yml is byte-identical in every
-repository, its matrix is `version: [min, 1]` rather than version numbers, and its job names
-carry no event suffix. `min`
+Required checks. There are two static lists of required checks. The packages and experiments
+with a CI.yml require REQUIRED_CHECKS. CI.yml is byte-identical in every repository, its matrix
+is `version: [min, 1]` rather than version numbers, and its job names carry no event suffix. `min`
 resolves each package's own `[compat] julia` floor, so one matrix tests the right versions
 everywhere, and the check names never change. A required check that never reports leaves every
 pull request pending, unmergeable, with no error anywhere; so the list is correct only while the
@@ -22,6 +23,11 @@ workflows are canonical, and the subcommand refuses to run unless `verify-workfl
 
 `pre` and `nightly` are not required: they are `experimental: true`, and requiring them would block
 merges whenever an unreleased Julia breaks upstream.
+
+The Harness, the repository that runs the command, comes last and requires HARNESS_CHECKS: each
+job of its .github/workflows/test.yml that reports on every pull request and is not a warning.
+A case reads test.yml with `workflow_checks` and fails when the list differs from it, so a renamed
+or an added job fails `harness test` rather than leave every pull request pending.
 
 Rulesets. Each repository has one ruleset, named `main`, matched by name and updated in place;
 one that matches no branch is repaired, not duplicated. More than one named `main` is an error; rulesets of other
@@ -48,13 +54,23 @@ and, on a free plan, a public repository. Both are per-run facts: a repository s
 not skipped forever.
 """
 
+import argparse
+import contextlib
+import io
+import itertools
 import json
+import os
+import pathlib
 import re
 import subprocess
+import sys
+import tempfile
 import time
-from typing import Any
+from collections.abc import Callable
+from typing import Any, cast
+from unittest import mock
 
-from . import REPO, HarnessError, changing, jsonio, outcome
+from . import REPO, HarnessError, changing, fmt, jsonio, outcome
 from .githooks import git, repositories
 
 # The required status checks: the non-experimental jobs of the canonical CI.yml, `test` over
@@ -70,26 +86,45 @@ REQUIRED_CHECKS = [
     "Doctests - ubuntu-latest",
 ]
 
-# `~DEFAULT_BRANCH`, so a repository whose default branch is `master` is covered too.
-RULESET = {
-    "name": "main",
-    "target": "branch",
-    "enforcement": "active",
-    "bypass_actors": [{"actor_id": 5, "actor_type": "RepositoryRole", "bypass_mode": "always"}],
-    "conditions": {"ref_name": {"include": ["~DEFAULT_BRANCH"], "exclude": []}},
-    "rules": [
-        {"type": "deletion"},
-        {"type": "non_fast_forward"},
-        {
-            "type": "required_status_checks",
-            "parameters": {
-                "strict_required_status_checks_policy": True,
-                "do_not_enforce_on_create": False,
-                "required_status_checks": [{"context": c} for c in REQUIRED_CHECKS],
+# The required status checks of the Harness itself: the contexts of its .github/workflows/test.yml
+# that report on every pull request and are not warnings. `workflow_checks` reads them from the
+# file, and a case holds this list equal to it. julia.yml and docs.yml are not here: their path
+# filters leave a pull request outside their paths with no report from them.
+HARNESS_CHECKS = [
+    "Python 3.14",
+    "harness test with an empty HOME",
+    "changelog fragment",
+    "systemd-analyze verify",
+    "dotfiles",
+    "lint",
+    "leaks",
+    "ruff and basedpyright",
+]
+
+
+def ruleset_for(checks: list[str]) -> dict[str, Any]:
+    """The ruleset `main` that requires `checks`. `~DEFAULT_BRANCH`, so a repository whose default
+    branch is `master` is covered too."""
+    return {
+        "name": "main",
+        "target": "branch",
+        "enforcement": "active",
+        "bypass_actors": [{"actor_id": 5, "actor_type": "RepositoryRole", "bypass_mode": "always"}],
+        "conditions": {"ref_name": {"include": ["~DEFAULT_BRANCH"], "exclude": []}},
+        "rules": [
+            {"type": "deletion"},
+            {"type": "non_fast_forward"},
+            {
+                "type": "required_status_checks",
+                "parameters": {
+                    "strict_required_status_checks_policy": True,
+                    "do_not_enforce_on_create": False,
+                    "required_status_checks": [{"context": c} for c in checks],
+                },
             },
-        },
-    ],
-}
+        ],
+    }
+
 
 # What GitHub allows in an owner or a repository name, and in a branch name as read here. On
 # failure `gh` prints its error to stdout, and an error that mentions a URL holds slashes, so the
@@ -133,8 +168,9 @@ def gh_array(*args: str) -> list[Any]:
     return jsonio.loads(gh(*args), where=f"gh {' '.join(args[:2])}", top=list)
 
 
-def ruleset_problem(ruleset):
-    """The first reason a ruleset read back from GitHub is not RULESET, or None when it is."""
+def ruleset_problem(ruleset, contexts: list[str]):
+    """The first reason a ruleset read back from GitHub is not `ruleset_for(contexts)`, or None
+    when it is."""
     rules = ruleset.get("rules", [])
     types = [r.get("type") for r in rules]
     checks = [r.get("parameters", {}) for r in rules if r.get("type") == "required_status_checks"]
@@ -149,15 +185,13 @@ def ruleset_problem(ruleset):
         return "deletion or force-push is not blocked"
     if [c.get("strict_required_status_checks_policy") for c in checks] != [True]:
         return "required checks missing or not strict"
-    if sorted(c.get("context") for c in checks[0].get("required_status_checks", [])) != sorted(
-        REQUIRED_CHECKS
-    ):
+    if sorted(c.get("context") for c in checks[0].get("required_status_checks", [])) != sorted(contexts):
         return "required checks differ"
     return None
 
 
 def verify_workflows():
-    """Refuse unless the workflows are canonical: the static check list depends on it."""
+    """Refuse unless the workflows are canonical: REQUIRED_CHECKS depends on it."""
     print("verifying that the workflows are canonical...", flush=True)
     verifier = REPO / "githooks" / "verify-workflows.jl"
     p = subprocess.run(  # no timeout: a Julia process, which compiles before it checks
@@ -215,13 +249,13 @@ def ruleset_id(slug):
     return ids[0] if ids else None
 
 
-def plan_ruleset(slug, rid):
+def plan_ruleset(slug, rid, checks: list[str]):
     """What the ruleset step would change: a list of short descriptions."""
     todo = []
     if rid is None:
         todo.append("create ruleset main")
     else:
-        problem = ruleset_problem(gh_object("api", f"repos/{slug}/rulesets/{rid}"))
+        problem = ruleset_problem(gh_object("api", f"repos/{slug}/rulesets/{rid}"), checks)
         if problem:
             todo.append(f"update ruleset {rid} ({problem})")
     flags = gh_object("api", f"repos/{slug}")
@@ -230,8 +264,8 @@ def plan_ruleset(slug, rid):
     return todo
 
 
-def apply_ruleset(slug, rid, todo):
-    body = json.dumps(RULESET)
+def apply_ruleset(slug, rid, todo, checks: list[str]):
+    body = json.dumps(ruleset_for(checks))
     if any(t.startswith(("create", "update")) for t in todo):
         if rid is None:
             gh("api", "--method", "POST", f"repos/{slug}/rulesets", "--input", "-", payload=body)
@@ -250,11 +284,11 @@ def apply_ruleset(slug, rid, todo):
         )
 
 
-def plan_classic(slug, branch, rid):
+def plan_classic(slug, branch, rid, checks: list[str]):
     """What `--remove-classic` would change; a GhError when the ruleset is not right yet."""
     if rid is None:
         raise GhError("no ruleset named main; run `harness ci-protection --apply` first")
-    problem = ruleset_problem(gh_object("api", f"repos/{slug}/rulesets/{rid}"))
+    problem = ruleset_problem(gh_object("api", f"repos/{slug}/rulesets/{rid}"), checks)
     if problem:
         raise GhError(f"classic protection kept: ruleset {rid}: {problem}")
     try:
@@ -266,19 +300,155 @@ def plan_classic(slug, branch, rid):
     return ["remove classic protection"]
 
 
+def targets() -> list[tuple[pathlib.Path, list[str]]]:
+    """The repositories that `ci-protection` protects, in order, each with its required checks:
+    each package and experiment with a CI.yml, with REQUIRED_CHECKS, then the Harness that runs
+    the command, REPO, with HARNESS_CHECKS. The Harness comes last, so that the failure of a
+    package does not hide it."""
+    found = [
+        (repo, REQUIRED_CHECKS)
+        for repo, _ in cast("list[tuple[pathlib.Path, str]]", repositories())
+        if (repo / ".github" / "workflows" / "CI.yml").is_file()
+    ]
+    return [*found, (REPO, HARNESS_CHECKS)]
+
+
+# A whole value `${{ matrix.<key> }}`, and one such reference in a longer text.
+MATRIX_VALUE = re.compile(r"\$\{\{\s*matrix\.([A-Za-z0-9_-]+)\s*\}\}")
+# The one `if:` that a required job may carry: it runs on every pull request.
+PULL_REQUESTS = "github.event_name == 'pull_request'"
+
+
+def table(value: object, where: str, what: str) -> dict[str, object]:
+    """`value` as a table with text keys; a HarnessError that names `what` otherwise."""
+    if not isinstance(value, dict):
+        raise HarnessError(f"{where}: {what}")
+    items = cast("dict[object, object]", value).items()
+    if not all(isinstance(k, str) for k, _ in items):
+        raise HarnessError(f"{where}: {what}")
+    return {str(k): v for k, v in items}
+
+
+def matrix_rows(job: dict[str, object], where: str) -> list[dict[str, object]]:
+    """The combinations of a job's matrix, as GitHub forms them: the product of its lists, then
+    each `include` entry added to every combination whose original values it keeps, or as a
+    combination of its own where it keeps none. A job without a matrix has one empty combination.
+    A matrix that is an expression, or that has `exclude`, is refused."""
+    strategy = job.get("strategy")
+    matrix = None if strategy is None else table(strategy, where, "the strategy is not a table").get("matrix")
+    if matrix is None:
+        return [{}]
+    axes = table(matrix, where, "the matrix is not a table of lists")
+    include = axes.pop("include", [])
+    if "exclude" in axes or not isinstance(include, list):
+        raise HarnessError(f"{where}: the matrix is not a table of lists")
+    entries = [table(e, where, "an include entry is not a table") for e in cast("list[object]", include)]
+    lists: list[list[object]] = []
+    for value in axes.values():
+        if not isinstance(value, list):
+            raise HarnessError(f"{where}: the matrix is not a table of lists")
+        lists.append(cast("list[object]", value))
+    if not axes:
+        return entries
+    originals = [dict(zip(axes, values, strict=True)) for values in itertools.product(*lists)]
+    rows = [dict(o) for o in originals]
+    for entry in entries:
+        fits = [i for i, o in enumerate(originals) if all(o[k] == v for k, v in entry.items() if k in axes)]
+        for i in fits:
+            rows[i] |= entry
+        if not fits:
+            rows.append(dict(entry))
+    return rows
+
+
+def matrix_text(value: object, where: str) -> str:
+    """A matrix value as GitHub writes it into a name: text and a number as they are, a boolean in
+    lower case."""
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, str | int | float):
+        return str(value)
+    raise HarnessError(f"{where}: the matrix value {value!r} is not text, a number or a boolean")
+
+
+def context(name: str, row: dict[str, object], where: str) -> str:
+    """The context of one combination of a job: its name with each matrix reference replaced."""
+
+    def value(m: re.Match[str]) -> str:
+        if m.group(1) not in row:
+            raise HarnessError(f"{where}: matrix.{m.group(1)} is not a key of the combination {row}")
+        return matrix_text(row[m.group(1)], where)
+
+    text = MATRIX_VALUE.sub(value, name)
+    if "${{" in text:
+        raise HarnessError(f"{where}: the name {name!r} holds an expression that this list does not read")
+    return text
+
+
+def warns(flag: object, row: dict[str, object], where: str) -> bool:
+    """Whether `continue-on-error: flag` makes one combination a warning: `true`, `false`, or one
+    matrix value that is a boolean."""
+    if isinstance(flag, bool):
+        return flag
+    m = MATRIX_VALUE.fullmatch(flag) if isinstance(flag, str) else None
+    value = row.get(m.group(1)) if m else None
+    if not isinstance(value, bool):
+        raise HarnessError(f"{where}: continue-on-error {flag!r} is not true, false or one matrix value")
+    return value
+
+
+def workflow_checks(path: pathlib.Path) -> list[str]:
+    """The sorted contexts of the workflow at `path` that a ruleset can require: for each job and
+    each combination of its matrix, the job's name, or its ID without one, with each matrix value
+    filled in, unless `continue-on-error` makes the combination a warning. A job may carry no `if:`
+    but `github.event_name == 'pull_request'`; one with another is refused with its ID. It reads
+    `jobs` only, because YAML 1.1 reads the key `on` as `True`."""
+    try:
+        import yaml  # noqa: PLC0415 -- only this function needs PyYAML
+    except ImportError as e:
+        raise HarnessError(
+            "PyYAML is not in the harness's Python environment; run harness install --apply"
+        ) from e
+    data: object = yaml.safe_load(path.read_text())
+    jobs = cast("dict[object, object]", data).get("jobs") if isinstance(data, dict) else None
+    if not jobs:
+        raise HarnessError(f"{path}: no jobs")
+    found: set[str] = set()
+    for job_id, value in table(jobs, str(path), "no jobs").items():
+        where = f"{path}: job {job_id}"
+        job = table(value, where, "the job is not a table")
+        condition = job.get("if")
+        if condition is not None and condition != PULL_REQUESTS:
+            raise HarnessError(f"{where}: `if: {condition}` is not a condition that this list reads")
+        name = job.get("name", job_id)
+        if not isinstance(name, str):
+            raise HarnessError(f"{where}: the name {name!r} is not text")
+        rows = matrix_rows(job, where)
+        if rows != [{}] and not MATRIX_VALUE.search(name):
+            raise HarnessError(f"{where}: a matrix job whose name names no matrix value")
+        found |= {
+            context(name, row, where)
+            for row in rows
+            if not warns(job.get("continue-on-error", False), row, where)
+        }
+    return sorted(found)
+
+
 def cmd_ci_protection(args):
     verify_workflows()
     changes = failed = 0
-    for repo, _ in repositories():
-        if not (repo / ".github" / "workflows" / "CI.yml").is_file():
-            continue
+    for repo, checks in targets():
         try:
             slug, branch = resolve(repo)
             if slug == "skip":
                 print(f"{repo.name:<28} SKIP   {branch}")
                 continue
             rid = ruleset_id(slug)
-            todo = plan_classic(slug, branch, rid) if args.remove_classic else plan_ruleset(slug, rid)
+            todo = (
+                plan_classic(slug, branch, rid, checks)
+                if cast("bool", args.remove_classic)
+                else plan_ruleset(slug, rid, checks)
+            )
             if not todo:
                 print(f"{repo.name:<28} {branch}: up to date")
                 continue
@@ -286,7 +456,7 @@ def cmd_ci_protection(args):
                 if args.remove_classic:
                     gh("api", "--method", "DELETE", f"repos/{slug}/branches/{branch}/protection")
                 else:
-                    apply_ruleset(slug, rid, todo)
+                    apply_ruleset(slug, rid, todo, checks)
             changes += len(todo)
             print(f"{repo.name:<28} {branch}: {'done' if args.apply else 'would'}: {'; '.join(todo)}")
         except GhError as e:
@@ -298,46 +468,389 @@ def cmd_ci_protection(args):
     return outcome(args, changes)
 
 
-def selftest():
-    """Cases for `ruleset_problem`: the RULESET as GitHub returns it, and one break of each check."""
-    good: dict[str, Any] = jsonio.loads(json.dumps(RULESET), where="RULESET") | {
+def as_read(checks: list[str]) -> dict[str, Any]:
+    """The ruleset that requires `checks`, as GitHub returns it to its admin."""
+    return jsonio.loads(json.dumps(ruleset_for(checks)), where="ruleset") | {
         "current_user_can_bypass": "always"
     }
 
-    def broken(change):
-        r = jsonio.loads(json.dumps(good), where="RULESET")
+
+def ruleset_cases() -> tuple[int, int]:
+    """`ruleset_problem`: the ruleset as GitHub returns it, one break of each check, and the
+    ruleset of each list judged against the other list."""
+    good = as_read(REQUIRED_CHECKS)
+
+    def broken(change: Callable[[dict[str, Any]], object], base: dict[str, Any] = good) -> dict[str, Any]:
+        r = jsonio.loads(json.dumps(base), where="ruleset")
         change(r)
         return r
 
     cases = [
-        (good, None),
-        (broken(lambda r: r.update(enforcement="disabled")), "enforcement is disabled"),
-        (broken(lambda r: r["conditions"]["ref_name"].update(include=[])), "branch list is []"),
-        (broken(lambda r: r.update(current_user_can_bypass="never")), "admin bypass is never"),
-        (broken(lambda r: r["rules"].pop(1)), "deletion or force-push is not blocked"),
+        (good, REQUIRED_CHECKS, None),
+        (broken(lambda r: r.update(enforcement="disabled")), REQUIRED_CHECKS, "enforcement is disabled"),
+        (
+            broken(lambda r: r["conditions"]["ref_name"].update(include=[])),
+            REQUIRED_CHECKS,
+            "branch list is []",
+        ),
+        (
+            broken(lambda r: r.update(current_user_can_bypass="never")),
+            REQUIRED_CHECKS,
+            "admin bypass is never",
+        ),
+        (broken(lambda r: r["rules"].pop(1)), REQUIRED_CHECKS, "deletion or force-push is not blocked"),
         (
             broken(lambda r: r["rules"][2]["parameters"].update(strict_required_status_checks_policy=False)),
+            REQUIRED_CHECKS,
             "required checks missing or not strict",
         ),
         (
             broken(lambda r: r["rules"][2]["parameters"]["required_status_checks"].pop()),
+            REQUIRED_CHECKS,
+            "required checks differ",
+        ),
+        (as_read(HARNESS_CHECKS), HARNESS_CHECKS, None),
+        (as_read(HARNESS_CHECKS), REQUIRED_CHECKS, "required checks differ"),
+        (as_read(REQUIRED_CHECKS), HARNESS_CHECKS, "required checks differ"),
+        (
+            broken(
+                lambda r: r["rules"][2]["parameters"]["required_status_checks"].pop(), as_read(HARNESS_CHECKS)
+            ),
+            HARNESS_CHECKS,
             "required checks differ",
         ),
     ]
     wrong = 0
-    for ruleset, expected in cases:
-        got = ruleset_problem(ruleset)
+    for ruleset, checks, expected in cases:
+        got = ruleset_problem(ruleset, checks)
         wrong += got != expected
-        print(f"{'ok ' if got == expected else 'BAD'}  ruleset -> {got!r}")
+        against = "HARNESS_CHECKS" if checks is HARNESS_CHECKS else "REQUIRED_CHECKS"
+        print(f"{'ok ' if got == expected else 'BAD'}  ruleset against {against} -> {got!r}")
     return len(cases), wrong
 
 
-def register(sub):
+def scratch_root(root: pathlib.Path) -> None:
+    """A research root with the packages A (a CI.yml) and B (none) and the experiment C (a
+    CI.yml), each a directory with a `.git`, as `repositories()` reads it."""
+    for group, name, ci in (("Packages", "A", True), ("Packages", "B", False), ("Experiments", "C", True)):
+        repo = root / group / name
+        (repo / ".git").mkdir(parents=True)
+        if ci:
+            (repo / ".github" / "workflows").mkdir(parents=True)
+            (repo / ".github" / "workflows" / "CI.yml").write_text("name: CI\n")
+
+
+def target_cases() -> tuple[int, int]:
+    """`targets()` on a scratch research root: the repositories with a CI.yml, then the Harness."""
+    with tempfile.TemporaryDirectory() as tmp, mock.patch.dict(os.environ, {"RESEARCH_ROOT": tmp}):
+        scratch_root(pathlib.Path(tmp))
+        got = [(repo.name if repo != REPO else "REPO", checks) for repo, checks in targets()]
+    expected = [("A", REQUIRED_CHECKS), ("C", REQUIRED_CHECKS), ("REPO", HARNESS_CHECKS)]
+    ok = got == expected
+    print(
+        f"{'ok ' if ok else 'BAD'}  targets: A and C with REQUIRED_CHECKS, then REPO last with HARNESS_CHECKS"
+    )
+    if not ok:
+        print(f"     got {got}")
+    return 1, int(not ok)
+
+
+def workflow_cases() -> tuple[int, int]:
+    """`workflow_checks` on the Harness's own test.yml and on small workflows, one rule each."""
+    own = REPO / ".github" / "workflows" / "test.yml"
+    matrix = "    strategy:\n      matrix:\n"
+    cases: list[tuple[str, str | None, list[str] | str]] = [
+        ("the Harness's test.yml gives HARNESS_CHECKS", None, sorted(HARNESS_CHECKS)),
+        (
+            "test.yml with `ruff and basedpyright` renamed differs",
+            own.read_text().replace("name: ruff and basedpyright", "name: ruff and pyright"),
+            sorted([*(c for c in HARNESS_CHECKS if c != "ruff and basedpyright"), "ruff and pyright"]),
+        ),
+        ("a job without a name reports its ID", "jobs:\n  lint:\n    runs-on: x\n", ["lint"]),
+        (
+            "a job of pull requests only is required",
+            "jobs:\n  c:\n    name: fragment\n    if: github.event_name == 'pull_request'\n",
+            ["fragment"],
+        ),
+        (
+            "a job with another `if:` is refused with its ID",
+            "jobs:\n  c:\n    if: github.event_name == 'push'\n",
+            "job c: `if: github.event_name == 'push'` is not a condition that this list reads",
+        ),
+        (
+            "a job with continue-on-error true is a warning",
+            "jobs:\n  a:\n    runs-on: x\n  b:\n    continue-on-error: true\n",
+            ["a"],
+        ),
+        (
+            "a job with continue-on-error false is required",
+            "jobs:\n  b:\n    continue-on-error: false\n",
+            ["b"],
+        ),
+        (
+            "a matrix name is expanded for each value",
+            "jobs:\n  t:\n    name: T ${{ matrix.v }} - ${{ matrix.os }}\n"
+            + matrix
+            + "        v: ['1', '2']\n        os: [u]\n",
+            ["T 1 - u", "T 2 - u"],
+        ),
+        (
+            "an include that matches no combination adds one, and its warn makes it a warning",
+            "jobs:\n  t:\n    name: T ${{ matrix.v }}\n    continue-on-error: ${{ matrix.warn }}\n"
+            + matrix
+            + "        v: ['1']\n        warn: [false]\n        include:\n          - v: '2'\n"
+            + "            warn: true\n          - v: '3'\n            warn: false\n",
+            ["T 1", "T 3"],
+        ),
+        (
+            "an include that matches a combination extends it",
+            "jobs:\n  t:\n    name: T ${{ matrix.v }}\n    continue-on-error: ${{ matrix.warn }}\n"
+            + matrix
+            + "        v: ['1', '2']\n        include:\n          - v: '1'\n            warn: true\n"
+            + "          - v: '2'\n            warn: false\n",
+            ["T 2"],
+        ),
+        (
+            "a matrix of include entries only has one combination each",
+            "jobs:\n  t:\n    name: T ${{ matrix.v }}\n"
+            + matrix
+            + "        include:\n          - v: a\n          - v: b\n",
+            ["T a", "T b"],
+        ),
+        (
+            "a boolean and a number of the matrix read as GitHub writes them",
+            "jobs:\n  t:\n    name: T ${{ matrix.f }} ${{ matrix.n }}\n"
+            + matrix
+            + "        f: [true]\n        n: [3]\n",
+            ["T true 3"],
+        ),
+        (
+            "a matrix job whose name names no matrix value is refused",
+            "jobs:\n  t:\n    name: T\n" + matrix + "        v: ['1']\n",
+            "job t: a matrix job whose name names no matrix value",
+        ),
+        (
+            "a name that names a value outside the combination is refused",
+            "jobs:\n  t:\n    name: T ${{ matrix.w }}\n" + matrix + "        v: ['1']\n",
+            "job t: matrix.w is not a key of the combination {'v': '1'}",
+        ),
+        (
+            "a name with another expression is refused",
+            "jobs:\n  t:\n    name: T ${{ github.ref }}\n",
+            "job t: the name 'T ${{ github.ref }}' holds an expression that this list does not read",
+        ),
+        (
+            "a matrix of an expression is refused",
+            "jobs:\n  t:\n    name: T ${{ matrix.v }}\n    strategy:\n      matrix: ${{ fromJSON(x) }}\n",
+            "job t: the matrix is not a table of lists",
+        ),
+        (
+            "a matrix with exclude is refused",
+            "jobs:\n  t:\n    name: T ${{ matrix.v }}\n"
+            + matrix
+            + "        v: ['1']\n        exclude:\n          - v: '1'\n",
+            "job t: the matrix is not a table of lists",
+        ),
+        (
+            "continue-on-error of another expression is refused",
+            "jobs:\n  t:\n    continue-on-error: ${{ github.x }}\n",
+            "job t: continue-on-error '${{ github.x }}' is not true, false or one matrix value",
+        ),
+        (
+            "continue-on-error on a matrix value that is not a boolean is refused",
+            "jobs:\n  t:\n    name: T ${{ matrix.v }}\n    continue-on-error: ${{ matrix.v }}\n"
+            + matrix
+            + "        v: ['1']\n",
+            "job t: continue-on-error '${{ matrix.v }}' is not true, false or one matrix value",
+        ),
+        (
+            "a matrix whose list is a single value is refused",
+            "jobs:\n  t:\n    name: T ${{ matrix.v }}\n" + matrix + "        v: '1'\n",
+            "job t: the matrix is not a table of lists",
+        ),
+        (
+            "a matrix with a key that is not text is refused",
+            "jobs:\n  t:\n    name: T ${{ matrix.v }}\n" + matrix + "        v: ['1']\n        2: ['3']\n",
+            "job t: the matrix is not a table of lists",
+        ),
+        (
+            "a matrix whose include is not a list is refused",
+            "jobs:\n  t:\n    name: T ${{ matrix.v }}\n" + matrix + "        v: ['1']\n        include: x\n",
+            "job t: the matrix is not a table of lists",
+        ),
+        (
+            "an include that matches a combination adds none of its own",
+            "jobs:\n  t:\n    name: T ${{ matrix.v }} ${{ matrix.os }}\n"
+            + matrix
+            + "        v: ['1']\n        os: [a]\n        include:\n          - os: a\n            extra: e\n",
+            ["T 1 a"],
+        ),
+        (
+            "a matrix value that is a list is refused",
+            "jobs:\n  t:\n    name: T ${{ matrix.v }}\n" + matrix + "        v: [[1, 2]]\n",
+            "job t: the matrix value [1, 2] is not text, a number or a boolean",
+        ),
+        ("a job that is not a table is refused", "jobs:\n  a: 3\n", "job a: the job is not a table"),
+        (
+            "a job whose name is not text is refused",
+            "jobs:\n  t:\n    name: 3\n",
+            "job t: the name 3 is not text",
+        ),
+        ("a workflow with no jobs is refused", "on: push\n", "no jobs"),
+        ("a workflow with an empty table of jobs is refused", "jobs: {}\n", "no jobs"),
+        ("a workflow that is not a table is refused", "- a\n", "no jobs"),
+    ]
+    wrong = 0
+    with tempfile.TemporaryDirectory() as tmp:
+        for label, text, expected in cases:
+            path = own
+            if text is not None:
+                path = pathlib.Path(tmp) / "w.yml"
+                path.write_text(text)
+            try:
+                got: list[str] | str = workflow_checks(path)
+            except HarnessError as e:
+                got = str(e).removeprefix(f"{path}: ")
+            ok = got == expected
+            wrong += not ok
+            print(f"{'ok ' if ok else 'BAD'}  workflow: {label}")
+            if not ok:
+                print(f"     got {got!r}")
+    return len(cases), wrong
+
+
+def command_cases() -> tuple[int, int]:
+    """`cmd_ci_protection` on a scratch research root with `gh` replaced: each target is planned,
+    written and read back with its own list of required checks."""
+    harness_slug = f"o/{REPO.name}"
+    written: list[tuple[str, ...]] = []
+
+    def fake_gh(*argv: str, payload: str | None = None) -> str:
+        written.append((*argv, payload or ""))
+        if argv[-1].endswith("/A/branches/main/protection"):
+            raise GhError("Branch not protected")
+        return ""
+
+    def fake_resolve(repo: pathlib.Path) -> tuple[str, str]:
+        return f"o/{repo.name}", "main"
+
+    def fake_object(*argv: str) -> dict[str, Any]:
+        if argv[-1].endswith("/rulesets/1"):
+            # Ruleset 1 is the packages' ruleset, and ruleset 2 the Harness's.
+            return as_read(REQUIRED_CHECKS)
+        if argv[-1].endswith("/rulesets/2"):
+            return as_read(HARNESS_CHECKS)
+        return {"allow_auto_merge": True, "delete_branch_on_merge": True}
+
+    def required_in(calls: list[tuple[str, ...]]) -> list[str]:
+        """The contexts of the one ruleset that `calls` write, or [] unless they write one."""
+        if len(calls) != 1:
+            return []
+        body: dict[str, Any] = jsonio.loads(calls[0][-1], where="payload")
+        return [c["context"] for c in body["rules"][2]["parameters"]["required_status_checks"]]
+
+    def run(*, apply: bool, remove_classic: bool, rid: Callable[[str], int | None]) -> tuple[int, list[str]]:
+        written.clear()
+        out = io.StringIO()
+        args = argparse.Namespace(apply=apply, remove_classic=remove_classic)
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            mock.patch.dict(os.environ, {"RESEARCH_ROOT": tmp}),
+            mock.patch.multiple(
+                sys.modules[__name__],
+                verify_workflows=lambda: None,
+                resolve=fake_resolve,
+                ruleset_id=rid,
+                gh=fake_gh,
+                gh_object=fake_object,
+            ),
+            contextlib.redirect_stdout(out),
+        ):
+            scratch_root(pathlib.Path(tmp))
+            try:
+                status = cmd_ci_protection(args)
+            except HarnessError:
+                # A repository that failed: `harness` exits 2.
+                status = 2
+        return status, out.getvalue().splitlines()
+
+    wrong = 0
+
+    def check(label: str, seen: object, *, ok: bool) -> None:
+        nonlocal wrong
+        wrong += not ok
+        print(f"{'ok ' if ok else 'BAD'}  ci-protection: {label}")
+        if not ok:
+            print(f"     got {seen!r}")
+
+    status, lines = run(apply=False, remove_classic=False, rid=lambda _slug: 1)
+    expected = [
+        f"{'A':<28} main: up to date",
+        f"{'C':<28} main: up to date",
+        f"{REPO.name:<28} main: would: update ruleset 1 (required checks differ)",
+    ]
+    check(
+        "the dry run plans the Harness last, against HARNESS_CHECKS",
+        lines,
+        ok=status == 1 and lines[:3] == expected,
+    )
+
+    status, lines = run(apply=True, remove_classic=False, rid=lambda _slug: 1)
+    puts = [w for w in written if "PUT" in w]
+    check(
+        "--apply writes the Harness's ruleset with HARNESS_CHECKS, and no package's",
+        (puts, lines),
+        ok=status == 0
+        and [w[3] for w in puts] == [f"repos/{harness_slug}/rulesets/1"]
+        and required_in(puts) == HARNESS_CHECKS,
+    )
+
+    status, lines = run(apply=False, remove_classic=False, rid=lambda _slug: None)
+    check(
+        "the dry run creates the Harness's ruleset where it has none",
+        lines,
+        ok=status == 1 and lines[2:3] == [f"{REPO.name:<28} main: would: create ruleset main"],
+    )
+
+    status, lines = run(apply=True, remove_classic=False, rid=lambda _slug: None)
+    posts = [w for w in written if "POST" in w and w[3] == f"repos/{harness_slug}/rulesets"]
+    check(
+        "--apply creates the Harness's ruleset with HARNESS_CHECKS",
+        (posts, lines),
+        ok=status == 0 and required_in(posts) == HARNESS_CHECKS,
+    )
+
+    status, lines = run(apply=False, remove_classic=True, rid=lambda slug: 2 if slug == harness_slug else 1)
+    expected = [
+        f"{'A':<28} main: up to date",
+        f"{'C':<28} main: would: remove classic protection",
+        f"{REPO.name:<28} main: would: remove classic protection",
+    ]
+    check(
+        "--remove-classic reads each ruleset back against the list of its repository",
+        lines,
+        ok=status == 1 and lines[:3] == expected,
+    )
+    return 5, wrong
+
+
+def selftest():
+    """Cases for `ruleset_problem`, `targets`, `workflow_checks` and `cmd_ci_protection`."""
+    total = wrong = 0
+    for cases in (ruleset_cases, target_cases, workflow_cases, command_cases):
+        n, w = cases()
+        total += n
+        wrong += w
+    return total, wrong
+
+
+def register(sub: fmt.Subcommands) -> None:
     p = changing(
         sub.add_parser(
             "ci-protection",
             help="protect every default branch with a ruleset",
-            description="Protect the default branch of each repository that has a CI.yml with a "
+            description="Protect the default branch of each repository that has a CI.yml, and "
+            "then of the Harness itself with the jobs of its test.yml, with a "
             "GitHub ruleset named `main`, and turn on auto-merge and the deletion of "
             "merged branches. Without --apply it prints what would change and exits 1 "
             "when something would; --apply writes through `gh api`. It refuses unless "

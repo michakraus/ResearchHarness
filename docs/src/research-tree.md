@@ -133,7 +133,7 @@ gives the contract of each.
 | `harness repos pull` | fetches, then fast-forwards each branch that is behind its upstream. It skips a branch that has diverged, and one whose incoming commits change a file with local changes |
 | `harness repos push` | pushes each git repository below `Packages/` and `Experiments/` whose branch is ahead of its upstream, one at a time. It skips a repository with no upstream, one that is also behind its upstream, and one on a branch that is not the default branch, unless you give `--include-topic-branches`. `--no-verify` skips the pre-push suite |
 | `harness repos sync` | runs `repos pull`, then `repos push` |
-| `harness ci-protection` | protects the default branch on GitHub of each git repository directly below `Packages/` and `Experiments/` that has a `CI.yml`, with a ruleset that requires the status checks of the canonical `CI.yml`. It first checks that the workflows are canonical, and skips a private repository and one where you are not an admin |
+| `harness ci-protection` | protects the default branch on GitHub of each git repository directly below `Packages/` and `Experiments/` that has a `CI.yml`, with a ruleset that requires the status checks of the canonical `CI.yml`, and then of the Harness itself, with the jobs of its `test.yml`. It first checks that the workflows are canonical, and skips a private repository and one where you are not an admin |
 | `harness format` | runs JuliaFormatter over each tracked `.jl` file of the repositories below `Packages/` and `Experiments/`; it skips a repository that has no `.JuliaFormatter.toml` |
 
 Run each one in your own terminal, not from a session. The settings refuse a session's write to

@@ -357,18 +357,26 @@ an empty fixture directory.
 ## `protection.py`
 
 The subcommand `harness ci-protection [--remove-classic] [--apply]`. It protects the default
-branch of each repository with a GitHub ruleset named `main`: no deletion, no force push, and the
-required status checks of the canonical `CI.yml`. It also turns on auto-merge and the deletion of
-merged branches. `--remove-classic` deletes the classic branch protection, but only where the
-ruleset passes every check.
+branch of each repository with a `CI.yml` with a GitHub ruleset named `main`: no deletion, no
+force push, and the required status checks of the canonical `CI.yml`, `REQUIRED_CHECKS`. Last it
+protects the Harness itself, the checkout that runs the command, with the same ruleset and its own
+list, `HARNESS_CHECKS`: the jobs of `.github/workflows/test.yml` that report on every pull request
+and are not warnings. `julia.yml` and `docs.yml` have path filters, so a check of theirs would
+not report on every pull request, and they are not in the list. It also turns on auto-merge and
+the deletion of merged branches. `--remove-classic` deletes the classic branch protection, but
+only where the ruleset passes every check.
 
 The subcommand first runs `githooks/verify-workflows.jl`, and refuses when the workflows are not
 canonical, because the list of required checks depends on them. It calls `gh api` for each
 repository, and skips a repository that is private or where the user is not an admin. Run it in
 your own terminal: in a sandboxed session, only the first `gh` call of a process succeeds.
 
-Its cases check `ruleset_problem` against the ruleset as GitHub returns it, and against one break
-of each check. The sweep does not run this subcommand, because it needs `gh` with a login.
+Its cases check `ruleset_problem` against the ruleset as GitHub returns it, against one break
+of each check, and with the ruleset of each list judged against the other list. They list the
+repositories with a scratch research root, and run the subcommand there with `gh` replaced. A case
+reads `test.yml` with `workflow_checks` and fails when `HARNESS_CHECKS` differs from it, so a
+renamed or an added job fails `harness test`. The sweep does not run this subcommand, because it
+needs `gh` with a login.
 
 ## `fmt.py`
 
