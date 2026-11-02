@@ -63,12 +63,13 @@ failed load shows at most 20 lines of its output, from the first line that holds
 from its first line when no line does. A
 repository has a package when its `Project.toml`, read as TOML, has a `name` and a `uuid`. A
 `Project.toml` that does not parse refuses the commit with one line that holds the first two
-lines of the error, the message and its location. A package name that is not a Julia identifier
-refuses the commit with one line, and no load test runs. The lint stage and the load test run in
-a process group of their own: when the limit runs out, the hook sends the group SIGTERM, and
-SIGKILL 5 s later, and does not wait for the output of a process that left the group. When you
-interrupt the hook, it kills that group on its way out. A commit with no staged `.jl` path and no
-change below `test/` passes with no check.
+lines of the error, the message and its location. A package name that `Base.isidentifier`
+refuses, or that the parser of the running Julia does not read as that one name, such as the
+keyword `end`, refuses the commit with one line, and no load test runs. The lint stage and the
+load test run in a process group of their own: when the limit runs out, the hook sends the
+group SIGTERM, and SIGKILL 5 s later, and does not wait for the output of a process that left the
+group. When you interrupt the hook, it kills that group on its way out. A commit with no staged
+`.jl` path and no change below `test/` passes with no check.
 `git commit --no-verify` skips the hook.
 
 `pre-commit-test.jl` runs both hooks, unchanged, in fixture package repositories
@@ -79,18 +80,18 @@ parse, a file that does not load, a file that is not NFC and a change below `tes
 file that does not parse beside a formatted one is listed alone; a staged symlink to a missing
 file or to a directory is refused with one line; a `Project.toml` with an indented, single-quoted
 name runs the load test, one with a `name` and no `uuid` runs none, one that does not parse is
-refused with the error's location, and so is one whose name is not a Julia identifier, without
-running the code that the name holds; a file that does not parse is listed with the error's
-location; a failed load report starts at its `ERROR:` line; a commit that only deletes a
-`.jl` file runs the load test; without `julia`, or with a `julia` that cannot start, a commit with
-no `.jl` file and no `test/` path passes; without `julia`, any other commit, a `.jl` file that
-became a symlink too, is refused; a missing `fatou`, a `fatou` that cannot start, a `fatou` that
-fails, and the findings of `fatou`, give their lines, and the staged paths reach `fatou` after
-`--`; a commit of one `.jl` file starts `julia` from the `PATH` once; an interrupted commit stops
-its load test. It checks the time limits of the lint stage and the load test, also for a child
-that holds the output and for a process that leaves the group, that the time box sends no SIGKILL
-after it returns, and that `pre-commit.jl` and `pre-push.jl` are in SciML style. For `pre-push`
-it checks each case of the gate and the suite. CI runs it on Linux.
+refused with the error's location, and so is one whose name is not an identifier, without running
+the code that the name holds, or is the keyword `end`; a file that does not parse is listed with
+the error's location; a failed load report starts at its `ERROR:` line; a commit that only deletes
+a `.jl` file runs the load test; without `julia`, or with a `julia` that cannot start, a commit
+with no `.jl` file and no `test/` path passes; without `julia`, any other commit, a `.jl` file
+that became a symlink too, is refused; a missing `fatou`, a `fatou` that cannot start, a `fatou`
+that fails, and the findings of `fatou`, give their lines, and the staged paths reach `fatou`
+after `--`; a commit of one `.jl` file starts `julia` from the `PATH` once; an interrupted commit
+stops its load test. It checks the time limits of the lint stage and the load test, also for a
+child that holds the output and for a process that leaves the group, that the time box sends no
+SIGKILL after it returns, and that `pre-commit.jl` and `pre-push.jl` are in SciML style. For
+`pre-push` it checks each case of the gate and the suite. CI runs it on Linux.
 
 ## `pre-push` and `pre-push.jl`
 
@@ -108,7 +109,8 @@ its `Project.toml`, read as TOML, has a `name` and a `uuid`. For a repository wi
 runs `test/runtests.jl` in the root environment, which ignores `test/Project.toml` (K134). With
 neither, it runs nothing and passes. A `Project.toml` that does not parse refuses the push with
 one line that holds the first two lines of the error, the message and its location. A package
-name that is not a Julia identifier refuses the push with one line before any suite starts. A
+name that `Base.isidentifier` refuses, or that the parser of the running Julia does not read as
+that one name, such as a keyword, refuses the push with one line before any suite starts. A
 failure of the suite refuses the push with
 `ERROR — tests must pass before pushing to main or master.` The suite runs in the working tree,
 not on the pushed commit (K133).

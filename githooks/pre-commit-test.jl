@@ -571,6 +571,15 @@ end
         @test !occursin("loads:", out)
     end
 
+    # Base.isidentifier accepts `end`; the parser does not read it as a name.
+    @testset "a package name that is a keyword is refused" begin
+        code, out = run_hook(FORMATTED; project = replace(PROJECT, "name = \"Fixture\"" => "name = \"end\""))
+        @test code == 1
+        @test occursin("is not a Julia identifier", out)
+        @test count(l -> occursin("Project.toml", l), split(out, '\n')) == 1
+        @test !occursin("loads:", out)
+    end
+
     @testset "a Project.toml with a name and no uuid runs no load test" begin
         code, out = run_hook(FORMATTED; project = "name = \"Fixture\"\n")
         @test code == 0

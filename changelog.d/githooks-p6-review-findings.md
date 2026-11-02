@@ -3,8 +3,9 @@
   that still runs at the grace time also after the suite itself has ended; it starts the suite
   with the interrupt deferred, so no interrupt finds the suite started and not yet watched. The
   time box of `pre-commit` closes its SIGKILL timer before it returns. Both programs count a
-  `Project.toml` as a package only with a `name` and a `uuid`, and refuse a name that is not a
-  Julia identifier before they build code from it, so a name can no longer run code of its own.
+  `Project.toml` as a package only with a `name` and a `uuid`, and refuse a name that is not an
+  identifier, or that the parser reads as something else, such as the keyword `end`, before they
+  build code from it, so a name can no longer run code of its own.
   The lint stage passes the staged paths after `--`, and reports a `fatou` exit with no finding
   line as a failure of `fatou` with its exit status, not as a count of findings. A failed load
   report starts at its `ERROR:` line. The refusals for a `Project.toml` or a `.jl` file that does

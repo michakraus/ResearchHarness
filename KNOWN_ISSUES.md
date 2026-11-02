@@ -402,7 +402,7 @@
 
 ### K107 · A terminal hangup or a SIGTERM to the pre-push hook does not reach its suite.
 
-- location: `githooks/pre-push.jl:78`
+- location: `githooks/pre-push.jl:82`
 - evidence: `run_suite` starts the suite with `Cmd(cmd; detach = true)`, in a session of its own,
   and passes an interrupt on to the suite's process group: the case "pre-push: an interrupted hook
   stops its suite" sends SIGINT to the hook and sees the suite end. A hangup of the terminal goes
@@ -619,7 +619,7 @@
 
 ### K133 · The pre-push hook of the Julia packages tests the working tree, not the commit that it pushes.
 
-- location: `githooks/pre-push.jl:57`
+- location: `githooks/pre-push.jl:61`
 - evidence: `suite` runs the tests in the repository's working tree, and `main` reads from the
   ref lines only whether a line pushes to `main` or `master`. The local SHA of the line is not
   checked out. So `git push origin topic:main` from a checkout of another branch tests that
@@ -631,7 +631,7 @@
 
 ### K134 · The pre-push hook of a Julia project that is not a package ignores `test/Project.toml`.
 
-- location: `githooks/pre-push.jl:61`
+- location: `githooks/pre-push.jl:65`
 - evidence: for a `Project.toml` without a `name` or a `uuid`, `suite` runs
   `julia --project=. test/runtests.jl` in the root environment. `Pkg.test`, which a package
   gets, runs the tests in the environment of `test/Project.toml`; the fallback does not, so a test

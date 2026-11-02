@@ -33,10 +33,14 @@ function package_name()
 end
 
 """
-Whether the package name `name` is a Julia identifier. The suite's command puts the name into
-Julia source, so any other name could run code of its own.
+Whether the package name `name` is a Julia identifier that the parser reads as exactly that name.
+The suite's command puts the name into Julia source, so any other name could run code of its own.
+`Base.isidentifier` accepts a keyword such as `end`; the parser of the running Julia refuses it.
 """
-identifier(name) = name isa AbstractString && Base.isidentifier(name)
+function identifier(name)
+    name isa AbstractString && Base.isidentifier(name) &&
+        Meta.parse(name; raise = false) === Symbol(name)
+end
 
 """
 The first two lines of the error `e`, joined with ` — `: its message and, for a parse error of
