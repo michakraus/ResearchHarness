@@ -339,6 +339,23 @@ end
             """)
         @test code == 1
         @test occursin(r"^    ERROR: .*undefined_name"m, out)
+        # `__init__` runs at the load, not at the precompilation, and ends it with no ERROR: line,
+        # so the report starts at the first line and shows 20.
+        code, out = run_hook("""
+            module Fixture
+
+            function __init__()
+                foreach(i -> println(stderr, "init line ", i), 1:30)
+                exit(3)
+            end
+
+            end
+            """)
+        @test code == 1
+        @test occursin("loads: FAILED", out)
+        @test occursin("    init line 1\n", out)
+        @test occursin("    init line 20\n", out)
+        @test !occursin("init line 21", out)
     end
 
     @testset "a commit with no staged file passes with no stage" begin
@@ -448,6 +465,11 @@ end
         @test occursin("    error: unexpected argument", out)
         @test !occursin("finding(s)", out)
         @test occursin("loads: ok", out)
+        # A location without the `: ` after its column is no finding either.
+        fatou = bindir("fatou", "#!/bin/sh\necho 'src/Fixture.jl:1:1 one' >&2\nexit 1\n")
+        code, out = run_hook(FORMATTED; path = fatou * ":" * Sys.BINDIR * ":" * ENV["PATH"])
+        @test code == 0
+        @test occursin("fatou lint: fatou failed with exit status 1 — stage skipped, not a failure", out)
     end
 
     # No other fatou on the PATH: execvp would start the next one when this one cannot start.
