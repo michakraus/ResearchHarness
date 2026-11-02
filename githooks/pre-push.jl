@@ -44,9 +44,16 @@ end
 
 """
 The first two lines of the error `e`, joined with ` — `: its message and, for a parse error of
-TOML, the line that gives the location.
+TOML, the line that gives the location. For a parse error of Julia, which prints its reason
+after `──` on a later line, the text after the `──` of the last such line follows.
 """
-headline(e) = join(first(split(sprint(showerror, e), '\n'), 2), " — ")
+function headline(e)
+    lines = split(sprint(showerror, e), '\n')
+    parts = first(lines, 2)
+    marked = findlast(l -> occursin("──", l), lines)
+    marked === nothing || push!(parts, strip(last(split(lines[marked], "──"; limit = 2))))
+    return join(parts, " — ")
+end
 
 """
 The suite's command, or `nothing` when there is nothing to run.
@@ -73,13 +80,16 @@ An interrupt of this program goes on to the whole group, the suite and the test 
 `Pkg.test` starts, and the program waits until no process of the group is left before it
 exits: a test process that outlives its hook survives as an orphan, and such processes
 accumulate over days. A group that still has a process `grace` seconds after the interrupt
-gets SIGKILL, also when the suite itself has ended. A further interrupt during that wait does
-not end it.
+gets SIGKILL, also when the suite itself has ended. A group that still answers `group_alive`
+`linger` seconds after the SIGKILL, such as one with a process that SIGKILL cannot end, ends
+the wait: the program says that processes of the suite are left, with the group ID, and exits
+with status 130 as for every interrupt. A further interrupt during the wait does not end it.
 
 The suite starts, and its PID is read, with SIGINT deferred, inside the `try`: an interrupt
 that comes during the start is thrown when the deferral ends, and finds `p` and `group` set.
 """
-function run_suite(cmd; grace = 30)
+function run_suite(cmd; grace = 30, linger = 10,
+        group_alive = group -> ccall(:kill, Cint, (Cint, Cint), -group, 0) == 0)
     flush(stdout)
     p = nothing
     group = Cint(0)
@@ -97,21 +107,33 @@ function run_suite(cmd; grace = 30)
     catch e
         e isa InterruptException || rethrow()
         # `p` is `nothing` for an interrupt that comes before the start.
+        left = false
         if p !== nothing
+            started = time_ns()
             signal(Base.SIGINT)
             killer = Timer(_ -> signal(Base.SIGKILL), grace)
             # `kill(-group, 0)` fails once the group is gone, and on macOS also for a group
-            # whose only processes are zombies that nobody has reaped yet.
-            while process_running(p) || signal(0) == 0
+            # whose only processes are zombies that nobody has reaped yet. The condition is
+            # inside the `try`, so a further interrupt finds the wait wherever it comes.
+            while true
                 try
-                    process_running(p) ? wait(p) : sleep(0.1)
+                    process_running(p) || group_alive(group) || break
+                    if time_ns() - started >= (grace + linger) * 1e9
+                        left = true
+                        break
+                    end
+                    sleep(0.1)
                 catch e
                     e isa InterruptException || rethrow()
                 end
             end
             close(killer)
         end
-        println("\n$(RED)pre-push: interrupted; the suite has stopped.$(NC)\n")
+        if left
+            println("\n$(RED)pre-push: interrupted; processes of the suite are left in process group $group.$(NC)\n")
+        else
+            println("\n$(RED)pre-push: interrupted; the suite has stopped.$(NC)\n")
+        end
         exit(130)
     end
     return success(p)

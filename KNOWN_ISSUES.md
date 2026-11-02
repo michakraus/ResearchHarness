@@ -402,7 +402,7 @@
 
 ### K107 · A terminal hangup or a SIGTERM to the pre-push hook does not reach its suite.
 
-- location: `githooks/pre-push.jl:82`
+- location: `githooks/pre-push.jl:91`
 - evidence: `run_suite` starts the suite with `Cmd(cmd; detach = true)`, in a session of its own,
   and passes an interrupt on to the suite's process group: the case "pre-push: an interrupted hook
   stops its suite" sends SIGINT to the hook and sees the suite end. A hangup of the terminal goes
@@ -566,7 +566,7 @@
 
 ### K128 · The stages of the Julia packages' pre-commit hook read the working tree, not the staged content.
 
-- location: `githooks/pre-commit.jl:156`
+- location: `githooks/pre-commit.jl:164`
 - evidence: `formatting`, `nfc`, `test_layout` and `load` read the files on disk. A file that is
   staged and then edited again is judged on its later text: a formatted staged version with an
   unformatted edit on top is refused, and an unformatted staged version with a formatted edit on
@@ -582,7 +582,7 @@
 
 ### K130 · The formatting stage of the Julia packages' pre-commit hook has no time limit.
 
-- location: `githooks/pre-commit.jl:136`
+- location: `githooks/pre-commit.jl:144`
 - evidence: `formatted` calls JuliaFormatter's `format` in the hook's own process, one staged
   file at a time, with no limit. The lint stage and the load test run in `run_boxed`, with a
   limit of 60 s and 600 s; a staged file on which `format` does not end holds the commit until
@@ -595,7 +595,7 @@
 
 ### K131 · The time box of the Julia packages' pre-commit hook does not cap the output that it captures.
 
-- location: `githooks/pre-commit.jl:67`
+- location: `githooks/pre-commit.jl:68`
 - evidence: `run_boxed` reads the whole output of the lint stage and of the load test into one
   string, `read(out, String)`, and its limit is one of time only: 60 s for `fatou lint` and 600 s
   for the load. A program that prints without end within the limit fills the hook's memory before
@@ -607,7 +607,7 @@
 
 ### K132 · The time box of the Julia packages' pre-commit hook has no bound for a process in uninterruptible I/O.
 
-- location: `githooks/pre-commit.jl:76`
+- location: `githooks/pre-commit.jl:77`
 - evidence: `run_boxed` sends the group SIGTERM at the limit and SIGKILL 5 s later, and waits
   for the program with `wait(p)`, which has no limit of its own. A process in uninterruptible
   I/O, such as a read from a network file system that does not answer, does not end on SIGKILL
@@ -619,7 +619,7 @@
 
 ### K133 · The pre-push hook of the Julia packages tests the working tree, not the commit that it pushes.
 
-- location: `githooks/pre-push.jl:61`
+- location: `githooks/pre-push.jl:68`
 - evidence: `suite` runs the tests in the repository's working tree, and `main` reads from the
   ref lines only whether a line pushes to `main` or `master`. The local SHA of the line is not
   checked out. So `git push origin topic:main` from a checkout of another branch tests that
@@ -631,18 +631,20 @@
 
 ### K134 · The pre-push hook of a Julia project that is not a package ignores `test/Project.toml`.
 
-- location: `githooks/pre-push.jl:65`
+- location: `githooks/pre-push.jl:72`
 - evidence: for a `Project.toml` without a `name` or a `uuid`, `suite` runs
   `julia --project=. test/runtests.jl` in the root environment. `Pkg.test`, which a package
   gets, runs the tests in the environment of `test/Project.toml`; the fallback does not, so a test
   dependency that only `test/Project.toml` lists loads from the user's default environment where
-  it is installed there, and fails to load otherwise.
+  it is installed there, and fails to load otherwise. A project with a `name` and no `uuid` gets
+  the fallback too, as the case "pre-push: a Project.toml with a name and no uuid runs
+  test/runtests.jl" shows, although its `name` reads as a package.
 - kind: defect
 - found: 2026-11-02, a review of the hook rollout's pull requests
 
-### K135 · The time box of the Julia packages' pre-commit hook can signal a freed group ID after a normal return.
+### K135 · The Julia packages' pre-commit and pre-push hooks can signal a freed group ID.
 
-- location: `githooks/pre-commit.jl:80`
+- location: `githooks/pre-commit.jl:81`
 - evidence: `run_boxed` closes its `stop` timer after the program and the output reader end. A
   timer that fires before `close` still runs its callback: Julia's `_trywait`
   (`base/asyncevent.jl:164` on 1.13.3) returns `true` for a timer that is set, also when it is
@@ -650,5 +652,13 @@
   return, and the callback then sends SIGTERM to its group ID, which the system can have given to
   another group, and starts a SIGKILL timer that nothing closes. A probe of 300 runs, each with
   the limit at the program's end time, found no late signal, so the race is not seen to happen.
+  The SIGKILL timers have the same race: `close(killer[])` of `run_boxed`
+  (`githooks/pre-commit.jl:86`) and `close(killer)` of `run_suite` in `pre-push`
+  (`githooks/pre-push.jl:130`) do not stop a callback that is already queued, so its SIGKILL can
+  reach the group ID after the box or the wait has ended. The wait of `run_suite` also checks the
+  group with `group_alive`, by default `kill(-group, 0)` (`githooks/pre-push.jl:120`), and its
+  `killer` sends SIGKILL to `-group` (`githooks/pre-push.jl:114`), on the raw group ID after the
+  suite's leader is reaped, when the system can have given the ID to another group. No probe has
+  been run for these.
 - kind: not verified
 - found: 2026-11-02, a review of the hook rollout's pull requests

@@ -173,9 +173,9 @@ alive(pid) = ccall(:kill, Cint, (Cint, Cint), pid, 0) == 0
 """
 Start a julia process that includes pre-push.jl and calls its `run_suite` on `sh -c suite`, with
 the keywords of `kwargs` (source text), with interrupts caught as the hook's `main` catches them.
-The script goes into `dir`. Returns the process.
+The script goes into `dir`, and the process's stdout goes to `out`. Returns the process.
 """
-function suite_driver(suite, dir; kwargs = "")
+function suite_driver(suite, dir; kwargs = "", out = devnull)
     script = joinpath(dir, "driver.jl")
     write(script, """
         include($(repr(joinpath(@__DIR__, "pre-push.jl"))))
@@ -183,7 +183,7 @@ function suite_driver(suite, dir; kwargs = "")
         run_suite(`sh -c \$(ARGS[1])`$kwargs)
         """)
     return run(pipeline(ignorestatus(`$(Base.julia_cmd()) --startup-file=no $script $suite`);
-                        stdout = devnull, stderr = devnull); wait = false)
+                        stdout = out, stderr = devnull); wait = false)
 end
 
 # One testset holds the four below, so a failure in one of them does not stop the file before
@@ -510,6 +510,14 @@ end
         @test occursin(r"^scripts/broken.jl: .*# Error @ line \d+:\d+"m, err)
     end
 
+    # JuliaSyntax prints the reason after `──` on a line below the location.
+    @testset "a file that does not parse is refused with the parser's reason" begin
+        repo, env = fixture(FORMATTED; extra = ["scripts/broken.jl" => "function f(x\n    x +\nend\n"])
+        code, _, err = capture(`bash $HOOK`, repo, env)
+        @test code == 1
+        @test occursin(r"^scripts/broken.jl: .*# Error @ line \d+:\d+ — Expected `\)` or `,`$"m, err)
+    end
+
     @testset "a staged .jl symlink to a missing file is refused with one line" begin
         repo, env = fixture(FORMATTED)
         symlink("missing.jl", joinpath(repo, "src", "Link.jl"))
@@ -593,7 +601,22 @@ end
         code, out = run_hook(FORMATTED; project = "name = \"Fixture\"\n")
         @test code == 0
         @test occursin("unicode: NFC", out)
+        @test !occursin(r"loads: (ok|FAILED)", out)
+    end
+
+    @testset "a Project.toml without a name says nothing of the load test" begin
+        code, out = run_hook(FORMATTED; project = "[deps]\n")
+        @test code == 0
+        @test occursin("unicode: NFC", out)
         @test !occursin("loads:", out)
+    end
+
+    @testset "a Project.toml with a name and no uuid says that no load test runs" begin
+        code, out = run_hook(FORMATTED; project = "name = \"Fixture\"\n")
+        @test code == 0
+        @test count(l -> occursin("loads:", l), split(out, '\n')) == 1
+        @test occursin(r"loads: skipped.* no `uuid`", out)
+        @test !occursin("pre-commit failed", out)
     end
 
     @testset "a commit that only deletes a .jl file runs the load test" begin
@@ -653,6 +676,12 @@ end
 
     @testset "a git that fails lists no staged file" begin
         @test cd(() -> Base.invokelatest(hook.staged, "--", "*.jl"), mktempdir()) === nothing
+    end
+
+    @testset "the headline adds the reason of the last line that holds ──" begin
+        headline(e) = Base.invokelatest(hook.headline, e)
+        @test headline(ErrorException("one\ntwo\nthree")) == "one — two"
+        @test headline(ErrorException("P:\n# @ 1\n# └ ── first\n# @ 2\n# └ ── a ── b")) == "P: — # @ 1 — a ── b"
     end
 
     @testset "the lint time box keeps the exit status and both streams" begin
@@ -1068,6 +1097,33 @@ end
         @test p.exitcode == 130
     end
 
+    # The suite ignores SIGINT and ends at the SIGKILL; the group check says the group stays, as
+    # it does for a member that SIGKILL cannot end.
+    @testset "pre-push: a suite group that outlives its SIGKILL ends the hook after the linger time" begin
+        dir = mktempdir()
+        pidfile = joinpath(dir, "suite.pid")
+        outfile = joinpath(dir, "out.txt")
+        p = suite_driver("trap '' INT; echo \$\$ > '$pidfile'; exec sleep 120", dir;
+                         kwargs = "; grace = 1, linger = 2, group_alive = _ -> true", out = outfile)
+        timedwait(() -> filesize(pidfile) > 0 || !process_running(p), 120.0)
+        @test filesize(pidfile) > 0
+        if filesize(pidfile) > 0
+            suite = parse(Int, read(pidfile, String))
+            kill(p, Base.SIGINT)
+            t = @elapsed done = timedwait(() -> !process_running(p), 30.0)
+            @test done === :ok
+            @test 3 <= t < 15
+            @test timedwait(() -> !alive(suite), 5.0) === :ok
+            alive(suite) && ccall(:kill, Cint, (Cint, Cint), suite, 9)
+            out = read(outfile, String)
+            @test count(l -> occursin("pre-push:", l), split(out, '\n')) == 1
+            @test occursin("processes of the suite are left in process group $suite", out)
+        end
+        process_running(p) && kill(p, Base.SIGKILL)
+        wait(p)
+        @test p.exitcode == 130
+    end
+
     # The suite takes 3 s to stop after the interrupt; a second interrupt reaches the hook 1 s in.
     @testset "pre-push: a second interrupt during the wait still stops the suite" begin
         dir = mktempdir()
@@ -1111,5 +1167,19 @@ end
     @test "--check-bounds=auto" in cmd.exec
     @test "--project=." in cmd.exec
     @test cmd.exec[end] == "using Pkg; Pkg.test(\"Fixture\"; julia_args = `--check-bounds=auto`)"
+end
+
+@testset "the headline of pre-push" begin
+    prepush = Module(:PrePushHeadline)
+    Base.include(prepush, joinpath(@__DIR__, "pre-push.jl"))
+    headline(e) = Base.invokelatest(prepush.headline, e)
+    parse_error = try
+        Meta.parse("a b"; filename = "a.jl")
+    catch e
+        e
+    end
+    @test headline(parse_error) == "ParseError: — # Error @ a.jl:1:2 — extra tokens after end of expression"
+    @test headline(ErrorException("one\ntwo\nthree")) == "one — two"
+    @test headline(ErrorException("P:\n# @ 1\n# └ ── first\n# @ 2\n# └ ── a ── b")) == "P: — # @ 1 — a ── b"
 end
 end
