@@ -607,10 +607,12 @@ harness ci-protection [--apply] [--remove-classic]
 ```
 
 Protects the default branch of each repository that has a `CI.yml` with a GitHub ruleset named
-`main`, which requires the status checks of the canonical `CI.yml`. It also turns on auto-merge
-and the deletion of merged branches. It reads the current state first and writes only what
-differs. It refuses to run unless `verify-workflows.jl` passes: a required check that never
-reports leaves every pull request pending.
+`main`, which requires the status checks of the canonical `CI.yml`. Then it protects the Harness
+itself, the checkout that runs the command, with the same ruleset; there the required checks are
+the jobs of `.github/workflows/test.yml` that report on every pull request and are not warnings.
+It also turns on auto-merge and the deletion of merged branches. It reads the current state first
+and writes only what differs. It refuses to run unless `verify-workflows.jl` passes: a required
+check that never reports leaves every pull request pending.
 
 | option | meaning |
 |:--|:--|
