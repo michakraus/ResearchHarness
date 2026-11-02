@@ -161,6 +161,17 @@ issue or a commit pass, so the review agents can post. A GraphQL query passes wh
 mutation, or when each mutation is a review or comment operation. Every other write gets an `ask`
 decision, and the user sees a prompt. An edit of an existing comment also asks.
 
+A Git Data write in one of the user's own organisations also passes: a POST to
+`repos/<owner>/<repo>/git/blobs`, `git/trees`, `git/commits` or `git/refs`. These calls make a new
+branch, as a `git push` of a new branch does. The `git/refs` endpoint only creates a ref. A PATCH
+of `git/refs/<ref>` can move a branch by force, so it still asks. The own organisations are the
+`org` list of the profile: the file that `RESEARCH_HARNESS_PROFILE` names, else
+`~/.config/research-harness/profile.toml`. The check compares the owner without case, and reads
+the profile once per process. A call with `--hostname` asks. The check fails closed: when the
+profile is missing, cannot be read, is not UTF-8 TOML, or has no `org` list of strings, the write
+asks. Every frontend runs the guard with the user's `HOME` and environment, so each one finds the
+same profile.
+
 ### The rm check
 
 `rm_scope.py` refuses a recursive `rm` outside the scratch zones, and asks before a `git rm` or a

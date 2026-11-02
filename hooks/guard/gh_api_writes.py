@@ -9,6 +9,14 @@ The check finds each top-level `gh api` and `glab api` call and works out the HT
   * **A review or a comment**: pass, so `Bash(gh api *)` in `allow` lets it run: a review, an
     inline comment or a reply on a pull request, a comment on a pull request or an issue, and a
     commit comment.
+  * **A Git Data write in an own organisation**: pass for POST to `repos/<owner>/<repo>/git/blobs`,
+    `…/git/trees`, `…/git/commits` and `…/git/refs`, which builds a new branch as a `git push` of
+    it does: the refs endpoint only creates a ref, and a PATCH of `…/git/refs/<ref>`, which can
+    force a branch, still asks. `<owner>` is one of the `org` list of the profile, compared
+    without case, and the call names no `--hostname`. The profile is the file of
+    `$RESEARCH_HARNESS_PROFILE`, else `~/.config/research-harness/profile.toml`, read once per
+    process (`own_organisations`). A profile that is missing, cannot be read, is not UTF-8 TOML or
+    holds no `org` list of strings gives no own organisation, so the write asks.
   * **`graphql`**: pass for a query with no `mutation`, and for a mutation whose every field is a
     review or comment operation. A query the check cannot read, from a file or through `--input`,
     asks.
@@ -19,9 +27,15 @@ No `permissions` glob can state this: `ask` outranks `allow`, so an `ask` rule o
 also catches a review post. The decision needs the method and the endpoint together.
 """
 
+import functools
+import os
 import re
+import tomllib
+from pathlib import Path
+from typing import cast
 
 from .contract import PASS, Call, Verdict, strongest
+from .paths import contents
 from .shell import Tokens, parts, readings
 
 # Flags of `gh api` that consume the token after them.
@@ -59,6 +73,14 @@ REVIEW_WRITES = (
     (frozenset({"POST"}), re.compile(rf"^{REPO}/issues/[^/]+/comments$")),
     (frozenset({"POST"}), re.compile(rf"^{REPO}/commits/[^/]+/comments$")),
 )
+
+# The Git Data writes that build a new branch, POST only, with the owner as group 1. An owner and a
+# repository are of the characters that GitHub allows in their names, so that no `%2F` or `..` in
+# the path names another repository.
+GIT_WRITE = re.compile(r"^repos/([A-Za-z0-9-]+)/(?!\.\.?/)[A-Za-z0-9._-]+/git/(?:blobs|trees|commits|refs)$")
+
+# The profile without `$RESEARCH_HARNESS_PROFILE`, below the home directory.
+PROFILE = Path(".config", "research-harness", "profile.toml")
 
 # The GraphQL mutations a review needs. Every top-level field of a mutation must be one.
 REVIEW_MUTATIONS = frozenset(
@@ -103,17 +125,20 @@ def option(arguments: list[str], index: int) -> tuple[str | None, str, int]:
     return None, argument, index + 1
 
 
-def request(arguments: list[str]) -> tuple[str, str, list[str], bool]:
-    """(method, endpoint, fields, from_input) for the arguments after `gh api`."""
+def request(arguments: list[str]) -> tuple[str, str, list[str], bool, bool]:
+    """(method, endpoint, fields, from_input, hosted) for the arguments after `gh api`; `hosted`
+    when they name a `--hostname`."""
     method: str | None = None
     endpoint: str | None = None
     fields: list[str] = []
-    from_input = False
+    from_input = hosted = False
     index = 0
     while index < len(arguments):
         name, value, index = option(arguments, index)
         if name in ("-X", "--method"):
             method = value
+        elif name == "--hostname" or (name is None and value.startswith("--hostname=")):
+            hosted = True
         elif name == "--input":
             from_input = True
         elif name in BODY:
@@ -123,7 +148,37 @@ def request(arguments: list[str]) -> tuple[str, str, list[str], bool]:
     if method is None:
         method = "POST" if fields or from_input else "GET"
     endpoint = (endpoint or "").lstrip("/").split("?", 1)[0]
-    return method.upper(), endpoint, fields, from_input
+    return method.upper(), endpoint, fields, from_input, hosted
+
+
+@functools.cache
+def own_organisations() -> frozenset[str]:
+    """The `org` list of the profile, in lower case, read once per process: the file of
+    `$RESEARCH_HARNESS_PROFILE`, else PROFILE below the home directory. It fails closed: a profile
+    that is missing, cannot be read, is not UTF-8 TOML or holds no `org` list of strings gives
+    none."""
+    location = os.environ.get("RESEARCH_HARNESS_PROFILE") or str(Path.home() / PROFILE)
+    try:
+        org = tomllib.loads(contents(location)).get("org")
+    except OSError, UnicodeDecodeError, tomllib.TOMLDecodeError:
+        return frozenset()
+    if not isinstance(org, list):
+        return frozenset()
+    names = cast("list[object]", org)
+    if not all(isinstance(name, str) for name in names):
+        return frozenset()
+    return frozenset(name.lower() for name in cast("list[str]", names))
+
+
+def own_git_write(method: str, endpoint: str, *, hosted: bool) -> bool:
+    """Whether the call is a POST of GIT_WRITE to a repository of an own organisation on GitHub."""
+    found = GIT_WRITE.match(endpoint)
+    return (
+        method == "POST"
+        and not hosted
+        and found is not None
+        and found.group(1).lower() in own_organisations()
+    )
 
 
 def mutation_fields(text: str) -> set[str] | None:
@@ -182,7 +237,7 @@ def graphql(fields: list[str], *, from_input: bool) -> str | None:
 
 
 def decide(method: str, endpoint: str, fields: list[str], *, from_input: bool, tool: str) -> str | None:
-    """None to pass, 'deny' or 'ask'."""
+    """None to pass, 'deny' or 'ask', before the own Git Data writes (`own_git_write`)."""
     if method == "DELETE":
         return "deny"
     if tool == "glab":
@@ -203,8 +258,10 @@ def verdict_of(tokens: Tokens) -> Verdict:
         tool = words[0].rsplit("/", 1)[-1] if words else ""
         if tool not in TOOLS or words[1:2] != ["api"]:
             continue
-        method, endpoint, fields, from_input = request(words[2:])
+        method, endpoint, fields, from_input, hosted = request(words[2:])
         found = decide(method, endpoint, fields, from_input=from_input, tool=tool)
+        if found == "ask" and own_git_write(method, endpoint, hosted=hosted):
+            found = None
         if found == "deny":
             return Verdict("deny", DELETE_MESSAGE.format(tool=tool, endpoint=endpoint))
         if found == "ask":
