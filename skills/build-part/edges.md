@@ -136,6 +136,13 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
 - a value read out of a live cache and stored beside the solution: it aliases the cache, so every
   stored entry ends up equal to the last one. Copy it, and give the test's fixture a
   step-dependent value so the test can see the difference (C, a package revival)
+- **a function that reads tables a cache built from one object, and takes another object of the
+  same size as an argument:** it gives a wrong result with no error. A `compute_L!` read the
+  gradient tabulations stored in its cache and the weights of its distribution argument, so a
+  distribution on another quadrature gave a relative difference of 0.306 and 0.5625, where the
+  base gave 0.0. Guard on the identity of what the tables depend on, here the quadrature, with an
+  `ArgumentError`, and test an argument of the same size built from another object (A5, *Rewrite
+  the reduced basis packages*)
 - a tie that round-off decides, for example a safeguard of the form `w <= wprev / 2`
 - a square or a product of unscaled quantities, which overflows at extreme scales
 - one scale formed as a scalar and applied to the whole gradient: `1/(‖R‖‖Y‖)` is subnormal in
@@ -304,9 +311,12 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   by their position in a `NamedTuple` gives a different result for the same values in another
   order, where the parent read them by name. Read the fields by their names, and test a parameter
   set whose fields are reordered (M5, the learning package)
-- a comment between a docstring and its definition: a `#` line after the closing `"""` detaches the
-  documentation, and every `@ref` to the name turns into an unresolved reference. Put the comment
-  inside the definition, and run the reference check (M5, the learning package)
+- a comment or a definition between a docstring and its definition: a `#` line after the closing
+  `"""` detaches the documentation, and a definition there, such as a `@noinline` throw helper,
+  takes the docstring, which then documents the helper. Either way every `@ref` to the name turns
+  into an unresolved reference, and `makedocs` fails. Put the comment inside the definition and the
+  helper above the docstring, and run the reference check even for a change that reads as prose
+  only, with no `@ref` (M5, the learning package; A5, *Rewrite the reduced basis packages*)
 - a rename of a field that one type carries and another keeps: an item names one architecture, and
   a second type of the same family keeps the old field name, so the family is now named two ways.
   Grep the family for the old name, and record the one the item does not name (M5, the learning
