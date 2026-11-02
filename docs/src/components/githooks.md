@@ -235,7 +235,7 @@ file fits every repository.
 | job | what it runs |
 |:--|:--|
 | `test` | the tests on Julia `min` and `1`, on Ubuntu, macOS and Windows; `pre` and `nightly` on Ubuntu, as information only |
-| `downgrade` | the tests with each direct dependency at the lower bound of its `[compat]` entry, on Julia `min`; information only |
+| `downgrade` | the tests with each direct dependency of `Project.toml` and `test/Project.toml` at the lower bound of its `[compat]` entry, the two resolved together, on Julia `min`; information only |
 | `doctest` | `doctest` of the package on Julia `1` on Ubuntu, where `docs/Project.toml` exists |
 
 The matrix names Julia versions by alias, `min` and `1`, so the names of the checks stay the same
