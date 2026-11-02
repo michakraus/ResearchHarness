@@ -45,8 +45,8 @@ form. A staged `.jl` path that is not a file, such as a symlink to a missing fil
 directory, is refused with one line that names it, before any stage runs. Stage 3 runs when a
 `.jl` file is staged, and also when only the deletion of one is: a deletion can break an
 `include`. Stage 1 checks each file on its own: a file that does not parse fails stage 1, with
-the first two lines of its error on stderr, the message and its location, and the other files
-are still checked. Stage 1 loads
+the first two lines of its error on stderr, the message and its location, followed by the
+parser's reason, and the other files are still checked. Stage 1 loads
 JuliaFormatter from the harness's Julia environment, which pins 2.14, and refuses an older
 release with one line that names its version, marking every staged file; JuliaFormatter 2.14
 supports Julia 1.10 and later. Stage 1 has no time limit (K130 of `KNOWN_ISSUES.md`). Stage 0 reads
@@ -61,15 +61,17 @@ the package in a child process, in the environment of the repository, so that th
 JuliaFormatter's dependencies in the hook's own process do not change what the package loads. A
 failed load shows at most 20 lines of its output, from the first line that holds `ERROR:`, or
 from its first line when no line does. A
-repository has a package when its `Project.toml`, read as TOML, has a `name` and a `uuid`. A
+repository has a package when its `Project.toml`, read as TOML, has a `name` and a `uuid`; for
+a `name` with no `uuid`, the hook prints one line that no load test runs, which is no failure. A
 `Project.toml` that does not parse refuses the commit with one line that holds the first two
 lines of the error, the message and its location. A package name that `Base.isidentifier`
 refuses, or that the parser of the running Julia does not read as that one name, such as the
 keyword `end`, refuses the commit with one line, and no load test runs. The lint stage and the
 load test run in a process group of their own: when the limit runs out, the hook sends the
-group SIGTERM, and SIGKILL 5 s later, and does not wait for the output of a process that left the
-group. When you interrupt the hook, it kills that group on its way out. A commit with no staged
-`.jl` path and no change below `test/` passes with no check.
+group SIGTERM, and SIGKILL 5 s later, waits at most 6 s after the SIGTERM on the monotonic
+clock, and does not wait for the output of a process that left the group. When you interrupt
+the hook, it kills that group on its way out. A commit with no staged `.jl` path and no change
+below `test/` passes with no check.
 `git commit --no-verify` skips the hook.
 
 `pre-commit-test.jl` runs both hooks, unchanged, in fixture package repositories
@@ -79,10 +81,11 @@ parse, a file that does not load, a file that is not NFC and a change below `tes
 `test-layout.jl` or out of its layout are refused, and so is a JuliaFormatter older than 2.14; a
 file that does not parse beside a formatted one is listed alone; a staged symlink to a missing
 file or to a directory is refused with one line; a `Project.toml` with an indented, single-quoted
-name runs the load test, one with a `name` and no `uuid` runs none, one that does not parse is
-refused with the error's location, and so is one whose name is not an identifier, without running
-the code that the name holds, or is the keyword `end`; a file that does not parse is listed with
-the error's location; a failed load report starts at its `ERROR:` line; a commit that only deletes
+name runs the load test, one with a `name` and no `uuid` runs none and says so, one without a
+`name` says nothing of it, one that does not parse is refused with the error's location, and so
+is one whose name is not an identifier, without running the code that the name holds, or is the
+keyword `end`; a file that does not parse is listed with the error's location and the parser's
+reason; a failed load report starts at its `ERROR:` line; a commit that only deletes
 a `.jl` file runs the load test; without `julia`, or with a `julia` that cannot start, a commit
 with no `.jl` file and no `test/` path passes; without `julia`, any other commit, a `.jl` file
 that became a symlink too, is refused; a missing `fatou`, a `fatou` that cannot start, a `fatou`
@@ -91,7 +94,8 @@ after `--`; a commit of one `.jl` file starts `julia` from the `PATH` once; an i
 stops its load test. It checks the time limits of the lint stage and the load test, also for a
 child that holds the output and for a process that leaves the group, that the time box sends no
 SIGKILL after it returns, and that `pre-commit.jl` and `pre-push.jl` are in SciML style. For
-`pre-push` it checks each case of the gate and the suite. CI runs it on Linux.
+`pre-push` it checks each case of the gate and the suite, the interrupt with a group that
+outlives its SIGKILL, and the headline of an error. CI runs it on Linux.
 
 ## `pre-push` and `pre-push.jl`
 
@@ -119,7 +123,10 @@ The suite takes 10 to 30 minutes and prints nothing until it ends. That is not a
 runs in a process group of its own. When you interrupt the hook with Ctrl-C or `SIGINT`, it sends
 the interrupt to that group, waits until no process of the group is left, and exits with status
 130. When a process of the group still runs 30 s after the interrupt, also after the suite itself
-has ended, the hook sends SIGKILL to the group. A second interrupt does not end the wait.
+has ended, the hook sends SIGKILL to the group. When the group still answers 10 s after the
+SIGKILL, such as for a process that SIGKILL cannot end, the hook stops the wait, prints one line
+that names the group ID and says that processes of the suite are left, and exits with status
+130. A second interrupt does not end the wait.
 `harness repos push` runs this hook in each repository.
 
 ## `pre-commit-wiki`

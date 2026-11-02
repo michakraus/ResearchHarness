@@ -553,6 +553,10 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   program that ends at once is reaped in between, and `getpid` throws `ESRCH`. It failed 2 runs in
   300 on macOS and three cases on the Linux runner. Read the PID straight after `run`, and test a
   program that ends at once in a loop (P5 CI, *Make the Harness enforce strict Python*)
+- a message read from another tool's error text by a marker, tested only on the marker's shortest
+  form: JuliaSyntax marks a one-character span `└ ── reason` and a wider one `└────┘ ── reason`,
+  so a split at the first `──` keeps part of the marker. Test each form the tool prints, and split
+  at the separator with its spaces, ` ── ` (P7 critic, *Make the Harness enforce strict Python*)
 - a signal handler that raises inside a wait on a child: Python's `subprocess.run` then sends the
   child SIGKILL, and a git killed so leaves its `index.lock`, so every later run defers without
   end. Set a flag in the handler, pass the signal on to the running child, let it end, then stop;
