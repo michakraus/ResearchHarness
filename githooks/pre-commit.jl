@@ -124,16 +124,20 @@ end
 
 """
 The first two lines of the error `e`, joined with ` — `: its message and, for a parse error of
-TOML or of JuliaFormatter, the line that gives the location. For a parse error of Julia, which
-prints its reason after `──` on a later line, the text after the `──` of the last such line
-follows. `showerror` runs in the latest world, so the method of a package that the hook loads at
-run time, such as JuliaFormatter's parser, prints the error.
+TOML or of JuliaFormatter, the line that gives the location. A `ParseError` of Julia, Base's or
+the one that JuliaFormatter's parser throws, prints its reason after ` ── ` on a line below
+those two, behind the marker of the span, such as `#└────┘`, which holds no space; the text
+after the first ` ── ` of the last such line follows. `showerror` runs in the latest world, so
+the method of a package that the hook loads at run time, such as JuliaFormatter's parser, prints
+the error.
 """
 function headline(e)
     lines = split(Base.invokelatest(sprint, showerror, e), '\n')
     parts = first(lines, 2)
-    marked = findlast(l -> occursin("──", l), lines)
-    marked === nothing || push!(parts, strip(last(split(lines[marked], "──"; limit = 2))))
+    nameof(typeof(e)) === :ParseError || return join(parts, " — ")
+    marked = findlast(l -> occursin(" ── ", l), lines[3:end])
+    marked === nothing ||
+        push!(parts, strip(last(split(lines[2 + marked], " ── "; limit = 2))))
     return join(parts, " — ")
 end
 

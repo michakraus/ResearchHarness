@@ -402,7 +402,7 @@
 
 ### K107 · A terminal hangup or a SIGTERM to the pre-push hook does not reach its suite.
 
-- location: `githooks/pre-push.jl:91`
+- location: `githooks/pre-push.jl:96`
 - evidence: `run_suite` starts the suite with `Cmd(cmd; detach = true)`, in a session of its own,
   and passes an interrupt on to the suite's process group: the case "pre-push: an interrupted hook
   stops its suite" sends SIGINT to the hook and sees the suite end. A hangup of the terminal goes
@@ -566,7 +566,7 @@
 
 ### K128 · The stages of the Julia packages' pre-commit hook read the working tree, not the staged content.
 
-- location: `githooks/pre-commit.jl:164`
+- location: `githooks/pre-commit.jl:168`
 - evidence: `formatting`, `nfc`, `test_layout` and `load` read the files on disk. A file that is
   staged and then edited again is judged on its later text: a formatted staged version with an
   unformatted edit on top is refused, and an unformatted staged version with a formatted edit on
@@ -582,7 +582,7 @@
 
 ### K130 · The formatting stage of the Julia packages' pre-commit hook has no time limit.
 
-- location: `githooks/pre-commit.jl:144`
+- location: `githooks/pre-commit.jl:148`
 - evidence: `formatted` calls JuliaFormatter's `format` in the hook's own process, one staged
   file at a time, with no limit. The lint stage and the load test run in `run_boxed`, with a
   limit of 60 s and 600 s; a staged file on which `format` does not end holds the commit until
@@ -619,7 +619,7 @@
 
 ### K133 · The pre-push hook of the Julia packages tests the working tree, not the commit that it pushes.
 
-- location: `githooks/pre-push.jl:68`
+- location: `githooks/pre-push.jl:71`
 - evidence: `suite` runs the tests in the repository's working tree, and `main` reads from the
   ref lines only whether a line pushes to `main` or `master`. The local SHA of the line is not
   checked out. So `git push origin topic:main` from a checkout of another branch tests that
@@ -631,7 +631,7 @@
 
 ### K134 · The pre-push hook of a Julia project that is not a package ignores `test/Project.toml`.
 
-- location: `githooks/pre-push.jl:72`
+- location: `githooks/pre-push.jl:75`
 - evidence: for a `Project.toml` without a `name` or a `uuid`, `suite` runs
   `julia --project=. test/runtests.jl` in the root environment. `Pkg.test`, which a package
   gets, runs the tests in the environment of `test/Project.toml`; the fallback does not, so a test
@@ -654,10 +654,10 @@
   the limit at the program's end time, found no late signal, so the race is not seen to happen.
   The SIGKILL timers have the same race: `close(killer[])` of `run_boxed`
   (`githooks/pre-commit.jl:86`) and `close(killer)` of `run_suite` in `pre-push`
-  (`githooks/pre-push.jl:130`) do not stop a callback that is already queued, so its SIGKILL can
+  (`githooks/pre-push.jl:124`) do not stop a callback that is already queued, so its SIGKILL can
   reach the group ID after the box or the wait has ended. The wait of `run_suite` also checks the
-  group with `group_alive`, by default `kill(-group, 0)` (`githooks/pre-push.jl:120`), and its
-  `killer` sends SIGKILL to `-group` (`githooks/pre-push.jl:114`), on the raw group ID after the
+  group with `group_alive`, by default `kill(-group, 0)` (`githooks/pre-push.jl:117`), and its
+  `killer` sends SIGKILL to `-group` (`githooks/pre-push.jl:113`), on the raw group ID after the
   suite's leader is reaped, when the system can have given the ID to another group. No probe has
   been run for these.
 - kind: not verified
