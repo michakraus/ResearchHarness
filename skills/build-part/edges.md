@@ -119,6 +119,14 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   reader's: `Decimal` raises on a float exponent that `json` reads as 0.0, so the check itself
   crashed every merge of such a file. A reader that judges must fail closed: an input it cannot
   read is "not certain" (B1 verify 3, *Make the Harness enforce strict Python*)
+- a decision that names a function of another tool from memory: `Base.iskeyword` does not exist
+  in Julia 1.10 to 1.14, so the fix round that was to call it stopped, and the user had to choose
+  again. Probe each named function with `isdefined` on the floor and the newest version before it
+  enters a decision (P6 fix round, *Make the Harness enforce strict Python*)
+- a decision that adds an entry with a number, such as a `KNOWN_ISSUES.md` ID: the spec's clauses
+  and checks that name the old highest number stay, and the gate and the critic then fail the
+  branch on the spec. Grep the spec for the old number when a decision adds one (P6 gate,
+  *Make the Harness enforce strict Python*)
 
 ## A numerical method
 
