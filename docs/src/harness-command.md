@@ -446,7 +446,9 @@ harness repos pull [SELECTION ...] [--apply]
 Fetches, then fast-forwards each branch that is behind its upstream, with `git merge --ff-only`.
 It skips a branch with no upstream, a branch that has diverged from its upstream, and a branch
 whose incoming commits change a file with local changes. A local change to any other file stays
-as it is. The dry run fetches too: a fetch changes no working tree.
+as it is. A local change whose content already equals the upstream's is no clash: `pull` resets
+the file to `HEAD`, fast-forwards, and names the file. The dry run fetches too: a fetch changes no
+working tree.
 
 | option | meaning |
 |:--|:--|
