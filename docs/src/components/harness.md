@@ -290,9 +290,9 @@ repository that it finds, and `clone` stops.
 `clone` refuses the whole run when a directory is in the way, before the first clone. `status`,
 `pull`, `push` and `sync` fetch in parallel, eight at a time, and `status` asks `gh` or `glab`
 for the open pull requests, also in parallel. `pull` merges `--ff-only`, and skips a branch whose
-incoming commits change a file with local changes. `push` pushes one repository at a time and
-skips a branch that is also behind, and a branch that is not the default branch unless
-`--include-topic-branches`. The dry run names the `.jl` files of each push. `--no-verify` (or
+incoming commits change a file with local changes unless its content equals the upstream's.
+`push` pushes one repository at a time and skips a branch that is also behind, and a branch that
+is not the default branch unless `--include-topic-branches`. The dry run names the `.jl` files of each push. `--no-verify` (or
 `--skip-hooks`) skips the pre-push suite; use it only for a push with no Julia source and no
 `[compat]` change. After a push, the subcommand compares the local commit with the remote branch,
 as `git ls-remote` reports it.

@@ -35,7 +35,8 @@ remote-tracking refs as the last fetch left them; `--no-prs` asks no host.
 pull. Fetches, then fast-forwards each branch that is behind its upstream (`git merge
 --ff-only`). It skips a branch with no upstream, one that has diverged from it, and one whose
 incoming commits change a file with local changes; a local change to any other file stays as it
-is. The dry run fetches too: a fetch changes no working tree.
+is. A local change whose content already equals the upstream's is no clash: the fast-forward
+drops it and writes the same content. The dry run fetches too: a fetch changes no working tree.
 
 push. Fetches, then pushes each branch that is ahead of its upstream, one repository at a time,
 and checks each push against the remote ref (`git ls-remote`), not its exit status. It skips a
@@ -218,11 +219,14 @@ def state(path):
     return branch, upstream, ahead, behind, changed
 
 
-def overlap(path):
-    """The changed tracked files of a clone that the commits of its upstream also change."""
+def overlap(path: pathlib.Path) -> tuple[list[str], list[str]]:
+    """The changed tracked files of a clone that the commits of its upstream also change, as
+    (clash, same): `same` holds those whose working-tree content already equals the upstream's."""
     local = set(git(path, "diff", "--name-only", "HEAD").stdout.split("\n")) - {""}
     incoming = set(git(path, "diff", "--name-only", "HEAD", "@{u}").stdout.split("\n"))
-    return sorted(local & incoming)
+    differ = set(git(path, "diff", "--name-only", "@{u}").stdout.split("\n"))
+    both = local & incoming
+    return sorted(both & differ), sorted(both - differ)
 
 
 def default_branch(path):
@@ -371,7 +375,7 @@ def cmd_status(args):
     return 0
 
 
-def pull(args, found):
+def pull(args, found: list[Entry]):
     """Fast-forward each repository behind its upstream: (planned, failed)."""
     w = width(found)
     errors = fetch_all(found)
@@ -391,17 +395,27 @@ def pull(args, found):
         elif ahead:
             print(f"{e.name:<{w}} SKIP   {ahead} ahead of and {behind} behind {upstream}: diverged")
             skipped += 1
-        elif changed and (clash := overlap(e.path)):
+        elif changed and (clash := overlap(e.path)[0]):
             print(f"{e.name:<{w}} SKIP   the incoming commits change local changes: {' '.join(clash[:3])}")
             skipped += 1
         else:
             planned += 1
+            same = overlap(e.path)[1] if changed else []
+            note = f"; drops the local changes equal to it: {' '.join(same[:3])}" if same else ""
             if not args.apply:
-                print(f"{e.name:<{w}} would fast-forward {behind} commit(s) from {upstream}")
+                print(f"{e.name:<{w}} would fast-forward {behind} commit(s) from {upstream}{note}")
                 continue
-            p = git(e.path, "merge", "--ff-only", "--quiet", "@{u}")
+            # `merge --ff-only` refuses an unstaged change even when it equals the incoming
+            # content, so reset each such file to HEAD first: the fast-forward writes it back.
+            p = (
+                git(e.path, "restore", "--source=HEAD", "--staged", "--worktree", "--", *same)
+                if same
+                else None
+            )
+            if p is None or p.returncode == 0:
+                p = git(e.path, "merge", "--ff-only", "--quiet", "@{u}")
             if p.returncode == 0:
-                print(f"{e.name:<{w}} fast-forwarded {behind} commit(s) from {upstream}")
+                print(f"{e.name:<{w}} fast-forwarded {behind} commit(s) from {upstream}{note}")
             else:
                 print(
                     f"{e.name:<{w}} FAILED (rc={p.returncode}): {(p.stderr.strip().splitlines() or [''])[-1]}"
@@ -752,7 +766,21 @@ def selftest():
             code == 0 and "change local changes: file" in out,
             "pull skips incoming commits that change a local change",
         )
-        run("git", "checkout", "-q", "--", "file", cwd=root / "Packages" / "Alpha")
+        (root / "Packages" / "Alpha" / "file").write_text("three")
+        code, out = quiet(cmd_pull, args(selection=["packages"]))
+        check(
+            code == 1 and "would fast-forward" in out and "equal to it: file" in out,
+            "the pull dry run plans past a local change that equals the incoming one",
+        )
+        code, out = quiet(cmd_pull, args(selection=["packages"], apply=True))
+        check(
+            code == 0
+            and state(root / "Packages" / "Alpha")[3:] == (0, 0)
+            and (root / "Packages" / "Alpha" / "file").read_text() == "three",
+            "pull fast-forwards past a local change that equals the incoming one",
+        )
+        commit(tmp / "work" / "alpha", "four")
+        run("git", "push", "-q", "origin", "HEAD:main", cwd=tmp / "work" / "alpha")
         (root / "Packages" / "Alpha" / "readme").write_text("changed")
         code, _ = quiet(cmd_pull, args(selection=["packages"], apply=True))
         check(
