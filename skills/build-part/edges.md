@@ -237,6 +237,9 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   reproducers one at a time. Split the set into its drawn and fixed entries, assert each drawn
   control as an equality with its full range over the drawn entries in each direction, and assert
   the fixed entries exactly (R0, *Revive the multisymplectic integrator package*)
+- a test of a decided threshold brackets it with one case on each side within about 25 %, and the
+  builder runs the mutants at half and at double the threshold (part G, *Implement multi-modal
+  symplectic autoencoders*)
 
 ## A type or an interface
 
