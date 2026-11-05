@@ -240,6 +240,17 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
 - a test of a decided threshold brackets it with one case on each side within about 25 %, and the
   builder runs the mutants at half and at double the threshold (part G, *Implement multi-modal
   symplectic autoencoders*)
+- **a penalty built on a determinant of a matrix that can be singular:** ChainRules' `det` rule
+  computes `inv(A)`, so the parameter gradient throws `SingularException` at the very point the
+  penalty pushes away from, while the value there is finite. Give the determinant a cofactor
+  pullback, assert a finite gradient at the singular point, and test the cofactor's sign,
+  orientation and seed on a non-symmetric matrix (C round 1, *Extend the Lagrangian network package
+  with the methods of the literature*)
+- **a new default that reads a higher derivative of the network:** it reaches an overflow that the
+  old default never did, and tests of other parts that pass on their fixed seed become
+  seed-dependent; a `softplus` Hessian in `Float32` was not finite on 28–64 of 200 seeds per call
+  shape. Sweep each call shape over many seeds at the test's own sizes, and assert a finite gradient
+  beside any `!all(iszero, …)`, which a `NaN` passes (C verify 4, same task)
 
 ## A type or an interface
 
@@ -360,6 +371,14 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   profile's render values, which omit `develop`, and refused a profile that sets it with "the
   profile has no key 'develop'". Give each reader of a field the view that holds it, and test the
   lookup of every field of the type (B3 critic, *Make the Harness enforce strict Python*)
+- a constructor that stores the caller's mutable argument while a compiled trace freezes its
+  values: a later mutation makes the forward pass and the compiled derivatives disagree. Copy the
+  argument at construction, and test a mutation after the compile (B round 1, *Extend the Lagrangian
+  network package with the methods of the literature*)
+- an untyped keyword that a length guard reads and a typed field rejects: a scalar or a tuple passes
+  the guard and fails in `new` with a `TypeError` that names a type parameter, not the argument.
+  Type the keyword, and match the message, because the unfixed code throws a `TypeError` too (B
+  round 1, same task)
 
 ## A tool that reads files or a tree
 
