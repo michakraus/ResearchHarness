@@ -251,6 +251,17 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   seed-dependent; a `softplus` Hessian in `Float32` was not finite on 28–64 of 200 seeds per call
   shape. Sweep each call shape over many seeds at the test's own sizes, and assert a finite gradient
   beside any `!all(iszero, …)`, which a `NaN` passes (C verify 4, same task)
+- **a clause that asks a difference of two nearly equal numbers to keep its relative accuracy:**
+  `softplus(x) − x` against `exp(−x)` at `x ∈ (20, 30)` cannot be met, because the correctly rounded
+  `softplus(20f0)` is exactly `20f0` and the `Float64` sum rounds the low bits away — no
+  implementation fails it, so the critic fails the *part* instead. State the accuracy of the value
+  itself against a `BigFloat` reference, and keep the far end of the domain in the tuple (A2 round 1,
+  *Extend the Lagrangian network package with the methods of the literature*)
+- **a ruling that changes the design, applied without re-running the named mutants:** the kill map
+  of a spec is a measurement, and a new form changes which test the mutant fails in or whether it
+  fails at all; registering `softplus` as a symbolic primitive left MU1 alive in the sweep whose
+  `catches:` named it. Re-run every named mutant against its named check before the next round, as
+  for a written spec, and amend each `catches:` line the ruling touched (A2 verify 2, same task)
 
 ## A type or an interface
 
