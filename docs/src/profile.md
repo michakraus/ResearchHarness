@@ -110,7 +110,7 @@ the answer is, and whether the answer is the same on every machine that shares t
 | `org` | the GitHub accounts and organisations, your own included, where a session may open and comment on pull requests and issues without a prompt | the same |
 | `repository_roots` | the directories that hold the tree's repositories; `harness leaks` searches the harness for the name of each directory below them | the same when written with `~` |
 | `leak` | the strings that must never appear in the harness repository, such as user names and host names; the item `~` stands for the path of the home directory | mostly the same; add the user and host names of each machine |
-| frontends | the agent programs whose configuration `harness install` writes: `claude` is Claude Code, `opencode` OpenCode, `omp` oh-my-pi and `antigravity` the Antigravity desktop app | per machine |
+| frontends | the [agent](concepts.md#agent) programs whose configuration `harness install` writes: `claude` is Claude Code, `opencode` OpenCode, `omp` oh-my-pi and `antigravity` the Antigravity desktop app | per machine |
 | components | what `harness setup` installs and starts beside the frontends: `julia` (juliaup, Julia, fatou, Kaimon and the Julia environment of the scripts), `rtk`, `jq`, `iterm` (macOS only), `jobs` (Kaimon, the Julia update and the autocommit of `~/.claude` as background jobs) and `dotfiles` (chezmoi) | per machine |
 | `develop` | only for a machine that changes the harness's own code: it adds the `dev` group of `uv.lock`, the tools that check the Python code, such as ruff and basedpyright | per machine |
 
