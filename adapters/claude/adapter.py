@@ -1937,12 +1937,31 @@ def layer_cases(check, tmp):
         lambda: (
             [shlex.split(c) for c in rendered] == want
             and sum(w[0] == python for w in want) == sum(c.split()[0].endswith(on_python) for c in raw) > 0
-            and any(w == [f"{spaced}/.claude/hooks/cc-status"] for w in want)
+            and any(w == [python, f"{spaced}/.claude/hooks/install-drift.py"] for w in want)
+            and any(w == ["rtk", "hook", "claude"] for w in want)
             and not any(c.startswith("python3") for c in rendered)
         ),
         f"each hook command of the template that runs a .py hook renders as the environment's interpreter and the "
         f"hook's path, as does the guard package, each one shell word under a home with a space, and every "
         f"other command keeps its words: {rendered}",
+    )
+
+    # Each hook below ~/.claude/hooks/ that the rendered template runs has its source in hooks/, so
+    # the settings never name a hook that the install does not write; and no event or group of the
+    # template is empty.
+    hooks_below = f"{spaced}/.claude/hooks/"
+    hook_names = [
+        w.removeprefix(hooks_below) for c in rendered for w in shlex.split(c) if w.startswith(hooks_below)
+    ]
+    no_source = [n for n in hook_names if not (REPO / "hooks" / n).exists()]
+    hook_events = json_value(PROPOSAL.read_text(), str(PROPOSAL))["hooks"]
+    empty_events = [
+        e for e, groups in hook_events.items() if not groups or not all(g["hooks"] for g in groups)
+    ]
+    case(
+        lambda: bool(hook_names) and not no_source and not empty_events,
+        f"each hook that the settings template runs from ~/.claude/hooks/ has its source in hooks/, and no "
+        f"event or group of the template is empty: {no_source} have no source, {empty_events} are empty",
     )
 
     # The guard runs on the Bash, directory and Kaimon matchers, with `|| exit 2` as the shell's operator,

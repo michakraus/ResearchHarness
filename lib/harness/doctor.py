@@ -42,7 +42,6 @@ import io
 import os
 import pathlib
 import platform
-import plistlib
 import pwd
 import re
 import shlex
@@ -54,7 +53,7 @@ import tempfile
 import tomllib
 import types
 from collections import namedtuple
-from collections.abc import Callable
+from collections.abc import Callable, Collection, Generator, Mapping
 from typing import Any, cast
 from unittest import mock
 
@@ -67,7 +66,6 @@ HARNESS = [sys.executable, str(REPO / "bin" / "harness")]
 SANDBOX = "SANDBOX_RUNTIME"
 KERNEL = pathlib.Path("/proc/sys/kernel")
 OS_RELEASE = pathlib.Path("/etc/os-release")
-ITERM = pathlib.Path("/Applications/iTerm.app")
 # The seconds that one command may take: a tool's version flag or a status command, the dry run
 # of the install, `harness test`, and the load of Revise.
 TIMEOUT, INSTALL_TIMEOUT, TEST_TIMEOUT, REVISE_TIMEOUT = 60, 300, 3600, 600
@@ -337,8 +335,6 @@ class Doctor:
 
     def tools(self):
         out = [self.tool(*t) for t in TOOLS]
-        if self.system == "Darwin":
-            out.append(self.iterm())
         return out + self.packages() + [self.python_environment()]
 
     def tool(self, name, command, flags, without):
@@ -368,16 +364,6 @@ class Doctor:
         if floors and not meets(numbers_of(version), floors):
             return self.fail(name, f"{detail}, below {' or '.join(floors)}", topic)
         return Result("PASS", name, detail)
-
-    def iterm(self):
-        try:
-            with open(ITERM / "Contents" / "Info.plist", "rb") as f:
-                version = plistlib.load(f).get("CFBundleShortVersionString")
-        except OSError:
-            return Result("WARN", "iTerm2", f"{ITERM} not found: the hook cc-status does nothing")
-        except (plistlib.InvalidFileException, ValueError, AttributeError) as e:
-            return Result("WARN", "iTerm2", f"cannot read the version of {ITERM}: {e}")
-        return Result("PASS", "iTerm2", f"{version} ({ITERM})")
 
     def packages(self):
         """The Julia packages of Project.toml, in the Manifest.toml of the scripts' environment; each
@@ -994,7 +980,7 @@ class Fixture:
     def __init__(self, root: pathlib.Path, system_name: str, claude: pathlib.Path):
         self.system = system_name
         self.home, self.bin, self.kernel = root / "home", root / "bin", root / "kernel"
-        self.julia, self.os_release, self.iterm = root / "julia-env", root / "os-release", root / "iTerm.app"
+        self.julia, self.os_release = root / "julia-env", root / "os-release"
         config = self.home / ".config" / "research-harness"
         config.mkdir(parents=True)
         self.profile = config / "profile.toml"
@@ -1020,17 +1006,22 @@ class Fixture:
         self.kernel.mkdir()
         (self.kernel / "unprivileged_userns_clone").write_text("1\n")
         self.os_release.write_text('PRETTY_NAME="Ubuntu 26.04.1 LTS"\nNAME="Ubuntu"\nVERSION_ID="26.04"\n')
-        (self.iterm / "Contents").mkdir(parents=True)
-        (self.iterm / "Contents" / "Info.plist").write_bytes(
-            plistlib.dumps({"CFBundleShortVersionString": "3.7.3"})
-        )
         self.bin.mkdir()
         stubs(self.bin, system_name)
         self.harness = self.bin / "harness-stub"
         stub(self.harness, HARNESS_STUB)
 
     @contextlib.contextmanager
-    def patched(self, full=False, sandbox=False, arch=None, only=None, models=None, extra=None):
+    def patched(
+        self,
+        *,
+        full: bool = False,
+        sandbox: bool = False,
+        arch: str | None = None,
+        only: Collection[str] | None = None,
+        models: str | None = None,
+        extra: Mapping[str, str] | None = None,
+    ) -> Generator[types.SimpleNamespace]:
         """The arguments of a run on this fixture, inside a context with its HOME, its PATH, its
         system and its files in place of the machine's, and stdout in `self.out`; `only` names
         the tools of TOOLS that the run checks, else all, and `extra` adds variables."""
@@ -1058,7 +1049,6 @@ class Fixture:
             ),
             mock.patch(f"{__name__}.KERNEL", self.kernel),
             mock.patch(f"{__name__}.OS_RELEASE", self.os_release),
-            mock.patch(f"{__name__}.ITERM", self.iterm),
             mock.patch(f"{__name__}.HARNESS", [str(self.harness)]),
             mock.patch.object(install, "JULIA_ENV", self.julia),
             contextlib.redirect_stdout(self.out),
@@ -1094,7 +1084,7 @@ def minimum_cases(check):
         set(MINIMUMS) <= set(found),
         f"every tool of MINIMUMS is a row of dependencies.md: {sorted(set(MINIMUMS) - set(found))} are not",
     )
-    names = {name for name, *_ in TOOLS} | set(PACKAGES) | {"Kaimon", "iTerm2", "chezmoi", "Antigravity"}
+    names = {name for name, *_ in TOOLS} | set(PACKAGES) | {"Kaimon", "chezmoi", "Antigravity"}
     check(
         set(found) == names,
         f"the checks cover each tool of dependencies.md: missing {sorted(set(found) - names)}, "
@@ -1472,18 +1462,6 @@ def status_cases(check, root, system_name):
     )
     # The cases below check no tool of TOOLS.
     none = {"only": ()}
-    if not linux:
-        case("no iTerm2", {"iTerm2": "WARN"}, lambda f: shutil.rmtree(f.iterm), ("tools",), **none)
-        case(
-            "an Info.plist of iTerm2 that is no plist",
-            {"iTerm2": "WARN"},
-            lambda f: (f.iterm / "Contents" / "Info.plist").write_text("not a plist\n"),
-            ("tools",),
-            **none,
-        )
-    else:
-        got, _ = case("iTerm2 on Linux", {}, sections=("tools",), **none)
-        check("iTerm2" not in got, f"Linux: no iTerm2 line -> {got.get('iTerm2')}")
     case("every Julia package", dict.fromkeys(PACKAGES, "PASS"), sections=("tools",), **none)
     for name, floor in ((n, MINIMUMS[n][0]) for n in PACKAGES):
         for version, want in ((floor, "PASS"), (below(floor), "FAIL")):
@@ -2306,7 +2284,7 @@ def setup_cases(
     )
 
 
-def exit_cases(check, root):
+def exit_cases(check: Callable[[bool, str], object], root: pathlib.Path) -> None:
     """The exit status: 0 with PASS, WARN and SKIP lines only, 1 with a FAIL; and 2 on a usage
     error, in a process of its own."""
     claude = root / "claude-template"
@@ -2340,12 +2318,32 @@ def exit_cases(check, root):
             code = cmd_doctor(args)
         statuses = sorted({line[:4] for line in f.out.getvalue().splitlines()[:-2]})
         check(code == want, f"{label}: exit {code} -> {statuses}")
+    unknown_component_case(check, Fixture(root / "a-profile-with-iterm", this, claude))
     for argv in (["doctor", "--bogus"], ["doctor", "extra"]):
         p = subprocess.run(HARNESS + argv, capture_output=True, text=True, check=False, timeout=60)
         check(
             p.returncode == 2 and "Traceback" not in p.stderr,
             f"harness {' '.join(argv)}: exit {p.returncode}",
         )
+
+
+def unknown_component_case(check: Callable[[bool, str], object], f: Fixture) -> None:
+    """A profile whose `[setup]` names a component that it cannot choose, `iterm`: one FAIL line of
+    the check `profile` names it, and the run exits 1."""
+    text = f.profile.read_text(encoding="utf-8")
+    f.profile.write_text(
+        text.replace('components = ["julia"', 'components = ["iterm", "julia"', 1), encoding="utf-8"
+    )
+    with f.patched() as args:
+        code = cmd_doctor(args)
+    fails = [line for line in f.out.getvalue().splitlines() if line.split()[:2] == ["FAIL", "profile"]]
+    check(
+        '"iterm"' in f.profile.read_text(encoding="utf-8")
+        and code == 1
+        and len(fails) == 1
+        and "'iterm'" in fails[0],
+        f"a profile whose [setup] names iterm: exit {code}, one FAIL line of profile names it -> {fails}",
+    )
 
 
 def process_cases(check: Callable[[object, str], object], root: pathlib.Path):

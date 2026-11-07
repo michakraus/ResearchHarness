@@ -28,20 +28,21 @@ TOOLS belongs to every machine or to one component or frontend. A tool that is i
 its minimum is skipped; a tool with no minimum is met by any version, and one whose version cannot
 be read counts as below its minimum. On macOS a missing tool that Homebrew has goes into one
 `brew install` line, and so does one below its minimum that Homebrew does not list as installed
-(`brew list`); one that it lists goes into one `brew upgrade` line, and iTerm2 into
-`brew install --cask`. On Ubuntu each package whose apt candidate meets the tool's minimum goes
-into one `sudo apt-get install -y` line; an apt-cache that fails exits 2. Without sudo, or with
-`sudo -n true` refused, that step prints the line for an administrator and the run stops there. A
-tool that apt does not meet installs from its pinned release of setup/tools.toml (`load_pins`)
-into ~/.local/bin, after a check of the archive's sha256; a mismatch installs nothing. Otherwise
-the vendor's installer runs, where one runs unattended: the OpenCode installer only when
-`opencode` is not on the PATH, with `--no-modify-path`, and the juliaup installer only when
-`juliaup` is not on the PATH. Julia below its minimum runs `juliaup update`. After a Homebrew line
-or `juliaup update` for a tool below its minimum, the tool's version is read again
-(`rechecked`): one still below it fails the step, with the fix for Julia, the default channel of
-juliaup, and otherwise with the path of the copy that comes first on the PATH. What runs no
-installer is a line under "by hand". An unknown system, a Linux that is not Ubuntu and an unknown
-architecture exit 2 and name it.
+(`brew list`); one that it lists goes into one `brew upgrade` line. On Ubuntu each package whose
+apt candidate meets the tool's minimum goes into one `sudo apt-get install -y` line; an apt-cache
+that fails exits 2. Without sudo, or with `sudo -n true` refused, that step prints the line for an
+administrator and the run stops there. A tool that apt does not meet installs from its pinned
+release of setup/tools.toml (`load_pins`) into ~/.local/bin, after a check of the archive's
+sha256; a mismatch installs nothing. Otherwise the vendor's installer runs, where one runs
+unattended: the OpenCode installer only when `opencode` is not on the PATH, with
+`--no-modify-path`, and the juliaup installer only when `juliaup` is not on the PATH. Julia below
+its minimum runs `juliaup update`. After a Homebrew line or `juliaup update` for a tool below its
+minimum, the tool's version is read again (`rechecked`): one still below it fails the step, with
+the fix for Julia, the default channel of juliaup, and otherwise with the path of the copy that
+comes first on the PATH. What runs no installer is a line under "by hand", and so is, with the
+jobs on Linux, the line that turns on lingering, unless `loginctl show-user` reads `Linger=yes`
+(`lingers`). An unknown system, a Linux that is not Ubuntu and an unknown architecture exit 2 and
+name it.
 
 The run goes step by step. A failed step prints its output and exits 2; a second run plans again
 and starts from the first step, and each step skips what is already done. After the last step
@@ -62,6 +63,7 @@ import json
 import os
 import pathlib
 import platform
+import pwd
 import re
 import shutil
 import subprocess
@@ -82,11 +84,12 @@ from .fsutil import Case, write_private
 
 PINS = REPO / "setup" / "tools.toml"
 MODELS = REPO / "examples" / "models.toml"
-# Seconds: a version query, an apt-cache query and a download; and every command of a step.
+# Seconds: a version query, an apt-cache query, a loginctl query and a download; and every command
+# of a step.
 TIMEOUT, INSTALL_TIMEOUT = 60, 3600
 # The architectures of each system, as `platform.machine()` names them.
 SYSTEMS = {"Darwin": ("arm64", "x86_64"), "Linux": ("x86_64", "aarch64")}
-MACOS, LINUX = ("Darwin",), ("Linux",)
+LINUX = ("Linux",)
 # The directories below the home directory where an installer puts its program.
 EXTRA_PATH = (".local/bin", ".juliaup/bin", ".julia/bin", ".opencode/bin")
 VERSION = re.compile(r"\d+(?:\.\d+)+")
@@ -125,27 +128,24 @@ type Doctor = Callable[[], int | str]
 @dataclasses.dataclass(frozen=True, slots=True)
 class Tool:
     """A tool that `setup` installs: `name` as dependencies.md and setup/tools.toml name it,
-    `command` on the PATH (or `app` in the applications directory, or `marker` below the home
-    directory), `need` the component or frontend that needs it ("" for every machine), `version`
-    the arguments that print its version (none where any version meets it), the Homebrew `brew`
-    formula or `cask`, the Ubuntu `apt` packages (the first one's candidate counts), the vendor's
-    `installer` and the `upgrade` line below its minimum, the line that names the fix (`stuck`)
-    when the tool is still below its minimum after that line, the tool whose installer brings it
-    (`comes_with`), the `systems` it runs on, and the line that `by_hand` prints where nothing
-    installs it."""
+    `command` on the PATH (or `marker` below the home directory), `need` the component or frontend
+    that needs it ("" for every machine), `version` the arguments that print its version (none
+    where any version meets it), the Homebrew `brew` formula, the Ubuntu `apt` packages (the first
+    one's candidate counts), the vendor's `installer` and the `upgrade` line below its minimum, the
+    line that names the fix (`stuck`) when the tool is still below its minimum after that line, the
+    tool whose installer brings it (`comes_with`), the `systems` it runs on, and the line that
+    `by_hand` prints where nothing installs it."""
 
     name: str
     command: str = ""
     need: str = ""
     version: tuple[str, ...] = ()
     brew: str = ""
-    cask: str = ""
     apt: tuple[str, ...] = ()
     installer: str = ""
     upgrade: str = ""
     stuck: str = ""
     comes_with: str = ""
-    app: str = ""
     marker: str = ""
     systems: tuple[str, ...] = ("Darwin", "Linux")
     by_hand: str = ""
@@ -179,14 +179,6 @@ TOOLS = (
     Tool("Kaimon", "kaimon", need="julia", installer=KAIMON),
     Tool("RTK", "rtk", need="rtk", brew="rtk"),
     Tool("jq", "jq", need="jq", brew="jq", apt=("jq",)),
-    Tool(
-        "iTerm2",
-        need="iterm",
-        cask="iterm2",
-        app="iTerm.app",
-        systems=MACOS,
-        by_hand="iTerm2 runs on macOS only: nothing is installed for the component iterm",
-    ),
     Tool("chezmoi", "chezmoi", need="dotfiles", brew="chezmoi", apt=("chezmoi",)),
     Tool("Claude Code", "claude", need="claude", installer=CLAUDE),
     Tool("OpenCode", "opencode", need="opencode", brew="anomalyco/tap/opencode-v2", installer=OPENCODE),
@@ -221,8 +213,8 @@ class Pins:
 class Machine:
     """The machine that `setup` plans for: `system` and `arch` as `platform` names them, the
     `distro` of /etc/os-release on Linux, the `home` directory, the environment `env` of every
-    child process (its PATH that of every lookup), the harness `clone`, the command that runs
-    `harness`, and the applications directory `apps`."""
+    child process (its PATH that of every lookup), the harness `clone`, and the command that runs
+    `harness`."""
 
     system: str
     arch: str
@@ -231,7 +223,6 @@ class Machine:
     env: Mapping[str, str]
     clone: pathlib.Path
     harness: tuple[str, ...]
-    apps: pathlib.Path
 
     def which(self, command: str) -> str | None:
         return shutil.which(command, path=self.env.get("PATH", ""))
@@ -381,8 +372,6 @@ def candidate(machine: Machine, package: str) -> str | None:
 def state(machine: Machine, tool: Tool, minimum: Sequence[str]) -> str:
     """`ok` when `tool` is installed and meets `minimum`, `below` when it is installed below it,
     `missing` otherwise."""
-    if tool.app:
-        return "ok" if (machine.apps / tool.app).exists() else "missing"
     if tool.marker:
         return "ok" if (machine.home / tool.marker).exists() else "missing"
     program = machine.which(tool.command)
@@ -431,9 +420,6 @@ def plan(
         "RESEARCH_HARNESS_MODELS": str(options.models),
     }
     result = Plan(doctor(machine, env))
-    for tool in TOOLS:
-        if tool.need in {*choice.components, *choice.frontends} and machine.system not in tool.systems:
-            result.by_hand.append(tool.by_hand)
     directories_step(machine, choice, loaded, result)
     tools = [(t, state(machine, t, pins.minimum.get(t.name, ()))) for t in chosen(choice, machine.system)]
     needed = [(t, s) for t, s in tools if s != "ok"]
@@ -487,8 +473,7 @@ def homebrew_steps(
     tool below its minimum upgrades through Homebrew when Homebrew lists its formula as installed,
     and is installed by Homebrew otherwise; after either line its version is read again."""
     formulas = [(t, s) for t, s in needed if t.brew]
-    casks = [t.cask for t, _ in needed if t.cask]
-    if formulas or casks:
+    if formulas:
         brew = machine.which("brew")
         if brew is None:
             raise HarnessError("brew is not on the PATH: install Homebrew first, from https://brew.sh")
@@ -502,10 +487,7 @@ def homebrew_steps(
                     machine, command(machine, [brew, verb, *names]), [t for t in tools if t in below], pins
                 )
                 result.steps.append(Step(f"brew {verb} {' '.join(names)}", action))
-        if casks:
-            argv = [brew, "install", "--cask", *casks]
-            result.steps.append(Step(f"brew install --cask {' '.join(casks)}", command(machine, argv)))
-    rest = [(t, s) for t, s in needed if not t.brew and not t.cask]
+    rest = [(t, s) for t, s in needed if not t.brew]
     return route_rest(rest, result)
 
 
@@ -688,7 +670,30 @@ def job_steps(machine: Machine, loaded: profile_module.Profile, env: Mapping[str
         result.steps.append(
             Step(f"systemctl --user {' '.join(words)}", command(machine, [systemctl, "--user", *words]))
         )
-    result.by_hand.append('keep the jobs running after logout: sudo loginctl enable-linger "$USER"')
+    if not lingers(machine):
+        result.by_hand.append('keep the jobs running after logout: sudo loginctl enable-linger "$USER"')
+
+
+def lingers(machine: Machine) -> bool:
+    """Whether `loginctl show-user <user> -p Linger` exits 0 and prints the line `Linger=yes`. A
+    loginctl that is missing, fails, runs out of time or prints no `Linger=` line counts as no, so
+    that the plan prints the lingering line."""
+    loginctl = machine.which("loginctl")
+    if loginctl is None:
+        return False
+    try:
+        p = subprocess.run(
+            [loginctl, "show-user", pwd.getpwuid(os.getuid()).pw_name, "-p", "Linger"],
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            env=dict(machine.env),
+            timeout=TIMEOUT,
+            check=False,
+        )
+    except OSError, subprocess.TimeoutExpired:
+        return False
+    return p.returncode == 0 and re.search(r"^Linger=yes$", p.stdout, re.MULTILINE) is not None
 
 
 # --------------------------------------------------------------------------- the actions ----
@@ -1253,7 +1258,6 @@ def cmd_setup(args: argparse.Namespace) -> int:
         env=env,
         clone=REPO,
         harness=(sys.executable, str(REPO / "bin" / "harness")),
-        apps=pathlib.Path("/Applications"),
     )
     options = Options(
         yes=bool(args.yes),
@@ -1341,7 +1345,6 @@ class Scratch:
             env={"PATH": extended(self.home, str(self.bin)), "HOME": str(self.home)},
             clone=self.clone,
             harness=(str(self.bin / "harness"),),
-            apps=self.root / "Applications",
         )
 
     def options(self, *, yes: bool = True, dry_run: bool = False) -> Options:
@@ -1557,7 +1560,7 @@ def macos_cases(case: Case, tmp: pathlib.Path, pins: Pins) -> None:
     case(f"--yes asks nothing, in a terminal too: {asker.questions}", ok=not asker.questions)
     case(f"--yes runs the plan and exits 0: {code} {out[-300:]!r}", ok=code == "0")
     case("--yes never writes the profile", ok=s.profile.read_bytes() == profile_bytes)
-    brew = [c for c in calls if c.startswith("brew install ") and "--cask" not in c]
+    brew = [c for c in calls if c.startswith("brew install ")]
     wanted = ("gh", "node", "actionlint", "gitleaks", "jolars/tap/fatou", "rtk", "jq", "chezmoi")
     case(
         f"one brew install line holds each missing tool, and not git, which is on the PATH: {brew}",
@@ -1565,7 +1568,7 @@ def macos_cases(case: Case, tmp: pathlib.Path, pins: Pins) -> None:
         and all(w in brew[0].split() for w in (*wanted, "anomalyco/tap/opencode-v2", "can1357/tap/omp"))
         and "git" not in brew[0].split(),
     )
-    case("iTerm2 installs as a cask", ok="brew install --cask iterm2" in calls)
+    case("no cask is installed", ok=not any("--cask" in c for c in calls))
     curls = [c for c in calls if c.startswith("curl ")]
     case(
         f"the juliaup and the Claude Code installer run, and no OpenCode or oh-my-pi installer: {curls}",
@@ -1616,7 +1619,7 @@ def macos_cases(case: Case, tmp: pathlib.Path, pins: Pins) -> None:
     )
     s.fake("brew", "exit 0")
     code, _ = attempt(s.machine(), s.options(), pins=pins)
-    brews = [c for c in s.calls() if c.startswith("brew install ") and "--cask" not in c]
+    brews = [c for c in s.calls() if c.startswith("brew install ")]
     runs = 2
     case(
         f"the next run starts again from the first step and runs to the end: {code} {brews}",
@@ -1827,11 +1830,49 @@ def linux_jobs_cases(case: Case, tmp: pathlib.Path, pins: Pins) -> None:
             "systemctl --user restart " + " ".join(ENABLED),
         ],
     )
-    case("the linger line is printed by hand", ok="loginctl enable-linger" in out.getvalue())
+    case(
+        "without loginctl, the linger line is printed by hand", ok="loginctl enable-linger" in out.getvalue()
+    )
+    user = pwd.getpwuid(os.getuid()).pw_name
+    for label, body, printed in (
+        ("Linger=no", 'echo "Linger=no"', True),
+        ("Linger=yes", 'echo "Linger=yes"', False),
+        ("Linger=yes and exit 1", 'echo "Linger=yes"; exit 1', True),
+        ("no Linger= line", 'echo "Name=someone"', True),
+        ("Linger=yes inside a longer line", 'echo "XLinger=yes"; echo "Linger=yesterday"', True),
+    ):
+        s.fake("loginctl", body)
+        s.log.unlink(missing_ok=True)
+        by_hand = plan(machine, jobs, loaded, s.options(), pins).by_hand
+        asked = [c for c in s.calls() if c.startswith("loginctl")]
+        case(
+            f"a loginctl that prints {label}: the linger line is "
+            f"{'printed' if printed else 'not printed'} by hand: {by_hand} {asked}",
+            ok=any("loginctl enable-linger" in line for line in by_hand) == printed
+            and asked == [f"loginctl show-user {user} -p Linger"],
+        )
+    # A loginctl that cannot start: its interpreter does not exist.
+    (s.bin / "loginctl").write_text(f"#!{s.root / 'no-such-shell'}\necho Linger=yes\n", encoding="utf-8")
+    by_hand = plan(machine, jobs, loaded, s.options(), pins).by_hand
+    case(
+        f"a loginctl that cannot start: the linger line is printed by hand: {by_hand}",
+        ok=any("loginctl enable-linger" in line for line in by_hand),
+    )
 
 
 def plan_cases(case: Case, tmp: pathlib.Path, pins: Pins) -> None:
     """What the choices, the installed programs and the profile put into the plan."""
+    # On macOS, with every tool of the choice installed, the plan needs no Homebrew.
+    s = scratch(tmp, "plan-no-brew", {k: v for k, v in MACOS_FAKES.items() if k != "brew"})
+    for program in ("gh", "shellcheck", "rsync"):
+        s.fake(program, "exit 0")
+    for program in ("node", "actionlint", "gitleaks"):
+        s.fake(program, 'echo "99.0.0"')
+    lines = shows(s.machine(), profile_module.Setup(frontends=(), components=()), s.options(), pins)
+    case(
+        f"on macOS without brew, a choice whose tools are all installed plans no Homebrew step: {lines}",
+        ok=not any(line.startswith(("exit 2", "brew ")) for line in lines),
+    )
     s = scratch(tmp, "plan", MACOS_FAKES)
     s.fake("apt-cache", 'echo "  Candidate: 9.9-1"')
     mac, linux, options = s.machine(), s.machine("Linux"), s.options()
@@ -1854,23 +1895,16 @@ def plan_cases(case: Case, tmp: pathlib.Path, pins: Pins) -> None:
         "without opencode, the OpenCode directory is not made",
         ok=not any(".config/opencode" in step.show for step in none.steps),
     )
-    (s.root / "Applications" / "iTerm.app").mkdir(parents=True)
     (s.home / ".gemini").mkdir(parents=True)
     the_plan = plan(mac, profile_module.Setup(), loaded, options, pins)
     case(
-        f"iTerm2 in the applications and ~/.gemini count as installed, and no tool of Linux is a line "
-        f"by hand on macOS: {the_plan.by_hand}",
-        ok=not any("--cask" in step.show for step in the_plan.steps) and the_plan.by_hand == [],
+        f"~/.gemini counts as installed, and no tool of Linux is a line by hand on macOS: {the_plan.by_hand}",
+        ok=the_plan.by_hand == [],
     )
     for d in (loaded.tree_agents, *loaded.repository_roots, s.home / ".config" / "opencode"):
         pathlib.Path(d).mkdir(parents=True, exist_ok=True)
     lines = shows(mac, profile_module.Setup(), options, pins)
     case(f"with every directory there, no mkdir step: {lines[:2]}", ok=not any("mkdir" in x for x in lines))
-    linux_plan = plan(linux, profile_module.Setup(), loaded, options, pins)
-    case(
-        f"on Linux, iTerm2 is a line by hand: {linux_plan.by_hand}",
-        ok=any("macOS only" in line for line in linux_plan.by_hand),
-    )
     s.fake(
         "apt-cache", 'case "$2" in chezmoi) echo "  Candidate: (none)";; *) echo "  Candidate: 9.9-1";; esac'
     )
@@ -1992,7 +2026,7 @@ def helper_cases(case: Case, tmp: pathlib.Path) -> None:
             tar.addfile(info, io.BytesIO(b""))
         data = archive.getvalue()
         with release_server({"/a.tar.gz": data}) as url:
-            machine = Machine("Linux", "x86_64", "ubuntu", tmp / "h", {}, tmp, (), tmp)
+            machine = Machine("Linux", "x86_64", "ubuntu", tmp / "h", {}, tmp, ())
             failure = install_release(
                 machine, "gitleaks", Release("1", f"{url}/a.tar.gz", hashlib.sha256(data).hexdigest())
             )
@@ -2038,6 +2072,23 @@ def dry_run_cases(case: Case, tmp: pathlib.Path, pins: Pins) -> None:
             f"{system}: the dry run changes no file of the home and not core.hooksPath",
             ok=s.files() == before and s.hooks() == hooks,
         )
+    # A component that `[setup]` cannot choose, such as `iterm`, stops the run before its plan.
+    s = scratch(tmp, "dry-unknown-component", MACOS_FAKES)
+    text = s.profile.read_text(encoding="utf-8")
+    s.profile.write_text(
+        text.replace('components = ["julia"', 'components = ["iterm", "julia"', 1), encoding="utf-8"
+    )
+    code, out = attempt(s.machine(), s.options(dry_run=True), pins=pins)
+    case(
+        f"--yes --dry-run on a profile whose [setup] names iterm exits 2 with one line that names iterm "
+        f"and the profile, and runs nothing: {code!r} {s.calls()}",
+        ok='"iterm"' in s.profile.read_text(encoding="utf-8")
+        and code.startswith("exit 2: ")
+        and "\n" not in code
+        and "'iterm'" in code
+        and str(s.profile) in code
+        and not s.calls(),
+    )
 
 
 def release_cases(case: Case, tmp: pathlib.Path) -> None:
@@ -2393,7 +2444,7 @@ def redirect_cases(case: Case, tmp: pathlib.Path) -> None:
     data = archive.getvalue()
     with release_server({"/b.tar.gz": data}, {"/a.tar.gz": "/b.tar.gz"}) as url:
         home = tmp / "redirect"
-        machine = Machine("Linux", "x86_64", "ubuntu", home, {}, tmp, (), tmp)
+        machine = Machine("Linux", "x86_64", "ubuntu", home, {}, tmp, ())
         failure = install_release(
             machine, "gitleaks", Release("1", f"{url}/a.tar.gz", hashlib.sha256(data).hexdigest())
         )
@@ -2409,7 +2460,7 @@ def redirect_cases(case: Case, tmp: pathlib.Path) -> None:
             ("one redirect to the allowed host by http, where https is allowed", "a", "https", False),
         ):
             home = tmp / f"redirect-{path}-{scheme}"
-            machine = Machine("Linux", "x86_64", "ubuntu", home, {}, tmp, (), tmp)
+            machine = Machine("Linux", "x86_64", "ubuntu", home, {}, tmp, ())
             failure = install_release(
                 machine,
                 "gitleaks",

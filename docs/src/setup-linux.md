@@ -79,8 +79,8 @@ run `sudo -v` first, or have an administrator run the line. On a new machine, th
 the run names the step and goes on. Start `claude` once, then run `harness trust --apply`.
 
 **By hand.** `harness setup` prints the steps that it cannot do under *By hand*, before its last
-step: with `iterm`, a default, that iTerm2 runs on macOS only; with `jobs`, the lingering line for
-an administrator; with `opencode`, the `PATH` line of `~/.opencode/bin`; with `antigravity`, the
+step: with `jobs`, the lingering line for an administrator, unless `loginctl show-user` reads
+`Linger=yes`; with `opencode`, the `PATH` line of `~/.opencode/bin`; with `antigravity`, the
 Antigravity app; and each tool with no package, release or installer. Add these lines to your shell
 startup file, so that each new shell finds the programs of the three directories:
 

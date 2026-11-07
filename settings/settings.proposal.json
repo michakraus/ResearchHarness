@@ -657,23 +657,9 @@
   },
   "model": "opus[1m]",
   "hooks": {
-    "Notification": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "{home}/.claude/hooks/cc-status"
-          }
-        ]
-      }
-    ],
     "PermissionRequest": [
       {
         "hooks": [
-          {
-            "type": "command",
-            "command": "{home}/.claude/hooks/cc-status"
-          },
           {
             "type": "command",
             "command": "{home}/.claude/hooks/prompt-log.py",
@@ -690,14 +676,6 @@
             "type": "command",
             "command": "{home}/.claude/hooks/edit-scope.py --record",
             "timeout": 5
-          }
-        ]
-      },
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "{home}/.claude/hooks/cc-status"
           }
         ]
       }
@@ -747,24 +725,6 @@
             "timeout": 5
           }
         ]
-      },
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "{home}/.claude/hooks/cc-status"
-          }
-        ]
-      }
-    ],
-    "SessionEnd": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "{home}/.claude/hooks/cc-status"
-          }
-        ]
       }
     ],
     "SessionStart": [
@@ -772,52 +732,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "{home}/.claude/hooks/cc-status"
-          },
-          {
-            "type": "command",
             "command": "{home}/.claude/hooks/install-drift.py",
             "timeout": 5
-          }
-        ]
-      }
-    ],
-    "Stop": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "{home}/.claude/hooks/cc-status"
-          }
-        ]
-      }
-    ],
-    "StopFailure": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "{home}/.claude/hooks/cc-status"
-          }
-        ]
-      }
-    ],
-    "SubagentStop": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "{home}/.claude/hooks/cc-status"
-          }
-        ]
-      }
-    ],
-    "UserPromptSubmit": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "{home}/.claude/hooks/cc-status"
           }
         ]
       }
