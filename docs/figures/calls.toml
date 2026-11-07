@@ -61,7 +61,7 @@ label = "full suite"
 [[call]]
 caller = "build-part"
 callee = "advisor"
-at = "skills/build-part/SKILL.md:359"
+at = "skills/build-part/SKILL.md:388"
 label = "a question"
 
 [[call]]
@@ -91,13 +91,13 @@ label = "a long run"
 [[call]]
 caller = "julia-builder"
 callee = "julia-branch-verifier"
-at = "agents/julia-builder.md:266"
+at = "agents/julia-builder.md:267"
 label = "before the pull request"
 
 [[call]]
 caller = "julia-builder"
 callee = "changelog-scribe"
-at = "agents/julia-builder.md:278"
+at = "agents/julia-builder.md:279"
 label = "a CHANGELOG fix"
 
 [[call]]
@@ -115,13 +115,13 @@ label = "review"
 [[call]]
 caller = "julia-pr-shepherd"
 callee = "changelog-scribe"
-at = "agents/julia-pr-shepherd.md:148"
+at = "agents/julia-pr-shepherd.md:153"
 label = "the entry"
 
 [[call]]
 caller = "julia-pr-shepherd"
 callee = "ci-triage"
-at = "agents/julia-pr-shepherd.md:204"
+at = "agents/julia-pr-shepherd.md:209"
 label = "red CI"
 
 [[call]]

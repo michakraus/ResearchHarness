@@ -142,7 +142,8 @@ Your caller spawns you with `Round: finish` after its own read of the diff. Run 
 whole branch first; here it fixes text only, and a false line whose fix needs a change of code goes
 to your caller under *Question for the dispatcher*. Then do what the plan's §L says for the finish.
 In `Packages/` and `Experiments/`: delegate to `julia-branch-verifier` in the foreground, fix only
-the text it leaves, then open the pull request with `gh pr create` and `--body-file`. The body
+the text it leaves, then open the pull request with `gh pr create` and `--body-file`; where the
+branch has an open pull request, push it and replace the body with `gh pr edit` instead. The body
 holds the critic's verdict and evidence table, the `KNOWN_ISSUES.md` entries of the branch, and,
 under `## Decisions taken without the user`, every `**Decided (…)**` line of the part's spec that
 the user did not write, then each clause that the head does not meet as the spec writes it, with
