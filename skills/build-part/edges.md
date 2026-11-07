@@ -543,6 +543,12 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
 - a spec check that holds a backtick: the check list is delimited by backticks, so the check
   splits into pieces that the shell cannot parse. Match the backtick with `.` in an `-E` pattern
   (S1, *Make the Harness enforce strict Python*)
+- a spec check that asserts an artifact's presence and its count but not the relation its clause
+  names: `d1_files.sh` found the symbolic `@safetestset` line and counted 24 of them, while the
+  clause said the line is "in the `slow` group" and the head had it in `core`, above the guard.
+  The gate passed on a head that broke its own clause. Compare the line's number with the guard's,
+  and run the check on both heads so it is shown to separate them (G round 1, *Revive the
+  multisymplectic package*)
 
 ## A step that runs a user's script
 
