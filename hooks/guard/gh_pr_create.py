@@ -1,8 +1,9 @@
 """Decide `gh pr create` by the repository that it names.
 
-The check finds each top-level `gh pr create` call, after any assignments such as `GH_REPO=…`,
-and reads every `-R` and `--repo` value of it, in each of the forms `-R x`, `-Rx`, `--repo x` and
-`--repo=x`:
+The check finds each top-level `gh pr create` call and each of its alias `gh pr new`, after any
+assignments such as `GH_REPO=…`, and reads every `-R` and `--repo` value of it, in each of the
+forms `-R x`, `-Rx`, `-R=x`, `--repo x` and `--repo=x`, also at the end of a cluster of
+one-letter flags such as `-dR x`:
 
   * **No `-R` or `--repo`**: deny. `gh` then opens the pull request in the repository that the
     checkout or `GH_REPO` names, which the command text does not show. The reason tells the agent
@@ -19,8 +20,8 @@ send a call that names an own repository first to another one.
 
 from .contract import PASS, Call, Verdict, strongest
 from .gh_api_writes import own_organisations
-from .shell import Tokens, parts, readings
 from .rm_scope import ASSIGNMENT
+from .shell import Tokens, parts, readings
 
 NO_REPOSITORY = """Refused: {command}
 
@@ -34,6 +35,7 @@ TAKES_VALUE = frozenset(
     {
         "-a",
         "--assignee",
+        "--attach",
         "-B",
         "--base",
         "-b",
@@ -60,21 +62,36 @@ TAKES_VALUE = frozenset(
 
 
 def repositories(arguments: list[str]) -> list[str]:
-    """Every value of `-R` and `--repo` in the arguments after `gh pr create`; the value of a flag
-    of TAKES_VALUE is no flag."""
+    """Every value of `-R` and `--repo` in the arguments after `gh pr create`, read as `gh` reads
+    them: the value of a flag of TAKES_VALUE is no flag, and a cluster of one-letter flags such as
+    `-dR x` ends at its first letter that takes a value, whose value is the rest of the word, after
+    one `=`, or else the next word."""
     found: list[str] = []
     index = 0
     while index < len(arguments):
         argument = arguments[index]
-        if argument in ("-R", "--repo"):
-            found.append(arguments[index + 1] if index + 1 < len(arguments) else "")
-            index += 2
+        index += 1
+        if argument.startswith("--"):
+            name, equals, value = argument.partition("=")
+            if name == "--repo":
+                if not equals:
+                    value = arguments[index] if index < len(arguments) else ""
+                    index += 1
+                found.append(value)
+            elif argument in TAKES_VALUE:
+                index += 1
             continue
-        if argument.startswith("--repo="):
-            found.append(argument.removeprefix("--repo="))
-        elif argument.startswith("-R"):
-            found.append(argument.removeprefix("-R"))
-        index += 2 if argument in TAKES_VALUE else 1
+        for at, letter in enumerate(argument[1:] if argument.startswith("-") else "", start=2):
+            if letter == "R" or f"-{letter}" in TAKES_VALUE:
+                value = argument[at:]
+                if len(value) > 1 and value.startswith("="):
+                    value = value[1:]
+                elif not value:
+                    value = arguments[index] if index < len(arguments) else ""
+                    index += 1
+                if letter == "R":
+                    found.append(value)
+                break
     return found
 
 
@@ -91,7 +108,11 @@ def verdict_of(tokens: Tokens) -> Verdict:
         words = found
         while words and ASSIGNMENT.match(words[0]):
             words = words[1:]
-        if not words or words[0].rsplit("/", 1)[-1] != "gh" or words[1:3] != ["pr", "create"]:
+        if (
+            not words
+            or words[0].rsplit("/", 1)[-1] != "gh"
+            or words[1:3] not in (["pr", "create"], ["pr", "new"])
+        ):
             continue
         named = repositories(words[3:])
         command = " ".join(words)
@@ -107,6 +128,6 @@ def verdict_of(tokens: Tokens) -> Verdict:
 def check(call: Call) -> Verdict:
     """Deny a `gh pr create` that names no repository; ask for one outside the own organisations."""
     command = call.command
-    if "gh" not in command or "create" not in command:
+    if "gh" not in command or ("create" not in command and "new" not in command):
         return PASS
     return strongest(verdict_of(tokens) for tokens in readings(command) or [])

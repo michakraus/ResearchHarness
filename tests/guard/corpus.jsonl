@@ -215,6 +215,7 @@
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api graphql -F query=@read.graphql"}}, "decision": "ask"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api graphql -F query=@@@FIXTURE@@/gh/resolve.graphql"}, "cwd": "@@CWD@@"}, "decision": "pass"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api graphql -F query=@@@FIXTURE@@/gh/merge.graphql"}, "cwd": "@@CWD@@"}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api graphql -F query=@@@FIXTURE@@/gh/quote-comment.graphql"}, "cwd": "@@CWD@@"}, "decision": "ask"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api graphql -F query=@@@FIXTURE@@/gh/missing.graphql"}, "cwd": "@@CWD@@"}, "decision": "ask"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api graphql -F query=@@@FIXTURE@@/gh/not-utf8.graphql"}, "cwd": "@@CWD@@"}, "decision": "ask"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api graphql -F query=@@@FIXTURE@@/gh"}, "cwd": "@@CWD@@"}, "decision": "ask"}
@@ -230,6 +231,11 @@
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh pr create --title T --body-file b.md"}, "cwd": "@@CWD@@"}, "decision": "deny"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "GH_REPO=own-org/X.jl gh pr create --title T"}, "cwd": "@@CWD@@"}, "decision": "deny"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh pr create --title -Rown-org/X.jl"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh pr new --title T"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh pr new --repo own-org/X.jl --title T"}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh pr create --attach -Rown-org/X.jl --title T"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh pr create -db -Rown-org/X.jl --title T"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh pr create --repo own-org/X.jl --title T -dRother-org/Y.jl"}, "cwd": "@@CWD@@"}, "decision": "ask"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh pr create --repo other-org/X.jl --title T"}, "cwd": "@@CWD@@"}, "decision": "ask"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh pr create --repo own-org/X.jl --title T --repo other-org/Y.jl"}, "cwd": "@@CWD@@"}, "decision": "ask"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh pr create -R other-org/Y.jl --title T --repo own-org/X.jl"}, "cwd": "@@CWD@@"}, "decision": "ask"}
@@ -760,6 +766,8 @@
 {"frontend": "omp", "tool": "bash", "input": {"command": "gh pr create --title T --body-file b.md"}, "decision": "deny"}
 {"frontend": "omp", "tool": "bash", "input": {"command": "gh pr create"}, "decision": "deny"}
 {"frontend": "omp", "tool": "bash", "input": {"command": "gh api graphql -F query=@@@FIXTURE@@/gh/read.graphql --jq .data | head -5"}, "decision": "pass"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "cp @@FIXTURE@@/gh/merge.graphql @@FIXTURE@@/gh/read.graphql && gh api graphql -F query=@@@FIXTURE@@/gh/read.graphql"}, "decision": "ask"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "cp @@FIXTURE@@/gh/merge.json @@FIXTURE@@/gh/reply.json && gh api graphql --input @@FIXTURE@@/gh/reply.json"}, "decision": "ask"}
 {"frontend": "omp", "tool": "bash", "input": {"command": "cd @@FIXTURE@@/gh && gh api graphql -F query=@read.graphql"}, "cwd": "@@FIXTURE@@/gh", "decision": "ask"}
 {"frontend": "omp", "tool": "bash", "input": {"command": "gh api graphql -F query=@read.graphql"}, "cwd": "@@FIXTURE@@/gh", "decision": "pass"}
 {"frontend": "omp", "tool": "bash", "input": {"command": "gh api graphql --input @@FIXTURE@@/gh/reply.json"}, "decision": "pass"}

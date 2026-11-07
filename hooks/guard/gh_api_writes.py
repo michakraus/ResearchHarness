@@ -23,8 +23,10 @@ The check finds each top-level `gh api` and `glab api` call and works out the HT
     in the file of `--input <path>`. A relative path resolves against the call's working
     directory. The query asks when the check cannot read it: a call with no working directory and
     a relative path, a command with a `cd`, `pushd` or `popd`, which moves the directory that `gh`
-    reads from, standard input (`-`), a path that names no regular file, a file that is not UTF-8,
-    an `--input` that is no JSON object with a string `query`, and a call with more than one query.
+    reads from, a file whose name another part of the command holds, which can write the file
+    before `gh` reads it, standard input (`-`), a path that names no regular file, a file that is
+    not UTF-8, an `--input` that is no JSON object with a string `query`, and a call with more than
+    one query.
   * **Any other write**: ask, so the user sees a prompt. That includes an edit of an existing
     comment, because the token can edit other people's.
 
@@ -110,7 +112,8 @@ REVIEW_MUTATIONS = frozenset(
 )
 
 STRING = re.compile(r'"""(?:.|\n)*?"""|"(?:\\.|[^"\\])*"')
-COMMENT = re.compile(r"#[^\n]*")
+# A string or a comment, whichever starts first, so a `"` inside a comment opens no string.
+LEXEME = re.compile(rf"{STRING.pattern}|#[^\n]*")
 NAME = re.compile(r"[_A-Za-z][_0-9A-Za-z]*")
 
 TOOLS = ("gh", "glab")
@@ -124,7 +127,8 @@ own terminal.
 GRAPHQL_MESSAGE = (
     "gh api graphql holds a mutation outside the review and comment operations, or a query that the "
     "check cannot read: give the query with -f query=…, -F query=@<file> or --input <file>.json, "
-    "with a path that is absolute or relative to the working directory, and no cd in the command."
+    "with a path that is absolute or relative to the working directory, no cd in the command, and "
+    "a query file that no other part of the command names: write the file in a call of its own."
 )
 
 
@@ -214,7 +218,7 @@ def own_git_write(method: str, endpoint: str, *, hosted: bool) -> bool:
 
 def mutation_fields(text: str) -> set[str] | None:
     """The top-level field names of every mutation in a query, or None if it has none."""
-    text = COMMENT.sub("", STRING.sub('""', text))
+    text = LEXEME.sub(lambda found: "" if found.group().startswith("#") else '""', text)
     if not re.search(r"\bmutation\b", text):
         return None
     names: set[str] = set()
@@ -256,10 +260,12 @@ def selection_fields(text: str, start: int) -> set[str]:
     return names
 
 
-def file_text(path: str, cwd: str | None) -> str | None:
+def file_text(path: str, cwd: str | None, others: tuple[str, ...]) -> str | None:
     """The UTF-8 text of the regular file `path`, a relative one resolved against `cwd`; None when
-    it cannot be read: `-`, a relative path with no `cwd`, no regular file, or no UTF-8 text."""
-    if path == "-":
+    it cannot be read: `-`, a relative path with no `cwd`, no regular file, or no UTF-8 text. None
+    also when a word of `others`, the other parts of the command, holds the file's name: such a
+    part can write the file before `gh` reads it."""
+    if path == "-" or any(PurePosixPath(path).name in word for word in others):
         return None
     found = PurePosixPath(path)
     if not found.is_absolute():
@@ -269,9 +275,9 @@ def file_text(path: str, cwd: str | None) -> str | None:
     return regular_text(str(found))
 
 
-def input_query(path: str, cwd: str | None) -> str | None:
+def input_query(path: str, cwd: str | None, others: tuple[str, ...]) -> str | None:
     """The string `query` of the JSON object in the file `path` (`file_text`), or None."""
-    text = file_text(path, cwd)
+    text = file_text(path, cwd, others)
     if text is None:
         return None
     try:
@@ -281,16 +287,17 @@ def input_query(path: str, cwd: str | None) -> str | None:
     return query if isinstance(query, str) else None
 
 
-def graphql(call: Request, cwd: str | None) -> str | None:
-    """None to pass a GraphQL call, or 'ask'; `cwd` is None when a relative path is unreadable."""
+def graphql(call: Request, cwd: str | None, others: tuple[str, ...]) -> str | None:
+    """None to pass a GraphQL call, or 'ask'; `cwd` is None when a relative path is unreadable, and
+    `others` holds the words of the command's other parts (`file_text`)."""
     queries: list[str | None] = []
     for flag, field in call.fields:
         key, _, value = field.partition("=")
         if key == "query":
             typed = flag in TYPED and value.startswith("@")
-            queries.append(file_text(value[1:], cwd) if typed else value)
+            queries.append(file_text(value[1:], cwd, others) if typed else value)
     if call.input is not None:
-        queries.append(input_query(call.input, cwd))
+        queries.append(input_query(call.input, cwd, others))
     if len(queries) != 1 or queries[0] is None:
         return "ask"
     names = mutation_fields(queries[0])
@@ -299,14 +306,14 @@ def graphql(call: Request, cwd: str | None) -> str | None:
     return "ask"
 
 
-def decide(call: Request, cwd: str | None, *, tool: str) -> str | None:
+def decide(call: Request, cwd: str | None, others: tuple[str, ...], *, tool: str) -> str | None:
     """None to pass, 'deny' or 'ask', before the own Git Data writes (`own_git_write`)."""
     if call.method == "DELETE":
         return "deny"
     if tool == "glab":
         return None
     if call.endpoint == "graphql":
-        return graphql(call, cwd)
+        return graphql(call, cwd, others)
     if call.method in ("GET", "HEAD") or call.endpoint.startswith("search/"):
         return None
     for methods, pattern in REVIEW_WRITES:
@@ -321,12 +328,13 @@ def verdict_of(tokens: Tokens, cwd: str | None) -> Verdict:
     found_parts = parts(tokens)
     if any(words[0] in MOVES for words in found_parts):
         cwd = None
-    for words in found_parts:
+    for index, words in enumerate(found_parts):
         tool = words[0].rsplit("/", 1)[-1]
         if tool not in TOOLS or words[1:2] != ["api"]:
             continue
         api = request(words[2:])
-        found = decide(api, cwd, tool=tool)
+        others = tuple(word for at, part in enumerate(found_parts) if at != index for word in part)
+        found = decide(api, cwd, others, tool=tool)
         if found == "ask" and own_git_write(api.method, api.endpoint, hosted=api.hosted):
             found = None
         if found == "deny":

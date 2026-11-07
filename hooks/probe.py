@@ -85,6 +85,7 @@ GH_QUERIES = {
     "read.graphql": b"# no mutation is named but in this comment\nquery { viewer { login } }\n",
     "merge.graphql": b'mutation { mergePullRequest(input: {pullRequestId: "P"}) { clientMutationId } }\n',
     "resolve.graphql": b'mutation { resolveReviewThread(input: {threadId: "T"}) { thread { id } } }\n',
+    "quote-comment.graphql": b'# a " in a comment\nmutation { mergePullRequest(input: {pullRequestId: "P"}) { clientMutationId } }\n',
     "not-utf8.graphql": b"query { viewer { login } } # \xff\n",
     "reply.json": b'{"query": "mutation($t: ID!, $b: String!) { addPullRequestReviewThreadReply(input: '
     b'{pullRequestReviewThreadId: $t, body: $b}) { comment { id } } }", "variables": {"t": "T", "b": "x"}}\n',

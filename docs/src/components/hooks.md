@@ -165,10 +165,12 @@ The check reads a GraphQL query where `gh` reads it: the text of `-f query=…`,
 it is; the file of `-F query=@<path>`; and the string `query` of the JSON object in the file of
 `--input <path>`. A relative path resolves against the call's working directory. A query that the
 check cannot read asks: a relative path in a call with no working directory, or in a command with
-a `cd`, `pushd` or `popd`; standard input (`-`); a path that names no regular file; a file that is
-not UTF-8; an `--input` that is no JSON object with a string `query`; and a call with more than one
-query. The check reads the file before `gh` runs, so a file that changes in between is not the
-file that it decided on.
+a `cd`, `pushd` or `popd`; a file whose name a word of another part of the command holds, because
+that part can write the file before `gh` reads it, as `cp other.graphql q.graphql && gh api graphql
+-F query=@q.graphql` would; standard input (`-`); a path that names no regular file; a file that
+is not UTF-8; an `--input` that is no JSON object with a string `query`; and a call with more than
+one query. So write the query file in a call of its own. The check reads the file before `gh`
+runs, so a file that another process changes in between is not the file that it decided on.
 
 A Git Data write in one of the user's own organisations also passes: a POST to
 `repos/<owner>/<repo>/git/blobs`, `git/trees`, `git/commits` or `git/refs`. These calls make a new
@@ -184,9 +186,10 @@ same profile.
 ### The `gh pr create` check
 
 `gh_pr_create.py` decides a `gh pr create` by the repository that it names, on each shell call of
-every frontend. It finds each top-level `gh pr create` call, also after assignments such as
-`GH_REPO=…`, and reads every value of `-R` and `--repo`, in the forms `-R x`, `-Rx`, `--repo x`
-and `--repo=x`. The value of another flag that takes one, such as `--title`, is not a flag.
+every frontend. It finds each top-level `gh pr create` call and each of its alias `gh pr new`,
+also after assignments such as `GH_REPO=…`, and reads every value of `-R` and `--repo`, in the forms `-R x`, `-Rx`, `-R=x`,
+`--repo x` and `--repo=x`, also at the end of a cluster of one-letter flags such as `-dR x`. The
+value of another flag that takes one, such as `--title`, is not a flag.
 
 A call with no `-R` or `--repo` is refused: `gh` then opens the pull request in the repository
 that the checkout or `GH_REPO` names, which the command does not show. The reason tells the agent
