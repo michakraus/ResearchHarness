@@ -24,6 +24,7 @@ from guard import (
     HarnessError,
     directory_scope,
     gh_api_writes,
+    gh_pr_create,
     git_archive_output,
     kaimon_session,
     no_blind_stage,
@@ -45,6 +46,7 @@ SHELL: tuple[Check, ...] = (
     no_shell_file_write.check,
     sandbox_semantics.check,
     gh_api_writes.check,
+    gh_pr_create.check,
     rm_scope.check,
     git_archive_output.check,
 )

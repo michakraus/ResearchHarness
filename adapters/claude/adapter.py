@@ -1145,6 +1145,7 @@ MOVED = [
             "arbitrator",
             "changelog-scribe",
             "ci-triage",
+            "editor",
             "exhaustive-auditor",
             "git-hook-triage",
             "julia-branch-verifier",
@@ -1163,6 +1164,7 @@ MOVED = [
             "python-critic",
             "reader",
             "worker",
+            "writer",
         ]
     ),
     "commands/merge-pr.md",

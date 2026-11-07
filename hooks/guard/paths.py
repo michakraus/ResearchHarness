@@ -23,6 +23,7 @@ a payload reads each (directory, name, mode) at most once however many checks, r
 sites ask for it. Above the reads, `go` walks a (start `Place`, word, mode) once, and `place` an
 absolute path text once in each mode, so a walk that every check and every reading asks for steps
 once. `contents` reads the text of a file once per process, as the path list of a frontend, and
+`regular_text` that of a regular file only, as the query file of a `gh api graphql` call.
 `entries` lists a directory once per process, as the gate files of Kaimon.
 """
 
@@ -218,6 +219,16 @@ def contents(path: str) -> str:
     """The text of the file `path`, read once per process; an `OSError` or a `UnicodeDecodeError`
     when it cannot be read as UTF-8."""
     return Path(path).read_text(encoding="utf-8")
+
+
+def regular_text(path: str) -> str | None:
+    """The text of the regular file `path` (`contents`), or None when the path names no regular
+    file or the file cannot be read as UTF-8. A FIFO or a device is never read, so the read cannot
+    block."""
+    try:
+        return contents(path) if Path(path).is_file() else None
+    except OSError, UnicodeDecodeError:
+        return None
 
 
 @functools.cache

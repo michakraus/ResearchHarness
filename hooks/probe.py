@@ -111,6 +111,19 @@ PROFILES = {
     "org-mixed.toml": b'org = ["own-org", 1]\n',
     "other.toml": b'org = ["other-org"]\n',
 }
+# The query files of the `gh api graphql` records, below the fixture's `gh/`.
+GH_QUERIES = {
+    "read.graphql": b"# no mutation is named but in this comment\nquery { viewer { login } }\n",
+    "merge.graphql": b'mutation { mergePullRequest(input: {pullRequestId: "P"}) { clientMutationId } }\n',
+    "resolve.graphql": b'mutation { resolveReviewThread(input: {threadId: "T"}) { thread { id } } }\n',
+    "quote-comment.graphql": b'# a " in a comment\nmutation { mergePullRequest(input: {pullRequestId: "P"}) { clientMutationId } }\n',
+    "not-utf8.graphql": b"query { viewer { login } } # \xff\n",
+    "reply.json": b'{"query": "mutation($t: ID!, $b: String!) { addPullRequestReviewThreadReply(input: '
+    b'{pullRequestReviewThreadId: $t, body: $b}) { comment { id } } }", "variables": {"t": "T", "b": "x"}}\n',
+    "merge.json": b'{"query": "mutation { mergePullRequest(input: {pullRequestId: \\"P\\"}) { clientMutationId } }"}\n',
+    "no-query.json": b'{"variables": {"t": "T"}}\n',
+    "not-json.json": b"query { viewer { login } }\n",
+}
 q = shlex.quote  # a fixture path spliced into a command, for a `$TMPDIR` with a space
 TIMEOUT = 30  # seconds per hook call; a timeout is a wrong case
 MIB = 1024 * 1024  # bytes: the largest command that the guard decides by its checks
@@ -392,9 +405,10 @@ ASK_USER = "Ask the user in chat"
 # profile, by oh-my-pi's matching (`src/tools/bash.ts` at v18.6.1): the first rule that matches
 # wins; `allow` matches only a whole command with no shell control character; `deny` and `prompt`
 # match the whole command or one of its segments. This port splits segments by text, so it stands
-# for oh-my-pi on the simple commands below and is no evidence for a compound one. `gh pr create`
-# runs unasked only with `-R` or `--repo` first, on an organisation of the profile; with the
-# repository later, elsewhere, or not named at all, it asks.
+# for oh-my-pi on the simple commands below and is no evidence for a compound one. No pattern
+# prompts for `gh pr create`: one with `-R` or `--repo` on an organisation of the profile is
+# allowed, and any other matches no pattern, so `yolo` runs it and the guard extension decides it
+# (the `gh pr create` records of the corpus).
 OMP_PATTERNS = [
     ("git push --force origin x", "deny"),
     ("sed -i s/a/b/ f", "deny"),
@@ -403,10 +417,12 @@ OMP_PATTERNS = [
     ("ls -la", "allow"),
     ("gh pr create --repo example-org/X.jl --title T --body-file b.md", "allow"),
     ("gh pr create -R example-user/X.jl --title T", "allow"),
-    ("gh pr create --title T --repo example-org/X.jl", "prompt"),
-    ("gh pr create --repo other/X.jl --title T", "prompt"),
-    ("gh pr create --title T --body-file b.md", "prompt"),
-    ("gh pr create", "prompt"),
+    ("gh pr create --title T --repo example-org/X.jl", "allow"),
+    ("gh pr create --title T -R example-org/X.jl", "allow"),
+    ("gh pr create --repo example-org/X.jl --title T 2>&1 | tail -3", "none"),
+    ("gh pr create --repo other/X.jl --title T", "none"),
+    ("gh pr create --title T --body-file b.md", "none"),
+    ("gh pr create", "none"),
 ]
 
 
@@ -1810,6 +1826,10 @@ def fixture():
     profiles.mkdir()
     for name, data in PROFILES.items():
         (profiles / name).write_bytes(data)
+    queries = pathlib.Path(FIXTURE.name, "gh")
+    queries.mkdir()
+    for name, data in GH_QUERIES.items():
+        (queries / name).write_bytes(data)
 
 
 def drift(env, payload="{}"):
