@@ -333,6 +333,29 @@ network and runs `git` only in scratch directories, where it clones `~/.claude` 
 repository. They also hold the minimums of
 `setup/tools.toml` equal to the `≥` cells of [dependencies.md](../dependencies.md).
 
+## `jobsandbox.py`
+
+The Seatbelt profiles of the launch agents of Kaimon and `julia-update` on macOS. The module has
+no subcommand of its own: `harness render sandbox/<job>.sb` prints the profile of `kaimon` or
+`julia-update`. `load` reads the rule list `sandbox/daemon.toml` into a frozen dataclass and
+refuses a missing job or key, an unknown key, a path that starts with none of `~/`, `/` and the
+tokens `$DARWIN_USER_TEMP_DIR`, `$DARWIN_USER_CACHE_DIR` and `$HARNESS`, a system path in its link
+form such as `/etc/hosts`, and a value that is not a list of strings. `profile` renders one job's
+SBPL text: deny every file read and write, allow the read and write lists, then deny the write
+denies, the repository parts `.git/hooks`, `.git/config` and `.githooks` below `~/Research`, the
+operations `lsopen`, `appleevent-send`, `file-mount` and `file-unmount`, and two Mach services of
+Launch Services. The render takes `home` and `harness` from the profile and the two per-user
+directories from `getconf`; a `getconf` that fails exits 2. `harness setup` writes each render
+into `~/.config/research-harness/sandbox/` before it renders and loads the job's plist, and both
+plists start their program with `/usr/bin/sandbox-exec -f` and that file.
+
+Its cases load the shipped list and a broken copy of it for each refusal, render both jobs with a
+home path that holds a dot and one that holds a quote, run `harness render` through `bin/harness`
+with a `getconf` stub, and run every probe of `sandbox/probe-daemon.jl`, the probes that a
+session runs through Kaimon's `ex` after the server restarts under its profile, against a scratch
+home, when `julia` is on the `PATH`. [The security model](../security.md) says what the profile
+allows and what it leaves open.
+
 ## `dotfiles_kit.py`
 
 The subcommand `harness dotfiles-kit [--apply] DEST`. It reads `examples/dotfiles/kit.toml`, which
@@ -535,7 +558,8 @@ sweep, which changes no file. `GROUPS` splits them into five groups, `minimum`, 
 
 The cases of the `systemd --user` units in `systemd/`. The module has no subcommand. It renders
 each unit and its plist in `launchagents/` with `examples/profile.toml`. Then it checks that both
-describe one job: the program and its arguments, the working directory, the environment and its
+describe one job: the program and its arguments, after the `sandbox-exec -f <profile>` that the
+plist starts with on macOS, the working directory, the environment and its
 `PATH`, the timer's triggers, the start at login, and `Restart=always` where the plist has
 `KeepAlive`. A section, a key or a repeated key that the check does not read is a problem. A
 continued line is a problem too. Every element of the `PATH` must be an absolute directory that

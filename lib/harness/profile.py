@@ -79,7 +79,7 @@ from collections.abc import Mapping, Sequence
 from typing import Any, Literal, cast
 from unittest import mock
 
-from . import REPO, HarnessError, fmt, frontends, frontmatter, jsonio, network
+from . import REPO, HarnessError, fmt, frontends, frontmatter, jobsandbox, jsonio, network
 
 DEFAULT = pathlib.Path.home() / ".config" / "research-harness" / "profile.toml"
 DUMMY = REPO / "examples" / "profile.toml"
@@ -912,8 +912,14 @@ def render_file(path: str | os.PathLike[str], profile: Profile | Context) -> str
 
 
 def cmd_render(args: argparse.Namespace | types.SimpleNamespace) -> int:
-    given = context(load(args.profile), providers={})
-    if pathlib.Path(args.template).resolve() == network.TEMPLATE:
+    loaded = load(args.profile)
+    template = pathlib.Path(args.template)
+    if jobsandbox.job_of(template) is not None:
+        # sandbox/<job>.sb names no file: the profile of the job, from the rule list beside it.
+        sys.stdout.write(jobsandbox.render(template, pathlib.Path(loaded.home), pathlib.Path(loaded.harness)))
+        return 0
+    given = context(loaded, providers={})
+    if template.resolve() == network.TEMPLATE:
         rendered = jsonio.loads(render_file(args.template, given), where=str(args.template))
         cfg = network.apply(rendered, network_path(args.profile))
         sys.stdout.write(json.dumps(cfg, indent=2, ensure_ascii=False) + "\n")

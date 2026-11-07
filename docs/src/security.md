@@ -43,10 +43,24 @@ the installed template. A later version can behave differently.
   network allowlist, and not the write deny list that holds the `Edit` denies. The permission
   lists and the hooks still apply. A command with another part, such as a pipe into `cat` or a
   `cd` to another directory, runs inside the sandbox.
-- **An MCP server runs outside the sandbox.** The sandbox wraps the shell commands of a session.
-  An MCP server is a process of its own, for example a server that launchd starts. The code that
-  it runs for a session does not see the write allowlist, the read deny list or the network
-  allowlist. The permission lists control which of its tools a session can call.
+- **An MCP server runs outside the session's sandbox; on macOS, Kaimon runs under a profile of its
+  own.** The sandbox wraps the shell commands of a session. An MCP server is a process of its own,
+  for example a server that launchd starts, and the code that it runs for a session does not see
+  the session's write allowlist, read deny list or network allowlist. The permission lists control
+  which of its tools a session can call. The launch agent of Kaimon starts the server with
+  `/usr/bin/sandbox-exec -f ~/.config/research-harness/sandbox/kaimon.sb`, a Seatbelt profile that
+  `harness setup` renders from `sandbox/daemon.toml`. The profile denies every file read and
+  write, then allows reads of `~/Research`, the Julia depot, juliaup, Kaimon's configuration,
+  cache and logs, git's configuration, the per-user temporary and cache directories and the
+  system directories, and writes of `~/Research`, the depot, Kaimon's directories, the per-user
+  directories and `/private/tmp`. It denies writes to `~/.julia/bin`, `~/.julia/config`,
+  `~/.julia/juliaup`, the harness's `githooks/`, and `.git/hooks`, `.git/config` and `.githooks`
+  at any depth below `~/Research`. It denies an app or document opened through Launch Services,
+  an Apple Event, and a mount. It leaves open the network, the other Mach services, which Metal
+  needs, every write inside `~/Research` outside the denied repository parts, and the rename of a
+  directory above a denied part, which moves the part out of the denied path. The `julia-update`
+  job runs under its own profile from the same file. On Linux, and for every other MCP server,
+  no profile applies.
 - **OpenCode and oh-my-pi have no sandbox.** Their permission blocks and guard extensions check
   text, as the deny list and the hooks do. Antigravity runs commands in its terminal sandbox in the
   CLI and the desktop app, and its guard hook sets `BypassSandbox` on each command and checks paths

@@ -77,6 +77,7 @@ import json
 import os
 import pathlib
 import platform
+import plistlib
 import pwd
 import re
 import shutil
@@ -93,7 +94,7 @@ from collections.abc import Callable, Generator, Mapping, Sequence
 from typing import IO, cast, override
 from unittest import mock
 
-from . import REPO, HarnessError, fmt, frontends, jsonio
+from . import REPO, HarnessError, fmt, frontends, jobsandbox, jsonio
 from . import profile as profile_module
 from .fsutil import Case, write_private
 
@@ -123,6 +124,9 @@ KEY = re.compile(r"""\s*(["']?)(frontends|components|develop)\1\s*=""")
 REDIRECT = ("https", "release-assets.githubusercontent.com")
 DOCTOR = "harness doctor"
 JOBS = ("kaimon", "julia-update", "claude-autocommit")
+# The directory below the home directory of the Seatbelt profiles of the jobs of jobsandbox.JOBS,
+# which the plists name; no session can write below ~/.config.
+SANDBOX = ".config/research-harness/sandbox"
 UNITS = (
     "kaimon.service",
     "julia-update.service",
@@ -708,6 +712,15 @@ def job_steps(machine: Machine, loaded: profile_module.Profile, env: Mapping[str
         for job in (j for j in JOBS if autocommit or j != "claude-autocommit"):
             label = f"{loaded.launchd_prefix}.{job}"
             plist = agents / f"{label}.plist"
+            if job in jobsandbox.JOBS:
+                # The plist starts the job under this profile, so it is in place before the load.
+                sb = machine.home / SANDBOX / f"{job}.sb"
+                result.steps.append(
+                    Step(
+                        f"harness render sandbox/{job}.sb > {sb}",
+                        lambda j=job, t=sb: render(machine, f"sandbox/{j}.sb", t, env),
+                    )
+                )
             result.steps.append(
                 Step(
                     f"harness render launchagents/{job}.plist > {plist}",
@@ -1907,7 +1920,7 @@ def macos_cases(case: Case, tmp: pathlib.Path, pins: Pins) -> None:
     order = [c.split()[1] for c in harness]
     case(
         f"the harness steps run in their order: {order}",
-        ok=order == ["install", "trust", "render", "render", "render", "doctor"]
+        ok=order == ["install", "trust", *["render"] * 5, "doctor"]
         and harness[0] == "harness install --apply"
         and harness[1] == "harness trust --apply",
     )
@@ -3601,10 +3614,11 @@ def doctor_cases(case: Case, tmp: pathlib.Path, pins: Pins) -> None:
         s.fake("harness", f'[ "$1" = doctor ] && {{ echo "doctor: FAIL here"; exit {status}; }}; exit 0')
         code, out = attempt(s.machine(), s.options(), pins=pins)
         calls = [c.split()[1] for c in s.calls() if c.startswith("harness ")]
-        # Without claude_remote, the launch agent of the autocommit job is not rendered.
+        # Without claude_remote, the launch agent of the autocommit job is not rendered; the
+        # Kaimon and julia-update jobs render their profile and their plist each.
         case(
             f"a harness doctor that exits {status} gives {want}, after every earlier step: {code} {calls}",
-            ok=code.startswith(want) and calls == ["install", "trust", "render", "render", "doctor"],
+            ok=code.startswith(want) and calls == ["install", "trust", *["render"] * 4, "doctor"],
         )
         if status == "1":
             case(
@@ -3642,6 +3656,62 @@ def trust_cases(case: Case, tmp: pathlib.Path, pins: Pins) -> None:
         and "trust" not in calls
         and "harness trust" not in out,
     )
+
+
+def sandbox_cases(case: Case, tmp: pathlib.Path, pins: Pins) -> None:
+    """The Seatbelt profiles of the Kaimon and julia-update jobs: on macOS each is written before
+    its plist is rendered, on Linux none is; and both plists start their program under
+    sandbox-exec with that profile."""
+    s = scratch(tmp, "macos-sandbox", MACOS_FAKES)
+    lines = shows(s.machine(), JOBS_ONLY, s.options(), pins)
+
+    def index(start: str, *, holds: str = "") -> int:
+        return next((i for i, line in enumerate(lines) if line.startswith(start) and holds in line), -1)
+
+    for job in jobsandbox.JOBS:
+        at = [
+            index(f"harness render sandbox/{job}.sb > {s.home / SANDBOX / f'{job}.sb'}"),
+            index(f"harness render launchagents/{job}.plist > "),
+            index("launchctl ", holds=f".{job}.plist"),
+        ]
+        case(
+            f"on macOS, the profile of {job} is written before its plist is rendered and loaded: {at}",
+            ok=-1 not in at and at == sorted(at),
+        )
+    chosen_profile(s, JOBS_ONLY)
+    code, out = attempt(s.machine(), s.options(), pins=pins)
+    written = {
+        job: (s.home / SANDBOX / f"{job}.sb").read_text(encoding="utf-8")
+        if (s.home / SANDBOX / f"{job}.sb").exists()
+        else None
+        for job in jobsandbox.JOBS
+    }
+    case(
+        f"on macOS, the run writes each profile from harness render sandbox/<job>.sb: {code} {written}",
+        ok=code == "0"
+        and all(text == f"rendered {s.clone / 'sandbox' / f'{job}.sb'}\n" for job, text in written.items()),
+    )
+    case(
+        f"no profile is written for the autocommit job: {out[-200:]!r}",
+        ok=not (s.home / SANDBOX / "claude-autocommit.sb").exists(),
+    )
+    s = scratch(tmp, "linux-sandbox", LINUX_FAKES)
+    lines = shows(s.machine("Linux"), JOBS_ONLY, s.options(), pins)
+    case(
+        f"on Linux, no step writes a .sb file: {[line for line in lines if '.sb' in line]}",
+        ok=bool(lines) and not any(".sb" in line for line in lines),
+    )
+    programs = {"kaimon": "{home}/.julia/bin/kaimon", "julia-update": "{home}/.juliaup/bin/julia"}
+    for job in jobsandbox.JOBS:
+        args = cast(
+            "list[str]",
+            plistlib.loads((REPO / "launchagents" / f"{job}.plist").read_bytes())["ProgramArguments"],
+        )
+        want = ["/usr/bin/sandbox-exec", "-f", f"{{home}}/{SANDBOX}/{job}.sb", programs[job]]
+        case(
+            f"{job}.plist starts its program under sandbox-exec -f <its profile>: {args[:4]}",
+            ok=args[:4] == want,
+        )
 
 
 def selftest() -> tuple[int, int]:
@@ -3685,4 +3755,5 @@ def selftest() -> tuple[int, int]:
         recheck_cases(case, root, pins)
         doctor_cases(case, root, pins)
         trust_cases(case, root, pins)
+        sandbox_cases(case, root, pins)
     return total, wrong

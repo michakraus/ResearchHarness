@@ -6,7 +6,8 @@ templates of the profile. JOBS pairs them. `harness test` renders each with
 
 - the units hold only the sections and keys of SERVICE_KEYS and TIMER_KEYS, each key but
   `Environment` once, and no continued line: anything else could change the job unseen;
-- `ExecStart`, split as a shell splits it, equals `ProgramArguments`, and `WorkingDirectory`
+- `ExecStart`, split as a shell splits it, equals `ProgramArguments`, after the three elements
+  `/usr/bin/sandbox-exec -f <profile>` where the plist starts with them, and `WorkingDirectory`
   equals the plist's;
 - the `Environment=` entries equal `EnvironmentVariables`, so the `PATH` is the same;
 - the timer's triggers are exactly those the plist implies: `OnCalendar` for
@@ -55,6 +56,9 @@ JOBS = [
         "launchagents/claude-autocommit.plist",
     ),
 ]
+# The start of a plist's ProgramArguments that runs its program under a Seatbelt profile, the
+# third element: macOS only, so ExecStart is compared with what follows the profile.
+SEATBELT = ["/usr/bin/sandbox-exec", "-f"]
 # The directories that no session can write and that a job's PATH may hold beyond the denied ones.
 SYSTEM_DIRS = ("/usr/bin", "/bin", "/usr/sbin", "/sbin", "/usr/local/bin", "/opt/homebrew/bin")
 # The directories below which macOS puts a session's $TMPDIR, which the live sandbox lets the session
@@ -228,7 +232,10 @@ def job_problems(service, timer, plist, filesystem, home):
     if problems:
         return problems
     args = shlex.split(one(service, "Service", "ExecStart") or "")
-    if args != plist["ProgramArguments"]:
+    program = cast("list[str]", plist["ProgramArguments"])
+    if program[:2] == SEATBELT:
+        program = program[3:]
+    if args != program:
         problems.append(f"ExecStart {args} is not ProgramArguments {plist['ProgramArguments']}")
     if one(service, "Service", "WorkingDirectory") != plist.get("WorkingDirectory"):
         problems.append(
@@ -430,6 +437,14 @@ def selftest():
             [(autocommit_timer, "OnUnitActiveSec=15min", "OnUnitActiveSec=10min")],
         ),
         ("another argument in kaimon.service", [("systemd/kaimon.service", "--port 2828", "--port 2829")]),
+        (
+            "another argument after the sandbox-exec profile in kaimon.plist",
+            [("launchagents/kaimon.plist", "<string>2828</string>", "<string>2829</string>")],
+        ),
+        (
+            "kaimon.plist's program as the profile of sandbox-exec",
+            [("launchagents/kaimon.plist", "<string>-f</string>\n", "")],
+        ),
         ("no OnActiveSec in claude-autocommit.timer", [(autocommit_timer, "OnActiveSec=", "#")]),
         (
             "a later OnActiveSec in claude-autocommit.timer",

@@ -5,8 +5,14 @@
     <key>Label</key>
     <string>{launchd_prefix}.kaimon</string>
 
+    <!-- The server and every session it runs for an agent under the Seatbelt profile that
+         `harness setup` renders from sandbox/daemon.toml: files below ~/Research and the few
+         paths that Julia needs, no other file of the home directory. -->
     <key>ProgramArguments</key>
     <array>
+        <string>/usr/bin/sandbox-exec</string>
+        <string>-f</string>
+        <string>{home}/.config/research-harness/sandbox/kaimon.sb</string>
         <string>{home}/.julia/bin/kaimon</string>
         <string>--headless</string>
         <string>--port</string>
