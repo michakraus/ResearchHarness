@@ -116,9 +116,10 @@ critic's verdict and evidence table. It finishes as the plan's §L says: a pull 
 <owner>/<repo>`.
 
 **Before the merge, each CodeRabbit comment has an answer**, as step 7 of
-`~/.claude/skills/build-part/SKILL.md` says. Here you sort the comments yourself, the fix round is a
-new builder with `Round: fix` and your own check of the fix, as under 4, and a comment you cannot
-sort goes to the user.
+`~/.claude/skills/build-part/SKILL.md` says; for a pull request, its `gh pr checks` waiter takes
+the place of `gh run watch`. Here you sort the comments yourself, the fix round is a new builder
+with `Round: fix` and your own check of the fix, as under 4, and a comment you cannot sort goes to
+the user.
 
 Write the state cell from the builder's report, and add one line to the part's section:
 `**The loop:**` the rounds, each decision, and each defect the critic found, with its class. For a

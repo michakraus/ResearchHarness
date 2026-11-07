@@ -169,11 +169,11 @@ these mutants and no others:
 Every other mutant keeps the verdict of its earlier round; do not run the earlier lists again. A
 fix that changes no function, no line outside a function and no named test runs only its own
 mutants. Write the selected mutants of a Julia package file into one list,
-`~/Research/.scratch/builder/<worktree name>/fix-<N>-mutants.toml`, check it with `--check`, and run it once with
-`--warm` and the units that must catch them. Each list pays one smoke run, and a list of 20
-mutants or fewer runs each mutant cold, about a minute each in a large package. In the *Mutants*
-table of a fix round, the kind of a selected earlier mutant is `function`, `test` or `survivor`,
-and the closing line adds `n earlier mutants keep their verdicts`.
+`~/Research/.scratch/builder/<worktree name>/fix-<N>-mutants.toml`, check it with `--check`, and
+run it once with `--warm` and the units that must catch them. Each list pays one smoke run, and a
+list of 20 mutants or fewer runs each mutant cold, about a minute each in a large package. In the
+*Mutants* table of a fix round, the kind of a selected earlier mutant is `function`, `test` or
+`survivor`, and the closing line adds `n earlier mutants keep their verdicts`.
 
 **Another Julia is one command.** `julia +1.12 --startup-file=no run-tests.jl <worktree> full`
 runs the suite on the 1.12 floor. Where another minor version resolved the manifest, `run-tests.jl`

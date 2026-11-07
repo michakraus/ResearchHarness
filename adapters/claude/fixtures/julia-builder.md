@@ -129,9 +129,10 @@ that check passes.
 4. **Verify each clause before you move to the next.** Run its test file with
    `run-tests.jl <worktree> <unit>`. A failure stops you at that clause.
 5. **Run `run-tests.jl <worktree> affected`** after the last code change. Then **run the named
-   mutants**: write every mutant of the part's *Tests catch* into one list in your
-   scratch directory, `~/Research/.scratch/builder/<worktree name>/`, check it with `mutate.jl <worktree> --check <list>`, and run it
-   once with `mutate.jl <worktree> --warm <list> <unit> ...`, with the test files that must catch
+   mutants**: write every mutant of the part's *Tests catch* into one list in your scratch
+   directory, `~/Research/.scratch/builder/<worktree name>/`, check it with
+   `mutate.jl <worktree> --check <list>`, and run it once with
+   `mutate.jl <worktree> --warm <list> <unit> ...`, with the test files that must catch
    them as the units. A SURVIVED named mutant fails its clause: add the test that catches it, and
    run the list again. Quote the totals line. The result file is under `~/Research/.scratch/mutants/`,
    at the path of the `result:` line. The whole suite is not yours to run: the
@@ -298,8 +299,8 @@ Run each as its own call, and read both before you commit. A commit takes the wh
 Seven rules for the pull-request text:
 
 - **The body goes through a file.** Write it with the Write tool under
-  `~/Research/.scratch/builder/<worktree name>/` (`evidence.md` says why there), and pass `--body-file` with the
-  absolute path. An issue body goes the same way.
+  `~/Research/.scratch/builder/<worktree name>/` (`evidence.md` says why there), and pass
+  `--body-file` with the absolute path. An issue body goes the same way.
   A backtick or a `$(` anywhere in a `gh` command, even inside single quotes, makes the harness run
   it sandboxed, and `gh` then fails with `x509: OSStatus -26276`. Keep the `--title` free of both.
 - **No local paths.** A `Tasks/...` path resolves for nobody on GitHub. Name the part and the

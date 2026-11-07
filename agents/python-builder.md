@@ -99,8 +99,8 @@ Work in these steps, in this order. Each step ends on a check.
    `harness test --changed <base>` after a commit. Run `ruff format`, `ruff check` and
    `basedpyright` on the files you change. A failure stops you at that clause.
 5. **Run the named mutants** with `harness mutate <spec>`: write every mutant of *Tests catch* into
-   one TOML spec in your scratch directory, `~/Research/.scratch/builder/<worktree name>/`
-   (*A fix round's mutants* in `evidence.md` says why there), one table per mutant with `file`, `anchor`,
+   one TOML spec in your scratch directory, `~/Research/.scratch/builder/<worktree name>/` (*A fix
+   round's mutants* in `evidence.md` says why there), one table per mutant with `file`, `anchor`,
    `old`, `new` and `tests`, the parts that must kill it. It prints one line per mutant, `killed`,
    `SURVIVED` or `invalid`, and a totals line; quote the totals. A mutant of a file that is not
    Python, which `harness mutate` reports `invalid`, you apply by hand, run its part, and restore.
@@ -197,8 +197,9 @@ Where you changed a file, run the gate of step 7 again and commit.
 
 Then push the branch, `git push -u origin <branch>`, and open the pull request with
 `gh pr create -R <owner>/<repo> --body-file <file>`; where the branch has an open pull request,
-replace its body with `gh pr edit <NN> -R <owner>/<repo> --body-file <file>`. Write the body with the Write tool under
-`~/Research/.scratch/builder/<worktree name>/`; keep the `--title` free of backticks and `$(`. The body holds, under
+replace its body with `gh pr edit <NN> -R <owner>/<repo> --body-file <file>`. Write the body with
+the Write tool under `~/Research/.scratch/builder/<worktree name>/`; keep the `--title` free of
+backticks and `$(`. The body holds, under
 `## Critic`, the critic's verdict and evidence table; under `## Known issues added`, the entries of
 `git diff <base>..HEAD -- KNOWN_ISSUES.md` by ID; and under `## Decisions taken without the user`,
 every `**Decided (…)**` line of the bundle that the user did not write, verbatim, then each clause
