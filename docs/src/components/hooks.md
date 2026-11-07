@@ -5,7 +5,7 @@ at the start of a session. The frontend sends the event as JSON on standard inpu
 hook runs before a tool call and can refuse it: exit status 2 refuses the call and shows the hook's
 standard error to the model, and an `ask` decision on standard output shows a prompt to the user.
 The hooks of this page use the Claude Code events `PreToolUse`, `PostToolUse`, `SessionStart`,
-`PermissionRequest`, `WorktreeCreate` and `WorktreeRemove`.
+`UserPromptSubmit`, `PermissionRequest`, `WorktreeCreate` and `WorktreeRemove`.
 
 The sources are in `hooks/`. `harness install --apply` copies them to `~/.claude/hooks/`.
 Claude Code calls them through the `hooks` section of its settings, which
@@ -56,14 +56,14 @@ Antigravity, oh-my-pi and OpenCode also run the path-list check `path_list.py`, 
 frontend's `guard-paths.json`; Antigravity's table runs the lift check `sandbox_lift.py` on a shell
 call that it does not deny, which lifts a command out of the sandbox only where the line matches a
 closed grammar and Claude Code's sandbox rule lifts it. One module per check reads that call: the
-staging, write, sandbox, `gh api`, rm, archive, Kaimon and directory checks below. Each check gives
-`deny`, `ask`, `allow` or `pass` with a reason. The guard answers the first of `deny`, `ask`,
-`allow` and `pass` that a check gives, with that check's reason, in the form of the frontend: for
-Claude Code exit 2 with the reason on standard error for `deny`, a JSON decision for `ask` and
-`allow`, and no output for `pass`. A tool that the table does not name passes. oh-my-pi and
-OpenCode cannot ask the user from a plugin, so their tables answer an `ask` as a block whose
-reason tells the model to ask the user in chat; `plugin.py` holds what the two tables share: the
-reading of the message, the size check of the command and the answer.
+staging, write, sandbox, `gh api`, `gh pr create`, rm, archive, Kaimon and directory checks
+below. Each check gives `deny`, `ask`, `allow` or `pass` with a reason. The guard answers the
+first of `deny`, `ask`, `allow` and `pass` that a check gives, with that check's reason, in the
+form of the frontend: for Claude Code exit 2 with the reason on standard error for `deny`, a JSON
+decision for `ask` and `allow`, and no output for `pass`. A tool that the table does not name
+passes. oh-my-pi and OpenCode cannot ask the user from a plugin, so their tables answer an `ask`
+as a block whose reason tells the model to ask the user in chat; `plugin.py` holds what the two
+tables share: the reading of the message, the size check of the command and the answer.
 
 The directory check asks before a session leaves `~/Research`, or removes a worktree. A
 `change_directory` or `request_directory` call of the Claude desktop app, or an `EnterWorktree`
@@ -160,6 +160,17 @@ issue or a commit pass, so the review agents can post. A GraphQL query passes wh
 mutation, or when each mutation is a review or comment operation. Every other write gets an `ask`
 decision, and the user sees a prompt. An edit of an existing comment also asks.
 
+The check reads a GraphQL query where `gh` reads it: the text of `-f query=…`, which `gh` sends as
+it is; the file of `-F query=@<path>`; and the string `query` of the JSON object in the file of
+`--input <path>`. A relative path resolves against the call's working directory. A query that the
+check cannot read asks: a relative path in a call with no working directory, or in a command with
+a `cd`, `pushd` or `popd`; a file whose name a word of another part of the command holds, because
+that part can write the file before `gh` reads it, as `cp other.graphql q.graphql && gh api graphql
+-F query=@q.graphql` would; standard input (`-`); a path that names no regular file; a file that
+is not UTF-8; an `--input` that is no JSON object with a string `query`; and a call with more than
+one query. So write the query file in a call of its own. The check reads the file before `gh`
+runs, so a file that another process changes in between is not the file that it decided on.
+
 A Git Data write in one of the user's own organisations also passes: a POST to
 `repos/<owner>/<repo>/git/blobs`, `git/trees`, `git/commits` or `git/refs`. These calls make a new
 branch, as a `git push` of a new branch does. The `git/refs` endpoint only creates a ref. A PATCH
@@ -170,6 +181,29 @@ the profile once per process. A call with `--hostname` asks. The check fails clo
 profile is missing, cannot be read, is not UTF-8 TOML, or has no `org` list of strings, the write
 asks. Every frontend runs the guard with the user's `HOME` and environment, so each one finds the
 same profile.
+
+### The `gh pr create` check
+
+`gh_pr_create.py` decides a `gh pr create` by the repository that it names, on each shell call of
+every frontend. It finds each top-level `gh pr create` call and each call of its alias
+`gh pr new`, also after assignments such as `GH_REPO=…`, and reads every value of `-R` and
+`--repo`, in the forms `-R x`, `-Rx`, `-R=x`, `--repo x` and `--repo=x`, also at the end of a
+cluster of one-letter flags such as `-dR x`. The value of another flag that takes one, such as
+`--title`, is not a flag.
+
+A call with no `-R` or `--repo` is refused: `gh` then opens the pull request in the repository
+that the checkout or `GH_REPO` names, which the command does not show. The reason tells the agent
+to add `--repo <owner>/<repo>`. A call with a value that is not `<owner>/<repo>` of an own
+organisation asks: another owner, a value with a host, and any value when the profile gives no
+own organisation. The check reads every value, not only the last one that `gh` takes, so a second
+`--repo` cannot send the call elsewhere. A call whose every value names an own organisation
+passes, so the `allow` rules let it run: `gh pr create -R <org>/*` and `--repo <org>/*`, first or
+after other arguments. No `allow` rule names the alias `gh pr new`, so Claude Code asks for it.
+The own organisations are those of the `gh api` check.
+
+Under oh-my-pi, no pattern of `harness.yml` prompts for `gh pr create`, so the call runs under
+`yolo` also inside a pipe or after `&&`, and the guard extension refuses it or blocks it with the
+reason to ask the user.
 
 ### The rm check
 
@@ -318,6 +352,37 @@ code path exits with status 0, also when the hook cannot read the input or write
 ```bash
 echo '{"tool_name":"Bash","tool_input":{"command":"ls"}}' | LOG=$TMPDIR/p.jsonl ./prompt-log.py
 ```
+
+## `context-handoff.py`
+
+This hook tells a main session that its context has passed 400k tokens, and that the session hands
+off. Each model call reads the whole context again, so a long session pays for its size on every
+call. Claude Code runs the hook on `UserPromptSubmit` and, for every tool, on `PostToolUse`.
+
+The hook reads the size from the transcript that the event names: the input, cache-write and
+cache-read tokens of the last model call of the main chain. It reads the transcript from its end
+and stops at the second model call, so a transcript of 50 MB costs no more than a small one. A run
+takes about 0.1 s, nearly all of it the start of Python.
+
+At 400k tokens or more, the hook adds one line to the session's context. The line gives the size
+and tells the session to finish the current step, write the state of the work into the task file
+or a hand-off note, propose a new session with a short brief, and stop. On `UserPromptSubmit` the
+line comes with every prompt. On `PostToolUse` it comes only after the model call that passes
+400k, 500k, 600k and so on, so a long turn gets it once per 100k tokens, with each tool that this
+one model call runs. A call of a sub-agent gets no line: its caller limits its context. A record
+that Claude Code writes itself, such as an API error, has the model `<synthetic>` and counts as no
+model call.
+
+It blocks nothing and exits with status 0 for each input, also when it cannot read the input or
+the transcript. Test it:
+
+```bash
+echo '{"hook_event_name":"UserPromptSubmit","transcript_path":"'"$TMPDIR"'/t.jsonl"}' | ./context-handoff.py
+```
+
+The install gives this hook to Claude Code only. Antigravity's `PreToolUse` payload holds the call
+and the workspace paths, and no transcript; the guard extension of oh-my-pi and the plugins of
+OpenCode do not read the context size.
 
 ## `probe.py`
 

@@ -164,7 +164,8 @@ Before them, the install writes one entry for each provider of the `context_limi
 The `mcp` entry connects to the Kaimon server at `http://127.0.0.1:2828/`, which
 `launchagents/kaimon.plist` starts. The token comes from `~/.config/kaimon/auth-token` when
 OpenCode reads the file, so no secret is in the repository. `experimental.subagent_depth` is 2,
-so that a builder that the dispatcher starts can start `julia-branch-verifier` or a `reader`.
+so that a builder that the dispatcher starts can start `julia-branch-verifier` or a `reader`,
+and an `editor` can start a `writer`.
 The dispatcher is the session that runs the `build-part` or `build-reviewed` skill. OpenCode
 allows one level by default.
 
@@ -289,8 +290,8 @@ it is not set:
 - `AGENTS.md`, from `OMP-DELTA.md`;
 - `rules/<name>.md` for each rule that the Claude Code layer installs, with `paths` written as
   `globs`;
-- `mcp.json`, with the Kaimon server alone and a request timeout of 120 s, above Kaimon's own
-  move of a slow eval to the background;
+- `mcp.json`, with the Kaimon server alone and a request timeout of 300 s, above Kaimon's own
+  move of a slow eval to the background after 240 s;
 - `agents/<name>.md` for each agent of `agents/`, with its model and its `thinking-level` from the
   model tables and the section of `UNDER-OMP.md`, and a copy for each seat of its council;
 - its own copies of `RTK.md`, `instructions/`, the guard hooks in `hooks/` and the skills in
@@ -299,8 +300,9 @@ it is not set:
 
 `harness.yml` sets the approval mode `yolo` and denies the `eval` tool. It writes the Bash rules
 of the settings template as `bash.patterns`: every `deny`, then every `ask` as `prompt`, then
-every `allow`, then a `prompt` for `gh pr create*`, which `yolo` would otherwise run without a
-prompt when it names no repository. oh-my-pi reads the file when `PI_CONFIG_FILES` in
+every `allow`. A command that matches no pattern runs under `yolo`; the guard extension refuses a
+`gh pr create` that names no repository and blocks one outside the own organisations. oh-my-pi
+reads the file when `PI_CONFIG_FILES` in
 `~/.omp/agent/.env` names it, and the install warns until it does. oh-my-pi has no `env` setting
 either, so the install also warns, with the lines, until the `.env` or the environment sets each
 variable of the template's `env` except the `CLAUDE_CODE_*` variables.
@@ -444,7 +446,7 @@ tool that writes or edits a file, so an agent cannot widen its own grants with o
 writes the file gets `ask` from the guard, not `deny`.
 
 The guard hook is the guard package of `hooks/guard/` run with `--from antigravity`: its
-Antigravity table reads each tool call and answers with a decision. It runs the five shell checks
+Antigravity table reads each tool call and answers with a decision. It runs the six shell checks
 and the working-tree check of the sandbox rule on `run_command`, the Kaimon check on a Kaimon `ex`
 or `manage_repl` call, and the `deny` list of `guard-paths.json` on each path argument and each
 word of a command. A glob in a word, a recursive command, a `cd`, the `Cwd` of a call and the

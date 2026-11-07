@@ -80,6 +80,19 @@ PROFILES = {
     "org-mixed.toml": b'org = ["own-org", 1]\n',
     "other.toml": b'org = ["other-org"]\n',
 }
+# The query files of the `gh api graphql` records, below the fixture's `gh/`.
+GH_QUERIES = {
+    "read.graphql": b"# no mutation is named but in this comment\nquery { viewer { login } }\n",
+    "merge.graphql": b'mutation { mergePullRequest(input: {pullRequestId: "P"}) { clientMutationId } }\n',
+    "resolve.graphql": b'mutation { resolveReviewThread(input: {threadId: "T"}) { thread { id } } }\n',
+    "quote-comment.graphql": b'# a " in a comment\nmutation { mergePullRequest(input: {pullRequestId: "P"}) { clientMutationId } }\n',
+    "not-utf8.graphql": b"query { viewer { login } } # \xff\n",
+    "reply.json": b'{"query": "mutation($t: ID!, $b: String!) { addPullRequestReviewThreadReply(input: '
+    b'{pullRequestReviewThreadId: $t, body: $b}) { comment { id } } }", "variables": {"t": "T", "b": "x"}}\n',
+    "merge.json": b'{"query": "mutation { mergePullRequest(input: {pullRequestId: \\"P\\"}) { clientMutationId } }"}\n',
+    "no-query.json": b'{"variables": {"t": "T"}}\n',
+    "not-json.json": b"query { viewer { login } }\n",
+}
 q = shlex.quote  # a fixture path spliced into a command, for a `$TMPDIR` with a space
 TIMEOUT = 30  # seconds per hook call; a timeout is a wrong case
 MIB = 1024 * 1024  # bytes: the largest command that the guard decides by its checks
@@ -310,6 +323,99 @@ PROMPTLOG_CASES = [
     "[1]",
 ]
 
+# `context-handoff.py` reads the context size of the last two model calls of the main chain from a
+# transcript of the fixture. A transcript is a list of records: (message id, context in tokens) for
+# a model call, ("side", tokens) for a sub-agent's call, ("bad", 0) for a line that is not JSON,
+# ("syn", 0) for a record that Claude Code writes itself, such as an API error, and ("pad", bytes)
+# for a user record of that size, which puts the calls before it into an earlier block of the
+# hook's read. Its 412k call is split in two input counts, and written twice, as Claude
+# Code writes one record per content block. A case: (transcript, event, extra payload fields,
+# expected), where "pass" is no output and exit 0, and "<k>k" the context line with that size.
+CONTEXT = HOOKS + "context-handoff.py"
+CONTEXT_TRANSCRIPTS = {
+    "below": [("a", 120_000), ("b", 300_000)],
+    "crosses": [("a", 350_000), ("b", 412_000), ("b", 412_000)],
+    "above": [("a", 410_000), ("b", 412_000)],
+    "step": [("a", 495_000), ("b", 505_000)],
+    "side": [("a", 300_000), ("side", 520_000)],
+    "bad": [("a", 350_000), ("b", 412_000), ("bad", 0)],
+    "padded": [("a", 350_000), ("b", 412_000), ("pad", 300_000)],
+    "one": [("b", 412_000)],
+    "error-last": [("a", 410_000), ("b", 412_000), ("syn", 0)],
+    "error-between": [("a", 410_000), ("syn", 0), ("b", 412_000)],
+}
+CONTEXT_CASES: list[tuple[str, str, dict[str, str], str]] = [
+    ("below", "UserPromptSubmit", {}, "pass"),
+    ("below", "PostToolUse", {}, "pass"),
+    ("crosses", "UserPromptSubmit", {}, "412k"),
+    ("crosses", "PostToolUse", {}, "412k"),
+    ("above", "UserPromptSubmit", {}, "412k"),
+    ("above", "PostToolUse", {}, "pass"),
+    ("step", "PostToolUse", {}, "505k"),
+    ("side", "UserPromptSubmit", {}, "pass"),
+    ("bad", "PostToolUse", {}, "412k"),
+    ("padded", "PostToolUse", {}, "412k"),
+    ("one", "PostToolUse", {}, "412k"),
+    ("error-last", "UserPromptSubmit", {}, "412k"),
+    ("error-between", "PostToolUse", {}, "pass"),
+    ("crosses", "PostToolUse", {"agent_id": "x"}, "pass"),
+    ("crosses", "SessionStart", {}, "pass"),
+    ("missing", "UserPromptSubmit", {}, "pass"),
+]
+
+
+def context_transcript(name: str) -> str:
+    """The path of the fixture transcript `name` of CONTEXT_TRANSCRIPTS, written on first use."""
+    path = pathlib.Path(FIXTURE.name, f"transcript-{name}.jsonl")
+    if name in CONTEXT_TRANSCRIPTS and not path.exists():
+        lines: list[str] = []
+        for ident, tokens in CONTEXT_TRANSCRIPTS[name]:
+            if ident == "bad":
+                lines.append("{not json")
+            elif ident == "pad":
+                lines.append(
+                    json.dumps({"type": "user", "message": {"content": "x" * tokens}}, separators=(",", ":"))
+                )
+            else:
+                split = (2, 1000, tokens - 1002) if ident != "syn" else (0, 0, 0)
+                usage = dict(
+                    zip(
+                        ("input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens"),
+                        split,
+                        strict=True,
+                    )
+                )
+                record = {
+                    "type": "assistant",
+                    "isSidechain": ident == "side",
+                    "message": {
+                        "id": ident,
+                        "model": "<synthetic>" if ident == "syn" else "claude-opus-5-5",
+                        "usage": usage,
+                    },
+                }
+                lines.append(json.dumps(record, separators=(",", ":")))
+        path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return str(path)
+
+
+def context_answer(proc: subprocess.CompletedProcess[str] | None, event: str) -> str:
+    """'pass', the size of the context line as '<k>k', or what else the hook did."""
+    if proc is None:
+        return "timeout"
+    if proc.returncode != 0:
+        return f"exit {proc.returncode}"
+    if not proc.stdout.strip():
+        return "pass"
+    try:
+        out = json_value(proc.stdout, "the output")["hookSpecificOutput"]
+        text = out["additionalContext"]
+    except ValueError, KeyError, TypeError:
+        return "unreadable output"
+    match = re.match(r"Context: (\d+)k tokens, above the hand-off mark of 400k\.", text)
+    return f"{match.group(1)}k" if match and out["hookEventName"] == event else f"other output {text[:60]!r}"
+
+
 # `install-drift.py`, the `SessionStart` hook, runs against an installation that `harness install
 # --apply` makes in a fixture of its own, with the dummy profile and tree instructions in the
 # fixture. It decides nothing and exits 0: "quiet" is no output, "warn" a `systemMessage`.
@@ -361,9 +467,10 @@ ASK_USER = "Ask the user in chat"
 # profile, by oh-my-pi's matching (`src/tools/bash.ts` at v18.6.1): the first rule that matches
 # wins; `allow` matches only a whole command with no shell control character; `deny` and `prompt`
 # match the whole command or one of its segments. This port splits segments by text, so it stands
-# for oh-my-pi on the simple commands below and is no evidence for a compound one. `gh pr create`
-# runs unasked only with `-R` or `--repo` first, on an organisation of the profile; with the
-# repository later, elsewhere, or not named at all, it asks.
+# for oh-my-pi on the simple commands below and is no evidence for a compound one. No pattern
+# prompts for `gh pr create`: one with `-R` or `--repo` on an organisation of the profile is
+# allowed, and any other matches no pattern, so `yolo` runs it and the guard extension decides it
+# (the `gh pr create` records of the corpus).
 OMP_PATTERNS = [
     ("git push --force origin x", "deny"),
     ("sed -i s/a/b/ f", "deny"),
@@ -372,10 +479,12 @@ OMP_PATTERNS = [
     ("ls -la", "allow"),
     ("gh pr create --repo example-org/X.jl --title T --body-file b.md", "allow"),
     ("gh pr create -R example-user/X.jl --title T", "allow"),
-    ("gh pr create --title T --repo example-org/X.jl", "prompt"),
-    ("gh pr create --repo other/X.jl --title T", "prompt"),
-    ("gh pr create --title T --body-file b.md", "prompt"),
-    ("gh pr create", "prompt"),
+    ("gh pr create --title T --repo example-org/X.jl", "allow"),
+    ("gh pr create --title T -R example-org/X.jl", "allow"),
+    ("gh pr create --repo example-org/X.jl --title T 2>&1 | tail -3", "none"),
+    ("gh pr create --repo other/X.jl --title T", "none"),
+    ("gh pr create --title T --body-file b.md", "none"),
+    ("gh pr create", "none"),
 ]
 
 
@@ -1779,6 +1888,10 @@ def fixture():
     profiles.mkdir()
     for name, data in PROFILES.items():
         (profiles / name).write_bytes(data)
+    queries = pathlib.Path(FIXTURE.name, "gh")
+    queries.mkdir()
+    for name, data in GH_QUERIES.items():
+        (queries / name).write_bytes(data)
 
 
 def drift(env, payload="{}"):
@@ -2628,6 +2741,26 @@ def payload_cases():
     total += 1
     wrong += logged != 2
     print(f"{'ok ' if logged == 2 else 'BAD'} exp 2 got {logged}  [prompt-lo]  lines logged")
+    for name, event, fields, expected in CONTEXT_CASES:
+        payload = json.dumps(
+            {"hook_event_name": event, "transcript_path": context_transcript(name), **fields}
+        )
+        got = context_answer(call(CONTEXT, payload), event)
+        total += 1
+        wrong += got != expected
+        mark = "ok " if got == expected else "BAD"
+        print(f"{mark} exp {expected} got {got}  [context  ]  {name} {event} {fields or ''}")
+    for payload in (
+        "not json at all",
+        "",
+        "[1]",
+        '{"hook_event_name":"UserPromptSubmit","transcript_path":7}',
+    ):
+        got = context_answer(call(CONTEXT, payload), "UserPromptSubmit")
+        total += 1
+        wrong += got != "pass"
+        mark = "ok " if got == "pass" else "BAD"
+        print(f"{mark} exp pass got {got}  [context  ]  payload {payload!r}")
     for payload in WORKTREE_CASES:
         got = run(WORKTREE, payload)
         total += 1

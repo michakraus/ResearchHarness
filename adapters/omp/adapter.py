@@ -61,9 +61,10 @@ matches any text, as Claude Code's does. Two forms of Claude Code's have no dire
 suffix `:*` of a prefix rule renders to `*` after the same prefix, and a bare `Bash` to `*`;
 `bash_patterns` lists each such entry.
 `deny` and `prompt` also match each segment of a compound command, and `allow` only a whole
-command, so no rule is split, and `bash.allowCompoundCommands` stays off. The rules of OMP_LAST
-follow: they ask for a command that matches no rule of the template, which Claude Code asks for
-and `yolo` runs.
+command, so no rule is split, and `bash.allowCompoundCommands` stays off. A command that matches
+no rule runs under `yolo`. The guard extension decides the commands that must not run so, such as
+a `gh pr create` that names no repository, which it refuses, or one outside the own organisations,
+which it blocks with the reason to ask the user.
 
 THE MODELS. oh-my-pi reads the model tables that it shares with OpenCode, with the keys of [omp]
 over them (profile.model_tables), so that its agents run on the models that OpenCode's run on.
@@ -120,10 +121,6 @@ SETTINGS = REPO / "settings" / "settings.proposal.json"
 GUARD_PATHS = REPO / "adapters" / "opencode" / "plugins" / "guard-paths.json"
 # The template's lists, in the order oh-my-pi must see them, with oh-my-pi's approval for each.
 APPROVAL = [("deny", "deny"), ("ask", "prompt"), ("allow", "allow")]
-# The patterns that follow the template's, after every `allow`: a command that no rule matches
-# runs unasked under `yolo`, where Claude Code asks. `gh pr create` with no `-R` or `--repo` is
-# such a command, and it opens a pull request in whatever repository the checkout names.
-OMP_LAST = [("gh pr create*", "prompt")]
 
 # The configuration overlay that the install writes, beside oh-my-pi's own config.yml.
 OVERLAY = "harness.yml"
@@ -159,9 +156,9 @@ KAIMON_URL = "http://127.0.0.1:2828/"
 KAIMON_TOKEN = "~/.config/kaimon/auth-token"
 # oh-my-pi cuts an MCP request after its server's `timeout` in milliseconds, 30 s when none is
 # set (`mcp/timeout.ts`; `OMP_MCP_TIMEOUT_MS` holds over both). Kaimon moves an eval that takes
-# longer than about 30 s to the background and answers with its id, so a call ends well inside
-# this timeout.
-KAIMON_TIMEOUT_MS = 120_000
+# longer than KAIMON_GATE_PROMOTE_AFTER, 240 s in launchagents/kaimon.plist, to the background and
+# answers with its id, so a call ends inside this timeout.
+KAIMON_TIMEOUT_MS = 300_000
 # The tiers, the keys of `models` in models.toml; the model of DEFAULT_TIER is also the
 # default model, `modelRoles.default`.
 TIERS = frontmatter.TIERS
@@ -286,7 +283,7 @@ def render_config(
         "tools": {"approvalMode": "yolo", "approval": {"eval": "deny", "edit": "allow", "write": "allow"}},
         "bash": {
             "allowCompoundCommands": False,
-            "patterns": [{"match": match, "approval": approval} for match, approval in patterns + OMP_LAST],
+            "patterns": [{"match": match, "approval": approval} for match, approval in patterns],
         },
         "modelRoles": {"default": models.tiers[DEFAULT_TIER]},
         "retry": {
@@ -1452,15 +1449,14 @@ def omp_cases(case, fresh, run):
     )
 
     # The patterns are the template's Bash entries, rendered with the profile: deny, then ask as
-    # prompt, then allow, each in the template's order, then OMP_LAST. oh-my-pi takes the first
-    # rule that matches, so this order is Claude Code's precedence.
+    # prompt, then allow, each in the template's order, and nothing after them. oh-my-pi takes the
+    # first rule that matches, so this order is Claude Code's precedence.
     expected = [
         {"match": r[len("Bash(") : -1], "approval": approval}
         for action, approval in (("deny", "deny"), ("ask", "prompt"), ("allow", "allow"))
         for r in permissions[action]
         if r.startswith("Bash(")
     ]
-    expected += [{"match": "gh pr create*", "approval": "prompt"}]
 
     def rendered():
         try:
@@ -1481,7 +1477,6 @@ def omp_cases(case, fresh, run):
     oc = {a: sum(1 for _, x in emitted["bash"] if x == a) - own.count(a) for a in ("deny", "ask")}
     counted = {
         a: sum(1 for p in got if isinstance(p, dict) and p.get("approval") == b)
-        - sum(1 for _, x in OMP_LAST if x == b)
         for a, b in (("deny", "deny"), ("ask", "prompt"))
     }
     case(
@@ -1718,14 +1713,14 @@ def omp_agent_cases(case, fresh, run, agent):
     case(
         lambda: (
             rendered == sorted([s.name for s in sources] + [f"{s}.md" for s in seats])
-            and len(sources) == 22
+            and len(sources) == 24
             and seats
         ),
-        f"--apply renders one oh-my-pi agent per agent of agents/, 22, and one per council seat: {rendered}",
+        f"--apply renders one oh-my-pi agent per agent of agents/, 24, and one per council seat: {rendered}",
     )
     case(
         lambda: {s.stem: differences(s) for s in sources} == {s.stem: [] for s in sources},
-        "each of the 22 agents has its name, its description, its tools mapped by the table, its model and "
+        "each of the 24 agents has its name, its description, its tools mapped by the table, its model and "
         "its effort as thinking-level from [omp], its skills as autoloadSkills, and its body, with an Under "
         "oh-my-pi section where it uses a Claude Code mechanism: "
         + "; ".join(f"{s.stem} {differences(s)}" for s in sources if differences(s))[:1500],
@@ -1814,7 +1809,7 @@ def omp_agent_cases(case, fresh, run, agent):
             "kaimon": {
                 "type": "http",
                 "url": url,
-                "timeout": 120000,
+                "timeout": 300000,
                 "headers": {"Authorization": f"!printf 'Bearer %s' \"$(cat {token})\""},
             }
         }
@@ -1827,6 +1822,24 @@ def omp_agent_cases(case, fresh, run, agent):
     case(
         lambda: mcp == want and f'"url": "{url}"' in oc and f"{{file:{token}}}" in oc,
         f"mcp.json holds the Kaimon entry alone, over HTTP, with the URL and the token file of opencode.jsonc: {mcp}",
+    )
+    # An `ex` call that Kaimon holds up to its promotion threshold ends inside the request timeout.
+    promote = [
+        re.findall(
+            r"(?:<key>KAIMON_GATE_PROMOTE_AFTER</key>\s*<string>|^Environment=KAIMON_GATE_PROMOTE_AFTER=)(\d+)",
+            (REPO / unit).read_text(),
+            re.MULTILINE,
+        )
+        for unit in ("launchagents/kaimon.plist", "systemd/kaimon.service")
+    ]
+    case(
+        lambda: (
+            promote[0] == promote[1]
+            and len(promote[0]) == 1
+            and int(promote[0][0]) * 1000 < KAIMON_TIMEOUT_MS
+        ),
+        f"the KAIMON_GATE_PROMOTE_AFTER of kaimon.plist and kaimon.service, {promote}, is one value in seconds "
+        f"below the request timeout of {KAIMON_TIMEOUT_MS} ms",
     )
     try:
         config = omp_config(agent / OVERLAY)
