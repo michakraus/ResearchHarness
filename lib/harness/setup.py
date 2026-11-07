@@ -31,7 +31,9 @@ directory with `opencode`); the packages; the pinned releases; the vendor instal
 `harness install --apply`, `git config core.hooksPath .githooks` in the clone,
 `harness trust --apply` with the `claude` frontend once Claude Code has written `~/.claude.json`
 (before that, the step by hand), the jobs with the `jobs` component, without the autocommit job
-where the profile has no `claude_remote`, the Kaimon token with the `julia` component, which with
+where the profile has no `claude_remote`, and on macOS with the Seatbelt profile of the Kaimon and
+julia-update jobs written into ~/.config/research-harness/sandbox/ before each one's plist
+(`jobsandbox.py`), the Kaimon token with the `julia` component, which with
 the jobs waits up to TOKEN_READS s for the key of the server that they start, and
 `harness doctor`. A tool of
 TOOLS belongs to every machine or to one component or frontend. A tool that is installed and meets
@@ -684,7 +686,8 @@ def trust(machine: Machine, env: Mapping[str, str]) -> Action:
 
 def job_steps(machine: Machine, loaded: profile_module.Profile, env: Mapping[str, str], result: Plan) -> None:
     """The jobs, as the dotfiles kit's services step does them: the two copies in ~/.local/bin,
-    then the launch agents or the systemd user units, rendered and loaded. Without a
+    then the launch agents or the systemd user units, rendered and loaded; on macOS each job of
+    jobsandbox.JOBS has its Seatbelt profile rendered into SANDBOX before its plist. Without a
     `claude_remote`, no launch agent or unit of the autocommit job is rendered or loaded, because
     launchd loads every plist of ~/Library/LaunchAgents at the next login; a line by hand names
     the key."""

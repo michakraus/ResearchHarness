@@ -1,16 +1,16 @@
 # The probes of the Kaimon server under its Seatbelt profile, sandbox/daemon.toml rendered by
 # `harness render sandbox/kaimon.sb`. A session runs them through Kaimon's `ex` after
-# `harness setup --apply` has written the profile and the server has restarted under it:
+# `harness setup` has written the profile and the server has restarted under it:
 #
 #     include(joinpath(homedir(), "Research", "Harness", "sandbox", "probe-daemon.jl"))
 #     ProbeDaemon.run_all()
 #
 # Each probe returns `:allowed`, or the name of the exception class that the attempt raised, as a
 # Symbol: never a file's content. `run_all` returns one `name => result` pair per probe, the
-# positive probes first. Under the profile, every positive probe gives `:allowed` and every
-# negative probe `:SystemError` or an `IOError` class; the two of `lsopen` and `appleevent` give
-# `:ProcessFailedException`. A write probe deletes what it created; the probe of ~/.zshrc opens
-# the file to append and writes nothing.
+# positive probes first. The profile is at work when every positive probe gives `:allowed`, `metal`
+# included, and every negative probe `:SystemError` or an `IOError` class, `lsopen` and
+# `appleevent` `:ProcessFailedException`. A write probe deletes what it created; the probe of
+# ~/.zshrc opens the file to append and writes nothing.
 #
 # Each probe takes the home directory as its argument, so that `harness test` runs every probe
 # against a scratch tree (lib/harness/jobsandbox.py).

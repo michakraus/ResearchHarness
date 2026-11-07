@@ -46,7 +46,9 @@ Without the table, every frontend and every component is chosen and `develop` is
 value, an unknown name and a repeated one exit 2, and so does a `develop` at the top level, with
 the step that moves it into `[setup]`.
 `render` of the settings template also generates its network rules from `settings/network.toml`
-and the overlay `network.toml` beside the profile (`network.py`).
+and the overlay `network.toml` beside the profile (`network.py`). `render` of `sandbox/<job>.sb`,
+a path that names no file, prints the Seatbelt profile of the job `kaimon` or `julia-update`, with
+the profile's `home` and `harness` (`jobsandbox.py`).
 
 `leaks` also searches the repository, not the renders, for a name of the research tree: every
 directory below a `repository_roots` entry, read when it runs, and every `org` entry. It matches

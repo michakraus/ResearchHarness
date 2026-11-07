@@ -623,10 +623,16 @@ def render_cases(case: Case, root: pathlib.Path, policy: DaemonPolicy) -> None:
     )
     for label, body in (
         ("fails", "exit 1"),
+        ("fails after it prints a path", f"echo {TEMP}; exit 1"),
         ("prints nothing", "exit 0"),
         ("prints a relative path", "echo T"),
+        ("is not on the PATH", None),
     ):
-        stub(body)
+        if body is None:
+            getconf_stub.unlink()
+            env["PATH"] = str(stubs)
+        else:
+            stub(body)
         p = harness(REPO / "sandbox" / "kaimon.sb")
         case(
             f"a getconf that {label} ends the render with exit 2 and one line: {p.stderr.strip()!r}",
