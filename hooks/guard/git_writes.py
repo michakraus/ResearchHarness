@@ -24,8 +24,9 @@ repository with `git` in the call's working directory, the payload's `cwd`.
     default branch when an argument after `push` names `main`, `master` or the branch that
     `refs/remotes/origin/HEAD` names as its target (`<branch>`, `+<branch>`, `<src>:<branch>`,
     each also with `refs/heads/` or `heads/`). It names no branch, and can reach a default one,
-    with `--all`, `--branches` or `--mirror`, with no refspec after the remote, or with a refspec
-    whose target is `HEAD`, `@` or empty, or that holds a glob, `$` or a backtick. The value of
+    with no refspec after the remote (as with `--all` or `--mirror`, which `git` takes with no
+    refspec only), or with a refspec whose target is `HEAD`, `@` or empty, or that holds a glob,
+    `$` or a backtick. The value of
     `-o`, `--push-option`, `--repo`, `--receive-pack` or `--exec` is no refspec.
 
 The check finds the subcommand as `git` does, after its global options. It takes a `worktree
@@ -71,8 +72,6 @@ JOINS = re.compile(r"[\"']|\\\n?")
 # A branch name the check reads; anything else asks.
 BRANCH = re.compile(r"^(?!-)(?!HEAD$)[A-Za-z0-9._/-]+$")
 DEFAULTS = frozenset({"main", "master"})
-# The options of `git push` that push branches that no refspec names.
-SPREAD = frozenset({"--all", "--branches", "--mirror"})
 # The options of `git push` that take the next word as their value.
 VALUED = frozenset({"-o", "--push-option", "--repo", "--receive-pack", "--exec"})
 LEASE = "--force-with-lease"
@@ -276,12 +275,9 @@ def write_of(words: list[str]) -> tuple[str, int, list[str]] | None:
 
 def unnamed_target(arguments: list[str]) -> str | None:
     """The argument through which a lease push with `arguments` can reach a branch that it does not
-    name, or None: `--all`, `--branches` or `--mirror`; no refspec after the remote (the text "no
-    refspec"); or a refspec whose target is `HEAD`, `@` or empty, or that holds a glob, `$` or a
+    name, or None: no refspec after the remote (the text "no refspec"), as with `--all` or
+    `--mirror`; or a refspec whose target is `HEAD`, `@` or empty, or that holds a glob, `$` or a
     backtick. The value of an option of VALUED is no refspec."""
-    spread = next((argument for argument in arguments if argument in SPREAD), None)
-    if spread is not None:
-        return spread
     positional: list[str] = []
     for index, argument in enumerate(arguments):
         if not argument.startswith("-") and (index == 0 or arguments[index - 1] not in VALUED):

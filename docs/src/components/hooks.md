@@ -231,8 +231,8 @@ check answers both ways.
   --force-with-lease origin main`. The check reads the target of each argument after `push`:
   `<branch>`, `+<branch>` and `<src>:<branch>`, each also with `refs/heads/` or `heads/`, which
   `git` reads as `refs/heads/`. A lease push that names no branch can reach a default one, so it
-  is refused too: `--all`, `--branches`, `--mirror`, no refspec after the remote, or a refspec
-  whose target is `HEAD`, `@` or empty, or that holds a glob, `$` or a backtick.
+  is refused too: no refspec after the remote, as with `--all` or `--mirror`, or a refspec whose
+  target is `HEAD`, `@` or empty, or that holds a glob, `$` or a backtick.
 
 The check allows only a command that is one `git` call, with no operator, no `cd` and no option
 before the subcommand. It finds the subcommand after the global options of `git`. Any other form
