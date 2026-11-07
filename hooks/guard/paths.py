@@ -24,6 +24,7 @@ sites ask for it. Above the reads, `go` walks a (start `Place`, word, mode) once
 absolute path text once in each mode, so a walk that every check and every reading asks for steps
 once. `contents` reads the text of a file once per process, as the path list of a frontend, and
 `regular_text` that of a regular file only, as the query file of a `gh api graphql` call.
+`entries` lists a directory once per process, as the gate files of Kaimon.
 """
 
 import functools
@@ -228,6 +229,13 @@ def regular_text(path: str) -> str | None:
         return contents(path) if Path(path).is_file() else None
     except OSError, UnicodeDecodeError:
         return None
+
+
+@functools.cache
+def entries(path: str) -> tuple[str, ...]:
+    """The names in the directory `path`, sorted, listed once per process; an `OSError` when it
+    cannot be listed, such as a `FileNotFoundError` when it does not exist."""
+    return tuple(sorted(entry.name for entry in Path(path).iterdir()))
 
 
 @functools.cache

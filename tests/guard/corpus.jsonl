@@ -392,6 +392,24 @@
 {"tool": "mcp__kaimon__ex", "stdin": {"tool_name": "mcp__kaimon__manage_repl", "tool_input": {"command": "shutdown", "session": "a1b2c3d4"}}, "decision": "pass"}
 {"tool": "mcp__kaimon__ex", "stdin": {"tool_name": "mcp__kaimon__check_eval", "tool_input": {"eval_id": "e1f2a3b4"}}, "decision": "pass"}
 {"tool": "mcp__kaimon__ex", "stdin": {"tool_name": "mcp__kaimon__start_session", "tool_input": {"project_path": "/x"}}, "decision": "pass"}
+{"tool": "mcp__kaimon__ex", "stdin": {"tool_name": "mcp__kaimon__ex", "tool_input": {"e": "1 + 1", "ses": "deadbeef"}}, "decision": "deny"}
+{"tool": "mcp__kaimon__ex", "stdin": {"tool_name": "mcp__kaimon__ex", "tool_input": {"e": "1 + 1", "ses": "0badc0de"}}, "decision": "deny"}
+{"tool": "mcp__kaimon__ex", "stdin": {"tool_name": "mcp__kaimon__ex", "tool_input": {"e": "1 + 1", "ses": "a1b2"}}, "decision": "pass"}
+{"tool": "mcp__kaimon__ex", "stdin": {"tool_name": "mcp__kaimon__ex", "tool_input": {"e": "1 + 1", "ses": "c0ffee00"}}, "decision": "pass"}
+{"tool": "mcp__kaimon__ex", "stdin": {"tool_name": "mcp__kaimon__ex", "tool_input": {"e": "1 + 1", "ses": "badf00d0"}}, "decision": "pass"}
+{"tool": "mcp__kaimon__ex", "stdin": {"tool_name": "mcp__kaimon__ex", "tool_input": {"e": "1 + 1", "ses": " a1b2c3d4 "}}, "decision": "deny"}
+{"tool": "mcp__kaimon__ex", "stdin": {"tool_name": "mcp__kaimon__ex", "tool_input": {"e": "1 + 1", "ses": "tcp-127.0.0.1:9000"}}, "decision": "pass"}
+{"tool": "mcp__kaimon__ex", "stdin": {"tool_name": "mcp__kaimon__ex", "tool_input": {"e": "1 + 1", "ses": "a1b2c3d4", "session": "a1b2c3d4"}}, "decision": "deny"}
+{"tool": "mcp__kaimon__ex", "stdin": {"tool_name": "mcp__kaimon__manage_repl", "tool_input": {"command": "shutdown", "session": "deadbeef"}}, "decision": "pass"}
+{"tool": "mcp__kaimon__ex", "stdin": {"tool_name": "mcp__kaimon__type_info", "tool_input": {"type_expr": "Int", "session": "a1b2c3d4"}}, "decision": "pass"}
+{"tool": "mcp__kaimon__ex", "stdin": {"tool_name": "mcp__kaimon__type_info", "tool_input": {"type_expr": "Int", "session": "deadbeef"}}, "decision": "deny"}
+{"tool": "mcp__kaimon__ex", "stdin": {"tool_name": "mcp__kaimon__type_info", "tool_input": {"type_expr": "Int", "ses": "a1b2c3d4"}}, "decision": "deny"}
+{"tool": "mcp__kaimon__ex", "stdin": {"tool_name": "mcp__kaimon__type_info", "tool_input": {"type_expr": "Int"}}, "decision": "pass"}
+{"tool": "mcp__kaimon__ex", "stdin": {"tool_name": "mcp__kaimon__run_tests", "tool_input": {"project_path": "/x"}}, "decision": "pass"}
+{"tool": "mcp__kaimon__ex", "stdin": {"tool_name": "mcp__kaimon__check_eval", "tool_input": {"eval_id": "e1f2a3b4", "session": "a1b2c3d4"}}, "decision": "deny"}
+{"tool": "mcp__kaimon__ex", "stdin": {"tool_name": "mcp__kaimon__start_session", "tool_input": {"project_path": "/x", "ses": "a1b2c3d4"}}, "decision": "deny"}
+{"tool": "mcp__kaimon__ex", "stdin": {"tool_name": "mcp__kaimon__ping", "tool_input": {}}, "decision": "pass"}
+{"tool": "mcp__kaimon__ex", "stdin": {"tool_name": "mcp__kaimon__some_new_tool", "tool_input": {"ses": "deadbeef"}}, "decision": "pass"}
 {"tool": "mcp__kaimon__ex", "stdin": {"tool_name": "mcp__other__ex", "tool_input": {"e": "1"}}, "decision": "pass"}
 {"tool": "mcp__kaimon__ex", "stdin": {"tool_name": "mcp__kaimon__ex", "tool_input": "e"}, "decision": "deny", "differs": "The guard denies a Kaimon payload whose tool_input is no object; kaimon-session.py let it through."}
 {"tool": "mcp__kaimon__ex", "stdin": {"tool_name": "mcp__kaimon__ex", "tool_input": {"e": "1"}}, "decision": "deny"}
@@ -687,6 +705,13 @@
 {"frontend": "antigravity", "tool": "call_mcp_tool", "args": {"ServerName": "kaimon", "ToolName": "ex", "Arguments": "{"}, "decision": "deny", "bypass": null}
 {"frontend": "antigravity", "tool": "call_mcp_tool", "args": {"ServerName": "kaimon", "ToolName": "manage_repl", "Arguments": {"command": "restart", "session": "abcd1234"}}, "decision": "ask", "bypass": null}
 {"frontend": "antigravity", "tool": "call_mcp_tool", "args": {"ServerName": "kaimon", "ToolName": "ex", "Arguments": {"e": "1", "session": "abcd1234"}}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "call_mcp_tool", "args": {"ServerName": "kaimon", "ToolName": "ex", "Arguments": {"e": "1", "ses": "deadbeef"}}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "call_mcp_tool", "args": {"ServerName": "kaimon", "ToolName": "type_info", "Arguments": {"type_expr": "Int", "session": "abcd1234"}}, "decision": "ask", "bypass": null}
+{"frontend": "antigravity", "tool": "call_mcp_tool", "args": {"ServerName": "kaimon", "ToolName": "type_info", "Arguments": {"type_expr": "Int", "session": "deadbeef"}}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "call_mcp_tool", "args": {"ServerName": "kaimon", "ToolName": "type_info", "Arguments": "{\"type_expr\": \"Int\", \"ses\": \"abcd1234\"}"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "call_mcp_tool", "args": {"ServerName": "kaimon", "ToolName": "check_eval", "Arguments": {"eval_id": "e1f2a3b4", "ses": "abcd1234"}}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "call_mcp_tool", "args": {"ServerName": "kaimon", "ToolName": "check_eval"}, "decision": "ask", "bypass": null}
+{"frontend": "antigravity", "tool": "call_mcp_tool", "args": {"ServerName": "kaimon", "ToolName": "manage_repl", "Arguments": {"command": "shutdown", "session": "deadbeef"}}, "decision": "ask", "bypass": null}
 {"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "ls -l ~/.gitconfig", "BypassSandbox": true}, "decision": "ask", "bypass": false}
 {"frontend": "antigravity", "tool": "multi_replace_file_content", "args": {"TargetFile": "~/.claude/skills/build-part/SKILL.md"}, "decision": "deny", "bypass": null, "differs": "The guard maps multi_replace_file_content onto the edit action, with TargetFile as its path, so the edit and ask lists apply to it as to replace_file_content (K87); the old hook checked it against the deny list alone."}
 {"frontend": "antigravity", "tool": "multi_replace_file_content", "args": {"TargetFile": "~/.gemini/config/skills/new-skill/SKILL.md"}, "decision": "force_ask", "bypass": null, "differs": "The guard maps multi_replace_file_content onto the edit action, with TargetFile as its path, so the edit and ask lists apply to it as to replace_file_content (K87); the old hook checked it against the deny list alone."}
@@ -890,6 +915,12 @@
 {"frontend": "omp", "tool": "mcp__kaimon_manage_repl", "input": {"command": "shutdown"}, "cwd": "@@OMPHOME@@/Research", "decision": "deny"}
 {"frontend": "omp", "tool": "mcp__kaimon_manage_repl", "input": {"command": "shutdown", "session": "a1b2c3d4"}, "cwd": "@@OMPHOME@@/Research", "decision": "pass"}
 {"frontend": "omp", "tool": "mcp__kaimon_check_eval", "input": {"eval_id": "e1f2a3b4"}, "cwd": "@@OMPHOME@@/Research", "decision": "pass"}
+{"frontend": "omp", "tool": "mcp__kaimon_ex", "input": {"e": "1 + 1", "ses": "deadbeef"}, "cwd": "@@OMPHOME@@/Research", "decision": "deny"}
+{"frontend": "omp", "tool": "mcp__kaimon_ex", "input": {"e": "1 + 1", "session": "a1b2c3d4"}, "cwd": "@@OMPHOME@@/Research", "decision": "deny"}
+{"frontend": "omp", "tool": "mcp__kaimon_manage_repl", "input": {"action": "shutdown", "ses": "a1b2c3d4"}, "cwd": "@@OMPHOME@@/Research", "decision": "deny"}
+{"frontend": "omp", "tool": "mcp__kaimon_type_info", "input": {"type_expr": "Int", "session": "a1b2c3d4"}, "cwd": "@@OMPHOME@@/Research", "decision": "pass"}
+{"frontend": "omp", "tool": "mcp__kaimon_type_info", "input": {"type_expr": "Int", "session": "deadbeef"}, "cwd": "@@OMPHOME@@/Research", "decision": "deny"}
+{"frontend": "omp", "tool": "mcp__kaimon_check_eval", "input": {"eval_id": "e1f2a3b4", "ses": "a1b2c3d4"}, "cwd": "@@OMPHOME@@/Research", "decision": "deny"}
 {"frontend": "omp", "tool": "write", "input": {"path": "agent://CriticP13a", "content": "Your round is done."}, "cwd": "@@OMPHOME@@/Research", "agent": "sub", "decision": "deny"}
 {"frontend": "omp", "tool": "write", "input": {"path": " AGENT://SuiteP16a", "content": "Run the suite."}, "cwd": "@@OMPHOME@@/Research", "agent": "sub", "decision": "deny"}
 {"frontend": "omp", "tool": "write", "input": {"path": "agent://CriticP34b", "content": "Write the report."}, "cwd": "@@OMPHOME@@/Research", "agent": "main", "decision": "pass"}
@@ -951,6 +982,10 @@
 {"frontend": "opencode", "tool": "kaimon_ex", "input": {"e": "1", "ses": "a1b2c3d4"}, "decision": "pass"}
 {"frontend": "opencode", "tool": "kaimon_manage_repl", "input": {"command": "shutdown"}, "decision": "deny"}
 {"frontend": "opencode", "tool": "kaimon_check_eval", "input": {"eval_id": "e1f2a3b4"}, "decision": "pass"}
+{"frontend": "opencode", "tool": "kaimon_ex", "input": {"e": "1", "ses": "deadbeef"}, "decision": "deny"}
+{"frontend": "opencode", "tool": "kaimon_type_info", "input": {"type_expr": "Int", "session": "a1b2c3d4"}, "decision": "pass"}
+{"frontend": "opencode", "tool": "kaimon_type_info", "input": {"type_expr": "Int", "ses": "a1b2c3d4"}, "decision": "deny"}
+{"frontend": "opencode", "tool": "kaimon_check_eval", "input": {"eval_id": "e1f2a3b4", "session": "a1b2c3d4"}, "decision": "deny"}
 {"frontend": "opencode", "tool": "shell", "input": {"command": "git status"}, "local": {"allow": "x"}, "covers": ["lists"], "decision": "deny"}
 {"frontend": "opencode", "tool": "shell", "input": {"command": "cat /etc/hosts"}, "local": {"deny": ["/etc/**"]}, "covers": ["lists"], "decision": "deny"}
 {"frontend": "opencode", "tool": "shell", "input": {"command": "git status"}, "local": {"deny": ["/etc/**"]}, "decision": "pass"}

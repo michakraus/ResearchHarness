@@ -56,7 +56,7 @@ SHELL: tuple[Check, ...] = (
 TABLE: tuple[tuple[re.Pattern[str], tuple[Check, ...]], ...] = (
     (re.compile(r"Bash"), SHELL),
     (re.compile(r"mcp__ccd_directory__.*|EnterWorktree|ExitWorktree"), (directory_scope.check,)),
-    (re.compile(r"mcp__kaimon__ex|mcp__kaimon__manage_repl"), (kaimon_session.check,)),
+    (re.compile(r"mcp__kaimon__.*"), (kaimon_session.check,)),
 )
 
 # The neutral names of Claude Code's own worktree tools; an MCP tool's is `<server>.<tool>`.

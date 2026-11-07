@@ -40,7 +40,7 @@ page groups the hooks: first the guard package and its checks, then `edit-scope.
 
 The guard is one program in `hooks/guard/` that decides a tool call before it runs. Claude Code
 runs it as a `PreToolUse` hook on the matchers `Bash`,
-`mcp__ccd_directory__.*|EnterWorktree|ExitWorktree` and `mcp__kaimon__ex|mcp__kaimon__manage_repl`,
+`mcp__ccd_directory__.*|EnterWorktree|ExitWorktree` and `mcp__kaimon__.*`,
 with the command `<python> ~/.claude/hooks/guard --from claude || exit 2`. The `Bash` matcher runs
 `rtk hook claude` first, then the guard. Antigravity runs its copy as a `PreToolUse` hook on every
 tool call, with the command `<python> ~/.gemini/config/hooks/guard --from antigravity`;
@@ -244,16 +244,33 @@ is a path. A `git archive` to stdout passes.
 
 ### The Kaimon check
 
-`kaimon_session.py` refuses a Kaimon call that names no session: Claude Code's
-`mcp__kaimon__ex` and `mcp__kaimon__manage_repl`, Antigravity's `call_mcp_tool` calls to `kaimon`
-for `ex` and `manage_repl`, oh-my-pi's `mcp__kaimon_ex` and `mcp__kaimon_manage_repl`, and
-OpenCode's `kaimon_ex` and `kaimon_manage_repl`.
+`kaimon_session.py` decides every Kaimon call: Claude Code's `mcp__kaimon__<tool>`, Antigravity's
+`call_mcp_tool` calls to `kaimon`, oh-my-pi's `mcp__kaimon_<tool>` and OpenCode's
+`kaimon_<tool>`.
 
-An `ex` call needs `ses`, and a `manage_repl` call needs `session`. Without the key, Kaimon uses
-the session that the agent is bound to, or otherwise the only one connected, which can be another
-agent's. `ex` ignores an unknown parameter, so the check also refuses an `ex` with `session` in
-place of `ses`. `check_eval` takes only the `eval_id` of its job, so no table names it for the
-check. The message names the rule of `skills/build-part/evidence.md`.
+Each Kaimon tool takes its session key under one name, or under none: `ex` takes `ses`, the tools
+that address a session, such as `manage_repl`, `type_info` and `run_tests`, take `session`, and
+the others, such as `check_eval`, `ping` and `start_session`, take neither. Kaimon ignores a
+parameter that a tool does not take and then uses the session that the agent is bound to, or
+otherwise the only one connected, which can be another agent's. So the check refuses three calls:
+
+- a key under a name that the tool does not take, such as `session` on `ex` or `ses` on
+  `manage_repl`; the message names the tool's own key;
+- an `ex` without `ses`, and a `manage_repl` without `session`;
+- a key that names no live session.
+
+A session is live when its gate's file `<cache>/sock/<session id>.json` exists and the process of
+its `pid` runs; the key is a prefix of the session id. The cache is `$KAIMON_CACHE_DIR`, else
+`$XDG_CACHE_HOME/kaimon`, else `~/.cache/kaimon`, as KaimonGate resolves it. Kaimon removes the
+file when the session shuts down or when it reaps a gone one, and a process that dies first leaves
+it behind. Kaimon finds a gate only through its file, so a key without one names no session that
+Kaimon routes. The socket files are no evidence, since Kaimon leaves them behind when a session
+ends. The check reads the files at each call and keeps nothing. It passes when it cannot tell: no
+directory, a file that cannot be read or holds no integer `pid`, a remote gate's key `tcp-…`.
+Under WSL, Kaimon also finds the gates of the Windows side, through files in a directory that the
+check does not read, so the check refuses their keys. `manage_repl` is not checked for a live
+session, because its `shutdown` removes a session whose process has gone. A tool that no table of
+the check names passes. The messages name the rule of `skills/build-part/evidence.md`.
 
 ### The path list and oh-my-pi's own rows
 

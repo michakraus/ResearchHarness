@@ -44,10 +44,15 @@ Where a hook or a helper says "always use me first", that claim is scoped to its
 not to the session. Verify a helper actually ran: a tool that silently fell back to grep is not the
 tool you asked for, and a green result from a helper that did nothing is worse than an error.
 
-**Start one Kaimon session per project, and reuse it.** When it does not answer — a caller
-timeout, "stalled", a job that stays "running" — report that, and do not start another one: a
-Kaimon server that has started many sessions loses replies and hangs new ones, and each new start
-adds to it. Shut down a session you started when you are done with it.
+**One Kaimon session per tree, and reuse it.** A tree is a checkout or a worktree. Call `ping`
+first: when it lists a live session for your tree that is not private to another agent, pass its
+key. Keep the session for all your probes, and shut it down when you are done, not between probes.
+When the session does not answer — a caller timeout, "stalled", "disconnected", "No session
+matched", a job that stays "running" — or `start_session` times out twice, or Kaimon is not
+connected when your session starts, do not start another session: run the code in a fresh process,
+`julia --startup-file=no <file>`, and report the failure. A Kaimon server that has started many
+sessions loses replies and hangs new ones, and each new start adds to it. Never call `exit()` in
+`ex`, and run code that loads PythonCall in a fresh process: each one ends the shared process.
 
 ## Never edit files through the shell
 

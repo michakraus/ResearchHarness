@@ -1978,7 +1978,7 @@ def layer_cases(check, tmp):
         lambda: (
             by_matcher.get("Bash") == ["rtk hook claude", guard]
             and by_matcher.get("mcp__ccd_directory__.*|EnterWorktree|ExitWorktree") == [guard]
-            and by_matcher.get("mcp__kaimon__ex|mcp__kaimon__manage_repl") == [guard]
+            and by_matcher.get("mcp__kaimon__.*") == [guard]
             and sum(c == guard for c in rendered) == 3
         ),
         f"the Bash group runs rtk hook claude and the guard, and the directory and Kaimon groups the guard, "
