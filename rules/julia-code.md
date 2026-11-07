@@ -143,6 +143,7 @@ like a definition to any text search, and a fifth of this tree is written that w
 |:--|:--|
 | what methods exist, and where — in a package that may not load | `Harness/scripts/julia-methods.jl <package-dir> <name>`. The first argument is a **path** |
 | which method actually **runs** for these arguments | Kaimon `search_methods` on a warm session. Nothing else answers this |
+| which methods take this **type** — the helpers that exist before you write one | Kaimon `search_methods` with the type as the query, which runs `methodswith(T)`. It omits the methods of `T`'s supertypes: for those, `methodswith(T; supertypes = true)` through `ex` |
 | who calls this, and is it dead — where the package loads | `julia-callers.jl` on that session. It sees through qualified definitions |
 | anything spanning all the repositories | Kaimon `grep_code`, with `path` set to an absolute directory. It is the cross-repository tool and **needs no session**, only the server; each hit carries its enclosing function or struct |
 
