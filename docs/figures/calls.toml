@@ -11,9 +11,11 @@
 #
 # The model and the effort of each node come from its source's frontmatter and from
 # examples/models.toml, never from this file. A caller that spawns one callee at two efforts has
-# two entries. One spawn has no entry: build-part's of part-builder and part-critic for a
-# repository with neither manifest, which the figures cannot draw without crossing edges; the
-# entries of build-reviewed draw that pair.
+# two entries. Two spawns have no entry, because the figures cannot draw them without crossing
+# edges: build-part's of part-builder and part-critic for a repository with neither manifest,
+# which the entries of build-reviewed draw; and editor's of changelog-scribe. With that entry, the
+# figure of every edge puts editor between julia-pr-shepherd and julia-builder in one column, and
+# all three spawn changelog-scribe and other agents, so two of their edges must cross.
 
 [[call]]
 caller = "build-part"
@@ -145,9 +147,3 @@ caller = "editor"
 callee = "literature-scout"
 at = "agents/editor.md:73"
 label = "new bibliography entries"
-
-[[call]]
-caller = "editor"
-callee = "changelog-scribe"
-at = "agents/editor.md:83"
-label = "the entry"
