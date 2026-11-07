@@ -2699,6 +2699,19 @@ def node_tree(version: str, extra: Sequence[tarfile.TarInfo] = ()) -> bytes:
     return data.getvalue()
 
 
+def flat_tree() -> bytes:
+    """A .tar.xz that holds bin/node, bin/npm and bin/npx and a lib/ directory at its top, with no
+    top-level directory."""
+    data = io.BytesIO()
+    with tarfile.open(fileobj=data, mode="w:xz") as tar:
+        tar.addfile(member("lib/README"), io.BytesIO(b"x"))
+        for program in NODE:
+            info = member(f"bin/{program}")
+            info.mode = 0o755
+            tar.addfile(info, io.BytesIO(b"x"))
+    return data.getvalue()
+
+
 def member(name: str, link: str = "") -> tarfile.TarInfo:
     """A tar member `name`: a file of one byte, or a symbolic link to `link`."""
     info = tarfile.TarInfo(name)
@@ -2723,7 +2736,8 @@ def tree_cases(case: Case, tmp: pathlib.Path) -> None:
         ),
         "an absolute link": node_tree("24.11.1", [member("node-v24.11.1-linux-x64/bin/evil", "/etc/passwd")]),
     }
-    files = {"/good.tar.xz": good, "/newer.tar.xz": newer} | {
+    flat = flat_tree()
+    files = {"/good.tar.xz": good, "/newer.tar.xz": newer, "/flat.tar.xz": flat} | {
         f"/escape{i}.tar.xz": data for i, data in enumerate(escapes.values())
     }
     moved = {"/a.tar.xz": "/good.tar.xz", "/c.tar.xz": "/a.tar.xz"}
@@ -2777,15 +2791,31 @@ def tree_cases(case: Case, tmp: pathlib.Path) -> None:
             == "v24.12.0\n",
         )
 
+        failure = install_tree(m, "node", NODE, release("newer.tar.xz", newer, "24.12.0"))
+        case(
+            f"the tree of the same version again replaces itself: {failure}",
+            ok=failure is None and (tree.parent / "24.12.0" / "bin" / "node").is_file(),
+        )
+
         m = machine()
         (m.home / ".local" / "bin").mkdir(parents=True)
         (m.home / ".local" / "bin" / "node").write_text("#!/bin/sh\necho v18.19.1\n", encoding="utf-8")
+        (m.home / ".local" / "bin" / "npm.part").write_text("left by a run that stopped\n", encoding="utf-8")
         failure = install_tree(m, "node", NODE, release("good.tar.xz", good))
         link = m.home / ".local" / "bin" / "node"
         case(
-            f"a node file in ~/.local/bin is replaced by the link, as a release replaces its program: "
-            f"{failure}",
-            ok=failure is None and link.is_symlink(),
+            f"a node file in ~/.local/bin is replaced by the link, as a release replaces its program, and a "
+            f"left .part file is no obstacle: {failure}",
+            ok=failure is None and link.is_symlink() and (m.home / ".local" / "bin" / "npm").is_symlink(),
+        )
+
+        m = machine()
+        failure = install_tree(m, "node", NODE, release("flat.tar.xz", flat))
+        case(
+            f"an archive with bin/ and lib/ at its top, and no top-level directory, is refused: {failure}",
+            ok=failure is not None
+            and not (m.home / ".local" / "bin").exists()
+            and not (m.home / ".local" / "share" / "research-harness" / "node").exists(),
         )
 
         bad = Release("24.11.1", f"{url}/good.tar.xz", hashlib.sha256(good + b"x").hexdigest())

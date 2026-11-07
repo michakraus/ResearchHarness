@@ -1247,6 +1247,14 @@ def python_cases(
             ("tools",),
             only=("Python",),
         )
+    case(
+        "python3 3.12.3 and a relative $RESEARCH_HARNESS_PYTHON",
+        {"Python": "FAIL", env_name: "FAIL"},
+        environment_at("3.14.8"),
+        ("tools",),
+        only=("Python",),
+        extra={"RESEARCH_HARNESS_PYTHON": "relative/env"},
+    )
 
 
 def status_cases(check, root, system_name):

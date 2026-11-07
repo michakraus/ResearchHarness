@@ -896,6 +896,14 @@ def old_cases(case: Callable[[Callable[[], object], str], None], tmp: pathlib.Pa
     )
 
     b, seen = box()
+    code, out, err, _ = b.run(GET, None, TIMEOUT, UV_PYTHON_DOWNLOADS="never", FAKE_UV="fail")
+    case(
+        lambda: code == 2 and len(err) == 1 and "the lock does not resolve" in err[0],
+        f"Python 3.14 or later: a sync that fails with UV_PYTHON_DOWNLOADS=never exits 2 with one line, as before: "
+        f"{code}, {err}",
+    )
+
+    b, seen = box()
     code, out, err, _ = b.run(GET, python, FAKE_UV="fail")
     case(
         lambda: code == 2 and len(err) == 1 and "the lock does not resolve" in err[0],
