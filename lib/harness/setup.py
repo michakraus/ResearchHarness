@@ -8,7 +8,9 @@
 A machine needs Python 3.14, uv, git, the clone and, on macOS, Homebrew before it. In a terminal,
 `setup` creates the profile from examples/profile.toml when there is none, asking only for the
 keys of REQUIRED, the keys with no default, with the example's value as the answer to an empty
-line; it asks for the frontends and the components from numbered lists, and for `develop`, y/N.
+line; a list is items separated by commas or a TOML list (`list_answer`). It asks for the
+frontends and the components from numbered lists, and for `develop`, y/N. Before each question it
+prints the question's explanation of EXPLAINED.
 It then shows the plan and runs it after y/N; the first step of that plan writes the answers into
 `[setup]` of the profile (`with_setup`), `develop` only where it is true. `--yes` reads `[setup]`,
 or the defaults of a profile without it, asks nothing and never writes the profile; without a
@@ -924,6 +926,55 @@ def kaimon_token(home: pathlib.Path) -> str | None:
 
 # ---------------------------------------------------------------------- the questions ----
 
+# The lines that `setup` prints before a question, the one place of their text: for each key of
+# REQUIRED, what it holds and whether its answer is the same on every machine that shares the
+# tree, in three lines at most; for the lists of frontends and components, what they are; for
+# each frontend and each component, its description in the list; and for `develop`, which machine
+# it is for. The explanations name no repository, organisation or person.
+EXPLAINED: dict[str, tuple[str, ...]] = {
+    "memory_project": (
+        "A label, not a path: Claude Code keeps the tree's memory in ~/.claude/projects/<label>/memory.",
+        "The same on every machine that shares one memory pool; usually the tree's path on the first",
+        "machine with each / replaced by -.",
+    ),
+    "tree_agents": (
+        "The directory of the tree instructions, which `harness install` copies into ~/.claude/.",
+        "The same on every machine when written with ~; an absolute path differs with the home directory.",
+    ),
+    "org": (
+        "The GitHub accounts and organisations, your own included, where a session may open and comment",
+        "on pull requests and issues without a prompt: GitHub names, letters, digits and hyphens.",
+        "The same on every machine.",
+    ),
+    "repository_roots": (
+        "The directories that hold the tree's repositories; `harness leaks` searches the harness for the",
+        "name of each directory below them. The same on every machine when written with ~.",
+    ),
+    "leak": (
+        "The strings that must never appear in the harness repository, such as user names and host",
+        "names; the item ~ stands for the path of the home directory.",
+        "Mostly the same on every machine; add the user and host names of each machine.",
+    ),
+    "frontends": ("The agent programs whose configuration `harness install` writes; chosen per machine.",),
+    "components": ("What `harness setup` installs and starts beside the frontends; chosen per machine.",),
+    "develop": (
+        "Only for a machine that changes the harness's own code: it adds the dev group of uv.lock, the",
+        "tools that check the harness's Python code, such as ruff and basedpyright. Chosen per machine.",
+    ),
+    "claude": ("Claude Code, Anthropic's agent in the terminal",),
+    "opencode": ("OpenCode, an open-source agent in the terminal",),
+    "omp": ("oh-my-pi, an agent in the terminal",),
+    "antigravity": ("Antigravity, Google's agent in a desktop app",),
+    "julia": ("juliaup, Julia, fatou, Kaimon and the Julia environment of the harness's scripts",),
+    "rtk": ("RTK, a proxy that shortens the output of shell commands",),
+    "jq": ("jq, the command-line JSON processor",),
+    "iterm": ("iTerm2, a terminal app, on macOS only",),
+    "jobs": ("Kaimon, the Julia update and the autocommit of ~/.claude, as background jobs",),
+    "dotfiles": ("chezmoi, which applies a repository of dotfiles",),
+}
+# The most lines that the explanation of a key of REQUIRED has.
+EXPLAINED_LINES = 3
+
 
 def ask_line(ask: Ask, question: str) -> str:
     """The answer to `question`; the end of the input, and an answer that is not valid UTF-8, exit 2.
@@ -946,10 +997,13 @@ def ask_line(ask: Ask, question: str) -> str:
 
 
 def pick(what: str, names: Sequence[str], current: Sequence[str], ask: Ask) -> tuple[str, ...]:
-    """The names of `names` that the user picks by their numbers; an empty line keeps `current`."""
+    """The names of `names` that the user picks by their numbers; an empty line keeps `current`.
+    The list gives the explanation of `what` and the description of each name (EXPLAINED)."""
     print(f"The {what}:")
+    for line in EXPLAINED[what]:
+        print(line)
     for i, name in enumerate(names, 1):
-        print(f"  {i}. {name}")
+        print(f"  {i}. {name}: {EXPLAINED[name][0]}")
     keep = " ".join(str(names.index(n) + 1) for n in current) or "none"
     while True:
         answer = ask_line(ask, f"The {what} to set up, numbers separated by spaces, or none [{keep}]: ")
@@ -970,10 +1024,15 @@ def confirm(ask: Ask, question: str, *, default: bool = False) -> bool:
 
 
 def choose(current: profile_module.Setup, ask: Ask) -> profile_module.Setup:
-    """The `[setup]` that the user chooses, with `current` as the answer to each empty line."""
+    """The `[setup]` that the user chooses, with `current` as the answer to each empty line; the
+    explanation of `develop` (EXPLAINED) comes before its question."""
+    chosen_frontends = pick("frontends", frontends.FRONTENDS, current.frontends, ask)
+    components = pick("components", profile_module.COMPONENTS, current.components, ask)
+    for line in EXPLAINED["develop"]:
+        print(line)
     return profile_module.Setup(
-        frontends=pick("frontends", frontends.FRONTENDS, current.frontends, ask),
-        components=pick("components", profile_module.COMPONENTS, current.components, ask),
+        frontends=chosen_frontends,
+        components=components,
         develop=confirm(ask, "Develop the harness, with the dev group of uv.lock?", default=current.develop),
     )
 
@@ -992,22 +1051,65 @@ def toml_value(value: str | Sequence[str]) -> str:
 
 def new_profile(example: str, ask: Ask) -> str:
     """The text of `example` with each key of REQUIRED set to the user's answer, the example's own
-    value for an empty line. A list is given as items separated by commas; an empty item is
-    dropped."""
+    value for an empty line. Before each question, the key's explanation (EXPLAINED). A list is
+    read by `list_answer`, and an `org` item must be a GitHub account name (GITHUB_NAME); an
+    answer that either refuses prints one line and is asked again."""
     text = example
     for key, kind in profile_module.REQUIRED.items():
         line = re.search(rf"^{key} = (.*)$", text, re.MULTILINE)
         if line is None:
             raise HarnessError(f"examples/profile.toml has no line `{key} = …`")
-        answer = ask_line(ask, f"{key}, {kind} [{line.group(1)}]: ")
-        if answer:
-            value = toml_value(
-                answer
-                if kind == profile_module.STRING
-                else [a.strip() for a in answer.split(",") if a.strip()]
-            )
+        for row in EXPLAINED[key]:
+            print(row)
+        if kind == profile_module.STRING:
+            answer = ask_line(ask, f"{key}, {kind} [{line.group(1)}]: ")
+            value = toml_value(answer) if answer else None
+        else:
+            value = None
+            while answer := ask_line(
+                ask,
+                f"{key}, {kind}, separated by commas or as a TOML list; the answer replaces the example "
+                f"list [{line.group(1)}]: ",
+            ):
+                items = list_answer(answer, nonempty=kind == profile_module.NONEMPTY)
+                if (
+                    key == "org"
+                    and isinstance(items, tuple)
+                    and (bad := [i for i in items if not profile_module.GITHUB_NAME.fullmatch(i)])
+                ):
+                    items = f"the item {bad[0]!r} is no GitHub account name; give the account names"
+                if isinstance(items, tuple):
+                    value = toml_value(items)
+                    break
+                print(f"  {items}")
+        if value is not None:
             text = text[: line.start(1)] + value + text[line.end(1) :]
     return text
+
+
+def list_answer(answer: str, *, nonempty: bool) -> tuple[str, ...] | str:
+    """The items of the answer `answer` to a list question, or the line that refuses it. An answer
+    that starts with `[` is a TOML list of strings, read as the value of a key, and refused when an
+    item is empty; any other answer is items separated by commas, each with its spaces trimmed,
+    and an empty item dropped. An item that holds a bracket or a quote is refused, naming it, and
+    so is an answer with no item when `nonempty`."""
+    if answer.startswith("["):
+        try:
+            value = cast("dict[str, object]", tomllib.loads("v = " + answer))["v"]
+        except tomllib.TOMLDecodeError:
+            value = None
+        if not isinstance(value, list) or not all(isinstance(v, str) for v in cast("list[object]", value)):
+            return f"{answer!r} is no TOML list of strings; give one, or items separated by commas"
+        items = tuple(cast("list[str]", value))
+        if "" in items:
+            return f"{answer!r} holds an empty item; give the items without it"
+    else:
+        items = tuple(a.strip() for a in answer.split(",") if a.strip())
+    if bad := [item for item in items if any(c in item for c in "[]\"'")]:
+        return f"the item {bad[0]!r} holds a bracket or a quote; give the items without them"
+    if nonempty and not items:
+        return f"{answer!r} holds no item; give one item or more"
+    return items
 
 
 def with_setup(text: str, choice: profile_module.Setup) -> str:
@@ -2173,6 +2275,125 @@ def interactive_cases(case: Case, tmp: pathlib.Path, pins: Pins) -> None:
     )
 
 
+def explained(answers: Sequence[str]) -> tuple[list[tuple[str, str]], str]:
+    """`new_profile` of the example with `answers`: each question with the output printed since the
+    question before it, and the profile's text, or the message with which it exits 2."""
+    out, asker, seen = io.StringIO(), Asker(*answers), list[tuple[str, str]]()
+
+    def ask(question: str) -> str:
+        printed = out.getvalue()
+        seen.append((question, printed[sum(len(p) for _, p in seen) :]))
+        return asker(question)
+
+    with contextlib.redirect_stdout(out):
+        try:
+            text = new_profile(profile_module.DUMMY.read_text(encoding="utf-8"), ask)
+        except HarnessError as e:
+            text = f"exit 2: {e}"
+    return seen, text
+
+
+def question_cases(case: Case, tmp: pathlib.Path, pins: Pins) -> None:
+    """The explanation before each question, and the answers to a list question."""
+    names = (*frontends.FRONTENDS, *profile_module.COMPONENTS)
+    questions = ("frontends", "components", "develop")
+    missing = [n for n in (*profile_module.REQUIRED, *names, *questions) if not EXPLAINED.get(n)]
+    case(
+        f"EXPLAINED holds one explanation for each REQUIRED key, frontend and component, and for the "
+        f"lists and develop: missing {missing}",
+        ok=not missing and all(all(EXPLAINED[n]) for n in EXPLAINED),
+    )
+    long = [k for k in profile_module.REQUIRED if len(EXPLAINED.get(k, ())) > EXPLAINED_LINES]
+    long += [n for n in names if len(EXPLAINED.get(n, ())) > 1]
+    case(
+        f"each explanation of a REQUIRED key has at most three lines, and each frontend and component "
+        f"one: longer {long}",
+        ok=not long,
+    )
+
+    seen, _ = explained([""] * len(profile_module.REQUIRED))
+    before = [p.splitlines() for _, p in seen]
+    case(
+        f"before each question of new_profile, setup prints its key's explanation and nothing else: {before}",
+        ok=len(seen) == len(profile_module.REQUIRED)
+        and before == [list(EXPLAINED[k]) for k in profile_module.REQUIRED],
+    )
+    prompts = {q.split(",")[0]: q for q, _ in seen}
+    case(
+        f"the prompt of each list says that the answer replaces the example list: {prompts}",
+        ok=all(
+            ("replaces the example list" in q) == (profile_module.REQUIRED[k] != profile_module.STRING)
+            for k, q in prompts.items()
+        ),
+    )
+
+    # (a list key, an answer to it, the list that the profile holds after it, the item that a
+    # refusal names)
+    for key, answer, want, named in (
+        ("org", '["a", "b"]', ["a", "b"], ""),
+        ("org", "a, b", ["a", "b"], ""),
+        ("org", " a ,b,, ", ["a", "b"], ""),
+        ("leak", '["a,b", "c"]', ["a,b", "c"], ""),
+        ("org", '["a"', ["x"], '["a"'),
+        ("org", '"a"', ["x"], '"a"'),
+        ("org", "[1, 2]", ["x"], "[1, 2]"),
+        ("org", '[["a"]]', ["x"], '[["a"]]'),
+        ("org", '["a"] b', ["x"], '["a"] b'),
+        ("org", "[]", ["x"], "[]"),
+        ("org", ",, ,", ["x"], ",, ,"),
+        ("org", "a, b]", ["x"], "b]"),
+        ("org", "it's", ["x"], "it's"),
+        ("org", '["a\'b"]', ["x"], "a'b"),
+        ("leak", '["", "a"]', ["x"], '["", "a"]'),
+        ("leak", '[""]', ["x"], '[""]'),
+        ("org", "a, b_c", ["x"], "b_c"),
+        ("org", '["a", "-b"]', ["x"], "-b"),
+    ):
+        at = list(profile_module.REQUIRED).index(key)
+        answers = [""] * len(profile_module.REQUIRED)
+        answers[at : at + 1] = [answer, "x"] if named else [answer]
+        seen, text = explained(answers)
+        try:
+            got = cast("dict[str, object]", tomllib.loads(text)).get(key)
+        except tomllib.TOMLDecodeError:
+            got = text
+        asked = [q.split(",")[0] for q, _ in seen]
+        refusal = seen[at + 1][1].splitlines() if named and len(seen) > at + 1 else []
+        case(
+            f"the {key} answer {answer!r} gives {want}"
+            + (f", after one line that names {named!r} and the question again" if named else "")
+            + f": {got} {asked} {refusal}",
+            ok=got == want
+            and asked.count(key) == (2 if named else 1)
+            and len(asked) == len(profile_module.REQUIRED) + (1 if named else 0)
+            and (not named or (len(refusal) == 1 and repr(named) in refusal[0])),
+        )
+
+    out = io.StringIO()
+    asker = Asker("", "", "")
+    with contextlib.redirect_stdout(out):
+        choose(profile_module.Setup(), asker)
+    shown = out.getvalue().splitlines()
+    rows = [
+        f"  {i}. {name}: {EXPLAINED[name][0]}"
+        for group in (frontends.FRONTENDS, profile_module.COMPONENTS)
+        for i, name in enumerate(group, 1)
+    ]
+    case(
+        f"the lists of frontends and components give one description per name, and develop says what it "
+        f"is for, before its question: {shown}",
+        ok=all(r in shown for r in rows)
+        and all(line in shown for n in questions for line in EXPLAINED[n])
+        and shown[-len(EXPLAINED["develop"]) :] == list(EXPLAINED["develop"])
+        and len(asker.questions) == len(questions),
+    )
+
+    s = scratch(tmp, "explained-yes", MACOS_FAKES)
+    code, out_yes = attempt(s.machine(), s.options(), pins=pins)
+    said = [line for lines in EXPLAINED.values() for line in lines if line in out_yes]
+    case(f"--yes prints no explanation: {code} {said}", ok=code == "0" and not said)
+
+
 def token_cases(case: Case, tmp: pathlib.Path) -> None:
     """The Kaimon token: no config, no key, an existing token."""
     home = tmp / "token"
@@ -2587,6 +2808,7 @@ def selftest() -> tuple[int, int]:
         dry_run_cases(case, root, pins)
         release_cases(case, root)
         interactive_cases(case, root, pins)
+        question_cases(case, root, pins)
         token_cases(case, root)
         yes_cases(case, root, pins)
         header_cases(case)

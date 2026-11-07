@@ -72,7 +72,9 @@ other key is optional, and the table gives its value without the key.
 Every subcommand that reads the profile checks it first. An unknown key, a table other than
 `[setup]` among them, a missing required key, a value of the wrong type and an empty required list
 stop the subcommand with exit status 2. The message names the file, the key and, except for an
-unknown key, the type that the key takes. The retired keys `extra_domain`, `opencode_providers` and
+unknown key, the type that the key takes. An `org` entry that is no GitHub account name (letters,
+digits and single hyphens, 1 to 39 characters, not starting or ending with a hyphen) stops it too,
+and the message names the entry. The retired keys `extra_domain`, `opencode_providers` and
 `omp_providers` stop it too, and the message names the file that replaces each. A `develop` at the
 top level stops it as well, and the message says to move the line into
 [`[setup]`](#the-setup-table). `doctor` reports each of these as a FAIL of its `profile` check,
@@ -94,6 +96,30 @@ which quotes the message.
 | `protected_dir` | the directories below `home` that no session can edit, each as a path relative to `home`, such as `Nextcloud`. Optional: without it, none | `install`, in the settings template and the OpenCode configuration; `settings` |
 | `leak` | the strings that must never appear in the repository, such as your user name and the hosts of your institution. The item `~` stands for the path of your home directory, as each `~` of the profile does | `leaks` |
 | `[setup]` | the choices of this machine, a table with the keys of [The setup table](#the-setup-table). Optional: without it, every frontend and every component, and `develop` false | `install`, `doctor`, `setup` and `get develop` |
+
+## The questions of harness setup
+
+Without a profile, `harness setup` asks for each required key; in a terminal, it then asks for the
+frontends, the components and `develop`, also with a profile. Before each question it prints what
+the answer is, and whether the answer is the same on every machine that shares the research tree:
+
+| question | what it is | across machines |
+|:--|:--|:--|
+| `memory_project` | a label, not a path: Claude Code keeps the tree's memory in `~/.claude/projects/<label>/memory` | the same on every machine that shares one memory pool; usually the tree's path on the first machine, with each `/` replaced by `-` |
+| `tree_agents` | the directory of the tree instructions, which `harness install` copies into `~/.claude/` | the same when written with `~`; an absolute path differs with the home directory |
+| `org` | the GitHub accounts and organisations, your own included, where a session may open and comment on pull requests and issues without a prompt | the same |
+| `repository_roots` | the directories that hold the tree's repositories; `harness leaks` searches the harness for the name of each directory below them | the same when written with `~` |
+| `leak` | the strings that must never appear in the harness repository, such as user names and host names; the item `~` stands for the path of the home directory | mostly the same; add the user and host names of each machine |
+| frontends | the [agent](concepts.md#agent) programs whose configuration `harness install` writes: `claude` is Claude Code, `opencode` OpenCode, `omp` oh-my-pi and `antigravity` the Antigravity desktop app | per machine |
+| components | what `harness setup` installs and starts beside the frontends: `julia` (juliaup, Julia, fatou, Kaimon and the Julia environment of the scripts), `rtk`, `jq`, `iterm` (macOS only), `jobs` (Kaimon, the Julia update and the autocommit of `~/.claude` as background jobs) and `dotfiles` (chezmoi) | per machine |
+| `develop` | only for a machine that changes the harness's own code: it adds the `dev` group of `uv.lock`, the tools that check the Python code, such as ruff and basedpyright | per machine |
+
+An empty answer keeps the example's value. A list takes either items separated by commas, such as
+`a, b`, or a TOML list, such as `["a", "b"]`, and the answer replaces the example's list. An item
+that holds a bracket or a quote, a TOML list that does not parse, holds a value that is not a
+string or holds an empty string, an answer with no item, and an `org` item that is no GitHub
+account name are refused with one line, and the question comes again.
+`harness setup --yes` asks nothing and prints none of this.
 
 ## The setup table
 
