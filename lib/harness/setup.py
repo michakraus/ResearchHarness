@@ -12,7 +12,8 @@ line; a list is items separated by commas or a TOML list (`list_answer`). It ask
 frontends and the components from numbered lists, and for `develop`, y/N. With the component
 `jobs` and a profile without `claude_remote`, it then asks for that URL (`ask_remote`), an empty
 line for none. Before each question it prints the question's explanation of EXPLAINED.
-It then shows the plan and runs it after y/N; the first step of that plan writes the answers into
+It then shows the plan and runs it after y/N; a step of that plan, after the clone of ~/.claude
+alone, writes the answers into
 `[setup]` of the profile (`with_setup`), `develop` only where it is true, and a `claude_remote`
 answer as the profile's first line (`with_remote`). `--yes` reads `[setup]`,
 or the defaults of a profile without it, asks nothing and never writes the profile; without a
@@ -22,10 +23,11 @@ tables are copied from examples/models.toml. `with_setup` writes only a table un
 header line, and checks its edit with tomllib: a `setup` of the profile that it cannot write in
 place, such as an inline table or dotted keys, exits 2 and names the table to write.
 
-The plan (`plan`), in this order: the directories that `harness install` needs (the tree
-instructions, each `repository_roots` entry, and the OpenCode directory with `opencode`); the
-packages; the pinned releases; the vendor installers; then, with the `jobs` component and a
-`claude_remote`, `git clone` of it into a ~/.claude that holds no `.git` (`cloned`);
+The plan (`plan`), in this order: with the `jobs` component and a `claude_remote`, `git clone` of
+it into a ~/.claude that holds no `.git` (`cloned`), before any step that may write below
+~/.claude; the writes of the profile and the model tables; the directories that
+`harness install` needs (the tree instructions, each `repository_roots` entry, and the OpenCode
+directory with `opencode`); the packages; the pinned releases; the vendor installers;
 `harness install --apply`, `git config core.hooksPath .githooks` in the clone,
 `harness trust --apply` with the `claude` frontend once Claude Code has written `~/.claude.json`
 (before that, the step by hand), the jobs with the `jobs` component, without the autocommit job
@@ -53,8 +55,8 @@ jobs on Linux, the line that turns on lingering, unless `loginctl show-user` rea
 puts programs into and that the PATH that `setup` started with lacks (`missing_path`). In a
 terminal, without `--yes`, with zsh as the login shell and a ~/.zshrc that is no symlink, `setup`
 asks y/N to append that line to ~/.zshrc, after the comment PATH_COMMENT; a yes makes it a step of
-the plan. An unknown system, a Linux that is not Ubuntu and an unknown architecture exit 2 and
-name it.
+the plan, which appends nothing where ~/.zshrc holds the line already. An unknown system, a Linux
+that is not Ubuntu and an unknown architecture exit 2 and name it.
 
 The run goes step by step. A failed step prints its output and exits 2; a second run plans again
 and starts from the first step, and each step skips what is already done. After the last step
@@ -274,12 +276,14 @@ class Step:
 class Plan:
     """The steps in their order, the lines that the user does by hand, `harness doctor`, which
     comes after both, and the `export PATH=…` line of the directories that the PATH lacks, "" when
-    it lacks none."""
+    it lacks none. `head` counts the steps before which `setup` puts the writes of the profile and
+    the model tables: the clone of ~/.claude, or none."""
 
     doctor: Doctor
     steps: list[Step] = dataclasses.field(default_factory=list[Step])
     by_hand: list[str] = dataclasses.field(default_factory=list[str])
     path_line: str = ""
+    head: int = 0
 
 
 # --------------------------------------------------------------------- the pinned releases ----
@@ -446,6 +450,13 @@ def plan(
         "RESEARCH_HARNESS_MODELS": str(options.models),
     }
     result = Plan(doctor(machine, env))
+    # The clone runs first, while a clean ~/.claude is still missing or empty: a later step, such
+    # as a vendor installer, may write below it.
+    claude = machine.home / ".claude"
+    url = loaded.claude_remote
+    if "jobs" in choice.components and url and not (claude / ".git").exists():
+        result.steps.append(Step(f"git clone {url} {claude}", lambda: cloned(machine, url, claude)))
+    result.head = len(result.steps)
     directories_step(machine, choice, loaded, result)
     tools = [(t, state(machine, t, pins.minimum.get(t.name, ()))) for t in chosen(choice, machine.system)]
     needed = [(t, s) for t, s in tools if s != "ok"]
@@ -621,14 +632,9 @@ def harness_steps(
     result: Plan,
 ) -> None:
     """The steps after the installs, in their order, up to `harness doctor`, which the plan holds
-    apart; each harness step runs with `env`. With the jobs and a `claude_remote`, the clone of
-    ~/.claude (`cloned`) comes first where ~/.claude holds no `.git`."""
+    apart; each harness step runs with `env`."""
     steps = result.steps
     jobs = "jobs" in choice.components
-    claude = machine.home / ".claude"
-    url = loaded.claude_remote
-    if jobs and url and not (claude / ".git").exists():
-        steps.append(Step(f"git clone {url} {claude}", lambda: cloned(machine, url, claude)))
     steps.append(
         Step("harness install --apply", command(machine, [*machine.harness, "install", "--apply"], env))
     )
@@ -1418,7 +1424,7 @@ def setup(machine: Machine, options: Options, ask: Ask, *, terminal: bool, pins:
             )
         )
     the_plan = plan(machine, choice, loaded, options, pins)
-    the_plan.steps[:0] = before
+    the_plan.steps[the_plan.head : the_plan.head] = before
     zshrc = machine.home / ".zshrc"
     if (
         the_plan.path_line
@@ -1443,8 +1449,12 @@ def setup(machine: Machine, options: Options, ask: Ask, *, terminal: bool, pins:
 
 
 def appended(zshrc: pathlib.Path, line: str) -> str | None:
-    """Append PATH_COMMENT and `line` to `zshrc`, after an empty line where it holds text."""
+    """Append PATH_COMMENT and `line` to `zshrc`, after an empty line where it holds text; nothing
+    where a line of `zshrc` is `line` already, so that a second run appends no second block."""
     try:
+        held = zshrc.read_text(encoding="utf-8", errors="replace") if zshrc.is_file() else ""
+        if line in (x.strip() for x in held.splitlines()):
+            return None
         gap = "\n" if zshrc.is_file() and zshrc.stat().st_size else ""
         with zshrc.open("a", encoding="utf-8") as f:
             f.write(f"{gap}{PATH_COMMENT}\n{line}\n")
@@ -2882,6 +2892,8 @@ def clone_cases(case: Case, tmp: pathlib.Path, pins: Pins) -> None:
             and (not claude.exists() if name == "missing" else claude.is_dir() and not any(claude.iterdir())),
         )
 
+    clone_first_cases(case, tmp, pins, bare)
+
     # The key without the jobs component is unused.
     s, m = remote("clone-no-jobs", bare)
     none = profile_module.Setup(frontends=(), components=())
@@ -2889,6 +2901,47 @@ def clone_cases(case: Case, tmp: pathlib.Path, pins: Pins) -> None:
     case(
         f"claude_remote without the jobs component: no clone step and no error: {lines}",
         ok=not any(line.startswith(("git clone", "exit 2")) for line in lines),
+    )
+
+
+def clone_first_cases(case: Case, tmp: pathlib.Path, pins: Pins, bare: pathlib.Path) -> None:
+    """The clone of ~/.claude from `bare` is the first step: before a vendor installer that writes
+    below ~/.claude, and before the writes of the profile and the model tables."""
+    # A vendor installer that writes below ~/.claude, as the Claude Code installer may write
+    # ~/.claude/downloads: the clone comes first, while ~/.claude is still missing.
+    s, m = remote_machine(tmp, "clone-installer", bare)
+    claude = s.home / ".claude"
+    (s.root / "installer.sh").write_text(
+        '/bin/mkdir -p "$HOME/.claude/downloads" "$HOME/.local/bin"\n'
+        'printf "#!/bin/sh\\necho 9.9.9\\n" > "$HOME/.local/bin/claude"\n'
+        '/bin/chmod 755 "$HOME/.local/bin/claude"\n',
+        encoding="utf-8",
+    )
+    s.fake("curl", f'case "$*" in *claude.ai*) /bin/cat "{s.root / "installer.sh"}";; esac; exit 0')
+    with_claude = profile_module.Setup(frontends=("claude",), components=("jobs",))
+    chosen_profile(s, with_claude)
+    lines = shows(m, with_claude, s.options(), pins)
+    clone = f"git clone {REMOTE} {claude}"
+    code, out = attempt(m, s.options(), pins=pins)
+    case(
+        f"an installer that writes ~/.claude/downloads: the clone is the first step, and the run "
+        f"clones claude_remote: {lines[:3]} {code} {out[-200:]!r}",
+        ok=lines[:1] == [clone]
+        and any("claude.ai" in line for line in lines)
+        and code == "0"
+        and (claude / ".git").is_dir()
+        and (claude / "downloads").is_dir()
+        and (claude / "CLAUDE.md").read_text(encoding="utf-8") == "# mine\n",
+    )
+    # The clone comes before the steps that write the profile and the model tables, too.
+    s, m = remote_machine(tmp, "clone-models", bare)
+    s.options().models.unlink()
+    code, out = attempt(m, s.options(dry_run=True), pins=pins)
+    planned = [x.split(". ", 1)[1] for x in out.splitlines() if re.match(r"  \d+\. ", x)]
+    case(
+        f"the clone is the first step, before the copy of the model tables: {code} {planned[:3]}",
+        ok=code == "0"
+        and planned[:2] == [f"git clone {REMOTE} {s.home / '.claude'}", f"cp {MODELS} {s.options().models}"],
     )
 
 
@@ -3150,6 +3203,38 @@ def path_cases(case: Case, tmp: pathlib.Path, pins: Pins) -> None:
         and "harness setup" in PATH_COMMENT
         and PATH_BY_HAND + line not in out,
     )
+    # A second run from the same shell, whose PATH did not read ~/.zshrc again, answered y: the
+    # file already holds the line, so it holds one block.
+    code, _ = attempt(zsh, s.options(yes=False), Asker("", "", "", "y", "y"), terminal=True, pins=pins)
+    again_text = zshrc.read_text(encoding="utf-8")
+    case(
+        f"a second run answered y: ~/.zshrc holds one block: {code} {again_text!r}",
+        ok=code == "0" and again_text == text and again_text.count(PATH_COMMENT) == 1,
+    )
+    # A ~/.zshrc that holds the same line without the comment, indented: nothing is appended.
+    own = f"# mine\n  {line}\n"
+    zshrc.write_text(own, encoding="utf-8")
+    code, _ = attempt(zsh, s.options(yes=False), Asker("", "", "", "y", "y"), terminal=True, pins=pins)
+    case(
+        f"a ~/.zshrc that holds the line already, answered y: it is unchanged: {code}",
+        ok=code == "0" and zshrc.read_text(encoding="utf-8") == own,
+    )
+    # A ~/.zshrc that holds another export PATH line, or the line in a comment: the line is appended.
+    for other in ('export PATH="$HOME/bin:$PATH"\n', f"# {line}\n"):
+        zshrc.write_text(other, encoding="utf-8")
+        code, _ = attempt(zsh, s.options(yes=False), Asker("", "", "", "y", "y"), terminal=True, pins=pins)
+        case(
+            f"a ~/.zshrc that holds {other.strip()!r}, answered y: the line is appended: {code}",
+            ok=code == "0" and zshrc.read_text(encoding="utf-8") == f"{other}\n{PATH_COMMENT}\n{line}\n",
+        )
+    # No ~/.zshrc: the append creates it with the block alone.
+    zshrc.unlink()
+    code, _ = attempt(zsh, s.options(yes=False), Asker("", "", "", "y", "y"), terminal=True, pins=pins)
+    case(
+        f"no ~/.zshrc, answered y: the append creates it with the block alone: {code}",
+        ok=code == "0" and zshrc.read_text(encoding="utf-8") == f"{PATH_COMMENT}\n{line}\n",
+    )
+    zshrc.write_text(text, encoding="utf-8")
     # A shell that reads ~/.zshrc has the line's PATH: a second plan finds nothing missing.
     read = subprocess.run(
         ["/bin/sh", "-c", f'. "{zshrc}"; printf %s "$PATH"'],

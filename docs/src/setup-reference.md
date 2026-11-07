@@ -140,9 +140,10 @@ description per name, and whether this machine develops the harness (`develop`),
 machine that changes the harness's own code needs it. With the component `jobs` and a profile
 without the key `claude_remote`, it then asks for the URL of your `~/.claude` repository, which
 starts with `https://` or `git@`, after its explanation; an empty answer means no autocommit job,
-as [The jobs](#the-jobs) says. The first step of its plan writes the profile, or the answers into
-an existing profile: the table `[setup]`, and the line `claude_remote = …` at its top. When
-`models.toml` is missing beside the profile, the next step copies `examples/models.toml`.
+as [The jobs](#the-jobs) says. The first step of its plan, after the clone of `~/.claude` alone,
+writes the profile, or the answers into an existing profile: the table `[setup]`, and the line
+`claude_remote = …` at its top. When `models.toml` is missing beside the profile, the next step
+copies `examples/models.toml`.
 `harness setup --yes` asks nothing and writes no profile: it reads `[setup]` and `claude_remote`
 of the profile that is there.
 
@@ -947,15 +948,17 @@ profile must have `launchd_prefix`. On Linux, it renders the `systemd --user` un
 server and the two timers, and restarts them. It prints the lingering line under *By hand*, for an
 administrator, unless `loginctl show-user` reads `Linger=yes`.
 
-With the profile key `claude_remote`, a step before `harness install --apply` clones that
-repository into `~/.claude` with `git clone`, where `~/.claude` is missing or an empty directory;
-a `~/.claude` that holds `.git` gets no step. A `~/.claude` that holds files and is no git
-repository fails the step, which prints the lines that move it aside and clone. A clone that
-fails leaves nothing below `~/.claude`, and the step prints git's last line. Without
+With the profile key `claude_remote`, the first step of the plan clones that repository into
+`~/.claude` with `git clone`, where `~/.claude` is missing or an empty directory; a `~/.claude`
+that holds `.git` gets no step. The clone comes before every installer, because an installer can
+write below `~/.claude`. A `~/.claude` that holds files and is no git repository fails the step,
+which prints the lines that move it aside and clone. A clone that fails leaves nothing below
+`~/.claude`, and the step prints git's last line. Without
 `claude_remote`, `harness setup` renders and loads no launch agent, service or timer of the
 autocommit job, and prints a line under *By hand* that names the key; `harness doctor` then
 reports the autocommit job as `SKIP`. On macOS no plist is rendered at all, because launchd loads
-every plist of `~/Library/LaunchAgents` at the next login.
+every plist of `~/Library/LaunchAgents` at the next login. The script `claude-autocommit` is
+still copied into `~/.local/bin`, but its job is not enabled.
 
 **What it does.** The jobs are three: the Kaimon server, the Julia update job and the autocommit
 job of `~/.claude`. On macOS, launch agents run them: a launch agent is a job that launchd, the
@@ -1168,7 +1171,8 @@ export PATH="$HOME/.local/bin:$HOME/.juliaup/bin:$HOME/.julia/bin:$PATH"
 ```
 
 With zsh as your login shell, in a terminal and without `--yes`, it asks y/N to append the line to
-`~/.zshrc`, after the comment line `# The directories of the tools that harness setup installs`. A
+`~/.zshrc`, after the comment line `# The directories of the tools that harness setup installs`.
+A `~/.zshrc` that holds the line already gets no second copy, so a second run appends nothing. A
 `~/.zshrc` that is a symlink, such as one that chezmoi manages, is never written: the line is
 printed. With another shell, add the line to its startup file, `~/.bashrc` for bash.
 

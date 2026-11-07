@@ -315,9 +315,9 @@ commits that `origin/main` lacks. The `selftest` runs it on a scratch remote and
 
 The subcommand `harness setup [--yes] [--dry-run]`. It asks for the choices of `[setup]` in a
 terminal, or reads them with `--yes`, and makes one plan (`plan`) for the machine (`Machine`):
+first the clone of the profile's `claude_remote` into `~/.claude` with the jobs (`cloned`), then
 the directories that `install` needs, the Homebrew lines on macOS, or the apt line and the pinned
-releases of `setup/tools.toml` (`load_pins`) on Ubuntu, the vendor installers, then the clone
-of the profile's `claude_remote` into `~/.claude` with the jobs (`cloned`),
+releases of `setup/tools.toml` (`load_pins`) on Ubuntu, the vendor installers,
 `harness install --apply`, `core.hooksPath`, `harness trust --apply`, the jobs, the Kaimon token
 and `harness doctor`, and one `export PATH=…` line by hand for the directories that the starting
 `PATH` lacks (`missing_path`); `install`, `trust`, `render` and `doctor` each run in a child
