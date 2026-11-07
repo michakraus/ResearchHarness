@@ -22,7 +22,8 @@ the anchor is one `Place`, `work_tree` asks a directory once whether it holds a 
 a payload reads each (directory, name, mode) at most once however many checks, readings and call
 sites ask for it. Above the reads, `go` walks a (start `Place`, word, mode) once, and `place` an
 absolute path text once in each mode, so a walk that every check and every reading asks for steps
-once. `contents` reads the text of a file once per process, as the path list of a frontend.
+once. `contents` reads the text of a file once per process, as the path list of a frontend, and
+`entries` lists a directory once per process, as the gate files of Kaimon.
 """
 
 import functools
@@ -217,6 +218,13 @@ def contents(path: str) -> str:
     """The text of the file `path`, read once per process; an `OSError` or a `UnicodeDecodeError`
     when it cannot be read as UTF-8."""
     return Path(path).read_text(encoding="utf-8")
+
+
+@functools.cache
+def entries(path: str) -> tuple[str, ...]:
+    """The names in the directory `path`, sorted, listed once per process; an `OSError` when it
+    cannot be listed, such as a `FileNotFoundError` when it does not exist."""
+    return tuple(sorted(entry.name for entry in Path(path).iterdir()))
 
 
 @functools.cache

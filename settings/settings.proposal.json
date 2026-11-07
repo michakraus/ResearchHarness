@@ -717,7 +717,7 @@
         ]
       },
       {
-        "matcher": "mcp__kaimon__ex|mcp__kaimon__manage_repl",
+        "matcher": "mcp__kaimon__.*",
         "hooks": [
           {
             "type": "command",

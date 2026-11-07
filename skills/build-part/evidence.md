@@ -203,14 +203,16 @@ A probe in a fresh process pays for the process start, the package load and the 
 well under a second after its first run. **Probe in the session; write a file only for what must
 last.**
 
-1. **Start one session for your tree**: `start_session(project_path = <tree>)`. The builder's tree
+1. **Start one session for your tree, and reuse it**: `ping` first, and pass the key of a live
+   session of your tree that it lists; else `start_session(project_path = <tree>)`. The builder's tree
    is its worktree, where Revise reloads `src/` before each call. A critic's tree is a copy,
    `rsync -a --exclude=.git --exclude=.claude --exclude=.env --exclude='.env.*' <worktree>/ <round directory>/tree/`
    (the sandbox denies `.env` files, so a copy of one leaves a file that no one can remove): two critics
    judge one worktree at once, and one path has one session. A timeout of `start_session` does
    not stop the start: call `ping` before you call it again. **When `start_session` times out
-   twice, probe in a fresh process**, `julia --startup-file=no <probe file>`, and go on; a
-   session is a speed-up, not a precondition.
+   twice, when a call answers "disconnected" or "No session matched", or when Kaimon is not
+   connected, probe in a fresh process**, `julia --startup-file=no <probe file>`, and go on; a
+   session is a speed-up, not a precondition. Start no second session for the tree.
 2. **Load the test environment in a call of its own.** `TestEnv.activate()` alone fails in a
    session, because the package's project is active:
 

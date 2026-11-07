@@ -25,7 +25,8 @@ main agent's does not); with neither, the call names none, and a check that must
 path refuses it. The paths of a call are its arguments of PATH_KEYS; those of WIDE_KEYS, and the
 working directory that a `Cwd` names, are paths that the call reads below. Each tool of ACTIONS has
 its neutral action; `call_mcp_tool` is the `mcp` call `<ServerName>.<ToolName>`, whose `Arguments`,
-an object or the JSON text of one, a Kaimon `ex` or `manage_repl` call must hold; any other tool is
+an object or the JSON text of one, a Kaimon `ex` or `manage_repl` call must hold and any other
+Kaimon call may hold; any other tool is
 an `mcp` call by its own name, which only the path list checks.
 
 THE CHECKS: the path list, `guard-paths.json` two directories above this package, as
@@ -91,7 +92,8 @@ ACTIONS: dict[str, Action] = {
 # The arguments that hold a path, and those that hold a path below which the call reads.
 PATH_KEYS = ("Path", "AbsolutePath", "TargetFile", "SearchDirectory", "DirectoryPath")
 WIDE_KEYS = ("SearchPath",)
-# The Kaimon tools whose check reads `Arguments`.
+# The Kaimon tools whose call must hold `Arguments`; the check reads the `Arguments` of any Kaimon
+# call that holds them.
 KAIMON = "kaimon"
 KAIMON_TOOLS = ("ex", "manage_repl")
 
@@ -199,7 +201,8 @@ def call_of(name: str, args: dict[str, JsonValue], workspace: str | None) -> Cal
     server, tool = args.get("ServerName"), args.get("ToolName")
     if not isinstance(server, str) or not isinstance(tool, str):
         return Call("mcp", name, paths, cwd, "main", wide=wide)
-    arguments = kaimon_arguments(args) if server == KAIMON and tool in KAIMON_TOOLS else ()
+    held = server == KAIMON and (tool in KAIMON_TOOLS or "Arguments" in args)
+    arguments = kaimon_arguments(args) if held else ()
     return Call("mcp", f"{server}.{tool}", paths, cwd, "main", arguments, wide)
 
 

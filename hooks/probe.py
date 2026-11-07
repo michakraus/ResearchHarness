@@ -67,6 +67,33 @@ CWD = TOOL + "/hooks/"
 # fixture's git commands and the hooks' to the caller's repository. No `RESEARCH_HARNESS_PROFILE`
 # either: the guard would read the caller's profile in place of the fixture home's.
 CLEAN = {k: v for k, v in os.environ.items() if not k.startswith("GIT_") and k != "RESEARCH_HARNESS_PROFILE"}
+# Kaimon's cache, whose `sock/` the Kaimon check reads: the gate file of each key of LIVE_GATES
+# names this process, which runs for the whole run, and that of STALE_GATE a process that has
+# ended, as a session that died leaves it.
+KAIMON_CACHE = FIXTURE.name + "/kaimon"
+LIVE_GATES = ("a1b2c3d4", "abcd1234")
+STALE_GATE = "deadbeef"
+
+
+def ended_pid() -> int:
+    """The process id of a process that has ended."""
+    child = subprocess.Popen([sys.executable, "-c", "pass"])
+    child.wait(timeout=60)
+    return child.pid
+
+
+def gate_files() -> None:
+    """Write the gate file of each key of LIVE_GATES and STALE_GATE below KAIMON_CACHE."""
+    sock = pathlib.Path(KAIMON_CACHE, "sock")
+    sock.mkdir(parents=True)
+    for key, pid in (*((key, os.getpid()) for key in LIVE_GATES), (STALE_GATE, ended_pid())):
+        sid = f"{key}-0000-5000-8000-000000000000"
+        sock.joinpath(f"{sid}.json").write_text(json.dumps({"session_id": sid, "pid": pid}), encoding="utf-8")
+        sock.joinpath(f"{sid}.sock").touch()
+
+
+gate_files()
+CLEAN["KAIMON_CACHE_DIR"] = KAIMON_CACHE
 ENV = {**CLEAN, "HOME": HOME}
 # The profile of each fixture home, whose `org` list the `gh api` check reads: an own organisation
 # and an own account. A record's `profile` names another file in place of it, through
