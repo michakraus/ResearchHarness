@@ -5,7 +5,7 @@ at the start of a session. The frontend sends the event as JSON on standard inpu
 hook runs before a tool call and can refuse it: exit status 2 refuses the call and shows the hook's
 standard error to the model, and an `ask` decision on standard output shows a prompt to the user.
 The hooks of this page use the Claude Code events `PreToolUse`, `PostToolUse`, `SessionStart`,
-`PermissionRequest`, `WorktreeCreate` and `WorktreeRemove`.
+`UserPromptSubmit`, `PermissionRequest`, `WorktreeCreate` and `WorktreeRemove`.
 
 The sources are in `hooks/`. `harness install --apply` copies them to `~/.claude/hooks/`.
 Claude Code calls them through the `hooks` section of its settings, which
@@ -40,7 +40,7 @@ page groups the hooks: first the guard package and its checks, then `edit-scope.
 
 The guard is one program in `hooks/guard/` that decides a tool call before it runs. Claude Code
 runs it as a `PreToolUse` hook on the matchers `Bash`,
-`mcp__ccd_directory__.*|EnterWorktree|ExitWorktree` and `mcp__kaimon__ex|mcp__kaimon__manage_repl`,
+`mcp__ccd_directory__.*|EnterWorktree|ExitWorktree` and `mcp__kaimon__.*`,
 with the command `<python> ~/.claude/hooks/guard --from claude || exit 2`. The `Bash` matcher runs
 `rtk hook claude` first, then the guard. Antigravity runs its copy as a `PreToolUse` hook on every
 tool call, with the command `<python> ~/.gemini/config/hooks/guard --from antigravity`;
@@ -56,14 +56,14 @@ Antigravity, oh-my-pi and OpenCode also run the path-list check `path_list.py`, 
 frontend's `guard-paths.json`; Antigravity's table runs the lift check `sandbox_lift.py` on a shell
 call that it does not deny, which lifts a command out of the sandbox only where the line matches a
 closed grammar and Claude Code's sandbox rule lifts it. One module per check reads that call: the
-staging, write, sandbox, `gh api`, rm, archive, Kaimon and directory checks below. Each check gives
-`deny`, `ask`, `allow` or `pass` with a reason. The guard answers the first of `deny`, `ask`,
-`allow` and `pass` that a check gives, with that check's reason, in the form of the frontend: for
-Claude Code exit 2 with the reason on standard error for `deny`, a JSON decision for `ask` and
-`allow`, and no output for `pass`. A tool that the table does not name passes. oh-my-pi and
-OpenCode cannot ask the user from a plugin, so their tables answer an `ask` as a block whose
-reason tells the model to ask the user in chat; `plugin.py` holds what the two tables share: the
-reading of the message, the size check of the command and the answer.
+staging, write, sandbox, `gh api`, `gh pr create`, rm, archive, Kaimon and directory checks
+below. Each check gives `deny`, `ask`, `allow` or `pass` with a reason. The guard answers the
+first of `deny`, `ask`, `allow` and `pass` that a check gives, with that check's reason, in the
+form of the frontend: for Claude Code exit 2 with the reason on standard error for `deny`, a JSON
+decision for `ask` and `allow`, and no output for `pass`. A tool that the table does not name
+passes. oh-my-pi and OpenCode cannot ask the user from a plugin, so their tables answer an `ask`
+as a block whose reason tells the model to ask the user in chat; `plugin.py` holds what the two
+tables share: the reading of the message, the size check of the command and the answer.
 
 The directory check asks before a session leaves `~/Research`, or removes a worktree. A
 `change_directory` or `request_directory` call of the Claude desktop app, or an `EnterWorktree`
@@ -160,6 +160,17 @@ issue or a commit pass, so the review agents can post. A GraphQL query passes wh
 mutation, or when each mutation is a review or comment operation. Every other write gets an `ask`
 decision, and the user sees a prompt. An edit of an existing comment also asks.
 
+The check reads a GraphQL query where `gh` reads it: the text of `-f query=…`, which `gh` sends as
+it is; the file of `-F query=@<path>`; and the string `query` of the JSON object in the file of
+`--input <path>`. A relative path resolves against the call's working directory. A query that the
+check cannot read asks: a relative path in a call with no working directory, or in a command with
+a `cd`, `pushd` or `popd`; a file whose name a word of another part of the command holds, because
+that part can write the file before `gh` reads it, as `cp other.graphql q.graphql && gh api graphql
+-F query=@q.graphql` would; standard input (`-`); a path that names no regular file; a file that
+is not UTF-8; an `--input` that is no JSON object with a string `query`; and a call with more than
+one query. So write the query file in a call of its own. The check reads the file before `gh`
+runs, so a file that another process changes in between is not the file that it decided on.
+
 A Git Data write in one of the user's own organisations also passes: a POST to
 `repos/<owner>/<repo>/git/blobs`, `git/trees`, `git/commits` or `git/refs`. These calls make a new
 branch, as a `git push` of a new branch does. The `git/refs` endpoint only creates a ref. A PATCH
@@ -170,6 +181,29 @@ the profile once per process. A call with `--hostname` asks. The check fails clo
 profile is missing, cannot be read, is not UTF-8 TOML, or has no `org` list of strings, the write
 asks. Every frontend runs the guard with the user's `HOME` and environment, so each one finds the
 same profile.
+
+### The `gh pr create` check
+
+`gh_pr_create.py` decides a `gh pr create` by the repository that it names, on each shell call of
+every frontend. It finds each top-level `gh pr create` call and each call of its alias
+`gh pr new`, also after assignments such as `GH_REPO=…`, and reads every value of `-R` and
+`--repo`, in the forms `-R x`, `-Rx`, `-R=x`, `--repo x` and `--repo=x`, also at the end of a
+cluster of one-letter flags such as `-dR x`. The value of another flag that takes one, such as
+`--title`, is not a flag.
+
+A call with no `-R` or `--repo` is refused: `gh` then opens the pull request in the repository
+that the checkout or `GH_REPO` names, which the command does not show. The reason tells the agent
+to add `--repo <owner>/<repo>`. A call with a value that is not `<owner>/<repo>` of an own
+organisation asks: another owner, a value with a host, and any value when the profile gives no
+own organisation. The check reads every value, not only the last one that `gh` takes, so a second
+`--repo` cannot send the call elsewhere. A call whose every value names an own organisation
+passes, so the `allow` rules let it run: `gh pr create -R <org>/*` and `--repo <org>/*`, first or
+after other arguments. No `allow` rule names the alias `gh pr new`, so Claude Code asks for it.
+The own organisations are those of the `gh api` check.
+
+Under oh-my-pi, no pattern of `harness.yml` prompts for `gh pr create`, so the call runs under
+`yolo` also inside a pipe or after `&&`, and the guard extension refuses it or blocks it with the
+reason to ask the user.
 
 ### The rm check
 
@@ -210,16 +244,33 @@ is a path. A `git archive` to stdout passes.
 
 ### The Kaimon check
 
-`kaimon_session.py` refuses a Kaimon call that names no session: Claude Code's
-`mcp__kaimon__ex` and `mcp__kaimon__manage_repl`, Antigravity's `call_mcp_tool` calls to `kaimon`
-for `ex` and `manage_repl`, oh-my-pi's `mcp__kaimon_ex` and `mcp__kaimon_manage_repl`, and
-OpenCode's `kaimon_ex` and `kaimon_manage_repl`.
+`kaimon_session.py` decides every Kaimon call: Claude Code's `mcp__kaimon__<tool>`, Antigravity's
+`call_mcp_tool` calls to `kaimon`, oh-my-pi's `mcp__kaimon_<tool>` and OpenCode's
+`kaimon_<tool>`.
 
-An `ex` call needs `ses`, and a `manage_repl` call needs `session`. Without the key, Kaimon uses
-the session that the agent is bound to, or otherwise the only one connected, which can be another
-agent's. `ex` ignores an unknown parameter, so the check also refuses an `ex` with `session` in
-place of `ses`. `check_eval` takes only the `eval_id` of its job, so no table names it for the
-check. The message names the rule of `skills/build-part/evidence.md`.
+Each Kaimon tool takes its session key under one name, or under none: `ex` takes `ses`, the tools
+that address a session, such as `manage_repl`, `type_info` and `run_tests`, take `session`, and
+the others, such as `check_eval`, `ping` and `start_session`, take neither. Kaimon ignores a
+parameter that a tool does not take and then uses the session that the agent is bound to, or
+otherwise the only one connected, which can be another agent's. So the check refuses three calls:
+
+- a key under a name that the tool does not take, such as `session` on `ex` or `ses` on
+  `manage_repl`; the message names the tool's own key;
+- an `ex` without `ses`, and a `manage_repl` without `session`;
+- a key that names no live session.
+
+A session is live when its gate's file `<cache>/sock/<session id>.json` exists and the process of
+its `pid` runs; the key is a prefix of the session id. The cache is `$KAIMON_CACHE_DIR`, else
+`$XDG_CACHE_HOME/kaimon`, else `~/.cache/kaimon`, as KaimonGate resolves it. Kaimon removes the
+file when the session shuts down or when it reaps a gone one, and a process that dies first leaves
+it behind. Kaimon finds a gate only through its file, so a key without one names no session that
+Kaimon routes. The socket files are no evidence, since Kaimon leaves them behind when a session
+ends. The check reads the files at each call and keeps nothing. It passes when it cannot tell: no
+directory, a file that cannot be read or holds no integer `pid`, a remote gate's key `tcp-…`.
+Under WSL, Kaimon also finds the gates of the Windows side, through files in a directory that the
+check does not read, so the check refuses their keys. `manage_repl` is not checked for a live
+session, because its `shutdown` removes a session whose process has gone. A tool that no table of
+the check names passes. The messages name the rule of `skills/build-part/evidence.md`.
 
 ### The path list and oh-my-pi's own rows
 
@@ -318,6 +369,37 @@ code path exits with status 0, also when the hook cannot read the input or write
 ```bash
 echo '{"tool_name":"Bash","tool_input":{"command":"ls"}}' | LOG=$TMPDIR/p.jsonl ./prompt-log.py
 ```
+
+## `context-handoff.py`
+
+This hook tells a main session that its context has passed 400k tokens, and that the session hands
+off. Each model call reads the whole context again, so a long session pays for its size on every
+call. Claude Code runs the hook on `UserPromptSubmit` and, for every tool, on `PostToolUse`.
+
+The hook reads the size from the transcript that the event names: the input, cache-write and
+cache-read tokens of the last model call of the main chain. It reads the transcript from its end
+and stops at the second model call, so a transcript of 50 MB costs no more than a small one. A run
+takes about 0.1 s, nearly all of it the start of Python.
+
+At 400k tokens or more, the hook adds one line to the session's context. The line gives the size
+and tells the session to finish the current step, write the state of the work into the task file
+or a hand-off note, propose a new session with a short brief, and stop. On `UserPromptSubmit` the
+line comes with every prompt. On `PostToolUse` it comes only after the model call that passes
+400k, 500k, 600k and so on, so a long turn gets it once per 100k tokens, with each tool that this
+one model call runs. A call of a sub-agent gets no line: its caller limits its context. A record
+that Claude Code writes itself, such as an API error, has the model `<synthetic>` and counts as no
+model call.
+
+It blocks nothing and exits with status 0 for each input, also when it cannot read the input or
+the transcript. Test it:
+
+```bash
+echo '{"hook_event_name":"UserPromptSubmit","transcript_path":"'"$TMPDIR"'/t.jsonl"}' | ./context-handoff.py
+```
+
+The install gives this hook to Claude Code only. Antigravity's `PreToolUse` payload holds the call
+and the workspace paths, and no transcript; the guard extension of oh-my-pi and the plugins of
+OpenCode do not read the context size.
 
 ## `probe.py`
 

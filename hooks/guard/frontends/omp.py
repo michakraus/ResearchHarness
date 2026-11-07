@@ -20,9 +20,9 @@ reads below when `input.cwd` is given or the command recurses. `read` and `grep`
 a `grep` with none the working directory, and a `grep` reads below its path. `edit` edits each path
 that it names (edit_paths), and `write` writes `input.path` and the path of its hashline header
 (write_path). Each tool path is checked in every form that oh-my-pi may read (path_forms).
-`mcp__kaimon_ex` and `mcp__kaimon_manage_repl` are the `mcp` calls `kaimon.ex` and
-`kaimon.manage_repl`. The caller is `sub` when the agent's kind is `sub`, and a sub-agent's write
-to `agent://` is refused (agent_write). Every other tool passes.
+A Kaimon tool `mcp__kaimon_<tool>` is the `mcp` call `kaimon.<tool>`. The caller is `sub` when
+the agent's kind is `sub`, and a sub-agent's write to `agent://` is refused (agent_write). Every
+other tool passes.
 
 A message that the table cannot read is refused: bytes that are not UTF-8, a text that `jsonio`
 refuses, no object `event`, no string `toolName`, an `input` that is no object, a `bash` call
@@ -42,6 +42,7 @@ from typing import TextIO
 from guard import (
     HarnessError,
     gh_api_writes,
+    gh_pr_create,
     git_archive_output,
     kaimon_session,
     no_blind_stage,
@@ -73,8 +74,8 @@ OWN_READABLE: path_list.Rule = (
 )
 OWN_EDIT: path_list.Rule = (f"{OWN}/**", path_list.rule(f"{OWN}/**"), OWN.lower())
 READING = path_list.Reading(text_paths=True, cd_parts=True, segment_glob=True)
-# The Kaimon tools, by oh-my-pi's name, and their neutral names.
-KAIMON = {"mcp__kaimon_ex": "kaimon.ex", "mcp__kaimon_manage_repl": "kaimon.manage_repl"}
+# The prefix of oh-my-pi's name of a Kaimon tool.
+KAIMON = "mcp__kaimon_"
 FILE_TOOLS: dict[str, Action] = {"read": "read", "grep": "read", "edit": "edit", "write": "write"}
 AGENT = re.compile(r"\s*agent://", re.IGNORECASE)
 # A hashline header's tag: `#` and four hexadecimal digits at the end.
@@ -128,6 +129,7 @@ SHELL: tuple[Check, ...] = (
     no_blind_stage.check,
     no_shell_file_write.check,
     gh_api_writes.check,
+    gh_pr_create.check,
     rm_scope.check,
     git_archive_output.check,
     sandbox_semantics.work_tree_check,
@@ -241,9 +243,9 @@ def call_of(tool: str, tool_input: dict[str, JsonValue], cwd: str | None, caller
     does not name."""
     if tool == "bash":
         return shell_call(tool_input, cwd, caller)
-    if tool in KAIMON:
+    if tool.startswith(KAIMON):
         arguments = tuple((key, value) for key, value in tool_input.items() if isinstance(value, str))
-        return Call("mcp", KAIMON[tool], (), cwd, caller, arguments)
+        return Call("mcp", "kaimon." + tool.removeprefix(KAIMON), (), cwd, caller, arguments)
     action = FILE_TOOLS.get(tool)
     if action is None:
         return None

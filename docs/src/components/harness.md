@@ -570,9 +570,11 @@ script.
 The cases of scripts in `scripts/` that need no Julia. The module has no subcommand. It reads
 the critic's `rsync` copy from `skills/build-part/evidence.md` and `copy_command` from
 `scripts/run-tests.jl`, runs each on a fixture tree with a `.env`, a `.env.ts`, a `.git` and a
-`.claude`, and checks that the copy holds none of them. A control copy with no flag must hold the
-`.env.ts`. Then it runs `scripts/spec-gate.py` on a fixture task file and checks the verdict of
-each part: a part whose *Files* lie in two repositories is `SPANS`, unless its part tier is
+`.claude`, and checks that the copy holds none of them and holds each `env.ts`. A control copy
+with no flag must hold the `.env.ts`. Each copy must carry `--inplace`: without it, rsync writes
+the temporary copy of `env.ts` as `.env.ts.XXXXXX`, a name the sandbox denies. Then it runs
+`scripts/spec-gate.py` on a fixture task file and checks the verdict of each part: a part whose
+*Files* lie in two repositories is `SPANS`, unless its part tier is
 `direct`. It runs `scripts/spec-validate.py` on a fixture spec in the spec-delta format, with a
 control for each of a missing domain, a failing premise, a mutant with no row, a failing check on a
 head and a check that writes into the head; and it checks that `spec-gate.py` and `spec-bundle.py`
