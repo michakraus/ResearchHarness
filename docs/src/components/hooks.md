@@ -186,10 +186,11 @@ same profile.
 ### The `gh pr create` check
 
 `gh_pr_create.py` decides a `gh pr create` by the repository that it names, on each shell call of
-every frontend. It finds each top-level `gh pr create` call and each of its alias `gh pr new`,
-also after assignments such as `GH_REPO=…`, and reads every value of `-R` and `--repo`, in the forms `-R x`, `-Rx`, `-R=x`,
-`--repo x` and `--repo=x`, also at the end of a cluster of one-letter flags such as `-dR x`. The
-value of another flag that takes one, such as `--title`, is not a flag.
+every frontend. It finds each top-level `gh pr create` call and each call of its alias
+`gh pr new`, also after assignments such as `GH_REPO=…`, and reads every value of `-R` and
+`--repo`, in the forms `-R x`, `-Rx`, `-R=x`, `--repo x` and `--repo=x`, also at the end of a
+cluster of one-letter flags such as `-dR x`. The value of another flag that takes one, such as
+`--title`, is not a flag.
 
 A call with no `-R` or `--repo` is refused: `gh` then opens the pull request in the repository
 that the checkout or `GH_REPO` names, which the command does not show. The reason tells the agent
@@ -198,7 +199,8 @@ organisation asks: another owner, a value with a host, and any value when the pr
 own organisation. The check reads every value, not only the last one that `gh` takes, so a second
 `--repo` cannot send the call elsewhere. A call whose every value names an own organisation
 passes, so the `allow` rules let it run: `gh pr create -R <org>/*` and `--repo <org>/*`, first or
-after other arguments. The own organisations are those of the `gh api` check.
+after other arguments. No `allow` rule names the alias `gh pr new`, so Claude Code asks for it.
+The own organisations are those of the `gh api` check.
 
 Under oh-my-pi, no pattern of `harness.yml` prompts for `gh pr create`, so the call runs under
 `yolo` also inside a pipe or after `&&`, and the guard extension refuses it or blocks it with the

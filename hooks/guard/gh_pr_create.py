@@ -1,7 +1,7 @@
 """Decide `gh pr create` by the repository that it names.
 
-The check finds each top-level `gh pr create` call and each of its alias `gh pr new`, after any
-assignments such as `GH_REPO=…`, and reads every `-R` and `--repo` value of it, in each of the
+The check finds each top-level `gh pr create` call and each call of its alias `gh pr new`, after
+any assignments such as `GH_REPO=…`, and reads every `-R` and `--repo` value of it, in each of the
 forms `-R x`, `-Rx`, `-R=x`, `--repo x` and `--repo=x`, also at the end of a cluster of
 one-letter flags such as `-dR x`:
 
