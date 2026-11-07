@@ -300,8 +300,9 @@ it is not set:
 
 `harness.yml` sets the approval mode `yolo` and denies the `eval` tool. It writes the Bash rules
 of the settings template as `bash.patterns`: every `deny`, then every `ask` as `prompt`, then
-every `allow`, then a `prompt` for `gh pr create*`, which `yolo` would otherwise run without a
-prompt when it names no repository. oh-my-pi reads the file when `PI_CONFIG_FILES` in
+every `allow`. A command that matches no pattern runs under `yolo`; the guard extension refuses a
+`gh pr create` that names no repository and blocks one outside the own organisations. oh-my-pi
+reads the file when `PI_CONFIG_FILES` in
 `~/.omp/agent/.env` names it, and the install warns until it does. oh-my-pi has no `env` setting
 either, so the install also warns, with the lines, until the `.env` or the environment sets each
 variable of the template's `env` except the `CLAUDE_CODE_*` variables.
@@ -445,7 +446,7 @@ tool that writes or edits a file, so an agent cannot widen its own grants with o
 writes the file gets `ask` from the guard, not `deny`.
 
 The guard hook is the guard package of `hooks/guard/` run with `--from antigravity`: its
-Antigravity table reads each tool call and answers with a decision. It runs the five shell checks
+Antigravity table reads each tool call and answers with a decision. It runs the six shell checks
 and the working-tree check of the sandbox rule on `run_command`, the Kaimon check on a Kaimon `ex`
 or `manage_repl` call, and the `deny` list of `guard-paths.json` on each path argument and each
 word of a command. A glob in a word, a recursive command, a `cd`, the `Cwd` of a call and the
