@@ -1753,8 +1753,10 @@ def omp_agent_cases(case, fresh, run, agent):
         lambda: roles == {"default": tables.tiers["medium"]},
         f"the overlay's modelRoles holds the default on the medium tier's model: {roles}",
     )
-    # No silent fallback: every model that a rendered agent or seat names has an empty chain, and
-    # the overlay holds no other chain, so it neither adds a fallback nor hides config.yml's.
+    # No silent fallback: every model that an agent or seat can run on has an empty chain, every
+    # model that a rendered agent or seat names is among them, and the overlay holds no other
+    # chain, so it neither adds a fallback nor hides config.yml's. A tier that no agent names
+    # still has its chain.
     named = {
         json_value(m, "model")
         for p in (agent / "agents").glob("*.md")
@@ -1765,7 +1767,11 @@ def omp_agent_cases(case, fresh, run, agent):
     except (OSError, ValueError) as e:
         chains = f"{type(e).__name__}: {e}"
     case(
-        lambda: len(named) > 1 and chains == {m: [] for m in named},
+        lambda: (
+            len(named) > 1
+            and chains == {m: [] for m in agent_models(tables)}
+            and named <= set(agent_models(tables))
+        ),
         f"the overlay gives each model of an agent or a seat, and only those, an empty fallback chain: {chains}, "
         f"{sorted(named)}",
     )
