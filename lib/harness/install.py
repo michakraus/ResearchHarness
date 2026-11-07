@@ -409,7 +409,8 @@ def cmd_install(args):
             *(f[3] for f in srt_files),
         ]
     )
-    # Every target, the Julia environment's and each plan's, is checked before anything is written.
+    # Every target, the Julia environment's, each plan's and the srt settings', is checked before
+    # anything is written.
     # A target that cannot be written stops an --apply here, and a dry run after its count line,
     # so that a session, which cannot write the installed files, still sees the plan.
     julia_files = [
