@@ -251,9 +251,9 @@ spec's checks and CI, so that a mechanical failure blocks the round whatever the
   user's approval, as a builder's does. Then `gh run list -R <owner>/<repo> --commit <head>`. Where
   no run started for the head, start each workflow that runs on a pull request:
   `gh workflow run <workflow> -R <owner>/<repo> --ref <branch>`. Background
-  `gh run watch <id> -R <owner>/<repo> --exit-status` for each run, and read each job with
-  `gh run view <id> -R <owner>/<repo> --json jobs`, not only the run's conclusion. A job that also
-  fails on the latest run of `main` is not the part's: name it in the round's record.
+  `gh run watch <id> -R <owner>/<repo> --exit-status --interval 60` for each run, and read each
+  job with `gh run view <id> -R <owner>/<repo> --json jobs`, not only the run's conclusion. A job
+  that also fails on the latest run of `main` is not the part's: name it in the round's record.
 
 The force-push is denied, so a branch whose history the fix rewrites goes to a new branch,
 `<branch>-recut`, and the old one stays.
@@ -340,8 +340,8 @@ it and each package named by its role, as the tree instructions name it. The ins
 overwritten by the user's `harness install --apply`, which installs the line.
 
 **7 · Before the merge, each CodeRabbit comment has an answer.** After the builder reports `PR
-open`, background `gh pr checks <NN> -R <owner>/<repo> --watch`, the one waiter of the pull
-request. Its output has a line `CodeRabbit` when CodeRabbit has reviewed; a pull request with no
+open`, background `gh pr checks <NN> -R <owner>/<repo> --watch --interval 60`, the one waiter of
+the pull request. Its output has a line `CodeRabbit` when CodeRabbit has reviewed; a pull request with no
 such line has nothing to answer. Read the comments with GET calls, each as a Bash call of its own:
 
 ```bash

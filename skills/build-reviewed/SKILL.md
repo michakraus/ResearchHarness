@@ -113,7 +113,7 @@ read is the last check, not a second critic: a doubt you can show with a command
 builder as a blocking defect, under 4. Then spawn a new builder with `Round: finish` and the
 critic's verdict and evidence table. It finishes as the plan's §L says: a pull request in `Packages/` and `Experiments/`, else a push to
 `main`. After a push to a repository with CI, background `gh run watch <id> --exit-status -R
-<owner>/<repo>`.
+<owner>/<repo> --interval 60`.
 
 **Before the merge, each CodeRabbit comment has an answer**, as step 7 of
 `~/.claude/skills/build-part/SKILL.md` says; for a pull request, its `gh pr checks` waiter takes
