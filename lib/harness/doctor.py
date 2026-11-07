@@ -339,7 +339,7 @@ class Doctor:
         out = [self.tool(*t) for t in TOOLS]
         return out + self.packages() + [self.python_environment()]
 
-    def tool(self, name, command, flags, without):
+    def tool(self, name: str, command: str, flags: list[str], without: str | None) -> Result:
         """A tool of TOOLS: missing, or a version flag that exits non-zero, is a FAIL for a required
         tool (`without` None) and a WARN for an optional one; a non-zero exit is a SKIP in a
         session's sandbox, which can refuse the flag. A version below its minimum is a FAIL, a

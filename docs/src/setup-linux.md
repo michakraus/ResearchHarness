@@ -7,14 +7,15 @@ with its [install](concepts.md#install).
 [setup-reference.md](setup-reference.md) gives each step of `harness setup`: what it does, why,
 and how to do it by hand. [setup-macos.md](setup-macos.md) is the page for macOS.
 
-`harness setup` runs on Ubuntu, and the steps are checked on Ubuntu 26.04 only, on `x86_64` and
-`aarch64` (64-bit Arm). They use `~/Research/Harness` as the path of the checkout.
+`harness setup` runs on Ubuntu 26.04 and 24.04, on `x86_64` and `aarch64` (64-bit Arm). The steps
+are checked on Ubuntu 26.04; on Ubuntu 24.04, no step is checked yet. They use
+`~/Research/Harness` as the path of the checkout.
 [Introduction](concepts.md) explains the terms that this page uses, and the glossary there has an
 entry for each.
 
 ## The prerequisites
 
-`harness setup` needs Python 3.14 and git, and the installers that it runs need curl. This line
+`harness setup` needs Python and git, and the installers that it runs need curl. This line
 installs them, and it needs an administrator, a user who may run `sudo`. Without `sudo`, ask an
 administrator to run it for you:
 
@@ -22,7 +23,10 @@ administrator to run it for you:
 sudo apt-get install python3 python3-venv git curl
 ```
 
-Ubuntu 26.04 packages no uv: the first run of `harness` fetches the uv release that it pins.
+Ubuntu 24.04 needs no other line, though its `python3` is 3.12. The harness runs on Python 3.14,
+in its own Python environment: where the `python3` of the machine is older, at least 3.9, the
+first run of `harness` lets uv fetch Python 3.14 for that environment. Ubuntu 26.04 and 24.04
+package no uv: the first run of `harness` fetches the uv release that it pins.
 [Dependencies](dependencies.md#you-provide) says why each one is a prerequisite.
 
 ## The clone
@@ -38,9 +42,12 @@ export PATH="$HOME/Research/Harness/bin:$PATH"
 Add the `export` line to your shell startup file too, `~/.bashrc` for bash or `~/.zshrc` for zsh,
 so that each new shell finds `harness`. The first run of `harness` outside a
 [session](concepts.md#session) fetches uv into `~/.local/bin`, checks its sha256, makes the Python
-environment of the harness with `uv sync`, and names it in one line; in a session, its line names
-`harness install --apply`, which makes it. A Python older than 3.14 stops `harness` with exit
-status 2, an error that names the version found. This line lists the subcommands:
+environment of the harness with `uv sync`, and names it in one line. Where no Python 3.14 is
+installed, `uv sync` downloads it first. In a session, its line names `harness install --apply`,
+which makes it; a session cannot fetch Python 3.14, so with a `python3` older than 3.14 it stops
+`harness` with exit status 2 and says to run `harness` once in a plain terminal. A Python older
+than 3.9 stops `harness` with exit status 2, an error that names the version found. This line
+lists the subcommands:
 
 ```bash
 harness --help

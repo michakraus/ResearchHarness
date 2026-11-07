@@ -43,7 +43,9 @@ apt candidate meets the tool's minimum goes into one `sudo apt-get install -y` l
 that fails exits 2. Without sudo, or with `sudo -n true` refused, that step prints the line for an
 administrator and the run stops there. A tool that apt does not meet installs from its pinned
 release of setup/tools.toml (`load_pins`) into ~/.local/bin, after a check of the archive's
-sha256; a mismatch installs nothing. Otherwise the vendor's installer runs, where one runs
+sha256; a mismatch installs nothing. The release of Node.js is a whole tree (TREES): it unpacks
+into ~/.local/share/research-harness/node/<version>/, and node, npm and npx in ~/.local/bin link
+into it (`install_tree`). Otherwise the vendor's installer runs, where one runs
 unattended: the OpenCode installer only when `opencode` is not on the PATH, with
 `--no-modify-path`, and the juliaup installer only when `juliaup` is not on the PATH. Julia below
 its minimum runs `juliaup update`. After a Homebrew line or `juliaup update` for a tool below its
@@ -94,6 +96,7 @@ from typing import IO, cast, override
 from unittest import mock
 
 from . import REPO, HarnessError, fmt, frontends, jsonio
+from . import doctor as doctor_module
 from . import profile as profile_module
 from .fsutil import Case, write_private
 
@@ -121,6 +124,11 @@ HEADER = re.compile(r"""\s*\[\s*(["']?)setup\1\s*\]\s*(?:#.*)?""")
 KEY = re.compile(r"""\s*(["']?)(frontends|components|develop)\1\s*=""")
 # The one redirect that a download of a pinned release follows, as bin/harness's download does.
 REDIRECT = ("https", "release-assets.githubusercontent.com")
+# The tools whose pinned release is a whole tree, a .tar.xz: {name: the programs of the tree's bin/
+# that ~/.local/bin links}. npm runs from the tree, beside the binary.
+TREES = {"Node.js": ("node", "npm", "npx")}
+# The directory below the home directory that holds each tree, in `<command>/<version>/`.
+TREE_ROOT = pathlib.PurePath(".local", "share", "research-harness")
 DOCTOR = "harness doctor"
 JOBS = ("kaimon", "julia-update", "claude-autocommit")
 UNITS = (
@@ -595,6 +603,16 @@ def ubuntu_steps(
         release = pins.releases.get(tool.name, {}).get(key)
         if version is not None and meets(version, pins.minimum.get(tool.name, ())):
             packages.extend(tool.apt)
+        elif release is not None and tool.name in TREES:
+            programs = TREES[tool.name]
+            releases.append(
+                Step(
+                    f"install {tool.command} {release.version} from {release.url} into "
+                    f"~/.local/share/research-harness/{tool.command}/{release.version}, linked as "
+                    f"{', '.join(programs)} in ~/.local/bin, if its sha256 is {release.sha256}",
+                    lambda program=tool.command, p=programs, r=release: install_tree(machine, program, p, r),
+                )
+            )
         elif release is not None:
             releases.append(
                 Step(
@@ -847,14 +865,9 @@ def install_release(
 ) -> str | None:
     """Download `release`, following one redirect to `redirect`, a scheme and a host, and no other,
     check its sha256, and install its `program` into ~/.local/bin."""
-    try:
-        with urllib.request.build_opener(Redirects(redirect)).open(release.url, timeout=TIMEOUT) as response:
-            data = cast("bytes", response.read())
-    except (OSError, ValueError, http.client.HTTPException, HarnessError) as e:
-        return f"cannot download {release.url}: {e}"
-    got = hashlib.sha256(data).hexdigest()
-    if got != release.sha256:
-        return f"{release.url} has sha256 {got}, not the pinned {release.sha256}; nothing is installed"
+    data = checked_download(release, redirect)
+    if isinstance(data, str):
+        return data
     try:
         with tarfile.open(fileobj=io.BytesIO(data), mode="r:gz") as tar:
             member = tar.extractfile(program)
@@ -868,6 +881,79 @@ def install_release(
         replaced(target, body, 0o755)
     except OSError as e:
         return f"cannot write {target}: {e.strerror}"
+    return None
+
+
+def checked_download(release: Release, redirect: tuple[str, str]) -> bytes | str:
+    """The bytes of `release`, downloaded with one redirect to `redirect` and no other, when their
+    sha256 is the pinned one; else the text that says why the step fails."""
+    try:
+        with urllib.request.build_opener(Redirects(redirect)).open(release.url, timeout=TIMEOUT) as response:
+            data = cast("bytes", response.read())
+    except (OSError, ValueError, http.client.HTTPException, HarnessError) as e:
+        return f"cannot download {release.url}: {e}"
+    got = hashlib.sha256(data).hexdigest()
+    if got != release.sha256:
+        return f"{release.url} has sha256 {got}, not the pinned {release.sha256}; nothing is installed"
+    return data
+
+
+def install_tree(
+    machine: Machine,
+    command: str,
+    programs: Sequence[str],
+    release: Release,
+    *,
+    redirect: tuple[str, str] = REDIRECT,
+) -> str | None:
+    """Download `release`, a .tar.xz with one top-level directory, check its sha256, unpack it whole
+    with tarfile's `data` filter into ~/.local/share/research-harness/<command>/<version>/, link
+    each of `programs` in ~/.local/bin to the tree's bin/, and remove the trees of other versions.
+    The archive unpacks into a scratch directory beside <command>/ first: a download that fails, a
+    sha256 that differs or a member that the filter refuses writes nothing below <command>/ and
+    nothing in ~/.local/bin. A link replaces a file of its name in ~/.local/bin, as
+    `install_release` replaces its program."""
+    data = checked_download(release, redirect)
+    if isinstance(data, str):
+        return data
+    root = machine.home / TREE_ROOT
+    base, target = root / command, root / command / release.version
+    try:
+        root.mkdir(parents=True, exist_ok=True)
+        scratch = pathlib.Path(tempfile.mkdtemp(prefix=f".{command}-unpack-", dir=root))
+    except OSError as e:
+        return f"cannot create a directory below {root}: {e.strerror}"
+    try:
+        try:
+            with tarfile.open(fileobj=io.BytesIO(data), mode="r:xz") as tar:
+                tar.extractall(scratch, filter="data")
+        except (OSError, tarfile.TarError) as e:
+            return f"cannot unpack {release.url}: {e}; nothing is installed"
+        tops = list(scratch.iterdir())
+        tree = tops[0] if len(tops) == 1 else scratch
+        missing = [p for p in programs if not (tree / "bin" / p).is_file()]
+        if len(tops) != 1 or missing:
+            wanted = ", ".join(f"bin/{p}" for p in programs)
+            return f"{release.url} holds no top-level directory with {wanted}; nothing is installed"
+        try:
+            base.mkdir(exist_ok=True)
+            if target.exists():
+                shutil.rmtree(target)
+            tree.rename(target)
+            for program in programs:
+                link = machine.home / ".local" / "bin" / program
+                link.parent.mkdir(parents=True, exist_ok=True)
+                part = link.with_name(link.name + ".part")
+                part.unlink(missing_ok=True)
+                part.symlink_to(target / "bin" / program)
+                part.replace(link)
+            for other in base.iterdir():
+                if other.name != release.version:
+                    shutil.rmtree(other)
+        except OSError as e:
+            return f"cannot install the tree of {release.url} into {target}: {e.strerror or e}"
+    finally:
+        shutil.rmtree(scratch, ignore_errors=True)
     return None
 
 
@@ -1600,8 +1686,11 @@ MACOS_FAKES = {
     '[ "$1" = render ] && echo "rendered $2"\n'
     '[ "$1" = doctor ] && echo "doctor: all PASS"\nexit 0',
 }
+# Each apt candidate of the fake apt-cache meets its tool's minimum, so a run installs no pinned
+# release unless a case changes the fake.
 LINUX_FAKES = {
-    "apt-cache": 'echo "  Candidate: 9.9.9-1"',
+    "apt-cache": 'case "$2" in nodejs) echo "  Candidate: 22.22.0+dfsg-1";; '
+    '*) echo "  Candidate: 9.9.9-1";; esac',
     "apt-get": "exit 0",
     "sudo": "exit 0",
     "curl": "exit 0",
@@ -1787,6 +1876,26 @@ def pins_cases(case: Case, tmp: pathlib.Path) -> None:
                 "db92b343a32cade0b1d4ff5e30da54c5156f7a580349281e583a5402c57c7bcf",
             ),
         },
+    )
+    node = pins.releases.get("Node.js", {})
+    versions = {r.version for r in node.values()}
+    version = next(iter(versions), "")
+    arches = {"linux-x86_64": "x64", "linux-aarch64": "arm64"}
+    case(
+        "setup/tools.toml pins one Node.js 24 release for both Linux architectures, the .tar.xz of "
+        f"nodejs.org/dist/: { {key: r.url for key, r in node.items()} }",
+        ok=set(node) == set(arches)
+        and len(versions) == 1
+        and version.startswith("24.")
+        and all(
+            r.url == f"https://nodejs.org/dist/v{version}/node-v{version}-linux-{arches[key]}.tar.xz"
+            for key, r in node.items()
+        ),
+    )
+    shasums = f"https://nodejs.org/dist/v{version}/SHASUMS256.txt"
+    case(
+        f"setup/tools.toml names {shasums}, the file that the Node.js sha256s come from",
+        ok=bool(version) and shasums in PINS.read_text(encoding="utf-8"),
     )
     names = {t.name for t in TOOLS}
     unknown = sorted((set(pins.minimum) | set(pins.releases)) - names)
@@ -2205,6 +2314,28 @@ def linux_jobs_cases(case: Case, tmp: pathlib.Path, pins: Pins) -> None:
     )
 
 
+def node_plan_cases(case: Case, tmp: pathlib.Path, pins: Pins) -> None:
+    """Node.js below its minimum in apt, on each Linux architecture: the step of its pinned release,
+    and no line by hand."""
+    s = scratch(tmp, "node-plan", LINUX_FAKES)
+    s.fake(
+        "apt-cache",
+        'case "$2" in nodejs) echo "  Candidate: 18.19.1+dfsg-6";; *) echo "  Candidate: 9.9-1";; esac',
+    )
+    loaded = profile_module.load(s.profile, home=str(s.home))
+    for arch in ("x86_64", "aarch64"):
+        node_plan = plan(s.machine("Linux", arch), profile_module.Setup(), loaded, s.options(), pins)
+        node = [x.show for x in node_plan.steps if x.show.startswith("install node ")]
+        version = pins.releases["Node.js"][f"linux-{arch}"].version
+        case(
+            f"{arch}: Node.js below its minimum in apt installs its pinned release, and is no line by hand: "
+            f"{node}",
+            ok=len(node) == 1
+            and node[0].startswith(f"install node {version} ")
+            and not any("Node.js" in line for line in node_plan.by_hand),
+        )
+
+
 def plan_cases(case: Case, tmp: pathlib.Path, pins: Pins) -> None:
     """What the choices, the installed programs and the profile put into the plan."""
     # On macOS, with every tool of the choice installed, the plan needs no Homebrew.
@@ -2528,6 +2659,241 @@ def release_server(files: Mapping[str, bytes], moved: Mapping[str, str] | None =
     finally:
         server.shutdown()
         server.server_close()
+
+
+NODE = ("node", "npm", "npx")
+
+
+def node_tree(version: str, extra: Sequence[tarfile.TarInfo] = ()) -> bytes:
+    """A .tar.xz in the form of a nodejs.org release: one top-level directory that holds bin/node,
+    a script that prints `v<version>`, the tree lib/node_modules/npm/, and bin/npm and bin/npx as
+    links into it; then the members `extra`, each with no body or with its link."""
+    top = f"node-v{version}-linux-x64"
+    data = io.BytesIO()
+    with tarfile.open(fileobj=data, mode="w:xz") as tar:
+        for directory in (
+            "",
+            "/bin",
+            "/lib",
+            "/lib/node_modules",
+            "/lib/node_modules/npm",
+            "/lib/node_modules/npm/bin",
+        ):
+            info = tarfile.TarInfo(top + directory)
+            info.type, info.mode = tarfile.DIRTYPE, 0o755
+            tar.addfile(info)
+        for member, body in (
+            ("bin/node", f"#!/bin/sh\necho v{version}\n"),
+            ("lib/node_modules/npm/bin/npm-cli.js", "#!/bin/sh\necho 11.6.2\n"),
+            ("lib/node_modules/npm/bin/npx-cli.js", "#!/bin/sh\necho 11.6.2\n"),
+        ):
+            info = tarfile.TarInfo(f"{top}/{member}")
+            info.size, info.mode = len(body), 0o755
+            tar.addfile(info, io.BytesIO(body.encode()))
+        for program in ("npm", "npx"):
+            info = tarfile.TarInfo(f"{top}/bin/{program}")
+            info.type, info.linkname = tarfile.SYMTYPE, f"../lib/node_modules/npm/bin/{program}-cli.js"
+            tar.addfile(info)
+        for info in extra:
+            tar.addfile(info, io.BytesIO(b"x" * info.size) if info.isfile() else None)
+    return data.getvalue()
+
+
+def member(name: str, link: str = "") -> tarfile.TarInfo:
+    """A tar member `name`: a file of one byte, or a symbolic link to `link`."""
+    info = tarfile.TarInfo(name)
+    if link:
+        info.type, info.linkname = tarfile.SYMTYPE, link
+    else:
+        info.size = 1
+    return info
+
+
+def tree_cases(case: Case, tmp: pathlib.Path) -> None:
+    """The Node.js release, a whole tree: unpacked below ~/.local/share/research-harness/node/
+    <version>/ and linked into ~/.local/bin; a mismatch, an HTTP error, a second redirect and a
+    member that escapes the tree write nothing below ~/.local; a second version replaces the first."""
+    good, newer = node_tree("24.11.1"), node_tree("24.12.0")
+    outside = tmp / "tree-outside"
+    escapes = {
+        "an absolute member": node_tree("24.11.1", [member(str(outside / "absolute"))]),
+        "a member with ..": node_tree("24.11.1", [member("node-v24.11.1-linux-x64/../../escaped")]),
+        "a link out of the tree": node_tree(
+            "24.11.1", [member("node-v24.11.1-linux-x64/bin/evil", "../../../../../../../../../etc/passwd")]
+        ),
+        "an absolute link": node_tree("24.11.1", [member("node-v24.11.1-linux-x64/bin/evil", "/etc/passwd")]),
+    }
+    files = {"/good.tar.xz": good, "/newer.tar.xz": newer} | {
+        f"/escape{i}.tar.xz": data for i, data in enumerate(escapes.values())
+    }
+    moved = {"/a.tar.xz": "/good.tar.xz", "/c.tar.xz": "/a.tar.xz"}
+    with release_server(files, moved) as url:
+
+        def release(path: str, data: bytes, version: str = "24.11.1") -> Release:
+            return Release(version, f"{url}/{path}", hashlib.sha256(data).hexdigest())
+
+        n = 0
+
+        def machine() -> Machine:
+            nonlocal n
+            n += 1
+            home = tmp / f"tree{n}"
+            return Machine("Linux", "x86_64", "ubuntu", home, {}, tmp, ())
+
+        m = machine()
+        failure = install_tree(m, "node", NODE, release("good.tar.xz", good))
+        tree = m.home / ".local" / "share" / "research-harness" / "node" / "24.11.1"
+        links = [m.home / ".local" / "bin" / p for p in NODE]
+        resolved = [link.resolve() for link in links]
+        case(
+            "the Node.js release unpacks its whole tree into ~/.local/share/research-harness/node/24.11.1/: "
+            f"{failure}",
+            ok=failure is None and (tree / "lib" / "node_modules" / "npm" / "bin" / "npm-cli.js").is_file(),
+        )
+        case(
+            f"node, npm and npx in ~/.local/bin are links into the tree's bin/, and resolve: {resolved}",
+            ok=all(link.is_symlink() for link in links)
+            and all(link.readlink() == tree / "bin" / p for link, p in zip(links, NODE, strict=True))
+            and resolved[1] == (tree / "lib" / "node_modules" / "npm" / "bin" / "npm-cli.js").resolve()
+            and all(r.is_file() for r in resolved),
+        )
+        answer = subprocess.run(
+            [str(links[0]), "--version"], capture_output=True, text=True, timeout=TIMEOUT, check=False
+        ).stdout
+        case(f"node --version through the link answers v24.11.1: {answer!r}", ok=answer == "v24.11.1\n")
+        failure = install_tree(m, "node", NODE, release("newer.tar.xz", newer, "24.12.0"))
+        versions = sorted(p.name for p in tree.parent.iterdir())
+        case(
+            f"a tree of another version replaces the first, and the links point at it: {failure} {versions}",
+            ok=failure is None
+            and versions == ["24.12.0"]
+            and all(
+                link.readlink() == tree.parent / "24.12.0" / "bin" / p
+                for link, p in zip(links, NODE, strict=True)
+            )
+            and subprocess.run(
+                [str(links[0]), "--version"], capture_output=True, text=True, timeout=TIMEOUT, check=False
+            ).stdout
+            == "v24.12.0\n",
+        )
+
+        m = machine()
+        (m.home / ".local" / "bin").mkdir(parents=True)
+        (m.home / ".local" / "bin" / "node").write_text("#!/bin/sh\necho v18.19.1\n", encoding="utf-8")
+        failure = install_tree(m, "node", NODE, release("good.tar.xz", good))
+        link = m.home / ".local" / "bin" / "node"
+        case(
+            f"a node file in ~/.local/bin is replaced by the link, as a release replaces its program: "
+            f"{failure}",
+            ok=failure is None and link.is_symlink(),
+        )
+
+        bad = Release("24.11.1", f"{url}/good.tar.xz", hashlib.sha256(good + b"x").hexdigest())
+        for label, the_release, redirect in (
+            ("a sha256 that differs", bad, REDIRECT),
+            ("an HTTP error", release("missing.tar.xz", good), REDIRECT),
+            ("a second redirect", release("c.tar.xz", good), ("http", "127.0.0.1")),
+            ("a redirect to another host", release("a.tar.xz", good), REDIRECT),
+        ):
+            m = machine()
+            failure = install_tree(m, "node", NODE, the_release, redirect=redirect)
+            case(
+                f"{label}: the step fails and writes nothing below ~/.local: {failure}",
+                ok=failure is not None and not (m.home / ".local").exists(),
+            )
+        m = machine()
+        failure = install_tree(m, "node", NODE, release("a.tar.xz", good), redirect=("http", "127.0.0.1"))
+        case(f"one redirect to the allowed host installs the tree: {failure}", ok=failure is None)
+
+        for i, label in enumerate(escapes):
+            m = machine()
+            failure = install_tree(m, "node", NODE, release(f"escape{i}.tar.xz", escapes[label]))
+            case(
+                f"{label}: the step fails before anything is linked, and leaves no tree: {failure}",
+                ok=failure is not None
+                and not (m.home / ".local" / "bin").exists()
+                and not (m.home / ".local" / "share" / "research-harness" / "node").exists()
+                and not outside.exists()
+                and not (m.home / ".local" / "share" / "escaped").exists()
+                and not (m.home / ".local" / "share" / "research-harness" / "escaped").exists(),
+            )
+
+
+def ubuntu_2404_cases(case: Case, tmp: pathlib.Path) -> None:
+    """One run on a model of Ubuntu 24.04: its os-release, an apt candidate nodejs 18.19.1, a
+    python3 3.12.3 and the Node.js release on a local server. The plan installs Node.js from the
+    release, the dry run lists that step, the step installs the tree, the next plan has no such step,
+    and `harness doctor` with an environment interpreter of 3.14 prints no FAIL on the lines Python,
+    Python environment and Node.js."""
+    s = scratch(tmp, "ubuntu-2404", LINUX_FAKES)
+    os_release = s.root / "os-release"
+    os_release.write_text(
+        'PRETTY_NAME="Ubuntu 24.04.5 LTS"\nNAME="Ubuntu"\nVERSION_ID="24.04"\nID=ubuntu\nID_LIKE=debian\n',
+        encoding="utf-8",
+    )
+    s.fake(
+        "apt-cache",
+        'case "$2" in nodejs) echo "  Candidate: 18.19.1+dfsg-6ubuntu5";; '
+        '*) echo "  Candidate: 9.9.9-1";; esac',
+    )
+    s.fake("python3", 'echo "Python 3.12.3"')
+    data = node_tree("24.11.1")
+    with release_server({"/node.tar.xz": data}) as url:
+        offline = offline_pins(load_pins())
+        node = Release("24.11.1", f"{url}/node.tar.xz", hashlib.sha256(data).hexdigest())
+        pins = Pins(
+            offline.minimum, {**offline.releases, "Node.js": {"linux-x86_64": node, "linux-aarch64": node}}
+        )
+        machine = s.machine("Linux", "x86_64", distro(os_release))
+        loaded = profile_module.load(s.profile, home=str(s.home))
+        the_plan = plan(machine, profile_module.Setup(), loaded, s.options(), pins)
+        steps = [step for step in the_plan.steps if step.show.startswith("install node 24.11.1 ")]
+        apt_lines = [step.show for step in the_plan.steps if step.show.startswith("sudo apt-get")]
+        case(
+            "Ubuntu 24.04 with nodejs 18.19.1: the plan installs the Node.js release, apt installs no "
+            f"nodejs, and no line by hand names Node.js: {[step.show for step in steps]} {apt_lines} "
+            f"{the_plan.by_hand}",
+            ok=distro(os_release) == "ubuntu"
+            and len(steps) == 1
+            and "~/.local/share/research-harness/node/24.11.1" in steps[0].show
+            and node.sha256 in steps[0].show
+            and not any("nodejs" in line.split() for line in apt_lines)
+            and not any("Node.js" in line for line in the_plan.by_hand),
+        )
+        code, out = attempt(machine, s.options(dry_run=True), pins=pins)
+        case(
+            f"the dry run lists the Node.js release step: {code}",
+            ok=code == "0" and "install node 24.11.1 from " in out,
+        )
+        failure = steps[0].action() if steps else "no step"
+        case(f"the step installs the Node.js tree: {failure}", ok=failure is None)
+        lines = shows(machine, profile_module.Setup(), s.options(), pins)
+        case(
+            f"with the tree of the pinned version linked, the plan has no Node.js step: {lines}",
+            ok=not any(line.startswith("install node ") for line in lines),
+        )
+    environment = s.root / "python-env"
+    (environment / "bin").mkdir(parents=True)
+    interpreter = environment / "bin" / "python"
+    interpreter.write_text("#!/bin/sh\necho 3.14.8\n", encoding="utf-8")
+    interpreter.chmod(0o755)
+    env = {"HOME": str(s.home), "PATH": machine.env["PATH"], "RESEARCH_HARNESS_PYTHON": str(environment)}
+    with mock.patch.dict(os.environ, env, clear=True), contextlib.redirect_stdout(io.StringIO()):
+        d = doctor_module.Doctor(argparse.Namespace(profile=str(s.profile), models=None))
+        results = [
+            cast("tuple[str, str, str]", d.tool(*t))
+            for t in doctor_module.TOOLS
+            if t[0] in ("Python", "Node.js")
+        ]
+        results.append(cast("tuple[str, str, str]", d.python_environment()))
+    statuses = {name: status for status, name, _ in results}
+    case(
+        "harness doctor on the same machine, with an environment interpreter of 3.14: no FAIL on Python, "
+        f"Python environment and Node.js: {results}",
+        ok=set(statuses) == {"Python", "Python environment", "Node.js"}
+        and "FAIL" not in statuses.values()
+        and statuses["Node.js"] == "PASS",
+    )
 
 
 def interactive_cases(case: Case, tmp: pathlib.Path, pins: Pins) -> None:
@@ -3664,10 +4030,13 @@ def selftest() -> tuple[int, int]:
         linux_cases(case, root, pins)
         linux_jobs_cases(case, root, pins)
         plan_cases(case, root, pins)
+        node_plan_cases(case, root, pins)
         step_cases(case, root, pins)
         helper_cases(case, root)
         dry_run_cases(case, root, pins)
         release_cases(case, root)
+        tree_cases(case, root)
+        ubuntu_2404_cases(case, root)
         interactive_cases(case, root, pins)
         question_cases(case, root, pins)
         token_cases(case, root)

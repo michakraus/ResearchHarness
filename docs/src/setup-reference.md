@@ -83,8 +83,8 @@ A line that fails prints its error, and the next line runs.
 **Why.** Each line answers a question of a later step:
 
 - `sw_vers`, the `os-release` line and `uname -m` give the system and the architecture. This page
-  covers Apple silicon, where `uname -m` prints `arm64`, and Ubuntu 26.04 on `x86_64` and
-  `aarch64`. With another value of `uname -m` on Linux, the release files of
+  covers Apple silicon, where `uname -m` prints `arm64`, and Ubuntu 26.04 and 24.04 on `x86_64`
+  and `aarch64`. With another value of `uname -m` on Linux, the release files of
   [The pinned releases](#the-pinned-releases) do not exist; install those tools from their own
   sites.
 - On Linux, the two `sysctl` keys decide whether the Claude Code [sandbox](concepts.md#sandbox)
@@ -366,7 +366,9 @@ Ubuntu 26.04 packages Python 3.14 and Node.js 22.22, which meet their minimums, 
 in version 8.16.0, below the minimum 8.21. So gitleaks comes from its release, in
 [The pinned releases](#the-pinned-releases). A release of a distribution can package an older
 version than the minimum that Dependencies gives; then `harness setup` installs that tool from its
-pinned release, where `setup/tools.toml` has one. Ubuntu 26.04 packages no uv: the first run of
+pinned release, where `setup/tools.toml` has one. Ubuntu 24.04 packages Node.js 18, below its
+minimum, so Node.js comes from its release there, and Python 3.12, so the first run of `harness`
+lets uv fetch Python 3.14 for the Python environment. Ubuntu 26.04 packages no uv: the first run of
 `harness` outside a session fetches the uv release that `bin/harness` pins into `~/.local/bin`,
 checks its sha256, and makes the Python environment of the harness with it. bubblewrap and socat
 are the tools of [The sandbox of Claude Code](#the-sandbox-of-claude-code). The Julia update job
@@ -387,10 +389,14 @@ jq --version
 ## The pinned releases
 
 **What `harness setup` does.** On Ubuntu, each tool that no apt candidate meets installs from its
-pinned release of `setup/tools.toml`: gitleaks, actionlint, RTK and, with the component
-`dotfiles`, chezmoi 2.73.2, each for `x86_64` and `aarch64`. `harness setup` downloads the
-archive, checks its sha256 against the file, and only then installs the program into
-`~/.local/bin`; a download whose sha256 differs installs nothing.
+pinned release of `setup/tools.toml`: gitleaks, actionlint, RTK, Node.js 24.22.2 and, with the
+component `dotfiles`, chezmoi 2.73.2, each for `x86_64` and `aarch64`. `harness setup` downloads
+the archive, checks its sha256 against the file, and only then installs the program into
+`~/.local/bin`; a download whose sha256 differs installs nothing. The release of Node.js is the
+whole tree of nodejs.org, because npm runs from it: `harness setup` unpacks it into
+`~/.local/share/research-harness/node/<version>/`, refuses a member that would land outside that
+directory, links `node`, `npm` and `npx` in `~/.local/bin` to its `bin/`, and removes the tree of
+any other version.
 On macOS, Homebrew installs these tools, and this step does not run.
 
 **Why.** A pinned release with a checked sha256 installs the version that the harness is tested

@@ -110,7 +110,9 @@ The plan holds these steps, in this order:
    tools below their minimum that it lists. On Ubuntu, one `sudo apt-get install -y` line of each
    package whose apt candidate meets the tool's minimum;
 3. on Ubuntu, each tool that apt does not meet, from its pinned release of `setup/tools.toml`
-   into `~/.local/bin`, after a check of the sha256 of the archive;
+   into `~/.local/bin`, after a check of the sha256 of the archive; the release of Node.js is a
+   whole tree, unpacked into `~/.local/share/research-harness/node/<version>/`, and `node`, `npm`
+   and `npx` in `~/.local/bin` link into it;
 4. the vendor installers, in this order: juliaup, Julia through juliaup when juliaup is there
    (`juliaup update` when Julia is below its minimum), fatou on Ubuntu, Kaimon as a Julia app,
    Claude Code, and on Ubuntu OpenCode (with `--no-modify-path`) and oh-my-pi;
