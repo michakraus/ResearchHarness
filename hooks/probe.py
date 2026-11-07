@@ -312,9 +312,10 @@ PROMPTLOG_CASES = [
 
 # `context-handoff.py` reads the context size of the last two model calls of the main chain from a
 # transcript of the fixture. A transcript is a list of records: (message id, context in tokens) for
-# a model call, ("side", tokens) for a sub-agent's call, ("bad", 0) for a line that is not JSON and
-# ("pad", bytes) for a user record of that size, which puts the calls before it into an earlier
-# block of the hook's read. Its 412k call is split in two input counts, and written twice, as Claude
+# a model call, ("side", tokens) for a sub-agent's call, ("bad", 0) for a line that is not JSON,
+# ("syn", 0) for a record that Claude Code writes itself, such as an API error, and ("pad", bytes)
+# for a user record of that size, which puts the calls before it into an earlier block of the
+# hook's read. Its 412k call is split in two input counts, and written twice, as Claude
 # Code writes one record per content block. A case: (transcript, event, extra payload fields,
 # expected), where "pass" is no output and exit 0, and "<k>k" the context line with that size.
 CONTEXT = HOOKS + "context-handoff.py"
@@ -327,6 +328,8 @@ CONTEXT_TRANSCRIPTS = {
     "bad": [("a", 350_000), ("b", 412_000), ("bad", 0)],
     "padded": [("a", 350_000), ("b", 412_000), ("pad", 300_000)],
     "one": [("b", 412_000)],
+    "error-last": [("a", 410_000), ("b", 412_000), ("syn", 0)],
+    "error-between": [("a", 410_000), ("syn", 0), ("b", 412_000)],
 }
 CONTEXT_CASES: list[tuple[str, str, dict[str, str], str]] = [
     ("below", "UserPromptSubmit", {}, "pass"),
@@ -340,6 +343,8 @@ CONTEXT_CASES: list[tuple[str, str, dict[str, str], str]] = [
     ("bad", "PostToolUse", {}, "412k"),
     ("padded", "PostToolUse", {}, "412k"),
     ("one", "PostToolUse", {}, "412k"),
+    ("error-last", "UserPromptSubmit", {}, "412k"),
+    ("error-between", "PostToolUse", {}, "pass"),
     ("crosses", "PostToolUse", {"agent_id": "x"}, "pass"),
     ("crosses", "SessionStart", {}, "pass"),
     ("missing", "UserPromptSubmit", {}, "pass"),
@@ -359,15 +364,22 @@ def context_transcript(name: str) -> str:
                     json.dumps({"type": "user", "message": {"content": "x" * tokens}}, separators=(",", ":"))
                 )
             else:
-                usage = {
-                    "input_tokens": 2,
-                    "cache_creation_input_tokens": 1000,
-                    "cache_read_input_tokens": tokens - 1002,
-                }
+                split = (2, 1000, tokens - 1002) if ident != "syn" else (0, 0, 0)
+                usage = dict(
+                    zip(
+                        ("input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens"),
+                        split,
+                        strict=True,
+                    )
+                )
                 record = {
                     "type": "assistant",
                     "isSidechain": ident == "side",
-                    "message": {"id": ident, "usage": usage},
+                    "message": {
+                        "id": ident,
+                        "model": "<synthetic>" if ident == "syn" else "claude-opus-5-5",
+                        "usage": usage,
+                    },
                 }
                 lines.append(json.dumps(record, separators=(",", ":")))
         path.write_text("\n".join(lines) + "\n", encoding="utf-8")

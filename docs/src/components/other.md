@@ -90,8 +90,8 @@ Julia release. `KAIMON_QDRANT_MANAGED=off` stops the background index.
 makes it a background job; Kaimon's own default is 30 s. An agent that gets a job id has no way to
 wait, so it calls `check_eval` until the job ends, and each call is a model turn that reads the
 whole context again. 240 s is below the 5-minute prompt cache of a Claude Code sub-agent and below
-the request timeout that the install gives oh-my-pi. Claude Code and Antigravity keep a Kaimon
-call open for longer than that.
+the request timeout that the install gives oh-my-pi. Claude Code, OpenCode and Antigravity keep a
+Kaimon call open for longer than that.
 
 OpenCode, oh-my-pi and Antigravity connect to this server at `http://127.0.0.1:2828/`. The update
 job `julia-update.plist` restarts it when its Julia release is deleted. Render the plist with

@@ -10,7 +10,8 @@ At MARK or more it adds TEXT to the session's context as `additionalContext`:
 
   UserPromptSubmit  on every prompt;
   PostToolUse       only on the call whose context crosses MARK or a further STEP above it, so a
-                    long turn gets the line once per STEP and not after each tool.
+                    long turn gets the line once per STEP, with each tool that this one model
+                    call runs, and not after each tool of the turn.
 
 A sub-agent's call, whose payload holds `agent_id`, gets nothing: its caller bounds its context.
 
@@ -42,6 +43,9 @@ CALLS = 2
 # The record of a model call, as Claude Code writes it: compact JSON, so a line without this text
 # is no model call and is not parsed.
 ASSISTANT = b'"type":"assistant"'
+# The model of a record that Claude Code writes itself, such as an API error, with a usage of 0:
+# no model call.
+SYNTHETIC = "<synthetic>"
 USAGE = ("input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens")
 
 TEXT = (
@@ -65,6 +69,7 @@ def size_of(line: bytes) -> tuple[str, int] | None:
         record.get("type") != "assistant"
         or record.get("isSidechain") is True
         or not isinstance(message, dict)
+        or message.get("model") == SYNTHETIC
     ):
         return None
     usage: JsonValue = message.get("usage")

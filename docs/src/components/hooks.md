@@ -333,9 +333,11 @@ takes about 0.1 s, nearly all of it the start of Python.
 At 400k tokens or more, the hook adds one line to the session's context. The line gives the size
 and tells the session to finish the current step, write the state of the work into the task file
 or a hand-off note, propose a new session with a short brief, and stop. On `UserPromptSubmit` the
-line comes with every prompt. On `PostToolUse` it comes only with the call that passes 400k, 500k,
-600k and so on, so a long turn gets it once per 100k tokens. A call of a sub-agent gets no line:
-its caller limits its context.
+line comes with every prompt. On `PostToolUse` it comes only after the model call that passes
+400k, 500k, 600k and so on, so a long turn gets it once per 100k tokens, with each tool that this
+one model call runs. A call of a sub-agent gets no line: its caller limits its context. A record
+that Claude Code writes itself, such as an API error, has the model `<synthetic>` and counts as no
+model call.
 
 It blocks nothing and exits with status 0 for each input, also when it cannot read the input or
 the transcript. Test it:
