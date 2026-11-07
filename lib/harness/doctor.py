@@ -8,10 +8,10 @@ The checks, in this order:
   namespaces, a sandbox of `bwrap` and `socat`;
 - the tools of docs/src/dependencies.md: each found on the PATH, and at or above its minimum where
   the page states one (MINIMUMS), except a `python3` below the minimum of Python, a WARN where the
-  interpreter of the Python environment meets it; the Julia packages of Project.toml in the Manifest.toml of the
-  Julia environment of the scripts, SKIP where the profile's `[setup]` does not choose the `julia`
-  component; the Python environment of the harness, whose interpreter must start at or above the
-  minimum of Python, and which is a WARN when it lags uv.lock;
+  interpreter of the Python environment meets it; the Julia packages of Project.toml in the
+  Manifest.toml of the Julia environment of the scripts, SKIP where the profile's `[setup]` does
+  not choose the `julia` component; the Python environment of the harness, whose interpreter must
+  start at or above the minimum of Python, and which is a WARN when it lags uv.lock;
 - the profile: it loads, the `tree_agents` directory and OpenCode's configuration directory exist,
   the latter SKIP where `[setup]` does not choose `opencode`, and its `autocommit_branch`;
 - the install: the dry run of `harness install`, and each of its warnings, every line of it, the
@@ -363,8 +363,8 @@ class Doctor:
         version: str = m.group(0)
         floors = MINIMUMS["Python"]
         if name == "Python" and not meets(numbers_of(version), floors) and self.environment_meets():
-            # bin/harness runs every command on the environment's interpreter; only a hook that a
-            # person starts by hand, outside `harness`, runs on the python3 of the PATH.
+            # bin/harness runs every command on the environment's interpreter; only a hook that
+            # starts outside `harness`, such as one run by hand, runs on the python3 of the PATH.
             return Result(
                 "WARN",
                 name,

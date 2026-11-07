@@ -2667,7 +2667,7 @@ NODE = ("node", "npm", "npx")
 def node_tree(version: str, extra: Sequence[tarfile.TarInfo] = ()) -> bytes:
     """A .tar.xz in the form of a nodejs.org release: one top-level directory that holds bin/node,
     a script that prints `v<version>`, the tree lib/node_modules/npm/, and bin/npm and bin/npx as
-    links into it; then the members `extra`, each with no body or with its link."""
+    links into it; then the members `extra`, each a file of `x` bytes or a link."""
     top = f"node-v{version}-linux-x64"
     data = io.BytesIO()
     with tarfile.open(fileobj=data, mode="w:xz") as tar:
@@ -2724,8 +2724,9 @@ def member(name: str, link: str = "") -> tarfile.TarInfo:
 
 def tree_cases(case: Case, tmp: pathlib.Path) -> None:
     """The Node.js release, a whole tree: unpacked below ~/.local/share/research-harness/node/
-    <version>/ and linked into ~/.local/bin; a mismatch, an HTTP error, a second redirect and a
-    member that escapes the tree write nothing below ~/.local; a second version replaces the first."""
+    <version>/ and linked into ~/.local/bin; a mismatch, an HTTP error and a second redirect write
+    nothing below ~/.local, and a member that escapes the tree links nothing and leaves no tree; a
+    second version replaces the first."""
     good, newer = node_tree("24.11.1"), node_tree("24.12.0")
     outside = tmp / "tree-outside"
     escapes = {
