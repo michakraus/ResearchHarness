@@ -83,7 +83,6 @@ installed and meets its minimum is not installed again.
 | Antigravity | no minimum; `harness setup` prints its step and installs nothing | needed by the frontend `antigravity`: reads the layer that `harness install` writes into `~/.gemini/config/`; without `~/.gemini/`, the install writes no file there |
 | RTK | tested with 0.51.0 | needed by the component `rtk`: shortens the output of shell commands in OpenCode; without it, the plugin passes each command unchanged |
 | jq | tested with 1.7.1 | needed by the component `jq`: reads the session data for the Claude Code status line; without it, the status line shows no values |
-| iTerm2 | tested with 3.7.3, the `CFBundleShortVersionString` of the app | needed by the component `iterm`: shows the state of a Claude Code session in the terminal tab; without it, the hook `hooks/cc-status` does nothing and exits 0, which blocks nothing |
 | chezmoi | no minimum | needed by the component `dotfiles`: applies the private copy of the dotfiles kit on each machine; without it, the kit cannot run |
 
 **For a reader who writes no Julia.** The rows of the component `julia` serve Julia code only: the
@@ -234,8 +233,8 @@ shellcheck finds errors in shell scripts: a missing quote, an unset variable, a 
 does not work in the given shell.
 
 The pre-push hook and the CI job `lint` run `shellcheck -S warning` over each tracked file with a
-sh or bash shebang, for example the shared git hooks, the hook `hooks/cc-status` and the status
-line script. The pre-push hook skips shellcheck when it is missing, because CI runs it.
+sh or bash shebang, for example the shared git hooks and the status line script. The pre-push
+hook skips shellcheck when it is missing, because CI runs it.
 
 The harness needs shellcheck because the git hooks run in every repository of the tree, and an
 error in a hook can let a commit through unchecked. The shell does not report most of these
@@ -434,18 +433,6 @@ The harness needs jq only for the status line. A shell script cannot parse JSON 
 small tool: macOS supplies it, and the Linux distributions package it.
 
 Call site: the status line script (`adapters/claude/statusline-command.sh`).
-
-### iTerm2
-
-iTerm2 is a terminal application for macOS. Its `cc-status` utility shows the state of a Claude
-Code session in the terminal tab.
-
-The hook `hooks/cc-status` passes each Claude Code hook event to that utility.
-
-The harness does not need iTerm2. Without the utility, the hook does nothing and exits 0, which
-blocks nothing.
-
-Call site: `hooks/cc-status`.
 
 ### chezmoi
 

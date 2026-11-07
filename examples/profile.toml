@@ -87,10 +87,10 @@ leak = ["~", "example-user"]
 # `harness doctor` warns about a layer of another frontend that is still installed, and nothing
 # removes it. An empty list installs no layer.
 frontends = ["claude", "opencode", "omp", "antigravity"]
-# The components: julia, rtk, jq, iterm, jobs and dotfiles. With `julia`, `harness install`
-# installs the Julia environment of the scripts, and `harness doctor` checks its packages; the
-# install reads no other component.
-components = ["julia", "rtk", "jq", "iterm", "jobs", "dotfiles"]
+# The components: julia, rtk, jq, jobs and dotfiles. With `julia`, `harness install` installs
+# the Julia environment of the scripts, and `harness doctor` checks its packages; the install
+# reads no other component.
+components = ["julia", "rtk", "jq", "jobs", "dotfiles"]
 # Whether this machine develops the harness: with `true`, `harness install --apply` adds the `dev`
 # group of uv.lock, the tools that check the Python code, to the Python environment of the
 # harness. Optional: without it, `false`, and the environment holds no package.

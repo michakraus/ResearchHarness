@@ -130,12 +130,17 @@ system, for example `Ubuntu 26.04.1 LTS`, and the second line prints `x86_64` or
 
 **What `harness setup` does.** In a terminal, without a profile, `harness setup` copies
 `examples/profile.toml` and asks only for the keys that have no default: `memory_project`,
-`tree_agents`, `org`, `repository_roots` and `leak`. An empty answer keeps the example's value. It
-then asks for the frontends and the components, each from a numbered list, and whether this
-machine develops the harness (`develop`), y/N. The first step of its plan writes the profile, or
-the answers into the table `[setup]` of an existing profile. When `models.toml` is missing beside
-the profile, the next step copies `examples/models.toml`. `harness setup --yes` asks nothing and
-writes no profile: it reads `[setup]` of the profile that is there.
+`tree_agents`, `org`, `repository_roots` and `leak`. Before each question it says what the key
+holds and whether the answer is the same on every machine that shares the tree, as the table of
+[The questions of harness setup](profile.md#the-questions-of-harness-setup) gives it. An empty
+answer keeps the example's value. A list takes items separated by commas or a TOML list, and
+replaces the example's list; an item with a bracket or a quote is refused, and the question comes
+again. It then asks for the frontends and the components, each from a numbered list with one
+description per name, and whether this machine develops the harness (`develop`), y/N: only a
+machine that changes the harness's own code needs it. The first step of its plan writes the
+profile, or the answers into the table `[setup]` of an existing profile. When `models.toml` is
+missing beside the profile, the next step copies `examples/models.toml`. `harness setup --yes`
+asks nothing and writes no profile: it reads `[setup]` of the profile that is there.
 
 **By hand.** These commands copy the example profile and the example model tables of `examples/`
 into your configuration directory.
@@ -244,11 +249,10 @@ ls ~/Research/Environment/Agents/instructions
 **What `harness setup` does.** It installs each tool of
 [Dependencies](dependencies.md#harness-setup-installs) that the profile chooses and that is
 missing or below its minimum. On macOS, Homebrew installs them: one `brew install` line of the
-missing tools and of the tools below their minimum that Homebrew does not list as installed, one
-`brew upgrade` line of the tools below their minimum that it lists, and
-`brew install --cask iterm2` with the component `iterm`. Without `brew` on the `PATH`, it stops
-and names <https://brew.sh>. On Ubuntu, it asks `apt-cache` for the candidate of each package,
-and puts each package whose candidate meets the tool's minimum into one
+missing tools and of the tools below their minimum that Homebrew does not list as installed, and
+one `brew upgrade` line of the tools below their minimum that it lists. Without `brew` on the
+`PATH`, it stops and names <https://brew.sh>. On Ubuntu, it asks `apt-cache` for the candidate of
+each package, and puts each package whose candidate meets the tool's minimum into one
 `sudo apt-get install -y` line. Without `sudo`, or when `sudo -n true` is refused, it prints that
 line for an administrator and stops with exit status 2: run `sudo -v` first, or have an
 administrator run the line, then run `harness setup` again. A tool that the packages do not meet
@@ -934,7 +938,7 @@ with the profile and loads it. On macOS, it renders the three launch agents into
 profile must have `launchd_prefix`. On Linux, it renders the `systemd --user` units into
 `~/.config/systemd/user/`, then runs `systemctl --user daemon-reload`, enables and starts the
 server and the two timers, and restarts them. It prints the lingering line under *By hand*, for an
-administrator.
+administrator, unless `loginctl show-user` reads `Linger=yes`.
 
 **What it does.** The jobs are three: the Kaimon server, the Julia update job and the autocommit
 job of `~/.claude`. On macOS, launch agents run them: a launch agent is a job that launchd, the
@@ -1138,8 +1142,7 @@ check fails, and 1 when one fails.
 jobs, read-only, and prints one line for each check: `PASS`, `WARN`, `FAIL` or `SKIP`, the name
 and a detail. A `FAIL` line names the section of the setup pages that fixes it. It exits with
 status 0 when no check fails, and 1 when one fails. A `WARN`, for example for a missing optional
-tool or a warning of the install, does not count as a failure. On macOS, it also checks for
-iTerm2, which the hook `cc-status` uses, and gives a `WARN` without it. Run it in a plain
+tool or a warning of the install, does not count as a failure. Run it in a plain
 terminal: in a Claude Code session, the sandbox refuses some of its commands, and those checks
 are `SKIP`. `--full` also runs `harness test`.
 

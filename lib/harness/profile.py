@@ -10,11 +10,11 @@ The profile is a TOML file of every value that names a person, an institution or
 `harness --profile F`, else $RESEARCH_HARNESS_PROFILE, else ~/.config/research-harness/profile.toml.
 `examples/profile.toml` is a dummy that shows every key. `load` gives a `Profile`, a frozen
 dataclass. The keys of REQUIRED must be there, and every key is one of REQUIRED or OPTIONAL, of
-its type, and a required list is not empty; any other profile exits 2 with one line that names the
-file, the key and, but for an unknown key, the type, and a retired key with the step that
-replaces it (`checked`). `home` is optional: the running user's home directory without it. A
-string value that is `~` or starts with `~/`, an item of a list too, means `home`
-(`expand_home`).
+its type, a required list is not empty, and each `org` entry is a GitHub account name; any other
+profile exits 2 with one line that names the file, the key and, but for an unknown key, the type
+or the entry, and a retired key with the step that replaces it (`checked`). `home` is optional:
+the running user's home directory without it. A string value that is `~` or starts with `~/`, an
+item of a list too, means `home` (`expand_home`).
 
 The model tables load into frozen dataclasses too: `read_models` checks the shape and the types of
 every table, refuses a table or a key that no frontend reads, and gives `Models`; `model_tables`
@@ -111,7 +111,7 @@ TEMPLATES = [
 
 # The components that `[setup]` can choose. `harness install` reads `julia`, and `harness setup`
 # installs the tools of each.
-COMPONENTS = ("julia", "rtk", "jq", "iterm", "jobs", "dotfiles")
+COMPONENTS = ("julia", "rtk", "jq", "jobs", "dotfiles")
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -171,6 +171,9 @@ OPTIONAL = {
     "docs_additions": LIST,
     "protected_dir": LIST,
 }
+# A GitHub account or organisation name, an entry of `org`: letters, digits and single hyphens,
+# 1 to 39 characters, not starting or ending with a hyphen.
+GITHUB_NAME = re.compile(r"(?=.{1,39}\Z)[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*")
 # The keys of `[setup]`, each with its type; `develop` is the one optional key.
 SETUP_KEYS = {"frontends": LIST, "components": LIST, "develop": BOOL}
 
@@ -230,7 +233,7 @@ def checked(
     at `path`. A retired key exits 2 with the step that replaces it; then an unknown key, a table
     other than `[setup]` among them, a missing key of REQUIRED, a value that is not of its key's
     type and an empty list of REQUIRED, each naming `path`, the key and, but for an unknown key,
-    the type."""
+    the type; then an `org` entry that is no GitHub account name (GITHUB_NAME), naming it."""
     if "develop" in data:
         raise HarnessError(
             f"{path}: the top-level key `develop` is retired: move the line `develop = …` into the "
@@ -274,6 +277,11 @@ def checked(
             lists[key] = tuple(cast("list[str]", items))
         else:
             raise HarnessError(f"{path}: `{key}` is {v!r}, not {kind}")
+    if bad := [x for x in lists["org"] if not GITHUB_NAME.fullmatch(x)]:
+        raise HarnessError(
+            f"{path}: `org` names {', '.join(map(repr, bad))}, which is no GitHub account name: letters, "
+            "digits and single hyphens, 1 to 39 characters, not starting or ending with a hyphen"
+        )
     return strings, lists, setup
 
 
@@ -2078,7 +2086,7 @@ def schema_cases() -> tuple[int, int]:
                 "an unknown component",
                 profile_text() + setup_text(components='["julia", "nosuchcomponent"]'),
                 "nosuchcomponent",
-                "julia, rtk, jq, iterm, jobs, dotfiles",
+                "julia, rtk, jq, jobs, dotfiles",
             ),
             (
                 "a frontend named twice",
@@ -2103,6 +2111,20 @@ def schema_cases() -> tuple[int, int]:
             (f"no `{key}`", profile_text(**{key: ""}), key, "str" if kind.startswith('"') else "list")
             for key, kind in REQUIRED_TEXT.items()
         ]
+        # An `org` entry that is no GitHub account name is refused, naming the entry.
+        # The entries are ASCII, so a JSON list is their TOML list.
+        for entry in ('["ExampleOrg"', "-a", "a-", "a--b", "a_b", "a.b", "", "a" * 40, "~/a"):
+            got = loaded(profile_text(org=json.dumps(["example-org", entry])))
+            check(
+                refused(got, "profile.toml", "org", "GitHub account name") and repr(entry) in str(got),
+                f"the `org` entry {entry!r} is refused, naming it -> {got}",
+            )
+        for entry in ("ExampleOrg", "a", "a-b-c", "A1", "a" * 39):
+            got = loaded(profile_text(org=json.dumps([entry])))
+            check(
+                isinstance(got, Profile) and got.org == (entry,),
+                f"the `org` entry {entry!r} loads -> {getattr(got, 'org', got)}",
+            )
         # A key with no type word is refused as a key that the profile does not have, whatever its
         # value.
         for label, text, key, kind in refusals:
@@ -2499,10 +2521,9 @@ def home_cases():
         )
         # `~` in each form, in a string and in a list item, on keys that the schema knows.
         (tmp / "profile.toml").write_text(
-            'home = "/h"\nharness = "~"\ntree_agents = "~/x/y"\norg = ["~/a", "b", "~", "a~b"]\n'
+            'home = "/h"\nharness = "~"\ntree_agents = "~/x/y"\nrepository_roots = ["~/a", "b", "~", "a~b"]\n'
             'memory_project = "a~b"\nlaunchd_prefix = "a/~"\nautocommit_branch = "~x"\n'
-            'template_host = "~name/x"\nrepository_roots = ["/r"]\nleak = ["l"]\n'
-            + setup_text(develop="true")
+            'template_host = "~name/x"\norg = ["o"]\nleak = ["l"]\n' + setup_text(develop="true")
         )
         try:
             got = load(tmp / "profile.toml")
@@ -2514,7 +2535,7 @@ def home_cases():
             "home": "/h",
             "harness": "/h",
             "tree_agents": "/h/x/y",
-            "org": ("/h/a", "b", "/h", "a~b"),
+            "repository_roots": ("/h/a", "b", "/h", "a~b"),
             "memory_project": "a~b",
             "launchd_prefix": "a/~",
             "autocommit_branch": "~x",

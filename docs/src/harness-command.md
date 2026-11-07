@@ -106,9 +106,9 @@ The plan holds these steps, in this order:
 1. the directories that `install` needs: the tree instructions, each `repository_roots` entry,
    and with `opencode` the OpenCode configuration directory;
 2. the packages. On macOS, one `brew install` line of the missing tools and of the tools below
-   their minimum that Homebrew does not list as installed, one `brew upgrade` line of the tools
-   below their minimum that it lists, and `brew install --cask iterm2`. On Ubuntu, one
-   `sudo apt-get install -y` line of each package whose apt candidate meets the tool's minimum;
+   their minimum that Homebrew does not list as installed, and one `brew upgrade` line of the
+   tools below their minimum that it lists. On Ubuntu, one `sudo apt-get install -y` line of each
+   package whose apt candidate meets the tool's minimum;
 3. on Ubuntu, each tool that apt does not meet, from its pinned release of `setup/tools.toml`
    into `~/.local/bin`, after a check of the sha256 of the archive;
 4. the vendor installers, in this order: juliaup, Julia through juliaup when juliaup is there

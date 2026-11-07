@@ -77,11 +77,11 @@ test('each term has one entry: a missing entry and a second entry are named', ()
 })
 
 test('a file:line is named, a URL with a port and a time are not', () => {
-  const text = 'Call sites: `.githooks/pre-push:56`, bin/harness:1 and `hooks/cc-status:11-12`.\n' +
+  const text = 'Call sites: `.githooks/pre-push:56`, bin/harness:1 and `hooks/prompt-log.py:11-12`.\n' +
     'A server at http://127.0.0.1:8080 at 10:30, step 2: done.\n'
   assert.deepEqual(fileLineProblems('dependencies.md', text), [
     'dependencies.md:1: a file:line, .githooks/pre-push:56',
     'dependencies.md:1: a file:line, bin/harness:1',
-    'dependencies.md:1: a file:line, hooks/cc-status:11-12'
+    'dependencies.md:1: a file:line, hooks/prompt-log.py:11-12'
   ])
 })
