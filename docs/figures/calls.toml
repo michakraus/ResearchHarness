@@ -133,3 +133,21 @@ caller = "julia-structure"
 callee = "exhaustive-auditor"
 at = "skills/julia-structure/SKILL.md:3"
 label = "an all/none claim"
+
+[[call]]
+caller = "editor"
+callee = "writer"
+at = "agents/editor.md:61"
+label = "write, then at most two fix rounds"
+
+[[call]]
+caller = "editor"
+callee = "literature-scout"
+at = "agents/editor.md:73"
+label = "new bibliography entries"
+
+[[call]]
+caller = "editor"
+callee = "changelog-scribe"
+at = "agents/editor.md:83"
+label = "the entry"
