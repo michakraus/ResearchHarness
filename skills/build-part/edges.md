@@ -127,6 +127,12 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   and checks that name the old highest number stay, and the gate and the critic then fail the
   branch on the spec. Grep the spec for the old number when a decision adds one (P6 gate,
   *Make the Harness enforce strict Python*)
+- **a callback documented as a function of vectors and called on a matrix:** the code has to guess
+  what the caller's function returns for the whole batch, and every guess is another shape — a
+  scalar spread over the columns, a `Vector` passed through, a `Matrix` of another precision. Call
+  the callback on exactly what its documentation names, one column pair at a time, and build the
+  batched result yourself; three critic rounds went into the guesses (D verify 2 and verify 3,
+  *Extend the Lagrangian network package with the methods of the literature*)
 
 ## A numerical method
 
@@ -262,6 +268,11 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   fails at all; registering `softplus` as a symbolic primitive left MU1 alive in the sweep whose
   `catches:` named it. Re-run every named mutant against its named check before the next round, as
   for a written spec, and amend each `catches:` line the ruling touched (A2 verify 2, same task)
+- **a recording fake that stores one property of its arguments:** a recorder that stored `eltype`
+  could not see that its caller passed `n × 1` matrices where the contract names column vectors, so
+  the mutant that did so survived the whole file. Record the property the clause constrains
+  (`ndims`, a size, an order) beside the type, and assert the count of calls (D verify 3, *Extend the
+  Lagrangian network package with the methods of the literature*)
 
 ## A type or an interface
 
@@ -390,6 +401,11 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   the guard and fails in `new` with a `TypeError` that names a type parameter, not the argument.
   Type the keyword, and match the message, because the unfixed code throws a `TypeError` too (B
   round 1, same task)
+- **a size guard shared behind methods that dispatch on the shapes of both arguments:** a vector
+  beside a matrix misses every method and throws `MethodError`, where the clause promises the guard's
+  `DimensionMismatch`, and the pair that the tests try still passes. Dispatch on one argument and
+  leave the other `AbstractArray`, so the guard runs first, then test every mixed pair of shapes
+  (D verify 3, *Extend the Lagrangian network package with the methods of the literature*)
 
 ## A tool that reads files or a tree
 
