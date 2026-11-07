@@ -2858,7 +2858,28 @@ def clone_cases(case: Case, tmp: pathlib.Path, pins: Pins) -> None:
             and "git clone" in code
             and bool(alone)
             and last == alone.splitlines()[-1].strip()
-            and (not claude.exists() if name == "missing" else not any(claude.iterdir())),
+            and (not claude.exists() if name == "missing" else claude.is_dir() and not any(claude.iterdir())),
+        )
+        # A git that leaves a partial clone behind, as one stopped at its timeout would: the step
+        # removes it. The link to the real git goes first, so that the fake does not write through it;
+        # the fake lists what it left in git.left, and its PATH holds no /bin.
+        (s.bin / "git").unlink()
+        s.fake(
+            "git",
+            '/bin/mkdir -p "$3/.git/objects"; echo partial > "$3/CLAUDE.md"; /bin/ls -A "$3" > "$0.left"; '
+            'echo "fatal: cut" >&2; exit 128',
+        )
+        code, out = attempt(m, s.options(), pins=pins)
+        left = (
+            (s.bin / "git.left").read_text(encoding="utf-8").split() if (s.bin / "git.left").exists() else []
+        )
+        case(
+            f"a clone that fails and leaves {left} in a ~/.claude that was {name}: nothing below "
+            f"~/.claude is left: {code} {out.rstrip().splitlines()[-1:]}",
+            ok=code.startswith("exit 2")
+            and left == [".git", "CLAUDE.md"]
+            and out.rstrip().endswith("fatal: cut")
+            and (not claude.exists() if name == "missing" else claude.is_dir() and not any(claude.iterdir())),
         )
 
     # The key without the jobs component is unused.
