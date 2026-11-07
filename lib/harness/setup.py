@@ -77,6 +77,7 @@ import urllib.parse
 import urllib.request
 from collections.abc import Callable, Generator, Mapping, Sequence
 from typing import IO, cast, override
+from unittest import mock
 
 from . import REPO, HarnessError, fmt, frontends, jsonio
 from . import profile as profile_module
@@ -677,13 +678,18 @@ def job_steps(machine: Machine, loaded: profile_module.Profile, env: Mapping[str
 def lingers(machine: Machine) -> bool:
     """Whether `loginctl show-user <user> -p Linger` exits 0 and prints the line `Linger=yes`. A
     loginctl that is missing, fails, runs out of time or prints no `Linger=` line counts as no, so
-    that the plan prints the lingering line."""
+    that the plan prints the lingering line; so does a uid with no user name, as in a container
+    whose uid has no `passwd` entry."""
     loginctl = machine.which("loginctl")
     if loginctl is None:
         return False
     try:
+        user = pwd.getpwuid(os.getuid()).pw_name
+    except KeyError:
+        return False
+    try:
         p = subprocess.run(
-            [loginctl, "show-user", pwd.getpwuid(os.getuid()).pw_name, "-p", "Linger"],
+            [loginctl, "show-user", user, "-p", "Linger"],
             stdin=subprocess.DEVNULL,
             capture_output=True,
             text=True,
@@ -1857,6 +1863,21 @@ def linux_jobs_cases(case: Case, tmp: pathlib.Path, pins: Pins) -> None:
     case(
         f"a loginctl that cannot start: the linger line is printed by hand: {by_hand}",
         ok=any("loginctl enable-linger" in line for line in by_hand),
+    )
+    # A uid with no user name, as in a container whose uid has no passwd entry: loginctl reads
+    # Linger=yes, but it is not asked, and the line is printed.
+    s.fake("loginctl", 'echo "Linger=yes"')
+    s.log.unlink(missing_ok=True)
+    try:
+        with mock.patch.object(pwd, "getpwuid", side_effect=KeyError("getpwuid(): uid not found")):
+            by_hand = plan(machine, jobs, loaded, s.options(), pins).by_hand
+    except KeyError as e:
+        by_hand = [f"KeyError: {e}"]
+    asked = [c for c in s.calls() if c.startswith("loginctl")]
+    case(
+        f"a uid with no user name: loginctl is not asked, the linger line is printed by hand: "
+        f"{by_hand} {asked}",
+        ok=any("loginctl enable-linger" in line for line in by_hand) and not asked,
     )
 
 

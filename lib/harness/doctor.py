@@ -54,7 +54,7 @@ import tomllib
 import types
 from collections import namedtuple
 from collections.abc import Callable, Collection, Generator, Mapping
-from typing import Any, cast
+from typing import Any, TypedDict, Unpack, cast
 from unittest import mock
 
 from . import REPO, HarnessError, frontends, fsutil, install, sources
@@ -969,6 +969,19 @@ def manifest(versions):
     )
 
 
+class RunOptions(TypedDict, total=False):
+    """The options of a run on a Fixture, each optional: `full` and `sandbox` as the command line
+    sets them, the `arch` that `machine` returns, the tools of TOOLS that the run checks (`only`),
+    the path of models.toml, and `extra` variables of the environment."""
+
+    full: bool
+    sandbox: bool
+    arch: str | None
+    only: Collection[str] | None
+    models: str | None
+    extra: Mapping[str, str] | None
+
+
 class Fixture:
     """A scratch HOME one level below `root`, with every step of the setup page done, and a
     directory of stub commands that print what each tool prints on `system`; `results` runs the
@@ -1012,19 +1025,13 @@ class Fixture:
         stub(self.harness, HARNESS_STUB)
 
     @contextlib.contextmanager
-    def patched(
-        self,
-        *,
-        full: bool = False,
-        sandbox: bool = False,
-        arch: str | None = None,
-        only: Collection[str] | None = None,
-        models: str | None = None,
-        extra: Mapping[str, str] | None = None,
-    ) -> Generator[types.SimpleNamespace]:
+    def patched(self, **options: Unpack[RunOptions]) -> Generator[types.SimpleNamespace]:
         """The arguments of a run on this fixture, inside a context with its HOME, its PATH, its
         system and its files in place of the machine's, and stdout in `self.out`; `only` names
         the tools of TOOLS that the run checks, else all, and `extra` adds variables."""
+        full, sandbox = options.get("full", False), options.get("sandbox", False)
+        arch, only, models = options.get("arch"), options.get("only"), options.get("models")
+        extra = options.get("extra")
         env = {
             k: v
             for k, v in os.environ.items()
@@ -1462,7 +1469,9 @@ def status_cases(check, root, system_name):
     )
     # The cases below check no tool of TOOLS.
     none = {"only": ()}
-    case("every Julia package", dict.fromkeys(PACKAGES, "PASS"), sections=("tools",), **none)
+    got, _ = case("every Julia package", dict.fromkeys(PACKAGES, "PASS"), sections=("tools",), **none)
+    checked = sorted(set(got) & {name for name, *_ in TOOLS})
+    check(not checked, f"{system_name}: a run with only=() checks no tool of TOOLS -> {checked}")
     for name, floor in ((n, MINIMUMS[n][0]) for n in PACKAGES):
         for version, want in ((floor, "PASS"), (below(floor), "FAIL")):
             case(
@@ -2318,7 +2327,7 @@ def exit_cases(check: Callable[[bool, str], object], root: pathlib.Path) -> None
             code = cmd_doctor(args)
         statuses = sorted({line[:4] for line in f.out.getvalue().splitlines()[:-2]})
         check(code == want, f"{label}: exit {code} -> {statuses}")
-    unknown_component_case(check, Fixture(root / "a-profile-with-iterm", this, claude))
+    unknown_component_case(check, Fixture(root / "unknown-component", this, claude))
     for argv in (["doctor", "--bogus"], ["doctor", "extra"]):
         p = subprocess.run(HARNESS + argv, capture_output=True, text=True, check=False, timeout=60)
         check(
