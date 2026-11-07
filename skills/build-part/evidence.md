@@ -230,8 +230,11 @@ last.**
    the output of a function you call comes back. A test file runs as
    `@testset "probe" Base.include(Core.eval(Main, :(module $(gensym(:Probe)) end)), "<file>")`, a
    fresh module each time, as `run-tests.jl` does. `Module()` does not serve: its module has no
-   `include`, so a test file that includes a helper fails. A call that runs longer than 30 s becomes a
-   job; collect it with `check_eval`, at most once a minute.
+   `include`, so a test file that includes a helper fails. A call waits up to 240 s for its result.
+   A call that runs longer becomes a job, and each `check_eval` on it is a model call that reads
+   your whole context again. Do the work that does not need the result, then collect it with one
+   `check_eval`. With no such work left, cancel the job with `cancel_eval`: a run that long is not
+   a probe. Give its code in your report, for the dispatcher to run.
 4. **Keep what must last as a file.** A probe that shows a defect becomes the critic's reproducer,
    and a probe that pins a clause becomes the builder's test. Run the file once in a fresh process
    before you cite it.

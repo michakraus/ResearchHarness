@@ -156,9 +156,9 @@ KAIMON_URL = "http://127.0.0.1:2828/"
 KAIMON_TOKEN = "~/.config/kaimon/auth-token"
 # oh-my-pi cuts an MCP request after its server's `timeout` in milliseconds, 30 s when none is
 # set (`mcp/timeout.ts`; `OMP_MCP_TIMEOUT_MS` holds over both). Kaimon moves an eval that takes
-# longer than about 30 s to the background and answers with its id, so a call ends well inside
-# this timeout.
-KAIMON_TIMEOUT_MS = 120_000
+# longer than KAIMON_GATE_PROMOTE_AFTER, 240 s in launchagents/kaimon.plist, to the background and
+# answers with its id, so a call ends inside this timeout.
+KAIMON_TIMEOUT_MS = 300_000
 # The tiers, the keys of `models` in models.toml; the model of DEFAULT_TIER is also the
 # default model, `modelRoles.default`.
 TIERS = frontmatter.TIERS
@@ -1809,7 +1809,7 @@ def omp_agent_cases(case, fresh, run, agent):
             "kaimon": {
                 "type": "http",
                 "url": url,
-                "timeout": 120000,
+                "timeout": 300000,
                 "headers": {"Authorization": f"!printf 'Bearer %s' \"$(cat {token})\""},
             }
         }
@@ -1822,6 +1822,24 @@ def omp_agent_cases(case, fresh, run, agent):
     case(
         lambda: mcp == want and f'"url": "{url}"' in oc and f"{{file:{token}}}" in oc,
         f"mcp.json holds the Kaimon entry alone, over HTTP, with the URL and the token file of opencode.jsonc: {mcp}",
+    )
+    # An `ex` call that Kaimon holds up to its promotion threshold ends inside the request timeout.
+    promote = [
+        re.findall(
+            r"(?:<key>KAIMON_GATE_PROMOTE_AFTER</key>\s*<string>|^Environment=KAIMON_GATE_PROMOTE_AFTER=)(\d+)",
+            (REPO / unit).read_text(),
+            re.MULTILINE,
+        )
+        for unit in ("launchagents/kaimon.plist", "systemd/kaimon.service")
+    ]
+    case(
+        lambda: (
+            promote[0] == promote[1]
+            and len(promote[0]) == 1
+            and int(promote[0][0]) * 1000 < KAIMON_TIMEOUT_MS
+        ),
+        f"the KAIMON_GATE_PROMOTE_AFTER of kaimon.plist and kaimon.service, {promote}, is one value in seconds "
+        f"below the request timeout of {KAIMON_TIMEOUT_MS} ms",
     )
     try:
         config = omp_config(agent / OVERLAY)

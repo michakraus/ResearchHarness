@@ -354,6 +354,99 @@ PROMPTLOG_CASES = [
     "[1]",
 ]
 
+# `context-handoff.py` reads the context size of the last two model calls of the main chain from a
+# transcript of the fixture. A transcript is a list of records: (message id, context in tokens) for
+# a model call, ("side", tokens) for a sub-agent's call, ("bad", 0) for a line that is not JSON,
+# ("syn", 0) for a record that Claude Code writes itself, such as an API error, and ("pad", bytes)
+# for a user record of that size, which puts the calls before it into an earlier block of the
+# hook's read. Its 412k call is split in two input counts, and written twice, as Claude
+# Code writes one record per content block. A case: (transcript, event, extra payload fields,
+# expected), where "pass" is no output and exit 0, and "<k>k" the context line with that size.
+CONTEXT = HOOKS + "context-handoff.py"
+CONTEXT_TRANSCRIPTS = {
+    "below": [("a", 120_000), ("b", 300_000)],
+    "crosses": [("a", 350_000), ("b", 412_000), ("b", 412_000)],
+    "above": [("a", 410_000), ("b", 412_000)],
+    "step": [("a", 495_000), ("b", 505_000)],
+    "side": [("a", 300_000), ("side", 520_000)],
+    "bad": [("a", 350_000), ("b", 412_000), ("bad", 0)],
+    "padded": [("a", 350_000), ("b", 412_000), ("pad", 300_000)],
+    "one": [("b", 412_000)],
+    "error-last": [("a", 410_000), ("b", 412_000), ("syn", 0)],
+    "error-between": [("a", 410_000), ("syn", 0), ("b", 412_000)],
+}
+CONTEXT_CASES: list[tuple[str, str, dict[str, str], str]] = [
+    ("below", "UserPromptSubmit", {}, "pass"),
+    ("below", "PostToolUse", {}, "pass"),
+    ("crosses", "UserPromptSubmit", {}, "412k"),
+    ("crosses", "PostToolUse", {}, "412k"),
+    ("above", "UserPromptSubmit", {}, "412k"),
+    ("above", "PostToolUse", {}, "pass"),
+    ("step", "PostToolUse", {}, "505k"),
+    ("side", "UserPromptSubmit", {}, "pass"),
+    ("bad", "PostToolUse", {}, "412k"),
+    ("padded", "PostToolUse", {}, "412k"),
+    ("one", "PostToolUse", {}, "412k"),
+    ("error-last", "UserPromptSubmit", {}, "412k"),
+    ("error-between", "PostToolUse", {}, "pass"),
+    ("crosses", "PostToolUse", {"agent_id": "x"}, "pass"),
+    ("crosses", "SessionStart", {}, "pass"),
+    ("missing", "UserPromptSubmit", {}, "pass"),
+]
+
+
+def context_transcript(name: str) -> str:
+    """The path of the fixture transcript `name` of CONTEXT_TRANSCRIPTS, written on first use."""
+    path = pathlib.Path(FIXTURE.name, f"transcript-{name}.jsonl")
+    if name in CONTEXT_TRANSCRIPTS and not path.exists():
+        lines: list[str] = []
+        for ident, tokens in CONTEXT_TRANSCRIPTS[name]:
+            if ident == "bad":
+                lines.append("{not json")
+            elif ident == "pad":
+                lines.append(
+                    json.dumps({"type": "user", "message": {"content": "x" * tokens}}, separators=(",", ":"))
+                )
+            else:
+                split = (2, 1000, tokens - 1002) if ident != "syn" else (0, 0, 0)
+                usage = dict(
+                    zip(
+                        ("input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens"),
+                        split,
+                        strict=True,
+                    )
+                )
+                record = {
+                    "type": "assistant",
+                    "isSidechain": ident == "side",
+                    "message": {
+                        "id": ident,
+                        "model": "<synthetic>" if ident == "syn" else "claude-opus-5-5",
+                        "usage": usage,
+                    },
+                }
+                lines.append(json.dumps(record, separators=(",", ":")))
+        path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return str(path)
+
+
+def context_answer(proc: subprocess.CompletedProcess[str] | None, event: str) -> str:
+    """'pass', the size of the context line as '<k>k', or what else the hook did."""
+    if proc is None:
+        return "timeout"
+    if proc.returncode != 0:
+        return f"exit {proc.returncode}"
+    if not proc.stdout.strip():
+        return "pass"
+    try:
+        out = json_value(proc.stdout, "the output")["hookSpecificOutput"]
+        text = out["additionalContext"]
+    except ValueError, KeyError, TypeError:
+        return "unreadable output"
+    match = re.match(r"Context: (\d+)k tokens, above the hand-off mark of 400k\.", text)
+    return f"{match.group(1)}k" if match and out["hookEventName"] == event else f"other output {text[:60]!r}"
+
+
 # `install-drift.py`, the `SessionStart` hook, runs against an installation that `harness install
 # --apply` makes in a fixture of its own, with the dummy profile and tree instructions in the
 # fixture. It decides nothing and exits 0: "quiet" is no output, "warn" a `systemMessage`.
@@ -2679,6 +2772,26 @@ def payload_cases():
     total += 1
     wrong += logged != 2
     print(f"{'ok ' if logged == 2 else 'BAD'} exp 2 got {logged}  [prompt-lo]  lines logged")
+    for name, event, fields, expected in CONTEXT_CASES:
+        payload = json.dumps(
+            {"hook_event_name": event, "transcript_path": context_transcript(name), **fields}
+        )
+        got = context_answer(call(CONTEXT, payload), event)
+        total += 1
+        wrong += got != expected
+        mark = "ok " if got == expected else "BAD"
+        print(f"{mark} exp {expected} got {got}  [context  ]  {name} {event} {fields or ''}")
+    for payload in (
+        "not json at all",
+        "",
+        "[1]",
+        '{"hook_event_name":"UserPromptSubmit","transcript_path":7}',
+    ):
+        got = context_answer(call(CONTEXT, payload), "UserPromptSubmit")
+        total += 1
+        wrong += got != "pass"
+        mark = "ok " if got == "pass" else "BAD"
+        print(f"{mark} exp pass got {got}  [context  ]  payload {payload!r}")
     for payload in WORKTREE_CASES:
         got = run(WORKTREE, payload)
         total += 1
