@@ -1,0 +1,1 @@
+- **The build-part edges carry a class for a test deleted on a defect's claim instead of on a mutant.** A critic called a load-bearing assertion a tautology, a brief passed the claim on, and the only check that caught the mutant of the field declaration was deleted while the real tautology stayed beside it. Run that mutant cold before a deletion is ordered.
