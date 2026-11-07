@@ -196,7 +196,8 @@ other defect of the passing critic that your branch causes and that is text only
 Where you changed a file, run the gate of step 7 again and commit.
 
 Then push the branch, `git push -u origin <branch>`, and open the pull request with
-`gh pr create -R <owner>/<repo> --body-file <file>`. Write the body with the Write tool under
+`gh pr create -R <owner>/<repo> --body-file <file>`; where the branch has an open pull request,
+replace its body with `gh pr edit <NN> -R <owner>/<repo> --body-file <file>`. Write the body with the Write tool under
 `~/Research/.scratch/builder/<worktree name>/`; keep the `--title` free of backticks and `$(`. The body holds, under
 `## Critic`, the critic's verdict and evidence table; under `## Known issues added`, the entries of
 `git diff <base>..HEAD -- KNOWN_ISSUES.md` by ID; and under `## Decisions taken without the user`,

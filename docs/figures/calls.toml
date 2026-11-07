@@ -59,7 +59,7 @@ label = "full suite"
 [[call]]
 caller = "build-part"
 callee = "advisor"
-at = "skills/build-part/SKILL.md:387"
+at = "skills/build-part/SKILL.md:388"
 label = "a question"
 
 [[call]]

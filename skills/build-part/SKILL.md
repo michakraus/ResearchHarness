@@ -352,7 +352,8 @@ gh api repos/<owner>/<repo>/pulls/<NN>/reviews --paginate --jq '.[] | select(.us
 The first gives one comment per thread; the review bodies hold the comments outside the diff and
 the nitpicks. A comment that names a defect — a wrong result, a missed edge, a false line of text
 — is a blocking defect of a fix round: spawn a new builder with `Round: fix <N>` and those
-comments verbatim, and go on from 3 to a PASS and a finish that pushes the branch. Reject a comment
+comments verbatim, and go on from 3 to a PASS and a finish, which pushes the branch and replaces the
+body of the open pull request. Reject a comment
 that is wrong or asks for a matter of taste, with the reason. A comment you cannot sort goes to the
 advisor. Then answer each comment in its thread, each reply as a call of its own:
 

@@ -4,7 +4,8 @@ runs them.
 - The two package copies, the critic's copy in skills/build-part/evidence.md and `copy_command` in
   scripts/run-tests.jl: each is read from its source file and run with rsync on a fixture tree
   that holds a `.env` and `.env.*` files. The sandbox denies those files, so a copy of one leaves
-  a temporary file that no one can remove; each copy leaves them out.
+  a temporary file that no one can remove; each copy leaves them out, keeps `env.ts`, and
+  carries `--inplace`, so that rsync writes no temporary `.env.ts.XXXXXX`.
 - scripts/spec-gate.py on a fixture task file: a part whose **Files** span two repositories is
   SPANS, and one whose files lie in its repository is not.
 - scripts/spec-bundle.py on a fixture task file: the bundle holds the part's sections, its

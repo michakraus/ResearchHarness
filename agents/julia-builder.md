@@ -314,6 +314,9 @@ Seven rules for the pull-request text:
   each clause that the head does not meet as the spec writes it, with the reason. Where there is
   none, write `none`.
 
+**A branch with an open pull request gets no second one.** Push it, and replace the body with
+`gh pr edit <NN> -R <owner>/<repo> --body-file <file>`.
+
 **A part outside `Packages/` and `Experiments/` is not a pull request.** `Projects/`, `Papers/`,
 `Tasks/` and the rest commit to `main` directly. Then there is no branch and no worktree, and your
 caller spawns you without isolation, from the part's repository: commit your named paths in place

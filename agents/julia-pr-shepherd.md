@@ -104,7 +104,7 @@ Take from its report: the findings table, the CI verdict, the posted review URL,
 **Remove the reviewer's worktree** with `git worktree remove <its path>`, from your own worktree.
 
 **CodeRabbit's comments are findings too.** Read them with the GET calls of step 7 of
-`~/.claude/skills/build-part/SKILL.md`, and add each to the findings table with its comment `id`.
+`~/.claude/skills/build-part/SKILL.md`, and add each to the findings table with its `source`.
 Where `gh pr checks <n> -R <owner>/<repo>` shows the `CodeRabbit` check still pending, wait for
 none: name it under *Not checked*. If neither the reviewer nor CodeRabbit has a finding and CI is
 green, you are done — report that and stop.
@@ -266,8 +266,9 @@ Required checks: <the set, and where it came from — protection or ruleset>
 | # | source | severity | file:line | claim | action | evidence |
 |--:|:-------|:---------|:----------|:------|:-------|:---------|
 
-`source` is `reviewer` or `CodeRabbit <id>`. `action` is fixed / not fixed / disputed / needs a
-decision.
+`source` is `reviewer`, `CodeRabbit <id>` for a comment in a thread, or `CodeRabbit review` for a
+comment of a review body, which has no thread and no comment `id`. `action` is fixed / not fixed /
+disputed / needs a decision.
 
 ### Files I wrote
 <absolute path, one per line, or "none">
