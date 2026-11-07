@@ -7,7 +7,8 @@ The checks, in this order:
 - the machine: the system and the architecture; on Linux the two kernel settings for user
   namespaces, a sandbox of `bwrap` and `socat`;
 - the tools of docs/src/dependencies.md: each found on the PATH, and at or above its minimum where
-  the page states one (MINIMUMS); the Julia packages of Project.toml in the Manifest.toml of the
+  the page states one (MINIMUMS), except a `python3` below the minimum of Python, a WARN where the
+  interpreter of the Python environment meets it; the Julia packages of Project.toml in the Manifest.toml of the
   Julia environment of the scripts, SKIP where the profile's `[setup]` does not choose the `julia`
   component; the Python environment of the harness, whose interpreter must start at or above the
   minimum of Python, and which is a WARN when it lags uv.lock;
@@ -54,7 +55,7 @@ import tempfile
 import tomllib
 import types
 from collections import namedtuple
-from collections.abc import Callable, Collection, Generator, Mapping
+from collections.abc import Callable, Collection, Generator, Mapping, Sequence
 from typing import Any, TypedDict, Unpack, cast
 from unittest import mock
 
@@ -217,12 +218,12 @@ def last(text):
     return next((line.strip() for line in reversed(text.splitlines()) if line.strip()), "")[:160]
 
 
-def numbers(text):
+def numbers(text: str) -> tuple[int, ...]:
     """The version `text` as three integers, a missing patch 0."""
     return tuple(int(n) for n in text.split(".")) + (0,) * (3 - text.count(".") - 1)
 
 
-def meets(version, minimums):
+def meets(version: tuple[int, ...], minimums: Sequence[str]) -> bool:
     """Whether `version`, three integers, meets `minimums`: at or above the last, or at or above
     an earlier one of the same major release."""
     floors = [numbers(m) for m in minimums]
@@ -341,8 +342,9 @@ class Doctor:
     def tool(self, name, command, flags, without):
         """A tool of TOOLS: missing, or a version flag that exits non-zero, is a FAIL for a required
         tool (`without` None) and a WARN for an optional one; a non-zero exit is a SKIP in a
-        session's sandbox, which can refuse the flag. A version below its minimum is a FAIL, and
-        output with no version a WARN. uv is found as `harness install --apply` finds it, on the
+        session's sandbox, which can refuse the flag. A version below its minimum is a FAIL, a
+        `python3` below it a WARN where the environment's interpreter meets it, and output with no
+        version a WARN. uv is found as `harness install --apply` finds it, on the
         PATH or in ~/.local/bin."""
         path = install.boot().find_uv() if command == "uv" else shutil.which(command)
         if path is None:
@@ -358,7 +360,30 @@ class Doctor:
         m = VERSION.search(r[1] + r[2])
         if m is None:
             return Result("WARN", name, f"cannot read a version from {call}: {first(r[1] + r[2])!r}")
-        return self.minimum(name, m.group(0), f"{m.group(0)} ({path})", "tools")
+        version: str = m.group(0)
+        floors = MINIMUMS["Python"]
+        if name == "Python" and not meets(numbers_of(version), floors) and self.environment_meets():
+            # bin/harness runs every command on the environment's interpreter; only a hook that a
+            # person starts by hand, outside `harness`, runs on the python3 of the PATH.
+            return Result(
+                "WARN",
+                name,
+                f"{version} ({path}), below {floors[-1]}: the harness runs on its Python environment, "
+                f"and only a hook run by hand needs {floors[-1]}",
+            )
+        return self.minimum(name, version, f"{version} ({path})", "tools")
+
+    def environment_meets(self) -> bool:
+        """Whether the interpreter of the Python environment starts and prints a version at or
+        above the minimum of Python."""
+        boot = install.boot()
+        try:
+            python = boot.interpreter(boot.environment_path())
+        except boot.Refusal:
+            return False
+        r = run([python, "-c", "import sys; print('%d.%d.%d' % sys.version_info[:3])"])
+        m = VERSION.search(r[1] + r[2]) if r is not None and r[0] == 0 else None
+        return m is not None and meets(numbers_of(m.group(0)), MINIMUMS["Python"])
 
     def minimum(self, name, version, detail, topic):
         floors = MINIMUMS.get(name)
@@ -1081,7 +1106,7 @@ class Fixture:
             results = run_checks(args, sections or SECTIONS)
         return {r.name: r for r in results}, self.out.getvalue()
 
-    def tool(self, name, *cases):
+    def tool(self, name: str, *cases: tuple[str, str, str, int]) -> None:
         """Replace the stub `name` with one that answers `cases`."""
         stub(self.bin / name, list(cases))
 
@@ -1167,6 +1192,61 @@ def below(floor):
     """The last release before `floor`, as a version string."""
     a, b, c = (int(n) for n in (floor + ".0").split(".")[:3])
     return f"{a}.{b}.{c - 1}" if c else f"{a}.{b - 1}.99" if b else f"{a - 1}.99.99"
+
+
+def python_cases(
+    case: Callable[..., tuple[dict[str, Result], str]], check: Callable[[bool, str], None], system_name: str
+) -> None:
+    """The `Python` line on a system `python3` below 3.14: a WARN that names the version and the
+    hooks run by hand when the environment's interpreter is 3.14 or later, else a FAIL, beside the
+    `Python environment` line, which stays a FAIL below 3.14 and without an environment."""
+    old = ("--version", "Python 3.12.3\n", "", 0)
+    env_name = "Python environment"
+
+    def environment_at(version: str) -> Callable[[Fixture], None]:
+        def change(f: Fixture) -> None:
+            f.tool("python3", old)
+            stub(f.python / "bin" / "python", [("*", f"{version}\n", "", 0)])
+
+        return change
+
+    for version in ("3.14.0", "3.15.1"):
+        _, text = case(
+            f"python3 3.12.3 and an interpreter of the environment at {version}",
+            {"Python": "WARN", env_name: "PASS"},
+            environment_at(version),
+            ("tools",),
+            only=("Python",),
+        )
+        detail = next((line for line in text.splitlines() if line.split()[1:2] == ["Python"]), "")
+        check(
+            "3.12.3" in detail and "only a hook run by hand needs 3.14" in detail,
+            f"{system_name}: the WARN names 3.12.3 and says that only a hook run by hand needs 3.14 -> {detail!r}",
+        )
+    case(
+        "python3 3.12.3 and an interpreter of the environment at 3.13.9",
+        {"Python": "FAIL", env_name: "FAIL"},
+        environment_at("3.13.9"),
+        ("tools",),
+        only=("Python",),
+    )
+
+    def no_environment(f: Fixture) -> None:
+        f.tool("python3", old)
+        shutil.rmtree(f.python)
+
+    def exits(f: Fixture) -> None:
+        f.tool("python3", old)
+        stub(f.python / "bin" / "python", [("*", "", "dyld\n", 6)])
+
+    for label, change in (("no Python environment", no_environment), ("an environment that exits 6", exits)):
+        case(
+            f"python3 3.12.3 and {label}",
+            {"Python": "FAIL", env_name: "FAIL"},
+            change,
+            ("tools",),
+            only=("Python",),
+        )
 
 
 def status_cases(check, root, system_name):
@@ -1412,7 +1492,9 @@ def status_cases(check, root, system_name):
             out = printed[command][0][1]
             # The stub of each tool prints a version.
             at = cast("re.Match[str]", VERSION.search(out)).group(0)
-            for version, want in ((floor, "PASS"), (below(floor), "FAIL")):
+            # The fixture's environment runs 3.14, so a python3 below the minimum is a WARN.
+            low = "WARN" if name == "Python" else "FAIL"
+            for version, want in ((floor, "PASS"), (below(floor), low)):
                 text = out.replace(at, version, 1)
                 case(
                     f"{command} at {version}, minimum {' or '.join(MINIMUMS[name])}",
@@ -1623,6 +1705,11 @@ def status_cases(check, root, system_name):
     check(
         "relative/env" in got[env_name].detail and "not an absolute path" in got[env_name].detail,
         f"{system_name}: the line names the relative path, which is not absolute -> {got[env_name].detail!r}",
+    )
+    python_cases(
+        cast("Callable[..., tuple[dict[str, Result], str]]", case),
+        cast("Callable[[bool, str], None]", check),
+        cast("str", system_name),
     )
 
     # The profile.
@@ -2335,9 +2422,14 @@ def exit_cases(check: Callable[[bool, str], object], root: pathlib.Path) -> None
         timeout=60,
     )
     this = system() if system() in ("Linux", "Darwin") else "Linux"
+
+    def old_python3(f: Fixture) -> None:
+        f.tool("python3", ("--version", "Python 3.12.3\n", "", 0))
+
     for label, change, want in (
         ("only PASS, WARN and SKIP", lambda f: None, 0),
         ("one FAIL", lambda f: f.token.chmod(0o644), 1),
+        ("a WARN for python3 3.12.3 beside an environment of 3.14", old_python3, 0),
         (
             "one FAIL in the install",
             lambda f: stub(f.harness, [("*install", "\n1 change(s) to make.\n", "", 1)]),
