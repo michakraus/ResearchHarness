@@ -251,6 +251,14 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   seed-dependent; a `softplus` Hessian in `Float32` was not finite on 28–64 of 200 seeds per call
   shape. Sweep each call shape over many seeds at the test's own sizes, and assert a finite gradient
   beside any `!all(iszero, …)`, which a `NaN` passes (C verify 4, same task)
+- **a test deleted because a defect called it a tautology, on a claim nobody exercised:** a critic
+  said `fieldtype(typeof(ansatz), :u) === typeof(ansatz.u)` "can never fail for any struct", a brief
+  passed the claim on under a "verified by the dispatcher" header, and the builder deleted it. With
+  the field declared `u::U` the two sides agree; with `u::Function` they do not, so the deleted pair
+  was the only check that caught a mutant of the declaration, and the loop left beside it —
+  `isconcretetype(typeof(f))` — was the tautology. Run the mutant of `src/` the test is meant to
+  catch, cold, before a brief orders a deletion, and keep the test unless that mutant SURVIVES with
+  it in place (G verify 2, *Revive the multisymplectic package*)
 
 ## A type or an interface
 
