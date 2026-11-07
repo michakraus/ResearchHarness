@@ -5,7 +5,7 @@ at the start of a session. The frontend sends the event as JSON on standard inpu
 hook runs before a tool call and can refuse it: exit status 2 refuses the call and shows the hook's
 standard error to the model, and an `ask` decision on standard output shows a prompt to the user.
 The hooks of this page use the Claude Code events `PreToolUse`, `PostToolUse`, `SessionStart`,
-`PermissionRequest`, `WorktreeCreate` and `WorktreeRemove`.
+`UserPromptSubmit`, `PermissionRequest`, `WorktreeCreate` and `WorktreeRemove`.
 
 The sources are in `hooks/`. `harness install --apply` copies them to `~/.claude/hooks/`.
 Claude Code calls them through the `hooks` section of its settings, which
@@ -352,6 +352,37 @@ code path exits with status 0, also when the hook cannot read the input or write
 ```bash
 echo '{"tool_name":"Bash","tool_input":{"command":"ls"}}' | LOG=$TMPDIR/p.jsonl ./prompt-log.py
 ```
+
+## `context-handoff.py`
+
+This hook tells a main session that its context has passed 400k tokens, and that the session hands
+off. Each model call reads the whole context again, so a long session pays for its size on every
+call. Claude Code runs the hook on `UserPromptSubmit` and, for every tool, on `PostToolUse`.
+
+The hook reads the size from the transcript that the event names: the input, cache-write and
+cache-read tokens of the last model call of the main chain. It reads the transcript from its end
+and stops at the second model call, so a transcript of 50 MB costs no more than a small one. A run
+takes about 0.1 s, nearly all of it the start of Python.
+
+At 400k tokens or more, the hook adds one line to the session's context. The line gives the size
+and tells the session to finish the current step, write the state of the work into the task file
+or a hand-off note, propose a new session with a short brief, and stop. On `UserPromptSubmit` the
+line comes with every prompt. On `PostToolUse` it comes only after the model call that passes
+400k, 500k, 600k and so on, so a long turn gets it once per 100k tokens, with each tool that this
+one model call runs. A call of a sub-agent gets no line: its caller limits its context. A record
+that Claude Code writes itself, such as an API error, has the model `<synthetic>` and counts as no
+model call.
+
+It blocks nothing and exits with status 0 for each input, also when it cannot read the input or
+the transcript. Test it:
+
+```bash
+echo '{"hook_event_name":"UserPromptSubmit","transcript_path":"'"$TMPDIR"'/t.jsonl"}' | ./context-handoff.py
+```
+
+The install gives this hook to Claude Code only. Antigravity's `PreToolUse` payload holds the call
+and the workspace paths, and no transcript; the guard extension of oh-my-pi and the plugins of
+OpenCode do not read the context size.
 
 ## `probe.py`
 
