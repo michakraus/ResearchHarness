@@ -40,6 +40,7 @@ one name in one file collapses into one node.
 |:--|:--|
 | what methods exist, and where — **without loading the package** | `julia-methods.jl` |
 | which method **actually runs** for these arguments | Kaimon `search_methods` |
+| which methods take this **type** as an argument | Kaimon `search_methods` with the type as the query |
 | who calls this; is it dead — **where the package loads** | `julia-callers.jl` |
 | anything spanning all the repositories | Kaimon `grep_code` with an absolute `path`, then `grep` |
 
