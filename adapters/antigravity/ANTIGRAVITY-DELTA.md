@@ -28,6 +28,12 @@ guard keeps `julia` in the sandbox. Run Julia code through Kaimon's `ex`: `call_
 or `start_session`. Where a text runs `julia`, `run-tests.jl` or `testrunner` in the shell, run the
 same code through `ex`. When that is not possible, return the command to your caller.
 
+An `ex` call waits up to 240 s for its result. A longer call returns a job id. Each `check_eval`
+on the job is a model call that reads your whole context again, and the job ends no sooner. Do
+the work that does not need the result, then collect it with one `check_eval`. With no such work
+left, a subagent returns the code to its caller as a long run; a main session tells the user that
+the job runs, and ends its turn.
+
 ## No RTK rewrite
 
 Antigravity runs no RTK hook: a command runs as typed, so the rewrite facts of `RTK.md` do not

@@ -289,8 +289,8 @@ it is not set:
 - `AGENTS.md`, from `OMP-DELTA.md`;
 - `rules/<name>.md` for each rule that the Claude Code layer installs, with `paths` written as
   `globs`;
-- `mcp.json`, with the Kaimon server alone and a request timeout of 120 s, above Kaimon's own
-  move of a slow eval to the background;
+- `mcp.json`, with the Kaimon server alone and a request timeout of 300 s, above Kaimon's own
+  move of a slow eval to the background after 240 s;
 - `agents/<name>.md` for each agent of `agents/`, with its model and its `thinking-level` from the
   model tables and the section of `UNDER-OMP.md`, and a copy for each seat of its council;
 - its own copies of `RTK.md`, `instructions/`, the guard hooks in `hooks/` and the skills in

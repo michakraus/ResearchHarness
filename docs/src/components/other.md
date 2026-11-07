@@ -86,6 +86,12 @@ The working directory is `~/Research`. Do not remove it: Kaimon reads its tool p
 restart waits at least 60 s, so a second server that cannot use the port does not restart many
 times a second. `JULIA_APPS_JULIA_CMD` names the juliaup launcher, so the job does not depend on one
 Julia release. `KAIMON_QDRANT_MANAGED=off` stops the background index.
+`KAIMON_GATE_PROMOTE_AFTER=240` lets an `ex` call wait up to 240 s for its result before Kaimon
+makes it a background job; Kaimon's own default is 30 s. An agent that gets a job id has no way to
+wait, so it calls `check_eval` until the job ends, and each call is a model turn that reads the
+whole context again. 240 s is below the 5-minute prompt cache of a Claude Code sub-agent and below
+the request timeout that the install gives oh-my-pi. Claude Code and Antigravity keep a Kaimon
+call open for longer than that.
 
 OpenCode, oh-my-pi and Antigravity connect to this server at `http://127.0.0.1:2828/`. The update
 job `julia-update.plist` restarts it when its Julia release is deleted. Render the plist with
