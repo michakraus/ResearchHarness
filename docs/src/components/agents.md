@@ -307,6 +307,43 @@ It returns a verdict per claim (`holds`, `fails`, `holds under` a condition, or 
 and the scripts. It does not change prose, the structure or the change markings. For one statement
 with no paper, use the `math-verify` skill.
 
+## `editor`
+
+The editor takes one unit of a book or a paper, such as a chapter, an appendix or a section, from
+its brief to a verified commit. A session that writes a book or a paper starts one editor per unit,
+in the background, and names the brief template of a writer, the shared files that the editor may
+edit, the log directory and whether it commits. The editor loads no `CLAUDE.md`; it reads the
+instruction files of `Papers/` and `Books/` and of the manuscript itself, and it loads the
+`math-verify` and `latex-revision` skills.
+
+It fills the brief and starts a `writer` in the foreground. Then it verifies the unit itself: it
+reads every page in the PDF, redoes every proof, reads and runs every script and its controls,
+reads the sources of every claim called new, and builds once. It starts `literature-scout` to
+check the identifiers of new bibliography entries. Its findings go to a new `writer`, never to the
+first one through `SendMessage`: a send resumes the writer in the background, the editor's turn
+then ends, and the end of its turn ends its run. It starts at most three writers per unit, merges
+the writers' rows into the shared files, starts `changelog-scribe`, and commits the paths by name.
+
+It edits no file that a writer owns, and it leaves a run of more than ten minutes, such as a whole
+verification suite, to its caller. Its cache lives one hour, because it waits for each writer with
+the unit read into its context. It returns one report with a `Verdict:` line.
+
+## `writer`
+
+The writer writes one unit of a book or a paper from a brief, or fixes the editor's findings on
+it. The `editor` starts it in the foreground, one writer at a time in a checkout. A fix round is a
+new writer, which gets the brief, the findings and the report of the writer before it.
+
+It loads no `CLAUDE.md`; it reads the instruction files of `Papers/` and `Books/` and of the
+manuscript, and it loads the `math-verify` and `latex-revision` skills. It edits only the files
+that its brief names, and returns the rows for a shared file as text. Every claim gets a script in
+`scripts/` with a control that must fail. It reads a source before it calls a result new, runs
+its scripts and one LaTeX build at a time, and reads every page that it wrote in the PDF.
+
+It never stages or commits, and it starts no sub-agent. It returns one report with a `Verdict:`
+line: the pages, the scripts with their check counts, the new bibliography entries, the rows for
+the shared files and, in a fix round, what it did about each finding.
+
 ## `reader`
 
 A lean read-only agent: it searches, reads and returns the conclusion. Use it in place of a
