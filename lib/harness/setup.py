@@ -1052,7 +1052,8 @@ def toml_value(value: str | Sequence[str]) -> str:
 def new_profile(example: str, ask: Ask) -> str:
     """The text of `example` with each key of REQUIRED set to the user's answer, the example's own
     value for an empty line. Before each question, the key's explanation (EXPLAINED). A list is
-    read by `list_answer`; an answer that it refuses prints one line and is asked again."""
+    read by `list_answer`, and an `org` item must be a GitHub account name (GITHUB_NAME); an
+    answer that either refuses prints one line and is asked again."""
     text = example
     for key, kind in profile_module.REQUIRED.items():
         line = re.search(rf"^{key} = (.*)$", text, re.MULTILINE)
@@ -1071,6 +1072,12 @@ def new_profile(example: str, ask: Ask) -> str:
                 f"list [{line.group(1)}]: ",
             ):
                 items = list_answer(answer, nonempty=kind == profile_module.NONEMPTY)
+                if (
+                    key == "org"
+                    and isinstance(items, tuple)
+                    and (bad := [i for i in items if not profile_module.GITHUB_NAME.fullmatch(i)])
+                ):
+                    items = f"the item {bad[0]!r} is no GitHub account name; give the account names"
                 if isinstance(items, tuple):
                     value = toml_value(items)
                     break
@@ -1082,10 +1089,10 @@ def new_profile(example: str, ask: Ask) -> str:
 
 def list_answer(answer: str, *, nonempty: bool) -> tuple[str, ...] | str:
     """The items of the answer `answer` to a list question, or the line that refuses it. An answer
-    that starts with `[` is a TOML list of strings, read as the value of a key; any other answer is
-    items separated by commas, each with its spaces trimmed, and an empty item dropped. An item
-    that holds a bracket or a quote is refused, naming it, and so is an answer with no item when
-    `nonempty`."""
+    that starts with `[` is a TOML list of strings, read as the value of a key, and refused when an
+    item is empty; any other answer is items separated by commas, each with its spaces trimmed,
+    and an empty item dropped. An item that holds a bracket or a quote is refused, naming it, and
+    so is an answer with no item when `nonempty`."""
     if answer.startswith("["):
         try:
             value = cast("dict[str, object]", tomllib.loads("v = " + answer))["v"]
@@ -1094,6 +1101,8 @@ def list_answer(answer: str, *, nonempty: bool) -> tuple[str, ...] | str:
         if not isinstance(value, list) or not all(isinstance(v, str) for v in cast("list[object]", value)):
             return f"{answer!r} is no TOML list of strings; give one, or items separated by commas"
         items = tuple(cast("list[str]", value))
+        if "" in items:
+            return f"{answer!r} holds an empty item; give the items without it"
     else:
         items = tuple(a.strip() for a in answer.split(",") if a.strip())
     if bad := [item for item in items if any(c in item for c in "[]\"'")]:
@@ -2318,39 +2327,44 @@ def question_cases(case: Case, tmp: pathlib.Path, pins: Pins) -> None:
         ),
     )
 
-    at = list(profile_module.REQUIRED).index("org")
-    # (an answer to `org`, the `org` that the profile holds after it, the item that a refusal names)
-    for answer, want, named in (
-        ('["a", "b"]', ["a", "b"], ""),
-        ("a, b", ["a", "b"], ""),
-        (" a ,b,, ", ["a", "b"], ""),
-        ('["a,b", "c"]', ["a,b", "c"], ""),
-        ('["a"', ["x"], '["a"'),
-        ('"a"', ["x"], '"a"'),
-        ("[1, 2]", ["x"], "[1, 2]"),
-        ('[["a"]]', ["x"], '[["a"]]'),
-        ('["a"] b', ["x"], '["a"] b'),
-        ("[]", ["x"], "[]"),
-        (",, ,", ["x"], ",, ,"),
-        ("a, b]", ["x"], "b]"),
-        ("it's", ["x"], "it's"),
-        ('["a\'b"]', ["x"], "a'b"),
+    # (a list key, an answer to it, the list that the profile holds after it, the item that a
+    # refusal names)
+    for key, answer, want, named in (
+        ("org", '["a", "b"]', ["a", "b"], ""),
+        ("org", "a, b", ["a", "b"], ""),
+        ("org", " a ,b,, ", ["a", "b"], ""),
+        ("leak", '["a,b", "c"]', ["a,b", "c"], ""),
+        ("org", '["a"', ["x"], '["a"'),
+        ("org", '"a"', ["x"], '"a"'),
+        ("org", "[1, 2]", ["x"], "[1, 2]"),
+        ("org", '[["a"]]', ["x"], '[["a"]]'),
+        ("org", '["a"] b', ["x"], '["a"] b'),
+        ("org", "[]", ["x"], "[]"),
+        ("org", ",, ,", ["x"], ",, ,"),
+        ("org", "a, b]", ["x"], "b]"),
+        ("org", "it's", ["x"], "it's"),
+        ("org", '["a\'b"]', ["x"], "a'b"),
+        ("leak", '["", "a"]', ["x"], '["", "a"]'),
+        ("leak", '[""]', ["x"], '[""]'),
+        ("org", "a, b_c", ["x"], "b_c"),
+        ("org", '["a", "-b"]', ["x"], "-b"),
     ):
+        at = list(profile_module.REQUIRED).index(key)
         answers = [""] * len(profile_module.REQUIRED)
         answers[at : at + 1] = [answer, "x"] if named else [answer]
         seen, text = explained(answers)
         try:
-            org = cast("dict[str, object]", tomllib.loads(text)).get("org")
+            got = cast("dict[str, object]", tomllib.loads(text)).get(key)
         except tomllib.TOMLDecodeError:
-            org = text
+            got = text
         asked = [q.split(",")[0] for q, _ in seen]
         refusal = seen[at + 1][1].splitlines() if named and len(seen) > at + 1 else []
         case(
-            f"the list answer {answer!r} gives {want}"
+            f"the {key} answer {answer!r} gives {want}"
             + (f", after one line that names {named!r} and the question again" if named else "")
-            + f": {org} {asked} {refusal}",
-            ok=org == want
-            and asked.count("org") == (2 if named else 1)
+            + f": {got} {asked} {refusal}",
+            ok=got == want
+            and asked.count(key) == (2 if named else 1)
             and len(asked) == len(profile_module.REQUIRED) + (1 if named else 0)
             and (not named or (len(refusal) == 1 and repr(named) in refusal[0])),
         )

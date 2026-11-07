@@ -116,8 +116,9 @@ the answer is, and whether the answer is the same on every machine that shares t
 
 An empty answer keeps the example's value. A list takes either items separated by commas, such as
 `a, b`, or a TOML list, such as `["a", "b"]`, and the answer replaces the example's list. An item
-that holds a bracket or a quote, a TOML list that does not parse or holds a value that is not a
-string, and an answer with no item are refused with one line, and the question comes again.
+that holds a bracket or a quote, a TOML list that does not parse, holds a value that is not a
+string or holds an empty string, an answer with no item, and an `org` item that is no GitHub
+account name are refused with one line, and the question comes again.
 `harness setup --yes` asks nothing and prints none of this.
 
 ## The setup table
