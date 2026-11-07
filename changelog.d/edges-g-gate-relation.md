@@ -1,0 +1,1 @@
+- **The build-part edges carry a class for a gate check that reads presence and a count but not the relation its clause names.** A spec check found a `@safetestset` line and counted the file's lines, while the clause said the line is in the `slow` group and the head had it in `core`, so the gate passed on a head that broke its own clause.
