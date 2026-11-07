@@ -129,8 +129,8 @@ that check passes.
 4. **Verify each clause before you move to the next.** Run its test file with
    `run-tests.jl <worktree> <unit>`. A failure stops you at that clause.
 5. **Run `run-tests.jl <worktree> affected`** after the last code change. Then **run the named
-   mutants**: write every mutant of the part's *Tests catch* into one list under
-   `<worktree>/.claude/scratch/`, check it with `mutate.jl <worktree> --check <list>`, and run it
+   mutants**: write every mutant of the part's *Tests catch* into one list in your
+   scratch directory, `~/Research/.scratch/builder/<worktree name>/`, check it with `mutate.jl <worktree> --check <list>`, and run it
    once with `mutate.jl <worktree> --warm <list> <unit> ...`, with the test files that must catch
    them as the units. A SURVIVED named mutant fails its clause: add the test that catches it, and
    run the list again. Quote the totals line. The result file is under `~/Research/.scratch/mutants/`,
@@ -138,7 +138,7 @@ that check passes.
    dispatcher runs it beside the critic.
 6. **Run your own mutants**: one per guard, branch, comparison and decided edge that your change
    adds or changes, in any file of the diff, as *Which mutants run* in `evidence.md` says. A
-   mutant in a Julia package file goes into a second list under `<worktree>/.claude/scratch/` and
+   mutant in a Julia package file goes into a second list in your scratch directory and
    runs with `mutate.jl` as in step 5; any other file you break by hand, run its test, and restore.
    Close each survivor with a test that catches it, or justify it as no-defect in *Mutants*:
    equivalent, dead code, or message text that no clause names. Where the plan's §L asks for a
@@ -298,7 +298,7 @@ Run each as its own call, and read both before you commit. A commit takes the wh
 Seven rules for the pull-request text:
 
 - **The body goes through a file.** Write it with the Write tool under
-  `<worktree>/.claude/scratch/` (`evidence.md` says why there), and pass `--body-file` with the
+  `~/Research/.scratch/builder/<worktree name>/` (`evidence.md` says why there), and pass `--body-file` with the
   absolute path. An issue body goes the same way.
   A backtick or a `$(` anywhere in a `gh` command, even inside single quotes, makes the harness run
   it sandboxed, and `gh` then fails with `x509: OSStatus -26276`. Keep the `--title` free of both.

@@ -115,6 +115,11 @@ critic's verdict and evidence table. It finishes as the plan's §L says: a pull 
 `main`. After a push to a repository with CI, background `gh run watch <id> --exit-status -R
 <owner>/<repo>`.
 
+**Before the merge, each CodeRabbit comment has an answer**, as step 7 of
+`~/.claude/skills/build-part/SKILL.md` says. Here you sort the comments yourself, the fix round is a
+new builder with `Round: fix` and your own check of the fix, as under 4, and a comment you cannot
+sort goes to the user.
+
 Write the state cell from the builder's report, and add one line to the part's section:
 `**The loop:**` the rounds, each decision, and each defect the critic found, with its class. For a
 defect class that is not in `~/.claude/skills/build-part/edges.md`, add one line to that file's

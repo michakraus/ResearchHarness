@@ -59,7 +59,7 @@ label = "full suite"
 [[call]]
 caller = "build-part"
 callee = "advisor"
-at = "skills/build-part/SKILL.md:359"
+at = "skills/build-part/SKILL.md:387"
 label = "a question"
 
 [[call]]
@@ -113,13 +113,13 @@ label = "review"
 [[call]]
 caller = "julia-pr-shepherd"
 callee = "changelog-scribe"
-at = "agents/julia-pr-shepherd.md:148"
+at = "agents/julia-pr-shepherd.md:153"
 label = "the entry"
 
 [[call]]
 caller = "julia-pr-shepherd"
 callee = "ci-triage"
-at = "agents/julia-pr-shepherd.md:204"
+at = "agents/julia-pr-shepherd.md:209"
 label = "red CI"
 
 [[call]]

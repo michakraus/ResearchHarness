@@ -99,7 +99,8 @@ Work in these steps, in this order. Each step ends on a check.
    `harness test --changed <base>` after a commit. Run `ruff format`, `ruff check` and
    `basedpyright` on the files you change. A failure stops you at that clause.
 5. **Run the named mutants** with `harness mutate <spec>`: write every mutant of *Tests catch* into
-   one TOML spec under `<worktree>/.claude/scratch/`, one table per mutant with `file`, `anchor`,
+   one TOML spec in your scratch directory, `~/Research/.scratch/builder/<worktree name>/`
+   (*A fix round's mutants* in `evidence.md` says why there), one table per mutant with `file`, `anchor`,
    `old`, `new` and `tests`, the parts that must kill it. It prints one line per mutant, `killed`,
    `SURVIVED` or `invalid`, and a totals line; quote the totals. A mutant of a file that is not
    Python, which `harness mutate` reports `invalid`, you apply by hand, run its part, and restore.
@@ -112,7 +113,7 @@ Work in these steps, in this order. Each step ends on a check.
    no-defect in *Mutants*: equivalent, dead code, or message text that no clause names. Where the
    plan's §L asks for a generated sweep, put its commands under *Left for the dispatcher*.
 7. **Run the gate once on your last head.** Run `harness test` with the full suite once, with
-   `--log <file>` under `<worktree>/.claude/scratch/`, before you report: about 3 minutes in the
+   `--log <file>` in your scratch directory, before you report: about 3 minutes in the
    Harness. A full suite that runs longer than 5 minutes goes under *Left for the dispatcher*,
    with its exact command. Then `ruff format --check`, `ruff check` and `basedpyright`, and the
    spec's checks where the bundle names a spec: `python3 ~/Research/Harness/scripts/spec-validate.py
@@ -196,7 +197,7 @@ Where you changed a file, run the gate of step 7 again and commit.
 
 Then push the branch, `git push -u origin <branch>`, and open the pull request with
 `gh pr create -R <owner>/<repo> --body-file <file>`. Write the body with the Write tool under
-`<worktree>/.claude/scratch/`; keep the `--title` free of backticks and `$(`. The body holds, under
+`~/Research/.scratch/builder/<worktree name>/`; keep the `--title` free of backticks and `$(`. The body holds, under
 `## Critic`, the critic's verdict and evidence table; under `## Known issues added`, the entries of
 `git diff <base>..HEAD -- KNOWN_ISSUES.md` by ID; and under `## Decisions taken without the user`,
 every `**Decided (…)**` line of the bundle that the user did not write, verbatim, then each clause

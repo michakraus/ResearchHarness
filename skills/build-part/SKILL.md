@@ -339,6 +339,34 @@ file's source, `~/Research/Harness/skills/build-part/edges.md`, with the part th
 it and each package named by its role, as the tree instructions name it. The installed copy is
 overwritten by the user's `harness install --apply`, which installs the line.
 
+**7 · Before the merge, each CodeRabbit comment has an answer.** After the builder reports `PR
+open`, background `gh pr checks <NN> -R <owner>/<repo> --watch`, the one waiter of the pull
+request. Its output has a line `CodeRabbit` when CodeRabbit has reviewed; a pull request with no
+such line has nothing to answer. Read the comments with GET calls, each as a Bash call of its own:
+
+```bash
+gh api repos/<owner>/<repo>/pulls/<NN>/comments --paginate --jq '.[] | select(.user.login == "coderabbitai[bot]" and .in_reply_to_id == null) | {id, path, line, body}'
+gh api repos/<owner>/<repo>/pulls/<NN>/reviews --paginate --jq '.[] | select(.user.login == "coderabbitai[bot]") | .body'
+```
+
+The first gives one comment per thread; the review bodies hold the comments outside the diff and
+the nitpicks. A comment that names a defect — a wrong result, a missed edge, a false line of text
+— is a blocking defect of a fix round: spawn a new builder with `Round: fix <N>` and those
+comments verbatim, and go on from 3 to a PASS and a finish that pushes the branch. Reject a comment
+that is wrong or asks for a matter of taste, with the reason. A comment you cannot sort goes to the
+advisor. Then answer each comment in its thread, each reply as a call of its own:
+
+```bash
+gh api repos/<owner>/<repo>/pulls/<NN>/comments/<id>/replies -f body='fixed in <sha7>'
+gh api repos/<owner>/<repo>/pulls/<NN>/comments/<id>/replies -f body='rejected: <reason>'
+```
+
+The guard lets a review-thread reply through. A comment of a review body has no thread: answer
+those in one `gh pr comment <NN> -R <owner>/<repo> --body-file <file>`. Keep each reply free of
+backticks and `$(`. CodeRabbit reviews the fix too: answer its new comments the same way, and send
+a defect in them to the user as `waiting for the user — CodeRabbit: <defect>`, not to another fix
+round.
+
 **The builder is the only one who writes in its worktree.** A critic edits nothing. Each round has
 one builder, and you spawn the next one only after the last one has returned.
 

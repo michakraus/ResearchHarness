@@ -533,6 +533,8 @@ end
     cmd = M.copy_command("/a/pkg", "/b/copy")
     @test "--exclude=.claude" in cmd.exec
     @test "--exclude=.git" in cmd.exec
+    # in place, so no temporary `.env.ts.XXXXXX`, which the sandbox denies, is written
+    @test "--inplace" in cmd.exec
     dst = mktempdir()
     run(M.copy_command(DIR, dst))
     @test isfile(joinpath(dst, "src", "Fixture.jl"))
@@ -951,8 +953,8 @@ end
 
 @testset "a second run on an unchanged tree runs no mutant, and --only runs one verdict again" begin
     pkg = fixture()
-    # the list lies inside the package, as a builder's under `.claude/scratch/` does (the sandbox
-    # refuses a `mkdir` of `.claude`); the result goes to ~/Research/.scratch/mutants/
+    # the list lies inside the package; the result goes to ~/Research/.scratch/mutants/, not
+    # beside the list
     dir = mkpath(joinpath(pkg, "scratch"))
     list = joinpath(dir, "mutants.toml")
     write(list, """

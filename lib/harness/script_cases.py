@@ -175,7 +175,7 @@ The answer SHALL be positive, as the book's is.
 SPEC_OK = {"premise": "true", "domain": "- domain: the default call, with no argument\n", "check": "true"}
 
 # The fixture tree of the copies: what each copy holds, and what it leaves out.
-KEPT = ["src/A.jl", "test/runtests.jl", "env.jl"]
+KEPT = ["src/A.jl", "test/runtests.jl", "env.jl", "env.ts", "src/env.ts"]
 LEFT_OUT = [".env", ".env.ts", "test/.env.local", ".git/HEAD", ".claude/scratch/x"]
 
 # The files whose fix round runs only the mutants that the fix touches.
@@ -229,13 +229,13 @@ def fix_round_mutants(read: Callable[[str], str]) -> list[str]:
 
 
 def critic_excludes(text: str) -> list[str] | None:
-    """The `--exclude` flags of the critic's rsync in evidence.md, or None."""
+    """The flags after `-a` of the critic's rsync in evidence.md, or None."""
     m = re.search(r"`rsync -a ([^`]*?) <worktree>/", text)
     return None if m is None else shlex.split(m.group(1))
 
 
 def run_tests_excludes(text: str) -> list[str] | None:
-    """The fixed `--exclude` flags of `copy_command` in run-tests.jl, or None."""
+    """The fixed flags after `-a` of `copy_command` in run-tests.jl, or None."""
     m = re.search(r"`rsync -a (.*?) \$\(", text)
     return None if m is None else shlex.split(m.group(1))
 
@@ -562,6 +562,13 @@ def selftest() -> tuple[int, int]:
                 continue
             files = copied(excludes, tmp, f"copy-{k}")
             check(files == sorted(KEPT), f"{label} leaves out .git, .claude, .env and .env.* -> {files}")
+            # rsync writes the temporary copy of `env.ts` as `.env.ts.XXXXXX`, a name the sandbox
+            # denies below a session's working directory; no test can set up that deny, so the
+            # flag that writes each file under its own name is checked
+            check(
+                "--inplace" in excludes,
+                f"{label} copies env.ts in place, with no temporary .env.* name -> {excludes}",
+            )
     with tempfile.TemporaryDirectory(prefix="harness-spec-gate-") as tmp:
         verdicts, status, stderr = spec_gate(tmp)
         check(
