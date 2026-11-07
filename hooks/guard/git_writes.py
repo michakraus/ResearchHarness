@@ -1,8 +1,8 @@
 """Allow three `git` writes when the repository shows that nothing is lost; ask otherwise.
 
-The check decides a command that is one `git` call and nothing else: no operator, no redirection,
-no second part, no global option before the subcommand. It reads the state of the repository with
-`git` in the call's working directory, the payload's `cwd`.
+The check allows only a command that is one `git` call and nothing else: no operator, no
+redirection, no second part, no global option before the subcommand. It reads the state of the
+repository with `git` in the call's working directory, the payload's `cwd`.
 
   * **`git worktree remove --force <path>`**, or `-f`, given once: allow when the path, resolved
     without following its last name, lies below `~/Research/.worktrees/`, a remote-tracking ref
@@ -19,12 +19,14 @@ no second part, no global option before the subcommand. It reads the state of th
     of an own organisation and the lease names no ref, or names `<branch>` (`<branch>` or
     `refs/heads/<branch>`). Otherwise ask. A bare lease takes the expected value from the
     remote-tracking ref; an explicit `<expect>` is checked by `git` on the remote.
-  * **A lease push to a default branch, in any form**: deny when an argument after `push` names
-    `main`, `master` or the branch that `refs/remotes/origin/HEAD` names as its target
-    (`<branch>`, `+<branch>`, `<src>:<branch>`, each also with `refs/heads/`). In a command of
-    several parts the arguments run on into the next part, so the check refuses
-    `git fetch && git push --force-with-lease origin main`, and also a later part that names a
-    default branch.
+  * **A lease push that names a default branch, or no branch**: deny, in each part of the
+    command, so also `git fetch && git push --force-with-lease origin main`. A push names a
+    default branch when an argument after `push` names `main`, `master` or the branch that
+    `refs/remotes/origin/HEAD` names as its target (`<branch>`, `+<branch>`, `<src>:<branch>`,
+    each also with `refs/heads/` or `heads/`). It names no branch, and can reach a default one,
+    with `--all`, `--branches` or `--mirror`, with no refspec after the remote, or with a refspec
+    whose target is `HEAD`, `@` or empty, or that holds a glob, `$` or a backtick. The value of
+    `-o`, `--push-option`, `--repo`, `--receive-pack` or `--exec` is no refspec.
 
 The check finds the subcommand as `git` does, after its global options. It takes a `worktree
 remove` with any option as forced, since `git` reads `-ff` and a prefix of `--force` as force, and a
@@ -54,7 +56,7 @@ from .contract import PASS, Call, Verdict, strongest
 from .gh_api_writes import own_organisations
 from .paths import Place, place
 from .rm_scope import WORKTREES, below, git_subcommand, resolve
-from .shell import Tokens, readings
+from .shell import Tokens, parts, readings
 
 # Seconds for each `git` the check runs.
 TIMEOUT = 5
@@ -69,6 +71,10 @@ JOINS = re.compile(r"[\"']|\\\n?")
 # A branch name the check reads; anything else asks.
 BRANCH = re.compile(r"^(?!-)(?!HEAD$)[A-Za-z0-9._/-]+$")
 DEFAULTS = frozenset({"main", "master"})
+# The options of `git push` that push branches that no refspec names.
+SPREAD = frozenset({"--all", "--branches", "--mirror"})
+# The options of `git push` that take the next word as their value.
+VALUED = frozenset({"-o", "--push-option", "--repo", "--receive-pack", "--exec"})
 LEASE = "--force-with-lease"
 SHAPE = "`git push --force-with-lease[=<ref>[:<expect>]] origin <branch>`, or with `HEAD:refs/heads/<branch>`"
 # The changed files that a reason names.
@@ -78,6 +84,13 @@ DENY_DEFAULT = """Refused: {command}
 
 A lease push that names `{target}`, a default branch of `origin`, is refused in any form. Give
 the user the command to run in their own terminal.
+"""
+
+DENY_UNNAMED = """Refused: {command}
+
+A lease push through `{unnamed}` names no branch, so it can reach a default branch of `origin`.
+Name the branch: `git push --force-with-lease origin <branch>`, or
+`git push --force-with-lease origin HEAD:refs/heads/<branch>`.
 """
 
 ALONE = (
@@ -225,11 +238,15 @@ def defaults_of(cwd: str | None) -> frozenset[str]:
 
 def default_target(arguments: list[str], defaults: frozenset[str]) -> str | None:
     """The first argument after a lease push's `push` that names a branch of `defaults` as its
-    target, `<branch>`, `+<branch>` or `<src>:<branch>`, each also with `refs/heads/`; or None.
-    In a command of several parts the arguments run on into the next part, so a later part that
-    names a default branch counts too."""
+    target, `<branch>`, `+<branch>` or `<src>:<branch>`, each also with `refs/heads/` or with
+    `heads/`, which `git` reads as `refs/heads/`; or None."""
     for argument in arguments:
-        target = argument.lstrip("+").rsplit(":", 1)[-1].removeprefix("refs/heads/")
+        target = argument.lstrip("+").rsplit(":", 1)[-1]
+        target = (
+            target.removeprefix("refs/heads/")
+            if target.startswith("refs/")
+            else target.removeprefix("heads/")
+        )
         if not argument.startswith("-") and target in defaults:
             return argument
     return None
@@ -257,6 +274,45 @@ def write_of(words: list[str]) -> tuple[str, int, list[str]] | None:
     return None
 
 
+def unnamed_target(arguments: list[str]) -> str | None:
+    """The argument through which a lease push with `arguments` can reach a branch that it does not
+    name, or None: `--all`, `--branches` or `--mirror`; no refspec after the remote (the text "no
+    refspec"); or a refspec whose target is `HEAD`, `@` or empty, or that holds a glob, `$` or a
+    backtick. The value of an option of VALUED is no refspec."""
+    spread = next((argument for argument in arguments if argument in SPREAD), None)
+    if spread is not None:
+        return spread
+    positional: list[str] = []
+    for index, argument in enumerate(arguments):
+        if not argument.startswith("-") and (index == 0 or arguments[index - 1] not in VALUED):
+            positional.append(argument)
+    if len(positional) < len(("remote", "refspec")):
+        return "no refspec"
+    for refspec in positional[1:]:
+        target = refspec.lstrip("+").rsplit(":", 1)[-1]
+        if target in ("HEAD", "@", "") or set(refspec) & set("*$`"):
+            return refspec
+    return None
+
+
+def push_refusal(tokens: Tokens, cwd: str | None) -> Verdict | None:
+    """The denial of a lease push in any part of the command that names a default branch as its
+    target, or that can reach one without naming it; or None."""
+    command = " ".join(text for _, text in tokens)
+    for words in parts(tokens):
+        found = write_of(words)
+        if found is None or found[0] != "push":
+            continue
+        pushed = found[2]
+        target = default_target(pushed, defaults_of(cwd))
+        if target is not None:
+            return Verdict("deny", DENY_DEFAULT.format(command=command, target=target))
+        unnamed = unnamed_target(pushed)
+        if unnamed is not None:
+            return Verdict("deny", DENY_UNNAMED.format(command=command, unnamed=unnamed))
+    return None
+
+
 def decide(tokens: Tokens, cwd: str | None) -> Verdict:
     """The verdict on one reading of the command."""
     words = [text for kind, text in tokens if kind == "word"]
@@ -264,9 +320,9 @@ def decide(tokens: Tokens, cwd: str | None) -> Verdict:
     if found is None:
         return PASS
     write, index, arguments = found
-    target = default_target(arguments, defaults_of(cwd)) if write == "push" else None
-    if target is not None:
-        return Verdict("deny", DENY_DEFAULT.format(command=" ".join(words), target=target))
+    refusal = push_refusal(tokens, cwd)
+    if refusal is not None:
+        return refusal
     alone = len(words) == len(tokens) and index == 0 and words[0] == "git" and words[1] == write.split()[0]
     if not alone or cwd is None:
         return Verdict(

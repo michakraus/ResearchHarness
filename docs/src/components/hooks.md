@@ -226,12 +226,15 @@ check answers both ways.
   `origin` is in an own organisation and the lease names no ref or the pushed branch. Otherwise
   ask. In the `<branch>` form, the branch must be a local branch, and `origin` must have no
   `remote.origin.push` refspec, which can map the branch onto another remote branch.
-- A lease push to `main`, `master` or the branch that `origin/HEAD` names is refused in every form,
-  also inside a command of several parts such as `git fetch && git push --force-with-lease origin
-  main`. The check reads the target of each argument after `push`: `<branch>`, `+<branch>` and
-  `<src>:<branch>`, each also with `refs/heads/`.
+- A lease push that names `main`, `master` or the branch that `origin/HEAD` names as its target is
+  refused, also inside a command of several parts such as `git fetch && git push
+  --force-with-lease origin main`. The check reads the target of each argument after `push`:
+  `<branch>`, `+<branch>` and `<src>:<branch>`, each also with `refs/heads/` or `heads/`, which
+  `git` reads as `refs/heads/`. A lease push that names no branch can reach a default one, so it
+  is refused too: `--all`, `--branches`, `--mirror`, no refspec after the remote, or a refspec
+  whose target is `HEAD`, `@` or empty, or that holds a glob, `$` or a backtick.
 
-The check decides only a command that is one `git` call, with no operator, no `cd` and no option
+The check allows only a command that is one `git` call, with no operator, no `cd` and no option
 before the subcommand. It finds the subcommand after the global options of `git`. Any other form
 of these writes asks, for example `-C`, `-f` twice or a lease after the remote. A `worktree remove`
 with any option counts as forced, because `git` reads `-ff` and a prefix of `--force` as force. A
