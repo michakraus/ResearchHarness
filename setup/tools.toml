@@ -52,3 +52,14 @@ sha256 = "5b919c3bccb799b67a61866d0e617410a4fcdf173e2614440e59de2fa2003436"
 [release.RTK.linux-aarch64]
 url = "https://github.com/rtk-ai/rtk/releases/download/v1.0.1/rtk-aarch64-unknown-linux-gnu.tar.gz"
 sha256 = "cd627c4091ad90b5e5aca83ca5af66ee4b8aa8537a736533fa90544f461f1c2b"
+
+[release.chezmoi]
+version = "2.73.2"
+
+[release.chezmoi.linux-x86_64]
+url = "https://github.com/twpayne/chezmoi/releases/download/v2.73.2/chezmoi_2.73.2_linux_amd64.tar.gz"
+sha256 = "4d7bd8072f15373d5f5c801209bac218527452c8e54f9ae46ba6c5bd4a6eca41"
+
+[release.chezmoi.linux-aarch64]
+url = "https://github.com/twpayne/chezmoi/releases/download/v2.73.2/chezmoi_2.73.2_linux_arm64.tar.gz"
+sha256 = "db92b343a32cade0b1d4ff5e30da54c5156f7a580349281e583a5402c57c7bcf"

@@ -64,11 +64,14 @@ Before each question it says what the key holds and whether the answer is the sa
 machine, as the table of [The questions of harness setup](profile.md#the-questions-of-harness-setup)
 gives it. An empty answer keeps the example's value; a list takes items separated by commas or a
 TOML list, and replaces the example's list. Then it asks for the frontends and the components, each
-from a numbered list, and whether this machine develops the harness. It writes the answers into
-`[setup]` of the profile, shows its plan, and runs the plan after y/N: the directories, the
-Homebrew packages, the installers of Julia, Kaimon and Claude Code, `harness install --apply`,
-`git config core.hooksPath .githooks`, `harness trust --apply`, the jobs and the Kaimon token
-where `[setup]` chooses their components, and `harness doctor`.
+from a numbered list, and whether this machine develops the harness. With the component `jobs`
+and a profile without `claude_remote`, it asks for the URL of your `~/.claude` repository; an
+empty answer means no autocommit job. It writes the answers into the profile, shows its plan, and
+runs the plan after y/N: the directories, the Homebrew packages, the installers of Julia, Kaimon
+and Claude Code, `git clone` of `claude_remote` into a `~/.claude` that is missing or empty,
+`harness install --apply`, `git config core.hooksPath .githooks`, `harness trust --apply`, the
+jobs and the Kaimon token where `[setup]` chooses their components, and `harness doctor`. After
+the jobs start the Kaimon server, the token step waits up to 60 s for the server's key.
 [setup-reference.md](setup-reference.md) has a section for each step.
 
 Two options change the run:
@@ -85,14 +88,13 @@ start: the run names the step and goes on. Start `claude` once, then run `harnes
 
 **By hand.** `harness setup` prints the steps that it cannot do under *By hand*, before its last
 step. With the frontend `antigravity`, install the Antigravity app from
-<https://antigravity.google/> and start it once. The installers put their programs into
-`~/.local/bin` and `~/.julia/bin`. Add these lines to `~/.zshrc`, so that each new shell finds
-them:
-
-```bash
-export PATH="$HOME/.local/bin:$PATH"
-export PATH="$HOME/.julia/bin:$PATH"
-```
+<https://antigravity.google/>, start it once, then run `harness install --apply`. With `jobs` and
+without `claude_remote`, a line names the key that the autocommit job needs. One line is an
+`export PATH=…` line. It holds each directory that the installed programs are in and that the
+`PATH` of the shell that started `harness setup` lacks: `~/.local/bin`, and with `julia` also
+`~/.juliaup/bin` and `~/.julia/bin`. With zsh as your login shell, `harness setup` asks y/N to
+append the line to `~/.zshrc`, after a comment line; with another shell, with `--yes`, or with a
+`~/.zshrc` that is a symlink, add the line to your shell startup file yourself.
 
 ## The check that it worked
 

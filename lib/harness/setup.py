@@ -9,10 +9,12 @@ A machine needs Python 3.14, uv, git, the clone and, on macOS, Homebrew before i
 `setup` creates the profile from examples/profile.toml when there is none, asking only for the
 keys of REQUIRED, the keys with no default, with the example's value as the answer to an empty
 line; a list is items separated by commas or a TOML list (`list_answer`). It asks for the
-frontends and the components from numbered lists, and for `develop`, y/N. Before each question it
-prints the question's explanation of EXPLAINED.
+frontends and the components from numbered lists, and for `develop`, y/N. With the component
+`jobs` and a profile without `claude_remote`, it then asks for that URL (`ask_remote`), an empty
+line for none. Before each question it prints the question's explanation of EXPLAINED.
 It then shows the plan and runs it after y/N; the first step of that plan writes the answers into
-`[setup]` of the profile (`with_setup`), `develop` only where it is true. `--yes` reads `[setup]`,
+`[setup]` of the profile (`with_setup`), `develop` only where it is true, and a `claude_remote`
+answer as the profile's first line (`with_remote`). `--yes` reads `[setup]`,
 or the defaults of a profile without it, asks nothing and never writes the profile; without a
 profile it exits 2. Without a terminal on stdin and without `--yes` it exits 2 and names
 `--yes`. `--dry-run`, alone or with `--yes`, prints the plan and changes nothing. Missing model
@@ -22,10 +24,14 @@ place, such as an inline table or dotted keys, exits 2 and names the table to wr
 
 The plan (`plan`), in this order: the directories that `harness install` needs (the tree
 instructions, each `repository_roots` entry, and the OpenCode directory with `opencode`); the
-packages; the pinned releases; the vendor installers; then `harness install --apply`,
-`git config core.hooksPath .githooks` in the clone, `harness trust --apply` with the `claude`
-frontend once Claude Code has written `~/.claude.json` (before that, the step by hand), the jobs with the
-`jobs` component, the Kaimon token with the `julia` component, and `harness doctor`. A tool of
+packages; the pinned releases; the vendor installers; then, with the `jobs` component and a
+`claude_remote`, `git clone` of it into a ~/.claude that holds no `.git` (`cloned`);
+`harness install --apply`, `git config core.hooksPath .githooks` in the clone,
+`harness trust --apply` with the `claude` frontend once Claude Code has written `~/.claude.json`
+(before that, the step by hand), the jobs with the `jobs` component, without the autocommit job
+where the profile has no `claude_remote`, the Kaimon token with the `julia` component, which with
+the jobs waits up to TOKEN_READS s for the key of the server that they start, and
+`harness doctor`. A tool of
 TOOLS belongs to every machine or to one component or frontend. A tool that is installed and meets
 its minimum is skipped; a tool with no minimum is met by any version, and one whose version cannot
 be read counts as below its minimum. On macOS a missing tool that Homebrew has goes into one
@@ -43,7 +49,11 @@ minimum, the tool's version is read again (`rechecked`): one still below it fail
 the fix for Julia, the default channel of juliaup, and otherwise with the path of the copy that
 comes first on the PATH. What runs no installer is a line under "by hand", and so is, with the
 jobs on Linux, the line that turns on lingering, unless `loginctl show-user` reads `Linger=yes`
-(`lingers`). An unknown system, a Linux that is not Ubuntu and an unknown architecture exit 2 and
+(`lingers`), and the one `export PATH=…` line of the directories of EXTRA_PATH that the choice
+puts programs into and that the PATH that `setup` started with lacks (`missing_path`). In a
+terminal, without `--yes`, with zsh as the login shell and a ~/.zshrc that is no symlink, `setup`
+asks y/N to append that line to ~/.zshrc, after the comment PATH_COMMENT; a yes makes it a step of
+the plan. An unknown system, a Linux that is not Ubuntu and an unknown architecture exit 2 and
 name it.
 
 The run goes step by step. A failed step prints its output and exits 2; a second run plans again
@@ -95,6 +105,12 @@ SYSTEMS = {"Darwin": ("arm64", "x86_64"), "Linux": ("x86_64", "aarch64")}
 LINUX = ("Linux",)
 # The directories below the home directory where an installer puts its program.
 EXTRA_PATH = (".local/bin", ".juliaup/bin", ".julia/bin", ".opencode/bin")
+# The start of the line by hand that holds the `export PATH=…` line of `missing_path`.
+PATH_BY_HAND = "add to your shell startup file: "
+# The comment line above the `export PATH=…` line that `setup` appends to ~/.zshrc.
+PATH_COMMENT = "# The directories of the tools that harness setup installs"
+# The most reads of Kaimon's config.json, one second apart, while the token step waits for its key.
+TOKEN_READS = 60
 VERSION = re.compile(r"\d+(?:\.\d+)+")
 CANDIDATE = re.compile(r"^\s*Candidate:\s*(\S+)", re.MULTILINE)
 SHA256 = re.compile(r"[0-9a-f]{64}")
@@ -190,7 +206,8 @@ TOOLS = (
         "Antigravity",
         need="antigravity",
         marker=".gemini",
-        by_hand="install the Antigravity desktop app from https://antigravity.google/ and start it once",
+        by_hand="install the Antigravity desktop app from https://antigravity.google/ and start it once, "
+        "then run harness install --apply",
     ),
 )
 
@@ -216,8 +233,9 @@ class Pins:
 class Machine:
     """The machine that `setup` plans for: `system` and `arch` as `platform` names them, the
     `distro` of /etc/os-release on Linux, the `home` directory, the environment `env` of every
-    child process (its PATH that of every lookup), the harness `clone`, and the command that runs
-    `harness`."""
+    child process (its PATH that of every lookup), the harness `clone`, the command that runs
+    `harness`, the `path` that `setup` started with, before the directories of EXTRA_PATH, the
+    user's `login_shell`, and the `sleep` of the token step's wait."""
 
     system: str
     arch: str
@@ -226,6 +244,9 @@ class Machine:
     env: Mapping[str, str]
     clone: pathlib.Path
     harness: tuple[str, ...]
+    path: str = ""
+    login_shell: str = ""
+    sleep: Callable[[float], None] = time.sleep
 
     def which(self, command: str) -> str | None:
         return shutil.which(command, path=self.env.get("PATH", ""))
@@ -251,12 +272,14 @@ class Step:
 
 @dataclasses.dataclass(slots=True)
 class Plan:
-    """The steps in their order, the lines that the user does by hand, and `harness doctor`,
-    which comes after both."""
+    """The steps in their order, the lines that the user does by hand, `harness doctor`, which
+    comes after both, and the `export PATH=…` line of the directories that the PATH lacks, "" when
+    it lacks none."""
 
     doctor: Doctor
     steps: list[Step] = dataclasses.field(default_factory=list[Step])
     by_hand: list[str] = dataclasses.field(default_factory=list[str])
+    path_line: str = ""
 
 
 # --------------------------------------------------------------------- the pinned releases ----
@@ -439,11 +462,26 @@ def plan(
             result.steps.append(Step(tool.upgrade, action))
         else:
             result.steps.append(Step(tool.installer, shell(machine, tool.installer)))
-        # Only Linux runs the OpenCode installer; Homebrew installs it on macOS.
-        if tool.name == "OpenCode":
-            result.by_hand.append('add to your shell startup file: export PATH="$HOME/.opencode/bin:$PATH"')
+    if missing := missing_path(machine, choice):
+        result.path_line = 'export PATH="' + "".join(f"$HOME/{d}:" for d in missing) + '$PATH"'
+        result.by_hand.append(PATH_BY_HAND + result.path_line)
     harness_steps(machine, choice, loaded, env, result)
     return result
+
+
+def missing_path(machine: Machine, choice: profile_module.Setup) -> list[str]:
+    """The directories of EXTRA_PATH, in their order, that `choice` puts programs into and that
+    the PATH that `setup` started with (`machine.path`) lacks: ~/.local/bin on every machine,
+    ~/.juliaup/bin and ~/.julia/bin with `julia`, and ~/.opencode/bin with `opencode` on Linux,
+    where the OpenCode installer runs; Homebrew installs OpenCode on macOS."""
+    used = {
+        ".local/bin": True,
+        ".juliaup/bin": "julia" in choice.components,
+        ".julia/bin": "julia" in choice.components,
+        ".opencode/bin": "opencode" in choice.frontends and machine.system == "Linux",
+    }
+    have = {p.rstrip("/") for p in machine.path.split(os.pathsep) if p}
+    return [d for d in EXTRA_PATH if used[d] and str(machine.home / d) not in have]
 
 
 def directories_step(
@@ -583,8 +621,14 @@ def harness_steps(
     result: Plan,
 ) -> None:
     """The steps after the installs, in their order, up to `harness doctor`, which the plan holds
-    apart; each harness step runs with `env`."""
+    apart; each harness step runs with `env`. With the jobs and a `claude_remote`, the clone of
+    ~/.claude (`cloned`) comes first where ~/.claude holds no `.git`."""
     steps = result.steps
+    jobs = "jobs" in choice.components
+    claude = machine.home / ".claude"
+    url = loaded.claude_remote
+    if jobs and url and not (claude / ".git").exists():
+        steps.append(Step(f"git clone {url} {claude}", lambda: cloned(machine, url, claude)))
     steps.append(
         Step("harness install --apply", command(machine, [*machine.harness, "install", "--apply"], env))
     )
@@ -597,14 +641,17 @@ def harness_steps(
     )
     if "claude" in choice.frontends:
         steps.append(Step("harness trust --apply", trust(machine, env)))
-    if "jobs" in choice.components:
+    if jobs:
         job_steps(machine, loaded, env, result)
     if "julia" in choice.components:
+        # With the jobs, the job steps start the Kaimon server, which writes its key a moment later.
+        reads = TOKEN_READS if jobs else 1
+        wait = f", reading it once a second for up to {TOKEN_READS} s until it holds a key" if jobs else ""
         steps.append(
             Step(
                 "write ~/.config/kaimon/auth-token, mode 600, from the first key of "
-                "~/.config/kaimon/config.json, when that file exists and the token does not",
-                lambda: kaimon_token(machine.home),
+                f"~/.config/kaimon/config.json, when that file exists and the token does not{wait}",
+                lambda: kaimon_token(machine.home, reads, machine.sleep),
             )
         )
 
@@ -627,7 +674,16 @@ def trust(machine: Machine, env: Mapping[str, str]) -> Action:
 
 def job_steps(machine: Machine, loaded: profile_module.Profile, env: Mapping[str, str], result: Plan) -> None:
     """The jobs, as the dotfiles kit's services step does them: the two copies in ~/.local/bin,
-    then the launch agents or the systemd user units, rendered and loaded."""
+    then the launch agents or the systemd user units, rendered and loaded. Without a
+    `claude_remote`, no launch agent or unit of the autocommit job is rendered or loaded, because
+    launchd loads every plist of ~/Library/LaunchAgents at the next login; a line by hand names
+    the key."""
+    autocommit = bool(loaded.claude_remote)
+    if not autocommit:
+        result.by_hand.append(
+            "the autocommit job of ~/.claude: set claude_remote in the profile to the URL of your "
+            "~/.claude repository, then run harness setup again"
+        )
     local = machine.home / ".local" / "bin"
     for source, mode in (("launchagents/claude-autocommit", 0o755), ("scripts/julia-update.jl", 0o644)):
         target = local / pathlib.PurePath(source).name
@@ -643,7 +699,7 @@ def job_steps(machine: Machine, loaded: profile_module.Profile, env: Mapping[str
                 "the profile has no launchd_prefix, which the labels of the launch agents need"
             )
         agents = machine.home / "Library" / "LaunchAgents"
-        for job in JOBS:
+        for job in (j for j in JOBS if autocommit or j != "claude-autocommit"):
             label = f"{loaded.launchd_prefix}.{job}"
             plist = agents / f"{label}.plist"
             result.steps.append(
@@ -661,7 +717,7 @@ def job_steps(machine: Machine, loaded: profile_module.Profile, env: Mapping[str
             )
         return
     units = machine.home / ".config" / "systemd" / "user"
-    for unit in UNITS:
+    for unit in (u for u in UNITS if autocommit or not u.startswith("claude-autocommit.")):
         result.steps.append(
             Step(
                 f"harness render systemd/{unit} > {units / unit}",
@@ -669,7 +725,8 @@ def job_steps(machine: Machine, loaded: profile_module.Profile, env: Mapping[str
             )
         )
     systemctl = machine.which("systemctl") or "systemctl"
-    for words in (["daemon-reload"], ["enable", "--now", *ENABLED], ["restart", *ENABLED]):
+    enabled = [u for u in ENABLED if autocommit or not u.startswith("claude-autocommit.")]
+    for words in (["daemon-reload"], ["enable", "--now", *enabled], ["restart", *enabled]):
         result.steps.append(
             Step(f"systemctl --user {' '.join(words)}", command(machine, [systemctl, "--user", *words]))
         )
@@ -907,22 +964,32 @@ def load_agent(machine: Machine, job: str, label: str, plist: pathlib.Path) -> s
     return bootstrap()
 
 
-def kaimon_token(home: pathlib.Path) -> str | None:
+def kaimon_token(
+    home: pathlib.Path, reads: int = 1, sleep: Callable[[float], None] = time.sleep
+) -> str | None:
     """Write ~/.config/kaimon/auth-token, mode 600, from the first key of Kaimon's config.json,
-    when that file exists and the token does not; otherwise print the step."""
+    when that file exists and the token does not; otherwise print the step. The file is read up to
+    `reads` times, with `sleep(1)` between two reads, until it holds a key: the Kaimon server
+    writes its key a moment after it starts. A config.json that is no JSON fails the step with one
+    read, and counts as no key with more."""
     directory = home / ".config" / "kaimon"
     token, config = directory / "auth-token", directory / "config.json"
     if token.exists():
         print(f"{token} exists; it is kept")
         return None
-    key: object = None
-    if config.is_file():
+    key: str | None = None
+    for n in range(reads):
+        if n:
+            sleep(1)
         try:
-            keys = jsonio.load(config).get("api_keys")
+            key = first_key(config)
         except HarnessError as e:
-            return str(e)
-        key = cast("list[object]", keys)[0] if isinstance(keys, list) and keys else None
-    if not isinstance(key, str) or not key:
+            if reads == 1:
+                return str(e)
+            continue
+        if key:
+            break
+    if not key:
         print(
             f"{config} holds no key yet: once the Kaimon server has started, write its first key of "
             f"api_keys into {token}, mode 600, or run harness setup again"
@@ -935,13 +1002,66 @@ def kaimon_token(home: pathlib.Path) -> str | None:
     return None
 
 
+def first_key(config: pathlib.Path) -> str | None:
+    """The first item of `api_keys` of Kaimon's `config`, when it is a string that is not empty;
+    None without the file. A file that is no JSON raises HarnessError."""
+    if not config.is_file():
+        return None
+    keys = jsonio.load(config).get("api_keys")
+    key = cast("list[object]", keys)[0] if isinstance(keys, list) and keys else None
+    return key if isinstance(key, str) and key else None
+
+
+def cloned(machine: Machine, url: str, target: pathlib.Path) -> str | None:
+    """`git clone url target`, where `target` is missing or an empty directory. A `target` that
+    holds files fails the step with the lines that move it aside and clone. A clone that fails
+    leaves nothing below `target` and fails the step with the last line of git's stderr."""
+    existed = target.is_dir()
+    if target.exists() and (not existed or any(target.iterdir())):
+        return (
+            f"{target} holds files and is no git repository. Move it aside and clone it, then run "
+            f"harness setup again:\n  mv {target} {target}.setup\n  git clone {url} {target}\n"
+        )
+    git = machine.which("git") or "git"
+    try:
+        p = subprocess.run(
+            [git, "clone", url, str(target)],
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            env=dict(machine.env),
+            timeout=INSTALL_TIMEOUT,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as e:
+        failure = f"cannot run git clone: {e}"
+    else:
+        if p.returncode == 0:
+            return None
+        lines = [line for line in p.stderr.splitlines() if line.strip()]
+        failure = lines[-1] if lines else f"git clone exits {p.returncode}"
+    try:
+        if existed:
+            for child in target.iterdir():
+                if child.is_dir() and not child.is_symlink():
+                    shutil.rmtree(child)
+                else:
+                    child.unlink()
+        elif target.exists():
+            shutil.rmtree(target)
+    except OSError as e:
+        failure += f"\ncannot remove the partial clone at {e.filename}: {e.strerror}"
+    return failure
+
+
 # ---------------------------------------------------------------------- the questions ----
 
 # The lines that `setup` prints before a question, the one place of their text: for each key of
 # REQUIRED, what it holds and whether its answer is the same on every machine that shares the
 # tree, in three lines at most; for the lists of frontends and components, what they are; for
-# each frontend and each component, its description in the list; and for `develop`, which machine
-# it is for. The explanations name no repository, organisation or person.
+# each frontend and each component, its description in the list; for `develop`, which machine it
+# is for; and for `claude_remote`, what the URL is for. The explanations name no repository,
+# organisation or person.
 EXPLAINED: dict[str, tuple[str, ...]] = {
     "memory_project": (
         "A label, not a path: Claude Code keeps the tree's memory in ~/.claude/projects/<label>/memory.",
@@ -981,6 +1101,11 @@ EXPLAINED: dict[str, tuple[str, ...]] = {
     "jq": ("jq, the command-line JSON processor",),
     "jobs": ("Kaimon, the Julia update and the autocommit of ~/.claude, as background jobs",),
     "dotfiles": ("chezmoi, which applies a repository of dotfiles",),
+    "claude_remote": (
+        "The URL of the git repository of ~/.claude, starting with https:// or git@: harness setup clones",
+        "it into ~/.claude, and the autocommit job pushes to it. An empty answer: no autocommit job.",
+        "The same on every machine.",
+    ),
 }
 # The most lines that the explanation of a key of REQUIRED has.
 EXPLAINED_LINES = 3
@@ -1045,6 +1170,26 @@ def choose(current: profile_module.Setup, ask: Ask) -> profile_module.Setup:
         components=components,
         develop=confirm(ask, "Develop the harness, with the dev group of uv.lock?", default=current.develop),
     )
+
+
+def ask_remote(ask: Ask) -> str:
+    """The URL of the ~/.claude repository, after the explanation of `claude_remote` (EXPLAINED),
+    or "" for an empty line. An answer that starts with neither of `profile.REMOTE_STARTS` prints
+    one line and is asked again."""
+    for line in EXPLAINED["claude_remote"]:
+        print(line)
+    starts = " or ".join(profile_module.REMOTE_STARTS)
+    while answer := ask_line(ask, f"claude_remote, a URL that starts with {starts}, or empty for none []: "):
+        if answer.startswith(profile_module.REMOTE_STARTS):
+            return answer
+        print(f"  {answer!r} starts with neither {starts}; give such a URL, or an empty line")
+    return ""
+
+
+def with_remote(text: str, url: str) -> str:
+    """The profile `text` with the line `claude_remote = <url>` first, where every key is a key
+    of the top-level table."""
+    return f"claude_remote = {toml_value(url)}\n{text}"
 
 
 def toml_value(value: str | Sequence[str]) -> str:
@@ -1251,6 +1396,12 @@ def setup(machine: Machine, options: Options, ask: Ask, *, terminal: bool, pins:
         )
         choice = choose(loaded_from(text, machine.home).setup, ask)
         text = with_setup(text, choice)
+        if (
+            "jobs" in choice.components
+            and not loaded_from(text, machine.home).claude_remote
+            and (url := ask_remote(ask))
+        ):
+            text = with_remote(text, url)
         loaded = loaded_from(text, machine.home)
         if not exists or text != options.profile.read_text(encoding="utf-8"):
             before.append(
@@ -1268,6 +1419,19 @@ def setup(machine: Machine, options: Options, ask: Ask, *, terminal: bool, pins:
         )
     the_plan = plan(machine, choice, loaded, options, pins)
     the_plan.steps[:0] = before
+    zshrc = machine.home / ".zshrc"
+    if (
+        the_plan.path_line
+        and not options.yes
+        and pathlib.PurePath(machine.login_shell).name == "zsh"
+        and not zshrc.is_symlink()
+        and confirm(ask, f"Append the line {the_plan.path_line} to {zshrc}?")
+    ):
+        the_plan.by_hand.remove(PATH_BY_HAND + the_plan.path_line)
+        line = the_plan.path_line
+        the_plan.steps.append(
+            Step(f"append to {zshrc}: {PATH_COMMENT}, {line}", lambda: appended(zshrc, line))
+        )
     show(machine, choice, the_plan)
     if options.dry_run:
         print("\nharness setup: the dry run changes nothing.")
@@ -1276,6 +1440,17 @@ def setup(machine: Machine, options: Options, ask: Ask, *, terminal: bool, pins:
         print("harness setup: nothing is changed.")
         return 0
     return run(the_plan)
+
+
+def appended(zshrc: pathlib.Path, line: str) -> str | None:
+    """Append PATH_COMMENT and `line` to `zshrc`, after an empty line where it holds text."""
+    try:
+        gap = "\n" if zshrc.is_file() and zshrc.stat().st_size else ""
+        with zshrc.open("a", encoding="utf-8") as f:
+            f.write(f"{gap}{PATH_COMMENT}\n{line}\n")
+    except OSError as e:
+        return f"cannot append to {zshrc}: {e.strerror}"
+    return None
 
 
 def written(path: pathlib.Path, text: str) -> str | None:
@@ -1353,6 +1528,15 @@ def extended(home: pathlib.Path, path: str) -> str:
     return os.pathsep.join([*extra, *(p for p in path.split(os.pathsep) if p and p not in extra)])
 
 
+def passwd_shell() -> str:
+    """The login shell of the running user, as the passwd entry names it; "" for a uid with no
+    entry."""
+    try:
+        return pwd.getpwuid(os.getuid()).pw_shell
+    except KeyError:
+        return ""
+
+
 def cmd_setup(args: argparse.Namespace) -> int:
     home = pathlib.Path.home()
     env = {**os.environ, "PATH": extended(home, os.environ.get("PATH", ""))}
@@ -1365,6 +1549,8 @@ def cmd_setup(args: argparse.Namespace) -> int:
         env=env,
         clone=REPO,
         harness=(sys.executable, str(REPO / "bin" / "harness")),
+        path=os.environ.get("PATH", ""),
+        login_shell=passwd_shell(),
     )
     options = Options(
         yes=bool(args.yes),
@@ -1381,9 +1567,9 @@ def register(sub: fmt.Subcommands) -> None:
         help="install the tools and frontends of [setup], then run install, trust, the jobs and doctor",
         description="Ask for the frontends and components in a terminal, write them into [setup] "
         "of the profile, show the plan and run it after y/N: the packages, the pinned releases, the "
-        "vendor installers, harness install --apply, core.hooksPath, harness trust --apply (with "
-        "claude), the jobs, the Kaimon token and harness doctor. A failed step exits 2; a FAIL of "
-        "harness doctor exits 1.",
+        "vendor installers, the clone of claude_remote into ~/.claude (with jobs), harness install "
+        "--apply, core.hooksPath, harness trust --apply (with claude), the jobs, the Kaimon token and "
+        "harness doctor. A failed step exits 2; a FAIL of harness doctor exits 1.",
     )
     p.add_argument("--yes", action="store_true", help="read [setup] of the profile and ask nothing")
     p.add_argument(
@@ -1444,6 +1630,8 @@ class Scratch:
         f.chmod(0o755)
 
     def machine(self, system: str = "Darwin", arch: str = "", distro: str = "") -> Machine:
+        """The scratch machine: it started with the PATH of the fake programs alone, has no login
+        shell, and its token step does not sleep."""
         return Machine(
             system=system,
             arch=arch or SYSTEMS.get(system, ("",))[0],
@@ -1452,6 +1640,8 @@ class Scratch:
             env={"PATH": extended(self.home, str(self.bin)), "HOME": str(self.home)},
             clone=self.clone,
             harness=(str(self.bin / "harness"),),
+            path=str(self.bin),
+            sleep=lambda _: None,
         )
 
     def options(self, *, yes: bool = True, dry_run: bool = False) -> Options:
@@ -1569,6 +1759,25 @@ def pins_cases(case: Case, tmp: pathlib.Path) -> None:
             "linux-aarch64",
         },
     )
+    chezmoi = {
+        key: (r.version, r.url.rsplit("/", 1)[-1], r.sha256) for key, r in pins.releases["chezmoi"].items()
+    }
+    case(
+        f"setup/tools.toml pins chezmoi 2.73.2 for both Linux architectures: {chezmoi}",
+        ok=chezmoi
+        == {
+            "linux-x86_64": (
+                "2.73.2",
+                "chezmoi_2.73.2_linux_amd64.tar.gz",
+                "4d7bd8072f15373d5f5c801209bac218527452c8e54f9ae46ba6c5bd4a6eca41",
+            ),
+            "linux-aarch64": (
+                "2.73.2",
+                "chezmoi_2.73.2_linux_arm64.tar.gz",
+                "db92b343a32cade0b1d4ff5e30da54c5156f7a580349281e583a5402c57c7bcf",
+            ),
+        },
+    )
     names = {t.name for t in TOOLS}
     unknown = sorted((set(pins.minimum) | set(pins.releases)) - names)
     case(f"each tool of setup/tools.toml is a tool of TOOLS: {unknown} are not", ok=not unknown)
@@ -1656,7 +1865,7 @@ def refusal_cases(case: Case, tmp: pathlib.Path, pins: Pins) -> None:
 def macos_cases(case: Case, tmp: pathlib.Path, pins: Pins) -> None:
     """The whole plan on macOS with --yes: Homebrew, the installers, the harness steps, the jobs and
     the token; then a failed step and the run after it."""
-    s = scratch(tmp, "macos", MACOS_FAKES)
+    s = claude_repository(scratch(tmp, "macos", MACOS_FAKES))
     kaimon = s.home / ".config" / "kaimon"
     kaimon.mkdir(parents=True)
     (kaimon / "config.json").write_text('{"api_keys": ["kaimon_key", "second_key"]}\n', encoding="utf-8")
@@ -1712,7 +1921,11 @@ def macos_cases(case: Case, tmp: pathlib.Path, pins: Pins) -> None:
     token = kaimon / "auth-token"
     got = (oct(token.stat().st_mode & 0o777), token.read_text()) if token.exists() else None
     case(f"the Kaimon token is the first key, mode 600: {got}", ok=got == ("0o600", "kaimon_key"))
-    case("the output names the steps that the user does by hand", ok="antigravity.google" in out)
+    case(
+        "the output names the steps that the user does by hand, and the Antigravity line says to run "
+        "harness install --apply after the app's first start",
+        ok="https://antigravity.google/ and start it once, then run harness install --apply" in out,
+    )
     case("the output of harness doctor is printed", ok="doctor: all PASS" in out)
 
     s.fake("brew", '[ "$1" = install ] && { echo "brew: boom"; exit 1; }; exit 0')
@@ -1809,8 +2022,8 @@ def linux_cases(case: Case, tmp: pathlib.Path, pins: Pins) -> None:
     )
     releases = [line.split()[1] for line in lines if line.startswith("install ") and "sha256" in line]
     case(
-        f"gitleaks, actionlint and RTK install from their pinned releases: {releases}",
-        ok=releases == ["actionlint", "gitleaks", "rtk"],
+        f"gitleaks, actionlint, RTK and chezmoi install from their pinned releases: {releases}",
+        ok=releases == ["actionlint", "gitleaks", "rtk", "chezmoi"],
     )
     case(
         f"the apt line comes before the releases: {lines[:3]}",
@@ -1910,7 +2123,7 @@ def linux_cases(case: Case, tmp: pathlib.Path, pins: Pins) -> None:
 
 def linux_jobs_cases(case: Case, tmp: pathlib.Path, pins: Pins) -> None:
     """A whole run of the jobs on Ubuntu, with sudo."""
-    s = scratch(tmp, "linux-jobs", LINUX_FAKES)
+    s = claude_repository(scratch(tmp, "linux-jobs", LINUX_FAKES))
     machine = s.machine("Linux")
     jobs = profile_module.Setup(frontends=(), components=("jobs",))
     loaded = profile_module.load(s.profile, home=str(s.home))
@@ -2019,9 +2232,10 @@ def plan_cases(case: Case, tmp: pathlib.Path, pins: Pins) -> None:
     )
     (s.home / ".gemini").mkdir(parents=True)
     the_plan = plan(mac, profile_module.Setup(), loaded, options, pins)
+    tools = [line for line in the_plan.by_hand if not line.startswith((PATH_BY_HAND, "the autocommit job"))]
     case(
         f"~/.gemini counts as installed, and no tool of Linux is a line by hand on macOS: {the_plan.by_hand}",
-        ok=the_plan.by_hand == [],
+        ok=tools == [],
     )
     for d in (loaded.tree_agents, *loaded.repository_roots, s.home / ".config" / "opencode"):
         pathlib.Path(d).mkdir(parents=True, exist_ok=True)
@@ -2031,9 +2245,25 @@ def plan_cases(case: Case, tmp: pathlib.Path, pins: Pins) -> None:
         "apt-cache", 'case "$2" in chezmoi) echo "  Candidate: (none)";; *) echo "  Candidate: 9.9-1";; esac'
     )
     linux_plan = plan(linux, profile_module.Setup(), loaded, options, pins)
+    release = pins.releases["chezmoi"]["linux-x86_64"]
+    chezmoi = [step.show for step in linux_plan.steps if "chezmoi" in step.show]
     case(
-        f"chezmoi without an apt candidate is a line by hand: {linux_plan.by_hand}",
-        ok=any(line.startswith("install chezmoi") for line in linux_plan.by_hand),
+        f"chezmoi without an apt candidate installs its pinned release into ~/.local/bin, and is no "
+        f"line by hand: {chezmoi} {linux_plan.by_hand}",
+        ok=any(
+            step.show.startswith(f"install chezmoi {release.version} from {release.url} into ~/.local/bin")
+            for step in linux_plan.steps
+        )
+        and release.version == "2.73.2"
+        and not any("chezmoi" in line for line in linux_plan.by_hand),
+    )
+    aarch64 = [
+        x.show
+        for x in plan(s.machine("Linux", "aarch64"), profile_module.Setup(), loaded, options, pins).steps
+    ]
+    case(
+        f"chezmoi has a pinned release on linux-aarch64 too: {[x for x in aarch64 if 'chezmoi' in x]}",
+        ok=any(x.startswith("install chezmoi 2.73.2 ") for x in aarch64),
     )
     linux_plan = plan(linux, opencode, loaded, options, pins)
     case(
@@ -2061,7 +2291,7 @@ def plan_cases(case: Case, tmp: pathlib.Path, pins: Pins) -> None:
     shutil.copyfile(profile_module.DUMMY, s.profile)
     attempt(mac, options, pins=pins)
     case("an existing models.toml is kept", ok=s.models.read_text(encoding="utf-8") == "# mine\n")
-    code, out = attempt(mac, s.options(yes=False, dry_run=True), Asker(*[""] * 3), terminal=True, pins=pins)
+    code, out = attempt(mac, s.options(yes=False, dry_run=True), Asker(*[""] * 4), terminal=True, pins=pins)
     case(
         f"in a terminal, unchanged answers on a profile write nothing: {code}",
         ok=code == "0" and str(s.profile) not in out,
@@ -2492,6 +2722,460 @@ def token_cases(case: Case, tmp: pathlib.Path) -> None:
     case("an existing token is kept", ok=(directory / "auth-token").read_text() == "mine")
 
 
+REMOTE = "https://example.invalid/claude.git"
+
+
+def claude_repository(s: Scratch) -> Scratch:
+    """`s`, with the `claude_remote` REMOTE in its profile and a git repository in ~/.claude."""
+    s.profile.write_text(with_remote(s.profile.read_text(encoding="utf-8"), REMOTE), encoding="utf-8")
+    git(s.home / ".claude", "init", "-q")
+    return s
+
+
+def git(directory: pathlib.Path, *arguments: str) -> str:
+    """`git -C directory arguments` of a case, with an author and no global configuration: its
+    stdout; a failure raises."""
+    directory.mkdir(parents=True, exist_ok=True)
+    env = {
+        "PATH": os.environ.get("PATH", ""),
+        "HOME": str(directory),
+        "GIT_CONFIG_NOSYSTEM": "1",
+        "GIT_CONFIG_GLOBAL": os.devnull,
+        "GIT_AUTHOR_NAME": "case",
+        "GIT_AUTHOR_EMAIL": "case@example.invalid",
+        "GIT_COMMITTER_NAME": "case",
+        "GIT_COMMITTER_EMAIL": "case@example.invalid",
+    }
+    return subprocess.run(
+        [shutil.which("git") or "git", "-C", str(directory), *arguments],
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        text=True,
+        env=env,
+        timeout=TIMEOUT,
+        check=True,
+    ).stdout
+
+
+JOBS_ONLY = profile_module.Setup(frontends=(), components=("jobs",))
+
+
+def remote_machine(tmp: pathlib.Path, name: str, target: pathlib.Path) -> tuple[Scratch, Machine]:
+    """A scratch macOS machine whose profile chooses the jobs alone and names REMOTE, which git
+    reads as the repository at `target`."""
+    s = scratch(tmp, name, MACOS_FAKES)
+    chosen_profile(s, JOBS_ONLY)
+    s.profile.write_text(with_remote(s.profile.read_text(encoding="utf-8"), REMOTE), encoding="utf-8")
+    m = s.machine()
+    env = {
+        **m.env,
+        "GIT_CONFIG_NOSYSTEM": "1",
+        "GIT_CONFIG_GLOBAL": os.devnull,
+        "GIT_CONFIG_COUNT": "1",
+        "GIT_CONFIG_KEY_0": f"url.{target.as_uri()}.insteadOf",
+        "GIT_CONFIG_VALUE_0": REMOTE,
+    }
+    return s, dataclasses.replace(m, env=env)
+
+
+def clone_cases(case: Case, tmp: pathlib.Path, pins: Pins) -> None:
+    """The clone of `claude_remote` into ~/.claude from a local bare repository, the refusal of a
+    ~/.claude that holds files, a clone that fails, and the key without the jobs."""
+    source = tmp / "claude-source"
+    (source / "CLAUDE.md").parent.mkdir(parents=True)
+    (source / "CLAUDE.md").write_text("# mine\n", encoding="utf-8")
+    git(source, "init", "-q")
+    git(source, "add", "CLAUDE.md")
+    git(source, "commit", "-q", "-m", "first")
+    bare = tmp / "claude.git"
+    git(tmp, "clone", "-q", "--bare", str(source), str(bare))
+    jobs = JOBS_ONLY
+
+    def remote(name: str, target: pathlib.Path) -> tuple[Scratch, Machine]:
+        return remote_machine(tmp, name, target)
+
+    claude_md = pathlib.Path(".claude") / "CLAUDE.md"
+    for name in ("missing", "empty"):
+        s, m = remote(f"clone-{name}", bare)
+        claude = s.home / ".claude"
+        if name == "empty":
+            claude.mkdir()
+        lines = shows(m, jobs, s.options(), pins)
+        clone = f"git clone {REMOTE} {claude}"
+        code, out = attempt(m, s.options(), pins=pins)
+        case(
+            f"a ~/.claude that is {name}: the plan clones claude_remote before harness install --apply, "
+            f"and the run clones it: {lines[:3]} {code} {out[-200:]!r}",
+            ok=clone in lines
+            and lines.index(clone) < lines.index("harness install --apply")
+            and code == "0"
+            and (claude / ".git").is_dir()
+            and (s.home / claude_md).read_text(encoding="utf-8") == "# mine\n",
+        )
+        lines = shows(m, jobs, s.options(), pins)
+        case(
+            f"a ~/.claude that is a git repository: the plan has no clone step: {lines[:3]}",
+            ok=not any(line.startswith("git clone") for line in lines),
+        )
+
+    s, m = remote("clone-files", bare)
+    claude = s.home / ".claude"
+    claude.mkdir()
+    (claude / "settings.json").write_text("{}\n", encoding="utf-8")
+    code, out = attempt(m, s.options(), pins=pins)
+    case(
+        f"a ~/.claude that holds files and is no repository: the clone step fails with the lines that "
+        f"move it aside and clone, and changes nothing: {code} {out[-300:]!r}",
+        ok=code.startswith("exit 2")
+        and f"git clone {REMOTE}" in code
+        and f"  mv {claude} {claude}.setup" in out
+        and f"  git clone {REMOTE} {claude}" in out
+        and sorted(p.name for p in claude.iterdir()) == ["settings.json"]
+        and not any(c.startswith("harness") for c in s.calls()),
+    )
+
+    for name in ("missing", "empty"):
+        s, m = remote(f"clone-fails-{name}", tmp / "no-such.git")
+        claude = s.home / ".claude"
+        if name == "empty":
+            claude.mkdir()
+        code, out = attempt(m, s.options(), pins=pins)
+        last = out.rstrip().splitlines()[-1] if out.strip() else ""
+        # The same clone, run alone: its last line of stderr.
+        alone = subprocess.run(
+            [shutil.which("git") or "git", "clone", REMOTE, str(s.root / "alone")],
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            env=dict(m.env),
+            timeout=TIMEOUT,
+            check=False,
+        ).stderr.strip()
+        case(
+            f"a clone that fails, into a ~/.claude that is {name}: the step fails with git's last line, "
+            f"and nothing below ~/.claude is left: {code} {last!r}",
+            ok=code.startswith("exit 2")
+            and "git clone" in code
+            and bool(alone)
+            and last == alone.splitlines()[-1].strip()
+            and (not claude.exists() if name == "missing" else not any(claude.iterdir())),
+        )
+
+    # The key without the jobs component is unused.
+    s, m = remote("clone-no-jobs", bare)
+    none = profile_module.Setup(frontends=(), components=())
+    lines = shows(m, none, s.options(), pins)
+    case(
+        f"claude_remote without the jobs component: no clone step and no error: {lines}",
+        ok=not any(line.startswith(("git clone", "exit 2")) for line in lines),
+    )
+
+
+def no_remote_cases(case: Case, tmp: pathlib.Path, pins: Pins) -> None:
+    """The jobs without `claude_remote`: no autocommit job, on macOS and on Linux; a line by hand
+    names the key."""
+    jobs = JOBS_ONLY
+    s = scratch(tmp, "no-remote-mac", MACOS_FAKES)
+    chosen_profile(s, jobs)
+    code, out = attempt(s.machine(), s.options(), pins=pins)
+    agents = sorted(p.name for p in (s.home / "Library" / "LaunchAgents").glob("*.plist"))
+    boots = [c for c in s.calls() if c.startswith("launchctl bootstrap")]
+    case(
+        f"macOS without claude_remote: no plist of the autocommit job is rendered or bootstrapped, and "
+        f"a line by hand names claude_remote: {code} {agents} {boots}",
+        ok=code == "0"
+        and agents == ["org.example.julia-update.plist", "org.example.kaimon.plist"]
+        and not any("claude-autocommit" in c for c in boots)
+        and len(boots) == len(JOBS) - 1
+        and "set claude_remote in the profile" in out
+        and not (s.home / ".claude").exists(),
+    )
+    s = scratch(tmp, "no-remote-linux", LINUX_FAKES)
+    chosen_profile(s, jobs)
+    code, out = attempt(s.machine("Linux"), s.options(), pins=pins)
+    units = sorted(p.name for p in (s.home / ".config" / "systemd" / "user").glob("*"))
+    systemctl = [c for c in s.calls() if c.startswith("systemctl")]
+    case(
+        f"Linux without claude_remote: no unit of the autocommit job is rendered or enabled, and a "
+        f"line by hand names claude_remote: {code} {units} {systemctl}",
+        ok=code == "0"
+        and units == ["julia-update.service", "julia-update.timer", "kaimon.service"]
+        and not any("claude-autocommit" in c for c in systemctl)
+        and "systemctl --user enable --now kaimon.service julia-update.timer" in systemctl
+        and "set claude_remote in the profile" in out,
+    )
+
+
+def ask_remote_cases(case: Case, tmp: pathlib.Path, pins: Pins) -> None:
+    """The question for `claude_remote`, in a terminal: after the choices, before the plan, with
+    its explanation; only with the jobs, and never with --yes."""
+    jobs = JOBS_ONLY
+    for name, answers, want in (
+        ("a URL", ("", "", "", REMOTE, "n"), REMOTE),
+        ("a wrong answer, then a URL", ("", "", "", "http://x", REMOTE, "n"), REMOTE),
+        ("an empty answer", ("", "", "", "", "n"), ""),
+    ):
+        s = scratch(tmp, f"ask-remote-{len(answers)}-{bool(want)}", MACOS_FAKES)
+        chosen_profile(s, jobs)
+        out = io.StringIO()
+        asker = Asker(*answers)
+        printed: list[str] = []
+
+        def ask(
+            question: str, asker: Asker = asker, out: io.StringIO = out, printed: list[str] = printed
+        ) -> str:
+            printed.append(out.getvalue())
+            return asker(question)
+
+        with contextlib.redirect_stdout(out):
+            try:
+                code = str(
+                    setup(s.machine(), s.options(yes=False, dry_run=True), ask, terminal=True, pins=pins)
+                )
+            except HarnessError as e:
+                code = f"exit 2: {e}"
+        asked = [q.split(",")[0].split(" [")[0] for q in asker.questions]
+        at = asked.index("claude_remote") if "claude_remote" in asked else -1
+        explained_before = printed[at].splitlines()[-len(EXPLAINED["claude_remote"]) :] if at >= 0 else []
+        shown = out.getvalue()
+        planned = shown[shown.find("The plan, in this order:") :]
+        case(
+            f"in a terminal with the jobs and no claude_remote, setup asks for it after the choices "
+            f"and before the plan, with its explanation; {name} gives {want!r}: {code} {asked}",
+            ok=code == "0"
+            and "Develop the harness" in asked
+            and at == asked.index("Develop the harness") + 1
+            and asked[-1] == "claude_remote"
+            and "The plan, in this order:" not in printed[-1]
+            and "The plan, in this order:" in shown
+            and explained_before == list(EXPLAINED["claude_remote"])
+            and (f"git clone {want}" in planned if want else "the autocommit job of ~/.claude" in planned),
+        )
+    s = scratch(tmp, "ask-remote-written", MACOS_FAKES)
+    chosen_profile(s, jobs)
+    # A ~/.claude that is a repository already: the run clones nothing.
+    git(s.home / ".claude", "init", "-q")
+    code, _ = attempt(
+        s.machine(), s.options(yes=False), Asker("", "", "", REMOTE, "y"), terminal=True, pins=pins
+    )
+    loaded = profile_module.load(s.profile, home=str(s.home))
+    case(
+        f"the answer goes into the profile that the run writes: {code} {loaded.claude_remote!r}",
+        ok=code == "0" and loaded.claude_remote == REMOTE,
+    )
+    s = scratch(tmp, "ask-remote-no-jobs", MACOS_FAKES)
+    chosen_profile(s, profile_module.Setup(frontends=(), components=("jq",)))
+    asker = Asker("", "", "", "n")
+    code, _ = attempt(s.machine(), s.options(yes=False, dry_run=True), asker, terminal=True, pins=pins)
+    case(
+        f"without the jobs component, setup does not ask for claude_remote: {code} {asker.questions}",
+        ok=code == "0" and not any(q.startswith("claude_remote") for q in asker.questions),
+    )
+    s = scratch(tmp, "ask-remote-yes", MACOS_FAKES)
+    chosen_profile(s, jobs)
+    asker = Asker()
+    code, _ = attempt(s.machine(), s.options(dry_run=True), asker, terminal=True, pins=pins)
+    case(
+        f"--yes does not ask for claude_remote: {code} {asker.questions}",
+        ok=code == "0" and not asker.questions,
+    )
+
+
+def token_wait_cases(case: Case, tmp: pathlib.Path, pins: Pins) -> None:
+    """The token step waits for Kaimon's key after the jobs start the server, and only then."""
+    directory = tmp / "token-wait" / ".config" / "kaimon"
+    directory.mkdir(parents=True)
+    config, token = directory / "config.json", directory / "auth-token"
+    # The sleeps after the reads that find no key: the server writes its key after the second.
+    before = [1, 1]
+    for name, text, late in (
+        ("no file", None, '{"api_keys": ["late_key"]}\n'),
+        ("no key", '{"api_keys": []}\n', '{"api_keys": ["late_key"]}\n'),
+        ("no JSON", "{not json", '{"api_keys": ["late_key"]}\n'),
+        ("never a key", '{"api_keys": []}\n', None),
+        ("never JSON", "{not json", None),
+    ):
+        token.unlink(missing_ok=True)
+        config.unlink(missing_ok=True)
+        if text is not None:
+            config.write_text(text, encoding="utf-8")
+        slept: list[float] = []
+
+        def sleep(seconds: float, slept: list[float] = slept, late: str | None = late) -> None:
+            slept.append(seconds)
+            if late is not None and len(slept) == len(before):
+                config.write_text(late, encoding="utf-8")
+
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            failure = kaimon_token(tmp / "token-wait", TOKEN_READS, sleep)
+        got = token.read_text(encoding="utf-8") if token.exists() else None
+        if late is not None:
+            case(
+                f"{name}, then a key after two reads: the token step waits, reading once a second, and "
+                f"writes the key: {failure} {got!r} {slept}",
+                ok=failure is None and got == "late_key" and slept == before,
+            )
+        else:
+            case(
+                f"{name} until the bound: the step reads {TOKEN_READS} times, once a second, prints the "
+                f"line by hand and does not fail: {failure} {len(slept)} {out.getvalue()!r}",
+                ok=failure is None
+                and got is None
+                and slept == [1] * (TOKEN_READS - 1)
+                and sum(slept) < TOKEN_READS
+                and "holds no key yet" in out.getvalue(),
+            )
+
+    s = scratch(tmp, "token-plan", LINUX_FAKES)
+    for components, waits in ((("julia", "jobs"), True), (("julia",), False)):
+        choice = profile_module.Setup(frontends=(), components=components)
+        slept = []
+        m = dataclasses.replace(s.machine("Linux"), sleep=slept.append)
+        loaded = profile_module.load(s.profile, home=str(s.home))
+        steps = plan(m, choice, loaded, s.options(), pins).steps
+        step = next((x for x in steps if "auth-token" in x.show), None)
+        with contextlib.redirect_stdout(io.StringIO()):
+            failure = step.action() if step else "no token step"
+        case(
+            f"the token step with components {components} {'waits' if waits else 'does not wait'} for "
+            f"the key: {failure} {len(slept)} {step.show if step else None}",
+            ok=failure is None
+            and step is not None
+            and (len(slept) == TOKEN_READS - 1) == waits
+            and (not slept) == (not waits)
+            and ("up to 60 s" in step.show) == waits,
+        )
+    (s.home / ".config" / "kaimon").mkdir(parents=True, exist_ok=True)
+    (s.home / ".config" / "kaimon" / "config.json").write_text("{not json", encoding="utf-8")
+    with contextlib.redirect_stdout(io.StringIO()):
+        failure = kaimon_token(s.home)
+    case(
+        f"without the wait, a config.json that is no JSON fails the step: {failure}",
+        ok=failure is not None and "config.json" in failure,
+    )
+
+
+def path_cases(case: Case, tmp: pathlib.Path, pins: Pins) -> None:
+    """The `export PATH=…` line of the directories that the PATH that setup started with lacks,
+    and its append to ~/.zshrc."""
+    s = scratch(tmp, "path", {**LINUX_FAKES, "brew": "exit 0"})
+    loaded = profile_module.load(s.profile, home=str(s.home))
+    linux, mac = s.machine("Linux"), s.machine()
+    home = s.home
+    everything = [str(home / d) for d in EXTRA_PATH]
+    for name, machine, choice, start, want in (
+        (
+            "Linux, every component and frontend, a PATH without them",
+            linux,
+            profile_module.Setup(),
+            str(s.bin),
+            [".local/bin", ".juliaup/bin", ".julia/bin", ".opencode/bin"],
+        ),
+        (
+            "macOS, every component and frontend",
+            mac,
+            profile_module.Setup(),
+            str(s.bin),
+            [".local/bin", ".juliaup/bin", ".julia/bin"],
+        ),
+        (
+            "Linux, no component and no frontend",
+            linux,
+            profile_module.Setup(frontends=(), components=()),
+            str(s.bin),
+            [".local/bin"],
+        ),
+        (
+            "Linux, the PATH holds ~/.local/bin with a trailing slash",
+            linux,
+            profile_module.Setup(frontends=(), components=("julia",)),
+            os.pathsep.join([f"{home}/.local/bin/", str(home / ".julia/bin"), str(s.bin)]),
+            [".juliaup/bin"],
+        ),
+        (
+            "Linux, the PATH holds every directory",
+            linux,
+            profile_module.Setup(),
+            os.pathsep.join([*everything, str(s.bin)]),
+            [],
+        ),
+    ):
+        the_plan = plan(dataclasses.replace(machine, path=start), choice, loaded, s.options(), pins)
+        line = 'export PATH="' + "".join(f"$HOME/{d}:" for d in want) + '$PATH"' if want else ""
+        printed = [x for x in the_plan.by_hand if "export PATH=" in x]
+        case(
+            f"{name}: the plan prints one export PATH line with {want}: {printed}",
+            ok=the_plan.path_line == line and printed == ([PATH_BY_HAND + line] if want else []),
+        )
+
+    # The whole run in a terminal, with zsh as the login shell: a yes appends the line.
+    nothing = profile_module.Setup(frontends=(), components=())
+    s = scratch(tmp, "path-zsh", MACOS_FAKES)
+    chosen_profile(s, nothing)
+    zsh = dataclasses.replace(s.machine(), login_shell="/bin/zsh")
+    zshrc = s.home / ".zshrc"
+    zshrc.write_text("# mine\n", encoding="utf-8")
+    asker = Asker("", "", "", "y", "y")
+    code, out = attempt(zsh, s.options(yes=False), asker, terminal=True, pins=pins)
+    text = zshrc.read_text(encoding="utf-8")
+    line = 'export PATH="$HOME/.local/bin:$PATH"'
+    case(
+        f"zsh as the login shell, the answer y: the line is appended to ~/.zshrc after a comment line "
+        f"that names harness setup: {code} {asker.questions} {text!r}",
+        ok=code == "0"
+        and any(line in q and str(zshrc) in q for q in asker.questions)
+        and text == f"# mine\n\n{PATH_COMMENT}\n{line}\n"
+        and "harness setup" in PATH_COMMENT
+        and PATH_BY_HAND + line not in out,
+    )
+    # A shell that reads ~/.zshrc has the line's PATH: a second plan finds nothing missing.
+    read = subprocess.run(
+        ["/bin/sh", "-c", f'. "{zshrc}"; printf %s "$PATH"'],
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        text=True,
+        env={"PATH": str(s.bin), "HOME": str(s.home)},
+        timeout=TIMEOUT,
+        check=False,
+    ).stdout
+    again = plan(dataclasses.replace(zsh, path=read), nothing, loaded, s.options(), pins)
+    case(
+        f"a second run in a shell that read ~/.zshrc finds nothing missing: {read!r} {again.path_line!r}",
+        ok=read.startswith(str(s.home / ".local/bin")) and again.path_line == "",
+    )
+    for name, machine, options, answers, prepare in (
+        ("the answer n", zsh, s.options(yes=False), ("", "", "", "n", "y"), None),
+        ("--yes", zsh, s.options(), (), None),
+        (
+            "a login shell that is bash",
+            dataclasses.replace(zsh, login_shell="/bin/bash"),
+            s.options(yes=False),
+            ("", "", "", "y"),
+            None,
+        ),
+        ("a ~/.zshrc that is a symlink", zsh, s.options(yes=False), ("", "", "", "y"), "symlink"),
+    ):
+        target = s.root / "dotfiles-zshrc"
+        zshrc.unlink(missing_ok=True)
+        if prepare == "symlink":
+            target.write_text("# managed\n", encoding="utf-8")
+            zshrc.symlink_to(target)
+        asker = Asker(*answers)
+        code, out = attempt(machine, options, asker, terminal=True, pins=pins)
+        case(
+            f"{name}: ~/.zshrc is not written, and the line is printed by hand: {code} {asker.questions}",
+            ok=code == "0"
+            and (
+                not zshrc.exists() if prepare is None else target.read_text(encoding="utf-8") == "# managed\n"
+            )
+            and PATH_BY_HAND + line in out
+            and (
+                name == "the answer n" or not any("~/.zshrc" in q or ".zshrc" in q for q in asker.questions)
+            ),
+        )
+
+
 def chosen_profile(s: Scratch, choice: profile_module.Setup) -> None:
     """Write `choice` into `[setup]` of the scratch profile."""
     s.profile.write_text(with_setup(s.profile.read_text(encoding="utf-8"), choice), encoding="utf-8")
@@ -2811,10 +3495,10 @@ def doctor_cases(case: Case, tmp: pathlib.Path, pins: Pins) -> None:
         s.fake("harness", f'[ "$1" = doctor ] && {{ echo "doctor: FAIL here"; exit {status}; }}; exit 0')
         code, out = attempt(s.machine(), s.options(), pins=pins)
         calls = [c.split()[1] for c in s.calls() if c.startswith("harness ")]
+        # Without claude_remote, the launch agent of the autocommit job is not rendered.
         case(
             f"a harness doctor that exits {status} gives {want}, after every earlier step: {code} {calls}",
-            ok=code.startswith(want)
-            and calls == ["install", "trust", "render", "render", "render", "doctor"],
+            ok=code.startswith(want) and calls == ["install", "trust", "render", "render", "doctor"],
         )
         if status == "1":
             case(
@@ -2881,6 +3565,11 @@ def selftest() -> tuple[int, int]:
         interactive_cases(case, root, pins)
         question_cases(case, root, pins)
         token_cases(case, root)
+        token_wait_cases(case, root, pins)
+        clone_cases(case, root, pins)
+        no_remote_cases(case, root, pins)
+        ask_remote_cases(case, root, pins)
+        path_cases(case, root, pins)
         yes_cases(case, root, pins)
         header_cases(case)
         string_header_cases(case, root, pins)
