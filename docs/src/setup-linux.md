@@ -55,8 +55,11 @@ Run `harness setup` in your own terminal:
 ```
 
 Without a [profile](concepts.md#profile), it copies the example profile and asks for the keys
-that have no default: `memory_project`, `tree_agents`, `org`, `repository_roots` and `leak`. An
-empty answer keeps the example's value. Then it asks for the frontends and the components, each
+that have no default: `memory_project`, `tree_agents`, `org`, `repository_roots` and `leak`.
+Before each question it says what the key holds and whether the answer is the same on every
+machine, as the table of [The questions of harness setup](profile.md#the-questions-of-harness-setup)
+gives it. An empty answer keeps the example's value; a list takes items separated by commas or a
+TOML list, and replaces the example's list. Then it asks for the frontends and the components, each
 from a numbered list, and whether this machine develops the harness. It writes the answers into
 `[setup]` of the profile, shows its plan, and runs the plan after y/N: the directories, one
 `sudo apt-get install -y` line, the pinned releases, the installers of the projects,

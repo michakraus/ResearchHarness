@@ -130,12 +130,17 @@ system, for example `Ubuntu 26.04.1 LTS`, and the second line prints `x86_64` or
 
 **What `harness setup` does.** In a terminal, without a profile, `harness setup` copies
 `examples/profile.toml` and asks only for the keys that have no default: `memory_project`,
-`tree_agents`, `org`, `repository_roots` and `leak`. An empty answer keeps the example's value. It
-then asks for the frontends and the components, each from a numbered list, and whether this
-machine develops the harness (`develop`), y/N. The first step of its plan writes the profile, or
-the answers into the table `[setup]` of an existing profile. When `models.toml` is missing beside
-the profile, the next step copies `examples/models.toml`. `harness setup --yes` asks nothing and
-writes no profile: it reads `[setup]` of the profile that is there.
+`tree_agents`, `org`, `repository_roots` and `leak`. Before each question it says what the key
+holds and whether the answer is the same on every machine that shares the tree, as the table of
+[The questions of harness setup](profile.md#the-questions-of-harness-setup) gives it. An empty
+answer keeps the example's value. A list takes items separated by commas or a TOML list, and
+replaces the example's list; an item with a bracket or a quote is refused, and the question comes
+again. It then asks for the frontends and the components, each from a numbered list with one
+description per name, and whether this machine develops the harness (`develop`), y/N: only a
+machine that changes the harness's own code needs it. The first step of its plan writes the
+profile, or the answers into the table `[setup]` of an existing profile. When `models.toml` is
+missing beside the profile, the next step copies `examples/models.toml`. `harness setup --yes`
+asks nothing and writes no profile: it reads `[setup]` of the profile that is there.
 
 **By hand.** These commands copy the example profile and the example model tables of `examples/`
 into your configuration directory.
