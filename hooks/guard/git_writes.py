@@ -15,23 +15,30 @@ no second part, no global option before the subcommand. It reads the state of th
     `~/Research/.worktrees/<name>/`, or in a checkout whose `origin` is a GitHub repository of an
     own organisation. Otherwise ask.
   * **`git push --force-with-lease[=<ref>[:<expect>]] origin <branch>`**, or with the refspec
-    `HEAD:refs/heads/<branch>`: deny when `<branch>` is `main`, `master` or the branch that
-    `refs/remotes/origin/HEAD` names. Allow when every push URL of `origin` is a GitHub repository
+    `HEAD:refs/heads/<branch>`: allow when every push URL of `origin` is a GitHub repository
     of an own organisation and the lease names no ref, or names `<branch>` (`<branch>` or
     `refs/heads/<branch>`). Otherwise ask. A bare lease takes the expected value from the
     remote-tracking ref; an explicit `<expect>` is checked by `git` on the remote.
+  * **A lease push to a default branch, in any form**: deny when an argument after `push` names
+    `main`, `master` or the branch that `refs/remotes/origin/HEAD` names as its target
+    (`<branch>`, `+<branch>`, `<src>:<branch>`, each also with `refs/heads/`). In a command of
+    several parts the arguments run on into the next part, so the check refuses
+    `git fetch && git push --force-with-lease origin main`, and also a later part that names a
+    default branch.
 
 The check finds the subcommand as `git` does, after its global options. It takes a `worktree
 remove` with any option as forced, since `git` reads `-ff` and a prefix of `--force` as force, and a
 `push` with an option that begins with `--force-w` as a lease push. In the `<branch>` form the
-branch must be a local one. Any other command that holds one of these writes asks: `-C`, a `cd`
-before it, a pipeline, `-f` twice, a lease after the remote, a second refspec. A `deny` rule of the
-settings template still refuses those it names, such as a plain `--force`. `git` that cannot be
-run, or that fails, asks.
+branch must be a local one, and `origin` must have no `remote.origin.push` refspec, which can map
+the branch onto another remote branch. Any other command that holds one of these writes asks:
+`-C`, a `cd` before it, a pipeline, `-f` twice, a lease after the remote, a second refspec. A
+`deny` rule of the settings template still refuses those it names, such as a plain `--force`.
+`git` that cannot be run, or that fails, asks.
 
 The own organisations are the `org` list of the profile, as `gh_api_writes.own_organisations` reads
 it. Each `git` runs with `core.fsmonitor` off, so that `git status` starts no monitor program that
-a repository's configuration names; a clean filter of the repository can still run.
+a repository's configuration names; a clean filter of the repository can still run. It runs with
+`--no-optional-locks`, so that `git status` takes no index lock from a `git` of another session.
 
 A permission rule cannot state this: it sees neither the working directory nor the worktree's
 state. And a hook's `allow` does not lift a matching `ask` or `deny` rule, so the template holds no
@@ -57,6 +64,8 @@ GITHUB = re.compile(
     r"^(?:https://(?:[^@/]+@)?github\.com/|git@github\.com:|ssh://git@github\.com/)"
     r"([A-Za-z0-9-]+)/[A-Za-z0-9._-]+?(?:\.git)?/?$"
 )
+# The quotes and the backslashes, each with the newline after it, that the pre-filter removes.
+JOINS = re.compile(r"[\"']|\\\n?")
 # A branch name the check reads; anything else asks.
 BRANCH = re.compile(r"^(?!-)(?!HEAD$)[A-Za-z0-9._/-]+$")
 DEFAULTS = frozenset({"main", "master"})
@@ -65,10 +74,10 @@ SHAPE = "`git push --force-with-lease[=<ref>[:<expect>]] origin <branch>`, or wi
 # The changed files that a reason names.
 NAMED = 5
 
-DENY_DEFAULT = """Refused: git push {lease} origin {refspec}
+DENY_DEFAULT = """Refused: {command}
 
-A forced push to `{branch}`, the default branch of `origin`, is refused. Give the user the command
-to run in their own terminal.
+A lease push that names `{target}`, a default branch of `origin`, is refused in any form. Give
+the user the command to run in their own terminal.
 """
 
 ALONE = (
@@ -85,7 +94,7 @@ def git(directory: str, *arguments: str) -> str | None:
         return None
     try:
         result = subprocess.run(
-            [executable, "-c", "core.fsmonitor=false", "-C", directory, *arguments],
+            [executable, "--no-optional-locks", "-c", "core.fsmonitor=false", "-C", directory, *arguments],
             capture_output=True,
             text=True,
             timeout=TIMEOUT,
@@ -179,8 +188,16 @@ def pushed_branch(arguments: list[str], cwd: str) -> tuple[str, str, str] | str:
     branch = refspec.removeprefix("HEAD:refs/heads/")
     if remote != "origin" or not BRANCH.match(branch):
         return f"The check allows a lease push only as {SHAPE}."
-    if branch == refspec and git(cwd, "show-ref", "--verify", "--quiet", f"refs/heads/{branch}") is None:
-        return f"`{branch}` names no local branch, so the check cannot tell what the push updates."
+    if branch == refspec:
+        if git(cwd, "show-ref", "--verify", "--quiet", f"refs/heads/{branch}") is None:
+            return f"`{branch}` names no local branch, so the check cannot tell what the push updates."
+        # A `remote.origin.push` refspec can map `<branch>` onto another remote branch.
+        mapped = git(cwd, "config", "--default", "", "--get", "remote.origin.push")
+        if mapped is None or mapped.strip():
+            return (
+                "`origin` has a `remote.origin.push` refspec, which can push the branch to another "
+                f"remote branch: name the target as `HEAD:refs/heads/{branch}`."
+            )
     return lease, refspec, branch
 
 
@@ -189,17 +206,33 @@ def lease_push(arguments: list[str], cwd: str) -> Verdict:
     found = pushed_branch(arguments, cwd)
     if isinstance(found, str):
         return Verdict("ask", found)
-    lease, refspec, branch = found
-    default = git(cwd, "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD")
-    defaults = DEFAULTS | ({default.strip().removeprefix("origin/")} if default else set[str]())
-    if branch in defaults:
-        return Verdict("deny", DENY_DEFAULT.format(lease=lease, refspec=refspec, branch=branch))
+    lease, _, branch = found
     named = lease.removeprefix(LEASE)
     if named and named.removeprefix("=").split(":", 1)[0] not in (branch, f"refs/heads/{branch}"):
         return Verdict("ask", f"The lease `{lease}` does not name the pushed branch `{branch}`.")
     if not own_origin(cwd):
         return Verdict("ask", "`origin` is not a GitHub repository of an own organisation.")
     return Verdict("allow", "A lease push of a branch other than the default one, to an own organisation.")
+
+
+def defaults_of(cwd: str | None) -> frozenset[str]:
+    """`main`, `master` and the branch that `refs/remotes/origin/HEAD` of `cwd` names."""
+    default = (
+        None if cwd is None else git(cwd, "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD")
+    )
+    return DEFAULTS | ({default.strip().removeprefix("origin/")} if default else frozenset[str]())
+
+
+def default_target(arguments: list[str], defaults: frozenset[str]) -> str | None:
+    """The first argument after a lease push's `push` that names a branch of `defaults` as its
+    target, `<branch>`, `+<branch>` or `<src>:<branch>`, each also with `refs/heads/`; or None.
+    In a command of several parts the arguments run on into the next part, so a later part that
+    names a default branch counts too."""
+    for argument in arguments:
+        target = argument.lstrip("+").rsplit(":", 1)[-1].removeprefix("refs/heads/")
+        if not argument.startswith("-") and target in defaults:
+            return argument
+    return None
 
 
 def write_of(words: list[str]) -> tuple[str, int, list[str]] | None:
@@ -231,12 +264,16 @@ def decide(tokens: Tokens, cwd: str | None) -> Verdict:
     if found is None:
         return PASS
     write, index, arguments = found
+    target = default_target(arguments, defaults_of(cwd)) if write == "push" else None
+    if target is not None:
+        return Verdict("deny", DENY_DEFAULT.format(command=" ".join(words), target=target))
     alone = len(words) == len(tokens) and index == 0 and words[0] == "git" and words[1] == write.split()[0]
-    if not alone:
-        return Verdict("ask", ALONE.format(write=write))
-    if cwd is None:
+    if not alone or cwd is None:
         return Verdict(
-            "ask", f"The check reads `git {write}` against the working directory, and the call names none."
+            "ask",
+            ALONE.format(write=write)
+            if not alone
+            else f"The check reads `git {write}` against the working directory, and the call names none.",
         )
     if write == "cherry-pick":
         return cherry_pick(cwd)
@@ -249,7 +286,9 @@ def check(call: Call) -> Verdict:
     """Allow a forced worktree removal, a cherry-pick and a lease push where nothing is lost; ask
     otherwise."""
     command = call.command
-    if call.action != "shell" or not any(key in command for key in ("cherry-pick", "worktree", "--force-w")):
+    # The shell joins `--force-""with-lease` and `--force-\<newline>with-lease` into one word.
+    joined = JOINS.sub("", command)
+    if call.action != "shell" or not any(key in joined for key in ("cherry-pick", "worktree", "--force-w")):
         return PASS
     found = readings(command)
     if found is None:

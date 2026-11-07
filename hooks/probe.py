@@ -1796,10 +1796,11 @@ def git_write_repositories(git: str, git_env: dict[str, str]) -> None:
     Its worktrees below `.worktrees/`: `Own-pushed`, whose HEAD commit `origin/pushed` holds, with
     an untracked file; `Own-unpushed`, with a commit on no remote ref; `Own-modified`, with a
     modified tracked file; and `Own-staged`, with a staged new file. `Packages/Foreign` has
-    `origin` in another organisation and a local branch `feature`. No remote is ever reached: the
-    remote refs are written with `update-ref`.
+    `origin` in another organisation and a local branch `feature`. `Packages/Mapped` has `origin` in
+    the own organisation, a local branch `feature`, and a `remote.origin.push` refspec that maps
+    `feature` onto `main`. No remote is ever reached: the remote refs are written with `update-ref`.
     """
-    own, foreign = R + "/Packages/Own", R + "/Packages/Foreign"
+    own, foreign, mapped = R + "/Packages/Own", R + "/Packages/Foreign", R + "/Packages/Mapped"
     worktrees = {name: R + "/.worktrees/Own-" + name for name in ("pushed", "unpushed", "modified", "staged")}
 
     def run(directory: str, *arguments: str) -> None:
@@ -1807,7 +1808,7 @@ def git_write_repositories(git: str, git_env: dict[str, str]) -> None:
             [git, "-C", directory, *arguments], env=git_env, check=True, capture_output=True, timeout=60
         )
 
-    for repository, owner in ((own, "own-org"), (foreign, "other-org")):
+    for repository, owner in ((own, "own-org"), (foreign, "other-org"), (mapped, "own-org")):
         pathlib.Path(repository).mkdir(parents=True)
         pathlib.Path(repository, "README.md").write_text("a\n", encoding="utf-8")
         run(repository, "init", "-q", "-b", "main")
@@ -1822,6 +1823,7 @@ def git_write_repositories(git: str, git_env: dict[str, str]) -> None:
         )
         run(repository, "update-ref", "refs/remotes/origin/main", "HEAD")
         run(repository, "branch", "feature")
+    run(mapped, "config", "remote.origin.push", "refs/heads/feature:refs/heads/main")
     run(own, "update-ref", "refs/remotes/origin/trunk", "HEAD")
     run(own, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/trunk")
     for name, path in worktrees.items():

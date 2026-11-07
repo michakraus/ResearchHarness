@@ -56,8 +56,8 @@ Antigravity, oh-my-pi and OpenCode also run the path-list check `path_list.py`, 
 frontend's `guard-paths.json`; Antigravity's table runs the lift check `sandbox_lift.py` on a shell
 call that it does not deny, which lifts a command out of the sandbox only where the line matches a
 closed grammar and Claude Code's sandbox rule lifts it. One module per check reads that call: the
-staging, write, sandbox, `gh api`, rm, archive, Kaimon and directory checks below. Each check gives
-`deny`, `ask`, `allow` or `pass` with a reason. The guard answers the first of `deny`, `ask`,
+staging, write, sandbox, `gh api`, rm, archive, git write, Kaimon and directory checks below. Each
+check gives `deny`, `ask`, `allow` or `pass` with a reason. The guard answers the first of `deny`, `ask`,
 `allow` and `pass` that a check gives, with that check's reason, in the form of the frontend: for
 Claude Code exit 2 with the reason on standard error for `deny`, a JSON decision for `ask` and
 `allow`, and no output for `pass`. A tool that the table does not name passes. oh-my-pi and
@@ -222,10 +222,14 @@ check answers both ways.
   names the commit or the files that the removal loses.
 - `git cherry-pick`: allow in a worktree below `~/Research/.worktrees/`, or in a checkout whose
   `origin` is a GitHub repository of an own organisation. Otherwise ask.
-- `git push --force-with-lease origin <branch>`, or with `HEAD:refs/heads/<branch>`: refuse a push
-  to `main`, `master` or the branch that `origin/HEAD` names. Allow when `origin` is in an own
-  organisation and the lease names no ref or the pushed branch. Otherwise ask. In the `<branch>`
-  form, the branch must be a local branch.
+- `git push --force-with-lease origin <branch>`, or with `HEAD:refs/heads/<branch>`: allow when
+  `origin` is in an own organisation and the lease names no ref or the pushed branch. Otherwise
+  ask. In the `<branch>` form, the branch must be a local branch, and `origin` must have no
+  `remote.origin.push` refspec, which can map the branch onto another remote branch.
+- A lease push to `main`, `master` or the branch that `origin/HEAD` names is refused in every form,
+  also inside a command of several parts such as `git fetch && git push --force-with-lease origin
+  main`. The check reads the target of each argument after `push`: `<branch>`, `+<branch>` and
+  `<src>:<branch>`, each also with `refs/heads/`.
 
 The check decides only a command that is one `git` call, with no operator, no `cd` and no option
 before the subcommand. It finds the subcommand after the global options of `git`. Any other form
