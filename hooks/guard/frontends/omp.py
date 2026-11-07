@@ -42,6 +42,7 @@ from typing import TextIO
 from guard import (
     HarnessError,
     gh_api_writes,
+    gh_pr_create,
     git_archive_output,
     kaimon_session,
     no_blind_stage,
@@ -128,6 +129,7 @@ SHELL: tuple[Check, ...] = (
     no_blind_stage.check,
     no_shell_file_write.check,
     gh_api_writes.check,
+    gh_pr_create.check,
     rm_scope.check,
     git_archive_output.check,
     sandbox_semantics.work_tree_check,

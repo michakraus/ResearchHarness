@@ -14,9 +14,7 @@ oh-my-pi has no filesystem or network allowlist. Two controls stand in its place
 carried inside a string argument, so treat every command as unconfined. Where a sandbox would make
 a mistake survivable, ask. A rule that exists only because of Claude Code's sandbox or its
 permission matcher does not bind here: the unsandboxed programs, a `git` alone on its line, no
-`git -C`, no `$?`, and a failed `ps` read as a refusal. An `allow` pattern matches only a whole
-command with no `;`, `&`, `|`, redirection or `$`: run one such as
-`gh pr create --repo <owner>/<repo>` alone, with the `cwd` argument. The network
+`git -C`, no `$?`, and a failed `ps` read as a refusal. The network
 lists of `network.toml` apply to Claude Code only; here no list limits the hosts a command reaches.
 
 oh-my-pi runs no RTK rewrite: a command runs as typed, so the rewrite facts of `RTK.md` do not

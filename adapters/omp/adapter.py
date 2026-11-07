@@ -61,9 +61,10 @@ matches any text, as Claude Code's does. Two forms of Claude Code's have no dire
 suffix `:*` of a prefix rule renders to `*` after the same prefix, and a bare `Bash` to `*`;
 `bash_patterns` lists each such entry.
 `deny` and `prompt` also match each segment of a compound command, and `allow` only a whole
-command, so no rule is split, and `bash.allowCompoundCommands` stays off. The rules of OMP_LAST
-follow: they ask for a command that matches no rule of the template, which Claude Code asks for
-and `yolo` runs.
+command, so no rule is split, and `bash.allowCompoundCommands` stays off. A command that matches
+no rule runs under `yolo`. The guard extension decides the commands that must not run so, such as
+a `gh pr create` that names no repository, which it refuses, or one outside the own organisations,
+which it blocks with the reason to ask the user.
 
 THE MODELS. oh-my-pi reads the model tables that it shares with OpenCode, with the keys of [omp]
 over them (profile.model_tables), so that its agents run on the models that OpenCode's run on.
@@ -120,10 +121,6 @@ SETTINGS = REPO / "settings" / "settings.proposal.json"
 GUARD_PATHS = REPO / "adapters" / "opencode" / "plugins" / "guard-paths.json"
 # The template's lists, in the order oh-my-pi must see them, with oh-my-pi's approval for each.
 APPROVAL = [("deny", "deny"), ("ask", "prompt"), ("allow", "allow")]
-# The patterns that follow the template's, after every `allow`: a command that no rule matches
-# runs unasked under `yolo`, where Claude Code asks. `gh pr create` with no `-R` or `--repo` is
-# such a command, and it opens a pull request in whatever repository the checkout names.
-OMP_LAST = [("gh pr create*", "prompt")]
 
 # The configuration overlay that the install writes, beside oh-my-pi's own config.yml.
 OVERLAY = "harness.yml"
@@ -286,7 +283,7 @@ def render_config(
         "tools": {"approvalMode": "yolo", "approval": {"eval": "deny", "edit": "allow", "write": "allow"}},
         "bash": {
             "allowCompoundCommands": False,
-            "patterns": [{"match": match, "approval": approval} for match, approval in patterns + OMP_LAST],
+            "patterns": [{"match": match, "approval": approval} for match, approval in patterns],
         },
         "modelRoles": {"default": models.tiers[DEFAULT_TIER]},
         "retry": {
@@ -1452,15 +1449,14 @@ def omp_cases(case, fresh, run):
     )
 
     # The patterns are the template's Bash entries, rendered with the profile: deny, then ask as
-    # prompt, then allow, each in the template's order, then OMP_LAST. oh-my-pi takes the first
-    # rule that matches, so this order is Claude Code's precedence.
+    # prompt, then allow, each in the template's order, and nothing after them. oh-my-pi takes the
+    # first rule that matches, so this order is Claude Code's precedence.
     expected = [
         {"match": r[len("Bash(") : -1], "approval": approval}
         for action, approval in (("deny", "deny"), ("ask", "prompt"), ("allow", "allow"))
         for r in permissions[action]
         if r.startswith("Bash(")
     ]
-    expected += [{"match": "gh pr create*", "approval": "prompt"}]
 
     def rendered():
         try:
@@ -1481,7 +1477,6 @@ def omp_cases(case, fresh, run):
     oc = {a: sum(1 for _, x in emitted["bash"] if x == a) - own.count(a) for a in ("deny", "ask")}
     counted = {
         a: sum(1 for p in got if isinstance(p, dict) and p.get("approval") == b)
-        - sum(1 for _, x in OMP_LAST if x == b)
         for a, b in (("deny", "deny"), ("ask", "prompt"))
     }
     case(
