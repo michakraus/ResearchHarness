@@ -2,7 +2,7 @@
 name: julia-load-doctor
 model: medium
 omitClaudeMd: true
-description: "Diagnose why a Julia package does not load and propose the minimal fix. Use when: using X fails, the package won't precompile, UndefVarError while loading, method overwriting warnings on load, ERROR LoadError during precompilation, the pre-commit hook says loads FAILED, why can't I commit in this repo. Returns a cause class, the offending file:line, and whether the fix is local or needs an upstream release. Use git-hook-triage instead when the hook itself is the suspect rather than the package, and ci-triage for a red matrix across many repositories."
+description: "Diagnose why a Julia package does not load and propose the minimal fix. Use when: using X fails, the package won't precompile, UndefVarError while loading, method overwriting warnings on load, ERROR LoadError during precompilation, the pre-commit hook says loads FAILED, why can't I commit in this repo. Returns a cause class, the offending file:line, and whether the fix is local or needs an upstream release. Use ci-triage for a red matrix across many repositories."
 tools:
   - read
   - grep
