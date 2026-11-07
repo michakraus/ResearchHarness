@@ -233,9 +233,10 @@ it behind. Kaimon finds a gate only through its file, so a key without one names
 Kaimon routes. The socket files are no evidence, since Kaimon leaves them behind when a session
 ends. The check reads the files at each call and keeps nothing. It passes when it cannot tell: no
 directory, a file that cannot be read or holds no integer `pid`, a remote gate's key `tcp-…`.
-`manage_repl` is not checked for a live session, because its `shutdown` removes a session whose
-process has gone. A tool that no table of the check names passes. The messages name the rule of
-`skills/build-part/evidence.md`.
+Under WSL, Kaimon also finds the gates of the Windows side, through files in a directory that the
+check does not read, so the check refuses their keys. `manage_repl` is not checked for a live
+session, because its `shutdown` removes a session whose process has gone. A tool that no table of
+the check names passes. The messages name the rule of `skills/build-part/evidence.md`.
 
 ### The path list and oh-my-pi's own rows
 

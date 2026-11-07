@@ -18,8 +18,10 @@ that Kaimon routes. So a session is live when a file of the key is there and its
 socket files are no evidence: Kaimon leaves them behind when a session ends. The check reads the
 files as they are at the call, and keeps nothing. When the directory does not exist, or a file
 cannot be read or holds no integer `pid`, the check cannot tell and passes. A key `tcp-…` names a
-remote gate, which writes no file, and passes. `manage_repl` is not checked for a live session: its
-`shutdown` is how an agent removes a session whose process has gone.
+remote gate, which writes no file, and passes. Under WSL, Kaimon also finds the gates of the
+Windows side, through files in a directory that the check does not read, so the check refuses
+their keys. `manage_repl` is not checked for a live session: its `shutdown` is how an agent removes
+a session whose process has gone.
 """
 
 import os
