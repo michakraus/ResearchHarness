@@ -4,12 +4,13 @@ The check decides a command that is one `git` call and nothing else: no operator
 no second part, no global option before the subcommand. It reads the state of the repository with
 `git` in the call's working directory, the payload's `cwd`.
 
-  * **`git worktree remove --force <path>`**, or `-f`, given once: allow when the path resolves
-    below `~/Research/.worktrees/`, a remote-tracking ref contains the worktree's HEAD
-    (`git for-each-ref --contains HEAD refs/remotes`), and no tracked file is modified or staged
-    (`git status --porcelain --untracked-files=no`). Untracked and ignored files may go. Otherwise
-    ask, with a reason that names what would be lost. A ref that contains HEAD holds every commit of
-    HEAD; `origin/main` is one, so a HEAD that `origin/main` contains needs no test of its own.
+  * **`git worktree remove --force <path>`**, or `-f`, given once: allow when the path, resolved
+    without following its last name, lies below `~/Research/.worktrees/`, a remote-tracking ref
+    contains the worktree's HEAD (`git for-each-ref --contains HEAD refs/remotes`), and no tracked
+    file is modified or staged (`git status --porcelain --untracked-files=no`). Untracked and
+    ignored files may go. Otherwise ask, with a reason that names what would be lost. A ref that
+    contains HEAD holds every commit of HEAD; `origin/main` is one, so a HEAD that `origin/main`
+    contains needs no test of its own.
   * **`git cherry-pick`**, with any arguments: allow when the working directory lies below
     `~/Research/.worktrees/<name>/`, or in a checkout whose `origin` is a GitHub repository of an
     own organisation. Otherwise ask.
@@ -29,8 +30,8 @@ settings template still refuses those it names, such as a plain `--force`. `git`
 run, or that fails, asks.
 
 The own organisations are the `org` list of the profile, as `gh_api_writes.own_organisations` reads
-it. `git status` runs with `core.fsmonitor` off, so that the check runs no program that a
-repository's configuration names.
+it. Each `git` runs with `core.fsmonitor` off, so that `git status` starts no monitor program that
+a repository's configuration names; a clean filter of the repository can still run.
 
 A permission rule cannot state this: it sees neither the working directory nor the worktree's
 state. And a hook's `allow` does not lift a matching `ask` or `deny` rule, so the template holds no
