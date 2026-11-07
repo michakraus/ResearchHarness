@@ -979,7 +979,6 @@ EXPLAINED: dict[str, tuple[str, ...]] = {
     "julia": ("juliaup, Julia, fatou, Kaimon and the Julia environment of the harness's scripts",),
     "rtk": ("RTK, a proxy that shortens the output of shell commands",),
     "jq": ("jq, the command-line JSON processor",),
-    "iterm": ("iTerm2, a terminal app, on macOS only",),
     "jobs": ("Kaimon, the Julia update and the autocommit of ~/.claude, as background jobs",),
     "dotfiles": ("chezmoi, which applies a repository of dotfiles",),
 }
