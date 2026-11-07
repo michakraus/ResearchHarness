@@ -66,8 +66,6 @@ def repositories(arguments: list[str]) -> list[str]:
     index = 0
     while index < len(arguments):
         argument = arguments[index]
-        if argument == "--":
-            break
         if argument in ("-R", "--repo"):
             found.append(arguments[index + 1] if index + 1 < len(arguments) else "")
             index += 2
