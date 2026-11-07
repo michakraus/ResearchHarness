@@ -24,6 +24,7 @@ from guard import (
     HarnessError,
     directory_scope,
     gh_api_writes,
+    gh_pr_create,
     git_archive_output,
     git_writes,
     kaimon_session,
@@ -46,6 +47,7 @@ SHELL: tuple[Check, ...] = (
     no_shell_file_write.check,
     sandbox_semantics.check,
     gh_api_writes.check,
+    gh_pr_create.check,
     rm_scope.check,
     git_archive_output.check,
     git_writes.check,
@@ -56,7 +58,7 @@ SHELL: tuple[Check, ...] = (
 TABLE: tuple[tuple[re.Pattern[str], tuple[Check, ...]], ...] = (
     (re.compile(r"Bash"), SHELL),
     (re.compile(r"mcp__ccd_directory__.*|EnterWorktree|ExitWorktree"), (directory_scope.check,)),
-    (re.compile(r"mcp__kaimon__ex|mcp__kaimon__manage_repl"), (kaimon_session.check,)),
+    (re.compile(r"mcp__kaimon__.*"), (kaimon_session.check,)),
 )
 
 # The neutral names of Claude Code's own worktree tools; an MCP tool's is `<server>.<tool>`.

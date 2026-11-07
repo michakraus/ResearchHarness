@@ -74,6 +74,12 @@ protected_dir = ["Nextcloud"]
 # `~` is the path of the home directory.
 leak = ["~", "example-user"]
 
+# The URL of the git repository of ~/.claude, starting with https:// or git@. With the component
+# `jobs`, `harness setup` clones it into a ~/.claude that is missing or empty, and the autocommit
+# job pushes to it. Optional: without it, `harness setup` sets up no autocommit job, and in a
+# terminal it asks for the URL.
+# claude_remote = "https://git.example.org/example-user/claude.git"
+
 # The model servers and accounts of OpenCode and oh-my-pi are in providers.toml beside this file,
 # which examples/providers.toml shows.
 

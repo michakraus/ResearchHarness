@@ -89,6 +89,7 @@ which quotes the message.
 | `launchd_prefix` | the reverse-domain prefix of the labels of the launchd jobs in `launchagents/`, such as `org.example`: the label of the Kaimon server is `<launchd_prefix>.kaimon`. macOS only; nothing on Linux reads it. Optional: without it, a template that names it stops the subcommand | `render` of the `launchagents/` templates; `doctor`; the update job `scripts/julia-update.jl` on macOS |
 | `template_host` | the short host name of the template host. Optional: without it, `autocommit_branch` is `main` on every machine | every subcommand that reads the profile, for the value of `autocommit_branch` |
 | `autocommit_branch` | the branch of the `origin` of `~/.claude` that `claude-autocommit` pushes to: `main` on the template host, a branch of its own on each other machine. Optional: without it, `main` on the machine of `template_host` or without `template_host`, otherwise `memory/<short host name>`, as [One profile for every machine](#one-profile-for-every-machine) says | `render` of `launchagents/claude-autocommit.plist` and `systemd/claude-autocommit.service` |
+| `claude_remote` | the URL of the git repository of `~/.claude`, starting with `https://` or `git@`; any other value stops the subcommand. With the component `jobs`, `harness setup` clones it into a `~/.claude` that is missing or empty, and the autocommit job pushes to it. Optional: without it, `harness setup` sets up no autocommit job, and in a terminal it asks for the URL | `setup` |
 | `org` | the GitHub accounts and organisations where a [session](concepts.md#session) can open and comment on a pull request or an issue with no prompt | `install` and `settings`, in the settings template; `leaks`, which also searches for each of them |
 | `repository_roots` | the directories that hold the repositories of the [research tree](concepts.md#research-tree) | `leaks`, which searches for the name of each directory below them |
 | `docs_exceptions` | the repositories that keep a documentation workflow of their own. Optional: without it, none | `workflows`; `ci-protection`, through `githooks/verify-workflows.jl` |
@@ -100,8 +101,9 @@ which quotes the message.
 ## The questions of harness setup
 
 Without a profile, `harness setup` asks for each required key; in a terminal, it then asks for the
-frontends, the components and `develop`, also with a profile. Before each question it prints what
-the answer is, and whether the answer is the same on every machine that shares the research tree:
+frontends, the components and `develop`, also with a profile, and with the component `jobs` for
+`claude_remote` where the profile has none. Before each question it prints what the answer is, and
+whether the answer is the same on every machine that shares the research tree:
 
 | question | what it is | across machines |
 |:--|:--|:--|
@@ -113,13 +115,15 @@ the answer is, and whether the answer is the same on every machine that shares t
 | frontends | the [agent](concepts.md#agent) programs whose configuration `harness install` writes: `claude` is Claude Code, `opencode` OpenCode, `omp` oh-my-pi and `antigravity` the Antigravity desktop app | per machine |
 | components | what `harness setup` installs and starts beside the frontends: `julia` (juliaup, Julia, fatou, Kaimon and the Julia environment of the scripts), `rtk`, `jq`, `jobs` (Kaimon, the Julia update and the autocommit of `~/.claude` as background jobs) and `dotfiles` (chezmoi) | per machine |
 | `develop` | only for a machine that changes the harness's own code: it adds the `dev` group of `uv.lock`, the tools that check the Python code, such as ruff and basedpyright | per machine |
+| `claude_remote` | asked with the component `jobs` when the profile has no `claude_remote`: the URL of the git repository of `~/.claude`, which `harness setup` clones there and the autocommit job pushes to; an empty answer means no autocommit job | the same |
 
 An empty answer keeps the example's value. A list takes either items separated by commas, such as
 `a, b`, or a TOML list, such as `["a", "b"]`, and the answer replaces the example's list. An item
 that holds a bracket or a quote, a TOML list that does not parse, holds a value that is not a
 string or holds an empty string, an answer with no item, and an `org` item that is no GitHub
-account name are refused with one line, and the question comes again.
-`harness setup --yes` asks nothing and prints none of this.
+account name are refused with one line, and the question comes again; so is a `claude_remote`
+that starts with neither `https://` nor `git@`. `harness setup` writes a `claude_remote` answer as
+the first line of the profile. `harness setup --yes` asks nothing and prints none of this.
 
 ## The setup table
 

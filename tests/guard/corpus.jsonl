@@ -209,6 +209,38 @@
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api graphql -F query=@mutation.graphql"}}, "decision": "ask"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api graphql --input request.json"}}, "decision": "ask"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api graphql -f owner=o"}}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api graphql -F query=@@@FIXTURE@@/gh/read.graphql --jq '.data.viewer.login'"}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api graphql -f query=@@@FIXTURE@@/gh/merge.graphql"}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api graphql --field=query=@read.graphql"}, "cwd": "@@FIXTURE@@/gh"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api graphql -F query=@read.graphql"}}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api graphql -F query=@@@FIXTURE@@/gh/resolve.graphql"}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api graphql -F query=@@@FIXTURE@@/gh/merge.graphql"}, "cwd": "@@CWD@@"}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api graphql -F query=@@@FIXTURE@@/gh/quote-comment.graphql"}, "cwd": "@@CWD@@"}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api graphql -F query=@@@FIXTURE@@/gh/missing.graphql"}, "cwd": "@@CWD@@"}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api graphql -F query=@@@FIXTURE@@/gh/not-utf8.graphql"}, "cwd": "@@CWD@@"}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api graphql -F query=@@@FIXTURE@@/gh"}, "cwd": "@@CWD@@"}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api graphql -F query=@-"}, "cwd": "@@CWD@@"}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api graphql --input @@FIXTURE@@/gh/reply.json"}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api graphql --input=@@FIXTURE@@/gh/merge.json"}, "cwd": "@@CWD@@"}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api graphql --input @@FIXTURE@@/gh/no-query.json"}, "cwd": "@@CWD@@"}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api graphql --input @@FIXTURE@@/gh/not-json.json"}, "cwd": "@@CWD@@"}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api graphql --input @@FIXTURE@@/gh/reply.json -F query=@@@FIXTURE@@/gh/read.graphql"}, "cwd": "@@CWD@@"}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh pr create --repo own-org/X.jl --title T --body-file b.md"}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh pr view 1 && gh pr create --title T -R Own-Org/X.jl"}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh pr create --repo=own-user/X.jl --title T"}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh pr create --title T --body-file b.md"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "GH_REPO=own-org/X.jl gh pr create --title T"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh pr create --title -Rown-org/X.jl"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh pr new --title T"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh pr new --repo own-org/X.jl --title T"}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh pr create --attach -Rown-org/X.jl --title T"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh pr create -db -Rown-org/X.jl --title T"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh pr create --repo own-org/X.jl --title T -dRother-org/Y.jl"}, "cwd": "@@CWD@@"}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh pr create --repo other-org/X.jl --title T"}, "cwd": "@@CWD@@"}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh pr create --repo own-org/X.jl --title T --repo other-org/Y.jl"}, "cwd": "@@CWD@@"}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh pr create -R other-org/Y.jl --title T --repo own-org/X.jl"}, "cwd": "@@CWD@@"}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh pr create -R github.com/own-org/X.jl --title T"}, "cwd": "@@CWD@@"}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh pr create --repo own-org/X.jl --title T"}, "cwd": "@@CWD@@"}, "profile": "@@FIXTURE@@/profiles/missing.toml", "decision": "ask"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api repos/o/r/issues -f title=x"}}, "decision": "ask"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api repos/o/r/issues --raw-field title=x"}}, "decision": "ask"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api repos/o/r/issues --field=title=x"}}, "decision": "ask"}
@@ -360,6 +392,24 @@
 {"tool": "mcp__kaimon__ex", "stdin": {"tool_name": "mcp__kaimon__manage_repl", "tool_input": {"command": "shutdown", "session": "a1b2c3d4"}}, "decision": "pass"}
 {"tool": "mcp__kaimon__ex", "stdin": {"tool_name": "mcp__kaimon__check_eval", "tool_input": {"eval_id": "e1f2a3b4"}}, "decision": "pass"}
 {"tool": "mcp__kaimon__ex", "stdin": {"tool_name": "mcp__kaimon__start_session", "tool_input": {"project_path": "/x"}}, "decision": "pass"}
+{"tool": "mcp__kaimon__ex", "stdin": {"tool_name": "mcp__kaimon__ex", "tool_input": {"e": "1 + 1", "ses": "deadbeef"}}, "decision": "deny"}
+{"tool": "mcp__kaimon__ex", "stdin": {"tool_name": "mcp__kaimon__ex", "tool_input": {"e": "1 + 1", "ses": "0badc0de"}}, "decision": "deny"}
+{"tool": "mcp__kaimon__ex", "stdin": {"tool_name": "mcp__kaimon__ex", "tool_input": {"e": "1 + 1", "ses": "a1b2"}}, "decision": "pass"}
+{"tool": "mcp__kaimon__ex", "stdin": {"tool_name": "mcp__kaimon__ex", "tool_input": {"e": "1 + 1", "ses": "c0ffee00"}}, "decision": "pass"}
+{"tool": "mcp__kaimon__ex", "stdin": {"tool_name": "mcp__kaimon__ex", "tool_input": {"e": "1 + 1", "ses": "badf00d0"}}, "decision": "pass"}
+{"tool": "mcp__kaimon__ex", "stdin": {"tool_name": "mcp__kaimon__ex", "tool_input": {"e": "1 + 1", "ses": " a1b2c3d4 "}}, "decision": "deny"}
+{"tool": "mcp__kaimon__ex", "stdin": {"tool_name": "mcp__kaimon__ex", "tool_input": {"e": "1 + 1", "ses": "tcp-127.0.0.1:9000"}}, "decision": "pass"}
+{"tool": "mcp__kaimon__ex", "stdin": {"tool_name": "mcp__kaimon__ex", "tool_input": {"e": "1 + 1", "ses": "a1b2c3d4", "session": "a1b2c3d4"}}, "decision": "deny"}
+{"tool": "mcp__kaimon__ex", "stdin": {"tool_name": "mcp__kaimon__manage_repl", "tool_input": {"command": "shutdown", "session": "deadbeef"}}, "decision": "pass"}
+{"tool": "mcp__kaimon__ex", "stdin": {"tool_name": "mcp__kaimon__type_info", "tool_input": {"type_expr": "Int", "session": "a1b2c3d4"}}, "decision": "pass"}
+{"tool": "mcp__kaimon__ex", "stdin": {"tool_name": "mcp__kaimon__type_info", "tool_input": {"type_expr": "Int", "session": "deadbeef"}}, "decision": "deny"}
+{"tool": "mcp__kaimon__ex", "stdin": {"tool_name": "mcp__kaimon__type_info", "tool_input": {"type_expr": "Int", "ses": "a1b2c3d4"}}, "decision": "deny"}
+{"tool": "mcp__kaimon__ex", "stdin": {"tool_name": "mcp__kaimon__type_info", "tool_input": {"type_expr": "Int"}}, "decision": "pass"}
+{"tool": "mcp__kaimon__ex", "stdin": {"tool_name": "mcp__kaimon__run_tests", "tool_input": {"project_path": "/x"}}, "decision": "pass"}
+{"tool": "mcp__kaimon__ex", "stdin": {"tool_name": "mcp__kaimon__check_eval", "tool_input": {"eval_id": "e1f2a3b4", "session": "a1b2c3d4"}}, "decision": "deny"}
+{"tool": "mcp__kaimon__ex", "stdin": {"tool_name": "mcp__kaimon__start_session", "tool_input": {"project_path": "/x", "ses": "a1b2c3d4"}}, "decision": "deny"}
+{"tool": "mcp__kaimon__ex", "stdin": {"tool_name": "mcp__kaimon__ping", "tool_input": {}}, "decision": "pass"}
+{"tool": "mcp__kaimon__ex", "stdin": {"tool_name": "mcp__kaimon__some_new_tool", "tool_input": {"ses": "deadbeef"}}, "decision": "pass"}
 {"tool": "mcp__kaimon__ex", "stdin": {"tool_name": "mcp__other__ex", "tool_input": {"e": "1"}}, "decision": "pass"}
 {"tool": "mcp__kaimon__ex", "stdin": {"tool_name": "mcp__kaimon__ex", "tool_input": "e"}, "decision": "deny", "differs": "The guard denies a Kaimon payload whose tool_input is no object; kaimon-session.py let it through."}
 {"tool": "mcp__kaimon__ex", "stdin": {"tool_name": "mcp__kaimon__ex", "tool_input": {"e": "1"}}, "decision": "deny"}
@@ -531,6 +581,11 @@
 {"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "gh api repos/other-org/r/git/refs -f ref=refs/heads/topic -f sha=s"}, "decision": "force_ask", "bypass": true}
 {"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "gh api -X PATCH repos/own-org/r/git/refs/heads/main -f sha=s"}, "decision": "force_ask", "bypass": true}
 {"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "gh api repos/own-org/r/git/refs -f ref=refs/heads/topic -f sha=s"}, "profile": "@@FIXTURE@@/profiles/missing.toml", "decision": "force_ask", "bypass": true}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "gh pr create --repo own-org/X.jl --title T"}, "decision": "ask", "bypass": true}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "gh pr create --repo other-org/X.jl --title T"}, "decision": "force_ask", "bypass": true}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "gh pr create --title T"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "gh api graphql -F query=@@@FIXTURE@@/gh/read.graphql"}, "decision": "ask", "bypass": true}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "gh api graphql -F query=@@@FIXTURE@@/gh/merge.graphql"}, "decision": "force_ask", "bypass": true}
 {"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "ls -la", "Cwd": "~/.ssh"}, "decision": "deny", "bypass": null}
 {"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "sed -i s/a/b/ f", "Cwd": "@@CWD@@"}, "decision": "deny", "bypass": null}
 {"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "env KEY=~/.netrc true"}, "decision": "deny", "bypass": null}
@@ -648,7 +703,7 @@
 {"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "./git status"}, "decision": "ask", "bypass": false}
 {"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "git clone https://example.com/r.git /tmp/r"}, "decision": "ask", "bypass": false}
 {"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "cd a\u0000b"}, "decision": "ask", "bypass": false}
-{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "gh pr create --title \"Fix #12\""}, "decision": "ask", "bypass": false}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "gh pr create --repo own-org/X.jl --title \"Fix #12\""}, "decision": "ask", "bypass": false}
 {"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "git log $'\\'' ; julia --version ; true \\'"}, "decision": "ask", "bypass": false}
 {"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "gh pr view 1 $'\\'' ; julia --version ; true \\'"}, "decision": "ask", "bypass": false}
 {"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "git status $'\\''\njulia --version\ntrue \\'"}, "decision": "ask", "bypass": false}
@@ -709,6 +764,13 @@
 {"frontend": "antigravity", "tool": "call_mcp_tool", "args": {"ServerName": "kaimon", "ToolName": "ex", "Arguments": "{"}, "decision": "deny", "bypass": null}
 {"frontend": "antigravity", "tool": "call_mcp_tool", "args": {"ServerName": "kaimon", "ToolName": "manage_repl", "Arguments": {"command": "restart", "session": "abcd1234"}}, "decision": "ask", "bypass": null}
 {"frontend": "antigravity", "tool": "call_mcp_tool", "args": {"ServerName": "kaimon", "ToolName": "ex", "Arguments": {"e": "1", "session": "abcd1234"}}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "call_mcp_tool", "args": {"ServerName": "kaimon", "ToolName": "ex", "Arguments": {"e": "1", "ses": "deadbeef"}}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "call_mcp_tool", "args": {"ServerName": "kaimon", "ToolName": "type_info", "Arguments": {"type_expr": "Int", "session": "abcd1234"}}, "decision": "ask", "bypass": null}
+{"frontend": "antigravity", "tool": "call_mcp_tool", "args": {"ServerName": "kaimon", "ToolName": "type_info", "Arguments": {"type_expr": "Int", "session": "deadbeef"}}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "call_mcp_tool", "args": {"ServerName": "kaimon", "ToolName": "type_info", "Arguments": "{\"type_expr\": \"Int\", \"ses\": \"abcd1234\"}"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "call_mcp_tool", "args": {"ServerName": "kaimon", "ToolName": "check_eval", "Arguments": {"eval_id": "e1f2a3b4", "ses": "abcd1234"}}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "call_mcp_tool", "args": {"ServerName": "kaimon", "ToolName": "check_eval"}, "decision": "ask", "bypass": null}
+{"frontend": "antigravity", "tool": "call_mcp_tool", "args": {"ServerName": "kaimon", "ToolName": "manage_repl", "Arguments": {"command": "shutdown", "session": "deadbeef"}}, "decision": "ask", "bypass": null}
 {"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "ls -l ~/.gitconfig", "BypassSandbox": true}, "decision": "ask", "bypass": false}
 {"frontend": "antigravity", "tool": "multi_replace_file_content", "args": {"TargetFile": "~/.claude/skills/build-part/SKILL.md"}, "decision": "deny", "bypass": null, "differs": "The guard maps multi_replace_file_content onto the edit action, with TargetFile as its path, so the edit and ask lists apply to it as to replace_file_content (K87); the old hook checked it against the deny list alone."}
 {"frontend": "antigravity", "tool": "multi_replace_file_content", "args": {"TargetFile": "~/.gemini/config/skills/new-skill/SKILL.md"}, "decision": "force_ask", "bypass": null, "differs": "The guard maps multi_replace_file_content onto the edit action, with TargetFile as its path, so the edit and ask lists apply to it as to replace_file_content (K87); the old hook checked it against the deny list alone."}
@@ -778,12 +840,22 @@
 {"frontend": "omp", "tool": "bash", "input": {"command": "gh api repos/other-org/r/git/refs -f ref=refs/heads/topic -f sha=s"}, "decision": "ask"}
 {"frontend": "omp", "tool": "bash", "input": {"command": "gh api -X PATCH repos/own-org/r/git/refs/heads/main -f sha=s"}, "decision": "ask"}
 {"frontend": "omp", "tool": "bash", "input": {"command": "gh api repos/own-org/r/git/refs -f ref=refs/heads/topic -f sha=s"}, "profile": "@@FIXTURE@@/profiles/missing.toml", "decision": "ask"}
-{"frontend": "omp", "tool": "bash", "input": {"command": "gh pr create --repo example-org/X.jl --title T --body-file b.md"}, "decision": "pass"}
-{"frontend": "omp", "tool": "bash", "input": {"command": "gh pr create -R example-user/X.jl --title T"}, "decision": "pass"}
-{"frontend": "omp", "tool": "bash", "input": {"command": "gh pr create --title T --repo example-org/X.jl"}, "decision": "pass"}
-{"frontend": "omp", "tool": "bash", "input": {"command": "gh pr create --repo other/X.jl --title T"}, "decision": "pass"}
-{"frontend": "omp", "tool": "bash", "input": {"command": "gh pr create --title T --body-file b.md"}, "decision": "pass"}
-{"frontend": "omp", "tool": "bash", "input": {"command": "gh pr create"}, "decision": "pass"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "gh pr create --repo own-org/X.jl --title T --body-file b.md"}, "decision": "pass"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "gh pr create -R own-user/X.jl --title T"}, "decision": "pass"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "gh pr create --title T --repo own-org/X.jl"}, "decision": "pass"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "gh pr create --repo own-org/X.jl --title T --body-file b.md 2>&1 | tail -3"}, "decision": "pass"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "cd x && gh pr create --repo own-org/X.jl --title T"}, "decision": "pass"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "gh pr create --repo other/X.jl --title T"}, "decision": "ask"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "gh pr create --repo other-org/X.jl --title T 2>&1 | tail -3"}, "decision": "ask"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "gh pr create --title T --body-file b.md"}, "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "gh pr create"}, "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "gh api graphql -F query=@@@FIXTURE@@/gh/read.graphql --jq .data | head -5"}, "decision": "pass"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "cp @@FIXTURE@@/gh/merge.graphql @@FIXTURE@@/gh/read.graphql && gh api graphql -F query=@@@FIXTURE@@/gh/read.graphql"}, "decision": "ask"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "cp @@FIXTURE@@/gh/merge.json @@FIXTURE@@/gh/reply.json && gh api graphql --input @@FIXTURE@@/gh/reply.json"}, "decision": "ask"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "cd @@FIXTURE@@/gh && gh api graphql -F query=@read.graphql"}, "cwd": "@@FIXTURE@@/gh", "decision": "ask"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "gh api graphql -F query=@read.graphql"}, "cwd": "@@FIXTURE@@/gh", "decision": "pass"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "gh api graphql --input @@FIXTURE@@/gh/reply.json"}, "decision": "pass"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "gh api graphql -F query=@@@FIXTURE@@/gh/merge.graphql"}, "decision": "ask"}
 {"frontend": "omp", "tool": "bash", "input": {"command": "cat ../.local/share/opencode/auth.json"}, "cwd": "@@OMPHOME@@/Research", "decision": "deny"}
 {"frontend": "omp", "tool": "bash", "input": {"command": "cat ../.netrc"}, "cwd": "@@OMPHOME@@/Research", "covers": ["absolute"], "decision": "deny"}
 {"frontend": "omp", "tool": "bash", "input": {"command": "cat .local/share/opencode/auth.json"}, "cwd": "@@OMPHOME@@", "decision": "deny"}
@@ -902,6 +974,12 @@
 {"frontend": "omp", "tool": "mcp__kaimon_manage_repl", "input": {"command": "shutdown"}, "cwd": "@@OMPHOME@@/Research", "decision": "deny"}
 {"frontend": "omp", "tool": "mcp__kaimon_manage_repl", "input": {"command": "shutdown", "session": "a1b2c3d4"}, "cwd": "@@OMPHOME@@/Research", "decision": "pass"}
 {"frontend": "omp", "tool": "mcp__kaimon_check_eval", "input": {"eval_id": "e1f2a3b4"}, "cwd": "@@OMPHOME@@/Research", "decision": "pass"}
+{"frontend": "omp", "tool": "mcp__kaimon_ex", "input": {"e": "1 + 1", "ses": "deadbeef"}, "cwd": "@@OMPHOME@@/Research", "decision": "deny"}
+{"frontend": "omp", "tool": "mcp__kaimon_ex", "input": {"e": "1 + 1", "session": "a1b2c3d4"}, "cwd": "@@OMPHOME@@/Research", "decision": "deny"}
+{"frontend": "omp", "tool": "mcp__kaimon_manage_repl", "input": {"action": "shutdown", "ses": "a1b2c3d4"}, "cwd": "@@OMPHOME@@/Research", "decision": "deny"}
+{"frontend": "omp", "tool": "mcp__kaimon_type_info", "input": {"type_expr": "Int", "session": "a1b2c3d4"}, "cwd": "@@OMPHOME@@/Research", "decision": "pass"}
+{"frontend": "omp", "tool": "mcp__kaimon_type_info", "input": {"type_expr": "Int", "session": "deadbeef"}, "cwd": "@@OMPHOME@@/Research", "decision": "deny"}
+{"frontend": "omp", "tool": "mcp__kaimon_check_eval", "input": {"eval_id": "e1f2a3b4", "ses": "a1b2c3d4"}, "cwd": "@@OMPHOME@@/Research", "decision": "deny"}
 {"frontend": "omp", "tool": "write", "input": {"path": "agent://CriticP13a", "content": "Your round is done."}, "cwd": "@@OMPHOME@@/Research", "agent": "sub", "decision": "deny"}
 {"frontend": "omp", "tool": "write", "input": {"path": " AGENT://SuiteP16a", "content": "Run the suite."}, "cwd": "@@OMPHOME@@/Research", "agent": "sub", "decision": "deny"}
 {"frontend": "omp", "tool": "write", "input": {"path": "agent://CriticP34b", "content": "Write the report."}, "cwd": "@@OMPHOME@@/Research", "agent": "main", "decision": "pass"}
@@ -946,6 +1024,11 @@
 {"frontend": "opencode", "tool": "shell", "input": {"command": "gh api repos/other-org/r/git/refs -f ref=refs/heads/topic -f sha=s"}, "decision": "ask"}
 {"frontend": "opencode", "tool": "shell", "input": {"command": "gh api -X PATCH repos/own-org/r/git/refs/heads/main -f sha=s"}, "decision": "ask"}
 {"frontend": "opencode", "tool": "shell", "input": {"command": "gh api repos/own-org/r/git/refs -f ref=refs/heads/topic -f sha=s"}, "profile": "@@FIXTURE@@/profiles/missing.toml", "decision": "ask"}
+{"frontend": "opencode", "tool": "shell", "input": {"command": "gh pr create --repo own-org/X.jl --title T 2>&1 | tail -3"}, "decision": "pass"}
+{"frontend": "opencode", "tool": "shell", "input": {"command": "gh pr create --repo other-org/X.jl --title T"}, "decision": "ask"}
+{"frontend": "opencode", "tool": "shell", "input": {"command": "gh pr create --title T"}, "decision": "deny"}
+{"frontend": "opencode", "tool": "shell", "input": {"command": "gh api graphql --input @@FIXTURE@@/gh/reply.json"}, "decision": "pass"}
+{"frontend": "opencode", "tool": "shell", "input": {"command": "gh api graphql --input @@FIXTURE@@/gh/merge.json"}, "decision": "ask"}
 {"frontend": "opencode", "tool": "shell", "input": {"command": "git archive -o base.tar origin/main"}, "directory": "@@TOOL@@", "decision": "deny"}
 {"frontend": "opencode", "tool": "shell", "input": {"command": "echo x > f"}, "directory": "@@PKG@@", "decision": "deny"}
 {"frontend": "opencode", "tool": "shell", "input": {"command": "echo x > f", "workdir": "@@PKG@@"}, "directory": "@@FIXTURE@@", "decision": "deny"}
@@ -958,6 +1041,10 @@
 {"frontend": "opencode", "tool": "kaimon_ex", "input": {"e": "1", "ses": "a1b2c3d4"}, "decision": "pass"}
 {"frontend": "opencode", "tool": "kaimon_manage_repl", "input": {"command": "shutdown"}, "decision": "deny"}
 {"frontend": "opencode", "tool": "kaimon_check_eval", "input": {"eval_id": "e1f2a3b4"}, "decision": "pass"}
+{"frontend": "opencode", "tool": "kaimon_ex", "input": {"e": "1", "ses": "deadbeef"}, "decision": "deny"}
+{"frontend": "opencode", "tool": "kaimon_type_info", "input": {"type_expr": "Int", "session": "a1b2c3d4"}, "decision": "pass"}
+{"frontend": "opencode", "tool": "kaimon_type_info", "input": {"type_expr": "Int", "ses": "a1b2c3d4"}, "decision": "deny"}
+{"frontend": "opencode", "tool": "kaimon_check_eval", "input": {"eval_id": "e1f2a3b4", "session": "a1b2c3d4"}, "decision": "deny"}
 {"frontend": "opencode", "tool": "shell", "input": {"command": "git status"}, "local": {"allow": "x"}, "covers": ["lists"], "decision": "deny"}
 {"frontend": "opencode", "tool": "shell", "input": {"command": "cat /etc/hosts"}, "local": {"deny": ["/etc/**"]}, "covers": ["lists"], "decision": "deny"}
 {"frontend": "opencode", "tool": "shell", "input": {"command": "git status"}, "local": {"deny": ["/etc/**"]}, "decision": "pass"}

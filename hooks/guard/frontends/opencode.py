@@ -15,8 +15,8 @@ a command: each word, and each path that TEXT_PATH finds.
 THE CALLS. `shell` is a shell call: `input.command`, in `input.workdir` resolved against the
 session's directory, else in that directory; the `workdir` is also a path that the call reads
 below. The command is checked as given and again with a leading `rtk ` removed, as the rtk plugin
-rewrites it, and the stricter verdict holds. `kaimon_ex` and `kaimon_manage_repl` are the `mcp`
-calls `kaimon.ex` and `kaimon.manage_repl`. Every other tool passes.
+rewrites it, and the stricter verdict holds. A Kaimon tool `kaimon_<tool>` is the `mcp` call
+`kaimon.<tool>`. Every other tool passes.
 
 A message that the table cannot read is refused: bytes that are not UTF-8, a text that `jsonio`
 refuses, no object `event`, no string `tool`, an `input` that is no object, a `shell` call without a
@@ -35,6 +35,7 @@ from typing import TextIO
 from guard import (
     HarnessError,
     gh_api_writes,
+    gh_pr_create,
     git_archive_output,
     git_writes,
     kaimon_session,
@@ -54,8 +55,8 @@ type Check = Callable[[Call], Verdict]
 MAX_COMMAND = 1024 * 1024
 # The path list that `harness install` renders beside the plugin, in `plugins/` beside `hooks/`.
 PATH_LIST = str(Path(__file__).parents[3] / "plugins" / "guard-paths.json")
-# The Kaimon tools, by OpenCode's name, and their neutral names.
-KAIMON = {"kaimon_ex": "kaimon.ex", "kaimon_manage_repl": "kaimon.manage_repl"}
+# The prefix of OpenCode's name of a Kaimon tool.
+KAIMON = "kaimon_"
 # A leading `rtk `, which the rtk plugin puts before a command that RTK rewrites.
 RTK = re.compile(r"^\s*rtk\s+")
 READING = path_list.Reading(text_paths=True)
@@ -91,6 +92,7 @@ SHELL: tuple[Check, ...] = (
     no_blind_stage.check,
     no_shell_file_write.check,
     gh_api_writes.check,
+    gh_pr_create.check,
     rm_scope.check,
     git_archive_output.check,
     git_writes.check,
@@ -134,9 +136,10 @@ def decide(data: bytes) -> Verdict:
     tool, tool_input, directory = read(data)
     if tool == "shell":
         return strongest(check(call) for call in shell_calls(tool_input, directory) for check in SHELL)
-    if tool in KAIMON:
+    if tool.startswith(KAIMON):
         arguments = tuple((key, value) for key, value in tool_input.items() if isinstance(value, str))
-        return kaimon_session.check(Call("mcp", KAIMON[tool], (), directory, "main", arguments))
+        neutral = "kaimon." + tool.removeprefix(KAIMON)
+        return kaimon_session.check(Call("mcp", neutral, (), directory, "main", arguments))
     return PASS
 
 

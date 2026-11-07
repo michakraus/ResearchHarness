@@ -13,7 +13,8 @@ The checks, in this order:
   minimum of Python, and which is a WARN when it lags uv.lock;
 - the profile: it loads, the `tree_agents` directory and OpenCode's configuration directory exist,
   the latter SKIP where `[setup]` does not choose `opencode`, and its `autocommit_branch`;
-- the install: the dry run of `harness install`, and each of its warnings; and a WARN for each
+- the install: the dry run of `harness install`, and each of its warnings, every line of it, the
+  further lines indented below its WARN line; and a WARN for each
   frontend that `[setup]` does not choose and whose layer is still installed or whose plan
   refuses;
 - the jobs: Kaimon, its server and the update job; the autocommit job, and when it is enabled,
@@ -465,8 +466,9 @@ class Doctor:
         return self.fail("OpenCode directory", f"{directory} is not a directory", "install")
 
     def install(self):
-        """The dry run of `harness install`: its count, and a WARN for each warning; then the
-        layers of the frontends that `[setup]` does not choose (`unchosen`)."""
+        """The dry run of `harness install`: its count, and a WARN for each warning, with every line
+        of it (`indented`); then the layers of the frontends that `[setup]` does not choose
+        (`unchosen`)."""
         if self.profile is None:
             return [Result("SKIP", "install", "the profile does not load")]
         options = [
@@ -485,10 +487,11 @@ class Doctor:
             result = self.fail("install", f"{count.group(1)} change(s) to make", "install")
         else:
             result = self.fail("install", f"the dry run exits {code}: {last(err) or last(out)}", "install")
-        warnings = re.findall(r"^WARNING: (.*)$", out, re.M)
+        # A warning is its `WARNING: ` line and each line after it that `install.warn` indents.
+        warnings = re.findall(r"^WARNING: (.*(?:\n {9}.*)*)$", out, re.M)
         return (
             [result]
-            + [Result("WARN", f"install warning {n}", w.strip()) for n, w in enumerate(warnings, 1)]
+            + [Result("WARN", f"install warning {n}", indented(w)) for n, w in enumerate(warnings, 1)]
             + self.unchosen(self.profile)
         )
 
@@ -758,6 +761,14 @@ class Doctor:
                 f"{last(r[2]) or last(r[1]) if r else ''}",
             ),
         ]
+
+
+def indented(warning: str) -> str:
+    """The detail of an install warning: its first line, and each further line below it without
+    the 9 spaces of `install.warn`, indented to the column where `run_checks` prints the detail."""
+    first, *rest = warning.splitlines()
+    column = " " * (4 + 2 + WIDTH + 2)
+    return "\n".join([first.strip(), *((column + line[9:]).rstrip() for line in rest)])
 
 
 def numbers_of(version: str):
@@ -1234,7 +1245,8 @@ def status_cases(check, root, system_name):
         )
         | {"install warning 1": "WARN", "harness test": "SKIP", "Revise": "SKIP"},
     )
-    lines = text.splitlines()
+    # A further line of an install warning starts at the column of the detail.
+    lines = [line for line in text.splitlines() if not line.startswith(" " * (4 + 2 + WIDTH + 2))]
     form = re.compile(r"(PASS|WARN|FAIL|SKIP)  \S.{%d,}  \S.*" % (WIDTH - 1))
     check(
         all(form.fullmatch(line) for line in lines) and len(lines) == len(got),
@@ -1727,10 +1739,10 @@ def status_cases(check, root, system_name):
         "\n0 change",
         "\nWARNING: ~/.omp/agent/.env lacks PI_CONFIG_FILES.\n"
         "\nWARNING: the checkout ~/Research/Harness is 3 commit(s) behind its "
-        "origin/main.\n         Run `git pull` there, then install again.\n"
+        "origin/main.\n         Run `git pull` there,\n           with care,\n"
         "\n0 change",
     )
-    got, _ = case(
+    got, text = case(
         "three install warnings",
         {
             "install": "PASS",
@@ -1741,9 +1753,20 @@ def status_cases(check, root, system_name):
         lambda f: stub(f.harness, [("*install", three, "", 0)]),
         ("install",),
     )
+    column = " " * (4 + 2 + WIDTH + 2)
+    want = [
+        f"WARN  {'install warning 3':<{WIDTH}}  the checkout ~/Research/Harness is 3 commit(s) behind its "
+        "origin/main.",
+        column + "Run `git pull` there,",
+        column + "  with care,",
+    ]
+    lines = text.splitlines()
+    at = lines.index(want[0]) if want[0] in lines else -1
     check(
-        "3 commit(s) behind" in got["install warning 3"].detail,
-        f"{system_name}: an install warning's line is its first line -> {got['install warning 3'].detail!r}",
+        at >= 0 and lines[at : at + 3] == want and "\n" not in cast("str", got["install warning 2"].detail),
+        f"{system_name}: each line of a three-line install warning is printed, the further lines "
+        f"below its WARN line at the column of the detail, and a one-line warning stays one line -> "
+        f"{lines[max(at, 0) : at + 3] if at >= 0 else lines}",
     )
 
     # The jobs.

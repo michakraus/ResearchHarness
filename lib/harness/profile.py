@@ -10,11 +10,12 @@ The profile is a TOML file of every value that names a person, an institution or
 `harness --profile F`, else $RESEARCH_HARNESS_PROFILE, else ~/.config/research-harness/profile.toml.
 `examples/profile.toml` is a dummy that shows every key. `load` gives a `Profile`, a frozen
 dataclass. The keys of REQUIRED must be there, and every key is one of REQUIRED or OPTIONAL, of
-its type, a required list is not empty, and each `org` entry is a GitHub account name; any other
-profile exits 2 with one line that names the file, the key and, but for an unknown key, the type
-or the entry, and a retired key with the step that replaces it (`checked`). `home` is optional:
-the running user's home directory without it. A string value that is `~` or starts with `~/`, an
-item of a list too, means `home` (`expand_home`).
+its type, a required list is not empty, each `org` entry is a GitHub account name, and the
+`claude_remote` URL, which `harness setup` clones into ~/.claude, starts with `https://` or
+`git@`; any other profile exits 2 with one line that names the file, the key and, but for an
+unknown key, the type or the entry, and a retired key with the step that replaces it
+(`checked`). `home` is optional: the running user's home directory without it. A string value
+that is `~` or starts with `~/`, an item of a list too, means `home` (`expand_home`).
 
 The model tables load into frozen dataclasses too: `read_models` checks the shape and the types of
 every table, refuses a table or a key that no frontend reads, and gives `Models`; `model_tables`
@@ -130,8 +131,8 @@ class Setup:
 class Profile:
     """The profile, as `load` gives it: every value with `~` expanded. A list is a tuple. Without
     its key, `home`, `harness` and `autocommit_branch` have the values that `load` gives,
-    `template_host` and `launchd_prefix` are "", `setup` is `Setup()`, and an optional list is
-    ()."""
+    `template_host`, `launchd_prefix` and `claude_remote` are "", `setup` is `Setup()`, and an
+    optional list is ()."""
 
     home: str
     harness: str
@@ -143,6 +144,7 @@ class Profile:
     autocommit_branch: str
     template_host: str = ""
     launchd_prefix: str = ""
+    claude_remote: str = ""
     setup: Setup = dataclasses.field(default_factory=Setup)
     docs_exceptions: tuple[str, ...] = ()
     docs_additions: tuple[str, ...] = ()
@@ -166,6 +168,7 @@ OPTIONAL = {
     "template_host": STRING,
     "autocommit_branch": STRING,
     "launchd_prefix": STRING,
+    "claude_remote": STRING,
     "setup": TABLE,
     "docs_exceptions": LIST,
     "docs_additions": LIST,
@@ -174,6 +177,8 @@ OPTIONAL = {
 # A GitHub account or organisation name, an entry of `org`: letters, digits and single hyphens,
 # 1 to 39 characters, not starting or ending with a hyphen.
 GITHUB_NAME = re.compile(r"(?=.{1,39}\Z)[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*")
+# The starts of a `claude_remote` URL, the remote that `harness setup` clones into ~/.claude.
+REMOTE_STARTS = ("https://", "git@")
 # The keys of `[setup]`, each with its type; `develop` is the one optional key.
 SETUP_KEYS = {"frontends": LIST, "components": LIST, "develop": BOOL}
 
@@ -219,6 +224,7 @@ def load(
         autocommit_branch=branch_default(strings, path, host),
         template_host=strings.get("template_host", ""),
         launchd_prefix=strings.get("launchd_prefix", ""),
+        claude_remote=strings.get("claude_remote", ""),
         setup=setup,
         docs_exceptions=lists.get("docs_exceptions", ()),
         docs_additions=lists.get("docs_additions", ()),
@@ -233,7 +239,8 @@ def checked(
     at `path`. A retired key exits 2 with the step that replaces it; then an unknown key, a table
     other than `[setup]` among them, a missing key of REQUIRED, a value that is not of its key's
     type and an empty list of REQUIRED, each naming `path`, the key and, but for an unknown key,
-    the type; then an `org` entry that is no GitHub account name (GITHUB_NAME), naming it."""
+    the type; then an `org` entry that is no GitHub account name (GITHUB_NAME), naming it, and a
+    `claude_remote` that starts with neither of REMOTE_STARTS, naming it."""
     if "develop" in data:
         raise HarnessError(
             f"{path}: the top-level key `develop` is retired: move the line `develop = …` into the "
@@ -282,7 +289,17 @@ def checked(
             f"{path}: `org` names {', '.join(map(repr, bad))}, which is no GitHub account name: letters, "
             "digits and single hyphens, 1 to 39 characters, not starting or ending with a hyphen"
         )
+    checked_remote(strings.get("claude_remote"), path)
     return strings, lists, setup
+
+
+def checked_remote(url: str | None, path: pathlib.Path) -> None:
+    """A `claude_remote` `url` of the profile at `path` that starts with neither of REMOTE_STARTS
+    exits 2, naming it; None, a profile without the key, passes."""
+    if url is not None and not url.startswith(REMOTE_STARTS):
+        raise HarnessError(
+            f"{path}: `claude_remote` is {url!r}, not a URL that starts with " + " or ".join(REMOTE_STARTS)
+        )
 
 
 def setup_table(table: Mapping[str, object], path: pathlib.Path) -> Setup:
@@ -408,7 +425,11 @@ def values(profile: Profile) -> dict[str, str | list[str]]:
     }
     out |= {
         k: v
-        for k, v in (("template_host", profile.template_host), ("launchd_prefix", profile.launchd_prefix))
+        for k, v in (
+            ("template_host", profile.template_host),
+            ("launchd_prefix", profile.launchd_prefix),
+            ("claude_remote", profile.claude_remote),
+        )
         if v
     }
     return out
@@ -2125,6 +2146,23 @@ def schema_cases() -> tuple[int, int]:
                 isinstance(got, Profile) and got.org == (entry,),
                 f"the `org` entry {entry!r} loads -> {getattr(got, 'org', got)}",
             )
+        # A `claude_remote` that is no https:// or git@ URL is refused, naming it.
+        for url in ("http://example.invalid/c.git", "/srv/claude.git", "file:///srv/c.git", "", "https:/x"):
+            got = loaded(
+                profile_text(claude_remote=json.dumps(url))
+                if url
+                else profile_text() + 'claude_remote = ""\n'
+            )
+            check(
+                refused(got, "profile.toml", "claude_remote", "https://") and repr(url) in str(got),
+                f"the `claude_remote` {url!r} is refused, naming it -> {got}",
+            )
+        for url in ("https://example.invalid/claude.git", "git@example.invalid:me/claude.git"):
+            got = loaded(profile_text(claude_remote=json.dumps(url)))
+            check(
+                isinstance(got, Profile) and got.claude_remote == url and get(got, "claude_remote") == url,
+                f"the `claude_remote` {url!r} loads, and `get` prints it -> {getattr(got, 'claude_remote', got)}",
+            )
         # A key with no type word is refused as a key that the profile does not have, whatever its
         # value.
         for label, text, key, kind in refusals:
@@ -2195,6 +2233,7 @@ def schema_cases() -> tuple[int, int]:
             "template_host": "",
             "autocommit_branch": "main",
             "launchd_prefix": "",
+            "claude_remote": "",
             "setup": Setup(),
             "docs_exceptions": (),
             "docs_additions": (),

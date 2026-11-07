@@ -298,8 +298,6 @@
       "git archive * --remote*": "ask",
       "gh issue create * -R *": "ask",
       "gh issue create * --repo*": "ask",
-      "gh pr create * -R *": "ask",
-      "gh pr create * --repo*": "ask",
       "gh issue comment * -R * -R *": "ask",
       "gh issue comment * -R * --repo*": "ask",
       "gh issue comment * --repo * -R *": "ask",

@@ -57,7 +57,13 @@
          KAIMON_QDRANT_MANAGED=off stops the background indexing, which the qdrant_* entries
          in tools.json do not stop. The package preference of the same name lives in the app
          environment, and every Kaimon update deletes it; this variable overrides it and
-         stays. -->
+         stays.
+
+         KAIMON_GATE_PROMOTE_AFTER=240 lets an `ex` call wait up to 240 s for its result before
+         Kaimon makes it a background job. An agent that gets a job id has no way to wait, so it
+         calls check_eval until the job ends: in Antigravity, every 8 s (the median), each
+         call a model turn that reads the whole context. 240 s stays inside the 5-minute prompt
+         cache of a Claude Code sub-agent; oh-my-pi's request timeout for Kaimon is above it. -->
     <key>EnvironmentVariables</key>
     <dict>
         <key>JULIA_APPS_JULIA_CMD</key>
@@ -66,6 +72,8 @@
         <string>{home}/.juliaup/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
         <key>KAIMON_QDRANT_MANAGED</key>
         <string>off</string>
+        <key>KAIMON_GATE_PROMOTE_AFTER</key>
+        <string>240</string>
     </dict>
 </dict>
 </plist>

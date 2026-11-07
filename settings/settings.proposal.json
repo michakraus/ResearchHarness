@@ -92,6 +92,8 @@
       "Bash(gh pr review *)",
       "Bash(gh pr create -R {org}/*)",
       "Bash(gh pr create --repo {org}/*)",
+      "Bash(gh pr create * -R {org}/*)",
+      "Bash(gh pr create * --repo {org}/*)",
       "Bash(gh pr edit *)",
       "Bash(gh pr comment * -R {org}/*)",
       "Bash(gh pr comment * --repo {org}/*)",
@@ -609,8 +611,6 @@
       "Bash(git archive * --remote*)",
       "Bash(gh issue create * -R *)",
       "Bash(gh issue create * --repo*)",
-      "Bash(gh pr create * -R *)",
-      "Bash(gh pr create * --repo*)",
       "Bash(gh issue comment * -R * -R *)",
       "Bash(gh issue comment * -R * --repo*)",
       "Bash(gh issue comment * --repo * -R *)",
@@ -673,6 +673,15 @@
             "timeout": 5
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "{home}/.claude/hooks/context-handoff.py",
+            "timeout": 5
+          }
+        ]
       }
     ],
     "PreToolUse": [
@@ -712,7 +721,7 @@
         ]
       },
       {
-        "matcher": "mcp__kaimon__ex|mcp__kaimon__manage_repl",
+        "matcher": "mcp__kaimon__.*",
         "hooks": [
           {
             "type": "command",
@@ -728,6 +737,17 @@
           {
             "type": "command",
             "command": "{home}/.claude/hooks/install-drift.py",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "{home}/.claude/hooks/context-handoff.py",
             "timeout": 5
           }
         ]

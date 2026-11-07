@@ -43,8 +43,8 @@
 #
 #   Both list modes write the verdicts to a result file under ~/Research/.scratch/mutants/, named
 #   <package directory>-<list name>-<hash of the list's path>.result.json, and print its path on
-#   the `result:` line; a list may lie under the worktree's .claude/scratch/, where the sandbox
-#   refuses the write of a script. The result file holds each mutant's
+#   the `result:` line; a list may lie in a directory where the sandbox refuses the write of a
+#   script, such as a worktree's .claude/. The result file holds each mutant's
 #   file, line, operator, verdict, detail and edits, the tree hash and the units its verdict holds
 #   for, and the survivors (SURVIVED and NO-COVERAGE) grouped by line. It holds the last run of
 #   the list, whatever its units. A later run of the list
@@ -312,8 +312,8 @@ end
 
 """
 The result file of the mutant list `list` of `pkg`: under ~/Research/.scratch/mutants/, named
-`<package directory>-<list name>-<hash of the list's path>.result.json`. A list under the
-worktree's `.claude/scratch/` has its result outside it, where the sandbox lets the write through.
+`<package directory>-<list name>-<hash of the list's path>.result.json`. A list in a directory
+where the sandbox refuses a write, such as a worktree's `.claude/`, has its result outside it.
 """
 function result_path(pkg, list)
     tag = bytes2hex(SHA.sha256(abspath(list)))[1:8]

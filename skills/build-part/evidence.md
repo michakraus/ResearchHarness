@@ -51,7 +51,7 @@ recorded and not blocking.
   whole test file. Where the part names a mutant, the row quotes `mutate.jl`'s
   verdict on it: CAUGHT, or the clause is not met. For any other command on the unmodified tree,
   `base-tree.jl` puts that tree into a new directory: the critic's `<round directory>/base/`, the
-  builder's `<worktree>/.claude/scratch/base/`.
+  builder's `~/Research/.scratch/builder/<worktree name>/base/`.
 - **The unmodified tree is `origin/main`**, never a draft of the fix from this session. "Each new
   test fails before the fix" is a claim about each test: name the tests that reproduce a defect
   and the tests that pin behaviour as regression guards.
@@ -108,7 +108,7 @@ there (`MUTATE_WARM_MIN` sets the 20).
 when no unit reaches one of them, every verdict is UNKNOWN, and the units are the wrong ones.
 Each run writes a result file under `~/Research/.scratch/mutants/`, named for the worktree and the
 list, with every verdict and the survivors grouped by line, and prints its path on the `result:`
-line. The list stays under `<worktree>/.claude/scratch/`. A run of the same list on the same tree, with the same units, keeps each
+line. The list stays in the builder's scratch directory. A run of the same list on the same tree, with the same units, keeps each
 verdict and runs nothing; any change under `src/`, `ext/` or `test/` runs every mutant again.
 
 ## Which mutants run
@@ -134,8 +134,8 @@ call reads again, and its survivors are a search with no end. Where the plan's Â
 generated sweep, the builder writes these two commands under *Left for the dispatcher*:
 
 ```
-julia --startup-file=no mutants.jl <worktree> <worktree>/.claude/scratch/generated.toml
-julia --startup-file=no mutate.jl <worktree> --warm <worktree>/.claude/scratch/generated.toml --jobs 4 <unit> ...
+julia --startup-file=no mutants.jl <worktree> ~/Research/.scratch/builder/<worktree name>/generated.toml
+julia --startup-file=no mutate.jl <worktree> --warm ~/Research/.scratch/builder/<worktree name>/generated.toml --jobs 4 <unit> ...
 ```
 
 The units are the test files that reach the changed source files. On part K of the solver package,
@@ -169,11 +169,11 @@ these mutants and no others:
 Every other mutant keeps the verdict of its earlier round; do not run the earlier lists again. A
 fix that changes no function, no line outside a function and no named test runs only its own
 mutants. Write the selected mutants of a Julia package file into one list,
-`<worktree>/.claude/scratch/fix-<N>-mutants.toml`, check it with `--check`, and run it once with
-`--warm` and the units that must catch them. Each list pays one smoke run, and a list of 20
-mutants or fewer runs each mutant cold, about a minute each in a large package. In the *Mutants*
-table of a fix round, the kind of a selected earlier mutant is `function`, `test` or `survivor`,
-and the closing line adds `n earlier mutants keep their verdicts`.
+`~/Research/.scratch/builder/<worktree name>/fix-<N>-mutants.toml`, check it with `--check`, and
+run it once with `--warm` and the units that must catch them. Each list pays one smoke run, and a
+list of 20 mutants or fewer runs each mutant cold, about a minute each in a large package. In the
+*Mutants* table of a fix round, the kind of a selected earlier mutant is `function`, `test` or
+`survivor`, and the closing line adds `n earlier mutants keep their verdicts`.
 
 **Another Julia is one command.** `julia +1.12 --startup-file=no run-tests.jl <worktree> full`
 runs the suite on the 1.12 floor. Where another minor version resolved the manifest, `run-tests.jl`
@@ -190,11 +190,13 @@ or a `VERSION` branch. The floor is the lower bound of `julia` in `[compat]`.
 `test/Project.toml`, or writes a `test/Manifest.toml` that every later `Pkg.test()` resolves
 against. Write a probe file with the Write tool, not with a heredoc. A critic writes under
 `~/Research/.scratch/critic/<Repository>-<part>/round-<N>/`, and never into an earlier round's
-directory: those probes are the reproducers that the next verify round runs again. The builder
-writes under `<worktree>/.claude/scratch/`. In a worktree-isolated agent the Write tool refuses
-every path under `~/Research` outside its worktree, `~/Research/.scratch/` included. `.claude/` is
-ignored by the global git rules, `mutate.jl` does not copy it, and it goes with the worktree.
-`$TMPDIR` is no place for it: every session on this machine shares it.
+directory: those probes are the reproducers that the next verify round runs again. **The
+builder's scratch directory is `~/Research/.scratch/builder/<worktree name>/`**, with the name of
+its worktree's directory, `<Repository>-<slug>`: its probes, mutant lists, logs and pull-request
+body go there, and each builder of the part uses the same directory. The Write tool and the shell
+both write there. The shell sandbox refuses every write below the worktree's `.claude/`, and a file
+outside the worktree stays out of `git status` and out of `mutate.jl`'s copy. `$TMPDIR` is no place
+for it: every session on this machine shares it.
 
 ## A warm session for probes
 
@@ -203,14 +205,18 @@ A probe in a fresh process pays for the process start, the package load and the 
 well under a second after its first run. **Probe in the session; write a file only for what must
 last.**
 
-1. **Start one session for your tree**: `start_session(project_path = <tree>)`. The builder's tree
+1. **Start one session for your tree, and reuse it**: `ping` first, and pass the key of a live
+   session of your tree that it lists; else `start_session(project_path = <tree>)`. The builder's tree
    is its worktree, where Revise reloads `src/` before each call. A critic's tree is a copy,
-   `rsync -a --exclude=.git --exclude=.claude --exclude=.env --exclude='.env.*' <worktree>/ <round directory>/tree/`
-   (the sandbox denies `.env` files, so a copy of one leaves a file that no one can remove): two critics
+   `rsync -a --inplace --exclude=.git --exclude=.claude --exclude=.env --exclude='.env.*' <worktree>/ <round directory>/tree/`
+   (the sandbox denies `.env` files, so a copy of one leaves a file that no one can remove;
+   `--inplace` writes `env.ts` under its own name, not as the temporary `.env.ts.XXXXXX`, which
+   the sandbox denies too): two critics
    judge one worktree at once, and one path has one session. A timeout of `start_session` does
    not stop the start: call `ping` before you call it again. **When `start_session` times out
-   twice, probe in a fresh process**, `julia --startup-file=no <probe file>`, and go on; a
-   session is a speed-up, not a precondition.
+   twice, when a call answers "disconnected" or "No session matched", or when Kaimon is not
+   connected, probe in a fresh process**, `julia --startup-file=no <probe file>`, and go on; a
+   session is a speed-up, not a precondition. Start no second session for the tree.
 2. **Load the test environment in a call of its own.** `TestEnv.activate()` alone fails in a
    session, because the package's project is active:
 
@@ -228,8 +234,11 @@ last.**
    the output of a function you call comes back. A test file runs as
    `@testset "probe" Base.include(Core.eval(Main, :(module $(gensym(:Probe)) end)), "<file>")`, a
    fresh module each time, as `run-tests.jl` does. `Module()` does not serve: its module has no
-   `include`, so a test file that includes a helper fails. A call that runs longer than 30 s becomes a
-   job; collect it with `check_eval`, at most once a minute.
+   `include`, so a test file that includes a helper fails. A call waits up to 240 s for its result.
+   A call that runs longer becomes a job, and each `check_eval` on it is a model call that reads
+   your whole context again. Do the work that does not need the result, then collect it with one
+   `check_eval`. With no such work left, cancel the job with `cancel_eval`: a run that long is not
+   a probe. Give its code in your report, for the dispatcher to run.
 4. **Keep what must last as a file.** A probe that shows a defect becomes the critic's reproducer,
    and a probe that pins a clause becomes the builder's test. Run the file once in a fresh process
    before you cite it.
