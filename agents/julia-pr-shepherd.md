@@ -259,7 +259,7 @@ Review posted: <URL>
 Pushed: <sha7> to <headRefName>, or "nothing pushed"
 Worktree: <path> on pr<n>-fix — for the caller to remove
 CI runs: <run id — workflow, one per line>, or "no run yet", or "nothing pushed: <the reviewer's CI verdict>"
-Wait: gh run watch <run-id> -R <owner>/<repo> --exit-status — for the caller, one per run; a non-zero exit goes to ci-triage, because it is not the verdict
+Wait: gh run watch <run-id> -R <owner>/<repo> --exit-status --interval 60 — for the caller, one per run; a non-zero exit goes to ci-triage, because it is not the verdict
 Required checks: <the set, and where it came from — protection or ruleset>
 
 ### Findings, and what happened to each

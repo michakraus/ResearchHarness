@@ -47,8 +47,10 @@ Two consequences you must use:
 - **`gh run watch --exit-status` exits 1 on a cancelled run and on its own rate limit.** Both look
   like a red matrix: read the per-job `conclusion`. The limit is the secondary one, so it trips with
   the core quota left, and after it the REST Actions endpoints, `gh run view` included, stay 403 at
-  full quota. Read the checks through GraphQL: `gh pr view <n> -R <owner>/<repo> --json
-  statusCheckRollup`, or `gh pr checks <n>`.
+  full quota for every session of the account. Read the checks through GraphQL: `gh pr view <n> -R
+  <owner>/<repo> --json statusCheckRollup`, or `gh pr checks <n>`; a deploy, through
+  `git fetch origin gh-pages`. A watcher's default refresh of 3 seconds trips the limit, which is
+  why every watcher sets `--interval 60`.
 - **A PR taken out of draft shows the checks of its last push.** `gh pr ready` fires no workflow;
   each workflow re-runs by id, `gh run rerun <run-id> -R <owner>/<repo>`.
 - Branch protection is **not** installed on two private repositories; a missing required-check gate
