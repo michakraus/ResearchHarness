@@ -19,6 +19,8 @@ What it installs:
                                       of the profile sets `develop = true`: the interpreter of
                                       `harness`; on every machine
   each chosen frontend's files     -> as the docstring of its adapters/<frontend>/adapter.py says
+  sandbox/policy.toml and the      -> ~/.config/research-harness/sandbox/<frontend>.json, the srt
+  template's `sandbox` section        settings of each chosen frontend (lib/harness/sandbox.py)
 
 Without `[setup]`, every frontend and the Julia environment are chosen. A layer of a frontend
 that is not chosen is neither planned nor removed; `harness doctor` warns about one that is still
@@ -28,17 +30,18 @@ It loads the profile and the model tables, `--models F`, else $RESEARCH_HARNESS_
 models.toml beside the profile; examples/models.toml shows them. Then it plans each chosen
 frontend, in the order of FRONTENDS (`frontends.planned`). Planning writes nothing, so each
 refusal that stops the install at once, with exit status 2, comes before anything is written.
-`check_files` then checks every target of the Julia environment, with the `julia` component, and
-of each plan, and refuses a symbolic link or a directory at a target, also before anything is
-written. A target with a change
+`check_files` then checks every target of the Julia environment, with the `julia` component, of
+each plan and of the srt settings, and refuses a symbolic link or a directory at a target, also
+before anything is written. A target with a change
 that cannot be written exits 2 there under `--apply`; a dry run prints its whole plan and count
 line first, then that refusal, and exits 2. Then it installs the Julia environment, with the
 `julia` component, the Python
-environment (`install_python_env`) and the files of each plan in that order, prints the
-warnings, and runs the steps of each plan that follow the files. It prints the installed files
-with no source, then the count line. After an `--apply`, it prints the restart line of each
-frontend whose files or steps changed something, in that order; the two environments belong to
-no frontend. A plan's own refusal exits 2 after these lines, once
+environment (`install_python_env`), the files of each plan and the srt settings in that order,
+prints the warnings, and runs the steps of each plan that follow the files. It prints the
+installed files with no source, then the count line. After an `--apply`, it prints the restart
+line of each frontend whose files or steps changed something, in that order; the two
+environments and the srt settings belong to no frontend. A plan's own refusal exits 2 after these
+lines, once
 the rest is installed.
 
 A file that differs from the plan, in its bytes or in its mode, is a change. The plan's check of
@@ -68,7 +71,7 @@ from typing import Any, cast
 
 # `install_cases` imports this module too, and reads its names only when a case runs, so the cycle
 # resolves at import.
-from . import REPO, HarnessError, changing, frontends, fsutil, install_cases, outcome, sources
+from . import REPO, HarnessError, changing, frontends, fsutil, install_cases, outcome, sandbox, sources
 from . import profile as profile_module
 
 # The stamp that the `SessionStart` hook hooks/install-drift.py compares, at the top of the layer
@@ -387,6 +390,15 @@ def cmd_install(args):
     # copies of an unchosen Claude Code layer, which the others read.
     adapters = frontends.planned(ctx, profile.setup.frontends)
     plans = [ctx.plans[adapter.NAME] for adapter in adapters]
+    # The srt settings of the chosen frontends belong to no plan: nothing runs under srt yet, so a
+    # change of them restarts no frontend.
+    srt_files = sandbox.plan_files(
+        profile,
+        profile_module.network_path(cast(argparse.Namespace, args).profile),
+        profile.setup.frontends,
+        pathlib.Path.home(),
+        sandbox.real_tmpdir(),
+    )
     WIDTH = max(
         len(label)
         for label in [
@@ -394,6 +406,7 @@ def cmd_install(args):
             "python environment",
             *(f[3] for plan in plans for f in plan.files),
             *(r[0] for plan in plans for r in plan.refused),
+            *(f[3] for f in srt_files),
         ]
     )
     # Every target, the Julia environment's and each plan's, is checked before anything is written.
@@ -407,6 +420,7 @@ def cmd_install(args):
         for r in [
             check_files(julia_files if julia else []),
             *(check_files(plan.files) for plan in plans),
+            check_files(srt_files),
         ]
         if r
     ]
@@ -427,6 +441,9 @@ def cmd_install(args):
             if change and rest[1:]:
                 print(rest[1])
             changed[i] += change
+    srt_changes = sum(
+        install_file(apply, data, dst, label, mode=mode) for dst, data, mode, label in srt_files
+    )
     # The warnings go before the steps after the files, so that a step that exits 2 leaves them printed.
     for plan in plans:
         for lines in plan.warnings:
@@ -441,7 +458,7 @@ def cmd_install(args):
         for text in plan.extra:
             print(text)
 
-    changes = environments + sum(changed)
+    changes = environments + srt_changes + sum(changed)
     print(f"\n{changes} change(s) {'made' if args.apply else 'to make'}.")
     # `plans`, and so `changed`, are in the order of `adapters`.
     restarts = [adapter.RESTART for adapter, n in zip(adapters, changed) if n] if args.apply else []
@@ -458,7 +475,8 @@ def cmd_install(args):
 def selftest():
     """A malformed profile or models.toml exits 2 with no traceback; then `load_cases`,
     `install_cases.restart_cases`, `install_cases.precondition_cases`,
-    `install_cases.target_cases`, `install_cases.setup_guard_cases` and `install_cases.setup_cases`."""
+    `install_cases.target_cases`, `install_cases.setup_guard_cases`, `install_cases.setup_cases`
+    and `sandbox.install_file_cases`, the srt settings of the chosen frontends."""
     from .install_cases import precondition_cases, restart_cases, setup_guard_cases, target_cases
 
     total = wrong = 0
@@ -551,6 +569,7 @@ def selftest():
         behind_cases(check, pathlib.Path(tmp))
         install_cases.private_write_cases(check, pathlib.Path(tmp))
         install_cases.replace_directory_cases(check, pathlib.Path(tmp))
+        sandbox.install_file_cases(check, pathlib.Path(tmp) / "sandbox")
     return total, wrong
 
 

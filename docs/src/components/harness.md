@@ -163,10 +163,10 @@ stand in for its plan: the rules and the shared files that OpenCode, oh-my-pi an
 copy, made from the sources alone, with nothing read below `~/.claude/` and nothing installed
 there. A layer of a frontend that is not chosen is neither planned nor removed.
 
-Before it writes, the subcommand checks every target of the Julia environment and of each plan
-(`check_files`). The subcommand exits with status 2 at once if a target is a symbolic link, a
-directory or a file that cannot be read, or if a directory above a target is a symbolic link or a
-file.
+Before it writes, the subcommand checks every target of the Julia environment, of each plan and
+of the `srt` settings (`check_files`). The subcommand exits with status 2 at once if a target is
+a symbolic link, a directory or a file that cannot be read, or if a directory above a target is a
+symbolic link or a file.
 Under `--apply`, it also exits with status 2 before anything is written if the install changes a
 target that it cannot write, or whose mode it cannot change. A target with a mode, and a backup,
 are written by `write_private` of `fsutil.py`, which renames a temporary name in the target's
@@ -181,7 +181,8 @@ Then it plans the Python environment of the harness as one line, `python environ
 its stamp names another `uv.lock` or group. Under `--apply` it runs `uv sync --locked` into it,
 with the `dev` group when `[setup]` of the profile sets `develop = true` and with `--no-dev`
 otherwise; a sync that fails exits with status 2 and its last stderr line.
-Then it installs the files of each plan, prints the warnings, and runs the steps after the files.
+Then it installs the files of each plan, then the `srt` settings of each chosen frontend
+(`sandbox.py`), prints the warnings, and runs the steps after the files.
 The subcommand adds one warning of its own: `behind_origin` warns when the checkout is behind its
 local `origin/main`. It fetches nothing.
 It prints the count line, and after `--apply` the restart line of each frontend whose files
@@ -592,6 +593,17 @@ rendered settings template the `WebFetch(domain:…)` rules of `permissions.allo
 check each rule, each of these exits, and that an overlay changes no file of OpenCode or
 oh-my-pi. The profile's loader refuses the retired profile key `extra_domain`.
 [Adapting the profile](../profile.md#the-network-overlay) describes the keys.
+
+## `sandbox.py`
+
+The `srt` settings of the CLI frontends. The module has no subcommand. It reads
+`sandbox/policy.toml` (`load_policy`) and renders one frontend's `srt` settings from the `sandbox`
+object of the rendered Claude Code settings and the policy (`srt_settings`). `install` writes one
+file per chosen frontend below `~/.config/research-harness/sandbox/` (`plan_files`). The module
+exits with status 2 on a policy file that breaks its schema. Its cases check the shipped policy,
+each refusal, and each rendering rule on a fixture and on the settings template. Its
+`install_file_cases`, which the cases of `install.py` run, check the install on scratch homes.
+[The srt settings](sandbox.md) describes the files.
 
 ## `providers.py`
 

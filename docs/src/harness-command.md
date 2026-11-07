@@ -196,7 +196,9 @@ the oh-my-pi directory, and `~/.gemini/` when Antigravity has made it; the Julia
 the `julia` component (see [The Julia environment](#the-julia-environment)); and the Python
 environment (`~/.local/share/research-harness/python/`, with the `dev` group when `[setup]` of
 the profile sets `develop = true`). With `claude` chosen, it writes the stamp
-`~/.claude/.harness-install.json`, which the drift warning at session start reads.
+`~/.claude/.harness-install.json`, which the drift warning at session start reads. For each
+chosen frontend it also writes the `srt` settings,
+`~/.config/research-harness/sandbox/<frontend>.json` ([The srt settings](components/sandbox.md)).
 
 **Where to run it:** in your own terminal. A session cannot write the installed files.
 
