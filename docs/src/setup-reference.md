@@ -249,11 +249,10 @@ ls ~/Research/Environment/Agents/instructions
 **What `harness setup` does.** It installs each tool of
 [Dependencies](dependencies.md#harness-setup-installs) that the profile chooses and that is
 missing or below its minimum. On macOS, Homebrew installs them: one `brew install` line of the
-missing tools and of the tools below their minimum that Homebrew does not list as installed, one
-`brew upgrade` line of the tools below their minimum that it lists, and
-`brew install --cask iterm2` with the component `iterm`. Without `brew` on the `PATH`, it stops
-and names <https://brew.sh>. On Ubuntu, it asks `apt-cache` for the candidate of each package,
-and puts each package whose candidate meets the tool's minimum into one
+missing tools and of the tools below their minimum that Homebrew does not list as installed, and
+one `brew upgrade` line of the tools below their minimum that it lists. Without `brew` on the
+`PATH`, it stops and names <https://brew.sh>. On Ubuntu, it asks `apt-cache` for the candidate of
+each package, and puts each package whose candidate meets the tool's minimum into one
 `sudo apt-get install -y` line. Without `sudo`, or when `sudo -n true` is refused, it prints that
 line for an administrator and stops with exit status 2: run `sudo -v` first, or have an
 administrator run the line, then run `harness setup` again. A tool that the packages do not meet
@@ -939,7 +938,7 @@ with the profile and loads it. On macOS, it renders the three launch agents into
 profile must have `launchd_prefix`. On Linux, it renders the `systemd --user` units into
 `~/.config/systemd/user/`, then runs `systemctl --user daemon-reload`, enables and starts the
 server and the two timers, and restarts them. It prints the lingering line under *By hand*, for an
-administrator.
+administrator, unless `loginctl show-user` reads `Linger=yes`.
 
 **What it does.** The jobs are three: the Kaimon server, the Julia update job and the autocommit
 job of `~/.claude`. On macOS, launch agents run them: a launch agent is a job that launchd, the
@@ -1143,8 +1142,7 @@ check fails, and 1 when one fails.
 jobs, read-only, and prints one line for each check: `PASS`, `WARN`, `FAIL` or `SKIP`, the name
 and a detail. A `FAIL` line names the section of the setup pages that fixes it. It exits with
 status 0 when no check fails, and 1 when one fails. A `WARN`, for example for a missing optional
-tool or a warning of the install, does not count as a failure. On macOS, it also checks for
-iTerm2, which the hook `cc-status` uses, and gives a `WARN` without it. Run it in a plain
+tool or a warning of the install, does not count as a failure. Run it in a plain
 terminal: in a Claude Code session, the sandbox refuses some of its commands, and those checks
 are `SKIP`. `--full` also runs `harness test`.
 

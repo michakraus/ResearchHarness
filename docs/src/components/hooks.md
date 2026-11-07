@@ -5,8 +5,7 @@ at the start of a session. The frontend sends the event as JSON on standard inpu
 hook runs before a tool call and can refuse it: exit status 2 refuses the call and shows the hook's
 standard error to the model, and an `ask` decision on standard output shows a prompt to the user.
 The hooks of this page use the Claude Code events `PreToolUse`, `PostToolUse`, `SessionStart`,
-`PermissionRequest`, `WorktreeCreate` and `WorktreeRemove`. `cc-status` also runs on the other
-events of a session.
+`PermissionRequest`, `WorktreeCreate` and `WorktreeRemove`.
 
 The sources are in `hooks/`. `harness install --apply` copies them to `~/.claude/hooks/`.
 Claude Code calls them through the `hooks` section of its settings, which
@@ -319,18 +318,6 @@ code path exits with status 0, also when the hook cannot read the input or write
 ```bash
 echo '{"tool_name":"Bash","tool_input":{"command":"ls"}}' | LOG=$TMPDIR/p.jsonl ./prompt-log.py
 ```
-
-## `cc-status`
-
-This shell script passes each Claude Code hook event to the `cc-status` utility of iTerm2, which
-shows the state of the session in its tab. Claude Code runs it on the events `SessionStart`,
-`UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `PermissionRequest`, `Notification`, `Stop`,
-`StopFailure`, `SubagentStop` and `SessionEnd`.
-
-It hands its standard input and its arguments to `~/.config/iterm2/cc-status` unchanged. When
-that utility is not there, it exits with status 0 and does nothing. So one settings file serves
-a machine with iTerm2 and a machine without it. It guards nothing.
-[Dependencies](../dependencies.md#iterm2) says more about iTerm2.
 
 ## `probe.py`
 

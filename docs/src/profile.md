@@ -111,7 +111,7 @@ the answer is, and whether the answer is the same on every machine that shares t
 | `repository_roots` | the directories that hold the tree's repositories; `harness leaks` searches the harness for the name of each directory below them | the same when written with `~` |
 | `leak` | the strings that must never appear in the harness repository, such as user names and host names; the item `~` stands for the path of the home directory | mostly the same; add the user and host names of each machine |
 | frontends | the [agent](concepts.md#agent) programs whose configuration `harness install` writes: `claude` is Claude Code, `opencode` OpenCode, `omp` oh-my-pi and `antigravity` the Antigravity desktop app | per machine |
-| components | what `harness setup` installs and starts beside the frontends: `julia` (juliaup, Julia, fatou, Kaimon and the Julia environment of the scripts), `rtk`, `jq`, `iterm` (macOS only), `jobs` (Kaimon, the Julia update and the autocommit of `~/.claude` as background jobs) and `dotfiles` (chezmoi) | per machine |
+| components | what `harness setup` installs and starts beside the frontends: `julia` (juliaup, Julia, fatou, Kaimon and the Julia environment of the scripts), `rtk`, `jq`, `jobs` (Kaimon, the Julia update and the autocommit of `~/.claude` as background jobs) and `dotfiles` (chezmoi) | per machine |
 | `develop` | only for a machine that changes the harness's own code: it adds the `dev` group of `uv.lock`, the tools that check the Python code, such as ruff and basedpyright | per machine |
 
 An empty answer keeps the example's value. A list takes either items separated by commas, such as
@@ -131,7 +131,7 @@ the table, `frontends` and `components` are required.
 | key | what it holds | read by |
 |:--|:--|:--|
 | `frontends` | the frontends whose layers `harness install` plans and installs, each once: `claude`, `opencode`, `omp` and `antigravity`, in any order. An empty list installs no layer. A layer of a frontend that the list leaves out stays on disk: `install` removes nothing, and `doctor` reports it as a WARN that names `[setup]` and the frontend | `install`; `doctor`, whose OpenCode directory check is SKIP without `opencode`; `setup`, which installs each frontend |
-| `components` | the components of this machine, each once: `julia`, `rtk`, `jq`, `iterm`, `jobs` and `dotfiles`. With `julia`, `install` installs the Julia environment of the scripts and `doctor` checks its packages; without it, neither does, and the packages are SKIP. `setup` installs the tools of each component | `install`; `doctor`; `setup` |
+| `components` | the components of this machine, each once: `julia`, `rtk`, `jq`, `jobs` and `dotfiles`. With `julia`, `install` installs the Julia environment of the scripts and `doctor` checks its packages; without it, neither does, and the packages are SKIP. `setup` installs the tools of each component | `install`; `doctor`; `setup` |
 | `develop` | `true` on a machine that develops the harness: the Python environment of the harness then also holds the `dev` group of `uv.lock`, the tools that check the Python code. Optional: without it, `false` | `install`, which syncs the environment; `doctor`, which checks it; `get develop`, which prints it |
 
 A key of `[setup]` that the table does not show, a missing `frontends` or `components`, a value

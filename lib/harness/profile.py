@@ -111,7 +111,7 @@ TEMPLATES = [
 
 # The components that `[setup]` can choose. `harness install` reads `julia`, and `harness setup`
 # installs the tools of each.
-COMPONENTS = ("julia", "rtk", "jq", "iterm", "jobs", "dotfiles")
+COMPONENTS = ("julia", "rtk", "jq", "jobs", "dotfiles")
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -2086,7 +2086,7 @@ def schema_cases() -> tuple[int, int]:
                 "an unknown component",
                 profile_text() + setup_text(components='["julia", "nosuchcomponent"]'),
                 "nosuchcomponent",
-                "julia, rtk, jq, iterm, jobs, dotfiles",
+                "julia, rtk, jq, jobs, dotfiles",
             ),
             (
                 "a frontend named twice",
