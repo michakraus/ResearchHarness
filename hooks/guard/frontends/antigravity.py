@@ -26,8 +26,8 @@ path refuses it. The paths of a call are its arguments of PATH_KEYS; those of WI
 working directory that a `Cwd` names, are paths that the call reads below. Each tool of ACTIONS has
 its neutral action; `call_mcp_tool` is the `mcp` call `<ServerName>.<ToolName>`, whose `Arguments`,
 an object or the JSON text of one, a Kaimon `ex` or `manage_repl` call must hold and any other
-Kaimon call may hold; any other tool is
-an `mcp` call by its own name, which only the path list checks.
+Kaimon call may hold; any other tool is an `mcp` call by its own name, which only the path list
+checks.
 
 THE CHECKS: the path list, `guard-paths.json` two directories above this package, as
 `harness install` renders it, on every call (`path_list`); on a shell call also the five shell
@@ -37,7 +37,8 @@ sandbox alone; on an `mcp` call also the Kaimon check.
 A payload that the table cannot read is refused: bytes that are not UTF-8, a text that `jsonio`
 refuses, no object `toolCall`, no string `name`, `args` that are no object, a `run_command` without
 a string `CommandLine`, with one that no UTF-8 encodes (a lone surrogate) or with one of more than
-MAX_COMMAND bytes of UTF-8, and a Kaimon call without an object of `Arguments`.
+MAX_COMMAND bytes of UTF-8, a Kaimon `ex` or `manage_repl` call without `Arguments`, and a
+Kaimon call whose `Arguments` are neither an object nor the JSON text of one.
 """
 
 import json

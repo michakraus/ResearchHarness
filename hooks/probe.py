@@ -69,10 +69,12 @@ CWD = TOOL + "/hooks/"
 CLEAN = {k: v for k, v in os.environ.items() if not k.startswith("GIT_") and k != "RESEARCH_HARNESS_PROFILE"}
 # Kaimon's cache, whose `sock/` the Kaimon check reads: the gate file of each key of LIVE_GATES
 # names this process, which runs for the whole run, and that of STALE_GATE a process that has
-# ended, as a session that died leaves it.
+# ended, as a session that died leaves it. The gate files of UNREAD_GATES name no process: one
+# holds a `pid` that is no integer, the other no JSON.
 KAIMON_CACHE = FIXTURE.name + "/kaimon"
 LIVE_GATES = ("a1b2c3d4", "abcd1234")
 STALE_GATE = "deadbeef"
+UNREAD_GATES = {"c0ffee00": '{"pid": "4892"}', "badf00d0": "not json"}
 
 
 def ended_pid() -> int:
@@ -90,6 +92,8 @@ def gate_files() -> None:
         sid = f"{key}-0000-5000-8000-000000000000"
         sock.joinpath(f"{sid}.json").write_text(json.dumps({"session_id": sid, "pid": pid}), encoding="utf-8")
         sock.joinpath(f"{sid}.sock").touch()
+    for key, text in UNREAD_GATES.items():
+        sock.joinpath(f"{key}-0000-5000-8000-000000000000.json").write_text(text, encoding="utf-8")
 
 
 gate_files()

@@ -13,12 +13,13 @@ id>.json`, which holds its process id as `pid`, and its key is the first 8 chara
 session id, which Kaimon matches as a prefix; the cache is `$KAIMON_CACHE_DIR`, else
 `$XDG_CACHE_HOME/kaimon`, else `~/.cache/kaimon`, as KaimonGate resolves it. Kaimon removes the
 file when the session shuts down or when it reaps a gone one; a process that dies before that
-leaves it behind. So a session is live when a file of the key is there and its process runs. The
-socket files are no evidence: Kaimon removes none of them. The check reads the files as they are
-at the call, and keeps nothing. When the directory does not exist, or a file cannot be read or
-holds no integer `pid`, the check cannot tell and passes. A key `tcp-…` names a remote gate, which
-writes no file, and passes. `manage_repl` is not checked for a live session: its `shutdown` is how
-an agent removes a session whose process has gone.
+leaves it behind. Kaimon finds a gate only through its file, so a key without one names no session
+that Kaimon routes. So a session is live when a file of the key is there and its process runs. The
+socket files are no evidence: Kaimon leaves them behind when a session ends. The check reads the
+files as they are at the call, and keeps nothing. When the directory does not exist, or a file
+cannot be read or holds no integer `pid`, the check cannot tell and passes. A key `tcp-…` names a
+remote gate, which writes no file, and passes. `manage_repl` is not checked for a live session: its
+`shutdown` is how an agent removes a session whose process has gone.
 """
 
 import os
@@ -28,7 +29,7 @@ from . import HarnessError, paths
 from .contract import PASS, Call, Verdict
 from .jsonio import loads
 
-# The session key of each Kaimon tool, by its neutral name.
+# The Kaimon tools that take the session key as `session`, and those that take none.
 SESSION = (
     "code_lowered",
     "code_typed",
@@ -77,6 +78,7 @@ NO_KEY = (
     "usage_instructions",
     "usage_quiz",
 )
+# The session key of each Kaimon tool, by its neutral name; None for a tool that takes none.
 KEYS: dict[str, str | None] = {
     "kaimon.ex": "ses",
     **{f"kaimon.{tool}": "session" for tool in SESSION},

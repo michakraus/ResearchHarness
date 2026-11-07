@@ -363,6 +363,8 @@
 {"tool": "mcp__kaimon__ex", "stdin": {"tool_name": "mcp__kaimon__ex", "tool_input": {"e": "1 + 1", "ses": "deadbeef"}}, "decision": "deny"}
 {"tool": "mcp__kaimon__ex", "stdin": {"tool_name": "mcp__kaimon__ex", "tool_input": {"e": "1 + 1", "ses": "0badc0de"}}, "decision": "deny"}
 {"tool": "mcp__kaimon__ex", "stdin": {"tool_name": "mcp__kaimon__ex", "tool_input": {"e": "1 + 1", "ses": "a1b2"}}, "decision": "pass"}
+{"tool": "mcp__kaimon__ex", "stdin": {"tool_name": "mcp__kaimon__ex", "tool_input": {"e": "1 + 1", "ses": "c0ffee00"}}, "decision": "pass"}
+{"tool": "mcp__kaimon__ex", "stdin": {"tool_name": "mcp__kaimon__ex", "tool_input": {"e": "1 + 1", "ses": "badf00d0"}}, "decision": "pass"}
 {"tool": "mcp__kaimon__ex", "stdin": {"tool_name": "mcp__kaimon__ex", "tool_input": {"e": "1 + 1", "ses": " a1b2c3d4 "}}, "decision": "deny"}
 {"tool": "mcp__kaimon__ex", "stdin": {"tool_name": "mcp__kaimon__ex", "tool_input": {"e": "1 + 1", "ses": "tcp-127.0.0.1:9000"}}, "decision": "pass"}
 {"tool": "mcp__kaimon__ex", "stdin": {"tool_name": "mcp__kaimon__ex", "tool_input": {"e": "1 + 1", "ses": "a1b2c3d4", "session": "a1b2c3d4"}}, "decision": "deny"}

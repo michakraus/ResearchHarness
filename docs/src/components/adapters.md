@@ -221,8 +221,8 @@ The OpenCode plugin of the guard hook. On every tool call it runs the install's 
 package in `hooks/guard/` of OpenCode's configuration directory, with `--from opencode` and the
 interpreter that `guard-paths.json` beside the plugin names under `python`. It sends the event
 and the session's directory as JSON on standard input, and throws the reason of an answer that
-blocks, which refuses the call. The guard's table checks the `shell` call and the two Kaimon calls
-`kaimon_ex` and `kaimon_manage_repl`, and lets every other tool pass; [Guard hooks](hooks.md)
+blocks, which refuses the call. The guard's table checks the `shell` call and every Kaimon call
+`kaimon_<tool>`, and lets every other tool pass; [Guard hooks](hooks.md)
 describes each check, the path list and its list in `$OPENCODE_CONFIG_DIR`, and the refusal of an
 in-place edit such as `sed -i`.
 
@@ -365,7 +365,7 @@ each tool call that a glob of `bash.patterns` cannot check:
 
 - `bash`: the shell checks of the guard, the working-tree check of the sandbox check among them,
   and the path list on the words of the command and on its working directory;
-- `mcp__kaimon_ex` and `mcp__kaimon_manage_repl`: the Kaimon check;
+- `mcp__kaimon_<tool>`: the Kaimon check;
 - `read` and `grep`: the `deny` list on the path;
 - `edit` and `write`: the `deny` list, then the `edit` list, then the `ask` list, on each path
   that the call names;
@@ -445,8 +445,8 @@ writes the file gets `ask` from the guard, not `deny`.
 
 The guard hook is the guard package of `hooks/guard/` run with `--from antigravity`: its
 Antigravity table reads each tool call and answers with a decision. It runs the five shell checks
-and the working-tree check of the sandbox rule on `run_command`, the Kaimon check on a Kaimon `ex`
-or `manage_repl` call, and the `deny` list of `guard-paths.json` on each path argument and each
+and the working-tree check of the sandbox rule on `run_command`, the Kaimon check on a Kaimon
+call, and the `deny` list of `guard-paths.json` on each path argument and each
 word of a command. A glob in a word, a recursive command, a `cd`, the `Cwd` of a call and the
 `SearchPath` of a search also refuse a directory that holds a path of the list. On `run_command`
 it applies the template's Bash denies and asks, from the lists `bash_deny` and `bash_ask`, to each
