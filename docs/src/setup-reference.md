@@ -5,7 +5,7 @@ The setup pages for [macOS](setup-macos.md) and [Linux](setup-linux.md) run one 
 command, in the order of its plan: what the step does, why the harness needs it, how to do it by
 hand on macOS and on Ubuntu, and how to check that it worked. It also gives the steps that
 `harness setup` does not do, or only prints for you: *Check the machine*, the Antigravity app,
-lingering on Linux, the dotfiles and a machine reached over SSH.
+lingering on Linux, the `PATH` line of a new shell, the dotfiles and a machine reached over SSH.
 
 Do a step by hand when `harness setup` stops at it, when you want to see what it does, or when
 `harness doctor` names its section. Each `FAIL` line of `harness doctor` ends with the section that
@@ -137,10 +137,15 @@ answer keeps the example's value. A list takes items separated by commas or a TO
 replaces the example's list; an item with a bracket or a quote is refused, and the question comes
 again. It then asks for the frontends and the components, each from a numbered list with one
 description per name, and whether this machine develops the harness (`develop`), y/N: only a
-machine that changes the harness's own code needs it. The first step of its plan writes the
-profile, or the answers into the table `[setup]` of an existing profile. When `models.toml` is
-missing beside the profile, the next step copies `examples/models.toml`. `harness setup --yes`
-asks nothing and writes no profile: it reads `[setup]` of the profile that is there.
+machine that changes the harness's own code needs it. With the component `jobs` and a profile
+without the key `claude_remote`, it then asks for the URL of your `~/.claude` repository, which
+starts with `https://` or `git@`, after its explanation; an empty answer means no autocommit job,
+as [The jobs](#the-jobs) says. The first step of its plan, after the clone of `~/.claude` alone,
+writes the profile, or the answers into an existing profile: the table `[setup]`, and the line
+`claude_remote = …` at its top. When `models.toml` is missing beside the profile, the next step
+copies `examples/models.toml`.
+`harness setup --yes` asks nothing and writes no profile: it reads `[setup]` and `claude_remote`
+of the profile that is there.
 
 **By hand.** These commands copy the example profile and the example model tables of `examples/`
 into your configuration directory.
@@ -382,9 +387,10 @@ jq --version
 ## The pinned releases
 
 **What `harness setup` does.** On Ubuntu, each tool that no apt candidate meets installs from its
-pinned release of `setup/tools.toml`: gitleaks, actionlint and RTK, each for `x86_64` and
-`aarch64`. `harness setup` downloads the archive, checks its sha256 against the file, and only
-then installs the program into `~/.local/bin`; a download whose sha256 differs installs nothing.
+pinned release of `setup/tools.toml`: gitleaks, actionlint, RTK and, with the component
+`dotfiles`, chezmoi 2.73.2, each for `x86_64` and `aarch64`. `harness setup` downloads the
+archive, checks its sha256 against the file, and only then installs the program into
+`~/.local/bin`; a download whose sha256 differs installs nothing.
 On macOS, Homebrew installs these tools, and this step does not run.
 
 **Why.** A pinned release with a checked sha256 installs the version that the harness is tested
@@ -528,8 +534,9 @@ test -x ~/.julia/bin/kaimon && echo KAIMON-OK
 chooses, with the installer that its project gives: Claude Code with its installer on both
 systems; OpenCode 2 and oh-my-pi with Homebrew on macOS, and with their installers on Ubuntu. The
 OpenCode installer runs only when `opencode` is not on the `PATH`, with `--no-modify-path`, and
-`harness setup` prints the `PATH` line of `~/.opencode/bin` under *By hand* instead. It installs
-no Antigravity: it prints the step under *By hand*.
+the line of [The PATH of a new shell](#the-path-of-a-new-shell) names `~/.opencode/bin` instead.
+It installs no Antigravity: it prints the step under *By hand*, with `harness install --apply`
+after the app's first start.
 
 **Why.** Each frontend reads the configuration that `harness install` writes; a frontend that is
 not installed reads nothing. `harness install` writes the configuration of each frontend that
@@ -655,7 +662,8 @@ omp --version
 <https://antigravity.google/>, and start it once. The app keeps its data in `~/.gemini/`, and the
 desktop app, the IDE and the CLI `agy` read one configuration directory, `~/.gemini/config/`.
 `harness install` writes the Antigravity layer only when `~/.gemini/` exists; without it, the
-install gives one warning and writes no file there.
+install gives one warning and writes no file there. So after the app's first start, run
+`harness install --apply`.
 
 **Check.** The command prints `GEMINI-OK`:
 
@@ -940,6 +948,18 @@ profile must have `launchd_prefix`. On Linux, it renders the `systemd --user` un
 server and the two timers, and restarts them. It prints the lingering line under *By hand*, for an
 administrator, unless `loginctl show-user` reads `Linger=yes`.
 
+With the profile key `claude_remote`, the first step of the plan clones that repository into
+`~/.claude` with `git clone`, where `~/.claude` is missing or an empty directory; a `~/.claude`
+that holds `.git` gets no step. The clone comes before every installer, because an installer can
+write below `~/.claude`. A `~/.claude` that holds files and is no git repository fails the step,
+which prints the lines that move it aside and clone. A clone that fails leaves nothing below
+`~/.claude`, and the step prints git's last line. Without
+`claude_remote`, `harness setup` renders and loads no launch agent, service or timer of the
+autocommit job, and prints a line under *By hand* that names the key; `harness doctor` then
+reports the autocommit job as `SKIP`. On macOS no plist is rendered at all, because launchd loads
+every plist of `~/Library/LaunchAgents` at the next login. The script `claude-autocommit` is
+still copied into `~/.local/bin`, but its job is not enabled.
+
 **What it does.** The jobs are three: the Kaimon server, the Julia update job and the autocommit
 job of `~/.claude`. On macOS, launch agents run them: a launch agent is a job that launchd, the
 service manager of macOS, runs for your account while you are logged in. On Linux, the
@@ -959,9 +979,10 @@ After you change one of the two scripts in the checkout, run its line again.
 
 **With a git repository in `~/.claude` only.** The autocommit job commits in `~/.claude/` and
 pushes to the `origin` of that repository, so `~/.claude` must be a git repository with a remote
-`origin`. No step of this page makes it one. The first command prints `REPOSITORY-OK` when
-`~/.claude` is the top directory of its own repository, not a directory inside another repository.
-The second prints the URL of the remote:
+`origin`. `harness setup` clones it from `claude_remote`; by hand, run
+`git clone <URL> ~/.claude` before `harness install --apply`. The first command prints
+`REPOSITORY-OK` when `~/.claude` is the top directory of its own repository, not a directory
+inside another repository. The second prints the URL of the remote:
 
 ```bash
 test "$(git -C ~/.claude rev-parse --show-toplevel)" = "$HOME/.claude" && echo REPOSITORY-OK
@@ -1096,7 +1117,10 @@ frontends.
 
 **What `harness setup` does.** With the component `julia`, it writes the token file
 `~/.config/kaimon/auth-token`, mode 600, from the first key of `~/.config/kaimon/config.json`, when
-that file exists and the token file does not. A token file that exists is kept. Without a key yet,
+that file exists and the token file does not. A token file that exists is kept. With the
+component `jobs`, the steps of the jobs start the Kaimon server, which writes its key a moment
+later: the step then reads `config.json` once a second, for up to 60 s, until it holds a key, and
+a file that is no JSON yet counts as no key. Without a key at the end, or at once without `jobs`,
 it prints the step and goes on.
 
 **What it does.** In its strict mode, Kaimon refuses a request that does not carry one of its API
@@ -1130,6 +1154,37 @@ with `stat -f` and on Linux with `stat -c`. The dry run prints no warning about
 stat -f '%Lp %z' ~/.config/kaimon/auth-token
 stat -c '%a %s' ~/.config/kaimon/auth-token
 harness install
+```
+
+## The PATH of a new shell
+
+**What `harness setup` does.** The installers put their programs into `~/.local/bin`,
+`~/.juliaup/bin`, `~/.julia/bin` and `~/.opencode/bin`, and `harness setup` runs each step with
+these directories first on its own `PATH`. A new shell finds them only through its startup file.
+So the plan compares the `PATH` of the shell that started `harness setup` with the directories
+that the chosen components and frontends use: `~/.local/bin` always, `~/.juliaup/bin` and
+`~/.julia/bin` with `julia`, and `~/.opencode/bin` with `opencode` on Linux. It prints one line
+with the missing ones under *By hand*, such as:
+
+```bash
+export PATH="$HOME/.local/bin:$HOME/.juliaup/bin:$HOME/.julia/bin:$PATH"
+```
+
+With zsh as your login shell, in a terminal and without `--yes`, it asks y/N to append the line to
+`~/.zshrc`, after the comment line `# The directories of the tools that harness setup installs`.
+A `~/.zshrc` that holds the line already gets no second copy, so a second run appends nothing. A
+`~/.zshrc` that is a symlink, such as one that chezmoi manages, is never written: the line is
+printed. With another shell, add the line to its startup file, `~/.bashrc` for bash.
+
+**Why.** Without the line, a new shell does not find a tool that `harness setup` installed, and
+`harness install --apply` warns that it is not on the `PATH`. `harness setup` sees the `PATH` of
+the shell that started it, not that of a new login: the line is right for a new login only when
+that shell read no other startup file.
+
+**Check.** In a new shell, the command prints nothing:
+
+```bash
+harness setup --yes --dry-run | grep 'export PATH='
 ```
 
 ## `harness doctor`
@@ -1173,7 +1228,8 @@ to a new machine.
 can differ. The kit applies one reviewed source on each machine.
 
 The kit needs chezmoi. With the component `dotfiles`, `harness setup` installs it, with Homebrew
-on macOS and with `apt-get` on Ubuntu. By hand, on macOS:
+on macOS, and on Ubuntu with `apt-get` where apt has a candidate, otherwise from its pinned release
+of [The pinned releases](#the-pinned-releases) into `~/.local/bin`. By hand, on macOS:
 
 ```bash
 brew install chezmoi

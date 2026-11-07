@@ -315,20 +315,22 @@ commits that `origin/main` lacks. The `selftest` runs it on a scratch remote and
 
 The subcommand `harness setup [--yes] [--dry-run]`. It asks for the choices of `[setup]` in a
 terminal, or reads them with `--yes`, and makes one plan (`plan`) for the machine (`Machine`):
+first the clone of the profile's `claude_remote` into `~/.claude` with the jobs (`cloned`), then
 the directories that `install` needs, the Homebrew lines on macOS, or the apt line and the pinned
-releases of `setup/tools.toml` (`load_pins`) on Ubuntu, the vendor installers, then
+releases of `setup/tools.toml` (`load_pins`) on Ubuntu, the vendor installers,
 `harness install --apply`, `core.hooksPath`, `harness trust --apply`, the jobs, the Kaimon token
-and `harness doctor`; `install`, `trust`, `render` and `doctor` each run in a child process of
-`bin/harness`. `TOOLS` names each tool, the
-component or frontend that needs it, and how each system installs it; a tool that is installed at
-its minimum is skipped, and one below it is read again after its upgrade (`rechecked`). The run
-stops at the first failed step with status 2, and otherwise exits with the status of
-`harness doctor`, 0 or 1.
+and `harness doctor`, and one `export PATH=…` line by hand for the directories that the starting
+`PATH` lacks (`missing_path`); `install`, `trust`, `render` and `doctor` each run in a child
+process of `bin/harness`. `TOOLS` names each tool, the component or frontend that needs it, and
+how each system installs it; a tool that is installed at its minimum is skipped, and one below it
+is read again after its upgrade (`rechecked`). The run stops at the first failed step with status
+2, and otherwise exits with the status of `harness doctor`, 0 or 1.
 
 Its cases run every apply path on a scratch `HOME` with fake programs first on the `PATH`, `brew`,
 `apt-cache`, `apt-get`, `sudo`, `curl`, `launchctl`, `systemctl` and `harness` among them, each of
 which logs its call, and serve a pinned release from a local file server; a case reaches no
-network and runs `git config` only in a scratch clone. They also hold the minimums of
+network and runs `git` only in scratch directories, where it clones `~/.claude` from a local bare
+repository. They also hold the minimums of
 `setup/tools.toml` equal to the `≥` cells of [dependencies.md](../dependencies.md).
 
 ## `dotfiles_kit.py`
@@ -500,7 +502,8 @@ It checks, in this order:
   exist, and the line `autocommit_branch` prints the value. The OpenCode directory is a `SKIP`
   where `[setup]` does not choose `opencode`.
 - the install: the dry run of `harness install` reports `0 change(s)`, otherwise a `FAIL` with
-  the count. Each warning of the dry run is a `WARN` line. Each frontend that `[setup]` does not
+  the count. Each warning of the dry run is a `WARN` line, with each further line of the warning
+  indented below it (`indented`). Each frontend that `[setup]` does not
   choose and whose layer is still on disk, one file or more that its plan installs, is a `WARN`
   line `<frontend> layer` that names `[setup]` and the frontend (`unchosen`). The check plans
   OpenCode, oh-my-pi and Antigravity alone, as the install does; the Claude Code layer's files are

@@ -27964,22 +27964,6 @@
                 }
             },
             {
-                "code": "reportUnknownMemberType",
-                "range": {
-                    "startColumn": 32,
-                    "endColumn": 63,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportUnknownMemberType",
-                "range": {
-                    "startColumn": 73,
-                    "endColumn": 104,
-                    "lineCount": 1
-                }
-            },
-            {
                 "code": "reportUnknownLambdaType",
                 "range": {
                     "startColumn": 15,

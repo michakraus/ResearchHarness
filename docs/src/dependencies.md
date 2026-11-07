@@ -83,7 +83,7 @@ installed and meets its minimum is not installed again.
 | Antigravity | no minimum; `harness setup` prints its step and installs nothing | needed by the frontend `antigravity`: reads the layer that `harness install` writes into `~/.gemini/config/`; without `~/.gemini/`, the install writes no file there |
 | RTK | tested with 0.51.0 | needed by the component `rtk`: shortens the output of shell commands in OpenCode; without it, the plugin passes each command unchanged |
 | jq | tested with 1.7.1 | needed by the component `jq`: reads the session data for the Claude Code status line; without it, the status line shows no values |
-| chezmoi | no minimum | needed by the component `dotfiles`: applies the private copy of the dotfiles kit on each machine; without it, the kit cannot run |
+| chezmoi | no minimum; on Ubuntu without an apt candidate, the pinned release 2.73.2 of `setup/tools.toml` | needed by the component `dotfiles`: applies the private copy of the dotfiles kit on each machine; without it, the kit cannot run |
 
 **For a reader who writes no Julia.** The rows of the component `julia` serve Julia code only: the
 formatter, the test runner and the mutation tests, the git hooks and workflows that
@@ -403,8 +403,8 @@ configuration directory. It is one of the four frontends that the harness config
 `harness install` writes the Antigravity layer into `~/.gemini/config/` once `~/.gemini/` exists:
 the instructions, the rules, the skills, the agents, the guard hook and the permission rules of
 the app and of `agy`. `harness setup` installs no Antigravity: with the frontend `antigravity`, it
-prints the step under *By hand*, to install the app from <https://antigravity.google/> and start it
-once.
+prints the step under *By hand*, to install the app from <https://antigravity.google/>, start it
+once, then run `harness install --apply`.
 
 The harness does not need Antigravity to run. Without `~/.gemini/`, the install writes no file
 there and gives one warning.
