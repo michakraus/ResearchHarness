@@ -1,7 +1,7 @@
 ---
 name: "changelog-scribe"
 description: "Draft the CHANGELOG.md entry for a change that has just been made, in the convention of the tree it belongs to. Use when: write the changelog entry, add this to the CHANGELOG, close out the changelog, does this need a changelog entry, update the changelog for these staged files. Edits CHANGELOG.md and nothing else. Use julia-release instead when cutting an actual release, which closes the changelog as one step of a longer path."
-model: "flash_lite"
+model: "flash"
 tools: ["view_file", "list_dir", "grep_search", "find_by_name", "replace_file_content"]
 subagent: true
 ---
