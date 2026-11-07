@@ -137,10 +137,10 @@ answer keeps the example's value. A list takes items separated by commas or a TO
 replaces the example's list; an item with a bracket or a quote is refused, and the question comes
 again. It then asks for the frontends and the components, each from a numbered list with one
 description per name, and whether this machine develops the harness (`develop`), y/N: only a
-machine that changes the harness's own code needs it. The first step of its plan writes the profile, or
-the answers into the table `[setup]` of an existing profile. When `models.toml` is missing beside
-the profile, the next step copies `examples/models.toml`. `harness setup --yes` asks nothing and
-writes no profile: it reads `[setup]` of the profile that is there.
+machine that changes the harness's own code needs it. The first step of its plan writes the
+profile, or the answers into the table `[setup]` of an existing profile. When `models.toml` is
+missing beside the profile, the next step copies `examples/models.toml`. `harness setup --yes`
+asks nothing and writes no profile: it reads `[setup]` of the profile that is there.
 
 **By hand.** These commands copy the example profile and the example model tables of `examples/`
 into your configuration directory.
