@@ -43,6 +43,7 @@ from guard import (
     HarnessError,
     gh_api_writes,
     git_archive_output,
+    git_writes,
     kaimon_session,
     no_blind_stage,
     no_shell_file_write,
@@ -130,6 +131,7 @@ SHELL: tuple[Check, ...] = (
     gh_api_writes.check,
     rm_scope.check,
     git_archive_output.check,
+    git_writes.check,
     sandbox_semantics.work_tree_check,
 )
 CHECKS: dict[Action, tuple[Check, ...]] = {

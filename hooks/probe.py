@@ -363,9 +363,15 @@ ASK_USER = "Ask the user in chat"
 # match the whole command or one of its segments. This port splits segments by text, so it stands
 # for oh-my-pi on the simple commands below and is no evidence for a compound one. `gh pr create`
 # runs unasked only with `-R` or `--repo` first, on an organisation of the profile; with the
-# repository later, elsewhere, or not named at all, it asks.
+# repository later, elsewhere, or not named at all, it asks. A lease push, a cherry-pick and a forced
+# worktree removal meet no rule, or the `allow` of a worktree path: the guard's git write check
+# blocks the unsafe ones.
 OMP_PATTERNS = [
     ("git push --force origin x", "deny"),
+    ("git push --force-with-lease origin x", "none"),
+    ("git push --force-with-lease=x origin HEAD:refs/heads/main", "deny"),
+    ("git cherry-pick abc123", "none"),
+    ("git worktree remove --force /r/.worktrees/x", "allow"),
     ("sed -i s/a/b/ f", "deny"),
     ("cat ~/.local/share/opencode/auth.json", "allow"),
     ("git status", "allow"),
@@ -1779,6 +1785,54 @@ def fixture():
     profiles.mkdir()
     for name, data in PROFILES.items():
         (profiles / name).write_bytes(data)
+    git_write_repositories(git, git_env)
+
+
+def git_write_repositories(git: str, git_env: dict[str, str]) -> None:
+    """The repositories of the git write check, below the fixture's `Research`.
+
+    `Packages/Own` has `origin` on GitHub in the own organisation of OWN_PROFILE, the remote refs
+    `origin/main` and `origin/trunk`, `origin/HEAD` naming `trunk`, and a local branch `feature`.
+    Its worktrees below `.worktrees/`: `Own-pushed`, whose HEAD commit `origin/pushed` holds, with
+    an untracked file; `Own-unpushed`, with a commit on no remote ref; `Own-modified`, with a
+    modified tracked file; and `Own-staged`, with a staged new file. `Packages/Foreign` has
+    `origin` in another organisation and a local branch `feature`. No remote is ever reached: the
+    remote refs are written with `update-ref`.
+    """
+    own, foreign = R + "/Packages/Own", R + "/Packages/Foreign"
+    worktrees = {name: R + "/.worktrees/Own-" + name for name in ("pushed", "unpushed", "modified", "staged")}
+
+    def run(directory: str, *arguments: str) -> None:
+        subprocess.run(
+            [git, "-C", directory, *arguments], env=git_env, check=True, capture_output=True, timeout=60
+        )
+
+    for repository, owner in ((own, "own-org"), (foreign, "other-org")):
+        pathlib.Path(repository).mkdir(parents=True)
+        pathlib.Path(repository, "README.md").write_text("a\n", encoding="utf-8")
+        run(repository, "init", "-q", "-b", "main")
+        run(repository, "add", "--", "README.md")
+        run(repository, "commit", "-q", "-m", "fixture")
+        run(
+            repository,
+            "remote",
+            "add",
+            "origin",
+            f"https://github.com/{owner}/{pathlib.Path(repository).name}.jl.git",
+        )
+        run(repository, "update-ref", "refs/remotes/origin/main", "HEAD")
+        run(repository, "branch", "feature")
+    run(own, "update-ref", "refs/remotes/origin/trunk", "HEAD")
+    run(own, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/trunk")
+    for name, path in worktrees.items():
+        run(own, "worktree", "add", "-q", "-b", name, path)
+    for name in ("pushed", "unpushed"):
+        run(worktrees[name], "commit", "-q", "--allow-empty", "-m", name)
+    run(worktrees["pushed"], "update-ref", "refs/remotes/origin/pushed", "HEAD")
+    pathlib.Path(worktrees["pushed"], "scratch.txt").write_text("untracked\n", encoding="utf-8")
+    pathlib.Path(worktrees["modified"], "README.md").write_text("b\n", encoding="utf-8")
+    pathlib.Path(worktrees["staged"], "new.md").write_text("new\n", encoding="utf-8")
+    run(worktrees["staged"], "add", "--", "new.md")
 
 
 def drift(env, payload="{}"):

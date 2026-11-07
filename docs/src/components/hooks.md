@@ -208,6 +208,34 @@ option in each spelling that git takes: `-o <file>`, `-o<file>`, behind other sh
 `-vo <file>`, `--output`, `--output=<file>`, and any prefix of `--output`. An argument after `--`
 is a path. A `git archive` to stdout passes.
 
+### The git write check
+
+`git_writes.py` allows three `git` writes when the repository shows that nothing is lost, and asks
+otherwise, on each shell call of every frontend. A permission rule cannot make this decision: it
+does not see the working directory or the state of a worktree. A hook's `allow` does not lift a
+matching `ask` or `deny` rule in Claude Code, so the settings have no rule for these forms, and the
+check answers both ways.
+
+- `git worktree remove --force <path>`, or `-f` once: allow when the path is below
+  `~/Research/.worktrees/`, a remote-tracking ref contains the worktree's HEAD, and no tracked file
+  is modified or staged. Untracked and ignored files can go. Otherwise ask, with a reason that
+  names the commit or the files that the removal loses.
+- `git cherry-pick`: allow in a worktree below `~/Research/.worktrees/`, or in a checkout whose
+  `origin` is a GitHub repository of an own organisation. Otherwise ask.
+- `git push --force-with-lease origin <branch>`, or with `HEAD:refs/heads/<branch>`: refuse a push
+  to `main`, `master` or the branch that `origin/HEAD` names. Allow when `origin` is in an own
+  organisation and the lease names no ref or the pushed branch. Otherwise ask. In the `<branch>`
+  form, the branch must be a local branch.
+
+The check decides only a command that is one `git` call, with no operator, no `cd` and no option
+before the subcommand. It finds the subcommand after the global options of `git`. Any other form
+of these writes asks, for example `-C`, `-f` twice or a lease after the remote. A `worktree remove`
+with any option counts as forced, because `git` reads `-ff` and a prefix of `--force` as force. A
+plain `--force` push gets no decision from the check; the `deny` rules of the settings refuse it.
+The check reads the state with `git` in the working directory of the call, with `core.fsmonitor`
+off. When `git` fails or cannot run, the call asks. The own organisations are the `org` list of the
+profile, as the `gh api` check reads it.
+
 ### The Kaimon check
 
 `kaimon_session.py` refuses a Kaimon call that names no session: Claude Code's

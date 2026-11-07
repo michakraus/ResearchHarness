@@ -29,7 +29,7 @@ an object or the JSON text of one, a Kaimon `ex` or `manage_repl` call must hold
 an `mcp` call by its own name, which only the path list checks.
 
 THE CHECKS: the path list, `guard-paths.json` two directories above this package, as
-`harness install` renders it, on every call (`path_list`); on a shell call also the five shell
+`harness install` renders it, on every call (`path_list`); on a shell call also the six shell
 checks and the work-tree check of `sandbox_semantics`, whose other shapes describe Claude Code's
 sandbox alone; on an `mcp` call also the Kaimon check.
 
@@ -51,6 +51,7 @@ from guard import (
     HarnessError,
     gh_api_writes,
     git_archive_output,
+    git_writes,
     kaimon_session,
     no_blind_stage,
     no_shell_file_write,
@@ -108,6 +109,7 @@ SHELL: tuple[Check, ...] = (
     gh_api_writes.check,
     rm_scope.check,
     git_archive_output.check,
+    git_writes.check,
     sandbox_semantics.work_tree_check,
 )
 CHECKS: dict[Action, tuple[Check, ...]] = {

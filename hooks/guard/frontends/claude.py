@@ -25,6 +25,7 @@ from guard import (
     directory_scope,
     gh_api_writes,
     git_archive_output,
+    git_writes,
     kaimon_session,
     no_blind_stage,
     no_shell_file_write,
@@ -47,6 +48,7 @@ SHELL: tuple[Check, ...] = (
     gh_api_writes.check,
     rm_scope.check,
     git_archive_output.check,
+    git_writes.check,
 )
 
 # (matcher, checks): the matchers of the settings template's `PreToolUse` groups that run the guard,

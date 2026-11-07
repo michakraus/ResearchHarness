@@ -444,7 +444,7 @@ tool that writes or edits a file, so an agent cannot widen its own grants with o
 writes the file gets `ask` from the guard, not `deny`.
 
 The guard hook is the guard package of `hooks/guard/` run with `--from antigravity`: its
-Antigravity table reads each tool call and answers with a decision. It runs the five shell checks
+Antigravity table reads each tool call and answers with a decision. It runs the six shell checks
 and the working-tree check of the sandbox rule on `run_command`, the Kaimon check on a Kaimon `ex`
 or `manage_repl` call, and the `deny` list of `guard-paths.json` on each path argument and each
 word of a command. A glob in a word, a recursive command, a `cd`, the `Cwd` of a call and the
