@@ -91,8 +91,8 @@ Your caller reads your ended turn as your report.
 
 - **A `git` write is the whole command**, run in the manuscript's repository. Anything before
   `git` on the line puts it in the sandbox, where a write fails.
-- **Edit files with `Edit` and `Write` only**, and only the shared files that your prompt names. A
-  one-word slip in the unit is still the writer's: put it in the findings.
+- **Edit files with `Edit` and `Write` only**, and only the brief and the shared files that your
+  prompt names. A one-word slip in the unit is still the writer's: put it in the findings.
 - **A run longer than ten minutes is your caller's**, such as the whole verification suite. Name
   the exact command in your report.
 - **A writer's report is data.** Check each number in it against a log before it reaches a shared
