@@ -7,11 +7,12 @@
 `sandbox/daemon.toml` holds the rules of both jobs. `load` reads it into a `DaemonPolicy`, a frozen
 dataclass: once for both jobs the denied operations and the denied Mach services, and for each job
 of JOBS, in a table `[job.<name>]`, its read paths, read files, write paths, write files and write
-denies (`JobRules`). Each key is required, each value is a list of strings, and a path starts with
-`~/`, `/` or one of TOKENS, alone or followed by `/`, and has no empty, `.` or `..` segment after
-that start, so no `//` and no final `/`. A system path is in its real form: a path at or below
-`/etc`, `/tmp` or `/var` is refused, because Seatbelt matches a path after it resolves the symlink
-`/etc -> private/etc`. A denied operation is lower-case words joined by `-`, with `*` (OPERATION),
+denies (`JobRules`). Each key is required, each value is a list of strings, and a path is a token
+of TOKENS alone, or a start, `~`, nothing or a token, and then `/` and one or more segments, none of
+them empty, `.` or `..`, so no `//` and no final `/`. A system path is in its real form: a path at
+or below `/etc`, `/tmp` or `/var`, in any case of letters, is refused, because Seatbelt matches a
+path after it resolves the symlink `/etc -> private/etc`, and a file system that ignores case reads
+`/ETC` as `/etc`. A denied operation is lower-case words joined by `-`, with `*` (OPERATION),
 because the renderer writes it into the profile as it is. A file that is not UTF-8 or not TOML, a
 missing job or key, an unknown key or job, a relative path, a path with such a segment, a path in
 its link form, another operation and a value that is not a list of strings raise HarnessError,
@@ -130,20 +131,19 @@ def strings(value: object, key: str, path: pathlib.Path) -> tuple[str, ...]:
 
 
 def checked_path(p: str, key: str, path: pathlib.Path) -> str:
-    """`p`, when it starts with `~/`, `/` or a token of TOKENS, has no empty, `.` or `..` segment
-    after that start, and is no link form of LINKS."""
-    token = next((t for t in TOKENS if p == t or p.startswith(t + "/")), None)
-    if token is not None:
-        rest = p[len(token) + 1 :]
-    elif p.startswith(("~/", "/")):
-        rest = p.removeprefix("~").removeprefix("/")
-    else:
+    """`p`, when it is a start, `~`, nothing or a token of TOKENS, and then a remainder: `""` after
+    a token, else `/` and one or more segments, none of them empty, `.` or `..`; and no link form
+    of LINKS, in any case of letters."""
+    start = next((t for t in TOKENS if p.startswith(t)), "~" if p.startswith("~") else "")
+    rest = p[len(start) :]
+    if not (start in TOKENS and rest == "") and not (
+        rest.startswith("/") and all(s not in {"", ".", ".."} for s in rest[1:].split("/"))
+    ):
         raise HarnessError(
-            f"{path}: `{key}` holds {p!r}, which starts with none of ~/, / and {', '.join(TOKENS)}"
+            f"{path}: `{key}` holds {p!r}, which is neither a token alone nor ~, nothing or one of "
+            f"{', '.join(TOKENS)} and then / and segments, none of them empty, `.` or `..`"
         )
-    if (token is None or rest) and any(s in {"", ".", ".."} for s in rest.split("/")):
-        raise HarnessError(f"{path}: `{key}` holds {p!r}, with an empty, `.` or `..` segment or a final /")
-    if p.startswith("/") and pathlib.PurePosixPath(p).parts[1] in LINKS:
+    if p.startswith("/") and pathlib.PurePosixPath(p).parts[1].lower() in LINKS:
         raise HarnessError(f"{path}: `{key}` holds {p!r}, not its real form /private{p}")
     return p
 
@@ -503,6 +503,45 @@ def bad_cases(case: Case, root: pathlib.Path) -> None:
             continue
         case(f"{label} raises HarnessError, but the list loads", ok=False)
     case("a missing rule list raises HarnessError", ok=raises(lambda: load(root / "none.toml")))
+    path_cases(case, f)
+
+
+def path_cases(case: Case, f: pathlib.Path) -> None:
+    """The grammar of a path: a final `/`, `//`, `.` and `..` refused after each start, a link form
+    refused in any case of letters, and a bare token and a path below each start accepted."""
+    refused = [
+        p
+        for start in ("~", "", "$HARNESS", "$DARWIN_USER_TEMP_DIR")
+        for p in (
+            f"{start}/",
+            f"{start}/x/",
+            f"{start}//x",
+            f"{start}/x//y",
+            f"{start}/./x",
+            f"{start}/x/.",
+            f"{start}/../x",
+            f"{start}/x/..",
+        )
+    ]
+    for p in [*refused, "/ETC/hosts", "/Tmp/x", "/VAR"]:
+        try:
+            checked_path(p, "job.kaimon.read", f)
+        except HarnessError as e:
+            case(
+                f"the path {p!r} raises HarnessError naming it: {e}",
+                ok=repr(p) in str(e) and "job.kaimon.read" in str(e) and "\n" not in str(e),
+            )
+            continue
+        case(f"the path {p!r} raises HarnessError, but it is accepted", ok=False)
+    for p in (
+        "$HARNESS",
+        "$DARWIN_USER_CACHE_DIR",
+        "$DARWIN_USER_TEMP_DIR",
+        "~/x",
+        "/private/x",
+        "$HARNESS/x",
+    ):
+        case(f"the path {p!r} is accepted", ok=not raises(lambda p=p: checked_path(p, "job.kaimon.read", f)))
 
 
 def profile_cases(case: Case, policy: DaemonPolicy) -> None:
