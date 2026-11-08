@@ -41,7 +41,9 @@ Checks, numbered as the section banners and the `== check N` lines of the output
      every package present no Pkg.add runs; the Kaimon app is installed; a failing julia stops
      the run at its channel and names it; a minimum that is not X.Y fails the render.
   5. The services: the copies in ~/.local/bin; on linux the five units, each equal to `harness
-     render`, then daemon-reload and enable --now; on macOS the plists, each equal to `harness
+     render`, then daemon-reload and enable --now; on macOS the Seatbelt profiles of kaimon and
+     julia-update, each equal to `harness render sandbox/<job>.sb` and written before its plist,
+     and none on linux; the plists, each equal to `harness
      render`, bootout of a loaded job and bootstrap of each; a bootout that finishes late and a
      failed first bootstrap still load every job, and a mutant with no wait stops; the script's
      text changes with the pin and with the profile.
@@ -91,6 +93,8 @@ UNITS = [
     "claude-autocommit.timer",
 ]
 JOBS = ["kaimon", "julia-update", "claude-autocommit"]
+# The jobs that run under a Seatbelt profile on macOS.
+SANDBOXED = ["kaimon", "julia-update"]
 GPU_PACKAGE = {"metal": "Metal", "cuda": "CUDA", "amdgpu": "AMDGPU", "none": None}
 
 failures = []
@@ -242,6 +246,13 @@ def logging_stubs(bindir):
         if name == "launchctl":
             body += LAUNCHCTL
         stub(bindir, name, body + f"exit {exit_code}")
+    # The per-user directories of macOS that `harness render sandbox/<job>.sb` reads, on any system.
+    stub(
+        bindir,
+        "getconf",
+        'case "$1" in DARWIN_USER_TEMP_DIR) echo /var/folders/te/st/T/ ;; '
+        "DARWIN_USER_CACHE_DIR) echo /var/folders/te/st/C/ ;; *) exit 1 ;; esac",
+    )
     # python3 >= 3.11 for the scripts and for the harness.
     (bindir / "python3").symlink_to(sys.executable)
 
@@ -1198,6 +1209,10 @@ def services_linux(checkout, pinned):
         not log_lines(home, "launchctl") and not (home / "Library").exists(),
         "linux: no launchctl, no ~/Library",
     )
+    check(
+        not (home / ".config/research-harness/sandbox").exists(),
+        "linux: no Seatbelt profile",
+    )
 
 
 def services_template_mac(checkout, pinned, *, loaded):
@@ -1227,6 +1242,19 @@ def services_template_mac(checkout, pinned, *, loaded):
             and (home / "Library/Logs" / job).is_dir(),
             f"macOS: {path.name} equals `harness render launchagents/{job}.plist`, its log directory exists",
         )
+    sandbox = home / ".config/research-harness/sandbox"
+    for job in SANDBOXED:
+        profile, plist = sandbox / f"{job}.sb", agents / f"{prefix}.{job}.plist"
+        check(
+            profile.is_file()
+            and profile.read_text() == harness_render(env, harness, f"sandbox/{job}.sb")
+            and profile.stat().st_mtime_ns < plist.stat().st_mtime_ns,
+            f"macOS: {job}.sb equals `harness render sandbox/{job}.sb` and is written before its plist",
+        )
+    check(
+        sorted(p.name for p in sandbox.iterdir()) == sorted(f"{job}.sb" for job in SANDBOXED),
+        "macOS: no profile for the autocommit job",
+    )
     domain = f"gui/{os.getuid()}"
     want = []
     for label in labels:

@@ -60,8 +60,9 @@ lock and the refusals.
 
 A launch agent that keeps the Julia installation and the Kaimon server current. It runs daily at
 04:30, and not at login. The job runs `~/.local/bin/julia-update.jl`, the installed copy of
-`scripts/julia-update.jl`, with the juliaup launcher `~/.juliaup/bin/julia`. [The
-scripts](scripts.md) describes what the script does.
+`scripts/julia-update.jl`, with the juliaup launcher `~/.juliaup/bin/julia`, under the Seatbelt
+profile `~/.config/research-harness/sandbox/julia-update.sb`, as [`kaimon.plist`](#kaimon-plist)
+runs under its own. [The scripts](scripts.md) describes what the script does.
 
 The job runs the installed copy and not the copy in `~/Research`, because a session can write
 `~/Research` and the job runs outside the Claude Code sandbox. It sets
@@ -79,7 +80,9 @@ profile.
 
 A launch agent that runs the Kaimon MCP server. Kaimon gives an agent a Julia session and tools
 for Julia code. The job starts at login, and launchd restarts it when it exits. It runs
-`~/.julia/bin/kaimon --headless --port 2828`.
+`~/.julia/bin/kaimon --headless --port 2828` under the Seatbelt profile
+`~/.config/research-harness/sandbox/kaimon.sb`, with `/usr/bin/sandbox-exec -f`; `harness setup`
+renders the profile from `sandbox/daemon.toml` ([`jobsandbox.py`](harness.md#jobsandbox-py)).
 
 The working directory is `~/Research`. Do not remove it: Kaimon reads its tool policy from
 `.kaimon/tools.json` in its working directory, and without it Kaimon offers every default tool. A
