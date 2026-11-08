@@ -672,7 +672,7 @@
   `state`), `~/.omp/agent/.env`, `~/.omp/agent/agent.db` and `~/.omp/agent/agent.db-wal`
   (oh-my-pi's), and `~/.claude/.credentials.json` (Claude Code's, used on Linux). In `srt` a deny
   inside an allowed path wins, so under a sandbox of the whole process each of these frontends
-  cannot read its own credentials. No probe has run a frontend under `srt` yet; the probes of
+  cannot read its own credentials. No frontend has run under `agentbox` yet; the probes of
   `agentbox` decide each frontend's `own` entries.
 - kind: not verified
 - found: 2026-11-08, the review of the srt settings' pull request; for the launcher

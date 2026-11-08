@@ -17,12 +17,13 @@
 #
 # srt reads its own options up to the --, so none of the program's options reach it. Only the srt
 # that `harness setup` installs in ~/.local/bin runs, never one found on the PATH. The program gets
-# AGENTBOX=1 in its environment. The script assigns no shell variable, so that a variable of the
-# caller reaches the program unchanged; each value is a positional parameter. It exits 2 with one
-# line on stderr, and starts nothing, when no frontend or an unknown one is named, when AGENTBOX is
-# set, when srt or a settings file is missing, when the program is not on the PATH, and when claude
-# gets a --settings of the caller's: Claude Code keeps only the last --settings, so the caller's
-# would turn its own sandbox on again. Otherwise srt's exit status is the script's.
+# AGENTBOX=1 in its environment. The script assigns no shell variable other than AGENTBOX, so that
+# a variable of the caller reaches the program unchanged; each value is a positional parameter. It
+# exits 2 with one line on stderr, and starts nothing, when no frontend or an unknown one is named,
+# when AGENTBOX is set, when srt or a settings file is missing, when the program is not on the
+# PATH, and when claude gets a --settings of the caller's: Claude Code keeps only the last
+# --settings, so the caller's would turn its own sandbox on again. Otherwise srt's exit status is
+# the script's.
 
 usage() {
     cat <<'EOF'
