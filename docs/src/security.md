@@ -56,7 +56,13 @@ the installed template. A later version can behave differently.
   and writes of `~/Research`, the depot, Kaimon's directories, the per-user directories and
   `/private/tmp`. It denies writes to `~/.julia/bin`, `~/.julia/config`,
   `~/.julia/juliaup`, the harness's `githooks/`, and `.git/hooks`, `.git/config` and `.githooks`
-  at any depth below `~/Research`. It denies an app or document opened through Launch Services,
+  at any depth below `~/Research`. After these denies it allows one file again, juliaup's lock
+  file `~/.julia/juliaup/.juliaup-lock`, because the juliaup launcher that starts Julia opens it
+  for writing at every start and exits when that fails; `juliaup.json` and the installed Julia
+  versions stay unwritable. The rule allows every write to that one path, so a confined process
+  can also hold the lock, which makes every juliaup command outside the profile wait, or put a
+  symbolic link in the file's place, which a juliaup command outside the profile then opens for
+  writing. It denies an app or document opened through Launch Services,
   an Apple Event, and a mount. It leaves open the network, the other Mach services, which Metal
   needs, every write inside `~/Research` outside the denied repository parts, and the rename of a
   directory above a denied part, which moves the part out of the denied path. The writes inside
