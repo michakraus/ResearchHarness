@@ -617,6 +617,13 @@ def listed(text: str, label: str, status: str) -> bool:
     return re.search(rf"(?m)^{re.escape(label)} +{status}$", text) is not None
 
 
+def columns(text: str) -> set[int]:
+    """The columns at which the status starts on each line of the install output `text` that lists a
+    file or an environment as INSTALL, REPLACE, already identical or already synced."""
+    found = re.finditer(r"(?m)^\S.*?  +(INSTALL|REPLACE|already identical|already synced)$", text)
+    return {m.start(1) - m.start() for m in found}
+
+
 class Installs:
     """`harness install` on scratch HOMEs below `root`, with a $TMPDIR that is a link to a
     directory."""
@@ -672,8 +679,9 @@ def install_file_cases(check: Check, root: pathlib.Path) -> None:
     HOMEs whose profile chooses claude and opencode: one file each, of the bytes that
     `srt_settings` gives, with the real path of $TMPDIR, and none after the dry run; a second dry
     run with no change; the Claude Code settings' `sandbox` as the template renders it; and
-    `install_change_cases` on that base. With no $TMPDIR, no tmpdir entry; with no frontend, no
-    file, and a broken network overlay stops nothing."""
+    `install_change_cases` on that base. With no $TMPDIR, no tmpdir entry, and the dry run's
+    status column is one for the srt file and the other files; with no frontend, no file, and a
+    broken network overlay stops nothing."""
     installs = Installs(check, root)
     found = {}
     for label, value in [("unset", None), ("empty", ""), ("a link", str(installs.link))]:
@@ -724,6 +732,11 @@ def install_file_cases(check: Check, root: pathlib.Path) -> None:
         and written.is_file()
         and written.read_bytes() == installs.expected(base, "opencode", None),
         f"with no $TMPDIR, the file has no tmpdir entry: {codes}, {last_line(outs[1])!r}",
+    )
+    check(
+        listed(outs[0], f"~/{DIRECTORY}/opencode.json", "INSTALL") and len(columns(outs[0])) == 1,
+        f"the dry run starts the status of the srt file and of every other file in one column: "
+        f"{sorted(columns(outs[0]))}",
     )
 
     base, codes, outs = installs.install("[]", str(installs.link), overlay='allow = ["https://x.org"]\n')
