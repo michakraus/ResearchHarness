@@ -16,7 +16,10 @@ launchctl, systemctl, juliaup, julia, chsh, curl and sudo are stubs that log the
 stubs come first on the PATH. The services test runs the real `harness render` of a scratch clone
 of a harness checkout (read-only): when this source is examples/dotfiles/ of a harness checkout,
 as in CI, that checkout at its HEAD, which the test renders as harness_commit; otherwise
-~/Research/Harness at the harness_commit of machines.toml.
+~/Research/Harness at the harness_commit of machines.toml. That `harness` runs on the harness's
+Python environment of this process ($RESEARCH_HARNESS_PYTHON, else
+~/.local/share/research-harness/python), which the services test passes as $RESEARCH_HARNESS_PYTHON:
+on a machine, `harness setup` makes it before the services script runs, so no scratch home starts uv.
 
 Checks, numbered as the section banners and the `== check N` lines of the output:
   1. The tool check exits 1 and names exactly the missing tools, for each tool alone and for all
@@ -68,6 +71,10 @@ SCRIPTS = SOURCE / ".chezmoiscripts"
 # The harness checkout that holds this source when the source is its examples/dotfiles/.
 KIT_HARNESS = SOURCE.parent.parent
 HOME_HARNESS = pathlib.Path.home() / "Research" / "Harness"
+# The harness's Python environment of this process, as bin/harness finds it.
+HARNESS_PYTHON = pathlib.Path(
+    os.environ.get("RESEARCH_HARNESS_PYTHON") or pathlib.Path.home() / ".local/share/research-harness/python"
+)
 
 TOOL_CHECK = "run_before_00-check-tools.sh.tmpl"
 CLONES = "run_once_after_10-clones.sh.tmpl"
@@ -1069,6 +1076,7 @@ def services_home(host, os_name, checkout, pin, extra=None):
     bindir = home / ".test-bin"
     logging_stubs(bindir)
     env = environment(home, bindir, write_gitconfig(home / ".gitconfig-test", {}))
+    env["RESEARCH_HARNESS_PYTHON"] = str(HARNESS_PYTHON)
     harness = harness_clone(home, env, checkout, pin)
     profile = rendered_profile(host, os_name, home, extra)
     path = home / ".config/research-harness/profile.toml"
@@ -1159,6 +1167,10 @@ def test_services():
         fail(f"{checkout} is not a clone; the services test needs it (read-only)")
         return
     print(f"  the harness: {checkout} at {pin}")
+    if not (HARNESS_PYTHON / "bin" / "python").is_file():
+        fail(f"no Python environment at {HARNESS_PYTHON}; `harness install --apply` makes it")
+        return
+    print(f"  the harness's Python environment: {HARNESS_PYTHON}")
     pinned = {"harness_commit": pin}
     services_linux(checkout, pinned)
     for loaded in (False, True):
