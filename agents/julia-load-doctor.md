@@ -33,9 +33,9 @@ load failure.
    | **missing manifest** | no `Manifest.toml`; "Package Foo […] is required but does not seem to be installed" | here — `Pkg.instantiate()`, `Project.toml` unchanged; an environment state, not a code defect |
    | **stale manifest** | `Manifest.toml` pins a version outside `[compat]`, or older than the release that defines a name `src/` imports ("Imported binding … was undeclared at import time") | here — `Pkg.update()`, or delete the manifest and instantiate; `Pkg.resolve()` does not move the pin; `Project.toml` unchanged |
    | **undeclared dependency** | `using Foo` in `src/`, `Foo` in neither `[deps]` nor `Manifest.toml` | here — one entry |
-   | **moved to an extension** | a name that used to be exported is now behind a package extension | here — `[compat]`, sometimes a trigger dep |
+   | **moved to an extension** | a name that a dependency's newer release defines only in a package extension | here — `[compat]`, sometimes a trigger dep |
    | **upstream regression** | method overwriting or a removed method from a dependency's new release | **upstream**, or a version jump |
-   | **needs a rewrite** | many imported names no longer exist anywhere in the current stack | neither — say so |
+   | **needs a rewrite** | many imported names exist nowhere in the current stack | neither — say so |
 
    **`Manifest.toml` is gitignored in the repositories of this tree.** A fix that changes it is
    never committed, so a manifest class alone calls for no commit and no source edit. A stale pin
