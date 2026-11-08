@@ -30,7 +30,7 @@ Kaimon call may hold; any other tool is an `mcp` call by its own name, which onl
 checks.
 
 THE CHECKS: the path list, `guard-paths.json` two directories above this package, as
-`harness install` renders it, on every call (`path_list`); on a shell call also the six shell
+`harness install` renders it, on every call (`path_list`); on a shell call also the eight shell
 checks and the work-tree check of `sandbox_semantics`, whose other shapes describe Claude Code's
 sandbox alone; on an `mcp` call also the Kaimon check.
 
@@ -55,6 +55,7 @@ from guard import (
     gh_pr_create,
     gh_watch_interval,
     git_archive_output,
+    git_writes,
     kaimon_session,
     no_blind_stage,
     no_shell_file_write,
@@ -115,6 +116,7 @@ SHELL: tuple[Check, ...] = (
     gh_watch_interval.check,
     rm_scope.check,
     git_archive_output.check,
+    git_writes.check,
     sandbox_semantics.work_tree_check,
 )
 CHECKS: dict[Action, tuple[Check, ...]] = {

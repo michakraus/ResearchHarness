@@ -526,6 +526,74 @@
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "cd $X && sed -i s/a/b/ f.txt"}, "cwd": "@@CWD@@"}, "decision": "deny"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "rm -rf @@SCRATCH@@/link-out"}, "cwd": "@@CWD@@"}, "decision": "pass"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "rm -rf @@SCRATCH@@/link-out/"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git worktree remove --force @@R@@/.worktrees/Own-pushed"}, "cwd": "@@R@@/Packages/Own"}, "decision": "allow"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git worktree remove -f ../../.worktrees/Own-pushed"}, "cwd": "@@R@@/Packages/Own"}, "decision": "allow"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git worktree remove @@R@@/.worktrees/Own-pushed --force"}, "cwd": "@@R@@/Packages/Own"}, "decision": "allow"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git worktree remove --force @@R@@/.worktrees/Own-unpushed"}, "cwd": "@@R@@/Packages/Own"}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git worktree remove --force @@R@@/.worktrees/Own-modified"}, "cwd": "@@R@@/Packages/Own"}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git worktree remove -f @@R@@/.worktrees/Own-staged"}, "cwd": "@@R@@/Packages/Own"}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git worktree remove --force --force @@R@@/.worktrees/Own-pushed"}, "cwd": "@@R@@/Packages/Own"}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git worktree remove -ff @@R@@/.worktrees/Own-pushed"}, "cwd": "@@R@@/Packages/Own"}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git worktree remove --forc @@R@@/.worktrees/Own-pushed"}, "cwd": "@@R@@/Packages/Own"}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git worktree remove --force @@R@@/Packages/Foreign"}, "cwd": "@@R@@/Packages/Own"}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git worktree remove --force @@R@@/.worktrees"}, "cwd": "@@R@@/Packages/Own"}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git worktree remove --force @@R@@/.worktrees/Own-missing"}, "cwd": "@@R@@/Packages/Own"}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git -C @@R@@/Packages/Own worktree remove --force @@R@@/.worktrees/Own-pushed"}, "cwd": "@@R@@/Packages/Own"}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "cd @@R@@/Packages/Own && git worktree remove --force @@R@@/.worktrees/Own-pushed"}, "cwd": "@@R@@/Packages/Own"}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git worktree remove --force @@R@@/.worktrees/Own-pushed"}}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git worktree remove @@R@@/.worktrees/Own-unpushed"}, "cwd": "@@R@@/Packages/Own"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git cherry-pick abc123"}, "cwd": "@@R@@/.worktrees/Logs"}, "decision": "allow"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git cherry-pick --continue"}, "cwd": "@@R@@/Packages/Own"}, "decision": "allow"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git cherry-pick -n abc123"}, "cwd": "@@R@@/Packages/Own"}, "profile": "@@FIXTURE@@/profiles/other.toml", "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git cherry-pick abc123"}, "cwd": "@@R@@/Packages/Foreign"}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git cherry-pick abc123"}, "cwd": "@@PKG@@"}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git -C @@R@@/Packages/Foreign cherry-pick abc123"}, "cwd": "@@R@@/Packages/Own"}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git cherry-pick abc123 && git log -1"}, "cwd": "@@R@@/Packages/Own"}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git cherry-pick abc123 > @@R@@/.scratch/pick.log"}, "cwd": "@@R@@/Packages/Own"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git log --grep cherry-pick"}, "cwd": "@@R@@/Packages/Foreign"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git push --force-with-lease origin feature"}, "cwd": "@@R@@/Packages/Own"}, "decision": "allow"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git push --force-with-lease origin HEAD:refs/heads/pushed"}, "cwd": "@@R@@/.worktrees/Own-pushed"}, "decision": "allow"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git push --force-with-lease=feature origin feature"}, "cwd": "@@R@@/Packages/Own"}, "decision": "allow"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git push --force-with-lease=refs/heads/feature:0123abc origin HEAD:refs/heads/feature"}, "cwd": "@@R@@/Packages/Own"}, "decision": "allow"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git push --force-with-lease=other origin feature"}, "cwd": "@@R@@/Packages/Own"}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git push --force-with-lease origin main"}, "cwd": "@@R@@/Packages/Own"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git push --force-with-lease origin HEAD:refs/heads/master"}, "cwd": "@@R@@/Packages/Own"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git push --force-\"\"with-lease origin main"}, "cwd": "@@R@@/Packages/Own"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git push --force-with-lease origin HEAD:refs/heads/trunk"}, "cwd": "@@R@@/Packages/Own"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git fetch origin && git push --force-with-lease origin main"}, "cwd": "@@R@@/Packages/Own"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git cherry-pick feature && git push --force-with-lease origin main"}, "cwd": "@@R@@/Packages/Own"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git push --force-with-lease origin"}, "cwd": "@@R@@/Packages/Own"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git push --force-with-lease origin && git log -1"}, "cwd": "@@R@@/Packages/Own"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git push --force-with-lease origin HEAD"}, "cwd": "@@R@@/Packages/Own"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git push --force-with-lease --all origin"}, "cwd": "@@R@@/Packages/Own"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git push --force-with-lease origin 'refs/heads/*:refs/heads/*'"}, "cwd": "@@R@@/Packages/Own"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git push --force-with-lease origin $b"}, "cwd": "@@R@@/Packages/Own"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git push --force-with-lease origin :"}, "cwd": "@@R@@/Packages/Own"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git push --force-with-lease -o ci.skip origin"}, "cwd": "@@R@@/Packages/Own"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git push --force-with-lease -vo ci.skip origin"}, "cwd": "@@R@@/Packages/Own"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git push --force-with-lease --push-opt ci.skip origin"}, "cwd": "@@R@@/Packages/Own"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git push --force-with-lease --recurse-submodules check origin"}, "cwd": "@@R@@/Packages/Own"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git push --force-with-lease origin -vo HEAD HEAD:refs/heads/feature"}, "cwd": "@@R@@/Packages/Own"}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git push --force-with-lease -- origin HEAD:refs/heads/feature"}, "cwd": "@@R@@/Packages/Own"}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git push --force-with-lease origin {main,feature}"}, "cwd": "@@R@@/Packages/Own"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git push --force-with-lease origin m?in"}, "cwd": "@@R@@/Packages/Own"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git push --force-with-lease origin ma[i]n"}, "cwd": "@@R@@/Packages/Own"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "find . -exec git cherry-pick {} + -exec git push --force-with-lease origin main {} +"}, "cwd": "@@R@@/Packages/Own"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git push --force-with-lease origin feature && git switch feature"}, "cwd": "@@R@@/Packages/Own"}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git push --force-with-lease origin HEAD:heads/main"}, "cwd": "@@R@@/Packages/Own"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git push --force-with-lease origin +feature:refs/heads/trunk"}, "cwd": "@@R@@/Packages/Own"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git push -u --force-with-lease origin main"}}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git push --force-with-lease origin feature"}, "cwd": "@@R@@/Packages/Foreign"}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git push --force-with-lease origin feature"}, "cwd": "@@R@@/Packages/Own"}, "profile": "@@FIXTURE@@/profiles/other.toml", "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git push --force-with-lease origin no-such-branch"}, "cwd": "@@R@@/Packages/Own"}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git push --force-with-lease origin feature"}, "cwd": "@@R@@/Packages/Mapped"}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git push --force-with-lease origin HEAD:refs/heads/feature"}, "cwd": "@@R@@/Packages/Mapped"}, "decision": "allow"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git push --force-with-lease origin refs/heads/main"}, "cwd": "@@R@@/Packages/Own"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git push --force-with-lease origin feature --force-if-includes"}, "cwd": "@@R@@/Packages/Own"}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git push origin --force-with-lease feature"}, "cwd": "@@R@@/Packages/Own"}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git push --force-w origin feature"}, "cwd": "@@R@@/Packages/Own"}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git push --force-with-lease upstream feature"}, "cwd": "@@R@@/Packages/Own"}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git push --force origin feature"}, "cwd": "@@R@@/Packages/Own"}, "decision": "pass"}
 {"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "git push --force origin x"}, "decision": "deny", "bypass": null}
 {"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "sed -i s/a/b/ f"}, "decision": "deny", "bypass": null}
 {"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "git add -A"}, "decision": "deny", "bypass": null}
@@ -1054,3 +1122,10 @@
 {"frontend": "opencode", "tool": "shell", "input": {"command": "cat /tmp/notes.txt"}, "local": {"deny": ["/etc/**"]}, "decision": "pass"}
 {"frontend": "opencode", "tool": "shell", "input": {"command": "cat /home/u/notes.txt"}, "local": {"allow": ["/etc/hosts"]}, "covers": ["lists"], "decision": "pass"}
 {"frontend": "opencode", "tool": "shell", "input": {"command": "cat /etc/HOSTS"}, "local": {"allow": ["/etc/hosts"]}, "covers": ["rule"], "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "git cherry-pick abc123"}, "cwd": "@@R@@/Packages/Foreign", "decision": "ask"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "git push --force-with-lease origin main"}, "cwd": "@@R@@/Packages/Own", "decision": "deny"}
+{"frontend": "opencode", "tool": "shell", "input": {"command": "git cherry-pick abc123"}, "directory": "@@R@@/Packages/Foreign", "decision": "ask"}
+{"frontend": "opencode", "tool": "shell", "input": {"command": "git push --force-with-lease origin main"}, "directory": "@@R@@/Packages/Own", "decision": "deny"}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "git cherry-pick abc123", "Cwd": "@@R@@/Packages/Foreign"}, "decision": "force_ask", "bypass": true}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "git push --force-with-lease origin feature", "Cwd": "@@R@@/Packages/Own"}, "decision": "ask", "bypass": true}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "git push --force-with-lease origin main", "Cwd": "@@R@@/Packages/Own"}, "decision": "deny", "bypass": null}
