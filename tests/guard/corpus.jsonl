@@ -613,6 +613,18 @@
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "g''h pr $'\\c'reate --title T"}, "cwd": "@@CWD@@"}, "decision": "deny"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "echo '$';$'\\162'm -rf ~/Research/Papers"}, "cwd": "@@PKG@@"}, "decision": "deny"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "tcsh -c 'rm -rf ~/Research/Papers'"}, "cwd": "@@PKG@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "fish --command 'rm -rf ~/Research/Papers'"}, "cwd": "@@PKG@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "fish --command='rm -rf ~/Research/Papers'"}, "cwd": "@@PKG@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "$'rm\\0' -rf ~/Research/Papers"}, "cwd": "@@PKG@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "$'r\\0x'm -rf ~/Research/Papers"}, "cwd": "@@PKG@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "$'rm\\c@' -rf ~/Research/Papers"}, "cwd": "@@PKG@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "$'rm\\x' -rf ~/Research/Papers"}, "cwd": "@@PKG@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "$'rm\\C-@' -rf ~/Research/Papers"}, "cwd": "@@PKG@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "rm -rf ~/Research/.$'\\w'orktrees/Foo-bar/docs/build"}, "cwd": "@@PKG@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git $'push\\0' --force-with-lease origin main"}, "cwd": "@@R@@/Packages/Own"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "$'gh\\0' api -X DELETE repos/o/r"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "$'g'h pr view 1 && gh pr create --title T -R own-org/X.jl"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git push $'--force-with-lease' origin HEAD:refs/heads/feature"}, "cwd": "@@R@@/Packages/Own"}, "decision": "allow"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git push $'--force-with-lease' origin trunk"}, "cwd": "@@R@@/Packages/Own"}, "decision": "deny"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git push --force-$w origin main"}, "cwd": "@@R@@/Packages/Own"}, "decision": "deny"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git push --$(printf force-with-lease) origin main"}, "cwd": "@@R@@/Packages/Own"}, "decision": "deny"}

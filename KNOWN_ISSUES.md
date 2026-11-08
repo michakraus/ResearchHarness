@@ -664,7 +664,7 @@
 
 ### K136 · The shell checks of the guard do not read a word that an expansion makes, a script on standard input, or a script nested more than three levels deep.
 
-- location: `hooks/guard/shell.py:235`
+- location: `hooks/guard/shell.py:281`
 - evidence: the checks read quotes, ANSI-C and locale quotes, and the scripts of `sh -c`,
   `bash -c`, `zsh -c` (and the other shells of `SHELLS`) and `eval`, three levels deep, and run
   no other expansion. `guard --from claude` in a checkout of an own organisation answers `deny`
