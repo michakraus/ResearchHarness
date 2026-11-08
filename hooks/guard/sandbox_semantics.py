@@ -28,7 +28,7 @@ from pathlib import Path
 
 from .contract import PASS, Call, Verdict, needs_cwd, strongest
 from .paths import Place, place, work_tree
-from .shell import SEGMENT, SEPARATORS, Tokens, readings, words
+from .shell import SEGMENT, SEPARATORS, Tokens, joined, readings, words
 
 # `$( … )` and `` ` … ` ``. Neither nests here: a substitution inside a substitution is read as
 # the outer one, which is enough to find the command word.
@@ -436,7 +436,7 @@ def work_tree_check(call: Call) -> Verdict:
     frontend whose sandbox is not Claude Code's, where the other shapes describe nothing. A command
     that does not read passes."""
     command = call.command
-    read = readings(command) if "git" in command else None
+    read = readings(command) if "git" in joined(command) else None
     if read is None:
         return PASS
     cwd = None if call.cwd is None else place(call.cwd, "real")

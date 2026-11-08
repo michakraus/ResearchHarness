@@ -26,27 +26,26 @@
 - kind: defect
 - found: 2026-10-06
 
-### K88 · The Antigravity guard applies no Bash rule to a command that a string argument, ANSI-C or locale quoting, or a variable or substitution holds.
+### K88 · The Antigravity guard applies no Bash rule to a command whose program a variable or a substitution names.
 
-- location: `hooks/guard/path_list.py:539`
-- evidence: the guard matches the template's Bash denies and asks on the words of each segment as
-  the line writes them, and does not run the shell's expansions. On a fixture home it answers
-  `deny` to `git push --force origin x` and `ask` to each of these lines, which run the same push:
-  `bash -c 'git push --force origin x'`, the same with `sh -c` and `zsh -c`,
-  `eval 'git push --force origin x'`, `git push $'--force' origin x`,
-  `git push $"--force" origin x` and `g=git; $g push --force origin x`. In the desktop app, which reads no `permissions`, such a
-  push then runs unless the app's own settings refuse it. The user decided to land the guard with
-  this limit of a text-pattern rule; the sandbox stays the containment.
+- location: `hooks/guard/path_list.py:526`
+- evidence: the guard matches the template's Bash denies and asks on the words of each segment,
+  with quotes, ANSI-C and locale quotes and the scripts of `sh -c`, `bash -c`, `zsh -c` and `eval`
+  read, and does not run the shell's other expansions. On a fixture home it answers `deny` to
+  `git push --force origin x` and to `bash -c 'git push --force origin x'`, and `ask` to
+  `g=git; $g push --force origin x`, which runs the same push. In the desktop app, which reads no
+  `permissions`, such a push then runs unless the app's own settings refuse it. The user decided
+  to land the guard with this limit of a text-pattern rule; the sandbox stays the containment.
 - kind: defect
 - found: 2026-10-23
 
-### K92 · The path check of the Antigravity guard reads no string argument and no substitution.
+### K92 · The path check of the Antigravity guard reads no substitution.
 
-- location: `hooks/guard/path_list.py:377`
-- evidence: `command_words()` reads the words of the line as it writes them. On a fixture home
-  the guard answers `deny` to `cat ~/.netrc` and `ask` to `bash -c 'cat ~/.netrc'`, to
-  `sh -c "cat ~/.config/gh/hosts.yml"` and to `cat $(printf ~/.ne)trc`, which read the denied
-  files.
+- location: `hooks/guard/path_list.py:379`
+- evidence: `command_words()` reads the words of the line, with the scripts of `sh -c`, `bash -c`
+  and `eval` read, and runs no expansion. On a fixture home the guard answers `deny` to
+  `cat ~/.netrc` and to `sh -c "cat ~/.config/gh/hosts.yml"`, and `ask` to
+  `cat $(printf ~/.ne)trc`, which reads the denied file.
 - kind: defect
 - found: 2026-10-23, PR #76; the same class as K88
 
@@ -686,3 +685,65 @@
   `load_policy` requires a table for each of them, so no command reaches it.
 - kind: defect
 - found: 2026-11-08, the review of the srt settings' pull request
+
+### K138 · The shell checks of the guard do not read a word that an expansion makes, a script on standard input, or a script nested more than three levels deep.
+
+- location: `hooks/guard/shell.py:310`
+- evidence: the checks read quotes, ANSI-C and locale quotes, and the scripts of `sh -c`,
+  `bash -c`, `zsh -c` (and the other shells of `SHELLS`) and `eval`, three levels deep, and run
+  no other expansion. `guard --from claude` in a checkout of an own organisation answers `deny`
+  to `bash -c 'git push --force-with-lease origin main'` and `pass` to each of these, which run
+  the same push: `g=git; $g push --force-with-lease origin main`,
+  `git p$(printf u)sh --force-with-lease origin main`, `o=--force-with-lease; git push $o origin
+  main` and `echo 'git push --force-with-lease origin main' | sh`. The same holds for the other
+  writes of the checks, such as `x=rm; $x -rf ~/Research/Papers`, and for a script four levels
+  deep, such as `eval eval eval eval rm -rf ~/Research/Papers`. The check of a shell write and the
+  check of a `git init` or `git clone` in a working tree read no script of `sh -c` or `eval`:
+  `bash -c 'echo x > CHANGELOG.md'` and `bash -c 'git init probe'` pass in a working tree. The
+  check of a shell write, and the misleading-error check where it reads a `$( … )` fragment, read
+  an ANSI-C quote in bash's dialect only: `python3 $'\-'c "open('src/x.jl','w').write('x')"`
+  passes, which zsh runs as `python3 -c`. fish's `-C` and `--init-command` scripts are not read.
+  A lease push through `git -C $d` whose target is a default branch of that repository other than
+  `main` and `master` asks rather than refuses: the check cannot read the directory. The sandbox
+  stays the containment; for Antigravity, K88 is the same limit of its Bash rules.
+- kind: defect
+- found: 2026-11-08
+
+### K139 · A long command with an ANSI-C quote can take the guard past the hook's time limit.
+
+- location: `hooks/guard/shell.py:154`
+- evidence: `readings` and `joined` read a text that holds `$'` or `$"` in three dialects, so such
+  a command costs about three readings where another costs one. A probe of the third pre-PR
+  verification, one process per run under a load average of 40 to 44, measured a 1 MiB command
+  of `eval rm …` units with one `$'x'` at 7.1 s, against 3.2 s for the same command read in one
+  dialect, and the settings template gives the guard hook a `timeout` of 5 s. No case of
+  `hooks/probe.py` times a 1 MiB command that holds `$'`, and its `MIB_LIMIT` of 10 s is above
+  the hook's limit. Not measured on an idle machine.
+- kind: not verified
+- found: 2026-11-08
+
+### K140 · The shell checks of the guard read no command whose bash reading has an open quote, also where dash's reading is closed.
+
+- location: `hooks/guard/shell.py:336`
+- evidence: `readings` returns None when a quote of bash's reading is open, and drops the `plain`
+  reading, which can be closed. `rm_scope` and `git_writes` ask on None; the other checks pass.
+  `guard --from claude` answers `pass` to `git add -A $'\'' $'`,
+  `gh api -X DELETE repos/a/b $'\'' $'`, `git archive -o x.tar HEAD $'\'' $'`,
+  `gh pr create … $'\'' $'` and
+  `gh run watch --interval 5 $'\'' $'`, where origin/main (28b2706f) answers `deny`; it asks for
+  the same suffix after `rm -rf ~/Research/Papers` and after a lease push to `main`. bash, zsh and
+  macOS `/bin/sh` refuse each line and run nothing. dash reads `$'` as a `$` and a quote, and runs
+  each write. Returning None only when no dialect reads the text changes the contract that the
+  checks build on.
+- kind: defect
+- found: 2026-11-08, the fourth pre-PR verification of `guard/bypass-gaps`
+
+### K141 · The bash dialect of the guard reads `\c` of an ANSI-C quote as bash 3.2 does in one case and as bash 5.3 does in another.
+
+- location: `hooks/guard/shell.py:102`
+- evidence: bash 5.3 reads `$'x\c\\y'` as `x`, the control character 0x1C and `y`; bash 3.2
+  (`/bin/bash` and `/bin/sh` on macOS) and the guard keep a backslash after the 0x1C. bash 3.2
+  reads `$'x\c'y` as `x\y`; bash 5.3 and the guard read it as `x\cy`. Each difference leaves a
+  control character or a backslash in the word, so no word of ASCII letters comes of it.
+- kind: defect
+- found: 2026-11-08, the fourth pre-PR verification of `guard/bypass-gaps`

@@ -11,7 +11,7 @@ checked.
 """
 
 from .contract import PASS, Call, Verdict
-from .shell import SEGMENT, Tokens, readings, words
+from .shell import SEGMENT, Tokens, joined, readings, words
 
 # `git` global options that consume the token after them. Anything else starting with `-` before
 # the subcommand is a flag that stands alone.
@@ -101,9 +101,9 @@ def fallback_segments(command: str) -> list[list[str]]:
 def check(call: Call) -> Verdict:
     """Deny a `git add` that sweeps."""
     command = call.command
-    if "add" not in command:
+    if "add" not in joined(command):
         return PASS
-    read = readings(command)
+    read = readings(command, nested=True)
     for tokens_list in (
         [segments(tokens) for tokens in read] if read is not None else [fallback_segments(command)]
     ):

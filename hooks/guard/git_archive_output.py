@@ -9,7 +9,7 @@ global options (`git -C repo archive`), so no `permissions` glob can state it.
 """
 
 from .contract import PASS, Call, Verdict
-from .shell import parts, readings
+from .shell import joined, parts, readings
 
 # Global options of `git` that consume the token after them.
 GLOBAL_VALUE = frozenset(
@@ -79,9 +79,9 @@ def output_option(arguments: list[str]) -> str | None:
 
 def check(call: Call) -> Verdict:
     """Deny a `git archive` that writes its file with `-o` or `--output`."""
-    if "archive" not in call.command:
+    if "archive" not in joined(call.command):
         return PASS
-    for tokens in readings(call.command) or []:
+    for tokens in readings(call.command, nested=True) or []:
         for words in parts(tokens):
             arguments = archive_arguments(words)
             option = output_option(arguments) if arguments is not None else None

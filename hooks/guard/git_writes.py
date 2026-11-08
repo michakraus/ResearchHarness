@@ -1,8 +1,11 @@
 """Allow three `git` writes when the repository shows that nothing is lost; ask otherwise.
 
 The check allows only a command that is one `git` call and nothing else: no operator, no
-redirection, no second part, no global option before the subcommand. It reads the state of the
-repository with `git` in the call's working directory, the payload's `cwd`.
+redirection, no second part, no global option before the subcommand. Its text must also be plain
+(`sandbox_lift.PLAIN`): no `$`, backslash, backtick, `#` or `!` outside a single quote, so that
+bash and zsh run the words that the check read; any other text that it would allow asks. It
+reads the state of the repository with `git` in the call's working directory, the payload's
+`cwd`.
 
   * **`git worktree remove --force <path>`**, or `-f`, given once: allow when the path, resolved
     without following its last name, lies below `~/Research/.worktrees/`, a remote-tracking ref
@@ -22,9 +25,13 @@ repository with `git` in the call's working directory, the payload's `cwd`.
   * **A lease push that names a default branch, or no branch**: deny, in each part of the
     command, so also `git fetch && git push --force-with-lease origin main`, and after another
     write in the same part, as in a `find` with two `-exec`. A push names a
-    default branch when an argument after `push` names `main`, `master` or the branch that
-    `refs/remotes/origin/HEAD` names as its target (`<branch>`, `+<branch>`, `<src>:<branch>`,
-    each also with `refs/heads/` or `heads/`). It names no branch, and can reach a default one,
+    default branch when an argument after `push`, the value of an option aside, names `main`,
+    `master` or the branch that `refs/remotes/origin/HEAD` names as its target (`<branch>`,
+    `+<branch>`, `<src>:<branch>`, each also with `refs/heads/` or `heads/`). `origin/HEAD` is
+    read in the call's working directory and, where they differ, in the repository that the push
+    works on: the directory after each `cd` before it and each `-C` or `--git-dir` of its `git`. A
+    directory that the shell would expand is unknown, and only the call's own default counts for it.
+    It names no branch, and can reach a default one,
     with no refspec after the remote (as with `--all` or `--mirror`, which `git` takes with no
     refspec only), or with a refspec whose target is `HEAD`, `@` or empty, or that holds a glob
     (`*`, `?`, `[`), a brace, `$` or a backtick. The value of `-o`, also at the end of a cluster
@@ -33,7 +40,10 @@ repository with `git` in the call's working directory, the payload's `cwd`.
 
 The check finds the subcommand as `git` does, after its global options. It takes a `worktree
 remove` with any option as forced, since `git` reads `-ff` and a prefix of `--force` as force, and a
-`push` with an option that begins with `--force-w` as a lease push. In the `<branch>` form the
+`push` with an option that begins with `--force-w` as a lease push, as well as an option that the
+shell expands, where the text before the expansion begins as a lease does (`--force-$w`, `--$x`).
+It reads the command as `shell.readings` does with `nested`, so a write in the script of
+`sh -c`, `bash -c` or `eval` is read as well; such a write is never alone. In the `<branch>` form the
 branch must be a local one, and `origin` must have no `remote.origin.push` refspec, which can map
 the branch onto another remote branch. Any other command that holds one of these writes asks:
 `-C`, a `cd` before it, a pipeline, `-f` twice, a lease after the remote, a second refspec. A
@@ -53,13 +63,15 @@ rule for these forms and the check answers both ways.
 import re
 import shutil
 import subprocess
+from collections.abc import Iterator
 from pathlib import PurePosixPath
 
 from .contract import PASS, Call, Verdict, strongest
 from .gh_api_writes import own_organisations
 from .paths import Place, place
-from .rm_scope import WORKTREES, below, git_subcommand, resolve
-from .shell import Tokens, parts, readings
+from .rm_scope import TAKES_VALUE, WORKTREES, below, expand, resolve
+from .sandbox_lift import PLAIN
+from .shell import Tokens, joined, parts, readings
 
 # Seconds for each `git` the check runs.
 TIMEOUT = 5
@@ -69,8 +81,6 @@ GITHUB = re.compile(
     r"^(?:https://(?:[^@/]+@)?github\.com/|git@github\.com:|ssh://git@github\.com/)"
     r"([A-Za-z0-9-]+)/[A-Za-z0-9._-]+?(?:\.git)?/?$"
 )
-# The quotes and the backslashes, each with the newline after it, that the pre-filter removes.
-JOINS = re.compile(r"[\"']|\\\n?")
 # A branch name the check reads; anything else asks.
 BRANCH = re.compile(r"^(?!-)(?!HEAD$)[A-Za-z0-9._/-]+$")
 DEFAULTS = frozenset({"main", "master"})
@@ -80,6 +90,10 @@ VALUED = ("--push-option", "--repo", "--receive-pack", "--exec", "--recurse-subm
 # A cluster of short options that ends in `-o`, which takes the next word as its value: `-o`, `-vo`.
 SHORT_VALUED = re.compile(r"-[^-o]*o")
 LEASE = "--force-with-lease"
+# The characters by which the shell expands a word into a text that the check cannot read.
+EXPANSIONS = frozenset("$`{*?[")
+# The global options of `git` that name the repository it works on.
+REPOSITORY = ("-C", "--git-dir")
 SHAPE = "`git push --force-with-lease[=<ref>[:<expect>]] origin <branch>`, or with `HEAD:refs/heads/<branch>`"
 # The changed files that a reason names.
 NAMED = 5
@@ -96,6 +110,11 @@ A lease push through `{unnamed}` names no branch, so it can reach a default bran
 Name the branch: `git push --force-with-lease origin <branch>`, or
 `git push --force-with-lease origin HEAD:refs/heads/<branch>`.
 """
+
+UNPLAIN = (
+    "The guard allows a `git` write with no prompt only as plain text, which every shell reads the "
+    "same way: no `$`, backslash, backtick, `#` or `!` outside a single quote."
+)
 
 ALONE = (
     "The guard allows `git {write}` only as a `git` command of its own, with no option before the "
@@ -240,42 +259,87 @@ def defaults_of(cwd: str | None) -> frozenset[str]:
     return DEFAULTS | ({default.strip().removeprefix("origin/")} if default else frozenset[str]())
 
 
+def moved(directory: str | None, path: str) -> str | None:
+    """The directory `path`, with a leading `~` or `$HOME` expanded, resolved against `directory`;
+    None when the shell would expand anything else in it, or when a relative `path` meets an
+    unknown `directory`."""
+    found = expand(path)
+    if found is None or (directory is None and not found.startswith("/")):
+        return None
+    return str(PurePosixPath(directory or "/", found))
+
+
+def repository_of(words: list[str], directory: str | None) -> str | None:
+    """The directory whose repository the `git` call `words` works on: `directory`, moved by each
+    `-C <path>` and `--git-dir[=]<path>` before the subcommand, as `git` moves it."""
+    index = 1
+    while index < len(words) and words[index].startswith("-"):
+        option, _, attached = words[index].partition("=")
+        value = attached or (words[index + 1] if index + 1 < len(words) else "")
+        if option in REPOSITORY:
+            directory = moved(directory, value) if value else None
+        index += 2 if words[index] in TAKES_VALUE else 1
+    return directory
+
+
+def positional(arguments: list[str]) -> list[str]:
+    """The arguments of a `git push` that are neither an option nor the value of one (`valued`):
+    the remote and the refspecs."""
+    return [
+        argument
+        for index, argument in enumerate(arguments)
+        if not argument.startswith("-") and (index == 0 or not valued(arguments[index - 1]))
+    ]
+
+
 def default_target(arguments: list[str], defaults: frozenset[str]) -> str | None:
-    """The first argument after a lease push's `push` that names a branch of `defaults` as its
-    target, `<branch>`, `+<branch>` or `<src>:<branch>`, each also with `refs/heads/` or with
-    `heads/`, which `git` reads as `refs/heads/`; or None."""
-    for argument in arguments:
+    """The first argument after a lease push's `push`, an option's value aside (`positional`),
+    that names a branch of `defaults` as its target, `<branch>`, `+<branch>` or `<src>:<branch>`,
+    each also with `refs/heads/` or with `heads/`, which `git` reads as `refs/heads/`; or None."""
+    for argument in positional(arguments):
         target = argument.lstrip("+").rsplit(":", 1)[-1]
         target = (
             target.removeprefix("refs/heads/")
             if target.startswith("refs/")
             else target.removeprefix("heads/")
         )
-        if not argument.startswith("-") and target in defaults:
+        if target in defaults:
             return argument
     return None
 
 
-def write_of(words: list[str]) -> tuple[str, int, list[str]] | None:
-    """(the write, the index of its `git`, its arguments) for the first `git` call of `words` that
-    holds a write of the check, or None: `cherry-pick`; `worktree remove` with any option, since
-    `git` reads `-ff` and a prefix of `--force` as a force flag; or `push` with an option that
-    begins as a lease does."""
+def lease_option(argument: str) -> bool:
+    """True when `argument` is a lease option, or an option that the shell can expand into one: the
+    text before its first expansion (EXPANSIONS) is a prefix of the lease, as in `--force-$w`."""
+    if argument.startswith("--force-w"):
+        return True
+    cut = next((index for index, char in enumerate(argument) if char in EXPANSIONS), None)
+    return argument.startswith("-") and cut is not None and LEASE.startswith(argument[:cut])
+
+
+def writes(words: list[str]) -> Iterator[tuple[str, int, int]]:
+    """(the write, the index of its `git`, the index of its first argument) for each `git` call of
+    `words` that holds a write of the check, in order: `cherry-pick`; `worktree remove` with any
+    option after it, since `git` reads `-ff` and a prefix of `--force` as a force flag; or `push`
+    with an option after it that begins as a lease does, or that can expand into one
+    (`lease_option`). The arguments of a call run to the end of `words`. It reads each word once
+    for the options, so that a long command costs it no time per `git`."""
+    options = [index for index, word in enumerate(words) if word.startswith("-")]
+    last_option = options[-1] if options else -1
+    last_lease = next((index for index in reversed(options) if lease_option(words[index])), -1)
     for index, word in enumerate(words):
         if PurePosixPath(word).name != "git":
             continue
-        subcommand, arguments, _ = git_subcommand(words[index:])
+        at = index + 1
+        while at < len(words) and words[at].startswith("-"):
+            at += 2 if words[at] in TAKES_VALUE else 1
+        subcommand = words[at] if at < len(words) else None
         if subcommand == "cherry-pick":
-            return "cherry-pick", index, arguments
-        if (
-            subcommand == "worktree"
-            and arguments[:1] == ["remove"]
-            and any(argument.startswith("-") for argument in arguments[1:])
-        ):
-            return "worktree remove", index, arguments[1:]
-        if subcommand == "push" and any(argument.startswith("--force-w") for argument in arguments):
-            return "push", index, arguments
-    return None
+            yield "cherry-pick", index, at + 1
+        elif subcommand == "worktree" and words[at + 1 : at + 2] == ["remove"] and last_option > at + 1:
+            yield "worktree remove", index, at + 2
+        elif subcommand == "push" and last_lease > at:
+            yield "push", index, at + 1
 
 
 def valued(word: str) -> bool:
@@ -291,13 +355,10 @@ def unnamed_target(arguments: list[str]) -> str | None:
     name, or None: no refspec after the remote (the text "no refspec"), as with `--all` or
     `--mirror`; or a refspec whose target is `HEAD`, `@` or empty, or that holds a glob, a brace,
     `$` or a backtick. The value of an option, as `valued` finds it, is no refspec."""
-    positional: list[str] = []
-    for index, argument in enumerate(arguments):
-        if not argument.startswith("-") and (index == 0 or not valued(arguments[index - 1])):
-            positional.append(argument)
-    if len(positional) < len(("remote", "refspec")):
+    named = positional(arguments)
+    if len(named) < len(("remote", "refspec")):
         return "no refspec"
-    for refspec in positional[1:]:
+    for refspec in named[1:]:
         target = refspec.lstrip("+").rsplit(":", 1)[-1]
         if target in ("HEAD", "@", "") or set(refspec) & set("*?[{$`"):
             return refspec
@@ -308,16 +369,18 @@ def push_refusal(tokens: Tokens, cwd: str | None) -> Verdict | None:
     """The denial of a lease push in any part of the command that names a default branch as its
     target, or that can reach one without naming it; or None."""
     command = " ".join(text for _, text in tokens)
+    directory = cwd
     for words in parts(tokens):
+        if words[0] in ("cd", "pushd"):
+            directory = moved(directory, words[1] if len(words) > 1 else "~")
         # The first lease push of the part, also after another write, as in `find -exec`.
-        start, found = 0, write_of(words)
-        while found is not None and found[0] != "push":
-            start += found[1] + 1
-            found = write_of(words[start:])
+        found = next((write for write in writes(words) if write[0] == "push"), None)
         if found is None:
             continue
-        pushed = found[2]
-        target = default_target(pushed, defaults_of(cwd))
+        pushed = words[found[2] :]
+        repository = repository_of(words[found[1] :], directory)
+        defaults = defaults_of(cwd) | (defaults_of(repository) if repository != cwd else DEFAULTS)
+        target = default_target(pushed, defaults)
         if target is not None:
             return Verdict("deny", DENY_DEFAULT.format(command=command, target=target))
         unnamed = unnamed_target(pushed)
@@ -329,10 +392,11 @@ def push_refusal(tokens: Tokens, cwd: str | None) -> Verdict | None:
 def decide(tokens: Tokens, cwd: str | None) -> Verdict:
     """The verdict on one reading of the command."""
     words = [text for kind, text in tokens if kind == "word"]
-    found = write_of(words)
+    found = next(writes(words), None)
     if found is None:
         return PASS
-    write, index, arguments = found
+    write, index, first = found
+    arguments = words[first:]
     refusal = push_refusal(tokens, cwd)
     if refusal is not None:
         return refusal
@@ -355,11 +419,13 @@ def check(call: Call) -> Verdict:
     """Allow a forced worktree removal, a cherry-pick and a lease push where nothing is lost; ask
     otherwise."""
     command = call.command
-    # The shell joins `--force-""with-lease` and `--force-\<newline>with-lease` into one word.
-    joined = JOINS.sub("", command)
-    if call.action != "shell" or not any(key in joined for key in ("cherry-pick", "worktree", "--force-w")):
+    keywords = joined(command)
+    if call.action != "shell" or not any(key in keywords for key in ("cherry-pick", "worktree", "push")):
         return PASS
-    found = readings(command)
+    found = readings(command, nested=True)
     if found is None:
         return Verdict("ask", "The check cannot read a command that may hold a git write.")
-    return strongest(decide(tokens, call.cwd) for tokens in found)
+    verdict = strongest(decide(tokens, call.cwd) for tokens in found)
+    if verdict.decision == "allow" and PLAIN.fullmatch(command) is None:
+        return Verdict("ask", UNPLAIN)
+    return verdict

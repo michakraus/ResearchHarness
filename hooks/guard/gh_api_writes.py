@@ -46,7 +46,7 @@ from . import HarnessError
 from .contract import PASS, Call, Verdict, strongest
 from .jsonio import loads
 from .paths import contents, regular_text
-from .shell import Tokens, parts, readings
+from .shell import Tokens, joined, parts, readings
 
 # Flags of `gh api` that consume the token after them.
 TAKES_VALUE = frozenset(
@@ -351,6 +351,7 @@ def verdict_of(tokens: Tokens, cwd: str | None) -> Verdict:
 def check(call: Call) -> Verdict:
     """Ask before a `gh api` write; deny an API DELETE."""
     command = call.command
-    if "gh" not in command and "glab" not in command:
+    keywords = joined(command)
+    if "gh" not in keywords and "glab" not in keywords:
         return PASS
-    return strongest(verdict_of(tokens, call.cwd) for tokens in readings(command) or [])
+    return strongest(verdict_of(tokens, call.cwd) for tokens in readings(command, nested=True) or [])
