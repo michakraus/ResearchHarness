@@ -667,14 +667,15 @@ def template_cases(check: Check) -> None:
     check(not hits, f"opencode writes and reads nothing at or below another frontend's state: {hits}")
 
 
-# The script of the cases' srt: it writes its arguments, each ended by a NUL, to srt-args and its
-# environment to srt-env, in the home directory that holds it at .local/bin/srt, then exits with
-# $STUB_STATUS.
+# The script of the cases' srt: it writes its arguments, each ended by a NUL, to srt-args, its
+# environment to srt-env and its parent's process ID to srt-parent, in the home directory that
+# holds it at .local/bin/srt, then exits with $STUB_STATUS.
 STUB_SRT = """\
 #!/bin/sh
 home=${0%/.local/bin/srt}
 for a in "$@"; do printf '%s\\0' "$a"; done > "$home/srt-args"
 /usr/bin/env > "$home/srt-env"
+echo "$PPID" > "$home/srt-parent"
 exit "${STUB_STATUS:-0}"
 """
 # The exit status of the stub srt in the case of the status.
@@ -776,6 +777,11 @@ def agentbox_cases(check: Check, root: pathlib.Path) -> None:
             f"agentbox {name}: srt gets its settings file, --, the program, {extra or 'nothing'} and each "
             f"argument as one: {p.returncode}, {got}, {p.stderr.strip()!r}",
         )
+        parent = (box.home / "srt-parent").read_text().strip() if got is not None else None
+        check(
+            parent == str(os.getpid()),
+            f"agentbox {name} execs srt, whose parent is then the caller: {parent}, caller {os.getpid()}",
+        )
         seen = box.environment() if got is not None else {}
         check(
             seen == {**box.env(), "AGENTBOX": "1"},
@@ -853,9 +859,9 @@ def agentbox_refusals() -> list[
 
     sandbox_dir = str(DIRECTORY)
     return [
-        ("no argument", nothing, [], {}, frontends_named),
-        ("an unknown name", nothing, ["vim"], {}, frontends_named),
-        ("an empty name", nothing, [""], {}, frontends_named),
+        ("no argument", nothing, [], {}, ["no frontend named", *frontends_named]),
+        ("an unknown name", nothing, ["vim"], {}, ["unknown frontend", *frontends_named]),
+        ("an empty name", nothing, [""], {}, ["unknown frontend", *frontends_named]),
         ("AGENTBOX=1", nothing, ["claude"], {"AGENTBOX": "1"}, ["AGENTBOX"]),
         ("AGENTBOX set and empty", nothing, ["omp"], {"AGENTBOX": ""}, ["AGENTBOX"]),
         ("no srt", remove(".local", "bin", "srt"), ["claude"], {}, [srt, "harness setup"]),
