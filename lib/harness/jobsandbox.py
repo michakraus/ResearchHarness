@@ -6,31 +6,32 @@
 
 `sandbox/daemon.toml` holds the rules of both jobs. `load` reads it into a `DaemonPolicy`, a frozen
 dataclass: once for both jobs the denied operations and the denied Mach services, and for each job
-of JOBS, in a table `[job.<name>]`, its read paths, read files, write paths, write files and write
-denies (`JobRules`). Each key is required, each value is a list of strings, and a path is a token
-of TOKENS alone, or a start, `~`, nothing or a token, and then `/` and one or more segments, none of
-them empty, `.` or `..`, so no `//` and no final `/`; a read file can also be the root `/` alone,
-which dyld reads when a process starts. A system path is in its real form: a path at
-or below `/etc`, `/tmp` or `/var`, in any case of letters, is refused, because Seatbelt matches a
-path after it resolves the symlink `/etc -> private/etc`, and a file system that ignores case reads
-`/ETC` as `/etc`. A denied operation is lower-case words joined by `-`, with `*` (OPERATION),
-because the renderer writes it into the profile as it is. A file that is not UTF-8 or not TOML, a
-missing job or key, an unknown key or job, a relative path, a path with such a segment, a path in
-its link form, another operation and a value that is not a list of strings raise HarnessError,
-which names the key or the path.
+of JOBS, in a table `[job.<name>]`, its read paths, read files, write paths, write files, write
+denies and the files that it writes back inside a write deny (`JobRules`). Each key is required,
+each value is a list of strings, and a path is a token of TOKENS alone, or a start, `~`, nothing
+or a token, and then `/` and one or more segments, none of them empty, `.` or `..`, so no `//` and
+no final `/`; a read file can also be the root `/` alone, which dyld reads when a process starts.
+A system path is in its real form: a path at or below `/etc`, `/tmp` or `/var`, in any case of
+letters, is refused, because Seatbelt matches a path after it resolves the symlink
+`/etc -> private/etc`, and a file system that ignores case reads `/ETC` as `/etc`. A denied
+operation is lower-case words joined by `-`, with `*` (OPERATION), because the renderer writes it
+into the profile as it is. A file that is not UTF-8 or not TOML, a missing job or key, an unknown
+key or job, a relative path, a path with such a segment, a path in its link form, another operation
+and a value that is not a list of strings raise HarnessError, which names the key or the path.
 
 `profile` renders the profile of one job as SBPL text, in this order: `(version 1)`,
 `(allow default)`, `(deny file-read* file-write*)`, `(allow file-read-metadata)`, one
 `(allow file-read* …)` with a `subpath` per read path and a `literal` per read file, one
 `(allow file-write* …)` with a `subpath` per write path and a `literal` per write file, one
 `(deny file-write* …)` with a `subpath` per write deny and a `regex` per repository part of
-REPOSITORY_PARTS at any depth below ~/Research, one `(deny <operation>)` per denied operation, and
-one `(deny mach-lookup …)` with a `global-name` per denied service. Seatbelt applies the last rule
-that matches, so the write denies follow the write allows. A block whose list is empty is left out,
-because a block with no filter matches every path. `~` becomes `home`, `$HARNESS` the profile's
-`harness`, and each `getconf` token its value (`UserDirs`) without a final `/`, with a leading
-`/var/` written as `/private/var/`. Every path and regex is an ordinary SBPL string, with `"` and
-`\\` escaped, and a regex escapes the metacharacters of the home path.
+REPOSITORY_PARTS at any depth below ~/Research, one `(allow file-write* …)` with a `literal` per
+file written back, one `(deny <operation>)` per denied operation, and one `(deny mach-lookup …)`
+with a `global-name` per denied service. Seatbelt applies the last rule that matches, so the write
+denies follow the write allows, and the files written back follow the write denies. A block whose
+list is empty is left out, because a block with no filter matches every path. `~` becomes `home`,
+`$HARNESS` the profile's `harness`, and each `getconf` token its value (`UserDirs`) without a final
+`/`, with a leading `/var/` written as `/private/var/`. Every path and regex is an ordinary SBPL
+string, with `"` and `\\` escaped, and a regex escapes the metacharacters of the home path.
 
 `harness render` of a template `sandbox/<job>.sb` (`job_of`), a file that does not exist, prints
 `render` of that job: `profile` with the rule list `daemon.toml` beside the template, the profile's
@@ -42,9 +43,11 @@ each render into `~/.config/research-harness/sandbox/<job>.sb` before they rende
 job's plist.
 
 The cases start `/bin/sh -c true` under the profile of each job, rendered with this user's home and
-`getconf` directories, and expect exit 0. Without `/usr/bin/sandbox-exec` or `getconf`, or where
+`getconf` directories, and expect exit 0; then, under kaimon's profile, the juliaup launcher
+`~/.juliaup/bin/julia --startup-file=no -e 'exit(0)'`, which opens juliaup's lock file for writing
+at every start, and expect exit 0. Without `/usr/bin/sandbox-exec` or `getconf`, or where
 `sandbox-exec` cannot apply even `(allow default)`, as inside another Seatbelt sandbox, they print a
-skip line.
+skip line, and without the launcher a skip line for its run.
 
 `sandbox/probe-daemon.jl` holds the probes that a session runs through Kaimon's `ex` once the
 server runs under its profile; the cases below run each probe against a scratch tree, where no
@@ -71,7 +74,7 @@ POLICY = REPO / "sandbox" / "daemon.toml"
 PROBES = REPO / "sandbox" / "probe-daemon.jl"
 JOBS = ("kaimon", "julia-update")
 # The keys of a job's table, and of the rule list's top level.
-JOB_KEYS = ("read", "read_files", "write", "write_files", "deny_write")
+JOB_KEYS = ("read", "read_files", "write", "write_files", "deny_write", "allow_write_files")
 TOP_KEYS = ("deny_operations", "deny_services", "job")
 TOKENS = ("$DARWIN_USER_TEMP_DIR", "$DARWIN_USER_CACHE_DIR", "$HARNESS")
 # The directories at the root of macOS that are symlinks into /private: a rule names the real path.
@@ -101,6 +104,7 @@ class JobRules:
     write: tuple[str, ...]
     write_files: tuple[str, ...]
     deny_write: tuple[str, ...]
+    allow_write_files: tuple[str, ...]
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -290,6 +294,7 @@ def profile(
             "deny file-write*",
             filters(rules.deny_write, ()) + [part_regex(home / "Research", p) for p in REPOSITORY_PARTS],
         ),
+        *block("allow file-write*", filters((), rules.allow_write_files)),
         *(f"(deny {operation})" for operation in policy.deny_operations),
         *block("deny mach-lookup", [f"(global-name {quoted(s)})" for s in policy.deny_services]),
     ]
@@ -340,6 +345,8 @@ def render(template: pathlib.Path, home: pathlib.Path, harness: pathlib.Path) ->
 HOME = pathlib.Path("/h/a.b")
 TEMP, CACHE = "/var/folders/xy/T/", "/var/folders/xy/C/"
 DIRS = UserDirs(TEMP, CACHE)
+# The rule of kaimon's profile, rendered with HOME, that writes juliaup's lock file back.
+LOCK_ALLOW = '(allow file-write*\n    (literal "/h/a.b/.julia/juliaup/.juliaup-lock"))'
 # A regex filter of a profile, `(regex "…")`, and an escape of an SBPL string.
 REGEX_FILTER = re.compile(r'\(regex "((?:[^"\\]|\\.)*)"\)')
 SBPL_ESCAPE = re.compile(r"\\(.)")
@@ -405,6 +412,11 @@ def list_cases(case: Case, policy: DaemonPolicy) -> None:
         ok=set(k.deny_write) == {"~/.julia/bin", "~/.julia/config", "~/.julia/juliaup", "$HARNESS/githooks"},
     )
     case(
+        f"kaimon writes back into a denied directory only juliaup's lock file, and julia-update nothing: "
+        f"{k.allow_write_files} {u.allow_write_files}",
+        ok=k.allow_write_files == ("~/.julia/juliaup/.juliaup-lock",) and u.allow_write_files == (),
+    )
+    case(
         f"julia-update writes ~/.juliaup and ~/.julia/juliaup and denies neither: {u.write} {u.deny_write}",
         ok=all(p in u.write and p not in u.deny_write for p in ("~/.juliaup", "~/.julia/juliaup")),
     )
@@ -451,6 +463,27 @@ def bad_cases(case: Case, root: pathlib.Path) -> None:
             "a job without write_files",
             re.sub(r"^write_files = .*\n", "", text, count=1, flags=re.M),
             "write_files",
+        ),
+        (
+            "a job without allow_write_files",
+            re.sub(r"^allow_write_files = .*\n", "", text, count=1, flags=re.M),
+            "job.kaimon.allow_write_files",
+        ),
+        (
+            "the path / as a file written back",
+            text.replace(
+                'allow_write_files = ["~/.julia/juliaup/.juliaup-lock"]', 'allow_write_files = ["/"]', 1
+            ),
+            "job.kaimon.allow_write_files",
+        ),
+        (
+            "a file written back with ..",
+            text.replace(
+                'allow_write_files = ["~/.julia/juliaup/.juliaup-lock"]',
+                'allow_write_files = ["~/.julia/juliaup/../juliaup/juliaup.json"]',
+                1,
+            ),
+            "'~/.julia/juliaup/../juliaup/juliaup.json'",
         ),
         ("a path `Research`", text.replace('"~/Research"', '"Research"', 1), "'Research'"),
         ("a path `~`", text.replace('"~/Research"', '"~"', 1), "'~'"),
@@ -533,7 +566,8 @@ def bad_cases(case: Case, root: pathlib.Path) -> None:
 def path_cases(case: Case, f: pathlib.Path) -> None:
     """The grammar of a path: a final `/`, `//`, `.` and `..` refused after each start, a link form
     refused in any case of letters, and a bare token and a path below each start accepted; the root
-    `/` accepted as a read file only, and every other refusal held for a read file too."""
+    `/` accepted as a read file only, and every other refusal held for a read file and a file
+    written back too."""
     refused = [
         p
         for start in ("~", "", "$HARNESS", "$DARWIN_USER_TEMP_DIR")
@@ -552,7 +586,7 @@ def path_cases(case: Case, f: pathlib.Path) -> None:
     bad = [
         (p, key)
         for p in [*refused, "$HARNESSX/y", "$HARNESSxy/z", "/ETC/hosts", "/Tmp/x", "/VAR"]
-        for key in ("job.kaimon.read", "job.kaimon.read_files")
+        for key in ("job.kaimon.read", "job.kaimon.read_files", "job.kaimon.allow_write_files")
         if not (p == "/" and key == "job.kaimon.read_files")
     ] + [("/", key) for key in keys if key != "job.kaimon.read_files"]
     for p, key in bad:
@@ -593,6 +627,11 @@ def path_cases(case: Case, f: pathlib.Path) -> None:
         "$HARNESS/x",
     ):
         case(f"the path {p!r} is accepted", ok=not raises(lambda p=p: checked_path(p, "job.kaimon.read", f)))
+    for p in ("~/.julia/juliaup/.juliaup-lock", "/private/x", "$HARNESS/x"):
+        case(
+            f"the path {p!r} is accepted as a file written back",
+            ok=not raises(lambda p=p: checked_path(p, "job.kaimon.allow_write_files", f)),
+        )
 
 
 def profile_cases(case: Case, policy: DaemonPolicy) -> None:
@@ -606,6 +645,7 @@ def profile_cases(case: Case, policy: DaemonPolicy) -> None:
         "(allow file-read*\n",
         "(allow file-write*\n",
         "(deny file-write*\n",
+        LOCK_ALLOW,
         "(deny lsopen)",
         "(deny appleevent-send)",
         "(deny file-mount)",
@@ -626,7 +666,7 @@ def profile_cases(case: Case, policy: DaemonPolicy) -> None:
     )
     apart = dataclasses.replace(
         policy,
-        kaimon=JobRules(("$DARWIN_USER_CACHE_DIR",), (), ("$DARWIN_USER_TEMP_DIR",), (), ()),
+        kaimon=JobRules(("$DARWIN_USER_CACHE_DIR",), (), ("$DARWIN_USER_TEMP_DIR",), (), (), ()),
     )
     split = profile(apart, "kaimon", HOME, DIRS)
     w, r = rule_block(split, "(allow file-write*\n"), rule_block(split, "(allow file-read*\n")
@@ -670,6 +710,14 @@ def profile_cases(case: Case, policy: DaemonPolicy) -> None:
         ok='(subpath "/h/a.b/Research/Harness/githooks")' in denies,
     )
     case("the depot's juliaup is a write deny of kaimon", ok='(subpath "/h/a.b/.julia/juliaup")' in denies)
+    after = text[text.index("(deny file-write*\n") :]
+    case(
+        f"after kaimon's write denies, the one allow is juliaup's lock file, so juliaup.json and the "
+        f"installed Julia versions stay unwritable: {after.count('(allow')} allow(s)",
+        ok=after.count("(allow") == 1
+        and rule_block(after, "(allow file-write*\n") == LOCK_ALLOW
+        and text.index(LOCK_ALLOW) > text.index("(deny file-write*\n"),
+    )
     top = profile(policy, "kaimon", pathlib.Path("/"), DIRS)
     case(
         "the home / gives /Research, and no path with //",
@@ -709,6 +757,10 @@ def profile_cases(case: Case, policy: DaemonPolicy) -> None:
         ok='(subpath "/h/a.b/.julia/config")' in d and '(subpath "/h/a.b/Research/Harness/githooks")' in d,
     )
     case(
+        "julia-update allows nothing after its write denies",
+        ok="(allow" not in update[update.index("(deny file-write*\n") :],
+    )
+    case(
         "julia-update reads and writes nothing of ~/Research",
         ok="/h/a.b/Research" not in rule_block(update, "(allow file-read*\n") + w,
     )
@@ -724,7 +776,7 @@ def profile_cases(case: Case, policy: DaemonPolicy) -> None:
         "a job that is not one of JOBS raises HarnessError",
         ok=raises(lambda: profile(policy, "claude-autocommit", HOME, DIRS)),
     )
-    empty = dataclasses.replace(policy, kaimon=JobRules((), (), (), (), ()), deny_services=())
+    empty = dataclasses.replace(policy, kaimon=JobRules((), (), (), (), (), ()), deny_services=())
     bare = profile(empty, "kaimon", HOME, DIRS)
     case(
         "an empty list leaves its block out, never a block with no filter",
@@ -839,9 +891,11 @@ def render_cases(case: Case, root: pathlib.Path, policy: DaemonPolicy) -> None:
 
 def start_cases(case: Case, root: pathlib.Path, policy: DaemonPolicy) -> None:
     """A process starts under the profile of each job, rendered with this user's home and `getconf`
-    directories: `/bin/sh -c true` under `sandbox-exec -f` exits 0. Without `sandbox-exec`, without
+    directories: `/bin/sh -c true` under `sandbox-exec -f` exits 0, and so does the juliaup launcher
+    under kaimon's profile, in the environment of the launch agent. Without `sandbox-exec`, without
     `getconf`, or where `sandbox-exec` cannot apply even the profile `(allow default)`, as inside
-    another Seatbelt sandbox, they print a skip line."""
+    another Seatbelt sandbox, they print a skip line; without the launcher, a skip line for its
+    run."""
     if not SANDBOX_EXEC.is_file():
         print(f"skip  jobsandbox: no {SANDBOX_EXEC}; no process starts under the profiles")
         return
@@ -859,25 +913,53 @@ def start_cases(case: Case, root: pathlib.Path, policy: DaemonPolicy) -> None:
     except HarnessError as e:
         print(f"skip  jobsandbox: {e}; no process starts under the profiles")
         return
+    home = pathlib.Path.home()
     for job in JOBS:
         sb = root / f"{job}.sb"
-        sb.write_text(profile(policy, job, pathlib.Path.home(), dirs), encoding="utf-8")
+        sb.write_text(profile(policy, job, home, dirs), encoding="utf-8")
         p = sandboxed(sb)
         case(
             f"/bin/sh -c true starts and exits 0 under the profile of {job}: exit {p.returncode} "
             f"{p.stderr.strip()[-300:]!r}",
             ok=p.returncode == 0,
         )
+    launcher = home / ".juliaup" / "bin" / "julia"
+    if not launcher.is_file():
+        print(f"skip  jobsandbox: no juliaup launcher {launcher}; it does not start under kaimon's profile")
+        return
+    # The environment of the launch agent: launchd sets HOME and TMPDIR, the plist the PATH.
+    env = {
+        "HOME": str(home),
+        "TMPDIR": dirs.temp,
+        "PATH": os.pathsep.join(
+            (str(launcher.parent), "/opt/homebrew/bin", "/usr/bin", "/bin", "/usr/sbin", "/sbin")
+        ),
+    }
+    p = sandboxed(
+        root / "kaimon.sb", [str(launcher), "--startup-file=no", "-e", "exit(0)"], env, JULIA_TIMEOUT
+    )
+    case(
+        f"the juliaup launcher starts Julia and exits 0 under kaimon's profile: exit {p.returncode} "
+        f"{p.stderr.strip()[-300:]!r}",
+        ok=p.returncode == 0,
+    )
 
 
-def sandboxed(sb: pathlib.Path) -> subprocess.CompletedProcess[str]:
-    """`/bin/sh -c true` under `sandbox-exec -f sb`."""
+def sandboxed(
+    sb: pathlib.Path,
+    command: list[str] | None = None,
+    env: dict[str, str] | None = None,
+    timeout: int = TIMEOUT,
+) -> subprocess.CompletedProcess[str]:
+    """`command`, `/bin/sh -c true` without one, under `sandbox-exec -f sb`, in the environment
+    `env`, this process's without one."""
     return subprocess.run(
-        [str(SANDBOX_EXEC), "-f", str(sb), "/bin/sh", "-c", "true"],
+        [str(SANDBOX_EXEC), "-f", str(sb), *(command or ["/bin/sh", "-c", "true"])],
         stdin=subprocess.DEVNULL,
         capture_output=True,
         text=True,
-        timeout=TIMEOUT,
+        env=env,
+        timeout=timeout,
         check=False,
     )
 

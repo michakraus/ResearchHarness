@@ -355,9 +355,14 @@ token followed by `/`, a path with an empty, `.` or `..` segment, the root `/` a
 lower-case words joined by `-`, a file that is not UTF-8, and a value that is not a list of
 strings. `profile` renders one job's SBPL text: deny every file read and write, allow the read
 and write lists, with the root directory `/` itself as a read file of both jobs because dyld
-reads it when a process starts, then deny the write denies, the repository parts `.git/hooks`,
-`.git/config` and `.githooks` below `~/Research`, the operations `lsopen`, `appleevent-send`,
-`file-mount` and `file-unmount`, and two Mach services of Launch Services. The render takes `home` and `harness` from the profile and the two per-user
+reads it when a process starts, then deny the write denies and the repository parts `.git/hooks`,
+`.git/config` and `.githooks` below `~/Research`, then allow the single files of
+`allow_write_files` inside a write deny, then deny the operations `lsopen`, `appleevent-send`,
+`file-mount` and `file-unmount`, and two Mach services of Launch Services. Kaimon's only such file
+is juliaup's lock file `~/.julia/juliaup/.juliaup-lock`: the juliaup launcher, which starts the
+server and every Julia of its sessions, opens it for writing at every start and exits when that
+fails, while `juliaup.json` and the installed Julia versions in the same directory stay
+unwritable. The render takes `home` and `harness` from the profile and the two per-user
 directories from `getconf`; a `getconf` that fails exits 2. `harness setup` writes each render
 into `~/.config/research-harness/sandbox/` before it renders and loads the job's plist, and both
 plists start their program with `/usr/bin/sandbox-exec -f` and that file.
@@ -365,10 +370,11 @@ plists start their program with `/usr/bin/sandbox-exec -f` and that file.
 Its cases load the shipped list and a broken copy of it for each refusal, render both jobs with a
 home path that holds a dot and one that holds a quote, run `harness render` through `bin/harness`
 with a `getconf` stub, start `/bin/sh -c true` under each job's profile with
-`/usr/bin/sandbox-exec` and expect exit 0, or print a skip line where that cannot run, as inside
-another Seatbelt sandbox, and run every probe of `sandbox/probe-daemon.jl`, the probes that a
-session runs through Kaimon's `ex` after the server restarts under its profile, against a scratch
-home, when `julia` is on the `PATH`. [The security model](../security.md) says what the profile
+`/usr/bin/sandbox-exec` and expect exit 0, and the juliaup launcher with
+`julia --startup-file=no -e 'exit(0)'` under Kaimon's profile when `~/.juliaup/bin/julia`
+exists, or print a skip line where that cannot run, as inside another Seatbelt sandbox, and run
+every probe of `sandbox/probe-daemon.jl`, the probes that a session runs through Kaimon's `ex`
+after the server restarts under its profile, against a scratch home, when `julia` is on the `PATH`. [The security model](../security.md) says what the profile
 allows and what it leaves open.
 
 ## `dotfiles_kit.py`

@@ -6,15 +6,15 @@
 # The profile denies every file read and write, then allows what the lists below name; every other
 # class of operation stays allowed, the network and the Mach and IOKit services of Metal too. Then
 # it denies the writes of `deny_write`, the repository parts .git/hooks, .git/config and .githooks
-# at any depth below ~/Research, the operations of `deny_operations` and the Mach services of
-# `deny_services`.
+# at any depth below ~/Research; then it allows the writes of `allow_write_files`; then it denies
+# the operations of `deny_operations` and the Mach services of `deny_services`.
 #
 # A path is one of the tokens $DARWIN_USER_TEMP_DIR, $DARWIN_USER_CACHE_DIR (the values of
 # `getconf` of the same name) and $HARNESS (the profile's `harness`) alone, or `~`, nothing or a
 # token, then `/` and segments, none of them empty, `.` or `..`; in `read_files` it can also be the
 # root `/` alone. A system path is in its real form, `/private/etc` and not `/etc`, because
 # Seatbelt matches the path after it resolves a symlink. `read` and `write` are directories with
-# everything below them, and `read_files` and `write_files` single files.
+# everything below them, and `read_files`, `write_files` and `allow_write_files` single files.
 
 # The escapes of a confined process: opening an app or a document through Launch Services, an
 # Apple Event to another app, and a mount.
@@ -65,6 +65,11 @@ write_files = ["/dev/null", "/dev/tty", "/dev/dtracehelper"]
 # The programs and the startup code of the depot, juliaup's own state, and the source that the
 # hooks of every repository are installed from.
 deny_write = ["~/.julia/bin", "~/.julia/config", "~/.julia/juliaup", "$HARNESS/githooks"]
+# Single files inside a write deny that the job writes all the same: the profile allows them after
+# the write denies. The juliaup launcher, which starts the server and every Julia of its sessions,
+# opens its lock file for writing at every start and exits when that fails; juliaup.json and the
+# installed Julia versions stay unwritable.
+allow_write_files = ["~/.julia/juliaup/.juliaup-lock"]
 
 # The daily update: juliaup's releases and juliaup.json, the default environments, the Kaimon app
 # and its shim in ~/.julia/bin, and the harness's Julia environment. It reads the profile for
@@ -108,3 +113,4 @@ write = [
 ]
 write_files = ["/dev/null", "/dev/tty", "/dev/dtracehelper"]
 deny_write = ["~/.julia/config", "$HARNESS/githooks"]
+allow_write_files = []
