@@ -66,11 +66,15 @@ an `ask` as a block whose reason tells the model to ask the user in chat; `plugi
 the two tables share: the reading of the message, the size check of the command and the answer.
 
 The directory check asks before a session leaves `~/Research`, or removes a worktree. A
-`change_directory` or `request_directory` call of the Claude desktop app, or an `EnterWorktree`
-call with a `path`, passes when the path resolves inside `~/Research`, after `~`, `..` and symbolic
-links. An `EnterWorktree` call with only a `name` passes, because `worktree.py` then decides the
-place. An `ExitWorktree` call passes only with `action: "keep"` and no `discard_changes`. Every
-other such call gets an `ask` decision.
+`change_directory` or `request_directory` call of the Claude desktop app passes when the path
+resolves inside `~/Research`, after `~`, `..` and symbolic links. An `EnterWorktree` call with a
+`path` that resolves inside `~/Research` passes only when the path is in a repository's
+`.claude/worktrees/`; the check refuses any other such path. Claude Code asks the person for every
+`EnterWorktree` path outside `.claude/worktrees/`, as a safety check that neither a hook's `allow`
+nor auto mode approves, and the worktrees here are in `~/Research/.worktrees/`. The refusal names
+the call that needs no prompt: `cd <path>` as a Bash call of its own. An `EnterWorktree` call with
+only a `name` passes, because `worktree.py` then decides the place. An `ExitWorktree` call passes
+only with `action: "keep"` and no `discard_changes`. Every other such call gets an `ask` decision.
 
 The guard fails closed. It refuses a payload that is not UTF-8 or not a JSON object, or that has
 no `tool_name`; for a tool that it checks, a `tool_input` that is no object, a `Bash` call without
