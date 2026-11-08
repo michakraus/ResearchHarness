@@ -11,8 +11,9 @@ profile's `[setup]` chooses:
 ~/.config/research-harness/sandbox/antigravity.json
 ```
 
-Nothing runs under `srt` yet. A launcher that starts a frontend under `srt` with its file is a
-later change; until then the files have no effect.
+The launcher `agentbox` starts a frontend under `srt` with its file, as
+[the launcher](#the-launcher-agentbox) describes. A frontend that starts without it does not read
+the file.
 
 The files come from two sources. The `sandbox` section of the Claude Code settings template,
 `settings/settings.proposal.json`, stays the source of the lists that every frontend shares: the
@@ -78,3 +79,58 @@ chosen the install renders no file. The install does not change what it writes t
 `~/.claude/settings.json`. Because it renders the template with the network overlay for every
 chosen frontend, a broken overlay stops the install with status 2 also when `claude` is not
 chosen, for example an `allow` entry that is a URL.
+
+With at least one frontend chosen, the install also copies the launcher `sandbox/agentbox` to
+`~/.local/bin/agentbox` with mode 755, a directory that a session cannot write. With `claude`
+chosen it writes Claude Code's override beside the settings files:
+
+```text
+~/.config/research-harness/sandbox/claude-inner-off.json   {"sandbox": {"enabled": false}}
+```
+
+A launcher whose mode differs from 755 is a change, as a file whose bytes differ is.
+
+## The launcher agentbox
+
+`agentbox` is a POSIX `sh` script that starts one CLI frontend under `srt`:
+
+```sh
+agentbox <frontend> [args...]
+```
+
+The frontends are the commands `claude`, `opencode`, `omp` and `agy`. `agentbox` runs
+
+```sh
+~/.local/bin/srt --settings ~/.config/research-harness/sandbox/<policy name>.json -- \
+    <program> <extra> <args...>
+```
+
+with `exec`, so the exit status of `srt` is its own. The policy name is `antigravity` for `agy`
+and the frontend's name otherwise. `<program>` is the path that `command -v` gives on the caller's
+`PATH`, and the caller's arguments follow `<extra>`, each passed as one argument, unchanged. The
+`--` ends the options of `srt`, which otherwise reads a `--settings` of the frontend as its own.
+
+| frontend | `<extra>` | why |
+|:--|:--|:--|
+| `claude` | `--settings ~/.config/research-harness/sandbox/claude-inner-off.json` | Claude Code's own sandbox fails inside the sandbox of `srt`, so the override turns it off |
+| `opencode` | `--standalone` | OpenCode runs its server as its own child inside the sandbox, not in a background service that a run outside the launcher could have started |
+| `omp` | `--approval-mode yolo` | oh-my-pi runs its tools without a prompt; the sandbox of `srt` is the boundary |
+| `agy` | nothing | |
+
+The frontend gets `AGENTBOX=1` in its environment; every other variable stays the caller's.
+`agentbox` runs only the `srt` in `~/.local/bin`, never one found on the `PATH`. So it starts
+nothing before `harness setup` has installed `srt` in `~/.local/bin`.
+
+`agentbox` exits with status 2, starts nothing and prints one line on stderr when:
+
+- no frontend is named, or the name is not one of the four; the line lists the four;
+- `AGENTBOX` is set, so it runs inside a launcher already;
+- `~/.local/bin/srt` is not an executable file; the line names `harness setup`;
+- the frontend's settings file, or for `claude` the override, is not a file; the line names the
+  file and `harness install --apply`;
+- `command -v` finds no program of the frontend's name;
+- the frontend is `claude` and an argument is `--settings` or starts with `--settings=`: Claude
+  Code keeps only the last `--settings`, so the caller's would replace the override and turn
+  Claude Code's own sandbox on again. More settings go in the user settings instead.
+
+`agentbox -h` and `agentbox --help` print the usage and exit 0.

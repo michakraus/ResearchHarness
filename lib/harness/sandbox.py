@@ -21,8 +21,12 @@ itself.
   filesystem.allowRead       the policy's `read.allow`; then the frontend's `state`
 
 Every `~` and `~/` prefix becomes the home directory, a list holds no entry twice, and the first
-occurrence keeps its place. "At or below" compares whole path components. Nothing runs under
-`srt` yet; the files are what a launcher passes to it.
+occurrence keeps its place. "At or below" compares whole path components.
+
+With at least one frontend chosen, `plan_files` also plans the launcher sandbox/agentbox at
+`~/.local/bin/agentbox`, mode 755, which starts a frontend under `srt` with its file, and, with
+`claude` chosen, Claude Code's override `claude-inner-off.json` in the same directory as the
+files, which the launcher passes to Claude Code to turn its own sandbox off.
 
 The module has no subcommand; its cases run in `harness test`.
 """
@@ -32,6 +36,8 @@ import json
 import os
 import pathlib
 import re
+import stat
+import subprocess
 import tempfile
 import tomllib
 import types
@@ -47,6 +53,15 @@ POLICY = REPO / "sandbox" / "policy.toml"
 # The directory of the installed files, relative to the home directory.
 DIRECTORY = pathlib.PurePosixPath(".config", "research-harness", "sandbox")
 LISTS = ("state", "deny_write", "own")
+# The launcher that starts a CLI frontend under srt, and where the install puts it, relative to the
+# home directory: a directory that a session cannot write.
+LAUNCHER = REPO / "sandbox" / "agentbox"
+LAUNCHER_PATH = pathlib.PurePosixPath(".local", "bin", "agentbox")
+LAUNCHER_MODE = 0o755
+# Claude Code's settings file for `--settings` under the launcher: its own sandbox fails inside
+# srt's, so it is off.
+INNER_OFF_NAME = "claude-inner-off.json"
+INNER_OFF = b'{"sandbox": {"enabled": false}}\n'
 
 
 @dataclass(frozen=True)
@@ -233,19 +248,21 @@ def plan_files(
     chosen: tuple[str, ...],
     home: pathlib.Path,
     tmpdir: str | None,
-) -> list[tuple[pathlib.Path, bytes, None, str]]:
-    """The files of `harness install` for the frontends of `chosen`, in the order of FRONTENDS:
-    [(destination, bytes, None, label)], each `srt_settings` of the frontend on the `sandbox`
+) -> list[tuple[pathlib.Path, bytes, int | None, str]]:
+    """The files of `harness install` for the frontends of `chosen`: [(destination, bytes, mode,
+    label)]. First, in the order of FRONTENDS, each `srt_settings` of the frontend on the `sandbox`
     object of the Claude Code settings that `profile` and the network overlay `overlay` render,
-    as JSON indented by 2, the keys in the order built, with a final newline. With no frontend
-    chosen it renders nothing, so an overlay that the install does not read stops nothing."""
+    as JSON indented by 2, the keys in the order built, with a final newline, and mode None. Then,
+    where `chosen` holds claude, Claude Code's override INNER_OFF, mode None; then the launcher
+    sandbox/agentbox at ~/.local/bin/agentbox, mode 755. With no frontend chosen it plans nothing,
+    so an overlay that the install does not read stops nothing."""
     names = [name for name in frontends.FRONTENDS if name in chosen]
     if not names:
         return []
     policy = load_policy(POLICY)
     claude: Any = frontends.adapter("claude")
     sandbox = cast("dict[str, object]", claude.settings_template(profile, overlay)["sandbox"])
-    return [
+    files: list[tuple[pathlib.Path, bytes, int | None, str]] = [
         (
             home / DIRECTORY / f"{name}.json",
             (json.dumps(srt_settings(name, sandbox, policy, home, tmpdir), indent=2) + "\n").encode(),
@@ -254,6 +271,10 @@ def plan_files(
         )
         for name in names
     ]
+    if "claude" in names:
+        files.append((home / DIRECTORY / INNER_OFF_NAME, INNER_OFF, None, f"~/{DIRECTORY}/{INNER_OFF_NAME}"))
+    files.append((home / LAUNCHER_PATH, LAUNCHER.read_bytes(), LAUNCHER_MODE, f"~/{LAUNCHER_PATH}"))
+    return files
 
 
 # ---------------------------------------------------------------------------------------------
@@ -326,9 +347,10 @@ def fixture_sandbox() -> dict[str, Any]:
 
 
 def selftest() -> tuple[int, int]:
-    """The shipped policy, each refusal of `load_policy`, and each rule of `srt_settings` on a
-    fixture and on the settings template: (cases, wrong). The cases of `harness install` on
-    scratch HOMEs, `install_file_cases`, run in the selftest of install.py."""
+    """The shipped policy, each refusal of `load_policy`, each rule of `srt_settings` on a fixture
+    and on the settings template, and sandbox/agentbox on scratch homes (`agentbox_cases`):
+    (cases, wrong). The cases of `harness install` on scratch HOMEs, `install_file_cases`, run in
+    the selftest of install.py."""
     n = wrong = 0
 
     def check(ok: object, label: str) -> None:
@@ -342,6 +364,7 @@ def selftest() -> tuple[int, int]:
         policy_cases(check, root)
         settings_cases(check, root)
         template_cases(check)
+        agentbox_cases(check, root / "agentbox")
     return n, wrong
 
 
@@ -644,6 +667,247 @@ def template_cases(check: Check) -> None:
     check(not hits, f"opencode writes and reads nothing at or below another frontend's state: {hits}")
 
 
+# The script of the cases' srt: it writes its arguments, each ended by a NUL, to srt-args and its
+# environment to srt-env, in the home directory that holds it at .local/bin/srt, then exits with
+# $STUB_STATUS.
+STUB_SRT = """\
+#!/bin/sh
+home=${0%/.local/bin/srt}
+for a in "$@"; do printf '%s\\0' "$a"; done > "$home/srt-args"
+/usr/bin/env > "$home/srt-env"
+exit "${STUB_STATUS:-0}"
+"""
+# The exit status of the stub srt in the case of the status.
+STUB_EXIT = 7
+# The variables that the shell itself sets in the environment of a program it starts.
+SHELL_SET = {"PWD", "OLDPWD", "SHLVL", "_"}
+# The variables of the caller in each case: names that a script could use for its own values.
+CALLER = {"LANG": "C", "name": "caller", "policy": "caller", "program": "caller", "file": "caller"}
+
+
+@dataclass(frozen=True)
+class Box:
+    """A scratch home for sandbox/agentbox: the stub srt (STUB_SRT) in ~/.local/bin, the srt
+    settings file of each frontend and Claude Code's override in the sandbox directory, and a stub
+    of each frontend's program in path/."""
+
+    home: pathlib.Path
+
+    @classmethod
+    def fresh(cls, root: pathlib.Path, label: str) -> Box:
+        home = root / label
+        (home / ".local" / "bin").mkdir(parents=True)
+        (home / DIRECTORY).mkdir(parents=True)
+        (home / "path").mkdir()
+        srt = home / ".local" / "bin" / "srt"
+        srt.write_text(STUB_SRT)
+        srt.chmod(0o755)
+        for name in (*frontends.FRONTENDS, "claude-inner-off"):
+            (home / DIRECTORY / f"{name}.json").write_text("{}\n")
+        for program in ("claude", "opencode", "omp", "agy"):
+            stub = home / "path" / program
+            stub.write_text("#!/bin/sh\nexit 0\n")
+            stub.chmod(0o755)
+        return cls(home)
+
+    def env(self, **extra: str) -> dict[str, str]:
+        """The environment of a run: HOME, a PATH with path/ first, CALLER and `extra`."""
+        return {"HOME": str(self.home), "PATH": f"{self.home}/path:/usr/bin:/bin", **CALLER, **extra}
+
+    def run(self, *args: str, **extra: str) -> subprocess.CompletedProcess[str]:
+        """sandbox/agentbox with `args`, in the environment `env(**extra)`."""
+        return subprocess.run(
+            [str(REPO / "sandbox" / "agentbox"), *args],
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            env=self.env(**extra),
+            timeout=60,
+            check=False,
+        )
+
+    def argv(self) -> list[str] | None:
+        """The arguments that the stub srt saw, or None where it did not run."""
+        path = self.home / "srt-args"
+        return path.read_text().split("\0")[:-1] if path.exists() else None
+
+    def environment(self) -> dict[str, str]:
+        """The environment that the stub srt saw, without SHELL_SET."""
+        lines = (self.home / "srt-env").read_text().splitlines()
+        pairs = [line.split("=", 1) for line in lines]
+        return {k: v for k, v in pairs if k not in SHELL_SET}
+
+
+def agentbox_cases(check: Check, root: pathlib.Path) -> None:
+    """sandbox/agentbox, run as a program on a fresh `Box` below `root` per case: its mode; for each
+    frontend, the arguments that srt sees, with the caller's `a b`, `--`, the empty string, `--model`
+    and `x` each as one argument, and the environment, the caller's with AGENTBOX=1 added; srt's
+    exit status; each refusal, which exits 2, starts no srt and prints one line on stderr that names
+    its cause; and the usage."""
+    script = REPO / "sandbox" / "agentbox"
+    mode = stat.S_IMODE(script.stat().st_mode) if script.is_file() else None
+    check(
+        mode == LAUNCHER_MODE,
+        f"sandbox/agentbox is a file of mode 755: {'no file' if mode is None else f'{mode:o}'}",
+    )
+    if mode is None:
+        return
+    tail = ["a b", "--", "", "--model", "x"]
+    settings = root / "lines"
+    for name, policy, extra in [
+        ("claude", "claude", ["--settings", "<home>/.config/research-harness/sandbox/claude-inner-off.json"]),
+        ("opencode", "opencode", ["--standalone"]),
+        ("omp", "omp", ["--approval-mode", "yolo"]),
+        ("agy", "antigravity", []),
+    ]:
+        box = Box.fresh(settings, name)
+        p = box.run(name, *tail)
+        want = [
+            "--settings",
+            f"{box.home}/.config/research-harness/sandbox/{policy}.json",
+            "--",
+            f"{box.home}/path/{name}",
+            *(e.replace("<home>", str(box.home)) for e in extra),
+            *tail,
+        ]
+        got = box.argv()
+        check(
+            p.returncode == 0 and got == want and p.stderr == "",
+            f"agentbox {name}: srt gets its settings file, --, the program, {extra or 'nothing'} and each "
+            f"argument as one: {p.returncode}, {got}, {p.stderr.strip()!r}",
+        )
+        seen = box.environment() if got is not None else {}
+        check(
+            seen == {**box.env(), "AGENTBOX": "1"},
+            f"agentbox {name}: the environment is the caller's with AGENTBOX=1: "
+            f"{ {k: v for k, v in seen.items() if box.env().get(k) != v} }",
+        )
+
+    box = Box.fresh(root, "status")
+    p = box.run("opencode", STUB_STATUS=str(STUB_EXIT))
+    check(p.returncode == STUB_EXIT, f"agentbox exits with srt's status {STUB_EXIT}: {p.returncode}")
+
+    for label, change, args, extra, words in agentbox_refusals():
+        box = Box.fresh(root / "refused", label.replace(" ", "-").replace("/", "-"))
+        change(box.home)
+        p = box.run(*args, **extra)
+        check(
+            p.returncode == REFUSED
+            and box.argv() is None
+            and p.stdout == ""
+            and p.stderr.count("\n") == 1
+            and p.stderr.endswith("\n")
+            and all(w.replace("<home>", str(box.home)) in p.stderr for w in words),
+            f"agentbox with {label} exits 2, starts no srt and prints one line that names {words}: "
+            f"{p.returncode}, {box.argv()}, {p.stderr!r}",
+        )
+
+    for label, override, args in [
+        ("opencode and no override", False, ["opencode"]),
+        ("opencode --settings x", True, ["opencode", "--settings", "x"]),
+        ("claude --settingsx", True, ["claude", "--settingsx"]),
+        ("claude --help", True, ["claude", "--help"]),
+    ]:
+        box = Box.fresh(root / "passed", label.replace(" ", "-"))
+        if not override:
+            (box.home / DIRECTORY / "claude-inner-off.json").unlink()
+        p = box.run(*args)
+        got = box.argv()
+        check(
+            p.returncode == 0 and got is not None and got[len(got) - len(args) + 1 :] == args[1:],
+            f"agentbox with {label} starts srt with the arguments: {p.returncode}, {got}, {p.stderr!r}",
+        )
+
+    for flag in ("-h", "--help"):
+        box = Box.fresh(root / "usage", flag)
+        p = box.run(flag)
+        check(
+            p.returncode == 0
+            and p.stdout.startswith("usage: agentbox <frontend>")
+            and p.stderr == ""
+            and box.argv() is None,
+            f"agentbox {flag} prints the usage to stdout and exits 0: {p.returncode}, {p.stdout[:60]!r}",
+        )
+
+
+def agentbox_refusals() -> list[
+    tuple[str, Callable[[pathlib.Path], object], list[str], dict[str, str], list[str]]
+]:
+    """Each refusal of sandbox/agentbox: (label, a change of the home, the arguments, extra
+    variables, the words of its line, with <home> for the home directory)."""
+    frontends_named = ["claude", "opencode", "omp", "agy"]
+    srt = "<home>/.local/bin/srt"
+
+    def nothing(_: pathlib.Path) -> None:
+        return None
+
+    def remove(*parts: str) -> Callable[[pathlib.Path], object]:
+        return lambda h: h.joinpath(*parts).unlink()
+
+    def directory(*parts: str) -> Callable[[pathlib.Path], object]:
+        def change(h: pathlib.Path) -> None:
+            h.joinpath(*parts).unlink()
+            h.joinpath(*parts).mkdir()
+
+        return change
+
+    sandbox_dir = str(DIRECTORY)
+    return [
+        ("no argument", nothing, [], {}, frontends_named),
+        ("an unknown name", nothing, ["vim"], {}, frontends_named),
+        ("an empty name", nothing, [""], {}, frontends_named),
+        ("AGENTBOX=1", nothing, ["claude"], {"AGENTBOX": "1"}, ["AGENTBOX"]),
+        ("AGENTBOX set and empty", nothing, ["omp"], {"AGENTBOX": ""}, ["AGENTBOX"]),
+        ("no srt", remove(".local", "bin", "srt"), ["claude"], {}, [srt, "harness setup"]),
+        (
+            "an srt that is not executable",
+            lambda h: (h / ".local" / "bin" / "srt").chmod(0o644),
+            ["omp"],
+            {},
+            [srt, "harness setup"],
+        ),
+        (
+            "an srt that is a directory",
+            directory(".local", "bin", "srt"),
+            ["agy"],
+            {},
+            [srt, "harness setup"],
+        ),
+        (
+            "no omp.json",
+            remove(sandbox_dir, "omp.json"),
+            ["omp"],
+            {},
+            [f"<home>/{sandbox_dir}/omp.json", "harness install --apply"],
+        ),
+        (
+            "agy and no antigravity.json",
+            remove(sandbox_dir, "antigravity.json"),
+            ["agy"],
+            {},
+            [f"<home>/{sandbox_dir}/antigravity.json", "harness install --apply"],
+        ),
+        (
+            "a claude.json that is a directory",
+            directory(sandbox_dir, "claude.json"),
+            ["claude"],
+            {},
+            [f"<home>/{sandbox_dir}/claude.json", "harness install --apply"],
+        ),
+        (
+            "claude and no override",
+            remove(sandbox_dir, "claude-inner-off.json"),
+            ["claude"],
+            {},
+            [f"<home>/{sandbox_dir}/claude-inner-off.json", "harness install --apply"],
+        ),
+        ("no opencode on the PATH", remove("path", "opencode"), ["opencode"], {}, ["opencode"]),
+        ("claude --settings x", nothing, ["claude", "--settings", "x"], {}, ["--settings"]),
+        ("claude -p hi --settings=x", nothing, ["claude", "-p", "hi", "--settings=x"], {}, ["--settings"]),
+        ("claude -- --settings", nothing, ["claude", "--", "--settings"], {}, ["--settings"]),
+    ]
+
+
 def last_line(text: str) -> str:
     return (text.strip().splitlines() or ["no output"])[-1]
 
@@ -727,11 +991,12 @@ class Installs:
 def install_file_cases(check: Check, root: pathlib.Path) -> None:
     """`real_tmpdir` on an unset, an empty and a linked $TMPDIR. Then `harness install` on scratch
     HOMEs whose profile chooses claude and opencode: one file each, of the bytes that
-    `srt_settings` gives, with the real path of $TMPDIR, and none after the dry run; a second dry
-    run with no change; the Claude Code settings.json byte for byte as `settings_bytes` gives it; and
-    `install_change_cases` on that base. With no $TMPDIR, no tmpdir entry, and the dry run's
-    status column is one for the srt file and the other files; with no frontend, no file, and a
-    broken network overlay stops nothing."""
+    `srt_settings` gives, with the real path of $TMPDIR, Claude Code's override and the launcher
+    of mode 755 (`launcher_installed`), and none after the dry run; a second dry run with no
+    change; the Claude Code settings.json byte for byte as `settings_bytes` gives it; and
+    `install_change_cases` on that base. With opencode alone and no $TMPDIR, no tmpdir entry, the
+    launcher and no override, and the dry run's status column is one for the srt file and the other
+    files; with no frontend, no file and no launcher, and a broken network overlay stops nothing."""
     installs = Installs(check, root)
     found = {}
     for label, value in [("unset", None), ("empty", ""), ("a link", str(installs.link))]:
@@ -747,25 +1012,39 @@ def install_file_cases(check: Check, root: pathlib.Path) -> None:
     base, codes, outs = installs.install('["claude", "opencode"]', str(installs.link))
     directory = base / "home" / DIRECTORY
     names = sorted(p.name for p in directory.iterdir()) if directory.is_dir() else []
-    labels = [f"~/{DIRECTORY}/{name}.json" for name in ("claude", "opencode")]
+    labels = [
+        *(f"~/{DIRECTORY}/{name}.json" for name in ("claude", "opencode", "claude-inner-off")),
+        "~/.local/bin/agentbox",
+    ]
     check(
-        codes[:2] == [1, 0] and names == ["claude.json", "opencode.json"],
-        f"two chosen frontends get two files: {codes}, {names}, {last_line(outs[1])!r}",
+        codes[:2] == [1, 0] and names == ["claude-inner-off.json", "claude.json", "opencode.json"],
+        f"two chosen frontends with claude get two files and Claude Code's override: {codes}, {names}, "
+        f"{last_line(outs[1])!r}",
     )
     check(
         names
         and all(
             (directory / name).read_bytes()
             == installs.expected(base, name[: -len(".json")], str(installs.real.resolve()))
-            for name in names
+            for name in ("claude.json", "opencode.json")
         ),
         "each file holds srt_settings of its frontend as JSON indented by 2, with the real path of $TMPDIR",
+    )
+    override = directory / "claude-inner-off.json"
+    check(
+        override.is_file() and override.read_bytes() == b'{"sandbox": {"enabled": false}}\n',
+        f"Claude Code's override turns its inner sandbox off: "
+        f"{override.read_bytes() if override.is_file() else None!r}",
+    )
+    check(
+        launcher_installed(base),
+        "the launcher is ~/.local/bin/agentbox, of the bytes of sandbox/agentbox and mode 755",
     )
     check(
         all(listed(outs[0], label, "INSTALL") for label in labels)
         and codes[2] == 0
         and all(listed(outs[2], label, "already identical") for label in labels),
-        f"the dry run lists both files, and a second dry run reports no change for them: {codes[2]}, "
+        f"the dry run lists the four files, and a second dry run reports no change for them: {codes[2]}, "
         f"{last_line(outs[2])!r}",
     )
     check(
@@ -783,6 +1062,10 @@ def install_file_cases(check: Check, root: pathlib.Path) -> None:
         f"with no $TMPDIR, the file has no tmpdir entry: {codes}, {last_line(outs[1])!r}",
     )
     check(
+        launcher_installed(base) and not (base / "home" / DIRECTORY / "claude-inner-off.json").exists(),
+        "opencode alone gets the launcher with mode 755 and no override of Claude Code",
+    )
+    check(
         listed(outs[0], f"~/{DIRECTORY}/opencode.json", "INSTALL") and len(columns(outs[0])) == 1,
         f"the dry run starts the status of the srt file and of every other file in one column: "
         f"{sorted(columns(outs[0]))}",
@@ -790,16 +1073,31 @@ def install_file_cases(check: Check, root: pathlib.Path) -> None:
 
     base, codes, outs = installs.install("[]", str(installs.link), overlay='allow = ["https://x.org"]\n')
     check(
-        codes == [0, 0, 0] and not (base / "home" / DIRECTORY).exists(),
-        f"no chosen frontend: no sandbox file, and a broken network overlay stops nothing: {codes}, "
-        f"{last_line(outs[1])!r}",
+        codes == [0, 0, 0]
+        and not (base / "home" / DIRECTORY).exists()
+        and not (base / "home" / ".local" / "bin" / "agentbox").exists(),
+        f"no chosen frontend: no sandbox file, no launcher, and a broken network overlay stops nothing: "
+        f"{codes}, {last_line(outs[1])!r}",
+    )
+
+
+def launcher_installed(base: pathlib.Path) -> bool:
+    """Whether the home of `base` holds ~/.local/bin/agentbox with the bytes of sandbox/agentbox and
+    mode 755."""
+    launcher = base / "home" / ".local" / "bin" / "agentbox"
+    return (
+        launcher.is_file()
+        and (REPO / "sandbox" / "agentbox").is_file()
+        and launcher.read_bytes() == (REPO / "sandbox" / "agentbox").read_bytes()
+        and stat.S_IMODE(launcher.stat().st_mode) == LAUNCHER_MODE
     )
 
 
 def install_change_cases(check: Check, installs: Installs, base: pathlib.Path) -> None:
     """On `base`, installed with claude and opencode: an edited srt file alone is one change, and
-    an --apply prints no restart line. On a fresh base, a directory at an srt file stops an
-    --apply before anything is written."""
+    an --apply prints no restart line; a launcher of mode 644 is one change, which the --apply
+    sets to 755. On a fresh base, a directory at an srt file stops an --apply before anything is
+    written."""
     directory = base / "home" / DIRECTORY
     (directory / "claude.json").write_text("{}\n")
     env = {"TMPDIR": str(installs.link)}
@@ -816,6 +1114,19 @@ def install_change_cases(check: Check, installs: Installs, base: pathlib.Path) -
         f"an edited srt file alone is one change, and an --apply prints no restart line: {dry}, {applied}, "
         f"{after}",
     )
+    launcher = base / "home" / ".local" / "bin" / "agentbox"
+    if launcher.is_file():
+        launcher.chmod(0o644)
+    dry, dry_out = installs.run(base, extra_env=env)
+    applied, applied_out = installs.run(base, "--apply", extra_env=env)
+    check(
+        dry == 1
+        and listed(dry_out, "~/.local/bin/agentbox", "MODE 0644 -> 0755")
+        and applied == 0
+        and launcher_installed(base),
+        f"a launcher of mode 644 is one change, and the --apply gives it mode 755 again: {dry}, {applied}, "
+        f"{last_line(dry_out)!r}",
+    )
     other = installs.fresh('["claude", "opencode"]')
     (other / "home" / DIRECTORY / "opencode.json").mkdir(parents=True)
     code, out = installs.run(other, "--apply", extra_env=env)
@@ -824,6 +1135,7 @@ def install_change_cases(check: Check, installs: Installs, base: pathlib.Path) -
         and "Traceback" not in out
         and "is a directory" in out
         and not (other / "home" / DIRECTORY / "claude.json").exists()
+        and not (other / "home" / ".local" / "bin" / "agentbox").exists()
         and not (other / "home" / ".claude" / "settings.json").exists(),
         f"a directory at an srt file stops the --apply before anything is written: {code}, "
         f"{last_line(out)!r}",

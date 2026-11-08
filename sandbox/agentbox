@@ -1,0 +1,116 @@
+#!/bin/sh
+# agentbox <frontend> [args...]: start one CLI frontend under the sandbox runtime srt, with the srt
+# settings file that `harness install` writes for it. The frontends are the commands claude,
+# opencode, omp and agy; agy reads the settings file of the policy name antigravity. It runs
+#
+#   ~/.local/bin/srt --settings ~/.config/research-harness/sandbox/<policy name>.json -- \
+#       <program> <extra> <args...>
+#
+# where <program> is the path that `command -v` gives on the caller's PATH, and <extra> goes before
+# the caller's arguments:
+#
+#   claude     --settings ~/.config/research-harness/sandbox/claude-inner-off.json, which turns
+#              Claude Code's own sandbox off: a sandbox inside srt's fails
+#   opencode   --standalone, so that its server is a child inside srt, not a shared background one
+#   omp        --approval-mode yolo
+#   agy        nothing
+#
+# srt reads its own options up to the --, so none of the program's options reach it. Only the srt
+# that `harness setup` installs in ~/.local/bin runs, never one found on the PATH. The program gets
+# AGENTBOX=1 in its environment. The script assigns no shell variable, so that a variable of the
+# caller reaches the program unchanged; each value is a positional parameter. It exits 2 with one
+# line on stderr, and starts nothing, when no frontend or an unknown one is named, when AGENTBOX is
+# set, when srt or a settings file is missing, when the program is not on the PATH, and when claude
+# gets a --settings of the caller's: Claude Code keeps only the last --settings, so the caller's
+# would turn its own sandbox on again. Otherwise srt's exit status is the script's.
+
+usage() {
+    cat <<'EOF'
+usage: agentbox <frontend> [args...]
+
+Start a CLI frontend under srt with its settings file. The frontends are claude, opencode,
+omp and agy. The arguments after <frontend> go to the frontend.
+
+  agentbox -h, --help   print this text
+EOF
+}
+
+refuse() {
+    printf 'agentbox: %s\n' "$1" >&2
+    exit 2
+}
+
+# check <policy name> <program> <args...>: refuse what agentbox cannot run safely.
+check() {
+    if [ -n "${AGENTBOX+set}" ]; then
+        refuse "AGENTBOX is set: this runs inside agentbox already, and srt refuses a sandbox inside its own"
+    fi
+    if ! [ -f "$HOME/.local/bin/srt" ] || ! [ -x "$HOME/.local/bin/srt" ]; then
+        refuse "$HOME/.local/bin/srt is not an executable file; run harness setup to install srt"
+    fi
+    if ! [ -f "$HOME/.config/research-harness/sandbox/$1.json" ]; then
+        refuse "$HOME/.config/research-harness/sandbox/$1.json is not a file; run harness install --apply"
+    fi
+    if [ "$2" = claude ] && ! [ -f "$HOME/.config/research-harness/sandbox/claude-inner-off.json" ]; then
+        refuse "$HOME/.config/research-harness/sandbox/claude-inner-off.json is not a file; run harness install --apply"
+    fi
+    if ! command -v "$2" >/dev/null 2>&1; then
+        refuse "no program $2 on the PATH"
+    fi
+    if [ "$2" = claude ]; then
+        shift 2
+        while [ "$#" -gt 0 ]; do
+            case $1 in
+            --settings | --settings=*)
+                refuse "claude takes no --settings here: Claude Code keeps only the last one, and agentbox passes its own, which turns Claude Code's sandbox off"
+                ;;
+            esac
+            shift
+        done
+    fi
+}
+
+if [ "$#" -eq 0 ]; then
+    refuse "no frontend named; the frontends are claude, opencode, omp and agy"
+fi
+case $1 in
+-h | --help)
+    usage
+    exit 0
+    ;;
+claude)
+    shift
+    check claude claude "$@"
+    AGENTBOX=1
+    export AGENTBOX
+    exec "$HOME/.local/bin/srt" --settings "$HOME/.config/research-harness/sandbox/claude.json" -- \
+        "$(command -v claude)" --settings "$HOME/.config/research-harness/sandbox/claude-inner-off.json" "$@"
+    ;;
+opencode)
+    shift
+    check opencode opencode "$@"
+    AGENTBOX=1
+    export AGENTBOX
+    exec "$HOME/.local/bin/srt" --settings "$HOME/.config/research-harness/sandbox/opencode.json" -- \
+        "$(command -v opencode)" --standalone "$@"
+    ;;
+omp)
+    shift
+    check omp omp "$@"
+    AGENTBOX=1
+    export AGENTBOX
+    exec "$HOME/.local/bin/srt" --settings "$HOME/.config/research-harness/sandbox/omp.json" -- \
+        "$(command -v omp)" --approval-mode yolo "$@"
+    ;;
+agy)
+    shift
+    check antigravity agy "$@"
+    AGENTBOX=1
+    export AGENTBOX
+    exec "$HOME/.local/bin/srt" --settings "$HOME/.config/research-harness/sandbox/antigravity.json" -- \
+        "$(command -v agy)" "$@"
+    ;;
+*)
+    refuse "unknown frontend; the frontends are claude, opencode, omp and agy"
+    ;;
+esac
