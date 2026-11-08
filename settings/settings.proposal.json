@@ -729,6 +729,16 @@
             "timeout": 5
           }
         ]
+      },
+      {
+        "matcher": "WebFetch|WebSearch",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "{home}/.claude/hooks/guard --from claude || exit 2",
+            "timeout": 5
+          }
+        ]
       }
     ],
     "SessionStart": [

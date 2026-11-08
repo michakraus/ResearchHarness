@@ -281,7 +281,9 @@ superseded or retracted. It proposes a citation key in the scheme `AuthorSurname
 
 It returns a table of candidates, BibTeX entries for the new ones, a retrieval worklist, and what
 it did not find. It writes no prose review and has no write tools. If a fetched page tells it to
-act, it quotes the text and stops.
+act, it quotes the text and stops. It sends every request anonymously: no name, email address,
+`mailto=` parameter or API key, and no new account or key. An index that rate-limits it or asks
+for contact details counts as a failed source.
 
 ## `latex-verifier`
 

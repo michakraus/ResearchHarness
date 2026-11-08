@@ -16,7 +16,8 @@ THE CALLS. `shell` is a shell call: `input.command`, in `input.workdir` resolved
 session's directory, else in that directory; the `workdir` is also a path that the call reads
 below. The command is checked as given and again with a leading `rtk ` removed, as the rtk plugin
 rewrites it, and the stricter verdict holds. A Kaimon tool `kaimon_<tool>` is the `mcp` call
-`kaimon.<tool>`. Every other tool passes.
+`kaimon.<tool>`, and `webfetch` and `websearch` are the `mcp` calls `web.fetch` and `web.search`
+of the web check. Every other tool passes.
 
 A message that the table cannot read is refused: bytes that are not UTF-8, a text that `jsonio`
 refuses, no object `event`, no string `tool`, an `input` that is no object, a `shell` call without a
@@ -46,6 +47,7 @@ from guard import (
     plugin,
     rm_scope,
     sandbox_semantics,
+    web_identity,
 )
 from guard.contract import PASS, Call, Verdict, strongest
 from guard.jsonio import JsonValue
@@ -58,6 +60,8 @@ MAX_COMMAND = 1024 * 1024
 PATH_LIST = str(Path(__file__).parents[3] / "plugins" / "guard-paths.json")
 # The prefix of OpenCode's name of a Kaimon tool.
 KAIMON = "kaimon_"
+# The neutral names of OpenCode's web tools.
+WEB_TOOLS = {"webfetch": "web.fetch", "websearch": "web.search"}
 # A leading `rtk `, which the rtk plugin puts before a command that RTK rewrites.
 RTK = re.compile(r"^\s*rtk\s+")
 READING = path_list.Reading(text_paths=True)
@@ -99,6 +103,7 @@ SHELL: tuple[Check, ...] = (
     git_archive_output.check,
     git_writes.check,
     sandbox_semantics.work_tree_check,
+    web_identity.check,
 )
 
 
@@ -142,6 +147,9 @@ def decide(data: bytes) -> Verdict:
         arguments = tuple((key, value) for key, value in tool_input.items() if isinstance(value, str))
         neutral = "kaimon." + tool.removeprefix(KAIMON)
         return kaimon_session.check(Call("mcp", neutral, (), directory, "main", arguments))
+    if tool in WEB_TOOLS:
+        arguments = web_identity.string_arguments(tool_input)
+        return web_identity.check(Call("mcp", WEB_TOOLS[tool], (), directory, "main", arguments))
     return PASS
 
 
