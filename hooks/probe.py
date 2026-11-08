@@ -67,6 +67,12 @@ CWD = TOOL + "/hooks/"
 # fixture's git commands and the hooks' to the caller's repository. No `RESEARCH_HARNESS_PROFILE`
 # either: the guard would read the caller's profile in place of the fixture home's.
 CLEAN = {k: v for k, v in os.environ.items() if not k.startswith("GIT_") and k != "RESEARCH_HARNESS_PROFILE"}
+# The global git configuration of every hook, in place of the caller's `~/.gitconfig` and
+# `$XDG_CONFIG_HOME/git/config`: it names OWN_EMAIL, the address that the web check refuses.
+OWN_EMAIL = "probe-user@example.org"
+GIT_CONFIG = FIXTURE.name + "/gitconfig"
+pathlib.Path(GIT_CONFIG).write_text(f"[user]\n\temail = {OWN_EMAIL}\n", encoding="utf-8")
+CLEAN["GIT_CONFIG_GLOBAL"] = GIT_CONFIG
 # Kaimon's cache, whose `sock/` the Kaimon check reads: the gate file of each key of LIVE_GATES
 # names this process, which runs for the whole run, and that of STALE_GATE a process that has
 # ended, as a session that died leaves it. The gate files of UNREAD_GATES name no process: one

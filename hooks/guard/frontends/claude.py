@@ -33,6 +33,7 @@ from guard import (
     no_shell_file_write,
     rm_scope,
     sandbox_semantics,
+    web_identity,
 )
 from guard.contract import PASS, Call, Caller, Verdict, strongest
 from guard.jsonio import JsonValue, loads
@@ -53,6 +54,7 @@ SHELL: tuple[Check, ...] = (
     rm_scope.check,
     git_archive_output.check,
     git_writes.check,
+    web_identity.check,
 )
 
 # (matcher, checks): the matchers of the settings template's `PreToolUse` groups that run the guard,
@@ -61,10 +63,16 @@ TABLE: tuple[tuple[re.Pattern[str], tuple[Check, ...]], ...] = (
     (re.compile(r"Bash"), SHELL),
     (re.compile(r"mcp__ccd_directory__.*|EnterWorktree|ExitWorktree"), (directory_scope.check,)),
     (re.compile(r"mcp__kaimon__.*"), (kaimon_session.check,)),
+    (re.compile(r"WebFetch|WebSearch"), (web_identity.check,)),
 )
 
-# The neutral names of Claude Code's own worktree tools; an MCP tool's is `<server>.<tool>`.
-WORKTREE_TOOLS = {"EnterWorktree": "worktree.enter", "ExitWorktree": "worktree.exit"}
+# The neutral names of Claude Code's own worktree and web tools; an MCP tool's is `<server>.<tool>`.
+OWN_TOOLS = {
+    "EnterWorktree": "worktree.enter",
+    "ExitWorktree": "worktree.exit",
+    "WebFetch": "web.fetch",
+    "WebSearch": "web.search",
+}
 MCP_SERVERS = {"mcp__kaimon__": "kaimon.", "mcp__ccd_directory__": "directory."}
 
 
@@ -88,8 +96,8 @@ def read(data: bytes) -> tuple[str, dict[str, JsonValue]]:
 
 def neutral_name(tool: str) -> str:
     """The neutral name of a tool that is no shell tool."""
-    if tool in WORKTREE_TOOLS:
-        return WORKTREE_TOOLS[tool]
+    if tool in OWN_TOOLS:
+        return OWN_TOOLS[tool]
     for prefix, server in MCP_SERVERS.items():
         if tool.startswith(prefix):
             return server + tool.removeprefix(prefix)
