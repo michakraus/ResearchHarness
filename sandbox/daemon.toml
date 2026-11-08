@@ -1,0 +1,102 @@
+# The file rules of the two launch agents that run Julia outside every session: the Kaimon server
+# and the julia-update job. `harness render sandbox/<job>.sb` turns the rules of one job into the
+# Seatbelt profile that its plist starts the program under, `/usr/bin/sandbox-exec -f <profile>`;
+# lib/harness/jobsandbox.py documents the render.
+#
+# The profile denies every file read and write, then allows what the lists below name; every other
+# class of operation stays allowed, the network and the Mach and IOKit services of Metal too. Then
+# it denies the writes of `deny_write`, the repository parts .git/hooks, .git/config and .githooks
+# at any depth below ~/Research, the operations of `deny_operations` and the Mach services of
+# `deny_services`.
+#
+# A path is one of the tokens $DARWIN_USER_TEMP_DIR, $DARWIN_USER_CACHE_DIR (the values of
+# `getconf` of the same name) and $HARNESS (the profile's `harness`) alone, or `~`, nothing or a
+# token, then `/` and segments, none of them empty, `.` or `..`. A system path is in its real form,
+# `/private/etc` and not `/etc`, because Seatbelt matches the path after it resolves a symlink.
+# `read` and `write` are directories with everything below them, and `read_files` and
+# `write_files` single files.
+
+# The escapes of a confined process: opening an app or a document through Launch Services, an
+# Apple Event to another app, and a mount.
+deny_operations = ["lsopen", "appleevent-send", "file-mount", "file-unmount"]
+deny_services = ["com.apple.coreservices.launchservicesd", "com.apple.CoreServices.coreservicesd"]
+
+# The Kaimon server and every session it runs for an agent: the research tree, the Julia depot and
+# juliaup, its own configuration, cache and logs, git's configuration, and the system. Pkg unpacks
+# in /private/tmp, and /etc/localtime resolves below /private/var/db/timezone.
+[job.kaimon]
+read = [
+    "~/Research",
+    "~/.julia",
+    "~/.juliaup",
+    "~/.config/kaimon",
+    "~/.cache/kaimon",
+    "~/Library/Logs/kaimon",
+    "~/.config/git",
+    "$DARWIN_USER_TEMP_DIR",
+    "$DARWIN_USER_CACHE_DIR",
+    "/System",
+    "/usr",
+    "/bin",
+    "/sbin",
+    "/Library",
+    "/private/etc",
+    "/private/tmp",
+    "/private/var/db/timezone",
+    "/dev",
+    "/opt/homebrew",
+]
+read_files = ["~/.gitconfig"]
+# ~/.config/kaimon: Kaimon writes its projects.json there. The cache token holds Metal's shader
+# cache.
+write = [
+    "~/Research",
+    "~/.julia",
+    "~/.cache/kaimon",
+    "~/Library/Logs/kaimon",
+    "~/.config/kaimon",
+    "$DARWIN_USER_TEMP_DIR",
+    "$DARWIN_USER_CACHE_DIR",
+    "/private/tmp",
+]
+write_files = ["/dev/null", "/dev/tty", "/dev/dtracehelper"]
+# The programs and the startup code of the depot, juliaup's own state, and the source that the
+# hooks of every repository are installed from.
+deny_write = ["~/.julia/bin", "~/.julia/config", "~/.julia/juliaup", "$HARNESS/githooks"]
+
+# The daily update: juliaup's releases and juliaup.json, the default environments, the Kaimon app
+# and its shim in ~/.julia/bin, and the harness's Julia environment. It reads the profile for
+# `launchd_prefix`, and runs its installed copy in ~/.local/bin.
+[job.julia-update]
+read = [
+    "~/.julia",
+    "~/.juliaup",
+    "~/.local/share/research-harness/julia",
+    "~/.config/git",
+    "$DARWIN_USER_TEMP_DIR",
+    "$DARWIN_USER_CACHE_DIR",
+    "/System",
+    "/usr",
+    "/bin",
+    "/sbin",
+    "/Library",
+    "/private/etc",
+    "/private/tmp",
+    "/private/var/db/timezone",
+    "/dev",
+    "/opt/homebrew",
+]
+read_files = ["~/.gitconfig", "~/.config/research-harness/profile.toml", "~/.local/bin/julia-update.jl"]
+write = [
+    "~/.julia",
+    "~/.juliaup",
+    "~/.julia/juliaup",
+    "~/.julia/bin",
+    "~/.julia/environments/apps",
+    "~/.local/share/research-harness/julia",
+    "$DARWIN_USER_TEMP_DIR",
+    "$DARWIN_USER_CACHE_DIR",
+    "/private/tmp",
+]
+write_files = ["/dev/null", "/dev/tty", "/dev/dtracehelper"]
+deny_write = ["~/.julia/config", "$HARNESS/githooks"]
