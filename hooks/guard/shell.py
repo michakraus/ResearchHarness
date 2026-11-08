@@ -157,13 +157,14 @@ def dialects(text: str) -> tuple[Dialect, ...]:
     return DIALECTS if "$'" in text or '$"' in text else ("bash",)
 
 
+@functools.lru_cache(maxsize=8)
 def joined(text: str) -> str:
     """The text in which a keyword pre-filter looks for the name of a command or an option: the text
     without its quotes and backslashes, as written and with each ANSI-C quote decoded in each
     dialect, and the words of `lex` in each dialect, joined by newlines. A `$'` inside a quote
     opens no ANSI-C quote, and its decoding would turn the `\\r` of `echo '$';\\rm` into a carriage
     return, so the text as written is kept as well; the words of `lex` read each quote where the
-    shell does."""
+    shell does. Each check of a call reads it, so it is kept for the next."""
     texts = [JOINS.sub("", text)]
     for dialect in dialects(text):
         if dialect != "plain":
@@ -312,9 +313,9 @@ def scripts(tokens: Tokens, depth: int = DEPTH) -> Tokens:
     `depth` levels. A script is read in each of its `dialects`, and the readings follow one another
     as parts. The words after a script, such as the arguments of `sh -c` or the `{} \\;` of a
     `find -exec`, form a part of their own. A script with an open quote is read with the quote
-    closed (`script_tokens`)."""
+    closed (`script_tokens`). With no script, it is `tokens` itself."""
     result: list[Token] = []
-    index = 0
+    index, spliced = 0, False
     while index < len(tokens):
         found = script_of(tokens, index) if tokens[index][0] == "word" and depth > 0 else None
         inner = [] if found is None else [script_tokens(found[0], dialect) for dialect in dialects(found[0])]
@@ -328,15 +329,15 @@ def scripts(tokens: Tokens, depth: int = DEPTH) -> Tokens:
         for reading in read:
             result.extend((("op", ";"), *scripts(reading, depth - 1)))
         result.append(("op", ";"))
-        index = stop
-    return tuple(result)
+        index, spliced = stop, True
+    return tuple(result) if spliced else tokens
 
 
 def readings(text: str, *, nested: bool = False) -> list[Tokens] | None:
     """The readings of `text` that a check decides on, in each of its `dialects`, or None when a
     quote of bash's reading is open. With `nested`, also each reading with its scripts spliced in
     (`scripts`)."""
-    if lex(text) is None:
+    if lex(text, "bash") is None:
         return None
     found: list[Tokens] = []
     for variant in (text, text.replace("\\\n", "\n")):
@@ -350,6 +351,9 @@ def readings(text: str, *, nested: bool = False) -> list[Tokens] | None:
     if nested:
         for reading in list(found):
             spliced = scripts(reading)
+            if spliced is reading:
+                # No script: the reading and its operator reading are in `found` already.
+                continue
             for extra in (spliced, tuple(as_operator(token) for token in spliced)):
                 if extra not in found:
                     found.append(extra)
