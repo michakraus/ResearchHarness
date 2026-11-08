@@ -344,7 +344,8 @@ minimum channel.
 5. Run the five tests of the kit in `tests/` of the clone, such as
    `python3 tests/render-check.py`; [development.md](development.md#the-pre-push-hook) names
    them. They need Python 3.11 or later and chezmoi. `script-check.py` also reads
-   `~/Research/Harness` at `harness_commit`.
+   `~/Research/Harness` at `harness_commit`, and runs it on the harness's Python environment,
+   `~/.local/share/research-harness/python` or `$RESEARCH_HARNESS_PYTHON`.
 6. Make [the first signed commit](#the-first-signed-commit), and push it. Then set up each
    machine as [A new machine](#a-new-machine) says.
 

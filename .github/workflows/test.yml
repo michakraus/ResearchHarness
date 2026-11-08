@@ -56,7 +56,8 @@ jobs:
         run: '"$HOME/.local/share/research-harness/python/bin/python" -m compileall -q lib hooks scripts adapters'
 
   # The suite with HOME set to a new empty directory, so a case that needs a file of the runner's
-  # home fails here.
+  # home fails here. bin/harness makes its environment there with the uv of setup-uv, which comes
+  # from the Astral mirror, so the job never fetches the uv release from GitHub.
   empty-home:
     name: harness test with an empty HOME
     runs-on: ubuntu-latest
@@ -65,6 +66,10 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.14'
+      # The uv release that bin/harness pins (UV_VERSION).
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          version: '0.13.5'
       - name: harness test
         run: |
           home="$RUNNER_TEMP/empty-home"
@@ -124,11 +129,29 @@ jobs:
   # The five tests of the dotfiles kit in examples/dotfiles/, with chezmoi from its release
   # tarball. The tests render the kit with their own --config, --source, --destination and
   # --persistent-state, and run the scripts in scratch homes under $TMPDIR. script-check.py
-  # renders the units and plists with this checkout at its HEAD as harness_commit.
+  # renders the units and plists with this checkout at its HEAD as harness_commit, on the
+  # harness's Python environment of the runner's home. The first step makes that environment
+  # through bin/harness, with the uv of setup-uv and the Python 3.14 of setup-python; the kit's
+  # tests still run on the runner's python3, because setup-python leaves the PATH alone.
   dotfiles:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        id: python
+        with:
+          python-version: '3.14'
+          update-environment: false
+      # The uv release that bin/harness pins (UV_VERSION).
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          version: '0.13.5'
+      - name: the harness's Python environment
+        env:
+          UV_PYTHON: ${{ steps.python.outputs.python-path }}
+        run: |
+          python3 bin/harness --help > /dev/null
+          "$HOME/.local/share/research-harness/python/bin/python" --version
       - name: install chezmoi
         env:
           VERSION: 2.73.2

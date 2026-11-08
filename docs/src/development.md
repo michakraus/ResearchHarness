@@ -224,7 +224,9 @@ the strict profile, `shellcheck` and `actionlint`. Its `python` job installs uv 
 that `bin/harness` reads, on the job's Python;
 the job on the latest 3.x has `continue-on-error`, so its failure warns and does not fail the
 run. Its `empty-home` job runs `bin/harness test` once more on Python 3.14, with `HOME`
-set to a new empty directory, so a case that needs a file of the runner's home fails there. Its
+set to a new empty directory, so a case that needs a file of the runner's home fails there;
+`bin/harness` makes its environment there with the uv of `setup-uv`. `setup-uv` fetches uv from
+the Astral mirror, so no required job fetches the uv release from GitHub. Its
 `strict` job runs `uv sync --locked` with the `dev` group into an environment of its own and runs
 the three checks of the strict profile, `ruff format --check`, `ruff check` and `basedpyright`,
 with that environment's tools, each as a step of its own. Its
@@ -237,6 +239,9 @@ the whole history; for a pull request `base..head`), the messages of that range 
 with `examples/profile.toml`. CI has no profile, so the private strings are the hook's alone.
 Its `dotfiles` job installs chezmoi 2.73.2 from its release tarball, checked by its SHA256, and
 runs the five tests of the [dotfiles kit](dotfiles-command.md) in `examples/dotfiles/tests/`.
+It first makes the harness's environment in the runner's home through `bin/harness`, with the uv
+of `setup-uv` and the Python 3.14 of `setup-python`: `script-check.py` runs `harness render` on
+that environment.
 On a pull request, its `changelog` job runs
 [`bin/harness changelog --check`](harness-command.md#changelog) against the pull request's base.
 A branch writes its changelog entry as a fragment, `changelog.d/<branch>.md` with each `/` of the
