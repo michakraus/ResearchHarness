@@ -144,7 +144,10 @@ def checked_path(p: str, key: str, path: pathlib.Path) -> str:
             f"{', '.join(TOKENS)} and then / and segments, none of them empty, `.` or `..`"
         )
     if p.startswith("/") and pathlib.PurePosixPath(p).parts[1].lower() in LINKS:
-        raise HarnessError(f"{path}: `{key}` holds {p!r}, not its real form /private{p}")
+        head, sep, tail = p[1:].partition("/")
+        raise HarnessError(
+            f"{path}: `{key}` holds {p!r}, not its real form /private/{head.lower()}{sep}{tail}"
+        )
     return p
 
 
@@ -523,7 +526,7 @@ def path_cases(case: Case, f: pathlib.Path) -> None:
             f"{start}/x/..",
         )
     ]
-    for p in [*refused, "/ETC/hosts", "/Tmp/x", "/VAR"]:
+    for p in [*refused, "$HARNESSX/y", "$HARNESSxy/z", "/ETC/hosts", "/Tmp/x", "/VAR"]:
         try:
             checked_path(p, "job.kaimon.read", f)
         except HarnessError as e:
@@ -533,6 +536,20 @@ def path_cases(case: Case, f: pathlib.Path) -> None:
             )
             continue
         case(f"the path {p!r} raises HarnessError, but it is accepted", ok=False)
+    for p, real in (
+        ("/ETC/hosts", "/private/etc/hosts"),
+        ("/Tmp/x", "/private/tmp/x"),
+        ("/VAR", "/private/var"),
+    ):
+        try:
+            checked_path(p, "job.kaimon.read", f)
+        except HarnessError as e:
+            case(
+                f"the link form {p!r} names its real form {real}: {e}",
+                ok=str(e).endswith(f"real form {real}"),
+            )
+            continue
+        case(f"the link form {p!r} raises HarnessError, but it is accepted", ok=False)
     for p in (
         "$HARNESS",
         "$DARWIN_USER_CACHE_DIR",

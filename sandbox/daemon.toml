@@ -9,11 +9,12 @@
 # at any depth below ~/Research, the operations of `deny_operations` and the Mach services of
 # `deny_services`.
 #
-# A path starts with `~/`, `/`, or one of the tokens $DARWIN_USER_TEMP_DIR, $DARWIN_USER_CACHE_DIR
-# (the values of `getconf` of the same name) and $HARNESS (the profile's `harness`). A system path
-# is in its real form, `/private/etc` and not `/etc`, because Seatbelt matches the path after it
-# resolves a symlink. `read` and `write` are directories with everything below them, and
-# `read_files` and `write_files` single files.
+# A path is one of the tokens $DARWIN_USER_TEMP_DIR, $DARWIN_USER_CACHE_DIR (the values of
+# `getconf` of the same name) and $HARNESS (the profile's `harness`) alone, or `~`, nothing or a
+# token, then `/` and segments, none of them empty, `.` or `..`. A system path is in its real form,
+# `/private/etc` and not `/etc`, because Seatbelt matches the path after it resolves a symlink.
+# `read` and `write` are directories with everything below them, and `read_files` and
+# `write_files` single files.
 
 # The escapes of a confined process: opening an app or a document through Launch Services, an
 # Apple Event to another app, and a mount.

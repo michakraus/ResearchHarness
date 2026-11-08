@@ -339,13 +339,13 @@ repository. They also hold the minimums of
 The Seatbelt profiles of the launch agents of Kaimon and `julia-update` on macOS. The module has
 no subcommand of its own: `harness render sandbox/<job>.sb` prints the profile of `kaimon` or
 `julia-update`. `load` reads the rule list `sandbox/daemon.toml` into a frozen dataclass and
-refuses a missing job or key, an unknown key, a path that starts with none of `~/`, `/` and the
-tokens `$DARWIN_USER_TEMP_DIR`, `$DARWIN_USER_CACHE_DIR` and `$HARNESS`, a path with an empty,
-`.` or `..` segment, a system path in its link form such as `/etc/hosts`, an operation that is not
-lower-case words joined by `-`, a file that is not UTF-8, and a value that is not a list of
-strings. `profile` renders one job's
-SBPL text: deny every file read and write, allow the read and write lists, then deny the write
-denies, the repository parts `.git/hooks`, `.git/config` and `.githooks` below `~/Research`, the
+refuses a missing job or key, an unknown key, a path that is neither one of the tokens
+`$DARWIN_USER_TEMP_DIR`, `$DARWIN_USER_CACHE_DIR` and `$HARNESS` alone nor `~`, nothing or a
+token followed by `/`, a path with an empty, `.` or `..` segment, a system path in its link form
+such as `/etc/hosts`, an operation that is not lower-case words joined by `-`, a file that is not
+UTF-8, and a value that is not a list of strings. `profile` renders one job's SBPL text: deny
+every file read and write, allow the read and write lists, then deny the write denies,
+the repository parts `.git/hooks`, `.git/config` and `.githooks` below `~/Research`, the
 operations `lsopen`, `appleevent-send`, `file-mount` and `file-unmount`, and two Mach services of
 Launch Services. The render takes `home` and `harness` from the profile and the two per-user
 directories from `getconf`; a `getconf` that fails exits 2. `harness setup` writes each render
