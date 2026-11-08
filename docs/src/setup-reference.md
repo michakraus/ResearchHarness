@@ -1009,15 +1009,18 @@ and pushes `~/.claude`.
 
 ### macOS
 
-These commands render the Seatbelt profiles of the server and the update job into
-`~/.config/research-harness/sandbox/`, which their launch agents start them under, then each
-launch agent with the profile into `~/Library/LaunchAgents/`, under its label, and create the log
-directories of the jobs. `p` holds the profile key `launchd_prefix`; the commands of this step
-after it use `p` too, so run them in the same shell:
+These commands install the `ps` shim of the server into
+`~/.config/research-harness/sandbox/shims/`, the first directory of its `PATH`, render the
+Seatbelt profiles of the server and the update job into `~/.config/research-harness/sandbox/`,
+which their launch agents start them under, then each launch agent with the profile into
+`~/Library/LaunchAgents/`, under its label, and create the log directories of the jobs. `p` holds
+the profile key `launchd_prefix`; the commands of this step after it use `p` too, so run them in
+the same shell:
 
 ```bash
 p=$(harness get launchd_prefix)
-mkdir -p ~/.config/research-harness/sandbox ~/Library/LaunchAgents ~/Library/Logs/kaimon ~/Library/Logs/julia-update ~/Library/Logs/claude-autocommit
+mkdir -p ~/.config/research-harness/sandbox/shims ~/Library/LaunchAgents ~/Library/Logs/kaimon ~/Library/Logs/julia-update ~/Library/Logs/claude-autocommit
+install -m 755 ~/Research/Harness/sandbox/shims/ps ~/.config/research-harness/sandbox/shims/ps
 for j in kaimon julia-update; do harness render ~/Research/Harness/sandbox/"$j".sb > ~/.config/research-harness/sandbox/"$j".sb; done
 for j in kaimon julia-update claude-autocommit; do harness render ~/Research/Harness/launchagents/"$j".plist > ~/Library/LaunchAgents/"$p.$j".plist; done
 plutil -lint ~/Library/LaunchAgents/"$p".*.plist

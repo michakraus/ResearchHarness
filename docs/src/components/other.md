@@ -83,6 +83,9 @@ for Julia code. The job starts at login, and launchd restarts it when it exits. 
 `~/.julia/bin/kaimon --headless --port 2828` under the Seatbelt profile
 `~/.config/research-harness/sandbox/kaimon.sb`, with `/usr/bin/sandbox-exec -f`; `harness setup`
 renders the profile from `sandbox/daemon.toml` ([`jobsandbox.py`](harness.md#jobsandbox-py)).
+The first directory of its `PATH`, `~/.config/research-harness/sandbox/shims`, holds the `ps` that
+`harness setup` installs from `sandbox/shims/`: the exec of the setuid `/bin/ps` fails under the
+profile, and the shim answers Kaimon's check of a session's process with `kill -0`.
 
 The working directory is `~/Research`. Do not remove it: Kaimon reads its tool policy from
 `.kaimon/tools.json` in its working directory, and without it Kaimon offers every default tool. A
@@ -120,7 +123,8 @@ Each unit describes the same job as its plist:
 | `julia-update.service`, `julia-update.timer` | `julia-update.plist` | daily at 04:30 (`OnCalendar`), not at login |
 | `claude-autocommit.service`, `claude-autocommit.timer` | `claude-autocommit.plist` | when the timer starts (`OnActiveSec=0`), then 15 minutes after each run (`OnUnitActiveSec`) |
 
-The program and its arguments, the environment and the `PATH` are those of the plist. Both timers
+The program and its arguments, the environment and the `PATH` are those of the plist, without
+`sandbox-exec` and the shim directory of `kaimon.plist`, which are for macOS only. Both timers
 set `Persistent=true`, so a calendar start that the machine missed while it slept runs when the
 timer starts again. The units are `--user` units only. Their output goes to the journal:
 `journalctl --user -u <name>`. `julia-update.jl` restarts the server as `kaimon.service`.

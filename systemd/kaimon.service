@@ -20,7 +20,8 @@ RestartSec=60
 # release. PATH is for the programs Kaimon starts, and holds no directory a session can write.
 # KAIMON_QDRANT_MANAGED=off stops the background index. KAIMON_GATE_PROMOTE_AFTER=240 lets an `ex`
 # call wait up to 240 s before it becomes a background job, which an agent polls. The same values
-# as the plist.
+# as the plist, whose PATH starts with the directory of a `ps` shim for its Seatbelt profile on
+# macOS.
 Environment=JULIA_APPS_JULIA_CMD={home}/.juliaup/bin/julia
 Environment=PATH={home}/.juliaup/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin
 Environment=KAIMON_QDRANT_MANAGED=off

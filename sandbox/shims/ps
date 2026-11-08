@@ -1,0 +1,40 @@
+#!/bin/sh
+# The `ps` of the Kaimon job, first on the PATH of its plist. Under a Seatbelt profile the exec of
+# the setuid /bin/ps fails, and Kaimon reads every failure of `ps -o state= -p PID` as a dead
+# session. This shim answers that check with `kill -0` and lists no process. It accepts two forms,
+# the options in either order, and PID only as digits:
+#
+#   ps -o state= -p PID       prints S and exits 0 when `kill -0 PID` succeeds, else exits 1
+#   ps -o rss=,%cpu= -p PID   exits 1, as ps does for a missing process; Kaimon then reports no
+#                             memory and CPU figures
+#
+# Any other form exits 2 with one line on stderr. A zombie counts as alive, and a process of
+# another user, which `kill -0` may not signal, as gone.
+
+refuse() {
+    echo "ps: the Kaimon job's shim accepts only -o state= -p PID and -o rss=,%cpu= -p PID" >&2
+    exit 2
+}
+
+[ "$#" -eq 4 ] || refuse
+if [ "$1" = -o ] && [ "$3" = -p ]; then
+    format=$2 pid=$4
+elif [ "$1" = -p ] && [ "$3" = -o ]; then
+    format=$4 pid=$2
+else
+    refuse
+fi
+case $pid in
+    '' | *[!0-9]*) refuse ;;
+esac
+case $format in
+    state=)
+        if kill -0 "$pid" 2>/dev/null; then
+            echo S
+            exit 0
+        fi
+        exit 1
+        ;;
+    rss=,%cpu=) exit 1 ;;
+    *) refuse ;;
+esac

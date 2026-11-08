@@ -33,7 +33,8 @@ directory with `opencode`); the packages; the pinned releases; the vendor instal
 (before that, the step by hand), the jobs with the `jobs` component, without the autocommit job
 where the profile has no `claude_remote`, and on macOS with the Seatbelt profile of the Kaimon and
 julia-update jobs written into ~/.config/research-harness/sandbox/ before each one's plist
-(`jobsandbox.py`), the Kaimon token with the `julia` component, which with
+(`jobsandbox.py`), and the `ps` shim of the Kaimon job into its `shims/` before Kaimon's plist,
+the Kaimon token with the `julia` component, which with
 the jobs waits up to TOKEN_READS s for the key of the server that they start, and
 `harness doctor`. A tool of
 TOOLS belongs to every machine or to one component or frontend. A tool that is installed and meets
@@ -137,6 +138,10 @@ JOBS = ("kaimon", "julia-update", "claude-autocommit")
 # The directory below the home directory of the Seatbelt profiles of the jobs of jobsandbox.JOBS,
 # which the plists name; no session can write below ~/.config.
 SANDBOX = ".config/research-harness/sandbox"
+# The directory below the home directory that kaimon's plist puts first on the job's PATH, and the
+# shim that the run installs there, as a path of the clone.
+SHIMS = jobsandbox.SHIMS.removeprefix("~/")
+PS_SHIM = jobsandbox.PS_SHIM.relative_to(REPO)
 UNITS = (
     "kaimon.service",
     "julia-update.service",
@@ -705,7 +710,8 @@ def trust(machine: Machine, env: Mapping[str, str]) -> Action:
 def job_steps(machine: Machine, loaded: profile_module.Profile, env: Mapping[str, str], result: Plan) -> None:
     """The jobs, as the dotfiles kit's services step does them: the two copies in ~/.local/bin,
     then the launch agents or the systemd user units, rendered and loaded; on macOS each job of
-    jobsandbox.JOBS has its Seatbelt profile rendered into SANDBOX before its plist. Without a
+    jobsandbox.JOBS has its Seatbelt profile rendered into SANDBOX before its plist, and the Kaimon
+    job has the `ps` shim installed into SHIMS, mode 755, before its profile. Without a
     `claude_remote`, no launch agent or unit of the autocommit job is rendered or loaded, because
     launchd loads every plist of ~/Library/LaunchAgents at the next login; a line by hand names
     the key."""
@@ -733,6 +739,16 @@ def job_steps(machine: Machine, loaded: profile_module.Profile, env: Mapping[str
         for job in (j for j in JOBS if autocommit or j != "claude-autocommit"):
             label = f"{loaded.launchd_prefix}.{job}"
             plist = agents / f"{label}.plist"
+            if job == "kaimon":
+                # The `ps` of the directory that kaimon's plist puts first on the job's PATH, in
+                # place before the load.
+                shim = machine.home / SHIMS / PS_SHIM.name
+                result.steps.append(
+                    Step(
+                        f"install -m 755 {machine.clone / PS_SHIM} {shim}",
+                        lambda t=shim: copy(machine.clone / PS_SHIM, t, 0o755),
+                    )
+                )
             if job in jobsandbox.JOBS:
                 # The plist starts the job under this profile, so it is in place before the load.
                 sb = machine.home / SANDBOX / f"{job}.sb"
@@ -1875,6 +1891,8 @@ def scratch(tmp: pathlib.Path, name: str, fakes: Mapping[str, str]) -> Scratch:
     (s.clone / "scripts").mkdir()
     (s.clone / "launchagents" / "claude-autocommit").write_text("#!/bin/sh\n", encoding="utf-8")
     (s.clone / "scripts" / "julia-update.jl").write_text("# update\n", encoding="utf-8")
+    (s.clone / PS_SHIM).parent.mkdir(parents=True)
+    (s.clone / PS_SHIM).write_text("#!/bin/sh\n# ps\n", encoding="utf-8")
     subprocess.run(
         [shutil.which("git") or "git", "init", "-q", str(s.clone)],
         capture_output=True,
@@ -4268,11 +4286,39 @@ def sandbox_cases(case: Case, tmp: pathlib.Path, pins: Pins) -> None:
         f"no profile is written for the autocommit job: {out[-200:]!r}",
         ok=not (s.home / SANDBOX / "claude-autocommit.sb").exists(),
     )
+    shim = s.home / SHIMS / "ps"
+    case(
+        "on macOS, one step installs the ps shim, mode 755, before kaimon's plist is rendered: "
+        f"{[line for line in lines if 'shims' in line]}",
+        ok=[line for line in lines if "shims" in line] == [f"install -m 755 {s.clone / PS_SHIM} {shim}"]
+        and -1
+        < index(f"install -m 755 {s.clone / PS_SHIM} ")
+        < index("harness render launchagents/kaimon.plist > "),
+    )
+    case(
+        f"on macOS, the run installs the clone's shim with mode 755: {shim.exists()}",
+        ok=shim.is_file()
+        and shim.read_bytes() == (s.clone / PS_SHIM).read_bytes()
+        and oct(shim.stat().st_mode & 0o777) == "0o755",
+    )
     s = scratch(tmp, "linux-sandbox", LINUX_FAKES)
     lines = shows(s.machine("Linux"), JOBS_ONLY, s.options(), pins)
     case(
-        f"on Linux, no step writes a .sb file: {[line for line in lines if '.sb' in line]}",
-        ok=bool(lines) and not any(".sb" in line for line in lines),
+        f"on Linux, no step writes a .sb file or the shim: {[line for line in lines if '.sb' in line]}",
+        ok=bool(lines) and not any(".sb" in line or "shims" in line for line in lines),
+    )
+    paths = {
+        job: cast(
+            "str",
+            plistlib.loads((REPO / "launchagents" / f"{job}.plist").read_bytes())["EnvironmentVariables"][
+                "PATH"
+            ],
+        )
+        for job in jobsandbox.JOBS
+    }
+    case(
+        f"kaimon.plist's PATH starts with the shim directory, and julia-update.plist's names none: {paths}",
+        ok=paths["kaimon"].startswith(f"{{home}}/{SHIMS}:") and "shims" not in paths["julia-update"],
     )
     programs = {"kaimon": "{home}/.julia/bin/kaimon", "julia-update": "{home}/.juliaup/bin/julia"}
     for job in jobsandbox.JOBS:

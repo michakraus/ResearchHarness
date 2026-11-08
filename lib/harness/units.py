@@ -9,7 +9,9 @@ templates of the profile. JOBS pairs them. `harness test` renders each with
 - `ExecStart`, split as a shell splits it, equals `ProgramArguments`, after the three elements
   `/usr/bin/sandbox-exec -f <profile>` where the plist starts with them, and `WorkingDirectory`
   equals the plist's;
-- the `Environment=` entries equal `EnvironmentVariables`, so the `PATH` is the same;
+- the `Environment=` entries equal `EnvironmentVariables`, so the `PATH` is the same, after the
+  shim directory `jobsandbox.SHIMS` where a plist that starts with `/usr/bin/sandbox-exec -f`
+  puts it first on its `PATH`: macOS only, and checked as a `PATH` element is below;
 - the timer's triggers are exactly those the plist implies: `OnCalendar` for
   `StartCalendarInterval`, `OnUnitActiveSec` for `StartInterval`, and `OnActiveSec=0` for
   `RunAtLoad`; a job with no schedule has no timer, and starts at login
@@ -42,7 +44,7 @@ from collections.abc import Callable
 from typing import Any, cast
 from unittest import mock
 
-from . import REPO, HarnessError, jsonio, profile
+from . import REPO, HarnessError, jobsandbox, jsonio, profile
 
 UNITS = REPO / "systemd"
 SETTINGS = REPO / "settings" / "settings.proposal.json"
@@ -222,6 +224,22 @@ def triggers(plist):
     return out
 
 
+def without_shims(
+    program: list[str], variables: dict[str, str], filesystem: dict[str, list[str]], home: str
+) -> tuple[dict[str, str], list[str]]:
+    """A plist's EnvironmentVariables `variables` without the shim directory jobsandbox.SHIMS at
+    the front of its PATH, and the problems of that directory as a PATH element, where the plist's
+    `program` starts with SEATBELT and its PATH with that directory; else `variables` and []."""
+    shims = home + jobsandbox.SHIMS.removeprefix("~")
+    path = variables.get("PATH", "")
+    if program[:2] != SEATBELT or not path.startswith(shims + ":"):
+        return variables, []
+    return {**variables, "PATH": path.removeprefix(shims + ":")}, [
+        f"the plist's PATH holds {d!r}, which a session can write or this check cannot place"
+        for d in path_problems(shims, filesystem, home)
+    ]
+
+
 def job_problems(service, timer, plist, filesystem, home):
     """What differs between a rendered unit (and timer) and its rendered plist, and the PATH
     directories that a session can write. A section, a key or a repeated key that the check does
@@ -241,6 +259,9 @@ def job_problems(service, timer, plist, filesystem, home):
             f"{plist.get('WorkingDirectory')}"
         )
     env, penv = environment(service), plist.get("EnvironmentVariables", {})
+    penv, shim_problems = without_shims(
+        program, cast("dict[str, str]", penv), cast("dict[str, list[str]]", filesystem), cast("str", home)
+    )
     if env != penv:
         problems.append(f"Environment {env} is not EnvironmentVariables {penv}")
     keep = plist.get("KeepAlive", False)
@@ -282,7 +303,7 @@ def job_problems(service, timer, plist, filesystem, home):
             f"PATH holds {d!r}, which a session can write or this check cannot place"
             for d in path_problems(env["PATH"], filesystem, home)
         ]
-    return problems
+    return cast("list[str]", problems) + shim_problems
 
 
 def render(path: str, data: profile.Profile) -> str:
@@ -387,6 +408,7 @@ def selftest():
 
     home, branch = dummy.home, dummy.autocommit_branch
     kaimon_path = f"{home}/.juliaup/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+    shims = expand(jobsandbox.SHIMS, home)
     autocommit_timer, update_timer = "systemd/claude-autocommit.timer", "systemd/julia-update.timer"
     update_service = "systemd/julia-update.service"
     mutants = [
@@ -406,9 +428,36 @@ def selftest():
             [
                 (
                     "launchagents/kaimon.plist",
-                    f"<string>{home}/.juliaup/bin:",
-                    f"<string>{home}/Research:{home}/.juliaup/bin:",
+                    f":{home}/.juliaup/bin:",
+                    f":{home}/Research:{home}/.juliaup/bin:",
                 )
+            ],
+        ),
+        (
+            "another directory in place of the shim directory on kaimon.plist's PATH",
+            [("launchagents/kaimon.plist", f"<string>{shims}:", f"<string>{home}/.config/research-harness:")],
+        ),
+        (
+            "the shim directory on the PATH of claude-autocommit.plist, which no sandbox-exec starts",
+            [
+                (
+                    "launchagents/claude-autocommit.plist",
+                    "<string>/opt/homebrew/bin:",
+                    f"<string>{shims}:/opt/homebrew/bin:",
+                )
+            ],
+        ),
+        # ~/.config is a write deny of the settings, which holds the shim directory out of a
+        # session's writes; without that deny and with an allow above it, a session can write it.
+        (
+            "a shim directory that a session can write",
+            [
+                (
+                    "settings/settings.proposal.json",
+                    '"~/.cache/claude",',
+                    '"~/.cache/claude", "~/.config/research-harness",',
+                ),
+                ("settings/settings.proposal.json", '"~/.config",\n', '"~/.config/x",\n'),
             ],
         ),
         # The empty element is the working directory, which is ~/Research for kaimon.service.
