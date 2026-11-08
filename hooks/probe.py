@@ -2695,6 +2695,14 @@ def command_cases():
         ok=got == "deny" and "writes a file in a git working tree" in output,
         line=f"exp deny got {got}  [guard    ]  a write to a path with a NUL: {output[:60]!r}",
     )
+    # An `EnterWorktree` call with the path of a worktree outside `.claude/worktrees/` is refused, and
+    # the reason names the call that reaches it with no prompt: a `cd` to that path on its own.
+    payload = {"tool_name": "EnterWorktree", "tool_input": {"path": WT}, "cwd": CWD}
+    got, output = guard_run(json.dumps(payload).encode("utf-8"))
+    report(
+        ok=got == "deny" and f"`cd {WT}` as a Bash call of its own" in output,
+        line=f"exp deny got {got}  [guard    ]  EnterWorktree with a worktree's path: {output[:60]!r}",
+    )
     # A `.git` that is a dangling link: the sandbox check reads the link itself, so to it the directory
     # is a work tree and a `git init` there is refused; the write check reads what the link names, so
     # to it the directory lies in no work tree and a write there of a file that is no source passes.

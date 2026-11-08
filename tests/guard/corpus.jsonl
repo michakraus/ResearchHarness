@@ -430,12 +430,23 @@
 {"tool": "mcp__kaimon__ex", "stdin": {"tool_name": "mcp__kaimon__ex", "tool_input": "e"}, "decision": "deny", "differs": "The guard denies a Kaimon payload whose tool_input is no object; kaimon-session.py let it through."}
 {"tool": "mcp__kaimon__ex", "stdin": {"tool_name": "mcp__kaimon__ex", "tool_input": {"e": "1"}}, "decision": "deny"}
 {"tool": "mcp__kaimon__ex", "stdin": "not json at all", "decision": "deny", "differs": "The guard denies a payload that is not JSON; rm-scope.py and directory-scope.py asked on it, and kaimon-session.py and the other Bash scripts let it through."}
-{"tool": "EnterWorktree", "stdin": {"tool_name": "EnterWorktree", "tool_input": {"path": "~/Research"}}, "decision": "pass"}
-{"tool": "EnterWorktree", "stdin": {"tool_name": "EnterWorktree", "tool_input": {"path": "~/Research/"}}, "decision": "pass"}
-{"tool": "EnterWorktree", "stdin": {"tool_name": "EnterWorktree", "tool_input": {"path": "~/Research/Packages/Other"}}, "decision": "pass"}
-{"tool": "EnterWorktree", "stdin": {"tool_name": "EnterWorktree", "tool_input": {"path": "~/Research/.worktrees/Foo-bar"}}, "decision": "pass"}
-{"tool": "EnterWorktree", "stdin": {"tool_name": "EnterWorktree", "tool_input": {"path": "@@PKG@@/src/"}}, "decision": "pass"}
-{"tool": "EnterWorktree", "stdin": {"tool_name": "EnterWorktree", "tool_input": {"path": "~/Research/does/not/exist"}}, "decision": "pass"}
+{"tool": "EnterWorktree", "stdin": {"tool_name": "EnterWorktree", "tool_input": {"path": "~/Research"}}, "decision": "deny"}
+{"tool": "EnterWorktree", "stdin": {"tool_name": "EnterWorktree", "tool_input": {"path": "~/Research/"}}, "decision": "deny"}
+{"tool": "EnterWorktree", "stdin": {"tool_name": "EnterWorktree", "tool_input": {"path": "~/Research/Packages/Other"}}, "decision": "deny"}
+{"tool": "EnterWorktree", "stdin": {"tool_name": "EnterWorktree", "tool_input": {"path": "~/Research/.worktrees/Foo-bar"}}, "decision": "deny"}
+{"tool": "EnterWorktree", "stdin": {"tool_name": "EnterWorktree", "tool_input": {"path": "@@WT@@"}}, "decision": "deny"}
+{"tool": "EnterWorktree", "stdin": {"tool_name": "EnterWorktree", "tool_input": {"path": "@@PKG@@/src/"}}, "decision": "deny"}
+{"tool": "EnterWorktree", "stdin": {"tool_name": "EnterWorktree", "tool_input": {"path": "~/Research/does/not/exist"}}, "decision": "deny"}
+{"tool": "EnterWorktree", "stdin": {"tool_name": "EnterWorktree", "tool_input": {"path": "@@PKG@@/.claude/worktrees/agent-a1"}}, "decision": "pass"}
+{"tool": "EnterWorktree", "stdin": {"tool_name": "EnterWorktree", "tool_input": {"path": "~/Research/Packages/Example/.claude/worktrees/fix/"}}, "decision": "pass"}
+{"tool": "EnterWorktree", "stdin": {"tool_name": "EnterWorktree", "tool_input": {"path": "~/Research/.worktrees/Foo-bar/.claude/worktrees/x"}}, "decision": "pass"}
+{"tool": "EnterWorktree", "stdin": {"tool_name": "EnterWorktree", "tool_input": {"path": "@@PKG@@/.claude/worktrees"}}, "decision": "deny"}
+{"tool": "EnterWorktree", "stdin": {"tool_name": "EnterWorktree", "tool_input": {"path": "@@PKG@@/.claude/worktrees/"}}, "decision": "deny"}
+{"tool": "EnterWorktree", "stdin": {"tool_name": "EnterWorktree", "tool_input": {"path": "@@PKG@@/.claude/worktrees/../src"}}, "decision": "deny"}
+{"tool": "EnterWorktree", "stdin": {"tool_name": "EnterWorktree", "tool_input": {"path": "@@PKG@@/.claude/worktreesX/a"}}, "decision": "deny"}
+{"tool": "EnterWorktree", "stdin": {"tool_name": "EnterWorktree", "tool_input": {"path": "@@PKG@@/claude/worktrees/a"}}, "decision": "deny"}
+{"tool": "EnterWorktree", "stdin": {"tool_name": "EnterWorktree", "tool_input": {"path": "~/.claude/worktrees/a"}}, "decision": "ask"}
+{"tool": "EnterWorktree", "stdin": {"tool_name": "EnterWorktree", "tool_input": {"path": "~/Research/../.claude/worktrees/a"}}, "decision": "ask"}
 {"tool": "EnterWorktree", "stdin": {"tool_name": "EnterWorktree", "tool_input": {"path": "~/ResearchX"}}, "decision": "ask"}
 {"tool": "EnterWorktree", "stdin": {"tool_name": "EnterWorktree", "tool_input": {"path": "~/Research/../.ssh"}}, "decision": "ask"}
 {"tool": "EnterWorktree", "stdin": {"tool_name": "EnterWorktree", "tool_input": {"path": "~/Research/Packages/../../Downloads"}}, "decision": "ask"}
@@ -461,6 +472,10 @@
 {"tool": "EnterWorktree", "stdin": {"tool_name": "ExitWorktree", "tool_input": {"action": "remove", "discard_changes": true}}, "decision": "ask"}
 {"tool": "EnterWorktree", "stdin": {"tool_name": "ExitWorktree", "tool_input": {}}, "decision": "ask"}
 {"tool": "EnterWorktree", "stdin": {"tool_name": "mcp__ccd_directory__change_directory", "tool_input": {"path": "~/Research/Tasks"}}, "decision": "pass"}
+{"tool": "EnterWorktree", "stdin": {"tool_name": "mcp__ccd_directory__change_directory", "tool_input": {"path": "~/Research/.worktrees/Foo-bar"}}, "decision": "pass"}
+{"tool": "EnterWorktree", "stdin": {"tool_name": "mcp__ccd_directory__change_directory", "tool_input": {"path": "@@PKG@@/src/"}}, "decision": "pass"}
+{"tool": "EnterWorktree", "stdin": {"tool_name": "mcp__ccd_directory__change_directory", "tool_input": {"path": "~/Research/Packages/../../Downloads"}}, "decision": "ask"}
+{"tool": "EnterWorktree", "stdin": {"tool_name": "mcp__ccd_directory__change_directory", "tool_input": {"path": "@@LINK@@"}}, "decision": "ask"}
 {"tool": "EnterWorktree", "stdin": {"tool_name": "mcp__ccd_directory__request_directory", "tool_input": {}}, "decision": "ask"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "other": 1}, "decision": "deny", "differs": "The guard denies a Bash payload without a tool_input; rm-scope.py asked on it, and the other Bash scripts let it through."}
 {"tool": "WebFetch", "stdin": {"tool_name": "WebFetch", "tool_input": {"url": "https://example.org"}, "cwd": "@@CWD@@"}, "decision": "pass"}

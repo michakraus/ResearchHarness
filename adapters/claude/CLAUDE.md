@@ -20,6 +20,10 @@ gets one through `isolation: "worktree"`, detached at `origin/HEAD`, and makes i
 `git switch -c`. `julia-pr-reviewer` and `julia-pr-shepherd` declare it themselves, so spawn them,
 too, from a working directory inside the repository. For a PR head or a merge base, `git switch` inside the worktree once it exists.
 
+**Reach an existing worktree with `cd <worktree>` as a Bash call of its own**, or spawn an agent
+with `cwd` set to it. Claude Code asks the person for every `EnterWorktree` call with a `path`
+outside `.claude/worktrees/`, and the guard refuses such a call inside `~/Research`.
+
 Do not use `ExitWorktree` with `remove`: the harness cannot inspect a hook-made
 worktree and asks for `discard_changes`. Leave one with `ExitWorktree` and `keep`. **An isolated
 sub-agent's worktree stays after it returns**, and the caller removes it.
