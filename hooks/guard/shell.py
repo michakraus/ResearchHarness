@@ -3,10 +3,10 @@
 `lex` splits a command into words and operators as the shell does for the forms the checks read:
 a quoted character is never an operator, a `#` that starts a word starts a comment to the end of
 the line, a backslash-newline joins two lines, and inside double quotes a backslash escapes only
-`$`, a backtick, `"`, `\\` and a newline. An ANSI-C quote `$'…'` gives its text with the escapes
-decoded (`ansi_c`), and a locale quote `$"…"` reads as a double quote, each in a dialect: bash's,
-zsh's, or `plain`, which reads the `$` as a character. It runs no expansion. It is no full shell
-grammar: each check documents the limits of its reading.
+`$`, a backtick, `"` and `\\`, and a backslash-newline is removed. An ANSI-C quote `$'…'` gives
+its text with the escapes decoded (`ansi_c`), and a locale quote `$"…"` reads as a double quote,
+each in a dialect: bash's, zsh's, or `plain`, which reads the `$` as a character. It runs no
+expansion. It is no full shell grammar: each check documents the limits of its reading.
 
 `readings` gives a check the readings that it decides on: the shell's, in each dialect where the
 text holds `$'` or `$"`; where a word consists of operator characters only (`';'`), the reading
@@ -81,6 +81,9 @@ SHELLS = frozenset({"sh", "bash", "zsh", "dash", "ksh", "mksh", "ash", "csh", "t
 SHELL_VALUED = frozenset({"--rcfile", "--init-file"})
 # The levels of scripts inside scripts that `scripts` reads.
 DEPTH = 3
+# The texts that close an open quote at the end of a script: a second character where the last one
+# is a backslash that escapes the first.
+CLOSERS = ("'", "''", '"', '""')
 
 
 def code_point(text: str, index: int, letter: str, dialect: Decoding) -> tuple[str, int]:
@@ -100,10 +103,10 @@ def escape(body: str, index: int, dialect: Decoding) -> tuple[str, int]:
     """The text of the escape of the body of an ANSI-C quote whose letter is at `index`, as
     `dialect` decodes it, and the index after it. Both keep the low eight bits of an octal escape
     (`\\562` is `r`). bash keeps the backslash of an escape that it does not know and reads `\\cX`
-    as a control character; zsh drops that backslash (`\\w` is `w`, `\\c` is `c`), reads `\\C-X` as
-    a control and `\\M-X` as a meta character of the next character of the body, and reads `\\x`,
-    `\\u` and `\\U` with no digit as a NUL. The body ends where the shell's parser ends the quote
-    (`ansi_c`), so no escape reaches past it."""
+    as a control character; zsh drops that backslash (`\\w` is `w`, `\\c` is `c`) and reads `\\x`,
+    `\\u` and `\\U` with no digit as a NUL. zsh's `\\C` and `\\M`, each with an optional `-`, are
+    flags that `ansi_c` applies to the next character. The body ends where the shell's parser ends
+    the quote (`ansi_c`), so no escape reaches past it."""
     letter, index = body[index], index + 1
     if letter in ANSI_C:
         return ANSI_C[letter], index
@@ -113,9 +116,6 @@ def escape(body: str, index: int, dialect: Decoding) -> tuple[str, int]:
         if letter == "c" and index < len(body):
             return chr(ord(body[index]) & 0x1F), index + 1
         return "\\" + letter, index
-    if letter in "CM" and body[index : index + 1] == "-" and index + 1 < len(body):
-        char = body[index + 1]
-        return chr(ord(char) & 0x1F) if letter == "C" else chr(ord(char) | 0x80), index + 2
     return letter, index
 
 
@@ -124,17 +124,26 @@ def ansi_c(text: str, index: int, dialect: Decoding) -> tuple[str, int] | None:
     decodes them (`escape`), and the index after it; None when no quote closes it. The quote ends
     where the shell's parser ends it, at the first `'` that no backslash escapes, before any
     escape is decoded, so no decoding moves the end. In bash a NUL ends the text of the quote
-    (`$'r\\0x'm` is `rm`); zsh keeps it, and `lex` cuts the word there, as `exec` does."""
+    (`$'r\\0x'm` is `rm`); zsh keeps it, and `lex` cuts the word there, as `exec` does. zsh reads
+    `\\C` and `\\M`, each with an optional `-`, as a control and a meta flag that it applies to the
+    next character, except a `\\u` or `\\U` character, and drops when no character follows
+    (`r$'\\C'm` is `rm`)."""
     found = ANSI_C_BODY.match(text, index + 1)
     end = found.end() if found else index + 1
     if end >= len(text) or text[end] != "'":
         return None
     body, piece, at = text[index + 1 : end], list[str](), 0
+    control = meta = False
     while at < len(body):
-        if body[at] == "\\" and at + 1 < len(body):
-            decoded, at = escape(body, at + 1, dialect)
-        else:
-            decoded, at = body[at], at + 1
+        if dialect == "zsh" and body[at] == "\\" and body[at + 1 : at + 2] in ("C", "M"):
+            control, meta = control or body[at + 1] == "C", meta or body[at + 1] == "M"
+            at += 3 if body[at + 2 : at + 3] == "-" else 2
+            continue
+        letter = body[at + 1] if body[at] == "\\" and at + 1 < len(body) else ""
+        decoded, at = escape(body, at + 1, dialect) if letter else (body[at], at + 1)
+        if decoded and (control or meta) and letter not in ("u", "U"):
+            code = (0x7F if decoded[0] == "?" else ord(decoded[0]) & 0x9F) if control else ord(decoded[0])
+            decoded, control, meta = chr(code | 0x80 if meta else code) + decoded[1:], False, False
         if dialect == "bash" and "\x00" in decoded:
             piece.append(decoded.split("\x00", 1)[0])
             break
@@ -170,7 +179,7 @@ def joined(text: str) -> str:
 
 def quoted(text: str, index: int) -> tuple[str, int] | None:
     """The text of the quote that opens at `index` and the index after it, or None when no quote
-    closes it."""
+    closes it. Inside double quotes a backslash-newline is removed, as the shell removes it."""
     if text[index] == "'":
         end = text.find("'", index + 1)
         return None if end < 0 else (text[index + 1 : end], end + 1)
@@ -179,6 +188,9 @@ def quoted(text: str, index: int) -> tuple[str, int] | None:
     while index < len(text) and text[index] != '"':
         if text[index] == "\\" and index + 1 < len(text) and text[index + 1] in DOUBLE_ESCAPES:
             index += 1
+            if text[index] == "\n":
+                index += 1
+                continue
         piece.append(text[index])
         index += 1
     return None if index >= len(text) else ("".join(piece), index + 1)
@@ -283,18 +295,29 @@ def script_of(tokens: Tokens, index: int) -> tuple[str, int, int] | None:
     return tokens[at][1], at, at + 1
 
 
+def script_tokens(script: str, dialect: Dialect) -> Tokens | None:
+    """The tokens of `script` in `dialect`. A script with an open quote is read with the quote
+    closed at its end (CLOSERS), since sh, bash and `eval` run the lines before the line on which
+    the quote opens; None when no closer closes it."""
+    for closer in ("", *CLOSERS):
+        tokens = lex(script + closer, dialect)
+        if tokens is not None:
+            return tokens
+    return None
+
+
 def scripts(tokens: Tokens, depth: int = DEPTH) -> Tokens:
     """`tokens` with the script of each shell call and each `eval` (`script_of`) spliced in where
     it stands, as parts of their own between `;` operators; a script inside a script is read to
     `depth` levels. A script is read in each of its `dialects`, and the readings follow one another
     as parts. The words after a script, such as the arguments of `sh -c` or the `{} \\;` of a
-    `find -exec`, form a part of their own. A script with an open quote runs nothing and is left as
-    its word."""
+    `find -exec`, form a part of their own. A script with an open quote is read with the quote
+    closed (`script_tokens`)."""
     result: list[Token] = []
     index = 0
     while index < len(tokens):
         found = script_of(tokens, index) if tokens[index][0] == "word" and depth > 0 else None
-        inner = [] if found is None else [lex(found[0], dialect) for dialect in dialects(found[0])]
+        inner = [] if found is None else [script_tokens(found[0], dialect) for dialect in dialects(found[0])]
         read = list(dict.fromkeys(reading for reading in inner if reading is not None))
         if found is None or not read:
             result.append(tokens[index])

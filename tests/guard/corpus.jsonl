@@ -620,6 +620,17 @@
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "$'rm\\c@' -rf ~/Research/Papers"}, "cwd": "@@PKG@@"}, "decision": "deny"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "$'rm\\x' -rf ~/Research/Papers"}, "cwd": "@@PKG@@"}, "decision": "deny"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "$'rm\\C-@' -rf ~/Research/Papers"}, "cwd": "@@PKG@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "r$'\\C'm -rf ~/Research/Papers"}, "cwd": "@@PKG@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "r$'\\M-'m -rf ~/Research/Papers"}, "cwd": "@@PKG@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git ad$'\\C'd -A"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "sh -c $'rm -rf ~/Research/Papers\\n\\''"}, "cwd": "@@PKG@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "sh -c 'rm -rf ~/Research/Papers\n\"'"}, "cwd": "@@PKG@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "eval 'rm -rf ~/Research/Papers\n\"'"}, "cwd": "@@PKG@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "bash -c $'git push --force-with-lease origin main\\n\\''"}, "cwd": "@@R@@/Packages/Own"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "sh -c 'echo ok\n\"'"}, "cwd": "@@PKG@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "\"r\\\nm\" -rf ~/Research/Papers"}, "cwd": "@@PKG@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git \"ad\\\nd\" -A"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "bash -c \"git add \\\n-A\""}, "cwd": "@@CWD@@"}, "decision": "deny"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "rm -rf ~/Research/.$'\\w'orktrees/Foo-bar/docs/build"}, "cwd": "@@PKG@@"}, "decision": "deny"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git $'push\\0' --force-with-lease origin main"}, "cwd": "@@R@@/Packages/Own"}, "decision": "deny"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "$'gh\\0' api -X DELETE repos/o/r"}, "cwd": "@@CWD@@"}, "decision": "deny"}

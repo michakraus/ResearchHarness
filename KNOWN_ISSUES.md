@@ -697,3 +697,28 @@
   the hook's limit. Not measured on an idle machine.
 - kind: not verified
 - found: 2026-11-08
+
+### K138 · The shell checks of the guard read no command whose bash reading has an open quote, also where dash's reading is closed.
+
+- location: `hooks/guard/shell.py:335`
+- evidence: `readings` returns None when a quote of bash's reading is open, and drops the `plain`
+  reading, which can be closed. `rm_scope` and `git_writes` ask on None; the other checks pass.
+  `guard --from claude` answers `pass` to `git add -A $'\'' $'`, `gh api -X DELETE repos/a/b $'\'' $'`,
+  `git archive -o x.tar HEAD $'\'' $'`, `gh pr create … $'\'' $'` and
+  `gh run watch --interval 5 $'\'' $'`, where origin/main (28b2706f) answers `deny`; it asks for
+  the same suffix after `rm -rf ~/Research/Papers` and after a lease push to `main`. bash, zsh and
+  macOS `/bin/sh` refuse each line and run nothing. dash reads `$'` as a `$` and a quote, and runs
+  each write. Returning None only when no dialect reads the text changes the contract that the
+  checks build on.
+- kind: defect
+- found: 2026-11-08, the fourth pre-PR verification of `guard/bypass-gaps`
+
+### K139 · The bash dialect of the guard reads `\c` of an ANSI-C quote as bash 3.2 does, not as bash 5.3 does.
+
+- location: `hooks/guard/shell.py:102`
+- evidence: bash 5.3 reads `$'x\c\\y'` as `x`, the control character 0x1C and `y`; bash 3.2
+  (`/bin/bash` and `/bin/sh` on macOS) and the guard keep a backslash after the 0x1C. bash 3.2
+  reads `$'x\c'y` as `x\y`, the guard as `x\cy`. Each difference leaves a control character or a
+  backslash in the word, so no word of ASCII letters comes of it.
+- kind: defect
+- found: 2026-11-08, the fourth pre-PR verification of `guard/bypass-gaps`

@@ -5,15 +5,17 @@
   text match for the sandbox keep their raw-text filter. The shell reader decodes an ANSI-C quote
   `$'…'` and a locale quote `$"…"` in three readings, and each check answers the strongest: bash's
   (an unknown escape keeps its backslash, a NUL ends the quote), zsh's (an unknown escape drops
-  its backslash, a NUL ends the word), and one that decodes neither, as before. So
-  `git push --force-$'w'ith-lease origin main`, `--force-$'\w'ith-lease` and `$'rm\0' -rf …` are
-  refused. A lease push with an option that the shell expands into a lease (`--force-$w`,
+  its backslash, a NUL ends the word, `\C` and `\M` flag the next character), and one that decodes
+  neither, as before. So `git push --force-$'w'ith-lease origin main`, `--force-$'\w'ith-lease`,
+  `$'rm\0' -rf …` and `r$'\C'm -rf …` are refused. Inside double quotes a backslash-newline is
+  removed, as the shell removes it, so `"r\<newline>m" -rf …` is refused; before, it passed. A lease push with an option that the shell expands into a lease (`--force-$w`,
   `--$(…)`) is read as one: refused when it names a default branch, asked otherwise. The scripts
   of `sh -c`, `bash -c`, `zsh -c` (and `dash`, `ksh`, `mksh`, `ash`, `csh`, `tcsh`, and `fish`
   with `-c` or `--command`) and `eval` are read as parts of the command, three levels deep, by the
   checks of `rm`, `git archive`, `gh api`, `gh pr create`, the `gh` watchers, `git add` and the
   three `git` writes, and by the Bash rules and the path check of Antigravity; a `git` write
-  inside such a script is never allowed with no prompt. The `git` write check allows only a
+  inside such a script is never allowed with no prompt. A script with an open quote is read with
+  the quote closed, since the shell runs the lines before it. The `git` write check allows only a
   command of plain text (no `$`, backslash, backtick, `#` or `!` outside a single quote), so no
   reading that one shell does not run can allow a write. K88 shrinks to a program that a variable
   or a substitution names, and K92 to a path that a substitution makes; K136 records the same
