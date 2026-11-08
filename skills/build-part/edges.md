@@ -625,6 +625,10 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   program that ends at once is reaped in between, and `getpid` throws `ESRCH`. It failed 2 runs in
   300 on macOS and three cases on the Linux runner. Read the PID straight after `run`, and test a
   program that ends at once in a loop (P5 CI, *Make the Harness enforce strict Python*)
+- an exit status read from a Julia `Process` as `p.exitcode` alone: for a child that a signal
+  ends — an abort, a segfault, an OOM kill — `exitcode` is 0 and `termsignal` holds the signal, so
+  a crash reads as a clean exit. Read `termsignal` first, or use `success(p)`, and test a child
+  that aborts (J8a round 1, *Strengthen the Julia coding layer of the harness*)
 - a message read from another tool's error text by a marker, tested only on the marker's shortest
   form: JuliaSyntax marks a one-character span `└ ── reason` and a wider one `└────┘ ── reason`,
   so a split at the first `──` keeps part of the marker. Test each form the tool prints, and split
@@ -851,6 +855,11 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   harness reports VALID and CAUGHT, but the kill is the `UndefVarError`, not the defect the mutant
   names. Read the failed assertion's message, and spell the mutant so its only change is the
   defect (M5, *Simplify the optimiser package and the learning package for 0.9*)
+- a mutant reproducer that reads any failure of the test run as a kill, and never runs the tests
+  on the unmutated tree: a test file that fails there for another reason — a dependency that
+  today's resolution breaks, a missing helper, two files that clash in one module — reads as
+  "every mutant killed". Run the tests once without a mutant first, and give a failure there an
+  exit status of its own (J8a round 1, *Strengthen the Julia coding layer of the harness*)
 - a round-off tolerance given as a constant relative factor with no derivation (`1e-9·n`): it
   accepts a real fraction at the domain's own scale (a stride of 100) and a whole step at 10⁹.
   Derive the bound from the roundings of the computed value, and test one input inside the bound

@@ -46,7 +46,7 @@ its sha256 first, as [uv](#uv) says.
 
 | tool | minimum | used for |
 |:--|:--|:--|
-| Python | ≥ 3.14, the check in `bin/harness` and `requires-python` in `pyproject.toml` | needed by every machine: runs the `harness` command, the guard hooks and the pre-push hook |
+| Python | ≥ 3.14, `requires-python` in `pyproject.toml`, in the Python environment, for which uv fetches it; `bin/harness` itself starts on 3.9 or later | needed by every machine: runs the `harness` command, the guard hooks and the pre-push hook |
 | uv | tested with 0.13.5, the release that `bin/harness` fetches on Linux | needed by every machine: makes the Python environment that the `harness` command runs on, from `uv.lock` |
 | git | tested with 2.54.0 | needed by every machine: reads and pushes the repositories of the tree, makes the worktrees of Claude Code, and clones the pushed commit for the pre-push hook |
 
@@ -129,7 +129,12 @@ scripts, which Claude Code, OpenCode, oh-my-pi and Antigravity call before a
 and Antigravity run them on the environment's interpreter.
 
 The harness needs Python 3.14 or later because 3.14 is the one version that it is tested on, in
-its environment, in CI and in the pre-push hook. The profile and the model
+its environment, in CI and in the pre-push hook. The `python3` of the machine may be older, as on
+Ubuntu 24.04, which has 3.12: from 3.9 on, `bin/harness` starts on it, and its first run outside a
+session lets `uv sync` download Python 3.14 into uv's own store for the environment. Then only a
+hook that starts outside `harness` on the `python3` of the `PATH` needs 3.14: one that you run by
+hand, and the pre-push hook of a clone of the harness that you push from, which refuses the push
+on an older `python3`. `harness doctor` reports the older one as a `WARN`. The profile and the model
 tables are TOML, which `tomllib` of the standard library reads. A shell script cannot parse TOML
 or JSON safely, and a compiled tool needs a build step on each machine.
 
@@ -219,6 +224,13 @@ plugins under Node.js and checks their decisions. Without `node`, a test case of
 The harness needs Node.js because these extensions are JavaScript, and their frontends run them
 in a JavaScript runtime. The plugins take the Node.js built-in modules from
 `process.getBuiltinModule`, which Node.js 22.3 and 20.16 added.
+
+On macOS, Homebrew installs Node.js. On Ubuntu, `harness setup` installs the `nodejs` and `npm`
+packages where the apt candidate of `nodejs` meets the minimum, as on Ubuntu 26.04. Ubuntu 24.04
+packages Node.js 18, so there it installs the Node.js 24 release that `setup/tools.toml` pins from
+`nodejs.org`, after a check of its sha256: it unpacks the whole tree into
+`~/.local/share/research-harness/node/<version>/`, because npm runs from that tree, and links
+`node`, `npm` and `npx` into `~/.local/bin`.
 
 The documentation site is a VitePress project, and its build runs under Node.js too: `npm`
 installs the packages that `docs/package-lock.json` pins, and VitePress builds the site and draws

@@ -31,7 +31,7 @@ import tempfile
 import threading
 import time
 import tokenize
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from typing import cast, override
 from unittest import mock
 
@@ -118,13 +118,17 @@ OPERATORS = frozenset(
     ["!=", "%", "(", ")", "+", "+=", ",", "-", ".", ":", "<", "=", "==", "[", "]", "{", "}"]
 )
 NUMBER = re.compile(r"0|[1-9][0-9]*|0o[0-7]+")
+# The line of bin/harness below its floor, with the version that it found.
+FLOOR_LINE = "harness: Python %s found; bin/harness needs 3.9 or later, and the harness runs on 3.14"
+# The interpreters below 3.14 that the cases of an old interpreter try, in this order.
+OLD_PYTHONS = ("python3.11", "python3.12", "python3.13", "python3.10", "python3.9", "/usr/bin/python3")
 
 
 class Box:
     """A scratch HOME, a directory with the fake uv, its log, and a TMPDIR for the child, below
     `root`."""
 
-    def __init__(self, root, uv=True):
+    def __init__(self, root: pathlib.Path, *, uv: bool = True) -> None:
         root.mkdir(parents=True)
         self.root, self.home, self.bin, self.tmp = root, root / "home", root / "bin", root / "tmp"
         self.log = root / "uv.log"
@@ -134,7 +138,7 @@ class Box:
             fake_uv(self.bin / "uv", self.log)
         self.env_dir = self.home / ".local" / "share" / "research-harness" / "python"
 
-    def environ(self, **extra):
+    def environ(self, **extra: str) -> dict[str, str]:
         env = {k: v for k, v in os.environ.items() if k not in UNSET}
         env.update(
             HOME=str(self.home),
@@ -171,10 +175,10 @@ class Box:
             code, out, err = None, "", "TIMEOUT"
         return code, out, err.splitlines(), time.monotonic() - start
 
-    def uv_lines(self):
+    def uv_lines(self) -> list[str]:
         return self.log.read_text().splitlines() if self.log.exists() else []
 
-    def below(self, *parts):
+    def below(self, *parts: str) -> list[str]:
         """The paths below HOME/parts, sorted."""
         return (
             sorted(str(p) for p in self.home.joinpath(*parts).rglob("*"))
@@ -183,15 +187,30 @@ class Box:
         )
 
 
-def fake_uv(path, log):
+def fake_uv(path: pathlib.Path, log: pathlib.Path, seen: pathlib.Path | None = None) -> None:
     """A uv that appends `<arguments> | <UV_PROJECT_ENVIRONMENT> | <UV_PYTHON>` to `log` and, by
     $FAKE_UV, makes the environment anew (ok, the default), makes a venv in it and then exits 1
     after two stderr lines, as a real `uv sync --locked` that fails can (fail), exits 0 and makes
-    nothing (empty), or makes the environment's directory and waits 30 s (hang)."""
+    nothing (empty), or makes the environment's directory and waits 30 s (hang). With `seen`, each
+    line of `log` ends with ` | <UV_PYTHON_DOWNLOADS>`, and the environment that it makes logs each
+    start to `seen`, as `make_env` does."""
+    downloads = " | ${UV_PYTHON_DOWNLOADS:-unset}" if seen else ""
+    make = f"exec '{sys.executable}' -m venv --without-pip \"$UV_PROJECT_ENVIRONMENT\""
+    if seen:
+        helper = path.with_name(path.name + "-seen.py")
+        pth = f"import sys; open({str(seen)!r}, 'a').write(repr(sys.orig_argv[1:]) + '\\n')\n"
+        helper.write_text(
+            "import pathlib, sysconfig\n"
+            f"pathlib.Path(sysconfig.get_path('purelib'), 'harness-case.pth').write_text({pth!r})\n"
+        )
+        make = (
+            f"'{sys.executable}' -m venv --without-pip \"$UV_PROJECT_ENVIRONMENT\" && "
+            f"exec \"$UV_PROJECT_ENVIRONMENT/bin/python\" '{helper}'"
+        )
     path.write_text(f"""#!/bin/sh
-echo "$* | ${{UV_PROJECT_ENVIRONMENT:-unset}} | ${{UV_PYTHON:-unset}}" >> '{log}'
+echo "$* | ${{UV_PROJECT_ENVIRONMENT:-unset}} | ${{UV_PYTHON:-unset}}{downloads}" >> '{log}'
 case "${{FAKE_UV:-ok}}" in
-ok) rm -rf "$UV_PROJECT_ENVIRONMENT" && exec '{sys.executable}' -m venv --without-pip "$UV_PROJECT_ENVIRONMENT" ;;
+ok) rm -rf "$UV_PROJECT_ENVIRONMENT" && {make} ;;
 fail) '{sys.executable}' -m venv --without-pip "$UV_PROJECT_ENVIRONMENT"
   echo "first line" >&2; echo "the lock does not resolve" >&2; exit 1 ;;
 empty) exit 0 ;;
@@ -201,11 +220,11 @@ esac
     path.chmod(0o755)
 
 
-def make_env(directory, log=None):
+def make_env(directory: pathlib.Path, log: pathlib.Path | None = None) -> pathlib.Path:
     """A Python environment at `directory`, made with `python -m venv`; with `log`, a .pth file in
     it appends `sys.orig_argv` of each interpreter that starts there to `log`."""
     subprocess.run(
-        [sys.executable, "-m", "venv", "--without-pip", str(cast("pathlib.Path", directory))],
+        [sys.executable, "-m", "venv", "--without-pip", str(directory)],
         check=True,
         capture_output=True,
         timeout=60,
@@ -228,7 +247,7 @@ def make_env(directory, log=None):
     return directory
 
 
-def started(log):
+def started(log: pathlib.Path) -> list[str]:
     """The arguments of each start that the .pth file of `make_env` logged, once each and without
     the start check `-c ''` of bin/harness; the site module can run a .pth file more than once."""
     lines = log.read_text().splitlines() if log.exists() else []
@@ -366,33 +385,44 @@ def outside_syntax(text):
 
 
 def syntax_cases(case, tmp):
-    """The version check of bin/harness on an interpreter that reports 3.13, under a scratch HOME,
-    and the syntax of the whole file: only the closed set of Python 3.0 forms."""
-    run = (
-        "import runpy, sys; sys.version_info = (3, 13, 9, 'final', 0); "
-        "runpy.run_path(sys.argv[1], run_name='__main__')"
-    )
-    b = Box(tmp / "syntax")
-    p = subprocess.run(
-        [sys.executable, "-c", run, str(HARNESS), "--help"],
-        capture_output=True,
-        text=True,
-        timeout=TIMEOUT,
-        env=b.environ(),
-        cwd=b.root,
-        check=False,
-    )
-    lines = p.stderr.splitlines()
+    """The floor of bin/harness on an interpreter that reports 3.8 and on one that reports 3.9,
+    under a scratch HOME, and the syntax of the whole file: only the closed set of Python 3.0
+    forms."""
+
+    def reported(version: str, name: str) -> tuple[int, str, list[str], Box]:
+        run = (
+            f"import runpy, sys; sys.version_info = ({version.replace('.', ', ')}, 0, 'final', 0); "
+            "sys.argv = sys.argv[1:]; runpy.run_path(sys.argv[0], run_name='__main__')"
+        )
+        b = Box(cast("pathlib.Path", tmp) / name)
+        p = subprocess.run(
+            [sys.executable, "-c", run, str(HARNESS), "--help"],
+            capture_output=True,
+            text=True,
+            timeout=TIMEOUT,
+            env=b.environ(),
+            cwd=b.root,
+            check=False,
+        )
+        return p.returncode, p.stdout, p.stderr.splitlines(), b
+
+    code, out, lines, b = reported("3.8", "syntax")
     case(
         lambda: (
-            p.returncode == 2
-            and lines == ["harness: Python 3.13 found, 3.14 or later needed"]
-            and not p.stdout
+            code == 2
+            and lines == [FLOOR_LINE % "3.8"]
+            and not out
             and not b.uv_lines()
             and b.below(".local") == []
         ),
-        f"an interpreter that reports 3.13 exits 2 with one line that names 3.13 and 3.14, and starts no uv: "
-        f"{p.returncode}, {lines}, uv {b.uv_lines()}",
+        f"an interpreter that reports 3.8 exits 2 with one line that names 3.8, 3.9 and 3.14, and starts no uv: "
+        f"{code}, {lines}, uv {b.uv_lines()}",
+    )
+    code, out, lines, b = reported("3.9", "floor")
+    case(
+        lambda: code == 0 and "usage" in out and len(b.uv_lines()) == 1,
+        f"an interpreter that reports 3.9, the floor, goes on to the sync and runs the command: {code}, {lines}, "
+        f"uv {b.uv_lines()}",
     )
     found = outside_syntax(HARNESS.read_text())
     case(lambda: found == [], f"bin/harness uses only the closed set of Python 3.0 forms: {found}")
@@ -772,6 +802,172 @@ def start_cases(case, tmp):
     case(
         lambda: code == 0 and len(b.uv_lines()) == 1,
         f"a uv in ~/.local/bin syncs the environment, and nothing is fetched: {code}, uv {b.uv_lines()}, {err}",
+    )
+
+
+def old_python() -> tuple[str, str] | None:
+    """(the path, "major.minor") of the first interpreter of OLD_PYTHONS that starts and is at least
+    3.9 and below 3.14, or None."""
+    for name in OLD_PYTHONS:
+        found = shutil.which(name)
+        if found is None:
+            continue
+        p = subprocess.run(
+            [found, "-c", "import sys; print('%d.%d' % sys.version_info[:2])"],
+            capture_output=True,
+            text=True,
+            timeout=TIMEOUT,
+            check=False,
+        )
+        version = p.stdout.strip()
+        if p.returncode == 0 and re.fullmatch(r"3\.(9|1[0-3])", version):
+            return found, version
+    return None
+
+
+def reporting_old(directory: pathlib.Path) -> str:
+    """The path of a program in `directory` that runs its arguments on this interpreter with
+    `sys.version_info` 3.11.9 and `sys.executable` the program itself, as syntax_cases patches the
+    version: the stand-in for an old interpreter on a machine that has none."""
+    directory.mkdir(parents=True)
+    program, start = directory / "python3.11", directory / "start.py"
+    start.write_text(
+        "import runpy, sys\n"
+        "sys.version_info = (3, 11, 9, 'final', 0)\n"
+        f"sys.executable = {str(program)!r}\n"
+        "sys.argv = sys.argv[1:]\n"
+        "runpy.run_path(sys.argv[0], run_name='__main__')\n",
+        encoding="utf-8",
+    )
+    program.write_text(f"#!/bin/sh\nexec '{sys.executable}' '{start}' \"$@\"\n", encoding="utf-8")
+    program.chmod(0o755)
+    return str(program)
+
+
+def old_cases(case: Callable[[Callable[[], object], str], None], tmp: pathlib.Path) -> None:
+    """The start of bin/harness on an interpreter below 3.14 (`old_python`, python3.11 where it is
+    installed, else `reporting_old`), with the fake uv that logs UV_PYTHON_DOWNLOADS and an
+    environment that logs each start: the sync on Python 3.14 with uv's download of it allowed, then
+    the command on the environment's interpreter; the caller's UV_PYTHON and UV_PYTHON_DOWNLOADS; a
+    session; and the marker set to the old interpreter."""
+    old = old_python()
+    if old is None:
+        python, version = reporting_old(tmp / "reporting-old"), "3.11 (this interpreter, reporting 3.11.9)"
+    else:
+        python, version = old
+    n = 0
+
+    def box() -> tuple[Box, pathlib.Path]:
+        nonlocal n
+        n += 1
+        b = Box(tmp / f"old{n}", uv=False)
+        seen = b.root / "seen.log"
+        fake_uv(b.bin / "uv", b.log, seen)
+        return b, seen
+
+    want = repr([str(HARNESS.resolve()), *GET])
+    b, seen = box()
+    code, out, err, _ = b.run(GET, python)
+    case(
+        lambda: (
+            code == 0
+            and out.strip() == str(b.home / "Research" / "Harness")
+            and b.uv_lines() == [f"sync --locked --project {REPO} --no-dev | {b.env_dir} | 3.14 | unset"]
+            and started(seen) == [want]
+            and err == [f"harness: made the Python environment at {b.env_dir}"]
+        ),
+        f"Python {version} with no environment: one uv sync --locked --no-dev on UV_PYTHON 3.14 with "
+        f"UV_PYTHON_DOWNLOADS unset, then the command on the environment's interpreter: {code}, "
+        f"uv {b.uv_lines()}, ran {started(seen)}, {err}",
+    )
+    seen.unlink(missing_ok=True)
+    code, out, err, _ = b.run(GET, python)
+    case(
+        lambda: code == 0 and len(b.uv_lines()) == 1 and started(seen) == [want] and err == [],
+        f"Python {version} with the working environment: no second sync, the command on the environment's "
+        f"interpreter: {code}, uv {b.uv_lines()}, ran {started(seen)}, {err}",
+    )
+
+    b, seen = box()
+    code, out, err, _ = b.run(GET, python, UV_PYTHON="3.15")
+    case(
+        lambda: (
+            code == 0
+            and b.uv_lines() == [f"sync --locked --project {REPO} --no-dev | {b.env_dir} | 3.15 | unset"]
+        ),
+        f"Python {version}: the caller's UV_PYTHON=3.15 is kept: {code}, uv {b.uv_lines()}, {err}",
+    )
+
+    b, seen = box()
+    code, out, err, _ = b.run(GET, python, UV_PYTHON_DOWNLOADS="never", FAKE_UV="fail")
+    case(
+        lambda: (
+            code == 2
+            and b.uv_lines() == [f"sync --locked --project {REPO} --no-dev | {b.env_dir} | 3.14 | never"]
+            and len(err) == 2
+            and "the lock does not resolve" in err[0]
+            and err[1].startswith("harness: ")
+            and "uv python install 3.14" in err[1]
+            and not b.env_dir.exists()
+        ),
+        f"Python {version}: the caller's UV_PYTHON_DOWNLOADS=never is kept, and the sync that fails exits 2 "
+        f"with uv's line and one line that names uv python install 3.14: {code}, uv {b.uv_lines()}, {err}",
+    )
+
+    b, seen = box()
+    code, out, err, _ = b.run(GET, None, TIMEOUT, UV_PYTHON_DOWNLOADS="never", FAKE_UV="fail")
+    case(
+        lambda: code == 2 and len(err) == 1 and "the lock does not resolve" in err[0],
+        f"Python 3.14 or later: a sync that fails with UV_PYTHON_DOWNLOADS=never exits 2 with one line, as before: "
+        f"{code}, {err}",
+    )
+
+    b, seen = box()
+    code, out, err, _ = b.run(GET, python, FAKE_UV="fail")
+    case(
+        lambda: code == 2 and len(err) == 1 and "the lock does not resolve" in err[0],
+        f"Python {version}: a sync that fails without UV_PYTHON_DOWNLOADS=never exits 2 with one line: {code}, "
+        f"{err}",
+    )
+
+    for variable in ("SANDBOX_RUNTIME", "CLAUDECODE"):
+        b, seen = box()
+        code, out, err, _ = b.run(GET, python, TIMEOUT, **{variable: "1"})
+        case(
+            lambda: (
+                code == 2
+                and len(err) == 1
+                and "plain terminal" in err[0]
+                and "3.14" in err[0]
+                and not out
+                and not b.uv_lines()
+                and not b.env_dir.exists()
+            ),
+            f"Python {version}, {variable}=1 with no environment: exit 2 with one line that names a plain terminal "
+            f"and 3.14, no uv, no environment: {code}, uv {b.uv_lines()}, {err}",
+        )
+
+    b, seen = box()
+    make_env(b.env_dir, seen)
+    code, out, err, _ = b.run(GET, python, SANDBOX_RUNTIME="1")
+    case(
+        lambda: (
+            code == 0
+            and out.strip() == str(b.home / "Research" / "Harness")
+            and started(seen) == [want]
+            and not b.uv_lines()
+            and err == []
+        ),
+        f"Python {version} in a session with a working environment: the command on the environment's interpreter, "
+        f"no uv: {code}, ran {started(seen)}, {err}",
+    )
+
+    b, seen = box()
+    code, out, err, _ = b.run(GET, python, RESEARCH_HARNESS_INTERPRETER=python)
+    case(
+        lambda: code == 2 and len(err) == 1 and "3.14" in err[0] and not out and not b.uv_lines(),
+        f"Python {version} named by the marker: exit 2 with one line that names 3.14, never a run on it: {code}, "
+        f"{err}",
     )
 
 
@@ -1239,6 +1435,7 @@ def selftest():
         tmp = pathlib.Path(tmp)
         syntax_cases(case, tmp)
         start_cases(case, tmp)
+        old_cases(cast("Callable[[Callable[[], object], str], None]", case), tmp)
         download_cases(case, tmp)
         install_cases_of(case, tmp)
         prepush_cases(case, tmp)

@@ -102,6 +102,7 @@ export default defineConfig({
           { text: 'Scripts', link: '/components/scripts' },
           { text: 'Adapters', link: '/components/adapters' },
           { text: 'The harness command', link: '/components/harness' },
+          { text: 'The srt settings', link: '/components/sandbox' },
           { text: 'Jobs and configuration', link: '/components/other' }
         ]
       },

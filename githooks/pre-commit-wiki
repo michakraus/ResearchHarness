@@ -32,7 +32,8 @@ repository blocks this commit; if that cost stops being theoretical, narrow the 
 switch the hook off. Warnings never block: they are a backlog, and several are not defects.
 
 The file uses only the closed set of Python 3.0 forms of bin/harness and the standard library, so
-an old python3 reads it and prints bin/harness's own refusal of its version.
+an old python3 reads it: below 3.9 it prints bin/harness's own refusal of its version, and below
+3.11, which brought tomllib, one line of its own.
 
     git commit --no-verify     skips this, and every other hook. Use it knowing that.
 """
@@ -148,7 +149,10 @@ def main():
     tools = environment_bin(harness)
     if tools is None:
         return 1
-    # Imported after bin/harness's version check, which an interpreter without tomllib fails first.
+    # bin/harness's version check refuses only an interpreter below 3.9, and tomllib came in 3.11.
+    if sys.version_info < (3, 11):
+        say("refused, Python %d.%d found; this hook needs 3.11 or later" % tuple(sys.version_info[:2]))
+        return 1
     import tomllib  # noqa: PLC0415
 
     failed = []
