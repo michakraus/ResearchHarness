@@ -134,7 +134,7 @@ jobs:
           VERSION: 2.73.2
           SHA256: 4d7bd8072f15373d5f5c801209bac218527452c8e54f9ae46ba6c5bd4a6eca41
         run: |
-          curl -sSfL -o "$RUNNER_TEMP/chezmoi.tar.gz" \
+          curl -sSfL --retry 6 -o "$RUNNER_TEMP/chezmoi.tar.gz" \
             "https://github.com/twpayne/chezmoi/releases/download/v${VERSION}/chezmoi_${VERSION}_linux_amd64.tar.gz"
           echo "${SHA256}  $RUNNER_TEMP/chezmoi.tar.gz" | sha256sum -c -
           mkdir "$RUNNER_TEMP/bin"
@@ -177,7 +177,7 @@ jobs:
           VERSION: 1.7.12
           SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
         run: |
-          curl -sSfL -o actionlint.tar.gz \
+          curl -sSfL --retry 6 -o actionlint.tar.gz \
             "https://github.com/rhysd/actionlint/releases/download/v${VERSION}/actionlint_${VERSION}_linux_amd64.tar.gz"
           echo "${SHA256}  actionlint.tar.gz" | sha256sum -c -
           tar -xzf actionlint.tar.gz actionlint
@@ -202,7 +202,7 @@ jobs:
           VERSION: 8.30.1
           SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
         run: |
-          curl -sSfL -o "$RUNNER_TEMP/gitleaks.tar.gz" \
+          curl -sSfL --retry 6 -o "$RUNNER_TEMP/gitleaks.tar.gz" \
             "https://github.com/gitleaks/gitleaks/releases/download/v${VERSION}/gitleaks_${VERSION}_linux_x64.tar.gz"
           echo "${SHA256}  $RUNNER_TEMP/gitleaks.tar.gz" | sha256sum -c -
           mkdir "$RUNNER_TEMP/bin"
