@@ -858,8 +858,9 @@ def download_cases(case, tmp):
         # is not transient is not. The waits are zero here, so the cases take no time.
         for kind, want, tries, label in [
             ("flaky", "installed", 3, "two answers 504, then the archive"),
-            ("down", "504: Gateway Timeout, on each of 4 attempts", 4, "504 on every attempt"),
+            ("down", "504: Gateway Timeout on the last of 4 attempts", 4, "504 on every attempt"),
             ("missing", "404", 1, "404, which is not transient"),
+            ("away", "redirects to", 1, "a refused redirect, which is not transient"),
         ]:
             b = box()
             Release.requests.clear()

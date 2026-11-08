@@ -202,7 +202,7 @@ def download(url, path):
             if not transient(e):
                 raise Refusal("cannot download %s: %s" % (url, e))
             if wait is None:
-                raise Refusal("cannot download %s: %s, on each of %d attempts" % (url, e, attempts))
+                raise Refusal("cannot download %s: %s on the last of %d attempts" % (url, e, attempts))
             sys.stderr.write("harness: the download of %s fails (%s); next attempt in %d s\n" % (url, e, wait))
             time.sleep(wait)
         else:
