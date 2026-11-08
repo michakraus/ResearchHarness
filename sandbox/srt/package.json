@@ -1,0 +1,11 @@
+{
+  "name": "research-harness-srt",
+  "private": true,
+  "description": "The sandbox runtime srt that harness setup installs with npm ci --ignore-scripts.",
+  "dependencies": {
+    "@anthropic-ai/sandbox-runtime": "0.0.81"
+  },
+  "overrides": {
+    "node-forge": "1.4.1"
+  }
+}

@@ -710,6 +710,40 @@ command -v bwrap socat
 bwrap --ro-bind / / --dev /dev --unshare-user --unshare-pid true && echo BWRAP-OK
 ```
 
+## The sandbox runtime srt
+
+**What `harness setup` does.** With any frontend chosen, it installs srt 0.0.81 from
+`sandbox/srt/package.json` and `sandbox/srt/package-lock.json` of the clone: it copies both into
+a scratch directory below `~/.local/share/research-harness/`, runs
+`npm ci --ignore-scripts --no-audit --no-fund` there, moves the directory to
+`~/.local/share/research-harness/srt/0.0.81/`, and links `~/.local/bin/srt` to its
+`node_modules/.bin/srt`. It needs `npm` on the `PATH` and a `node` of 22.12 or later, and it skips
+the step when that tree of the same lockfile is linked already.
+*The pinned srt* of [The srt settings](components/sandbox.md) says what the step does in each
+case.
+
+**Why.** The settings files of `harness install` are for srt, and the lockfile fixes the version
+and the sha512 of srt and of each of its dependencies.
+
+**By hand.** These lines install the same tree and link, on macOS and on Ubuntu; they remove no
+other version:
+
+```bash
+d=~/.local/share/research-harness/srt
+mkdir -p "$d" ~/.local/bin
+t=$(mktemp -d "$d/../.srt-install-XXXXXX")
+cp ~/Research/Harness/sandbox/srt/package.json ~/Research/Harness/sandbox/srt/package-lock.json "$t"
+(cd "$t" && npm ci --ignore-scripts --no-audit --no-fund) \
+  && rm -rf "$d/0.0.81" && mv "$t" "$d/0.0.81" \
+  && ln -sfn "$d/0.0.81/node_modules/.bin/srt" ~/.local/bin/srt
+```
+
+**Check.** The command prints the path of the program in the tree:
+
+```bash
+readlink ~/.local/bin/srt
+```
+
 ## `harness install --apply`
 
 **What `harness setup` does.** It runs `harness install --apply`, with the profile and the model

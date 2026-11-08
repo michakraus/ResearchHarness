@@ -81,6 +81,7 @@ installed and meets its minimum is not installed again.
 | OpenCode | tested with 2.0.26 | needed by the frontend `opencode`: reads the configuration that `harness install` writes into `~/.config/opencode/`; without it, nothing reads that configuration |
 | oh-my-pi | tested with 18.8.6 | needed by the frontend `omp`: reads the configuration that `harness install` writes into `~/.omp/agent/`; without it, nothing reads that configuration |
 | Antigravity | no minimum; `harness setup` prints its step and installs nothing | needed by the frontend `antigravity`: reads the layer that `harness install` writes into `~/.gemini/config/`; without `~/.gemini/`, the install writes no file there |
+| srt | 0.0.81 exactly, with each dependency at the version and sha512 of `sandbox/srt/package-lock.json`; needs Node.js ≥ 22.12, the `engines.node` of srt 0.0.81 | needed by each frontend, `claude`, `opencode`, `omp` and `antigravity`: the [sandbox](concepts.md#sandbox) runtime that runs a frontend and everything that it starts in one sandbox, with the settings file that `harness install` writes; nothing runs under `srt` yet |
 | RTK | tested with 0.51.0 | needed by the component `rtk`: shortens the output of shell commands in OpenCode; without it, the plugin passes each command unchanged |
 | jq | tested with 1.7.1 | needed by the component `jq`: reads the session data for the Claude Code status line; without it, the status line shows no values |
 | chezmoi | no minimum; on Ubuntu without an apt candidate, the pinned release 2.73.2 of `setup/tools.toml` | needed by the component `dotfiles`: applies the private copy of the dotfiles kit on each machine; without it, the kit cannot run |
@@ -422,6 +423,27 @@ The harness does not need Antigravity to run. Without `~/.gemini/`, the install 
 there and gives one warning.
 
 Call site: `harness install` (`adapters/antigravity/adapter.py`).
+
+### srt
+
+srt, the sandbox runtime `@anthropic-ai/sandbox-runtime`, runs one process and everything that it
+starts inside one sandbox. It is an npm package.
+
+`harness setup` installs it with any frontend chosen. It copies `sandbox/srt/package.json` and
+`sandbox/srt/package-lock.json` into a scratch directory, runs
+`npm ci --ignore-scripts --no-audit --no-fund` there, moves the directory to
+`~/.local/share/research-harness/srt/0.0.81/` and links `~/.local/bin/srt` to its
+`node_modules/.bin/srt`. The lockfile pins srt and its four dependencies, each with its sha512,
+and `package.json` overrides node-forge to 1.4.1, the oldest release that fixes the eleven
+advisories of node-forge 1.4.0, which the range of srt allows.
+*The pinned srt* of [The srt settings](components/sandbox.md) says more.
+
+The harness needs srt for the settings files that `harness install` writes for each frontend: a
+launcher is to start the frontend under `srt` with its file. That launcher is a later change, so
+nothing runs under `srt` yet.
+
+Call sites: `harness setup` (`lib/harness/setup.py`); the settings files of `harness install`
+(`lib/harness/sandbox.py`).
 
 ### RTK
 

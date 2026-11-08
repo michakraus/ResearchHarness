@@ -27,7 +27,8 @@ The plan (`plan`), in this order: with the `jobs` component and a `claude_remote
 it into a ~/.claude that holds no `.git` (`cloned`), before any step that may write below
 ~/.claude; the writes of the profile and the model tables; the directories that
 `harness install` needs (the tree instructions, each `repository_roots` entry, and the OpenCode
-directory with `opencode`); the packages; the pinned releases; the vendor installers;
+directory with `opencode`); the packages; the pinned releases; the vendor installers; with any
+frontend, srt from the lockfile of sandbox/srt/ (`srt_step`, `install_srt`);
 `harness install --apply`, `git config core.hooksPath .githooks` in the clone,
 `harness trust --apply` with the `claude` frontend once Claude Code has written `~/.claude.json`
 (before that, the step by hand), the jobs with the `jobs` component, without the autocommit job
@@ -60,8 +61,11 @@ jobs on Linux, the line that turns on lingering, unless `loginctl show-user` rea
 puts programs into and that the PATH that `setup` started with lacks (`missing_path`). In a
 terminal, without `--yes`, with zsh as the login shell and a ~/.zshrc that is no symlink, `setup`
 asks y/N to append that line to ~/.zshrc, after the comment PATH_COMMENT; a yes makes it a step of
-the plan, which appends nothing where ~/.zshrc holds the line already. An unknown system, a Linux
-that is not Ubuntu and an unknown architecture exit 2 and name it.
+the plan, which appends nothing where ~/.zshrc holds the line already. srt runs `npm ci
+--ignore-scripts` on a copy of sandbox/srt/ and moves the tree into
+~/.local/share/research-harness/srt/<version>/, linked as ~/.local/bin/srt, with a node of
+SRT_NODE or later; the plan skips it where that tree holds the shipped lockfile and is linked. An
+unknown system, a Linux that is not Ubuntu and an unknown architecture exit 2 and name it.
 
 The run goes step by step. A failed step prints its output and exits 2; a second run plans again
 and starts from the first step, and each step skips what is already done. After the last step
@@ -133,6 +137,14 @@ REDIRECT = ("https", "release-assets.githubusercontent.com")
 TREES = {"Node.js": ("node", "npm", "npx")}
 # The directory below the home directory that holds each tree, in `<command>/<version>/`.
 TREE_ROOT = pathlib.PurePath(".local", "share", "research-harness")
+# The npm package of the sandbox runtime srt, for the settings files of the frontends: the directory
+# of its package.json and package-lock.json, the package, the arguments of npm, and the Node.js that
+# the package's `engines.node` asks for, since `npm ci` only warns below it.
+SRT = REPO / "sandbox" / "srt"
+SRT_FILES = ("package.json", "package-lock.json")
+SRT_PACKAGE = "@anthropic-ai/sandbox-runtime"
+NPM_CI = ("ci", "--ignore-scripts", "--no-audit", "--no-fund")
+SRT_NODE = "22.12.0"
 DOCTOR = "harness doctor"
 JOBS = ("kaimon", "julia-update", "claude-autocommit")
 # The directory below the home directory of the Seatbelt profiles of the jobs of jobsandbox.JOBS,
@@ -495,6 +507,7 @@ def plan(
     if missing := missing_path(machine, choice):
         result.path_line = 'export PATH="' + "".join(f"$HOME/{d}:" for d in missing) + '$PATH"'
         result.by_hand.append(PATH_BY_HAND + result.path_line)
+    srt_step(machine, choice, result)
     harness_steps(machine, choice, loaded, env, result)
     return result
 
@@ -651,6 +664,53 @@ def route_rest(rest: list[tuple[Tool, str]], result: Plan) -> list[tuple[Tool, s
         else:
             result.by_hand.append(tool.by_hand or f"install {tool.name}: no package, release or installer")
     return installers
+
+
+def srt_step(
+    machine: Machine, choice: profile_module.Setup, result: Plan, source: pathlib.Path = SRT
+) -> None:
+    """With any frontend chosen, the step that installs srt from the package and lockfile of
+    `source` (`install_srt`), unless the tree of that lockfile is in place (`srt_installed`). It
+    finds npm and node when it runs, so that a Node.js that an earlier step installs serves it."""
+    if not any(f in frontends.FRONTENDS for f in choice.frontends):
+        return
+    version = srt_version(source)
+    if srt_installed(machine.home, version, source):
+        return
+    result.steps.append(
+        Step(
+            f"npm {' '.join(NPM_CI)} with {source / 'package-lock.json'} into "
+            f"~/{TREE_ROOT / 'srt' / version}, linked as srt in ~/.local/bin, "
+            f"with Node.js {SRT_NODE} or later",
+            lambda: install_srt(machine, version, source),
+        )
+    )
+
+
+def srt_version(source: pathlib.Path = SRT) -> str:
+    """The version of srt that the package.json of `source` names, an exact version; anything else
+    exits 2, naming the file and the value."""
+    path = source / "package.json"
+    dependencies = jsonio.load(path).get("dependencies")
+    value = (
+        cast("dict[str, object]", dependencies).get(SRT_PACKAGE) if isinstance(dependencies, dict) else None
+    )
+    if not isinstance(value, str) or not VERSION.fullmatch(value):
+        raise HarnessError(f"{path}: dependencies.{SRT_PACKAGE} is {value!r}, not an exact version")
+    return value
+
+
+def srt_installed(home: pathlib.Path, version: str, source: pathlib.Path = SRT) -> bool:
+    """Whether srt/<version>/ below the tree root holds the bytes of the lockfile of `source` and
+    node_modules/.bin/srt, and ~/.local/bin/srt is a link to that program."""
+    target = home / TREE_ROOT / "srt" / version
+    program = target / "node_modules" / ".bin" / "srt"
+    link = home / ".local" / "bin" / "srt"
+    try:
+        same = (target / "package-lock.json").read_bytes() == (source / "package-lock.json").read_bytes()
+        return same and program.exists() and link.is_symlink() and link.readlink() == program
+    except OSError:
+        return False
 
 
 def harness_steps(
@@ -1045,6 +1105,92 @@ def made_links(
             made.append(part)
         except OSError as e:
             return f"cannot make the link {part}: {e.strerror or e}; nothing is installed"
+    return None
+
+
+def install_srt(machine: Machine, version: str, source: pathlib.Path = SRT) -> str | None:
+    """Install srt `version` from the package.json and package-lock.json of `source`: copy both into
+    a scratch directory beside srt/ below the tree root, run `npm ci --ignore-scripts --no-audit
+    --no-fund` there with the npm of the PATH, then move the directory to srt/<version>/, link
+    ~/.local/bin/srt to its node_modules/.bin/srt and remove the directories of other versions. No
+    npm, a node below SRT_NODE or without a version, an npm that fails or makes no program, and a
+    directory at ~/.local/bin/srt write nothing below srt/ and leave ~/.local/bin as it was; the
+    scratch directory goes in every case. A file at the link is replaced, as `install_tree` does."""
+    npm = machine.which("npm")
+    if npm is None:
+        return (
+            f"npm is not on the PATH: srt needs Node.js {SRT_NODE} or later with its npm; "
+            "nothing is installed"
+        )
+    node = machine.which("node")
+    found = installed_version(machine, node, ("--version",)) if node else None
+    if found is None or not meets(found, (SRT_NODE,)):
+        return (
+            f"srt {version} needs Node.js {SRT_NODE} or later, and the node of the PATH is "
+            f"{found or 'missing or prints no version'}; nothing is installed"
+        )
+    root = machine.home / TREE_ROOT
+    base, target = root / "srt", root / "srt" / version
+    try:
+        root.mkdir(parents=True, exist_ok=True)
+        scratch = pathlib.Path(tempfile.mkdtemp(prefix=".srt-install-", dir=root))
+    except OSError as e:
+        return f"cannot create a directory below {root}: {e.strerror}"
+    link = machine.home / ".local" / "bin" / "srt"
+    part = link.with_name("srt.part")
+    made: list[pathlib.Path] = []
+    try:
+        # The links come after npm: a failed npm leaves ~/.local/bin as it was.
+        failure = npm_ci(machine, npm, source, scratch) or made_links(
+            [link], [part], [target / "node_modules" / ".bin" / "srt"], made
+        )
+        if failure is not None:
+            return failure
+        try:
+            base.mkdir(exist_ok=True)
+            if target.exists():
+                shutil.rmtree(target)
+            scratch.rename(target)
+            part.replace(link)
+            for other in base.iterdir():
+                if other.name != version:
+                    shutil.rmtree(other)
+        except OSError as e:
+            return f"cannot install srt {version} into {target}: {e.strerror or e}"
+    finally:
+        shutil.rmtree(scratch, ignore_errors=True)
+        for p in made:
+            if p.is_symlink():
+                p.unlink()
+    return None
+
+
+def npm_ci(machine: Machine, npm: str, source: pathlib.Path, scratch: pathlib.Path) -> str | None:
+    """Copy the package files of `source` into `scratch` and run `npm ci` of NPM_CI there; None when
+    npm exits 0 and made node_modules/.bin/srt, else the line that says why nothing is installed,
+    with npm's last line of stderr."""
+    try:
+        for name in SRT_FILES:
+            shutil.copyfile(source / name, scratch / name)
+        p = subprocess.run(
+            [npm, *NPM_CI],
+            cwd=scratch,
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            env=dict(machine.env),
+            timeout=INSTALL_TIMEOUT,
+            check=False,
+        )
+    except OSError as e:
+        return f"cannot run npm {' '.join(NPM_CI)} in {scratch}: {e.strerror or e}; nothing is installed"
+    except subprocess.TimeoutExpired:
+        return f"npm {' '.join(NPM_CI)} has no end after {INSTALL_TIMEOUT} s; nothing is installed"
+    if p.returncode != 0:
+        last = next((line.strip() for line in reversed(p.stderr.splitlines()) if line.strip()), "")
+        return f"npm {' '.join(NPM_CI)} exits {p.returncode}: {last}; nothing is installed"
+    if not (scratch / "node_modules" / ".bin" / "srt").exists():
+        return f"npm {' '.join(NPM_CI)} made no node_modules/.bin/srt; nothing is installed"
     return None
 
 
@@ -1863,9 +2009,10 @@ class Scratch:
         ).stdout.strip()
 
 
-def scratch(tmp: pathlib.Path, name: str, fakes: Mapping[str, str]) -> Scratch:
-    """A new Scratch below `tmp`, with the fake programs `fakes`, the real sh, bash and git, and
-    the example profile and model tables."""
+def scratch(tmp: pathlib.Path, name: str, fakes: Mapping[str, str], *, srt: bool = True) -> Scratch:
+    """A new Scratch below `tmp`, with the fake programs `fakes`, the real sh, bash and git, the
+    example profile and model tables, and with `srt` the tree of the shipped srt lockfile linked
+    (`installed_srt`), so that a plan with a frontend holds no srt step and a run calls no npm."""
     root = tmp / name
     s = Scratch(
         root=root,
@@ -1899,6 +2046,8 @@ def scratch(tmp: pathlib.Path, name: str, fakes: Mapping[str, str]) -> Scratch:
         timeout=TIMEOUT,
         check=True,
     )
+    if srt:
+        installed_srt(s.home, srt_version())
     return s
 
 
@@ -3055,6 +3204,333 @@ def tree_refusal_cases(case: Case, tmp: pathlib.Path) -> None:
                 and not (m.home / ".local" / "share" / "escaped").exists()
                 and not (m.home / ".local" / "share" / "research-harness" / "escaped").exists(),
             )
+
+
+# The lockfile format that npm 7 and later read, and the integrity of the srt tarball that the
+# supply-chain review read from the registry.
+SRT_LOCKFILE_VERSION = 3
+SRT_INTEGRITY = (
+    "sha512-bjHDu87gjIR7+Oxy9jPiK3v8CvSELCzfpXa3fjqfSKdvlZET2iF51xcXILWPayTpowB3xtZeQVf2JR916nVW/w=="
+)
+# A stub npm: it records its arguments and its working directory beside itself, then writes the
+# program that `npm ci` links from the package's `bin` entry.
+SRT_NPM = (
+    'echo "$*" > "$0.args"; pwd -P > "$0.cwd"\n'
+    '/bin/mkdir -p node_modules/.bin && printf "#!/bin/sh\\n" > node_modules/.bin/srt '
+    "&& /bin/chmod 755 node_modules/.bin/srt"
+)
+
+
+def installed_srt(home: pathlib.Path, version: str) -> pathlib.Path:
+    """The tree of srt `version` below `home` as `install_srt` leaves it: the shipped package and
+    lockfile, a stub program, and ~/.local/bin/srt linked to the program, which it returns."""
+    target = home / TREE_ROOT / "srt" / version
+    (target / "node_modules" / ".bin").mkdir(parents=True)
+    for name in SRT_FILES:
+        shutil.copyfile(SRT / name, target / name)
+    program = target / "node_modules" / ".bin" / "srt"
+    program.write_text("#!/bin/sh\n", encoding="utf-8")
+    link = home / ".local" / "bin" / "srt"
+    link.parent.mkdir(parents=True, exist_ok=True)
+    link.symlink_to(program)
+    return program
+
+
+def srt_file_cases(case: Case, tmp: pathlib.Path) -> None:
+    """sandbox/srt/: the package that pins srt and overrides node-forge, its lockfile, and the
+    version that the step reads from it."""
+    version = srt_version()
+    package = jsonio.load(SRT / "package.json")
+    case(
+        f"sandbox/srt/package.json is private, pins srt 0.0.81 alone and overrides node-forge to 1.4.1: "
+        f"{version} {package}",
+        ok=version == "0.0.81"
+        and package.get("private") is True
+        and package.get("dependencies") == {SRT_PACKAGE: "0.0.81"}
+        and package.get("overrides") == {"node-forge": "1.4.1"},
+    )
+    lock = jsonio.load(SRT / "package-lock.json")
+    raw = lock.get("packages")
+    packages = cast("dict[str, dict[str, object]]", raw if isinstance(raw, dict) else {})
+    locked = {name.removeprefix("node_modules/"): entry for name, entry in packages.items() if name}
+    srt = locked.get(SRT_PACKAGE, {})
+    case(
+        f"the lockfile, version 3, holds srt 0.0.81 with the review's integrity, node-forge 1.4.1 and "
+        f"three more packages: {sorted(locked)}",
+        ok=lock.get("lockfileVersion") == SRT_LOCKFILE_VERSION
+        and set(locked) == {SRT_PACKAGE, "node-forge", "zod", "commander", "@pondwader/socks5-server"}
+        and srt.get("version") == "0.0.81"
+        and srt.get("integrity") == SRT_INTEGRITY
+        and locked["node-forge"].get("version") == "1.4.1",
+    )
+    case(
+        "each package of the lockfile comes from registry.npmjs.org with a sha512 integrity and has no "
+        "install script",
+        ok=bool(locked)
+        and all(
+            str(entry.get("resolved", "")).startswith("https://registry.npmjs.org/")
+            and str(entry.get("integrity", "")).startswith("sha512-")
+            and not entry.get("hasInstallScript")
+            for entry in locked.values()
+        ),
+    )
+    for name, value in (("a range", "^0.0.81"), ("a tag", "latest")):
+        source = tmp / f"srt-{name.replace(' ', '-')}"
+        source.mkdir()
+        (source / "package.json").write_text(
+            json.dumps({"private": True, "dependencies": {SRT_PACKAGE: value}}), encoding="utf-8"
+        )
+        try:
+            got = srt_version(source)
+        except HarnessError as e:
+            got = str(e)
+        case(f"a package.json that pins srt to {name} exits 2 naming it: {got}", ok=repr(value) in got)
+
+
+def srt_plan_cases(case: Case, tmp: pathlib.Path, pins: Pins) -> None:
+    """The srt step in the plan: after the installers and before the harness steps with each
+    frontend, none with no frontend, and none with the tree of the shipped lockfile in place; a
+    whole run installs it."""
+    version = srt_version()
+    root = TREE_ROOT / "srt" / version
+
+    def srt_lines(lines: Sequence[str]) -> list[str]:
+        return [line for line in lines if line.startswith("npm ci --ignore-scripts")]
+
+    s = scratch(tmp, "srt-plan", MACOS_FAKES, srt=False)
+    s.fake("apt-cache", 'echo "  Candidate: 9.9-1"')
+    claude = profile_module.Setup(frontends=("claude",), components=())
+    for system in ("Darwin", "Linux"):
+        lines = shows(s.machine(system), claude, s.options(), pins)
+        at = next((i for i, line in enumerate(lines) if line.startswith("npm ci --ignore-scripts")), -1)
+        installer = next((i for i, line in enumerate(lines) if "claude.ai/install.sh" in line), -1)
+        case(
+            f"{system}: one srt step names npm ci --ignore-scripts and ~/{root}, after the installers and "
+            f"before harness install: {lines}",
+            ok=len(srt_lines(lines)) == 1
+            and f"~/{root}" in lines[at]
+            and -1 < installer < at < lines.index("harness install --apply"),
+        )
+    for frontend in frontends.FRONTENDS:
+        lines = shows(
+            s.machine(), profile_module.Setup(frontends=(frontend,), components=()), s.options(), pins
+        )
+        case(f"{frontend} alone plans the srt step: {srt_lines(lines)}", ok=len(srt_lines(lines)) == 1)
+    lines = shows(s.machine(), profile_module.Setup(frontends=(), components=("julia",)), s.options(), pins)
+    case(f"no frontend plans no srt step: {srt_lines(lines)}", ok=not srt_lines(lines))
+
+    program = installed_srt(s.home, version)
+    lines = shows(s.machine(), profile_module.Setup(), s.options(), pins)
+    case(f"with the shipped lockfile's tree linked, no srt step: {srt_lines(lines)}", ok=not srt_lines(lines))
+    code, out = attempt(s.machine(), s.options(dry_run=True), pins=pins)
+    case(f"and the dry run shows none: {code}", ok=code == "0" and "npm ci" not in out)
+    lock = program.parents[2] / "package-lock.json"
+    lock.write_bytes(lock.read_bytes() + b"\n")
+    lines = shows(s.machine(), profile_module.Setup(), s.options(), pins)
+    case(
+        f"an installed lockfile of other bytes plans the step: {srt_lines(lines)}",
+        ok=len(srt_lines(lines)) == 1,
+    )
+    shutil.copyfile(SRT / "package-lock.json", lock)
+    link = s.home / ".local" / "bin" / "srt"
+    link.unlink()
+    link.symlink_to(s.home / "elsewhere")
+    lines = shows(s.machine(), profile_module.Setup(), s.options(), pins)
+    case(f"a link to another target plans the step: {srt_lines(lines)}", ok=len(srt_lines(lines)) == 1)
+    link.unlink()
+    link.symlink_to(program)
+    program.unlink()
+    lines = shows(s.machine(), profile_module.Setup(), s.options(), pins)
+    case(f"a tree without its program plans the step: {srt_lines(lines)}", ok=len(srt_lines(lines)) == 1)
+
+    s = scratch(tmp, "srt-run", MACOS_FAKES, srt=False)
+    s.fake("node", 'echo "v22.12.0"')
+    s.fake("npm", SRT_NPM)
+    chosen_profile(s, claude)
+    code, out = attempt(s.machine(), s.options(), pins=pins)
+    link = s.home / ".local" / "bin" / "srt"
+    case(
+        f"a whole run with a stub npm installs srt and links it: {code} {out[-300:]!r}",
+        ok=code == "0"
+        and link.is_symlink()
+        and link.readlink() == s.home / root / "node_modules" / ".bin" / "srt",
+    )
+    lines = shows(s.machine(), claude, s.options(), pins)
+    case(f"the plan after that run has no srt step: {srt_lines(lines)}", ok=not srt_lines(lines))
+
+
+def srt_scratch(tmp: pathlib.Path, name: str, node: str = "v22.12.0", npm: str = SRT_NPM) -> Scratch:
+    """A Scratch without srt, whose stub node prints `node` and whose stub npm runs `npm`."""
+    s = scratch(tmp, f"srt-{name}", MACOS_FAKES, srt=False)
+    s.fake("node", f'echo "{node}"')
+    s.fake("npm", npm)
+    return s
+
+
+def listing(directory: pathlib.Path) -> list[str]:
+    """The sorted names in `directory`; none where it is no directory."""
+    return sorted(p.name for p in directory.iterdir()) if directory.is_dir() else []
+
+
+def srt_target(s: Scratch, version: str) -> pathlib.Path:
+    """The directory of srt `version` in the home of `s`."""
+    return s.home / TREE_ROOT / "srt" / version
+
+
+def srt_linked(s: Scratch) -> str:
+    """The target of ~/.local/bin/srt in the home of `s`; "" where it is no link."""
+    link = s.home / ".local" / "bin" / "srt"
+    return str(link.readlink()) if link.is_symlink() else ""
+
+
+def srt_install_cases(case: Case, tmp: pathlib.Path) -> None:
+    """`install_srt` with a stub npm and node: a fresh install, an upgrade, a file at the link, and a
+    tree of the same version with another lockfile."""
+    version = srt_version()
+    s = srt_scratch(tmp, "fresh")
+    failure = install_srt(s.machine(), version)
+    args = (s.bin / "npm.args").read_text(encoding="utf-8").strip() if (s.bin / "npm.args").exists() else ""
+    cwd = pathlib.Path((s.bin / "npm.cwd").read_text(encoding="utf-8").strip()) if args else pathlib.Path()
+    case(
+        f"npm runs as npm ci --ignore-scripts --no-audit --no-fund, in a scratch directory beside srt/: "
+        f"{failure} {args!r} {cwd}",
+        ok=failure is None
+        and args == "ci --ignore-scripts --no-audit --no-fund"
+        and cwd.parent == s.home / TREE_ROOT
+        and cwd.name != "srt",
+    )
+    t = srt_target(s, version)
+    case(
+        f"srt/{version}/ holds the two shipped files and node_modules/.bin/srt, ~/.local/bin/srt links to "
+        f"it, and no scratch directory is left: {listing(t)} {srt_linked(s)} {listing(s.home / TREE_ROOT)}",
+        ok=all((t / n).is_file() and (t / n).read_bytes() == (SRT / n).read_bytes() for n in SRT_FILES)
+        and (t / "node_modules" / ".bin" / "srt").is_file()
+        and srt_linked(s) == str(t / "node_modules" / ".bin" / "srt")
+        and listing(s.home / TREE_ROOT) == ["srt"]
+        and listing(s.home / ".local" / "bin") == ["srt"],
+    )
+
+    s = srt_scratch(tmp, "upgrade")
+    installed_srt(s.home, "0.0.79")
+    failure = install_srt(s.machine(), version)
+    t = srt_target(s, version)
+    case(
+        f"an upgrade removes 0.0.79 and links into {version}: {failure} {listing(t.parent)} {srt_linked(s)}",
+        ok=failure is None
+        and listing(t.parent) == [version]
+        and srt_linked(s) == str(t / "node_modules" / ".bin" / "srt"),
+    )
+
+    s = srt_scratch(tmp, "file")
+    (s.home / ".local" / "bin").mkdir(parents=True)
+    (s.home / ".local" / "bin" / "srt").write_text("#!/bin/sh\n", encoding="utf-8")
+    failure = install_srt(s.machine(), version)
+    case(
+        f"a file at ~/.local/bin/srt is replaced by the link: {failure} {srt_linked(s)}",
+        ok=failure is None and srt_linked(s) == str(srt_target(s, version) / "node_modules" / ".bin" / "srt"),
+    )
+
+    s = srt_scratch(tmp, "again")
+    installed_srt(s.home, version)
+    t = srt_target(s, version)
+    (t / "package-lock.json").write_text("{}\n", encoding="utf-8")
+    failure = install_srt(s.machine(), version)
+    case(
+        f"a tree of the same version with another lockfile is replaced by the new tree: {failure}",
+        ok=failure is None
+        and (t / "package-lock.json").read_bytes() == (SRT / "package-lock.json").read_bytes()
+        and listing(t.parent) == [version]
+        and listing(s.home / TREE_ROOT) == ["srt"],
+    )
+
+
+def srt_refusal_cases(case: Case, tmp: pathlib.Path) -> None:
+    """Each failure of `install_srt`: the installed version stays linked, and no scratch directory,
+    no other version and no srt.part link is left; a failure before npm runs no npm."""
+    version = srt_version()
+
+    def kept(s: Scratch, old: pathlib.Path) -> bool:
+        """0.0.79 is still installed and linked, and nothing else is below the root or in ~/.local/bin."""
+        return (
+            srt_linked(s) == str(old)
+            and listing(srt_target(s, version).parent) == ["0.0.79"]
+            and listing(s.home / TREE_ROOT) == ["srt"]
+            and listing(s.home / ".local" / "bin") == ["srt"]
+        )
+
+    s = srt_scratch(tmp, "fail", npm='echo "npm error earlier" >&2; echo "E401 boom" >&2; exit 1')
+    old = installed_srt(s.home, "0.0.79")
+    failure = install_srt(s.machine(), version)
+    case(
+        f"npm exiting 1 fails the step with its last line of stderr, and keeps 0.0.79 linked: {failure}",
+        ok=failure is not None and "E401 boom" in failure and kept(s, old),
+    )
+    s = srt_scratch(tmp, "no-npm")
+    (s.bin / "npm").unlink()
+    old = installed_srt(s.home, "0.0.79")
+    failure = install_srt(s.machine(), version)
+    case(
+        f"no npm on the PATH fails the step naming Node.js and npm, and keeps 0.0.79 linked: {failure}",
+        ok=failure is not None and "Node.js" in failure and "npm" in failure and kept(s, old),
+    )
+    s = srt_scratch(tmp, "no-program", npm="exit 0")
+    old = installed_srt(s.home, "0.0.79")
+    failure = install_srt(s.machine(), version)
+    case(
+        f"npm exiting 0 without node_modules/.bin/srt fails the step, and keeps 0.0.79 linked: {failure}",
+        ok=failure is not None and "node_modules/.bin/srt" in failure and kept(s, old),
+    )
+    s = srt_scratch(tmp, "signal", npm=f"{SRT_NPM}\nkill -9 $$")
+    old = installed_srt(s.home, "0.0.79")
+    failure = install_srt(s.machine(), version)
+    case(
+        f"npm killed by a signal after it made the program fails the step, and keeps 0.0.79 linked: "
+        f"{failure}",
+        ok=failure is not None and kept(s, old),
+    )
+    s = srt_scratch(tmp, "srt-file")
+    (s.home / TREE_ROOT).mkdir(parents=True)
+    (s.home / TREE_ROOT / "srt").write_text("", encoding="utf-8")
+    failure = install_srt(s.machine(), version)
+    case(
+        f"a file at srt/ fails the step after npm, removes the scratch directory and the srt.part link, and "
+        f"leaves ~/.local/bin empty: {failure} {listing(s.home / TREE_ROOT)} "
+        f"{listing(s.home / '.local' / 'bin')}",
+        ok=failure is not None
+        and str(srt_target(s, version)) in failure
+        and listing(s.home / TREE_ROOT) == ["srt"]
+        and listing(s.home / ".local" / "bin") == [],
+    )
+
+    for node in ("v22.11.0", "v20.16.0", ""):
+        s = srt_scratch(tmp, f"node-{node or 'none'}", node)
+        if not node:
+            (s.bin / "node").unlink()
+        failure = install_srt(s.machine(), version)
+        case(
+            f"node {node or 'missing'} fails the step naming 22.12 and the version found, runs no npm, and "
+            f"writes nothing: {failure}",
+            ok=failure is not None
+            and "22.12" in failure
+            and node.removeprefix("v") in failure
+            and not (s.bin / "npm.args").exists()
+            and not (s.home / TREE_ROOT / "srt").exists()
+            and not (s.home / ".local" / "bin").exists(),
+        )
+
+    s = srt_scratch(tmp, "dir")
+    link = s.home / ".local" / "bin" / "srt"
+    link.mkdir(parents=True)
+    failure = install_srt(s.machine(), version)
+    case(
+        f"a directory at ~/.local/bin/srt fails the step naming it, and writes nothing below srt/: {failure}",
+        ok=failure is not None
+        and str(link) in failure
+        and link.is_dir()
+        and not link.is_symlink()
+        and listing(s.home / TREE_ROOT) == []
+        and listing(s.home / ".local" / "bin") == ["srt"],
+    )
 
 
 def ubuntu_2404_cases(case: Case, tmp: pathlib.Path) -> None:
@@ -4360,6 +4836,10 @@ def selftest() -> tuple[int, int]:
         release_cases(case, root)
         tree_cases(case, root)
         tree_refusal_cases(case, root)
+        srt_file_cases(case, root)
+        srt_plan_cases(case, root, pins)
+        srt_install_cases(case, root)
+        srt_refusal_cases(case, root)
         ubuntu_2404_cases(case, root)
         interactive_cases(case, root, pins)
         question_cases(case, root, pins)

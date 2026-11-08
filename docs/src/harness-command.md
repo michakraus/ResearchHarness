@@ -119,18 +119,22 @@ The plan holds these steps, in this order:
 4. the vendor installers, in this order: juliaup, Julia through juliaup when juliaup is there
    (`juliaup update` when Julia is below its minimum), fatou on Ubuntu, Kaimon as a Julia app,
    Claude Code, and on Ubuntu OpenCode (with `--no-modify-path`) and oh-my-pi;
-5. `harness install --apply`;
-6. `git config core.hooksPath .githooks` in the clone;
-7. `harness trust --apply`;
-8. with the component `jobs`, the jobs as the dotfiles kit's services step does them: the copies
+5. with any frontend, `srt` from `sandbox/srt/package-lock.json`: `npm ci --ignore-scripts` into
+   `~/.local/share/research-harness/srt/<version>/`, and `~/.local/bin/srt` linked into it, unless
+   that tree of the same lockfile is linked already
+   (*The pinned srt* of [The srt settings](components/sandbox.md));
+6. `harness install --apply`;
+7. `git config core.hooksPath .githooks` in the clone;
+8. `harness trust --apply`;
+9. with the component `jobs`, the jobs as the dotfiles kit's services step does them: the copies
    in `~/.local/bin`, then the launch agents or the `systemd --user` units, rendered with
    `harness render` and loaded; on macOS, the Seatbelt profiles of the Kaimon and julia-update
    jobs, rendered with `harness render sandbox/<job>.sb` into
    `~/.config/research-harness/sandbox/` before each one's launch agent, and before the Kaimon
    job's profile the `ps` shim `sandbox/shims/ps`, mode 755, into that directory's `shims/`;
-9. with the component `julia`, the Kaimon token `~/.config/kaimon/auth-token`, mode 600, from the
-   first key of `~/.config/kaimon/config.json` when that file exists and the token does not;
-10. `harness doctor`, after the lines under *By hand*, so that its report ends the run.
+10. with the component `julia`, the Kaimon token `~/.config/kaimon/auth-token`, mode 600, from
+    the first key of `~/.config/kaimon/config.json` when that file exists and the token does not;
+11. `harness doctor`, after the lines under *By hand*, so that its report ends the run.
 
 A tool that is installed at or above its minimum of [dependencies.md](dependencies.md) is skipped;
 a tool with no minimum, only a version that it is tested with, is met by any version. After a
