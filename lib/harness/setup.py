@@ -926,11 +926,12 @@ def install_tree(
         return f"cannot create a directory below {root}: {e.strerror}"
     links = [machine.home / ".local" / "bin" / program for program in programs]
     parts = [link.with_name(link.name + ".part") for link in links]
+    made: list[pathlib.Path] = []
     try:
         tree = unpacked_tree(data, release.url, scratch, programs)
         if isinstance(tree, str):
             return tree
-        failure = made_links(links, parts, [target / "bin" / program for program in programs])
+        failure = made_links(links, parts, [target / "bin" / program for program in programs], made)
         if failure is not None:
             return failure
         try:
@@ -947,7 +948,7 @@ def install_tree(
             return f"cannot install the tree of {release.url} into {target}: {e.strerror or e}"
     finally:
         shutil.rmtree(scratch, ignore_errors=True)
-        for part in parts:
+        for part in made:
             if part.is_symlink():
                 part.unlink()
     return None
@@ -975,23 +976,32 @@ def unpacked_tree(
     if len(tops) != 1 or missing:
         wanted = ", ".join(f"bin/{p}" for p in programs)
         return f"{url} holds no top-level directory with {wanted}; nothing is installed"
-    # The data filter keeps each link inside the scratch directory, the parent of the tree; a link
-    # that leaves the tree itself would point beside it after the tree moves to its version.
-    inside = tree.resolve()
+    # The data filter keeps each link inside the scratch directory, the parent of the tree, and
+    # writes its target in normal form, with `..` only at its start. A link stays inside the tree
+    # after the tree moves to its version when its leading `..` climb no higher than the link's own
+    # directory; the rule reads the target as written, so a target that climbs out and comes back
+    # by the tree's top-level name is refused too.
     for path in tree.rglob("*"):
-        if path.is_symlink() and not path.resolve().is_relative_to(inside):
-            name = path.relative_to(scratch)
-            return f"{url} holds the link {name}, which leaves the tree; nothing is installed"
+        if path.is_symlink():
+            target = path.readlink().parts
+            ups = next((i for i, part in enumerate(target) if part != ".."), len(target))
+            if ups > len(path.relative_to(tree).parts) - 1:
+                name = path.relative_to(scratch)
+                return f"{url} holds the link {name}, which leaves the tree; nothing is installed"
     return tree
 
 
 def made_links(
-    links: Sequence[pathlib.Path], parts: Sequence[pathlib.Path], targets: Sequence[pathlib.Path]
+    links: Sequence[pathlib.Path],
+    parts: Sequence[pathlib.Path],
+    targets: Sequence[pathlib.Path],
+    made: list[pathlib.Path],
 ) -> str | None:
     """Make each of `parts` a symbolic link to its entry of `targets`, beside its entry of `links`,
-    which it replaces later; None, or the line that says why nothing is installed: a directory at a
-    link, or a link that cannot be made. The links come before the tree moves, so that a failure
-    here leaves the tree and ~/.local/bin as they were."""
+    which it replaces later, and append each link made to `made`; None, or the line that says why
+    nothing is installed: a directory at a link, or a link that cannot be made. The links come
+    before the tree moves, so that a failure here leaves the tree as it was, and the caller removes
+    the links of `made`."""
     taken = [link for link in links if link.is_dir() and not link.is_symlink()]
     if taken:
         return f"{taken[0]} is a directory, not a link; nothing is installed"
@@ -1000,6 +1010,7 @@ def made_links(
             part.parent.mkdir(parents=True, exist_ok=True)
             part.unlink(missing_ok=True)
             part.symlink_to(target)
+            made.append(part)
         except OSError as e:
             return f"cannot make the link {part}: {e.strerror or e}; nothing is installed"
     return None
@@ -2773,9 +2784,13 @@ def member(name: str, link: str = "") -> tarfile.TarInfo:
 def tree_cases(case: Case, tmp: pathlib.Path) -> None:
     """The Node.js release, a whole tree: unpacked below ~/.local/share/research-harness/node/
     <version>/ and linked into ~/.local/bin; a mismatch, an HTTP error and a second redirect write
-    nothing below ~/.local; a second version replaces the first."""
+    nothing below ~/.local; a second version replaces the first; a deep link that stays inside the
+    tree installs."""
     good, newer = node_tree("24.11.1"), node_tree("24.12.0")
-    files = {"/good.tar.xz": good, "/newer.tar.xz": newer}
+    deep = node_tree(
+        "24.11.1", [member("node-v24.11.1-linux-x64/lib/node_modules/npm/bin/deep", "../../../../bin/node")]
+    )
+    files = {"/good.tar.xz": good, "/newer.tar.xz": newer, "/deep.tar.xz": deep}
     moved = {"/a.tar.xz": "/good.tar.xz", "/c.tar.xz": "/a.tar.xz"}
     with release_server(files, moved) as url:
 
@@ -2834,6 +2849,15 @@ def tree_cases(case: Case, tmp: pathlib.Path) -> None:
         )
 
         m = machine()
+        failure = install_tree(m, "node", NODE, release("deep.tar.xz", deep))
+        tree = m.home / ".local" / "share" / "research-harness" / "node" / "24.11.1"
+        link = tree / "lib" / "node_modules" / "npm" / "bin" / "deep"
+        case(
+            f"a link four levels deep to ../../../../bin/node stays inside the tree and installs: {failure}",
+            ok=failure is None and link.is_symlink() and link.resolve() == (tree / "bin" / "node").resolve(),
+        )
+
+        m = machine()
         (m.home / ".local" / "bin").mkdir(parents=True)
         (m.home / ".local" / "bin" / "node").write_text("#!/bin/sh\necho v18.19.1\n", encoding="utf-8")
         (m.home / ".local" / "bin" / "npm.part").write_text("left by a run that stopped\n", encoding="utf-8")
@@ -2867,27 +2891,41 @@ def tree_refusal_cases(case: Case, tmp: pathlib.Path) -> None:
     """The Node.js installs that fail: no top-level directory, a top-level directory that lacks a
     program, a directory in ~/.local/bin of a program's name, a link that cannot be made, and each
     member that escapes the tree. Each writes no tree below ~/.local/share/research-harness/node/
-    and no link in ~/.local/bin. A link of a program's name to a directory is no such obstacle: the
-    step replaces it."""
+    and no link in ~/.local/bin, and a <program>.part link that the step does not make keeps its
+    target. A link of a program's name to a directory is no such obstacle: the step replaces it."""
     good = node_tree("24.11.1")
     outside = tmp / "tree-outside"
     top = "node-v24.11.1-linux-x64"
+    leaves = "which leaves the tree; nothing is installed"
+    # Each archive, and the text that the line of its failure holds ("" where any line will do).
     escapes = {
-        "an absolute member": node_tree("24.11.1", [member(str(outside / "absolute"))]),
-        "an absolute member /<top>/bin/planted, named in the line": node_tree(
-            "24.11.1", [member(f"/{top}/bin/planted")]
+        "an absolute member": (node_tree("24.11.1", [member(str(outside / "absolute"))]), ""),
+        "an absolute member /<top>/bin/planted, named in the line": (
+            node_tree("24.11.1", [member(f"/{top}/bin/planted")]),
+            f"/{top}/bin/planted",
         ),
-        "a link to ../.., the directory of the versions": node_tree(
-            "24.11.1", [member(f"{top}/bin/up", "../..")]
+        "a link to ../.., the directory of the versions": (
+            node_tree("24.11.1", [member(f"{top}/bin/up", "../..")]),
+            f"bin/up, {leaves}",
         ),
-        "a link into a tree of another version": node_tree(
-            "24.11.1", [member(f"{top}/bin/side", "../../24.0.0/bin/node")]
+        "a link into a tree of another version": (
+            node_tree("24.11.1", [member(f"{top}/bin/side", "../../24.0.0/bin/node")]),
+            f"bin/side, {leaves}",
         ),
-        "a member with ..": node_tree("24.11.1", [member("node-v24.11.1-linux-x64/../../escaped")]),
-        "a link out of the tree": node_tree(
-            "24.11.1", [member("node-v24.11.1-linux-x64/bin/evil", "../../../../../../../../../etc/passwd")]
+        "a link that leaves the tree and comes back by its top-level name": (
+            node_tree("24.11.1", [member(f"{top}/bin/back", f"../../{top}/bin/node")]),
+            f"bin/back, {leaves}",
         ),
-        "an absolute link": node_tree("24.11.1", [member("node-v24.11.1-linux-x64/bin/evil", "/etc/passwd")]),
+        "a link x/../../.., in normal form ../..": (
+            node_tree("24.11.1", [member(f"{top}/bin/k", "x/../../..")]),
+            f"bin/k, {leaves}",
+        ),
+        "a member with ..": (node_tree("24.11.1", [member(f"{top}/../../escaped")]), ""),
+        "a link out of the tree": (
+            node_tree("24.11.1", [member(f"{top}/bin/evil", "../../../../../../../../../etc/passwd")]),
+            "",
+        ),
+        "an absolute link": (node_tree("24.11.1", [member(f"{top}/bin/evil", "/etc/passwd")]), ""),
     }
     flat = flat_tree()
     lacking = io.BytesIO()
@@ -2895,7 +2933,7 @@ def tree_refusal_cases(case: Case, tmp: pathlib.Path) -> None:
         tar.addfile(member(f"{top}/bin/node"), io.BytesIO(b"x"))
         tar.addfile(member(f"{top}/bin/npm"), io.BytesIO(b"x"))
     files = {"/good.tar.xz": good, "/flat.tar.xz": flat, "/lacking.tar.xz": lacking.getvalue()} | {
-        f"/escape{i}.tar.xz": data for i, data in enumerate(escapes.values())
+        f"/escape{i}.tar.xz": data for i, (data, _) in enumerate(escapes.values())
     }
     with release_server(files) as url:
 
@@ -2930,12 +2968,16 @@ def tree_refusal_cases(case: Case, tmp: pathlib.Path) -> None:
 
         m = machine()
         (m.home / ".local" / "bin" / "npm").mkdir(parents=True)
+        (m.home / "kept").write_text("x\n", encoding="utf-8")
+        (m.home / ".local" / "bin" / "node.part").symlink_to(m.home / "kept")
         failure = install_tree(m, "node", NODE, release("good.tar.xz", good))
         left = sorted(p.name for p in (m.home / ".local" / "bin").iterdir())
         case(
-            f"a directory npm in ~/.local/bin fails the step before anything is installed: {failure} {left}",
+            f"a directory npm in ~/.local/bin fails the step before anything is installed, and a node.part "
+            f"link that the step does not reach keeps its target: {failure} {left}",
             ok=failure is not None
-            and left == ["npm"]
+            and left == ["node.part", "npm"]
+            and (m.home / ".local" / "bin" / "node.part").readlink() == m.home / "kept"
             and (m.home / ".local" / "bin" / "npm").is_dir()
             and not (m.home / ".local" / "bin" / "npm").is_symlink()
             and not (m.home / ".local" / "share" / "research-harness" / "node").exists(),
@@ -2962,15 +3004,16 @@ def tree_refusal_cases(case: Case, tmp: pathlib.Path) -> None:
             ok=failure is None and (m.home / ".local" / "bin" / "npm").resolve().is_file(),
         )
 
-        for i, label in enumerate(escapes):
+        for i, (label, (_, named)) in enumerate(escapes.items()):
             m = machine()
-            failure = install_tree(m, "node", NODE, release(f"escape{i}.tar.xz", escapes[label]))
-            strays = [str(p) for p in m.home.rglob("*") if p.name in ("planted", "up", "side", "evil")]
+            failure = install_tree(m, "node", NODE, release(f"escape{i}.tar.xz", escapes[label][0]))
+            stray = ("planted", "up", "side", "back", "k", "evil")
+            strays = [str(p) for p in m.home.rglob("*") if p.name in stray]
             case(
                 f"{label}: the step fails before anything is linked, and leaves no tree: {failure} {strays}",
                 ok=failure is not None
                 and failure.endswith("nothing is installed")
-                and (f"/{top}/bin/planted" in failure or "planted" not in label)
+                and named in failure
                 and not strays
                 and not (m.home / ".local" / "bin").exists()
                 and not (m.home / ".local" / "share" / "research-harness" / "node").exists()

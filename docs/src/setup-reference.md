@@ -397,8 +397,8 @@ the archive, checks its sha256 against the file, and only then installs the prog
 `~/.local/bin`; a download whose sha256 differs installs nothing. The release of Node.js is the
 whole tree of nodejs.org, because npm runs from it: `harness setup` unpacks it into
 `~/.local/share/research-harness/node/<version>/`, refuses a member that would land outside that
-directory, links `node`, `npm` and `npx` in `~/.local/bin` to its `bin/`, and removes the tree of
-any other version.
+directory and a link whose target, as written, climbs out of it, links `node`, `npm` and `npx` in
+`~/.local/bin` to its `bin/`, and removes the tree of any other version.
 On macOS, Homebrew installs these tools, and this step does not run.
 
 **Why.** A pinned release with a checked sha256 installs the version that the harness is tested
