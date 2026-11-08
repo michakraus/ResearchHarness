@@ -662,18 +662,22 @@
 - kind: not verified
 - found: 2026-11-02, a review of the hook rollout's pull requests
 
-### K136 · The shell checks of the guard do not read a program or a subcommand that an expansion makes, or a script on standard input.
+### K136 · The shell checks of the guard do not read a word that an expansion makes, a script on standard input, or a script nested more than three levels deep.
 
-- location: `hooks/guard/shell.py:226`
+- location: `hooks/guard/shell.py:235`
 - evidence: the checks read quotes, ANSI-C and locale quotes, and the scripts of `sh -c`,
-  `bash -c`, `zsh -c` and `eval`, and run no other expansion. `guard --from claude` in a checkout
-  of an own organisation answers `deny` to `bash -c 'git push --force-with-lease origin main'`
-  and `pass` to each of these, which run the same push: `g=git; $g push --force-with-lease origin
-  main`, `git p$(printf u)sh --force-with-lease origin main` and
-  `echo 'git push --force-with-lease origin main' | sh`. The same holds for the other writes of
-  the checks, such as `x=rm; $x -rf ~/Research/Papers`. A lease push through `git -C $d` whose
-  target is a default branch of that repository other than `main` and `master` asks rather than
-  refuses: the check cannot read the directory. The sandbox stays the containment; for
-  Antigravity, K88 is the same limit of its Bash rules.
+  `bash -c`, `zsh -c` (and the other shells of `SHELLS`) and `eval`, three levels deep, and run
+  no other expansion. `guard --from claude` in a checkout of an own organisation answers `deny`
+  to `bash -c 'git push --force-with-lease origin main'` and `pass` to each of these, which run
+  the same push: `g=git; $g push --force-with-lease origin main`,
+  `git p$(printf u)sh --force-with-lease origin main`, `o=--force-with-lease; git push $o origin
+  main` and `echo 'git push --force-with-lease origin main' | sh`. The same holds for the other
+  writes of the checks, such as `x=rm; $x -rf ~/Research/Papers`, and for a script four levels
+  deep, such as `eval eval eval eval rm -rf ~/Research/Papers`. The check of a shell write and the
+  check of a `git init` or `git clone` in a working tree read no script of `sh -c` or `eval`:
+  `bash -c 'echo x > CHANGELOG.md'` and `bash -c 'git init probe'` pass in a working tree. A lease
+  push through `git -C $d` whose target is a default branch of that repository other than `main`
+  and `master` asks rather than refuses: the check cannot read the directory. The sandbox stays
+  the containment; for Antigravity, K88 is the same limit of its Bash rules.
 - kind: defect
 - found: PR #181, its pre-PR verification

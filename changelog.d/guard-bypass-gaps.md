@@ -1,11 +1,13 @@
 - **The guard reads a write that a quote, an ANSI-C quote or a shell script hides.** The keyword
   pre-filters of the shell checks read the command without its quotes and backslashes, so
   `r""m -rf`, `git arch""ive -o`, `g""h api -X DELETE`, `git a""dd -A` and `t''ee` reach their
-  checks; before, each passed. The shell reader decodes an ANSI-C quote `$'…'` and reads a locale
-  quote `$"…"` as bash and zsh do, so `git push --force-$'w'ith-lease origin main` is refused. A
+  checks; before, each passed. The shell reader decodes an ANSI-C quote `$'…'`, with an unknown
+  escape read as zsh reads it (`$'\w'` is `w`), and reads a locale quote `$"…"` as bash does, so
+  `git push --force-$'w'ith-lease origin main` is refused. A
   lease push with an option that the shell expands into a lease (`--force-$w`, `--$(…)`) is read
   as one: refused when it names a default branch, asked otherwise. The scripts of `sh -c`,
-  `bash -c`, `zsh -c` (and the other common shells) and `eval` are read as parts of the command,
+  `bash -c`, `zsh -c` (and `dash`, `ksh`, `mksh`, `ash`, `csh`, `tcsh` and `fish`) and `eval`
+  are read as parts of the command,
   three levels deep, by the checks of `rm`, `git archive`, `gh api`, `gh pr create`, the `gh`
   watchers, `git add` and the three `git` writes, and by the Bash rules and the path check of
   Antigravity; a `git` write inside such a script is never allowed with no prompt. K88 and K92

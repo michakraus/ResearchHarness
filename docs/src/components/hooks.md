@@ -279,10 +279,14 @@ check answers both ways.
   `remote.origin.push` refspec, which can map the branch onto another remote branch.
 - A lease push that names `main`, `master` or the branch that `origin/HEAD` names as its target is
   refused, also inside a command of several parts such as `git fetch && git push
-  --force-with-lease origin main`, and after another write in the same part, as in a `find` with
-  two `-exec`. The check reads the target of each argument after `push`: `<branch>`,
-  `+<branch>` and `<src>:<branch>`, each also with `refs/heads/` or `heads/`, which `git` reads as
-  `refs/heads/`. A lease push that names no branch can reach a default one, so it is refused too:
+  --force-with-lease origin main`, after another write in the same part, as in a `find` with
+  two `-exec`, and inside the script of `sh -c`, `bash -c` or `eval`. The check reads the target
+  of each argument after `push`, the value of an option aside: `<branch>`, `+<branch>` and
+  `<src>:<branch>`, each also with `refs/heads/` or `heads/`, which `git` reads as `refs/heads/`.
+  It reads `origin/HEAD` in the working directory of the call and in the repository that the push
+  works on: the directory after each `cd` before it and each `-C` or `--git-dir` of its `git`. An
+  option that the shell expands into a lease, such as `--force-$w`, counts as a lease. A lease
+  push that names no branch can reach a default one, so it is refused too:
   no refspec after the remote, as with `--all` or `--mirror`, or a refspec whose target is `HEAD`,
   `@` or empty, or that holds a glob, a brace, `$` or a backtick. The value of an option such as
   `-o`, `-vo` or `--recurse-submodules` is no refspec.

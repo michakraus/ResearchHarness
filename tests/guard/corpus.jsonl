@@ -597,14 +597,22 @@
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "r\"\"m -rf ~/Research/Papers"}, "cwd": "@@PKG@@"}, "decision": "deny"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "r\\m -rf ~/Research/Papers"}, "cwd": "@@PKG@@"}, "decision": "deny"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "$'\\x72'm -rf ~/Research/Papers"}, "cwd": "@@PKG@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "echo '$';\\rm -rf ~/Research/Papers;echo 'z'"}, "cwd": "@@PKG@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "$'\\562'm -rf ~/Research/Papers"}, "cwd": "@@PKG@@"}, "decision": "deny"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git arch\"\"ive -o x.tar HEAD"}, "cwd": "@@CWD@@"}, "decision": "deny"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "g\"\"h api -X DELETE repos/o/r"}, "cwd": "@@CWD@@"}, "decision": "deny"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "g''h pr create --title T"}, "cwd": "@@CWD@@"}, "decision": "deny"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "g\\h run watch 123 -R own-org/X.jl --exit-status"}, "cwd": "@@CWD@@"}, "decision": "deny"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git a\"\"dd -A"}, "cwd": "@@CWD@@"}, "decision": "deny"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "echo x | t''ee -a CHANGELOG.md"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "echo '$';git \\add -A;echo 'z'"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "echo '$';echo x | \\tee -a CHANGELOG.md;echo 'z'"}, "cwd": "@@CWD@@"}, "decision": "deny"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git push --force-$'w'ith-lease origin main"}, "cwd": "@@R@@/Packages/Own"}, "decision": "deny"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git push --force-$\"w\"ith-lease origin main"}, "cwd": "@@R@@/Packages/Own"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git push --force-$'\\w'ith-lease origin main"}, "cwd": "@@R@@/Packages/Own"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "g''h pr $'\\c'reate --title T"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "echo '$';$'\\162'm -rf ~/Research/Papers"}, "cwd": "@@PKG@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "tcsh -c 'rm -rf ~/Research/Papers'"}, "cwd": "@@PKG@@"}, "decision": "deny"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git push $'--force-with-lease' origin trunk"}, "cwd": "@@R@@/Packages/Own"}, "decision": "deny"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git push --force-$w origin main"}, "cwd": "@@R@@/Packages/Own"}, "decision": "deny"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git push --$(printf force-with-lease) origin main"}, "cwd": "@@R@@/Packages/Own"}, "decision": "deny"}

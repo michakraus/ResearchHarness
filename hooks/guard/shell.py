@@ -4,7 +4,7 @@
 a quoted character is never an operator, a `#` that starts a word starts a comment to the end of
 the line, a backslash-newline joins two lines, and inside double quotes a backslash escapes only
 `$`, a backtick, `"`, `\\` and a newline. An ANSI-C quote `$'…'` gives its text with the escapes
-decoded as bash and zsh decode them, and a locale quote `$"…"` reads as a double quote. It runs no
+decoded (`ansi_c`), and a locale quote `$"…"` reads as a double quote, as bash reads it. It runs no
 expansion. It is no full shell grammar: each check documents the limits of its reading.
 
 `readings` gives a check the readings that it decides on: the shell's; where a word consists of
@@ -66,7 +66,7 @@ ANSI_C_QUOTE = re.compile(r"\$'(?:[^'\\]|\\.)*'", re.DOTALL)
 # newline after it, that `joined` removes.
 JOINS = re.compile(r"\$?[\"']|\\\n?")
 # The shells whose `-c` option runs the next word as a script, by the name of the program.
-SHELLS = frozenset({"sh", "bash", "zsh", "dash", "ksh", "mksh", "ash"})
+SHELLS = frozenset({"sh", "bash", "zsh", "dash", "ksh", "mksh", "ash", "csh", "tcsh", "fish"})
 # The long options of these shells that take the next word as their value. A cluster of short
 # options that ends in `o` or `O` takes it too, as `-o pipefail` does.
 SHELL_VALUED = frozenset({"--rcfile", "--init-file"})
@@ -76,8 +76,10 @@ DEPTH = 3
 
 def ansi_c(text: str, index: int) -> tuple[str, int] | None:
     """The text of the ANSI-C quote whose `'` is at `index`, its escapes decoded, and the index
-    after it; None when no quote closes it. An escape that bash does not know keeps its
-    backslash."""
+    after it; None when no quote closes it. An octal escape keeps its low eight bits, as bash and
+    zsh do (`\\562` is `r`). Any other escape, `\\c` included, drops its backslash, as zsh does
+    (`\\p` is `p`); bash keeps the backslash and reads `\\cX` as a control character, and neither
+    can make a name that zsh's reading misses."""
     piece: list[str] = []
     index += 1
     while index < len(text):
@@ -94,29 +96,36 @@ def ansi_c(text: str, index: int) -> tuple[str, int] | None:
         elif escape in CODE_POINTS:
             digits = CODE_POINTS[escape].match(text, index)
             number = (escape if escape.isdigit() else "") + (digits.group() if digits else "")
-            value = int(number, 8 if escape.isdigit() else 16) if number else None
+            value = (int(number, 8) & 0xFF if escape.isdigit() else int(number, 16)) if number else None
             if value is None or value > sys.maxunicode:
                 piece.append("\\" + escape)
             else:
                 piece.append(chr(value))
                 index = digits.end() if digits else index
-        elif escape == "c" and index < len(text):
-            piece.append(chr(ord(text[index]) & 0x1F))
-            index += 1
         else:
-            piece.append("\\" + escape)
+            piece.append(escape)
     return None
 
 
 def joined(text: str) -> str:
-    """The text without its quotes and backslashes, each ANSI-C quote decoded: the text in which a
-    keyword pre-filter looks for the name of a command or an option."""
+    """The text in which a keyword pre-filter looks for the name of a command or an option: the text
+    without its quotes and backslashes, once as written and once with each ANSI-C quote decoded,
+    and the words of `lex`, joined by newlines. A `$'` inside a quote opens no ANSI-C quote, and
+    its decoding would turn the `\\r` of `echo '$';\\rm` into a carriage return, so the text as
+    written is kept as well; the words of `lex` read each quote where the shell does."""
 
     def decoded(found: re.Match[str]) -> str:
         quote = ansi_c(found.group(), 1)
         return found.group() if quote is None else quote[0]
 
-    return JOINS.sub("", ANSI_C_QUOTE.sub(decoded, text))
+    tokens = lex(text) or ()
+    return "\n".join(
+        (
+            JOINS.sub("", text),
+            JOINS.sub("", ANSI_C_QUOTE.sub(decoded, text)),
+            " ".join(word for _, word in tokens),
+        )
+    )
 
 
 def quoted(text: str, index: int) -> tuple[str, int] | None:
