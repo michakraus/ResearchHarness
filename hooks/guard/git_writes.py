@@ -1,8 +1,11 @@
 """Allow three `git` writes when the repository shows that nothing is lost; ask otherwise.
 
 The check allows only a command that is one `git` call and nothing else: no operator, no
-redirection, no second part, no global option before the subcommand. It reads the state of the
-repository with `git` in the call's working directory, the payload's `cwd`.
+redirection, no second part, no global option before the subcommand. Its text must also be plain
+(`sandbox_lift.PLAIN`): no `$`, backslash, backtick, `#` or `!` outside a single quote, so that
+bash and zsh run the words that the check read; any other text that it would allow asks. It
+reads the state of the repository with `git` in the call's working directory, the payload's
+`cwd`.
 
   * **`git worktree remove --force <path>`**, or `-f`, given once: allow when the path, resolved
     without following its last name, lies below `~/Research/.worktrees/`, a remote-tracking ref
@@ -67,6 +70,7 @@ from .contract import PASS, Call, Verdict, strongest
 from .gh_api_writes import own_organisations
 from .paths import Place, place
 from .rm_scope import TAKES_VALUE, WORKTREES, below, expand, resolve
+from .sandbox_lift import PLAIN
 from .shell import Tokens, joined, parts, readings
 
 # Seconds for each `git` the check runs.
@@ -106,6 +110,11 @@ A lease push through `{unnamed}` names no branch, so it can reach a default bran
 Name the branch: `git push --force-with-lease origin <branch>`, or
 `git push --force-with-lease origin HEAD:refs/heads/<branch>`.
 """
+
+UNPLAIN = (
+    "The guard allows a `git` write with no prompt only as plain text, which every shell reads the "
+    "same way: no `$`, backslash, backtick, `#` or `!` outside a single quote."
+)
 
 ALONE = (
     "The guard allows `git {write}` only as a `git` command of its own, with no option before the "
@@ -416,4 +425,7 @@ def check(call: Call) -> Verdict:
     found = readings(command, nested=True)
     if found is None:
         return Verdict("ask", "The check cannot read a command that may hold a git write.")
-    return strongest(decide(tokens, call.cwd) for tokens in found)
+    verdict = strongest(decide(tokens, call.cwd) for tokens in found)
+    if verdict.decision == "allow" and PLAIN.fullmatch(command) is None:
+        return Verdict("ask", UNPLAIN)
+    return verdict

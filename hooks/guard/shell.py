@@ -67,8 +67,10 @@ CODE_POINTS = {
     "u": re.compile(r"[0-9A-Fa-f]{1,4}"),
     "U": re.compile(r"[0-9A-Fa-f]{1,8}"),
 }
+# The body of an ANSI-C quote, to the `'` that ends it: a backslash escapes the next character.
+ANSI_C_BODY = re.compile(r"(?:[^'\\]|\\.)*", re.DOTALL)
 # An ANSI-C quote, as `joined` finds it.
-ANSI_C_QUOTE = re.compile(r"\$'(?:[^'\\]|\\.)*'", re.DOTALL)
+ANSI_C_QUOTE = re.compile(rf"\$'{ANSI_C_BODY.pattern}'", re.DOTALL)
 # The quotes, with a `$` that opens an ANSI-C or a locale quote, and the backslashes, each with the
 # newline after it, that `joined` removes.
 JOINS = re.compile(r"\$?[\"']|\\\n?")
@@ -94,47 +96,50 @@ def code_point(text: str, index: int, letter: str, dialect: Decoding) -> tuple[s
     return (chr(value), end) if value <= sys.maxunicode else ("\\" + letter, index)
 
 
-def escape(text: str, index: int, dialect: Decoding) -> tuple[str, int]:
-    """The text of the escape of an ANSI-C quote whose letter is at `index`, as `dialect` decodes
-    it, and the index after it. Both keep the low eight bits of an octal escape (`\\562` is `r`).
-    bash keeps the backslash of an escape that it does not know and reads `\\cX` as a control
-    character; zsh drops that backslash (`\\w` is `w`, `\\c` is `c`), reads `\\C-X` as a control and
-    `\\M-X` as a meta character, and reads `\\x` and `\\u` with no digit as a NUL."""
-    letter, index = text[index], index + 1
+def escape(body: str, index: int, dialect: Decoding) -> tuple[str, int]:
+    """The text of the escape of the body of an ANSI-C quote whose letter is at `index`, as
+    `dialect` decodes it, and the index after it. Both keep the low eight bits of an octal escape
+    (`\\562` is `r`). bash keeps the backslash of an escape that it does not know and reads `\\cX`
+    as a control character; zsh drops that backslash (`\\w` is `w`, `\\c` is `c`), reads `\\C-X` as
+    a control and `\\M-X` as a meta character of the next character of the body, and reads `\\x`,
+    `\\u` and `\\U` with no digit as a NUL. The body ends where the shell's parser ends the quote
+    (`ansi_c`), so no escape reaches past it."""
+    letter, index = body[index], index + 1
     if letter in ANSI_C:
         return ANSI_C[letter], index
     if letter in CODE_POINTS:
-        return code_point(text, index, letter, dialect)
+        return code_point(body, index, letter, dialect)
     if dialect == "bash":
-        if letter == "c" and text[index : index + 1] not in ("", "'"):
-            return chr(ord(text[index]) & 0x1F), index + 1
+        if letter == "c" and index < len(body):
+            return chr(ord(body[index]) & 0x1F), index + 1
         return "\\" + letter, index
-    if letter in "CM" and text[index : index + 1] == "-" and text[index + 1 : index + 2] not in ("", "'"):
-        char = text[index + 1]
+    if letter in "CM" and body[index : index + 1] == "-" and index + 1 < len(body):
+        char = body[index + 1]
         return chr(ord(char) & 0x1F) if letter == "C" else chr(ord(char) | 0x80), index + 2
     return letter, index
 
 
 def ansi_c(text: str, index: int, dialect: Decoding) -> tuple[str, int] | None:
     """The text of the ANSI-C quote whose `'` is at `index`, its escapes decoded as `dialect`
-    decodes them (`escape`), and the index after it; None when no quote closes it. In bash a NUL
-    ends the text of the quote (`$'r\\0x'm` is `rm`); zsh keeps it, and `lex` cuts the word there,
-    as `exec` does."""
-    piece: list[str] = []
-    ended = False
-    index += 1
-    while index < len(text):
-        char = text[index]
-        if char == "'":
-            return "".join(piece), index + 1
-        if char == "\\" and index + 1 < len(text):
-            found, index = escape(text, index + 1, dialect)
+    decodes them (`escape`), and the index after it; None when no quote closes it. The quote ends
+    where the shell's parser ends it, at the first `'` that no backslash escapes, before any
+    escape is decoded, so no decoding moves the end. In bash a NUL ends the text of the quote
+    (`$'r\\0x'm` is `rm`); zsh keeps it, and `lex` cuts the word there, as `exec` does."""
+    found = ANSI_C_BODY.match(text, index + 1)
+    end = found.end() if found else index + 1
+    if end >= len(text) or text[end] != "'":
+        return None
+    body, piece, at = text[index + 1 : end], list[str](), 0
+    while at < len(body):
+        if body[at] == "\\" and at + 1 < len(body):
+            decoded, at = escape(body, at + 1, dialect)
         else:
-            found, index = char, index + 1
-        if not ended:
-            piece.append(found.split("\x00", 1)[0] if dialect == "bash" else found)
-        ended = ended or (dialect == "bash" and "\x00" in found)
-    return None
+            decoded, at = body[at], at + 1
+        if dialect == "bash" and "\x00" in decoded:
+            piece.append(decoded.split("\x00", 1)[0])
+            break
+        piece.append(decoded)
+    return "".join(piece), end + 1
 
 
 def dialects(text: str) -> tuple[Dialect, ...]:
@@ -281,21 +286,25 @@ def script_of(tokens: Tokens, index: int) -> tuple[str, int, int] | None:
 def scripts(tokens: Tokens, depth: int = DEPTH) -> Tokens:
     """`tokens` with the script of each shell call and each `eval` (`script_of`) spliced in where
     it stands, as parts of their own between `;` operators; a script inside a script is read to
-    `depth` levels. The words after a script, such as the arguments of `sh -c` or the `{} \\;` of a
+    `depth` levels. A script is read in each of its `dialects`, and the readings follow one another
+    as parts. The words after a script, such as the arguments of `sh -c` or the `{} \\;` of a
     `find -exec`, form a part of their own. A script with an open quote runs nothing and is left as
     its word."""
     result: list[Token] = []
     index = 0
     while index < len(tokens):
         found = script_of(tokens, index) if tokens[index][0] == "word" and depth > 0 else None
-        inner = lex(found[0]) if found is not None else None
-        if found is None or inner is None:
+        inner = [] if found is None else [lex(found[0], dialect) for dialect in dialects(found[0])]
+        read = list(dict.fromkeys(reading for reading in inner if reading is not None))
+        if found is None or not read:
             result.append(tokens[index])
             index += 1
             continue
         _, start, stop = found
         result.extend(tokens[index:start])
-        result.extend((("op", ";"), *scripts(inner, depth - 1), ("op", ";")))
+        for reading in read:
+            result.extend((("op", ";"), *scripts(reading, depth - 1)))
+        result.append(("op", ";"))
         index = stop
     return tuple(result)
 

@@ -13,7 +13,9 @@
   with `-c` or `--command`) and `eval` are read as parts of the command, three levels deep, by the
   checks of `rm`, `git archive`, `gh api`, `gh pr create`, the `gh` watchers, `git add` and the
   three `git` writes, and by the Bash rules and the path check of Antigravity; a `git` write
-  inside such a script is never allowed with no prompt. K88 shrinks to a program that a variable
+  inside such a script is never allowed with no prompt. The `git` write check allows only a
+  command of plain text (no `$`, backslash, backtick, `#` or `!` outside a single quote), so no
+  reading that one shell does not run can allow a write. K88 shrinks to a program that a variable
   or a substitution names, and K92 to a path that a substitution makes; K136 records the same
   limit of the other checks.
 - **A lease push reads the default branch of the repository that it pushes from.** The test for a

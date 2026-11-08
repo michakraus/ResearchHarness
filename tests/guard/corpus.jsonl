@@ -624,7 +624,12 @@
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git $'push\\0' --force-with-lease origin main"}, "cwd": "@@R@@/Packages/Own"}, "decision": "deny"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "$'gh\\0' api -X DELETE repos/o/r"}, "cwd": "@@CWD@@"}, "decision": "deny"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "$'g'h pr view 1 && gh pr create --title T -R own-org/X.jl"}, "cwd": "@@CWD@@"}, "decision": "deny"}
-{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git push $'--force-with-lease' origin HEAD:refs/heads/feature"}, "cwd": "@@R@@/Packages/Own"}, "decision": "allow"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git push $'--force-with-lease' origin HEAD:refs/heads/feature"}, "cwd": "@@R@@/Packages/Own"}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git push $'--force\\0'-with-lease origin HEAD:refs/heads/feature"}, "cwd": "@@R@@/Packages/Own"}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git $'cherry-pick\\0\\C-\\''x ; gh repo delete own-org/x --yes #'"}, "cwd": "@@R@@/.worktrees/Own-pushed"}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git cherry-pick 'abc123'"}, "cwd": "@@R@@/.worktrees/Own-pushed"}, "decision": "allow"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "zsh -c \"\\$'r\\m' -rf ~/Research/Papers\""}, "cwd": "@@PKG@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "eval \"\\$'r\\m' -rf ~/Research/Papers\""}, "cwd": "@@PKG@@"}, "decision": "deny"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git push $'--force-with-lease' origin trunk"}, "cwd": "@@R@@/Packages/Own"}, "decision": "deny"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git push --force-$w origin main"}, "cwd": "@@R@@/Packages/Own"}, "decision": "deny"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git push --$(printf force-with-lease) origin main"}, "cwd": "@@R@@/Packages/Own"}, "decision": "deny"}

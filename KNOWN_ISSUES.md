@@ -664,7 +664,7 @@
 
 ### K136 · The shell checks of the guard do not read a word that an expansion makes, a script on standard input, or a script nested more than three levels deep.
 
-- location: `hooks/guard/shell.py:281`
+- location: `hooks/guard/shell.py:286`
 - evidence: the checks read quotes, ANSI-C and locale quotes, and the scripts of `sh -c`,
   `bash -c`, `zsh -c` (and the other shells of `SHELLS`) and `eval`, three levels deep, and run
   no other expansion. `guard --from claude` in a checkout of an own organisation answers `deny`
@@ -675,9 +675,25 @@
   writes of the checks, such as `x=rm; $x -rf ~/Research/Papers`, and for a script four levels
   deep, such as `eval eval eval eval rm -rf ~/Research/Papers`. The check of a shell write and the
   check of a `git init` or `git clone` in a working tree read no script of `sh -c` or `eval`:
-  `bash -c 'echo x > CHANGELOG.md'` and `bash -c 'git init probe'` pass in a working tree. A lease
-  push through `git -C $d` whose target is a default branch of that repository other than `main`
-  and `master` asks rather than refuses: the check cannot read the directory. The sandbox stays
-  the containment; for Antigravity, K88 is the same limit of its Bash rules.
+  `bash -c 'echo x > CHANGELOG.md'` and `bash -c 'git init probe'` pass in a working tree. The
+  check of a shell write, and the misleading-error check where it reads a `$( … )` fragment, read
+  an ANSI-C quote in bash's dialect only: `python3 $'\-'c "open('src/x.jl','w').write('x')"`
+  passes, which zsh runs as `python3 -c`. fish's `-C` and `--init-command` scripts are not read.
+  A lease push through `git -C $d` whose target is a default branch of that repository other than
+  `main` and `master` asks rather than refuses: the check cannot read the directory. The sandbox
+  stays the containment; for Antigravity, K88 is the same limit of its Bash rules.
 - kind: defect
-- found: PR #181, its pre-PR verification
+- found: 2026-11-08
+
+### K137 · A long command with an ANSI-C quote can take the guard past the hook's time limit.
+
+- location: `hooks/guard/shell.py:145`
+- evidence: `readings` and `joined` read a text that holds `$'` or `$"` in three dialects, so such
+  a command costs about three readings where another costs one. A probe of the third pre-PR
+  verification, one process per run under a load average of 40 to 44, measured a 1 MiB command
+  of `eval rm …` units with one `$'x'` at 7.1 s, against 3.2 s for the same command read in one
+  dialect, and the settings template gives the guard hook a `timeout` of 5 s. No case of
+  `hooks/probe.py` times a 1 MiB command that holds `$'`, and its `MIB_LIMIT` of 10 s is above
+  the hook's limit. Not measured on an idle machine.
+- kind: not verified
+- found: 2026-11-08
