@@ -2,7 +2,9 @@
 # The front door of the harness tooling: `harness --help` lists the subcommands.
 #
 # The version check comes first, and the whole file uses no syntax newer than Python 3.0, so an
-# old interpreter prints the version it found and the one it needs instead of a syntax error.
+# interpreter below FLOOR prints the version it found and the ones it needs instead of a syntax
+# error. From FLOOR up to NEED the start goes on: lib/harness needs NEED, which uv fetches for the
+# environment when no Python of NEED is installed.
 #
 # Then the start. Every command runs on the interpreter of the harness's Python environment, which
 # `uv sync --locked` makes from pyproject.toml and uv.lock at $RESEARCH_HARNESS_PYTHON (an absolute
@@ -15,22 +17,29 @@
 # - With a working environment, the command runs on its bin/python, and the script starts itself
 #   there with the same arguments when it runs on another interpreter.
 # - In a session (SANDBOX_RUNTIME or CLAUDECODE set) with no working environment, the command runs
-#   on the current interpreter after one line on stderr. A session never starts uv and never
-#   fetches: its sandbox cannot write the environment.
+#   on the current interpreter after one line on stderr; below NEED it exits 2 instead. A session
+#   never starts uv and never fetches: its sandbox cannot write the environment.
 # - Otherwise the script finds uv on the PATH or in ~/.local/bin, fetches the pinned release into
 #   ~/.local/bin on Linux when there is none, runs `uv sync --locked --no-dev` into the
-#   environment on Python 3.14, or on $UV_PYTHON, and starts itself on the new interpreter.
+#   environment on Python 3.14, or on $UV_PYTHON, and starts itself on the new interpreter. uv
+#   downloads Python 3.14 when none is installed, unless the caller sets UV_PYTHON_DOWNLOADS=never.
+# - The command never runs on an interpreter below NEED.
 #
-# Each refusal is one line on stderr and exit status 2. Before the restart, the script imports
-# nothing outside the standard library. lib/harness reads the environment's path, the stamp and
-# the sync from this file (`install.boot`); the start runs only when the file runs as a script.
+# Each refusal is one line on stderr and exit status 2; a sync that fails below NEED with
+# UV_PYTHON_DOWNLOADS=never adds a second line that names `uv python install`. Before the
+# restart, the script imports nothing outside the standard library. lib/harness reads the
+# environment's path, the stamp and the sync from this file (`install.boot`); the start runs only
+# when the file runs as a script.
 
 import os
 import sys
 
+# The Python of lib/harness, and the oldest Python that runs this file.
 NEED = (3, 14)
-if sys.version_info < NEED:
-    sys.stderr.write("harness: Python %d.%d found, %d.%d or later needed\n" % (sys.version_info[:2] + NEED))
+FLOOR = (3, 9)
+if sys.version_info < FLOOR:
+    sys.stderr.write("harness: Python %d.%d found; bin/harness needs %d.%d or later, and the harness runs on %d.%d\n"
+                     % (sys.version_info[:2] + FLOOR + NEED))
     sys.exit(2)
 
 import hashlib
@@ -277,7 +286,11 @@ def sync(uv, environment, dev):
         refuse("`%s` takes more than %s s" % (" ".join(command), SYNC_TIMEOUT))
     if p.returncode != 0:
         lines = [line.strip() for line in p.stderr.splitlines() if line.strip()]
-        refuse("uv sync exits %d: %s" % (p.returncode, lines[-1] if lines else "no output"))
+        message = "uv sync exits %d: %s" % (p.returncode, lines[-1] if lines else "no output")
+        if sys.version_info < NEED and env.get("UV_PYTHON_DOWNLOADS") == "never":
+            message += ("\nUV_PYTHON_DOWNLOADS=never stops uv from fetching Python %d.%d: run `uv python install "
+                        "%d.%d`, then harness again" % (NEED + NEED))
+        refuse(message)
     if not starts(interpreter(environment)):
         refuse("uv sync left no working environment at %s: %s does not start"
                % (environment, interpreter(environment)))
@@ -299,6 +312,9 @@ def restart(python, argv):
 
 
 def run():
+    if sys.version_info < NEED:
+        raise Refusal("the command needs Python %d.%d, and runs on %s, Python %d.%d"
+                      % (NEED + (sys.executable,) + tuple(sys.version_info[:2])))
     sys.path.insert(0, LIB)
     from harness.cli import main
     return main()
@@ -323,6 +339,9 @@ def start(argv):
     if starts(python):
         restart(python, argv)
     if session():
+        if sys.version_info < NEED:
+            raise Refusal("no Python environment at %s, and Python %d.%d here; run harness once in a plain terminal, "
+                          "which fetches Python %d.%d through uv" % ((environment,) + tuple(sys.version_info[:2]) + NEED))
         sys.stderr.write("harness: no Python environment at %s; this command runs on %s. Run `harness install "
                          "--apply` outside a session to make it\n" % (environment, here))
         os.environ[MARKER] = here
@@ -344,5 +363,6 @@ if __name__ == "__main__":
     try:
         sys.exit(start(sys.argv[1:]))
     except Refusal as e:
-        sys.stderr.write("harness: %s\n" % e)
+        for line in str(e).splitlines():
+            sys.stderr.write("harness: %s\n" % line)
         sys.exit(2)

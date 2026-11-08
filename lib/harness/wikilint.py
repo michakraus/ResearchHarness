@@ -1961,24 +1961,31 @@ def hook_cases(check: Callable[[bool, str], None], tmp: pathlib.Path) -> None:
     root = write_tree(tmp, {})
     (root / "Harness").symlink_to(REPO)
     alone = {**os.environ, "RESEARCH_ROOT": str(root)}
-    old = (
-        "import runpy, sys; sys.version_info = (3, 10, 4, 'final', 0); "
-        "runpy.run_path(sys.argv[1], run_name='__main__')"
-    )
-    p = subprocess.run(
-        [sys.executable, "-c", old, str(HOOK)],
-        cwd=root,
-        env=alone,
-        capture_output=True,
-        text=True,
-        timeout=TIMEOUT,
-        check=False,
-    )
-    check(
-        (p.returncode, p.stderr) == (2, "harness: Python 3.10 found, 3.14 or later needed\n"),
-        f"an interpreter that reports 3.10 gets bin/harness's refusal of its version -> {p.returncode}, "
-        f"{p.stderr[-200:]!r}",
-    )
+    for version, want in (
+        (
+            "3, 8, 20",
+            (2, "harness: Python 3.8 found; bin/harness needs 3.9 or later, and the harness runs on 3.14\n"),
+        ),
+        ("3, 10, 4", (1, "pre-commit: refused, Python 3.10 found; this hook needs 3.11 or later\n")),
+    ):
+        old = (
+            f"import runpy, sys; sys.version_info = ({version}, 'final', 0); "
+            "runpy.run_path(sys.argv[1], run_name='__main__')"
+        )
+        p = subprocess.run(
+            [sys.executable, "-c", old, str(HOOK)],
+            cwd=root,
+            env=alone,
+            capture_output=True,
+            text=True,
+            timeout=TIMEOUT,
+            check=False,
+        )
+        check(
+            (p.returncode, p.stderr) == want,
+            f"an interpreter that reports {version} gets one line and exit {want[0]} -> {p.returncode}, "
+            f"{p.stderr[-200:]!r}",
+        )
     p = subprocess.run(
         [sys.executable, str(HOOK)],
         cwd=root,

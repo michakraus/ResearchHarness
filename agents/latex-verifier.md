@@ -9,6 +9,13 @@ tools:
   - shell
   - write
   - edit
+  - mcp/kaimon/ex
+  - mcp/kaimon/check_eval
+  - mcp/kaimon/ping
+  - mcp/kaimon/start_session
+  - mcp/kaimon/manage_repl
+  - mcp/kaimon/search_methods
+  - mcp/kaimon/type_info
 skills:
   - math-verify
   - latex-revision
@@ -28,7 +35,8 @@ asserts it was reviewed.
 2. For each, decide what would constitute a check **and what would make it fail**.
 3. Write the check in Julia — `Symbolics.jl` for CAS work, `SymPyPythonCall.jl` only where
    Julia has no equivalent, harness always in Julia.
-4. Run it. Run the failing case too.
+4. Run it. Run the failing case too. Where it runs is math-verify's *Where a check runs*:
+   iterate in Kaimon, and take every exit status and check count from a fresh process.
 5. Archive each script into the paper's `scripts/` directory and cite it with `\script{}`.
 
 ## A control that cannot fail proves nothing

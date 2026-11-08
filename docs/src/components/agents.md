@@ -291,7 +291,9 @@ that checks each claim. Use it with a request such as "check the derivation in t
 
 It lists and numbers all claims first. For each claim it decides what a check is and what makes
 the check fail. It writes the check in Julia, runs it, and runs a control that can fail too. It
-puts each script into the paper's `scripts/` directory and cites it with `\script{}`.
+iterates in a Kaimon session and takes each result for its report from a fresh process, as
+`math-verify` says. It puts each script into the paper's `scripts/` directory and cites it with
+`\script{}`.
 
 It returns a verdict per claim (`holds`, `fails`, `holds under` a condition, or `inconclusive`)
 and the scripts. It does not change prose, the structure or the change markings. For one statement

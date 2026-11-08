@@ -1,0 +1,52 @@
+# What the srt settings of each CLI frontend add to the `sandbox` section of the Claude Code
+# settings template (settings/settings.proposal.json). The template stays the source of the
+# shared lists; `harness install` renders one file per chosen frontend from both
+# (lib/harness/sandbox.py, docs/src/components/sandbox.md). Every path starts with `~/`.
+
+# The read limit: srt denies reads of the whole home directory and allows these paths again. A
+# path that the template's `denyRead` or `credentials.files` names stays hidden inside them, as a
+# deny inside an allowed path wins in srt.
+[read]
+allow = [
+    "~/Research",
+    "~/.local",
+    "~/.cache",
+    "~/.config",
+    "~/.gitconfig",
+    "~/.zshenv",
+    "~/.zshrc",
+    "~/.zprofile",
+    "~/.julia",
+    "~/.juliaup",
+    "~/Library/Caches",
+    "~/Library/Application Support/rtk",
+]
+
+# Per frontend:
+#   state       the frontend's own directories and files, which it reads and writes; no other
+#               frontend's file allows a write at or below them. The last one is a path that the
+#               template's `allowWrite` lacks, so that `allowWrite` ends with it where no
+#               temporary directory follows
+#   deny_write  write denies after the template's
+#   own         the template's deny entries that the frontend itself reads and writes, and which
+#               its file therefore leaves out of `denyWrite` and `denyRead`
+
+[frontend.claude]
+state = ["~/.claude", "~/.cache/claude", "~/.claude.json"]
+deny_write = []
+own = ["~/.claude.json"]
+
+[frontend.opencode]
+state = ["~/.local/share/opencode", "~/.local/state/opencode", "~/.cache/opencode"]
+deny_write = []
+own = []
+
+[frontend.omp]
+state = ["~/.omp"]
+deny_write = ["~/.omp/agent/config.yml", "~/.omp/agent/extensions"]
+own = []
+
+[frontend.antigravity]
+state = ["~/.gemini"]
+deny_write = []
+own = []

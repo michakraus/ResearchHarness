@@ -9,7 +9,8 @@ dataclass: once for both jobs the denied operations and the denied Mach services
 of JOBS, in a table `[job.<name>]`, its read paths, read files, write paths, write files and write
 denies (`JobRules`). Each key is required, each value is a list of strings, and a path is a token
 of TOKENS alone, or a start, `~`, nothing or a token, and then `/` and one or more segments, none of
-them empty, `.` or `..`, so no `//` and no final `/`. A system path is in its real form: a path at
+them empty, `.` or `..`, so no `//` and no final `/`; a read file can also be the root `/` alone,
+which dyld reads when a process starts. A system path is in its real form: a path at
 or below `/etc`, `/tmp` or `/var`, in any case of letters, is refused, because Seatbelt matches a
 path after it resolves the symlink `/etc -> private/etc`, and a file system that ignores case reads
 `/ETC` as `/etc`. A denied operation is lower-case words joined by `-`, with `*` (OPERATION),
@@ -39,6 +40,11 @@ one absolute path, a rule list that `load` refuses, and a job that is not one of
 exit 2 and one line. `harness setup` on macOS and the services script of the dotfiles kit write
 each render into `~/.config/research-harness/sandbox/<job>.sb` before they render and load the
 job's plist.
+
+The cases start `/bin/sh -c true` under the profile of each job, rendered with this user's home and
+`getconf` directories, and expect exit 0. Without `/usr/bin/sandbox-exec` or `getconf`, or where
+`sandbox-exec` cannot apply even `(allow default)`, as inside another Seatbelt sandbox, they print a
+skip line.
 
 `sandbox/probe-daemon.jl` holds the probes that a session runs through Kaimon's `ex` once the
 server runs under its profile; the cases below run each probe against a scratch tree, where no
@@ -80,7 +86,9 @@ FAILED = 2
 REPOSITORY_PARTS = (".git/hooks", ".git/config", ".githooks")
 # The metacharacters of a POSIX extended regex.
 REGEX_META = re.compile(r"([\\.\[\]()*+?{}|^$])")
-# Seconds for one `getconf`, and for the cold Julia process of the probe cases.
+# The program that the plists start each job under.
+SANDBOX_EXEC = pathlib.Path("/usr/bin/sandbox-exec")
+# Seconds for one `getconf` or one `sandbox-exec`, and for the cold Julia process of the probe cases.
 TIMEOUT, JULIA_TIMEOUT = 60, 600
 
 
@@ -133,7 +141,10 @@ def strings(value: object, key: str, path: pathlib.Path) -> tuple[str, ...]:
 def checked_path(p: str, key: str, path: pathlib.Path) -> str:
     """`p`, when it is a start, `~`, nothing or a token of TOKENS, and then a remainder: `""` after
     a token, else `/` and one or more segments, none of them empty, `.` or `..`; and no link form
-    of LINKS, in any case of letters."""
+    of LINKS, in any case of letters. The root `/` alone is also a path of a `read_files` key,
+    because dyld reads the root directory when a process starts."""
+    if p == "/" and key.endswith(".read_files"):
+        return p
     start = next((t for t in TOKENS if p.startswith(t)), "~" if p.startswith("~") else "")
     rest = p[len(start) :]
     if not (start in TOKENS and rest == "") and not (
@@ -370,8 +381,13 @@ def list_cases(case: Case, policy: DaemonPolicy) -> None:
     system = ("/System", "/usr", "/bin", "/Library", "/private/etc", "/dev", "/opt/homebrew")
     tokens = ("$DARWIN_USER_TEMP_DIR", "$DARWIN_USER_CACHE_DIR")
     case(
-        f"kaimon reads the decided paths and both tokens, and the file ~/.gitconfig: {k.read} {k.read_files}",
-        ok=all(p in k.read for p in (*reads, *system, *tokens)) and k.read_files == ("~/.gitconfig",),
+        f"kaimon reads the decided paths and both tokens, and the files / and ~/.gitconfig: {k.read} "
+        f"{k.read_files}",
+        ok=all(p in k.read for p in (*reads, *system, *tokens)) and k.read_files == ("/", "~/.gitconfig"),
+    )
+    case(
+        f"both jobs read the root directory / as a file and as no subtree: {k.read_files} {u.read_files}",
+        ok=all("/" in j.read_files and "/" not in j.read for j in (k, u)),
     )
     secret = ("~/.claude", "~/.omp", "~/.ssh", "~/.config/opencode", "~/.config/gh")
     case(
@@ -458,7 +474,7 @@ def bad_cases(case: Case, root: pathlib.Path) -> None:
         ),
         (
             "a list with a number",
-            text.replace('read_files = ["~/.gitconfig"]', "read_files = [1]", 1),
+            text.replace('read_files = ["/", "~/.gitconfig"]', "read_files = [1]", 1),
             "read_files",
         ),
         (
@@ -478,7 +494,12 @@ def bad_cases(case: Case, root: pathlib.Path) -> None:
         ("a home path with ..", text.replace('"~/Research"', '"~/../.ssh"', 1), "'~/../.ssh'"),
         ("a path with .", text.replace('"~/Research"', '"~/Research/."', 1), "'~/Research/.'"),
         ("a path with a final /", text.replace('"~/Research"', '"~/Research/"', 1), "'~/Research/'"),
-        ("the path /", text.replace('"/private/etc"', '"/"', 1), "'/'"),
+        ("the path / as a read path", text.replace('"/private/etc"', '"/"', 1), "'/'"),
+        (
+            "the path / as a write file",
+            text.replace('write_files = ["/dev/null"', 'write_files = ["/"', 1),
+            "job.kaimon.write_files",
+        ),
         (
             "a token path with ..",
             text.replace('"$HARNESS/githooks"', '"$HARNESS/../githooks"', 1),
@@ -511,7 +532,8 @@ def bad_cases(case: Case, root: pathlib.Path) -> None:
 
 def path_cases(case: Case, f: pathlib.Path) -> None:
     """The grammar of a path: a final `/`, `//`, `.` and `..` refused after each start, a link form
-    refused in any case of letters, and a bare token and a path below each start accepted."""
+    refused in any case of letters, and a bare token and a path below each start accepted; the root
+    `/` accepted as a read file only, and every other refusal held for a read file too."""
     refused = [
         p
         for start in ("~", "", "$HARNESS", "$DARWIN_USER_TEMP_DIR")
@@ -526,16 +548,28 @@ def path_cases(case: Case, f: pathlib.Path) -> None:
             f"{start}/x/..",
         )
     ]
-    for p in [*refused, "$HARNESSX/y", "$HARNESSxy/z", "/ETC/hosts", "/Tmp/x", "/VAR"]:
+    keys = [f"job.kaimon.{k}" for k in JOB_KEYS]
+    bad = [
+        (p, key)
+        for p in [*refused, "$HARNESSX/y", "$HARNESSxy/z", "/ETC/hosts", "/Tmp/x", "/VAR"]
+        for key in ("job.kaimon.read", "job.kaimon.read_files")
+        if not (p == "/" and key == "job.kaimon.read_files")
+    ] + [("/", key) for key in keys if key != "job.kaimon.read_files"]
+    for p, key in bad:
         try:
-            checked_path(p, "job.kaimon.read", f)
+            checked_path(p, key, f)
         except HarnessError as e:
             case(
-                f"the path {p!r} raises HarnessError naming it: {e}",
-                ok=repr(p) in str(e) and "job.kaimon.read" in str(e) and "\n" not in str(e),
+                f"the path {p!r} in {key} raises HarnessError naming it: {e}",
+                ok=repr(p) in str(e) and f"`{key}`" in str(e) and "\n" not in str(e),
             )
             continue
-        case(f"the path {p!r} raises HarnessError, but it is accepted", ok=False)
+        case(f"the path {p!r} in {key} raises HarnessError, but it is accepted", ok=False)
+    case(
+        "the root / is accepted as a read file of either job",
+        ok=not raises(lambda: checked_path("/", "job.julia-update.read_files", f))
+        and not raises(lambda: checked_path("/", "job.kaimon.read_files", f)),
+    )
     for p, real in (
         ("/ETC/hosts", "/private/etc/hosts"),
         ("/Tmp/x", "/private/tmp/x"),
@@ -604,6 +638,12 @@ def profile_cases(case: Case, policy: DaemonPolicy) -> None:
         and "/private/var/folders/xy/T" not in r,
     )
     case("~/.gitconfig is a literal of the read block", ok='(literal "/h/a.b/.gitconfig")' in reads)
+    for job in JOBS:
+        block_text = rule_block(profile(policy, job, HOME, DIRS), "(allow file-read*\n")
+        case(
+            f"the root / is a literal of {job}'s read block, and no subpath",
+            ok='(literal "/")' in block_text and '(subpath "/")' not in block_text,
+        )
     case("/dev/null is a literal of the write block", ok='(literal "/dev/null")' in writes)
     filters = REGEX_FILTER.findall(denies)
     want = [rf"^/h/a\.b/Research/(.+/)?{p}(/|$)" for p in (r"\.git/hooks", r"\.git/config", r"\.githooks")]
@@ -797,6 +837,51 @@ def render_cases(case: Case, root: pathlib.Path, policy: DaemonPolicy) -> None:
     )
 
 
+def start_cases(case: Case, root: pathlib.Path, policy: DaemonPolicy) -> None:
+    """A process starts under the profile of each job, rendered with this user's home and `getconf`
+    directories: `/bin/sh -c true` under `sandbox-exec -f` exits 0. Without `sandbox-exec`, without
+    `getconf`, or where `sandbox-exec` cannot apply even the profile `(allow default)`, as inside
+    another Seatbelt sandbox, they print a skip line."""
+    if not SANDBOX_EXEC.is_file():
+        print(f"skip  jobsandbox: no {SANDBOX_EXEC}; no process starts under the profiles")
+        return
+    trivial = root / "trivial.sb"
+    trivial.write_text("(version 1)\n(allow default)\n", encoding="utf-8")
+    probe = sandboxed(trivial)
+    if probe.returncode != 0:
+        print(
+            f"skip  jobsandbox: sandbox-exec cannot apply the profile (allow default), exit "
+            f"{probe.returncode} {probe.stderr.strip()!r}; no process starts under the profiles"
+        )
+        return
+    try:
+        dirs = UserDirs(getconf("DARWIN_USER_TEMP_DIR"), getconf("DARWIN_USER_CACHE_DIR"))
+    except HarnessError as e:
+        print(f"skip  jobsandbox: {e}; no process starts under the profiles")
+        return
+    for job in JOBS:
+        sb = root / f"{job}.sb"
+        sb.write_text(profile(policy, job, pathlib.Path.home(), dirs), encoding="utf-8")
+        p = sandboxed(sb)
+        case(
+            f"/bin/sh -c true starts and exits 0 under the profile of {job}: exit {p.returncode} "
+            f"{p.stderr.strip()[-300:]!r}",
+            ok=p.returncode == 0,
+        )
+
+
+def sandboxed(sb: pathlib.Path) -> subprocess.CompletedProcess[str]:
+    """`/bin/sh -c true` under `sandbox-exec -f sb`."""
+    return subprocess.run(
+        [str(SANDBOX_EXEC), "-f", str(sb), "/bin/sh", "-c", "true"],
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        text=True,
+        timeout=TIMEOUT,
+        check=False,
+    )
+
+
 # The probe run of the cases: the probe file is ARGS[1] and the scratch home ARGS[2]. Metal, `open`
 # and `osascript` are stand-ins. One line `name result` per probe, then `classes true` when every
 # result is `:allowed`, `:NotFunctional` or the name of an exception class of Base.
@@ -932,5 +1017,7 @@ def selftest() -> tuple[int, int]:
         profile_cases(case, policy)
         (root / "render").mkdir()
         render_cases(case, root / "render", policy)
+        (root / "start").mkdir()
+        start_cases(case, root / "start", policy)
         probe_cases(case, root)
     return total, wrong

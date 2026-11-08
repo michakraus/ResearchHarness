@@ -216,9 +216,9 @@ report.
 
 - **Round 1** judges the whole part, blind, with **two critics** in one message. One draw of a
   critic misses defects that a second finds, and round 1 is the only broad search; at high effort
-  each critic finds more of them. Pass each six
-  things and nothing else: the task file, the part, the path of its spec bundle, the worktree, the
-  branch head, and `Round: 1a` or `Round: 1b`. Neither sees the other's report. The round fails when either
+  each critic finds more of them. Pass each seven things and nothing else: the task file, the part,
+  the path of its spec bundle, the worktree, the base, which `part-critic` needs, the branch head,
+  and `Round: 1a` or `Round: 1b`. Neither sees the other's report. The round fails when either
   critic fails, and its findings are the union of both reports.
 - **A verify round** — round 2 and round 3 — judges only the fix. Pass it the same, with
   `Round: verify <N>`, and add: `Previous head:` the head that the previous critic judged; every
