@@ -13,6 +13,7 @@ from . import changelog, environment, mutate, strict, testrun
 from . import autocommit, fsutil, jsonio, ownedjson
 from . import wikilint
 from . import setup
+from . import jobsandbox
 
 # The modules of lib/harness/; the adapters of lib/harness/frontends.py follow `install`.
 MODULES = [install, update, frontmatter, githooks, repos, protection, fmt, profile]
@@ -34,6 +35,7 @@ MODULES.append(ownedjson)
 MODULES.append(fsutil)
 MODULES.append(autocommit)
 MODULES.append(setup)
+MODULES.append(jobsandbox)
 MODULES.append(testrun)
 
 
@@ -86,6 +88,7 @@ def main(argv=None):
             ownedjson,
             fsutil,
             autocommit,
+            jobsandbox,
             testrun,
         ):
             module.register(sub)
