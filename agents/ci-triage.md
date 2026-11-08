@@ -3,7 +3,7 @@ name: ci-triage
 model: medium
 omitClaudeMd: true
 cacheTtl: 1h
-description: "Read GitHub Actions results across one or many repositories and separate real regressions from known-red. Use when: why is CI red, check CI across the packages, is the matrix green, what's failing on GitHub, did the workflow run, are the required checks passing, read the CI results as they land. Returns a per-repository verdict where 'expected red' is a first-class outcome. Use git-hook-triage for local hooks rather than Actions, and julia-pr-reviewer when the question is about one pull request's content."
+description: "Read GitHub Actions results across one or many repositories and separate real regressions from known-red. Use when: why is CI red, check CI across the packages, is the matrix green, what's failing on GitHub, did the workflow run, are the required checks passing, read the CI results as they land. Returns a per-repository verdict where 'expected red' is a first-class outcome. Use julia-pr-reviewer when the question is about one pull request's content."
 tools:
   - read
   - grep
@@ -47,8 +47,10 @@ Two consequences you must use:
 - **`gh run watch --exit-status` exits 1 on a cancelled run and on its own rate limit.** Both look
   like a red matrix: read the per-job `conclusion`. The limit is the secondary one, so it trips with
   the core quota left, and after it the REST Actions endpoints, `gh run view` included, stay 403 at
-  full quota. Read the checks through GraphQL: `gh pr view <n> -R <owner>/<repo> --json
-  statusCheckRollup`, or `gh pr checks <n>`.
+  full quota for every session of the account. Read the checks through GraphQL: `gh pr view <n> -R
+  <owner>/<repo> --json statusCheckRollup`, or `gh pr checks <n>`; a deploy, through
+  `git fetch origin gh-pages`. A watcher's default refresh of 3 seconds trips the limit, which is
+  why every watcher sets `--interval 60`.
 - **A PR taken out of draft shows the checks of its last push.** `gh pr ready` fires no workflow;
   each workflow re-runs by id, `gh run rerun <run-id> -R <owner>/<repo>`.
 - Branch protection is **not** installed on two private repositories; a missing required-check gate

@@ -241,6 +241,22 @@
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh pr create -R other-org/Y.jl --title T --repo own-org/X.jl"}, "cwd": "@@CWD@@"}, "decision": "ask"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh pr create -R github.com/own-org/X.jl --title T"}, "cwd": "@@CWD@@"}, "decision": "ask"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh pr create --repo own-org/X.jl --title T"}, "cwd": "@@CWD@@"}, "profile": "@@FIXTURE@@/profiles/missing.toml", "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh run watch 123 -R own-org/X.jl --exit-status"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh run watch 123 -R own-org/X.jl --exit-status --interval 60"}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh run watch 123 -R own-org/X.jl --exit-status --interval=30"}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh run watch 123 -i 60 -R own-org/X.jl"}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh run watch 123 -i60 -R own-org/X.jl"}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh run watch 123 -i=60 -R own-org/X.jl"}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh run watch 123 -R own-org/X.jl --interval 10"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh run watch 123 -R own-org/X.jl --interval 29"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh run watch 123 -R own-org/X.jl --interval 1e3"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh run watch 123 -R own-org/X.jl --interval"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh run watch 123 --interval 60 -R own-org/X.jl -i 3"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "GH_REPO=own-org/X.jl gh run watch 123"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh pr checks 7 -R own-org/X.jl --required --watch"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh pr checks 7 -R own-org/X.jl --required --watch --interval 60"}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh pr checks 7 -R own-org/X.jl --required"}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh run view 123 -R own-org/X.jl --json jobs"}, "cwd": "@@CWD@@"}, "decision": "pass"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api repos/o/r/issues -f title=x"}}, "decision": "ask"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api repos/o/r/issues --raw-field title=x"}}, "decision": "ask"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api repos/o/r/issues --field=title=x"}}, "decision": "ask"}
@@ -593,6 +609,8 @@
 {"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "gh pr create --repo own-org/X.jl --title T"}, "decision": "ask", "bypass": true}
 {"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "gh pr create --repo other-org/X.jl --title T"}, "decision": "force_ask", "bypass": true}
 {"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "gh pr create --title T"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "gh run watch 123 -R own-org/X.jl --exit-status"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "gh pr checks 7 -R own-org/X.jl --watch"}, "decision": "deny", "bypass": null}
 {"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "gh api graphql -F query=@@@FIXTURE@@/gh/read.graphql"}, "decision": "ask", "bypass": true}
 {"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "gh api graphql -F query=@@@FIXTURE@@/gh/merge.graphql"}, "decision": "force_ask", "bypass": true}
 {"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "ls -la", "Cwd": "~/.ssh"}, "decision": "deny", "bypass": null}
@@ -850,6 +868,8 @@
 {"frontend": "omp", "tool": "bash", "input": {"command": "gh api -X PATCH repos/own-org/r/git/refs/heads/main -f sha=s"}, "decision": "ask"}
 {"frontend": "omp", "tool": "bash", "input": {"command": "gh api repos/own-org/r/git/refs -f ref=refs/heads/topic -f sha=s"}, "profile": "@@FIXTURE@@/profiles/missing.toml", "decision": "ask"}
 {"frontend": "omp", "tool": "bash", "input": {"command": "gh pr create --repo own-org/X.jl --title T --body-file b.md"}, "decision": "pass"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "gh run watch 123 -R own-org/X.jl --exit-status"}, "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "gh run watch 123 -R own-org/X.jl --exit-status --interval 60"}, "decision": "pass"}
 {"frontend": "omp", "tool": "bash", "input": {"command": "gh pr create -R own-user/X.jl --title T"}, "decision": "pass"}
 {"frontend": "omp", "tool": "bash", "input": {"command": "gh pr create --title T --repo own-org/X.jl"}, "decision": "pass"}
 {"frontend": "omp", "tool": "bash", "input": {"command": "gh pr create --repo own-org/X.jl --title T --body-file b.md 2>&1 | tail -3"}, "decision": "pass"}
@@ -1036,6 +1056,8 @@
 {"frontend": "opencode", "tool": "shell", "input": {"command": "gh pr create --repo own-org/X.jl --title T 2>&1 | tail -3"}, "decision": "pass"}
 {"frontend": "opencode", "tool": "shell", "input": {"command": "gh pr create --repo other-org/X.jl --title T"}, "decision": "ask"}
 {"frontend": "opencode", "tool": "shell", "input": {"command": "gh pr create --title T"}, "decision": "deny"}
+{"frontend": "opencode", "tool": "shell", "input": {"command": "gh run watch 123 -R own-org/X.jl --exit-status"}, "decision": "deny"}
+{"frontend": "opencode", "tool": "shell", "input": {"command": "gh run watch 123 -R own-org/X.jl --exit-status --interval 60"}, "decision": "pass"}
 {"frontend": "opencode", "tool": "shell", "input": {"command": "gh api graphql --input @@FIXTURE@@/gh/reply.json"}, "decision": "pass"}
 {"frontend": "opencode", "tool": "shell", "input": {"command": "gh api graphql --input @@FIXTURE@@/gh/merge.json"}, "decision": "ask"}
 {"frontend": "opencode", "tool": "shell", "input": {"command": "git archive -o base.tar origin/main"}, "directory": "@@TOOL@@", "decision": "deny"}

@@ -215,23 +215,8 @@ traps, for example a check that is missing instead of failed, or a corrupted cac
 operating system. It never reports green for a repository that it could not read.
 
 It returns one verdict per repository: `green`, `FAIL`, `expected red`, `no runs` or `drift`. An
-`expected red` is a real answer, not a hedge. It changes nothing. Use `git-hook-triage` for local
-git hooks, and `julia-pr-reviewer` for the content of one pull request.
-
-## `git-hook-triage`
-
-This agent finds out why a git hook blocked, failed or seems to hang. Use it with a request such
-as "the commit was refused", "pre-push failed" or "the push has printed nothing for twenty
-minutes".
-
-It decides between three cases. A `pre-commit` stage blocked the commit; a `pre-push` run found a
-real test failure; or a push to `main` is silent because `pre-push` runs the full suite. In the
-last case it checks the remote branch with `git ls-remote` and reports that nothing is wrong. It
-also compares the hook with the source in the harness, to find drift, and checks
-`core.hooksPath`. [Git hooks and workflows](githooks.md) describes the hooks.
-
-It does not edit a hook and never proposes `--no-verify`. When the load test of `pre-commit`
-fails, it hands over to `julia-load-doctor`. Use `ci-triage` for GitHub Actions.
+`expected red` is a real answer, not a hedge. It changes nothing. Use `julia-pr-reviewer` for the
+content of one pull request.
 
 ## `julia-load-doctor`
 
@@ -245,8 +230,7 @@ code that needs a rewrite. Before it blames upstream, it checks whether the mani
 date. It probes in a scratch environment outside the repository.
 
 It returns the cause class, the `file:line`, the minimal fix, and whether the fix is local or
-needs an upstream release. It diagnoses only and edits nothing. Use `git-hook-triage` when the
-hook itself is the suspect.
+needs an upstream release. It diagnoses only and edits nothing.
 
 ## `julia-test-runner`
 

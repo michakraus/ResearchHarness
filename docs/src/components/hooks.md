@@ -56,14 +56,14 @@ Antigravity, oh-my-pi and OpenCode also run the path-list check `path_list.py`, 
 frontend's `guard-paths.json`; Antigravity's table runs the lift check `sandbox_lift.py` on a shell
 call that it does not deny, which lifts a command out of the sandbox only where the line matches a
 closed grammar and Claude Code's sandbox rule lifts it. One module per check reads that call: the
-staging, write, sandbox, `gh api`, `gh pr create`, rm, archive, git write, Kaimon and directory
-checks below. Each check gives `deny`, `ask`, `allow` or `pass` with a reason. The guard answers the
-first of `deny`, `ask`, `allow` and `pass` that a check gives, with that check's reason, in the
-form of the frontend: for Claude Code exit 2 with the reason on standard error for `deny`, a JSON
-decision for `ask` and `allow`, and no output for `pass`. A tool that the table does not name
-passes. oh-my-pi and OpenCode cannot ask the user from a plugin, so their tables answer an `ask`
-as a block whose reason tells the model to ask the user in chat; `plugin.py` holds what the two
-tables share: the reading of the message, the size check of the command and the answer.
+staging, write, sandbox, `gh api`, `gh pr create`, `gh` watcher, rm, archive, git write, Kaimon
+and directory checks below. Each check gives `deny`, `ask`, `allow` or `pass` with a reason. The
+guard answers the first of `deny`, `ask`, `allow` and `pass` that a check gives, with that check's
+reason, in the form of the frontend: for Claude Code exit 2 with the reason on standard error for
+`deny`, a JSON decision for `ask` and `allow`, and no output for `pass`. A tool that the table does
+not name passes. oh-my-pi and OpenCode cannot ask the user from a plugin, so their tables answer
+an `ask` as a block whose reason tells the model to ask the user in chat; `plugin.py` holds what
+the two tables share: the reading of the message, the size check of the command and the answer.
 
 The directory check asks before a session leaves `~/Research`, or removes a worktree. A
 `change_directory` or `request_directory` call of the Claude desktop app, or an `EnterWorktree`
@@ -204,6 +204,23 @@ The own organisations are those of the `gh api` check.
 Under oh-my-pi, no pattern of `harness.yml` prompts for `gh pr create`, so the call runs under
 `yolo` also inside a pipe or after `&&`, and the guard extension refuses it or blocks it with the
 reason to ask the user.
+
+### The `gh` watcher check
+
+`gh_watch_interval.py` refuses a `gh` watcher that polls the GitHub API faster than once every
+30 seconds, on each shell call of every frontend. A watcher is a top-level `gh run watch` call or
+a `gh pr checks` call with `--watch`, also after assignments such as `GH_REPO=…`. The check reads
+the last value of `-i` or `--interval`, in the forms `-i 60`, `-i60`, `-i=60`, `--interval 60`
+and `--interval=60`, because `gh` takes the last one.
+
+A watcher with no interval is refused: `gh run watch` then refreshes every 3 seconds and
+`gh pr checks --watch` every 10 seconds. A watcher whose interval is not a whole number of at
+least 30 seconds is refused too. The reason tells the agent to add `--interval 60`. Each refresh
+makes several API calls, and all sessions and agents of one account share one rate limit. A
+watcher on a run of half an hour at the default interval makes thousands of calls and trips
+GitHub's secondary rate limit; after that, the REST Actions endpoints answer 403 for every session
+of the account until the limit lifts. `git ls-remote` and `git fetch` do not use the API, so they
+still read a branch, a tag or a `gh-pages` deploy.
 
 ### The rm check
 
