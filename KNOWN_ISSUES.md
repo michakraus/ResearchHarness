@@ -662,3 +662,27 @@
   been run for these.
 - kind: not verified
 - found: 2026-11-02, a review of the hook rollout's pull requests
+
+### K136 · The srt settings of OpenCode, oh-my-pi and Claude Code deny reads of credential files inside the frontend's own state.
+
+- location: `sandbox/policy.toml`
+- evidence: `srt_settings` adds each path of the template's `credentials.files` to `denyRead`,
+  except a path of the frontend's `own`, and only `claude` has an `own` entry,
+  `~/.claude.json`. The template's credential files include
+  `~/.local/share/opencode/auth.json` and `~/.local/share/opencode/mcp-auth.json` (OpenCode's
+  `state`), `~/.omp/agent/.env`, `~/.omp/agent/agent.db` and `~/.omp/agent/agent.db-wal`
+  (oh-my-pi's), and `~/.claude/.credentials.json` (Claude Code's, used on Linux). In `srt` a deny
+  inside an allowed path wins, so under a sandbox of the whole process each of these frontends
+  cannot read its own credentials. Nothing runs under `srt` yet; the launcher's probes decide
+  each frontend's `own` entries.
+- kind: not verified
+- found: 2026-11-08, the review of the srt settings' pull request; for the launcher
+
+### K137 · `srt_settings` raises a bare `KeyError` for a frontend that the policy does not name.
+
+- location: `lib/harness/sandbox.py:196`
+- evidence: `policy.frontends[frontend]` has no guard, so `srt_settings("codex", …)` ends with
+  `KeyError: 'codex'`, not with a `HarnessError`. Every caller passes a name of `FRONTENDS`, and
+  `load_policy` requires a table for each of them, so no command reaches it.
+- kind: defect
+- found: 2026-11-08, the review of the srt settings' pull request
