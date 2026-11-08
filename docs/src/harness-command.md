@@ -206,7 +206,10 @@ environment (`~/.local/share/research-harness/python/`, with the `dev` group whe
 the profile sets `develop = true`). With `claude` chosen, it writes the stamp
 `~/.claude/.harness-install.json`, which the drift warning at session start reads. For each
 chosen frontend it also writes the `srt` settings,
-`~/.config/research-harness/sandbox/<frontend>.json` ([The srt settings](components/sandbox.md)).
+`~/.config/research-harness/sandbox/<frontend>.json`; with any frontend chosen, the launcher
+`~/.local/bin/agentbox`; and with `claude` chosen, Claude Code's override
+`~/.config/research-harness/sandbox/claude-inner-off.json`
+([The srt settings](components/sandbox.md)).
 
 **Where to run it:** in your own terminal. A session cannot write the installed files.
 
