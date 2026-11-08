@@ -55,7 +55,7 @@ its sha256 first, as [uv](#uv) says.
 `harness setup` installs each tool of this table that the profile chooses. A row that starts
 with *needed by every machine* is installed on each machine. A row that names a component or a
 frontend is installed only where `[setup]` of the profile chooses it: `components` holds the
-components, and `frontends` the frontends. The six Julia packages come with the Julia environment
+components, and `frontends` the frontends. The eight Julia packages come with the Julia environment
 that `harness install --apply` makes, and `harness setup` runs that step. A tool that is
 installed and meets its minimum is not installed again.
 
@@ -68,7 +68,9 @@ installed and meets its minimum is not installed again.
 | actionlint | ≥ 1.7.12, the CI pin in `.github/workflows/test.yml` | needed by every machine: checks the GitHub workflow files, in CI |
 | rsync | tested with 3.5.1 | needed by every machine: copies a package without its `.git` directory, for the test runner and the mutation tests |
 | Julia | ≥ 1.13, `[compat]` in `Project.toml` | needed by the component `julia`: runs the Julia scripts: the formatter, the test runner, the mutation tests, the workflow check and the installed git hooks |
+| Aqua | = 0.8.18, `[compat]` in `Project.toml` | needed by the component `julia`: finds the piracies of each side in `dispatch-delta.jl`, through its internal piracy hunt, so its version is pinned |
 | ExplicitImports | ≥ 1.15, `[compat]` in `Project.toml` | needed by the component `julia`: finds the names that a package uses without an explicit import, in the script `explicit-imports.jl` and the package audit |
+| JET | 0.13, `[compat]` in `Project.toml` | needed by the component `julia`: finds the errors that type inference sees on each side, in `dispatch-delta.jl` |
 | JSON | ≥ 1.10, `[compat]` in `Project.toml` | needed by the component `julia`: writes the reports of the test gate and the mutation tests |
 | JuliaFormatter | ≥ 2.14, `[compat]` in `Project.toml` | needed by the component `julia`: formats Julia code, in `harness format`, the installed pre-commit hook and the test gate |
 | JuliaSyntax | ≥ 1.0.2, `[compat]` in `Project.toml` | needed by the component `julia`: parses Julia code to make the mutants of a mutation test |
@@ -109,7 +111,7 @@ template sets `failIfUnavailable`, so without them Claude Code does not start. O
 
 ## What each tool does
 
-Each section below describes one tool of the tables, or the six Julia packages together: what the
+Each section below describes one tool of the tables, or the eight Julia packages together: what the
 tool does, what the harness uses it for, why the harness needs it, and where the harness calls it.
 The sections follow the order of the tables.
 
@@ -299,32 +301,39 @@ git hooks (`githooks/pre-commit`, `githooks/pre-push`); the pre-push
 hook (`.githooks/pre-push`), which skips it when it is missing, because the CI job `test` runs the
 Julia tests.
 
-### ExplicitImports, JSON, JuliaFormatter, JuliaSyntax, TestEnv and YAML
+### Aqua, ExplicitImports, JET, JSON, JuliaFormatter, JuliaSyntax, TestEnv and YAML
 
-These six Julia packages are the dependencies of the Julia scripts, in `Project.toml`.
+These eight Julia packages are the dependencies of the Julia scripts, in `Project.toml`.
 `harness install --apply` installs them into the environment
 `~/.local/share/research-harness/julia/`, and each script adds that environment to its load path.
-ExplicitImports finds the names that a module uses without an explicit import. JSON reads and
-writes JSON. JuliaFormatter formats Julia code. JuliaSyntax parses Julia code into a syntax tree.
-TestEnv activates the test environment of a package. YAML reads YAML.
+Aqua checks a package for type piracy and other defects. ExplicitImports finds the names that a
+module uses without an explicit import. JET finds errors in Julia code by type inference. JSON
+reads and writes JSON. JuliaFormatter formats Julia code. JuliaSyntax parses Julia code into a
+syntax tree. TestEnv activates the test environment of a package. YAML reads YAML.
 
-The scripts use them as follows. `explicit-imports.jl` uses ExplicitImports. `gate.jl`,
-`mutate.jl` and `fatou-lsp.jl` use JSON for their reports and messages. `harness format`, the
+The scripts use them as follows. `dispatch-delta.jl` uses Aqua's piracy hunt and JET's
+`report_package` on each side, and pins Aqua to one version because the piracy hunt is internal
+API; a package's test environment that names either one comes first in a side's load path.
+`explicit-imports.jl` uses ExplicitImports. `gate.jl`, `mutate.jl`, `fatou-lsp.jl` and
+`dispatch-delta.jl` use JSON for their reports and messages. `harness format`, the
 installed pre-commit hook and the format step of `gate.jl` use JuliaFormatter. `mutants.jl` uses JuliaSyntax to make the mutants,
 and `mutate.jl` uses it to read the names in a mutant. `run-tests.jl` and `mutate-worker.jl` use
-TestEnv to run a package's test files in its test environment. `verify-workflows.jl` uses YAML
+TestEnv to run a package's test files in its test environment, and `dispatch-delta.jl` uses it to
+load each side in its test environment. `verify-workflows.jl` uses YAML
 to read the workflows.
 
 The harness needs these packages because each does a task that Julia's standard library does not
 do. A copy of their code in the harness would be larger and less correct.
 
-Call sites: ExplicitImports, `githooks/explicit-imports.jl`; JSON, `scripts/gate.jl`,
-`scripts/mutate.jl` and `scripts/fatou-lsp.jl`; JuliaFormatter, `harness format`
+Call sites: Aqua and JET, `scripts/dispatch-delta.jl`; ExplicitImports,
+`githooks/explicit-imports.jl`; JSON, `scripts/gate.jl`, `scripts/mutate.jl`,
+`scripts/fatou-lsp.jl` and `scripts/dispatch-delta.jl`; JuliaFormatter, `harness format`
 (`githooks/format-tree.jl`), the installed pre-commit hook (`githooks/pre-commit.jl`) and
 `scripts/gate.jl`; JuliaSyntax, `scripts/mutate.jl` and
-`scripts/mutants.jl`; TestEnv, `scripts/run-tests.jl` and `scripts/mutate-worker.jl`; YAML,
-`harness ci-protection` through `githooks/verify-workflows.jl`. `harness install` instantiates
-all six with `Project.toml`.
+`scripts/mutants.jl`; TestEnv, `scripts/run-tests.jl`, `scripts/mutate-worker.jl` and
+`scripts/dispatch-delta.jl`; YAML, `harness ci-protection` through
+`githooks/verify-workflows.jl`. `harness install` instantiates all eight with `Project.toml`, only
+where `[setup]` chooses the component `julia`.
 
 ### fatou
 

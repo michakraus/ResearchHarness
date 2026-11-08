@@ -263,8 +263,8 @@ The contract sweep writes a table of its own into its fixture.
 
 ## `Project.toml`
 
-The Julia environment of the scripts of the harness. It names the six packages that the scripts
-load beyond the standard library, with their `[compat]` bounds: ExplicitImports, JSON,
+The Julia environment of the scripts of the harness. It names the eight packages that the scripts
+load beyond the standard library, with their `[compat]` bounds: Aqua, ExplicitImports, JET, JSON,
 JuliaFormatter, JuliaSyntax, TestEnv and YAML.
 
 `harness install --apply` copies the file to `~/.local/share/research-harness/julia/`, or to
@@ -273,7 +273,7 @@ puts that environment on its load path. No `Manifest.toml` is committed.
 
 The scripts never use this file in place. A session can edit the checkout, and the update job runs
 outside the sandbox, so the job must install only the packages that the installed copy names.
-[Dependencies](../dependencies.md#explicitimports-json-juliaformatter-juliasyntax-testenv-and-yaml) says what each package does.
+[Dependencies](../dependencies.md#aqua-explicitimports-jet-json-juliaformatter-juliasyntax-testenv-and-yaml) says what each package does.
 
 ## `fatou.toml`
 

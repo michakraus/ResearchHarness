@@ -5,7 +5,9 @@
 # unsandboxed updater would install whatever it names. No Manifest.toml is committed.
 
 [deps]
+Aqua = "4c88cf16-eb10-579e-8560-4a9242c79595"
 ExplicitImports = "7d51a73a-1435-4ff3-83d9-f097790105c7"
+JET = "c3a54625-cd67-489e-a8e7-0a5a0ff4e31b"
 JSON = "682c06a0-de6a-54ab-a142-c8b1cf79cde6"
 JuliaFormatter = "98e50ef6-434e-11e9-1051-2b60c6c9e899"
 JuliaSyntax = "70703baa-626e-46a2-a12c-08ffd08c73b4"
@@ -13,7 +15,9 @@ TestEnv = "1e6cf692-eddd-4d53-88a5-2d735e33781b"
 YAML = "ddb6d928-2868-570f-bddf-ab3f9cf99eb6"
 
 [compat]
+Aqua = "=0.8.18"
 ExplicitImports = "1.15"
+JET = "0.13"
 JSON = "1.10"
 JuliaFormatter = "2.14"
 JuliaSyntax = "1.0.2"

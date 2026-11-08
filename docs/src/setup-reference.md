@@ -499,7 +499,7 @@ you try to install a new version.` and installs nothing. So when `juliaup --vers
 version, skip the `install.julialang.org` line, or run `juliaup self update` in its place. Run the
 `export` line and the **Check** below either way.
 
-The six Julia packages of [Dependencies](dependencies.md#harness-setup-installs) need no command:
+The eight Julia packages of [Dependencies](dependencies.md#harness-setup-installs) need no command:
 the first install adds them.
 
 ### fatou

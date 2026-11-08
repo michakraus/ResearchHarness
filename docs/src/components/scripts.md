@@ -190,7 +190,18 @@ The steps run in this order, each with its full log under `<out-dir>`:
 3. `generated`: `mutants.jl` against `<base>`, then `mutate.jl --warm --jobs <n>` (4 by
    default). The survivors are information for the critic, not a failure. `--no-sweep` omits
    this step.
-4. `format`: JuliaFormatter on the `.jl` files that the diff against `<base>` adds or changes.
+4. `dispatch`: `dispatch-delta.jl <package> <base>`, with its output in `dispatch.log`. Exit 1
+   fails the step, exit 0 passes it, and exit 2 or 3, or a run with no `Verdict:` line, gives no
+   verdict. The script's `FAIL:`, `UNKNOWN:` and `INFO:` lines are the step's detail. The step
+   runs JET. Three packages were measured, each against a base ten commits back, on Julia
+   1.13.3. On a small package, about 1 200 lines of `src/` with one direct dependency, the whole
+   run took 34 s, with JET steps of 2–3 s, at a load average of 25. On a large package, about
+   18 000 lines of `src/` with 14 direct dependencies, the whole run took 170 s, with JET steps
+   of 42–43 s, at a load average of 8. On a medium package, about 9 000 lines of `src/` with 15
+   direct dependencies, the whole run took 76 s, with JET steps of 7 s, at a load average of 13.
+   The last two runs had a warm depot. No JET step comes near 300 s, so the step does not pass
+   `--no-jet`.
+5. `format`: JuliaFormatter on the `.jl` files that the diff against `<base>` adds or changes.
 
 The exit status is 0 when each step that can fail passes, 1 when a step fails, 2 on bad
 arguments, and 3 when a step gave no verdict and no other step failed. No skill or agent in this
@@ -198,6 +209,62 @@ repository calls it by name.
 
 `gate-test.jl` checks each step on given outputs, and the refusal of bad arguments
 (`julia --startup-file=no gate-test.jl`). It does not run the whole gate.
+
+## `dispatch-delta.jl` and `dispatch-delta-test.jl`
+
+`dispatch-delta.jl` loads the base and the head of a package side by side and compares their
+method tables, ambiguities, piracies and JET reports.
+
+```bash
+julia --startup-file=no dispatch-delta.jl <package> <base> [--timeout <s>] [--no-jet]
+```
+
+The head is the working tree of `<package>` as it is; `<base>` is a git ref of it. The script
+writes the base with `base-tree.jl` into its run directory,
+`~/Research/.scratch/dispatch-delta/<Pkg>-<stamp>-<pid>/`, and copies the head's `Manifest.toml`
+into it, so that both sides load the same versions. Where another minor version of Julia resolved
+the head's `Manifest.toml` or `test/Manifest.toml`, neither side gets one, and the head runs from a
+copy without it, as in `run-tests.jl`. Each side loads in a fresh process of its own, both at
+once, as `run-tests.jl` loads a driver: `--project=<tree>`, the harness environment last in
+`LOAD_PATH`, then `TestEnv.activate()`. Each side writes `<side>.json`: the package, the side, the
+Julia version, whether its tree held a `Manifest.toml`, the versions of Aqua and the dependencies,
+one record per own method, and the ambiguities and piracies. Then it runs JET into
+`<side>-jet.json`. Its output goes to `<side>.log`.
+The script removes the base tree at its end and keeps the JSON files and the logs.
+
+The own methods of a side are the methods of the package's module tree and of each extension that
+loads once the side loads the weak dependencies that its test environment provides. The key of a
+method is its signature, printed as the root module sees it, with its type variables renamed `_1`,
+`_2`, … by position and the digits of gensym names stripped; its file and line print beside it.
+So a method that moves to another line or file is the same method.
+
+| line | means | exit |
+|:--|:--|:--|
+| `FAIL: new own-own ambiguity: <key> \| <key>` | `Test.detect_ambiguities` finds a new pair of own methods | 1 |
+| `FAIL: new own-external ambiguity: <own key> \| <key>` | a new pair of an own and another method | 1 |
+| `FAIL: new piracy: <key> at <file>:<line>` | Aqua's piracy hunt on the package's module tree, not on `ext/`; no argument exempts a piracy | 1 |
+| `FAIL: the head does not load: <error>` | with a `log:` line | 1 |
+| `UNKNOWN: the base does not load: <error>` | with a `log:` line | 3 |
+| `UNKNOWN: <side> does not resolve: <error>` | `TestEnv.activate()` failed | 3 |
+| `UNKNOWN: <side> timed out after <n> s` | the side was killed at its limit | 3 |
+| `UNKNOWN: jet: <side> timed out after <n> s` | the JET step was killed at its own limit | — |
+| `UNKNOWN: jet: <side> ended with <signal or exit code>` | the side ended in its JET step | — |
+| `INFO: added method: <key> at <file>:<line>` | a new method of a generic that has a method on the base, with one `  other:` line per other method: all of an own generic, the intersecting ones of an external generic | — |
+| `INFO: new JET report: <type>: <message> in <key>` | a JET report that the base lacks | — |
+| `INFO: gone …` | a piracy, an ambiguity or a JET report that the head removes | — |
+| `INFO: dependency drift: <name> <base> -> <head>` | a dependency or a tool of another version on each side | — |
+
+The last line is `Verdict: <PASS|FAIL|UNKNOWN> — <f> FAIL, <u> UNKNOWN, <i> INFO`. The exit status
+is 0 on PASS, 1 on a `FAIL:` line, 2 on bad arguments, and 3 when a side gave no verdict and no
+line failed. `--timeout` gives each side that many seconds to write its JSON, 600 by default, and
+the JET step as many again from that moment. `--no-jet` leaves out the JET step.
+
+The step `dispatch` of `gate.jl` runs it, and the agent `julia-branch-verifier` runs it for its
+point 3 on every branch.
+
+`dispatch-delta-test.jl` checks it on small packages that use the standard library only, which it
+builds with git under `tempdir()` (`julia --startup-file=no dispatch-delta-test.jl`, 2–3
+minutes).
 
 ## `julia-methods.jl`
 

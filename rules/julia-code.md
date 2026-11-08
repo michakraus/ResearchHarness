@@ -103,8 +103,9 @@ rather than relax the assertion. After you add an operator method, call every co
 new `*(::AbstractMatrix, ::Owned)` makes `v' * X` and `transpose(v) * X` ambiguous with
 `LinearAlgebra`'s row-vector methods; `detect_ambiguities` counts that pair as own-versus-external,
 and a matrix-only probe reports clean. Probe both products on both trees, and add the tie-breakers
-`Base.:*(x::Adjoint{<:Any, <:AbstractVector}, X::Owned)` and its `Transpose` twin. Check whether an
-ambiguity exists on `main` before you attribute it to the diff.
+`Base.:*(x::Adjoint{<:Any, <:AbstractVector}, X::Owned)` and its `Transpose` twin.
+`Harness/scripts/dispatch-delta.jl <package> <base>` reports each ambiguity that the branch adds
+against the base.
 
 **Write `transpose`, not `'`, where the type's defining identity is a transpose one** (`Mᵀ = -M`,
 `Mᵀ = M`, a `-Bᵀ` block). The two agree on real element types, so a real-only suite cannot see the
