@@ -21,6 +21,10 @@ What it installs:
   each chosen frontend's files     -> as the docstring of its adapters/<frontend>/adapter.py says
   sandbox/policy.toml and the      -> ~/.config/research-harness/sandbox/<frontend>.json, the srt
   template's `sandbox` section        settings of each chosen frontend (lib/harness/sandbox.py)
+  sandbox/agentbox                 -> ~/.local/bin/agentbox, mode 755, the launcher that starts a
+                                      frontend under srt, and with `claude` chosen
+                                      ~/.config/research-harness/sandbox/claude-inner-off.json;
+                                      only where `[setup]` chooses a frontend
 
 Without `[setup]`, every frontend and the Julia environment are chosen. A layer of a frontend
 that is not chosen is neither planned nor removed; `harness doctor` warns about one that is still
@@ -31,17 +35,17 @@ models.toml beside the profile; examples/models.toml shows them. Then it plans e
 frontend, in the order of FRONTENDS (`frontends.planned`). Planning writes nothing, so each
 refusal that stops the install at once, with exit status 2, comes before anything is written.
 `check_files` then checks every target of the Julia environment, with the `julia` component, of
-each plan and of the srt settings, and refuses a symbolic link or a directory at a target, also
-before anything is written. A target with a change
+each plan and of the srt settings and the launcher, and refuses a symbolic link or a directory at
+a target, also before anything is written. A target with a change
 that cannot be written exits 2 there under `--apply`; a dry run prints its whole plan and count
 line first, then that refusal, and exits 2. Then it installs the Julia environment, with the
 `julia` component, the Python
-environment (`install_python_env`), the files of each plan and the srt settings in that order,
-prints the warnings, and runs the steps of each plan that follow the files. It prints the
-installed files with no source, then the count line. After an `--apply`, it prints the restart
-line of each frontend whose files or steps changed something, in that order; the two
-environments and the srt settings belong to no frontend. A plan's own refusal exits 2 after these
-lines, once
+environment (`install_python_env`), the files of each plan, and the srt settings and the launcher,
+in that order, prints the warnings, and runs the steps of each plan that follow the files. It
+prints the installed files with no source, then the count line. After an `--apply`, it prints the
+restart line of each frontend whose files or steps changed something, in that order; the two
+environments, the srt settings and the launcher belong to no frontend. A plan's own refusal exits
+2 after these lines, once
 the rest is installed.
 
 A file that differs from the plan, in its bytes or in its mode, is a change. The plan's check of
@@ -390,8 +394,9 @@ def cmd_install(args):
     # copies of an unchosen Claude Code layer, which the others read.
     adapters = frontends.planned(ctx, profile.setup.frontends)
     plans = [ctx.plans[adapter.NAME] for adapter in adapters]
-    # The srt settings of the chosen frontends belong to no plan: nothing runs under srt yet, so a
-    # change of them restarts no frontend.
+    # The srt settings of the chosen frontends, the launcher and Claude Code's override belong to no
+    # plan, so a change of them prints no restart line; a frontend under the launcher reads them at
+    # its next start.
     srt_files = sandbox.plan_files(
         profile,
         profile_module.network_path(cast(argparse.Namespace, args).profile),
@@ -409,7 +414,7 @@ def cmd_install(args):
             *(f[3] for f in srt_files),
         ]
     )
-    # Every target, the Julia environment's, each plan's and the srt settings', is checked before
+    # Every target, the Julia environment's, each plan's and those of `srt_files`, is checked before
     # anything is written.
     # A target that cannot be written stops an --apply here, and a dry run after its count line,
     # so that a session, which cannot write the installed files, still sees the plan.
@@ -477,7 +482,7 @@ def selftest():
     """A malformed profile or models.toml exits 2 with no traceback; then `load_cases`,
     `install_cases.restart_cases`, `install_cases.precondition_cases`,
     `install_cases.target_cases`, `install_cases.setup_guard_cases`, `install_cases.setup_cases`
-    and `sandbox.install_file_cases`, the srt settings of the chosen frontends."""
+    and `sandbox.install_file_cases`, the srt settings of the chosen frontends and the launcher."""
     from .install_cases import precondition_cases, restart_cases, setup_guard_cases, target_cases
 
     total = wrong = 0

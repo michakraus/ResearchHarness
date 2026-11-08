@@ -671,9 +671,11 @@ oh-my-pi. The profile's loader refuses the retired profile key `extra_domain`.
 The `srt` settings of the CLI frontends. The module has no subcommand. It reads
 `sandbox/policy.toml` (`load_policy`) and renders one frontend's `srt` settings from the `sandbox`
 object of the rendered Claude Code settings and the policy (`srt_settings`). `install` writes one
-file per chosen frontend below `~/.config/research-harness/sandbox/` (`plan_files`). The module
-exits with status 2 on a policy file that breaks its schema. Its cases check the shipped policy,
-each refusal, and each rendering rule on a fixture and on the settings template. Its
+file per chosen frontend below `~/.config/research-harness/sandbox/`, Claude Code's override there
+when `claude` is chosen, and the launcher `sandbox/agentbox` at `~/.local/bin/agentbox`
+(`plan_files`). The module exits with status 2 on a policy file that breaks its schema. Its cases
+check the shipped policy, each refusal, each rendering rule on a fixture and on the settings
+template, and the launcher on scratch homes with a stub `srt` (`agentbox_cases`). Its
 `install_file_cases`, which the cases of `install.py` run, check the install on scratch homes.
 [The srt settings](sandbox.md) describes the files.
 
