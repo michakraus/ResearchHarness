@@ -2,7 +2,8 @@
 #!/bin/bash
 # The services: the copies of julia-update.jl and claude-autocommit in ~/.local/bin, then the
 # launch agents (macOS) or the systemd --user units (Linux), rendered by `harness render` from the
-# harness at its pin and the profile.
+# harness at its pin and the profile. On macOS the Kaimon and julia-update jobs run under a
+# Seatbelt profile, which is rendered into ~/.config/research-harness/sandbox/ before the plist.
 #
 # chezmoi runs this script again when one of the inputs of the rendered units or plists changes:
 #   harness_commit  {{ .harness_commit }}
@@ -52,8 +53,14 @@ load() {
     fi
 }
 
+sandbox="$HOME/.config/research-harness/sandbox"
+mkdir -p "$sandbox"
 for job in kaimon julia-update claude-autocommit; do
     mkdir -p "$HOME/Library/Logs/$job"
+    # The plist starts the job under its profile, so the profile is in place before the plist.
+    case "$job" in
+        kaimon | julia-update) render "sandbox/$job.sb" "$sandbox/$job.sb" ;;
+    esac
     render "launchagents/$job.plist" "$agents/$prefix.$job.plist"
     load "$prefix.$job" "$agents/$prefix.$job.plist"
 done

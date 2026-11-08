@@ -176,7 +176,7 @@ function main()
     end
 
     # The installed copy of the harness environment, never the checkout's Project.toml: this job
-    # runs unsandboxed, and a session can edit the checkout.
+    # runs outside the session sandbox, and a session can edit the checkout.
     if isfile(joinpath(HARNESS_ENV, "Project.toml"))
         name = "Pkg.update() in $HARNESS_ENV"
         cmd = `$JULIA --startup-file=no --project=$HARNESS_ENV -e 'using Pkg; Pkg.update()'`

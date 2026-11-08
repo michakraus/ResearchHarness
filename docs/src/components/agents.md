@@ -227,9 +227,13 @@ a request such as "using X fails" or "the pre-commit hook says loads FAILED". A 
 not load blocks every commit that stages a `.jl` file, because `pre-commit` runs a load test.
 
 It reproduces the failure and reads the first error, not the last. It puts the cause into one of
-four classes: an undeclared dependency, a name moved to an extension, an upstream regression, or
-code that needs a rewrite. Before it blames upstream, it checks whether the manifest is out of
-date. It probes in a scratch environment outside the repository.
+six classes: a missing manifest, a stale manifest, an undeclared dependency, a name moved to an
+extension, an upstream regression, or code that needs a rewrite. The two manifest classes are
+environment states: their fix is an instantiate or an update, and nothing is committed, because
+`Manifest.toml` is gitignored. A stale pin inside `[compat]` also shows a `[compat]` lower bound
+that is too low, and the agent reports that bound as a second finding. Before it blames upstream,
+it checks whether the manifest is out of date. It probes in a scratch environment outside the
+repository.
 
 It returns the cause class, the `file:line`, the minimal fix, and whether the fix is local or
 needs an upstream release. It diagnoses only and edits nothing.
