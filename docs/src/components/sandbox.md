@@ -42,8 +42,8 @@ frontend from its own shell. oh-my-pi adds the write denies `~/.omp/agent/config
 `~/.omp/agent/extensions`.
 
 `harness install` exits with status 2 on a policy file with an unknown key, a missing key or
-frontend, a value that is not a list of strings, or a path that does not start with `~/`. The
-message names the key or the path.
+frontend, a value that is not a list of strings, a path that does not start with `~/`, or a path
+with a `..` segment, which could leave the home directory. The message names the key or the path.
 
 ## The rendering rules
 
@@ -75,4 +75,6 @@ object to `srt_settings`. It writes each file as JSON indented by two spaces, wi
 order above and a final newline. The files belong to no frontend's plan: a change of them prints
 no restart line. A frontend that `[setup]` does not choose gets no file, and with no frontend
 chosen the install renders no file. The install does not change what it writes to
-`~/.claude/settings.json`.
+`~/.claude/settings.json`. Because it renders the template with the network overlay for every
+chosen frontend, a broken overlay stops the install with status 2 also when `claude` is not
+chosen, for example an `allow` entry that is a URL.

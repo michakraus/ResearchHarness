@@ -76,7 +76,7 @@ class Policy:
 def load_policy(path: pathlib.Path) -> Policy:
     """The policy file at `path`. Exits 2, naming the key or the path, on a file that cannot be
     read or is not TOML, an unknown key, a missing key or frontend, a value that is not a list of
-    strings, and a path that does not start with `~/`."""
+    strings, a path that does not start with `~/`, and a path with a `..` segment."""
     try:
         text = path.read_bytes().decode("utf-8")
     except OSError as e:
@@ -119,12 +119,15 @@ def table(path: pathlib.Path, prefix: str, value: object, keys: tuple[str, ...])
 
 def paths(path: pathlib.Path, key: str, value: object) -> tuple[str, ...]:
     """`value`, the list `key` of the policy file at `path`, as a tuple; exits 2 unless it is a
-    list of strings that each start with `~/`."""
+    list of strings that each start with `~/` and hold no `..` segment, which could leave the home
+    directory."""
     if not isinstance(value, list) or not all(isinstance(v, str) for v in cast("list[object]", value)):
         raise HarnessError(f"{path}: {key} is not a list of strings")
     entries = cast("list[str]", value)
     if wrong := [p for p in entries if not p.startswith("~/")]:
         raise HarnessError(f"{path}: {key} entry {wrong[0]!r} does not start with ~/")
+    if wrong := [p for p in entries if ".." in p.split("/")]:
+        raise HarnessError(f"{path}: {key} entry {wrong[0]!r} holds a .. segment")
     return tuple(entries)
 
 
@@ -205,8 +208,8 @@ def srt_settings(
     ]
     return {
         "network": {
-            "allowedDomains": strings(sandbox, "network", "allowedDomains"),
-            "deniedDomains": strings(sandbox, "network", "deniedDomains", default=[]),
+            "allowedDomains": unique(strings(sandbox, "network", "allowedDomains")),
+            "deniedDomains": unique(strings(sandbox, "network", "deniedDomains", default=[])),
             "allowLocalBinding": binding,
         },
         "filesystem": {
@@ -294,8 +297,8 @@ def fixture_sandbox() -> dict[str, Any]:
     return {
         "enabled": True,
         "network": {
-            "allowedDomains": ["b.org", "a.org"],
-            "deniedDomains": ["x.org"],
+            "allowedDomains": ["b.org", "a.org", "b.org"],
+            "deniedDomains": ["x.org", "x.org"],
             "allowLocalBinding": True,
         },
         "filesystem": {
@@ -365,12 +368,27 @@ def policy_cases(check: Check, root: pathlib.Path) -> None:
         and policy.frontends["claude"].own == ("~/.claude.json",),
         f"sandbox/policy.toml loads with the four frontends and their paths: {sorted(policy.frontends)}",
     )
-    try:
-        policy.read.__setattr__("allow", ())
-        frozen = False
-    except FrozenInstanceError:
-        frozen = True
-    check(frozen, "the policy is a frozen dataclass")
+
+    def refuses(change: Callable[[], object], error: type[Exception]) -> bool:
+        try:
+            change()
+        except error:
+            return True
+        return False
+
+    def replace_claude() -> None:
+        cast("dict[str, FrontendPolicy]", policy.frontends)["claude"] = policy.frontends["omp"]
+
+    check(
+        refuses(lambda: policy.__setattr__("frontends", {}), FrozenInstanceError)
+        and refuses(lambda: policy.read.__setattr__("allow", ()), FrozenInstanceError)
+        and all(
+            refuses(lambda f=f: f.__setattr__("own", ()), FrozenInstanceError)
+            for f in policy.frontends.values()
+        )
+        and refuses(replace_claude, TypeError),
+        "the policy, its read limit, each frontend's paths and the mapping of the frontends refuse a change",
+    )
 
     text = FIXTURE_POLICY
     for label, body, words in [
@@ -387,6 +405,16 @@ def policy_cases(check: Check, root: pathlib.Path) -> None:
         ("a key stat", text.replace('state = ["~/.omp"]', 'stat = ["~/.omp"]', 1), ["frontend.omp.stat"]),
         ("no deny_write", text.replace("deny_write = []\n", "", 1), ["frontend.claude.deny_write"]),
         ("a path /etc in read.allow", text.replace('"~/Research"', '"/etc"', 1), ["read.allow", "/etc"]),
+        (
+            "a path ~/../etc in read.allow",
+            text.replace('"~/Research"', '"~/../etc"', 1),
+            ["read.allow", "'~/../etc'", ".."],
+        ),
+        (
+            "a path ~/.omp/.. in state",
+            text.replace('["~/.omp"]', '["~/.omp/.."]', 1),
+            ["frontend.omp.state", "'~/.omp/..'", ".."],
+        ),
         (
             "a path ~ alone in own",
             text.replace('own = ["~/.claude.json"]', 'own = ["~"]', 1),
@@ -428,6 +456,13 @@ def policy_cases(check: Check, root: pathlib.Path) -> None:
         message is not None and str(absent) in message,
         f"a missing policy exits 2 and names the file: {message!r}",
     )
+    dots = root / "dots.toml"
+    dots.write_text(FIXTURE_POLICY.replace('"~/Research"', '"~/Research..old"', 1))
+    message = refused(lambda: load_policy(dots))
+    check(
+        message is None and load_policy(dots).read.allow[0] == "~/Research..old",
+        f"a name that holds .. but is no .. segment loads: {message!r}",
+    )
 
 
 def settings_cases(check: Check, root: pathlib.Path) -> None:
@@ -444,7 +479,8 @@ def settings_cases(check: Check, root: pathlib.Path) -> None:
     check(
         claude["network"]
         == {"allowedDomains": ["b.org", "a.org"], "deniedDomains": ["x.org"], "allowLocalBinding": True},
-        f"network is the template's domains in order and its allowLocalBinding: {claude['network']}",
+        f"network is the template's domains in order, each once, and its allowLocalBinding: "
+        f"{claude['network']}",
     )
     fs = cast("dict[str, list[str]]", claude["filesystem"])
     check(
@@ -668,6 +704,20 @@ class Installs:
         profile = profile_module.load(base / "profile.toml")
         return self.claude.settings_template(profile, base / "network.toml", python="python3")["sandbox"]
 
+    def settings_bytes(self, base: pathlib.Path) -> bytes:
+        """The bytes of a new ~/.claude/settings.json on `base`, as the adapter's `settings_file`
+        documents them and with no part of the srt settings: the template rendered in the
+        environment of the install, its keys of OWNED first, as JSON indented by 2 with a final
+        newline."""
+        env = cast("Callable[[pathlib.Path], dict[str, str]]", install_cases.Scratch.env)(base)
+        with mock.patch.dict(os.environ, env, clear=True):
+            template = self.claude.settings_template(
+                profile_module.load(base / "profile.toml"), base / "network.toml"
+            )
+        owned = [k for k in self.claude.OWNED if k in template]
+        ordered = {k: template[k] for k in [*owned, *(k for k in template if k not in owned)]}
+        return (json.dumps(ordered, indent=2) + "\n").encode()
+
     def expected(self, base: pathlib.Path, name: str, tmpdir: str | None) -> bytes:
         """The bytes of `name`'s srt file on `base`."""
         obj = srt_settings(name, self.template_sandbox(base), load_policy(POLICY), base / "home", tmpdir)
@@ -678,7 +728,7 @@ def install_file_cases(check: Check, root: pathlib.Path) -> None:
     """`real_tmpdir` on an unset, an empty and a linked $TMPDIR. Then `harness install` on scratch
     HOMEs whose profile chooses claude and opencode: one file each, of the bytes that
     `srt_settings` gives, with the real path of $TMPDIR, and none after the dry run; a second dry
-    run with no change; the Claude Code settings' `sandbox` as the template renders it; and
+    run with no change; the Claude Code settings.json byte for byte as `settings_bytes` gives it; and
     `install_change_cases` on that base. With no $TMPDIR, no tmpdir entry, and the dry run's
     status column is one for the srt file and the other files; with no frontend, no file, and a
     broken network overlay stops nothing."""
@@ -718,10 +768,9 @@ def install_file_cases(check: Check, root: pathlib.Path) -> None:
         f"the dry run lists both files, and a second dry run reports no change for them: {codes[2]}, "
         f"{last_line(outs[2])!r}",
     )
-    settings = cast("dict[str, Any]", jsonio.load(base / "home" / ".claude" / "settings.json"))
     check(
-        settings["sandbox"] == installs.template_sandbox(base),
-        "the Claude Code settings hold the template's sandbox section as it renders",
+        (base / "home" / ".claude" / "settings.json").read_bytes() == installs.settings_bytes(base),
+        "the Claude Code settings.json is the template as it renders without the srt settings, byte for byte",
     )
     install_change_cases(check, installs, base)
 
