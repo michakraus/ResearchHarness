@@ -67,8 +67,8 @@ profile applies, and check the form of its result. Without `julia` on the PATH t
 line. `OPEN_GAPS` of the probe file names the negative probes that the profile does not stop, which
 report `:allowed` under it: none. The cases check that value, that the file's header comment names
 `OPEN_GAPS` and each open gap and expects no exception class of one, that it expects
-`:ProcessFailedException` of `appleevent` and says why the event is `name of startup disk`, and
-that the default command of `appleevent` asks the Finder for `name of startup disk`: AppleScript
+`:ProcessFailedException` of `appleevent` and names its event, `name of startup disk`, and that
+the default command of `appleevent` asks the Finder for `name of startup disk`: AppleScript
 answers `get name` of an application from the script itself and sends no Apple Event.
 """
 
@@ -1292,8 +1292,8 @@ APPLEEVENT_COMMAND = re.compile(
 
 def probe_text_cases(case: Case) -> None:
     """The header comment of sandbox/probe-daemon.jl names `OPEN_GAPS` and each open gap, expects
-    no exception class of an open gap and `:ProcessFailedException` of `appleevent`, and says why
-    the event is `name of startup disk`; the default command of `appleevent` asks the Finder for
+    no exception class of an open gap and `:ProcessFailedException` of `appleevent`, and names
+    its event, `name of startup disk`; the default command of `appleevent` asks the Finder for
     `name of startup disk`, which only an Apple Event answers."""
     text = PROBES.read_text(encoding="utf-8")
     header = text.split("\nmodule ProbeDaemon\n", 1)[0]
