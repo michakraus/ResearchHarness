@@ -71,7 +71,7 @@ resolves inside `~/Research`, after `~`, `..` and symbolic links. An `EnterWorkt
 `path` that resolves inside `~/Research` passes only when the path is in a repository's
 `.claude/worktrees/`; the check refuses any other such path. Claude Code asks the person for every
 `EnterWorktree` path outside `.claude/worktrees/`, as a safety check that neither a hook's `allow`
-nor auto mode approves, and the worktrees here are in `~/Research/.worktrees/`. The refusal names
+nor auto mode approves. The worktrees here are in `~/Research/.worktrees/`. The refusal names
 the call that needs no prompt: `cd <path>` as a Bash call of its own. An `EnterWorktree` call with
 only a `name` passes, because `worktree.py` then decides the place. An `ExitWorktree` call passes
 only with `action: "keep"` and no `discard_changes`. Every other such call gets an `ask` decision.
