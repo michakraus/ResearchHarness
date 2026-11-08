@@ -721,8 +721,9 @@ the step when that tree of the same lockfile is linked already.
 *The pinned srt* of [The srt settings](components/sandbox.md) says what the step does in each
 case.
 
-**Why.** The settings files of `harness install` are for srt, and the lockfile fixes the version
-and the sha512 of srt and of each of its dependencies.
+**Why.** `agentbox` starts a frontend under `~/.local/bin/srt` with the settings files of
+`harness install`, and the lockfile fixes the version and the sha512 of srt and of each of its
+dependencies.
 
 **By hand.** These lines install the same tree and link, on macOS and on Ubuntu; they remove no
 other version, and the last line removes the scratch directory when `npm ci` fails. Where

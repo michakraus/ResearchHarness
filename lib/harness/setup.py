@@ -1116,10 +1116,10 @@ def install_srt(machine: Machine, version: str) -> str | None:
     scratch directory beside srt/ below the tree root, run `npm ci --ignore-scripts --no-audit
     --no-fund` there with the npm of the PATH, then move the directory to srt/<version>/, link
     ~/.local/bin/srt to its node_modules/.bin/srt, and remove the directories of other versions and
-    the links below srt/, keeping any other file there. No
-    npm, a node below SRT_NODE or without a version, an npm that fails or makes no program, and a
-    directory at ~/.local/bin/srt write nothing below srt/ and leave ~/.local/bin as it was; the
-    scratch directory goes in every case. A file at the link is replaced, as `install_tree` does."""
+    the links below srt/, keeping any other file there. No npm, a node below SRT_NODE or without a
+    version, an npm that fails or makes no program, and a directory at ~/.local/bin/srt write
+    nothing below srt/ and leave ~/.local/bin as it was; the scratch directory goes in every case.
+    A file at the link is replaced, as `install_tree` does."""
     npm = machine.which("npm")
     if npm is None:
         return (
@@ -1214,9 +1214,9 @@ def npm_cause(stderr: str) -> str:
     """The cause of a failed npm in its stderr: the text of the `npm error code` line and the first
     `npm error` line of other text, joined with `; `. A bare `npm error` line, whose text is empty,
     is not read, and a line whose text starts with a key word of NPM_KEYS or is the log path is no
-    such line; nor are `npm warn` and `npm notice` lines read. With neither line, the last line
-    that is not the log path, else the log path; "" for an empty stderr. npm writes its key lines
-    first, then a summary and its detail, and the log path last."""
+    such line; nor is an `npm warn` or `npm notice` line. With neither line, the last line of any
+    kind that is not the log path, else the log path; "" for an empty stderr. npm writes its key
+    lines first, then a summary and its detail, and the log path last."""
     lines = [line.strip() for line in stderr.splitlines() if line.strip()]
     errors = [line.removeprefix(NPM_ERROR).strip() for line in lines if line.startswith(f"{NPM_ERROR} ")]
     code = next((text for text in errors if text.startswith("code ")), "")
