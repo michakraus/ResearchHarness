@@ -1127,7 +1127,7 @@ def minimum_cases(check):
         set(MINIMUMS) <= set(found),
         f"every tool of MINIMUMS is a row of dependencies.md: {sorted(set(MINIMUMS) - set(found))} are not",
     )
-    names = {name for name, *_ in TOOLS} | set(PACKAGES) | {"Kaimon", "chezmoi", "Antigravity"}
+    names = {name for name, *_ in TOOLS} | set(PACKAGES) | {"Kaimon", "chezmoi", "Antigravity", "srt"}
     check(
         set(found) == names,
         f"the checks cover each tool of dependencies.md: missing {sorted(set(found) - names)}, "
