@@ -352,26 +352,35 @@ refuses a missing job or key, an unknown key, a path that is neither one of the 
 `$DARWIN_USER_TEMP_DIR`, `$DARWIN_USER_CACHE_DIR` and `$HARNESS` alone nor `~`, nothing or a
 token followed by `/`, a path with an empty, `.` or `..` segment, the root `/` anywhere but in
 `read_files`, a system path in its link form such as `/etc/hosts`, an operation that is not
-lower-case words joined by `-`, a file that is not UTF-8, and a value that is not a list of
-strings. `profile` renders one job's SBPL text: deny every file read and write, allow the read
-and write lists, with the root directory `/` itself as a read file of both jobs because dyld
-reads it when a process starts, then deny the write denies and the repository parts `.git/hooks`,
+lower-case words joined by `-`, a file that is not UTF-8, a `pty` that is not `true` or `false`,
+and another value that is not a list of strings. `profile` renders one job's SBPL text: deny every
+file read and write, allow the read and write lists, with the root directory `/` itself as a read
+file of both jobs because dyld reads it when a process starts, then, for a job with `pty = true`,
+allow pseudo-terminals, then deny the write denies and the repository parts `.git/hooks`,
 `.git/config` and `.githooks` below `~/Research`, then allow the single files of
 `allow_write_files` inside a write deny, then deny the operations `lsopen`, `appleevent-send`,
 `file-mount` and `file-unmount`, and two Mach services of Launch Services. Kaimon's only such file
 is juliaup's lock file `~/.julia/juliaup/.juliaup-lock`: the juliaup launcher, which starts the
 server and every Julia of its sessions, opens it for writing at every start and exits when that
 fails, while `juliaup.json` and the installed Julia versions in the same directory stay
-unwritable. The render takes `home` and `harness` from the profile and the two per-user
-directories from `getconf`; a `getconf` that fails exits 2. `harness setup` writes each render
-into `~/.config/research-harness/sandbox/` before it renders and loads the job's plist, and both
-plists start their program with `/usr/bin/sandbox-exec -f` and that file.
+unwritable. The required key `pty` of each job is `true` for Kaimon, which starts every Julia
+session on a pseudo-terminal with `forkpty`, and `false` for `julia-update`. With `true`, the
+profile holds `(allow pseudo-tty)` and one rule that allows reads, writes and ioctls of
+`/dev/ptmx` and of every path that the regex `^/dev/ttys[0-9]+$` matches, after the write allows
+and before every write deny; both paths are constants of the module, and the rule list names no
+device. Seatbelt cannot tell a pseudo-terminal of the job from a terminal of another program of
+the same user, so [the security model](../security.md) states what this leaves open. The render
+takes `home` and `harness` from the profile and the two per-user directories from `getconf`; a
+`getconf` that fails exits 2. `harness setup` writes each render into
+`~/.config/research-harness/sandbox/` before it renders and loads the job's plist, and both plists
+start their program with `/usr/bin/sandbox-exec -f` and that file.
 
 Its cases load the shipped list and a broken copy of it for each refusal, render both jobs with a
 home path that holds a dot and one that holds a quote, run `harness render` through `bin/harness`
 with a `getconf` stub, start `/bin/sh -c true` under each job's profile with
-`/usr/bin/sandbox-exec` and expect exit 0, and the juliaup launcher with
-`julia --startup-file=no -e 'exit(0)'` under Kaimon's profile when `~/.juliaup/bin/julia`
+`/usr/bin/sandbox-exec` and expect exit 0, under Kaimon's profile Python's `pty.openpty()` and a
+`pty.fork()` of `/bin/sh -c true` with the resolved path of the Python that runs the cases, and
+the juliaup launcher with `julia --startup-file=no -e 'exit(0)'` when `~/.juliaup/bin/julia`
 exists, or print a skip line where that cannot run, as inside another Seatbelt sandbox, and run
 every probe of `sandbox/probe-daemon.jl`, the probes that a session runs through Kaimon's `ex`
 after the server restarts under its profile, against a scratch home, when `julia` is on the `PATH`. [The security model](../security.md) says what the profile

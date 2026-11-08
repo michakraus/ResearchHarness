@@ -15,6 +15,13 @@
 # root `/` alone. A system path is in its real form, `/private/etc` and not `/etc`, because
 # Seatbelt matches the path after it resolves a symlink. `read` and `write` are directories with
 # everything below them, and `read_files`, `write_files` and `allow_write_files` single files.
+#
+# `pty`, true or false, says whether the job uses pseudo-terminals. With true, the profile allows
+# the operation `pseudo-tty` and reads, writes and ioctls of /dev/ptmx and of every /dev/ttysNNN,
+# after the write allows and before the write denies; the renderer holds both paths, and the rule
+# list names no device. Seatbelt cannot tell a pseudo-terminal of the job from the terminal window
+# of another program of the same user, so such a job can read from and write to every terminal of
+# the user.
 
 # The escapes of a confined process: opening an app or a document through Launch Services, an
 # Apple Event to another app, and a mount.
@@ -70,6 +77,8 @@ deny_write = ["~/.julia/bin", "~/.julia/config", "~/.julia/juliaup", "$HARNESS/g
 # opens its lock file for writing at every start and exits when that fails; juliaup.json and the
 # installed Julia versions stay unwritable.
 allow_write_files = ["~/.julia/juliaup/.juliaup-lock"]
+# Kaimon starts every Julia session on a pseudo-terminal, with forkpty(3).
+pty = true
 
 # The daily update: juliaup's releases and juliaup.json, the default environments, the Kaimon app
 # and its shim in ~/.julia/bin, and the harness's Julia environment. It reads the profile for
@@ -114,3 +123,4 @@ write = [
 write_files = ["/dev/null", "/dev/tty", "/dev/dtracehelper"]
 deny_write = ["~/.julia/config", "$HARNESS/githooks"]
 allow_write_files = []
+pty = false

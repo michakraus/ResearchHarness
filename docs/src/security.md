@@ -62,9 +62,17 @@ the installed template. A later version can behave differently.
   versions stay unwritable. The rule allows every write to that one path, so a confined process
   can also hold the lock, which makes every juliaup command outside the profile wait, or put a
   symbolic link in the file's place, which a juliaup command outside the profile then opens for
-  writing. It denies an app or document opened through Launch Services,
-  an Apple Event, and a mount. It leaves open the network, the other Mach services, which Metal
-  needs, every write inside `~/Research` outside the denied repository parts, and the rename of a
+  writing. Kaimon starts every Julia session on a pseudo-terminal, so the profile allows the
+  operation `pseudo-tty` and reads, writes and ioctls of `/dev/ptmx` and of every
+  `/dev/ttysNNN` (the key `pty` of the job). Seatbelt cannot tell the job's own pseudo-terminal
+  from the terminal window of another program of the same user, so a confined process can open
+  the `/dev/ttysNNN` of any terminal of the user and write text into it, which that terminal
+  shows as output. The rule also allows a change of the device's mode, which the user owns, so it
+  does not stop a read of that terminal's input either. Whether such a process can also push
+  input into another terminal with the ioctl `TIOCSTI` is not checked on macOS 27. The
+  `julia-update` job has `pty = false` and no such rule. Kaimon's profile denies an app or
+  document opened through Launch Services, an Apple Event, and a mount. It leaves open the
+  network, the other Mach services, which Metal needs, every write inside `~/Research` outside the denied repository parts, and the rename of a
   directory above a denied part, which moves the part out of the denied path. The writes inside
   `~/Research` include `~/Research/.claude/hooks`, `skills` and `settings.json`, which the session
   sandbox denies: through Kaimon's `ex`, code can write a hook that a later session runs outside
