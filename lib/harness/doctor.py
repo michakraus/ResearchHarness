@@ -73,12 +73,12 @@ OS_RELEASE = pathlib.Path("/etc/os-release")
 TIMEOUT, INSTALL_TIMEOUT, TEST_TIMEOUT, REVISE_TIMEOUT = 60, 300, 3600, 600
 
 # The minimums of docs/src/dependencies.md, {tool: versions}. A version passes at or above the
-# last one, or at or above an earlier one of the same major release: Node.js 20.16 in 20.x, else
-# 22.3. A case compares them with the page.
+# last one, or at or above an earlier one of the same major release. A case compares them with the
+# page.
 MINIMUMS = {
     "Python": ("3.14",),
     "gitleaks": ("8.21",),
-    "Node.js": ("20.16", "22.3"),
+    "Node.js": ("22.12",),
     "actionlint": ("1.7.12",),
     "Julia": ("1.13",),
     "ExplicitImports": ("1.15",),
@@ -1526,7 +1526,7 @@ def status_cases(check, root, system_name):
         ".local/bin/uv" in got["uv"].detail,
         f"{system_name}: the uv line names ~/.local/bin/uv -> {got['uv'].detail!r}",
     )
-    for version, want in (("21.7.3", "FAIL"), ("20.18.0", "PASS"), ("18.20.4", "FAIL"), ("23.0.0", "PASS")):
+    for version, want in (("22.11.0", "FAIL"), ("22.12.0", "PASS"), ("20.18.0", "FAIL"), ("23.0.0", "PASS")):
         case(
             f"node at {version}",
             {"Node.js": want},

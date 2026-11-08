@@ -747,3 +747,25 @@
   control character or a backslash in the word, so no word of ASCII letters comes of it.
 - kind: defect
 - found: 2026-11-08, the fourth pre-PR verification of `guard/bypass-gaps`
+
+### K142 · `install_tree` fails after it has linked the new tree when a file or a link is in `<command>/`.
+
+- location: `lib/harness/setup.py:1039`
+- evidence: after `part.replace(link)`, the loop calls `shutil.rmtree` on each entry of
+  `<command>/` but the new version. A file there, such as the `.DS_Store` that Finder writes, makes
+  it raise `Not a directory`, and a link makes it raise too. The step
+  then reports `cannot install the tree of …`, while `~/.local/bin` already links into the new
+  version, and the old version stays. Read from the code, not probed. The srt step removes only
+  the links and the directories (`remove_others`).
+- kind: defect
+- found: 2026-11-08, the review of the srt pin's pull request
+
+### K143 · `harness setup` counts a pre-release as its release.
+
+- location: `lib/harness/setup.py:389`
+- evidence: `installed_version` returns the first match of `VERSION`, `\d+(?:\.\d+)+`, so
+  `v22.12.0-rc.1` reads as `22.12.0`, and `meets` passes it for each minimum of a tool and for the
+  Node.js 22.12.0 that the srt step asks for. K83 is the same reading in `harness doctor`, with its
+  own code.
+- kind: defect
+- found: 2026-11-08, the review of the srt pin's pull request

@@ -3,9 +3,8 @@
 #
 # [minimum] holds the minimum of each tool that has one, under its name in
 # docs/src/dependencies.md: the versions of its `≥` cell, in order. A version meets them at or
-# above the last one, or at or above an earlier one of the same major release, as Node.js 20.16 in
-# 20.x. A tool with no minimum is met by any version. A case of `harness test setup` holds each list
-# equal to the page.
+# above the last one, or at or above an earlier one of the same major release. A tool with no
+# minimum is met by any version. A case of `harness test setup` holds each list equal to the page.
 #
 # [release.<tool>] is a release that `harness setup` installs on Ubuntu into ~/.local/bin, where no
 # apt candidate meets the tool's minimum: `version`, and per system and architecture a table with
@@ -20,7 +19,7 @@
 
 [minimum]
 gitleaks = ["8.21"]
-"Node.js" = ["20.16", "22.3"]
+"Node.js" = ["22.12"]
 actionlint = ["1.7.12"]
 Julia = ["1.13"]
 fatou = ["0.22.0"]

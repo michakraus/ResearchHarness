@@ -63,7 +63,7 @@ installed and meets its minimum is not installed again.
 |:--|:--|:--|
 | gh | tested with 2.102.0 | needed by every machine: protects the default branch of each repository on GitHub, in `harness ci-protection` |
 | gitleaks | ≥ 8.21, the check in `.githooks/pre-push` | needed by every machine: finds secrets in the commits of a push, in the pre-push hook and in CI; a machine that never pushes to the harness can do without it, so `harness doctor` gives a `WARN`, not a `FAIL`, without it |
-| Node.js | ≥ 20.16 (20.x), ≥ 22.3, for `process.getBuiltinModule`, as the API documentation says: <https://nodejs.org/api/process.html#processgetbuiltinmoduleid> | needed by every machine: loads the guard extensions of oh-my-pi and OpenCode in the hook probe of `harness test`, and builds the documentation site with npm and VitePress |
+| Node.js | ≥ 22.12, the `engines.node` of srt 0.0.81; the plugins need `process.getBuiltinModule`, of 22.3 and 20.16, as the API documentation says: <https://nodejs.org/api/process.html#processgetbuiltinmoduleid> | needed by every machine: loads the guard extensions of oh-my-pi and OpenCode in the hook probe of `harness test`, and builds the documentation site with npm and VitePress |
 | shellcheck | tested with 0.11.0 | needed by every machine: checks the shell scripts, in the pre-push hook and in CI |
 | actionlint | ≥ 1.7.12, the CI pin in `.github/workflows/test.yml` | needed by every machine: checks the GitHub workflow files, in CI |
 | rsync | tested with 3.5.1 | needed by every machine: copies a package without its `.git` directory, for the test runner and the mutation tests |
@@ -224,7 +224,9 @@ plugins under Node.js and checks their decisions. Without `node`, a test case of
 
 The harness needs Node.js because these extensions are JavaScript, and their frontends run them
 in a JavaScript runtime. The plugins take the Node.js built-in modules from
-`process.getBuiltinModule`, which Node.js 22.3 and 20.16 added.
+`process.getBuiltinModule`, which Node.js 22.3 and 20.16 added. The minimum is higher, 22.12,
+the `engines.node` of srt 0.0.81, which `harness setup` installs with npm ([srt](#srt)): so setup
+upgrades an older Node.js, as it upgrades every tool below its minimum, before the srt step runs.
 
 On macOS, Homebrew installs Node.js. On Ubuntu, `harness setup` installs the `nodejs` and `npm`
 packages where the apt candidate of `nodejs` meets the minimum, as on Ubuntu 26.04. Ubuntu 24.04

@@ -145,6 +145,11 @@ SRT_FILES = ("package.json", "package-lock.json")
 SRT_PACKAGE = "@anthropic-ai/sandbox-runtime"
 NPM_CI = ("ci", "--ignore-scripts", "--no-audit", "--no-fund")
 SRT_NODE = "22.12.0"
+# The prefix of npm's error lines, the key words of the lines that npm writes before the summary of
+# an error, and the start of the last line, which names npm's log file.
+NPM_ERROR = "npm error"
+NPM_KEYS = ("code ", "syscall ", "errno ", "file ", "path ", "dest ")
+NPM_LOG = "A complete log of this run can be found in:"
 DOCTOR = "harness doctor"
 JOBS = ("kaimon", "julia-update", "claude-autocommit")
 # The directory below the home directory of the Seatbelt profiles of the jobs of jobsandbox.JOBS,
@@ -666,23 +671,21 @@ def route_rest(rest: list[tuple[Tool, str]], result: Plan) -> list[tuple[Tool, s
     return installers
 
 
-def srt_step(
-    machine: Machine, choice: profile_module.Setup, result: Plan, source: pathlib.Path = SRT
-) -> None:
-    """With any frontend chosen, the step that installs srt from the package and lockfile of
-    `source` (`install_srt`), unless the tree of that lockfile is in place (`srt_installed`). It
-    finds npm and node when it runs, so that a Node.js that an earlier step installs serves it."""
+def srt_step(machine: Machine, choice: profile_module.Setup, result: Plan) -> None:
+    """With any frontend chosen, the step that installs srt from the package and lockfile of SRT
+    (`install_srt`), unless the tree of that lockfile is in place (`srt_installed`). It finds npm
+    and node when it runs, so that a Node.js that an earlier step installs serves it."""
     if not any(f in frontends.FRONTENDS for f in choice.frontends):
         return
-    version = srt_version(source)
-    if srt_installed(machine.home, version, source):
+    version = srt_version()
+    if srt_installed(machine.home, version):
         return
     result.steps.append(
         Step(
-            f"npm {' '.join(NPM_CI)} with {source / 'package-lock.json'} into "
+            f"npm {' '.join(NPM_CI)} with {SRT / 'package-lock.json'} into "
             f"~/{TREE_ROOT / 'srt' / version}, linked as srt in ~/.local/bin, "
             f"with Node.js {SRT_NODE} or later",
-            lambda: install_srt(machine, version, source),
+            lambda: install_srt(machine, version),
         )
     )
 
@@ -700,14 +703,14 @@ def srt_version(source: pathlib.Path = SRT) -> str:
     return value
 
 
-def srt_installed(home: pathlib.Path, version: str, source: pathlib.Path = SRT) -> bool:
-    """Whether srt/<version>/ below the tree root holds the bytes of the lockfile of `source` and
+def srt_installed(home: pathlib.Path, version: str) -> bool:
+    """Whether srt/<version>/ below the tree root holds the bytes of the lockfile of SRT and
     node_modules/.bin/srt, and ~/.local/bin/srt is a link to that program."""
     target = home / TREE_ROOT / "srt" / version
     program = target / "node_modules" / ".bin" / "srt"
     link = home / ".local" / "bin" / "srt"
     try:
-        same = (target / "package-lock.json").read_bytes() == (source / "package-lock.json").read_bytes()
+        same = (target / "package-lock.json").read_bytes() == (SRT / "package-lock.json").read_bytes()
         return same and program.exists() and link.is_symlink() and link.readlink() == program
     except OSError:
         return False
@@ -1108,11 +1111,12 @@ def made_links(
     return None
 
 
-def install_srt(machine: Machine, version: str, source: pathlib.Path = SRT) -> str | None:
-    """Install srt `version` from the package.json and package-lock.json of `source`: copy both into
-    a scratch directory beside srt/ below the tree root, run `npm ci --ignore-scripts --no-audit
+def install_srt(machine: Machine, version: str) -> str | None:
+    """Install srt `version` from the package.json and package-lock.json of SRT: copy both into a
+    scratch directory beside srt/ below the tree root, run `npm ci --ignore-scripts --no-audit
     --no-fund` there with the npm of the PATH, then move the directory to srt/<version>/, link
-    ~/.local/bin/srt to its node_modules/.bin/srt and remove the directories of other versions. No
+    ~/.local/bin/srt to its node_modules/.bin/srt, and remove the directories of other versions and
+    the links below srt/, keeping any other file there. No
     npm, a node below SRT_NODE or without a version, an npm that fails or makes no program, and a
     directory at ~/.local/bin/srt write nothing below srt/ and leave ~/.local/bin as it was; the
     scratch directory goes in every case. A file at the link is replaced, as `install_tree` does."""
@@ -1141,7 +1145,7 @@ def install_srt(machine: Machine, version: str, source: pathlib.Path = SRT) -> s
     made: list[pathlib.Path] = []
     try:
         # The links come after npm: a failed npm leaves ~/.local/bin as it was.
-        failure = npm_ci(machine, npm, source, scratch) or made_links(
+        failure = npm_ci(machine, npm, SRT, scratch) or made_links(
             [link], [part], [target / "node_modules" / ".bin" / "srt"], made
         )
         if failure is not None:
@@ -1152,9 +1156,7 @@ def install_srt(machine: Machine, version: str, source: pathlib.Path = SRT) -> s
                 shutil.rmtree(target)
             scratch.rename(target)
             part.replace(link)
-            for other in base.iterdir():
-                if other.name != version:
-                    shutil.rmtree(other)
+            remove_others(base, version)
         except OSError as e:
             return f"cannot install srt {version} into {target}: {e.strerror or e}"
     finally:
@@ -1165,13 +1167,26 @@ def install_srt(machine: Machine, version: str, source: pathlib.Path = SRT) -> s
     return None
 
 
+def remove_others(base: pathlib.Path, version: str) -> None:
+    """Remove each link and each directory in `base` but `version`; a file there, such as the
+    .DS_Store that Finder writes, stays."""
+    for other in base.iterdir():
+        if other.is_symlink():
+            other.unlink()
+        elif other.is_dir() and other.name != version:
+            shutil.rmtree(other)
+
+
 def npm_ci(machine: Machine, npm: str, source: pathlib.Path, scratch: pathlib.Path) -> str | None:
     """Copy the package files of `source` into `scratch` and run `npm ci` of NPM_CI there; None when
     npm exits 0 and made node_modules/.bin/srt, else the line that says why nothing is installed,
-    with npm's last line of stderr."""
-    try:
-        for name in SRT_FILES:
+    with the cause that `npm_cause` reads from npm's stderr."""
+    for name in SRT_FILES:
+        try:
             shutil.copyfile(source / name, scratch / name)
+        except OSError as e:
+            return f"cannot copy {source / name} into {scratch}: {e.strerror or e}; nothing is installed"
+    try:
         p = subprocess.run(
             [npm, *NPM_CI],
             cwd=scratch,
@@ -1187,11 +1202,29 @@ def npm_ci(machine: Machine, npm: str, source: pathlib.Path, scratch: pathlib.Pa
     except subprocess.TimeoutExpired:
         return f"npm {' '.join(NPM_CI)} has no end after {INSTALL_TIMEOUT} s; nothing is installed"
     if p.returncode != 0:
-        last = next((line.strip() for line in reversed(p.stderr.splitlines()) if line.strip()), "")
-        return f"npm {' '.join(NPM_CI)} exits {p.returncode}: {last}; nothing is installed"
+        cause = npm_cause(p.stderr)
+        said = f": {cause}" if cause else " with an empty stderr"
+        return f"npm {' '.join(NPM_CI)} exits {p.returncode}{said}; nothing is installed"
     if not (scratch / "node_modules" / ".bin" / "srt").exists():
         return f"npm {' '.join(NPM_CI)} made no node_modules/.bin/srt; nothing is installed"
     return None
+
+
+def npm_cause(stderr: str) -> str:
+    """The cause of a failed npm in its stderr: the text of the `npm error code` line and the first
+    `npm error` line of other text, joined with `; `. A bare `npm error` line, whose text is empty,
+    is not read, and a line whose text starts with a key word of NPM_KEYS or is the log path is no
+    such line; nor are `npm warn` and `npm notice` lines read. With neither line, the last line
+    that is not the log path, else the log path; "" for an empty stderr. npm writes its key lines
+    first, then a summary and its detail, and the log path last."""
+    lines = [line.strip() for line in stderr.splitlines() if line.strip()]
+    errors = [line.removeprefix(NPM_ERROR).strip() for line in lines if line.startswith(f"{NPM_ERROR} ")]
+    code = next((text for text in errors if text.startswith("code ")), "")
+    summary = next((text for text in errors if not text.startswith((*NPM_KEYS, NPM_LOG))), "")
+    if code or summary:
+        return "; ".join(text for text in (code, summary) if text)
+    rest = [line for line in lines if not line.removeprefix(NPM_ERROR).strip().startswith(NPM_LOG)]
+    return (rest or lines or [""])[-1]
 
 
 class Redirects(urllib.request.HTTPRedirectHandler):
@@ -2307,7 +2340,7 @@ def macos_cases(case: Case, tmp: pathlib.Path, pins: Pins) -> None:
         ok=code == "0" and len(brews) == runs and "harness doctor" in s.calls(),
     )
     s.fake("gitleaks", 'echo "8.21.0"')
-    s.fake("node", 'echo "v20.16.0"')
+    s.fake("node", 'echo "v22.12.0"')
     s.fake("actionlint", 'echo "1.7.11"')
     lines = shows(s.machine(), profile_module.Setup(), s.options(), pins)
     case(
@@ -2413,12 +2446,12 @@ def linux_cases(case: Case, tmp: pathlib.Path, pins: Pins) -> None:
         ok=all(line in page for line in (installers[0], installers[2], installers[3])),
     )
     s.fake("gitleaks", 'echo "8.21"')
-    s.fake("node", 'echo "v20.16.0"')
+    s.fake("node", 'echo "v22.12.0"')
     s.fake("actionlint", 'echo "1.7.12"')
     lines = shows(machine, everything, s.options(), pins)
     planned = " ".join(lines)
     case(
-        f"a tool at its minimum is skipped: gitleaks 8.21, Node.js 20.16.0, actionlint 1.7.12: {lines[:3]}",
+        f"a tool at its minimum is skipped: gitleaks 8.21, Node.js 22.12.0, actionlint 1.7.12: {lines[:3]}",
         ok="gitleaks" not in planned and "nodejs" not in planned and "actionlint" not in planned,
     )
     s.fake("gitleaks", 'echo "8.20.9"')
@@ -2700,7 +2733,7 @@ def step_cases(case: Case, tmp: pathlib.Path, pins: Pins) -> None:
     )
     for program, body in (
         *((p, "exit 0") for p in ("gh", "shellcheck", "rsync", "bwrap", "socat", "lsof")),
-        ("node", 'echo "v22.3.0"'),
+        ("node", 'echo "v22.12.0"'),
         ("actionlint", 'echo "1.7.12"'),
         ("gitleaks", 'echo "8.21.0"'),
     ):
@@ -3219,6 +3252,49 @@ SRT_NPM = (
     '/bin/mkdir -p node_modules/.bin && printf "#!/bin/sh\\n" > node_modules/.bin/srt '
     "&& /bin/chmod 755 node_modules/.bin/srt"
 )
+# The stderr of three failures of `npm ci` that npm 11.20.0 wrote, line for line, with the log path
+# as `{log}`: the registry out of reach, a tarball whose sha512 differs from the lockfile's, and a
+# package.json out of step with its lockfile, whose usage block keeps its first and last lines.
+NPM_ENOTFOUND = """npm error code ENOTFOUND
+npm error syscall getaddrinfo
+npm error errno ENOTFOUND
+npm error network request to https://registry.npmjs.org/zod/-/zod-3.25.76.tgz failed, reason: \
+getaddrinfo ENOTFOUND registry.npmjs.org
+npm error network This is a problem related to network connectivity.
+npm error network In most cases you are behind a proxy or have bad network settings.
+npm error network
+npm error network If you are behind a proxy, please make sure that the 'proxy' config is set properly.  \
+See: 'npm help config'
+npm error A complete log of this run can be found in: {log}
+"""
+NPM_SHA = "sha512-" + "A" * 86 + "=="
+NPM_EINTEGRITY = f"""npm warn tarball tarball data for zod@https://registry.npmjs.org/zod/-/zod-3.25.76.tgz \
+({NPM_SHA}) seems to be corrupted. Trying again.
+npm warn tarball tarball data for zod@https://registry.npmjs.org/zod/-/zod-3.25.76.tgz \
+({NPM_SHA}) seems to be corrupted. Trying again.
+npm error code EINTEGRITY
+npm error {NPM_SHA} integrity checksum failed when using sha512: wanted {NPM_SHA} but got \
+sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ==. \
+(583600 bytes)
+npm notice
+npm notice New major version of npm available! 11.20.0 -> 12.2.2
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.2
+npm notice To update run: npm install -g npm@12.2.2
+npm notice
+npm error A complete log of this run can be found in: {{log}}
+"""
+NPM_EUSAGE = """npm error code EUSAGE
+npm error
+npm error `npm ci` can only install packages when your package.json and package-lock.json or \
+npm-shrinkwrap.json are in sync. Please update your lock file with `npm install` before continuing.
+npm error
+npm error Invalid: lock file's @anthropic-ai/sandbox-runtime@0.0.81 does not satisfy \
+@anthropic-ai/sandbox-runtime@0.0.80
+npm error
+npm error Clean install a project
+npm error Run "npm help ci" for more info
+npm error A complete log of this run can be found in: {log}
+"""
 
 
 def installed_srt(home: pathlib.Path, version: str) -> pathlib.Path:
@@ -3421,6 +3497,35 @@ def srt_install_cases(case: Case, tmp: pathlib.Path) -> None:
         and srt_linked(s) == str(t / "node_modules" / ".bin" / "srt"),
     )
 
+    s = srt_scratch(tmp, "upgrade-others")
+    installed_srt(s.home, "0.0.79")
+    t = srt_target(s, version)
+    (t.parent / ".DS_Store").write_text("", encoding="utf-8")
+    (s.root / "kept").mkdir()
+    (t.parent / "0.0.78").symlink_to(s.root / "kept")
+    failure = install_srt(s.machine(), version)
+    case(
+        f"an upgrade beside a file and a link to a directory below srt/ removes the link and 0.0.79, keeps "
+        f"the file and the directory, and links into {version}: {failure} {listing(t.parent)}",
+        ok=failure is None
+        and listing(t.parent) == [".DS_Store", version]
+        and (s.root / "kept").is_dir()
+        and srt_linked(s) == str(t / "node_modules" / ".bin" / "srt"),
+    )
+
+    s = srt_scratch(tmp, "no-lockfile")
+    source = s.root / "srt-source"
+    source.mkdir()
+    shutil.copyfile(SRT / "package.json", source / "package.json")
+    work = s.root / "srt-work"
+    work.mkdir()
+    failure = npm_ci(s.machine(), str(s.bin / "npm"), source, work) or ""
+    case(
+        f"a package without its lockfile fails before npm runs, naming the file: {failure}",
+        ok=failure.startswith(f"cannot copy {source / 'package-lock.json'}")
+        and not (s.bin / "npm.args").exists(),
+    )
+
     s = srt_scratch(tmp, "file")
     (s.home / ".local" / "bin").mkdir(parents=True)
     (s.home / ".local" / "bin" / "srt").write_text("#!/bin/sh\n", encoding="utf-8")
@@ -3458,12 +3563,63 @@ def srt_refusal_cases(case: Case, tmp: pathlib.Path) -> None:
             and listing(s.home / ".local" / "bin") == ["srt"]
         )
 
-    s = srt_scratch(tmp, "fail", npm='echo "npm error earlier" >&2; echo "E401 boom" >&2; exit 1')
+    for name, stderr, holds, lacks in (
+        (
+            "ENOTFOUND",
+            NPM_ENOTFOUND,
+            ("code ENOTFOUND", "network request to https://registry.npmjs.org/zod/-/zod-3.25.76.tgz failed"),
+            ("A complete log", "syscall"),
+        ),
+        (
+            "EUSAGE",
+            NPM_EUSAGE,
+            ("code EUSAGE", "can only install packages when your package.json and package-lock.json"),
+            ("A complete log", "Invalid:", "help ci"),
+        ),
+        (
+            "EINTEGRITY",
+            NPM_EINTEGRITY,
+            ("code EINTEGRITY", "integrity checksum failed when using sha512"),
+            ("A complete log", "notice", "warn"),
+        ),
+        ("no npm error line", "node: bad option: --x\n", ("exits 1: node: bad option: --x;",), ()),
+        ("empty stderr", "", ("exits 1 with an empty stderr; nothing is installed",), (": ;", ":;")),
+    ):
+        s = srt_scratch(tmp, f"fail-{name.replace(' ', '-')}")
+        recorded = s.root / "npm-stderr.txt"
+        recorded.write_text(
+            stderr.format(log=s.root / "npm-cache" / "_logs" / "debug-0.log"), encoding="utf-8"
+        )
+        s.fake("npm", f'/bin/cat "{recorded}" >&2; exit 1')
+        old = installed_srt(s.home, "0.0.79")
+        failure = install_srt(s.machine(), version) or ""
+        case(
+            f"npm exiting 1 with the stderr of {name} fails the step naming npm's cause, and keeps 0.0.79 "
+            f"linked: {failure}",
+            ok=all(h in failure for h in holds) and not any(x in failure for x in lacks) and kept(s, old),
+        )
+    log = "npm error A complete log of this run can be found in: /x/_logs/debug-0.log"
+    for stderr, want in (
+        (
+            NPM_ENOTFOUND.format(log="/x/_logs/debug-0.log"),
+            "code ENOTFOUND; network request to https://registry.npmjs.org/zod/-/zod-3.25.76.tgz failed, "
+            "reason: getaddrinfo ENOTFOUND registry.npmjs.org",
+        ),
+        (f"npm error code E401\n{log}\n", "code E401"),
+        (f"first\nsecond\n{log}\n", "second"),
+        (f"{log}\n", log),
+        ("npm errors are here\n", "npm errors are here"),
+        ("\n  \n", ""),
+    ):
+        got = npm_cause(stderr)
+        case(f"npm_cause reads {stderr[:40]!r}… as {want!r}: {got!r}", ok=got == want)
+    s = srt_scratch(tmp, "unstartable")
+    (s.bin / "npm").write_text("#!/nonexistent/interpreter\n", encoding="utf-8")
     old = installed_srt(s.home, "0.0.79")
-    failure = install_srt(s.machine(), version)
+    failure = install_srt(s.machine(), version) or ""
     case(
-        f"npm exiting 1 fails the step with its last line of stderr, and keeps 0.0.79 linked: {failure}",
-        ok=failure is not None and "E401 boom" in failure and kept(s, old),
+        f"an npm that cannot start fails the step, and keeps 0.0.79 linked: {failure}",
+        ok=failure.startswith("cannot run npm ci") and kept(s, old),
     )
     s = srt_scratch(tmp, "no-npm")
     (s.bin / "npm").unlink()
@@ -4665,9 +4821,16 @@ def recheck_cases(case: Case, tmp: pathlib.Path, pins: Pins) -> None:
         f"a Node.js below its minimum that Homebrew lists gets brew upgrade: {lines[:3]}",
         ok="brew upgrade node" in lines,
     )
+    for older in ("v20.16.0", "v22.11.0"):
+        s.fake("node", f'echo "{older}"')
+        lines = shows(s.machine(), profile_module.Setup(frontends=(), components=()), s.options(), pins)
+        case(
+            f"a Node.js {older}, below the 22.12 of srt, gets brew upgrade: {lines[:3]}",
+            ok="brew upgrade node" in lines,
+        )
     s.fake(
         "brew",
-        f'[ "$1" = upgrade ] && printf \'#!/bin/sh\\necho v22.3.0\\n\' > "{s.bin / "node"}"; exit 0',
+        f'[ "$1" = upgrade ] && printf \'#!/bin/sh\\necho v22.12.0\\n\' > "{s.bin / "node"}"; exit 0',
     )
     s.log.unlink()
     code, _ = attempt(s.machine(), s.options(), pins=pins)
