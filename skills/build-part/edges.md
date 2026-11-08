@@ -903,6 +903,15 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   renders, and the explicit target, which names the binding's module, resolves. Build the docs before
   and after the page's edit and compare the two error sets: a `Documentation` job that is already red
   on the base hides the class a page adds (C3, the Hamiltonian and Lagrangian networks' package)
+- **a generated page that grows past Documenter's `size_threshold` while every test stays green:**
+  one `@autodocs Modules = [P]` on `library.md` renders every docstring the package holds, so a part
+  that adds a page of them pushed it to 224 KiB against the 200 KiB default — `main` passed and both
+  of the part's heads failed with `HTMLSizeThresholdError`, which no critic read for three rounds,
+  because a `Documentation` job is not a required check. Split the page by source layer, each
+  `@autodocs` with its own `Pages` list, and leave `size_threshold` alone; a file dropped from every
+  `Pages` list is the mutant, and a local `makedocs` catches it through `checkdocs = :all` and
+  `warnonly = Symbol[]`. Read the docs workflow on a head that adds docstrings (F verify 3, the plan
+  that revives the multisymplectic package)
 - a testset label that states more than the testset shows: a label claimed that no monolithic
   expression builds a two-integrator chain, and one builds at width 2, while every assertion of the
   testset passed. Write the label from what the testset compares, and probe the claim the label
