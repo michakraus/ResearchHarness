@@ -1713,14 +1713,14 @@ def omp_agent_cases(case, fresh, run, agent):
     case(
         lambda: (
             rendered == sorted([s.name for s in sources] + [f"{s}.md" for s in seats])
-            and len(sources) == 24
+            and len(sources) == 23
             and seats
         ),
-        f"--apply renders one oh-my-pi agent per agent of agents/, 24, and one per council seat: {rendered}",
+        f"--apply renders one oh-my-pi agent per agent of agents/, 23, and one per council seat: {rendered}",
     )
     case(
         lambda: {s.stem: differences(s) for s in sources} == {s.stem: [] for s in sources},
-        "each of the 24 agents has its name, its description, its tools mapped by the table, its model and "
+        "each of the 23 agents has its name, its description, its tools mapped by the table, its model and "
         "its effort as thinking-level from [omp], its skills as autoloadSkills, and its body, with an Under "
         "oh-my-pi section where it uses a Claude Code mechanism: "
         + "; ".join(f"{s.stem} {differences(s)}" for s in sources if differences(s))[:1500],
@@ -1753,8 +1753,10 @@ def omp_agent_cases(case, fresh, run, agent):
         lambda: roles == {"default": tables.tiers["medium"]},
         f"the overlay's modelRoles holds the default on the medium tier's model: {roles}",
     )
-    # No silent fallback: every model that a rendered agent or seat names has an empty chain, and
-    # the overlay holds no other chain, so it neither adds a fallback nor hides config.yml's.
+    # No silent fallback: every model that an agent or seat can run on has an empty chain, every
+    # model that a rendered agent or seat names is among them, and the overlay holds no other
+    # chain, so it neither adds a fallback nor hides config.yml's. A tier that no agent names
+    # still has its chain.
     named = {
         json_value(m, "model")
         for p in (agent / "agents").glob("*.md")
@@ -1765,7 +1767,11 @@ def omp_agent_cases(case, fresh, run, agent):
     except (OSError, ValueError) as e:
         chains = f"{type(e).__name__}: {e}"
     case(
-        lambda: len(named) > 1 and chains == {m: [] for m in named},
+        lambda: (
+            len(named) > 1
+            and chains == {m: [] for m in agent_models(tables)}
+            and named <= set(agent_models(tables))
+        ),
         f"the overlay gives each model of an agent or a seat, and only those, an empty fallback chain: {chains}, "
         f"{sorted(named)}",
     )

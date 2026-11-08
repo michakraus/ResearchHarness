@@ -77,7 +77,7 @@ open or push to, once the required checks are green.
 
 An agent names a [tier](concepts.md#tier): `large`, `medium` or `small`. The model tables of the
 profile give the model of each tier for each frontend. A builder and a critic need a large model; a
-test run needs only a small one, so the large contexts do not wait on it. An agent can also name an
+test run needs only a medium one, so the large contexts do not wait on it. An agent can also name an
 [effort](concepts.md#effort). The figures below show the model and the effort of each agent.
 
 ## Who spawns whom
@@ -133,7 +133,7 @@ for a fix of the CHANGELOG.
 
 The work is split because a context that wrote the code does not judge it well. A fresh critic
 with no knowledge of the builder's reasons finds more defects. A long test run goes to an agent
-on a small model, so that the large contexts of the builder and the critic do not wait on it.
+on a medium model, so that the large contexts of the builder and the critic do not wait on it.
 
 <WalkThrough name="build-part" />
 
