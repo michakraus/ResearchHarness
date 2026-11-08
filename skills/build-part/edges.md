@@ -133,6 +133,11 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   the callback on exactly what its documentation names, one column pair at a time, and build the
   batched result yourself; three critic rounds went into the guesses (D verify 2 and verify 3,
   *Extend the Lagrangian network package with the methods of the literature*)
+- **a path check written per segment, with an exemption for one form:** `token is None or rest`,
+  added in a fix round, let a final `/` through: a check that a fix adds can regress at its own
+  edge. Write the accepted forms as one closed grammar — a start, then `/` and segments that are
+  not empty, `.` or `..` — with a matrix of each refusal in each start form, and a mutant that
+  restores the exemption (D1 verify 2, *Sandbox the agent frontends*)
 
 ## A numerical method
 
@@ -609,6 +614,11 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   The gate passed on a head that broke its own clause. Compare the line's number with the guard's,
   and run the check on both heads so it is shown to separate them (G round 1, *Revive the
   multisymplectic package*)
+- **a check that a symbolic link stays inside a tree, on `link dir / readlink` normalised:** it
+  keeps the archive's top-level name, which the move renames, so `../../<top>/bin/node` passes.
+  Check the invariant — after the move, every link resolves inside the new tree — lexically on
+  the target as written, its leading `..` against the link's depth below the tree, in place of the
+  resolved check (G5 verify 2, *Synchronise the machines with chezmoi*)
 
 ## A step that runs a user's script
 
