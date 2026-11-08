@@ -10,17 +10,17 @@
   `$'rm\0' -rf …` and `r$'\C'm -rf …` are refused. Inside double quotes a backslash-newline is
   removed, as the shell removes it, so `"r\<newline>m" -rf …` is refused; before, it passed. A
   lease push with an option that the shell expands into a lease (`--force-$w`, `--$(…)`) is read
-  as one: refused when it names a default branch, asked otherwise. The scripts
-  of `sh -c`, `bash -c`, `zsh -c` (and `dash`, `ksh`, `mksh`, `ash`, `csh`, `tcsh`, and `fish`
-  with `-c` or `--command`) and `eval` are read as parts of the command, three levels deep, by the
-  checks of `rm`, `git archive`, `gh api`, `gh pr create`, the `gh` watchers, `git add` and the
-  three `git` writes, and by the Bash rules and the path check of Antigravity; a `git` write
-  inside such a script is never allowed with no prompt. A script with an open quote is read with
-  the quote closed, since sh, bash and dash run the lines before it. The `git` write check allows
-  only a command of plain text (no `$`, backslash, backtick, `#` or `!` outside a single quote), so
-  no reading that one shell does not run can allow a write. K88 shrinks to a program that a
-  variable or a substitution names, and K92 to a path that a substitution makes; K136 records the
-  same limit of the other checks, K138 a command that only dash reads.
+  as one: refused when it names a default branch, asked otherwise. The scripts of `sh -c`,
+  `bash -c`, `zsh -c` (and `dash`, `ksh`, `mksh`, `ash`, `csh`, `tcsh`, and `fish` with `-c` or
+  `--command`) and `eval` are read as parts of the command, three levels deep, by the checks of
+  `rm`, `git archive`, `gh api`, `gh pr create`, the `gh` watchers, `git add` and the three `git`
+  writes, and by the Bash rules and the path check of Antigravity; a `git` write inside such a
+  script is never allowed with no prompt. A script with an open quote is read with the quote
+  closed, since sh, bash and dash run the lines before it. The `git` write check allows only a
+  command of plain text (no `$`, backslash, backtick, `#` or `!` outside a single quote), so no
+  reading that one shell does not run can allow a write. K88 shrinks to a program that a variable
+  or a substitution names, and K92 to a path that a substitution makes; K136 records the same
+  limit of the other checks, K138 a command that only dash runs.
 - **A lease push reads the default branch of the repository that it pushes from.** The test for a
   default branch reads `origin/HEAD` in the directory after each `cd` before the push and each
   `-C` or `--git-dir` of its `git`, as well as in the call's working directory, so
