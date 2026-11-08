@@ -11,10 +11,10 @@
 #
 # A path is one of the tokens $DARWIN_USER_TEMP_DIR, $DARWIN_USER_CACHE_DIR (the values of
 # `getconf` of the same name) and $HARNESS (the profile's `harness`) alone, or `~`, nothing or a
-# token, then `/` and segments, none of them empty, `.` or `..`. A system path is in its real form,
-# `/private/etc` and not `/etc`, because Seatbelt matches the path after it resolves a symlink.
-# `read` and `write` are directories with everything below them, and `read_files` and
-# `write_files` single files.
+# token, then `/` and segments, none of them empty, `.` or `..`; in `read_files` it can also be the
+# root `/` alone. A system path is in its real form, `/private/etc` and not `/etc`, because
+# Seatbelt matches the path after it resolves a symlink. `read` and `write` are directories with
+# everything below them, and `read_files` and `write_files` single files.
 
 # The escapes of a confined process: opening an app or a document through Launch Services, an
 # Apple Event to another app, and a mount.
@@ -46,7 +46,9 @@ read = [
     "/dev",
     "/opt/homebrew",
 ]
-read_files = ["~/.gitconfig"]
+# The root directory `/` itself, not what is below it: dyld reads it when a process starts, and
+# without it every process of the job aborts at start-up.
+read_files = ["/", "~/.gitconfig"]
 # ~/.config/kaimon: Kaimon writes its projects.json there. The cache token holds Metal's shader
 # cache.
 write = [
@@ -86,7 +88,13 @@ read = [
     "/dev",
     "/opt/homebrew",
 ]
-read_files = ["~/.gitconfig", "~/.config/research-harness/profile.toml", "~/.local/bin/julia-update.jl"]
+# The root directory `/` itself, as for kaimon.
+read_files = [
+    "/",
+    "~/.gitconfig",
+    "~/.config/research-harness/profile.toml",
+    "~/.local/bin/julia-update.jl",
+]
 write = [
     "~/.julia",
     "~/.juliaup",

@@ -341,20 +341,23 @@ no subcommand of its own: `harness render sandbox/<job>.sb` prints the profile o
 `julia-update`. `load` reads the rule list `sandbox/daemon.toml` into a frozen dataclass and
 refuses a missing job or key, an unknown key, a path that is neither one of the tokens
 `$DARWIN_USER_TEMP_DIR`, `$DARWIN_USER_CACHE_DIR` and `$HARNESS` alone nor `~`, nothing or a
-token followed by `/`, a path with an empty, `.` or `..` segment, a system path in its link form
-such as `/etc/hosts`, an operation that is not lower-case words joined by `-`, a file that is not
-UTF-8, and a value that is not a list of strings. `profile` renders one job's SBPL text: deny
-every file read and write, allow the read and write lists, then deny the write denies,
-the repository parts `.git/hooks`, `.git/config` and `.githooks` below `~/Research`, the
-operations `lsopen`, `appleevent-send`, `file-mount` and `file-unmount`, and two Mach services of
-Launch Services. The render takes `home` and `harness` from the profile and the two per-user
+token followed by `/`, a path with an empty, `.` or `..` segment, the root `/` anywhere but in
+`read_files`, a system path in its link form such as `/etc/hosts`, an operation that is not
+lower-case words joined by `-`, a file that is not UTF-8, and a value that is not a list of
+strings. `profile` renders one job's SBPL text: deny every file read and write, allow the read
+and write lists, with the root directory `/` itself as a read file of both jobs because dyld
+reads it when a process starts, then deny the write denies, the repository parts `.git/hooks`,
+`.git/config` and `.githooks` below `~/Research`, the operations `lsopen`, `appleevent-send`,
+`file-mount` and `file-unmount`, and two Mach services of Launch Services. The render takes `home` and `harness` from the profile and the two per-user
 directories from `getconf`; a `getconf` that fails exits 2. `harness setup` writes each render
 into `~/.config/research-harness/sandbox/` before it renders and loads the job's plist, and both
 plists start their program with `/usr/bin/sandbox-exec -f` and that file.
 
 Its cases load the shipped list and a broken copy of it for each refusal, render both jobs with a
 home path that holds a dot and one that holds a quote, run `harness render` through `bin/harness`
-with a `getconf` stub, and run every probe of `sandbox/probe-daemon.jl`, the probes that a
+with a `getconf` stub, start `/bin/sh -c true` under each job's profile with
+`/usr/bin/sandbox-exec` and expect exit 0, or print a skip line where that cannot run, as inside
+another Seatbelt sandbox, and run every probe of `sandbox/probe-daemon.jl`, the probes that a
 session runs through Kaimon's `ex` after the server restarts under its profile, against a scratch
 home, when `julia` is on the `PATH`. [The security model](../security.md) says what the profile
 allows and what it leaves open.

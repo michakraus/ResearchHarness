@@ -51,9 +51,10 @@ the installed template. A later version can behave differently.
   `/usr/bin/sandbox-exec -f ~/.config/research-harness/sandbox/kaimon.sb`, a Seatbelt profile that
   `harness setup` renders from `sandbox/daemon.toml`. The profile denies every file read and
   write, then allows reads of `~/Research`, the Julia depot, juliaup, Kaimon's configuration,
-  cache and logs, git's configuration, the per-user temporary and cache directories and the
-  system directories, and writes of `~/Research`, the depot, Kaimon's directories, the per-user
-  directories and `/private/tmp`. It denies writes to `~/.julia/bin`, `~/.julia/config`,
+  cache and logs, git's configuration, the per-user temporary and cache directories, the
+  system directories and the root directory `/` itself, which dyld reads when a process starts,
+  and writes of `~/Research`, the depot, Kaimon's directories, the per-user directories and
+  `/private/tmp`. It denies writes to `~/.julia/bin`, `~/.julia/config`,
   `~/.julia/juliaup`, the harness's `githooks/`, and `.git/hooks`, `.git/config` and `.githooks`
   at any depth below `~/Research`. It denies an app or document opened through Launch Services,
   an Apple Event, and a mount. It leaves open the network, the other Mach services, which Metal
