@@ -47197,14 +47197,6 @@
                 "code": "reportUnknownVariableType",
                 "range": {
                     "startColumn": 11,
-                    "endColumn": 19,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportUnknownVariableType",
-                "range": {
-                    "startColumn": 11,
                     "endColumn": 14,
                     "lineCount": 1
                 }

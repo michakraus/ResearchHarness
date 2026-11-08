@@ -52,8 +52,9 @@ the installed template. A later version can behave differently.
   `harness setup` renders from `sandbox/daemon.toml`. The profile denies every file read and
   write, then allows reads of `~/Research`, the Julia depot, juliaup, Kaimon's configuration,
   cache and logs, git's configuration, the per-user temporary and cache directories, the
-  system directories and the root directory `/` itself, which dyld reads when a process starts,
-  and writes of `~/Research`, the depot, Kaimon's directories, the per-user directories and
+  system directories, the root directory `/` itself, which dyld reads when a process starts,
+  and `~/.config/research-harness/sandbox/shims`, the first directory of the job's `PATH`; and
+  writes of `~/Research`, the depot, Kaimon's directories, the per-user directories and
   `/private/tmp`. It denies writes to `~/.julia/bin`, `~/.julia/config`,
   `~/.julia/juliaup`, the harness's `githooks/`, and `.git/hooks`, `.git/config` and `.githooks`
   at any depth below `~/Research`. After these denies it allows one file again, juliaup's lock
@@ -76,7 +77,12 @@ the installed template. A later version can behave differently.
   directory above a denied part, which moves the part out of the denied path. The writes inside
   `~/Research` include `~/Research/.claude/hooks`, `skills` and `settings.json`, which the session
   sandbox denies: through Kaimon's `ex`, code can write a hook that a later session runs outside
-  every sandbox. The `julia-update`
+  every sandbox. The exec of the setuid `/bin/ps` fails under the profile, and Kaimon reads a
+  failed `ps -o state= -p PID` as a dead session, so the shims directory holds a `ps` of the
+  harness that answers that form with `kill -0`. It says that any process that `kill -0` can
+  signal exists, which the job could already learn with `kill -0` itself, counts a zombie as
+  alive, and counts a process that `kill -0` may not signal, such as one of another user, as
+  gone. The `julia-update`
   job runs under its own profile from the same file. On Linux, and for every other MCP server,
   no profile applies.
 - **OpenCode and oh-my-pi have no sandbox.** Their permission blocks and guard extensions check

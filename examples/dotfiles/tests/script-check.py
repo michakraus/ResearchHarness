@@ -46,7 +46,8 @@ Checks, numbered as the section banners and the `== check N` lines of the output
   5. The services: the copies in ~/.local/bin; on linux the five units, each equal to `harness
      render`, then daemon-reload and enable --now; on macOS the Seatbelt profiles of kaimon and
      julia-update, each equal to `harness render sandbox/<job>.sb` and written before its plist,
-     and none on linux; the plists, each equal to `harness
+     and the `ps` shim of sandbox/shims/, mode 755, before kaimon's plist; none of them on
+     linux; the plists, each equal to `harness
      render`, bootout of a loaded job and bootstrap of each; a bootout that finishes late and a
      failed first bootstrap still load every job, and a mutant with no wait stops; the script's
      text changes with the pin and with the profile.
@@ -1264,8 +1265,18 @@ def services_template_mac(checkout, pinned, *, loaded):
             f"macOS: {job}.sb equals `harness render sandbox/{job}.sb` and is written before its plist",
         )
     check(
-        sorted(p.name for p in sandbox.iterdir()) == sorted(f"{job}.sb" for job in SANDBOXED),
+        sorted(p.name for p in sandbox.iterdir()) == sorted([*(f"{job}.sb" for job in SANDBOXED), "shims"]),
         "macOS: no profile for the autocommit job",
+    )
+    shim = sandbox / "shims/ps"
+    kaimon_plist = agents / f"{prefix}.kaimon.plist"
+    check(
+        sorted(p.name for p in (sandbox / "shims").iterdir()) == ["ps"]
+        and shim.read_bytes() == (harness / "sandbox/shims/ps").read_bytes()
+        and stat.S_IMODE(shim.stat().st_mode) == 0o755
+        and shim.stat().st_mtime_ns < kaimon_plist.stat().st_mtime_ns,
+        "macOS: the ps shim (755) in sandbox/shims equals the pinned harness's and is written before "
+        "kaimon's plist",
     )
     domain = f"gui/{os.getuid()}"
     want = []

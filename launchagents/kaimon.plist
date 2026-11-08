@@ -58,7 +58,11 @@
 
          PATH is not needed to start the job (the shim exports JULIA_DEPOT_PATH and
          JULIA_LOAD_PATH itself). It is set for the subprocesses Kaimon spawns — git, and
-         Julia's own tooling — which otherwise get launchd's minimal default PATH.
+         Julia's own tooling — which otherwise get launchd's minimal default PATH. Its first
+         directory holds the `ps` that `harness setup` installs from sandbox/shims/: the exec
+         of the setuid /bin/ps fails under the Seatbelt profile, and Kaimon reads that failure
+         as a dead session, so the shim answers Kaimon's `ps -o state= -p PID` with `kill -0`.
+         The profile lets the job read that directory and not write it.
 
          KAIMON_QDRANT_MANAGED=off stops the background indexing, which the qdrant_* entries
          in tools.json do not stop. The package preference of the same name lives in the app
@@ -75,7 +79,7 @@
         <key>JULIA_APPS_JULIA_CMD</key>
         <string>{home}/.juliaup/bin/julia</string>
         <key>PATH</key>
-        <string>{home}/.juliaup/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+        <string>{home}/.config/research-harness/sandbox/shims:{home}/.juliaup/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
         <key>KAIMON_QDRANT_MANAGED</key>
         <string>off</string>
         <key>KAIMON_GATE_PROMOTE_AFTER</key>

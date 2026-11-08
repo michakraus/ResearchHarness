@@ -44,16 +44,22 @@ string, with `"` and `\\` escaped, and a regex escapes the metacharacters of the
 one absolute path, a rule list that `load` refuses, and a job that is not one of JOBS, end it with
 exit 2 and one line. `harness setup` on macOS and the services script of the dotfiles kit write
 each render into `~/.config/research-harness/sandbox/<job>.sb` before they render and load the
-job's plist.
+job's plist, and before kaimon's profile they install PS_SHIM into SHIMS, which kaimon's profile
+reads and its plist puts first on the job's PATH: the exec of the setuid /bin/ps fails under a
+Seatbelt profile, and Kaimon reads a failed `ps -o state= -p PID` as a dead session.
 
-The cases start `/bin/sh -c true` under the profile of each job, rendered with this user's home and
-`getconf` directories, and expect exit 0; then, under kaimon's profile, this Python opening a
-pseudo-terminal pair and forking `/bin/sh -c true` on a pseudo-terminal, as Kaimon starts a
+The cases run PS_SHIM on each form that it accepts and on forms that it refuses, then start
+`/bin/sh -c true` under the profile of each job, rendered with this user's home and `getconf`
+directories, and expect exit 0; then, under kaimon's profile, this Python opening a pseudo-terminal
+pair and forking `/bin/sh -c true` on a pseudo-terminal, as Kaimon starts a
 session, and the juliaup launcher `~/.juliaup/bin/julia --startup-file=no -e 'exit(0)'`, which
-opens juliaup's lock file for writing at every start, and expect exit 0 from each. Without
-`/usr/bin/sandbox-exec` or `getconf`, or where `sandbox-exec` cannot apply even `(allow default)`,
-as inside another Seatbelt sandbox, they print a skip line; where this Python cannot start under
-kaimon's profile, a skip line for the pty runs, and without the launcher a skip line for its run.
+opens juliaup's lock file for writing at every start, and expect exit 0 from each; and
+`ps -o state= -p $$` under kaimon's profile with the PATH of kaimon's plist, which must print `S`
+from the repository's shim and from the installed one. Without `/usr/bin/sandbox-exec` or
+`getconf`, or where `sandbox-exec` cannot apply even `(allow default)`, as inside another Seatbelt
+sandbox, they print a skip line; where this Python cannot start under kaimon's profile, a skip line
+for the pty runs, without the launcher a skip line for its run, and for a shim that is not at a
+path that kaimon's profile reads, a skip line for its run.
 
 `sandbox/probe-daemon.jl` holds the probes that a session runs through Kaimon's `ex` once the
 server runs under its profile; the cases below run each probe against a scratch tree, where no
@@ -103,6 +109,12 @@ PTY_SLAVES = "^/dev/ttys[0-9]+$"
 REGEX_META = re.compile(r"([\\.\[\]()*+?{}|^$])")
 # The program that the plists start each job under.
 SANDBOX_EXEC = pathlib.Path("/usr/bin/sandbox-exec")
+# The directory that kaimon's plist puts first on the job's PATH, as a rule path, and the one
+# program that `harness setup` installs there from the repository: a `ps` that answers Kaimon's
+# liveness check of a session with `kill -0`, because the setuid /bin/ps does not start under a
+# Seatbelt profile.
+SHIMS = "~/.config/research-harness/sandbox/shims"
+PS_SHIM = REPO / "sandbox" / "shims" / "ps"
 # Seconds for one `getconf` or one `sandbox-exec`, and for the cold Julia process of the probe cases.
 TIMEOUT, JULIA_TIMEOUT = 60, 600
 
@@ -450,6 +462,20 @@ def list_cases(case: Case, policy: DaemonPolicy) -> None:
         ok=k.allow_write_files == ("~/.julia/juliaup/.juliaup-lock",) and u.allow_write_files == (),
     )
     case(f"kaimon uses pseudo-terminals and julia-update does not: {k.pty} {u.pty}", ok=k.pty and not u.pty)
+
+    def near(p: str) -> bool:
+        return p == SHIMS or SHIMS.startswith(p + "/") or p.startswith(SHIMS + "/")
+
+    case(
+        f"kaimon reads its shim directory {SHIMS} and no directory above it: {k.read}",
+        ok=SHIMS in k.read and not any(SHIMS.startswith(p + "/") for p in k.read),
+    )
+    case(
+        "neither job writes the shim directory, a directory above it or a path below it, and "
+        "julia-update does not read it",
+        ok=not any(near(p) for j in (k, u) for p in j.write + j.write_files + j.allow_write_files)
+        and not any(near(p) for p in u.read + u.read_files),
+    )
     case(
         f"julia-update writes ~/.juliaup and ~/.julia/juliaup and denies neither: {u.write} {u.deny_write}",
         ok=all(p in u.write and p not in u.deny_write for p in ("~/.juliaup", "~/.julia/juliaup")),
@@ -726,6 +752,15 @@ def profile_cases(case: Case, policy: DaemonPolicy) -> None:
         and "/private/var/folders/xy/T" not in r,
     )
     case("~/.gitconfig is a literal of the read block", ok='(literal "/h/a.b/.gitconfig")' in reads)
+    case(
+        "the shim directory is a subpath of kaimon's read block and in no other rule of its profile",
+        ok='(subpath "/h/a.b/.config/research-harness/sandbox/shims")' in reads
+        and text.count("/h/a.b/.config/research-harness/") == 1,
+    )
+    case(
+        "julia-update's profile does not name the shim directory",
+        ok="sandbox/shims" not in profile(policy, "julia-update", HOME, DIRS),
+    )
     for job in JOBS:
         block_text = rule_block(profile(policy, job, HOME, DIRS), "(allow file-read*\n")
         case(
@@ -978,10 +1013,11 @@ def render_cases(case: Case, root: pathlib.Path, policy: DaemonPolicy) -> None:
 def start_cases(case: Case, root: pathlib.Path, policy: DaemonPolicy) -> None:
     """A process starts under the profile of each job, rendered with this user's home and `getconf`
     directories: `/bin/sh -c true` under `sandbox-exec -f` exits 0, and so do the pty runs of
-    `pty_cases` and the juliaup launcher under kaimon's profile, the launcher in the environment of
-    the launch agent. Without `sandbox-exec`, without `getconf`, or where `sandbox-exec` cannot
-    apply even the profile `(allow default)`, as inside another Seatbelt sandbox, they print a skip
-    line; without the launcher, a skip line for its run."""
+    `pty_cases`, the shim runs of `shim_start_cases` and the juliaup launcher under kaimon's
+    profile, the launcher in the environment of the launch agent. Without `sandbox-exec`, without
+    `getconf`, or where `sandbox-exec` cannot apply even the profile `(allow default)`, as inside
+    another Seatbelt sandbox, they print a skip line; without the launcher, a skip line for its
+    run."""
     if not SANDBOX_EXEC.is_file():
         print(f"skip  jobsandbox: no {SANDBOX_EXEC}; no process starts under the profiles")
         return
@@ -1010,6 +1046,7 @@ def start_cases(case: Case, root: pathlib.Path, policy: DaemonPolicy) -> None:
             ok=p.returncode == 0,
         )
     pty_cases(case, root / "kaimon.sb")
+    shim_start_cases(case, root / "kaimon.sb", home, dirs)
     launcher = home / ".juliaup" / "bin" / "julia"
     if not launcher.is_file():
         print(f"skip  jobsandbox: no juliaup launcher {launcher}; it does not start under kaimon's profile")
@@ -1054,6 +1091,120 @@ def pty_cases(case: Case, sb: pathlib.Path) -> None:
             f"Python {label} and exits 0 under kaimon's profile: exit {p.returncode} "
             f"{p.stderr.strip()[-300:]!r}",
             ok=p.returncode == 0,
+        )
+
+
+def plist_path(home: pathlib.Path) -> str:
+    """The PATH of kaimon's plist, rendered with `home`."""
+    text = (REPO / "launchagents" / "kaimon.plist").read_text(encoding="utf-8")
+    found = re.search(r"<key>PATH</key>\s*<string>([^<]*)</string>", text)
+    if found is None:
+        raise HarnessError("launchagents/kaimon.plist sets no PATH")
+    return found.group(1).replace("{home}", str(home))
+
+
+def shim_start_cases(case: Case, sb: pathlib.Path, home: pathlib.Path, dirs: UserDirs) -> None:
+    """Under kaimon's profile at `sb`, with the PATH of kaimon's plist, a shell runs
+    `ps -o state= -p $$` as Kaimon's liveness check does, and gets `S` from the shim: once with the
+    repository's shim first on the PATH, where the repository is below ~/Research, and once with the
+    installed shim, where `harness setup` has installed it. Each that cannot run prints a skip
+    line."""
+    path = plist_path(home)
+    shims = pathlib.Path(path.split(os.pathsep)[0])
+    check = "ps -o state= -p $$"
+    for label, first, present in (
+        ("the repository's shim", PS_SHIM.parent, PS_SHIM.is_relative_to(home / "Research")),
+        ("the installed shim", shims, (shims / "ps").is_file()),
+    ):
+        if not present:
+            print(f"skip  jobsandbox: {label} is not at a path that kaimon's profile reads: {first}")
+            continue
+        env = {
+            "HOME": str(home),
+            "TMPDIR": dirs.temp,
+            "PATH": os.pathsep.join((str(first), *path.split(os.pathsep)[1:])),
+        }
+        p = sandboxed(sb, ["/bin/sh", "-c", check], env)
+        case(
+            f"{check} prints S from {label} under kaimon's profile: exit {p.returncode} "
+            f"{p.stdout!r} {p.stderr.strip()[-300:]!r}",
+            ok=p.returncode == 0 and p.stdout == "S\n" and p.stderr == "",
+        )
+
+
+def shim_cases(case: Case) -> None:
+    """The `ps` shim, run as a program: `-o state= -p N` prints `S` and exits 0 for a live process,
+    and exits 1 silently for one that is gone; `-o rss=,%cpu= -p N` exits 1 silently; each other
+    form of the arguments, and an N that is not digits, exits 2 with one line on stderr."""
+
+    def shim(*args: str) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            [str(PS_SHIM), *args],
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            timeout=TIMEOUT,
+            check=False,
+        )
+
+    runnable = PS_SHIM.is_file() and os.access(PS_SHIM, os.X_OK)
+    case(f"the shim {PS_SHIM.relative_to(REPO)} is an executable file", ok=runnable)
+    if not runnable:
+        return
+    me = str(os.getpid())
+    # A process that has exited and been reaped when `run` returns.
+    gone = subprocess.run(
+        ["/bin/sh", "-c", "echo $$"],
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        text=True,
+        timeout=TIMEOUT,
+        check=False,
+    ).stdout.strip()
+    for args in (("-o", "state=", "-p", me), ("-p", me, "-o", "state=")):
+        p = shim(*args)
+        case(
+            f"ps {' '.join(args)} for this process prints S and exits 0: exit {p.returncode} "
+            f"{p.stdout!r} {p.stderr!r}",
+            ok=p.returncode == 0 and p.stdout == "S\n" and p.stderr == "",
+        )
+    for args in (
+        ("-o", "state=", "-p", gone),
+        ("-p", gone, "-o", "state="),
+        ("-o", "rss=,%cpu=", "-p", me),
+        ("-o", "rss=,%cpu=", "-p", gone),
+        ("-p", me, "-o", "rss=,%cpu="),
+    ):
+        p = shim(*args)
+        case(
+            f"ps {' '.join(args)} exits 1 with no output: exit {p.returncode} {p.stdout!r} {p.stderr!r}",
+            ok=p.returncode == 1 and p.stdout == "" and p.stderr == "",
+        )
+    for args in (
+        (),
+        ("-o", "state="),
+        ("-o", "state=", "-p"),
+        ("-o", "state=", "-p", me, "-x"),
+        ("-o", "pid=", "-p", me),
+        ("-o", "state", "-p", me),
+        ("-o", "state=", "-q", me),
+        ("-x", "state=", "-p", me),
+        ("-o", "state=", "-o", "state="),
+        ("-p", me, "-p", me),
+        ("-ax", "-o", "state=", me),
+        ("-o", "state=", "-p", ""),
+        ("-o", "state=", "-p", "12a"),
+        ("-o", "state=", "-p", "-1"),
+        ("-o", "state=", "-p", "+5"),
+        ("-o", "state=", "-p", " 5"),
+        ("-o", "state=", "-p", "1 2"),
+        ("-o", "state=", "-p", "1,2"),
+        ("-o", "rss=,%cpu=", "-p", "x"),
+    ):
+        p = shim(*args)
+        case(
+            f"ps {args!r} exits 2 with one line on stderr: exit {p.returncode} {p.stdout!r} {p.stderr!r}",
+            ok=p.returncode == FAILED and p.stdout == "" and len(p.stderr.splitlines()) == 1,
         )
 
 
@@ -1227,6 +1378,7 @@ def selftest() -> tuple[int, int]:
         bad_cases(case, root / "bad")
         profile_cases(case, policy)
         pty_profile_cases(case, policy)
+        shim_cases(case)
         (root / "render").mkdir()
         render_cases(case, root / "render", policy)
         (root / "start").mkdir()

@@ -83,6 +83,9 @@ for Julia code. The job starts at login, and launchd restarts it when it exits. 
 `~/.julia/bin/kaimon --headless --port 2828` under the Seatbelt profile
 `~/.config/research-harness/sandbox/kaimon.sb`, with `/usr/bin/sandbox-exec -f`; `harness setup`
 renders the profile from `sandbox/daemon.toml` ([`jobsandbox.py`](harness.md#jobsandbox-py)).
+The first directory of its `PATH`, `~/.config/research-harness/sandbox/shims`, holds the `ps` that
+`harness setup` installs from `sandbox/shims/`: the exec of the setuid `/bin/ps` fails under the
+profile, and the shim answers Kaimon's check of a session's process with `kill -0`.
 
 The working directory is `~/Research`. Do not remove it: Kaimon reads its tool policy from
 `.kaimon/tools.json` in its working directory, and without it Kaimon offers every default tool. A

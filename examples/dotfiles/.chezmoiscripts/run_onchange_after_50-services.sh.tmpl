@@ -54,12 +54,17 @@ load() {
 }
 
 sandbox="$HOME/.config/research-harness/sandbox"
-mkdir -p "$sandbox"
+mkdir -p "$sandbox/shims"
 for job in kaimon julia-update claude-autocommit; do
     mkdir -p "$HOME/Library/Logs/$job"
-    # The plist starts the job under its profile, so the profile is in place before the plist.
+    # The plist starts the job under its profile, so the profile is in place before the plist; the
+    # `ps` that kaimon's plist puts first on its PATH too.
     case "$job" in
-        kaimon | julia-update) render "sandbox/$job.sb" "$sandbox/$job.sb" ;;
+        kaimon)
+            install -m 755 "$HARNESS/sandbox/shims/ps" "$sandbox/shims/ps"
+            render "sandbox/$job.sb" "$sandbox/$job.sb"
+            ;;
+        julia-update) render "sandbox/$job.sb" "$sandbox/$job.sb" ;;
     esac
     render "launchagents/$job.plist" "$agents/$prefix.$job.plist"
     load "$prefix.$job" "$agents/$prefix.$job.plist"

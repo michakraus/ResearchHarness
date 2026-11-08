@@ -373,15 +373,22 @@ the same user, so [the security model](../security.md) states what this leaves o
 takes `home` and `harness` from the profile and the two per-user directories from `getconf`; a
 `getconf` that fails exits 2. `harness setup` writes each render into
 `~/.config/research-harness/sandbox/` before it renders and loads the job's plist, and both plists
-start their program with `/usr/bin/sandbox-exec -f` and that file.
+start their program with `/usr/bin/sandbox-exec -f` and that file. Before Kaimon's profile it
+installs `sandbox/shims/ps` into the directory `SHIMS`, `~/.config/research-harness/sandbox/shims`,
+which Kaimon's profile reads and does not write and Kaimon's plist puts first on the `PATH`: the
+exec of the setuid `/bin/ps` fails under a Seatbelt profile, and Kaimon reads a failed
+`ps -o state= -p PID` as a dead session. The shim prints `S` for that form where `kill -0 PID`
+succeeds and exits 1 otherwise, exits 1 with no output for `-o rss=,%cpu= -p PID`, and exits 2
+with one line on stderr for any other form or a PID that is not digits.
 
 Its cases load the shipped list and a broken copy of it for each refusal, render both jobs with a
 home path that holds a dot and one that holds a quote, run `harness render` through `bin/harness`
-with a `getconf` stub, start `/bin/sh -c true` under each job's profile with
+with a `getconf` stub, run the shim on each form, start `/bin/sh -c true` under each job's profile with
 `/usr/bin/sandbox-exec` and expect exit 0, under Kaimon's profile Python's `pty.openpty()` and a
 `pty.fork()` of `/bin/sh -c true` with the resolved path of the Python that runs the cases, and
 the juliaup launcher with `julia --startup-file=no -e 'exit(0)'` when `~/.juliaup/bin/julia`
-exists, or print a skip line where that cannot run, as inside another Seatbelt sandbox, and run
+exists, and `ps -o state= -p $$` with the plist's `PATH`, which must print `S` from the
+repository's shim and from the installed one where it exists, or print a skip line where that cannot run, as inside another Seatbelt sandbox, and run
 every probe of `sandbox/probe-daemon.jl`, the probes that a session runs through Kaimon's `ex`
 after the server restarts under its profile, against a scratch home, when `julia` is on the `PATH`. [The security model](../security.md) says what the profile
 allows and what it leaves open.
@@ -592,7 +599,7 @@ The cases of the `systemd --user` units in `systemd/`. The module has no subcomm
 each unit and its plist in `launchagents/` with `examples/profile.toml`. Then it checks that both
 describe one job: the program and its arguments, after the `sandbox-exec -f <profile>` that the
 plist starts with on macOS, the working directory, the environment and its
-`PATH`, the timer's triggers, the start at login, and `Restart=always` where the plist has
+`PATH`, after the shim directory that such a plist puts first on its `PATH`, the timer's triggers, the start at login, and `Restart=always` where the plist has
 `KeepAlive`. A section, a key or a repeated key that the check does not read is a problem. A
 continued line is a problem too. Every element of the `PATH` must be an absolute directory that
 the settings template keeps out of a session's writes, or a system directory. An empty element,

@@ -126,7 +126,8 @@ The plan holds these steps, in this order:
    in `~/.local/bin`, then the launch agents or the `systemd --user` units, rendered with
    `harness render` and loaded; on macOS, the Seatbelt profiles of the Kaimon and julia-update
    jobs, rendered with `harness render sandbox/<job>.sb` into
-   `~/.config/research-harness/sandbox/` before each one's launch agent;
+   `~/.config/research-harness/sandbox/` before each one's launch agent, and before the Kaimon
+   job's profile the `ps` shim `sandbox/shims/ps`, mode 755, into that directory's `shims/`;
 9. with the component `julia`, the Kaimon token `~/.config/kaimon/auth-token`, mode 600, from the
    first key of `~/.config/kaimon/config.json` when that file exists and the token does not;
 10. `harness doctor`, after the lines under *By hand*, so that its report ends the run.

@@ -30,12 +30,16 @@ deny_services = ["com.apple.coreservices.launchservicesd", "com.apple.CoreServic
 
 # The Kaimon server and every session it runs for an agent: the research tree, the Julia depot and
 # juliaup, its own configuration, cache and logs, git's configuration, and the system. Pkg unpacks
-# in /private/tmp, and /etc/localtime resolves below /private/var/db/timezone.
+# in /private/tmp, and /etc/localtime resolves below /private/var/db/timezone. The job reads the
+# shim directory, which its plist puts first on the PATH, and writes nothing of it: the exec of the
+# setuid /bin/ps fails under the profile, and the `ps` there answers Kaimon's liveness check of a
+# session with `kill -0`.
 [job.kaimon]
 read = [
     "~/Research",
     "~/.julia",
     "~/.juliaup",
+    "~/.config/research-harness/sandbox/shims",
     "~/.config/kaimon",
     "~/.cache/kaimon",
     "~/Library/Logs/kaimon",
