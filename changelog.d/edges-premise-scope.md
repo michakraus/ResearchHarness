@@ -1,0 +1,1 @@
+- **The plan-parts spec format states the scope of a premise.** A premise asserts what the part's own §1 requirement needs and says nothing about another part's known-issue IDs: such a premise goes red when a sibling part merges, for a reason unrelated to the part whose loop it stops.

@@ -59,6 +59,13 @@ A requirement and its scenarios:
   convention: the premise's check reads the convention from the code of the base. A spec that says
   "spline degree 3" for a constructor that takes the order `p + 1` builds degree 2; a premise that
   reads the basis's `p` stops it before a build.
+- **A premise asserts what this part's own §1 requirement needs, and says nothing about another
+  part's records.** A premise that forbids a sibling part's known-issue IDs goes red the moment that
+  sibling merges, for a reason that has nothing to do with this part, and the loop spends a round on
+  it. Assert this part's own IDs by number. Where the ID the base ends at is itself a fact the
+  requirement states, assert that ID, and expect to re-run the premise when the base moves — that
+  failure is the signal that the base changed, and it is worth its cost. A premise that forbids an ID
+  the requirement never mentions buys nothing and costs the same round.
 - **A domain for every qualitative clause that a check enforces.** A requirement that names a
   reference output — `reference:` in its heading or statement — states in each scenario the
   domain where the reference's property holds: the parameters, the defaults, the range. A sign
