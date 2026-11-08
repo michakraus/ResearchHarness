@@ -17,7 +17,7 @@ the loop in a session on sonnet. **When this session runs on another model, say 
 one line before the first spawn**, and go on.
 
 **Spawn `julia-test-runner` without a `model` parameter.** A `model` passed to the `Agent` tool
-replaces the agent's own, so a runner spawned with `model: opus` runs on Opus, not on Haiku.
+replaces the agent's own, so a runner spawned with `model: opus` runs on Opus, not on Sonnet.
 
 **Contents**
 

@@ -2905,7 +2905,7 @@ def model_cases(scratch):
             == {
                 "julia-builder": "flash",
                 "julia-critic": "pro",
-                "changelog-scribe": "inherit",
+                "changelog-scribe": "flash_lite",
                 "reader": "inherit",
             }
         ),
@@ -2996,6 +2996,13 @@ def agent_cases(scratch):
             f"agents/{name}.md renders as fixtures/{name}.md, then its body: "
             f"{got[: len(want) - len(body)].decode() if isinstance(got, bytes) else got!r}",
         )
+
+    # No agent of agents/ names the small tier, so a scratch agent carries it.
+    with tempfile.TemporaryDirectory() as tmp:
+        small = pathlib.Path(tmp) / "agent-small.md"
+        small.write_text('---\nname: agent-small\ndescription: "d"\nmodel: small\n---\nbody\n')
+        got = attempt(lambda: rendered_head(render_agent(small, EXAMPLE_TIERS, {}))["model"])
+    case(lambda: got == "flash_lite", f"an agent of the small tier renders on its word, flash_lite: {got!r}")
 
     heads, wrong = {}, []
     for src in sorted((REPO / "agents").glob("*.md")):
