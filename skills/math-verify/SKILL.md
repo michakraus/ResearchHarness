@@ -27,6 +27,21 @@ Known symbolic traps in this tree:
   when evaluated — and if nothing evaluates it, silently.
 - Anything to be symbolically differentiated must branch with `max`/`min`, not `?:`.
 
+## Where a check runs
+
+Iterate in Kaimon: plain Julia, `Symbolics.jl` and numerics, in a warm session. Take every exit
+status and every check count in a report from a fresh process,
+`julia --startup-file=no --project=<environment> <script>`. A REPL keeps the state of earlier
+evaluations, so a script can pass there and fail alone, and an archived script must run alone.
+
+A script that loads `PythonCall` or `SymPyPythonCall` runs only in a fresh process, because
+loading it ends the shared Kaimon process. Most symbolic checks of this tree use
+`SymPyPythonCall`, so they iterate in fresh processes too.
+
+Use one Kaimon session per tree and reuse it, by the rule in `instructions/core.md`: `ping`
+first, and on a caller timeout, a stalled session or a failed start, go on in fresh processes and
+say so in the report. Never call `exit()` in `ex`.
+
 ## Design the check before running it
 
 **State what would make it fail, and run that case too.**

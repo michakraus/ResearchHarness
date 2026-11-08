@@ -14,6 +14,7 @@ from . import autocommit, fsutil, jsonio, ownedjson
 from . import wikilint
 from . import setup
 from . import jobsandbox
+from . import sandbox
 
 # The modules of lib/harness/; the adapters of lib/harness/frontends.py follow `install`.
 MODULES = [install, update, frontmatter, githooks, repos, protection, fmt, profile]
@@ -37,6 +38,7 @@ MODULES.append(autocommit)
 MODULES.append(setup)
 MODULES.append(jobsandbox)
 MODULES.append(testrun)
+MODULES.append(sandbox)
 
 
 def modules():
@@ -90,6 +92,7 @@ def main(argv=None):
             autocommit,
             jobsandbox,
             testrun,
+            sandbox,
         ):
             module.register(sub)
     testrun.register(sub, modules)
