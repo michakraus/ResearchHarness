@@ -1,0 +1,1 @@
+- **The build-part edges carry a class for a generated page that grows past Documenter's `size_threshold` while every test stays green.** One `@autodocs` on `library.md` renders every docstring the package holds, so a part that adds a page of them failed the Documentation job alone — invisible for three critic rounds, because that job is not a required check.
