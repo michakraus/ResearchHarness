@@ -16,11 +16,13 @@ that are already known.
 
 ## `expected red` is a verdict, not a hedge
 
-Several repositories in this tree **cannot pass** and are not evidence against anything. Reporting
-them as regressions buries the real ones. Establish the current expected-red set before you start
-— `~/Research/Tasks/Fix the packages that do not load.md` records it, § 1 for the packages
-themselves and § 2 for reading their CI results — and mark those repositories `expected red` with
-the reason, not `FAIL`.
+A failure that is already known is no evidence against anything. Reporting it as a regression
+buries the real ones. Each repository records its known defects in its own `KNOWN_ISSUES.md`.
+Before you give a verdict on a red check, read that file on the default branch, with
+`git show origin/main:KNOWN_ISSUES.md` after a `git fetch` in the checkout, or with
+`gh api repos/<owner>/<repo>/contents/KNOWN_ISSUES.md --jq .content | base64 -d`. A red check
+that an entry there explains is `expected red`, with the entry's id as the reason, not `FAIL`. A
+red check that no entry explains is a finding.
 
 ## The uniform-CI facts this depends on
 
@@ -44,6 +46,10 @@ Two consequences you must use:
   fails with `x509: OSStatus -26276`. A loop calling `gh` once per repository cannot run. Batch
   with GraphQL aliasing, or issue one `gh` call per `Bash` invocation. "No CI runs found" for
   nearly every repository is this failure, not a result.
+- **Pass a batched query as a file: `gh api graphql -F query=@<file>`.** Write the aliased query
+  with the file tool, then run that one command. An inline `gh api graphql -f query='…'` of about
+  11 KB with a quoted `--jq` filter ran sandboxed and failed on reading `gh`'s configuration, while
+  the same query from a file ran.
 - **`gh run watch --exit-status` exits 1 on a cancelled run and on its own rate limit.** Both look
   like a red matrix: read the per-job `conclusion`. The limit is the secondary one, so it trips with
   the core quota left, and after it the REST Actions endpoints, `gh run view` included, stay 403 at
@@ -62,7 +68,9 @@ Two consequences you must use:
 - **A run's conclusion disagrees with its jobs in both directions**, because the `nightly` rows
   carry `continue-on-error`. Read the jobs:
   `gh api repos/<owner>/<repo>/actions/runs/<id>/jobs --jq '.jobs[] | "\(.conclusion) \(.name)"'`.
-  The gating jobs are the `[min, 1]` matrix plus the docs and doctest jobs. Attribute each failure
+  The gating jobs are the required status checks of branch protection:
+  `gh api repos/<owner>/<repo>/branches/main/protection/required_status_checks --jq .contexts`.
+  The `Documentation`, `Downgrade`, `pre` and `nightly` jobs are not among them. Attribute each failure
   against the same job on `main`. `gh run view --log` refuses while a run is in progress: wait, and
   do not guess the cause.
 - **A `main` run is evidence only for the day it ran.** CI resolves without a manifest, so new

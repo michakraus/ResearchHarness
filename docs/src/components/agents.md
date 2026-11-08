@@ -215,7 +215,8 @@ traps, for example a check that is missing instead of failed, or a corrupted cac
 operating system. It never reports green for a repository that it could not read.
 
 It returns one verdict per repository: `green`, `FAIL`, `expected red`, `no runs` or `drift`. An
-`expected red` is a real answer, not a hedge. It changes nothing. Use `julia-pr-reviewer` for the
+`expected red` is a real answer, not a hedge: a red check that an entry of the repository's
+`KNOWN_ISSUES.md` explains. It changes nothing. Use `julia-pr-reviewer` for the
 content of one pull request.
 
 ## `julia-load-doctor`
