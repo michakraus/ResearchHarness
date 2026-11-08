@@ -65,8 +65,11 @@ path that kaimon's profile reads, a skip line for its run.
 server runs under its profile; the cases below run each probe against a scratch tree, where no
 profile applies, and check the form of its result. Without `julia` on the PATH they print a skip
 line. `OPEN_GAPS` of the probe file names the negative probes that the profile does not stop, which
-report `:allowed` under it: `appleevent` alone. The cases check that value, and that the file's
-header comment names `OPEN_GAPS` and each open gap and expects no exception class of one.
+report `:allowed` under it: none. The cases check that value, that the file's header comment names
+`OPEN_GAPS` and each open gap and expects no exception class of one, that it expects
+`:ProcessFailedException` of `appleevent` and names its event, `name of startup disk`, and that
+the default command of `appleevent` asks the Finder for `name of startup disk`: AppleScript
+answers `get name` of an application from the script itself and sends no Apple Event.
 """
 
 import dataclasses
@@ -1249,8 +1252,7 @@ def sandboxed(
 # The probe run of the cases: the probe file is ARGS[1] and the scratch home ARGS[2]. Metal, `open`
 # and `osascript` are stand-ins. One line `name result` per probe, then `classes true` when every
 # result is `:allowed`, `:NotFunctional` or the name of an exception class of Base, `open_gaps true`
-# when OPEN_GAPS is `(:appleevent,)`, and `gaps_negative true` when each open gap is a negative
-# probe.
+# when OPEN_GAPS is `()`, and `gaps_negative true` when each open gap is a negative probe.
 PROBE_RUN = """
 include(ARGS[1])
 P = ProbeDaemon
@@ -1274,7 +1276,7 @@ for (name, r) in results
 end
 exception(r) = isdefined(Base, r) && getfield(Base, r) isa Type && getfield(Base, r) <: Exception
 println("classes ", all(r -> r === :allowed || r === :NotFunctional || exception(r), last.(results)))
-println("open_gaps ", P.OPEN_GAPS == (:appleevent,))
+println("open_gaps ", P.OPEN_GAPS == ())
 println("gaps_negative ", all(in(P.NEGATIVE), P.OPEN_GAPS))
 """
 
@@ -1282,23 +1284,40 @@ println("gaps_negative ", all(in(P.NEGATIVE), P.OPEN_GAPS))
 # The tuple of open gaps in sandbox/probe-daemon.jl, and one probe name inside it.
 OPEN_GAPS_LINE = re.compile(r"^const OPEN_GAPS = \(([^)]*)\)$", re.MULTILINE)
 GAP_NAME = re.compile(r":(\w+)")
+# The default command of the probe `appleevent`, between its backticks.
+APPLEEVENT_COMMAND = re.compile(
+    r"^function appleevent\(home = homedir\(\); command = `([^`]*)`\)$", re.MULTILINE
+)
 
 
 def probe_text_cases(case: Case) -> None:
-    """The header comment of sandbox/probe-daemon.jl names `OPEN_GAPS` and each open gap, and
-    expects no exception class of an open gap."""
+    """The header comment of sandbox/probe-daemon.jl names `OPEN_GAPS` and each open gap, expects
+    no exception class of an open gap and `:ProcessFailedException` of `appleevent`, and names
+    its event, `name of startup disk`; the default command of `appleevent` asks the Finder for
+    `name of startup disk`, which only an Apple Event answers."""
     text = PROBES.read_text(encoding="utf-8")
     header = text.split("\nmodule ProbeDaemon\n", 1)[0]
     found = OPEN_GAPS_LINE.search(text)
     gaps = GAP_NAME.findall(found.group(1)) if found else []
     case(
-        f"the probe file defines OPEN_GAPS as (:appleevent,): {gaps}",
-        ok=gaps == ["appleevent"],
+        f"the probe file defines OPEN_GAPS as (): {found.group(0) if found else None}",
+        ok=found is not None and not gaps,
     )
     case(
         "the probe file's header names OPEN_GAPS and each open gap, and expects no exception class of one",
         ok="`OPEN_GAPS`" in header
         and all(f"`{g}`" in header and f"`{g}` `:ProcessFailedException`" not in header for g in gaps),
+    )
+    case(
+        "the probe file's header expects :ProcessFailedException of appleevent and names its event",
+        ok="`appleevent` `:ProcessFailedException`" in header and "`name of startup disk`" in header,
+    )
+    command = APPLEEVENT_COMMAND.search(text)
+    case(
+        f"the default command of appleevent asks the Finder for the name of its startup disk: "
+        f"{command.group(1) if command else None}",
+        ok=command is not None
+        and command.group(1) == """osascript -e 'tell app "Finder" to get name of startup disk'""",
     )
 
 
@@ -1383,7 +1402,7 @@ def probe_cases(case: Case, root: pathlib.Path) -> None:
         ok=got.get("classes") == "true" and "secret" not in p.stdout,
     )
     case(
-        f"OPEN_GAPS is (:appleevent,), and each open gap is a negative probe: {got}",
+        f"OPEN_GAPS is (), and each open gap is a negative probe: {got}",
         ok=got.get("open_gaps") == "true" and got.get("gaps_negative") == "true",
     )
     after = sorted(str(f.relative_to(home)) for f in home.rglob("*"))
