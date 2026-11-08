@@ -290,6 +290,15 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   `isconcretetype(typeof(f))` — was the tautology. Run the mutant of `src/` the test is meant to
   catch, cold, before a brief orders a deletion, and keep the test unless that mutant SURVIVES with
   it in place (G verify 2, *Revive the multisymplectic package*)
+- **a trace basis whose boundary condition silently shrinks the space its coupling's corner rule
+  assumes:** a network ansatz built its trace basis with `Dirichlet()` while the multiplier coupling
+  drops the first and last space function as corner functions — a rule written for `Free()`. On the
+  Dirichlet basis it dropped two interior functions instead, so the bottom multipliers spanned 4 of
+  the 6 dimensions at `degree = 3`, `ncells = (2, 5)` and **none** at `degree = 2`, `ncells = (3, 2)`,
+  and no test noticed: the count was pinned against a basis of the same kind. Build the basis the
+  coupling's own rule assumes, and pin the multiplier count against a basis of a stated boundary
+  condition rather than against "the same degree and cells" (F, review of PR #44, *Revive the
+  multisymplectic package*)
 
 ## A type or an interface
 
