@@ -56,14 +56,14 @@ Antigravity, oh-my-pi and OpenCode also run the path-list check `path_list.py`, 
 frontend's `guard-paths.json`; Antigravity's table runs the lift check `sandbox_lift.py` on a shell
 call that it does not deny, which lifts a command out of the sandbox only where the line matches a
 closed grammar and Claude Code's sandbox rule lifts it. One module per check reads that call: the
-staging, write, sandbox, `gh api`, `gh pr create`, rm, archive, Kaimon and directory checks
-below. Each check gives `deny`, `ask`, `allow` or `pass` with a reason. The guard answers the
-first of `deny`, `ask`, `allow` and `pass` that a check gives, with that check's reason, in the
-form of the frontend: for Claude Code exit 2 with the reason on standard error for `deny`, a JSON
-decision for `ask` and `allow`, and no output for `pass`. A tool that the table does not name
-passes. oh-my-pi and OpenCode cannot ask the user from a plugin, so their tables answer an `ask`
-as a block whose reason tells the model to ask the user in chat; `plugin.py` holds what the two
-tables share: the reading of the message, the size check of the command and the answer.
+staging, write, sandbox, `gh api`, `gh pr create`, `gh` watcher, rm, archive, git write, Kaimon
+and directory checks below. Each check gives `deny`, `ask`, `allow` or `pass` with a reason. The
+guard answers the first of `deny`, `ask`, `allow` and `pass` that a check gives, with that check's
+reason, in the form of the frontend: for Claude Code exit 2 with the reason on standard error for
+`deny`, a JSON decision for `ask` and `allow`, and no output for `pass`. A tool that the table does
+not name passes. oh-my-pi and OpenCode cannot ask the user from a plugin, so their tables answer
+an `ask` as a block whose reason tells the model to ask the user in chat; `plugin.py` holds what
+the two tables share: the reading of the message, the size check of the command and the answer.
 
 The directory check asks before a session leaves `~/Research`, or removes a worktree. A
 `change_directory` or `request_directory` call of the Claude desktop app, or an `EnterWorktree`
@@ -205,6 +205,23 @@ Under oh-my-pi, no pattern of `harness.yml` prompts for `gh pr create`, so the c
 `yolo` also inside a pipe or after `&&`, and the guard extension refuses it or blocks it with the
 reason to ask the user.
 
+### The `gh` watcher check
+
+`gh_watch_interval.py` refuses a `gh` watcher that polls the GitHub API faster than once every
+30 seconds, on each shell call of every frontend. A watcher is a top-level `gh run watch` call or
+a `gh pr checks` call with `--watch`, also after assignments such as `GH_REPO=…`. The check reads
+the last value of `-i` or `--interval`, in the forms `-i 60`, `-i60`, `-i=60`, `--interval 60`
+and `--interval=60`, because `gh` takes the last one.
+
+A watcher with no interval is refused: `gh run watch` then refreshes every 3 seconds and
+`gh pr checks --watch` every 10 seconds. A watcher whose interval is not a whole number of at
+least 30 seconds is refused too. The reason tells the agent to add `--interval 60`. Each refresh
+makes several API calls, and all sessions and agents of one account share one rate limit. A
+watcher on a run of half an hour at the default interval makes thousands of calls and trips
+GitHub's secondary rate limit; after that, the REST Actions endpoints answer 403 for every session
+of the account until the limit lifts. `git ls-remote` and `git fetch` do not use the API, so they
+still read a branch, a tag or a `gh-pages` deploy.
+
 ### The rm check
 
 `rm_scope.py` refuses a recursive `rm` outside the scratch zones, and asks before a `git rm` or a
@@ -241,6 +258,43 @@ It finds each top-level `git … archive` call, after global options such as `-C
 option in each spelling that git takes: `-o <file>`, `-o<file>`, behind other short options as in
 `-vo <file>`, `--output`, `--output=<file>`, and any prefix of `--output`. An argument after `--`
 is a path. A `git archive` to stdout passes.
+
+### The git write check
+
+`git_writes.py` allows three `git` writes when the repository shows that nothing is lost, and asks
+otherwise, on each shell call of every frontend. A permission rule cannot make this decision: it
+does not see the working directory or the state of a worktree. A hook's `allow` does not lift a
+matching `ask` or `deny` rule in Claude Code, so the settings have no rule for these forms, and the
+check answers both ways.
+
+- `git worktree remove --force <path>`, or `-f` once: allow when the path is below
+  `~/Research/.worktrees/`, a remote-tracking ref contains the worktree's HEAD, and no tracked file
+  is modified or staged. Untracked and ignored files can go. Otherwise ask, with a reason that
+  names the commit or the files that the removal loses.
+- `git cherry-pick`: allow in a worktree below `~/Research/.worktrees/`, or in a checkout whose
+  `origin` is a GitHub repository of an own organisation. Otherwise ask.
+- `git push --force-with-lease origin <branch>`, or with `HEAD:refs/heads/<branch>`: allow when
+  `origin` is in an own organisation and the lease names no ref or the pushed branch. Otherwise
+  ask. In the `<branch>` form, the branch must be a local branch, and `origin` must have no
+  `remote.origin.push` refspec, which can map the branch onto another remote branch.
+- A lease push that names `main`, `master` or the branch that `origin/HEAD` names as its target is
+  refused, also inside a command of several parts such as `git fetch && git push
+  --force-with-lease origin main`, and after another write in the same part, as in a `find` with
+  two `-exec`. The check reads the target of each argument after `push`: `<branch>`,
+  `+<branch>` and `<src>:<branch>`, each also with `refs/heads/` or `heads/`, which `git` reads as
+  `refs/heads/`. A lease push that names no branch can reach a default one, so it is refused too:
+  no refspec after the remote, as with `--all` or `--mirror`, or a refspec whose target is `HEAD`,
+  `@` or empty, or that holds a glob, a brace, `$` or a backtick. The value of an option such as
+  `-o`, `-vo` or `--recurse-submodules` is no refspec.
+
+The check allows only a command that is one `git` call, with no operator, no `cd` and no option
+before the subcommand. It finds the subcommand after the global options of `git`. Any other form
+of these writes asks, for example `-C`, `-f` twice or a lease after the remote. A `worktree remove`
+with any option counts as forced, because `git` reads `-ff` and a prefix of `--force` as force. A
+plain `--force` push gets no decision from the check; the `deny` rules of the settings refuse it.
+The check reads the state with `git` in the working directory of the call, with `core.fsmonitor`
+off. When `git` fails or cannot run, the call asks. The own organisations are the `org` list of the
+profile, as the `gh api` check reads it.
 
 ### The Kaimon check
 
