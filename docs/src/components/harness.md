@@ -66,7 +66,9 @@ at `$RESEARCH_HARNESS_PYTHON`, an absolute path, or else at
   session never starts uv.
 - Otherwise the script finds `uv` on the `PATH` or in `~/.local/bin`. On Linux without one, it
   fetches the uv release that it pins into `~/.local/bin` and checks the sha256 of the archive;
-  the download follows one redirect, to `release-assets.githubusercontent.com`, and no other. Then
+  the download follows one redirect, to `release-assets.githubusercontent.com`, and no other.
+  After a transient failure, an HTTP 408, 429 or 5xx or a network error, it tries again after 5,
+  15 and 45 s, with one line on stderr each time; any other failure refuses at once. Then
   it runs `uv sync --locked --no-dev` into the environment, writes the environment's stamp, the
   sha256 of `uv.lock` and the group, and starts itself on the new interpreter. The environment is
   made on Python 3.14 (`UV_PYTHON` overrides it), and uv downloads a managed 3.14 where none is

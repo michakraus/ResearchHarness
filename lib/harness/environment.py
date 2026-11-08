@@ -272,16 +272,20 @@ def archive(machine, uv=True):
 class Release(http.server.BaseHTTPRequestHandler):
     """The local release server: /ok/<file> serves the archive of its machine, /missing/ is 404,
     /away/ redirects to localhost, /near/ to 127.0.0.1 once, /twice/ twice, /plain/ to 127.0.0.1
-    over http, for a case that allows only https to 127.0.0.1. It records the path of each
-    request."""
+    over http, for a case that allows only https to 127.0.0.1. /flaky/ answers 504 to its first
+    two requests and then serves as /ok/ does; /down/ answers 504 to each. It records the path of
+    each request."""
 
-    requests = []
+    requests: list[str] = []
 
     def do_GET(self):
         Release.requests.append(self.path)
         port = cast("tuple[str, int]", self.server.server_address)[1]
         kind, _, rest = self.path.lstrip("/").partition("/")
-        if kind == "ok":
+        if kind == "down" or (kind == "flaky" and Release.requests.count(self.path) <= 2):
+            self.send_error(504)
+            return
+        if kind in ("ok", "flaky"):
             machine = rest.removeprefix("uv-").partition("-unknown")[0]
             body = archive(machine, uv=machine != "nouv")
             self.send_response(200)
@@ -1045,6 +1049,45 @@ def download_cases(case, tmp):
                 else b.below(".local") == []
             )
             case(lambda: ok, f"in this process, {label}: {want} -> {got}, {b.below('.local')}")
+
+        # A transient failure is tried again after each wait of DOWNLOAD_WAITS, and a failure that
+        # is not transient is not. The waits are zero here, so the cases take no time.
+        for kind, want, tries, label in [
+            ("flaky", "installed", 3, "two answers 504, then the archive"),
+            ("down", "504: Gateway Timeout on the last of 4 attempts", 4, "504 on every attempt"),
+            ("missing", "404", 1, "404, which is not transient"),
+            ("away", "redirects to", 1, "a refused redirect, which is not transient"),
+        ]:
+            b = box()
+            Release.requests.clear()
+            patches = {**environ, "RESEARCH_HARNESS_TEST_UV_URL": f"{url}/{kind}"}
+            stderr = io.StringIO()
+            with (
+                mock.patch.dict(os.environ, patches),
+                mock.patch.object(boot, "UV_SHA256", {"x86_64": good}),
+                mock.patch.object(boot, "DOWNLOAD_WAITS", [0, 0, 0]),
+                mock.patch.object(sys, "stderr", stderr),
+            ):
+                try:
+                    boot.fetch_uv(str(b.home))
+                    got = "installed"
+                except boot.Refusal as e:
+                    got = str(e)
+            asked = len(Release.requests)
+            notes = stderr.getvalue().splitlines()
+            case(
+                lambda: (
+                    want in got
+                    and asked == tries
+                    and len(notes) == tries - 1
+                    and all("next attempt in 0 s" in line for line in notes)
+                    and (
+                        b.below(".local") == [] if want != "installed" else len(b.below(".local", "bin")) == 1
+                    )
+                ),
+                f"in this process, {label}: {want} after {tries} requests -> {got}, {asked} requests, "
+                f"stderr {notes}, {b.below('.local')}",
+            )
 
         b = box()
         bare = hashlib.sha256(archive("nouv", uv=False)).hexdigest()

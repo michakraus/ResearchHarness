@@ -74,6 +74,11 @@ TEST_PLATFORM = "RESEARCH_HARNESS_TEST_PLATFORM"
 TEST_UV_URL = "RESEARCH_HARNESS_TEST_UV_URL"
 TIMEOUT = 60  # seconds for the start check of an interpreter and for each network wait of the download
 SYNC_TIMEOUT = 300  # seconds for `uv sync`, which downloads the packages
+# The waits in seconds before each later attempt of the download after a transient failure
+# (`transient`). The release host can answer 504 for minutes, and one failed attempt fails a CI job.
+DOWNLOAD_WAITS = [5, 15, 45]
+RETRY_STATUSES = (408, 429)  # the HTTP statuses below SERVER_ERROR that a download tries again
+SERVER_ERROR = 500  # the first HTTP status of a server error; each one is tried again
 
 
 class Refusal(Exception):
@@ -163,9 +168,24 @@ def find_uv():
     return fetched if os.path.isfile(fetched) and os.access(fetched, os.X_OK) else None
 
 
-def download(url, path):
-    """Write the body at `url` to `path`, following one redirect to REDIRECT and no other."""
+def transient(e):
+    """Whether the failure `e` of one attempt of a download can pass on a later attempt: an HTTP
+    status 408, 429 or 5xx, or a network error that has no HTTP status. A local write error or a
+    malformed URL cannot."""
     import http.client
+    import urllib.error
+
+    if isinstance(e, urllib.error.HTTPError):
+        return bool(RETRY_STATUSES.count(e.code)) or not e.code < SERVER_ERROR
+    return isinstance(e, (urllib.error.URLError, ConnectionError, TimeoutError, http.client.HTTPException))
+
+
+def download(url, path):
+    """Write the body at `url` to `path`, following one redirect to REDIRECT and no other. After a
+    transient failure (`transient`) it waits each of DOWNLOAD_WAITS in turn and tries again, with
+    one line on stderr; the last failure, or one that is not transient, raises Refusal."""
+    import http.client
+    import time
     import urllib.error
     import urllib.parse
     import urllib.request
@@ -181,12 +201,21 @@ def download(url, path):
             self.followed += 1
             return super().redirect_request(req, fp, code, msg, headers, newurl)
 
-    try:
-        with urllib.request.build_opener(Redirects()).open(url, timeout=TIMEOUT) as response:
-            with open(path, "wb") as f:
-                shutil.copyfileobj(response, f)
-    except (OSError, ValueError, http.client.HTTPException) as e:
-        raise Refusal("cannot download %s: %s" % (url, e))
+    attempts = len(DOWNLOAD_WAITS) + 1
+    for wait in list(DOWNLOAD_WAITS) + [None]:
+        try:
+            with urllib.request.build_opener(Redirects()).open(url, timeout=TIMEOUT) as response:
+                with open(path, "wb") as f:
+                    shutil.copyfileobj(response, f)
+        except (OSError, ValueError, http.client.HTTPException) as e:
+            if not transient(e):
+                raise Refusal("cannot download %s: %s" % (url, e))
+            if wait is None:
+                raise Refusal("cannot download %s: %s on the last of %d attempts" % (url, e, attempts))
+            sys.stderr.write("harness: the download of %s fails (%s); next attempt in %d s\n" % (url, e, wait))
+            time.sleep(wait)
+        else:
+            return
 
 
 def fetch_uv(home=None):
