@@ -20,14 +20,16 @@ repository with `git` in the call's working directory, the payload's `cwd`.
     `refs/heads/<branch>`). Otherwise ask. A bare lease takes the expected value from the
     remote-tracking ref; an explicit `<expect>` is checked by `git` on the remote.
   * **A lease push that names a default branch, or no branch**: deny, in each part of the
-    command, so also `git fetch && git push --force-with-lease origin main`. A push names a
+    command, so also `git fetch && git push --force-with-lease origin main`, and after another
+    write in the same part, as in a `find` with two `-exec`. A push names a
     default branch when an argument after `push` names `main`, `master` or the branch that
     `refs/remotes/origin/HEAD` names as its target (`<branch>`, `+<branch>`, `<src>:<branch>`,
     each also with `refs/heads/` or `heads/`). It names no branch, and can reach a default one,
     with no refspec after the remote (as with `--all` or `--mirror`, which `git` takes with no
-    refspec only), or with a refspec whose target is `HEAD`, `@` or empty, or that holds a glob,
-    `$` or a backtick. The value of
-    `-o`, `--push-option`, `--repo`, `--receive-pack` or `--exec` is no refspec.
+    refspec only), or with a refspec whose target is `HEAD`, `@` or empty, or that holds a glob
+    (`*`, `?`, `[`), a brace, `$` or a backtick. The value of `-o`, also at the end of a cluster
+    such as `-vo`, and of `--push-option`, `--repo`, `--receive-pack`, `--exec` and
+    `--recurse-submodules`, also of a prefix of each, is no refspec.
 
 The check finds the subcommand as `git` does, after its global options. It takes a `worktree
 remove` with any option as forced, since `git` reads `-ff` and a prefix of `--force` as force, and a
@@ -72,8 +74,11 @@ JOINS = re.compile(r"[\"']|\\\n?")
 # A branch name the check reads; anything else asks.
 BRANCH = re.compile(r"^(?!-)(?!HEAD$)[A-Za-z0-9._/-]+$")
 DEFAULTS = frozenset({"main", "master"})
-# The options of `git push` that take the next word as their value.
-VALUED = frozenset({"-o", "--push-option", "--repo", "--receive-pack", "--exec"})
+# The long options of `git push` that take the next word as their value; `git` also takes a unique
+# prefix of each.
+VALUED = ("--push-option", "--repo", "--receive-pack", "--exec", "--recurse-submodules")
+# A cluster of short options that ends in `-o`, which takes the next word as its value: `-o`, `-vo`.
+SHORT_VALUED = re.compile(r"-[^-o]*o")
 LEASE = "--force-with-lease"
 SHAPE = "`git push --force-with-lease[=<ref>[:<expect>]] origin <branch>`, or with `HEAD:refs/heads/<branch>`"
 # The changed files that a reason names.
@@ -273,20 +278,28 @@ def write_of(words: list[str]) -> tuple[str, int, list[str]] | None:
     return None
 
 
+def valued(word: str) -> bool:
+    """True when `git push` takes the word after `word` as the value of an option: an option of
+    VALUED or a prefix of one, or a cluster of short options that ends in `-o`."""
+    if word.startswith("--"):
+        return len(word) > len("--") and any(name.startswith(word) for name in VALUED)
+    return SHORT_VALUED.fullmatch(word) is not None
+
+
 def unnamed_target(arguments: list[str]) -> str | None:
     """The argument through which a lease push with `arguments` can reach a branch that it does not
     name, or None: no refspec after the remote (the text "no refspec"), as with `--all` or
-    `--mirror`; or a refspec whose target is `HEAD`, `@` or empty, or that holds a glob, `$` or a
-    backtick. The value of an option of VALUED is no refspec."""
+    `--mirror`; or a refspec whose target is `HEAD`, `@` or empty, or that holds a glob, a brace,
+    `$` or a backtick. The value of an option, as `valued` finds it, is no refspec."""
     positional: list[str] = []
     for index, argument in enumerate(arguments):
-        if not argument.startswith("-") and (index == 0 or arguments[index - 1] not in VALUED):
+        if not argument.startswith("-") and (index == 0 or not valued(arguments[index - 1])):
             positional.append(argument)
     if len(positional) < len(("remote", "refspec")):
         return "no refspec"
     for refspec in positional[1:]:
         target = refspec.lstrip("+").rsplit(":", 1)[-1]
-        if target in ("HEAD", "@", "") or set(refspec) & set("*$`"):
+        if target in ("HEAD", "@", "") or set(refspec) & set("*?[{$`"):
             return refspec
     return None
 
@@ -296,8 +309,12 @@ def push_refusal(tokens: Tokens, cwd: str | None) -> Verdict | None:
     target, or that can reach one without naming it; or None."""
     command = " ".join(text for _, text in tokens)
     for words in parts(tokens):
-        found = write_of(words)
-        if found is None or found[0] != "push":
+        # The first lease push of the part, also after another write, as in `find -exec`.
+        start, found = 0, write_of(words)
+        while found is not None and found[0] != "push":
+            start += found[1] + 1
+            found = write_of(words[start:])
+        if found is None:
             continue
         pushed = found[2]
         target = default_target(pushed, defaults_of(cwd))

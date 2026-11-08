@@ -262,11 +262,13 @@ check answers both ways.
   `remote.origin.push` refspec, which can map the branch onto another remote branch.
 - A lease push that names `main`, `master` or the branch that `origin/HEAD` names as its target is
   refused, also inside a command of several parts such as `git fetch && git push
-  --force-with-lease origin main`. The check reads the target of each argument after `push`:
-  `<branch>`, `+<branch>` and `<src>:<branch>`, each also with `refs/heads/` or `heads/`, which
-  `git` reads as `refs/heads/`. A lease push that names no branch can reach a default one, so it
-  is refused too: no refspec after the remote, as with `--all` or `--mirror`, or a refspec whose
-  target is `HEAD`, `@` or empty, or that holds a glob, `$` or a backtick.
+  --force-with-lease origin main`, and after another write in the same part, as in a `find` with
+  two `-exec`. The check reads the target of each argument after `push`: `<branch>`,
+  `+<branch>` and `<src>:<branch>`, each also with `refs/heads/` or `heads/`, which `git` reads as
+  `refs/heads/`. A lease push that names no branch can reach a default one, so it is refused too:
+  no refspec after the remote, as with `--all` or `--mirror`, or a refspec whose target is `HEAD`,
+  `@` or empty, or that holds a glob, a brace, `$` or a backtick. The value of an option such as
+  `-o`, `-vo` or `--recurse-submodules` is no refspec.
 
 The check allows only a command that is one `git` call, with no operator, no `cd` and no option
 before the subcommand. It finds the subcommand after the global options of `git`. Any other form

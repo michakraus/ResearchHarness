@@ -554,6 +554,15 @@
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git push --force-with-lease origin $b"}, "cwd": "@@R@@/Packages/Own"}, "decision": "deny"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git push --force-with-lease origin :"}, "cwd": "@@R@@/Packages/Own"}, "decision": "deny"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git push --force-with-lease -o ci.skip origin"}, "cwd": "@@R@@/Packages/Own"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git push --force-with-lease -vo ci.skip origin"}, "cwd": "@@R@@/Packages/Own"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git push --force-with-lease --push-opt ci.skip origin"}, "cwd": "@@R@@/Packages/Own"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git push --force-with-lease --recurse-submodules check origin"}, "cwd": "@@R@@/Packages/Own"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git push --force-with-lease origin -vo HEAD HEAD:refs/heads/feature"}, "cwd": "@@R@@/Packages/Own"}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git push --force-with-lease -- origin HEAD:refs/heads/feature"}, "cwd": "@@R@@/Packages/Own"}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git push --force-with-lease origin {main,feature}"}, "cwd": "@@R@@/Packages/Own"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git push --force-with-lease origin m?in"}, "cwd": "@@R@@/Packages/Own"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git push --force-with-lease origin ma[i]n"}, "cwd": "@@R@@/Packages/Own"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "find . -exec git cherry-pick {} + -exec git push --force-with-lease origin main {} +"}, "cwd": "@@R@@/Packages/Own"}, "decision": "deny"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git push --force-with-lease origin feature && git switch feature"}, "cwd": "@@R@@/Packages/Own"}, "decision": "ask"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git push --force-with-lease origin HEAD:heads/main"}, "cwd": "@@R@@/Packages/Own"}, "decision": "deny"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git push --force-with-lease origin +feature:refs/heads/trunk"}, "cwd": "@@R@@/Packages/Own"}, "decision": "deny"}
