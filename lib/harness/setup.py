@@ -608,7 +608,7 @@ def ubuntu_steps(
             releases.append(
                 Step(
                     f"install {tool.command} {release.version} from {release.url} into "
-                    f"~/.local/share/research-harness/{tool.command}/{release.version}, linked as "
+                    f"~/{TREE_ROOT / tool.command / release.version}, linked as "
                     f"{', '.join(programs)} in ~/.local/bin, if its sha256 is {release.sha256}",
                     lambda program=tool.command, p=programs, r=release: install_tree(machine, program, p, r),
                 )
@@ -910,9 +910,10 @@ def install_tree(
     with tarfile's `data` filter into ~/.local/share/research-harness/<command>/<version>/, link
     each of `programs` in ~/.local/bin to the tree's bin/, and remove the trees of other versions.
     The archive unpacks into a scratch directory beside <command>/ first: a download that fails, a
-    sha256 that differs or a member that the filter refuses writes nothing below <command>/ and
-    nothing in ~/.local/bin. A link replaces a file of its name in ~/.local/bin, as
-    `install_release` replaces its program."""
+    sha256 that differs, an absolute member, a member that the filter refuses, a link that leaves
+    the tree, a directory in ~/.local/bin of a program's name or a link that cannot be made writes
+    nothing below <command>/ and nothing in ~/.local/bin. A link replaces a file of its name in
+    ~/.local/bin, as `install_release` replaces its program."""
     data = checked_download(release, redirect)
     if isinstance(data, str):
         return data
@@ -923,29 +924,21 @@ def install_tree(
         scratch = pathlib.Path(tempfile.mkdtemp(prefix=f".{command}-unpack-", dir=root))
     except OSError as e:
         return f"cannot create a directory below {root}: {e.strerror}"
+    links = [machine.home / ".local" / "bin" / program for program in programs]
+    parts = [link.with_name(link.name + ".part") for link in links]
     try:
-        try:
-            with tarfile.open(fileobj=io.BytesIO(data), mode="r:xz") as tar:
-                tar.extractall(scratch, filter="data")
-        except (OSError, tarfile.TarError) as e:
-            return f"cannot unpack {release.url}: {e}; nothing is installed"
-        tops = list(scratch.iterdir())
-        tree = tops[0] if len(tops) == 1 else scratch
-        missing = [p for p in programs if not (tree / "bin" / p).is_file()]
-        if len(tops) != 1 or missing:
-            wanted = ", ".join(f"bin/{p}" for p in programs)
-            return f"{release.url} holds no top-level directory with {wanted}; nothing is installed"
+        tree = unpacked_tree(data, release.url, scratch, programs)
+        if isinstance(tree, str):
+            return tree
+        failure = made_links(links, parts, [target / "bin" / program for program in programs])
+        if failure is not None:
+            return failure
         try:
             base.mkdir(exist_ok=True)
             if target.exists():
                 shutil.rmtree(target)
             tree.rename(target)
-            for program in programs:
-                link = machine.home / ".local" / "bin" / program
-                link.parent.mkdir(parents=True, exist_ok=True)
-                part = link.with_name(link.name + ".part")
-                part.unlink(missing_ok=True)
-                part.symlink_to(target / "bin" / program)
+            for part, link in zip(parts, links, strict=True):
                 part.replace(link)
             for other in base.iterdir():
                 if other.name != release.version:
@@ -954,6 +947,61 @@ def install_tree(
             return f"cannot install the tree of {release.url} into {target}: {e.strerror or e}"
     finally:
         shutil.rmtree(scratch, ignore_errors=True)
+        for part in parts:
+            if part.is_symlink():
+                part.unlink()
+    return None
+
+
+def unpacked_tree(
+    data: bytes, url: str, scratch: pathlib.Path, programs: Sequence[str]
+) -> pathlib.Path | str:
+    """The one top-level directory of the .tar.xz `data` from `url`, unpacked with tarfile's `data`
+    filter into `scratch`, when it holds bin/<program> for each of `programs` and no link in it
+    leaves it; else the line that says why nothing is installed."""
+    try:
+        with tarfile.open(fileobj=io.BytesIO(data), mode="r:xz") as tar:
+            # On POSIX the data filter strips the leading / of an absolute member and unpacks it
+            # inside the scratch directory, so the name check refuses it first.
+            absolute = [info.name for info in tar.getmembers() if info.name.startswith("/")]
+            if absolute:
+                return f"{url} holds the absolute member {absolute[0]}; nothing is installed"
+            tar.extractall(scratch, filter="data")
+    except (OSError, tarfile.TarError) as e:
+        return f"cannot unpack {url}: {e}; nothing is installed"
+    tops = list(scratch.iterdir())
+    tree = tops[0] if len(tops) == 1 else scratch
+    missing = [p for p in programs if not (tree / "bin" / p).is_file()]
+    if len(tops) != 1 or missing:
+        wanted = ", ".join(f"bin/{p}" for p in programs)
+        return f"{url} holds no top-level directory with {wanted}; nothing is installed"
+    # The data filter keeps each link inside the scratch directory, the parent of the tree; a link
+    # that leaves the tree itself would point beside it after the tree moves to its version.
+    inside = tree.resolve()
+    for path in tree.rglob("*"):
+        if path.is_symlink() and not path.resolve().is_relative_to(inside):
+            name = path.relative_to(scratch)
+            return f"{url} holds the link {name}, which leaves the tree; nothing is installed"
+    return tree
+
+
+def made_links(
+    links: Sequence[pathlib.Path], parts: Sequence[pathlib.Path], targets: Sequence[pathlib.Path]
+) -> str | None:
+    """Make each of `parts` a symbolic link to its entry of `targets`, beside its entry of `links`,
+    which it replaces later; None, or the line that says why nothing is installed: a directory at a
+    link, or a link that cannot be made. The links come before the tree moves, so that a failure
+    here leaves the tree and ~/.local/bin as they were."""
+    taken = [link for link in links if link.is_dir() and not link.is_symlink()]
+    if taken:
+        return f"{taken[0]} is a directory, not a link; nothing is installed"
+    for part, target in zip(parts, targets, strict=True):
+        try:
+            part.parent.mkdir(parents=True, exist_ok=True)
+            part.unlink(missing_ok=True)
+            part.symlink_to(target)
+        except OSError as e:
+            return f"cannot make the link {part}: {e.strerror or e}; nothing is installed"
     return None
 
 
@@ -2661,7 +2709,7 @@ def release_server(files: Mapping[str, bytes], moved: Mapping[str, str] | None =
         server.server_close()
 
 
-NODE = ("node", "npm", "npx")
+NODE = TREES["Node.js"]
 
 
 def node_tree(version: str, extra: Sequence[tarfile.TarInfo] = ()) -> bytes:
@@ -2725,22 +2773,9 @@ def member(name: str, link: str = "") -> tarfile.TarInfo:
 def tree_cases(case: Case, tmp: pathlib.Path) -> None:
     """The Node.js release, a whole tree: unpacked below ~/.local/share/research-harness/node/
     <version>/ and linked into ~/.local/bin; a mismatch, an HTTP error and a second redirect write
-    nothing below ~/.local, and a member that escapes the tree links nothing and leaves no tree; a
-    second version replaces the first."""
+    nothing below ~/.local; a second version replaces the first."""
     good, newer = node_tree("24.11.1"), node_tree("24.12.0")
-    outside = tmp / "tree-outside"
-    escapes = {
-        "an absolute member": node_tree("24.11.1", [member(str(outside / "absolute"))]),
-        "a member with ..": node_tree("24.11.1", [member("node-v24.11.1-linux-x64/../../escaped")]),
-        "a link out of the tree": node_tree(
-            "24.11.1", [member("node-v24.11.1-linux-x64/bin/evil", "../../../../../../../../../etc/passwd")]
-        ),
-        "an absolute link": node_tree("24.11.1", [member("node-v24.11.1-linux-x64/bin/evil", "/etc/passwd")]),
-    }
-    flat = flat_tree()
-    files = {"/good.tar.xz": good, "/newer.tar.xz": newer, "/flat.tar.xz": flat} | {
-        f"/escape{i}.tar.xz": data for i, data in enumerate(escapes.values())
-    }
+    files = {"/good.tar.xz": good, "/newer.tar.xz": newer}
     moved = {"/a.tar.xz": "/good.tar.xz", "/c.tar.xz": "/a.tar.xz"}
     with release_server(files, moved) as url:
 
@@ -2810,15 +2845,6 @@ def tree_cases(case: Case, tmp: pathlib.Path) -> None:
             ok=failure is None and link.is_symlink() and (m.home / ".local" / "bin" / "npm").is_symlink(),
         )
 
-        m = machine()
-        failure = install_tree(m, "node", NODE, release("flat.tar.xz", flat))
-        case(
-            f"an archive with bin/ and lib/ at its top, and no top-level directory, is refused: {failure}",
-            ok=failure is not None
-            and not (m.home / ".local" / "bin").exists()
-            and not (m.home / ".local" / "share" / "research-harness" / "node").exists(),
-        )
-
         bad = Release("24.11.1", f"{url}/good.tar.xz", hashlib.sha256(good + b"x").hexdigest())
         for label, the_release, redirect in (
             ("a sha256 that differs", bad, REDIRECT),
@@ -2836,12 +2862,116 @@ def tree_cases(case: Case, tmp: pathlib.Path) -> None:
         failure = install_tree(m, "node", NODE, release("a.tar.xz", good), redirect=("http", "127.0.0.1"))
         case(f"one redirect to the allowed host installs the tree: {failure}", ok=failure is None)
 
+
+def tree_refusal_cases(case: Case, tmp: pathlib.Path) -> None:
+    """The Node.js installs that fail: no top-level directory, a top-level directory that lacks a
+    program, a directory in ~/.local/bin of a program's name, a link that cannot be made, and each
+    member that escapes the tree. Each writes no tree below ~/.local/share/research-harness/node/
+    and no link in ~/.local/bin. A link of a program's name to a directory is no such obstacle: the
+    step replaces it."""
+    good = node_tree("24.11.1")
+    outside = tmp / "tree-outside"
+    top = "node-v24.11.1-linux-x64"
+    escapes = {
+        "an absolute member": node_tree("24.11.1", [member(str(outside / "absolute"))]),
+        "an absolute member /<top>/bin/planted, named in the line": node_tree(
+            "24.11.1", [member(f"/{top}/bin/planted")]
+        ),
+        "a link to ../.., the directory of the versions": node_tree(
+            "24.11.1", [member(f"{top}/bin/up", "../..")]
+        ),
+        "a link into a tree of another version": node_tree(
+            "24.11.1", [member(f"{top}/bin/side", "../../24.0.0/bin/node")]
+        ),
+        "a member with ..": node_tree("24.11.1", [member("node-v24.11.1-linux-x64/../../escaped")]),
+        "a link out of the tree": node_tree(
+            "24.11.1", [member("node-v24.11.1-linux-x64/bin/evil", "../../../../../../../../../etc/passwd")]
+        ),
+        "an absolute link": node_tree("24.11.1", [member("node-v24.11.1-linux-x64/bin/evil", "/etc/passwd")]),
+    }
+    flat = flat_tree()
+    lacking = io.BytesIO()
+    with tarfile.open(fileobj=lacking, mode="w:xz") as tar:
+        tar.addfile(member(f"{top}/bin/node"), io.BytesIO(b"x"))
+        tar.addfile(member(f"{top}/bin/npm"), io.BytesIO(b"x"))
+    files = {"/good.tar.xz": good, "/flat.tar.xz": flat, "/lacking.tar.xz": lacking.getvalue()} | {
+        f"/escape{i}.tar.xz": data for i, data in enumerate(escapes.values())
+    }
+    with release_server(files) as url:
+
+        def release(path: str, data: bytes) -> Release:
+            return Release("24.11.1", f"{url}/{path}", hashlib.sha256(data).hexdigest())
+
+        n = 0
+
+        def machine() -> Machine:
+            nonlocal n
+            n += 1
+            home = tmp / f"refused{n}"
+            return Machine("Linux", "x86_64", "ubuntu", home, {}, tmp, ())
+
+        m = machine()
+        failure = install_tree(m, "node", NODE, release("flat.tar.xz", flat))
+        case(
+            f"an archive with bin/ and lib/ at its top, and no top-level directory, is refused: {failure}",
+            ok=failure is not None
+            and not (m.home / ".local" / "bin").exists()
+            and not (m.home / ".local" / "share" / "research-harness" / "node").exists(),
+        )
+
+        m = machine()
+        failure = install_tree(m, "node", NODE, release("lacking.tar.xz", lacking.getvalue()))
+        case(
+            f"an archive with one top-level directory that lacks bin/npx is refused: {failure}",
+            ok=failure is not None
+            and not (m.home / ".local" / "bin").exists()
+            and not (m.home / ".local" / "share" / "research-harness" / "node").exists(),
+        )
+
+        m = machine()
+        (m.home / ".local" / "bin" / "npm").mkdir(parents=True)
+        failure = install_tree(m, "node", NODE, release("good.tar.xz", good))
+        left = sorted(p.name for p in (m.home / ".local" / "bin").iterdir())
+        case(
+            f"a directory npm in ~/.local/bin fails the step before anything is installed: {failure} {left}",
+            ok=failure is not None
+            and left == ["npm"]
+            and (m.home / ".local" / "bin" / "npm").is_dir()
+            and not (m.home / ".local" / "bin" / "npm").is_symlink()
+            and not (m.home / ".local" / "share" / "research-harness" / "node").exists(),
+        )
+
+        m = machine()
+        (m.home / ".local" / "bin" / "npx.part").mkdir(parents=True)
+        failure = install_tree(m, "node", NODE, release("good.tar.xz", good))
+        left = sorted(p.name for p in (m.home / ".local" / "bin").iterdir())
+        case(
+            f"a link that cannot be made fails the step and removes the links made before: {failure} {left}",
+            ok=failure is not None
+            and left == ["npx.part"]
+            and not (m.home / ".local" / "share" / "research-harness" / "node").exists(),
+        )
+
+        m = machine()
+        (m.home / "elsewhere").mkdir(parents=True)
+        (m.home / ".local" / "bin").mkdir(parents=True)
+        (m.home / ".local" / "bin" / "npm").symlink_to(m.home / "elsewhere")
+        failure = install_tree(m, "node", NODE, release("good.tar.xz", good))
+        case(
+            f"a link npm to a directory is replaced by the link into the tree: {failure}",
+            ok=failure is None and (m.home / ".local" / "bin" / "npm").resolve().is_file(),
+        )
+
         for i, label in enumerate(escapes):
             m = machine()
             failure = install_tree(m, "node", NODE, release(f"escape{i}.tar.xz", escapes[label]))
+            strays = [str(p) for p in m.home.rglob("*") if p.name in ("planted", "up", "side", "evil")]
             case(
-                f"{label}: the step fails before anything is linked, and leaves no tree: {failure}",
+                f"{label}: the step fails before anything is linked, and leaves no tree: {failure} {strays}",
                 ok=failure is not None
+                and failure.endswith("nothing is installed")
+                and (f"/{top}/bin/planted" in failure or "planted" not in label)
+                and not strays
                 and not (m.home / ".local" / "bin").exists()
                 and not (m.home / ".local" / "share" / "research-harness" / "node").exists()
                 and not outside.exists()
@@ -4067,6 +4197,7 @@ def selftest() -> tuple[int, int]:
         dry_run_cases(case, root, pins)
         release_cases(case, root)
         tree_cases(case, root)
+        tree_refusal_cases(case, root)
         ubuntu_2404_cases(case, root)
         interactive_cases(case, root, pins)
         question_cases(case, root, pins)

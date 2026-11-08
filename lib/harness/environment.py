@@ -825,17 +825,36 @@ def old_python() -> tuple[str, str] | None:
     return None
 
 
+def reporting_old(directory: pathlib.Path) -> str:
+    """The path of a program in `directory` that runs its arguments on this interpreter with
+    `sys.version_info` 3.11.9 and `sys.executable` the program itself, as syntax_cases patches the
+    version: the stand-in for an old interpreter on a machine that has none."""
+    directory.mkdir(parents=True)
+    program, start = directory / "python3.11", directory / "start.py"
+    start.write_text(
+        "import runpy, sys\n"
+        "sys.version_info = (3, 11, 9, 'final', 0)\n"
+        f"sys.executable = {str(program)!r}\n"
+        "sys.argv = sys.argv[1:]\n"
+        "runpy.run_path(sys.argv[0], run_name='__main__')\n",
+        encoding="utf-8",
+    )
+    program.write_text(f"#!/bin/sh\nexec '{sys.executable}' '{start}' \"$@\"\n", encoding="utf-8")
+    program.chmod(0o755)
+    return str(program)
+
+
 def old_cases(case: Callable[[Callable[[], object], str], None], tmp: pathlib.Path) -> None:
     """The start of bin/harness on an interpreter below 3.14 (`old_python`, python3.11 where it is
-    installed), with the fake uv that logs UV_PYTHON_DOWNLOADS and an environment that logs each
-    start: the sync on Python 3.14 with uv's download of it allowed, then the command on the
-    environment's interpreter; the caller's UV_PYTHON and UV_PYTHON_DOWNLOADS; a session; and the
-    marker set to the old interpreter."""
+    installed, else `reporting_old`), with the fake uv that logs UV_PYTHON_DOWNLOADS and an
+    environment that logs each start: the sync on Python 3.14 with uv's download of it allowed, then
+    the command on the environment's interpreter; the caller's UV_PYTHON and UV_PYTHON_DOWNLOADS; a
+    session; and the marker set to the old interpreter."""
     old = old_python()
-    case(lambda: old is not None, f"an interpreter of 3.9 to 3.13 is installed, one of {OLD_PYTHONS}")
     if old is None:
-        return
-    python, version = old
+        python, version = reporting_old(tmp / "reporting-old"), "3.11 (this interpreter, reporting 3.11.9)"
+    else:
+        python, version = old
     n = 0
 
     def box() -> tuple[Box, pathlib.Path]:

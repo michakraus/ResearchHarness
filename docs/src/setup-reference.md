@@ -317,12 +317,13 @@ Julia code only.
 brew install jolars/tap/fatou
 ```
 
-`harness` starts on the `python3` of the `PATH`, which must be 3.14 or later, and then runs on the
+`harness` starts on the `python3` of the `PATH`, which must be 3.9 or later, and then runs on the
 interpreter of its Python environment, which it makes with `uv` the first time that it runs
-outside a [session](concepts.md#session). `python` supplies a current `python3`, and `python@3.14`
-supplies the Python 3.14 that uv makes the environment on. Homebrew's `rsync` replaces the `rsync`
-of macOS on the `PATH`. jq is optional: the status line of Claude Code reads its data with jq,
-and without it, the status line shows no values. macOS supplies `lsof`, `launchctl` and the other
+outside a [session](concepts.md#session); below 3.14, uv fetches Python 3.14 for it. `python`
+supplies a current `python3`, and `python@3.14` supplies the Python 3.14 that uv makes the
+environment on. Homebrew's `rsync` replaces the `rsync` of macOS on the `PATH`. jq is optional:
+the status line of Claude Code reads its data with jq, and without it, the status line shows no
+values. macOS supplies `lsof`, `launchctl` and the other
 system tools of [Dependencies](dependencies.md#harness-setup-installs).
 
 **Check.** Each command prints the version of one tool: Python 3.14 or later, Python 3.14, uv,
@@ -376,8 +377,9 @@ of [The jobs](#the-jobs) calls `lsof`. jq is optional: the status line of Claude
 data with jq, and without it, the status line shows no values.
 
 **Check.** The first command prints the version of each package that `apt-get` installed. Each
-command after it prints the version of one tool: Python 3.14 or later, Node.js 22.3 or later (or
-20.16 or later in 20.x).
+command after it prints the version of one tool: Python 3.9 or later (3.12 on Ubuntu 24.04, where
+uv fetches Python 3.14 for the Python environment), Node.js 22.3 or later (or 20.16 or later in
+20.x).
 
 ```bash
 dpkg-query -W python3 git gh nodejs npm shellcheck coreutils rsync curl jq bubblewrap socat lsof

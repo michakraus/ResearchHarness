@@ -10,12 +10,14 @@ harness <subcommand> --help
 
 ## Description
 
-`bin/harness` is the entry point of the harness. It needs Python 3.14 or later and nothing beyond
-the standard library. Put `bin/` on the `PATH`, as the step *The clone*
+`bin/harness` is the entry point of the harness. It starts on Python 3.9 or later and needs
+nothing beyond the standard library. Put `bin/` on the `PATH`, as the step *The clone*
 of [setup-macos.md](setup-macos.md#the-clone) and [setup-linux.md](setup-linux.md#the-clone) shows.
-An older Python prints the version that it found and the version that it needs, and exits 2.
-Every subcommand runs on the interpreter of the Python environment of the harness, which
-`bin/harness` makes with [uv](dependencies.md#uv) the first time that it runs outside a session.
+A Python below 3.9 prints the version that it found, 3.9 and 3.14, and exits 2.
+Every subcommand runs on the interpreter of the Python environment of the harness, Python 3.14 or
+later, which `bin/harness` makes with [uv](dependencies.md#uv) the first time that it runs outside
+a session. Where the Python that starts it is below 3.14, uv fetches Python 3.14 for the
+environment; a session with no environment cannot, and exits 2.
 
 Each subcommand of `harness`, such as `install` or `doctor`, keeps one contract:
 
@@ -90,7 +92,8 @@ harness setup [--yes] [--dry-run]
 
 Sets up a machine in one run: the tools and the frontends that the profile's
 [`[setup]`](profile.md#the-setup-table) chooses, then the harness's own steps. The machine needs
-Python 3.14, uv, git and the clone before it, and on macOS Homebrew. It runs on macOS and on
+Python 3.9 or later (uv fetches Python 3.14 below it), uv, git and the clone before it, and on
+macOS Homebrew. It runs on macOS and on
 Ubuntu, on the architectures `arm64` and `x86_64` of macOS and `x86_64` and `aarch64` of Linux.
 
 In a terminal, `setup` asks its questions. Without a profile, it copies `examples/profile.toml`

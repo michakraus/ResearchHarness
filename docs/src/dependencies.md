@@ -132,8 +132,9 @@ The harness needs Python 3.14 or later because 3.14 is the one version that it i
 its environment, in CI and in the pre-push hook. The `python3` of the machine may be older, as on
 Ubuntu 24.04, which has 3.12: from 3.9 on, `bin/harness` starts on it, and its first run outside a
 session lets `uv sync` download Python 3.14 into uv's own store for the environment. Then only a
-hook that you run by hand, outside `harness`, needs a `python3` of 3.14, and `harness doctor`
-reports the older one as a `WARN`. The profile and the model
+hook that starts outside `harness` on the `python3` of the `PATH` needs 3.14: one that you run by
+hand, and the pre-push hook of a clone of the harness that you push from, which refuses the push
+on an older `python3`. `harness doctor` reports the older one as a `WARN`. The profile and the model
 tables are TOML, which `tomllib` of the standard library reads. A shell script cannot parse TOML
 or JSON safely, and a compiled tool needs a build step on each machine.
 

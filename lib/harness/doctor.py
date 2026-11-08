@@ -385,7 +385,7 @@ class Doctor:
         m = VERSION.search(r[1] + r[2]) if r is not None and r[0] == 0 else None
         return m is not None and meets(numbers_of(m.group(0)), MINIMUMS["Python"])
 
-    def minimum(self, name, version, detail, topic):
+    def minimum(self, name: str, version: str, detail: str, topic: str) -> Result:
         floors = MINIMUMS.get(name)
         if floors and not meets(numbers_of(version), floors):
             return self.fail(name, f"{detail}, below {' or '.join(floors)}", topic)
