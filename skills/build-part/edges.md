@@ -171,6 +171,15 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   arithmetic the base used (M6 fix 1, *Simplify the optimiser package and the learning package for
   0.9*)
 - a status that hides a failure, such as *stalled* for a large increase
+- a finite-difference reference whose error the check divides by a quantity that can approach zero
+  across draws: no fixed-step `Float64` difference meets a relative bound on every draw there, and
+  the reference must be taken in `BigFloat` at a small step. Measure the reference's own error over
+  the seeds before a tolerance is claimed (E verify 2, *Extend the Lagrangian network package with
+  the methods of the literature*)
+- a scale by the largest absolute entry, tested only on vectors whose largest entry is positive:
+  `maximum(u)` in place of `maximum(abs, u)` survives, because it drops every point whose largest
+  entry is 0 and whose other entry is negative. Add that point to the case set (E verify 3, the
+  same plan)
 - a minimiser near an end of the bracket, where a safeguard on the interpolated step falls back to
   bisection (K13, round 5 of the loop benchmark)
 - a near-quadratic merit, where the cubic coefficient of an interpolation is round-off and the root
