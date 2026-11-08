@@ -8,15 +8,13 @@
 # Each probe returns `:allowed`, or the name of the exception class that the attempt raised, as a
 # Symbol: never a file's content. `run_all` returns one `name => result` pair per probe, the
 # positive probes first. The profile is at work when every positive probe gives `:allowed`, `metal`
-# included, and every negative probe outside `OPEN_GAPS` gives `:SystemError` or an `IOError`
-# class, `lsopen` `:ProcessFailedException`. A write probe deletes what it created; the probe of
-# ~/.zshrc opens the file to append and writes nothing.
+# included, and every negative probe gives the name of an exception class: `:SystemError` or an
+# `IOError` class, `lsopen` and `appleevent` `:ProcessFailedException`. A write probe deletes what
+# it created; the probe of ~/.zshrc opens the file to append and writes nothing.
 #
-# `OPEN_GAPS` names the negative probes that the profile does not stop: under the real profile each
-# reports `:allowed`. `appleevent` is one. Its Apple Event reaches the Finder through the profile's
-# `(deny appleevent-send)` and its two Mach-service denies, which have no measured effect on Apple
-# Events, and the mechanism that lets the event through is unknown. When a fix makes an open gap
-# give an exception class under the real profile, the constant shrinks.
+# `OPEN_GAPS` names the negative probes that the profile does not stop, which report `:allowed`
+# under the real profile: none. The event of `appleevent` is `name of startup disk` of the Finder,
+# because AppleScript answers `name` of an application from the script itself and sends no event.
 #
 # Each probe takes the home directory as its argument, so that `harness test` runs every probe
 # against a scratch tree (lib/harness/jobsandbox.py).
@@ -98,7 +96,7 @@ write_julia_config(home = homedir()) = attempt(() -> create_delete(joinpath(home
 """`open -a TextEdit`, through Launch Services."""
 lsopen(home = homedir(); command = `open -a TextEdit`) = attempt(() -> run(command))
 """An Apple Event to the Finder."""
-function appleevent(home = homedir(); command = `osascript -e 'tell app "Finder" to get name'`)
+function appleevent(home = homedir(); command = `osascript -e 'tell app "Finder" to get name of startup disk'`)
     return attempt(() -> run(pipeline(command; stdout = devnull)))
 end
 
@@ -114,7 +112,7 @@ const NEGATIVE = (
     :lsopen,
     :appleevent,
 )
-const OPEN_GAPS = (:appleevent,)
+const OPEN_GAPS = ()
 
 """Every probe with `home`, the positive ones first: one `name => result` pair each."""
 run_all(home = homedir()) = [name => getfield(ProbeDaemon, name)(home) for name in (POSITIVE..., NEGATIVE...)]

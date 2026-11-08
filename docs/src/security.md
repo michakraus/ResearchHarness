@@ -72,22 +72,16 @@ the installed template. A later version can behave differently.
   does not stop a read of that terminal's input either. Whether such a process can also push
   input into another terminal with the ioctl `TIOCSTI` is not checked on macOS 27. The
   `julia-update` job has `pty = false` and no such rule. Kaimon's profile denies an app or
-  document opened through Launch Services, and a mount. It holds `(deny appleevent-send)` and a
-  deny of the Mach services `com.apple.coreservices.launchservicesd` and
-  `com.apple.CoreServices.coreservicesd`, but these have no measured effect on Apple Events. On
-  macOS 27.2, under the rendered profile and outside every agent sandbox, 13 of the 14 probes of
-  `sandbox/probe-daemon.jl` give their expected result, and `appleevent` gives `:allowed`:
-  `osascript -e 'tell app "Finder" to get name'` reaches the Finder, exits 0 and prints `Finder`.
-  A deny of every Mach lookup, of `mach*`, `network*` or `ipc*`, of `appleevent-send` to the
-  destination `com.apple.finder`, or of the Mach services `com.apple.coreservices.appleevents`
-  (also in its `.localonly` form) and `com.apple.CoreServices.coreservicesd`, does not stop it
-  either; `(deny appleevent*)` does not compile. Only a deny of the exec of `/usr/bin/osascript`
-  stops the probe, and that is no block, because any process can send an Apple Event through the
-  system API. The mechanism that lets the event through is unknown. The Automation consent of
-  macOS is the only other layer, and it neither stopped nor asked about the Finder event of this
-  job. So code that a session runs through Kaimon's `ex` can ask an app outside the profile to act
-  for it: the Finder can copy any file of the user, and Terminal can run a command with
-  `do script`. `KNOWN_ISSUES.md` records the gap. The profile leaves open the
+  document opened through Launch Services, and a mount. It denies an Apple Event to another app
+  twice: `(deny appleevent-send)`, and a deny of the Mach services
+  `com.apple.coreservices.launchservicesd` and `com.apple.CoreServices.coreservicesd`. On macOS
+  27.2, under the rendered profile and outside every agent sandbox,
+  `osascript -e 'tell app "Finder" to get name of startup disk'` fails with error `-54`, and with
+  `-600` when the profile lacks the Mach-service deny; an `AESendMessage` call that does not go
+  through `osascript` also fails, with `-600`. Each rule alone stops the event before the
+  Automation consent of macOS. The probe `appleevent` of `sandbox/probe-daemon.jl` sends this
+  event: AppleScript answers `name` of an application from the script itself and sends no event.
+  The profile leaves open the
   network, the other Mach services, which Metal needs, every write inside `~/Research` outside the denied repository parts, and the rename of a
   directory above a denied part, which moves the part out of the denied path. The writes inside
   `~/Research` include `~/Research/.claude/hooks`, `skills` and `settings.json`, which the session
