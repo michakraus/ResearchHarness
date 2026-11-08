@@ -64,7 +64,9 @@ path that kaimon's profile reads, a skip line for its run.
 `sandbox/probe-daemon.jl` holds the probes that a session runs through Kaimon's `ex` once the
 server runs under its profile; the cases below run each probe against a scratch tree, where no
 profile applies, and check the form of its result. Without `julia` on the PATH they print a skip
-line.
+line. `OPEN_GAPS` of the probe file names the negative probes that the profile does not stop, which
+report `:allowed` under it: `appleevent` alone. The cases check that value, and that the file's
+header comment names `OPEN_GAPS` and each open gap and expects no exception class of one.
 """
 
 import dataclasses
@@ -1246,7 +1248,9 @@ def sandboxed(
 
 # The probe run of the cases: the probe file is ARGS[1] and the scratch home ARGS[2]. Metal, `open`
 # and `osascript` are stand-ins. One line `name result` per probe, then `classes true` when every
-# result is `:allowed`, `:NotFunctional` or the name of an exception class of Base.
+# result is `:allowed`, `:NotFunctional` or the name of an exception class of Base, `open_gaps true`
+# when OPEN_GAPS is `(:appleevent,)`, and `gaps_negative true` when each open gap is a negative
+# probe.
 PROBE_RUN = """
 include(ARGS[1])
 P = ProbeDaemon
@@ -1270,7 +1274,32 @@ for (name, r) in results
 end
 exception(r) = isdefined(Base, r) && getfield(Base, r) isa Type && getfield(Base, r) <: Exception
 println("classes ", all(r -> r === :allowed || r === :NotFunctional || exception(r), last.(results)))
+println("open_gaps ", P.OPEN_GAPS == (:appleevent,))
+println("gaps_negative ", all(in(P.NEGATIVE), P.OPEN_GAPS))
 """
+
+
+# The tuple of open gaps in sandbox/probe-daemon.jl, and one probe name inside it.
+OPEN_GAPS_LINE = re.compile(r"^const OPEN_GAPS = \(([^)]*)\)$", re.MULTILINE)
+GAP_NAME = re.compile(r":(\w+)")
+
+
+def probe_text_cases(case: Case) -> None:
+    """The header comment of sandbox/probe-daemon.jl names `OPEN_GAPS` and each open gap, and
+    expects no exception class of an open gap."""
+    text = PROBES.read_text(encoding="utf-8")
+    header = text.split("\nmodule ProbeDaemon\n", 1)[0]
+    found = OPEN_GAPS_LINE.search(text)
+    gaps = GAP_NAME.findall(found.group(1)) if found else []
+    case(
+        f"the probe file defines OPEN_GAPS as (:appleevent,): {gaps}",
+        ok=gaps == ["appleevent"],
+    )
+    case(
+        "the probe file's header names OPEN_GAPS and each open gap, and expects no exception class of one",
+        ok="`OPEN_GAPS`" in header
+        and all(f"`{g}`" in header and f"`{g}` `:ProcessFailedException`" not in header for g in gaps),
+    )
 
 
 def probe_cases(case: Case, root: pathlib.Path) -> None:
@@ -1353,6 +1382,10 @@ def probe_cases(case: Case, root: pathlib.Path) -> None:
         "every result is :allowed or the name of an exception class, never a file's content",
         ok=got.get("classes") == "true" and "secret" not in p.stdout,
     )
+    case(
+        f"OPEN_GAPS is (:appleevent,), and each open gap is a negative probe: {got}",
+        ok=got.get("open_gaps") == "true" and got.get("gaps_negative") == "true",
+    )
     after = sorted(str(f.relative_to(home)) for f in home.rglob("*"))
     changed = sorted(set(after) ^ set(before))
     case(
@@ -1383,5 +1416,6 @@ def selftest() -> tuple[int, int]:
         render_cases(case, root / "render", policy)
         (root / "start").mkdir()
         start_cases(case, root / "start", policy)
+        probe_text_cases(case)
         probe_cases(case, root)
     return total, wrong
