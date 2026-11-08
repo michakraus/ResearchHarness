@@ -740,7 +740,8 @@ def job_steps(machine: Machine, loaded: profile_module.Profile, env: Mapping[str
             label = f"{loaded.launchd_prefix}.{job}"
             plist = agents / f"{label}.plist"
             if job == "kaimon":
-                # The `ps` that kaimon's plist puts first on the job's PATH, in place before the load.
+                # The `ps` of the directory that kaimon's plist puts first on the job's PATH, in
+                # place before the load.
                 shim = machine.home / SHIMS / PS_SHIM.name
                 result.steps.append(
                     Step(

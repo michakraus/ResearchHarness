@@ -1009,12 +1009,13 @@ and pushes `~/.claude`.
 
 ### macOS
 
-These commands install the `ps` shim of the server into `~/.config/research-harness/sandbox/shims/`,
-the first directory of its `PATH`, render the Seatbelt profiles of the server and the update job into
-`~/.config/research-harness/sandbox/`, which their launch agents start them under, then each
-launch agent with the profile into `~/Library/LaunchAgents/`, under its label, and create the log
-directories of the jobs. `p` holds the profile key `launchd_prefix`; the commands of this step
-after it use `p` too, so run them in the same shell:
+These commands install the `ps` shim of the server into
+`~/.config/research-harness/sandbox/shims/`, the first directory of its `PATH`, render the
+Seatbelt profiles of the server and the update job into `~/.config/research-harness/sandbox/`,
+which their launch agents start them under, then each launch agent with the profile into
+`~/Library/LaunchAgents/`, under its label, and create the log directories of the jobs. `p` holds
+the profile key `launchd_prefix`; the commands of this step after it use `p` too, so run them in
+the same shell:
 
 ```bash
 p=$(harness get launchd_prefix)

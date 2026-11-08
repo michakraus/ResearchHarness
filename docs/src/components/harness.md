@@ -383,12 +383,13 @@ with one line on stderr for any other form or a PID that is not digits.
 
 Its cases load the shipped list and a broken copy of it for each refusal, render both jobs with a
 home path that holds a dot and one that holds a quote, run `harness render` through `bin/harness`
-with a `getconf` stub, run the shim on each form, start `/bin/sh -c true` under each job's profile with
-`/usr/bin/sandbox-exec` and expect exit 0, under Kaimon's profile Python's `pty.openpty()` and a
-`pty.fork()` of `/bin/sh -c true` with the resolved path of the Python that runs the cases, and
-the juliaup launcher with `julia --startup-file=no -e 'exit(0)'` when `~/.juliaup/bin/julia`
-exists, and `ps -o state= -p $$` with the plist's `PATH`, which must print `S` from the
-repository's shim and from the installed one where it exists, or print a skip line where that cannot run, as inside another Seatbelt sandbox, and run
+with a `getconf` stub, run the shim on each form, start `/bin/sh -c true` under each job's
+profile with `/usr/bin/sandbox-exec` and expect exit 0, under Kaimon's profile Python's
+`pty.openpty()` and a `pty.fork()` of `/bin/sh -c true` with the resolved path of the Python that
+runs the cases, the juliaup launcher with `julia --startup-file=no -e 'exit(0)'` when
+`~/.juliaup/bin/julia` exists, and `ps -o state= -p $$` with the plist's `PATH`, which must print
+`S` from the repository's shim and from the installed one where it exists, or print a skip line
+where that cannot run, as inside another Seatbelt sandbox, and run
 every probe of `sandbox/probe-daemon.jl`, the probes that a session runs through Kaimon's `ex`
 after the server restarts under its profile, against a scratch home, when `julia` is on the `PATH`. [The security model](../security.md) says what the profile
 allows and what it leaves open.
@@ -598,11 +599,13 @@ sweep, which changes no file. `GROUPS` splits them into five groups, `minimum`, 
 The cases of the `systemd --user` units in `systemd/`. The module has no subcommand. It renders
 each unit and its plist in `launchagents/` with `examples/profile.toml`. Then it checks that both
 describe one job: the program and its arguments, after the `sandbox-exec -f <profile>` that the
-plist starts with on macOS, the working directory, the environment and its
-`PATH`, after the shim directory that such a plist puts first on its `PATH`, the timer's triggers, the start at login, and `Restart=always` where the plist has
+plist starts with on macOS, the working directory, the environment and its `PATH`, after the
+shim directory `~/.config/research-harness/sandbox/shims` that such a plist may put first on its
+`PATH`, the timer's triggers, the start at login, and `Restart=always` where the plist has
 `KeepAlive`. A section, a key or a repeated key that the check does not read is a problem. A
 continued line is a problem too. Every element of the `PATH` must be an absolute directory that
-the settings template keeps out of a session's writes, or a system directory. An empty element,
+the settings template keeps out of a session's writes, or a system directory; the shim directory
+too. An empty element,
 which means the working directory, is a problem. The cases also apply a mutant to the rendered
 templates and expect a problem: for example a removed restart, an extra trigger or a
 session-writable directory on the `PATH`. Last, they check that `render` gives
