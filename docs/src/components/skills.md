@@ -206,7 +206,9 @@ example an order of convergence, a conserved quantity or symplecticity. Every ch
 script. `Symbolics.jl` is preferred, and `SymPyPythonCall.jl` serves where Julia has no equivalent.
 Before the run, the skill states the input that must fail. It asks whether the measured property
 is the claimed property or a weaker one. A numerical check uses a tolerance from the method and
-fits the rate.
+fits the rate. A check iterates in a Kaimon session, and each exit status and check count in the
+report comes from a fresh process. A script that loads `PythonCall` or `SymPyPythonCall` runs
+only in a fresh process, because loading it ends the shared Kaimon process.
 
 The script goes into the `scripts/` directory of the repository, and the claim cites it. The report
 gives the verdict, the method, the control and the script path. For every claim of a whole `.tex`
