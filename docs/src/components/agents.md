@@ -216,7 +216,8 @@ operating system. It never reports green for a repository that it could not read
 
 It returns one verdict per repository: `green`, `FAIL`, `expected red`, `no runs` or `drift`. An
 `expected red` is a real answer, not a hedge: a red check that an entry of the repository's
-`KNOWN_ISSUES.md` explains. It changes nothing. Use `julia-pr-reviewer` for the
+`KNOWN_ISSUES.md` explains. It writes only its query files, in one scratch directory, and changes
+nothing else. Use `julia-pr-reviewer` for the
 content of one pull request.
 
 ## `julia-load-doctor`
