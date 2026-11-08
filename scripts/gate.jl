@@ -106,17 +106,19 @@ function generated_step(code, out, secs, log)
 end
 
 """
-The verdict of `dispatch-delta.jl`, from its exit code and its `Verdict:` line: FAIL on exit 1, PASS
-on exit 0, and UNKNOWN on any other exit or with no `Verdict:` line, as after a signal, for which
-`logged` returns the exit code 0. The detail is the script's `FAIL:`, `UNKNOWN:` and `INFO:` lines.
+The verdict of `dispatch-delta.jl`, from its exit code and its `Verdict:` line: PASS on exit 0 with
+`Verdict: PASS`, FAIL on exit 1 with `Verdict: FAIL`, and UNKNOWN in every other case: exit 2 or 3,
+no `Verdict:` line, or a word that does not match the code, as after a signal, for which `logged`
+returns the exit code 0. The detail is the script's `FAIL:`, `UNKNOWN:` and `INFO:` lines.
 """
 function dispatch_step(code, out, secs, log)
     lines = split(out, '\n')
-    m = match(r"^Verdict: \w+ — (.+)$"m, out)
+    m = match(r"^Verdict: (\w+) — (.+)$"m, out)
     m === nothing && return Step("dispatch", "UNKNOWN", "dispatch-delta.jl exited $code",
         String.(last(lines, min(10, length(lines)))), secs, log)
     detail = [String(l) for l in lines if occursin(r"^(FAIL|UNKNOWN|INFO): ", l)]
-    return Step("dispatch", code == 0 ? "PASS" : code == 1 ? "FAIL" : "UNKNOWN", m[1], detail, secs, log)
+    verdict = (code, m[1]) in ((0, "PASS"), (1, "FAIL")) ? String(m[1]) : "UNKNOWN"
+    return Step("dispatch", verdict, m[2], detail, secs, log)
 end
 
 "The .jl files that the diff of `pkg` against `base` adds or changes."

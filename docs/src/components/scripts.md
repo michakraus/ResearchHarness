@@ -191,16 +191,17 @@ The steps run in this order, each with its full log under `<out-dir>`:
    default). The survivors are information for the critic, not a failure. `--no-sweep` omits
    this step.
 4. `dispatch`: `dispatch-delta.jl <package> <base>`, with its output in `dispatch.log`. Exit 1
-   fails the step, exit 0 passes it, and exit 2 or 3, or a run with no `Verdict:` line, gives no
-   verdict. The script's `FAIL:`, `UNKNOWN:` and `INFO:` lines are the step's detail. The step
-   runs JET. Three packages were measured, each against a base ten commits back, on Julia
-   1.13.3. On a small package, about 1 200 lines of `src/` with one direct dependency, the whole
-   run took 34 s, with JET steps of 2–3 s, at a load average of 25. On a large package, about
-   18 000 lines of `src/` with 14 direct dependencies, the whole run took 170 s, with JET steps
-   of 42–43 s, at a load average of 8. On a medium package, about 9 000 lines of `src/` with 15
-   direct dependencies, the whole run took 76 s, with JET steps of 7 s, at a load average of 13.
-   The last two runs had a warm depot. No JET step comes near 300 s, so the step does not pass
-   `--no-jet`.
+   with `Verdict: FAIL` fails the step, exit 0 with `Verdict: PASS` passes it, and every other
+   run gives no verdict: exit 2 or 3, no `Verdict:` line, or a word that does not match the exit
+   code, as after a signal. The script's `FAIL:`, `UNKNOWN:` and `INFO:` lines are the step's
+   detail. The step runs JET. Three packages were measured, each against a base ten commits
+   back, on Julia 1.13.3. On a small package, about 1 200 lines of `src/` with one direct
+   dependency, the whole run took 34 s, with JET steps of 2–3 s, at a load average of 25. On a
+   large package, about 18 000 lines of `src/` with 14 direct dependencies, the whole run took
+   170 s, with JET steps of 42–43 s, at a load average of 8. On a medium package, about 9 000
+   lines of `src/` with 15 direct dependencies, the whole run took 76 s, with JET steps of 7 s,
+   at a load average of 13. The last two runs had a warm depot. No JET step comes near 300 s, so
+   the step does not pass `--no-jet`.
 5. `format`: JuliaFormatter on the `.jl` files that the diff against `<base>` adds or changes.
 
 The exit status is 0 when each step that can fail passes, 1 when a step fails, 2 on bad
@@ -222,21 +223,31 @@ julia --startup-file=no dispatch-delta.jl <package> <base> [--timeout <s>] [--no
 The head is the working tree of `<package>` as it is; `<base>` is a git ref of it. The script
 writes the base with `base-tree.jl` into its run directory,
 `~/Research/.scratch/dispatch-delta/<Pkg>-<stamp>-<pid>/`, and copies the head's `Manifest.toml`
-into it, so that both sides load the same versions. Where another minor version of Julia resolved
-the head's `Manifest.toml` or `test/Manifest.toml`, neither side gets one, and the head runs from a
-copy without it, as in `run-tests.jl`. Each side loads in a fresh process of its own, both at
+into it, so that both sides load the same versions, where that manifest holds every package under
+`[deps]` of the base; else the base resolves its own, and the `manifest:` line names the packages
+that the head's manifest lacks. Where another minor version of Julia resolved the head's
+`Manifest.toml` or `test/Manifest.toml`, neither side gets one, and the head runs from a copy
+without it, as in `run-tests.jl`. Each side loads in a fresh process group of its own, both at
 once, as `run-tests.jl` loads a driver: `--project=<tree>`, the harness environment last in
 `LOAD_PATH`, then `TestEnv.activate()`. Each side writes `<side>.json`: the package, the side, the
 Julia version, whether its tree held a `Manifest.toml`, the versions of Aqua and the dependencies,
-one record per own method, and the ambiguities and piracies. Then it runs JET into
-`<side>-jet.json`. Its output goes to `<side>.log`.
+the packages that the side has loaded, one record per own method, and the ambiguities and
+piracies. Then it runs JET into `<side>-jet.json`. Its output goes to `<side>.log`.
 The script removes the base tree at its end and keeps the JSON files and the logs.
 
 The own methods of a side are the methods of the package's module tree and of each extension that
 loads once the side loads the weak dependencies that its test environment provides. The key of a
-method is its signature, printed as the root module sees it, with its type variables renamed `_1`,
-`_2`, … by position and the digits of gensym names stripped; its file and line print beside it.
-So a method that moves to another line or file is the same method.
+method is its signature with the full path of each name that Base and Core do not export, less
+the path of the package's root module, with its type variables renamed `_1`, `_2`, … by position
+and the digits of gensym names stripped; its file and line print beside it. So a method that moves
+to another line or file is the same method, and a `using` in the root module changes no key. A
+head that only reorders the `where` list of a method changes its key: a finding of that method
+reads as new, and its old key as gone.
+
+The generic of a `Core.kwcall` method is its keyword function, and its other methods are that
+function's `Core.kwcall` methods. A method record names the package of its generic in
+`generic_package`; a method on an external generic prints as an added method only where the base
+loaded that package.
 
 | line | means | exit |
 |:--|:--|:--|
@@ -246,7 +257,9 @@ So a method that moves to another line or file is the same method.
 | `FAIL: the head does not load: <error>` | with a `log:` line | 1 |
 | `UNKNOWN: the base does not load: <error>` | with a `log:` line | 3 |
 | `UNKNOWN: <side> does not resolve: <error>` | `TestEnv.activate()` failed | 3 |
-| `UNKNOWN: <side> timed out after <n> s` | the side was killed at its limit | 3 |
+| `UNKNOWN: <side> timed out after <n> s` | the side's process group was killed at its limit | 3 |
+| `UNKNOWN: <side> ended by signal <n>` | a signal that the script did not send ended the side | 3 |
+| `UNKNOWN: <side> gave no result, exit code <n>` | the side wrote no JSON and no error | 3 |
 | `UNKNOWN: jet: <side> timed out after <n> s` | the JET step was killed at its own limit | — |
 | `UNKNOWN: jet: <side> ended with <signal or exit code>` | the side ended in its JET step | — |
 | `INFO: added method: <key> at <file>:<line>` | a new method of a generic that has a method on the base, with one `  other:` line per other method: all of an own generic, the intersecting ones of an external generic | — |
@@ -263,7 +276,7 @@ The step `dispatch` of `gate.jl` runs it, and the agent `julia-branch-verifier` 
 point 3 on every branch.
 
 `dispatch-delta-test.jl` checks it on small packages that use the standard library only, which it
-builds with git under `tempdir()` (`julia --startup-file=no dispatch-delta-test.jl`, 2–3
+builds with git under `tempdir()` (`julia --startup-file=no dispatch-delta-test.jl`, 3–4
 minutes).
 
 ## `julia-methods.jl`

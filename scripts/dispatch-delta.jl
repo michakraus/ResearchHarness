@@ -6,14 +6,16 @@
 # <package> is the package's directory: its working tree, as it is, is the head. <base> is a git ref
 # of it. The base goes with base-tree.jl into <run>/<Pkg>-base-<sha7>, under the run directory
 # ~/Research/.scratch/dispatch-delta/<Pkg>-<stamp>-<pid>/. The head's Manifest.toml goes into the
-# base tree, so that both sides load the same versions; where another minor version of Julia
-# resolved the head's Manifest.toml or test/Manifest.toml, neither side gets one, and the head runs
-# from a copy without them, as in run-tests.jl. Each side then loads in a fresh process of its own,
-# both at once, as run-tests.jl loads a driver: --project=<tree>, the harness environment last in
+# base tree, so that both sides load the same versions, where it holds every package under [deps]
+# of the base; else the base resolves its own. Where another minor version of Julia resolved the
+# head's Manifest.toml or test/Manifest.toml, neither side gets one, and the head runs from a copy
+# without them, as in run-tests.jl. Each side then loads in a fresh process group of its own, both
+# at once, as run-tests.jl loads a driver: --project=<tree>, the harness environment last in
 # LOAD_PATH, TestEnv.activate(). Its own modules are the package's module tree and each extension
 # that loads once the side loads the [weakdeps] that its test environment provides. It writes
 # <run>/<side>.json, then runs JET into <run>/<side>-jet.json; its output goes to <run>/<side>.log.
-# --timeout gives each side, and then each JET step, that many seconds (600 by default).
+# --timeout gives each side, and then each JET step, that many seconds (600 by default); past it,
+# the side's process group is killed.
 #
 # The lines of the output:
 #
@@ -24,40 +26,45 @@
 #   UNKNOWN: the base does not load: <error>
 #   UNKNOWN: <side> does not resolve: <error>           TestEnv.activate() failed
 #   UNKNOWN: <side> timed out after <n> s
+#   UNKNOWN: <side> ended by signal <n>                 a signal that the script did not send
+#   UNKNOWN: <side> gave no result, exit code <n>       no JSON and no error file
 #   UNKNOWN: jet: <side> timed out after <n> s          leaves the exit code to the other analyses,
 #   UNKNOWN: jet: <side> ended with <signal or code>    as does a JET step that ends the side
 #   INFO: added method: <key> at <file>:<line>          a new method of a generic that the base has,
 #     other: <key> at <file>:<line>                     with every other method of an own generic and
-#                                                       the intersecting ones of an external generic
+#                                                       the intersecting ones of an external generic;
+#                                                       the generic of a Core.kwcall method is its
+#                                                       keyword function, and an external generic
+#                                                       counts where the base loaded its package
 #   INFO: new JET report: <type>: <message> in <key>
 #   INFO: gone piracy | gone own-own ambiguity | gone own-external ambiguity | gone JET report: ...
 #   INFO: dependency drift: <name> <base version> -> <head version>
 #   Verdict: <PASS|FAIL|UNKNOWN> — <f> FAIL, <u> UNKNOWN, <i> INFO
 #
-# The key of a method is its signature printed in the context of the package's root module, with
-# its type variables renamed _1, _2, … by position and the digits of gensym names stripped.
+# The key of a method is its signature with the full path of each name that Base and Core do not
+# export, less the path of the package's root module, so that a `using` in the root module changes
+# no key, with its type variables renamed _1, _2, … by position and the digits of gensym names
+# stripped. A head that only reorders the `where` list of a method therefore changes its key: a
+# finding of that method reads as new, and its old key as gone.
 #
 # Exit 0: PASS. 1: a FAIL line. 2: bad arguments. 3: no verdict — a base that does not load, a side
 # that does not resolve or that timed out — and no FAIL line.
-
-# The harness's Julia environment, which `harness install --apply` instantiates from
-# Project.toml; first in LOAD_PATH, so no caller needs `--project`. A side appends it instead.
-let env = get(ENV, "RESEARCH_HARNESS_JULIA", joinpath(homedir(), ".local", "share", "research-harness", "julia"))
-    env in LOAD_PATH || pushfirst!(LOAD_PATH, env)
-end
-using JSON: JSON
-using Dates: Dates
-using Pkg: Pkg
-using Test: Test
-using TOML: TOML
 
 module BaseTree
 include(joinpath(@__DIR__, "base-tree.jl"))
 end
 
+# run-tests.jl puts the harness's Julia environment first in LOAD_PATH, where JSON is; a side
+# appends it instead.
 module RunTests
 include(joinpath(@__DIR__, "run-tests.jl"))
 end
+
+using JSON: JSON
+using Dates: Dates
+using Pkg: Pkg
+using Test: Test
+using TOML: TOML
 
 const SCRIPT = @__FILE__
 const HARNESS_ENV = RunTests.HARNESS_ENV
@@ -89,7 +96,8 @@ function arguments(args)
     length(pos) > 2 && return "one <package> and one <base>, not $(join(pos, ", "))"
     pkg, base = rstrip(normpath(abspath(expanduser(pos[1]))), '/'), pos[2]
     isempty(base) && return "<base> is empty"
-    ispath(joinpath(pkg, ".git")) || return "$pkg is not a git repository"
+    success(pipeline(`git -C $pkg rev-parse --is-inside-work-tree`; stdout = devnull, stderr = devnull)) ||
+        return "$pkg is not a git repository"
     project = joinpath(pkg, "Project.toml")
     isfile(project) || return "$pkg has no Project.toml"
     name = get(TOML.parsefile(project), "name", nothing)
@@ -118,17 +126,38 @@ function renamed(sig)
     return foldr(UnionAll, new; init = sig{new...})
 end
 
-"The key of a method signature: `sig` renamed, printed as `root` sees it, with no gensym digits."
-key(sig, root) = replace(sprint(show, renamed(sig); context = :module => root), r"(?<=#)\d+" => "")
+"""
+An empty module: in its context a signature names each function and type by its full path, except
+the names that Base and Core export.
+"""
+module KeyContext end
 
-"The generic of a key: the text of its first type parameter, such as `typeof(f)`."
+"""
+The key of a method signature: `sig` renamed, printed in `KeyContext`, without the path of the
+package's root module `root`, and with no gensym digits. A `using` in `root` therefore
+changes no key: a function of `root` prints as `typeof(f)`, one of its submodule as `typeof(Sub.f)`.
+"""
+function key(sig, root)
+    s = sprint(show, renamed(sig); context = :module => KeyContext)
+    s = replace(s, Regex("(?<![\\w.!])\\Q$(root).\\E") => "")
+    return replace(s, r"(?<=#)\d+" => "")
+end
+
+"""
+The generic of a key: the text of its first type parameter, such as `typeof(f)`, and of its third
+for a `Core.kwcall` method, whose generic is its keyword function.
+"""
 function generic_of(k)
-    s, depth = chopprefix(k, "Tuple{"), 0
+    s, depth, from, ps = chopprefix(k, "Tuple{"), 0, 1, String[]
     for (i, c) in pairs(s)
-        depth == 0 && c in ",}" && return s[1:prevind(s, i)]
+        if depth == 0 && c in ",}"
+            push!(ps, strip(s[from:prevind(s, i)]))
+            c == '}' && break
+            from = nextind(s, i)
+        end
         depth += c in "{(" ? 1 : c in "})" ? -1 : 0
     end
-    return s
+    return ps[1] == "typeof(Core.kwcall)" ? ps[3] : ps[1]
 end
 
 "`file` relative to the root of `tree` where it is under it, else as it is."
@@ -154,6 +183,12 @@ end
 
 ftype(m::Method) = Base.unwrap_unionall(m.sig).parameters[1]
 
+"The function type of the generic of `m`: the keyword function's, the third parameter, for a `Core.kwcall` method."
+function gtype(m::Method)
+    ps = Base.unwrap_unionall(m.sig).parameters
+    return ps[1] === typeof(Core.kwcall) ? ps[3] : ps[1]
+end
+
 "The module that owns the generic of a function type: the type's own for `Type{T}`."
 function generic_module(ft)
     ft isa DataType || return nothing
@@ -166,25 +201,30 @@ where_is(m, root, tree) = Dict("key" => key(m.sig, root), "file" => relfile(m.fi
 """
 One record per own method: every method of `Core.methodtable` whose module is own, except the
 methods of a function whose name starts with `#`. `others` holds the other methods of the generic:
-all of them for an own generic, the intersecting ones for an external generic.
+all of them for an own generic, the intersecting ones for an external generic. The generic of a
+`Core.kwcall` method is its keyword function, and its other methods are that function's
+`Core.kwcall` methods. `generic_package` names the package of the generic's module.
 """
 function method_records(ownset, root, tree)
     ms = Method[]
     Base.visit(Core.methodtable) do x
         parentmodule(x) in ownset && !startswith(string(x.name), "#") && push!(ms, x)
     end
-    fts = Set{Any}(ftype(x) for x in ms)
+    group(x) = (ftype(x), gtype(x))
+    gs = Set{Any}(group(x) for x in ms)
     bygen = Dict{Any, Vector{Method}}()
     Base.visit(Core.methodtable) do x
-        f = ftype(x)
-        f in fts && push!(get!(bygen, f, Method[]), x)
+        g = group(x)
+        g in gs && push!(get!(bygen, g, Method[]), x)
     end
     map(ms) do x
-        own = generic_module(ftype(x)) in ownset
-        others = filter(y -> y !== x && (own || typeintersect(y.sig, x.sig) !== Union{}), bygen[ftype(x)])
+        gm = generic_module(gtype(x))
+        own = gm in ownset
+        others = filter(y -> y !== x && (own || typeintersect(y.sig, x.sig) !== Union{}), bygen[group(x)])
         merge(where_is(x, root, tree),
             Dict("name" => string(x.name), "module" => string(parentmodule(x)),
                 "generic" => own ? "own" : "external",
+                "generic_package" => gm === nothing ? nothing : string(nameof(Base.moduleroot(gm))),
                 "others" => sort!([where_is(y, root, tree) for y in others]; by = o -> (o["file"], o["line"], o["key"]))))
     end
 end
@@ -211,6 +251,7 @@ end
 """
 The records of a side, written into `<rundir>/<side>.json`. Beside the keys that a reader of the
 two files uses, `manifest` says whether the side's tree held a `Manifest.toml` when the side began.
+`loaded` names each package that the side has loaded when it writes the file.
 """
 function record(s, rundir, tree, name, root, tree_mods, own, aqua, manifest)
     ownset = Set(own)
@@ -219,6 +260,7 @@ function record(s, rundir, tree, name, root, tree_mods, own, aqua, manifest)
         "package" => name, "side" => s, "julia" => string(VERSION), "manifest" => manifest,
         "tools" => Dict("Aqua" => string(pkgversion(aqua))),
         "dependencies" => Dict(i.name => (i.version === nothing ? nothing : string(i.version)) for i in values(Pkg.dependencies())),
+        "loaded" => sort!([p.name for p in keys(Base.loaded_modules)]),
         "methods" => method_records(ownset, root, tree),
         "ambiguities" => ambiguities(own, ownset, root),
         "piracies" => piracies))
@@ -297,37 +339,42 @@ struct End
     killed::Bool
 end
 
+"Kill the process group of `p`, and so each process that `p` started, such as a precompilation."
+killgroup(p) = ccall(:kill, Cint, (Cint, Cint), -getpid(p), Base.SIGKILL)
+
 """
-Run both sides at once and wait for them. A side gets `timeout` seconds to write its JSON, and
-with JET `timeout` seconds more from that moment; past its limit it is killed.
+Run both sides at once and wait for them. Each side is a process group of its own. A side gets
+`timeout` seconds to write its JSON, and with JET `timeout` seconds more from that moment; past its
+limit its process group is killed, as is each group still running when the script stops.
 """
 function run_sides(rundir, trees, name, timeout, jet)
     logs = Dict(s => open(joinpath(rundir, "$s.log"), "w") for s in keys(trees))
     procs = Dict(map(collect(trees)) do (s, tree)
         drv = joinpath(rundir, "$s-driver.jl")
         write(drv, driver(s, rundir, tree, name, jet))
-        cmd = `$(Base.julia_cmd()) --startup-file=no --project=$tree $drv`
+        cmd = Cmd(`$(Base.julia_cmd()) --startup-file=no --project=$tree $drv`; detach = true)
         s => run(pipeline(ignorestatus(cmd); stdout = logs[s], stderr = logs[s]); wait = false)
     end)
     t0, json_at, ends = time(), Dict{String, Float64}(), Dict{String, End}()
-    while length(ends) < length(procs)
-        for (s, p) in procs
-            haskey(ends, s) && continue
-            if !process_running(p)
+    try
+        while length(ends) < length(procs)
+            for (s, p) in procs
+                haskey(ends, s) && continue
+                running = process_running(p)
+                if running
+                    jet && !haskey(json_at, s) && isfile(joinpath(rundir, "$s.json")) && (json_at[s] = time())
+                    time() > get(json_at, s, t0) + timeout || continue
+                    killgroup(p)
+                end
                 wait(p)
-                ends[s] = End(p.termsignal, p.exitcode, false)
-                continue
+                ends[s] = End(p.termsignal, p.exitcode, running)
             end
-            jet && !haskey(json_at, s) && isfile(joinpath(rundir, "$s.json")) && (json_at[s] = time())
-            if time() > get(json_at, s, t0) + timeout
-                kill(p, Base.SIGKILL)
-                wait(p)
-                ends[s] = End(p.termsignal, p.exitcode, true)
-            end
+            length(ends) < length(procs) && sleep(0.2)
         end
-        length(ends) < length(procs) && sleep(0.2)
+    finally
+        foreach(p -> process_running(p) && killgroup(p), values(procs))
+        foreach(close, values(logs))
     end
-    foreach(close, values(logs))
     return ends
 end
 
@@ -361,9 +408,13 @@ function compare(b, h)
     end
     bkeys = Set(m["key"] for m in b["methods"])
     bgen = Set(generic_of(m["key"]) for m in b["methods"])
+    bloaded = Set(b["loaded"])
+    # an external generic has a method on the base where the base loaded its package
+    has_base(m) = m["generic"] == "external" ? m["generic_package"] === nothing || m["generic_package"] in bloaded :
+                  generic_of(m["key"]) in bgen
     for m in sort(h["methods"]; by = m -> m["key"])
         m["key"] in bkeys && continue
-        (m["generic"] == "external" || generic_of(m["key"]) in bgen) || continue
+        has_base(m) || continue
         push!(out, "INFO: added method: $(m["key"]) at $(m["file"]):$(m["line"])")
         foreach(o -> push!(out, "  other: $(o["key"]) at $(o["file"]):$(o["line"])"), m["others"])
     end
@@ -428,6 +479,12 @@ function analyse(rundir, ends; timeout, jet)
     return out, status
 end
 
+"The names under `[deps]` of `project` whose UUID is the `uuid` of no entry of `manifest`, sorted."
+function lacking(manifest, project)
+    have = Set(e["uuid"] for es in values(get(TOML.parsefile(manifest), "deps", Dict())) for e in es)
+    return sort!([n for (n, u) in get(TOML.parsefile(project), "deps", Dict()) if !(u in have)])
+end
+
 function main(args)
     a = arguments(args)
     if a isa String
@@ -453,8 +510,14 @@ function main(args)
             println("manifest: ", join(foreign, " and "), " is resolved by another Julia than $VERSION, ",
                 "so neither side gets one, and the head runs from a copy without it")
         elseif "Manifest.toml" in manifests
-            cp(joinpath(pkg, "Manifest.toml"), joinpath(basetree, "Manifest.toml"); force = true)
-            println("manifest: the head's Manifest.toml goes into the base tree")
+            lack = lacking(joinpath(pkg, "Manifest.toml"), joinpath(basetree, "Project.toml"))
+            if isempty(lack)
+                cp(joinpath(pkg, "Manifest.toml"), joinpath(basetree, "Manifest.toml"); force = true)
+                println("manifest: the head's Manifest.toml goes into the base tree")
+            else
+                println("manifest: the head's Manifest.toml lacks ", join(lack, ", "),
+                    " of the base's [deps], so the base resolves its own")
+            end
         else
             println("manifest: the head has no Manifest.toml, so each side resolves its own")
         end
@@ -469,5 +532,7 @@ function main(args)
 end
 
 if abspath(PROGRAM_FILE) == @__FILE__
+    # an interrupt throws, so that the sides' process groups are killed on the way out
+    Base.exit_on_sigint(false)
     exit(main(ARGS))
 end

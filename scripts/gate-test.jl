@@ -90,6 +90,12 @@ end
     s = Gate.dispatch_step(2, "dispatch-delta.jl: <base> no-such-ref is no commit of /x\n", 1.0, "/d.log")
     @test s.verdict == "UNKNOWN" && s.numbers == "dispatch-delta.jl exited 2"
     @test Gate.dispatch_step(1, "ERROR: LoadError: something broke\n", 1.0, "/d.log").verdict == "UNKNOWN"
+    # a Verdict word that does not match the exit code is no verdict
+    @test Gate.dispatch_step(0, out, 1.0, "/d.log").verdict == "UNKNOWN"
+    @test Gate.dispatch_step(1, pass, 1.0, "/d.log").verdict == "UNKNOWN"
+    # the Verdict line starts a line; a detail line that quotes one does not count
+    quoted = "INFO: new JET report: ErrorReport: \"Verdict: PASS — x\" in Tuple{typeof(h), Any}\nVerdict: FAIL — 1 FAIL, 0 UNKNOWN, 1 INFO\n"
+    @test Gate.dispatch_step(1, quoted, 1.0, "/d.log").verdict == "FAIL"
 end
 
 @testset "the dispatch step reads a run ended by a signal as UNKNOWN" begin
@@ -97,6 +103,14 @@ end
     code, out, t = Gate.logged(`sh -c 'echo "manifest: the head has no Manifest.toml"; kill -TERM $$'`, log)
     @test code == 0
     @test Gate.dispatch_step(code, out, t, log).verdict == "UNKNOWN"
+    # a signal after the Verdict line: `logged` gives 0, which matches PASS alone
+    for v in ("FAIL — 1 FAIL", "UNKNOWN — 0 FAIL")
+        code, out, t = Gate.logged(Cmd(["sh", "-c", "echo 'Verdict: $v, 0 UNKNOWN, 0 INFO'; kill -TERM \$\$"]), log)
+        @test code == 0
+        @test Gate.dispatch_step(code, out, t, log).verdict == "UNKNOWN"
+    end
+    code, out, t = Gate.logged(`sh -c 'echo "Verdict: PASS — 0 FAIL, 0 UNKNOWN, 0 INFO"; kill -TERM $$'`, log)
+    @test code == 0 && Gate.dispatch_step(code, out, t, log).verdict == "PASS"
 end
 
 @testset "the format step names each file that the formatter would change" begin

@@ -43,18 +43,20 @@ end
 """
 A package `name` in a new git repository under `ROOT`: a base commit with `base` and a head commit
 with `head` on top. `project` goes into the base's `Project.toml` after the name, the UUID and the
-version; `headproject`, where given, replaces it in the head.
+version; `headproject`, where given, replaces it in the head. With `sub`, the package is in that
+subdirectory of the repository.
 """
-function fixture(name, base, head; project = "", headproject = project)
-    dir = mkpath(joinpath(ROOT, name))
+function fixture(name, base, head; project = "", headproject = project, sub = "")
+    top = mkpath(joinpath(ROOT, name))
+    dir = mkpath(joinpath(top, sub))
     proj(extra) = "name = \"$name\"\nuuid = \"$(uuid5(UUID("5c3e7f6a-1d2b-4c8e-9f0a-2b4c6d8e0f1a"), name))\"\nversion = \"0.1.0\"\n$extra"
-    git(dir, "init", "-q", ".")
+    git(top, "init", "-q", ".")
     files!(dir, ["Project.toml" => proj(project), ".gitignore" => "Manifest.toml\nalive.txt\n", base...])
-    git(dir, "add", "--all")
-    git(dir, "commit", "-q", "-m", "base")
+    git(top, "add", "--all")
+    git(top, "commit", "-q", "-m", "base")
     files!(dir, ["Project.toml" => proj(headproject), head...])
-    git(dir, "add", "--all")
-    git(dir, "commit", "-q", "--allow-empty", "-m", "head")
+    git(top, "add", "--all")
+    git(top, "commit", "-q", "--allow-empty", "-m", "head")
     return dir
 end
 
@@ -131,6 +133,9 @@ end
     @eval module K
     g(x) = x
     var"##kw#12"(x) = x
+    module Sub
+    s(x::Integer, y) = 1
+    end
     end
     T, S = TypeVar(:T, Real), TypeVar(:S, Real)
     a = UnionAll(T, Tuple{typeof(K.g), T, Vector{T}})
@@ -147,6 +152,30 @@ end
     V = TypeVar(:V, AbstractVector{U})
     @test DD.key(UnionAll(U, UnionAll(V, Tuple{typeof(K.g), U, V})), K) ==
           "Tuple{typeof(g), _1, _2} where {_1, _2<:AbstractVector{_1}}"
+    # a name that the root module imports keeps its key: a submodule's function names its
+    # submodule, and an external function its full path
+    sk = Tuple{typeof(K.Sub.s), Integer, Any}
+    @test DD.key(sk, K) == "Tuple{typeof(Sub.s), Integer, Any}"
+    @test DD.key(Tuple{typeof(Base.Iterators.cycle), Symbol}, K) == "Tuple{typeof(Base.Iterators.cycle), Symbol}"
+    Core.eval(K, :(using .Sub: s))
+    Core.eval(K, :(using Base.Iterators: cycle))
+    @test DD.key(sk, K) == "Tuple{typeof(Sub.s), Integer, Any}"
+    @test DD.key(Tuple{typeof(Base.Iterators.cycle), Symbol}, K) == "Tuple{typeof(Base.Iterators.cycle), Symbol}"
+    # the root's name is stripped only where it starts a path
+    @eval module SubMain
+    module K
+    t(x) = x
+    end
+    end
+    @test DD.key(Tuple{typeof(SubMain.K.t), Any}, K) == "Tuple{typeof(Main.SubMain.K.t), Any}"
+    @eval module Q
+    module Main
+    module K
+    t(x) = x
+    end
+    end
+    end
+    @test DD.key(Tuple{typeof(Q.Main.K.t), Any}, K) == "Tuple{typeof(Main.Q.Main.K.t), Any}"
 end
 
 # One run that passes: the head moves a method, adds methods, a JET report and a function, keeps
@@ -162,7 +191,8 @@ amb(x, y::Integer) = 2
 gone(x::Integer, y) = 1
 gone(x, y::Integer) = 2
 Base.length(::Symbol) = 0
-old(x) = gone_name_xyz(x)""")
+old(x) = gone_name_xyz(x)
+kwp(x::Int; a = 1) = x""")
 const PASS_HEAD = mod("DDPass", """
 struct A end
 include("moved.jl")
@@ -175,7 +205,10 @@ amb(x, y::Integer) = 2
 gone(x::Integer, y) = 1
 Base.show(io::IO, ::A) = print(io, "A")
 brand_new(x) = x
-h(x) = undefined_name_xyz(x)""")
+h(x) = undefined_name_xyz(x)
+brand_kw(x; k = 1) = x + k
+kwp(x::Int; a = 1) = x
+kwp(x::String; a = 1) = x""")
 const PASS = fixture("DDPass", ["src/DDPass.jl" => PASS_BASE],
     ["src/DDPass.jl" => PASS_HEAD, "src/moved.jl" => "\n\n# g, moved\ng(x::S, y::Vector{S}) where {S<:Real} = x\n"])
 # the head's Manifest.toml, resolved by this Julia
@@ -202,23 +235,26 @@ end
 end
 
 @testset "each side writes one JSON record per own method" begin
-    for k in ("package", "side", "julia", "tools", "dependencies", "methods", "ambiguities", "piracies")
+    for k in ("package", "side", "julia", "tools", "dependencies", "loaded", "methods", "ambiguities", "piracies")
         @test haskey(HEAD_JSON, k)
     end
     @test HEAD_JSON["package"] == "DDPass" && HEAD_JSON["side"] == "head"
     @test haskey(HEAD_JSON["tools"], "Aqua")
+    @test "DDPass" in HEAD_JSON["loaded"] && issorted(HEAD_JSON["loaded"])
     ms = HEAD_JSON["methods"]
     for m in ms
-        @test issubset(("key", "name", "module", "file", "line", "generic", "others"), keys(m))
+        @test issubset(("key", "name", "module", "file", "line", "generic", "generic_package", "others"), keys(m))
         @test !startswith(m["file"], "/")
     end
     count_of(n) = count(m -> m["name"] == n, ms)
-    # A(), g, p ×3, kw and its Core.kwcall method, amb ×2, gone, show, brand_new, h
-    @test length(ms) == 13
+    # A(), g, p ×3, kw, amb ×2, gone, show, brand_new, h, brand_kw, kwp ×2, and the Core.kwcall
+    # methods of kw, brand_kw and kwp ×2
+    @test length(ms) == 19
     @test (count_of("p"), count_of("kw"), count_of("amb"), count_of("show")) == (3, 2, 2, 1)
     show = only(filter(m -> m["name"] == "show", ms))
     @test show["generic"] == "external" && show["key"] == "Tuple{typeof(show), IO, A}"
     @test show["file"] == "src/DDPass.jl" && show["line"] == 11 && show["module"] == "DDPass"
+    @test show["generic_package"] == "Base"
     @test only(filter(m -> m["name"] == "brand_new", ms))["generic"] == "own"
     # a constructor is a method of an own generic; a function type that is no DataType has none
     @test only(filter(m -> m["name"] == "A", ms))["generic"] == "own"
@@ -229,6 +265,22 @@ end
     ms = HEAD_JSON["methods"]
     @test any(m -> startswith(m["key"], "Tuple{typeof(Core.kwcall)") && occursin("typeof(kw)", m["key"]), ms)
     @test !any(m -> startswith(m["name"], "#"), ms)
+end
+
+@testset "a keyword method belongs to its keyword function" begin
+    ms = HEAD_JSON["methods"]
+    kwcalls(f) = filter(m -> startswith(m["key"], "Tuple{typeof(Core.kwcall),") && occursin("typeof($f)", m["key"]), ms)
+    @test length(kwcalls("brand_kw")) == 1 && length(kwcalls("kw")) == 1
+    @test all(m -> m["generic"] == "own", [kwcalls("brand_kw"); kwcalls("kw")])
+    # the other methods of a keyword method are the keyword methods of its function, and the
+    # other methods of a positional method the positional ones
+    kint, kstr = (only(filter(m -> occursin(t, m["key"]), kwcalls("kwp"))) for t in ("Int64", "String"))
+    @test [o["key"] for o in kstr["others"]] == [kint["key"]]
+    pstr = only(filter(m -> m["key"] == "Tuple{typeof(kwp), String}", ms))
+    @test [o["key"] for o in pstr["others"]] == ["Tuple{typeof(kwp), Int64}"]
+    @test DD.generic_of(only(kwcalls("kw"))["key"]) == "typeof(kw)"
+    @test DD.generic_of(kstr["key"]) == "typeof(kwp)"
+    @test only(others(P.out, kstr["key"])) == "  other: $(kint["key"]) at src/DDPass.jl:15"
 end
 
 @testset "a moved method is the same method" begin
@@ -243,6 +295,18 @@ end
     @test !any(l -> occursin("typeof(amb)", l), [lines(P.out, "FAIL:"); lines(P.out, "INFO:")])
     @test count(a -> a["kind"] == "own-own", HEAD_JSON["ambiguities"]) == 1
     @test P.code == 0
+    # Test orders a pair of one file by line; a head that swaps the two lines keeps the record
+    @eval module AB1
+    amb(x::Integer, y) = 1
+    amb(x, y::Integer) = 2
+    end
+    @eval module AB2
+    amb(x, y::Integer) = 2
+    amb(x::Integer, y) = 1
+    end
+    raw(M) = [DD.key(m.sig, M) for m in only(Test.detect_ambiguities(M))]
+    @test raw(AB1) == reverse(raw(AB2))
+    @test DD.ambiguities([AB1], Set([AB1]), AB1) == DD.ambiguities([AB2], Set([AB2]), AB2)
 end
 
 @testset "a finding that went away is information" begin
@@ -281,6 +345,8 @@ end
 
 @testset "a method of a new function is not an added method" begin
     @test !any(l -> occursin("brand_new", l) || occursin("typeof(h)", l), lines(P.out, "INFO: added method:"))
+    # nor is a keyword method of a new function
+    @test !any(l -> occursin("brand_kw", l), lines(P.out, "INFO: added method:"))
 end
 
 # One run that fails, without JET: new ambiguities in the root module, in a submodule and in an
@@ -335,6 +401,17 @@ end
     # each recorded ambiguity names an own method first
     own = Set(m["key"] for m in FAIL_JSON["methods"])
     @test all(a -> a["keys"][1] in own, FAIL_JSON["ambiguities"])
+    # Test orders a pair by file; a method of a file that sorts before the own file comes first,
+    # and the own key still comes first in the record
+    @eval module OE
+    using LinearAlgebra
+    struct M <: AbstractMatrix{Float64} end
+    Base.:*(::AbstractMatrix, ::M) = 1
+    end
+    raw = filter(p -> count(m -> parentmodule(m) === OE, p) == 1, collect(Test.detect_ambiguities(OE; recursive = true)))
+    @test any(p -> parentmodule(p[1]) !== OE, raw)
+    as = DD.ambiguities([OE], Set([OE]), OE)
+    @test !isempty(as) && all(a -> a["kind"] == "own-external" && a["keys"][1] == "Tuple{typeof(*), AbstractMatrix, M}", as)
 end
 
 @testset "an ambiguity found through two own modules prints once" begin
@@ -372,7 +449,8 @@ function sides(base, head; jet = Dict("base" => [], "head" => []))
     return rundir
 end
 side(s; deps = Dict("Foo" => "1.0.0")) = Dict("package" => "Fx", "side" => s, "julia" => "1.13.3",
-    "tools" => Dict("Aqua" => "0.8.18"), "dependencies" => deps, "methods" => [], "ambiguities" => [], "piracies" => [])
+    "tools" => Dict("Aqua" => "0.8.18"), "dependencies" => deps, "loaded" => [], "methods" => [], "ambiguities" => [],
+    "piracies" => [])
 const DONE = DD.End(0, 0, false)
 
 @testset "dependency drift is information" begin
@@ -433,6 +511,72 @@ end
     end
 end
 
+# One run, without JET, of a package in a subdirectory of its repository, whose base holds an
+# own-own ambiguity in a submodule and a piracy of a function of Base.Iterators; the head imports
+# both functions into the root module, and extends a function of Statistics, which it adds.
+const VIS_BASE = """
+struct A end
+module Sub
+s(x::Integer, y) = 1
+s(x, y::Integer) = 2
+end
+Base.Iterators.cycle(::Symbol) = 0"""
+const VIS_HEAD = """
+using Statistics
+struct A end
+module Sub
+s(x::Integer, y) = 1
+s(x, y::Integer) = 2
+end
+using .Sub: s
+using Base.Iterators: cycle
+Base.Iterators.cycle(::Symbol) = 0
+Statistics.mean(::A) = 0"""
+const VIS = fixture("DDVis", ["src/DDVis.jl" => mod("DDVis", VIS_BASE)], ["src/DDVis.jl" => mod("DDVis", VIS_HEAD)];
+    headproject = "\n[deps]\nStatistics = \"10745b16-79ce-11e8-11f9-7d13ad32a3b2\"\n", sub = "lib/DDVis")
+const V = dd(VIS, "HEAD~1", "--no-jet")
+# One run, without JET, whose base has the dependency LinearAlgebra and whose head drops it and is
+# resolved.
+const DROP = fixture("DDDrop", ["src/DDDrop.jl" => mod("DDDrop", "using LinearAlgebra\na(x) = norm(x)")],
+    ["src/DDDrop.jl" => mod("DDDrop", "a(x) = sqrt(sum(abs2, x))")];
+    project = "\n[deps]\nLinearAlgebra = \"37e2e46d-f89d-539d-b4ee-838fcccc9c8e\"\n", headproject = "")
+run(`$(Base.julia_cmd()) --startup-file=no --project=$DROP -e "using Pkg; Pkg.resolve(; io = devnull)"`)
+const D = dd(DROP, "HEAD~1", "--no-jet")
+
+@testset "a package in a subdirectory of its repository" begin
+    @test startswith(V.out, "DDVis: ") && V.code == 0
+    @test isfile(joinpath(V.run, "base.json")) && isfile(joinpath(V.run, "head.json"))
+end
+
+@testset "a name that the root module imports changes no finding" begin
+    @test isempty(lines(V.out, "FAIL:")) && isempty(lines(V.out, "INFO: gone"))
+    @test isempty(lines(V.out, "INFO: added method:"))
+    @test startswith(verdict(V.out), "Verdict: PASS — 0 FAIL, 0 UNKNOWN, ")
+end
+
+@testset "a method on a generic of a package that the base did not load is not an added method" begin
+    vb, vh = (DD.JSON.parsefile(joinpath(V.run, "$s.json")) for s in ("base", "head"))
+    @test "Statistics" ∉ vb["loaded"] && "Statistics" ∈ vh["loaded"]
+    mean = only(filter(m -> m["name"] == "mean", vh["methods"]))
+    @test mean["generic"] == "external" && mean["generic_package"] == "Statistics"
+    @test !any(l -> occursin("mean", l), lines(V.out, "INFO: added method:"))
+    # the package of a generic is the root of its module
+    @test only(filter(m -> m["name"] == "cycle", vh["methods"]))["generic_package"] == "Base"
+    # a generic with no module, as of a function type that is no DataType, counts as on the base
+    ext(p) = Dict("key" => "Tuple{F, Any} where F", "file" => "src/X.jl", "line" => 1, "generic" => "external",
+        "generic_package" => p, "others" => [])
+    added(p) = lines(join(DD.compare(side("base"), merge(side("head"), Dict("methods" => [ext(p)]))), '\n'), "INFO: added method:")
+    @test length(added(nothing)) == 1 && isempty(added("Statistics"))
+end
+
+@testset "a head's manifest that lacks a dependency of the base stays out of the base tree" begin
+    @test lines(D.out, "manifest: ") ==
+          ["manifest: the head's Manifest.toml lacks LinearAlgebra of the base's [deps], so the base resolves its own"]
+    @test isfile(joinpath(D.run, "base.json")) && isfile(joinpath(D.run, "head.json"))
+    @test isempty(lines(D.out, "UNKNOWN:")) && D.code == 0
+    @test DD.JSON.parsefile(joinpath(D.run, "base.json"))["manifest"] === false
+end
+
 @testset "a head that does not load fails with its error" begin
     dir = fixture("DDHeadBroken", ["src/DDHeadBroken.jl" => mod("DDHeadBroken", "a(x) = x")],
         ["src/DDHeadBroken.jl" => mod("DDHeadBroken", "error(\"broken head\")")])
@@ -461,9 +605,9 @@ end
 end
 
 @testset "a side past its time gives no verdict" begin
-    # the head writes a counter every 0.1 s for 60 s while it loads, without precompilation, so
-    # that the side process itself is the one that sleeps
-    body = "__precompile__(false)\nfor i in 1:600\n    sleep(0.1)\n    write(joinpath(@__DIR__, \"..\", \"alive.txt\"), string(i))\nend"
+    # the head writes a counter every 0.1 s for 60 s while it loads; the module is precompiled, so
+    # a process that the side starts runs the loop
+    body = "for i in 1:600\n    sleep(0.1)\n    write(joinpath(@__DIR__, \"..\", \"alive.txt\"), string(i))\nend"
     dir = fixture("DDSlow", ["src/DDSlow.jl" => mod("DDSlow", "a(x) = x")], ["src/DDSlow.jl" => mod("DDSlow", body)])
     r = dd(dir, "HEAD~1", "--no-jet", "--timeout", "5")
     @test "UNKNOWN: head timed out after 5 s" in lines(r.out, "UNKNOWN: ")
@@ -472,6 +616,36 @@ end
     n = isfile(alive) ? read(alive, String) : ""
     sleep(1.0)
     @test (isfile(alive) ? read(alive, String) : "") == n
+    # a limit by which the precompilation has started: the kill reaches it
+    rm(alive; force = true)
+    r = dd(dir, "HEAD~1", "--no-jet", "--timeout", "40")
+    @test "UNKNOWN: head timed out after 40 s" in lines(r.out, "UNKNOWN: ")
+    @test isfile(alive)
+    n = isfile(alive) ? read(alive, String) : ""
+    sleep(1.0)
+    @test (isfile(alive) ? read(alive, String) : "") == n
+    # an interrupt of the script kills the sides too
+    rm(alive; force = true)
+    buf = IOBuffer()
+    p = run(pipeline(ignorestatus(`$(Base.julia_cmd()) --startup-file=no $SCRIPT $dir "HEAD~1" --no-jet`); stdout = buf, stderr = devnull);
+        wait = false)
+    t0 = time()
+    while !isfile(alive) && time() - t0 < 60
+        sleep(0.2)
+    end
+    @test isfile(alive)
+    kill(p, Base.SIGINT)
+    wait(p)
+    m = match(r"run directory (\S+)", String(take!(buf)))
+    m === nothing || push!(MADE, m[1])
+    n = read(alive, String)
+    sleep(1.0)
+    @test read(alive, String) == n
+    # a signal that the script did not send
+    sig = fixture("DDSignal", ["src/DDSignal.jl" => mod("DDSignal", "a(x) = x")],
+        ["src/DDSignal.jl" => mod("DDSignal", "__precompile__(false)\nccall(:kill, Cint, (Cint, Cint), getpid(), 9)")])
+    r = dd(sig, "HEAD~1", "--no-jet")
+    @test "UNKNOWN: head ended by signal 9" in lines(r.out, "UNKNOWN: ") && r.code == 3
     # a signal that the script did not send, and an exit with no result, give no verdict either
     rd = mktempdir(ROOT)
     ls, status = DD.analyse(rd, Dict("base" => DD.End(15, 0, false), "head" => DD.End(0, 1, false)); timeout = 5, jet = false)
