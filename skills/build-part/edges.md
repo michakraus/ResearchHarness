@@ -171,6 +171,15 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   arithmetic the base used (M6 fix 1, *Simplify the optimiser package and the learning package for
   0.9*)
 - a status that hides a failure, such as *stalled* for a large increase
+- a finite-difference reference whose error the check divides by a quantity that can approach zero
+  across draws: no fixed-step `Float64` difference meets a relative bound on every draw there, and
+  the reference must be taken in `BigFloat` at a small step. Measure the reference's own error over
+  the seeds before a tolerance is claimed (E verify 2, *Extend the Lagrangian network package with
+  the methods of the literature*)
+- a scale by the largest absolute entry, tested only on vectors whose largest entry is positive:
+  `maximum(u)` in place of `maximum(abs, u)` survives, because it drops every point whose largest
+  entry is 0 and whose other entry is negative. Add that point to the case set (E verify 3, the
+  same plan)
 - a minimiser near an end of the bracket, where a safeguard on the interpolated step falls back to
   bisection (K13, round 5 of the loop benchmark)
 - a near-quadratic merit, where the cubic coefficient of an interpolation is round-off and the root
@@ -616,6 +625,10 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   program that ends at once is reaped in between, and `getpid` throws `ESRCH`. It failed 2 runs in
   300 on macOS and three cases on the Linux runner. Read the PID straight after `run`, and test a
   program that ends at once in a loop (P5 CI, *Make the Harness enforce strict Python*)
+- an exit status read from a Julia `Process` as `p.exitcode` alone: for a child that a signal
+  ends — an abort, a segfault, an OOM kill — `exitcode` is 0 and `termsignal` holds the signal, so
+  a crash reads as a clean exit. Read `termsignal` first, or use `success(p)`, and test a child
+  that aborts (J8a round 1, *Strengthen the Julia coding layer of the harness*)
 - a message read from another tool's error text by a marker, tested only on the marker's shortest
   form: JuliaSyntax marks a one-character span `└ ── reason` and a wider one `└────┘ ── reason`,
   so a split at the first `──` keeps part of the marker. Test each form the tool prints, and split
@@ -842,6 +855,11 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   harness reports VALID and CAUGHT, but the kill is the `UndefVarError`, not the defect the mutant
   names. Read the failed assertion's message, and spell the mutant so its only change is the
   defect (M5, *Simplify the optimiser package and the learning package for 0.9*)
+- a mutant reproducer that reads any failure of the test run as a kill, and never runs the tests
+  on the unmutated tree: a test file that fails there for another reason — a dependency that
+  today's resolution breaks, a missing helper, two files that clash in one module — reads as
+  "every mutant killed". Run the tests once without a mutant first, and give a failure there an
+  exit status of its own (J8a round 1, *Strengthen the Julia coding layer of the harness*)
 - a round-off tolerance given as a constant relative factor with no derivation (`1e-9·n`): it
   accepts a real fraction at the domain's own scale (a stride of 100) and a whole step at 10⁹.
   Derive the bound from the roundings of the computed value, and test one input inside the bound
@@ -894,6 +912,15 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   renders, and the explicit target, which names the binding's module, resolves. Build the docs before
   and after the page's edit and compare the two error sets: a `Documentation` job that is already red
   on the base hides the class a page adds (C3, the Hamiltonian and Lagrangian networks' package)
+- **a generated page that grows past Documenter's `size_threshold` while every test stays green:**
+  one `@autodocs Modules = [P]` on `library.md` renders every docstring the package holds, so a part
+  that adds a page of them pushed it to 224 KiB against the 200 KiB default — `main` passed and both
+  of the part's heads failed with `HTMLSizeThresholdError`, which no critic read for three rounds,
+  because a `Documentation` job is not a required check. Split the page by source layer, each
+  `@autodocs` with its own `Pages` list, and leave `size_threshold` alone; a file dropped from every
+  `Pages` list is the mutant, and a local `makedocs` catches it through `checkdocs = :all` and
+  `warnonly = Symbol[]`. Read the docs workflow on a head that adds docstrings (F verify 3, the plan
+  that revives the multisymplectic package)
 - a testset label that states more than the testset shows: a label claimed that no monolithic
   expression builds a two-integrator chain, and one builds at width 2, while every assertion of the
   testset passed. Write the label from what the testset compares, and probe the claim the label

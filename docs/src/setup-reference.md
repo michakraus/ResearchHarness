@@ -83,8 +83,8 @@ A line that fails prints its error, and the next line runs.
 **Why.** Each line answers a question of a later step:
 
 - `sw_vers`, the `os-release` line and `uname -m` give the system and the architecture. This page
-  covers Apple silicon, where `uname -m` prints `arm64`, and Ubuntu 26.04 on `x86_64` and
-  `aarch64`. With another value of `uname -m` on Linux, the release files of
+  covers Apple silicon, where `uname -m` prints `arm64`, and Ubuntu 26.04 and 24.04 on `x86_64`
+  and `aarch64`. With another value of `uname -m` on Linux, the release files of
   [The pinned releases](#the-pinned-releases) do not exist; install those tools from their own
   sites.
 - On Linux, the two `sysctl` keys decide whether the Claude Code [sandbox](concepts.md#sandbox)
@@ -317,12 +317,13 @@ Julia code only.
 brew install jolars/tap/fatou
 ```
 
-`harness` starts on the `python3` of the `PATH`, which must be 3.14 or later, and then runs on the
+`harness` starts on the `python3` of the `PATH`, which must be 3.9 or later, and then runs on the
 interpreter of its Python environment, which it makes with `uv` the first time that it runs
-outside a [session](concepts.md#session). `python` supplies a current `python3`, and `python@3.14`
-supplies the Python 3.14 that uv makes the environment on. Homebrew's `rsync` replaces the `rsync`
-of macOS on the `PATH`. jq is optional: the status line of Claude Code reads its data with jq,
-and without it, the status line shows no values. macOS supplies `lsof`, `launchctl` and the other
+outside a [session](concepts.md#session); below 3.14, uv fetches Python 3.14 for it. `python`
+supplies a current `python3`, and `python@3.14` supplies the Python 3.14 that uv makes the
+environment on. Homebrew's `rsync` replaces the `rsync` of macOS on the `PATH`. jq is optional:
+the status line of Claude Code reads its data with jq, and without it, the status line shows no
+values. macOS supplies `lsof`, `launchctl` and the other
 system tools of [Dependencies](dependencies.md#harness-setup-installs).
 
 **Check.** Each command prints the version of one tool: Python 3.14 or later, Python 3.14, uv,
@@ -366,7 +367,9 @@ Ubuntu 26.04 packages Python 3.14 and Node.js 22.22, which meet their minimums, 
 in version 8.16.0, below the minimum 8.21. So gitleaks comes from its release, in
 [The pinned releases](#the-pinned-releases). A release of a distribution can package an older
 version than the minimum that Dependencies gives; then `harness setup` installs that tool from its
-pinned release, where `setup/tools.toml` has one. Ubuntu 26.04 packages no uv: the first run of
+pinned release, where `setup/tools.toml` has one. Ubuntu 24.04 packages Node.js 18, below its
+minimum, so Node.js comes from its release there, and Python 3.12, so the first run of `harness`
+lets uv fetch Python 3.14 for the Python environment. Ubuntu 26.04 packages no uv: the first run of
 `harness` outside a session fetches the uv release that `bin/harness` pins into `~/.local/bin`,
 checks its sha256, and makes the Python environment of the harness with it. bubblewrap and socat
 are the tools of [The sandbox of Claude Code](#the-sandbox-of-claude-code). The Julia update job
@@ -374,8 +377,9 @@ of [The jobs](#the-jobs) calls `lsof`. jq is optional: the status line of Claude
 data with jq, and without it, the status line shows no values.
 
 **Check.** The first command prints the version of each package that `apt-get` installed. Each
-command after it prints the version of one tool: Python 3.14 or later, Node.js 22.3 or later (or
-20.16 or later in 20.x).
+command after it prints the version of one tool: Python 3.9 or later (3.12 on Ubuntu 24.04, where
+uv fetches Python 3.14 for the Python environment), Node.js 22.3 or later (or 20.16 or later in
+20.x).
 
 ```bash
 dpkg-query -W python3 git gh nodejs npm shellcheck coreutils rsync curl jq bubblewrap socat lsof
@@ -387,10 +391,14 @@ jq --version
 ## The pinned releases
 
 **What `harness setup` does.** On Ubuntu, each tool that no apt candidate meets installs from its
-pinned release of `setup/tools.toml`: gitleaks, actionlint, RTK and, with the component
-`dotfiles`, chezmoi 2.73.2, each for `x86_64` and `aarch64`. `harness setup` downloads the
-archive, checks its sha256 against the file, and only then installs the program into
-`~/.local/bin`; a download whose sha256 differs installs nothing.
+pinned release of `setup/tools.toml`: gitleaks, actionlint, RTK, Node.js 24.22.2 and, with the
+component `dotfiles`, chezmoi 2.73.2, each for `x86_64` and `aarch64`. `harness setup` downloads
+the archive, checks its sha256 against the file, and only then installs the program into
+`~/.local/bin`; a download whose sha256 differs installs nothing. The release of Node.js is the
+whole tree of nodejs.org, because npm runs from it: `harness setup` unpacks it into
+`~/.local/share/research-harness/node/<version>/`, refuses a member that would land outside that
+directory and a link whose target, as written, climbs out of it, links `node`, `npm` and `npx` in
+`~/.local/bin` to its `bin/`, and removes the tree of any other version.
 On macOS, Homebrew installs these tools, and this step does not run.
 
 **Why.** A pinned release with a checked sha256 installs the version that the harness is tested
@@ -1001,13 +1009,16 @@ and pushes `~/.claude`.
 
 ### macOS
 
-These commands render each launch agent with the profile into `~/Library/LaunchAgents/`, under
-its label, and create the log directories of the jobs. `p` holds the profile key
-`launchd_prefix`; the commands of this step after it use `p` too, so run them in the same shell:
+These commands render the Seatbelt profiles of the server and the update job into
+`~/.config/research-harness/sandbox/`, which their launch agents start them under, then each
+launch agent with the profile into `~/Library/LaunchAgents/`, under its label, and create the log
+directories of the jobs. `p` holds the profile key `launchd_prefix`; the commands of this step
+after it use `p` too, so run them in the same shell:
 
 ```bash
 p=$(harness get launchd_prefix)
-mkdir -p ~/Library/LaunchAgents ~/Library/Logs/kaimon ~/Library/Logs/julia-update ~/Library/Logs/claude-autocommit
+mkdir -p ~/.config/research-harness/sandbox ~/Library/LaunchAgents ~/Library/Logs/kaimon ~/Library/Logs/julia-update ~/Library/Logs/claude-autocommit
+for j in kaimon julia-update; do harness render ~/Research/Harness/sandbox/"$j".sb > ~/.config/research-harness/sandbox/"$j".sb; done
 for j in kaimon julia-update claude-autocommit; do harness render ~/Research/Harness/launchagents/"$j".plist > ~/Library/LaunchAgents/"$p.$j".plist; done
 plutil -lint ~/Library/LaunchAgents/"$p".*.plist
 ```

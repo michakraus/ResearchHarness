@@ -43,8 +43,10 @@ export PATH="$HOME/Research/Harness/bin:$PATH"
 Add the `export` line to `~/.zshrc` too, so that each new shell finds `harness`. The first run of
 `harness` outside a [session](concepts.md#session) makes the Python environment of the harness,
 with `uv sync`, and names it in one line; in a session, its line names `harness install --apply`,
-which makes it. A Python older than 3.14 stops `harness` with exit status 2, an error that names
-the version found. This line lists the subcommands:
+which makes it. With a Python older than 3.14, the first run lets uv fetch Python 3.14 for the
+environment; a session cannot fetch it, and stops `harness` with exit status 2. A Python older
+than 3.9 stops `harness` with exit status 2, an error that names the version found. This line
+lists the subcommands:
 
 ```bash
 harness --help

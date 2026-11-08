@@ -10,12 +10,14 @@ harness <subcommand> --help
 
 ## Description
 
-`bin/harness` is the entry point of the harness. It needs Python 3.14 or later and nothing beyond
-the standard library. Put `bin/` on the `PATH`, as the step *The clone*
+`bin/harness` is the entry point of the harness. It starts on Python 3.9 or later and needs
+nothing beyond the standard library. Put `bin/` on the `PATH`, as the step *The clone*
 of [setup-macos.md](setup-macos.md#the-clone) and [setup-linux.md](setup-linux.md#the-clone) shows.
-An older Python prints the version that it found and the version that it needs, and exits 2.
-Every subcommand runs on the interpreter of the Python environment of the harness, which
-`bin/harness` makes with [uv](dependencies.md#uv) the first time that it runs outside a session.
+A Python below 3.9 prints the version that it found, 3.9 and 3.14, and exits 2.
+Every subcommand runs on the interpreter of the Python environment of the harness, Python 3.14 or
+later, which `bin/harness` makes with [uv](dependencies.md#uv) the first time that it runs outside
+a session. Where the Python that starts it is below 3.14, uv fetches Python 3.14 for the
+environment; a session with no environment cannot, and exits 2.
 
 Each subcommand of `harness`, such as `install` or `doctor`, keeps one contract:
 
@@ -90,7 +92,8 @@ harness setup [--yes] [--dry-run]
 
 Sets up a machine in one run: the tools and the frontends that the profile's
 [`[setup]`](profile.md#the-setup-table) chooses, then the harness's own steps. The machine needs
-Python 3.14, uv, git and the clone before it, and on macOS Homebrew. It runs on macOS and on
+Python 3.9 or later (uv fetches Python 3.14 below it), uv, git and the clone before it, and on
+macOS Homebrew. It runs on macOS and on
 Ubuntu, on the architectures `arm64` and `x86_64` of macOS and `x86_64` and `aarch64` of Linux.
 
 In a terminal, `setup` asks its questions. Without a profile, it copies `examples/profile.toml`
@@ -110,7 +113,9 @@ The plan holds these steps, in this order:
    tools below their minimum that it lists. On Ubuntu, one `sudo apt-get install -y` line of each
    package whose apt candidate meets the tool's minimum;
 3. on Ubuntu, each tool that apt does not meet, from its pinned release of `setup/tools.toml`
-   into `~/.local/bin`, after a check of the sha256 of the archive;
+   into `~/.local/bin`, after a check of the sha256 of the archive; the release of Node.js is a
+   whole tree, unpacked into `~/.local/share/research-harness/node/<version>/`, and `node`, `npm`
+   and `npx` in `~/.local/bin` link into it;
 4. the vendor installers, in this order: juliaup, Julia through juliaup when juliaup is there
    (`juliaup update` when Julia is below its minimum), fatou on Ubuntu, Kaimon as a Julia app,
    Claude Code, and on Ubuntu OpenCode (with `--no-modify-path`) and oh-my-pi;
@@ -119,7 +124,9 @@ The plan holds these steps, in this order:
 7. `harness trust --apply`;
 8. with the component `jobs`, the jobs as the dotfiles kit's services step does them: the copies
    in `~/.local/bin`, then the launch agents or the `systemd --user` units, rendered with
-   `harness render` and loaded;
+   `harness render` and loaded; on macOS, the Seatbelt profiles of the Kaimon and julia-update
+   jobs, rendered with `harness render sandbox/<job>.sb` into
+   `~/.config/research-harness/sandbox/` before each one's launch agent;
 9. with the component `julia`, the Kaimon token `~/.config/kaimon/auth-token`, mode 600, from the
    first key of `~/.config/kaimon/config.json` when that file exists and the token does not;
 10. `harness doctor`, after the lines under *By hand*, so that its report ends the run.
@@ -196,7 +203,9 @@ the oh-my-pi directory, and `~/.gemini/` when Antigravity has made it; the Julia
 the `julia` component (see [The Julia environment](#the-julia-environment)); and the Python
 environment (`~/.local/share/research-harness/python/`, with the `dev` group when `[setup]` of
 the profile sets `develop = true`). With `claude` chosen, it writes the stamp
-`~/.claude/.harness-install.json`, which the drift warning at session start reads.
+`~/.claude/.harness-install.json`, which the drift warning at session start reads. For each
+chosen frontend it also writes the `srt` settings,
+`~/.config/research-harness/sandbox/<frontend>.json` ([The srt settings](components/sandbox.md)).
 
 **Where to run it:** in your own terminal. A session cannot write the installed files.
 

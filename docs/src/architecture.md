@@ -196,6 +196,7 @@ frontend either: `hooks/` holds the guard hooks that all four frontends call,
 | `githooks/` | git hooks and GitHub Actions workflow templates for Julia packages, and the Julia scripts that check them; `lib/harness/githooks.py` installs them |
 | `scripts/` | Julia test, mutation, and code-structure tools; transcript and lint tools |
 | `launchagents/` | macOS launch agent templates |
+| `sandbox/` | `daemon.toml`, the file rules of the Seatbelt profiles of the Kaimon and julia-update launch agents, and `probe-daemon.jl`, the probes of the confined server |
 | `systemd/` | the `systemd --user` unit templates of the same jobs, for Linux |
 | `tests/` | the queries of the skill-trigger test |
 | `ast-grep/`, `fatou.toml` | linter configuration |

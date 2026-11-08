@@ -215,7 +215,9 @@ traps, for example a check that is missing instead of failed, or a corrupted cac
 operating system. It never reports green for a repository that it could not read.
 
 It returns one verdict per repository: `green`, `FAIL`, `expected red`, `no runs` or `drift`. An
-`expected red` is a real answer, not a hedge. It changes nothing. Use `julia-pr-reviewer` for the
+`expected red` is a real answer, not a hedge: a red check that an entry of the repository's
+`KNOWN_ISSUES.md` explains. It writes only its query files, in one scratch directory, and changes
+nothing else. Use `julia-pr-reviewer` for the
 content of one pull request.
 
 ## `julia-load-doctor`
@@ -225,9 +227,13 @@ a request such as "using X fails" or "the pre-commit hook says loads FAILED". A 
 not load blocks every commit that stages a `.jl` file, because `pre-commit` runs a load test.
 
 It reproduces the failure and reads the first error, not the last. It puts the cause into one of
-four classes: an undeclared dependency, a name moved to an extension, an upstream regression, or
-code that needs a rewrite. Before it blames upstream, it checks whether the manifest is out of
-date. It probes in a scratch environment outside the repository.
+six classes: a missing manifest, a stale manifest, an undeclared dependency, a name moved to an
+extension, an upstream regression, or code that needs a rewrite. The two manifest classes are
+environment states: their fix is an instantiate or an update, and nothing is committed, because
+`Manifest.toml` is gitignored. A stale pin inside `[compat]` also shows a `[compat]` lower bound
+that is too low, and the agent reports that bound as a second finding. Before it blames upstream,
+it checks whether the manifest is out of date. It probes in a scratch environment outside the
+repository.
 
 It returns the cause class, the `file:line`, the minimal fix, and whether the fix is local or
 needs an upstream release. It diagnoses only and edits nothing.
@@ -285,7 +291,9 @@ that checks each claim. Use it with a request such as "check the derivation in t
 
 It lists and numbers all claims first. For each claim it decides what a check is and what makes
 the check fail. It writes the check in Julia, runs it, and runs a control that can fail too. It
-puts each script into the paper's `scripts/` directory and cites it with `\script{}`.
+iterates in a Kaimon session and takes each result for its report from a fresh process, as
+`math-verify` says. It puts each script into the paper's `scripts/` directory and cites it with
+`\script{}`.
 
 It returns a verdict per claim (`holds`, `fails`, `holds under` a condition, or `inconclusive`)
 and the scripts. It does not change prose, the structure or the change markings. For one statement

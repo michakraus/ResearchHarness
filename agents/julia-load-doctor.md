@@ -2,7 +2,7 @@
 name: julia-load-doctor
 model: medium
 omitClaudeMd: true
-description: "Diagnose why a Julia package does not load and propose the minimal fix. Use when: using X fails, the package won't precompile, UndefVarError while loading, method overwriting warnings on load, ERROR LoadError during precompilation, the pre-commit hook says loads FAILED. Returns a cause class, the offending file:line, and whether the fix is local or needs an upstream release. Use ci-triage for a red matrix across many repositories."
+description: "Diagnose why a Julia package does not load and propose the minimal fix. Use when: using X fails, the package won't precompile, UndefVarError while loading, method overwriting warnings on load, ERROR LoadError during precompilation, is required but does not seem to be installed, the pre-commit hook says loads FAILED. Returns a cause class, the offending file:line, and whether the fix is local or needs an upstream release. Use ci-triage for a red matrix across many repositories."
 tools:
   - read
   - grep
@@ -30,10 +30,24 @@ load failure.
 
    | class | what it looks like | fix lives |
    |:--|:--|:--|
+   | **missing manifest** | no `Manifest.toml`; "Package Foo […] is required but does not seem to be installed" | here — `Pkg.instantiate()`, `Project.toml` unchanged; an environment state, not a code defect |
+   | **stale manifest** | `Manifest.toml` pins a version outside `[compat]`, or older than the release that defines a name `src/` imports ("Imported binding … was undeclared at import time") | here — `Pkg.update()`, or delete the manifest and instantiate; `Pkg.resolve()` does not move the pin; `Project.toml` unchanged |
    | **undeclared dependency** | `using Foo` in `src/`, `Foo` in neither `[deps]` nor `Manifest.toml` | here — one entry |
-   | **moved to an extension** | a name that used to be exported is now behind a package extension | here — `[compat]`, sometimes a trigger dep |
+   | **moved to an extension** | a name that a dependency's newer release defines only in a package extension | here — `[compat]`, sometimes a trigger dep |
    | **upstream regression** | method overwriting or a removed method from a dependency's new release | **upstream**, or a version jump |
-   | **needs a rewrite** | many imported names no longer exist anywhere in the current stack | neither — say so |
+   | **needs a rewrite** | many imported names exist nowhere in the current stack | neither — say so |
+
+   **`Manifest.toml` is gitignored in the repositories of this tree.** A fix that changes it is
+   never committed, so a manifest class alone calls for no commit and no source edit. A stale pin
+   inside `[compat]` that lacks a name `src/` imports also shows a `[compat]` lower bound below
+   the release that defines the name: report that bound as a second finding, with its `[compat]`
+   edit. Confirm the ignore with `git check-ignore -v Manifest.toml` before you call a manifest
+   tracked or untracked. A new worktree has no manifest of its own: the worktree hook copies the
+   main checkout's manifest only when it holds every dependency of the worktree's `Project.toml`
+   inside its `[compat]`. Else the hook prints a line that starts
+   `worktree hook: no Manifest.toml copied`, or nothing when the main checkout has no manifest.
+   For a missing manifest in a worktree, check the main checkout's manifest against the
+   worktree's `Project.toml`, and name the reason in the report.
 
 4. **Establish that a name is really gone** before calling it a rewrite. Run `julia-methods.jl` on
    each candidate package's **directory** — `Packages/Example`, not the package name;
@@ -44,7 +58,8 @@ load failure.
    *resolved* version in `Manifest.toml` against the **working tree** in `~/Research/Packages/<pkg>/`
    and its `Project.toml`. A dependency that was dropped upstream months ago still appears in a
    stale manifest, and the failure then belongs to the consumer's compat bounds, not to the
-   ecosystem.
+   ecosystem. A pin outside `[compat]`, or behind a name that `src/` imports, is the class
+   **stale manifest**, not an upstream regression.
 
    A manifest pin that holds a broken dependency back is a stopgap, not the fix. A stale pin in one
    repository says nothing about the others: read each one's own manifest before you report a
@@ -72,7 +87,7 @@ load failure.
 ```
 ## <package> — does not load / loads
 
-Cause class: undeclared dependency | moved to an extension | upstream regression | needs a rewrite
+Cause class: missing manifest | stale manifest | undeclared dependency | moved to an extension | upstream regression | needs a rewrite
 
 Reproduced
 <the command, and the first three lines of the real error>

@@ -19,8 +19,8 @@
   closed, since sh, bash and dash run the lines before it. The `git` write check allows only a
   command of plain text (no `$`, backslash, backtick, `#` or `!` outside a single quote), so no
   reading that one shell does not run can allow a write. K88 shrinks to a program that a variable
-  or a substitution names, and K92 to a path that a substitution makes; K136 records the same
-  limit of the other checks, K138 a command that only dash runs.
+  or a substitution names, and K92 to a path that a substitution makes; K138 records the same
+  limit of the other checks, K140 a command that only dash runs.
 - **A lease push reads the default branch of the repository that it pushes from.** The test for a
   default branch reads `origin/HEAD` in the directory after each `cd` before the push and each
   `-C` or `--git-dir` of its `git`, as well as in the call's working directory, so
