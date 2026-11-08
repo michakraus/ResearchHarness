@@ -1208,6 +1208,7 @@
 {"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "git push --force-with-lease origin feature", "Cwd": "@@R@@/Packages/Own"}, "decision": "ask", "bypass": true}
 {"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "git push --force-with-lease origin main", "Cwd": "@@R@@/Packages/Own"}, "decision": "deny", "bypass": null}
 {"frontend": "omp", "tool": "bash", "input": {"command": "bash -c 'git push --force-with-lease origin main'"}, "cwd": "@@R@@/Packages/Own", "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "cd ../Own && git push --force-with-lease origin trunk"}, "cwd": "@@R@@/Packages/Foreign", "decision": "deny"}
 {"frontend": "omp", "tool": "bash", "input": {"command": "git push --force-$'w'ith-lease origin main"}, "cwd": "@@R@@/Packages/Own", "decision": "deny"}
 {"frontend": "omp", "tool": "bash", "input": {"command": "g\"\"it init probe"}, "cwd": "@@OMPHOME@@/Research/P", "decision": "deny"}
 {"frontend": "opencode", "tool": "shell", "input": {"command": "eval 'git push --force-with-lease origin main'"}, "directory": "@@R@@/Packages/Own", "decision": "deny"}

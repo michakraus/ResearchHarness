@@ -713,12 +713,12 @@
 - kind: defect
 - found: 2026-11-08, the fourth pre-PR verification of `guard/bypass-gaps`
 
-### K139 · The bash dialect of the guard reads `\c` of an ANSI-C quote as bash 3.2 does, not as bash 5.3 does.
+### K139 · The bash dialect of the guard reads `\c` of an ANSI-C quote as bash 3.2 does in one case and as bash 5.3 does in another.
 
 - location: `hooks/guard/shell.py:102`
 - evidence: bash 5.3 reads `$'x\c\\y'` as `x`, the control character 0x1C and `y`; bash 3.2
   (`/bin/bash` and `/bin/sh` on macOS) and the guard keep a backslash after the 0x1C. bash 3.2
-  reads `$'x\c'y` as `x\y`, the guard as `x\cy`. Each difference leaves a control character or a
+  reads `$'x\c'y` as `x\y`; bash 5.3 and the guard read it as `x\cy`. Each difference leaves a control character or a
   backslash in the word, so no word of ASCII letters comes of it.
 - kind: defect
 - found: 2026-11-08, the fourth pre-PR verification of `guard/bypass-gaps`

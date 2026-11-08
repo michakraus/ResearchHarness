@@ -297,8 +297,8 @@ def script_of(tokens: Tokens, index: int) -> tuple[str, int, int] | None:
 
 def script_tokens(script: str, dialect: Dialect) -> Tokens | None:
     """The tokens of `script` in `dialect`. A script with an open quote is read with the quote
-    closed at its end (CLOSERS), since sh, bash and `eval` run the lines before the line on which
-    the quote opens; None when no closer closes it."""
+    closed at its end (CLOSERS), since sh, bash and dash, in `-c` and in `eval`, run the lines
+    before the line on which the quote opens (zsh runs none); None when no closer closes it."""
     for closer in ("", *CLOSERS):
         tokens = lex(script + closer, dialect)
         if tokens is not None:
