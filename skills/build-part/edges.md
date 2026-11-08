@@ -479,6 +479,13 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
 - a JSON file nested deeper than the parser reads: `json.loads` raises `RecursionError`, which is
   not a `ValueError`, at a depth of about 1000 on Python 3.11 (P1 round 1, *Publish the harness
   as ResearchHarness*)
+- an input record whose list is empty: a check written as `all(… for k in keys)` is true on `[]`,
+  so the record passes, and the step that the list should limit runs on everything. Check that the
+  list is not empty (J8b round 1, *Strengthen the Julia coding layer of the harness*)
+- two inputs joined by a key, checked in one direction only: every grade names a draw of the
+  audit, but a draw of the audit with no grade drops out without a message, and the total counts
+  only the draws that it sees. Check the join both ways (J8b round 1, *Strengthen the Julia coding
+  layer of the harness*)
 - a write check that tests only for write access: a target whose bytes stay and whose mode
   changes needs a `chmod`, which needs the owner, not write access (P1 round 1, *Publish the
   harness as ResearchHarness*)
