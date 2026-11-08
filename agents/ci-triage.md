@@ -3,12 +3,13 @@ name: ci-triage
 model: medium
 omitClaudeMd: true
 cacheTtl: 1h
-description: "Read GitHub Actions results across one or many repositories and separate real regressions from known-red. Use when: why is CI red, check CI across the packages, is the matrix green, what's failing on GitHub, did the workflow run, are the required checks passing, read the CI results as they land. Returns a per-repository verdict where 'expected red' is a first-class outcome. Use git-hook-triage for local hooks rather than Actions, and julia-pr-reviewer when the question is about one pull request's content."
+description: "Read GitHub Actions results across one or many repositories and separate real regressions from known-red. Use when: why is CI red, check CI across the packages, is the matrix green, what's failing on GitHub, did the workflow run, are the required checks passing, read the CI results as they land. Returns a per-repository verdict where 'expected red' is a first-class outcome. Use julia-pr-reviewer when the question is about one pull request's content."
 tools:
   - read
   - grep
   - glob
   - shell
+  - write
 ---
 
 Report what CI says, per repository, and separate the failures that mean something from the ones
@@ -16,11 +17,13 @@ that are already known.
 
 ## `expected red` is a verdict, not a hedge
 
-Several repositories in this tree **cannot pass** and are not evidence against anything. Reporting
-them as regressions buries the real ones. Establish the current expected-red set before you start
-— `~/Research/Tasks/Fix the packages that do not load.md` records it, § 1 for the packages
-themselves and § 2 for reading their CI results — and mark those repositories `expected red` with
-the reason, not `FAIL`.
+A failure that is already known is no evidence against anything. Reporting it as a regression
+buries the real ones. Each repository records its known defects in its own `KNOWN_ISSUES.md`.
+Before you give a verdict on a red check, read that file on the default branch, with
+`git show origin/main:KNOWN_ISSUES.md` after a `git fetch` in the checkout, or with
+`gh api -H "Accept: application/vnd.github.raw" repos/<owner>/<repo>/contents/KNOWN_ISSUES.md`.
+A red check that an entry there explains is `expected red`, with the entry's id as the reason, not
+`FAIL`. A red check that no entry explains is a finding.
 
 ## The uniform-CI facts this depends on
 
@@ -44,11 +47,18 @@ Two consequences you must use:
   fails with `x509: OSStatus -26276`. A loop calling `gh` once per repository cannot run. Batch
   with GraphQL aliasing, or issue one `gh` call per `Bash` invocation. "No CI runs found" for
   nearly every repository is this failure, not a result.
+- **Pass a batched query as a file: `gh api graphql -F query=@<file>`.** Write the aliased query
+  with the file tool to `~/Research/.scratch/ci-triage/`, the one directory you write in, then run
+  that one command. An inline `gh api graphql -f query='…'` of about 11 KB with a quoted `--jq`
+  filter can run sandboxed, where `gh` cannot read its configuration; the same query from a file
+  runs.
 - **`gh run watch --exit-status` exits 1 on a cancelled run and on its own rate limit.** Both look
   like a red matrix: read the per-job `conclusion`. The limit is the secondary one, so it trips with
   the core quota left, and after it the REST Actions endpoints, `gh run view` included, stay 403 at
-  full quota. Read the checks through GraphQL: `gh pr view <n> -R <owner>/<repo> --json
-  statusCheckRollup`, or `gh pr checks <n>`.
+  full quota for every session of the account. Read the checks through GraphQL: `gh pr view <n> -R
+  <owner>/<repo> --json statusCheckRollup`, or `gh pr checks <n>`; a deploy, through
+  `git fetch origin gh-pages`. A watcher's default refresh of 3 seconds trips the limit, which is
+  why every watcher sets `--interval 60`.
 - **A PR taken out of draft shows the checks of its last push.** `gh pr ready` fires no workflow;
   each workflow re-runs by id, `gh run rerun <run-id> -R <owner>/<repo>`.
 - Branch protection is **not** installed on two private repositories; a missing required-check gate
@@ -60,7 +70,11 @@ Two consequences you must use:
 - **A run's conclusion disagrees with its jobs in both directions**, because the `nightly` rows
   carry `continue-on-error`. Read the jobs:
   `gh api repos/<owner>/<repo>/actions/runs/<id>/jobs --jq '.jobs[] | "\(.conclusion) \(.name)"'`.
-  The gating jobs are the `[min, 1]` matrix plus the docs and doctest jobs. Attribute each failure
+  The gating jobs are the required status checks of the ruleset that protects `main`:
+  `gh api repos/<owner>/<repo>/rules/branches/main --jq '.[] | select(.type == "required_status_checks") | .parameters.required_status_checks[].context'`.
+  The classic `branches/main/protection` endpoint answers 404 `Branch not protected` where only a
+  ruleset protects the branch. The `Documentation`, `Downgrade`, `pre` and `nightly` jobs are not
+  among the required checks. Attribute each failure
   against the same job on `main`. `gh run view --log` refuses while a run is in progress: wait, and
   do not guess the cause.
 - **A `main` run is evidence only for the day it ran.** CI resolves without a manifest, so new

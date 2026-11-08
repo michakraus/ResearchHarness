@@ -20,8 +20,9 @@ Get the pull request first. Each step is its own Bash call:
 2. **The state is `MERGED`** → go to step 5.
 3. **A required check failed, or a reviewer's requested changes are outstanding** → report which,
    and stop. Do not dismiss a review.
-4. **Required checks are pending** → run `gh pr checks $1 -R <repo> --required --watch` in the
-   background, and merge when it exits 0. Merge from `~/Research`, not from the package's
+4. **Required checks are pending** → run
+   `gh pr checks $1 -R <repo> --required --watch --interval 60` in the background, and merge
+   when it exits 0. Merge from `~/Research`, not from the package's
    checkout, so that no local branch moves: `gh pr merge $1 -R <repo> --merge --delete-branch`.
 5. **Clean up.** In the package's checkout, `git fetch origin`. Fast-forward `main` only if the
    checkout is on `main` with a clean tree — another session may hold it, so otherwise say so and

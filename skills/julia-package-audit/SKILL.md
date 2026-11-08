@@ -87,12 +87,13 @@ is harmless for a test-only dependency — it never constrains users.
 ## Tools
 
 `Aqua` (piracy, ambiguities, stale deps, compat bounds) · `JET` (abstract interpretation;
-catches inference and call errors Aqua does not — present in only 2 repositories here, worth
-proposing where a package has real inference surface) · `BenchmarkTools` · `Documenter` with
+catches inference and call errors Aqua does not; worth proposing where a package has real
+inference surface) · `BenchmarkTools` · `Documenter` with
 `DocStringExtensions` · package extensions rather than optional hard dependencies · Holy Traits
 where dispatch on a property is wanted without touching the type hierarchy.
 
-Prefer immutable structs, and abstract rather than concrete field annotations. Short keyword
+Prefer immutable structs. Type every field concretely: a field that would be `Any`, a bare
+`Matrix` or an abstract type takes a type parameter (`data::Matrix{T}`, `model::M`). Short keyword
 syntax `f(; max_iter)`. Test exception **types** or user-facing messages, not incidental text.
 
 ## Facts about this tree

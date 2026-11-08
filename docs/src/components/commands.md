@@ -53,8 +53,8 @@ these rules:
 - When the pull request is merged already, the agent goes to the cleanup.
 - When a required check failed or a reviewer requested changes, it reports which and stops. It
   never dismisses a review.
-- When required checks are pending, it watches them with `gh pr checks --required --watch` in the
-  background, and merges when they pass.
+- When required checks are pending, it watches them with
+  `gh pr checks --required --watch --interval 60` in the background, and merges when they pass.
 
 The merge is `gh pr merge --merge --delete-branch`. The cleanup fetches `origin` and fast-forwards
 `main` only on a clean checkout on `main`. It removes each worktree on the head branch and deletes

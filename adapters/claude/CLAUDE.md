@@ -46,8 +46,14 @@ task id at once, and only the completion notification resumes the session.
 notification carries the verdict:
 
 ```bash
-gh run watch <run-id> -R <owner>/Example.jl --exit-status
+gh run watch <run-id> -R <owner>/Example.jl --exit-status --interval 60
 ```
+
+**Every watcher sets `--interval 60`**, `gh pr checks --watch` too. All sessions and agents of the
+account share one GitHub API limit, and the default refresh of 3 or 10 seconds trips its secondary
+limit on a long run; the guard refuses a watcher below 30 seconds. While the limit holds, read a
+branch or a deploy with `git ls-remote` or `git fetch`, which do not use the API, and make no
+other `gh` call.
 
 `gh` is the whole command there, which is what keeps the sandbox exclusion. Nested in a
 loop it loses that and fails, and the loop reads the failure as "no checks yet" — **not `gh api`,

@@ -23,5 +23,5 @@ Then delegate, from that directory:
 
 Give the agent `<owner>/<repo>`, the PR number and the state from step 3, and nothing about what
 the change is meant to do: the reviewer reviews blind. When the shepherd names CI runs, background
-`gh run watch <run-id> -R <owner>/<repo> --exit-status` for each. Report its verdict, the review
+`gh run watch <run-id> -R <owner>/<repo> --exit-status --interval 60` for each. Report its verdict, the review
 URL and the result of each run.

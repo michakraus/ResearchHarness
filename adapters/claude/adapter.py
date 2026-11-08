@@ -1147,7 +1147,6 @@ MOVED = [
             "ci-triage",
             "editor",
             "exhaustive-auditor",
-            "git-hook-triage",
             "julia-branch-verifier",
             "julia-builder",
             "julia-critic",
