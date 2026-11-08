@@ -121,8 +121,10 @@ somewhere to work.
 **Filter piracy false positives before reporting anything.** A hit is a finding only if it is new
 in this diff *and* it is not a method on a type owned by a sibling package in the same ecosystem,
 not `treat_as_own`-declared, and not in `ext/` — package extensions look like piracy by
-construction. **Most repositories here do not name Aqua in a `Project.toml`**, so on most you are
-running it for the first time and the repository establishes no baseline. Say so.
+construction. **A package that names Aqua in its `test/Project.toml` runs the piracy check in its
+own tests**, unless its call passes `piracies = false`, so a base with a green suite passes that check. Where the
+package names no Aqua, or turns the check off, you run it for the first time and the repository
+establishes no baseline. Say so.
 
 **Point 7 has a positive half.** Does `CHANGELOG.md` carry an entry under `## [Unreleased]` for
 this change? If the change earns one and there is none, that is a **blocker** — the tree's rule is
