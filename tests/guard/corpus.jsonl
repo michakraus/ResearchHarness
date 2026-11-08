@@ -479,6 +479,20 @@
 {"tool": "EnterWorktree", "stdin": {"tool_name": "mcp__ccd_directory__request_directory", "tool_input": {}}, "decision": "ask"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "other": 1}, "decision": "deny", "differs": "The guard denies a Bash payload without a tool_input; rm-scope.py asked on it, and the other Bash scripts let it through."}
 {"tool": "WebFetch", "stdin": {"tool_name": "WebFetch", "tool_input": {"url": "https://example.org"}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "WebFetch", "stdin": {"tool_name": "WebFetch", "tool_input": {"url": "https://api.crossref.org/works?query.bibliographic=symplectic+wave+packet&rows=5", "prompt": "List the DOIs."}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "WebFetch", "stdin": {"tool_name": "WebFetch", "tool_input": {"url": "https://api.openalex.org/works?search=wave+packet&mailto=probe-user@example.org"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "WebFetch", "stdin": {"tool_name": "WebFetch", "tool_input": {"url": "https://api.openalex.org/works?search=wave+packet&mailto=x@example.org"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "WebFetch", "stdin": {"tool_name": "WebFetch", "tool_input": {"url": "https://api.openalex.org/works?search=wave+packet&API_KEY=abc123"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "WebFetch", "stdin": {"tool_name": "WebFetch", "tool_input": {"url": "https://api.unpaywall.org/v2/10.1000/x?e%2Dmail=x"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "WebFetch", "stdin": {"tool_name": "WebFetch", "tool_input": {"url": "https://example.org/search?q=Probe-User%40Example.org"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "WebFetch", "stdin": {"tool_name": "WebFetch", "tool_input": {"url": "https://en.wikipedia.org/wiki/Mailto=", "prompt": "What is a mailto= link?"}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "WebSearch", "stdin": {"tool_name": "WebSearch", "tool_input": {"query": "Ohsawa Leok symplectic semiclassical wave packet dynamics"}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "WebSearch", "stdin": {"tool_name": "WebSearch", "tool_input": {"query": "papers by PROBE-USER@EXAMPLE.ORG", "allowed_domains": ["arxiv.org"]}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "echo 'https://api.crossref.org/works?query=x&mailto=x@example.org'"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "echo 'User-Agent: scout (mailto:probe-user@example.org)' https://api.crossref.org/works"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "echo probe-user@example.org"}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "grep -n 'mailto=' notes.md"}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "echo https://api.crossref.org/works?query=x"}, "cwd": "@@CWD@@"}, "decision": "pass"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": ""}, "cwd": "@@CWD@@"}, "decision": "pass"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "echo x > f.txt"}}, "decision": "deny"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api -X POST repos/example-org/X/issues -f title=t && git add -A"}, "cwd": "@@CWD@@"}, "decision": "deny"}
@@ -1236,3 +1250,16 @@
 {"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "git push $\"--force\" origin x"}, "decision": "deny", "bypass": null}
 {"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "sh -c 'cat ~/.config/gh/hosts.yml'"}, "decision": "deny", "bypass": null}
 {"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "g=git; $g push --force origin x"}, "decision": "ask", "bypass": false}
+{"frontend": "antigravity", "tool": "read_url_content", "args": {"Url": "https://api.crossref.org/works?query=wave+packet"}, "decision": "ask", "bypass": null}
+{"frontend": "antigravity", "tool": "read_url_content", "args": {"Url": "https://api.openalex.org/works?search=x&mailto=probe-user@example.org"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "search_web", "args": {"query": "probe-user@example.org"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "echo 'https://api.crossref.org/works?mailto=x@example.org'"}, "decision": "deny", "bypass": null}
+{"frontend": "omp", "tool": "read", "input": {"path": "https://api.crossref.org/works?query=wave+packet"}, "decision": "pass"}
+{"frontend": "omp", "tool": "read", "input": {"path": "https://api.openalex.org/works?search=x&api_key=abc"}, "decision": "deny"}
+{"frontend": "omp", "tool": "web_search", "input": {"query": "Probe-User@example.org"}, "decision": "deny"}
+{"frontend": "omp", "tool": "web_search", "input": {"query": "symplectic wave packet"}, "decision": "pass"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "echo 'https://api.crossref.org/works?mailto=x@example.org'"}, "decision": "deny"}
+{"frontend": "opencode", "tool": "webfetch", "input": {"url": "https://api.crossref.org/works?query=wave+packet", "format": "text"}, "decision": "pass"}
+{"frontend": "opencode", "tool": "webfetch", "input": {"url": "https://api.openalex.org/works?mailto=probe-user%40example.org", "format": "text"}, "decision": "deny"}
+{"frontend": "opencode", "tool": "websearch", "input": {"query": "probe-user@example.org"}, "decision": "deny"}
+{"frontend": "opencode", "tool": "shell", "input": {"command": "echo 'https://api.crossref.org/works?mailto=x@example.org'"}, "decision": "deny"}

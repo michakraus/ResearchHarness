@@ -20,7 +20,9 @@ reads below when `input.cwd` is given or the command recurses. `read` and `grep`
 a `grep` with none the working directory, and a `grep` reads below its path. `edit` edits each path
 that it names (edit_paths), and `write` writes `input.path` and the path of its hashline header
 (write_path). Each tool path is checked in every form that oh-my-pi may read (path_forms).
-A Kaimon tool `mcp__kaimon_<tool>` is the `mcp` call `kaimon.<tool>`. The caller is `sub` when
+A Kaimon tool `mcp__kaimon_<tool>` is the `mcp` call `kaimon.<tool>`. `web_search` is the `mcp`
+call `web.search` of the web check, and a `read` of an `http` or `https` URL is also the `mcp` call
+`web.fetch` (web_call), beside its path checks. The caller is `sub` when
 the agent's kind is `sub`, and a sub-agent's write to `agent://` is refused (agent_write). Every
 other tool passes.
 
@@ -53,6 +55,7 @@ from guard import (
     plugin,
     rm_scope,
     sandbox_semantics,
+    web_identity,
 )
 from guard.contract import PASS, Action, Call, Caller, Verdict, strongest
 from guard.jsonio import JsonValue
@@ -137,14 +140,17 @@ SHELL: tuple[Check, ...] = (
     git_archive_output.check,
     git_writes.check,
     sandbox_semantics.work_tree_check,
+    web_identity.check,
 )
 CHECKS: dict[Action, tuple[Check, ...]] = {
     "shell": SHELL,
     "read": (listed,),
     "edit": (listed,),
     "write": (agent_write, listed),
-    "mcp": (kaimon_session.check,),
+    "mcp": (kaimon_session.check, web_identity.check),
 }
+# A tool path that `read` fetches from the web.
+WEB_URL = re.compile(r"\s*https?://", re.IGNORECASE)
 
 
 def file_url(text: str) -> str | None:
@@ -250,6 +256,8 @@ def call_of(tool: str, tool_input: dict[str, JsonValue], cwd: str | None, caller
     if tool.startswith(KAIMON):
         arguments = tuple((key, value) for key, value in tool_input.items() if isinstance(value, str))
         return Call("mcp", "kaimon." + tool.removeprefix(KAIMON), (), cwd, caller, arguments)
+    if tool == "web_search":
+        return Call("mcp", "web.search", (), cwd, caller, web_identity.string_arguments(tool_input))
     action = FILE_TOOLS.get(tool)
     if action is None:
         return None
@@ -276,10 +284,17 @@ def decide(data: bytes) -> Verdict:
     found = lists()
     if isinstance(found, str):
         return Verdict("deny", found)
-    call = call_of(*read(data))
-    if call is None:
-        return PASS
-    return strongest(check(call) for check in CHECKS[call.action])
+    message = read(data)
+    calls = [call for call in (call_of(*message), web_call(*message)) if call is not None]
+    return strongest(check(call) for call in calls for check in CHECKS[call.action])
+
+
+def web_call(tool: str, tool_input: dict[str, JsonValue], cwd: str | None, caller: Caller) -> Call | None:
+    """The `web.fetch` call of a `read` whose path is an `http` or `https` URL, or None."""
+    path = tool_input.get("path")
+    if tool != "read" or not isinstance(path, str) or not WEB_URL.match(path):
+        return None
+    return Call("mcp", "web.fetch", (), cwd, caller, (("path", path),))
 
 
 def answer(verdict: Verdict, stdout: TextIO) -> int:

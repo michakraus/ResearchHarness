@@ -1965,7 +1965,7 @@ def layer_cases(check, tmp):
         f"event or group of the template is empty: {no_source} have no source, {empty_events} are empty",
     )
 
-    # The guard runs on the Bash, directory and Kaimon matchers, with `|| exit 2` as the shell's operator,
+    # The guard runs on the Bash, directory, Kaimon and web matchers, with `|| exit 2` as the shell's operator,
     # so that a guard that cannot start blocks the call; the Bash group runs `rtk hook claude` and the
     # guard and nothing else; the Edit matcher runs edit-scope.py and not the guard.
     groups = settings_template(dataclasses.replace(profile, home=spaced), home / "network.toml", python)[
@@ -1978,9 +1978,10 @@ def layer_cases(check, tmp):
             by_matcher.get("Bash") == ["rtk hook claude", guard]
             and by_matcher.get("mcp__ccd_directory__.*|EnterWorktree|ExitWorktree") == [guard]
             and by_matcher.get("mcp__kaimon__.*") == [guard]
-            and sum(c == guard for c in rendered) == 3
+            and by_matcher.get("WebFetch|WebSearch") == [guard]
+            and sum(c == guard for c in rendered) == 4
         ),
-        f"the Bash group runs rtk hook claude and the guard, and the directory and Kaimon groups the guard, "
+        f"the Bash group runs rtk hook claude and the guard, and the directory, Kaimon and web groups the guard, "
         f"rendered as {guard!r} with the operator unquoted: {by_matcher}",
     )
     edit_matcher = "Edit|Write|MultiEdit|NotebookEdit"

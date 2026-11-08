@@ -40,7 +40,7 @@ page groups the hooks: first the guard package and its checks, then `edit-scope.
 
 The guard is one program in `hooks/guard/` that decides a tool call before it runs. Claude Code
 runs it as a `PreToolUse` hook on the matchers `Bash`,
-`mcp__ccd_directory__.*|EnterWorktree|ExitWorktree` and `mcp__kaimon__.*`,
+`mcp__ccd_directory__.*|EnterWorktree|ExitWorktree`, `mcp__kaimon__.*` and `WebFetch|WebSearch`,
 with the command `<python> ~/.claude/hooks/guard --from claude || exit 2`. The `Bash` matcher runs
 `rtk hook claude` first, then the guard. Antigravity runs its copy as a `PreToolUse` hook on every
 tool call, with the command `<python> ~/.gemini/config/hooks/guard --from antigravity`;
@@ -56,8 +56,8 @@ Antigravity, oh-my-pi and OpenCode also run the path-list check `path_list.py`, 
 frontend's `guard-paths.json`; Antigravity's table runs the lift check `sandbox_lift.py` on a shell
 call that it does not deny, which lifts a command out of the sandbox only where the line matches a
 closed grammar and Claude Code's sandbox rule lifts it. One module per check reads that call: the
-staging, write, sandbox, `gh api`, `gh pr create`, `gh` watcher, rm, archive, git write, Kaimon
-and directory checks below. Each check gives `deny`, `ask`, `allow` or `pass` with a reason. The
+staging, write, sandbox, `gh api`, `gh pr create`, `gh` watcher, rm, archive, git write, web,
+Kaimon and directory checks below. Each check gives `deny`, `ask`, `allow` or `pass` with a reason. The
 guard answers the first of `deny`, `ask`, `allow` and `pass` that a check gives, with that check's
 reason, in the form of the frontend: for Claude Code exit 2 with the reason on standard error for
 `deny`, a JSON decision for `ask` and `allow`, and no output for `pass`. A tool that the table does
@@ -303,6 +303,28 @@ plain `--force` push gets no decision from the check; the `deny` rules of the se
 The check reads the state with `git` in the working directory of the call, with `core.fsmonitor`
 off. When `git` fails or cannot run, the call asks. The own organisations are the `org` list of the
 profile, as the `gh api` check reads it.
+
+### The web check
+
+`web_identity.py` refuses a web request that identifies the user, on each web call and each shell
+call of every frontend. The web calls are Claude Code's `WebFetch` and `WebSearch`, OpenCode's
+`webfetch` and `websearch`, oh-my-pi's `web_search` and its `read` of an `http` or `https` URL,
+and Antigravity's `read_url_content` and `search_web`. The check reads each text percent-decoded
+and without case. It refuses:
+
+- a web call any of whose string arguments holds the query parameter `mailto=`, `email=`,
+  `e-mail=`, `api_key=`, `api-key=`, `apikey=` or `access_token=` after `?` or `&`, or holds the
+  user's email address;
+- a shell command that holds such a parameter, or holds `://` and the user's email address.
+
+A literature index such as OpenAlex or Crossref asks automated clients for an email address or a
+key, and a fetched page can ask an agent to create a key with the user's email. The reason tells
+the agent to send the request anonymously and to report an index that rate-limits it as a failed
+source. A placeholder address is refused too, because the parameter is refused whatever its value.
+A parameter name in prose or in a pattern passes, such as `grep 'mailto='`, and so does a search
+for an author by name. The user's email address is `git config --get user.email`, read at most
+once per process; without git or without the key, the check reads the parameters alone. A request
+that a script builds from a file, and a request of a browser or an MCP tool, are beyond its reach.
 
 ### The Kaimon check
 

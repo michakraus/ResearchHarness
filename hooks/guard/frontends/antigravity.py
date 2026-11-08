@@ -26,13 +26,14 @@ path refuses it. The paths of a call are its arguments of PATH_KEYS; those of WI
 working directory that a `Cwd` names, are paths that the call reads below. Each tool of ACTIONS has
 its neutral action; `call_mcp_tool` is the `mcp` call `<ServerName>.<ToolName>`, whose `Arguments`,
 an object or the JSON text of one, a Kaimon `ex` or `manage_repl` call must hold and any other
-Kaimon call may hold; any other tool is an `mcp` call by its own name, which only the path list
-checks.
+Kaimon call may hold; `read_url_content` and `search_web` are the `mcp` calls `web.fetch` and
+`web.search` (WEB_TOOLS) with their string arguments; any other tool is an `mcp` call by its own
+name, which only the path list checks.
 
 THE CHECKS: the path list, `guard-paths.json` two directories above this package, as
-`harness install` renders it, on every call (`path_list`); on a shell call also the eight shell
+`harness install` renders it, on every call (`path_list`); on a shell call also the nine shell
 checks and the work-tree check of `sandbox_semantics`, whose other shapes describe Claude Code's
-sandbox alone; on an `mcp` call also the Kaimon check.
+sandbox alone; on an `mcp` call also the Kaimon check and the web check.
 
 A payload that the table cannot read is refused: bytes that are not UTF-8, a text that `jsonio`
 refuses, no object `toolCall`, no string `name`, `args` that are no object, a `run_command` without
@@ -63,6 +64,7 @@ from guard import (
     rm_scope,
     sandbox_lift,
     sandbox_semantics,
+    web_identity,
 )
 from guard.contract import Action, Call, Verdict, strongest
 from guard.jsonio import JsonValue, loads
@@ -100,6 +102,8 @@ WIDE_KEYS = ("SearchPath",)
 # call that holds them.
 KAIMON = "kaimon"
 KAIMON_TOOLS = ("ex", "manage_repl")
+# The neutral names of Antigravity's web tools.
+WEB_TOOLS = {"read_url_content": "web.fetch", "search_web": "web.search"}
 
 
 def listed(call: Call) -> Verdict:
@@ -117,6 +121,7 @@ SHELL: tuple[Check, ...] = (
     rm_scope.check,
     git_archive_output.check,
     git_writes.check,
+    web_identity.check,
     sandbox_semantics.work_tree_check,
 )
 CHECKS: dict[Action, tuple[Check, ...]] = {
@@ -124,7 +129,7 @@ CHECKS: dict[Action, tuple[Check, ...]] = {
     "read": (listed,),
     "write": (listed,),
     "edit": (listed,),
-    "mcp": (listed, kaimon_session.check),
+    "mcp": (listed, kaimon_session.check, web_identity.check),
     "subagent": (listed,),
 }
 
@@ -203,6 +208,8 @@ def call_of(name: str, args: dict[str, JsonValue], workspace: str | None) -> Cal
                 f"the command holds {size} bytes, more than the {MAX_COMMAND} that the guard reads"
             )
         return Call("shell", command, paths, cwd, "main", wide=wide)
+    if name in WEB_TOOLS:
+        return Call("mcp", WEB_TOOLS[name], paths, cwd, "main", web_identity.string_arguments(args), wide)
     if name != "call_mcp_tool":
         return Call(action, name, paths, cwd, "main", wide=wide)
     server, tool = args.get("ServerName"), args.get("ToolName")
