@@ -19,7 +19,7 @@ The last value counts, because `gh` takes the last one.
 
 from .contract import PASS, Call, Verdict, strongest
 from .rm_scope import ASSIGNMENT
-from .shell import Tokens, parts, readings
+from .shell import Tokens, joined, parts, readings
 
 # The shortest refresh interval, in seconds, that a watcher may use.
 MIN_INTERVAL = 30
@@ -83,6 +83,7 @@ def verdict_of(tokens: Tokens) -> Verdict:
 def check(call: Call) -> Verdict:
     """Deny a `gh run watch` or `gh pr checks --watch` with an interval below MIN_INTERVAL seconds."""
     command = call.command
-    if "gh" not in command or "watch" not in command:
+    keywords = joined(command)
+    if "gh" not in keywords or "watch" not in keywords:
         return PASS
-    return strongest(verdict_of(tokens) for tokens in readings(command) or [])
+    return strongest(verdict_of(tokens) for tokens in readings(command, nested=True) or [])

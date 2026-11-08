@@ -21,7 +21,7 @@ send a call that names an own repository first to another one.
 from .contract import PASS, Call, Verdict, strongest
 from .gh_api_writes import own_organisations
 from .rm_scope import ASSIGNMENT
-from .shell import Tokens, parts, readings
+from .shell import Tokens, joined, parts, readings
 
 NO_REPOSITORY = """Refused: {command}
 
@@ -128,6 +128,7 @@ def verdict_of(tokens: Tokens) -> Verdict:
 def check(call: Call) -> Verdict:
     """Deny a `gh pr create` that names no repository; ask for one outside the own organisations."""
     command = call.command
-    if "gh" not in command or ("create" not in command and "new" not in command):
+    keywords = joined(command)
+    if "gh" not in keywords or ("create" not in keywords and "new" not in keywords):
         return PASS
-    return strongest(verdict_of(tokens) for tokens in readings(command) or [])
+    return strongest(verdict_of(tokens) for tokens in readings(command, nested=True) or [])

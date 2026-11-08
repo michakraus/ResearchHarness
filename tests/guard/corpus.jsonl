@@ -475,7 +475,7 @@
 {"tool": "ExitWorktree", "stdin": {"tool_name": "ExitWorktree", "tool_input": []}, "decision": "deny", "differs": "The guard denies a directory payload whose tool_input is no object; directory-scope.py asked on it."}
 {"tool": "Edit", "stdin": {"tool_name": "Edit", "tool_input": {"file_path": "x.jl"}, "cwd": "@@CWD@@"}, "decision": "pass"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "echo x # c\ngit add -A"}, "cwd": "@@CWD@@"}, "decision": "deny", "differs": "The guard ends a comment at the newline, as the shell does, so `git add -A` is a segment of its own; shlex read the comment through the newline and joined the next line to the echo."}
-{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git add $'-A'"}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git add $'-A'"}, "cwd": "@@CWD@@"}, "decision": "deny"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git add \\\n-A"}, "cwd": "@@CWD@@"}, "decision": "deny", "differs": "The guard joins a backslash-newline, as the shell does, so `-A` is an argument of `git add`; shlex kept the newline in the word `\\n-A`."}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "cat <<'EOF'\ngit add -A\nEOF"}, "cwd": "@@CWD@@"}, "decision": "deny"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git add \"-\"A"}, "cwd": "@@CWD@@"}, "decision": "deny"}
@@ -495,13 +495,13 @@
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api \"repos/o/r/pulls/3/comments\" -f body=\"a \\\"b\\\"\""}, "cwd": "@@CWD@@"}, "decision": "pass"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api graphql --input - <<'EOF'\n{\"query\": \"mutation { x }\"}\nEOF"}, "cwd": "@@CWD@@"}, "decision": "deny"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "rm -rf ~/Research/Papers # x"}, "cwd": "@@PKG@@"}, "decision": "deny"}
-{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "rm -rf $'~/Research/Papers'"}, "cwd": "@@PKG@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "rm -rf $'~/Research/Papers'"}, "cwd": "@@PKG@@"}, "decision": "deny"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "rm -rf \\\n~/Research/Papers"}, "cwd": "@@PKG@@"}, "decision": "deny"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "cat <<'EOF'\nrm -rf ~/Research\nEOF"}, "cwd": "@@PKG@@"}, "decision": "pass"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "rm -rf \"$HOME\"/Research/Papers"}, "cwd": "@@PKG@@"}, "decision": "deny"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "ls foo#bar; rm -rf ~/Research/Papers"}, "cwd": "@@PKG@@"}, "decision": "deny", "differs": "The guard reads a `#` inside a word as part of the word, as the shell does; shlex read it as a comment and hid the rm."}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git archive HEAD # -o x.tar"}, "cwd": "@@CWD@@"}, "decision": "pass"}
-{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git archive $'-o' x.tar HEAD"}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git archive $'-o' x.tar HEAD"}, "cwd": "@@CWD@@"}, "decision": "deny"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git archive \\\n-o x.tar HEAD"}, "cwd": "@@CWD@@"}, "decision": "deny", "differs": "The guard joins a backslash-newline, as the shell does, so `-o` is an option of `git archive`; shlex kept the newline in the word `\\n-o`."}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git archive HEAD#x -o x.tar"}, "cwd": "@@CWD@@"}, "decision": "deny", "differs": "The guard reads a `#` inside a word as part of the word, as the shell does; shlex read it as a comment and hid `-o`."}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git archive \"-o\" x.tar HEAD"}, "cwd": "@@CWD@@"}, "decision": "deny"}
@@ -594,6 +594,48 @@
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git push --force-w origin feature"}, "cwd": "@@R@@/Packages/Own"}, "decision": "ask"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git push --force-with-lease upstream feature"}, "cwd": "@@R@@/Packages/Own"}, "decision": "ask"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git push --force origin feature"}, "cwd": "@@R@@/Packages/Own"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "r\"\"m -rf ~/Research/Papers"}, "cwd": "@@PKG@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "r\\m -rf ~/Research/Papers"}, "cwd": "@@PKG@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "$'\\x72'm -rf ~/Research/Papers"}, "cwd": "@@PKG@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git arch\"\"ive -o x.tar HEAD"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "g\"\"h api -X DELETE repos/o/r"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "g''h pr create --title T"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "g\\h run watch 123 -R own-org/X.jl --exit-status"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git a\"\"dd -A"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "echo x | t''ee -a CHANGELOG.md"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git push --force-$'w'ith-lease origin main"}, "cwd": "@@R@@/Packages/Own"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git push --force-$\"w\"ith-lease origin main"}, "cwd": "@@R@@/Packages/Own"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git push $'--force-with-lease' origin trunk"}, "cwd": "@@R@@/Packages/Own"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git push --force-$w origin main"}, "cwd": "@@R@@/Packages/Own"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git push --$(printf force-with-lease) origin main"}, "cwd": "@@R@@/Packages/Own"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git push --force-{w,}ith-lease origin main"}, "cwd": "@@R@@/Packages/Own"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git push --force-$w origin feature"}, "cwd": "@@R@@/Packages/Own"}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git push --push-option=$x origin main"}, "cwd": "@@R@@/Packages/Own"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "bash -c 'git push --force-with-lease origin main'"}, "cwd": "@@R@@/Packages/Own"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "/bin/sh -ec \"git push --force-with-lease origin trunk\""}, "cwd": "@@R@@/Packages/Own"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "zsh -o pipefail -c 'git fetch && git push --force-with-lease origin main'"}, "cwd": "@@R@@/Packages/Own"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "eval 'git push --force-with-lease origin main'"}, "cwd": "@@R@@/Packages/Own"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "eval git push --force-with-lease origin main"}, "cwd": "@@R@@/Packages/Own"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "bash -c \"sh -c 'git push --force-with-lease origin main'\""}, "cwd": "@@R@@/Packages/Own"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "find . -exec sh -c 'git status' \\; -exec sh -c 'git push --force-with-lease origin main' \\;"}, "cwd": "@@R@@/Packages/Own"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "bash -c 'git push --force-with-lease origin feature'"}, "cwd": "@@R@@/Packages/Own"}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "bash -c 'git cherry-pick abc123'"}, "cwd": "@@R@@/.worktrees/Own-pushed"}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "bash -c 'rm -rf ~/Research/Papers'"}, "cwd": "@@PKG@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "sh -c 'cd ~/Research && rm -rf Papers'"}, "cwd": "@@PKG@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "sh -c 'gh api -X DELETE repos/o/r'"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "eval git archive -o x.tar HEAD"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "bash -c 'git add -A'"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "bash -c 'echo rm -rf ~/Research/Papers'"}, "cwd": "@@PKG@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git commit -m 'bash -c \"rm -rf ~/Research/Papers\"'"}, "cwd": "@@PKG@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "bash script.sh -c 'rm -rf ~/Research/Papers'"}, "cwd": "@@PKG@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git push --force-with-lease -o main origin feature"}, "cwd": "@@R@@/Packages/Own"}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git push --force-with-lease --push-option main origin HEAD:refs/heads/feature"}, "cwd": "@@R@@/Packages/Own"}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git -C @@R@@/Packages/Own push --force-with-lease origin trunk"}, "cwd": "@@R@@/Packages/Foreign"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git -C .. -C Own push --force-with-lease origin trunk"}, "cwd": "@@R@@/Packages/Foreign"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git --git-dir=@@R@@/Packages/Own/.git push --force-with-lease origin trunk"}, "cwd": "@@R@@/Packages/Foreign"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "cd ../Own && git push --force-with-lease origin trunk"}, "cwd": "@@R@@/Packages/Foreign"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git -C @@R@@/Packages/Own push --force-with-lease origin feature"}, "cwd": "@@R@@/Packages/Foreign"}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git -C $d push --force-with-lease origin trunk"}, "cwd": "@@R@@/Packages/Foreign"}, "decision": "ask"}
 {"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "git push --force origin x"}, "decision": "deny", "bypass": null}
 {"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "sed -i s/a/b/ f"}, "decision": "deny", "bypass": null}
 {"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "git add -A"}, "decision": "deny", "bypass": null}
@@ -812,8 +854,8 @@
 {"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "cat \"~/.ssh/id_ed25519"}, "decision": "deny", "bypass": null}
 {"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "cat <<EOF\n~/.netrc\nEOF"}, "decision": "deny", "bypass": null}
 {"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "cat <<'EOF'\ngit push --force origin x\nEOF"}, "decision": "deny", "bypass": null}
-{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "cat $'~/.netrc'"}, "decision": "ask", "bypass": false}
-{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "git push $'--force' origin x"}, "decision": "ask", "bypass": false}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "cat $'~/.netrc'"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "git push $'--force' origin x"}, "decision": "deny", "bypass": null}
 {"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "rm -rf '/\\\n'"}, "decision": "ask", "bypass": false}
 {"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "cp /tmp/x ~/.gemini/config/config.json"}, "decision": "ask", "bypass": false}
 {"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "cat ~/.aws/credentials"}, "decision": "deny", "bypass": null}
@@ -1129,3 +1171,15 @@
 {"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "git cherry-pick abc123", "Cwd": "@@R@@/Packages/Foreign"}, "decision": "force_ask", "bypass": true}
 {"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "git push --force-with-lease origin feature", "Cwd": "@@R@@/Packages/Own"}, "decision": "ask", "bypass": true}
 {"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "git push --force-with-lease origin main", "Cwd": "@@R@@/Packages/Own"}, "decision": "deny", "bypass": null}
+{"frontend": "omp", "tool": "bash", "input": {"command": "bash -c 'git push --force-with-lease origin main'"}, "cwd": "@@R@@/Packages/Own", "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "git push --force-$'w'ith-lease origin main"}, "cwd": "@@R@@/Packages/Own", "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "g\"\"it init probe"}, "cwd": "@@OMPHOME@@/Research/P", "decision": "deny"}
+{"frontend": "opencode", "tool": "shell", "input": {"command": "eval 'git push --force-with-lease origin main'"}, "directory": "@@R@@/Packages/Own", "decision": "deny"}
+{"frontend": "opencode", "tool": "shell", "input": {"command": "g\"\"h api -X DELETE repos/o/r"}, "directory": "@@R@@/Packages/Own", "decision": "deny"}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "bash -c 'git push --force-with-lease origin main'", "Cwd": "@@R@@/Packages/Own"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "bash -c 'git push --force origin x'"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "zsh -c 'git push --force origin x'"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "eval 'git push --force origin x'"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "git push $\"--force\" origin x"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "sh -c 'cat ~/.config/gh/hosts.yml'"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "g=git; $g push --force origin x"}, "decision": "ask", "bypass": false}

@@ -26,27 +26,26 @@
 - kind: defect
 - found: 2026-10-06
 
-### K88 · The Antigravity guard applies no Bash rule to a command that a string argument, ANSI-C or locale quoting, or a variable or substitution holds.
+### K88 · The Antigravity guard applies no Bash rule to a command whose program a variable or a substitution names.
 
-- location: `hooks/guard/path_list.py:539`
-- evidence: the guard matches the template's Bash denies and asks on the words of each segment as
-  the line writes them, and does not run the shell's expansions. On a fixture home it answers
-  `deny` to `git push --force origin x` and `ask` to each of these lines, which run the same push:
-  `bash -c 'git push --force origin x'`, the same with `sh -c` and `zsh -c`,
-  `eval 'git push --force origin x'`, `git push $'--force' origin x`,
-  `git push $"--force" origin x` and `g=git; $g push --force origin x`. In the desktop app, which reads no `permissions`, such a
-  push then runs unless the app's own settings refuse it. The user decided to land the guard with
-  this limit of a text-pattern rule; the sandbox stays the containment.
+- location: `hooks/guard/path_list.py:526`
+- evidence: the guard matches the template's Bash denies and asks on the words of each segment,
+  with quotes, ANSI-C and locale quotes and the scripts of `sh -c`, `bash -c`, `zsh -c` and `eval`
+  read, and does not run the shell's other expansions. On a fixture home it answers `deny` to
+  `git push --force origin x` and to `bash -c 'git push --force origin x'`, and `ask` to
+  `g=git; $g push --force origin x`, which runs the same push. In the desktop app, which reads no
+  `permissions`, such a push then runs unless the app's own settings refuse it. The user decided
+  to land the guard with this limit of a text-pattern rule; the sandbox stays the containment.
 - kind: defect
 - found: 2026-10-23
 
-### K92 · The path check of the Antigravity guard reads no string argument and no substitution.
+### K92 · The path check of the Antigravity guard reads no substitution.
 
-- location: `hooks/guard/path_list.py:377`
-- evidence: `command_words()` reads the words of the line as it writes them. On a fixture home
-  the guard answers `deny` to `cat ~/.netrc` and `ask` to `bash -c 'cat ~/.netrc'`, to
-  `sh -c "cat ~/.config/gh/hosts.yml"` and to `cat $(printf ~/.ne)trc`, which read the denied
-  files.
+- location: `hooks/guard/path_list.py:379`
+- evidence: `command_words()` reads the words of the line, with the scripts of `sh -c`, `bash -c`
+  and `eval` read, and runs no expansion. On a fixture home the guard answers `deny` to
+  `cat ~/.netrc` and to `sh -c "cat ~/.config/gh/hosts.yml"`, and `ask` to
+  `cat $(printf ~/.ne)trc`, which reads the denied file.
 - kind: defect
 - found: 2026-10-23, PR #76; the same class as K88
 
@@ -662,3 +661,19 @@
   been run for these.
 - kind: not verified
 - found: 2026-11-02, a review of the hook rollout's pull requests
+
+### K136 · The shell checks of the guard do not read a program or a subcommand that an expansion makes, or a script on standard input.
+
+- location: `hooks/guard/shell.py:226`
+- evidence: the checks read quotes, ANSI-C and locale quotes, and the scripts of `sh -c`,
+  `bash -c`, `zsh -c` and `eval`, and run no other expansion. `guard --from claude` in a checkout
+  of an own organisation answers `deny` to `bash -c 'git push --force-with-lease origin main'`
+  and `pass` to each of these, which run the same push: `g=git; $g push --force-with-lease origin
+  main`, `git p$(printf u)sh --force-with-lease origin main` and
+  `echo 'git push --force-with-lease origin main' | sh`. The same holds for the other writes of
+  the checks, such as `x=rm; $x -rf ~/Research/Papers`. A lease push through `git -C $d` whose
+  target is a default branch of that repository other than `main` and `master` asks rather than
+  refuses: the check cannot read the directory. The sandbox stays the containment; for
+  Antigravity, K88 is the same limit of its Bash rules.
+- kind: defect
+- found: PR #181, its pre-PR verification

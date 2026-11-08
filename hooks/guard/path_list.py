@@ -20,7 +20,8 @@ and so is every path of `Call.wide`, every word of a command that reads below (r
 word after `cd` or `pushd`: a wide path is refused when it holds the literal prefix of an absolute
 rule (literal_prefix).
 
-THE WORDS of a command are those of each reading of `shell.readings`, and each part of a word that
+THE WORDS of a command are those of each reading of `shell.readings` with `nested`, so also the
+words of a script of `sh -c`, `bash -c` or `eval`, and each part of a word that
 `=`, `:`, `,` or `#` separates (zsh's `extendedglob` reads `a#` as a pattern that matches `a`); a
 command that no reading reads, as one with a quote that does not close, gives the text between
 blanks, quotes and control characters (FALLBACK). A word that any of them gives is checked, so a
@@ -28,7 +29,8 @@ reading cannot hide one.
 
 THE BASH RULES apply to each segment of the command (segments), in each of its two lines: as
 written, and with each backslash-newline read as a line break. A rule matches the words of a
-segment from any of its words (bash_matcher): those of each reading of the segment, those of the
+segment from any of its words (bash_matcher): those of each reading of the segment, with `nested`
+as for THE WORDS, those of the
 reading that takes no `#` as a comment, or, when no reading reads it, the text between blanks. A
 `bash_deny` rule refuses, a `bash_ask` rule asks. A rule meets only the word lists that hold each of
 its needed texts (needed), which one search of the joined word lists per needed text finds.
@@ -381,7 +383,7 @@ def command_words(command: str, reading: Reading | None = None) -> dict[tuple[st
     where the text names it after a `cd`, and of the parts that run `cd` (cd_words)."""
     reading = reading or Reading()
     below = recursive(command)
-    read = readings(command)
+    read = readings(command, nested=True)
     sequences: list[list[tuple[bool, str]]] = (
         [[(True, word) for word in FALLBACK.split(command) if word]]
         if read is None
@@ -522,9 +524,10 @@ def bash_rules(location: str, key: str) -> tuple[BashRule, ...] | str:
 
 
 def segment_words(segment: str) -> list[list[str]]:
-    """The word lists of `segment` that a Bash rule is matched on: the words of each reading, and of
-    the reading that takes no `#` as a comment; the text between blanks when no reading reads it."""
-    read = readings(segment)
+    """The word lists of `segment` that a Bash rule is matched on: the words of each reading, also of
+    a reading with a script of `sh -c` or `eval` spliced in (`readings` with `nested`), and of the
+    reading that takes no `#` as a comment; the text between blanks when no reading reads it."""
+    read = readings(segment, nested=True)
     if read is None:
         return [segment.split()]
     found = [[text for kind, text in tokens if kind == "word"] for tokens in read]

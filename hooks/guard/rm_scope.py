@@ -24,7 +24,7 @@ from pathlib import Path, PurePosixPath
 
 from .contract import PASS, Call, Verdict, needs_cwd, strongest
 from .paths import Place, place
-from .shell import Tokens, readings
+from .shell import Tokens, joined, readings
 
 HOME = str(Path.home().resolve())
 ROOT = Path(HOME, "Research").resolve()
@@ -311,9 +311,10 @@ def decide(tokens: Tokens, cwd: Cwd) -> Verdict:
 def check(call: Call) -> Verdict:
     """Deny a recursive `rm` outside the zones; ask for a `git rm` or `git merge` outside a worktree."""
     command = call.command
-    if "rm" not in command and "merge" not in command:
+    keywords = joined(command)
+    if "rm" not in keywords and "merge" not in keywords:
         return PASS
-    read = readings(cut_heredocs(command))
+    read = readings(cut_heredocs(command), nested=True)
     if read is None:
         return Verdict("ask", UNREADABLE)
     cwd: Cwd = MISSING if call.cwd is None else place(call.cwd, "real")

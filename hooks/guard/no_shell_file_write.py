@@ -36,7 +36,7 @@ from pathlib import Path, PurePosixPath
 
 from .contract import PASS, Call, Verdict, needs_cwd
 from .paths import Place, place, work_tree
-from .shell import SEGMENT, Tokens, lex
+from .shell import SEGMENT, Tokens, joined, lex
 
 # The redirection at the end of an operator run; what comes before it is a separator: `)>` closes
 # a subshell and redirects it. `<` forms read, and are kept only to find the heredoc placeholder
@@ -543,8 +543,12 @@ def check(call: Call) -> Verdict:
     command = call.command
     # A cheap reject for the commands this check can never refuse. `-i` is not the test: `sed -Ei`
     # holds no `-i` substring, which is the whole reason the cluster case needs a parser.
+    keywords = joined(command)
     if not (
-        ">" in command or "tee" in command or "python" in command or any(t in command for t in INPLACE_TOOLS)
+        ">" in keywords
+        or "tee" in keywords
+        or "python" in keywords
+        or any(t in keywords for t in INPLACE_TOOLS)
     ):
         return PASS
     cwd: Cwd = MISSING if call.cwd is None else place(call.cwd, "plain")
