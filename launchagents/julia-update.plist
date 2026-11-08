@@ -8,9 +8,14 @@
     <!-- The juliaup launcher rather than a release path, for the reason the kaimon job records:
          an absolute juliaup path names one release, and an upgrade removes it.
          The installed copy of the script, not the one in ~/Research: a session can write
-         ~/Research, and this job runs unsandboxed. ~/.local/bin is deny-write from a session. -->
+         ~/Research, and this job runs outside the session sandbox. ~/.local/bin is deny-write from
+         a session. The job runs under the Seatbelt profile that `harness setup` renders from
+         sandbox/daemon.toml. -->
     <key>ProgramArguments</key>
     <array>
+        <string>/usr/bin/sandbox-exec</string>
+        <string>-f</string>
+        <string>{home}/.config/research-harness/sandbox/julia-update.sb</string>
         <string>{home}/.juliaup/bin/julia</string>
         <string>--startup-file=no</string>
         <string>{home}/.local/bin/julia-update.jl</string>
