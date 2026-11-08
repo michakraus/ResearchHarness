@@ -359,7 +359,9 @@ file of both jobs because dyld reads it when a process starts, then, for a job w
 allow pseudo-terminals, then deny the write denies and the repository parts `.git/hooks`,
 `.git/config` and `.githooks` below `~/Research`, then allow the single files of
 `allow_write_files` inside a write deny, then deny the operations `lsopen`, `appleevent-send`,
-`file-mount` and `file-unmount`, and two Mach services of Launch Services. Kaimon's only such file
+`file-mount` and `file-unmount`, and two Mach services of Launch Services; the deny of
+`appleevent-send` and of the two services has no measured effect on Apple Events, which
+[the security model](../security.md) states. Kaimon's only such file
 is juliaup's lock file `~/.julia/juliaup/.juliaup-lock`: the juliaup launcher, which starts the
 server and every Julia of its sessions, opens it for writing at every start and exits when that
 fails, while `juliaup.json` and the installed Julia versions in the same directory stay
@@ -391,8 +393,11 @@ runs the cases, the juliaup launcher with `julia --startup-file=no -e 'exit(0)'`
 `S` from the repository's shim and from the installed one where it exists, or print a skip line
 where that cannot run, as inside another Seatbelt sandbox, and run
 every probe of `sandbox/probe-daemon.jl`, the probes that a session runs through Kaimon's `ex`
-after the server restarts under its profile, against a scratch home, when `julia` is on the `PATH`. [The security model](../security.md) says what the profile
-allows and what it leaves open.
+after the server restarts under its profile, against a scratch home, when `julia` is on the `PATH`.
+The probe file's constant `OPEN_GAPS` names the negative probes that the profile does not stop,
+which report `:allowed` under it: `appleevent` alone, and the cases check that value and that the
+file's header comment expects no exception class of an open gap.
+[The security model](../security.md) says what the profile allows and what it leaves open.
 
 ## `dotfiles_kit.py`
 

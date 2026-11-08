@@ -24,7 +24,10 @@
 # the user.
 
 # The escapes of a confined process: opening an app or a document through Launch Services, an
-# Apple Event to another app, and a mount.
+# Apple Event to another app, and a mount. The deny of `appleevent-send` and of the two Mach
+# services has no measured effect on Apple Events: under kaimon's profile, an Apple Event of the
+# job reaches the Finder (the open gap `appleevent` of sandbox/probe-daemon.jl), and the mechanism
+# that lets it through is unknown.
 deny_operations = ["lsopen", "appleevent-send", "file-mount", "file-unmount"]
 deny_services = ["com.apple.coreservices.launchservicesd", "com.apple.CoreServices.coreservicesd"]
 

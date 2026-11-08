@@ -747,3 +747,30 @@
   control character or a backslash in the word, so no word of ASCII letters comes of it.
 - kind: defect
 - found: 2026-11-08, the fourth pre-PR verification of `guard/bypass-gaps`
+
+### K142 · The kaimon job can send Apple Events.
+
+- location: `sandbox/daemon.toml:31`, `sandbox/probe-daemon.jl:117`
+- evidence: on macOS 27.2, outside every agent sandbox and under the rendered profile of the
+  kaimon job, the probe `appleevent` runs `osascript -e 'tell app "Finder" to get name'` and
+  gives `:allowed`: the event reaches the Finder, `osascript` exits 0 and prints `Finder`. The
+  other 13 of the 14 probes give their expected result. The profile holds
+  `(deny appleevent-send)` and
+  `(deny mach-lookup (global-name "com.apple.coreservices.launchservicesd") (global-name "com.apple.CoreServices.coreservicesd"))`,
+  and neither has a measured effect on this. On copies of the profile with one more rule each, the event
+  still reaches the Finder with `(deny mach-lookup)`, `(deny mach*)`, `(deny network*)`,
+  `(deny ipc*)`, `(deny appleevent-send (appleevent-destination "com.apple.finder"))`, and a
+  `mach-lookup` deny of `com.apple.coreservices.appleevents`, of its `.localonly` form, or of
+  `com.apple.CoreServices.coreservicesd`; `(deny appleevent*)` does not compile (exit 65).
+  `(deny process-exec (literal "/usr/bin/osascript"))` stops `osascript` (exit 71), but it is no
+  block: any process can send an Apple Event through the system API without `osascript`, and the
+  probe would then pass without testing anything. `(trace …)` writes no file on this macOS. The
+  Automation list of System Settings, Privacy & Security, names no `julia`, `sandbox-exec`,
+  `osascript` or `launchd`, so the Automation consent of macOS neither stopped nor asked about
+  the event. The mechanism that lets the event through is unknown. The risk: code that a session
+  runs through Kaimon's `ex` can ask an app outside the profile to act for it, the Finder to copy
+  any file of the user, or Terminal to run a command with `do script`. A fix shows the probe
+  `appleevent` giving an exception class under the real profile, in a run by the user outside
+  every sandbox, and removes `:appleevent` from `OPEN_GAPS`.
+- kind: defect
+- found: 2026-11-08, a probe run by the user after #203
