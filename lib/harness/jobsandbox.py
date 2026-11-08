@@ -7,22 +7,26 @@
 `sandbox/daemon.toml` holds the rules of both jobs. `load` reads it into a `DaemonPolicy`, a frozen
 dataclass: once for both jobs the denied operations and the denied Mach services, and for each job
 of JOBS, in a table `[job.<name>]`, its read paths, read files, write paths, write files, write
-denies and the files that it writes back inside a write deny (`JobRules`). Each key is required,
-each value is a list of strings, and a path is a token of TOKENS alone, or a start, `~`, nothing
-or a token, and then `/` and one or more segments, none of them empty, `.` or `..`, so no `//` and
-no final `/`; a read file can also be the root `/` alone, which dyld reads when a process starts.
+denies, the files that it writes back inside a write deny, and `pty`, whether it uses
+pseudo-terminals (`JobRules`). Each key is required, `pty` is true or false, each other value is a
+list of strings, and a path is a token of TOKENS alone, or a start, `~`, nothing or a token, and
+then `/` and one or more segments, none of them empty, `.` or `..`, so no `//` and no final `/`;
+a read file can also be the root `/` alone, which dyld reads when a process starts.
 A system path is in its real form: a path at or below `/etc`, `/tmp` or `/var`, in any case of
 letters, is refused, because Seatbelt matches a path after it resolves the symlink
 `/etc -> private/etc`, and a file system that ignores case reads `/ETC` as `/etc`. A denied
 operation is lower-case words joined by `-`, with `*` (OPERATION), because the renderer writes it
 into the profile as it is. A file that is not UTF-8 or not TOML, a missing job or key, an unknown
-key or job, a relative path, a path with such a segment, a path in its link form, another operation
-and a value that is not a list of strings raise HarnessError, which names the key or the path.
+key or job, a relative path, a path with such a segment, a path in its link form, another operation,
+a `pty` that is not a boolean and another value that is not a list of strings raise HarnessError,
+which names the key or the path.
 
 `profile` renders the profile of one job as SBPL text, in this order: `(version 1)`,
 `(allow default)`, `(deny file-read* file-write*)`, `(allow file-read-metadata)`, one
 `(allow file-read* …)` with a `subpath` per read path and a `literal` per read file, one
-`(allow file-write* …)` with a `subpath` per write path and a `literal` per write file, one
+`(allow file-write* …)` with a `subpath` per write path and a `literal` per write file, for a job
+with `pty = true` `(allow pseudo-tty)` and one `(allow file-read* file-write* file-ioctl …)` with
+the `literal` PTY_MASTER and the `regex` PTY_SLAVES, both fixed in this module, one
 `(deny file-write* …)` with a `subpath` per write deny and a `regex` per repository part of
 REPOSITORY_PARTS at any depth below ~/Research, one `(allow file-write* …)` with a `literal` per
 file written back, one `(deny <operation>)` per denied operation, and one `(deny mach-lookup …)`
@@ -43,11 +47,13 @@ each render into `~/.config/research-harness/sandbox/<job>.sb` before they rende
 job's plist.
 
 The cases start `/bin/sh -c true` under the profile of each job, rendered with this user's home and
-`getconf` directories, and expect exit 0; then, under kaimon's profile, the juliaup launcher
-`~/.juliaup/bin/julia --startup-file=no -e 'exit(0)'`, which opens juliaup's lock file for writing
-at every start, and expect exit 0. Without `/usr/bin/sandbox-exec` or `getconf`, or where
-`sandbox-exec` cannot apply even `(allow default)`, as inside another Seatbelt sandbox, they print a
-skip line, and without the launcher a skip line for its run.
+`getconf` directories, and expect exit 0; then, under kaimon's profile, this Python opening a
+pseudo-terminal pair and forking `/bin/sh -c true` on a pseudo-terminal, as Kaimon starts a
+session, and the juliaup launcher `~/.juliaup/bin/julia --startup-file=no -e 'exit(0)'`, which
+opens juliaup's lock file for writing at every start, and expect exit 0 from each. Without
+`/usr/bin/sandbox-exec` or `getconf`, or where `sandbox-exec` cannot apply even `(allow default)`,
+as inside another Seatbelt sandbox, they print a skip line; where this Python cannot start under
+kaimon's profile, a skip line for the pty runs, and without the launcher a skip line for its run.
 
 `sandbox/probe-daemon.jl` holds the probes that a session runs through Kaimon's `ex` once the
 server runs under its profile; the cases below run each probe against a scratch tree, where no
@@ -73,8 +79,9 @@ from .fsutil import Case
 POLICY = REPO / "sandbox" / "daemon.toml"
 PROBES = REPO / "sandbox" / "probe-daemon.jl"
 JOBS = ("kaimon", "julia-update")
-# The keys of a job's table, and of the rule list's top level.
+# The path-list keys of a job's table, its boolean key, and the keys of the rule list's top level.
 JOB_KEYS = ("read", "read_files", "write", "write_files", "deny_write", "allow_write_files")
+PTY_KEY = "pty"
 TOP_KEYS = ("deny_operations", "deny_services", "job")
 TOKENS = ("$DARWIN_USER_TEMP_DIR", "$DARWIN_USER_CACHE_DIR", "$HARNESS")
 # The directories at the root of macOS that are symlinks into /private: a rule names the real path.
@@ -87,6 +94,11 @@ FAILED = 2
 # configuration of git, which name programs that the next git command runs, and a tracked hook
 # directory.
 REPOSITORY_PARTS = (".git/hooks", ".git/config", ".githooks")
+# The pseudo-terminal devices of macOS that a job with `pty = true` opens: the master multiplexer,
+# and a regex for every slave, `/dev/ttys` and a number. Both are fixed here, never read from the
+# rule list.
+PTY_MASTER = "/dev/ptmx"
+PTY_SLAVES = "^/dev/ttys[0-9]+$"
 # The metacharacters of a POSIX extended regex.
 REGEX_META = re.compile(r"([\\.\[\]()*+?{}|^$])")
 # The program that the plists start each job under.
@@ -97,7 +109,8 @@ TIMEOUT, JULIA_TIMEOUT = 60, 600
 
 @dataclasses.dataclass(frozen=True, slots=True)
 class JobRules:
-    """The file rules of one job, each path as `daemon.toml` writes it."""
+    """The file rules of one job, each path as `daemon.toml` writes it, and whether the job uses
+    pseudo-terminals."""
 
     read: tuple[str, ...]
     read_files: tuple[str, ...]
@@ -105,6 +118,7 @@ class JobRules:
     write_files: tuple[str, ...]
     deny_write: tuple[str, ...]
     allow_write_files: tuple[str, ...]
+    pty: bool
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -181,7 +195,7 @@ def job_rules(table: object, job: str, path: pathlib.Path) -> JobRules:
         raise HarnessError(f"{path}: `job.{job}` is not a table")
     entries = cast("dict[str, object]", table)
     for key in entries:
-        if key not in JOB_KEYS:
+        if key not in (*JOB_KEYS, PTY_KEY):
             raise HarnessError(f"{path}: unknown key `job.{job}.{key}`")
     lists: dict[str, tuple[str, ...]] = {}
     for key in JOB_KEYS:
@@ -189,7 +203,12 @@ def job_rules(table: object, job: str, path: pathlib.Path) -> JobRules:
         if key not in entries:
             raise HarnessError(f"{path}: no key `{where}`")
         lists[key] = tuple(checked_path(p, where, path) for p in strings(entries[key], where, path))
-    return JobRules(**lists)
+    if PTY_KEY not in entries:
+        raise HarnessError(f"{path}: no key `job.{job}.{PTY_KEY}`")
+    pty = entries[PTY_KEY]
+    if not isinstance(pty, bool):
+        raise HarnessError(f"{path}: `job.{job}.{PTY_KEY}` is not true or false")
+    return JobRules(**lists, pty=pty)
 
 
 def load(path: pathlib.Path) -> DaemonPolicy:
@@ -257,6 +276,14 @@ def block(head: str, filters: list[str]) -> list[str]:
     return [f"({head}", *(f"    {f}" for f in filters[:-1]), f"    {filters[-1]})"]
 
 
+def pty_rules() -> list[str]:
+    """The lines of the two rules that let a job use pseudo-terminals, as Apple's own profiles
+    write them: the operation `pseudo-tty`, and reads, writes and ioctls of PTY_MASTER and of every
+    slave of PTY_SLAVES."""
+    filters = [f"(literal {quoted(PTY_MASTER)})", f"(regex {quoted(PTY_SLAVES)})"]
+    return ["(allow pseudo-tty)", *block("allow file-read* file-write* file-ioctl", filters)]
+
+
 def profile(
     policy: DaemonPolicy, job: str, home: pathlib.Path, dirs: UserDirs, harness: pathlib.Path | None = None
 ) -> str:
@@ -290,6 +317,7 @@ def profile(
         "(allow file-read-metadata)",
         *block("allow file-read*", filters(rules.read, rules.read_files)),
         *block("allow file-write*", filters(rules.write, rules.write_files)),
+        *(pty_rules() if rules.pty else []),
         *block(
             "deny file-write*",
             filters(rules.deny_write, ()) + [part_regex(home / "Research", p) for p in REPOSITORY_PARTS],
@@ -347,6 +375,11 @@ TEMP, CACHE = "/var/folders/xy/T/", "/var/folders/xy/C/"
 DIRS = UserDirs(TEMP, CACHE)
 # The rule of kaimon's profile, rendered with HOME, that writes juliaup's lock file back.
 LOCK_ALLOW = '(allow file-write*\n    (literal "/h/a.b/.julia/juliaup/.juliaup-lock"))'
+# The two rules of a profile whose job uses pseudo-terminals, as the renderer writes them.
+PTY_ALLOW = (
+    "(allow pseudo-tty)\n"
+    '(allow file-read* file-write* file-ioctl\n    (literal "/dev/ptmx")\n    (regex "^/dev/ttys[0-9]+$"))\n'
+)
 # A regex filter of a profile, `(regex "…")`, and an escape of an SBPL string.
 REGEX_FILTER = re.compile(r'\(regex "((?:[^"\\]|\\.)*)"\)')
 SBPL_ESCAPE = re.compile(r"\\(.)")
@@ -416,6 +449,7 @@ def list_cases(case: Case, policy: DaemonPolicy) -> None:
         f"{k.allow_write_files} {u.allow_write_files}",
         ok=k.allow_write_files == ("~/.julia/juliaup/.juliaup-lock",) and u.allow_write_files == (),
     )
+    case(f"kaimon uses pseudo-terminals and julia-update does not: {k.pty} {u.pty}", ok=k.pty and not u.pty)
     case(
         f"julia-update writes ~/.juliaup and ~/.julia/juliaup and denies neither: {u.write} {u.deny_write}",
         ok=all(p in u.write and p not in u.deny_write for p in ("~/.juliaup", "~/.julia/juliaup")),
@@ -468,6 +502,19 @@ def bad_cases(case: Case, root: pathlib.Path) -> None:
             "a job without allow_write_files",
             re.sub(r"^allow_write_files = .*\n", "", text, count=1, flags=re.M),
             "job.kaimon.allow_write_files",
+        ),
+        ("kaimon without pty", text.replace("\npty = true\n", "\n", 1), "no key `job.kaimon.pty`"),
+        (
+            "julia-update without pty",
+            text.replace("\npty = false\n", "\n", 1),
+            "no key `job.julia-update.pty`",
+        ),
+        ("a pty that is a string", text.replace("\npty = true\n", '\npty = "true"\n', 1), "job.kaimon.pty"),
+        ("a pty that is a number", text.replace("\npty = true\n", "\npty = 1\n", 1), "job.kaimon.pty"),
+        (
+            "a pty that is a list",
+            text.replace("\npty = false\n", "\npty = [false]\n", 1),
+            "job.julia-update.pty",
         ),
         (
             "the path / as a file written back",
@@ -644,6 +691,7 @@ def profile_cases(case: Case, policy: DaemonPolicy) -> None:
         "(allow file-read-metadata)",
         "(allow file-read*\n",
         "(allow file-write*\n",
+        PTY_ALLOW,
         "(deny file-write*\n",
         LOCK_ALLOW,
         "(deny lsopen)",
@@ -666,7 +714,7 @@ def profile_cases(case: Case, policy: DaemonPolicy) -> None:
     )
     apart = dataclasses.replace(
         policy,
-        kaimon=JobRules(("$DARWIN_USER_CACHE_DIR",), (), ("$DARWIN_USER_TEMP_DIR",), (), (), ()),
+        kaimon=JobRules(("$DARWIN_USER_CACHE_DIR",), (), ("$DARWIN_USER_TEMP_DIR",), (), (), (), pty=False),
     )
     split = profile(apart, "kaimon", HOME, DIRS)
     w, r = rule_block(split, "(allow file-write*\n"), rule_block(split, "(allow file-read*\n")
@@ -776,7 +824,7 @@ def profile_cases(case: Case, policy: DaemonPolicy) -> None:
         "a job that is not one of JOBS raises HarnessError",
         ok=raises(lambda: profile(policy, "claude-autocommit", HOME, DIRS)),
     )
-    empty = dataclasses.replace(policy, kaimon=JobRules((), (), (), (), (), ()), deny_services=())
+    empty = dataclasses.replace(policy, kaimon=JobRules((), (), (), (), (), (), pty=False), deny_services=())
     bare = profile(empty, "kaimon", HOME, DIRS)
     case(
         "an empty list leaves its block out, never a block with no filter",
@@ -786,6 +834,44 @@ def profile_cases(case: Case, policy: DaemonPolicy) -> None:
         and "(deny file-write*\n" in bare,
     )
     case("two renders give the same bytes", ok=text == profile(load(POLICY), "kaimon", HOME, DIRS))
+
+
+def pty_profile_cases(case: Case, policy: DaemonPolicy) -> None:
+    """The pty rules: in kaimon's profile once, between the deny of every file read and write and
+    the write denies; in no profile of a job with `pty = false`; the same text for any home,
+    harness, `getconf` value and file list."""
+    text = profile(policy, "kaimon", HOME, DIRS)
+    case(
+        "kaimon's profile holds the pty rules once, after the deny of every file read and write and "
+        "before the write denies",
+        ok=text.count(PTY_ALLOW) == 1
+        and text.count("pseudo-tty") == 1
+        and text.index("(deny file-read* file-write*)")
+        < text.index(PTY_ALLOW)
+        < text.index("(deny file-write*\n"),
+    )
+    update = profile(policy, "julia-update", HOME, DIRS)
+    case(
+        "julia-update's profile holds no pty rule",
+        ok=not any(t in update for t in ("pseudo-tty", "/dev/ptmx", "ttys", "file-ioctl")),
+    )
+    bare = dataclasses.replace(policy, kaimon=JobRules((), (), (), (), (), (), pty=True))
+    renders = [
+        profile(policy, "kaimon", pathlib.Path('/h/q"x\\y'), DIRS),
+        profile(
+            policy, "kaimon", pathlib.Path("/dev/ttys"), UserDirs("/dev/x", "/dev/y"), pathlib.Path("/dev")
+        ),
+        profile(bare, "kaimon", HOME, DIRS),
+    ]
+    case(
+        "the pty rules are the same text for any home, harness, getconf value and file list",
+        ok=all(r.count(PTY_ALLOW) == 1 for r in renders),
+    )
+    on = dataclasses.replace(policy, julia_update=dataclasses.replace(policy.julia_update, pty=True))
+    case(
+        "the switch alone decides: julia-update with pty = true gets the pty rules",
+        ok=profile(on, "julia-update", HOME, DIRS).count(PTY_ALLOW) == 1,
+    )
 
 
 def render_cases(case: Case, root: pathlib.Path, policy: DaemonPolicy) -> None:
@@ -891,11 +977,11 @@ def render_cases(case: Case, root: pathlib.Path, policy: DaemonPolicy) -> None:
 
 def start_cases(case: Case, root: pathlib.Path, policy: DaemonPolicy) -> None:
     """A process starts under the profile of each job, rendered with this user's home and `getconf`
-    directories: `/bin/sh -c true` under `sandbox-exec -f` exits 0, and so does the juliaup launcher
-    under kaimon's profile, in the environment of the launch agent. Without `sandbox-exec`, without
-    `getconf`, or where `sandbox-exec` cannot apply even the profile `(allow default)`, as inside
-    another Seatbelt sandbox, they print a skip line; without the launcher, a skip line for its
-    run."""
+    directories: `/bin/sh -c true` under `sandbox-exec -f` exits 0, and so do the pty runs of
+    `pty_cases` and the juliaup launcher under kaimon's profile, the launcher in the environment of
+    the launch agent. Without `sandbox-exec`, without `getconf`, or where `sandbox-exec` cannot
+    apply even the profile `(allow default)`, as inside another Seatbelt sandbox, they print a skip
+    line; without the launcher, a skip line for its run."""
     if not SANDBOX_EXEC.is_file():
         print(f"skip  jobsandbox: no {SANDBOX_EXEC}; no process starts under the profiles")
         return
@@ -923,6 +1009,7 @@ def start_cases(case: Case, root: pathlib.Path, policy: DaemonPolicy) -> None:
             f"{p.stderr.strip()[-300:]!r}",
             ok=p.returncode == 0,
         )
+    pty_cases(case, root / "kaimon.sb")
     launcher = home / ".juliaup" / "bin" / "julia"
     if not launcher.is_file():
         print(f"skip  jobsandbox: no juliaup launcher {launcher}; it does not start under kaimon's profile")
@@ -943,6 +1030,48 @@ def start_cases(case: Case, root: pathlib.Path, policy: DaemonPolicy) -> None:
         f"{p.stderr.strip()[-300:]!r}",
         ok=p.returncode == 0,
     )
+
+
+def pty_cases(case: Case, sb: pathlib.Path) -> None:
+    """Under kaimon's profile at `sb`, this Python, by its resolved path and isolated from its
+    environment, opens a pseudo-terminal pair, and forks `/bin/sh -c true` on a pseudo-terminal, as
+    Kaimon starts a session; each exits 0. Where that Python cannot start under the profile, as one
+    below a path that the profile does not read, they print a skip line."""
+    python = str(pathlib.Path(sys.executable).resolve())
+    p = sandboxed(sb, [python, "-I", "-c", "pass"])
+    if p.returncode != 0:
+        print(
+            f"skip  jobsandbox: {python} does not start under kaimon's profile, exit {p.returncode} "
+            f"{p.stderr.strip()[-300:]!r}; the pty cases do not run"
+        )
+        return
+    for label, script in (
+        ("opens a pseudo-terminal pair", PTY_OPEN),
+        ("forks /bin/sh -c true on a pseudo-terminal", PTY_FORK),
+    ):
+        p = sandboxed(sb, [python, "-I", "-c", script])
+        case(
+            f"Python {label} and exits 0 under kaimon's profile: exit {p.returncode} "
+            f"{p.stderr.strip()[-300:]!r}",
+            ok=p.returncode == 0,
+        )
+
+
+# The pty probes of `pty_cases`: openpty(3), and forkpty(3) through `pty.fork`, which Kaimon's
+# session spawn calls; the second exits with the status of the forked shell.
+PTY_OPEN = "import os, pty; m, s = pty.openpty(); os.close(m); os.close(s)"
+PTY_FORK = """
+import os, pty
+pid, fd = pty.fork()
+if pid == 0:
+    try:
+        os.execv("/bin/sh", ["/bin/sh", "-c", "true"])
+    finally:
+        os._exit(127)
+_, status = os.waitpid(pid, 0)
+os.close(fd)
+raise SystemExit(os.waitstatus_to_exitcode(status))
+"""
 
 
 def sandboxed(
@@ -1097,6 +1226,7 @@ def selftest() -> tuple[int, int]:
         (root / "bad").mkdir()
         bad_cases(case, root / "bad")
         profile_cases(case, policy)
+        pty_profile_cases(case, policy)
         (root / "render").mkdir()
         render_cases(case, root / "render", policy)
         (root / "start").mkdir()
