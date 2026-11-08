@@ -12,6 +12,11 @@
 # the `url` of a .tar.gz archive that holds the program at its top level, and the `sha256` of that
 # archive. A download whose sha256 differs installs nothing. Each sha256 is the one that the
 # project publishes in its checksum file of the release.
+#
+# The release of a tool of TREES in lib/harness/setup.py, Node.js, is a whole tree instead: the url
+# of a .tar.xz with one top-level directory, which `harness setup` unpacks whole into
+# ~/.local/share/research-harness/<command>/<version>/ and whose bin/ programs it links into
+# ~/.local/bin.
 
 [minimum]
 gitleaks = ["8.21"]
@@ -19,6 +24,18 @@ gitleaks = ["8.21"]
 actionlint = ["1.7.12"]
 Julia = ["1.13"]
 fatou = ["0.22.0"]
+
+[release."Node.js"]
+version = "24.22.2"
+
+# The sha256s of https://nodejs.org/dist/v24.22.2/SHASUMS256.txt.
+[release."Node.js".linux-x86_64]
+url = "https://nodejs.org/dist/v24.22.2/node-v24.22.2-linux-x64.tar.xz"
+sha256 = "48cc0e21e048790e54c0cf5749c2725005313d652651c40b7a21feb9697aaf75"
+
+[release."Node.js".linux-aarch64]
+url = "https://nodejs.org/dist/v24.22.2/node-v24.22.2-linux-arm64.tar.xz"
+sha256 = "eb187837a2230d4047161ac0be008584e16b46f726e9c9490ee35dc6b17d9ba8"
 
 [release.gitleaks]
 version = "8.30.1"

@@ -45,10 +45,13 @@ The executable script `bin/harness`, the entry point of the harness. Put `bin/` 
 run `harness --help` for the list of subcommands, or `harness <subcommand> --help` for one
 subcommand.
 
-The script first checks the version of Python. It needs Python 3.14 or later, the one version that
-the harness is tested on. An older interpreter prints the version that it found and the version
-that it needs, and the script exits with status 2. The script uses no syntax newer than Python
-3.0, so an old interpreter reads it without a syntax error.
+The script first checks the version of Python. The harness needs Python 3.14 or later, the one
+version that it is tested on, and the script itself needs 3.9 or later. An interpreter older than
+3.9 prints the version that it found and the two versions, and the script exits with status 2.
+The script uses no syntax newer than Python 3.0, so an old interpreter reads it without a syntax
+error. From 3.9 to 3.13 the script goes on, and runs the command only on an interpreter of 3.14
+or later: that of the environment, for which `uv sync` downloads Python 3.14 where none is
+installed.
 
 Then the script chooses the interpreter of the command. The Python environment of the harness is
 at `$RESEARCH_HARNESS_PYTHON`, an absolute path, or else at
@@ -58,7 +61,9 @@ at `$RESEARCH_HARNESS_PYTHON`, an absolute path, or else at
   script starts itself there with the same arguments, in the same process.
 - In a session, where `SANDBOX_RUNTIME` or `CLAUDECODE` is set, with no working environment, the
   command runs on the interpreter that started it, after one line on stderr that names the
-  environment and `harness install --apply`. A session never starts uv.
+  environment and `harness install --apply`; on an interpreter older than 3.14 the script exits
+  with status 2 instead, after one line that says to run `harness` once in a plain terminal. A
+  session never starts uv.
 - Otherwise the script finds `uv` on the `PATH` or in `~/.local/bin`. On Linux without one, it
   fetches the uv release that it pins into `~/.local/bin` and checks the sha256 of the archive;
   the download follows one redirect, to `release-assets.githubusercontent.com`, and no other. Then
@@ -77,7 +82,8 @@ Each refusal is one line on stderr and exit status 2: no uv on macOS or on a sys
 Linux, a relative `$RESEARCH_HARNESS_PYTHON`, a sync that fails or that leaves no working
 environment, and on Linux a download that fails, a checksum that is not the pinned one, an
 archive with no `uv`, an architecture other than `x86_64` and `aarch64`, and a redirect to another
-host.
+host. On an interpreter older than 3.14 with `UV_PYTHON_DOWNLOADS=never` set, a sync that fails
+adds a second line, which names `uv python install 3.14`.
 
 Last, the script adds `lib/` to the module path and calls `main` of `cli.py`. It follows a symbolic
 link to find `lib/`, so a link to the script in another directory also works. `install.py` loads
@@ -507,7 +513,9 @@ It checks, in this order:
   namespaces, the sandbox check `bwrap --ro-bind / / --dev /dev --unshare-user --unshare-pid true`,
   and `socat`.
 - the tools of [Dependencies](../dependencies.md): each required tool is on the `PATH`, and each
-  tool with a minimum on that page is at or above it; below it, or missing, is a `FAIL`. A missing
+  tool with a minimum on that page is at or above it; below it, or missing, is a `FAIL`. A
+  `python3` below the minimum of Python is a `WARN` instead where the interpreter of the Python
+  environment meets it, because only a hook run by hand then needs that version. A missing
   tool that serves one frontend, one job or a push to the harness (the frontends, RTK, jq,
   juliaup and gitleaks), or that only the sync of the Python environment needs (uv), is a
   `WARN` that says what stops without it. uv is looked for as the sync looks for it, on the `PATH`
