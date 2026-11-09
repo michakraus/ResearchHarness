@@ -913,22 +913,33 @@ def resolution_cases(check: Check, root: pathlib.Path) -> None:
     """The program that sandbox/agentbox gives srt: the first on the caller's PATH without the
     cmux-cli-shims entries, with the caller's PATH passed on; a relative PATH entry and an exported
     bash function, each checked against what this machine's /bin/sh makes of it."""
-    box = Box.fresh(root, "cmux")
-    shims = box.home / "x" / "cmux-cli-shims"
-    stub(shims / "A" / "claude")
-    stub(shims / "claude")
-    path = f"{shims}/A:{shims}:{box.home}/path:/usr/bin:/bin"
-    p = box.run("claude", PATH=path)
+    for name in ("claude", "opencode", "omp", "agy"):
+        box = Box.fresh(root / "cmux", name)
+        shims = box.home / "x" / "cmux-cli-shims"
+        stub(shims / "A" / name)
+        stub(shims / name)
+        path = f"{shims}/A:{shims}:/usr/bin:/bin:{box.home}/path"
+        p = box.run(name, PATH=path)
+        got = box.argv()
+        seen = box.environment() if got is not None else {}
+        check(
+            p.returncode == 0
+            and got is not None
+            and got[3] == f"{box.home}/path/{name}"
+            and seen.get("PATH") == path,
+            f"agentbox {name} with x/cmux-cli-shims/A/{name} and x/cmux-cli-shims/{name} first on the PATH "
+            f"and path/ last: srt gets path/{name}, and the program the caller's PATH: {p.returncode}, "
+            f"{got[3] if got else None}, {seen.get('PATH')!r}, {p.stderr!r}",
+        )
+
+    box = Box.fresh(root, "working-directory")
+    stub(box.home / "claude")
+    p = box.run("claude", cwd=box.home)
     got = box.argv()
-    seen = box.environment() if got is not None else {}
     check(
-        p.returncode == 0
-        and got is not None
-        and got[3] == f"{box.home}/path/claude"
-        and seen.get("PATH") == path,
-        f"agentbox claude with x/cmux-cli-shims/A/claude and x/cmux-cli-shims/claude first on the PATH: "
-        f"srt gets path/claude, and the program the caller's PATH: {p.returncode}, "
-        f"{got[3] if got else None}, {seen.get('PATH')!r}, {p.stderr!r}",
+        p.returncode == 0 and got is not None and got[3] == f"{box.home}/path/claude",
+        f"agentbox claude in a directory that holds a program claude, which is not on the PATH: srt gets "
+        f"path/claude: {p.returncode}, {got[3] if got else None}, {p.stderr!r}",
     )
 
     box = Box.fresh(root, "relative")
@@ -983,21 +994,23 @@ def resolution_cases(check: Check, root: pathlib.Path) -> None:
 def cache_cases(check: Check, root: pathlib.Path) -> None:
     """The cache variables of a run: a caller's non-empty value stays, an empty one is replaced;
     with TMPDIR empty, the run directory is below /tmp."""
-    box = Box.fresh(root, "caller")
-    p = box.run("claude", npm_config_cache="/c", UV_CACHE_DIR="")
-    seen = box.environment() if box.argv() is not None else {}
-    caches = box.caches()
-    want = {
-        "npm_config_cache": "/c",
-        "UV_CACHE_DIR": caches.get("UV_CACHE_DIR"),
-        "TEXMFVAR": caches.get("TEXMFVAR"),
-    }
-    check(
-        p.returncode == 0 and caches and {k: seen.get(k) for k in CACHES} == want,
-        f"agentbox claude with npm_config_cache=/c and UV_CACHE_DIR empty: npm_config_cache stays /c, "
-        f"UV_CACHE_DIR and TEXMFVAR name the run's subdirectories: {p.returncode}, "
-        f"{ {k: seen.get(k) for k in CACHES} }, {box.made()}",
-    )
+    for label, given in [
+        ("npm_config_cache=/c and UV_CACHE_DIR empty", {"npm_config_cache": "/c", "UV_CACHE_DIR": ""}),
+        (
+            "npm_config_cache empty, UV_CACHE_DIR=/u and TEXMFVAR=/t",
+            {"npm_config_cache": "", "UV_CACHE_DIR": "/u", "TEXMFVAR": "/t"},
+        ),
+    ]:
+        box = Box.fresh(root, label.replace(" ", "-").replace("/", "-").replace("=", "-").replace(",", ""))
+        p = box.run("claude", variables=given)
+        seen = box.environment() if box.argv() is not None else {}
+        caches = box.caches()
+        want = {k: given[k] if given.get(k) else caches.get(k) for k in CACHES}
+        check(
+            p.returncode == 0 and caches and {k: seen.get(k) for k in CACHES} == want,
+            f"agentbox claude with {label}: a non-empty value stays, the others name the run's "
+            f"subdirectories: {p.returncode}, { {k: seen.get(k) for k in CACHES} }, {box.made()}",
+        )
 
     box = Box.fresh(root, "no-tmpdir")
     p = box.run("agy", TMPDIR="")
