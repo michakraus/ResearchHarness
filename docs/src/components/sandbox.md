@@ -92,7 +92,7 @@ A launcher whose mode differs from 755 is a change, as a file whose bytes differ
 
 The install writes nothing through a symlink. So where `~/.local/bin` is a symlink and a frontend
 is chosen, `harness install --apply` exits with status 2, writes nothing, and names the path and
-the symlink. Make `~/.local/bin` a directory, or choose no frontend, to install.
+the symlink.
 
 ## The launcher agentbox
 
@@ -114,9 +114,10 @@ and the frontend's name otherwise. `<program>` is the path that `command -v` giv
 `PATH` without each entry that matches `*/cmux-cli-shims/*` or `*/cmux-cli-shims`. In a cmux
 terminal the first `claude` on the `PATH` is a shim of cmux, which `srt` cannot read; the shim
 itself skips the same entries to find the real `claude` where the cmux wrapper is absent. A
-`claude` under `agentbox` therefore runs without the cmux wrapper. The filter decides only which program runs: the program gets the caller's `PATH`
-unchanged. The caller's arguments follow `<extra>`, each passed as one argument, unchanged. The
-`--` ends the options of `srt`, which otherwise reads a `--settings` of the frontend as its own.
+`claude` under `agentbox` therefore runs without the cmux wrapper. The filter decides only which
+program runs: the program gets the caller's `PATH` unchanged. The caller's arguments follow
+`<extra>`, each passed as one argument, unchanged. The `--` ends the options of `srt`, which
+otherwise reads a `--settings` of the frontend as its own.
 
 | frontend | `<extra>` | why |
 |:--|:--|:--|

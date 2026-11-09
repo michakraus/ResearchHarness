@@ -910,9 +910,11 @@ def shell_finds(name: str, env: dict[str, str], cwd: pathlib.Path) -> str:
 
 
 def resolution_cases(check: Check, root: pathlib.Path) -> None:
-    """The program that sandbox/agentbox gives srt: the first on the caller's PATH without the
-    cmux-cli-shims entries, with the caller's PATH passed on; a relative PATH entry and an exported
-    bash function, each checked against what this machine's /bin/sh makes of it."""
+    """The program that sandbox/agentbox gives srt: for each frontend, the first on the caller's
+    PATH without the cmux-cli-shims entries, with the caller's PATH passed on; an entry whose name
+    only ends in cmux-cli-shims stays; a program in the working directory that is not on the PATH
+    is not found; a relative PATH entry and an exported bash function, each checked against what
+    this machine's /bin/sh makes of it."""
     for name in ("claude", "opencode", "omp", "agy"):
         box = Box.fresh(root / "cmux", name)
         shims = box.home / "x" / "cmux-cli-shims"
