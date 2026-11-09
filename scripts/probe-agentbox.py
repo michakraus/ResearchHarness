@@ -9,7 +9,8 @@ or inside `agentbox`: srt refuses a sandbox inside its own.
 
 Before the probes it lists every TCP listener on 127.0.0.1, ::1 and every interface with `lsof`,
 outside srt, and asks a listener on every interface at 127.0.0.1. Then,
-for each frontend, it runs one listener probe per listener and the shell probes, each as
+for each frontend, it runs one listener probe per listener, at `/`, a second one at `/path` for an
+`opencode` listener, and the shell probes, each as
 
     ~/.local/bin/srt --settings ~/.config/research-harness/sandbox/<policy name>.json -- \\
         /bin/sh -c <probe>
@@ -26,12 +27,14 @@ creates a file deletes it. After the shell probes of each frontend, the script, 
 removes the launchd job of X4 and unmounts the devfs of X3 where either is left.
 
 A probe's verdict is `match` or `MISMATCH` against its expected value, `absent` when the file or
-directory that it names does not exist (the probe does not run), `skipped`, `timeout`, or, for a
-probe that only records, its observation. The expected value is the policy's intent, so a
+directory that it names does not exist (the probe does not run), `skipped`, `timeout`, `void` for
+a frontend probe that expects a word to be missing where F1 of its frontend is not `match`, or,
+for a probe that only records, its observation. The expected value is the policy's intent, so a
 MISMATCH is a finding for the policy.
 
-It writes <out>/report.tsv and <out>/report.md, prints the path of report.md last, and exits 0 when
-no probe is MISMATCH or timeout and 1 otherwise. <out> is --out, by default
+It writes <out>/report.tsv with every row and <out>/report.md, whose table holds the rows other
+than the listener rows and whose `## Listeners` sums those up. It prints the path of report.md
+last, and exits 0 when no probe is MISMATCH or timeout and 1 otherwise. <out> is --out, by default
 ~/Research/.scratch/agentbox-probes/<UTC date and time>. It exits 2, runs no probe and prints one
 line on stderr when it cannot measure the boundary: inside a sandbox, on a platform other than
 macOS, with an unknown argument or an option without a valid value, with srt or agentbox not an
@@ -73,7 +76,11 @@ SHELL_TIMEOUT = 60
 TOOL_TIMEOUT = 60
 DETAIL = 200
 REACHED = range(200, 400)
-AUTHENTICATES = ("401", "403")
+AUTHENTICATES = ("401", "403", "407")
+# OpenCode's server takes a password and can answer at `/` without it; its binary names this
+# route, which an `opencode` listener is also asked at.
+OPENCODE_ROUTE = "/path"
+VOID = "F1 shows no start"
 DENIED = "403"
 NO_ANSWER = "000"
 LOOPBACK = ("127.0.0.1", "[::1]")
@@ -306,8 +313,13 @@ def run_limited(command: list[str], cwd: pathlib.Path, timeout: float) -> tuple[
 
 
 def detail(text: str) -> str:
-    """The last DETAIL characters of `text`, on one line."""
-    return " ".join(text.split())[-DETAIL:]
+    """`text` on one line: whole up to DETAIL characters, else its first and its last DETAIL // 2
+    characters joined by ` … `, so that a failure keeps its cause and its last state."""
+    flat = " ".join(text.split())
+    if len(flat) <= DETAIL:
+        return flat
+    half = DETAIL // 2
+    return f"{flat[:half]} … {flat[-half:]}"
 
 
 def sandboxed(
@@ -448,12 +460,14 @@ def listeners(text: str) -> list[Listener]:
     return list(found.values())
 
 
-def listener_row(frontend: str, listener: Listener, call: Call) -> Row:
-    """An HTTP request to `listener` under srt: `match` for the status 401 or 403."""
+def listener_row(frontend: str, listener: Listener, call: Call, *, route: str = "/") -> Row:
+    """An HTTP request to `route` of `listener` under srt: `match` for the status 401, 403 or 407;
+    the id is `L:<port>`, with the route added where it is not `/`."""
     address = f"{listener.host}:{listener.port}"
     where = f"{listener.command} {address}"
-    status, out, err = call(f"curl -s -g -o /dev/null -m 5 -w '%{{http_code}}' http://{address}/")
-    probe_id, expected = f"L:{listener.port}", "401 or 403"
+    status, out, err = call(f"curl -s -g -o /dev/null -m 5 -w '%{{http_code}}' http://{address}{route}")
+    probe_id = f"L:{listener.port}{'' if route == '/' else route}"
+    expected = "401, 403 or 407"
     if status is None:
         return Row(frontend, probe_id, expected, "timeout", "timeout", f"{where} {detail(out + err)}")
     codes = out.split()
@@ -472,7 +486,8 @@ def form(frontend: str, ask: Ask, *, sandbox: bool = False) -> list[str]:
         case "omp":
             return ["-p", ask.prompt]
         case _:
-            return [*(["--sandbox"] if sandbox else []), "-p", "--dangerously-skip-permissions", ask.prompt]
+            # `-p` takes the prompt as its value, so it comes last
+            return ["--dangerously-skip-permissions", *(["--sandbox"] if sandbox else []), "-p", ask.prompt]
 
 
 @dataclass(frozen=True)
@@ -523,6 +538,13 @@ def model_rows(frontend: str, model: Model | None, home: pathlib.Path) -> list[R
     config = home / ".omp" / "agent" / "config.yml"
     before = fingerprint(config)
     rows = [ask_row(frontend, ask, model, ask.id) for ask in ASKS]
+    # a word is also missing from a frontend that never started, so such a probe proves nothing
+    # unless F1 is match
+    if rows[0].verdict != "match":
+        rows = [
+            row if ask.holds else Row(row.frontend, row.id, row.expected, row.got, "void", VOID)
+            for ask, row in zip(ASKS, rows, strict=True)
+        ]
     if frontend == "agy":
         rows.append(ask_row(frontend, ASKS[1], model, "F5", sandbox=True))
     elif frontend == "opencode":
@@ -595,6 +617,9 @@ def battery(options: Options, home: pathlib.Path, out: pathlib.Path) -> list[Row
     for frontend in options.frontends:
         call = functools.partial(sandboxed, srt, settings_file(home, frontend), research)
         made = [listener_row(frontend, x, call) for x in loopback]
+        made += [
+            listener_row(frontend, x, call, route=OPENCODE_ROUTE) for x in loopback if x.command == "opencode"
+        ]
         made += [shell_row(frontend, p, call) for p in shell_probes(frontend, home, run, ident, kaimon)]
         clean(run, ident)
         made += model_rows(frontend, model, home)
@@ -613,13 +638,40 @@ def cells(row: Row) -> list[str]:
     return [row.frontend, row.id, row.expected, row.got, row.verdict, row.detail]
 
 
+def listener_lines(rows: list[Row]) -> list[str]:
+    """One line per command, status and verdict of the `L:` rows, in the order of their first row:
+    the number of ports, the ports in numeric order, and the frontends in the order they ran."""
+    groups: dict[tuple[str, str, str], tuple[set[str], list[str]]] = {}
+    for row in rows:
+        if not row.id.startswith("L:"):
+            continue
+        ports, frontends = groups.setdefault((row.detail.split(" ", 1)[0], row.got, row.verdict), (set(), []))
+        ports.add(row.id.removeprefix("L:").split("/", 1)[0])
+        if row.frontend not in frontends:
+            frontends.append(row.frontend)
+    lines: list[str] = []
+    for (command, got, verdict), (ports, frontends) in groups.items():
+        named = ", ".join(sorted(ports, key=int))
+        under = f"{', '.join(frontends[:-1])} and {frontends[-1]}" if len(frontends) > 1 else frontends[0]
+        noun = "port" if len(ports) == 1 else "ports"
+        lines.append(
+            f"- `{command}` answers `{got}`, `{verdict}`: {len(ports)} {noun} ({named}), under {under}"
+        )
+    return lines or ["- none"]
+
+
 def write_reports(out: pathlib.Path, rows: list[Row]) -> pathlib.Path:
-    """Write report.tsv and report.md below `out`; the path of report.md."""
+    """Write report.tsv with every row and report.md below `out`; the path of report.md. The table
+    of report.md holds every row but the listener rows, which `## Listeners` sums up."""
     out.mkdir(parents=True, exist_ok=True)
     tsv = [COLUMNS, *(cells(row) for row in rows)]
     (out / "report.tsv").write_text("".join("\t".join(line) + "\n" for line in tsv))
     table = ["| " + " | ".join(COLUMNS) + " |", "|" + ":--|" * len(COLUMNS)]
-    table += ["| " + " | ".join(c.replace("|", "\\|") for c in cells(row)) + " |" for row in rows]
+    table += [
+        "| " + " | ".join(c.replace("|", "\\|") for c in cells(row)) + " |"
+        for row in rows
+        if not row.id.startswith("L:")
+    ]
     counts: dict[str, int] = {}
     for row in rows:
         counts[row.verdict] = counts.get(row.verdict, 0) + 1
@@ -636,6 +688,10 @@ def write_reports(out: pathlib.Path, rows: list[Row]) -> pathlib.Path:
         "# The probe battery of agentbox",
         "",
         *table,
+        "",
+        "## Listeners",
+        "",
+        *listener_lines(rows),
         "",
         "## Counts",
         "",
