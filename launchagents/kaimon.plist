@@ -73,7 +73,12 @@
          Kaimon makes it a background job. An agent that gets a job id has no way to wait, so it
          calls check_eval until the job ends: in Antigravity, every 8 s (the median), each
          call a model turn that reads the whole context. 240 s stays inside the 5-minute prompt
-         cache of a Claude Code sub-agent; oh-my-pi's request timeout for Kaimon is above it. -->
+         cache of a Claude Code sub-agent; oh-my-pi's request timeout for Kaimon is above it.
+
+         POCL_CACHE_DIR gives the PoCL of a Julia session its own kernel cache, which the profile
+         lets the job write: it denies PoCL's default ~/.cache/pocl, which a sandboxed command may
+         write, so no command can put a compiled kernel where Kaimon loads and runs it.
+         `harness setup` creates the directory before it loads the job. -->
     <key>EnvironmentVariables</key>
     <dict>
         <key>JULIA_APPS_JULIA_CMD</key>
@@ -84,6 +89,8 @@
         <string>off</string>
         <key>KAIMON_GATE_PROMOTE_AFTER</key>
         <string>240</string>
+        <key>POCL_CACHE_DIR</key>
+        <string>{home}/.cache/kaimon/pocl</string>
     </dict>
 </dict>
 </plist>
