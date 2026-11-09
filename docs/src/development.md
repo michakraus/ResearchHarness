@@ -250,7 +250,7 @@ same lines; `changelog.d/README.md` gives the form. The job fails when the branc
 below `lib/`, `hooks/`, `adapters/`, `bin/`, `scripts/`, `githooks/`, `agents/`, `skills/` or
 `rules/` and adds no fragment. At a release, `harness changelog --apply` joins the fragments into
 `## Unreleased`.
-`.github/workflows/julia.yml` runs the nine Julia test files on Julia 1.13 when a
+`.github/workflows/julia.yml` runs the eleven Julia test files on Julia 1.13 when a
 `.jl` file, `Project.toml`, `githooks/pre-commit`, `githooks/pre-push` or the workflow itself
 changes.
 `.github/workflows/docs.yml` builds the documentation site with VitePress when a file under
