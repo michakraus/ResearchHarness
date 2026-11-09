@@ -371,16 +371,16 @@ The rule is *concrete up to type variables*. A field type passes when it is a ty
 any bound; a DataType that is not abstract and whose type parameters all pass; or exactly
 `Union{Nothing, X}` or `Union{Missing, X}`, where `X` is not a `Union` and passes, so
 `Union{Nothing, Missing}` passes too. A type parameter that is not a type, such as the `2` of
-`Array{T, 2}` or the `3` of `Val{3}`, passes. A `Vararg` passes when it has a count, a value or a
-type variable, and its element type passes. Every other field type is flagged: `Function`, `Any`,
+`Array{T, 2}` or the `3` of `Val{3}`, passes. A `Vararg` passes when its count is a value or a
+type variable and its element type passes. Every other field type is flagged: `Function`, `Any`,
 an abstract type such as `AbstractVector{T}`, a bare or partly applied `UnionAll` such as `Matrix`
 or `Array{T}`, every other `Union`, a `Vararg` with no count such as that of `Tuple{Vararg{Int}}`,
 and a type with a parameter that fails, such as `Vector{Real}` or `Dict{Symbol, Any}`.
 
 The script reads each struct type, mutable or not, whose `parentmodule` is the package's root
 module or one of its submodules, recursively, and each type once, however many names bind it. It
-does not read a type that another module defines and the package only binds, a type whose name
-starts with `#`, such as a closure, an abstract type or a struct without fields.
+does not read a type that another module defines and the package only binds; a type whose name
+starts with `#`, such as the type of a closure; an abstract type; or a struct without fields.
 
 The script loads the package, by the `name` of its `Project.toml`, in a fresh process with
 `--project=<package>`. It resolves and instantiates nothing, so the package's environment must be

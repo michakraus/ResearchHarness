@@ -7,7 +7,7 @@
 # A field's type passes when it is a type variable (with any bound), a non-abstract DataType whose
 # type parameters all pass, or exactly Union{Nothing, X} or Union{Missing, X} where X is not a Union
 # and passes; so Union{Nothing, Missing} passes. A type parameter that is not a type, such as the 2
-# of Array{T, 2}, passes; a Vararg passes when it has a count, a value or a type variable, and its
+# of Array{T, 2}, passes; a Vararg passes when its count is a value or a type variable and its
 # element type passes. Every other field is a violation: a Function, an Any, an abstract type with
 # or without parameters, a bare or partially applied UnionAll such as Matrix, any other Union, a
 # Vararg with no count such as that of Tuple{Vararg{Int}}, and a type with such a parameter, such
