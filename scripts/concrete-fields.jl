@@ -23,7 +23,8 @@
 #   Verdict: FAIL — <n> violations                     exit 1
 #   UNKNOWN: the package does not load: <error>        exit 3
 #
-# Bad arguments print the usage line to stderr and exit 2. In process, concrete_field_violations
+# The UNKNOWN line also stands where the process that loads the package ends with another exit
+# code or by a signal; its <error> then names both. Bad arguments print the usage line to stderr and exit 2. In process, concrete_field_violations
 # takes the root module that a caller has loaded.
 
 using TOML
@@ -34,7 +35,7 @@ parameter_passes(p) = p isa Union{Type, TypeVar, Core.TypeofVararg} ? field_type
 "Whether the field type `t` is concrete up to type variables."
 function field_type_passes(t)
     t isa TypeVar && return true
-    t isa Core.TypeofVararg && return isdefined(t, :T) && field_type_passes(t.T)
+    t isa Core.TypeofVararg && return field_type_passes(t.T)
     if t isa Union
         members = Base.uniontypes(t)
         length(members) == 2 || return false
@@ -46,19 +47,21 @@ function field_type_passes(t)
     return all(parameter_passes, t.parameters)
 end
 
-"The struct types of `mod` and of its submodules, each as `path => type`, with `path` from `prefix`."
-function struct_types!(found, seen, mod::Module, prefix::String)
-    push!(seen, mod)
+"""
+Push the struct types that `mod` and its submodules define onto `found`, each once, as
+`path => type`, with `path` from `prefix`.
+"""
+function struct_types!(found, mod::Module, prefix::String)
     for name in names(mod; all = true)
-        (isdefined(mod, name) && !Base.isdeprecated(mod, name)) || continue
+        isdefined(mod, name) || continue
         v = getglobal(mod, name)
         if v isa Module
-            v in seen || parentmodule(v) !== mod || struct_types!(found, seen, v, "$prefix.$(nameof(v))")
+            # a package's root module is its own parentmodule, and every module binds its own name
+            v !== mod && parentmodule(v) === mod && struct_types!(found, v, "$prefix.$(nameof(v))")
         elseif v isa Type
             u = Base.unwrap_unionall(v)
             u isa DataType && parentmodule(u) === mod || continue
-            startswith(string(nameof(u)), "#") && continue
-            (isabstracttype(u) || !isstructtype(u) || fieldcount(u) == 0) && continue
+            (startswith(string(nameof(u)), "#") || isabstracttype(u)) && continue
             T = u.name.wrapper
             any(p -> last(p) === T, found) || push!(found, "$prefix.$(nameof(u))" => T)
         end
@@ -75,7 +78,7 @@ such as `"M.Inner.S"`, `field` the field's name, and `fieldtype` its declared ty
 `type`, then by the position of the field.
 """
 function concrete_field_violations(M::Module)
-    types = sort!(struct_types!(Pair{String, Type}[], Set{Module}(), M, string(nameof(M))); by = first)
+    types = sort!(struct_types!(Pair{String, Type}[], M, string(nameof(M))); by = first)
     out = @NamedTuple{type::String, field::Symbol, fieldtype::Type}[]
     for (path, T) in types
         body = Base.unwrap_unionall(T)

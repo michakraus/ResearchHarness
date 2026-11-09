@@ -389,7 +389,7 @@ nothing, so the package's environment must be instantiated. It prints one line p
 |:--|:--|:--|
 | `Verdict: PASS — 0 violations` | every field passes | 0 |
 | `Verdict: FAIL — <n> violations` | after the lines of the violations | 1 |
-| `UNKNOWN: the package does not load: <error>` | the import fails; the full error goes to stderr | 3 |
+| `UNKNOWN: the package does not load: <error>` | the import fails, and the full error goes to stderr; or the process that loads the package ends with another exit code or by a signal | 3 |
 
 Bad arguments, such as a directory with no `Project.toml`, print the usage line to stderr and
 exit 2. In process, `concrete_field_violations(M::Module)` returns the violations of a loaded root
@@ -403,7 +403,8 @@ this repository calls it by name.
 
 `concrete-fields-test.jl` checks the rule and the walk on fixture modules in its own process, and
 the command line on small fixture packages that it writes under `tempdir()`
-(`julia --startup-file=no concrete-fields-test.jl`, about 5 s). CI runs it on Linux.
+(`julia --startup-file=no concrete-fields-test.jl`, about 10 s at a load average of 16). CI runs
+it on Linux.
 
 ## `fatou-lsp.jl` and `fatou-lsp-test.jl`
 
