@@ -1,7 +1,7 @@
 # The dispatch delta of a head against a base: what a branch adds to the method table, and the new
 # ambiguities and piracies, from both trees loaded side by side.
 #
-#   julia --startup-file=no dispatch-delta.jl <package> <base> [--timeout <s>] [--no-jet]
+#   julia --startup-file=no dispatch-delta.jl <package> <base> [--timeout <s>] [--no-jet] [--api]
 #
 # <package> is the package's directory: its working tree, as it is, is the head. <base> is a git ref
 # of it. The base goes with base-tree.jl into <run>/<Pkg>-base-<sha7>, under the run directory
@@ -10,10 +10,11 @@
 # of the base; else the base resolves its own. Where another minor version of Julia resolved the
 # head's Manifest.toml or test/Manifest.toml, neither side gets one, and the head runs from a copy
 # without them, as in run-tests.jl. Each side then loads in a fresh process group of its own, both
-# at once, as run-tests.jl loads a driver: --project=<tree>, the harness environment last in
-# LOAD_PATH, TestEnv.activate(). Its own modules are the package's module tree and each extension
-# that loads once the side loads the [weakdeps] that its test environment provides. It writes
-# <run>/<side>.json, then runs JET into <run>/<side>-jet.json; its output goes to <run>/<side>.log.
+# at once (with --api, one after the other), as run-tests.jl loads a driver: --project=<tree>,
+# the harness environment last in LOAD_PATH, TestEnv.activate(). Its own modules are the
+# package's module tree and each extension that loads once the side loads the [weakdeps] that its
+# test environment provides. It writes <run>/<side>.json, then runs JET into
+# <run>/<side>-jet.json; its output goes to <run>/<side>.log.
 # --timeout gives each side, and then each JET step, that many seconds (600 by default); past it,
 # the side's process group is killed.
 #
@@ -42,6 +43,29 @@
 #   INFO: dependency drift: <name> <base version> -> <head version>
 #   Verdict: <PASS|FAIL|UNKNOWN> — <f> FAIL, <u> UNKNOWN, <i> INFO
 #
+# Each side also records its public names: those with Base.ispublic in the root module and in each
+# submodule that is a public name of its parent, recursively. A method is API where its generic is
+# a public function or type of those modules, or an external generic; its record holds its keyword
+# names. --api compares the API of the head with that of the base, typically the last release tag:
+# the base side runs first, then the head side, which reads base.json and writes into head.json its
+# cover of each base public name and of each base API method whose key it lacks. A base API method
+# is covered where an own method of the head takes its signature (`sig <: m.sig`); its key is
+# evaluated in the head's root module, with each leading qualifier that the root does not bind and
+# that names a loaded package replaced by that package. --api runs no JET, and prints these lines
+# in place of the comparison lines above; the lines of a side that gives no records stay:
+#
+#   FAIL: gone public name: <module.>name            the head does not define it in that module
+#   FAIL: no longer public: <module.>name            the head defines it there, not public
+#   FAIL: removed method: <key> at <file>:<line>     no own head method covers it; also a key that
+#                                                    names an own name that the head lacks
+#   FAIL: removed keyword: <function> <name>         no head method of the function takes it; a
+#                                                    keyword slurp `kw...` takes every name
+#   UNKNOWN: key: <key>: <error>                     the key does not parse or evaluate in the head
+#   INFO: covered: <base key> by <head key>
+#   INFO: new public name: <module.>name
+#
+# The structure of a public type, its fields, type parameters and supertype, is not compared.
+#
 # The key of a method is its signature with the full path of each name that Base and Core do not
 # export, less the path of the package's root module, so that a `using` in the root module changes
 # no key, with its type variables renamed _1, _2, … by position and the digits of gensym names
@@ -49,7 +73,7 @@
 # finding of that method reads as new, and its old key as gone.
 #
 # Exit 0: PASS. 1: a FAIL line. 2: bad arguments. 3: no verdict — a base that does not load, a side
-# that does not resolve or that timed out — and no FAIL line.
+# that does not resolve or that timed out, or an `UNKNOWN: key` line — and no FAIL line.
 
 module BaseTree
 include(joinpath(@__DIR__, "base-tree.jl"))
@@ -69,19 +93,21 @@ using TOML: TOML
 
 const SCRIPT = @__FILE__
 const HARNESS_ENV = RunTests.HARNESS_ENV
-const USAGE = "usage: dispatch-delta.jl <package> <base> [--timeout <s>] [--no-jet]"
+const USAGE = "usage: dispatch-delta.jl <package> <base> [--timeout <s>] [--no-jet] [--api]"
 
 """
-The arguments as `(; pkg, base, name, timeout, jet)`, or the message that names a bad one. Every
-argument that starts with `-` is an option.
+The arguments as `(; pkg, base, name, timeout, jet, api)`, or the message that names a bad one.
+Every argument that starts with `-` is an option.
 """
 function arguments(args)
-    pos, timeout, jet = String[], 600, true
+    pos, timeout, jet, api = String[], 600, true, false
     rest = collect(String, args)
     while !isempty(rest)
         a = popfirst!(rest)
         if a == "--no-jet"
             jet = false
+        elseif a == "--api"
+            api = true
         elseif a == "--timeout"
             t = isempty(rest) ? nothing : tryparse(Int, popfirst!(rest))
             (t === nothing || t < 1) && return "`--timeout` needs a whole number of seconds, 1 or more"
@@ -105,7 +131,7 @@ function arguments(args)
     name isa String || return "$project has no name"
     success(pipeline(`git -C $pkg rev-parse --quiet --verify $(base * "^{commit}")`; stdout = devnull, stderr = devnull)) ||
         return "<base> $base is no commit of $pkg"
-    return (; pkg, base, name, timeout, jet)
+    return (; pkg, base, name, timeout, jet, api)
 end
 
 """
@@ -199,18 +225,70 @@ end
 
 where_is(m, root, tree) = Dict("key" => key(m.sig, root), "file" => relfile(m.file, tree), "line" => Int(m.line))
 
-"""
-One record per own method: every method of `Core.methodtable` whose module is own, except the
-methods of a function whose name starts with `#`. `others` holds the other methods of the generic:
-all of them for an own generic, the intersecting ones for an external generic. The generic of a
-`Core.kwcall` method is its keyword function, and its other methods are that function's
-`Core.kwcall` methods. `generic_package` names the package of the generic's module.
-"""
-function method_records(ownset, root, tree)
+"Every method of `Core.methodtable` whose module is in `ownset`, except the methods of a function whose name starts with `#`."
+function own_methods(ownset)
     ms = Method[]
     Base.visit(Core.methodtable) do x
         parentmodule(x) in ownset && !startswith(string(x.name), "#") && push!(ms, x)
     end
+    return ms
+end
+
+"""
+Each public name of `root`, and of each submodule that is itself a public name of its parent,
+recursively, as `(path, module, name)`: `path` is the path of the module below `root`, `""` for
+`root` itself. A module's own name is left out.
+"""
+function public_bindings(root)
+    acc = Tuple{String, Module, Symbol}[]
+    function walk(m, path)
+        for n in sort!(names(m; all = true, imported = true))
+            (n === nameof(m) || !Base.ispublic(m, n)) && continue
+            push!(acc, (path, m, n))
+            isdefined(m, n) || continue
+            x = getglobal(m, n)
+            x isa Module && x !== m && parentmodule(x) === m && walk(x, isempty(path) ? string(n) : "$path.$n")
+        end
+    end
+    walk(root, "")
+    return acc
+end
+
+"The kind of the binding `n` of `m`: `module`, `type`, `function`, or `other`, which an undefined name also gets."
+function kind(m, n)
+    isdefined(m, n) || return "other"
+    x = getglobal(m, n)
+    return x isa Module ? "module" : x isa Type ? "type" : x isa Function ? "function" : "other"
+end
+
+"""
+Whether the function type `ft` of a generic is that of a public function or of a public type's
+constructor, among the bindings `pub` of `public_bindings`.
+"""
+function public_generic(ft, pub)
+    ft isa DataType || return false
+    for (_, m, n) in pub
+        isdefined(m, n) || continue
+        x = getglobal(m, n)
+        x isa Function && typeof(x) === ft && return true
+        if x isa Type && ft.name === Type.body.name
+            t, u = Base.unwrap_unionall(ft.parameters[1]), Base.unwrap_unionall(x)
+            t isa DataType && u isa DataType && t.name === u.name && return true
+        end
+    end
+    return false
+end
+
+"""
+One record per own method of `own_methods`. `others` holds the other methods of the generic:
+all of them for an own generic, the intersecting ones for an external generic. The generic of a
+`Core.kwcall` method is its keyword function, and its other methods are that function's
+`Core.kwcall` methods. `generic_package` names the package of the generic's module. `api` says
+whether the generic is external or a public function or type among `pub`, and `kwargs` holds the
+method's keyword names, a slurp as `name...`.
+"""
+function method_records(ownset, root, tree, pub)
+    ms = own_methods(ownset)
     group(x) = (ftype(x), gtype(x))
     gs = Set{Any}(group(x) for x in ms)
     bygen = Dict{Any, Vector{Method}}()
@@ -226,6 +304,7 @@ function method_records(ownset, root, tree)
             Dict("name" => string(x.name), "module" => string(parentmodule(x)),
                 "generic" => own ? "own" : "external",
                 "generic_package" => gm === nothing ? nothing : string(nameof(Base.moduleroot(gm))),
+                "api" => !own || public_generic(gtype(x), pub), "kwargs" => string.(Base.kwarg_decl(x)),
                 "others" => sort!([where_is(y, root, tree) for y in others]; by = o -> (o["file"], o["line"], o["key"]))))
     end
 end
@@ -243,6 +322,105 @@ function ambiguities(own, ownset, root)
     end
 end
 
+const TYPE_HEADS = (:curly, :., :where, :tuple, :braces, :<:, :>:)
+
+"Whether `ex` holds only the parts of a printed type: names, literals, `{}`, `where`, bounds and `typeof(…)`."
+type_expr(ex) = !(ex isa Expr) ||
+                (ex.head in TYPE_HEADS || ex.head === :call && length(ex.args) == 2 && ex.args[1] === :typeof) &&
+                all(type_expr, ex.args)
+
+"Whether `ex` is the expression of a key: a type expression of a `Tuple{…}`, with or without `where`."
+function key_expr(ex)
+    type_expr(ex) || return false
+    while ex isa Expr && ex.head === :where
+        ex = ex.args[1]
+    end
+    return ex isa Expr && ex.head === :curly && ex.args[1] === :Tuple
+end
+
+"""
+The first symbol of each dotted name in `ex`: `X` of `X.T`, and of `X.Y.T`, whose inner node is
+`X.Y`.
+"""
+function qualifiers(ex, acc = Set{Symbol}())
+    ex isa Expr || return acc
+    ex.head === :. && ex.args[1] isa Symbol && push!(acc, ex.args[1])
+    foreach(a -> qualifiers(a, acc), ex.args)
+    return acc
+end
+
+"The loaded package named `s`, where exactly one is loaded, else `nothing`."
+function loaded_package(s)
+    ps = [m for (k, m) in Base.loaded_modules if k.name == string(s)]
+    return length(ps) == 1 ? only(ps) : nothing
+end
+
+"`ex` with each leading qualifier that `root` does not bind and that names a loaded package replaced by that package."
+function requalified(ex, root)
+    ex isa Expr || return ex
+    if ex.head === :. && ex.args[1] isa Symbol && !isdefined(root, ex.args[1])
+        p = loaded_package(ex.args[1])
+        p === nothing || return Expr(:., p, ex.args[2])
+    end
+    return Expr(ex.head, (requalified(a, root) for a in ex.args)...)
+end
+
+"""
+The head's verdict on the base key `k`, among the own methods `ms` of the head: `covered`, with the
+key of an own method whose signature takes the key's (`sig <: m.sig`), else `removed`. A key that
+does not evaluate in `root` is `unknown`, with the first line of its error, except an
+`UndefVarError` of a name that is no leading qualifier of the key in an own module, which is
+`removed`. A key that is no type expression is not evaluated.
+"""
+function method_cover(k, root, ownset, ms)
+    unknown(msg) = Dict("status" => "unknown", "error" => String(first(split(msg, '\n'))))
+    ex = try
+        Meta.parse(k)
+    catch e
+        return unknown(sprint(showerror, e))
+    end
+    key_expr(ex) || return unknown("not a type expression")
+    sig = try
+        Core.eval(root, requalified(ex, root))
+    catch e
+        e isa UndefVarError && e.scope in ownset && !(e.var in qualifiers(ex)) && return Dict("status" => "removed")
+        return unknown(sprint(showerror, e))
+    end
+    by = sort!([key(m.sig, root) for m in ms if sig <: m.sig])
+    return isempty(by) ? Dict("status" => "removed") : Dict("status" => "covered", "by" => first(by))
+end
+
+"The module at `path` below `root`, `\"\"` for `root`, where each step is a submodule; else `nothing`."
+function submodule(root, path)
+    m = root
+    for p in (isempty(path) ? String[] : split(path, '.'))
+        s = Symbol(p)
+        isdefined(m, s) || return nothing
+        x = getglobal(m, s)
+        x isa Module && x !== m && parentmodule(x) === m || return nothing
+        m = x
+    end
+    return m
+end
+
+"""
+The head's cover of the base's records `b`: for each base public name, `public`, `demoted` where
+the head defines it in the same module and does not declare it public, or `gone`; and for each base
+API method whose key the own methods `ms` of the head lack, the verdict of `method_cover`, with the
+base's file and line.
+"""
+function cover(b, root, ownset, ms)
+    ns = map(b["public"]) do r
+        m, n = submodule(root, r["module"]), Symbol(r["name"])
+        status = m === nothing || !isdefined(m, n) ? "gone" : Base.ispublic(m, n) ? "public" : "demoted"
+        Dict("module" => r["module"], "name" => r["name"], "status" => status)
+    end
+    hkeys = Set(key(m.sig, root) for m in ms)
+    mcs = [merge(Dict("key" => r["key"], "file" => r["file"], "line" => r["line"]), method_cover(r["key"], root, ownset, ms))
+           for r in b["methods"] if r["api"] && !(r["key"] in hkeys)]
+    return Dict("names" => ns, "methods" => mcs)
+end
+
 "Write `d` as JSON into `path` at once, so that a reader never sees part of it."
 function write_json(path, d)
     write(path * ".part", JSON.json(d))
@@ -252,19 +430,25 @@ end
 """
 The records of a side, written into `<rundir>/<side>.json`. Beside the keys that a reader of the
 two files uses, `manifest` says whether the side's tree held a `Manifest.toml` when the side began.
-`loaded` names each package that the side has loaded when it writes the file.
+`loaded` names each package that the side has loaded when it writes the file. `public` holds one
+record per public name of `public_bindings`. With `basejson`, the path of the base's records, the
+file also holds the head's `cover` of them.
 """
-function record(s, rundir, tree, name, root, tree_mods, own, aqua, manifest)
+function record(s, rundir, tree, name, root, tree_mods, own, aqua, manifest, basejson)
     ownset = Set(own)
+    pub = public_bindings(root)
     piracies = [where_is(m, root, tree) for mod in tree_mods for m in aqua.Piracy.hunt(mod)]
-    write_json(joinpath(rundir, "$s.json"), Dict(
+    d = Dict(
         "package" => name, "side" => s, "julia" => string(VERSION), "manifest" => manifest,
         "tools" => Dict("Aqua" => string(pkgversion(aqua))),
         "dependencies" => Dict(i.name => (i.version === nothing ? nothing : string(i.version)) for i in values(Pkg.dependencies())),
         "loaded" => sort!([p.name for p in keys(Base.loaded_modules)]),
-        "methods" => method_records(ownset, root, tree),
+        "public" => [Dict("module" => p, "name" => string(n), "kind" => kind(m, n)) for (p, m, n) in pub],
+        "methods" => method_records(ownset, root, tree, pub),
         "ambiguities" => ambiguities(own, ownset, root),
-        "piracies" => piracies))
+        "piracies" => piracies)
+    basejson === nothing || (d["cover"] = cover(JSON.parsefile(basejson), root, ownset, own_methods(ownset)))
+    write_json(joinpath(rundir, "$s.json"), d)
 end
 
 """
@@ -285,10 +469,11 @@ end
 """
 The work of one side, in its own process after `TestEnv.activate()`: load the package and the weak
 dependencies that its test environment provides, write the records, then run JET. `manifest` says
-whether the tree held a `Manifest.toml` before the activation. Returns the process's exit code; a
-failed load writes `<side>.error`.
+whether the tree held a `Manifest.toml` before the activation; `basejson`, where it is no
+`nothing`, is the path of the base's records, which the head covers. Returns the process's exit
+code; a failed load writes `<side>.error`.
 """
-function side(s, rundir, tree, name, jet, manifest)
+function side(s, rundir, tree, name, jet, manifest, basejson = nothing)
     root = try
         Base.require(Main, Symbol(name))
     catch e
@@ -316,7 +501,7 @@ function side(s, rundir, tree, name, jet, manifest)
         end
         t, [t; exts]
     end
-    Base.invokelatest(record, s, rundir, tree, name, root, tree_mods, own, aqua, manifest)
+    Base.invokelatest(record, s, rundir, tree, name, root, tree_mods, own, aqua, manifest, basejson)
     jet || return 0
     j = Base.require(Main, :JET)
     reports = Base.invokelatest(jet_reports, j, root, own, tree)
@@ -324,8 +509,11 @@ function side(s, rundir, tree, name, jet, manifest)
     return 0
 end
 
-"The driver of a side: the harness environment last in LOAD_PATH, `TestEnv.activate()`, then `side`."
-driver(s, rundir, tree, name, jet) = """
+"""
+The driver of a side: the harness environment last in LOAD_PATH, `TestEnv.activate()`, then
+`side`, with `basejson` for the head in `--api` mode.
+"""
+driver(s, rundir, tree, name, jet, basejson = nothing) = """
     $(repr(HARNESS_ENV)) in LOAD_PATH || push!(LOAD_PATH, $(repr(HARNESS_ENV)))
     manifest = isfile($(repr(joinpath(tree, "Manifest.toml"))))
     using TestEnv
@@ -338,7 +526,7 @@ driver(s, rundir, tree, name, jet) = """
     module DispatchDelta
     include($(repr(SCRIPT)))
     end
-    exit(DispatchDelta.side($(repr(s)), $(repr(rundir)), $(repr(tree)), $(repr(name)), $jet, manifest))
+    exit(DispatchDelta.side($(repr(s)), $(repr(rundir)), $(repr(tree)), $(repr(name)), $jet, manifest, $(repr(basejson))))
     """
 
 "How a side's process ended: its signal, its exit code, and whether the script killed it."
@@ -352,33 +540,55 @@ end
 killgroup(p) = ccall(:kill, Cint, (Cint, Cint), -getpid(p), Base.SIGKILL)
 
 """
-Run both sides at once and wait for them. Each side is a process group of its own. A side gets
-`timeout` seconds to write its JSON, and with JET `timeout` seconds more from that moment; past its
-limit its process group is killed, as is each group still running when the script stops.
+Wait for the processes `procs` of the sides, from now, and add how each ended to `ends`. A side
+gets `timeout` seconds to write its JSON, and with JET `timeout` seconds more from that moment;
+past its limit its process group is killed.
 """
-function run_sides(rundir, trees, name, timeout, jet)
-    logs = Dict(s => open(joinpath(rundir, "$s.log"), "w") for s in keys(trees))
-    procs = Dict(map(collect(trees)) do (s, tree)
-        drv = joinpath(rundir, "$s-driver.jl")
-        write(drv, driver(s, rundir, tree, name, jet))
-        cmd = Cmd(`$(Base.julia_cmd()) --startup-file=no --project=$tree $drv`; detach = true)
-        s => run(pipeline(ignorestatus(cmd); stdout = logs[s], stderr = logs[s]); wait = false)
-    end)
-    t0, json_at, ends = time(), Dict{String, Float64}(), Dict{String, End}()
-    try
-        while length(ends) < length(procs)
-            for (s, p) in procs
-                haskey(ends, s) && continue
-                running = process_running(p)
-                if running
-                    jet && !haskey(json_at, s) && isfile(joinpath(rundir, "$s.json")) && (json_at[s] = time())
-                    time() > get(json_at, s, t0) + timeout || continue
-                    killgroup(p)
-                end
-                wait(p)
-                ends[s] = End(p.termsignal, p.exitcode, running)
+function wait_sides!(ends, procs, rundir, timeout, jet)
+    t0, json_at = time(), Dict{String, Float64}()
+    while !all(s -> haskey(ends, s), keys(procs))
+        for (s, p) in procs
+            haskey(ends, s) && continue
+            running = process_running(p)
+            if running
+                jet && !haskey(json_at, s) && isfile(joinpath(rundir, "$s.json")) && (json_at[s] = time())
+                time() > get(json_at, s, t0) + timeout || continue
+                killgroup(p)
             end
-            length(ends) < length(procs) && sleep(0.2)
+            wait(p)
+            ends[s] = End(p.termsignal, p.exitcode, running)
+        end
+        all(s -> haskey(ends, s), keys(procs)) || sleep(0.2)
+    end
+    return ends
+end
+
+"""
+Run the sides and wait for them, each in a process group of its own; each group still running when
+the script stops is killed. Both sides start at once; with `api`, the head starts once the base
+has ended, with the path of `base.json`, and does not start where the base wrote none.
+"""
+function run_sides(rundir, trees, name, timeout, jet; api = false)
+    logs = Dict(s => open(joinpath(rundir, "$s.log"), "w") for s in keys(trees))
+    procs, ends = Dict{String, Base.Process}(), Dict{String, End}()
+    function start(s, basejson = nothing)
+        drv = joinpath(rundir, "$s-driver.jl")
+        write(drv, driver(s, rundir, trees[s], name, jet, basejson))
+        cmd = Cmd(`$(Base.julia_cmd()) --startup-file=no --project=$(trees[s]) $drv`; detach = true)
+        procs[s] = run(pipeline(ignorestatus(cmd); stdout = logs[s], stderr = logs[s]); wait = false)
+    end
+    try
+        if api
+            start("base")
+            wait_sides!(ends, procs, rundir, timeout, jet)
+            basejson = joinpath(rundir, "base.json")
+            if isfile(basejson)
+                start("head", basejson)
+                wait_sides!(ends, procs, rundir, timeout, jet)
+            end
+        else
+            foreach(start, keys(trees))
+            wait_sides!(ends, procs, rundir, timeout, jet)
         end
     finally
         foreach(p -> process_running(p) && killgroup(p), values(procs))
@@ -430,6 +640,41 @@ function compare(b, h)
     return out
 end
 
+"""
+The lines that compare the API of the two sides: the head's cover of the base's public names and
+API methods, the new public names, and the keyword names that each base public function takes on
+the base, from its API methods, and on the head, from all its methods.
+"""
+function compare_api(b, h)
+    out = String[]
+    qual(r) = isempty(r["module"]) ? r["name"] : "$(r["module"]).$(r["name"])"
+    for r in sort(h["cover"]["names"]; by = qual)
+        r["status"] == "gone" && push!(out, "FAIL: gone public name: $(qual(r))")
+        r["status"] == "demoted" && push!(out, "FAIL: no longer public: $(qual(r))")
+    end
+    bpub = Set(qual(r) for r in b["public"])
+    append!(out, ["INFO: new public name: $n" for n in sort!([qual(r) for r in h["public"] if !(qual(r) in bpub)])])
+    for r in sort(h["cover"]["methods"]; by = r -> r["key"])
+        push!(out, r["status"] == "removed" ? "FAIL: removed method: $(r["key"]) at $(r["file"]):$(r["line"])" :
+                   r["status"] == "covered" ? "INFO: covered: $(r["key"]) by $(r["by"])" :
+                   "UNKNOWN: key: $(r["key"]): $(r["error"])")
+    end
+    function keywords(d, api)
+        kw = Dict{String, Set{String}}()
+        for m in d["methods"]
+            (api && !m["api"]) || union!(get!(kw, generic_of(m["key"]), Set{String}()), m["kwargs"])
+        end
+        return kw
+    end
+    bk, hk = keywords(b, true), keywords(h, false)
+    for g in sort!(collect(keys(bk))), n in sort!(collect(bk[g]))
+        hs = get(hk, g, Set{String}())
+        n in hs || any(endswith("..."), hs) ||
+            push!(out, "FAIL: removed keyword: $(replace(g, r"^typeof\((.*)\)$" => s"\1")) $n")
+    end
+    return out
+end
+
 "The lines that compare the JET reports of the two sides."
 function compare_jet(b, h)
     rep(d) = Dict((r["type"], r["message"], r["frame"]) => r for r in d["reports"])
@@ -442,12 +687,14 @@ end
 """
 The lines of a run from what its sides left in `rundir` and how they ended, with the `Verdict:`
 line last, and the exit code. A side whose JSON exists has its records; with JET, an end other than
-a clean exit after that is the JET step's alone.
+a clean exit after that is the JET step's alone. With `api`, the lines compare the API alone, and a
+side that `ends` lacks did not start.
 """
-function analyse(rundir, ends; timeout, jet)
+function analyse(rundir, ends; timeout, jet, api = false)
     out, data, decisive = String[], Dict{String, Any}(), false
     jet_lost = Set{String}()
     for s in ("base", "head")
+        haskey(ends, s) || continue
         e, json, err, log = ends[s], joinpath(rundir, "$s.json"), joinpath(rundir, "$s.error"), joinpath(rundir, "$s.log")
         if jet && isfile(json) && (e.signal != 0 || e.code != 0)
             push!(out, e.killed ? "UNKNOWN: jet: $s timed out after $timeout s" :
@@ -477,13 +724,13 @@ function analyse(rundir, ends; timeout, jet)
     end
     if haskey(data, "base") && haskey(data, "head")
         pushfirst!(out, "json: $(joinpath(rundir, "base.json")) $(joinpath(rundir, "head.json"))")
-        append!(out, compare(data["base"], data["head"]))
+        append!(out, api ? compare_api(data["base"], data["head"]) : compare(data["base"], data["head"]))
         jet && isempty(jet_lost) && append!(out,
             compare_jet((JSON.parsefile(joinpath(rundir, "$s-jet.json")) for s in ("base", "head"))...))
     end
-    jet || push!(out, "INFO: jet: not run (--no-jet)")
+    jet || api || push!(out, "INFO: jet: not run (--no-jet)")
     f, u, i = (count(startswith(p), out) for p in ("FAIL: ", "UNKNOWN: ", "INFO: "))
-    status = f > 0 ? 1 : decisive ? 3 : 0
+    status = f > 0 ? 1 : decisive || any(startswith("UNKNOWN: key: "), out) ? 3 : 0
     push!(out, "Verdict: $(status == 0 ? "PASS" : status == 1 ? "FAIL" : "UNKNOWN") — $f FAIL, $u UNKNOWN, $i INFO")
     return out, status
 end
@@ -501,7 +748,8 @@ function main(args)
         println(stderr, USAGE)
         return 2
     end
-    (; pkg, base, name, timeout, jet) = a
+    (; pkg, base, name, timeout, api) = a
+    jet = a.jet && !api
     sha = readchomp(`git -C $pkg rev-parse --short $(base * "^{commit}")`)
     stamp = Dates.format(Dates.now(), "yyyymmdd-HHMMSS")
     rundir = mkpath(joinpath(expanduser("~/Research/.scratch/dispatch-delta"), "$name-$stamp-$(getpid())"))
@@ -530,8 +778,8 @@ function main(args)
         else
             println("manifest: the head has no Manifest.toml, so each side resolves its own")
         end
-        ends = run_sides(rundir, Dict("base" => basetree, "head" => head), name, timeout, jet)
-        out, status = analyse(rundir, ends; timeout, jet)
+        ends = run_sides(rundir, Dict("base" => basetree, "head" => head), name, timeout, jet; api)
+        out, status = analyse(rundir, ends; timeout, jet, api)
         foreach(println, out)
         return status
     finally

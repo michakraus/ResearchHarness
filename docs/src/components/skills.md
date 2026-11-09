@@ -185,7 +185,9 @@ It loads on requests such as "cut a release", "bump the version" or "tag a versi
 AutoMerge blocks a registry pull request. The procedure has six steps:
 
 1. Close out the `[Unreleased]` section of `CHANGELOG.md`.
-2. Set `version` in `Project.toml` by hand.
+2. Set `version` in `Project.toml` by hand, then run the API check, `dispatch-delta.jl <package>
+   <tag> --api` against the last release tag. On a removal with a version that is not breaking,
+   the skill stops and asks the user.
 3. Commit both files in one release commit.
 4. Push, and wait for the pre-push suite.
 5. Comment `@JuliaRegistrator register` on the release commit, with the release notes. The script
