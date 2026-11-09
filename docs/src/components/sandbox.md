@@ -61,7 +61,8 @@ stays read-only. No other frontend has a `read_files` entry. oh-my-pi adds the w
 frontend, a value that is not a list of strings, a path that does not start with `~/`, or a path
 with a `..` segment, which could leave the home directory. The message names the key or the path.
 It also exits with status 2 on a `read_files` path that is itself an entry of the frontend's read
-denies; such a file goes in `own`.
+denies, compared as paths after the `~` expansion, so `~/x/`, `~//x` and `~/./x` are `~/x`, and
+`~/` is the home directory; such a file goes in `own`.
 
 ## The rendering rules
 

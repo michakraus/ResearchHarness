@@ -25,9 +25,9 @@ and its `read_files`, files below a read deny directory that it reads and does n
 
 Every `~` and `~/` prefix becomes the home directory, a list holds no entry twice, and the first
 occurrence keeps its place. "At or below" compares whole path components. A `read_files` path
-that is itself an entry of `denyRead` exits 2. srt lets a file allow pierce a glob read deny, and
-not a literal one inside a read allow; it reads `D/**` as the literal `D`, so the glob is `D/*`.
-A glob entry, one that holds `*`, `?`, `[` or `]`, stays as it is.
+that is itself an entry of `denyRead`, compared as a path, exits 2. srt lets a file allow pierce
+a glob read deny, and not a literal one inside a read allow; it reads `D/**` as the literal `D`,
+so the glob is `D/*`. A glob entry, one that holds `*`, `?`, `[` or `]`, stays as it is.
 
 With at least one frontend chosen, `plan_files` also plans the launcher sandbox/agentbox at
 `~/.local/bin/agentbox`, mode 755, which starts a frontend under `srt` with its file, and, with
@@ -225,17 +225,19 @@ def srt_settings(
         raise HarnessError("the sandbox object's network.allowLocalBinding is not true or false")
     allow_write = [p for p in expanded(strings(sandbox, "filesystem", "allowWrite")) if not below(p, others)]
     deny_write = [p for p in expanded(strings(sandbox, "filesystem", "denyWrite")) if p not in own]
-    deny_read = [
-        p
-        for p in [
-            str(home),
-            *expanded(strings(sandbox, "filesystem", "denyRead")),
-            *expanded(credential_paths(sandbox)),
-        ]
-        if p not in own
-    ]
     deny_read = read_globs(
-        frontend, deny_read, dict(zip(read_files, mine.read_files, strict=True)), str(home)
+        frontend,
+        [
+            p
+            for p in [
+                str(home),
+                *expanded(strings(sandbox, "filesystem", "denyRead")),
+                *expanded(credential_paths(sandbox)),
+            ]
+            if p not in own
+        ],
+        mine.read_files,
+        home,
     )
     return {
         "network": {
@@ -252,15 +254,20 @@ def srt_settings(
     }
 
 
-def read_globs(frontend: str, deny_read: list[str], read_files: Mapping[str, str], home: str) -> list[str]:
+def read_globs(
+    frontend: str, deny_read: list[str], read_files: Sequence[str], home: pathlib.Path
+) -> list[str]:
     """`deny_read` with each literal entry, other than `home`, that lies above a path of
-    `read_files` written as the entry followed by `/*`, in its place. `read_files` maps each path of
-    the frontend's `read_files`, `~` expanded, to its entry in the policy. srt lets a file allow
-    pierce a glob deny, but emits a literal deny nested in a read allow after the allows, where it
-    wins; and it strips a trailing `/**` before it tells a glob from a literal, so the glob ends in
-    `/*`, which covers everything below the entry and not the entry itself. Exits 2 on a path that
-    is itself an entry of `deny_read`, so "above" is strictly above."""
-    if equal := [entry for path, entry in read_files.items() if path in deny_read]:
+    `read_files`, the frontend's list as the policy spells it, written as the entry followed by
+    `/*`, in its place. Paths compare as `PurePosixPath`s after `~` expansion, so `~/x/`, `~//x`
+    and `~/./x` are `~/x`, and the glob is written from that form. srt lets a file allow pierce a
+    glob deny, but emits a literal deny nested in a read allow after the allows, where it wins; and
+    it strips a trailing `/**` before it tells a glob from a literal, so the glob ends in `/*`,
+    which covers everything below the entry and not the entry itself. Exits 2 on a path that is
+    itself an entry of `deny_read`, so "above" is strictly above."""
+    files = {pathlib.PurePosixPath(expand(p, home)): p for p in read_files}
+    denies = {pathlib.PurePosixPath(entry) for entry in deny_read}
+    if equal := [p for path, p in files.items() if path in denies]:
         raise HarnessError(
             f"the policy's frontend.{frontend}.read_files entry {equal[0]!r} is itself a read deny entry; "
             f"frontend.{frontend}.own lifts an entry"
@@ -268,9 +275,10 @@ def read_globs(frontend: str, deny_read: list[str], read_files: Mapping[str, str
 
     def above(entry: str) -> bool:
         literal = not any(c in entry for c in GLOB_CHARS)
-        return literal and entry != home and any(below(p, [entry]) for p in read_files)
+        top = pathlib.PurePosixPath(entry)
+        return literal and top != pathlib.PurePosixPath(home) and any(below(str(p), [entry]) for p in files)
 
-    return [f"{entry}/*" if above(entry) else entry for entry in deny_read]
+    return [f"{pathlib.PurePosixPath(entry)}/*" if above(entry) else entry for entry in deny_read]
 
 
 def real_tmpdir() -> str | None:
@@ -698,10 +706,39 @@ def settings_cases(check: Check, root: pathlib.Path) -> None:
         f"a read_files path that is a read deny entry itself exits 2 and names the path and own: {message!r}",
     )
     entries = ["/h", "/h/q?", "/h/b[1", "/h/c]", "/h/d"]
-    globbed = read_globs("opencode", entries, {f"{e}/k": f"~{e[2:]}/k" for e in entries[1:]}, "/h")
+    globbed = read_globs("opencode", entries, [f"~{e[2:]}/k" for e in entries[1:]], home)
     check(
         globbed == ["/h", "/h/q?", "/h/b[1", "/h/c]", "/h/d/*"],
         f"a read deny entry that holds ?, [ or ] is a glob and stays as it is: {globbed}",
+    )
+    globbed = read_globs("opencode", ["/h", "/h/d"], ["~/d/a", "~/d/b"], home)
+    check(
+        globbed == ["/h", "/h/d/*"],
+        f"two read_files paths below one read deny entry give one glob in its place: {globbed}",
+    )
+    for spelling in ["~/.config/keys/", "~/.config//keys", "~/.config/./keys", "~/", "~/.", "~/.box*"]:
+        equal.write_text(FIXTURE_POLICY.replace('"~/.local/x/f"', f'"{spelling}"', 1))
+        message = refused(lambda: srt_settings("opencode", sandbox, load_policy(equal), home, "/t"))
+        check(
+            message is not None and f"{spelling!r}" in message and "frontend.opencode.own" in message,
+            f"a read_files path {spelling}, a read deny entry as a path, exits 2 and names it: {message!r}",
+        )
+    spelled = fixture_sandbox()
+    spelled["filesystem"]["denyRead"] = ["~/", "~/.config/keys/", "~/.config/key"]
+    got = cast("dict[str, list[str]]", srt_settings("opencode", spelled, policy, home, "/t")["filesystem"])[
+        "denyRead"
+    ]
+    check(
+        got[:4] == ["/h", "/h/", "/h/.config/keys/*", "/h/.config/key"],
+        f"a read deny entry ~/ is the home directory and stays; ~/.config/keys/ is the glob "
+        f"/h/.config/keys/*; ~/.config/key, a prefix of the read_files paths, stays literal: {got}",
+    )
+    equal.write_text(FIXTURE_POLICY.replace('"~/.local/x/f"', '"~/.config/keys"', 1))
+    message = refused(lambda: srt_settings("opencode", spelled, load_policy(equal), home, "/t"))
+    check(
+        message is not None and "'~/.config/keys'" in message,
+        f"a read_files path ~/.config/keys, equal as a path to the read deny entry ~/.config/keys/, "
+        f"exits 2: {message!r}",
     )
 
     plain = fixture_sandbox()
