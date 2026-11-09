@@ -393,9 +393,12 @@ instantiated. It prints one line per violation,
 | `Verdict: FAIL — <n> violations` | after the lines of the violations | 1 |
 | `UNKNOWN: the package does not load: <error>` | the import fails, and the full error goes to stderr; or the process that loads the package ends without a verdict, such as by an `exit` in the package's code or by a signal | 3 |
 
-The process that loads the package exits with 10, 11 or 13 for the three verdicts. An `exit(10)`,
-`exit(11)` or `exit(13)` in the package's own code, such as in its `__init__`, therefore reads as
-the verdict of that code, with no verdict line.
+The process that loads the package reports its verdict in a file, not in its exit code. The
+script passes the path of that file as the last of the process's `ARGS`, in a temporary directory
+that it removes after the run. A file that is absent or holds anything but `0`, `1` or `3` gives
+the `UNKNOWN` line, with the exit code and the signal of the process. So an `exit` in the
+package's own code, such as in its `__init__`, gives `UNKNOWN` whatever its exit code. Package
+code that finds the path in `ARGS` and writes `0`, `1` or `3` to that file itself is not guarded.
 
 Bad arguments, such as a directory with no `Project.toml`, print the usage line to stderr and
 exit 2. In process, `concrete_field_violations(M::Module)` returns the violations of a loaded root

@@ -25,12 +25,13 @@
 #   Verdict: FAIL — <n> violations                     exit 1
 #   UNKNOWN: the package does not load: <error>        exit 3
 #
-# The process that loads the package exits with 10, 11 or 13 for the three verdicts. The UNKNOWN
-# line also stands where it ends with another exit code, such as an exit(0) of the package's own
-# code, or by a signal; its <error> then names both. An exit(10), exit(11) or exit(13) of the
-# package's own code reads as a verdict, with no verdict line. Bad arguments print the usage line
-# to stderr and exit 2. In process, concrete_field_violations takes the root module that a caller
-# has loaded.
+# The process that loads the package reports its verdict in a file, whose path is the last of its
+# ARGS, in a temporary directory that goes after the run; its exit code carries no verdict. The
+# UNKNOWN line also stands where that file is absent or holds anything but 0, 1 or 3, such as
+# after an exit of the package's own code, with any exit code, or after a signal; its <error> then
+# names both. Package code that writes 0, 1 or 3 to that file itself is not guarded. Bad
+# arguments print the usage line to stderr and exit 2. In process, concrete_field_violations takes
+# the root module that a caller has loaded.
 
 using TOML
 
@@ -123,9 +124,10 @@ function report(name::String)
     return Base.invokelatest(print_violations, M)
 end
 
-# The program of the fresh process: ARGS are this file and the package's name. It exits with
-# 10 + the exit code of `report`, so that a process that ends early with 0, 1 or 3 gives no verdict.
-const CHILD = "include(ARGS[1]); exit(10 + report(ARGS[2]))"
+# The program of the fresh process: ARGS are this file, the package's name and the path of the
+# result file, last. It writes the exit code of `report` to that file; its own exit code carries
+# no verdict.
+const CHILD = "include(ARGS[1]); write(ARGS[3], string(report(ARGS[2])))"
 
 function main(args)
     length(args) == 1 || (println(stderr, USAGE); return 2)
@@ -138,12 +140,17 @@ function main(args)
         println(stderr, USAGE)
         return 2
     end
-    cmd = `$(Base.julia_cmd()) --startup-file=no --project=$pkg -e $CHILD $(@__FILE__) $name`
-    proc = run(ignorestatus(cmd))
-    proc.exitcode in (10, 11, 13) && return proc.exitcode - 10
-    println("UNKNOWN: the package does not load: the process ended with exit code ",
-        proc.exitcode, ", signal ", proc.termsignal)
-    return 3
+    # the directory goes after the run, however the process ended
+    return mktempdir() do dir
+        result = joinpath(dir, "result")
+        julia = `$(Base.julia_cmd()) --startup-file=no --project=$pkg`
+        proc = run(ignorestatus(`$julia -e $CHILD $(@__FILE__) $name $result`))
+        verdict = isfile(result) ? read(result, String) : ""
+        verdict in ("0", "1", "3") && return parse(Int, verdict)
+        println("UNKNOWN: the package does not load: the process ended with exit code ",
+            proc.exitcode, ", signal ", proc.termsignal)
+        return 3
+    end
 end
 
 if abspath(PROGRAM_FILE) == @__FILE__

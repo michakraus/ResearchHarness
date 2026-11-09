@@ -29,12 +29,19 @@ end
 # the test's other temporary directories; the depots of this process follow it for everything else.
 const DEPOT = mktempdir()
 
-"Run concrete-fields.jl with `args`: the exit code, the lines of stdout and the text of stderr."
+"""
+Run concrete-fields.jl with `args`: the exit code, the lines of stdout and the text of stderr.
+The run gets a working directory and a TMPDIR of its own, and the TMPDIR must be empty after it:
+the script removes the directory of its result file, also where the load process ends by a signal.
+"""
 function run_cli(args...)
     out, err = IOBuffer(), IOBuffer()
+    tmp, cwd = realpath(mktempdir()), realpath(mktempdir())
     julia = `$(Base.julia_cmd()) --startup-file=no $SCRIPT $(collect(args))`
-    cmd = addenv(julia, "JULIA_DEPOT_PATH" => join([DEPOT; DEPOT_PATH], ':'))
+    cmd = addenv(Cmd(julia; dir = cwd),
+        "JULIA_DEPOT_PATH" => join([DEPOT; DEPOT_PATH], ':'), "TMPDIR" => tmp)
     proc = run(pipeline(ignorestatus(cmd); stdout = out, stderr = err))
+    @test isempty(readdir(tmp))
     return proc.exitcode, filter(!isempty, split(String(take!(out)), '\n')), String(take!(err))
 end
 
@@ -389,6 +396,25 @@ flagged(m) = [r.type => r.field for r in concrete_field_violations(m)]
         @test length(lines) == 1
         @test startswith(only(lines), "UNKNOWN: the package does not load: the process ended with")
         @test endswith(only(lines), "signal 9")
+        # the exit codes 10, 11 and 13, which carry no verdict, from a package with a violation
+        for n in (10, 11, 13)
+            dir = package("CfVerdict$n",
+                "module CfVerdict$n\nstruct A\n    x::Real\nend\n__init__() = exit($n)\nend\n")
+            code, lines, _ = run_cli(dir)
+            @test code == 3
+            @test length(lines) == 1
+            @test startswith(only(lines), "UNKNOWN: the package does not load: ")
+        end
+        # a result file that does not hold 0, 1 or 3, written by the package's own code
+        for (i, s) in enumerate(("7", "", "0\n"))
+            dir = package("CfFile$i",
+                "module CfFile$i\n__init__() = (write(ARGS[end], $(repr(s))); exit(0))\nend\n")
+            code, lines, _ = run_cli(dir)
+            @test code == 3
+            @test lines == [
+                "UNKNOWN: the package does not load: the process ended with exit code 0, signal 0",
+            ]
+        end
     end
 
     @testset "bad arguments exit 2" begin
