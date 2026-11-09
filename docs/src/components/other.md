@@ -97,7 +97,12 @@ makes it a background job; Kaimon's own default is 30 s. An agent that gets a jo
 wait, so it calls `check_eval` until the job ends, and each call is a model turn that reads the
 whole context again. 240 s is below the 5-minute prompt cache of a Claude Code sub-agent and below
 the request timeout that the install gives oh-my-pi. Claude Code, OpenCode and Antigravity keep a
-Kaimon call open for longer than that.
+Kaimon call open for longer than that. `POCL_CACHE_DIR` gives PoCL, which runs the kernels of the
+CPU backend of KernelAbstractions, the kernel cache `~/.cache/kaimon/pocl` in a Julia session.
+Kaimon's profile lets the job write below `~/.cache/kaimon` and not PoCL's default
+`~/.cache/pocl`, which a sandboxed command may write: so Kaimon has a cache of its own, and no
+command can put a compiled kernel where Kaimon loads and runs it. `harness setup` creates the
+directory before it loads the job, each directory that it creates with mode 700.
 
 OpenCode, oh-my-pi and Antigravity connect to this server at `http://127.0.0.1:2828/`. The update
 job `julia-update.plist` restarts it when its Julia release is deleted. Render the plist with

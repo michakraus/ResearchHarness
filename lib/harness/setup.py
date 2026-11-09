@@ -159,6 +159,9 @@ SANDBOX = ".config/research-harness/sandbox"
 # shim that the run installs there, as a path of the clone.
 SHIMS = jobsandbox.SHIMS.removeprefix("~/")
 PS_SHIM = jobsandbox.PS_SHIM.relative_to(REPO)
+# The directory below the home directory that POCL_CACHE_DIR of kaimon's plist and unit names:
+# Kaimon's profile lets the job write below ~/.cache/kaimon and not PoCL's default ~/.cache/pocl.
+POCL_CACHE = ".cache/kaimon/pocl"
 UNITS = (
     "kaimon.service",
     "julia-update.service",
@@ -774,7 +777,9 @@ def job_steps(machine: Machine, loaded: profile_module.Profile, env: Mapping[str
     """The jobs, as the dotfiles kit's services step does them: the two copies in ~/.local/bin,
     then the launch agents or the systemd user units, rendered and loaded; on macOS each job of
     jobsandbox.JOBS has its Seatbelt profile rendered into SANDBOX before its plist, and the Kaimon
-    job has the `ps` shim installed into SHIMS, mode 755, before its profile. Without a
+    job has the `ps` shim installed into SHIMS, mode 755, before its profile. On both systems one
+    step creates POCL_CACHE, the directory of POCL_CACHE_DIR in Kaimon's plist and unit, before
+    the Kaimon job is loaded. Without a
     `claude_remote`, no launch agent or unit of the autocommit job is rendered or loaded, because
     launchd loads every plist of ~/Library/LaunchAgents at the next login; a line by hand names
     the key."""
@@ -803,6 +808,7 @@ def job_steps(machine: Machine, loaded: profile_module.Profile, env: Mapping[str
             label = f"{loaded.launchd_prefix}.{job}"
             plist = agents / f"{label}.plist"
             if job == "kaimon":
+                result.steps.append(pocl_step(machine))
                 # The `ps` of the directory that kaimon's plist puts first on the job's PATH, in
                 # place before the load.
                 shim = machine.home / SHIMS / PS_SHIM.name
@@ -843,6 +849,7 @@ def job_steps(machine: Machine, loaded: profile_module.Profile, env: Mapping[str
                 lambda u=unit: render(machine, f"systemd/{u}", units / u, env),
             )
         )
+    result.steps.append(pocl_step(machine))
     systemctl = machine.which("systemctl") or "systemctl"
     enabled = [u for u in ENABLED if autocommit or not u.startswith("claude-autocommit.")]
     for words in (["daemon-reload"], ["enable", "--now", *enabled], ["restart", *enabled]):
@@ -851,6 +858,24 @@ def job_steps(machine: Machine, loaded: profile_module.Profile, env: Mapping[str
         )
     if not lingers(machine):
         result.by_hand.append('keep the jobs running after logout: sudo loginctl enable-linger "$USER"')
+
+
+def pocl_step(machine: Machine) -> Step:
+    """The step that creates POCL_CACHE below the home directory, one directory at a time, each
+    directory that it creates with mode 700 and each that exists as it is."""
+    target = machine.home / POCL_CACHE
+
+    def make() -> str | None:
+        d = machine.home
+        try:
+            for part in pathlib.PurePath(POCL_CACHE).parts:
+                d /= part
+                d.mkdir(mode=0o700, exist_ok=True)
+        except OSError as e:
+            return f"cannot create {e.filename}: {e.strerror}"
+        return None
+
+    return Step(f"mkdir -p {target}, each new directory mode 700", make)
 
 
 def lingers(machine: Machine) -> bool:
@@ -2657,7 +2682,10 @@ def plan_cases(case: Case, tmp: pathlib.Path, pins: Pins) -> None:
     for d in (loaded.tree_agents, *loaded.repository_roots, s.home / ".config" / "opencode"):
         pathlib.Path(d).mkdir(parents=True, exist_ok=True)
     lines = shows(mac, profile_module.Setup(), options, pins)
-    case(f"with every directory there, no mkdir step: {lines[:2]}", ok=not any("mkdir" in x for x in lines))
+    case(
+        f"with every directory there, no mkdir step but Kaimon's PoCL cache: {lines[:2]}",
+        ok=not any("mkdir" in x and POCL_CACHE not in x for x in lines),
+    )
     s.fake(
         "apt-cache", 'case "$2" in chezmoi) echo "  Candidate: (none)";; *) echo "  Candidate: 9.9-1";; esac'
     )
@@ -4976,6 +5004,81 @@ def sandbox_cases(case: Case, tmp: pathlib.Path, pins: Pins) -> None:
         )
 
 
+def pocl_cases(case: Case, tmp: pathlib.Path, pins: Pins) -> None:
+    """Kaimon's PoCL cache: the plist and the unit set POCL_CACHE_DIR below ~/.cache/kaimon, and on
+    macOS and on Linux one step creates that directory, mode 700 where it creates it, before the
+    Kaimon job is loaded, and leaves an existing directory as it is."""
+    plist = plistlib.loads((REPO / "launchagents" / "kaimon.plist").read_bytes())
+    variables = cast("dict[str, str]", plist["EnvironmentVariables"])
+    case(
+        f"kaimon.plist sets POCL_CACHE_DIR to {{home}}/{POCL_CACHE}: {variables.get('POCL_CACHE_DIR')!r}",
+        ok=variables.get("POCL_CACHE_DIR") == f"{{home}}/{POCL_CACHE}",
+    )
+    unit = (REPO / "systemd" / "kaimon.service").read_text(encoding="utf-8").splitlines()
+    case(
+        f"kaimon.service sets POCL_CACHE_DIR to {{home}}/{POCL_CACHE}: "
+        f"{[line for line in unit if 'POCL' in line]}",
+        ok=[line for line in unit if "POCL" in line and not line.startswith("#")]
+        == [f"Environment=POCL_CACHE_DIR={{home}}/{POCL_CACHE}"],
+    )
+    dummy = profile_module.load(profile_module.DUMMY, home=profile_module.DUMMY_HOME)
+    rendered = plistlib.loads(
+        profile_module.render_file(REPO / "launchagents" / "kaimon.plist", dummy).encode("utf-8")
+    )
+    got = cast("dict[str, str]", rendered["EnvironmentVariables"]).get("POCL_CACHE_DIR")
+    case(
+        f"kaimon.plist rendered with the dummy profile sets POCL_CACHE_DIR in its home: {got!r}",
+        ok=got == f"{profile_module.DUMMY_HOME}/{POCL_CACHE}",
+    )
+    for system, fakes, load in (
+        ("Darwin", MACOS_FAKES, "launchctl "),
+        ("Linux", LINUX_FAKES, "systemctl "),
+    ):
+        s = scratch(tmp, f"pocl-{system}", fakes)
+        machine = s.machine(system)
+        options = s.options()
+        loaded = profile_module.load(options.profile, home=str(machine.home))
+        steps = plan(machine, JOBS_ONLY, loaded, options, pins).steps
+        shown = [step.show for step in steps]
+        target = s.home / POCL_CACHE
+        at = [i for i, line in enumerate(shown) if POCL_CACHE in line]
+        loads = [i for i, line in enumerate(shown) if line.startswith(load)]
+        case(
+            f"on {system}, one step creates ~/{POCL_CACHE}, before the first {load.strip()} step: "
+            f"{[shown[i] for i in at]} at {at}, loads at {loads}",
+            ok=[shown[i] for i in at] == [f"mkdir -p {target}, each new directory mode 700"]
+            and bool(loads)
+            and at[0] < loads[0],
+        )
+        if len(at) != 1:
+            continue
+        action = steps[at[0]].action
+        first = action()
+        modes = {
+            str(d.relative_to(s.home)): oct(d.stat().st_mode & 0o777) if d.is_dir() else None
+            for d in (target.parent.parent, target.parent, target)
+        }
+        case(
+            f"on {system}, the step creates ~/{POCL_CACHE} and each directory it creates with mode 700: "
+            f"{first!r} {modes}",
+            ok=first is None and set(modes.values()) == {"0o700"},
+        )
+        target.chmod(0o755)
+        second = action()
+        case(
+            f"on {system}, the step run again succeeds and leaves the existing ~/{POCL_CACHE} as it is: "
+            f"{second!r} {oct(target.stat().st_mode & 0o777)}",
+            ok=second is None and oct(target.stat().st_mode & 0o777) == "0o755",
+        )
+        shutil.rmtree(s.home / ".cache")
+        (s.home / ".cache").write_text("", encoding="utf-8")
+        failed = action()
+        case(
+            f"on {system}, a file at ~/.cache fails the step with the path: {failed!r}",
+            ok=failed is not None and failed.startswith(f"cannot create {s.home / '.cache'}"),
+        )
+
+
 def selftest() -> tuple[int, int]:
     """The cases of the functions above: (number of cases, number wrong)."""
     total = wrong = 0
@@ -5026,4 +5129,5 @@ def selftest() -> tuple[int, int]:
         doctor_cases(case, root, pins)
         trust_cases(case, root, pins)
         sandbox_cases(case, root, pins)
+        pocl_cases(case, root, pins)
     return total, wrong

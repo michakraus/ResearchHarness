@@ -19,13 +19,16 @@ RestartSec=60
 # JULIA_APPS_JULIA_CMD names the juliaup launcher, so the job does not depend on one Julia
 # release. PATH is for the programs Kaimon starts, and holds no directory a session can write.
 # KAIMON_QDRANT_MANAGED=off stops the background index. KAIMON_GATE_PROMOTE_AFTER=240 lets an `ex`
-# call wait up to 240 s before it becomes a background job, which an agent polls. The same values
-# as the plist, whose PATH starts with the directory of a `ps` shim for its Seatbelt profile on
-# macOS.
+# call wait up to 240 s before it becomes a background job, which an agent polls. POCL_CACHE_DIR
+# gives the PoCL of a Julia session a kernel cache of its own, apart from PoCL's default
+# ~/.cache/pocl, which a sandboxed command may write; `harness setup` creates the directory before
+# it starts the job. The same values as the plist, whose PATH starts with the directory of a `ps`
+# shim for its Seatbelt profile on macOS.
 Environment=JULIA_APPS_JULIA_CMD={home}/.juliaup/bin/julia
 Environment=PATH={home}/.juliaup/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin
 Environment=KAIMON_QDRANT_MANAGED=off
 Environment=KAIMON_GATE_PROMOTE_AFTER=240
+Environment=POCL_CACHE_DIR={home}/.cache/kaimon/pocl
 
 [Install]
 WantedBy=default.target
