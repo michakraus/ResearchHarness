@@ -196,11 +196,11 @@ The steps run in this order, each with its full log under `<out-dir>`:
    code, as after a signal. The script's `FAIL:`, `UNKNOWN:` and `INFO:` lines are the step's
    detail. The step runs JET. Three packages were measured, each against a base ten commits
    back, on Julia 1.13.3. On a small package, about 1 200 lines of `src/` with one direct
-   dependency, the whole run took 34 s, with JET steps of 2–3 s, at a load average of 25. On a
+   dependency, the whole run took 17 s, with JET steps of 1–2 s, at a load average of 5. On a
    large package, about 18 000 lines of `src/` with 14 direct dependencies, the whole run took
    170 s, with JET steps of 42–43 s, at a load average of 8. On a medium package, about 9 000
    lines of `src/` with 15 direct dependencies, the whole run took 76 s, with JET steps of 7 s,
-   at a load average of 13. The last two runs had a warm depot. No JET step comes near 300 s, so
+   at a load average of 13. Each run had a warm depot. No JET step comes near 300 s, so
    the step does not pass `--no-jet`.
 5. `format`: JuliaFormatter on the `.jl` files that the diff against `<base>` adds or changes.
 
