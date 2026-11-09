@@ -452,7 +452,7 @@ function sides(base, head; jet = Dict("base" => [], "head" => []))
 end
 side(s; deps = Dict("Foo" => "1.0.0")) = Dict("package" => "Fx", "side" => s, "julia" => "1.13.3",
     "tools" => Dict("Aqua" => "0.8.18"), "dependencies" => deps, "loaded" => [], "methods" => [], "ambiguities" => [],
-    "piracies" => [])
+    "piracies" => [], "fields" => [])
 const DONE = DD.End(0, 0, false)
 
 @testset "dependency drift is information" begin
@@ -520,6 +520,96 @@ end
         @test r.code == C.code && verdict(r.out) == verdict(C.out)
         @test startswith(r.out, "DDClean: ")
     end
+end
+
+# One run without JET and one with --api of a package whose head adds abstract fields in the root
+# module, in a submodule and in an extension, keeps one of the base, makes one concrete and changes
+# the type of one.
+const FIELDS_BASE = mod("DDFields", """
+struct Old
+    x::Any
+end
+struct Fixed
+    x::Any
+end
+struct Narrowed
+    x::Any
+end""")
+const FIELDS_HEAD = mod("DDFields", """
+struct Old
+    x::Any
+end
+struct Fixed
+    x::Int
+end
+struct Narrowed
+    x::Real
+end
+struct New
+    y::Real
+end
+module Sub
+struct Deep{T}
+    v::AbstractVector{T}
+end
+end""")
+const FIELDS = fixture("DDFields",
+    ["src/DDFields.jl" => FIELDS_BASE,
+     "ext/DDFieldsLinearAlgebraExt.jl" => mod("DDFieldsLinearAlgebraExt", "using DDFields, LinearAlgebra")],
+    ["src/DDFields.jl" => FIELDS_HEAD,
+     "ext/DDFieldsLinearAlgebraExt.jl" => mod("DDFieldsLinearAlgebraExt", "using DDFields, LinearAlgebra\nstruct ExtBad\n    x::Real\nend")];
+    project = replace(FAIL_PROJECT, "DDFailLinearAlgebraExt" => "DDFieldsLinearAlgebraExt"))
+const FD = dd(FIELDS, "HEAD~1", "--no-jet")
+const FIELDS_JSON = DD.JSON.parsefile(joinpath(FD.run, "head.json"))
+const FA = dd(FIELDS, "HEAD~1", "--api")
+
+@testset "each side records its abstract fields" begin
+    fb = DD.JSON.parsefile(joinpath(FD.run, "base.json"))
+    for d in (fb, FIELDS_JSON)
+        @test haskey(d, "fields") && all(r -> sort!(collect(keys(r))) == ["field", "fieldtype", "type"], d["fields"])
+    end
+    rec(d) = [(r["type"], r["field"], r["fieldtype"]) for r in d["fields"]]
+    @test rec(fb) == [("DDFields.Fixed", "x", "Any"), ("DDFields.Narrowed", "x", "Any"), ("DDFields.Old", "x", "Any")]
+    @test rec(FIELDS_JSON) == [("DDFields.Narrowed", "x", "Real"), ("DDFields.New", "y", "Real"), ("DDFields.Old", "x", "Any"),
+        ("DDFields.Sub.Deep", "v", "AbstractArray{T, 1}")]
+    @test DD.JSON.parsefile(joinpath(C.run, "head.json"))["fields"] == []
+    # the API mode writes the record too
+    @test rec(DD.JSON.parsefile(joinpath(FA.run, "head.json"))) == rec(FIELDS_JSON)
+end
+
+@testset "a new abstract field fails" begin
+    @test lines(FD.out, "FAIL: ") == ["FAIL: new abstract field: DDFields.Narrowed.x::Real",
+        "FAIL: new abstract field: DDFields.New.y::Real", "FAIL: new abstract field: DDFields.Sub.Deep.v::AbstractArray{T, 1}"]
+    @test FD.code == 1 && startswith(verdict(FD.out), "Verdict: FAIL — 3 FAIL, 0 UNKNOWN, ")
+end
+
+@testset "an abstract field of the base does not fail" begin
+    @test !any(l -> occursin("Old", l), lines(FD.out, "FAIL:"))
+    @test !any(l -> occursin("Old", l), lines(FD.out, "INFO:"))
+end
+
+@testset "an abstract field that went away is information" begin
+    @test "INFO: gone abstract field: DDFields.Fixed.x::Any" in lines(FD.out, "INFO: ")
+    @test !any(l -> occursin("Fixed", l), lines(FD.out, "FAIL:"))
+    @test lines(FD.out, "INFO: gone abstract field: ") ==
+          ["INFO: gone abstract field: DDFields.Fixed.x::Any", "INFO: gone abstract field: DDFields.Narrowed.x::Any"]
+end
+
+@testset "a changed abstract field type reads as new" begin
+    @test "FAIL: new abstract field: DDFields.Narrowed.x::Real" in lines(FD.out, "FAIL: ")
+    @test "INFO: gone abstract field: DDFields.Narrowed.x::Any" in lines(FD.out, "INFO: ")
+end
+
+@testset "an extension's abstract field is not read" begin
+    @test !occursin("ExtBad", FD.out)
+    @test !any(r -> occursin("ExtBad", r["type"]), FIELDS_JSON["fields"])
+    # the extension has loaded on the head: its constructors are own methods
+    @test any(m -> m["module"] == "DDFieldsLinearAlgebraExt" && m["name"] == "ExtBad", FIELDS_JSON["methods"])
+end
+
+@testset "the API mode gives no abstract field line" begin
+    @test !occursin("abstract field", FA.out)
+    @test FA.code == 0 && startswith(verdict(FA.out), "Verdict: PASS — 0 FAIL, 0 UNKNOWN, ")
 end
 
 # One run, without JET, of a package in a subdirectory of its repository, whose base holds an
