@@ -815,6 +815,7 @@
         "~/Research",
         "~/.julia",
         "~/.cache/claude",
+        "~/.cache/pocl",
         "~/Library/Application Support/rtk",
         "~/.local/share/rtk",
         "~/.claude/agents",
