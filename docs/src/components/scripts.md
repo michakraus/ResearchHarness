@@ -220,7 +220,7 @@ repository calls it by name.
 method tables, ambiguities, piracies and JET reports.
 
 ```bash
-julia --startup-file=no dispatch-delta.jl <package> <base> [--timeout <s>] [--no-jet]
+julia --startup-file=no dispatch-delta.jl <package> <base> [--timeout <s>] [--no-jet] [--api]
 ```
 
 The head is the working tree of `<package>` as it is; `<base>` is a git ref of it. The script
@@ -231,11 +231,12 @@ into it, so that both sides load the same versions, where that manifest holds ev
 that the head's manifest lacks. Where another minor version of Julia resolved the head's
 `Manifest.toml` or `test/Manifest.toml`, neither side gets one, and the head runs from a copy
 without it, as in `run-tests.jl`. Each side loads in a fresh process group of its own, both at
-once, as `run-tests.jl` loads a driver: `--project=<tree>`, the harness environment last in
-`LOAD_PATH`, then `TestEnv.activate()`. Each side writes `<side>.json`: the package, the side, the
-Julia version, whether its tree held a `Manifest.toml`, the versions of Aqua and the dependencies,
-the packages that the side has loaded, one record per own method, and the ambiguities and
-piracies. Then it runs JET into `<side>-jet.json`. Its output goes to `<side>.log`.
+once (with `--api`, one after the other), as `run-tests.jl` loads a driver: `--project=<tree>`,
+the harness environment last in `LOAD_PATH`, then `TestEnv.activate()`. Each side writes
+`<side>.json`: the package, the side, the Julia version, whether its tree held a `Manifest.toml`,
+the versions of Aqua and the dependencies, the packages that the side has loaded, its public
+names, one record per own method, and the ambiguities and piracies. Then it runs JET into
+`<side>-jet.json`. Its output goes to `<side>.log`.
 The script removes the base tree at its end and keeps the JSON files and the logs.
 
 The own methods of a side are the methods of the package's module tree and of each extension that
@@ -271,16 +272,56 @@ loaded that package.
 | `INFO: dependency drift: <name> <base> -> <head>` | a dependency or a tool of another version on each side | — |
 
 The last line is `Verdict: <PASS|FAIL|UNKNOWN> — <f> FAIL, <u> UNKNOWN, <i> INFO`. The exit status
-is 0 on PASS, 1 on a `FAIL:` line, 2 on bad arguments, and 3 when a side gave no verdict and no
-line failed. `--timeout` gives each side that many seconds to write its JSON, 600 by default, and
-the JET step as many again from that moment. `--no-jet` leaves out the JET step.
+is 0 on PASS, 1 on a `FAIL:` line, 2 on bad arguments, and 3 when a side, or with `--api` a key,
+gave no verdict and no line failed. `--timeout` gives each side that many seconds to write its
+JSON, 600 by default, and the JET step as many again from that moment. `--no-jet` leaves out the
+JET step.
+
+Each side also records the public API of its package. `public` holds one record per public name,
+with its `module` (the path below the root module, `""` for the root), its `name` and its `kind`
+(`function`, `type`, `module` or `other`): the names with `Base.ispublic` that are defined in the
+root module and in each submodule that is itself a public name of its parent, recursively. Each
+method record gets `api`, which is true where its generic is the value of a public name (a
+function, a callable object, or a type's constructor) or an external generic, and `kwargs`, its
+keyword names, with a keyword slurp as `name...`.
+
+`--api` compares the API of the head with that of the base; the release skill `julia-release`
+runs it with the last release tag as the base. The base side runs first. The head side starts once
+the base side has ended, reads `base.json`, and writes its `cover` of it into `head.json`; where
+the base wrote no `base.json`, the head does not start. `cover` gives each base public name as
+`public`, `demoted` (the head defines it in that module, not public) or `gone`, and each base
+method with `api` whose key the head lacks as `covered`, `removed` or `unknown`. The head
+evaluates such a key in its root module, after it replaces each leading qualifier `X` of `X.T`
+that the root module does not bind and that names a loaded package by that package. An own method
+`m` of the head covers the key where the signature is a subtype of `m.sig`; a method of another
+package, such as a fallback of Base, is no cover. An `UndefVarError` of an own name that is no
+leading qualifier of the key marks the key `removed`; any other error marks it `unknown`, as does
+an `UndefVarError` of a gensym name, which holds `#`. A key that is not a printed type is not
+evaluated, and is `unknown` too.
+`--api` runs no JET and prints no line of the default comparison:
+
+| line | means | exit |
+|:--|:--|:--|
+| `FAIL: gone public name: <module.>name` | the head does not define a base public name in its module | 1 |
+| `FAIL: no longer public: <module.>name` | the head defines it there, and it is not public | 1 |
+| `FAIL: removed method: <key> at <file>:<line>` | no own method of the head covers a base API method; the location is the base's | 1 |
+| `FAIL: removed keyword: <function> <name>` | no head method of the function takes a keyword name that a base API method takes; a slurp takes every name | 1 |
+| `UNKNOWN: key: <key>: <error>` | the key does not evaluate in the head | 3 |
+| `INFO: covered: <base key> by <head key>` | an own head method with another key covers the base method | — |
+| `INFO: new public name: <module.>name` | a public name that the base lacks | — |
+
+The lines of a side that gives no records, such as `UNKNOWN: the base does not load:`, stay as in
+the default mode. `--api` does not compare the structure of a public type: its fields, its type
+parameters and its supertype. A name that the base exports and the head declares only `public`
+stays public, because `Base.ispublic` is true for both, although a caller that relies on `using`
+for that name breaks.
 
 The step `dispatch` of `gate.jl` runs it, and the agent `julia-branch-verifier` runs it for its
 point 3 on every branch.
 
 `dispatch-delta-test.jl` checks it on small packages that use the standard library only, which it
 builds with git under `tempdir()` (`julia --startup-file=no dispatch-delta-test.jl`, about
-5 minutes at a load average of 6).
+5 minutes at a load average of 10).
 
 ## `julia-methods.jl` and `julia-methods-test.jl`
 
