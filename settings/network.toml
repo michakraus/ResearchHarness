@@ -5,7 +5,7 @@
 #                   `WebFetch(domain:X)` in `permissions.allow`, and X in
 #                   `sandbox.network.allowedDomains`, with `*.X` when X is its own registrable
 #                   domain. Write the host, never `*.X`.
-#   fetch           a host that only the WebFetch tool can reach, which sends a GET:
+#   fetch           a host that only the WebFetch tool, which sends a GET, can reach:
 #                   `WebFetch(domain:X)` in `permissions.allow`, after the rules of `allow`, and
 #                   nothing in `allowedDomains`, so no sandboxed command reaches it. A host that
 #                   accepts writes and is needed only for reading goes here. A frontend under
