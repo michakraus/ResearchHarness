@@ -45,6 +45,25 @@ the GitHub release. Write them once, properly.
 
 Edit `version = "X.Y.Z"` in `Project.toml` by hand. Any `0.x` **minor** bump is breaking.
 
+Then check that the version matches what the release removes. Compare the public API of the
+working tree with the last release tag:
+
+```bash
+git describe --tags --abbrev=0 --match 'v*'
+julia --startup-file=no ~/Research/Harness/scripts/dispatch-delta.jl <package> <tag> --api
+```
+
+Where `git describe` finds no tag, this is the first release, and it has no API check. The script
+fails on a public name that is gone or no longer public, on a method of the API that no own method
+of the head covers, and on a removed keyword; the header of the script lists each line.
+
+- **It exits 0:** go on.
+- **It exits 1 and the version is breaking** (the definition is in step 5): go on, and put each
+  `FAIL:` line into the breaking-changes section of the release notes.
+- **It exits 1 and the version is not breaking:** stop, quote the `FAIL:` lines, and ask the user
+  whether the version becomes breaking or the removal goes back.
+- **It exits 3:** stop, and report its `UNKNOWN:` lines. The script could not decide.
+
 ### 3. Commit both together
 
 `CHANGELOG.md` and `Project.toml` in **one commit** — that commit is the release, and its SHA is

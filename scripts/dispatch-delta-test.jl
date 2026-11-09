@@ -127,6 +127,8 @@ mod(name, body) = "module $name\n$body\nend\n"
     @test a isa NamedTuple && a.timeout == 1 && a.jet
     @test !DD.arguments([repo, "HEAD", "--no-jet"]).jet
     @test DD.arguments([repo, "HEAD"]).timeout == 600
+    @test DD.arguments([repo, "HEAD", "--api"]).api && !DD.arguments([repo, "HEAD"]).api
+    @test DD.arguments([repo, "HEAD", "--api"]).jet
 end
 
 @testset "the key renames type variables by position and keeps their bounds" begin
@@ -705,6 +707,372 @@ end
         @test DD.JSON.parsefile(joinpath(r.run, "$s.json"))["manifest"] === false
     end
     @test !any(startswith("DDForeign-"), readdir(r.run))
+end
+
+# The API mode. One run of a package whose head keeps its API, with a public submodule, a submodule
+# that is not public, a widened method and operator, a method on a type of LinearAlgebra and a
+# deprecated name; one run of a package whose head removes public names, methods and a keyword;
+# one run of a package whose head changes only a comment.
+const API_KEEP_BASE = mod("DDApiKeep", """
+using LinearAlgebra: Diagonal
+export f, Sub, w, e, old, ⊕
+public g
+module Sub
+export s
+s(x) = x
+end
+module Hidden
+export h
+h(x) = x
+end
+f(x; a = 1) = x
+g(x) = x
+w(x::Int) = x
+e(x::Diagonal{Int}) = x
+old(x) = x
+⊕(a::Int, b::Int) = a""")
+const API_KEEP_HEAD = mod("DDApiKeep", """
+using LinearAlgebra: Diagonal
+export f, Sub, w, e, ⊕
+public g
+module Sub
+export s
+s(x) = x
+end
+module Hidden
+export h
+h(x) = x
+end
+f(x; a = 1) = x
+g(x) = x
+w(x::Integer) = x
+e(x::Diagonal) = x
+new(x) = x
+@deprecate old(x) new(x)
+⊕(a::Integer, b::Integer) = a""")
+const LA_DEPS = "\n[deps]\nLinearAlgebra = \"37e2e46d-f89d-539d-b4ee-838fcccc9c8e\"\n"
+const API_KEEP = fixture("DDApiKeep", ["src/DDApiKeep.jl" => API_KEEP_BASE], ["src/DDApiKeep.jl" => API_KEEP_HEAD];
+    project = LA_DEPS)
+const AK = dd(API_KEEP, "HEAD~1", "--api")
+const AK_BASE = DD.JSON.parsefile(joinpath(AK.run, "base.json"))
+
+const API_DROP = fixture("DDApiDrop",
+    ["src/DDApiDrop.jl" => mod("DDApiDrop", """
+    export a, b, c, Sub, k, n, V, p, q, r
+    a(x) = x
+    b(x) = x
+    c(x) = x
+    module Sub
+    export s
+    s(x) = x
+    end
+    k(x) = x
+    n(x::Integer) = x
+    n(x::String) = x
+    struct V <: AbstractVector{Int} end
+    Base.size(::V) = (1,)
+    Base.getindex(::V, ::Int) = 1
+    Base.length(::V) = 1
+    struct Old end
+    p(x::Old) = x
+    q(x; tol = 1, maxit = 2) = x
+    r(x; a = 1) = x
+    export e
+    const e = 1""")],
+    ["src/DDApiDrop.jl" => mod("DDApiDrop", """
+    export c, Sub, k, n, V, q, r, d, e
+    b(x) = x
+    c(x) = x
+    d(x) = x
+    module Sub
+    t(x) = x
+    end
+    const k = 3
+    n(x::Int) = x
+    struct V <: AbstractVector{Int} end
+    Base.size(::V) = (1,)
+    Base.getindex(::V, ::Int) = 1
+    q(x; tol = 1) = x
+    r(x; kw...) = x""")])
+const AD = dd(API_DROP, "HEAD~1", "--api")
+# the lines that the API comparison prints
+api_lines(out) = [l for l in split(out, '\n') if any(p -> startswith(l, p), ("FAIL: ", "UNKNOWN: ", "INFO: "))]
+
+# an exported name that neither side defines is no public name
+const API_SAME_BASE = replace(API_KEEP_BASE, "DDApiKeep" => "DDApiSame", "old, ⊕" => "old, ⊕, notyet")
+const API_SAME = fixture("DDApiSame", ["src/DDApiSame.jl" => API_SAME_BASE],
+    ["src/DDApiSame.jl" => replace(API_SAME_BASE, "g(x) = x" => "# unchanged\ng(x) = x")]; project = LA_DEPS)
+const AS = dd(API_SAME, "HEAD~1", "--api")
+
+@testset "the API mode runs the head after the base" begin
+    for r in (AK, AD, AS)
+        h = DD.JSON.parsefile(joinpath(r.run, "head.json"))
+        @test haskey(h, "cover") && issubset(("names", "methods"), keys(h["cover"]))
+    end
+    dir = fixture("DDApiBaseBroken", ["src/DDApiBaseBroken.jl" => mod("DDApiBaseBroken", "error(\"broken base\")")],
+        ["src/DDApiBaseBroken.jl" => mod("DDApiBaseBroken", "a(x) = x")])
+    r = dd(dir, "HEAD~1", "--api")
+    @test occursin("broken base", only(lines(r.out, "UNKNOWN: the base does not load: ")))
+    @test !isfile(joinpath(r.run, "head.json")) && !isfile(joinpath(r.run, "head.error"))
+    @test r.code == 3 && startswith(verdict(r.out), "Verdict: UNKNOWN — 0 FAIL, ")
+    @test length(lines(r.out, "UNKNOWN: ")) == 1 && !isfile(joinpath(r.run, "head-driver.jl"))
+end
+
+@testset "the records hold the public names and the API methods" begin
+    pub = Set((p["module"], p["name"], p["kind"]) for p in AK_BASE["public"])
+    @test pub == Set([("", "f", "function"), ("", "g", "function"), ("", "Sub", "module"), ("", "w", "function"),
+        ("", "e", "function"), ("", "old", "function"), ("", "⊕", "function"), ("Sub", "s", "function")])
+    ms = AK_BASE["methods"]
+    api(n) = only(unique(m["api"] for m in ms if m["name"] == n))
+    @test api("f") === true && api("s") === true && api("h") === false
+    @test only(m["kwargs"] for m in ms if m["key"] == "Tuple{typeof(f), Any}") == ["a"]
+    @test all(m -> m["kwargs"] isa Vector, ms)
+    # a default run writes the same fields, and no cover
+    @test haskey(BASE_JSON, "public") && all(m -> haskey(m, "api") && haskey(m, "kwargs"), BASE_JSON["methods"])
+    @test !haskey(HEAD_JSON, "cover")
+    # an own method on an external generic is API, and so is a method of a public type
+    vs = DD.JSON.parsefile(joinpath(AD.run, "base.json"))["methods"]
+    @test only(m["api"] for m in vs if m["key"] == "Tuple{typeof(length), V}") === true
+    @test only(m["api"] for m in vs if m["key"] == "Tuple{Type{V}}") === true
+    @test only(m["api"] for m in vs if m["key"] == "Tuple{Type{Old}}") === false
+    # the kinds of the public names; a module that the package binds is not scanned, nor is a
+    # module's own name a public name of it
+    @eval module PB
+    using LinearAlgebra: LinearAlgebra
+    export T, c, undefined_name, LinearAlgebra, S
+    public X
+    struct T end
+    const c = 1
+    module S
+    export s
+    s(x) = x
+    end
+    module X
+    export x
+    x(y) = y
+    end
+    end
+    pb = Set((p, string(n), DD.kind(m, n)) for (p, m, n) in DD.public_bindings(PB))
+    @test pb == Set([("", "T", "type"), ("", "c", "other"), ("", "LinearAlgebra", "module"),
+        ("", "S", "module"), ("S", "s", "function"), ("", "X", "module"), ("X", "x", "function")])
+    # a method is API where its generic is the type of the value of a public name: a function, a
+    # callable object, or a type's constructor, also one whose signature has a type variable
+    @eval module PC
+    export fun, pf, P
+    struct Fun end
+    (::Fun)(x) = x
+    const fun = Fun()
+    struct PF{T} end
+    (::PF{T})(x) where {T} = x
+    const pf = PF{Int}()
+    struct Hid end
+    (::Hid)(x) = x
+    const hid = Hid()
+    struct P{T}
+        x::T
+    end
+    end
+    pcpub = DD.public_bindings(PC)
+    pcapi(f) = [DD.public_generic(DD.gtype(m), pcpub) for m in methods(f)]
+    @test pcapi(PC.fun) == [true] && pcapi(PC.pf) == [true] && pcapi(PC.hid) == [false]
+    pctors = [m for m in DD.own_methods(Set([PC])) if occursin(r"^Tuple\{Type\{P[{}]", DD.key(m.sig, PC))]
+    @test length(pctors) == 2 && any(m -> DD.gtype(m) isa UnionAll, pctors) &&
+          all(m -> DD.public_generic(DD.gtype(m), pcpub), pctors)
+end
+
+@testset "the API mode gives only API lines" begin
+    r = dd(FAIL, "HEAD~1", "--api")
+    @test isempty(lines(r.out, "FAIL:"))
+    @test !any(l -> occursin("ambiguity", l) || occursin("piracy", l) || occursin(r"jet"i, l) ||
+                    occursin("dependency drift", l) || occursin("added method", l), api_lines(r.out))
+    @test r.code == 0 && startswith(verdict(r.out), "Verdict: PASS")
+    # the same fixture without --api fails on the new ambiguity and the new piracy
+    @test "FAIL: new own-own ambiguity: Tuple{typeof(f), Any, Integer} | Tuple{typeof(f), Integer, Any}" in lines(F.out, "FAIL: ")
+    @test !isempty(lines(F.out, "FAIL: new piracy: ")) && F.code == 1
+end
+
+@testset "a public name gone or demoted fails" begin
+    ls = api_lines(AD.out)
+    @test "FAIL: gone public name: a" in ls && "FAIL: gone public name: p" in ls
+    @test "FAIL: no longer public: b" in ls
+    # a name that the head still exports and no longer defines is gone
+    @test "FAIL: gone public name: e" in ls
+    @test lines(AD.out, "INFO: new public name: ") == ["INFO: new public name: d"]
+    @test !any(l -> occursin(r"(: |typeof\()c\b", l), ls)
+    @test AD.code == 1 && startswith(verdict(AD.out), "Verdict: FAIL — ")
+    # the cover of the names: a name in a module that the head lacks, or that is no submodule, is gone
+    @eval module NC
+    using LinearAlgebra: LinearAlgebra
+    export a
+    a(x) = x
+    b(x) = x
+    const m = (x = 1,)
+    module Sub
+    export s
+    s(x) = x
+    end
+    end
+    pub(m, n) = Dict("module" => m, "name" => n)
+    b = Dict("public" => [pub("", "a"), pub("", "b"), pub("", "z"), pub("Sub", "s"), pub("Gone", "x"), pub("m", "x"),
+            pub("LinearAlgebra", "norm")], "methods" => [])
+    st = [n["status"] for n in DD.cover(b, NC, Set([NC, NC.Sub]), DD.own_methods(Set([NC, NC.Sub])))["names"]]
+    @test st == ["public", "demoted", "gone", "public", "gone", "gone", "gone"]
+end
+
+@testset "a public name of a public submodule" begin
+    @test "FAIL: gone public name: Sub.s" in lines(AD.out, "FAIL: ")
+    @test !any(l -> occursin("Sub.t", l), api_lines(AD.out))
+    @test AD.code == 1
+end
+
+@testset "a name that changes kind loses its methods" begin
+    @test !any(l -> endswith(l, ": k"), api_lines(AD.out))
+    @test "FAIL: removed method: Tuple{typeof(k), Any} at src/DDApiDrop.jl:10" in lines(AD.out, "FAIL: ")
+    @test AD.code == 1
+end
+
+@testset "a widened method is covered" begin
+    @test "INFO: covered: Tuple{typeof(w), Int64} by Tuple{typeof(w), Integer}" in lines(AK.out, "INFO: ")
+    # an operator of the root module, whose key prints its name quoted
+    @test "INFO: covered: Tuple{typeof(:⊕), Int64, Int64} by Tuple{typeof(:⊕), Integer, Integer}" in lines(AK.out, "INFO: ")
+    @test isempty(lines(AK.out, "FAIL:")) && AK.code == 0
+end
+
+@testset "a key that names a type of another package" begin
+    c = only(lines(AK.out, "INFO: covered: Tuple{typeof(e), "))
+    @test occursin("LinearAlgebra.Diagonal{Int64", c)
+    @test isempty(lines(AK.out, "UNKNOWN:")) && isempty(lines(AK.out, "FAIL:"))
+    @test AK.code == 0 && startswith(verdict(AK.out), "Verdict: PASS — 0 FAIL, 0 UNKNOWN, ")
+end
+
+@testset "a narrowed or deleted method is removed" begin
+    fs = lines(AD.out, "FAIL: removed method: ")
+    @test "FAIL: removed method: Tuple{typeof(n), Integer} at src/DDApiDrop.jl:11" in fs
+    @test "FAIL: removed method: Tuple{typeof(n), String} at src/DDApiDrop.jl:12" in fs
+    @test "FAIL: removed method: Tuple{typeof(a), Any} at src/DDApiDrop.jl:3" in fs
+    @test AD.code == 1
+end
+
+@testset "an external generic needs an own cover" begin
+    @test "FAIL: removed method: Tuple{typeof(length), V} at src/DDApiDrop.jl:16" in lines(AD.out, "FAIL: ")
+    @test !any(l -> occursin("typeof(size)", l) || occursin("typeof(getindex)", l), api_lines(AD.out))
+    @test AD.code == 1
+end
+
+@testset "a method of a deleted own type is removed" begin
+    @test "FAIL: removed method: Tuple{typeof(p), Old} at src/DDApiDrop.jl:18" in lines(AD.out, "FAIL: ")
+    @test isempty(lines(AD.out, "UNKNOWN:"))
+    # the constructor of the internal type is no API
+    @test !any(l -> occursin("Type{Old}", l), api_lines(AD.out))
+    @test AD.code == 1
+end
+
+@testset "a key that does not evaluate gives no verdict" begin
+    @eval module CV
+    module Sub
+    t(x) = x
+    cv(x) = x
+    end
+    # an own submodule with the name of a loaded package
+    module Test
+    t(x) = x
+    end
+    cv(x) = x
+    ⊕(a::Integer, b::Integer) = a
+    # a function whose type has a gensym name, and a function that counts its calls
+    const g = x -> x
+    wg(x::typeof(g)) = x
+    const HITS = Ref(0)
+    hit(x) = (HITS[] += 1; Int)
+    end
+    own = Set([CV, CV.Sub, CV.Test])
+    ms = DD.own_methods(own)
+    cover(k) = DD.method_cover(k, CV, own, ms)
+    c = cover("Tuple{typeof(cv), NoSuchPackage.T}")
+    @test c["status"] == "unknown" && occursin("NoSuchPackage", c["error"]) && !occursin('\n', c["error"])
+    @test cover("Tuple{typeof(cv), Int64}") == Dict("status" => "covered", "by" => "Tuple{typeof(cv), Any}")
+    # an own name that is gone is a removal, a gone submodule that qualifies the key is not
+    @test cover("Tuple{typeof(cv), Gone}")["status"] == "removed"
+    @test cover("Tuple{typeof(Sub.gone), Any}")["status"] == "removed"
+    @test cover("Tuple{typeof(GoneSub.t), Any}")["status"] == "unknown"
+    @test cover("Tuple{typeof(GoneSub.Inner.t), Any}")["status"] == "unknown"
+    @test cover("Tuple{typeof(Test.t), Int64}") == Dict("status" => "covered", "by" => "Tuple{typeof(Test.t), Any}")
+    covered = Dict("status" => "covered", "by" => "Tuple{typeof(cv), Any}")
+    @test cover("Tuple{typeof(cv), _1} where _1<:Real") == covered
+    # a lower bound, in both directions, and a named tuple as a type parameter
+    @test cover("Tuple{typeof(cv), _1} where Int64<:_1<:Real") == covered
+    @test cover("Tuple{typeof(cv), _1} where Real>:_1>:Int64") == covered
+    @test cover("Tuple{typeof(cv), Val{(a = 1, b = :c)}}") == covered
+    # an operator of the root module, whose key quotes its name
+    @test cover("Tuple{typeof(:⊕), Int64, Int64}") == Dict("status" => "covered", "by" => "Tuple{typeof(:⊕), Integer, Integer}")
+    @test cover("Tuple{typeof(:⊖), Int64, Int64}")["status"] == "removed"
+    # a gensym name, also in the key of a submodule's function, gives no verdict
+    gk = DD.key(only(methods(CV.wg)).sig, CV)
+    @test occursin("var\"#", gk) && cover(gk)["status"] == "unknown"
+    for k in ("Tuple{typeof(cv), var\"##\"}", "Tuple{typeof(Sub.cv), var\"##\"}")
+        gc = cover(k)
+        @test gc["status"] == "unknown" && occursin("##", gc["error"]) && !occursin('\n', gc["error"])
+    end
+    @test cover("Vector{Int64}")["status"] == "unknown"
+    # an error of another kind, and a key that is no type expression, which is not evaluated
+    @test cover("Tuple{typeof(cv), Base.NoSuchName}")["status"] == "unknown"
+    @test cover("Tuple{typeof(cv), Any")["status"] == "unknown"
+    @test cover("Tuple{typeof(cv) Any}")["status"] == "unknown"
+    @test cover("Tuple{typeof(cv), begin global HIT = 1; Int end}")["status"] == "unknown"
+    @test cover("Tuple{typeof(cv), identity(Int)}")["status"] == "unknown"
+    @test cover("typeof(cv)")["status"] == "unknown"
+    @test cover("Tuple{typeof(cv), hit.(1)}")["status"] == "unknown"
+    @test cover("Tuple{typeof(cv), _1} where hit(1)<:_1<:Real")["status"] == "unknown"
+    @test cover("Tuple{typeof(cv), Val{(a = hit(1),)}}")["status"] == "unknown"
+    @test cover("Tuple{typeof(cv), Val{(HIT = 1)}}")["error"] == "not a type expression"
+    @test cover("Tuple{typeof(cv), Val{(HITS[] = 1,)}}")["error"] == "not a type expression"
+    @test cover("Tuple{typeof(cv), _1} where Int64 == _1 == Real")["error"] == "not a type expression"
+    @test cover("Tuple{typeof(cv), _1} where Int64<:_1>:Real")["error"] == "not a type expression"
+    @test CV.HITS[] == 0 && !isdefined(CV, :HIT)
+    # a type of another package is no cover
+    @test cover("Tuple{typeof(sin), Float64}")["status"] == "removed"
+    # analyse prints the unknown key, and gives no verdict without a FAIL line
+    apiside(s, cover) = merge(side(s), Dict("public" => [], "methods" => []), cover === nothing ? Dict() : Dict("cover" => cover))
+    m = Dict("key" => "Tuple{typeof(cv), NoSuchPackage.T}", "file" => "src/CV.jl", "line" => 3, "status" => "unknown",
+        "error" => c["error"])
+    rd = sides(apiside("base", nothing), apiside("head", Dict("names" => [], "methods" => [m])))
+    ls, status = DD.analyse(rd, Dict("base" => DONE, "head" => DONE); timeout = 600, jet = false, api = true)
+    @test "UNKNOWN: key: Tuple{typeof(cv), NoSuchPackage.T}: $(c["error"])" in ls
+    @test status == 3 && startswith(last(ls), "Verdict: UNKNOWN — 0 FAIL, 1 UNKNOWN, ")
+    # a FAIL line beside it gives the FAIL
+    gone = Dict("module" => "", "name" => "cv", "status" => "gone")
+    rd = sides(apiside("base", nothing), apiside("head", Dict("names" => [gone], "methods" => [m])))
+    ls, status = DD.analyse(rd, Dict("base" => DONE, "head" => DONE); timeout = 600, jet = false, api = true)
+    @test "FAIL: gone public name: cv" in ls && status == 1
+end
+
+@testset "a deprecated name passes" begin
+    @test !any(l -> occursin("old", l), [lines(AK.out, "FAIL:"); lines(AK.out, "UNKNOWN:")])
+    @test AK.code == 0
+end
+
+@testset "a removed keyword fails and a slurp covers" begin
+    @test lines(AD.out, "FAIL: removed keyword: ") == ["FAIL: removed keyword: q maxit"]
+    @test !any(l -> occursin(r"\br\b", l), lines(AD.out, "FAIL: removed keyword: "))
+    @test AD.code == 1
+    # a slurp of the base is a keyword name that only a slurp keeps
+    kws(n, kw) = Dict("key" => "Tuple{typeof($n), Any}", "api" => true, "kwargs" => kw)
+    # the keywords of a base method that is no API do not count; those of each head method do
+    internal(n, kw) = merge(kws(n, kw), Dict("api" => false))
+    b = merge(side("base"),
+        Dict("public" => [], "methods" => [kws("u", ["kw..."]), kws("v", ["x"]), internal("i", ["x"]), kws("w", ["x"])]))
+    h = merge(side("head"), Dict("public" => [], "methods" => [kws("u", ["a"]), kws("v", ["y...", "z"]), internal("w", ["x"])],
+        "cover" => Dict("names" => [], "methods" => [])))
+    @test lines(join(DD.compare_api(b, h), '\n'), "FAIL: removed keyword: ") == ["FAIL: removed keyword: u kw..."]
+end
+
+@testset "an unchanged package passes the API mode" begin
+    @test isempty(lines(AS.out, "FAIL:")) && isempty(lines(AS.out, "UNKNOWN:"))
+    @test startswith(verdict(AS.out), "Verdict: PASS — 0 FAIL, 0 UNKNOWN, ")
+    @test AS.code == 0
+    h = DD.JSON.parsefile(joinpath(AS.run, "head.json"))
+    @test isempty(h["cover"]["methods"]) && all(n -> n["status"] == "public", h["cover"]["names"])
+    @test length(h["cover"]["names"]) == 8 && !any(n -> n["name"] == "notyet", h["cover"]["names"])
 end
 
 foreach(d -> rm(d; recursive = true, force = true), MADE)

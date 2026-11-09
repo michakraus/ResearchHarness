@@ -781,6 +781,19 @@
 - kind: missing test
 - found: 2026-11-09, the review of the probe battery's pull request
 
+### K145 · In a cmux terminal `agentbox agy` gives `srt` cmux's `agy` wrapper, not the real `agy`.
+
+- location: `sandbox/agentbox:68`
+- evidence: a cmux terminal puts `/Applications/cmux.app/Contents/Resources/bin` early on the
+  `PATH`, and that directory holds `agy`, a bash script whose header reads `# cmux agy wrapper -
+  installs cmux hooks and captures launch metadata.` The filter of `resolve` skips only the
+  entries that match `*/cmux-cli-shims/*` or `*/cmux-cli-shims`, so `command -v agy` there finds
+  the wrapper. A critic's probe with that directory first on the `PATH` saw
+  `srt-program='/Applications/cmux.app/Contents/Resources/bin/agy'`. Whether `agentbox` skips this
+  directory too is a decision that the cmux-cli-shims filter does not make.
+- kind: found late
+- found: 2026-11-09, the review of the cmux and caches pull request of `agentbox`
+
 ### K146 · A frontend probe past its time limit expects `holds <word>`, also where it expects the word to be missing.
 
 - location: `scripts/probe-agentbox.py:510`
