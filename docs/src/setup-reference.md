@@ -1051,7 +1051,7 @@ Seatbelt profiles of the server and the update job into `~/.config/research-harn
 which their launch agents start them under, then each launch agent with the profile into
 `~/Library/LaunchAgents/`, under its label, and create the log directories of the jobs and the
 server's PoCL kernel cache `~/.cache/kaimon/pocl`, which its `POCL_CACHE_DIR` names, each new
-directory of the cache with mode 700. `p` holds the profile key `launchd_prefix`; the commands of
+directory with mode 700. `p` holds the profile key `launchd_prefix`; the commands of
 this step after it use `p` too, so run them in the same shell:
 
 ```bash
