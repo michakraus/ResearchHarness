@@ -173,3 +173,69 @@ directory in every case. A plan finds nothing to do, and has no such step, when
 `srt/0.0.81/package-lock.json` holds the bytes of the shipped lockfile, `node_modules/.bin/srt`
 exists, and `~/.local/bin/srt` links to it; so a change of the shipped lockfile installs again.
 The Homebrew copy of srt, where one is installed, stays as it is.
+
+## The probe battery
+
+`scripts/probe-agentbox.py` checks that each frontend's settings file holds the boundary that the
+policy means. Run it after `harness setup` and `harness install --apply`, from a plain terminal on
+macOS: `srt` refuses a sandbox inside its own, so no session and no `agentbox` can run it.
+
+```sh
+python3.14 ~/Research/Harness/scripts/probe-agentbox.py [--out DIR] [--timeout S] [--no-model] [FRONTEND ...]
+```
+
+| option | what it does |
+|:--|:--|
+| `FRONTEND` | `claude`, `opencode`, `omp` or `agy`; with none named, all four |
+| `--out DIR` | the directory of the report; by default `~/Research/.scratch/agentbox-probes/<UTC date and time>` |
+| `--timeout S` | the time limit of each frontend probe, in seconds; 300 by default |
+| `--no-model` | runs no frontend probe, so the run makes no model call |
+
+The script exits with status 2, runs no probe and prints one line on stderr when `SANDBOX_RUNTIME`
+or `AGENTBOX` is set, on a platform other than macOS, for an argument that is not a frontend or an
+option, for `--out` or `--timeout` with no value, for a `--timeout` that is not a whole number
+above 0 in ASCII digits, when `~/.local/bin/srt` or `~/.local/bin/agentbox` is not an executable
+file, and when the settings file of a chosen frontend is missing. The line names the cause, and
+`harness setup` or `harness install --apply` where one of them installs the file.
+
+It runs four classes of probes for each chosen frontend:
+
+| class | ids | how it runs | what it asks |
+|:--|:--|:--|:--|
+| listener | `L:<port>` | `curl` under `srt` | does each TCP listener on `127.0.0.1`, on `::1` or on every interface answer 401 or 403 |
+| read and write | R1–R8, W1–W14 | `/bin/sh -c` under `srt` | can a command read a secret, or write a hook, a launch agent, a shell start file or another frontend's state |
+| network and process | N1–N9, X1–X8 | `/bin/sh -c` under `srt` | which hosts it reaches; can it open an app, send an Apple Event, mount, submit a launchd job, signal a process outside or start a sandbox of its own |
+| frontend | F1–F7 | the frontend under `agentbox` | does it start, do its tools run inside the sandbox, does its own file tool read outside, does it reach Kaimon, and do its own gates hold |
+
+The script lists the listeners with `lsof -nP -iTCP -sTCP:LISTEN`, outside `srt`, before the other
+probes. It asks a listener on every interface (`*:<port>`) at `127.0.0.1:<port>`, and each
+address and port once. A shell probe runs as
+`~/.local/bin/srt --settings ~/.config/research-harness/sandbox/<policy name>.json -- /bin/sh -c <probe>`
+from `~/Research`, so its boundary is the settings file alone. A frontend probe runs the
+frontend's non-interactive form under `agentbox`: `claude -p`, `opencode run --auto`, `omp -p` or
+`agy -p --dangerously-skip-permissions`; past `--timeout` it is stopped with its process group.
+Every probe is harmless where the sandbox fails to stop it: a read prints a count, never content;
+an append opens the file and writes nothing; a probe that creates a file deletes it. After each
+frontend's shell probes, the script removes the launchd job of X4 and unmounts the devfs of X3
+where either is left. The probes use a run directory `<out>/run`, with a `secret.txt`, a `.env` and
+a git repository whose remote is this repository.
+
+Each probe gets one verdict:
+
+| verdict | meaning |
+|:--|:--|
+| `match` | the result is the expected one |
+| `MISMATCH` | the result is not the expected one |
+| `absent` | the file or directory that the probe names does not exist, so the probe does not run |
+| `skipped` | the probe does not apply: R8 for `agy`, X5 with no listener on port 2828 of `127.0.0.1` or of every interface, the frontend probes with `--no-model` or with no program on the `PATH`, F6 with no plain `opencode` listening |
+| `timeout` | the probe ran past its limit |
+| an observation | F5 records the exit status of `agy --sandbox`, and F7 whether `~/.omp/agent/config.yml` changed during F1–F4 of `omp`: `unchanged`, `changed`, or `absent` where the file exists neither before nor after |
+
+The expected value is the policy's intent, not what the current files do. So a `MISMATCH` is a
+finding for the policy, the settings files or the launcher, and a run of a policy with a known
+gap exits 1. The script writes `report.tsv`, with the columns `frontend`, `id`, `expected`,
+`got`, `verdict` and `detail`, and `report.md`, the same rows as a table, the count of each
+verdict and the manual steps: change the model once under `agentbox omp`, and, where F6 was
+skipped because no plain `opencode` listened, run it again with a plain `opencode` in another
+terminal. It prints the path of `report.md` last, and exits 0 when no probe is `MISMATCH` or
+`timeout`, and 1 otherwise.

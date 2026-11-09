@@ -14,7 +14,8 @@ in `~/.local/share/research-harness/julia/` (see
 `--startup-file=no`: the startup file can load Revise, and its errors then fill the output.
 
 The sections come in groups: the test layout and the test runs, the mutation tests and the
-gate, the structure of Julia code, the task files, the token use of sessions, and the update job.
+gate, the structure of Julia code, the task files, the token use of sessions, the sandbox of the
+CLI frontends, and the update job.
 
 ## `test-layout.jl` and `test-layout-test.jl`
 
@@ -578,6 +579,19 @@ julia --startup-file=no scripts/audit/tense-lint.jl instructions.tsv --kind agen
 Output tokens are not in the cost. A transcript writes one API message as several records, and
 only the last one holds the full output count, so a sum of output is complete only where the
 column `out_complete` is near 1.
+
+## `probe-agentbox.py`
+
+`probe-agentbox.py` is the probe battery of the CLI frontends under `agentbox`. The user runs it
+from a plain terminal on macOS; a session never runs it:
+
+```bash
+python3.14 ~/Research/Harness/scripts/probe-agentbox.py [--out DIR] [--timeout S] [--no-model] [FRONTEND ...]
+```
+
+By default it writes its report below `~/Research/.scratch/agentbox-probes/`, where a session
+reads it. No skill or agent calls it. *The probe battery* of [The srt settings](sandbox.md)
+describes the probes, the verdicts and the report.
 
 ## `julia-update.jl` and `julia-update-test.jl`
 
