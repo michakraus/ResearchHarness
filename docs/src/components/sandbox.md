@@ -193,7 +193,8 @@ python3.14 ~/Research/Harness/scripts/probe-agentbox.py [--out DIR] [--timeout S
 
 The script exits with status 2, runs no probe and prints one line on stderr when `SANDBOX_RUNTIME`
 or `AGENTBOX` is set, on a platform other than macOS, for an argument that is not a frontend or an
-option, when `~/.local/bin/srt` or `~/.local/bin/agentbox` is not an executable file, and when the
+option, for `--out` or `--timeout` with no value, for a `--timeout` that is not a whole number
+above 0 in ASCII digits, when `~/.local/bin/srt` or `~/.local/bin/agentbox` is not an executable file, and when the
 settings file of a chosen frontend is missing. The line names the cause, and `harness setup` or
 `harness install --apply` where one of them installs the file.
 

@@ -34,8 +34,9 @@ It writes <out>/report.tsv and <out>/report.md, prints the path of report.md las
 no probe is MISMATCH or timeout and 1 otherwise. <out> is --out, by default
 ~/Research/.scratch/agentbox-probes/<UTC date and time>. It exits 2, runs no probe and prints one
 line on stderr when it cannot measure the boundary: inside a sandbox, on a platform other than
-macOS, with an unknown argument, with srt or agentbox not an executable file, or with a chosen
-frontend's settings file missing. docs/src/components/sandbox.md describes the battery.
+macOS, with an unknown argument or an option without a valid value, with srt or agentbox not an
+executable file, or with a chosen frontend's settings file missing.
+docs/src/components/sandbox.md describes the battery.
 """
 
 import contextlib

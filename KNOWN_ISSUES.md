@@ -769,3 +769,13 @@
   own code.
 - kind: defect
 - found: 2026-11-08, the review of the srt pin's pull request
+
+### K144 · The site check does not check the sidebar link to `components/sandbox.md`.
+
+- location: `docs/scripts/check-site.mjs:36`
+- evidence: `MENU`, the list of "every page of docs/src/", names ten pages of
+  `docs/src/components/` and not `components/sandbox.md`, which `docs/.vitepress/config.mts:105`
+  links in the sidebar. So `node scripts/check-site.mjs` does not check that each sidebar links the
+  page, and does not check that its built page exists.
+- kind: missing test
+- found: 2026-11-09, the review of the probe battery's pull request
