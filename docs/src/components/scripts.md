@@ -14,7 +14,8 @@ in `~/.local/share/research-harness/julia/` (see
 `--startup-file=no`: the startup file can load Revise, and its errors then fill the output.
 
 The sections come in groups: the test layout and the test runs, the mutation tests and the
-gate, the structure of Julia code, the task files, the token use of sessions, and the update job.
+gate, the structure of Julia code, the task files, the token use of sessions, the sandbox of the
+CLI frontends, and the update job.
 
 ## `test-layout.jl` and `test-layout-test.jl`
 
@@ -505,6 +506,19 @@ It prints four reports:
 
 It estimates the tokens of a tool result at 3.5 characters per token. The usage figures come from
 the API. No skill or agent calls it. For the context at the start, use `startup-tokens.py`.
+
+## `probe-agentbox.py`
+
+`probe-agentbox.py` is the probe battery of the CLI frontends under `agentbox`. The user runs it
+from a plain terminal on macOS; a session never runs it:
+
+```bash
+python3.14 ~/Research/Harness/scripts/probe-agentbox.py [--out DIR] [--timeout S] [--no-model] [FRONTEND ...]
+```
+
+By default it writes its report below `~/Research/.scratch/agentbox-probes/`, where a session
+reads it. No skill or agent calls it. *The probe battery* of [The srt settings](sandbox.md)
+describes the probes, the verdicts and the report.
 
 ## The audit scripts
 
