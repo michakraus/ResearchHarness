@@ -6,11 +6,32 @@
 #
 # The rule and the walk run in this process, each on a fixture module that is built once with
 # `@eval` into a fresh `Module()` and never evaluated again: on Julia 1.12 and later a changed
-# struct evaluated again into the same module is a new type.
+# struct evaluated again into the same module is a new type. The command line runs on fixture
+# packages under mktempdir(), each with a `Project.toml` and a `src/<Name>.jl` and no dependency.
 
 using Test
 
-include(joinpath(@__DIR__, "concrete-fields.jl"))
+const SCRIPT = joinpath(@__DIR__, "concrete-fields.jl")
+const USAGE_LINE = "usage: concrete-fields.jl <package>"
+
+include(SCRIPT)
+
+"A package `name` under mktempdir() whose `src/<name>.jl` holds `source`."
+function package(name, source)
+    dir = realpath(mktempdir())
+    write(joinpath(dir, "Project.toml"), "name = \"$name\"\nuuid = \"$(Base.UUID(rand(UInt128)))\"\n")
+    mkpath(joinpath(dir, "src"))
+    write(joinpath(dir, "src", "$name.jl"), source)
+    return dir
+end
+
+"Run concrete-fields.jl with `args`: the exit code, the lines of stdout and the text of stderr."
+function run_cli(args...)
+    out, err = IOBuffer(), IOBuffer()
+    cmd = `$(Base.julia_cmd()) --startup-file=no $SCRIPT $(collect(args))`
+    proc = run(pipeline(ignorestatus(cmd); stdout = out, stderr = err))
+    return proc.exitcode, filter(!isempty, split(String(take!(out)), '\n')), String(take!(err))
+end
 
 "A fresh module named `name` that holds the top-level statements of `body`."
 function fixture(name::Symbol, body::Expr)
@@ -216,4 +237,65 @@ end
     @test length(methods(concrete_field_violations)) == 1
     @test hasmethod(concrete_field_violations, Tuple{Module})
     @test !hasmethod(concrete_field_violations, Tuple{Module}, (:allow,))
+end
+
+@testset "the CLI prints the violations and exits 1" begin
+    dir = package("CfBad", """
+        module CfBad
+        struct A
+            x::Real
+            n::Int
+        end
+        module Inner
+        import ..A
+        struct B{T}
+            y::Ref{A}
+            z::T
+        end
+        end
+        struct C
+            n::Int
+        end
+        end
+        """)
+    code, lines, err = run_cli(dir)
+    @test code == 1
+    @test lines == ["CfBad.A.x::Real", "CfBad.Inner.B.y::Ref{CfBad.A}", "Verdict: FAIL — 2 violations"]
+    @test !occursin("world", err)
+end
+
+@testset "the CLI passes a clean package" begin
+    clean = package("CfClean", """
+        module CfClean
+        struct A{T}
+            x::T
+            v::Vector{Float64}
+            u::Union{Nothing, Int}
+        end
+        end
+        """)
+    empty = package("CfNoStruct", "module CfNoStruct\nf(x) = x\nend\n")
+    for dir in (clean, empty)
+        code, lines, _ = run_cli(dir)
+        @test code == 0
+        @test lines == ["Verdict: PASS — 0 violations"]
+    end
+end
+
+@testset "a package that does not load gives exit 3" begin
+    dir = package("CfBroken", "module CfBroken\nf(x = \nend\n")
+    code, lines, _ = run_cli(dir)
+    @test code == 3
+    @test length(lines) == 1
+    @test startswith(only(lines), "UNKNOWN: the package does not load: ")
+end
+
+@testset "bad arguments exit 2" begin
+    dir = package("CfArgs", "module CfArgs\nend\n")
+    for args in ((), (dir, dir), (realpath(mktempdir()),))
+        code, lines, err = run_cli(args...)
+        @test code == 2
+        @test isempty(lines)
+        @test occursin(USAGE_LINE, err)
+    end
 end

@@ -86,3 +86,56 @@ function concrete_field_violations(M::Module)
     end
     return out
 end
+
+const USAGE = "usage: concrete-fields.jl <package>"
+
+"Print the violations of `M` and the verdict; the exit code."
+function print_violations(M::Module)
+    violations = concrete_field_violations(M)
+    foreach(r -> println(r.type, ".", r.field, "::", sprint(show, r.fieldtype)), violations)
+    n = length(violations)
+    println(n == 0 ? "Verdict: PASS — 0 violations" : "Verdict: FAIL — $n violations")
+    return n == 0 ? 0 : 1
+end
+
+"Load the package `name` of the active project and print its violations; the exit code."
+function report(name::String)
+    M = try
+        Core.eval(Main, :(import $(Symbol(name))))
+        Base.invokelatest(getglobal, Main, Symbol(name))
+    catch e
+        message = sprint(showerror, e)
+        line = join(filter(!isempty, strip.(split(message, '\n'))), " ")
+        println("UNKNOWN: the package does not load: ", line)
+        println(stderr, message)
+        return 3
+    end
+    # the package's bindings are newer than the world of this call
+    return Base.invokelatest(print_violations, M)
+end
+
+# The program of the fresh process: ARGS are this file and the package's name.
+const CHILD = "include(ARGS[1]); exit(report(ARGS[2]))"
+
+function main(args)
+    length(args) == 1 || (println(stderr, USAGE); return 2)
+    pkg = abspath(expanduser(args[1]))
+    project = joinpath(pkg, "Project.toml")
+    toml = isfile(project) ? TOML.tryparsefile(project) : nothing
+    name = toml isa Dict ? get(toml, "name", nothing) : nothing
+    if !(name isa String)
+        println(stderr, "concrete-fields.jl: no Project.toml with a name in $pkg")
+        println(stderr, USAGE)
+        return 2
+    end
+    cmd = `$(Base.julia_cmd()) --startup-file=no --project=$pkg -e $CHILD $(@__FILE__) $name`
+    proc = run(ignorestatus(cmd))
+    proc.exitcode in (0, 1, 3) && proc.termsignal == 0 && return proc.exitcode
+    println("UNKNOWN: the package does not load: the process ended with exit code ",
+        proc.exitcode, ", signal ", proc.termsignal)
+    return 3
+end
+
+if abspath(PROGRAM_FILE) == @__FILE__
+    exit(main(ARGS))
+end
