@@ -116,9 +116,9 @@ relocate to review. The base snapshot is a read-only instrument for one attribut
 somewhere to work.
 
 **A package that names Aqua in its `test/Project.toml` runs the piracy check in its
-own tests**, unless its call passes `piracies = false`, so a base with a green suite passes that check. Where the
-package names no Aqua, or turns the check off, you run it for the first time and the repository
-establishes no baseline. Say so.
+own tests**, unless its call passes `piracies = false`, so a base with a green suite passes that
+check. `dispatch-delta.jl` reports only a piracy that the head adds. Where the package names no
+Aqua, or turns the check off, no check covers a piracy of the base. Say so.
 
 **Point 7 has a positive half.** Does `CHANGELOG.md` carry an entry under `## [Unreleased]` for
 this change? If the change earns one and there is none, that is a **blocker** — the tree's rule is

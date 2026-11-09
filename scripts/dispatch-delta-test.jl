@@ -125,7 +125,7 @@ mod(name, body) = "module $name\n$body\nend\n"
     @test runs() == before
     a = DD.arguments([repo, "HEAD", "--timeout", "1"])
     @test a isa NamedTuple && a.timeout == 1 && a.jet
-    @test DD.arguments([repo, "HEAD", "--no-jet"]).jet == false
+    @test !DD.arguments([repo, "HEAD", "--no-jet"]).jet
     @test DD.arguments([repo, "HEAD"]).timeout == 600
 end
 

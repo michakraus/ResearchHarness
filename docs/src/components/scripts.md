@@ -67,7 +67,8 @@ of the run: the run then uses a copy of the package. Outside the convention's la
 runs.
 
 The agents `julia-test-runner`, `julia-builder` and `julia-critic`, the skill `build-part` and the
-rules `julia-code` and `julia-tests` use it. `mutate.jl`, `pins.jl` and `gate.jl` call it.
+rules `julia-code` and `julia-tests` use it. `mutate.jl`, `pins.jl`, `gate.jl` and
+`dispatch-delta.jl` call it.
 
 `run-tests-test.jl` checks `run-tests.jl`, `mutate.jl` and `test-census.jl` on fixtures. It runs
 for about 11 minutes with no output.
@@ -171,7 +172,8 @@ It does in one call what `git archive <ref> | tar -x` does, but with no permissi
 worktree-isolated agent cannot run a pipeline that holds `git`, and `git archive -o` asks.
 
 The skill `build-part` names it for the agents `julia-builder` and `julia-critic`, and the agent
-`julia-pr-reviewer` names it for its probes. `base-tree-test.jl` checks it on the commits of this repository, in about 3 s.
+`julia-pr-reviewer` names it for its probes. `dispatch-delta.jl` calls it for the base of a
+run. `base-tree-test.jl` checks it on the commits of this repository, in about 3 s.
 
 ## `gate.jl` and `gate-test.jl`
 
@@ -276,8 +278,8 @@ The step `dispatch` of `gate.jl` runs it, and the agent `julia-branch-verifier` 
 point 3 on every branch.
 
 `dispatch-delta-test.jl` checks it on small packages that use the standard library only, which it
-builds with git under `tempdir()` (`julia --startup-file=no dispatch-delta-test.jl`, 3–4
-minutes).
+builds with git under `tempdir()` (`julia --startup-file=no dispatch-delta-test.jl`, about
+5 minutes at a load average of 6).
 
 ## `julia-methods.jl`
 

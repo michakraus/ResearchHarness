@@ -313,7 +313,10 @@ syntax tree. TestEnv activates the test environment of a package. YAML reads YAM
 
 The scripts use them as follows. `dispatch-delta.jl` uses Aqua's piracy hunt and JET's
 `report_package` on each side, and pins Aqua to one version because the piracy hunt is internal
-API; a package's test environment that names either one comes first in a side's load path.
+API. A side loads each one from the first environment of its load path that names it: the
+package's test environment, then the default environment `@v#.#`, then the harness environment.
+The pin holds only where neither of the first two names the package; each side records the Aqua
+version that it loaded.
 `explicit-imports.jl` uses ExplicitImports. `gate.jl`, `mutate.jl`, `fatou-lsp.jl` and
 `dispatch-delta.jl` use JSON for their reports and messages. `harness format`, the
 installed pre-commit hook and the format step of `gate.jl` use JuliaFormatter. `mutants.jl` uses JuliaSyntax to make the mutants,
