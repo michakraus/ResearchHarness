@@ -117,7 +117,7 @@ somewhere to work.
 
 **A package that names Aqua in its `test/Project.toml` runs the piracy check in its
 own tests**, unless its call passes `piracies = false`, so a base with a green suite passes that
-check. `dispatch-delta.jl` reports only a piracy that the head adds. Where the package names no
+check. `dispatch-delta.jl` fails only on a piracy that the head adds. Where the package names no
 Aqua, or turns the check off, no check covers a piracy of the base. Say so.
 
 **Point 7 has a positive half.** Does `CHANGELOG.md` carry an entry under `## [Unreleased]` for
