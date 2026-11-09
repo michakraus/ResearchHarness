@@ -22,7 +22,8 @@
 #   FAIL: new own-own ambiguity: <key> | <key>          both methods in own modules
 #   FAIL: new own-external ambiguity: <own> | <other>
 #   FAIL: new piracy: <key> at <file>:<line>            Aqua's piracy hunt on the module tree, not ext/
-#   FAIL: the head does not load: <error>
+#   FAIL: the head does not load: <error>               also an extension whose triggers the test
+#                                                       environment provides and that does not load
 #   UNKNOWN: the base does not load: <error>
 #   UNKNOWN: <side> does not resolve: <error>           TestEnv.activate() failed
 #   UNKNOWN: <side> timed out after <n> s
@@ -297,6 +298,14 @@ function side(s, rundir, tree, name, jet, manifest)
     project = TOML.parsefile(joinpath(tree, "Project.toml"))
     for w in keys(get(project, "weakdeps", Dict()))
         Base.identify_package(w) === nothing || Base.require(Main, Symbol(w))
+    end
+    # an extension whose triggers the test environment provides, and that is missing, failed to load
+    for (x, t) in get(project, "extensions", Dict())
+        all(w -> Base.identify_package(w) !== nothing, t isa String ? [t] : t) || continue
+        if Base.get_extension(root, Symbol(x)) === nothing
+            write(joinpath(rundir, "$s.error"), "load\nextension $x did not load")
+            return 11
+        end
     end
     aqua = Base.require(Main, :Aqua)
     tree_mods, own = Base.invokelatest() do

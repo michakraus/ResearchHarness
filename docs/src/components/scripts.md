@@ -254,7 +254,7 @@ loaded that package.
 | `FAIL: new own-own ambiguity: <key> \| <key>` | `Test.detect_ambiguities` finds a new pair of own methods | 1 |
 | `FAIL: new own-external ambiguity: <own key> \| <key>` | a new pair of an own and another method | 1 |
 | `FAIL: new piracy: <key> at <file>:<line>` | Aqua's piracy hunt on the package's module tree, not on `ext/`; no argument exempts a piracy | 1 |
-| `FAIL: the head does not load: <error>` | with a `log:` line | 1 |
+| `FAIL: the head does not load: <error>` | with a `log:` line; also where an extension whose triggers the test environment provides does not load | 1 |
 | `UNKNOWN: the base does not load: <error>` | with a `log:` line | 3 |
 | `UNKNOWN: <side> does not resolve: <error>` | `TestEnv.activate()` failed | 3 |
 | `UNKNOWN: <side> timed out after <n> s` | the side's process group was killed at its limit | 3 |

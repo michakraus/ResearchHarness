@@ -489,12 +489,21 @@ end
     @test time() - mtime(joinpath(r.run, "head.json")) >= 39
 end
 
-# a weak dependency that no environment provides: its extension is no own module
+# an extension on a weak dependency that no environment provides and on one that the standard
+# library provides: it is no own module, and its side loads
 const CLEAN = fixture("DDClean",
     ["src/DDClean.jl" => mod("DDClean", "# a comment\nc(x) = x"),
      "ext/DDCleanNoSuchExt.jl" => mod("DDCleanNoSuchExt", "using DDClean, DDNoSuchPackage\nDDClean.c(x::Int) = x")],
     ["src/DDClean.jl" => mod("DDClean", "# another comment\nc(x) = x")];
-    project = "\n[weakdeps]\nDDNoSuchPackage = \"0c1d2e3f-4a5b-4c6d-8e7f-9a0b1c2d3e4f\"\n\n[extensions]\nDDCleanNoSuchExt = \"DDNoSuchPackage\"\n")
+    project = """
+
+    [weakdeps]
+    DDNoSuchPackage = "0c1d2e3f-4a5b-4c6d-8e7f-9a0b1c2d3e4f"
+    LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
+
+    [extensions]
+    DDCleanNoSuchExt = ["DDNoSuchPackage", "LinearAlgebra"]
+    """)
 const C = dd(CLEAN, "HEAD~1", "--no-jet")
 
 @testset "a clean head passes" begin
@@ -594,6 +603,27 @@ end
     l = only(lines(r.out, "UNKNOWN: the base does not load: "))
     @test occursin("broken base", l)
     @test r.code == 3 && startswith(verdict(r.out), "Verdict: UNKNOWN — 0 FAIL, ")
+end
+
+@testset "an extension that does not load is a failed load of its side" begin
+    # a package `name` whose extension on LinearAlgebra raises on the base or on the head
+    function broken(name; on)
+        x = "$(name)LinearAlgebraExt"
+        ext(body) = mod(x, "using $name, LinearAlgebra\n$name.q(x::Integer, y) = 1\n$body")
+        good, bad = ext(""), ext("$name.q(x, y::Integer) = 2\nerror(\"broken ext\")")
+        base, head = on == "head" ? (good, bad) : (bad, good)
+        dir = fixture(name, ["src/$name.jl" => mod(name, "function q end"), "ext/$x.jl" => base], ["ext/$x.jl" => head];
+            project = replace(FAIL_PROJECT, "DDFailLinearAlgebraExt" => x))
+        return dd(dir, "HEAD~1", "--no-jet")
+    end
+    head = broken("DDExtHead"; on = "head")
+    l = only(lines(head.out, "FAIL: the head does not load: "))
+    @test occursin("broken ext", l)
+    @test lines(head.out, "log: ") == ["log: $(joinpath(head.run, "head.log"))"]
+    @test head.code == 1
+    base = broken("DDExtBase"; on = "base")
+    @test occursin("broken ext", only(lines(base.out, "UNKNOWN: the base does not load: ")))
+    @test base.code == 3 && isempty(lines(base.out, "FAIL:"))
 end
 
 @testset "a resolve error gives no verdict" begin
