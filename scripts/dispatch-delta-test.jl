@@ -636,9 +636,14 @@ end
 
 @testset "a side past its time gives no verdict" begin
     # the head writes a counter every 0.1 s for at least 240 s while it loads; the module is
-    # precompiled, so a process that the side starts runs the loop
+    # precompiled, so a process that the side starts runs the loop. The name, and so the UUID,
+    # carries the pid of this test process, so that two runs at the same time share no precompile
+    # lock; the killed precompilations leave temporary files in the fixture's compiled cache, which
+    # the end of the file removes
+    slow = "DDSlow$(getpid())"
+    push!(MADE, joinpath(DEPOT_PATH[1], "compiled", "v$(VERSION.major).$(VERSION.minor)", slow))
     body = "for i in 1:2400\n    sleep(0.1)\n    write(joinpath(@__DIR__, \"..\", \"alive.txt\"), string(i))\nend"
-    dir = fixture("DDSlow", ["src/DDSlow.jl" => mod("DDSlow", "a(x) = x")], ["src/DDSlow.jl" => mod("DDSlow", body)])
+    dir = fixture(slow, ["src/$slow.jl" => mod(slow, "a(x) = x")], ["src/$slow.jl" => mod(slow, body)])
     r = dd(dir, "HEAD~1", "--no-jet", "--timeout", "5")
     @test "UNKNOWN: head timed out after 5 s" in lines(r.out, "UNKNOWN: ")
     @test r.code == 3 && r.secs < 60
