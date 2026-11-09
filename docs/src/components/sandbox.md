@@ -159,8 +159,8 @@ it.
   file and `harness install --apply`;
 - `command -v` finds no program of the frontend's name on the `PATH` without the cmux entries;
 - what `command -v` gives does not start with `/`: a shell function, for example a bash function
-  that the caller exports and that macOS's `/bin/sh` imports, an alias, or, where `/bin/sh` is
-  `dash`, a program in a relative `PATH` entry; the line names the program and what was found;
+  that the caller exports and that macOS's `/bin/sh` imports, or, where `/bin/sh` is `dash`, a
+  program in a relative `PATH` entry; the line names the program and what was found;
 - the frontend is `claude` and an argument is `--settings` or starts with `--settings=`: Claude
   Code keeps only the last `--settings`, so the caller's would replace the override and turn
   Claude Code's own sandbox on again. More settings go in the user settings instead;

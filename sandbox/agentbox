@@ -33,10 +33,11 @@
 # is a positional parameter. It exits 2 with one line on stderr, and starts nothing, when no
 # frontend or an unknown one is named, when AGENTBOX is set, when srt or a settings file is
 # missing, when the program is not on the PATH without the cmux shims, when what `command -v`
-# gives does not start with / (a function, an alias, or a program in a relative PATH entry), when
-# mktemp cannot make the run directory, and when claude gets a --settings of the caller's: Claude
-# Code keeps only the last --settings, so the caller's would turn its own sandbox on again. A
-# refused run makes no directory. Otherwise srt's exit status is the script's.
+# gives does not start with / (a function that /bin/sh imports, or, where /bin/sh is dash, a
+# program in a relative PATH entry), when mktemp cannot make the run directory, and when claude
+# gets a --settings of the caller's: Claude Code keeps only the last --settings, so the caller's
+# would turn its own sandbox on again. A refused run makes no directory. Otherwise srt's exit
+# status is the script's.
 
 usage() {
     cat <<'EOF'
