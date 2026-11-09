@@ -660,8 +660,8 @@ end
 
 """
 The lines that compare the API of the two sides: the head's cover of the base's public names and
-API methods, the new public names, and the keyword names that each base public function takes on
-the base, from its API methods, and on the head, from all its methods.
+API methods, the new public names, and the keyword names that the generic of each base API method
+takes on the base, from its API methods, and on the head, from all its methods.
 """
 function compare_api(b, h)
     out = String[]
