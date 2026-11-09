@@ -24,8 +24,8 @@
 #   UNKNOWN: the package does not load: <error>        exit 3
 #
 # The UNKNOWN line also stands where the process that loads the package ends with another exit
-# code or by a signal; its <error> then names both. Bad arguments print the usage line to stderr and exit 2. In process, concrete_field_violations
-# takes the root module that a caller has loaded.
+# code or by a signal; its <error> then names both. Bad arguments print the usage line to stderr
+# and exit 2. In process, concrete_field_violations takes the root module that a caller has loaded.
 
 using TOML
 

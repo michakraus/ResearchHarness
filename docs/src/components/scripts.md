@@ -360,7 +360,8 @@ script's header and the skill `julia-structure` state status 3. CI runs it on Li
 ## `concrete-fields.jl` and `concrete-fields-test.jl`
 
 `concrete-fields.jl` lists the fields of a package's structs whose types are not concrete up to
-type variables. An abstract field makes every access to it infer as `Any`.
+type variables. Code that reads a field whose type is not concrete cannot infer a concrete type
+for the value it reads.
 
 ```bash
 julia --startup-file=no concrete-fields.jl <package>
@@ -381,8 +382,8 @@ does not read a type that another module defines and the package only binds, a t
 starts with `#`, such as a closure, an abstract type or a struct without fields.
 
 The script loads the package, by the `name` of its `Project.toml`, in a fresh process with
-`--project=<package>`, as `dispatch-delta.jl` loads one side. It resolves and instantiates
-nothing, so the package's environment must be instantiated. It prints one line per violation,
+`--project=<package>`. It resolves and instantiates nothing, so the package's environment must be
+instantiated. It prints one line per violation,
 `<Type path>.<field>::<field type>`, such as `Example.Inner.Cache.x::Real`, and then the verdict:
 
 | line | means | exit |
