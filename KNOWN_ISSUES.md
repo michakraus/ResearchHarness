@@ -765,3 +765,51 @@
   link of its text to a heading finds that heading.
 - kind: missing test
 - found: 2026-11-09, the review of the probe battery's pull request
+
+### K145 · In a cmux terminal `agentbox agy` gives `srt` cmux's `agy` wrapper, not the real `agy`.
+
+- location: `sandbox/agentbox:68`
+- evidence: a cmux terminal puts `/Applications/cmux.app/Contents/Resources/bin` early on the
+  `PATH`, and that directory holds `agy`, a bash script whose header reads `# cmux agy wrapper -
+  installs cmux hooks and captures launch metadata.` The filter of `resolve` skips only the
+  entries that match `*/cmux-cli-shims/*` or `*/cmux-cli-shims`, so `command -v agy` there finds
+  the wrapper. A critic's probe with that directory first on the `PATH` saw
+  `srt-program='/Applications/cmux.app/Contents/Resources/bin/agy'`. Whether `agentbox` skips this
+  directory too is a decision that the cmux-cli-shims filter does not make.
+- kind: found late
+- found: 2026-11-09, the review of the cmux and caches pull request of `agentbox`
+
+### K146 · A frontend probe past its time limit expects `holds <word>`, also where it expects the word to be missing.
+
+- location: `scripts/probe-agentbox.py:510`
+- evidence: `ask_row` writes the expectation of a timeout as `expected or f"holds {ask.word}"`
+  and does not read `ask.holds`. So an F3 that passes `--timeout` has the expectation
+  `holds READABLE` in its row, where F3 expects `lacks READABLE`. The verdict `timeout` is right;
+  only the `expected` cell is false. Read from the code, not probed.
+- kind: defect
+- found: 2026-11-09, the build of the probe battery's fixes
+
+### K147 · A line of `## Listeners` can name a frontend for a port where that frontend got another status.
+
+- location: `scripts/probe-agentbox.py:641`
+- evidence: `listener_lines` collects the ports and the frontends of one command, status and
+  verdict as two separate sets, so a line names every port of the group under every frontend of
+  the group. With `alpha` on 7001 and 56925, where `omp` gets 200 at 7001 and every other row is
+  401, `report.md` holds ``- `alpha` answers `401`, `match`: 2 ports (7001, 56925), under claude,
+  omp and agy``, and a second line ``- `alpha` answers `200`, `MISMATCH`: 1 port (7001), under
+  omp``. `report.tsv` holds the exact rows.
+- kind: defect
+- found: 2026-11-09, the review of the probe battery's fixes
+
+### K148 · The same-file checks of the network lists and the deduplication of `merged` compare hosts as exact strings, while `denies` folds case.
+
+- location: `lib/harness/network.py:142`
+- evidence: `read` refuses a host in `allow` and `deny` of one file, and a host in `fetch` and
+  `allow`, only when both entries are the same string (lines 142 and 146), and `merged` drops an
+  entry of the overlay only when the harness list holds the same string (line 159). `denies`
+  matches without regard to case. So an overlay `allow = ["GitHub.com"]` gives the two rules
+  `WebFetch(domain:github.com)` and `WebFetch(domain:GitHub.com)`, and `allow = ["f.org"]` with
+  `fetch = ["F.org"]` in one file passes `read`; `generate` then refuses it as a `fetch` host that
+  the `allowedDomains` entry `f.org` covers. No host is reached that no entry grants.
+- kind: defect
+- found: 2026-11-09, the review of the network lists' `fetch` key

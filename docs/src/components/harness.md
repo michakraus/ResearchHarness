@@ -659,11 +659,12 @@ The network rules of the Claude Code settings. The module has no subcommand. It 
 `settings/network.toml` and the overlay `network.toml` beside the profile, and writes into the
 rendered settings template the `WebFetch(domain:…)` rules of `permissions.allow` and
 `permissions.deny` and the lists `allowedDomains`, `deniedDomains` and `deniedDomainReasons` of
-`sandbox.network`. A `deny` entry removes each `allow` and `infrastructure` host that it matches.
-`install`, `render` of the settings template and `settings` call it. The module exits with status
-2 in two cases: a file breaks the schema, or the template holds a host of its own. Its cases
-check each rule, each of these exits, and that an overlay changes no file of OpenCode or
-oh-my-pi. The profile's loader refuses the retired profile key `extra_domain`.
+`sandbox.network`. A `deny` entry removes each `allow`, `fetch` and `infrastructure` host that it
+matches. `install`, `render` of the settings template and `settings` call it. The module exits
+with status 2 in three cases: a file breaks the schema, the template holds a host of its own, or
+an `allowedDomains` entry covers a `fetch` host. Its cases check each rule, each of these exits,
+and that an overlay changes no file of OpenCode or oh-my-pi. The profile's loader refuses the
+retired profile key `extra_domain`.
 [Adapting the profile](../profile.md#the-network-overlay) describes the keys.
 
 ## `sandbox.py`

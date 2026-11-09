@@ -97,7 +97,12 @@ makes it a background job; Kaimon's own default is 30 s. An agent that gets a jo
 wait, so it calls `check_eval` until the job ends, and each call is a model turn that reads the
 whole context again. 240 s is below the 5-minute prompt cache of a Claude Code sub-agent and below
 the request timeout that the install gives oh-my-pi. Claude Code, OpenCode and Antigravity keep a
-Kaimon call open for longer than that.
+Kaimon call open for longer than that. `POCL_CACHE_DIR` gives PoCL, which runs the kernels of the
+CPU backend of KernelAbstractions, the kernel cache `~/.cache/kaimon/pocl` in a Julia session.
+Kaimon's profile lets the job write below `~/.cache/kaimon` and not PoCL's default
+`~/.cache/pocl`, which a sandboxed command may write: so Kaimon has a cache of its own, and no
+command can put a compiled kernel where Kaimon loads and runs it. `harness setup` creates the
+directory before it loads the job, each directory that it creates with mode 700.
 
 OpenCode, oh-my-pi and Antigravity connect to this server at `http://127.0.0.1:2828/`. The update
 job `julia-update.plist` restarts it when its Julia release is deleted. Render the plist with
@@ -108,10 +113,11 @@ job `julia-update.plist` restarts it when its Julia release is deleted. Render t
 The `systemd --user` units in `systemd/` run the three jobs of the plists on Linux. Like the
 plists, they are templates of the profile: `harness render systemd/<name>` prints a rendered unit,
 and the harness has no subcommand that installs them. Copy each rendered unit into
-`~/.config/systemd/user/`, run `systemctl --user daemon-reload`, and enable the server and the two
-timers:
+`~/.config/systemd/user/`, run `systemctl --user daemon-reload`, create the server's PoCL cache,
+and enable the server and the two timers:
 
 ```
+(umask 077 && mkdir -p ~/.cache/kaimon/pocl)
 systemctl --user enable --now kaimon.service julia-update.timer claude-autocommit.timer
 ```
 
@@ -190,19 +196,19 @@ The template names no host: its `sandbox.network.allowedDomains` is empty, and i
 
 ## `network.toml`
 
-The hosts of the network rules of Claude Code, in three arrays: `allow`, the hosts that the
-`WebFetch` tool and a sandboxed command can reach; `infrastructure`, the hosts that only a
-sandboxed command can reach; `deny`, the hosts that neither can reach, with a reason for each in
-`[deny_reasons]`. Comments group the hosts: literature, mathematics, Julia, GitHub, package
-registries.
+The hosts of the network rules of Claude Code, in four arrays: `allow`, the hosts that the
+`WebFetch` tool and a sandboxed command can reach; `fetch`, the hosts that only the `WebFetch`
+tool can reach; `infrastructure`, the hosts that only a sandboxed command can reach; `deny`, the
+hosts that neither can reach, with a reason for each in `[deny_reasons]`. Comments group the
+hosts: literature, mathematics, Julia, GitHub, package registries.
 
 `harness install`, `harness render` of the settings template and `harness settings` generate the
 `WebFetch(domain:…)` rules and the lists of `sandbox.network` from this file and from the overlay
 `network.toml` beside the profile, which `examples/network.toml` shows. A `deny` entry of either
-file wins over an `allow` or `infrastructure` entry of either file. OpenCode and oh-my-pi do not
-read the file; for Antigravity, `harness install` writes the `allow` hosts as
-`read_url(https://<host>/*)` rules. [Adapting the profile](../profile.md#the-network-overlay) gives
-the rules of each key.
+file wins over an `allow`, `fetch` or `infrastructure` entry of either file. OpenCode and oh-my-pi
+do not read the file; for Antigravity, `harness install` writes the `allow` and `fetch` hosts as
+`read_url(<host>)` rules. [Adapting the profile](../profile.md#the-network-overlay) gives the
+rules of each key.
 
 ## `profile.toml`
 

@@ -6,8 +6,10 @@
 #   ~/.local/bin/srt --settings ~/.config/research-harness/sandbox/<policy name>.json -- \
 #       <program> <extra> <args...>
 #
-# where <program> is the path that `command -v` gives on the caller's PATH, and <extra> goes before
-# the caller's arguments:
+# where <program> is the path that `command -v` gives on the caller's PATH without the entries
+# that match */cmux-cli-shims/* or */cmux-cli-shims: a cmux shim is the first claude on the PATH
+# of a cmux terminal, and srt cannot read it. The filter decides only which program runs; the
+# program gets the caller's PATH. <extra> goes before the caller's arguments:
 #
 #   claude     --settings ~/.config/research-harness/sandbox/claude-inner-off.json, which turns
 #              Claude Code's own sandbox off: a sandbox inside srt's fails
@@ -17,13 +19,25 @@
 #
 # srt reads its own options up to the --, so none of the program's options reach it. Only the srt
 # that `harness setup` installs in ~/.local/bin runs, never one found on the PATH. The program gets
-# AGENTBOX=1 in its environment. The script assigns no shell variable other than AGENTBOX, so that
-# a variable of the caller reaches the program unchanged; each value is a positional parameter. It
-# exits 2 with one line on stderr, and starts nothing, when no frontend or an unknown one is named,
-# when AGENTBOX is set, when srt or a settings file is missing, when the program is not on the
-# PATH, and when claude gets a --settings of the caller's: Claude Code keeps only the last
-# --settings, so the caller's would turn its own sandbox on again. Otherwise srt's exit status is
-# the script's.
+# AGENTBOX=1 in its environment.
+#
+# Each run makes one new directory, mktemp -d "${TMPDIR:-/tmp}/agentbox.XXXXXX", with the
+# subdirectories npm, uv and texmf-var, and exports npm_config_cache, UV_CACHE_DIR and TEXMFVAR as
+# those subdirectories, each where the caller's variable is unset or empty: srt denies the tools'
+# caches in the home directory, and an empty value stops uv and sends npm back to ~/.npm. A
+# caller's non-empty value stays. The directory stays after the run, since the script ends in
+# exec; the system's cleaning of temporary directories removes it.
+#
+# Outside a subshell, the script assigns no shell variable other than AGENTBOX and the three cache
+# variables, so that every other variable of the caller reaches the program unchanged; each value
+# is a positional parameter. It exits 2 with one line on stderr, and starts nothing, when no
+# frontend or an unknown one is named, when AGENTBOX is set, when srt or a settings file is
+# missing, when the program is not on the PATH without the cmux shims, when what `command -v`
+# gives does not start with / (a function that /bin/sh imports, or, where /bin/sh is dash, a
+# program in a relative PATH entry), when mktemp cannot make the run directory, and when claude
+# gets a --settings of the caller's: Claude Code keeps only the last --settings, so the caller's
+# would turn its own sandbox on again. A refused run makes no directory. Otherwise srt's exit
+# status is the script's.
 
 usage() {
     cat <<'EOF'
@@ -41,6 +55,33 @@ refuse() {
     exit 2
 }
 
+# resolve <program>: print what `command -v <program>` gives on the caller's PATH without the
+# entries that match */cmux-cli-shims/* or */cmux-cli-shims. Run it in a command substitution: it
+# assigns PATH and its own variables, which then stay in the subshell.
+resolve() {
+    found=
+    rest=$PATH:
+    while [ -n "$rest" ]; do
+        entry=${rest%%:*}
+        rest=${rest#*:}
+        case $entry in
+        */cmux-cli-shims/* | */cmux-cli-shims) ;;
+        *) found=$found:$entry ;;
+        esac
+    done
+    PATH=${found#:}
+    command -v "$1"
+}
+
+# absolute <program> <path>: refuse unless <path>, what resolve gives for <program>, is absolute.
+absolute() {
+    case $2 in
+    /*) ;;
+    "") refuse "no program $1 on the PATH without the cmux-cli-shims entries" ;;
+    *) refuse "$1 is $2 on the PATH, not an absolute path: a function, an alias or a relative PATH entry" ;;
+    esac
+}
+
 # check <policy name> <program> <args...>: refuse what agentbox cannot run safely.
 check() {
     if [ -n "${AGENTBOX+set}" ]; then
@@ -55,9 +96,7 @@ check() {
     if [ "$2" = claude ] && ! [ -f "$HOME/.config/research-harness/sandbox/claude-inner-off.json" ]; then
         refuse "$HOME/.config/research-harness/sandbox/claude-inner-off.json is not a file; run harness install --apply"
     fi
-    if ! command -v "$2" >/dev/null 2>&1; then
-        refuse "no program $2 on the PATH"
-    fi
+    absolute "$2" "$(resolve "$2")"
     if [ "$2" = claude ]; then
         shift 2
         while [ "$#" -gt 0 ]; do
@@ -68,6 +107,28 @@ check() {
             esac
             shift
         done
+    fi
+}
+
+# caches: make the run directory and its subdirectories npm, uv and texmf-var, and export each
+# cache variable that the caller left unset or empty as its subdirectory.
+caches() {
+    set -- "$(mktemp -d "${TMPDIR:-/tmp}/agentbox.XXXXXX" 2>/dev/null)"
+    if [ -z "$1" ]; then
+        refuse "mktemp cannot make a directory below ${TMPDIR:-/tmp}"
+    fi
+    mkdir "$1/npm" "$1/uv" "$1/texmf-var"
+    if [ -z "${npm_config_cache-}" ]; then
+        npm_config_cache=$1/npm
+        export npm_config_cache
+    fi
+    if [ -z "${UV_CACHE_DIR-}" ]; then
+        UV_CACHE_DIR=$1/uv
+        export UV_CACHE_DIR
+    fi
+    if [ -z "${TEXMFVAR-}" ]; then
+        TEXMFVAR=$1/texmf-var
+        export TEXMFVAR
     fi
 }
 
@@ -82,34 +143,38 @@ case $1 in
 claude)
     shift
     check claude claude "$@"
+    caches
     AGENTBOX=1
     export AGENTBOX
     exec "$HOME/.local/bin/srt" --settings "$HOME/.config/research-harness/sandbox/claude.json" -- \
-        "$(command -v claude)" --settings "$HOME/.config/research-harness/sandbox/claude-inner-off.json" "$@"
+        "$(resolve claude)" --settings "$HOME/.config/research-harness/sandbox/claude-inner-off.json" "$@"
     ;;
 opencode)
     shift
     check opencode opencode "$@"
+    caches
     AGENTBOX=1
     export AGENTBOX
     exec "$HOME/.local/bin/srt" --settings "$HOME/.config/research-harness/sandbox/opencode.json" -- \
-        "$(command -v opencode)" --standalone "$@"
+        "$(resolve opencode)" --standalone "$@"
     ;;
 omp)
     shift
     check omp omp "$@"
+    caches
     AGENTBOX=1
     export AGENTBOX
     exec "$HOME/.local/bin/srt" --settings "$HOME/.config/research-harness/sandbox/omp.json" -- \
-        "$(command -v omp)" --approval-mode yolo "$@"
+        "$(resolve omp)" --approval-mode yolo "$@"
     ;;
 agy)
     shift
     check antigravity agy "$@"
+    caches
     AGENTBOX=1
     export AGENTBOX
     exec "$HOME/.local/bin/srt" --settings "$HOME/.config/research-harness/sandbox/antigravity.json" -- \
-        "$(command -v agy)" "$@"
+        "$(resolve agy)" "$@"
     ;;
 *)
     refuse "unknown frontend; the frontends are claude, opencode, omp and agy"

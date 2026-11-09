@@ -213,25 +213,36 @@ keys, and each key is optional in the overlay.
 | key | what it holds | what the install writes |
 |:--|:--|:--|
 | `allow` | the hosts that the `WebFetch` tool and a sandboxed command can reach; write a host, never `*.X` | `WebFetch(domain:X)` in `permissions.allow`; `X` in `sandbox.network.allowedDomains`, and `*.X` too when `X` is its own registrable domain |
+| `fetch` | the hosts that only the `WebFetch` tool can reach, such as a host that accepts writes and that you need only for reading; write a host, never `*.X` | `WebFetch(domain:X)` in `permissions.allow`, after the entries that `allow` gives; nothing in `allowedDomains` |
 | `infrastructure` | the hosts that only a sandboxed command can reach, such as a package registry; `*.X` is allowed | `X` in `allowedDomains`, as written |
 | `deny` | the hosts that neither can reach; `*`, `*.X` and `X:port` are allowed | `X` in `sandbox.network.deniedDomains`; `WebFetch(domain:X)` in `permissions.deny`, except for an entry with a port |
 | `[deny_reasons]` | a reason for a `deny` entry, keyed by the exact entry | `sandbox.network.deniedDomainReasons`, which Claude Code shows the model when the [sandbox](concepts.md#sandbox) refuses the host |
 
 `install`, `render` of the settings template and `settings` read both files. A `deny` entry of
-either file removes each `allow` and `infrastructure` host that it matches from the generated
-allow lists. A `deny` entry with a port leaves the host on the allow lists. The sandbox refuses a
-host that no list names, with no prompt, because the template sets `strictAllowlist`. A `WebFetch`
-of such a host is on no list either, so it asks in the default permission mode.
+either file removes each `allow`, `fetch` and `infrastructure` host that it matches from the
+generated allow lists. A `deny` entry with a port leaves the host on the allow lists. The sandbox
+refuses a host that no list names, with no prompt, because the template sets `strictAllowlist`. A
+`WebFetch` of such a host is on no list either, so it asks in the default permission mode.
+
+The `WebFetch` tool sends a GET. A sandboxed command can send any request to a host of
+`allowedDomains`, so a host that accepts writes and that you only read goes into `fetch`. A
+frontend under `agentbox` does not reach a `fetch` host at all: srt takes `allowedDomains` alone,
+and the frontend's fetch tool runs inside srt.
 
 These cases stop the subcommand with exit status 2:
 
 - an entry that is a URL;
 - an entry with a port outside `deny`;
+- an entry `*.X` in `allow` or `fetch`;
 - a host in both `allow` and `deny` of one file;
+- a host in both `fetch` and `deny` of one file;
+- a host in both `fetch` and `allow` or `infrastructure` of one file;
+- a `fetch` host that an `allowedDomains` entry of either file covers: the same host, or a `*.`
+  form above it, matched without regard to case;
 - a key that the table does not name.
 
 The profile key `extra_domain` stops every subcommand that reads the profile: move its hosts into
 the overlay's `allow`.
 
 OpenCode and oh-my-pi have no network allowlist. For Antigravity, `harness install` writes each
-`allow` host as `read_url(https://<host>/*)`.
+`allow` and `fetch` host as `read_url(<host>)`.

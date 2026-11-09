@@ -26,8 +26,9 @@ runs them.
   that the cases run on Linux too and start no real sandbox, frontend, app or launchd job: each
   refusal exits 2 and calls neither stub; under a stub `srt` that refuses everything and one that
   allows everything, each probe gets its verdict, no report holds a marker line, no appended file
-  changes, no probe file stays, and the launchd job is removed; the listeners, the command lines of
-  the frontend probes, a frontend past its time limit, and the report's files.
+  changes, no probe file stays, and the launchd job is removed; the listeners and the second route
+  of an `opencode` listener, the command lines of the frontend probes, F3 void where F1 is not
+  `match`, a frontend past its time limit, and the report's files with their `## Listeners`.
 """
 
 import importlib.util
@@ -60,8 +61,9 @@ PROBE = REPO / "scripts" / "probe-agentbox.py"
 # acts on `config.json` there:
 #   srt        "refuse": exits 1 and runs nothing; "allow": runs the command after `--`
 #   agentbox   prints `answer`; for the frontend `sleep`, F1's call first runs `sleep 60`
-#   curl       prints its -w template with the status of the URL's port in `curl` (200 by default;
-#              "none" is no answer, 000 and exit 7), and 000 for the CONNECT status
+#   curl       prints its -w template with the status in `curl` of the URL's port and path
+#              (`4096/path`), else of its port, else 200 ("none" is no answer, 000 and exit 7),
+#              and 000 for the CONNECT status
 #   lsof       prints `lsof_opencode` with -c, `lsof` otherwise
 #   launchctl, mount, umount   keep their jobs and mounts in files, so that `list` and a bare
 #              `mount` show what `submit` and `mount` left
@@ -89,8 +91,10 @@ if name == "agentbox":
         subprocess.run(["sleep", "60"])
     print(config.get("answer", ""))
 elif name == "curl":
-    port = re.search(r":(\d+)/", args[-1])
-    code = config.get("curl", {}).get(port.group(1) if port else "", "200")
+    url = re.search(r":(\d+)(/\S*)", args[-1])
+    codes = config.get("curl", {})
+    route = url.group(1) + url.group(2) if url else ""
+    code = codes.get(route, codes.get(url.group(1) if url else "", "200"))
     template = args[args.index("-w") + 1].replace("%{http_connect}", "000")
     print(template.replace("%{http_code}", "000" if code == "none" else code), end="")
     sys.exit(7 if code == "none" else 0)
@@ -942,6 +946,8 @@ def probe_listeners(check: Callable[[object, str], None], tmp: pathlib.Path) -> 
         "gamma 103 u 3u IPv6 0x1 0t0 TCP [::1]:7003 (LISTEN)\n"
         "delta 104 u 3u IPv4 0x1 0t0 TCP *:7004 (LISTEN)\n"
         "epsilon 105 u 3u IPv4 0x1 0t0 TCP 127.0.0.1:7005 (LISTEN)\n"
+        "eta 110 u 3u IPv4 0x1 0t0 TCP 127.0.0.1:7006 (LISTEN)\n"
+        "theta 111 u 3u IPv4 0x1 0t0 TCP 127.0.0.1:7008 (LISTEN)\n"
         "alphatwo 106 u 4u IPv4 0x1 0t0 TCP 127.0.0.1:7001 (LISTEN)\n"
         "alphawild 108 u 5u IPv6 0x1 0t0 TCP *:7001 (LISTEN)\n"
         "deltasix 109 u 4u IPv6 0x1 0t0 TCP *:7004 (LISTEN)\n"
@@ -950,17 +956,28 @@ def probe_listeners(check: Callable[[object, str], None], tmp: pathlib.Path) -> 
         "other 999999999 u 3u IPv6 0x1 0t0 TCP [::1]:2828 (LISTEN)\n"
         f"julia {os.getpid()} u 3u IPv4 0x1 0t0 TCP *:2828 (LISTEN)\n"
     )
-    codes = {"7001": "401", "7002": "200", "7003": "none", "7004": "200", "7005": "403", "2828": "401"}
+    codes = {
+        **{"7001": "401", "7002": "200", "7003": "none", "7004": "200", "7005": "403"},
+        **{"7006": "407", "7008": "400", "2828": "401"},
+    }
     home = probe_home(tmp / "listen", {"srt": "allow", "lsof": lsof, "curl": codes})
     out = home / "out"
     # claude twice: a frontend named twice runs once
     probe_run(home, "--no-model", "claude", "claude", "--out", str(out))
     rows = probe_rows(out)
     ids = Counter(r[1] for r in rows if r[1].startswith("L:"))
+    got = {r[1]: (r[2], r[3], r[4], r[5]) for r in rows if r[1].startswith("L:")}
+    check(
+        got.get("L:7006", ())[:3] == ("401, 403 or 407", "407", "match")
+        and got.get("L:7008", ())[:3] == ("401, 403 or 407", "400", "MISMATCH"),
+        f"a listener that answers 407 is match and one that answers 400 is MISMATCH, against 401, 403 "
+        f"or 407 -> {got.get('L:7006')} {got.get('L:7008')}",
+    )
     got = {r[1]: (r[3], r[4], r[5]) for r in rows if r[1].startswith("L:")}
     l1, l2, l3, l4, l5 = (got.get(f"L:700{k}") for k in (1, 2, 3, 4, 5))
     check(
-        ids == Counter(("L:7001", "L:7002", "L:7003", "L:7004", "L:7005", "L:2828", "L:2828"))
+        ids
+        == Counter(("L:7001", "L:7002", "L:7003", "L:7004", "L:7005", "L:7006", "L:7008", "L:2828", "L:2828"))
         and Counter(r[1] for r in rows)["R1"] == 1
         and l1 is not None
         and l1[:2] == ("401", "match")
@@ -995,6 +1012,86 @@ def probe_listeners(check: Callable[[object, str], None], tmp: pathlib.Path) -> 
     )
 
 
+def probe_routes(check: Callable[[object, str], None], tmp: pathlib.Path) -> None:
+    """An `opencode` listener is asked at `/` and at `/path`, each with a row of its own; a `node`
+    listener only at `/`; `## Listeners` names the port of `L:<port>/path` without its route."""
+    lsof = (
+        "opencode 201 u 3u IPv4 0x1 0t0 TCP 127.0.0.1:4096 (LISTEN)\n"
+        "node 202 u 3u IPv4 0x1 0t0 TCP 127.0.0.1:7001 (LISTEN)\n"
+    )
+    codes = {"4096": "200", "4096/path": "401", "7001": "200", "7001/path": "401"}
+    home = probe_home(tmp / "routes", {"srt": "allow", "lsof": lsof, "curl": codes})
+    out = home / "out"
+    probe_run(home, "--no-model", "claude", "--out", str(out))
+    got = {r[1]: (r[3], r[4], r[5]) for r in probe_rows(out) if r[1].startswith("L:")}
+    check(
+        sorted(got) == ["L:4096", "L:4096/path", "L:7001"]
+        and got["L:4096"][:2] == ("200", "MISMATCH")
+        and got["L:4096/path"][:2] == ("401", "match")
+        and got["L:4096/path"][2].startswith("opencode 127.0.0.1:4096")
+        and got["L:7001"][:2] == ("200", "MISMATCH"),
+        f"opencode has a row at / (200, MISMATCH) and at /path (401, match); node one row at / -> {got}",
+    )
+    urls = [a[-1] for _, a in stub_calls(home, "curl") if a[-1].startswith("http://")]
+    check(
+        sorted(urls) == ["http://127.0.0.1:4096/", "http://127.0.0.1:4096/path", "http://127.0.0.1:7001/"],
+        f"curl asks opencode at / and /path, node at / only -> {urls}",
+    )
+    md = (out / "report.md").read_text() if (out / "report.md").exists() else ""
+    lines = [x for x in md.partition("## Listeners\n")[2].partition("\n## ")[0].splitlines() if x]
+    check(
+        lines
+        == [
+            "- `opencode` answers `200`, `MISMATCH`: 1 port (4096), under claude",
+            "- `node` answers `200`, `MISMATCH`: 1 port (7001), under claude",
+            "- `opencode` answers `401`, `match`: 1 port (4096), under claude",
+        ],
+        f"## Listeners names the port of L:4096/path as 4096 -> {lines}",
+    )
+
+
+def probe_summary(check: Callable[[object, str], None], tmp: pathlib.Path) -> None:
+    """report.md gives the listener rows as `## Listeners`, one line per command, status and
+    verdict, with the ports in numeric order and the frontends; its table holds no `L:` row, and
+    report.tsv holds every one."""
+    lsof = (
+        "alpha 101 u 3u IPv4 0x1 0t0 TCP 127.0.0.1:56925 (LISTEN)\n"
+        "alpha 102 u 3u IPv4 0x1 0t0 TCP 127.0.0.1:7001 (LISTEN)\n"
+        "alpha 103 u 3u IPv4 0x1 0t0 TCP 127.0.0.1:7002 (LISTEN)\n"
+        "beta 104 u 3u IPv4 0x1 0t0 TCP 127.0.0.1:7003 (LISTEN)\n"
+    )
+    codes = {"56925": "401", "7001": "401", "7002": "200", "7003": "403"}
+    home = probe_home(tmp / "summary", {"srt": "allow", "lsof": lsof, "curl": codes})
+    out = home / "out"
+    probe_run(home, "--no-model", "omp", "claude", "--out", str(out))
+    tsv = [r for r in probe_rows(out) if r[1].startswith("L:")]
+    check(
+        Counter((r[0], r[1]) for r in tsv)
+        == Counter((f, f"L:{p}") for f in ("omp", "claude") for p in ("56925", "7001", "7002", "7003")),
+        f"report.tsv holds every L: row of both frontends -> {sorted((r[0], r[1]) for r in tsv)}",
+    )
+    md = (out / "report.md").read_text() if (out / "report.md").exists() else ""
+    head, _, rest = md.partition("## Listeners\n")
+    section = rest.partition("\n## ")[0]
+    lines = [line for line in section.splitlines() if line.startswith("- ")]
+    want = [
+        "- `alpha` answers `401`, `match`: 2 ports (7001, 56925), under omp and claude",
+        "- `alpha` answers `200`, `MISMATCH`: 1 port (7002), under omp and claude",
+        "- `beta` answers `403`, `match`: 1 port (7003), under omp and claude",
+    ]
+    check(
+        "| L:" not in head and lines == want and "## Counts" in rest,
+        f"report.md's table holds no L: row, and ## Listeners one line per command, status and "
+        f"verdict, ports in numeric order -> table L: rows {head.count('| L:')}, {lines}",
+    )
+    counts = rest.partition("## Counts\n")[2].partition("\n## ")[0]
+    total = sum(int(line.rpartition(" ")[2]) for line in counts.splitlines() if line.startswith("- `"))
+    check(
+        total == len(probe_rows(out)) and total > len(tsv),
+        f"## Counts counts every row, the L: rows included -> {total} of {len(probe_rows(out))}",
+    )
+
+
 def probe_model(check: Callable[[object, str], None], tmp: pathlib.Path) -> None:
     """The frontend probes call agentbox with the frontend's non-interactive form."""
     opencode = "opencode 201 u 3u IPv4 0x1 0t0 TCP 127.0.0.1:4096 (LISTEN)\n"
@@ -1015,8 +1112,8 @@ def probe_model(check: Callable[[object, str], None], tmp: pathlib.Path) -> None
         ],
         "opencode": [["run", "--auto"]] * 5,
         "omp": [["-p"]] * 4,
-        "agy": [["-p", "--dangerously-skip-permissions"]] * 4
-        + [["--sandbox", "-p", "--dangerously-skip-permissions"]],
+        "agy": [["--dangerously-skip-permissions", "-p"]] * 4
+        + [["--dangerously-skip-permissions", "--sandbox", "-p"]],
     }
     dirs = stub_dirs(home, "agentbox")
     check(dirs == {str((home / "Research").resolve())}, f"agentbox runs from ~/Research -> {dirs}")
@@ -1028,6 +1125,12 @@ def probe_model(check: Callable[[object, str], None], tmp: pathlib.Path) -> None
         check(
             shapes == want and all(len(x) == 1 for x in prompts),
             f"agentbox {frontend} gets its non-interactive form and one prompt -> {mine}",
+        )
+        # the shapes drop the prompt, so they do not show where it stands: `-p` takes it as its value
+        after = [a[a.index("-p") + 1 : a.index("-p") + 2] for a in mine if "-p" in a]
+        check(
+            after == (prompts if "-p" in want[0] else []),
+            f"agentbox {frontend}: the argument after -p is the prompt -> {after}",
         )
         check(
             rows.get((frontend, "F2")) == ("holds SR=1 AB=1", "match"),
@@ -1044,6 +1147,29 @@ def probe_model(check: Callable[[object, str], None], tmp: pathlib.Path) -> None
         and rows.get(("agy", "F5")) == ("exit 0", "exit 0")
         and rows.get(("opencode", "F6")) == ("holds SR=1 AB=1", "match"),
         f"F5, F6 and F7 -> {[rows.get(k) for k in (('agy', 'F5'), ('opencode', 'F6'), ('omp', 'F7'))]}",
+    )
+
+
+def probe_void(check: Callable[[object, str], None], tmp: pathlib.Path) -> None:
+    """Under an agentbox whose answer holds no OK, F1 is MISMATCH, so F3, which expects READABLE to
+    be missing, is void, and F2 and F4 stay MISMATCH; void counts in report.md."""
+    home = probe_home(tmp / "void", {"srt": "refuse", "lsof": "", "lsof_opencode": "", "answer": "no"})
+    out = home / "out"
+    p = probe_run(home, "--out", str(out))
+    rows = {(r[0], r[1]): (r[2], r[4], r[5]) for r in probe_rows(out) if r[1].startswith("F")}
+    for frontend in PROBE_POLICY:
+        got = [rows.get((frontend, i)) for i in ("F1", "F2", "F3", "F4")]
+        check(
+            got[0] is not None
+            and got[0][1] == "MISMATCH"
+            and got[2] == ("lacks READABLE", "void", "F1 shows no start")
+            and [g[1] if g else None for g in (got[1], got[3])] == ["MISMATCH", "MISMATCH"],
+            f"with an answer without OK, F3 of {frontend} is void and F2 and F4 stay MISMATCH -> {got}",
+        )
+    md = (out / "report.md").read_text() if (out / "report.md").exists() else ""
+    check(
+        p.returncode == 1 and f"- `void`: {len(PROBE_POLICY)}" in md,
+        f"void counts in report.md -> {p.returncode} {[x for x in md.splitlines() if 'void' in x]}",
     )
 
 
@@ -1075,6 +1201,10 @@ def probe_timeout(check: Callable[[object, str], None], tmp: pathlib.Path) -> No
     starts = [t for t, a in stub_calls(home, "agentbox") if a[:1] == ["claude"]]
     took = starts[1] - starts[0] if len(starts) > 1 else None
     check(
+        rows.get(("claude", "F3")) == ("void", "F1 shows no start"),
+        f"F3 after an F1 past --timeout is void -> {rows.get(('claude', 'F3'))}",
+    )
+    check(
         p.returncode == 1
         and rows.get(("claude", "F1"), ("",))[0] == "timeout"
         and rows.get(("claude", "F2"), ("",))[0] == "match"
@@ -1101,7 +1231,7 @@ def probe_timeout(check: Callable[[object, str], None], tmp: pathlib.Path) -> No
         for name, verdicts in (
             ("timeout", ["match", "timeout"]),
             ("MISMATCH", ["match", "MISMATCH"]),
-            ("clean", ["match", "skipped", "absent", "unchanged", "exit 0"]),
+            ("clean", ["match", "skipped", "absent", "unchanged", "exit 0", "void"]),
         )
     }
     check(
@@ -1113,7 +1243,8 @@ def probe_timeout(check: Callable[[object, str], None], tmp: pathlib.Path) -> No
 
 def probe_units(check: Callable[[object, str], None], module: types.ModuleType) -> None:
     """The edges of the judges of curl's statuses, the detail's cut, F7's observation, a shell
-    probe and a listener probe past their time limit, and a | in a cell of report.md."""
+    probe and a listener probe past their time limit, a | in a cell of report.md, and its
+    `## Listeners` with no listener row."""
     judged = {
         (judge, out): getattr(module, judge)(0, out)
         for judge, out in (
@@ -1140,11 +1271,24 @@ def probe_units(check: Callable[[object, str], None], module: types.ModuleType) 
         f"N1/N2 reach 200-399; N3 is refused by a 403 in either status or no answer; N4 by no answer "
         f"-> allowed {sorted(allowed)}",
     )
-    cut = module.detail("a" * 300 + "\tend\n")
+    trace = "SQLiteError: database is locked\n" + "  at frame\n" * 90 + "    at omp-darwin-arm64\n"
+    trace = trace[:976] + trace[-24:]
+    cut, whole = module.detail(trace), module.detail("b " * 75)
+    flat = " ".join(trace.split())
     check(
-        len(cut) == 200 and cut.endswith("a end"),
-        f"a detail is the last 200 characters, on one line -> {len(cut)} {cut[-8:]!r}",
+        len(trace) == 1000
+        and len(cut) == 203
+        and cut == f"{flat[:100]} … {flat[-100:]}"
+        and "SQLiteError" in cut
+        and "omp-darwin-arm64" in cut,
+        f"a detail of 1000 characters keeps its first and last 100, joined by ' … ' -> {len(cut)} {cut!r}",
     )
+    check(
+        whole == " ".join(("b " * 75).split()) and len("b " * 75) == 150,
+        f"a detail of 150 characters comes back whole, on one line -> {whole!r}",
+    )
+    edge = [len(module.detail("c" * n)) for n in (200, 201)]
+    check(edge == [200, 203], f"a detail of 200 characters is whole, of 201 cut -> {edge}")
     seen = [module.change(*pair) for pair in ((None, None), ("x", "x"), ("x", "y"), (None, "x"), ("x", None))]
     check(
         seen == ["absent", "unchanged", "changed", "changed", "changed"],
@@ -1165,6 +1309,10 @@ def probe_units(check: Callable[[object, str], None], module: types.ModuleType) 
             pathlib.Path(name), [module.Row("claude", "F1", "holds OK", "lacks OK", "MISMATCH", "a|b")]
         ).read_text()
     check("| a\\|b |" in md, f"a | in a cell of report.md is escaped -> {md.splitlines()[2:3]}")
+    check(
+        "## Listeners\n\n- none\n" in md,
+        f"with no listener row, ## Listeners says none -> {md.partition('## Listeners')[2][:40]!r}",
+    )
 
 
 def probe_cases(check: Callable[[object, str], None]) -> None:
@@ -1176,7 +1324,10 @@ def probe_cases(check: Callable[[object, str], None]) -> None:
             probe_refuse_all,
             probe_allow_all,
             probe_listeners,
+            probe_routes,
+            probe_summary,
             probe_model,
+            probe_void,
             probe_timeout,
         ):
             case(check, tmp)
