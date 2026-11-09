@@ -1050,9 +1050,9 @@ These commands install the `ps` shim of the server into
 Seatbelt profiles of the server and the update job into `~/.config/research-harness/sandbox/`,
 which their launch agents start them under, then each launch agent with the profile into
 `~/Library/LaunchAgents/`, under its label, and create the log directories of the jobs and the
-server's PoCL kernel cache `~/.cache/kaimon/pocl`, which its `POCL_CACHE_DIR` names, each new
-directory with mode 700. `p` holds the profile key `launchd_prefix`; the commands of
-this step after it use `p` too, so run them in the same shell:
+server's PoCL kernel cache `~/.cache/kaimon/pocl`, which its `POCL_CACHE_DIR` names; the
+cache's command gives each directory that it creates mode 700. `p` holds the profile key
+`launchd_prefix`; the commands of this step after it use `p` too, so run them in the same shell:
 
 ```bash
 p=$(harness get launchd_prefix)

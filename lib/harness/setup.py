@@ -779,10 +779,9 @@ def job_steps(machine: Machine, loaded: profile_module.Profile, env: Mapping[str
     jobsandbox.JOBS has its Seatbelt profile rendered into SANDBOX before its plist, and the Kaimon
     job has the `ps` shim installed into SHIMS, mode 755, before its profile. On both systems one
     step creates POCL_CACHE, the directory of POCL_CACHE_DIR in Kaimon's plist and unit, before
-    the Kaimon job is loaded. Without a
-    `claude_remote`, no launch agent or unit of the autocommit job is rendered or loaded, because
-    launchd loads every plist of ~/Library/LaunchAgents at the next login; a line by hand names
-    the key."""
+    the Kaimon job is loaded. Without a `claude_remote`, no launch agent or unit of the autocommit
+    job is rendered or loaded, because launchd loads every plist of ~/Library/LaunchAgents at the
+    next login; a line by hand names the key."""
     autocommit = bool(loaded.claude_remote)
     if not autocommit:
         result.by_hand.append(
