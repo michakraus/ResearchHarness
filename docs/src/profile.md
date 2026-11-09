@@ -213,7 +213,7 @@ keys, and each key is optional in the overlay.
 | key | what it holds | what the install writes |
 |:--|:--|:--|
 | `allow` | the hosts that the `WebFetch` tool and a sandboxed command can reach; write a host, never `*.X` | `WebFetch(domain:X)` in `permissions.allow`; `X` in `sandbox.network.allowedDomains`, and `*.X` too when `X` is its own registrable domain |
-| `fetch` | the hosts that only the `WebFetch` tool can reach, such as a host that accepts writes and that you need only for reading; write a host, never `*.X` | `WebFetch(domain:X)` in `permissions.allow`, after the rules of `allow`; nothing in `allowedDomains` |
+| `fetch` | the hosts that only the `WebFetch` tool can reach, such as a host that accepts writes and that you need only for reading; write a host, never `*.X` | `WebFetch(domain:X)` in `permissions.allow`, after the entries that `allow` gives; nothing in `allowedDomains` |
 | `infrastructure` | the hosts that only a sandboxed command can reach, such as a package registry; `*.X` is allowed | `X` in `allowedDomains`, as written |
 | `deny` | the hosts that neither can reach; `*`, `*.X` and `X:port` are allowed | `X` in `sandbox.network.deniedDomains`; `WebFetch(domain:X)` in `permissions.deny`, except for an entry with a port |
 | `[deny_reasons]` | a reason for a `deny` entry, keyed by the exact entry | `sandbox.network.deniedDomainReasons`, which Claude Code shows the model when the [sandbox](concepts.md#sandbox) refuses the host |

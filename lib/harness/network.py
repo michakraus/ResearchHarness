@@ -12,7 +12,7 @@ is a host, never a URL.
     matches the host a request goes to, so a bare `nature.com` does not cover `www.nature.com`;
     a host below its registrable domain, `api.crossref.org`, is one host. An entry `*.X` exits 2.
   * `fetch` X: `WebFetch(domain:X)` after the rules of `allow`, and nothing in `allowedDomains`:
-    the WebFetch tool reaches X, which sends a GET, and a sandboxed command does not. A frontend
+    the WebFetch tool, which sends a GET, reaches X, and a sandboxed command does not. A frontend
     under `agentbox` does not reach X at all, because srt takes `allowedDomains` alone. A host
     that accepts writes and is needed only for reading goes here. An entry `*.X` exits 2, and a
     host in `allow` of one file and `fetch` of the other gets one rule.
@@ -24,17 +24,17 @@ is a host, never a URL.
     The sandbox checks `deniedDomains` before `allowedDomains`.
 
 The two files are one union, the harness list's entries first. An `allow`, `fetch` or
-`infrastructure` entry that a `deny` entry without a port matches — the same host, a host or a `*.` form below a `*.`
-entry, or any host for `*` — is left out of every generated allow list, and so is the `*.X` form of
-an `allow` host X that such an entry matches: a deny `*.X` keeps X and drops `*.X`. A `deny` entry
-with a port leaves the host on the allow lists; the sandbox refuses that port alone. With no `deny`
-entry the template gets no `deniedDomains` and no `deniedDomainReasons`.
+`infrastructure` entry that a `deny` entry without a port matches — the same host, a host or a `*.`
+form below a `*.` entry, or any host for `*` — is left out of every generated allow list, and so is
+the `*.X` form of an `allow` host X that such an entry matches: a deny `*.X` keeps X and drops
+`*.X`. A `deny` entry with a port leaves the host on the allow lists; the sandbox refuses that port
+alone. With no `deny` entry the template gets no `deniedDomains` and no `deniedDomainReasons`.
 
 Exit 2, naming the file and the key: an unknown key; a value of the wrong type; an entry that is
 not a string, is a URL, or is no host name; a port outside `deny`; `*` outside `deny`; `*.` in
 `allow` or `fetch`; a host in `allow` or `infrastructure` and in `deny` of the same file; a host in
-`fetch` and in `allow` or `infrastructure` of the same file; a `deny_reasons` key
-that is no `deny` entry of either file. So does a settings template that holds a network rule of
+`fetch` and in `allow` or `infrastructure` of the same file; a `deny_reasons` key that is no `deny`
+entry of either file. So does a settings template that holds a network rule of
 its own or has no `sandbox.network.allowedDomains`. The profile's loader refuses the retired key
 `extra_domain` (`profile.load`).
 

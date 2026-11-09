@@ -92,7 +92,7 @@ allow = [
     "github.com",
     "raw.githubusercontent.com",
     # the documentation of the frontends; OpenCode also loads its provider config and its model
-    # catalogue from opencode.ai at each start
+    # catalogue from opencode.ai and models.opencode.ai at its start
     "code.claude.com",
     "opencode.ai",
 ]
