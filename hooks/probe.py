@@ -116,6 +116,7 @@ PROFILES = {
     "org-text.toml": b'org = "own-org"\n',
     "org-mixed.toml": b'org = ["own-org", 1]\n',
     "other.toml": b'org = ["other-org"]\n',
+    "dotted.toml": b'org = ["own.org"]\n',
 }
 # A fake token of each form that the token check reads, by its placeholder `@@<NAME>@@` in the corpus.
 # Each is joined here at run time, so that no file of the repository holds one for gitleaks to find.

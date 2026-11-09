@@ -216,6 +216,7 @@
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api repos/own-org/r/issues/3/comments -f body=x"}}, "profile": "@@FIXTURE@@/profiles/missing.toml", "decision": "ask"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api repos/own-org/r/issues/3/comments -f body=x"}}, "profile": "@@FIXTURE@@/profiles/other.toml", "decision": "ask"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api repos/other-org/r/issues/3/comments -f body=x"}}, "profile": "@@FIXTURE@@/profiles/other.toml", "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api repos/own.org/r/issues/3/comments -f body=x"}}, "profile": "@@FIXTURE@@/profiles/dotted.toml", "decision": "ask"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api graphql -f query='query { search(query:\"is:pr\", type: ISSUE, first: 5) { issueCount } }'"}}, "decision": "pass"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api graphql -f query='{ search(query:\"mutation\", type: ISSUE, first: 1) { issueCount } }'"}}, "decision": "pass"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api graphql -F owner=o -f query='query($owner:String!){ repository(owner:$owner, name:\"r\"){ id } }'"}}, "decision": "pass"}
