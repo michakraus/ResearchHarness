@@ -241,10 +241,10 @@ The expected value is the policy's intent, not what the current files do. So a `
 finding for the policy, the settings files or the launcher, and a run of a policy with a known
 gap exits 1. A probe's output goes into the `detail` of its row on one line: whole up to 200
 characters, else its first and its last 100 characters joined by ` … `, so a failure keeps its
-cause and its last state. The script writes `report.tsv`, every row with the columns `frontend`, `id`,
-`expected`, `got`, `verdict` and `detail`, and `report.md`: the rows other than `L:` as a table;
-a section `## Listeners` with one line per command, status and verdict of the `L:` rows, which
-names the number of ports, the ports in numeric order and the frontends; the count of each
+cause and its last state. The script writes `report.tsv`, every row with the columns `frontend`,
+`id`, `expected`, `got`, `verdict` and `detail`, and `report.md`: the rows other than `L:` as a
+table; a section `## Listeners` with one line per command, status and verdict of the `L:` rows,
+which names the number of ports, the ports in numeric order and the frontends; the count of each
 verdict over every row in `## Counts`; and the manual steps: change the model once under
 `agentbox omp`, and, where F6 was skipped because no plain `opencode` listened, run it again with
 a plain `opencode` in another terminal. It prints the path of `report.md` last, and exits 0 when
