@@ -142,7 +142,7 @@ like a definition to any text search, and a fifth of this tree is written that w
 
 | the question | the tool |
 |:--|:--|
-| what methods exist, and where — in a package that may not load | `Harness/scripts/julia-methods.jl <package-dir> <name>`. The first argument is a **path** |
+| what methods exist, and where — in a package that may not load | `Harness/scripts/julia-methods.jl <package-dir> <name>`. The first argument is a **path**. Exit 3 is not a failure: the listing is complete, and a name has more than one qualified spelling, such as `f` and `M.f`; `search_methods` or `julia-callers.jl` decides whether they extend one function |
 | which method actually **runs** for these arguments | Kaimon `search_methods` on a warm session. Nothing else answers this |
 | which methods take this **type** — the helpers that exist before you write one | Kaimon `search_methods` with the type as the query, which runs `methodswith(T)`. It omits the methods of `T`'s supertypes: for those, `methodswith(T; supertypes = true)` through `ex` |
 | who calls this, and is it dead — where the package loads | `julia-callers.jl` on that session. It sees through qualified definitions |

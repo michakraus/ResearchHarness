@@ -119,7 +119,8 @@ Judge `cd <worktree> && git diff origin/main...HEAD`.
    For each new name, run `julia --startup-file=no
    ~/Research/Harness/scripts/julia-methods.jl <dir> <name>` on the package and on the
    dependency that would own the name: multiple dispatch means a grep cannot say whether a method
-   already exists.
+   already exists. Exit 3 is not a failure: the listing is complete, and the name has more than
+   one qualified spelling, such as `f` and `M.f`.
 
 ## A verify round — judge the fix
 

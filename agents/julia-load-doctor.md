@@ -51,7 +51,8 @@ load failure.
 
 4. **Establish that a name is really gone** before calling it a rewrite. Run `julia-methods.jl` on
    each candidate package's **directory** — `Packages/Example`, not the package name;
-   it reads a package that does not load — and grep across
+   it reads a package that does not load, and its exit 3 means a complete listing of a name with
+   more than one qualified spelling, not a failure — and grep across
    `~/Research/Packages`. Not grep in one repository: a moved symbol looks identical to a deleted
    one from inside the consumer. An empty result is UNKNOWN, never a negative.
 5. **Before blaming upstream, check whether the repository is simply behind.** Compare the

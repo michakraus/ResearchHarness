@@ -70,7 +70,8 @@ method, whatever precedes it — `@inline`, `@propagate_inbounds`, `@generated`,
 definition absent from `document_symbols` is still in the changed-symbol set, and points 3, 4 and 6
 still apply to it. `julia-methods.jl` on the package **directory** is the cross-check, and it needs
 neither a session nor a package that loads: it reports the qualified `@inline` definitions this
-tool omits.
+tool omits. Its exit 3 is not a failure: the listing is complete, and a name has more than one
+qualified spelling, such as `f` and `M.f`.
 
 ## Diff-attributable versus pre-existing — decide it per point
 
