@@ -536,7 +536,11 @@ def selftest():
             ),
             ("a colon with no port number", 'deny = ["x.org:ssh"]\n', ["deny entry", "no port number"]),
             ("* in infrastructure", 'infrastructure = ["*"]\n', ["infrastructure entry", "every host"]),
-            ("*. in allow", 'allow = ["*.x.org"]\n', ["allow entry", "is a wildcard", "'x.org'"]),
+            (
+                "*. in allow",
+                'allow = ["*.x.org"]\n',
+                ["allow entry", "is a wildcard", "'x.org'", "sandbox list"],
+            ),
             ("*. in fetch", 'fetch = ["*.f.org"]\n', ["fetch entry", "is a wildcard", "'f.org'"]),
             ("a URL in fetch", 'fetch = ["https://f.org"]\n', ["fetch entry", "is a URL"]),
             ("a port in fetch", 'fetch = ["f.org:443"]\n', ["fetch entry", "has a port"]),
