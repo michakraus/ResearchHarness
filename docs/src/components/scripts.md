@@ -357,6 +357,61 @@ it writes under `tempdir()`, or prints a skip line where no `fatou` is on the `P
 that `development.md` gives the number of test files in the CI matrix, and that this section, the
 script's header and the skill `julia-structure` state status 3. CI runs it on Linux.
 
+## `concrete-fields.jl` and `concrete-fields-test.jl`
+
+`concrete-fields.jl` lists the fields of a package's structs whose types are not concrete up to
+type variables. Code that reads a field whose type is not concrete cannot infer a concrete type
+for the value it reads.
+
+```bash
+julia --startup-file=no concrete-fields.jl <package>
+```
+
+The rule is *concrete up to type variables*. A field type passes when it is a type variable, with
+any bound; a DataType that is not abstract and whose type parameters all pass; or exactly
+`Union{Nothing, X}` or `Union{Missing, X}`, where `X` is not a `Union` and passes, so
+`Union{Nothing, Missing}` passes too. A type parameter that is not a type, such as the `2` of
+`Array{T, 2}` or the `3` of `Val{3}`, passes. A `Vararg` passes when its count is a value or a
+type variable and its element type passes. Every other field type is flagged: `Function`, `Any`,
+an abstract type such as `AbstractVector{T}`, a bare or partly applied `UnionAll` such as `Matrix`
+or `Array{T}`, every other `Union`, a `Vararg` with no count such as that of `Tuple{Vararg{Int}}`,
+and a type with a parameter that fails, such as `Vector{Real}` or `Dict{Symbol, Any}`.
+
+The script reads each struct type, mutable or not, whose `parentmodule` is the package's root
+module or one of its submodules, recursively, and each type once, however many names bind it. It
+does not read a type that another module defines and the package only binds; a type whose name
+starts with `#`, such as the type of a closure; an abstract type; or a struct without fields.
+
+The script loads the package, by the `name` of its `Project.toml`, in a fresh process with
+`--project=<package>`. It resolves and instantiates nothing, so the package's environment must be
+instantiated. It prints one line per violation,
+`<Type path>.<field>::<field type>`, such as `Example.Inner.Cache.x::Real`, and then the verdict:
+
+| line | means | exit |
+|:--|:--|:--|
+| `Verdict: PASS — 0 violations` | every field passes | 0 |
+| `Verdict: FAIL — <n> violations` | after the lines of the violations | 1 |
+| `UNKNOWN: the package does not load: <error>` | the import fails, and the full error goes to stderr; or the process that loads the package ends without a verdict, such as by an `exit` in the package's code or by a signal | 3 |
+
+The process that loads the package exits with 10, 11 or 13 for the three verdicts. An `exit(10)`,
+`exit(11)` or `exit(13)` in the package's own code, such as in its `__init__`, therefore reads as
+the verdict of that code, with no verdict line.
+
+Bad arguments, such as a directory with no `Project.toml`, print the usage line to stderr and
+exit 2. In process, `concrete_field_violations(M::Module)` returns the violations of a loaded root
+module as named tuples `(; type, field, fieldtype)`, sorted by the type's path and then by the
+field's position.
+
+Three limits. The script does not read the extension modules of `ext/`. It takes no `allow`
+argument and no other exception list: a flagged field is fixed in the package. And it reads one
+package per call, so a census of the packages runs it once for each package. No skill or agent in
+this repository calls it by name.
+
+`concrete-fields-test.jl` checks the rule and the walk on fixture modules in its own process, and
+the command line on small fixture packages that it writes under `tempdir()`
+(`julia --startup-file=no concrete-fields-test.jl`, about 20 s at a load average of 21). CI runs
+it on Linux.
+
 ## `fatou-lsp.jl` and `fatou-lsp-test.jl`
 
 `fatou-lsp.jl` is a small client of the language server `fatou lsp`. It is a module that other

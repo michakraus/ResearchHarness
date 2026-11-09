@@ -87,6 +87,7 @@ JULIA_TESTS = (
     "scripts/base-tree-test.jl",
     "scripts/dispatch-delta-test.jl",
     "scripts/julia-methods-test.jl",
+    "scripts/concrete-fields-test.jl",
 )
 SELECTS = (
     (("scripts/gate.jl",), "scripts/gate-test.jl"),
@@ -110,6 +111,7 @@ SELECTS = (
     (("scripts/base-tree.jl",), "scripts/base-tree-test.jl"),
     (("scripts/dispatch-delta.jl",), "scripts/dispatch-delta-test.jl"),
     (("scripts/julia-methods.jl",), "scripts/julia-methods-test.jl"),
+    (("scripts/concrete-fields.jl",), "scripts/concrete-fields-test.jl"),
 )
 # The time of each file on the author's machine: run-tests-test.jl is silent for 11 minutes.
 DURATION = {
@@ -120,6 +122,7 @@ DURATION = {
     "scripts/base-tree-test.jl": "about 3 s",
     "scripts/fatou-lsp-test.jl": "about 7 s",
     "scripts/julia-update-test.jl": "about 14 s",
+    "scripts/concrete-fields-test.jl": "about 20 s",
     "scripts/julia-methods-test.jl": "about 75 s",
     "scripts/test-layout-test.jl": "about 2 min",
     "scripts/dispatch-delta-test.jl": "about 4 min",

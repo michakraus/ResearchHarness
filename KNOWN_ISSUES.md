@@ -828,3 +828,14 @@
   the `allowedDomains` entry `f.org` covers. No host is reached that no entry grants.
 - kind: defect
 - found: 2026-11-09, the review of the network lists' `fetch` key
+
+### K149 · `concrete-fields.jl` reads an `exit(10)`, `exit(11)` or `exit(13)` of the package's own code as a verdict.
+
+- location: `scripts/concrete-fields.jl:143`
+- evidence: the process that loads the package exits with 10, 11 or 13 for PASS, FAIL and
+  UNKNOWN, and `main` maps those codes to 0, 1 and 3 without a check that a `Verdict:` or
+  `UNKNOWN:` line was printed. A fixture package whose `__init__` calls `exit(10)` gives exit 0 and
+  an empty stdout. The fix lets the parent give a verdict only from the line that the child prints,
+  or from a random token that the child echoes.
+- kind: defect
+- found: 2026-11-09, the review of the concrete-field helper's pull request
