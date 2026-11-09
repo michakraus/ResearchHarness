@@ -235,7 +235,10 @@ These cases stop the subcommand with exit status 2:
 - an entry with a port outside `deny`;
 - an entry `*.X` in `allow` or `fetch`;
 - a host in both `allow` and `deny` of one file;
+- a host in both `fetch` and `deny` of one file;
 - a host in both `fetch` and `allow` or `infrastructure` of one file;
+- a `fetch` host that an `allowedDomains` entry of either file covers: the same host, or a `*.`
+  form above it, matched without regard to case;
 - a key that the table does not name.
 
 The profile key `extra_domain` stops every subcommand that reads the profile: move its hosts into

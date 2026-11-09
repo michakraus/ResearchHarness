@@ -10,7 +10,8 @@
 #                   nothing in `allowedDomains`, so no sandboxed command reaches it. A host that
 #                   accepts writes and is needed only for reading goes here. A frontend under
 #                   `agentbox` does not reach it at all, because srt takes `allowedDomains` alone.
-#                   Write the host, never `*.X`.
+#                   Write the host, never `*.X`. A host that an `allowedDomains` entry of either
+#                   file covers, the same host or a `*.` form above it, exits 2.
 #   infrastructure  a host that only a sandboxed command can reach, in `allowedDomains` exactly as
 #                   written; `*.X` is allowed.
 #   deny            a host that neither can reach: `WebFetch(domain:X)` in `permissions.deny`, and X
