@@ -201,7 +201,7 @@ Then, when `chezmoi` is on the `PATH`, it runs the kit's tests on `python3`:
 hook refuses the push with one line that names it. Without `chezmoi` it prints
 `skip  chezmoi: not found; CI runs the kit's tests`.
 Then it runs the Julia test files that the changed paths of the pushed range select: a change
-to `scripts/mutate.jl` selects `scripts/run-tests-test.jl`, a change to `Project.toml` all nine,
+to `scripts/mutate.jl` selects `scripts/run-tests-test.jl`, a change to `Project.toml` all eleven,
 and a change to `README.md` none. It prints each file's name and its usual time before it runs
 it; `scripts/run-tests-test.jl` is silent for about 11 minutes. Without a `python3` of 3.14 or
 later, the hook refuses the push. The hook parses as Python 3.9, so the `python3` of macOS runs

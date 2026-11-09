@@ -8,7 +8,7 @@
 # `--startup-file=no` is not optional. Without it the startup file loads Revise, whose file watcher
 # sprays EMFILE errors over stdout and can bury the report.
 #
-# This is the static half of the routing in `~/.claude/CLAUDE.md`, *Where grep is the wrong tool*:
+# This is the static half of the routing in `rules/julia-code.md`, *Look before you write a name*:
 #
 #   * real dispatch — which method actually runs for these arguments — is Kaimon's `search_methods`
 #     on a warm session, and nothing else answers it;
