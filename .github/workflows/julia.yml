@@ -46,7 +46,7 @@ jobs:
           cp Project.toml "$env_dir/"
           julia --startup-file=no --project="$env_dir" -e 'using Pkg; Pkg.instantiate()'
       # mutate.jl checks each mutant with `fatou lint`, so its tests need fatou on the PATH, and
-      # fatou-lsp-test.jl drives `fatou lsp`.
+      # fatou-lsp-test.jl and julia-methods-test.jl drive `fatou lsp`.
       - name: Install fatou
         env:
           VERSION: 0.22.0
