@@ -32,19 +32,36 @@ files from both.
 | `read.allow` | the paths that every frontend reads under the read limit |
 | `frontend.<name>.state` | the frontend's own directories and files, which it reads and writes |
 | `frontend.<name>.deny_write` | write denies that the frontend adds to the template's |
-| `frontend.<name>.own` | the template's deny entries that the frontend reads and writes itself |
+| `frontend.<name>.own` | the template's deny entries that the frontend reads and writes itself: its own credential files, by name |
+| `frontend.<name>.read_files` | files below a read deny directory that the frontend reads and does not write |
 
 The read limit denies reads of the whole home directory and allows the paths of `read.allow`
 again. A path that the template denies stays hidden inside an allowed path: in `srt` a deny inside
-an allowed path wins. Claude Code's `own` is `~/.claude.json`, which Claude Code writes itself; a
-write deny of it would stop the whole process under `srt`. The cost is that a command that Claude
-Code runs can also write the file, because the sandbox of the whole process cannot tell the
-frontend from its own shell. oh-my-pi adds the write denies `~/.omp/agent/config.yml` and
-`~/.omp/agent/extensions`.
+an allowed path wins. Each frontend's `own` lifts its own credential files from the deny lists of
+its file alone, and every other frontend's file still denies reads of them:
+
+| frontend | `own` |
+|:--|:--|
+| `claude` | `~/.claude.json`, `~/.claude/.credentials.json` |
+| `opencode` | `~/.local/share/opencode/auth.json`, `~/.local/share/opencode/mcp-auth.json` |
+| `omp` | `~/.omp/agent/agent.db`, `~/.omp/agent/agent.db-wal`, `~/.omp/agent/.env` |
+| `antigravity` | none |
+
+Claude Code writes `~/.claude.json` itself; a write deny of it would stop the whole process under
+`srt`. The cost is that a command that a frontend runs can also read and write the frontend's own
+files, because the sandbox of the whole process cannot tell the frontend from its own shell.
+
+OpenCode's `read_files` are its three provider tokens, `gwdg-token`, `opendesign-token` and
+`tokenharbor-token` below `~/.config/api-keys`, which its configuration reads by file. A token has
+no deny entry of its own, so `own` cannot lift it; and `~/.config` is a write deny, so the token
+stays read-only. No other frontend has a `read_files` entry. oh-my-pi adds the write denies
+`~/.omp/agent/config.yml` and `~/.omp/agent/extensions`.
 
 `harness install` exits with status 2 on a policy file with an unknown key, a missing key or
 frontend, a value that is not a list of strings, a path that does not start with `~/`, or a path
 with a `..` segment, which could leave the home directory. The message names the key or the path.
+It also exits with status 2 on a `read_files` path that is itself an entry of the frontend's read
+denies; such a file goes in `own`.
 
 ## The rendering rules
 
@@ -57,14 +74,28 @@ with a `..` segment, which could leave the home directory. The message names the
 | `network.allowLocalBinding` | the template's |
 | `filesystem.allowWrite` | the template's, without each entry at or below another frontend's `state` path; then the frontend's `state`; then the real path of `$TMPDIR`, where it is set and not empty |
 | `filesystem.denyWrite` | the template's, without the frontend's `own`; then its `deny_write` |
-| `filesystem.denyRead` | the home directory; then the template's; then each path of `credentials.files`; without the frontend's `own` |
-| `filesystem.allowRead` | `read.allow`; then the frontend's `state` |
+| `filesystem.denyRead` | the home directory; then the template's; then each path of `credentials.files`; without the frontend's `own`; each literal entry other than the home directory that lies strictly above a path of the frontend's `read_files` written as the entry followed by `/*`, in its place |
+| `filesystem.allowRead` | `read.allow`; then the frontend's `state`; then its `own`; then its `read_files` |
 
 Each `~` and `~/` prefix becomes the home directory, so the files hold absolute paths. A list holds
 no entry twice, and the first occurrence keeps its place. "At or below" compares whole path
 components: `~/.claude.json` is not below `~/.claude`. So no frontend's file allows a write to
 another frontend's state. A glob of the template, such as `~/Research/**/.git/hooks`, passes
-through after the expansion. The template's `excludedCommands` is not carried: under `srt` the
+through after the expansion.
+
+A file below a read deny directory is read by name, through a glob. `srt` writes a literal read
+deny that lies inside a read allow after the allows, so a file allow below it never takes effect;
+it writes a glob read deny without each file allow that the glob covers. So for OpenCode the
+literal `~/.config/api-keys` becomes `~/.config/api-keys/*`, and the three tokens join
+`allowRead`. The glob ends in `/*`, not `/**`: `srt` strips a trailing `/**` before it tells a glob
+from a literal, so `D/**` is the literal `D` again. `D/*` covers everything below `D` and not `D`
+itself, so OpenCode can list the names in `~/.config/api-keys` and read no other file there. An
+entry that holds `*`, `?`, `[` or `]` is a glob already and stays as it is, and the home directory
+is the read limit and is never converted. The `own` files join `allowRead` for the same reason:
+oh-my-pi's `~/.omp/agent/.env` lies below the template's glob `~/**/.env`, and only a file allow
+lifts it there. Every other frontend's file keeps the literal entry.
+
+The template's `excludedCommands` is not carried: under `srt` the
 whole process is inside the sandbox, so no command can run outside it. The masked credentials of
 `srt` are not used.
 

@@ -454,8 +454,8 @@ def selftest():
             [
                 (
                     "settings/settings.proposal.json",
-                    '"~/.cache/claude",',
-                    '"~/.cache/claude", "~/.config/research-harness",',
+                    '"~/.cache/pocl",',
+                    '"~/.cache/pocl", "~/.config/research-harness",',
                 ),
                 ("settings/settings.proposal.json", '"~/.config",\n', '"~/.config/x",\n'),
             ],

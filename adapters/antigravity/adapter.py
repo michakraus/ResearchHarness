@@ -2739,9 +2739,9 @@ def deny_write_cases(scratch):
         lambda: (
             code == 0
             and cli[after:] == ours
-            and len(ours) == 3
-            and ours
-            == [f"read_file({a}/.git/hooks)", f"read_file({a}/.git/config)", f"read_file({a}/.claude)"]
+            and len(ours) == 4
+            and ours[:2] == [f"read_file({a}/.git/hooks)", f"read_file({a}/.git/config)"]
+            and ours[2:] == [f"read_file({a}/.githooks)", f"read_file({a}/.claude)"]
             and not [r for r in cli if "/W/" in r]
             and len(cli) == len(set(cli))
         ),
