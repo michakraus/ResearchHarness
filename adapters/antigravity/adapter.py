@@ -101,7 +101,8 @@ template's order:
   Read(p), Edit(p)       read_file(p), write_file(p): a leading `//` as `/`, and a trailing `/**`
                          removed, because a path covers its subtree. A path with any other glob,
                          `**/X` among them, has no form in Antigravity and is dropped
-  WebFetch(domain:X)     read_url(X), for each allow host of settings/network.toml and its overlay
+  WebFetch(domain:X)     read_url(X), for each allow and fetch host of settings/network.toml and
+                         its overlay
   mcp__kaimon__<tool>    mcp(kaimon/<tool>), after the other rules of its list; in `deny`, after
                          the denies below
   sandbox.excludedCommands

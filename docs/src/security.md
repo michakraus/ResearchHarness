@@ -43,6 +43,15 @@ the installed template. A later version can behave differently.
   network allowlist, and not the write deny list that holds the `Edit` denies. The permission
   lists and the hooks still apply. A command with another part, such as a pipe into `cat` or a
   `cd` to another directory, runs inside the sandbox.
+- **An allowed host takes what a command sends to it.** The network allowlist names hosts, not
+  methods, so a sandboxed command can send a write to any host of `allowedDomains`. The harness
+  list holds no `archive.org`, because its `*.archive.org` form would cover `web.archive.org`,
+  whose Save Page Now publishes any URL without a login, and the upload host `s3.us.archive.org`.
+  Of the hosts below `archive.org`, it holds `scholar.archive.org` alone. A host that accepts
+  writes and that a session only reads is in the list `fetch`: the `WebFetch` tool reaches it
+  with a GET, and a sandboxed command does not reach it. A GET can still carry data in its URL to
+  such a host. Under `agentbox` a frontend does not reach a `fetch` host at all, because srt takes
+  `allowedDomains` alone.
 - **An MCP server runs outside the session's sandbox; on macOS, Kaimon runs under a profile of its
   own.** The sandbox wraps the shell commands of a session. An MCP server is a process of its own,
   for example a server that launchd starts, and the code that it runs for a session does not see

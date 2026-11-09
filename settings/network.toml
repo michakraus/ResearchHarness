@@ -5,6 +5,13 @@
 #                   `WebFetch(domain:X)` in `permissions.allow`, and X in
 #                   `sandbox.network.allowedDomains`, with `*.X` when X is its own registrable
 #                   domain. Write the host, never `*.X`.
+#   fetch           a host that only the WebFetch tool, which sends a GET, can reach:
+#                   `WebFetch(domain:X)` in `permissions.allow`, after the rules of `allow`, and
+#                   nothing in `allowedDomains`, so no sandboxed command reaches it. A host that
+#                   accepts writes and is needed only for reading goes here. A frontend under
+#                   `agentbox` does not reach it at all, because srt takes `allowedDomains` alone.
+#                   Write the host, never `*.X`. A host that an `allowedDomains` entry of either
+#                   file covers, the same host or a `*.` form above it, exits 2.
 #   infrastructure  a host that only a sandboxed command can reach, in `allowedDomains` exactly as
 #                   written; `*.X` is allowed.
 #   deny            a host that neither can reach: `WebFetch(domain:X)` in `permissions.deny`, and X
@@ -14,8 +21,8 @@
 #                   the model when the sandbox refuses a connection.
 #
 # An overlay with the same keys, `network.toml` beside the profile, adds its entries. A `deny`
-# entry of either file removes each `allow` and `infrastructure` host that it matches. Each entry is
-# a host, not a URL. The sandbox refuses a host that no list names, with no prompt
+# entry of either file removes each `allow`, `fetch` and `infrastructure` host that it matches.
+# Each entry is a host, not a URL. The sandbox refuses a host that no list names, with no prompt
 # (`strictAllowlist`); a WebFetch of it matches no rule and asks in the default permission mode.
 
 allow = [
@@ -44,16 +51,10 @@ allow = [
     # literature: preprints and repositories
     "arxiv.org",
     "export.arxiv.org",
-    "hal.science",
-    "ssrn.com",
-    "zenodo.org",
     "osti.gov",
     "ntrs.nasa.gov",
     "inis.iaea.org",
-    "openreview.net",
     "aclanthology.org",
-    "archive.org",
-    "openlibrary.org",
     # literature: publishers
     "sciencedirect.com",
     "link.springer.com",
@@ -82,22 +83,34 @@ allow = [
     "worldscientific.com",
     "mdpi.com",
     "sagepub.com",
-    # mathematics: references and forums
+    # mathematics: references
     "dlmf.nist.gov",
     "netlib.org",
-    "ncatlab.org",
-    "mathoverflow.net",
-    "math.stackexchange.com",
     # Julia
     "docs.julialang.org",
-    "discourse.julialang.org",
     "julia-testitems.org",
     # GitHub
     "github.com",
     "raw.githubusercontent.com",
-    # the documentation of the frontends
+    # the documentation of the frontends; OpenCode also loads its provider config and its model
+    # catalogue from opencode.ai and models.opencode.ai at its start
     "code.claude.com",
     "opencode.ai",
+]
+
+fetch = [
+    # literature: preprints and repositories
+    "hal.science",
+    "ssrn.com",
+    "zenodo.org",
+    "openreview.net",
+    "openlibrary.org",
+    # mathematics: references and forums
+    "ncatlab.org",
+    "mathoverflow.net",
+    "math.stackexchange.com",
+    # Julia
+    "discourse.julialang.org",
 ]
 
 infrastructure = [

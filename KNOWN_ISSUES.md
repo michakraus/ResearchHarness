@@ -816,7 +816,20 @@
 - kind: defect
 - found: 2026-11-09, the review of the probe battery's fixes
 
-### K148 · `concrete-fields.jl` reads an `exit(10)`, `exit(11)` or `exit(13)` of the package's own code as a verdict.
+### K148 · The same-file checks of the network lists and the deduplication of `merged` compare hosts as exact strings, while `denies` folds case.
+
+- location: `lib/harness/network.py:142`
+- evidence: `read` refuses a host in `allow` and `deny` of one file, and a host in `fetch` and
+  `allow`, only when both entries are the same string (lines 142 and 146), and `merged` drops an
+  entry of the overlay only when the harness list holds the same string (line 159). `denies`
+  matches without regard to case. So an overlay `allow = ["GitHub.com"]` gives the two rules
+  `WebFetch(domain:github.com)` and `WebFetch(domain:GitHub.com)`, and `allow = ["f.org"]` with
+  `fetch = ["F.org"]` in one file passes `read`; `generate` then refuses it as a `fetch` host that
+  the `allowedDomains` entry `f.org` covers. No host is reached that no entry grants.
+- kind: defect
+- found: 2026-11-09, the review of the network lists' `fetch` key
+
+### K149 · `concrete-fields.jl` reads an `exit(10)`, `exit(11)` or `exit(13)` of the package's own code as a verdict.
 
 - location: `scripts/concrete-fields.jl:143`
 - evidence: the process that loads the package exits with 10, 11 or 13 for PASS, FAIL and

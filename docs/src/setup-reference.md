@@ -1049,13 +1049,15 @@ These commands install the `ps` shim of the server into
 `~/.config/research-harness/sandbox/shims/`, the first directory of its `PATH`, render the
 Seatbelt profiles of the server and the update job into `~/.config/research-harness/sandbox/`,
 which their launch agents start them under, then each launch agent with the profile into
-`~/Library/LaunchAgents/`, under its label, and create the log directories of the jobs. `p` holds
-the profile key `launchd_prefix`; the commands of this step after it use `p` too, so run them in
-the same shell:
+`~/Library/LaunchAgents/`, under its label, and create the log directories of the jobs and the
+server's PoCL kernel cache `~/.cache/kaimon/pocl`, which its `POCL_CACHE_DIR` names; the
+cache's command gives each directory that it creates mode 700. `p` holds the profile key
+`launchd_prefix`; the commands of this step after it use `p` too, so run them in the same shell:
 
 ```bash
 p=$(harness get launchd_prefix)
 mkdir -p ~/.config/research-harness/sandbox/shims ~/Library/LaunchAgents ~/Library/Logs/kaimon ~/Library/Logs/julia-update ~/Library/Logs/claude-autocommit
+(umask 077 && mkdir -p ~/.cache/kaimon/pocl)
 install -m 755 ~/Research/Harness/sandbox/shims/ps ~/.config/research-harness/sandbox/shims/ps
 for j in kaimon julia-update; do harness render ~/Research/Harness/sandbox/"$j".sb > ~/.config/research-harness/sandbox/"$j".sb; done
 for j in kaimon julia-update claude-autocommit; do harness render ~/Research/Harness/launchagents/"$j".plist > ~/Library/LaunchAgents/"$p.$j".plist; done
@@ -1105,9 +1107,12 @@ launchctl list "$p".julia-update >/dev/null && echo LOADED
 
 ### Linux
 
-These commands render each unit with the profile into `~/.config/systemd/user/`:
+These commands create the server's PoCL kernel cache `~/.cache/kaimon/pocl`, which its
+`POCL_CACHE_DIR` names, each new directory with mode 700, and render each unit with the profile
+into `~/.config/systemd/user/`:
 
 ```bash
+(umask 077 && mkdir -p ~/.cache/kaimon/pocl)
 mkdir -p ~/.config/systemd/user
 for u in kaimon.service julia-update.service julia-update.timer claude-autocommit.service claude-autocommit.timer; do harness render ~/Research/Harness/systemd/"$u" > ~/.config/systemd/user/"$u"; done
 systemctl --user daemon-reload

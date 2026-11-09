@@ -4,7 +4,8 @@
 # launch agents (macOS) or the systemd --user units (Linux), rendered by `harness render` from the
 # harness at its pin and the profile. On macOS the Kaimon and julia-update jobs run under a
 # Seatbelt profile, which is rendered into ~/.config/research-harness/sandbox/ before the plist,
-# and the `ps` shim of the Kaimon job goes into its shims/ before that.
+# and the `ps` shim of the Kaimon job goes into its shims/ before that. On both systems
+# ~/.cache/kaimon/pocl, the directory of Kaimon's POCL_CACHE_DIR, is made before the first load.
 #
 # chezmoi runs this script again when one of the inputs of the rendered units or plists changes:
 #   harness_commit  {{ .harness_commit }}
@@ -25,6 +26,11 @@ render() {
 mkdir -p "$HOME/.local/bin"
 install -m 755 "$HARNESS/launchagents/claude-autocommit" "$HOME/.local/bin/claude-autocommit"
 install -m 644 "$HARNESS/scripts/julia-update.jl" "$HOME/.local/bin/julia-update.jl"
+
+# The PoCL kernel cache of Kaimon's sessions, which POCL_CACHE_DIR of its plist and unit names,
+# made before the job is loaded, as `harness setup` makes it. Each directory that mkdir creates
+# has mode 700; one that exists stays as it is.
+(umask 077 && mkdir -p "$HOME/.cache/kaimon/pocl")
 {{- if eq $host.os "darwin" }}
 
 prefix=$(harness get launchd_prefix)
