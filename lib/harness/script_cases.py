@@ -1014,7 +1014,7 @@ def probe_listeners(check: Callable[[object, str], None], tmp: pathlib.Path) -> 
 
 def probe_routes(check: Callable[[object, str], None], tmp: pathlib.Path) -> None:
     """An `opencode` listener is asked at `/` and at `/path`, each with a row of its own; a `node`
-    listener only at `/`."""
+    listener only at `/`; `## Listeners` names the port of `L:<port>/path` without its route."""
     lsof = (
         "opencode 201 u 3u IPv4 0x1 0t0 TCP 127.0.0.1:4096 (LISTEN)\n"
         "node 202 u 3u IPv4 0x1 0t0 TCP 127.0.0.1:7001 (LISTEN)\n"
@@ -1036,6 +1036,17 @@ def probe_routes(check: Callable[[object, str], None], tmp: pathlib.Path) -> Non
     check(
         sorted(urls) == ["http://127.0.0.1:4096/", "http://127.0.0.1:4096/path", "http://127.0.0.1:7001/"],
         f"curl asks opencode at / and /path, node at / only -> {urls}",
+    )
+    md = (out / "report.md").read_text() if (out / "report.md").exists() else ""
+    lines = [x for x in md.partition("## Listeners\n")[2].partition("\n## ")[0].splitlines() if x]
+    check(
+        lines
+        == [
+            "- `opencode` answers `200`, `MISMATCH`: 1 port (4096), under claude",
+            "- `node` answers `200`, `MISMATCH`: 1 port (7001), under claude",
+            "- `opencode` answers `401`, `match`: 1 port (4096), under claude",
+        ],
+        f"## Listeners names the port of L:4096/path as 4096 -> {lines}",
     )
 
 
