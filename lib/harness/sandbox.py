@@ -36,6 +36,7 @@ import json
 import os
 import pathlib
 import re
+import shutil
 import stat
 import subprocess
 import tempfile
@@ -683,14 +684,37 @@ STUB_EXIT = 7
 # The variables that the shell itself sets in the environment of a program it starts.
 SHELL_SET = {"PWD", "OLDPWD", "SHLVL", "_"}
 # The variables of the caller in each case: names that a script could use for its own values.
-CALLER = {"LANG": "C", "name": "caller", "policy": "caller", "program": "caller", "file": "caller"}
+CALLER = {
+    "LANG": "C",
+    "name": "caller",
+    "policy": "caller",
+    "program": "caller",
+    "file": "caller",
+    "entry": "caller",
+    "rest": "caller",
+    "found": "caller",
+    "dir": "caller",
+}
+# The cache variable of each tool that sandbox/agentbox sets, and its subdirectory of the run
+# directory.
+CACHES = {"npm_config_cache": "npm", "UV_CACHE_DIR": "uv", "TEXMFVAR": "texmf-var"}
+# The directory below which sandbox/agentbox makes its run directory where TMPDIR is unset or
+# empty.
+FALLBACK_TMPDIR = pathlib.PurePosixPath("/", "tmp")
+
+
+def stub(path: pathlib.Path) -> None:
+    """An executable stub program at `path` that exits 0, its directories made."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("#!/bin/sh\nexit 0\n")
+    path.chmod(0o755)
 
 
 @dataclass(frozen=True)
 class Box:
     """A scratch home for sandbox/agentbox: the stub srt (STUB_SRT) in ~/.local/bin, the srt
-    settings file of each frontend and Claude Code's override in the sandbox directory, and a stub
-    of each frontend's program in path/."""
+    settings file of each frontend and Claude Code's override in the sandbox directory, a stub
+    of each frontend's program in path/, and the empty directory tmpdir/ for $TMPDIR."""
 
     home: pathlib.Path
 
@@ -699,33 +723,61 @@ class Box:
         home = root / label
         (home / ".local" / "bin").mkdir(parents=True)
         (home / DIRECTORY).mkdir(parents=True)
-        (home / "path").mkdir()
+        (home / "tmpdir").mkdir()
         srt = home / ".local" / "bin" / "srt"
         srt.write_text(STUB_SRT)
         srt.chmod(0o755)
         for name in (*frontends.FRONTENDS, "claude-inner-off"):
             (home / DIRECTORY / f"{name}.json").write_text("{}\n")
         for program in ("claude", "opencode", "omp", "agy"):
-            stub = home / "path" / program
-            stub.write_text("#!/bin/sh\nexit 0\n")
-            stub.chmod(0o755)
+            stub(home / "path" / program)
         return cls(home)
 
     def env(self, **extra: str) -> dict[str, str]:
-        """The environment of a run: HOME, a PATH with path/ first, CALLER and `extra`."""
-        return {"HOME": str(self.home), "PATH": f"{self.home}/path:/usr/bin:/bin", **CALLER, **extra}
+        """The environment of a run: HOME, a PATH with path/ first, TMPDIR the directory tmpdir/,
+        CALLER and `extra`."""
+        return {
+            "HOME": str(self.home),
+            "PATH": f"{self.home}/path:/usr/bin:/bin",
+            "TMPDIR": str(self.home / "tmpdir"),
+            **CALLER,
+            **extra,
+        }
 
-    def run(self, *args: str, **extra: str) -> subprocess.CompletedProcess[str]:
-        """sandbox/agentbox with `args`, in the environment `env(**extra)`."""
+    def run(
+        self,
+        *args: str,
+        cwd: pathlib.Path | None = None,
+        variables: Mapping[str, str] | None = None,
+        **extra: str,
+    ) -> subprocess.CompletedProcess[str]:
+        """sandbox/agentbox with `args`, in the environment `env` with `variables` and `extra`,
+        with `cwd` as the working directory where it is given."""
         return subprocess.run(
             [str(REPO / "sandbox" / "agentbox"), *args],
             stdin=subprocess.DEVNULL,
             capture_output=True,
             text=True,
-            env=self.env(**extra),
+            env=self.env(**(variables or {}), **extra),
+            cwd=cwd,
             timeout=60,
             check=False,
         )
+
+    def made(self) -> list[pathlib.Path]:
+        """The entries that the runs made in tmpdir/."""
+        return sorted((self.home / "tmpdir").iterdir())
+
+    def caches(self) -> dict[str, str]:
+        """The cache variables of CACHES, each the path of its subdirectory of the one directory in
+        tmpdir/, or {} where tmpdir/ does not hold exactly one directory whose name starts with
+        agentbox. and that holds the three subdirectories."""
+        made = self.made()
+        if len(made) != 1 or not made[0].name.startswith("agentbox."):
+            return {}
+        if not all((made[0] / sub).is_dir() for sub in CACHES.values()):
+            return {}
+        return {name: f"{made[0]}/{sub}" for name, sub in CACHES.items()}
 
     def argv(self) -> list[str] | None:
         """The arguments that the stub srt saw, or None where it did not run."""
@@ -742,9 +794,10 @@ class Box:
 def agentbox_cases(check: Check, root: pathlib.Path) -> None:
     """sandbox/agentbox, run as a program on a fresh `Box` below `root` per case: its mode; for each
     frontend, the arguments that srt sees, with the caller's `a b`, `--`, the empty string, `--model`
-    and `x` each as one argument, and the environment, the caller's with AGENTBOX=1 added; srt's
-    exit status; each refusal, which exits 2, starts no srt and prints one line on stderr that names
-    its cause; and the usage."""
+    and `x` each as one argument, and the environment, the caller's with AGENTBOX=1 and the three
+    cache variables of CACHES added; `resolution_cases`; `cache_cases`; srt's exit status; each
+    refusal, which exits 2, starts no srt, makes nothing in TMPDIR and prints one line on stderr
+    that names its cause; and the usage."""
     script = REPO / "sandbox" / "agentbox"
     mode = stat.S_IMODE(script.stat().st_mode) if script.is_file() else None
     check(
@@ -783,11 +836,16 @@ def agentbox_cases(check: Check, root: pathlib.Path) -> None:
             f"agentbox {name} execs srt, whose parent is then the caller: {parent}, caller {os.getpid()}",
         )
         seen = box.environment() if got is not None else {}
+        caches = box.caches()
         check(
-            seen == {**box.env(), "AGENTBOX": "1"},
-            f"agentbox {name}: the environment is the caller's with AGENTBOX=1: "
-            f"{ {k: v for k, v in seen.items() if box.env().get(k) != v} }",
+            caches and seen == {**box.env(), "AGENTBOX": "1", **caches},
+            f"agentbox {name}: the environment is the caller's with AGENTBOX=1, and npm_config_cache, "
+            f"UV_CACHE_DIR and TEXMFVAR each name its subdirectory of one new directory below TMPDIR: "
+            f"{box.made()}, { {k: v for k, v in seen.items() if box.env().get(k) != v} }",
         )
+
+    resolution_cases(check, root / "resolution")
+    cache_cases(check, root / "caches")
 
     box = Box.fresh(root, "status")
     p = box.run("opencode", STUB_STATUS=str(STUB_EXIT))
@@ -796,16 +854,17 @@ def agentbox_cases(check: Check, root: pathlib.Path) -> None:
     for label, change, args, extra, words in agentbox_refusals():
         box = Box.fresh(root / "refused", label.replace(" ", "-").replace("/", "-"))
         change(box.home)
-        p = box.run(*args, **extra)
+        p = box.run(*args, variables={k: v.replace("<home>", str(box.home)) for k, v in extra.items()})
         check(
             p.returncode == REFUSED
             and box.argv() is None
             and p.stdout == ""
             and p.stderr.count("\n") == 1
             and p.stderr.endswith("\n")
-            and all(w.replace("<home>", str(box.home)) in p.stderr for w in words),
-            f"agentbox with {label} exits 2, starts no srt and prints one line that names {words}: "
-            f"{p.returncode}, {box.argv()}, {p.stderr!r}",
+            and all(w.replace("<home>", str(box.home)) in p.stderr for w in words)
+            and not box.made(),
+            f"agentbox with {label} exits 2, starts no srt, makes nothing in TMPDIR and prints one line "
+            f"that names {words}: {p.returncode}, {box.argv()}, {box.made()}, {p.stderr!r}",
         )
 
     for label, override, args in [
@@ -834,6 +893,127 @@ def agentbox_cases(check: Check, root: pathlib.Path) -> None:
             and box.argv() is None,
             f"agentbox {flag} prints the usage to stdout and exits 0: {p.returncode}, {p.stdout[:60]!r}",
         )
+
+
+def shell_finds(name: str, env: dict[str, str], cwd: pathlib.Path) -> str:
+    """What `command -v <name>` prints in /bin/sh with the environment `env`, in `cwd`."""
+    return subprocess.run(
+        ["/bin/sh", "-c", f"command -v {name}"],
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        text=True,
+        env=env,
+        cwd=cwd,
+        timeout=60,
+        check=False,
+    ).stdout.strip()
+
+
+def resolution_cases(check: Check, root: pathlib.Path) -> None:
+    """The program that sandbox/agentbox gives srt: the first on the caller's PATH without the
+    cmux-cli-shims entries, with the caller's PATH passed on; a relative PATH entry and an exported
+    bash function, each checked against what this machine's /bin/sh makes of it."""
+    box = Box.fresh(root, "cmux")
+    shims = box.home / "x" / "cmux-cli-shims"
+    stub(shims / "A" / "claude")
+    stub(shims / "claude")
+    path = f"{shims}/A:{shims}:{box.home}/path:/usr/bin:/bin"
+    p = box.run("claude", PATH=path)
+    got = box.argv()
+    seen = box.environment() if got is not None else {}
+    check(
+        p.returncode == 0
+        and got is not None
+        and got[3] == f"{box.home}/path/claude"
+        and seen.get("PATH") == path,
+        f"agentbox claude with x/cmux-cli-shims/A/claude and x/cmux-cli-shims/claude first on the PATH: "
+        f"srt gets path/claude, and the program the caller's PATH: {p.returncode}, "
+        f"{got[3] if got else None}, {seen.get('PATH')!r}, {p.stderr!r}",
+    )
+
+    box = Box.fresh(root, "relative")
+    stub(box.home / "rel" / "omp")
+    path = f"rel:{box.home}/path:/usr/bin:/bin"
+    found = shell_finds("omp", {"PATH": path}, box.home)
+    p = box.run("omp", cwd=box.home, PATH=path)
+    got = box.argv()
+    if found.startswith("/"):
+        check(
+            p.returncode == 0
+            and got is not None
+            and pathlib.Path(got[3]).resolve() == (box.home / "rel" / "omp").resolve(),
+            f"agentbox omp with rel/omp on the PATH, where /bin/sh gives the absolute path {found}: "
+            f"srt gets it: {p.returncode}, {got[3] if got else None}, {p.stderr!r}",
+        )
+    else:
+        check(
+            p.returncode == REFUSED
+            and got is None
+            and p.stderr.count("\n") == 1
+            and "omp" in p.stderr
+            and "rel/omp" in p.stderr
+            and not box.made(),
+            f"agentbox omp with rel/omp on the PATH, where /bin/sh gives the relative {found!r}: exits 2, "
+            f"starts no srt and names omp and rel/omp: {p.returncode}, {got}, {p.stderr!r}",
+        )
+
+    box = Box.fresh(root, "function")
+    function = {"BASH_FUNC_claude%%": "() { :; }"}
+    found = shell_finds("claude", {"PATH": box.env()["PATH"], **function}, box.home)
+    p = box.run("claude", variables=function)
+    got = box.argv()
+    if found == "claude":
+        check(
+            p.returncode == REFUSED
+            and got is None
+            and p.stderr.count("\n") == 1
+            and "claude" in p.stderr
+            and not box.made(),
+            f"agentbox claude with an exported function BASH_FUNC_claude%%, which /bin/sh imports: exits 2 "
+            f"and starts no srt: {p.returncode}, {got}, {p.stderr!r}",
+        )
+    else:
+        check(
+            p.returncode == 0 and got is not None and got[3] == f"{box.home}/path/claude",
+            f"agentbox claude with an exported function BASH_FUNC_claude%%, which /bin/sh does not import "
+            f"({found!r}): srt gets path/claude: {p.returncode}, {got[3] if got else None}, {p.stderr!r}",
+        )
+
+
+def cache_cases(check: Check, root: pathlib.Path) -> None:
+    """The cache variables of a run: a caller's non-empty value stays, an empty one is replaced;
+    with TMPDIR empty, the run directory is below /tmp."""
+    box = Box.fresh(root, "caller")
+    p = box.run("claude", npm_config_cache="/c", UV_CACHE_DIR="")
+    seen = box.environment() if box.argv() is not None else {}
+    caches = box.caches()
+    want = {
+        "npm_config_cache": "/c",
+        "UV_CACHE_DIR": caches.get("UV_CACHE_DIR"),
+        "TEXMFVAR": caches.get("TEXMFVAR"),
+    }
+    check(
+        p.returncode == 0 and caches and {k: seen.get(k) for k in CACHES} == want,
+        f"agentbox claude with npm_config_cache=/c and UV_CACHE_DIR empty: npm_config_cache stays /c, "
+        f"UV_CACHE_DIR and TEXMFVAR name the run's subdirectories: {p.returncode}, "
+        f"{ {k: seen.get(k) for k in CACHES} }, {box.made()}",
+    )
+
+    box = Box.fresh(root, "no-tmpdir")
+    p = box.run("agy", TMPDIR="")
+    seen = box.environment() if box.argv() is not None else {}
+    run = pathlib.PurePosixPath(seen.get("UV_CACHE_DIR", "/nothing")).parent
+    made = pathlib.Path(run)
+    below_tmp = run.parent == FALLBACK_TMPDIR and run.name.startswith("agentbox.")
+    check(
+        p.returncode == 0
+        and below_tmp
+        and all(seen.get(k) == f"{run}/{sub}" and (made / sub).is_dir() for k, sub in CACHES.items()),
+        f"agentbox agy with TMPDIR empty makes its run directory below /tmp: {p.returncode}, "
+        f"{ {k: seen.get(k) for k in CACHES} }",
+    )
+    if below_tmp and made.is_dir():
+        shutil.rmtree(made)
 
 
 def agentbox_refusals() -> list[
@@ -908,6 +1088,23 @@ def agentbox_refusals() -> list[
             [f"<home>/{sandbox_dir}/claude-inner-off.json", "harness install --apply"],
         ),
         ("no opencode on the PATH", remove("path", "opencode"), ["opencode"], {}, ["opencode"]),
+        (
+            "only cmux-cli-shims entries that hold claude",
+            lambda h: (
+                stub(h / "x" / "cmux-cli-shims" / "A" / "claude"),
+                stub(h / "x" / "cmux-cli-shims" / "claude"),
+            ),
+            ["claude"],
+            {"PATH": "<home>/x/cmux-cli-shims/A:<home>/x/cmux-cli-shims:/usr/bin:/bin"},
+            ["no program claude"],
+        ),
+        (
+            "a TMPDIR that is a file",
+            lambda h: (h / "file").write_text(""),
+            ["omp"],
+            {"TMPDIR": "<home>/file"},
+            ["<home>/file"],
+        ),
         ("claude --settings x", nothing, ["claude", "--settings", "x"], {}, ["--settings"]),
         ("claude -p hi --settings=x", nothing, ["claude", "-p", "hi", "--settings=x"], {}, ["--settings"]),
         ("claude -- --settings", nothing, ["claude", "--", "--settings"], {}, ["--settings"]),
@@ -1002,7 +1199,9 @@ def install_file_cases(check: Check, root: pathlib.Path) -> None:
     change; the Claude Code settings.json byte for byte as `settings_bytes` gives it; and
     `install_change_cases` on that base. With opencode alone and no $TMPDIR, no tmpdir entry, the
     launcher and no override, and the dry run's status column is one for the srt file and the other
-    files; with no frontend, no file and no launcher, and a broken network overlay stops nothing."""
+    files; with no frontend, no file and no launcher, and a broken network overlay stops nothing.
+    With claude chosen and a ~/.local/bin that is a symlink to a directory, the --apply exits 2,
+    names it, and writes nothing."""
     installs = Installs(check, root)
     found = {}
     for label, value in [("unset", None), ("empty", ""), ("a link", str(installs.link))]:
@@ -1084,6 +1283,24 @@ def install_file_cases(check: Check, root: pathlib.Path) -> None:
         and not (base / "home" / ".local" / "bin" / "agentbox").exists(),
         f"no chosen frontend: no sandbox file, no launcher, and a broken network overlay stops nothing: "
         f"{codes}, {last_line(outs[1])!r}",
+    )
+
+    base = installs.fresh('["claude"]')
+    linked = base / "linked"
+    linked.mkdir()
+    (base / "home" / ".local").mkdir(parents=True, exist_ok=True)
+    (base / "home" / ".local" / "bin").symlink_to(linked)
+    code, out = installs.run(base, "--apply", extra_env={"TMPDIR": str(installs.link)})
+    check(
+        code == REFUSED
+        and "Traceback" not in out
+        and ".local/bin" in out
+        and "symlink" in out
+        and not any(linked.iterdir())
+        and not (base / "home" / DIRECTORY).exists()
+        and not (base / "home" / ".claude" / "settings.json").exists(),
+        f"claude chosen and a ~/.local/bin that is a symlink to a directory: the --apply exits 2, names "
+        f"it and writes nothing: {code}, {last_line(out)!r}, {sorted(p.name for p in linked.iterdir())}",
     )
 
 
