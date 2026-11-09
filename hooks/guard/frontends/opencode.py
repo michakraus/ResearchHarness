@@ -16,8 +16,8 @@ THE CALLS. `shell` is a shell call: `input.command`, in `input.workdir` resolved
 session's directory, else in that directory; the `workdir` is also a path that the call reads
 below. The command is checked as given and again with a leading `rtk ` removed, as the rtk plugin
 rewrites it, and the stricter verdict holds. A Kaimon tool `kaimon_<tool>` is the `mcp` call
-`kaimon.<tool>`, and `webfetch` and `websearch` are the `mcp` calls `web.fetch` and `web.search`
-of the web check. Every other tool passes.
+`kaimon.<tool>` of the Kaimon check, and `webfetch` and `websearch` are the `mcp` calls `web.fetch`
+and `web.search` of the web check; the token check reads both too. Every other tool passes.
 
 A message that the table cannot read is refused: bytes that are not UTF-8, a text that `jsonio`
 refuses, no object `event`, no string `tool`, an `input` that is no object, a `shell` call without a
@@ -47,6 +47,7 @@ from guard import (
     plugin,
     rm_scope,
     sandbox_semantics,
+    token_forms,
     web_identity,
 )
 from guard.contract import PASS, Call, Verdict, strongest
@@ -104,6 +105,7 @@ SHELL: tuple[Check, ...] = (
     git_writes.check,
     sandbox_semantics.work_tree_check,
     web_identity.check,
+    token_forms.check,
 )
 
 
@@ -146,10 +148,12 @@ def decide(data: bytes) -> Verdict:
     if tool.startswith(KAIMON):
         arguments = tuple((key, value) for key, value in tool_input.items() if isinstance(value, str))
         neutral = "kaimon." + tool.removeprefix(KAIMON)
-        return kaimon_session.check(Call("mcp", neutral, (), directory, "main", arguments))
+        call = Call("mcp", neutral, (), directory, "main", arguments)
+        return strongest(check(call) for check in (kaimon_session.check, token_forms.check))
     if tool in WEB_TOOLS:
         arguments = web_identity.string_arguments(tool_input)
-        return web_identity.check(Call("mcp", WEB_TOOLS[tool], (), directory, "main", arguments))
+        call = Call("mcp", WEB_TOOLS[tool], (), directory, "main", arguments)
+        return strongest(check(call) for check in (web_identity.check, token_forms.check))
     return PASS
 
 

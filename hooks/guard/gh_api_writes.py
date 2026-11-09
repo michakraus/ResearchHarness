@@ -1,4 +1,5 @@
-"""Ask before a `gh api` write, except a review or a comment; refuse a `gh api` or `glab api` DELETE.
+"""Ask before a `gh api` write, except a review or a comment in an own organisation; refuse a
+`gh api` or `glab api` DELETE.
 
 The check finds each top-level `gh api` and `glab api` call and works out the HTTP method the way
 `gh` does: `-X`/`--method` when given, else POST when a body flag is present, else GET.
@@ -6,9 +7,13 @@ The check finds each top-level `gh api` and `glab api` call and works out the HT
   * **GET, HEAD, `search/…`**: pass. The search API has no write.
   * **DELETE, from `gh api` or `glab api`**: deny.
   * **`glab api`, any method but DELETE**: pass. The `glab api` globs decide.
-  * **A review or a comment**: pass, so `Bash(gh api *)` in `allow` lets it run: a review, an
-    inline comment or a reply on a pull request, a comment on a pull request or an issue, and a
-    commit comment.
+  * **A review or a comment in an own organisation**: pass, so `Bash(gh api *)` in `allow` lets it
+    run: a review, an inline comment or a reply on a pull request, a comment on a pull request or
+    an issue, and a commit comment, to `repos/<owner>/<repo>/…` whose `<owner>` is one of the own
+    organisations (below), with no `--hostname`. The same write anywhere else asks, and so does
+    one whose owner or repository holds a character that GitHub allows in no such name, such as
+    the placeholder `{owner}` or a `%`, or whose repository is `.` or `..`: the check cannot read
+    the repository it goes to.
   * **A Git Data write in an own organisation**: pass for POST to `repos/<owner>/<repo>/git/blobs`,
     `…/git/trees`, `…/git/commits` and `…/git/refs`, which builds a new branch as a `git push` of
     it does: the refs endpoint only creates a ref, and a PATCH of `…/git/refs/<ref>`, which can
@@ -18,9 +23,10 @@ The check finds each top-level `gh api` and `glab api` call and works out the HT
     process (`own_organisations`). A profile that is missing, cannot be read, is not UTF-8 TOML or
     holds no `org` list of strings gives no own organisation, so the write asks.
   * **`graphql`**: pass for a query with no `mutation`, and for a mutation whose every field is a
-    review or comment operation; anything else asks. The query is the value of `-f query=…`, which
-    `gh` sends as it is; the file of `-F query=@<path>`; or the string `query` of the JSON object
-    in the file of `--input <path>`. A relative path resolves against the call's working
+    review or comment operation, in any repository: its node IDs name none that the check can
+    read. Anything else asks. The query is the value of `-f query=…`, which `gh` sends as it is;
+    the file of `-F query=@<path>`; or the string `query` of the JSON object in the file of
+    `--input <path>`. A relative path resolves against the call's working
     directory. The query asks when the check cannot read it: a call with no working directory and
     a relative path, a command with a `cd`, `pushd` or `popd`, which moves the directory that `gh`
     reads from, a file whose name another part of the command holds, which can write the file
@@ -78,7 +84,8 @@ MOVES = frozenset({"cd", "pushd", "popd"})
 
 REPO = r"repos/[^/]+/[^/]+"
 
-# The writes a review needs, as (methods, endpoint). Everything else asks.
+# The writes a review needs, as (methods, endpoint); each passes only in an own organisation
+# (`own_review_write`). Everything else asks.
 REVIEW_WRITES = (
     (frozenset({"POST"}), re.compile(rf"^{REPO}/pulls/[^/]+/reviews$")),
     (frozenset({"POST", "PUT"}), re.compile(rf"^{REPO}/pulls/[^/]+/reviews/[^/]+(/events)?$")),
@@ -92,6 +99,8 @@ REVIEW_WRITES = (
 # repository are of the characters that GitHub allows in their names, so that no `%2F` or `..` in
 # the path names another repository.
 GIT_WRITE = re.compile(r"^repos/([A-Za-z0-9-]+)/(?!\.\.?/)[A-Za-z0-9._-]+/git/(?:blobs|trees|commits|refs)$")
+# The owner of a review or comment write as group 1, of the same characters as in GIT_WRITE.
+OWNER = re.compile(r"^repos/([A-Za-z0-9-]+)/(?!\.\.?/)[A-Za-z0-9._-]+/")
 
 # The profile without `$RESEARCH_HARNESS_PROFILE`, below the home directory.
 PROFILE = Path(".config", "research-harness", "profile.toml")
@@ -129,6 +138,12 @@ GRAPHQL_MESSAGE = (
     "check cannot read: give the query with -f query=…, -F query=@<file> or --input <file>.json, "
     "with a path that is absolute or relative to the working directory, no cd in the command, and "
     "a query file that no other part of the command names: write the file in a call of its own."
+)
+
+FOREIGN_MESSAGE = (
+    "gh api {method} {endpoint} writes a review or a comment, and the check reads no repository of "
+    "an own organisation in it: the owner is not in the `org` list of the profile, is no plain name "
+    "such as a {{owner}} placeholder, or the call names a --hostname."
 )
 
 
@@ -214,6 +229,13 @@ def own_git_write(method: str, endpoint: str, *, hosted: bool) -> bool:
         and found is not None
         and found.group(1).lower() in own_organisations()
     )
+
+
+def own_review_write(endpoint: str, *, hosted: bool) -> bool:
+    """Whether a review or comment write goes to a repository of an own organisation on GitHub: an
+    owner of OWNER that the profile names, compared without case, and no `--hostname`."""
+    found = OWNER.match(endpoint)
+    return not hosted and found is not None and found.group(1).lower() in own_organisations()
 
 
 def mutation_fields(text: str) -> set[str] | None:
@@ -307,7 +329,8 @@ def graphql(call: Request, cwd: str | None, others: tuple[str, ...]) -> str | No
 
 
 def decide(call: Request, cwd: str | None, others: tuple[str, ...], *, tool: str) -> str | None:
-    """None to pass, 'deny' or 'ask', before the own Git Data writes (`own_git_write`)."""
+    """None to pass, 'deny', 'ask', or 'foreign' for a review or comment write that is no
+    `own_review_write`, before the own Git Data writes (`own_git_write`)."""
     if call.method == "DELETE":
         return "deny"
     if tool == "glab":
@@ -318,7 +341,7 @@ def decide(call: Request, cwd: str | None, others: tuple[str, ...], *, tool: str
         return None
     for methods, pattern in REVIEW_WRITES:
         if call.method in methods and pattern.match(call.endpoint):
-            return None
+            return None if own_review_write(call.endpoint, hosted=call.hosted) else "foreign"
     return "ask"
 
 
@@ -341,6 +364,8 @@ def verdict_of(tokens: Tokens, cwd: str | None) -> Verdict:
             return Verdict("deny", DELETE_MESSAGE.format(tool=tool, endpoint=api.endpoint))
         if found == "ask" and api.endpoint == "graphql":
             return Verdict("ask", GRAPHQL_MESSAGE)
+        if found == "foreign":
+            return Verdict("ask", FOREIGN_MESSAGE.format(method=api.method, endpoint=api.endpoint))
         if found == "ask":
             return Verdict(
                 "ask", f"gh api {api.method} {api.endpoint} writes outside the review and comment endpoints."
