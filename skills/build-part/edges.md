@@ -138,6 +138,13 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   edge. Write the accepted forms as one closed grammar — a start, then `/` and segments that are
   not empty, `.` or `..` — with a matrix of each refusal in each start form, and a mutant that
   restores the exemption (D1 verify 2, *Sandbox the agent frontends*)
+- **a list of local listeners filtered on the literal loopback addresses:** a server bound to every
+  interface, `*:<port>` in `lsof`, also answers on `127.0.0.1`, and the probe skips it. Map the
+  wildcard to `127.0.0.1`, with one probe per address and port, and give the case a `*:<port>`
+  line (E4 round 1, *Sandbox the agent frontends*)
+- **a number argument checked with `str.isdigit`:** it accepts every Unicode digit, and `int` reads
+  them, so `--timeout ٣` runs with 3. Check `isascii()` as well, and give the refusals a case with
+  a non-ASCII digit (E4 round 1, *Sandbox the agent frontends*)
 
 ## A numerical method
 
