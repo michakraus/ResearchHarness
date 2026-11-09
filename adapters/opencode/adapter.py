@@ -1529,7 +1529,8 @@ def install_cases(check, tmp):
     ]
     case(
         lambda: all(p.is_file() and b"## Under OpenCode" not in p.read_bytes() for p in copies),
-        "the copies of Claude Code and oh-my-pi of skills/build-part/SKILL.md hold no `Under OpenCode` section: "
+        "the copies of Claude Code and oh-my-pi of skills/build-part/SKILL.md "
+        "hold no `Under OpenCode` section: "
         f"{[p.relative_to(base).as_posix() for p in copies]}",
     )
     # A hand-made AGENTS.md that differs from the source is replaced, not merged.
