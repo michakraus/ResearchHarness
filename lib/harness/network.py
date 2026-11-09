@@ -33,12 +33,11 @@ Exit 2, naming the file and the key: an unknown key; a value of the wrong type; 
 not a string, is a URL, or is no host name; a port outside `deny`; `*` outside `deny`; `*.` in
 `allow` or `fetch`; a host in `allow`, `fetch` or `infrastructure` and in `deny` of the same file;
 a host in `fetch` and in `allow` or `infrastructure` of the same file; a `deny_reasons` key that is
-no `deny` entry of either file. Exit 2, naming the host and the entry: a `fetch` host that an entry
-of the generated `allowedDomains` matches as a `deny` entry would, case folded — the same host, or
-a `*.` entry or mirror form above it, from either file; a sandboxed command would reach it. So does
-a settings template that holds a network rule of its own or has no
-`sandbox.network.allowedDomains`. The profile's loader refuses the retired key `extra_domain`
-(`profile.load`).
+no `deny` entry of either file. So does a settings template that holds a network rule of its own
+or has no `sandbox.network.allowedDomains`. Exit 2, naming the host and the entry: a `fetch` host
+that an entry of the generated `allowedDomains` matches as a `deny` entry would, case folded — the
+same host, or a `*.` entry or mirror form above it, from either file — because a sandboxed command
+would reach it. The profile's loader refuses the retired key `extra_domain` (`profile.load`).
 
 The other frontends read the template, not these lists: the lists are Claude Code's alone.
 
@@ -477,7 +476,7 @@ def selftest():
             lambda: reachable(
                 lambda: by_hand(fetch=["x.f.org"], infrastructure=["*.F.org"]), "x.f.org", "*.F.org"
             ),
-            "a fetch host below an infrastructure entry *.X, in another case, exits 2 naming both",
+            "a fetch host below an infrastructure entry *.X with X in capitals exits 2 naming both",
         )
         case(
             lambda: reachable(lambda: by_hand(allow=["f.org"], fetch=["x.f.org"]), "x.f.org", "*.f.org"),
@@ -494,7 +493,7 @@ def selftest():
         denied_below = by_hand(allow=["f.org"], fetch=["x.f.org"], deny=["x.f.org"])
         case(
             lambda: denied_below[0] == [f"{WEBFETCH}f.org)"] and denied_below[2] == ["f.org", "*.f.org"],
-            "a fetch host below an allow host X that a deny entry removes keeps X and *.X, and exits 0",
+            "a deny entry that removes a fetch host below an allow host X leaves X and *.X, and no exit",
         )
         narrowed = rendered('deny = ["*.stackexchange.com"]\n')
         case(
