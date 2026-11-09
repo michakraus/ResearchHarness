@@ -1193,6 +1193,7 @@ def npm_ci(machine: Machine, npm: str, source: pathlib.Path, scratch: pathlib.Pa
             stdin=subprocess.DEVNULL,
             capture_output=True,
             text=True,
+            errors="replace",
             env=dict(machine.env),
             timeout=INSTALL_TIMEOUT,
             check=False,
@@ -3584,11 +3585,14 @@ def srt_refusal_cases(case: Case, tmp: pathlib.Path) -> None:
         ),
         ("no npm error line", "node: bad option: --x\n", ("exits 1: node: bad option: --x;",), ()),
         ("empty stderr", "", ("exits 1 with an empty stderr; nothing is installed",), (": ;", ":;")),
+        ("a byte that is not UTF-8", b"npm error code E\xffX\nnpm error boom\n", ("code E�X", "boom"), ()),
     ):
         s = srt_scratch(tmp, f"fail-{name.replace(' ', '-')}")
         recorded = s.root / "npm-stderr.txt"
-        recorded.write_text(
-            stderr.format(log=s.root / "npm-cache" / "_logs" / "debug-0.log"), encoding="utf-8"
+        recorded.write_bytes(
+            stderr
+            if isinstance(stderr, bytes)
+            else stderr.format(log=s.root / "npm-cache" / "_logs" / "debug-0.log").encode()
         )
         s.fake("npm", f'/bin/cat "{recorded}" >&2; exit 1')
         old = installed_srt(s.home, "0.0.79")
