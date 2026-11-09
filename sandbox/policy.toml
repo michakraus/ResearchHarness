@@ -5,8 +5,8 @@
 
 # The read limit: srt denies reads of the whole home directory and allows these paths again. A
 # path that the template's `denyRead` or `credentials.files` names stays hidden inside them, as a
-# deny inside an allowed path wins in srt, unless a frontend's `own` or `read_files` below names
-# it.
+# deny inside an allowed path wins in srt, unless a frontend's `own` below names it, or its
+# `read_files` names a file inside it.
 [read]
 allow = [
     "~/Research",

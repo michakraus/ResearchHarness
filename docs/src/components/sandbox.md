@@ -83,21 +83,20 @@ components: `~/.claude.json` is not below `~/.claude`. So no frontend's file all
 another frontend's state. A glob of the template, such as `~/Research/**/.git/hooks`, passes
 through after the expansion.
 
-A file below a read deny directory is read by name, through a glob. `srt` writes a literal read
+A file below a read deny directory is read by name, through a glob. `srt` emits a literal read
 deny that lies inside a read allow after the allows, so a file allow below it never takes effect;
-it writes a glob read deny without each file allow that the glob covers. So for OpenCode the
+it emits a glob read deny without each file allow that the glob covers. So in OpenCode's file the
 literal `~/.config/api-keys` becomes `~/.config/api-keys/*`, and the three tokens join
-`allowRead`. The glob ends in `/*`, not `/**`: `srt` strips a trailing `/**` before it tells a glob
-from a literal, so `D/**` is the literal `D` again. `D/*` covers everything below `D` and not `D`
-itself, so OpenCode can list the names in `~/.config/api-keys` and read no other file there. An
-entry that holds `*`, `?`, `[` or `]` is a glob already and stays as it is, and the home directory
-is the read limit and is never converted. The `own` files join `allowRead` for the same reason:
-oh-my-pi's `~/.omp/agent/.env` lies below the template's glob `~/**/.env`, and only a file allow
-lifts it there. Every other frontend's file keeps the literal entry.
+`allowRead`; every other frontend's file keeps the literal entry. The glob ends in `/*`, not
+`/**`: `srt` strips a trailing `/**` before it tells a glob from a literal, so `D/**` is the
+literal `D` again. `D/*` covers everything below `D` and not `D` itself, so OpenCode can list the
+names in `~/.config/api-keys` and read no other file there. An entry that holds `*`, `?`, `[` or
+`]` is a glob already and stays as it is, and the home directory is the read limit and is never
+converted. The `own` files join `allowRead` for the same reason: oh-my-pi's `~/.omp/agent/.env`
+lies below the template's glob `~/**/.env`, and only a file allow lifts it there.
 
-The template's `excludedCommands` is not carried: under `srt` the
-whole process is inside the sandbox, so no command can run outside it. The masked credentials of
-`srt` are not used.
+The template's `excludedCommands` is not carried: under `srt` the whole process is inside the
+sandbox, so no command can run outside it. The masked credentials of `srt` are not used.
 
 ## The install
 
