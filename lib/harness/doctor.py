@@ -951,7 +951,9 @@ HARNESS_STUB = [
     ("test", "ok   sweep: a case\n\n1861 cases, 0 wrong\n", "", 0),
 ]
 PACKAGES = {
+    "Aqua": "0.8.18",
     "ExplicitImports": "1.15.0",
+    "JET": "0.13.1",
     "JSON": "1.11.0",
     "JuliaFormatter": "2.14.0",
     "JuliaSyntax": "1.0.2",
@@ -1574,7 +1576,7 @@ def status_cases(check, root, system_name):
     got, _ = case("every Julia package", dict.fromkeys(PACKAGES, "PASS"), sections=("tools",), **none)
     checked = sorted(set(got) & {name for name, *_ in TOOLS})
     check(not checked, f"{system_name}: a run with only=() checks no tool of TOOLS -> {checked}")
-    for name, floor in ((n, MINIMUMS[n][0]) for n in PACKAGES):
+    for name, floor in ((n, MINIMUMS[n][0]) for n in PACKAGES if n in MINIMUMS):
         for version, want in ((floor, "PASS"), (below(floor), "FAIL")):
             case(
                 f"{name} {version} in the manifest",

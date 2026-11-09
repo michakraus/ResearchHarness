@@ -78,25 +78,22 @@ Aqua, JET and `@code_warntype` see the whole package because that is how they wo
 counts against this branch only when its origin `file:line` lies in the changed-line set, or when
 the branch is what made it wrong.** Everything else is reported and does not block.
 
-**Points 3 and 4 need a live session.** `ping` lists the connected ones; if this package has none,
+**Point 4 needs a live session.** `ping` lists the connected ones; if this package has none,
 `start_session` with its absolute path. Then use `ex`, whose final expression is the answer — the
 print calls of the code you send are removed, and a call that holds a `using` loses the printed
-output of what it calls. Aqua and JuliaFormatter load from `@v#.#`, which every session's load
-path carries. A package that does not load has no session and no points 3 and 4; say so.
+output of what it calls. JuliaFormatter loads from `@v#.#`, which every session's load path
+carries. A package that does not load has no session and no point 4; say so.
 Before you return, shut down a session you started with `manage_repl` `shutdown`: nobody else
 knows it is yours, so it stays up until the user stops it. Leave a session you did not start.
 
 | point | run with | attributable when |
 |:--|:--|:--|
 | **1 · correctness, quality, concision** | read the diff with context, then each changed file around its hunks | the claim cites a changed line, **or** the branch made an unchanged line wrong — a caller not updated after a signature change, found with `julia-callers.jl` where the package loads and with `julia-methods.jl` plus grep where it does not, never with grep alone |
-| **3 · type piracy** | Aqua `test_piracies`, through `ex` on a session for this package — never `lint_package`, which is disabled | the flagged **method's own definition site** is in the changed set, or its file is new (`A` in `--name-status`) |
+| **3 · type piracy and ambiguities** | `julia --startup-file=no ~/Research/Harness/scripts/dispatch-delta.jl <package> <base>`, on every branch, with the merge base as `<base>`: it loads the base and the head side by side and compares their ambiguities and piracies | each `FAIL:` line of its output. An exit 3 goes under *Not checked*, with the script's `UNKNOWN:` line |
 | **4 · type instability** | `code_typed(f, (T, …))` through `ex`, with concrete argument types taken from the package's own tests — never the `code_typed` tool, which is disabled | the `Any` **originates** at a changed line |
 | **5 · avoidable allocations** | `fatou lint` on the changed files first — `eager-broadcast` is static and free; a **number** only from a fresh process, `--check-bounds=auto` | an allocating construct sits in a changed hunk — a materialised broadcast, a slice without `@view`, a runtime-computed type parameter — **or** an existing `@allocated` assertion for that path now fails |
 | **6 · stale comments, present tense** | read every comment and docstring in or **adjacent to** a changed hunk | in the changed set, **or** in the same block as changed code. A comment three lines above an edited line that still describes the old behaviour is untouched text and is fully attributable — the one case where an unchanged line counts |
 | **7 · history only in `CHANGELOG.md`** | grep the changed hunks for *previously · used to · was renamed · no longer · as of · before this*, and versions or dates in prose | the phrase is in the changed set |
-
-**The base is never re-checked out.** `git stash` and `git checkout` mutate a tree other sessions
-may be working in. Attribution is by **source location**, never by re-running a tool on the base.
 
 Where a tool gives no source location, look at the base without touching the working tree. Read a
 base file with `git show <base>:<path>`, where `<base>` is `git merge-base origin/main HEAD`. To
@@ -118,13 +115,10 @@ own clean worktree, your fixes must land in the checkout the author is working i
 relocate to review. The base snapshot is a read-only instrument for one attribution question, not
 somewhere to work.
 
-**Filter piracy false positives before reporting anything.** A hit is a finding only if it is new
-in this diff *and* it is not a method on a type owned by a sibling package in the same ecosystem,
-not `treat_as_own`-declared, and not in `ext/` — package extensions look like piracy by
-construction. **A package that names Aqua in its `test/Project.toml` runs the piracy check in its
-own tests**, unless its call passes `piracies = false`, so a base with a green suite passes that check. Where the
-package names no Aqua, or turns the check off, you run it for the first time and the repository
-establishes no baseline. Say so.
+**A package that names Aqua in its `test/Project.toml` runs the piracy check in its
+own tests**, unless its call passes `piracies = false`, so a base with a green suite passes that
+check. `dispatch-delta.jl` fails only on a piracy that the head adds. Where the package names no
+Aqua, or turns the check off, no check covers a piracy of the base. Say so.
 
 **Point 7 has a positive half.** Does `CHANGELOG.md` carry an entry under `## [Unreleased]` for
 this change? If the change earns one and there is none, that is a **blocker** — the tree's rule is
@@ -143,9 +137,9 @@ blocks every PR to those repositories, and a gate that always blocks gets bypass
 | no concrete call site available | **Not checked**, with that reason — never "clean" |
 
 **Proportionality, and it is mechanical rather than judgement.** If the diff changes no executable
-line — only comments, docstrings, `CHANGELOG.md`, `README.md`, `docs/` — then points 3–5 are
-`Not checked — no executable change`. One trap: a `docs/` change **can** break a `jldoctest`,
-which `Pkg.test()` does not run. A `docs/` diff therefore swaps
+line — only comments, docstrings, `CHANGELOG.md`, `README.md`, `docs/` — then points 4 and 5 are
+`Not checked — no executable change`; point 3 runs on every branch. One trap: a `docs/` change
+**can** break a `jldoctest`, which `Pkg.test()` does not run. A `docs/` diff therefore swaps
 the measured points for a doctest check rather than skipping to nothing.
 
 ## Fix, surgically
@@ -173,7 +167,7 @@ Three points are yours rather than the skill's:
 
 Verdict: clear to open / stop and ask — <n> unresolved
 Diff: <n> files, +<a>/−<d>, <n> commits   base <sha7>...head <sha7>
-Scope: full seven points / points 1,6,7 only — no executable change
+Scope: full seven points / points 1,3,6,7 only — no executable change
 
 ### Fixed in this pass
 | # | point | file:line | what was wrong | what changed |

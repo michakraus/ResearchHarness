@@ -560,7 +560,7 @@ It checks, in this order:
   `WARN` for an optional one. In a session's sandbox, which can refuse the flag, the check is a
   `SKIP`. When the flag exits with status 0 but the subcommand cannot read a version from its
   output, the check is a `WARN` with the tool's own text. The minimums are in
-  `MINIMUMS`, and a case compares each with the page. The six Julia packages are read from the
+  `MINIMUMS`, and a case compares each with the page. The eight Julia packages are read from the
   `Manifest.toml` of the Julia environment of the scripts; each is a `SKIP` where the profile's
   `[setup]` does not choose the `julia` component. The Python environment of the harness
   is a `FAIL` when its interpreter does not start or is below the minimum of Python, a `WARN`

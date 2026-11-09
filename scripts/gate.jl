@@ -9,6 +9,8 @@
 #   named      mutate.jl --warm on a copy of each <list>: the totals, and each mutant that is not CAUGHT
 #   generated  mutants.jl against <base>, then mutate.jl --warm --jobs <n> (4 by default): the totals,
 #              and the survivors grouped by line; information for the critic, not a failure
+#   dispatch   dispatch-delta.jl <package> <base>: a new ambiguity or piracy fails; added methods,
+#              new JET reports and dependency drift are information
 #   format     JuliaFormatter, with the package's .JuliaFormatter.toml, on the .jl files that the
 #              diff against <base> adds or changes
 #
@@ -103,6 +105,22 @@ function generated_step(code, out, secs, log)
     return Step("generated", "INFO", t, [smoke; survivor_lines(result)], secs, log)
 end
 
+"""
+The verdict of `dispatch-delta.jl`, from its exit code and its `Verdict:` line: PASS on exit 0 with
+`Verdict: PASS`, FAIL on exit 1 with `Verdict: FAIL`, and UNKNOWN in every other case: exit 2 or 3,
+no `Verdict:` line, or a word that does not match the code, as after a signal, for which `logged`
+returns the exit code 0. The detail is the script's `FAIL:`, `UNKNOWN:` and `INFO:` lines.
+"""
+function dispatch_step(code, out, secs, log)
+    lines = split(out, '\n')
+    m = match(r"^Verdict: (\w+) — (.+)$"m, out)
+    m === nothing && return Step("dispatch", "UNKNOWN", "dispatch-delta.jl exited $code",
+        String.(last(lines, min(10, length(lines)))), secs, log)
+    detail = [String(l) for l in lines if occursin(r"^(FAIL|UNKNOWN|INFO): ", l)]
+    verdict = (code, m[1]) in ((0, "PASS"), (1, "FAIL")) ? String(m[1]) : "UNKNOWN"
+    return Step("dispatch", verdict, m[2], detail, secs, log)
+end
+
 "The .jl files that the diff of `pkg` against `base` adds or changes."
 changed_jl(pkg, base) =
     filter(f -> endswith(f, ".jl") && isfile(joinpath(pkg, f)),
@@ -190,6 +208,8 @@ function main(args)
             push!(steps, Step("generated", "UNKNOWN", "mutants.jl exited $code", String[], t1, log1))
         end
     end
+    log = joinpath(out, "dispatch.log")
+    push!(steps, dispatch_step(logged(julia_cmd("dispatch-delta.jl", pkg, base), log)..., log))
     push!(steps, format_step(pkg, changed_jl(pkg, base)))
     report = joinpath(out, "gate.md")
     write(report, render("$(basename(pkg)) at $head, base $base", steps))

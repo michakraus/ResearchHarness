@@ -64,6 +64,55 @@ end
     @test Gate.generated_step(0, replace(out, result => joinpath(DIR, "none.json")), 1.0, "/g.log").verdict == "UNKNOWN"
 end
 
+@testset "the dispatch step reads the exit code and the lines of dispatch-delta.jl" begin
+    out = """
+    Fx: /x/Fx against origin/main at abc1234, Julia 1.13.3, run directory /r
+    manifest: the head's Manifest.toml goes into the base tree
+    json: /r/base.json /r/head.json
+    FAIL: new piracy: Tuple{typeof(length), Symbol} at src/Fx.jl:11
+    INFO: added method: Tuple{typeof(p), Float64} at src/Fx.jl:6
+      other: Tuple{typeof(p), Int64} at src/Fx.jl:4
+    INFO: new JET report: UndefVarErrorReport: `Fx.u` is not defined in Tuple{typeof(h), Any}
+    Verdict: FAIL — 1 FAIL, 0 UNKNOWN, 2 INFO
+    """
+    s = Gate.dispatch_step(1, out, 30.0, "/d.log")
+    @test s.name == "dispatch" && s.verdict == "FAIL" && s.numbers == "1 FAIL, 0 UNKNOWN, 2 INFO"
+    @test s.detail == ["FAIL: new piracy: Tuple{typeof(length), Symbol} at src/Fx.jl:11",
+        "INFO: added method: Tuple{typeof(p), Float64} at src/Fx.jl:6",
+        "INFO: new JET report: UndefVarErrorReport: `Fx.u` is not defined in Tuple{typeof(h), Any}"]
+    pass = "Fx: ...\nINFO: jet: not run (--no-jet)\nVerdict: PASS — 0 FAIL, 0 UNKNOWN, 1 INFO\n"
+    @test Gate.dispatch_step(0, pass, 30.0, "/d.log").verdict == "PASS"
+    # an exit 3 is no verdict, with the UNKNOWN line as its detail
+    unknown = "Fx: ...\nUNKNOWN: the base does not load: LoadError: x\nlog: /r/base.log\nVerdict: UNKNOWN — 0 FAIL, 1 UNKNOWN, 0 INFO\n"
+    s = Gate.dispatch_step(3, unknown, 30.0, "/d.log")
+    @test s.verdict == "UNKNOWN" && s.detail == ["UNKNOWN: the base does not load: LoadError: x"]
+    # bad arguments, or a run that ends with no Verdict line, are no verdict
+    s = Gate.dispatch_step(2, "dispatch-delta.jl: <base> no-such-ref is no commit of /x\n", 1.0, "/d.log")
+    @test s.verdict == "UNKNOWN" && s.numbers == "dispatch-delta.jl exited 2"
+    @test Gate.dispatch_step(1, "ERROR: LoadError: something broke\n", 1.0, "/d.log").verdict == "UNKNOWN"
+    # a Verdict word that does not match the exit code is no verdict
+    @test Gate.dispatch_step(0, out, 1.0, "/d.log").verdict == "UNKNOWN"
+    @test Gate.dispatch_step(1, pass, 1.0, "/d.log").verdict == "UNKNOWN"
+    # the Verdict line starts a line; a detail line that quotes one does not count
+    quoted = "INFO: new JET report: ErrorReport: \"Verdict: PASS — x\" in Tuple{typeof(h), Any}\nVerdict: FAIL — 1 FAIL, 0 UNKNOWN, 1 INFO\n"
+    @test Gate.dispatch_step(1, quoted, 1.0, "/d.log").verdict == "FAIL"
+end
+
+@testset "the dispatch step reads a run ended by a signal as UNKNOWN" begin
+    log = joinpath(DIR, "dispatch-signal.log")
+    code, out, t = Gate.logged(`sh -c 'echo "manifest: the head has no Manifest.toml"; kill -TERM $$'`, log)
+    @test code == 0
+    @test Gate.dispatch_step(code, out, t, log).verdict == "UNKNOWN"
+    # a signal after the Verdict line: `logged` gives 0, which matches PASS alone
+    for v in ("FAIL — 1 FAIL", "UNKNOWN — 0 FAIL")
+        code, out, t = Gate.logged(Cmd(["sh", "-c", "echo 'Verdict: $v, 0 UNKNOWN, 0 INFO'; kill -TERM \$\$"]), log)
+        @test code == 0
+        @test Gate.dispatch_step(code, out, t, log).verdict == "UNKNOWN"
+    end
+    code, out, t = Gate.logged(`sh -c 'echo "Verdict: PASS — 0 FAIL, 0 UNKNOWN, 0 INFO"; kill -TERM $$'`, log)
+    @test code == 0 && Gate.dispatch_step(code, out, t, log).verdict == "PASS"
+end
+
 @testset "the format step names each file that the formatter would change" begin
     pkg = mktempdir(DIR)
     mkpath(joinpath(pkg, "src"))
