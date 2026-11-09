@@ -302,7 +302,8 @@ A name on the command line can have definitions with more than one qualified spe
 function or several. So the script prints the full listing, then one line per such name that
 names its spellings and points to `search_methods` and `julia-callers.jl`, and exits with
 status 3. With `--all`, the heading of such a name carries the mark
-`more than one qualified spelling`, and the status stays 0 or 1.
+`more than one qualified spelling`, and the status stays 0 or 1. Status 0 does not prove one
+function: `f` defined in two submodules has one spelling and names two functions.
 
 The skill `julia-structure`, the rule `julia-code` and the agents `exhaustive-auditor`,
 `julia-branch-verifier`, `julia-critic` and `julia-load-doctor` use it. For dispatch, use
@@ -311,8 +312,8 @@ Kaimon's `search_methods` on a warm session. For callers, use `julia-callers.jl`
 `julia-methods-test.jl` runs the script against the real `fatou` on small fixture packages that
 it writes under `tempdir()`, or prints a skip line where no `fatou` is on the `PATH`
 (`julia --startup-file=no julia-methods-test.jl`, about 75 s). It also checks that CI runs it,
-and that this section, the script's header and the skill `julia-structure` state status 3. CI
-runs it on Linux.
+that `development.md` gives the number of test files in the CI matrix, and that this section, the
+script's header and the skill `julia-structure` state status 3. CI runs it on Linux.
 
 ## `fatou-lsp.jl` and `fatou-lsp-test.jl`
 
