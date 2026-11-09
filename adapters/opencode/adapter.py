@@ -20,7 +20,7 @@ the permission block.
   adapters/opencode/skill-sections/<skill>.md
                                    -> skills/<skill>/SKILL.md (an "Under OpenCode" section between
                                                              its frontmatter and its body;
-                                                             `skill_sections`)
+                                                             frontends.skill_sections)
 
 After the files, the links that an earlier install wrote to ~/.agents/skills/ are removed
 (`skill_links`): OpenCode reads that directory too.
@@ -107,11 +107,8 @@ SOURCE = REPO / "adapters" / "opencode"
 SETTINGS = REPO / "settings" / "settings.proposal.json"
 FIXTURES = SOURCE / "fixtures"
 # Each file <skill>.md here is the "Under OpenCode" section of OpenCode's copy of
-# skills/<skill>/SKILL.md (`skill_sections`).
+# skills/<skill>/SKILL.md (frontends.skill_sections).
 SKILL_SECTIONS = SOURCE / "skill-sections"
-
-# The bytes that OPENCODE-DELTA.md may hold: it installs as AGENTS.md and loads into every session.
-DELTA_BUDGET = 5120
 
 # Narrower than the tool list can say. OpenCode's `edit` covers edit, write and patch together,
 # so an agent whose Claude body confines it to one file gets that file as a path rule.
@@ -675,32 +672,6 @@ def interpreted(text: str) -> bytes:
     return (json.dumps(listed, indent=2, ensure_ascii=False) + "\n").encode()
 
 
-def delta_budget(path: pathlib.Path) -> tuple[bool, str]:
-    """Whether the delta at `path` holds at most DELTA_BUDGET bytes, and the line that says so."""
-    size = len(path.read_bytes())
-    return size <= DELTA_BUDGET, f"{path.name} has {size:,} bytes, and its budget is {DELTA_BUDGET:,}"
-
-
-def skill_sections(
-    copies: list[tuple[str, bytes, int | None]], sections: pathlib.Path
-) -> list[tuple[str, bytes, int | None]]:
-    """`copies`, [(installed path, bytes, mode)], with the text of each file `<skill>.md` of
-    `sections` between the frontmatter and the body of skills/<skill>/SKILL.md. A section file
-    whose skill `copies` does not hold is an error: the rule it carries would load nowhere."""
-    index = {dst: i for i, (dst, _, _) in enumerate(copies)}
-    result = list(copies)
-    for path in sorted(sections.glob("*.md")):
-        dst = f"skills/{path.stem}/SKILL.md"
-        if dst not in index:
-            raise HarnessError(f"{path}: the install copies no {dst}, the skill of this section")
-        _, data, mode = copies[index[dst]]
-        if not data.startswith(b"---\n") or (end := data.find(b"\n---\n", 3)) < 0:
-            raise HarnessError(f"{dst}: no frontmatter, after which the section of {path} goes")
-        end += len(b"\n---\n")
-        result[index[dst]] = (dst, data[:end] + b"\n" + path.read_bytes() + data[end:], mode)
-    return result
-
-
 def plan(ctx: types.SimpleNamespace | argparse.Namespace):
     """OpenCode's part of `harness install`, as the docstring of this module says."""
     dest = destination()
@@ -756,7 +727,7 @@ def plan(ctx: types.SimpleNamespace | argparse.Namespace):
     # OpenCode's own copies of the Claude Code layer's rules, instructions, guard package and skills;
     # a skill with a file in skill-sections/ gets that section.
     claude = ctx.plans["claude"]
-    copies = skill_sections(
+    copies = frontends.skill_sections(
         [(dst, data, None) for dst, _, data in claude.rules] + claude.shared, SKILL_SECTIONS
     )
     files += [
@@ -1228,18 +1199,20 @@ def selftest():
         "relocate rewrites the shared paths and leaves the others",
     )
 
-    # OPENCODE-DELTA.md loads into every session: it holds at most DELTA_BUDGET bytes. A file of
-    # exactly the budget passes, and one of a byte more fails.
-    ok, label = delta_budget(SOURCE / "OPENCODE-DELTA.md")
+    # OPENCODE-DELTA.md loads into every session: it holds at most frontends.DELTA_BUDGET bytes,
+    # the budget of oh-my-pi's and Antigravity's delta too. A file of exactly the budget passes,
+    # and one of a byte more fails.
+    budget = frontends.DELTA_BUDGET
+    ok, label = frontends.delta_budget(SOURCE / "OPENCODE-DELTA.md")
     check(ok, label)
     with tempfile.TemporaryDirectory() as tmp:
-        for size in (DELTA_BUDGET, DELTA_BUDGET + 1):
+        for size in (budget, budget + 1):
             path = pathlib.Path(tmp) / "OPENCODE-DELTA.md"
             path.write_bytes(b"x" * size)
-            ok, label = delta_budget(path)
+            ok, label = frontends.delta_budget(path)
             check(
-                ok == (size == DELTA_BUDGET) and f"{size:,} bytes" in label and f"{DELTA_BUDGET:,}" in label,
-                f"a delta of {size:,} bytes {'passes' if size == DELTA_BUDGET else 'fails'}: {label}",
+                ok == (size == budget) and f"{size:,} bytes" in label and f"{budget:,}" in label,
+                f"a delta of {size:,} bytes {'passes' if size == budget else 'fails'}: {label}",
             )
 
     # A section goes after the closing `---` of the skill's frontmatter; a SKILL.md without a
@@ -1252,7 +1225,7 @@ def selftest():
             (b"---\nname: s\n\n# S\n", None),
         ):
             try:
-                got = skill_sections([("skills/s/SKILL.md", data, 0o644)], pathlib.Path(tmp))
+                got = frontends.skill_sections([("skills/s/SKILL.md", data, 0o644)], pathlib.Path(tmp))
             except HarnessError as e:
                 got = str(e)
             check(
@@ -1333,40 +1306,42 @@ def install_cases(check, tmp):
     text, last = dry_run()
     check("auth-token does not exist" in text, "a directory at the token path is missing: " + last)
 
-    # A section file whose skill the install does not copy stops the install with exit 2, naming
-    # the file. The run has the HOME, the destinations and the profile of `dry_run`.
+    # A section file of OpenCode or oh-my-pi whose skill the install does not copy stops the install
+    # with exit 2, naming the file. The run has the HOME, the destinations and the profile of
+    # `dry_run`, whose `[setup]` chooses both frontends.
     scratch = cast("pathlib.Path", tmp)
-    sections = scratch / "skill-sections"
-    sections.mkdir()
-    orphan = sections / "no-such-skill.md"
-    orphan.write_text("## Under OpenCode\n\nA rule.\n")
-    err = io.StringIO()
-    with (
-        mock.patch.dict(
-            os.environ,
-            HOME=str(scratch / "home"),
-            OPENCODE_CONFIG_DIR=str(scratch),
-            PI_CODING_AGENT_DIR=str(scratch / "omp"),
-        ),
-        mock.patch.object(frontends.adapter(NAME), "SKILL_SECTIONS", sections),
-        contextlib.redirect_stdout(io.StringIO()),
-        contextlib.redirect_stderr(err),
-    ):
-        main = cast("Callable[[list[str]], int]", cli.main)
-        code = main(
-            [
-                "--profile",
-                str(scratch / "profile.toml"),
-                "--models",
-                str(REPO / "examples" / "models.toml"),
-                "install",
-            ]
+    for frontend in (NAME, "omp"):
+        sections = scratch / f"skill-sections-{frontend}"
+        sections.mkdir()
+        orphan = sections / "no-such-skill.md"
+        orphan.write_text("## Under the frontend\n\nA rule.\n")
+        err = io.StringIO()
+        with (
+            mock.patch.dict(
+                os.environ,
+                HOME=str(scratch / "home"),
+                OPENCODE_CONFIG_DIR=str(scratch),
+                PI_CODING_AGENT_DIR=str(scratch / "omp"),
+            ),
+            mock.patch.object(frontends.adapter(frontend), "SKILL_SECTIONS", sections),
+            contextlib.redirect_stdout(io.StringIO()),
+            contextlib.redirect_stderr(err),
+        ):
+            main = cast("Callable[[list[str]], int]", cli.main)
+            code = main(
+                [
+                    "--profile",
+                    str(scratch / "profile.toml"),
+                    "--models",
+                    str(REPO / "examples" / "models.toml"),
+                    "install",
+                ]
+            )
+        check(
+            code == 2 and str(orphan) in err.getvalue(),
+            f"a section file of {frontend} whose skill the install does not copy exits 2, naming the file: "
+            f"{code}, {err.getvalue().strip()!r}",
         )
-    check(
-        code == 2 and str(orphan) in err.getvalue(),
-        f"a section file whose skill the install does not copy exits 2, naming the file: {code}, "
-        f"{err.getvalue().strip()!r}",
-    )
     token.rmdir()
     token.write_text("token\n")
     text, last = dry_run()
@@ -1508,7 +1483,8 @@ def install_cases(check, tmp):
 
     # OpenCode's copy of skills/build-part/SKILL.md is Claude Code's copy with skill-sections/build-part.md
     # between its frontmatter and its body, each with OpenCode's paths. Every other file of skills/ is
-    # Claude Code's copy with OpenCode's paths, and Claude Code's and oh-my-pi's copies hold no section.
+    # Claude Code's copy with OpenCode's paths, and Claude Code's and oh-my-pi's copies hold no
+    # `Under OpenCode` section.
     def relocated(data: bytes) -> bytes:
         return frontends.relocate(data, str(base / "opencode"))
 
@@ -1553,7 +1529,7 @@ def install_cases(check, tmp):
     ]
     case(
         lambda: all(p.is_file() and b"## Under OpenCode" not in p.read_bytes() for p in copies),
-        "the copies of Claude Code and oh-my-pi of skills/build-part/SKILL.md hold no section: "
+        "the copies of Claude Code and oh-my-pi of skills/build-part/SKILL.md hold no `Under OpenCode` section: "
         f"{[p.relative_to(base).as_posix() for p in copies]}",
     )
     # A hand-made AGENTS.md that differs from the source is replaced, not merged.
