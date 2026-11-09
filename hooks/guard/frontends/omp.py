@@ -22,9 +22,9 @@ that it names (edit_paths), and `write` writes `input.path` and the path of its 
 (write_path). Each tool path is checked in every form that oh-my-pi may read (path_forms).
 A Kaimon tool `mcp__kaimon_<tool>` is the `mcp` call `kaimon.<tool>`. `web_search` is the `mcp`
 call `web.search` of the web check, and a `read` of an `http` or `https` URL is also the `mcp` call
-`web.fetch` (web_call), beside its path checks. The caller is `sub` when
-the agent's kind is `sub`, and a sub-agent's write to `agent://` is refused (agent_write). Every
-other tool passes.
+`web.fetch` (web_call), beside its path checks; the Kaimon, web and token checks read each `mcp`
+call. The caller is `sub` when the agent's kind is `sub`, and a sub-agent's write to `agent://` is
+refused (agent_write). Every other tool passes.
 
 A message that the table cannot read is refused: bytes that are not UTF-8, a text that `jsonio`
 refuses, no object `event`, no string `toolName`, an `input` that is no object, a `bash` call
@@ -55,6 +55,7 @@ from guard import (
     plugin,
     rm_scope,
     sandbox_semantics,
+    token_forms,
     web_identity,
 )
 from guard.contract import PASS, Action, Call, Caller, Verdict, strongest
@@ -141,13 +142,14 @@ SHELL: tuple[Check, ...] = (
     git_writes.check,
     sandbox_semantics.work_tree_check,
     web_identity.check,
+    token_forms.check,
 )
 CHECKS: dict[Action, tuple[Check, ...]] = {
     "shell": SHELL,
     "read": (listed,),
     "edit": (listed,),
     "write": (agent_write, listed),
-    "mcp": (kaimon_session.check, web_identity.check),
+    "mcp": (kaimon_session.check, web_identity.check, token_forms.check),
 }
 # A tool path that `read` fetches from the web.
 WEB_URL = re.compile(r"\s*https?://", re.IGNORECASE)

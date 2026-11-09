@@ -33,6 +33,7 @@ from guard import (
     no_shell_file_write,
     rm_scope,
     sandbox_semantics,
+    token_forms,
     web_identity,
 )
 from guard.contract import PASS, Call, Caller, Verdict, strongest
@@ -55,6 +56,7 @@ SHELL: tuple[Check, ...] = (
     git_archive_output.check,
     git_writes.check,
     web_identity.check,
+    token_forms.check,
 )
 
 # (matcher, checks): the matchers of the settings template's `PreToolUse` groups that run the guard,
@@ -62,8 +64,8 @@ SHELL: tuple[Check, ...] = (
 TABLE: tuple[tuple[re.Pattern[str], tuple[Check, ...]], ...] = (
     (re.compile(r"Bash"), SHELL),
     (re.compile(r"mcp__ccd_directory__.*|EnterWorktree|ExitWorktree"), (directory_scope.check,)),
-    (re.compile(r"mcp__kaimon__.*"), (kaimon_session.check,)),
-    (re.compile(r"WebFetch|WebSearch"), (web_identity.check,)),
+    (re.compile(r"mcp__kaimon__.*"), (kaimon_session.check, token_forms.check)),
+    (re.compile(r"WebFetch|WebSearch"), (web_identity.check, token_forms.check)),
 )
 
 # The neutral names of Claude Code's own worktree and web tools; an MCP tool's is `<server>.<tool>`.

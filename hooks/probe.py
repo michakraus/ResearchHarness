@@ -116,6 +116,31 @@ PROFILES = {
     "org-text.toml": b'org = "own-org"\n',
     "org-mixed.toml": b'org = ["own-org", 1]\n',
     "other.toml": b'org = ["other-org"]\n',
+    "dotted.toml": b'org = ["own.org"]\n',
+}
+# A fake token of each form that the token check reads, by its placeholder `@@<NAME>@@` in the corpus.
+# Each is joined here at run time, so that no file of the repository holds one for gitleaks to find.
+# GHP is the GitHub classic form, GHO, GHU, GHS and GHR the other kinds of its prefix `gh[pousr]_`,
+# PAT the fine-grained form and PAT_ENCODED it percent-encoded, GLPAT GitLab's form and SK the form
+# of the `sk-` keys, each with the shortest body of its form, and a body with each `_` or `-` that
+# the form allows; `_SHORT` names the same token one character short, and GHP_UPPER the classic
+# form with an upper-case prefix.
+GHP_BODY = "0123456789abcdefghijKLMNOPQRSTUVWXYZ"
+PAT_BODY = GHP_BODY[:10] + "_" + GHP_BODY[10:21]
+GLPAT_BODY = GHP_BODY[:9] + "-_" + GHP_BODY[9:18]
+SK_BODY = "ant-api03_" + GHP_BODY[:10]
+TOKENS = {
+    "GHP": "gh" + "p_" + GHP_BODY,
+    "GHP_SHORT": "gh" + "p_" + GHP_BODY[:-1],
+    "GHP_UPPER": "GH" + "P_" + GHP_BODY,
+    **{f"GH{kind.upper()}": "gh" + kind + "_" + GHP_BODY for kind in "ousr"},
+    "PAT": "github" + "_pat_" + PAT_BODY,
+    "PAT_SHORT": "github" + "_pat_" + PAT_BODY[:-1],
+    "PAT_ENCODED": "github" + "%5Fpat%5F" + PAT_BODY,
+    "GLPAT": "glpat" + "-" + GLPAT_BODY,
+    "GLPAT_SHORT": "glpat" + "-" + GLPAT_BODY[:-1],
+    "SK": "s" + "k-" + SK_BODY,
+    "SK_SHORT": "s" + "k-" + SK_BODY[:-1],
 }
 # The query files of the `gh api graphql` records, below the fixture's `gh/`.
 GH_QUERIES = {
@@ -1355,6 +1380,7 @@ def corpus_lines(extra: dict[str, str]) -> list[str]:
         "CWD": CWD,
         "SCRATCH": SCRATCH,
         "LINK": LINK,
+        **TOKENS,
         **extra,
     }
     found: list[str] = []
@@ -2742,6 +2768,15 @@ def command_cases():
             ok=ok,
             line=f"exp deny got {got}  [guard    ]  the reason of the winner on {command!r}: {output[:80]!r}",
         )
+    # The token check names the form in its reason, and neither the token nor its body.
+    payload = {"tool_name": "Bash", "tool_input": {"command": "echo " + TOKENS["GHP"]}, "cwd": CWD}
+    got, output = guard_run(json.dumps(payload).encode("utf-8"))
+    hidden = TOKENS["GHP"] not in output and GHP_BODY not in output
+    report(
+        ok=got == "deny" and "`gh[pousr]_`" in output and hidden,
+        line=f"exp deny, the form and no token got {got}, the token {'hidden' if hidden else 'SHOWN'}  "
+        "[guard    ]  the reason of the token check",
+    )
     got, output = guard_run(b'{"tool_name":"Bash","tool_input":{"command":"ls"},"cwd":"/"}', "other")
     report(
         ok=got == "deny" and "usage" in output,

@@ -57,7 +57,7 @@ frontend's `guard-paths.json`; Antigravity's table runs the lift check `sandbox_
 call that it does not deny, which lifts a command out of the sandbox only where the line matches a
 closed grammar and Claude Code's sandbox rule lifts it. One module per check reads that call: the
 staging, write, sandbox, `gh api`, `gh pr create`, `gh` watcher, rm, archive, git write, web,
-Kaimon and directory checks below. Each check gives `deny`, `ask`, `allow` or `pass` with a reason. The
+token, Kaimon and directory checks below. Each check gives `deny`, `ask`, `allow` or `pass` with a reason. The
 guard answers the first of `deny`, `ask`, `allow` and `pass` that a check gives, with that check's
 reason, in the form of the frontend: for Claude Code exit 2 with the reason on standard error for
 `deny`, a JSON decision for `ask` and `allow`, and no output for `pass`. A tool that the table does
@@ -153,16 +153,25 @@ that works, for example a separate Bash call.
 
 ### The `gh api` check
 
-`gh_api_writes.py` asks before a `gh api` write that is not a review or a comment, and refuses a
-remote delete, on each shell call of every frontend.
+`gh_api_writes.py` asks before a `gh api` write that is not a review or a comment in an own
+organisation, and refuses a remote delete, on each shell call of every frontend.
 
 It finds each top-level `gh api` and `glab api` call and determines the HTTP method in the same
 way as `gh`: `-X` or `--method`; otherwise POST when a body flag is present; otherwise GET. A GET,
 a HEAD and a `search/…` endpoint pass. It refuses a DELETE from `gh api` or `glab api`. Any other
 `glab api` call passes. A review, an inline comment, a reply, and a comment on a pull request, an
-issue or a commit pass, so the review agents can post. A GraphQL query passes when it holds no
-mutation, or when each mutation is a review or comment operation. Every other write gets an `ask`
-decision, and the user sees a prompt. An edit of an existing comment also asks.
+issue or a commit pass in a repository of an own organisation, so the review agents can post
+there. The endpoint must be `repos/<owner>/<repo>/…` with an `<owner>` of the profile's `org` list,
+compared without case, and the call must name no `--hostname`; the check does not read
+`GH_HOST`, so a host that the environment names is beyond its reach. The same write to any other
+repository asks, because an agent can post a secret in a comment on any public repository. It
+also asks when the check cannot read the repository: a placeholder such as `{owner}`, an owner or
+a repository name with a character that GitHub does not allow in it, such as a `%`, and a
+repository `.` or `..`. The check reads the endpoint as `gh` gets it, without percent-decoding. A
+GraphQL query passes when it holds no mutation, or when each mutation is a review or comment
+operation, in any repository: its node IDs name no repository that the check can read. Every
+other write gets an `ask` decision, and the user sees a prompt. An edit of an existing comment
+also asks.
 
 The check reads a GraphQL query where `gh` reads it: the text of `-f query=…`, which `gh` sends as
 it is; the file of `-F query=@<path>`; and the string `query` of the JSON object in the file of
@@ -325,6 +334,34 @@ A parameter name in prose or in a pattern passes, such as `grep 'mailto='`, and 
 for an author by name. The user's email address is `git config --get user.email`, read at most
 once per process; without git or without the key, the check reads the parameters alone. A request
 that a script builds from a file, and a request of a browser or an MCP tool, are beyond its reach.
+
+### The token check
+
+`token_forms.py` refuses a call that holds a token of a known form, on each shell call, each web
+call and each Kaimon call of every frontend: a shell command, or a string argument of a web or
+Kaimon call, that holds one of these forms.
+
+| form | pattern |
+|:--|:--|
+| GitHub classic and app | `gh[pousr]_` and 36 or more of `[A-Za-z0-9]` |
+| GitHub fine-grained | `github_pat_` and 22 or more of `[A-Za-z0-9_]` |
+| GitLab | `glpat-` and 20 or more of `[A-Za-z0-9_-]` |
+| Anthropic, OpenAI and providers of the same form | `sk-` and 20 or more of `[A-Za-z0-9_-]` |
+
+The check reads each text as it is and percent-decoded, with the case kept, and a prefix counts
+only where no ASCII letter, digit, `_` or `-` stands right before it. A prefix alone, a shorter
+body, an upper-case prefix, a word such as `task-…` and a reference such as `$GH_TOKEN` pass. The
+reason names the form, and holds neither the token nor the command, so the token check's refusal
+does not show the token again. The reason tells the agent to name the token by its variable. The
+token check stands after the web check and the `gh api` check in each list of checks, and the
+guard answers the first refusal; so where one of them refuses the call first, such as the web
+check on a parameter `access_token=` or the `gh api` check on a DELETE, its reason can quote the
+token.
+
+The check prevents an accident and is no boundary. A token that is encoded in another way, split
+into parts, given without its prefix, or read by a script from a file passes it, and so does a
+form that the table does not name. The forms are those that GitHub, GitLab and the `sk-`
+providers publish.
 
 ### The Kaimon check
 
