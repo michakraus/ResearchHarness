@@ -7,7 +7,8 @@ FRONTEND is one of claude, opencode, omp and agy; with none named, all four run.
 plain terminal on macOS after `harness setup` and `harness install --apply`, never inside a session
 or inside `agentbox`: srt refuses a sandbox inside its own.
 
-Before the probes it lists every TCP listener on 127.0.0.1 and ::1 with `lsof`, outside srt. Then,
+Before the probes it lists every TCP listener on 127.0.0.1, ::1 and every interface with `lsof`,
+outside srt, and asks a listener on every interface at 127.0.0.1. Then,
 for each frontend, it runs one listener probe per listener and the shell probes, each as
 
     ~/.local/bin/srt --settings ~/.config/research-harness/sandbox/<policy name>.json -- \\
@@ -75,6 +76,7 @@ AUTHENTICATES = ("401", "403")
 DENIED = "403"
 NO_ANSWER = "000"
 LOOPBACK = ("127.0.0.1", "[::1]")
+EVERY_INTERFACE = "*"
 FAILED = ("MISMATCH", "timeout")
 COLUMNS = ("frontend", "id", "expected", "got", "verdict", "detail")
 USAGE = (
@@ -214,7 +216,7 @@ def parse(argv: list[str]) -> Options:
             value = rest.pop(0)
             if arg == "--out":
                 out = pathlib.Path(value)
-            elif value.isdigit() and int(value) > 0:
+            elif value.isascii() and value.isdigit() and int(value) > 0:
                 timeout = int(value)
             else:
                 raise RefusedError(
@@ -402,7 +404,7 @@ def shell_probes(
         Probe("X4", "refused", f"launchctl submit -l {label(ident)} -- /usr/bin/true"),
         Probe("X5", "refused", f"kill -0 {kaimon}")
         if kaimon
-        else Probe("X5", "refused", skip=f"no process listens on 127.0.0.1:{KAIMON_PORT}"),
+        else Probe("X5", "refused", skip=f"no process listens on 127.0.0.1:{KAIMON_PORT} or *:{KAIMON_PORT}"),
         Probe("X6", "refused", 'kill -0 "$PPID"'),
         Probe("X7", "allowed", 'sleep 30 > /dev/null 2>&1 & p=$!; kill "$p"'),
         Probe("X8", "refused", "sandbox-exec -p '(version 1)(allow default)' /usr/bin/true"),
@@ -430,14 +432,16 @@ def shell_row(frontend: str, probe: Probe, call: Call) -> Row:
 
 
 def listeners(text: str) -> list[Listener]:
-    """The TCP listeners on 127.0.0.1 and ::1 in the output of `lsof -nP -iTCP -sTCP:LISTEN`,
-    one per address and port."""
+    """The TCP listeners on 127.0.0.1, ::1 and every interface in the output of
+    `lsof -nP -iTCP -sTCP:LISTEN`, one per address and port; a listener on every interface (`*`)
+    answers on 127.0.0.1, so it takes that address."""
     found: dict[tuple[str, str], Listener] = {}
     for line in text.splitlines():
         fields = line.split()
         if len(fields) < len(("COMMAND", "PID", "NAME", "(LISTEN)")) or fields[-1] != "(LISTEN)":
             continue
         host, _, port = fields[-2].rpartition(":")
+        host = LOOPBACK[0] if host == EVERY_INTERFACE else host
         if host in LOOPBACK and port.isdigit():
             found.setdefault((host, port), Listener(fields[0], fields[1], host, port))
     return list(found.values())
@@ -584,7 +588,8 @@ def battery(options: Options, home: pathlib.Path, out: pathlib.Path) -> list[Row
     srt = home / ".local" / "bin" / "srt"
     model = Model(home / ".local" / "bin" / "agentbox", research, options.timeout) if options.model else None
     loopback = listeners(tool("lsof", "-nP", "-iTCP", "-sTCP:LISTEN").stdout)
-    kaimon = next((x.pid for x in loopback if x.port == KAIMON_PORT), None)
+    # X5 takes the listener on 127.0.0.1:2828 or *:2828, which `listeners` maps to 127.0.0.1
+    kaimon = next((x.pid for x in loopback if x.host == LOOPBACK[0] and x.port == KAIMON_PORT), None)
     rows: list[Row] = []
     for frontend in options.frontends:
         call = functools.partial(sandboxed, srt, settings_file(home, frontend), research)

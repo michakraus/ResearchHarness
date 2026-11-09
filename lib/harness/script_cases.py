@@ -737,6 +737,7 @@ def probe_refusals(check: Callable[[object, str], None], tmp: pathlib.Path) -> N
         ("an unknown option", ["--bogus"], {}, "darwin", None, [four]),
         ("a --timeout of 0", ["--timeout", "0"], {}, "darwin", None, [four]),
         ("a --timeout that is no number", ["--timeout", "2s"], {}, "darwin", None, [four]),
+        ("a --timeout of a non-ASCII digit", ["--timeout", "٣"], {}, "darwin", None, [four]),
         ("--out with no value", ["--out"], {}, "darwin", None, [four]),
         ("no srt", [], {}, "darwin", ".local/bin/srt", ["harness setup"]),
         ("srt not executable", [], {}, "darwin", "chmod .local/bin/srt", ["harness setup"]),
@@ -827,6 +828,15 @@ def probe_refuse_all(check: Callable[[object, str], None], tmp: pathlib.Path) ->
         check(
             counts == [1] * len(targets),
             f"{frontend}: W12, W13 and R8 each name their path once -> {targets} {counts}",
+        )
+        # N4 asks github.com past srt's proxy: curl with `--noproxy '*'`, once per frontend
+        n4 = [a[-1] for a in calls if "--noproxy" in a[-1]]
+        words = shlex.split(n4[0]) if len(n4) == 1 else []
+        check(
+            words[:1] == ["curl"]
+            and words[-1:] == ["https://github.com/"]
+            and any(words[k : k + 2] == ["--noproxy", "*"] for k in range(len(words))),
+            f"{frontend}: N4 is curl --noproxy '*' https://github.com/ -> {n4}",
         )
     r2 = {r[0]: r[4] for r in rows if r[1] == "R2"}
     check(
@@ -922,8 +932,9 @@ def probe_allow_all(check: Callable[[object, str], None], tmp: pathlib.Path) -> 
 
 
 def probe_listeners(check: Callable[[object, str], None], tmp: pathlib.Path) -> None:
-    """Loopback listeners that answer 401, 200, nothing and 403, each probed once though lsof lists
-    one twice; a listener on every address and a socket that does not listen are not probed."""
+    """Loopback listeners that answer 401, 200, nothing and 403, and a listener on every interface,
+    which is probed at 127.0.0.1; one address and port get one probe, whatever lines name them; a
+    socket that does not listen is not probed; X5 takes Kaimon on every interface, not on ::1."""
     lsof = (
         "COMMAND PID USER FD TYPE DEVICE SIZE/OFF NODE NAME\n"
         "alpha 101 u 3u IPv4 0x1 0t0 TCP 127.0.0.1:7001 (LISTEN)\n"
@@ -932,9 +943,14 @@ def probe_listeners(check: Callable[[object, str], None], tmp: pathlib.Path) -> 
         "delta 104 u 3u IPv4 0x1 0t0 TCP *:7004 (LISTEN)\n"
         "epsilon 105 u 3u IPv4 0x1 0t0 TCP 127.0.0.1:7005 (LISTEN)\n"
         "alphatwo 106 u 4u IPv4 0x1 0t0 TCP 127.0.0.1:7001 (LISTEN)\n"
+        "alphawild 108 u 5u IPv6 0x1 0t0 TCP *:7001 (LISTEN)\n"
+        "deltasix 109 u 4u IPv6 0x1 0t0 TCP *:7004 (LISTEN)\n"
         "zeta 107 u 3u IPv4 0x1 0t0 TCP 127.0.0.1:7007 (CLOSED)\n"
+        # no process has this pid, so a kill -0 of it fails
+        "other 999999999 u 3u IPv6 0x1 0t0 TCP [::1]:2828 (LISTEN)\n"
+        f"julia {os.getpid()} u 3u IPv4 0x1 0t0 TCP *:2828 (LISTEN)\n"
     )
-    codes = {"7001": "401", "7002": "200", "7003": "none", "7005": "403"}
+    codes = {"7001": "401", "7002": "200", "7003": "none", "7004": "200", "7005": "403", "2828": "401"}
     home = probe_home(tmp / "listen", {"srt": "allow", "lsof": lsof, "curl": codes})
     out = home / "out"
     # claude twice: a frontend named twice runs once
@@ -942,9 +958,9 @@ def probe_listeners(check: Callable[[object, str], None], tmp: pathlib.Path) -> 
     rows = probe_rows(out)
     ids = Counter(r[1] for r in rows if r[1].startswith("L:"))
     got = {r[1]: (r[3], r[4], r[5]) for r in rows if r[1].startswith("L:")}
-    l1, l2, l3, l5 = (got.get(f"L:700{k}") for k in (1, 2, 3, 5))
+    l1, l2, l3, l4, l5 = (got.get(f"L:700{k}") for k in (1, 2, 3, 4, 5))
     check(
-        ids == Counter(("L:7001", "L:7002", "L:7003", "L:7005"))
+        ids == Counter(("L:7001", "L:7002", "L:7003", "L:7004", "L:7005", "L:2828", "L:2828"))
         and Counter(r[1] for r in rows)["R1"] == 1
         and l1 is not None
         and l1[:2] == ("401", "match")
@@ -956,12 +972,27 @@ def probe_listeners(check: Callable[[object, str], None], tmp: pathlib.Path) -> 
         and "beta 127.0.0.1:7002" in l2[2]
         and l3 is not None
         and l3[1] == "MISMATCH"
-        and "gamma [::1]:7003" in l3[2],
-        f"one probe per loopback listener: 401 and 403 are match, 200 and no answer are MISMATCH with the "
-        f"command and port -> {got}",
+        and "gamma [::1]:7003" in l3[2]
+        and l4 is not None
+        and l4[:2] == ("200", "MISMATCH")
+        and "delta 127.0.0.1:7004" in l4[2],
+        f"one probe per listener address and port: 401 and 403 are match, 200 and no answer are "
+        f"MISMATCH with the command and port -> {got}",
     )
     urls = [a[-1] for _, a in stub_calls(home, "curl") if a[-1].startswith("http://")]
-    check("http://[::1]:7003/" in urls, f"an IPv6 listener is asked in brackets -> {urls}")
+    check(
+        "http://[::1]:7003/" in urls
+        and urls.count("http://127.0.0.1:7004/") == 1
+        and urls.count("http://127.0.0.1:7001/") == 1
+        and not [u for u in urls if "*" in u],
+        f"an IPv6 listener is asked in brackets, and a listener on every interface once at 127.0.0.1 "
+        f"-> {urls}",
+    )
+    x5 = [(r[3], r[5]) for r in rows if r[1] == "X5"]
+    check(
+        [g for g, _ in x5] == ["allowed"],
+        f"X5 sends kill -0 to Kaimon on *:2828, not to the listener on [::1]:2828 -> {x5}",
+    )
 
 
 def probe_model(check: Callable[[object, str], None], tmp: pathlib.Path) -> None:
