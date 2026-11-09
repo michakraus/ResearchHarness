@@ -26,6 +26,14 @@
 # lossy (2 hits of 46 in one measurement), so this walks the files itself rather than asking for a
 # workspace-wide answer. It therefore reports **definitions**, not uses, and it says nothing about
 # which method a given call dispatches to.
+#
+# It exits with status 1 when it finds no method at all. It exits with status 3 when a name given
+# on the command line has definitions with more than one qualified spelling — `f` and `M.f`, or
+# `A.f` and `B.f` — and then prints, after the full listing, one line per such name that names
+# the spellings: the definitions alone do not say whether they extend one function, so
+# `search_methods` on a loaded session or `julia-callers.jl` decides. Else it exits with status 0.
+# With `--all`, the heading of such a name carries the mark `more than one qualified spelling`,
+# and the status is 0 or 1.
 
 include(joinpath(@__DIR__, "fatou-lsp.jl"))
 using .FatouLSP
@@ -90,6 +98,19 @@ function methods_in(root::String; names = String[])
     return found
 end
 
+"""
+    spellings(hits) -> Vector{String}
+
+The distinct names of `hits` as Fatou reports them, compared exactly and sorted without regard to
+case (two names that differ only in case keep the order of their first definitions), so `f`
+comes before `M.f`. `f` and `M.f` are two spellings of one bare name, and so are
+`show` and `Base.show`. Fatou reports the text of each definition, so two spellings may name one
+function or two, and only a loaded session tells which.
+"""
+spellings(hits) = sort(unique(getfield.(hits, :name)); by = lowercase)
+
+const SPELLING_MARK = "more than one qualified spelling"
+
 function main(args)
     length(args) >= 2 || error("usage: julia-methods.jl <package-dir> <name> [<name> …]\n" *
                                "   or: julia-methods.jl <package-dir> --all")
@@ -109,16 +130,26 @@ function main(args)
         return 1
     end
 
+    ambiguous = Pair{String, Vector{String}}[]
     for nm in sort(unique(bare.(getfield.(found, :name))))
         hits = filter(f -> bare(f.name) == nm, found)
-        println("\n", nm, " — ", length(hits), " method(s)")
+        sp = spellings(hits)
+        length(sp) > 1 && push!(ambiguous, nm => sp)
+        mark = isempty(names) && length(sp) > 1 ? ", $SPELLING_MARK" : ""
+        println("\n", nm, " — ", length(hits), " method(s)", mark)
         for h in hits
             println("  ", rpad(string(h.file, ":", h.line), 52), h.name, h.detail)
         end
     end
     println("\n", length(found), " method(s) in ", length(unique(getfield.(found, :file))),
         " file(s), ", elapsed, "s. Definitions only — no dispatch, no callers.")
-    return 0
+    isempty(names) && return 0
+    for (nm, sp) in ambiguous
+        println(nm, ": ", SPELLING_MARK, " (", join(sp, ", "), "). Which of these methods ",
+            "belong to one function is a question for `search_methods` on a loaded session, ",
+            "or `julia-callers.jl`.")
+    end
+    return isempty(ambiguous) ? 0 : 3
 end
 
 if abspath(PROGRAM_FILE) == @__FILE__

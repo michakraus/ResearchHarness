@@ -62,6 +62,11 @@ that works on a package that does not load**.
 
 It reports **definitions only** — no dispatch, no callers, and nothing built by `@eval`.
 
+It exits with status 3 when a name you gave has definitions with more than one qualified spelling,
+such as `f` and `M.f`: the listing is complete, but only `search_methods` on a loaded session or
+`julia-callers.jl` tells whether those methods extend one function. Status 0 does not prove one
+function either: `f` defined in two submodules has one spelling and names two functions.
+
 ### Kaimon — the live session, for anything semantic
 
 `search_methods` answers real dispatch on real argument types. It is the only tool that does, and

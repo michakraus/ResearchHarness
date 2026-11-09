@@ -281,7 +281,7 @@ point 3 on every branch.
 builds with git under `tempdir()` (`julia --startup-file=no dispatch-delta-test.jl`, about
 5 minutes at a load average of 6).
 
-## `julia-methods.jl`
+## `julia-methods.jl` and `julia-methods-test.jl`
 
 `julia-methods.jl` lists every method of a Julia name, with its signature and location. It does
 not load the package, so it works on a package that does not load. It finds a module-qualified
@@ -297,9 +297,23 @@ each file, through `fatou-lsp.jl`. It reports definitions only. It does not say 
 call dispatches to, and it does not find callers. On an empty result, the script exits with
 status 1; an empty result is not a negative result.
 
+A name on the command line can have definitions with more than one qualified spelling, such as
+`f` and `M.f`, or `A.f` and `B.f`. The definitions do not tell whether such methods extend one
+function or several. So the script prints the full listing, then one line per such name that
+names its spellings and points to `search_methods` and `julia-callers.jl`, and exits with
+status 3. With `--all`, the heading of such a name carries the mark
+`more than one qualified spelling`, and the status stays 0 or 1. Status 0 does not prove one
+function: `f` defined in two submodules has one spelling and names two functions.
+
 The skill `julia-structure`, the rule `julia-code` and the agents `exhaustive-auditor`,
 `julia-branch-verifier`, `julia-critic` and `julia-load-doctor` use it. For dispatch, use
 Kaimon's `search_methods` on a warm session. For callers, use `julia-callers.jl`.
+
+`julia-methods-test.jl` runs the script against the real `fatou` on small fixture packages that
+it writes under `tempdir()`, or prints a skip line where no `fatou` is on the `PATH`
+(`julia --startup-file=no julia-methods-test.jl`, about 75 s). It also checks that CI runs it,
+that `development.md` gives the number of test files in the CI matrix, and that this section, the
+script's header and the skill `julia-structure` state status 3. CI runs it on Linux.
 
 ## `fatou-lsp.jl` and `fatou-lsp-test.jl`
 

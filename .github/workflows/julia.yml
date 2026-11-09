@@ -31,6 +31,7 @@ jobs:
           - scripts/fatou-lsp-test.jl
           - scripts/base-tree-test.jl
           - scripts/dispatch-delta-test.jl
+          - scripts/julia-methods-test.jl
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: julia-actions/setup-julia@fa02766e078afaaf09b14210362cee14137e6a32 # v3.0.2
@@ -45,7 +46,7 @@ jobs:
           cp Project.toml "$env_dir/"
           julia --startup-file=no --project="$env_dir" -e 'using Pkg; Pkg.instantiate()'
       # mutate.jl checks each mutant with `fatou lint`, so its tests need fatou on the PATH, and
-      # fatou-lsp-test.jl drives `fatou lsp`.
+      # fatou-lsp-test.jl and julia-methods-test.jl drive `fatou lsp`.
       - name: Install fatou
         env:
           VERSION: 0.22.0
