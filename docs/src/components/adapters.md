@@ -428,7 +428,7 @@ In each text except `GEMINI.md`, a path below `~/.claude/` names Antigravity's c
 of `config/rules/`, so the delta lists each rule with the files it applies to.
 
 The permission rules are the settings template's: a Bash entry becomes a `command(…)` rule, a Read
-or Edit path a `read_file(…)` or `write_file(…)` rule, and an allow host of the network lists a
+or Edit path a `read_file(…)` or `write_file(…)` rule, and a network host of `allow` or `fetch` a
 `read_url(…)` rule. A `*` of an allow rule in regex form matches no text that ends a segment, so
 the rule never matches across `;`, `|`, `&`, a substitution or a redirection. A path with a glob
 that Antigravity cannot express is dropped, and the guard's path lists cover it. Each Kaimon
