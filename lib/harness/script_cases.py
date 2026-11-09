@@ -1049,7 +1049,8 @@ def probe_model(check: Callable[[object, str], None], tmp: pathlib.Path) -> None
 
 def probe_timeout(check: Callable[[object, str], None], tmp: pathlib.Path) -> None:
     """A frontend probe past --timeout is killed with its process group and is `timeout`; the next
-    probe runs; F6 with no opencode listener and a frontend with no program are skipped."""
+    probe runs; a probe whose file is missing is absent; F6 with no opencode listener and a
+    frontend with no program are skipped; the exit status."""
     config: dict[str, object] = {
         "srt": "refuse",
         "lsof": "",
@@ -1111,8 +1112,8 @@ def probe_timeout(check: Callable[[object, str], None], tmp: pathlib.Path) -> No
 
 
 def probe_units(check: Callable[[object, str], None], module: types.ModuleType) -> None:
-    """The edges of the judges of curl's statuses, the detail's cut, F7's observation and a shell
-    probe past its time limit."""
+    """The edges of the judges of curl's statuses, the detail's cut, F7's observation, a shell
+    probe and a listener probe past their time limit, and a | in a cell of report.md."""
     judged = {
         (judge, out): getattr(module, judge)(0, out)
         for judge, out in (

@@ -507,19 +507,6 @@ It prints four reports:
 It estimates the tokens of a tool result at 3.5 characters per token. The usage figures come from
 the API. No skill or agent calls it. For the context at the start, use `startup-tokens.py`.
 
-## `probe-agentbox.py`
-
-`probe-agentbox.py` is the probe battery of the CLI frontends under `agentbox`. The user runs it
-from a plain terminal on macOS; a session never runs it:
-
-```bash
-python3.14 ~/Research/Harness/scripts/probe-agentbox.py [--out DIR] [--timeout S] [--no-model] [FRONTEND ...]
-```
-
-By default it writes its report below `~/Research/.scratch/agentbox-probes/`, where a session
-reads it. No skill or agent calls it. *The probe battery* of [The srt settings](sandbox.md)
-describes the probes, the verdicts and the report.
-
 ## The audit scripts
 
 The scripts in `scripts/audit/` measure the harness over a window of time: where the tokens go,
@@ -578,6 +565,19 @@ julia --startup-file=no scripts/audit/tense-lint.jl instructions.tsv --kind agen
 Output tokens are not in the cost. A transcript writes one API message as several records, and
 only the last one holds the full output count, so a sum of output is complete only where the
 column `out_complete` is near 1.
+
+## `probe-agentbox.py`
+
+`probe-agentbox.py` is the probe battery of the CLI frontends under `agentbox`. The user runs it
+from a plain terminal on macOS; a session never runs it:
+
+```bash
+python3.14 ~/Research/Harness/scripts/probe-agentbox.py [--out DIR] [--timeout S] [--no-model] [FRONTEND ...]
+```
+
+By default it writes its report below `~/Research/.scratch/agentbox-probes/`, where a session
+reads it. No skill or agent calls it. *The probe battery* of [The srt settings](sandbox.md)
+describes the probes, the verdicts and the report.
 
 ## `julia-update.jl` and `julia-update-test.jl`
 

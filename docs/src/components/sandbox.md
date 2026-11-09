@@ -194,9 +194,9 @@ python3.14 ~/Research/Harness/scripts/probe-agentbox.py [--out DIR] [--timeout S
 The script exits with status 2, runs no probe and prints one line on stderr when `SANDBOX_RUNTIME`
 or `AGENTBOX` is set, on a platform other than macOS, for an argument that is not a frontend or an
 option, for `--out` or `--timeout` with no value, for a `--timeout` that is not a whole number
-above 0 in ASCII digits, when `~/.local/bin/srt` or `~/.local/bin/agentbox` is not an executable file, and when the
-settings file of a chosen frontend is missing. The line names the cause, and `harness setup` or
-`harness install --apply` where one of them installs the file.
+above 0 in ASCII digits, when `~/.local/bin/srt` or `~/.local/bin/agentbox` is not an executable
+file, and when the settings file of a chosen frontend is missing. The line names the cause, and
+`harness setup` or `harness install --apply` where one of them installs the file.
 
 It runs four classes of probes for each chosen frontend:
 
@@ -229,12 +229,13 @@ Each probe gets one verdict:
 | `absent` | the file or directory that the probe names does not exist, so the probe does not run |
 | `skipped` | the probe does not apply: R8 for `agy`, X5 with no listener on port 2828 of `127.0.0.1` or of every interface, the frontend probes with `--no-model` or with no program on the `PATH`, F6 with no plain `opencode` listening |
 | `timeout` | the probe ran past its limit |
-| an observation | F5 records the exit status of `agy --sandbox`, and F7 whether `~/.omp/agent/config.yml` changed |
+| an observation | F5 records the exit status of `agy --sandbox`, and F7 whether `~/.omp/agent/config.yml` changed during F1–F4 of `omp`: `unchanged`, `changed`, or `absent` where the file exists neither before nor after |
 
 The expected value is the policy's intent, not what the current files do. So a `MISMATCH` is a
 finding for the policy, the settings files or the launcher, and a run of a policy with a known
 gap exits 1. The script writes `report.tsv`, with the columns `frontend`, `id`, `expected`,
 `got`, `verdict` and `detail`, and `report.md`, the same rows as a table, the count of each
-verdict and the manual steps: change the model once under `agentbox omp`, and run F6 again with a
-plain `opencode` in another terminal where it was skipped. It prints the path of `report.md` last,
-and exits 0 when no probe is `MISMATCH` or `timeout`, and 1 otherwise.
+verdict and the manual steps: change the model once under `agentbox omp`, and, where F6 was
+skipped because no plain `opencode` listened, run it again with a plain `opencode` in another
+terminal. It prints the path of `report.md` last, and exits 0 when no probe is `MISMATCH` or
+`timeout`, and 1 otherwise.

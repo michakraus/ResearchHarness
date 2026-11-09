@@ -776,6 +776,7 @@
 - evidence: `MENU`, the list of "every page of docs/src/", names ten pages of
   `docs/src/components/` and not `components/sandbox.md`, which `docs/.vitepress/config.mts:105`
   links in the sidebar. So `node scripts/check-site.mjs` does not check that each sidebar links the
-  page, and does not check that its built page exists.
+  page, that its built page exists, that its built tables keep the rows of its source, or that each
+  link of its text to a heading finds that heading.
 - kind: missing test
 - found: 2026-11-09, the review of the probe battery's pull request

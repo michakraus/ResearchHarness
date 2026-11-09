@@ -18,7 +18,7 @@ from ~/Research, with the policy name antigravity for agy and the frontend's nam
 Unless --no-model is given, it then runs the frontend probes, each as
 `~/.local/bin/agentbox <frontend> <non-interactive form>`, killed with its process group after
 --timeout seconds, 300 by default. Every other program that the script or a probe starts, except
-/bin/sh, is found by name on the PATH.
+/bin/sh and the /usr/bin/true of X4 and X8, is found by name on the PATH.
 
 A probe that the sandbox fails to stop changes nothing that outlives the run and prints no file's
 content: a read prints a count, an append opens the file and writes nothing, and a probe that
