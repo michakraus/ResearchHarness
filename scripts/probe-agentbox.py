@@ -486,7 +486,7 @@ def form(frontend: str, ask: Ask, *, sandbox: bool = False) -> list[str]:
         case "omp":
             return ["-p", ask.prompt]
         case _:
-            # `-p` takes the prompt as its value, so it comes last
+            # `-p` takes the next argument as its prompt, so it stands right before the prompt
             return ["--dangerously-skip-permissions", *(["--sandbox"] if sandbox else []), "-p", ask.prompt]
 
 

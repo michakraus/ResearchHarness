@@ -1141,7 +1141,7 @@ def probe_model(check: Callable[[object, str], None], tmp: pathlib.Path) -> None
 
 def probe_void(check: Callable[[object, str], None], tmp: pathlib.Path) -> None:
     """Under an agentbox whose answer holds no OK, F1 is MISMATCH, so F3, which expects READABLE to
-    be missing, is void; void counts in report.md and does not set the exit status itself."""
+    be missing, is void, and F2 and F4 stay MISMATCH; void counts in report.md."""
     home = probe_home(tmp / "void", {"srt": "refuse", "lsof": "", "lsof_opencode": "", "answer": "no"})
     out = home / "out"
     p = probe_run(home, "--out", str(out))
@@ -1232,7 +1232,8 @@ def probe_timeout(check: Callable[[object, str], None], tmp: pathlib.Path) -> No
 
 def probe_units(check: Callable[[object, str], None], module: types.ModuleType) -> None:
     """The edges of the judges of curl's statuses, the detail's cut, F7's observation, a shell
-    probe and a listener probe past their time limit, and a | in a cell of report.md."""
+    probe and a listener probe past their time limit, a | in a cell of report.md, and its
+    `## Listeners` with no listener row."""
     judged = {
         (judge, out): getattr(module, judge)(0, out)
         for judge, out in (
