@@ -90,6 +90,10 @@ chosen it writes Claude Code's override beside the settings files:
 
 A launcher whose mode differs from 755 is a change, as a file whose bytes differ is.
 
+The install writes nothing through a symlink. So where `~/.local/bin` is a symlink and a frontend
+is chosen, `harness install --apply` exits with status 2, writes nothing, and names the path and
+the symlink.
+
 ## The launcher agentbox
 
 `agentbox` is a POSIX `sh` script that starts one CLI frontend under `srt`:
@@ -107,8 +111,13 @@ The frontends are the commands `claude`, `opencode`, `omp` and `agy`. `agentbox`
 
 with `exec`, so the exit status of `srt` is its own. The policy name is `antigravity` for `agy`
 and the frontend's name otherwise. `<program>` is the path that `command -v` gives on the caller's
-`PATH`, and the caller's arguments follow `<extra>`, each passed as one argument, unchanged. The
-`--` ends the options of `srt`, which otherwise reads a `--settings` of the frontend as its own.
+`PATH` without each entry that matches `*/cmux-cli-shims/*` or `*/cmux-cli-shims`. In a cmux
+terminal the first `claude` on the `PATH` is a shim of cmux, which `srt` cannot read; the shim
+itself skips the same entries to find the real `claude` where the cmux wrapper is absent. A
+`claude` under `agentbox` therefore runs without the cmux wrapper. The filter decides only which
+program runs: the program gets the caller's `PATH` unchanged. The caller's arguments follow
+`<extra>`, each passed as one argument, unchanged. The `--` ends the options of `srt`, which
+otherwise reads a `--settings` of the frontend as its own.
 
 | frontend | `<extra>` | why |
 |:--|:--|:--|
@@ -117,9 +126,29 @@ and the frontend's name otherwise. `<program>` is the path that `command -v` giv
 | `omp` | `--approval-mode yolo` | oh-my-pi runs its tools without a prompt; the sandbox of `srt` is the boundary |
 | `agy` | nothing | |
 
-The frontend gets `AGENTBOX=1` in its environment; every other variable stays the caller's.
-`agentbox` runs only the `srt` in `~/.local/bin`, never one found on the `PATH`. So it starts
-nothing before `harness setup` has installed `srt` in `~/.local/bin`.
+The frontend gets `AGENTBOX=1` and the three cache variables below in its environment; every
+other variable stays the caller's. `agentbox` runs only the `srt` in `~/.local/bin`, never one
+found on the `PATH`. So it starts nothing before `harness setup` has installed `srt` in
+`~/.local/bin`.
+
+Each run makes one new directory with `mktemp -d "${TMPDIR:-/tmp}/agentbox.XXXXXX"`, below
+`$TMPDIR`, or below `/tmp` where `TMPDIR` is unset or empty, with the subdirectories `npm`, `uv`
+and `texmf-var`. The sandbox denies the caches of these tools in the home directory, so
+`agentbox` sets and exports a cache variable for each, where the caller's variable is unset or
+empty:
+
+| variable | tool | value |
+|:--|:--|:--|
+| `npm_config_cache` | npm | `<run directory>/npm` |
+| `UV_CACHE_DIR` | uv | `<run directory>/uv` |
+| `TEXMFVAR` | LaTeX, for example the font cache of `lualatex` | `<run directory>/texmf-var` |
+
+A caller's non-empty value stays. An empty value counts as unset: an empty `UV_CACHE_DIR` stops
+`uv`, and an empty `npm_config_cache` sends npm to `~/.npm`. The settings file of every frontend
+lets it write `/tmp` and the `$TMPDIR` of the install. Each run starts with empty caches, so npm
+and uv download again and `lualatex` builds its font cache again. The run directory stays after
+the run, because `agentbox` ends in `exec`; the system's cleaning of temporary directories removes
+it.
 
 `agentbox` exits with status 2, starts nothing and prints one line on stderr when:
 
@@ -128,10 +157,17 @@ nothing before `harness setup` has installed `srt` in `~/.local/bin`.
 - `~/.local/bin/srt` is not an executable file; the line names `harness setup`;
 - the frontend's settings file, or for `claude` the override, is not a file; the line names the
   file and `harness install --apply`;
-- `command -v` finds no program of the frontend's name;
+- `command -v` finds no program of the frontend's name on the `PATH` without the cmux entries;
+- what `command -v` gives does not start with `/`: a shell function, for example a bash function
+  that the caller exports and that macOS's `/bin/sh` imports, or, where `/bin/sh` is `dash`, a
+  program in a relative `PATH` entry; the line names the program and what was found;
 - the frontend is `claude` and an argument is `--settings` or starts with `--settings=`: Claude
   Code keeps only the last `--settings`, so the caller's would replace the override and turn
-  Claude Code's own sandbox on again. More settings go in the user settings instead.
+  Claude Code's own sandbox on again. More settings go in the user settings instead;
+- `mktemp` cannot make the run directory, for example because `$TMPDIR` is not a directory; the
+  line names the directory.
+
+A refused run makes no run directory.
 
 `agentbox -h` and `agentbox --help` print the usage and exit 0.
 
@@ -202,18 +238,23 @@ It runs four classes of probes for each chosen frontend:
 
 | class | ids | how it runs | what it asks |
 |:--|:--|:--|:--|
-| listener | `L:<port>` | `curl` under `srt` | does each TCP listener on `127.0.0.1`, on `::1` or on every interface answer 401 or 403 |
+| listener | `L:<port>`, `L:<port>/path` | `curl` under `srt` | does each TCP listener on `127.0.0.1`, on `::1` or on every interface answer 401, 403 or 407 |
 | read and write | R1–R8, W1–W14 | `/bin/sh -c` under `srt` | can a command read a secret, or write a hook, a launch agent, a shell start file or another frontend's state |
 | network and process | N1–N9, X1–X8 | `/bin/sh -c` under `srt` | which hosts it reaches; can it open an app, send an Apple Event, mount, submit a launchd job, signal a process outside or start a sandbox of its own |
 | frontend | F1–F7 | the frontend under `agentbox` | does it start, do its tools run inside the sandbox, does its own file tool read outside, does it reach Kaimon, and do its own gates hold |
 
 The script lists the listeners with `lsof -nP -iTCP -sTCP:LISTEN`, outside `srt`, before the other
 probes. It asks a listener on every interface (`*:<port>`) at `127.0.0.1:<port>`, and each
-address and port once. A shell probe runs as
+address and port once, at `/`. OpenCode's server takes a password, `OPENCODE_SERVER_PASSWORD`, and
+`/` of it can answer without one, so a listener whose command is `opencode` is also asked at
+`/path`, a route that OpenCode's binary names, in a row `L:<port>/path`. A listener answers as the
+policy means with 401, 403 or 407: 407 is a proxy's request for authentication, as `srt`'s own
+proxies give it. A shell probe runs as
 `~/.local/bin/srt --settings ~/.config/research-harness/sandbox/<policy name>.json -- /bin/sh -c <probe>`
 from `~/Research`, so its boundary is the settings file alone. A frontend probe runs the
 frontend's non-interactive form under `agentbox`: `claude -p`, `opencode run --auto`, `omp -p` or
-`agy -p --dangerously-skip-permissions`; past `--timeout` it is stopped with its process group.
+`agy --dangerously-skip-permissions -p`, with the prompt as the value of `-p`; past `--timeout` it
+is stopped with its process group.
 Every probe is harmless where the sandbox fails to stop it: a read prints a count, never content;
 an append opens the file and writes nothing; a probe that creates a file deletes it. After each
 frontend's shell probes, the script removes the launchd job of X4 and unmounts the devfs of X3
@@ -229,13 +270,18 @@ Each probe gets one verdict:
 | `absent` | the file or directory that the probe names does not exist, so the probe does not run |
 | `skipped` | the probe does not apply: R8 for `agy`, X5 with no listener on port 2828 of `127.0.0.1` or of every interface, the frontend probes with `--no-model` or with no program on the `PATH`, F6 with no plain `opencode` listening |
 | `timeout` | the probe ran past its limit |
+| `void` | F3, which expects a word to be missing, where F1 of the same frontend is not `match`: a frontend that never started also lacks the word, so the result proves nothing; its detail is `F1 shows no start` |
 | an observation | F5 records the exit status of `agy --sandbox`, and F7 whether `~/.omp/agent/config.yml` changed during F1–F4 of `omp`: `unchanged`, `changed`, or `absent` where the file exists neither before nor after |
 
 The expected value is the policy's intent, not what the current files do. So a `MISMATCH` is a
 finding for the policy, the settings files or the launcher, and a run of a policy with a known
-gap exits 1. The script writes `report.tsv`, with the columns `frontend`, `id`, `expected`,
-`got`, `verdict` and `detail`, and `report.md`, the same rows as a table, the count of each
-verdict and the manual steps: change the model once under `agentbox omp`, and, where F6 was
-skipped because no plain `opencode` listened, run it again with a plain `opencode` in another
-terminal. It prints the path of `report.md` last, and exits 0 when no probe is `MISMATCH` or
-`timeout`, and 1 otherwise.
+gap exits 1. A probe's output goes into the `detail` of its row on one line: whole up to 200
+characters, else its first and its last 100 characters joined by ` … `, so a failure keeps its
+cause and its last state. The script writes `report.tsv`, every row with the columns `frontend`,
+`id`, `expected`, `got`, `verdict` and `detail`, and `report.md`: the rows other than `L:` as a
+table; a section `## Listeners` with one line per command, status and verdict of the `L:` rows,
+which names the number of ports, the ports in numeric order and the frontends; the count of each
+verdict over every row in `## Counts`; and the manual steps: change the model once under
+`agentbox omp`, and, where F6 was skipped because no plain `opencode` listened, run it again with
+a plain `opencode` in another terminal. It prints the path of `report.md` last, and exits 0 when
+no probe is `MISMATCH` or `timeout`, and 1 otherwise; a `void` alone does not make it 1.

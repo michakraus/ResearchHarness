@@ -663,7 +663,8 @@ rendered settings template the `WebFetch(domain:…)` rules of `permissions.allo
 matches. `install`, `render` of the settings template and `settings` call it. The module exits
 with status 2 in three cases: a file breaks the schema, the template holds a host of its own, or
 an `allowedDomains` entry covers a `fetch` host. Its cases check each rule, each of these exits,
-and that an overlay changes no file of OpenCode or oh-my-pi. The profile's loader refuses the retired profile key `extra_domain`.
+and that an overlay changes no file of OpenCode or oh-my-pi. The profile's loader refuses the
+retired profile key `extra_domain`.
 [Adapting the profile](../profile.md#the-network-overlay) describes the keys.
 
 ## `sandbox.py`
