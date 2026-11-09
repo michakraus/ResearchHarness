@@ -5,7 +5,8 @@
 
 # The read limit: srt denies reads of the whole home directory and allows these paths again. A
 # path that the template's `denyRead` or `credentials.files` names stays hidden inside them, as a
-# deny inside an allowed path wins in srt.
+# deny inside an allowed path wins in srt, unless a frontend's `own` below names it, or its
+# `read_files` names a file inside it.
 [read]
 allow = [
     "~/Research",
@@ -28,25 +29,37 @@ allow = [
 #               template's `allowWrite` lacks, so that `allowWrite` ends with it where no
 #               temporary directory follows
 #   deny_write  write denies after the template's
-#   own         the template's deny entries that the frontend itself reads and writes, and which
-#               its file therefore leaves out of `denyWrite` and `denyRead`
+#   own         the template's deny entries that the frontend itself reads and writes, its own
+#               credential files by name; its file leaves them out of `denyWrite` and `denyRead`
+#               and adds them to `allowRead`
+#   read_files  files below a read deny directory that the frontend reads and does not write; its
+#               file adds them to `allowRead` and writes the directory as the glob `<directory>/*`,
+#               which a file allow pierces in srt
 
 [frontend.claude]
 state = ["~/.claude", "~/.cache/claude", "~/.claude.json"]
 deny_write = []
-own = ["~/.claude.json"]
+own = ["~/.claude.json", "~/.claude/.credentials.json"]
+read_files = []
 
 [frontend.opencode]
 state = ["~/.local/share/opencode", "~/.local/state/opencode", "~/.cache/opencode"]
 deny_write = []
-own = []
+own = ["~/.local/share/opencode/auth.json", "~/.local/share/opencode/mcp-auth.json"]
+read_files = [
+    "~/.config/api-keys/gwdg-token",
+    "~/.config/api-keys/opendesign-token",
+    "~/.config/api-keys/tokenharbor-token",
+]
 
 [frontend.omp]
 state = ["~/.omp"]
 deny_write = ["~/.omp/agent/config.yml", "~/.omp/agent/extensions"]
-own = []
+own = ["~/.omp/agent/agent.db", "~/.omp/agent/agent.db-wal", "~/.omp/agent/.env"]
+read_files = []
 
 [frontend.antigravity]
 state = ["~/.gemini"]
 deny_write = []
 own = []
+read_files = []

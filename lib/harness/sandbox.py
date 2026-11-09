@@ -5,8 +5,8 @@ settings and from sandbox/policy.toml.
 `[setup]` chooses, `~/.config/research-harness/sandbox/<frontend>.json` (`plan_files`). The
 template's `sandbox` section stays the source of the shared lists; the policy file holds only what
 `srt` adds: the read limit's `allow` list, and per frontend its `state` paths, its extra
-`deny_write` paths and its `own` paths, the template's deny entries that it reads and writes
-itself.
+`deny_write` paths, its `own` paths, the template's deny entries that it reads and writes itself,
+and its `read_files`, files below a read deny directory that it reads and does not write.
 
 `srt_settings` gives one frontend's object, as docs/src/components/sandbox.md describes:
 
@@ -17,11 +17,17 @@ itself.
                              `state` path; then the frontend's `state`; then `tmpdir`, when given
   filesystem.denyWrite       the template's, without the frontend's `own`; then its `deny_write`
   filesystem.denyRead        the home directory; then the template's; then each path of
-                             `credentials.files`; without the frontend's `own`
-  filesystem.allowRead       the policy's `read.allow`; then the frontend's `state`
+                             `credentials.files`; without the frontend's `own`; each literal
+                             entry, other than the home directory, strictly above a path of the
+                             frontend's `read_files` written as the entry followed by `/*`
+  filesystem.allowRead       the policy's `read.allow`; then the frontend's `state`; then its
+                             `own`; then its `read_files`
 
 Every `~` and `~/` prefix becomes the home directory, a list holds no entry twice, and the first
-occurrence keeps its place. "At or below" compares whole path components.
+occurrence keeps its place. "At or below" compares whole path components. A `read_files` path
+that is itself an entry of `denyRead`, compared as a path, exits 2. srt lets a file allow pierce
+a glob read deny, and not a literal one inside a read allow; it reads `D/**` as the literal `D`,
+so the glob is `D/*`. A glob entry, one that holds `*`, `?`, `[` or `]`, stays as it is.
 
 With at least one frontend chosen, `plan_files` also plans the launcher sandbox/agentbox at
 `~/.local/bin/agentbox`, mode 755, which starts a frontend under `srt` with its file, and, with
@@ -53,7 +59,9 @@ from . import profile as profile_module
 POLICY = REPO / "sandbox" / "policy.toml"
 # The directory of the installed files, relative to the home directory.
 DIRECTORY = pathlib.PurePosixPath(".config", "research-harness", "sandbox")
-LISTS = ("state", "deny_write", "own")
+LISTS = ("state", "deny_write", "own", "read_files")
+# The characters that make a path entry a glob for srt.
+GLOB_CHARS = "*?[]"
 # The launcher that starts a CLI frontend under srt, and where the install puts it, relative to the
 # home directory: a directory that a session cannot write.
 LAUNCHER = REPO / "sandbox" / "agentbox"
@@ -79,6 +87,7 @@ class FrontendPolicy:
     state: tuple[str, ...]
     deny_write: tuple[str, ...]
     own: tuple[str, ...]
+    read_files: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -210,18 +219,27 @@ def srt_settings(
         return [expand(p, home) for p in entries]
 
     mine = policy.frontends[frontend]
-    state, own = expanded(mine.state), set(expanded(mine.own))
+    state, own, read_files = expanded(mine.state), expanded(mine.own), expanded(mine.read_files)
     others = expanded([p for name, f in policy.frontends.items() if name != frontend for p in f.state])
     binding = section(sandbox, "network").get("allowLocalBinding")
     if not isinstance(binding, bool):
         raise HarnessError("the sandbox object's network.allowLocalBinding is not true or false")
     allow_write = [p for p in expanded(strings(sandbox, "filesystem", "allowWrite")) if not below(p, others)]
     deny_write = [p for p in expanded(strings(sandbox, "filesystem", "denyWrite")) if p not in own]
-    deny_read = [
-        str(home),
-        *expanded(strings(sandbox, "filesystem", "denyRead")),
-        *expanded(credential_paths(sandbox)),
-    ]
+    deny_read = read_globs(
+        frontend,
+        [
+            p
+            for p in [
+                str(home),
+                *expanded(strings(sandbox, "filesystem", "denyRead")),
+                *expanded(credential_paths(sandbox)),
+            ]
+            if p not in own
+        ],
+        mine.read_files,
+        home,
+    )
     return {
         "network": {
             "allowedDomains": unique(strings(sandbox, "network", "allowedDomains")),
@@ -231,10 +249,37 @@ def srt_settings(
         "filesystem": {
             "allowWrite": unique([*allow_write, *state, *([tmpdir] if tmpdir is not None else [])]),
             "denyWrite": unique([*deny_write, *expanded(mine.deny_write)]),
-            "denyRead": unique([p for p in deny_read if p not in own]),
-            "allowRead": unique([*expanded(policy.read.allow), *state]),
+            "denyRead": unique(deny_read),
+            "allowRead": unique([*expanded(policy.read.allow), *state, *own, *read_files]),
         },
     }
+
+
+def read_globs(
+    frontend: str, deny_read: list[str], read_files: Sequence[str], home: pathlib.Path
+) -> list[str]:
+    """`deny_read` with each literal entry, other than `home`, that lies above a path of
+    `read_files`, the frontend's list as the policy spells it, written as the entry followed by
+    `/*`, in its place. Paths compare as `PurePosixPath`s after `~` expansion, so `~/x/`, `~//x`
+    and `~/./x` are `~/x`, and the glob is written from that form. srt lets a file allow pierce a
+    glob deny, but emits a literal deny nested in a read allow after the allows, where it wins; and
+    it strips a trailing `/**` before it tells a glob from a literal, so the glob ends in `/*`,
+    which covers everything below the entry and not the entry itself. Exits 2 on a path that is
+    itself an entry of `deny_read`, so "above" is strictly above."""
+    files = {pathlib.PurePosixPath(expand(p, home)): p for p in read_files}
+    denies = {pathlib.PurePosixPath(entry) for entry in deny_read}
+    if equal := [p for path, p in files.items() if path in denies]:
+        raise HarnessError(
+            f"the policy's frontend.{frontend}.read_files entry {equal[0]!r} is itself a read deny entry; "
+            f"frontend.{frontend}.own lifts an entry"
+        )
+
+    def above(entry: str) -> bool:
+        literal = not any(c in entry for c in GLOB_CHARS)
+        top = pathlib.PurePosixPath(entry)
+        return literal and top != pathlib.PurePosixPath(home) and any(below(str(p), [entry]) for p in files)
+
+    return [f"{pathlib.PurePosixPath(entry)}/*" if above(entry) else entry for entry in deny_read]
 
 
 def real_tmpdir() -> str | None:
@@ -294,28 +339,45 @@ allow = ["~/Research", "~/.config"]
 state = ["~/.claude", "~/.claude.json", "~/.cache/claude"]
 deny_write = []
 own = ["~/.claude.json"]
+read_files = []
 
 [frontend.opencode]
 state = ["~/.local/share/opencode"]
 deny_write = ["~/.local/share/opencode/x"]
-own = []
+own = ["~/.local/share/opencode/auth.json"]
+read_files = ["~/.config/keys/a", "~/.config/keys/b", "~/.local/x/f", "~/.box*/k"]
 
 [frontend.omp]
 state = ["~/.omp"]
 deny_write = []
 own = []
+read_files = []
 
 [frontend.antigravity]
 state = ["~/.gemini"]
 deny_write = []
 own = []
+read_files = []
 """
+# The fixture's table of omp, which the refusals of `read_files` change.
+FIXTURE_OMP = '[frontend.omp]\nstate = ["~/.omp"]\ndeny_write = []\nown = []\nread_files = []\n'
+# The credential files that each frontend reads and writes itself, and the provider tokens that
+# OpenCode reads, as the shipped policy and template render them with the home directory /h.
+SHIPPED_OWN = {
+    "claude": ("/h/.claude.json", "/h/.claude/.credentials.json"),
+    "opencode": ("/h/.local/share/opencode/auth.json", "/h/.local/share/opencode/mcp-auth.json"),
+    "omp": ("/h/.omp/agent/agent.db", "/h/.omp/agent/agent.db-wal", "/h/.omp/agent/.env"),
+    "antigravity": (),
+}
+SHIPPED_KEYS = "/h/.config/api-keys"
+SHIPPED_TOKENS = tuple(f"{SHIPPED_KEYS}/{n}" for n in ("gwdg-token", "opendesign-token", "tokenharbor-token"))
 
 
 def fixture_sandbox() -> dict[str, Any]:
     """A `sandbox` object for the cases: a name that shares a prefix with a state path
     (`~/.claudex`), a credential path that `denyRead` holds and one that it lacks, a glob, the
-    home directory itself, and an absolute path."""
+    home directory itself, an absolute path, a read deny directory above two of opencode's
+    `read_files`, a read deny glob above another, and opencode's `own` file."""
     return {
         "enabled": True,
         "network": {
@@ -334,7 +396,14 @@ def fixture_sandbox() -> dict[str, Any]:
                 "~/.omp/x",
             ],
             "denyWrite": ["~/.claude.json", "~/.ssh", "~/Research/**/.git/hooks", "~/.config"],
-            "denyRead": ["~", "~/.ssh", "~/.claude.json"],
+            "denyRead": [
+                "~",
+                "~/.ssh",
+                "~/.config/keys",
+                "~/.claude.json",
+                "~/.box*",
+                "~/.local/share/opencode/auth.json",
+            ],
         },
         "credentials": {
             "files": [
@@ -388,9 +457,25 @@ def policy_cases(check: Check, root: pathlib.Path) -> None:
         and "~/.claude" in policy.frontends["claude"].state
         and "~/.omp" in policy.frontends["omp"].state
         and "~/.gemini" in policy.frontends["antigravity"].state
-        and {"~/.omp/agent/config.yml", "~/.omp/agent/extensions"} <= set(policy.frontends["omp"].deny_write)
-        and policy.frontends["claude"].own == ("~/.claude.json",),
+        and {"~/.omp/agent/config.yml", "~/.omp/agent/extensions"} <= set(policy.frontends["omp"].deny_write),
         f"sandbox/policy.toml loads with the four frontends and their paths: {sorted(policy.frontends)}",
+    )
+    owned = {name: f.own for name, f in policy.frontends.items()}
+    check(
+        owned == {name: tuple(f"~{p[2:]}" for p in paths) for name, paths in SHIPPED_OWN.items()},
+        f"sandbox/policy.toml: each frontend's own are its credential files: {owned}",
+    )
+    read_files = {name: f.read_files for name, f in policy.frontends.items()}
+    check(
+        read_files
+        == {
+            "claude": (),
+            "opencode": tuple(f"~{p[2:]}" for p in SHIPPED_TOKENS),
+            "omp": (),
+            "antigravity": (),
+        },
+        f"sandbox/policy.toml: opencode reads its three provider tokens, no other frontend a file: "
+        f"{read_files}",
     )
 
     def refuses(change: Callable[[], object], error: type[Exception]) -> bool:
@@ -423,7 +508,7 @@ def policy_cases(check: Check, root: pathlib.Path) -> None:
         ("read that is no table", text.replace("[read]\nallow =", "read =", 1), ["read is not a table"]),
         (
             "a frontend of no adapter",
-            text + "[frontend.other]\nstate = []\ndeny_write = []\nown = []\n",
+            text + "[frontend.other]\nstate = []\ndeny_write = []\nown = []\nread_files = []\n",
             ["frontend.other"],
         ),
         ("a key stat", text.replace('state = ["~/.omp"]', 'stat = ["~/.omp"]', 1), ["frontend.omp.stat"]),
@@ -460,6 +545,26 @@ def policy_cases(check: Check, root: pathlib.Path) -> None:
             ["frontend.opencode.deny_write"],
         ),
         ("text that is not TOML", "[read\n", ["is not TOML"]),
+        (
+            "no read_files in [frontend.omp]",
+            text.replace(FIXTURE_OMP, FIXTURE_OMP.replace("read_files = []\n", ""), 1),
+            ["frontend.omp.read_files"],
+        ),
+        (
+            "a path /etc/x in read_files",
+            text.replace(FIXTURE_OMP, FIXTURE_OMP.replace("read_files = []", 'read_files = ["/etc/x"]'), 1),
+            ["frontend.omp.read_files", "'/etc/x'"],
+        ),
+        (
+            "a path ~/../x in read_files",
+            text.replace(FIXTURE_OMP, FIXTURE_OMP.replace("read_files = []", 'read_files = ["~/../x"]'), 1),
+            ["frontend.omp.read_files", "'~/../x'", ".."],
+        ),
+        (
+            "a number in read_files",
+            text.replace(FIXTURE_OMP, FIXTURE_OMP.replace("read_files = []", "read_files = [1]"), 1),
+            ["frontend.omp.read_files is not a list of strings"],
+        ),
     ]:
         path = root / "policy.toml"
         path.write_text(body)
@@ -531,7 +636,19 @@ def settings_cases(check: Check, root: pathlib.Path) -> None:
             ],
         ),
         ("claude", fs, "denyWrite", ["/h/.ssh", "/h/Research/**/.git/hooks", "/h/.config"]),
-        ("claude", fs, "denyRead", ["/h", "/h/.ssh", "/h/.netrc"]),
+        (
+            "claude",
+            fs,
+            "denyRead",
+            [
+                "/h",
+                "/h/.ssh",
+                "/h/.config/keys",
+                "/h/.box*",
+                "/h/.local/share/opencode/auth.json",
+                "/h/.netrc",
+            ],
+        ),
         (
             "claude",
             fs,
@@ -556,10 +673,74 @@ def settings_cases(check: Check, root: pathlib.Path) -> None:
                 "/h/.local/share/opencode/x",
             ],
         ),
-        ("opencode", opencode, "denyRead", ["/h", "/h/.ssh", "/h/.claude.json", "/h/.netrc"]),
-        ("opencode", opencode, "allowRead", ["/h/Research", "/h/.config", "/h/.local/share/opencode"]),
+        (
+            "opencode",
+            opencode,
+            "denyRead",
+            ["/h", "/h/.ssh", "/h/.config/keys/*", "/h/.claude.json", "/h/.box*", "/h/.netrc"],
+        ),
+        (
+            "opencode",
+            opencode,
+            "allowRead",
+            [
+                "/h/Research",
+                "/h/.config",
+                "/h/.local/share/opencode",
+                "/h/.local/share/opencode/auth.json",
+                "/h/.config/keys/a",
+                "/h/.config/keys/b",
+                "/h/.local/x/f",
+                "/h/.box*/k",
+            ],
+        ),
     ]:
         check(got[key] == want, f"{name}'s {key}: {got[key]}")
+    equal = root / "equal-policy.toml"
+    equal.write_text(FIXTURE_POLICY.replace('"~/.local/x/f"', '"~/.config/keys"', 1))
+    message = refused(lambda: srt_settings("opencode", sandbox, load_policy(equal), home, "/t"))
+    check(
+        message is not None
+        and "frontend.opencode.read_files" in message
+        and "'~/.config/keys'" in message
+        and "frontend.opencode.own" in message,
+        f"a read_files path that is a read deny entry itself exits 2 and names the path and own: {message!r}",
+    )
+    entries = ["/h", "/h/q?", "/h/b[1", "/h/c]", "/h/d"]
+    globbed = read_globs("opencode", entries, [f"~{e[2:]}/k" for e in entries[1:]], home)
+    check(
+        globbed == ["/h", "/h/q?", "/h/b[1", "/h/c]", "/h/d/*"],
+        f"a read deny entry that holds ?, [ or ] is a glob and stays as it is: {globbed}",
+    )
+    globbed = read_globs("opencode", ["/h", "/h/d"], ["~/d/a", "~/d/b"], home)
+    check(
+        globbed == ["/h", "/h/d/*"],
+        f"two read_files paths below one read deny entry give one glob in its place: {globbed}",
+    )
+    for spelling in ["~/.config/keys/", "~/.config//keys", "~/.config/./keys", "~/", "~/.", "~/.box*"]:
+        equal.write_text(FIXTURE_POLICY.replace('"~/.local/x/f"', f'"{spelling}"', 1))
+        message = refused(lambda: srt_settings("opencode", sandbox, load_policy(equal), home, "/t"))
+        check(
+            message is not None and f"{spelling!r}" in message and "frontend.opencode.own" in message,
+            f"a read_files path {spelling}, a read deny entry as a path, exits 2 and names it: {message!r}",
+        )
+    spelled = fixture_sandbox()
+    spelled["filesystem"]["denyRead"] = ["~/", "~/.config/keys/", "~/.config/key"]
+    got = cast("dict[str, list[str]]", srt_settings("opencode", spelled, policy, home, "/t")["filesystem"])[
+        "denyRead"
+    ]
+    check(
+        got[:4] == ["/h", "/h/", "/h/.config/keys/*", "/h/.config/key"],
+        f"a read deny entry ~/ is the home directory and stays; ~/.config/keys/ is the glob "
+        f"/h/.config/keys/*; ~/.config/key, a prefix of the read_files paths, stays literal: {got}",
+    )
+    equal.write_text(FIXTURE_POLICY.replace('"~/.local/x/f"', '"~/.config/keys"', 1))
+    message = refused(lambda: srt_settings("opencode", spelled, load_policy(equal), home, "/t"))
+    check(
+        message is not None and "'~/.config/keys'" in message,
+        f"a read_files path ~/.config/keys, equal as a path to the read deny entry ~/.config/keys/, "
+        f"exits 2: {message!r}",
+    )
 
     plain = fixture_sandbox()
     del plain["network"]["deniedDomains"]
@@ -636,11 +817,34 @@ def template_cases(check: Check) -> None:
     for name, s in rendered.items():
         fs = cast("dict[str, list[str]]", s["filesystem"])
         mine = ["/h" + p[1:] for p in policy.frontends[name].own]
-        counts = {c: fs["denyRead"].count(c) for c in credentials}
+        counts = {c: fs["denyRead"].count(c) + fs["denyRead"].count(f"{c}/*") for c in credentials}
         check(
             all(k == (0 if c in mine else 1) for c, k in counts.items()),
-            f"{name}: each credential path is a read deny once, its own none: "
+            f"{name}: each credential path is a read deny once, as itself or as its glob, its own none: "
             f"{ {c: k for c, k in counts.items() if k != 1} }",
+        )
+        others = [p for other, paths in SHIPPED_OWN.items() if other != name for p in paths]
+        check(
+            all(p in fs["allowRead"] and p not in fs["denyRead"] + fs["denyWrite"] for p in SHIPPED_OWN[name])
+            and all(p in fs["denyRead"] for p in others),
+            f"{name}: its own credential files are read allows and in no deny list, every other frontend's "
+            f"a read deny: {[p for p in SHIPPED_OWN[name] if p in fs['denyRead']]}, "
+            f"{[p for p in others if p not in fs['denyRead']]}",
+        )
+        check(
+            {"/h/**/.env", "/h/**/.env.*", "/h/.cache/gh", "/h/.cache/kaimon/sessions.json"}
+            <= set(fs["denyRead"])
+            and "/h/Research/**/.githooks" in fs["denyWrite"],
+            f"{name}: reads of .env files, ~/.cache/gh and Kaimon's sessions.json and writes of .githooks "
+            f"are denied: {fs['denyRead'][-6:]}, {fs['denyWrite'][-4:]}",
+        )
+        check(
+            fs["denyRead"][0] == "/h",
+            f"{name}: the home directory is the first read deny: {fs['denyRead'][0]}",
+        )
+        check(
+            ("/h/.cache/claude" in fs["allowWrite"]) == (name == "claude"),
+            f"{name}: only claude writes ~/.cache/claude: {'/h/.cache/claude' in fs['allowWrite']}",
         )
         check(
             not [v for v in values(s) if isinstance(v, str) and v.startswith("~")],
@@ -666,6 +870,32 @@ def template_cases(check: Check) -> None:
     opencode = cast("dict[str, list[str]]", rendered["opencode"]["filesystem"])
     hits = [p for key in ("allowWrite", "allowRead") for p in opencode[key] if below(p, roots)]
     check(not hits, f"opencode writes and reads nothing at or below another frontend's state: {hits}")
+    filesystem = template["filesystem"]
+    check(
+        "~/.cache/claude" not in filesystem["allowWrite"]
+        and "~/Research/**/.githooks" in filesystem["denyWrite"]
+        and {"~/**/.env", "~/**/.env.*", "~/.cache/gh", "~/.cache/kaimon/sessions.json"}
+        <= set(filesystem["denyRead"]),
+        "the template denies reads of .env files, ~/.cache/gh and Kaimon's sessions.json and writes of "
+        "~/Research/**/.githooks, and allows no write of ~/.cache/claude",
+    )
+    literal = [p for p in opencode["denyRead"] if p.startswith(SHIPPED_KEYS)]
+    # antigravity has no own entry, and opencode's follow ~/.config/api-keys, so both put it at one index.
+    antigravity = cast("dict[str, list[str]]", rendered["antigravity"]["filesystem"])
+    check(
+        literal == [f"{SHIPPED_KEYS}/*"]
+        and opencode["denyRead"].index(literal[0]) == antigravity["denyRead"].index(SHIPPED_KEYS)
+        and all(t in opencode["allowRead"] for t in SHIPPED_TOKENS),
+        f"opencode: ~/.config/api-keys is the read deny glob ~/.config/api-keys/* in its place, and its "
+        f"three tokens are read allows: {literal}",
+    )
+    for name in ("claude", "omp", "antigravity"):
+        fs = cast("dict[str, list[str]]", rendered[name]["filesystem"])
+        check(
+            [p for p in fs["denyRead"] if p.startswith(SHIPPED_KEYS)] == [SHIPPED_KEYS]
+            and not [t for t in SHIPPED_TOKENS if t in fs["allowRead"]],
+            f"{name}: ~/.config/api-keys stays a literal read deny, and no token is a read allow",
+        )
 
 
 # The script of the cases' srt: it writes its arguments, each ended by a NUL, to srt-args, its

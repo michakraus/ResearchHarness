@@ -814,7 +814,6 @@
         "/private/tmp",
         "~/Research",
         "~/.julia",
-        "~/.cache/claude",
         "~/.cache/pocl",
         "~/Library/Application Support/rtk",
         "~/.local/share/rtk",
@@ -861,6 +860,7 @@
         "~/.ssh",
         "~/Research/**/.git/hooks",
         "~/Research/**/.git/config",
+        "~/Research/**/.githooks",
         "~/Research/**/.claude"
       ],
       "denyRead": [
@@ -882,7 +882,11 @@
         "~/.omp/agent/agent.db",
         "~/.omp/agent/agent.db-wal",
         "~/.local/share/opencode/auth.json",
-        "~/.local/share/opencode/mcp-auth.json"
+        "~/.local/share/opencode/mcp-auth.json",
+        "~/**/.env",
+        "~/**/.env.*",
+        "~/.cache/gh",
+        "~/.cache/kaimon/sessions.json"
       ]
     },
     "credentials": {

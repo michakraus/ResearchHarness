@@ -43,6 +43,12 @@ the installed template. A later version can behave differently.
   network allowlist, and not the write deny list that holds the `Edit` denies. The permission
   lists and the hooks still apply. A command with another part, such as a pipe into `cat` or a
   `cd` to another directory, runs inside the sandbox.
+- **A session can write the Julia depot, which Julia outside the sandbox loads later.** The
+  template allows writes to `~/.julia`, so a sandboxed command can change a precompiled cache in
+  `~/.julia/compiled`, and a Julia process that starts outside every sandbox can then load it. This
+  path stays open by decision: Julia needs a writable depot. In `~/.cache` the template allows
+  writes to `~/.cache/pocl` only; the `srt` settings of a frontend add its own cache, such as
+  `~/.cache/claude` for `claude` and `~/.cache/opencode` for `opencode`.
 - **An allowed host takes what a command sends to it.** The network allowlist names hosts, not
   methods, so a sandboxed command can send a write to any host of `allowedDomains`. The harness
   list holds no `archive.org`, because its `*.archive.org` form would cover `web.archive.org`,
