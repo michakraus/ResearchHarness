@@ -512,7 +512,7 @@
 - kind: defect
 - found: 2026-10-29, the critics of the guard core
 
-### K149 · The `gh api` check reads a cluster of short flags such as `-if` or `-iq` as no option, so it can read another endpoint than `gh` sends to.
+### K151 · The `gh api` check reads a cluster of short flags such as `-if` or `-iq` as no option, so it can read another endpoint than `gh` sends to.
 
 - location: `hooks/guard/gh_api_writes.py:150`
 - evidence: `gh` reads `-if V` as `-i` and `-f V`, and `-iq V` as `-i` and `-q V`; `option` takes
