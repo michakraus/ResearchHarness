@@ -162,7 +162,8 @@ a HEAD and a `search/…` endpoint pass. It refuses a DELETE from `gh api` or `g
 `glab api` call passes. A review, an inline comment, a reply, and a comment on a pull request, an
 issue or a commit pass in a repository of an own organisation, so the review agents can post
 there. The endpoint must be `repos/<owner>/<repo>/…` with an `<owner>` of the profile's `org` list,
-compared without case, and the call must name no `--hostname`. The same write to any other
+compared without case, and the call must name no `--hostname`; the check does not read
+`GH_HOST`, so a host that the environment names is beyond its reach. The same write to any other
 repository asks, because an agent can post a secret in a comment on any public repository. It
 also asks when the check cannot read the repository: a placeholder such as `{owner}`, an owner or
 a repository name with a character that GitHub does not allow in it, such as a `%`, and a
@@ -348,10 +349,14 @@ Kaimon call, that holds one of these forms.
 | Anthropic, OpenAI and providers of the same form | `sk-` and 20 or more of `[A-Za-z0-9_-]` |
 
 The check reads each text as it is and percent-decoded, with the case kept, and a prefix counts
-only where no letter, digit, `_` or `-` stands right before it. A prefix alone, a shorter body,
-an upper-case prefix, a word such as `task-…` and a reference such as `$GH_TOKEN` pass. The reason
-names the form, and holds neither the token nor the command, so the refusal does not show the
-token again. The reason tells the agent to name the token by its variable.
+only where no ASCII letter, digit, `_` or `-` stands right before it. A prefix alone, a shorter
+body, an upper-case prefix, a word such as `task-…` and a reference such as `$GH_TOKEN` pass. The
+reason names the form, and holds neither the token nor the command, so the token check's refusal
+does not show the token again. The reason tells the agent to name the token by its variable. The
+token check stands after the web check and the `gh api` check in each list of checks, and the
+guard answers the first refusal; so where one of them refuses the call first, such as the web
+check on a parameter `access_token=` or the `gh api` check on a DELETE, its reason can quote the
+token.
 
 The check prevents an accident and is no boundary. A token that is encoded in another way, split
 into parts, given without its prefix, or read by a script from a file passes it, and so does a

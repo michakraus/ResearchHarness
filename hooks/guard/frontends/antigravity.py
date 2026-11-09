@@ -33,7 +33,8 @@ name, which only the path list checks.
 THE CHECKS: the path list, `guard-paths.json` two directories above this package, as
 `harness install` renders it, on every call (`path_list`); on a shell call also the ten shell
 checks and the work-tree check of `sandbox_semantics`, whose other shapes describe Claude Code's
-sandbox alone; on an `mcp` call also the Kaimon check, the web check and the token check.
+sandbox alone; on an `mcp` call also the Kaimon check, the web check and the token check, which
+read the string arguments of a Kaimon or a web call: a call to another server carries none.
 
 A payload that the table cannot read is refused: bytes that are not UTF-8, a text that `jsonio`
 refuses, no object `toolCall`, no string `name`, `args` that are no object, a `run_command` without

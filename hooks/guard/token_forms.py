@@ -6,10 +6,11 @@ reads each text as it is and percent-decoded, with the case kept, and refuses:
   * a shell call whose command holds a token of FORMS;
   * an `mcp` call, such as a Kaimon or a web call, any of whose string arguments holds one.
 
-A form counts only where no letter, digit, `_` or `-` stands right before its prefix, so a word
-such as `task-…` holds no `sk-` key. A prefix alone, a shorter body, an upper-case prefix and a
-reference such as `$GH_TOKEN` pass. The check prevents an accident and is no boundary: a token that
-is encoded otherwise, split, given without its prefix, or read by a script from a file passes it.
+A form counts only where no ASCII letter, digit, `_` or `-` stands right before its prefix, so a
+word such as `task-…` holds no `sk-` key. A prefix alone, a shorter body, an upper-case prefix
+and a reference such as `$GH_TOKEN` pass. The check prevents an accident and is no boundary: a
+token that is encoded otherwise, split, given without its prefix, or read by a script from a file
+passes it.
 """
 
 import re
@@ -17,7 +18,7 @@ from urllib.parse import unquote
 
 from .contract import PASS, Call, Verdict
 
-# What stands right before a prefix: no letter, digit, `_` or `-`.
+# What stands right before a prefix: no ASCII letter, digit, `_` or `-`.
 BOUNDARY = r"(?<![A-Za-z0-9_-])"
 
 # (form, pattern): the published token forms of GitHub, GitLab and the providers of `sk-` keys.

@@ -494,21 +494,43 @@
 
 ### K118 · The `gh api` check finds no call behind `env` or an assignment, and the archive check none behind `env`.
 
-- location: `hooks/guard/gh_api_writes.py:204`
+- location: `hooks/guard/gh_api_writes.py:355`
 - evidence: the `gh api` check needs the tool as a part's first word, and the archive check skips
   only assignments before `git`, so `env gh api -X DELETE x`, `GH_HOST=x gh api -X DELETE x` and
-  `env git archive -o x HEAD` pass the guard.
+  `env git archive -o x HEAD` pass the guard. The same holds for the own-organisation rule of the
+  review and comment writes: `env gh api repos/other-org/r/issues/3/comments -f body=x`,
+  `A=1 gh api …` and `GH_HOST=example.com gh api …` with the same arguments pass.
 - kind: defect
 - found: 2026-10-29, the critics of the guard core
 
 ### K119 · The `gh api` check answers the first part that does not pass, so an `ask` before a `deny` is `ask`.
 
-- location: `hooks/guard/gh_api_writes.py:200`
+- location: `hooks/guard/gh_api_writes.py:369`
 - evidence: `verdict_of` returns at the first part that asks, so
   `gh api -X POST repos/example-org/X/issues && gh api -X DELETE repos/example-org/X` is `ask`, not
   `deny`.
 - kind: defect
 - found: 2026-10-29, the critics of the guard core
+
+### K149 · The `gh api` check reads a cluster of short flags such as `-if` or `-iq` as no option, so it can read another endpoint than `gh` sends to.
+
+- location: `hooks/guard/gh_api_writes.py:150`
+- evidence: `gh` reads `-if V` as `-i` and `-f V`, and `-iq V` as `-i` and `-q V`; `option` takes
+  neither cluster as an option and reads `V` as the endpoint. So
+  `gh api -if repos/own-org/r/issues/3=x/comments repos/other-org/r/issues/3/comments -f body=x`
+  and the same command with `-iq` pass, while the command without the cluster asks.
+- kind: defect
+- found: 2026-11-09, the critics of the own-organisation rule of the `gh api` check
+
+### K150 · Claude Code's guard does not read a `gh api` call behind a leading `rtk`.
+
+- location: `hooks/guard/frontends/claude.py:48`
+- evidence: OpenCode's table checks a command again with a leading `rtk ` removed; Claude Code's
+  does not, so `rtk gh api -X DELETE repos/o/r`, `rtk gh api -X POST repos/o/r/issues -f title=x`
+  and `rtk gh api repos/other-org/r/issues/3/comments -f body=x` pass, while the same commands
+  without `rtk` are denied or ask.
+- kind: defect
+- found: 2026-11-09, the critics of the own-organisation rule of the `gh api` check
 
 ### K121 · What Claude Code does with a `PreToolUse` hook that passes its `timeout` is not measured here.
 

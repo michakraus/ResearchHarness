@@ -367,7 +367,7 @@ each tool call that a glob of `bash.patterns` cannot check:
 
 - `bash`: the shell checks of the guard, the working-tree check of the sandbox check among them,
   and the path list on the words of the command and on its working directory;
-- `mcp__kaimon_<tool>`: the Kaimon check;
+- `mcp__kaimon_<tool>`: the Kaimon, web and token checks;
 - `read` and `grep`: the `deny` list on the path;
 - `edit` and `write`: the `deny` list, then the `edit` list, then the `ask` list, on each path
   that the call names;
@@ -446,9 +446,9 @@ tool that writes or edits a file, so an agent cannot widen its own grants with o
 writes the file gets `ask` from the guard, not `deny`.
 
 The guard hook is the guard package of `hooks/guard/` run with `--from antigravity`: its
-Antigravity table reads each tool call and answers with a decision. It runs the eight shell checks
-and the working-tree check of the sandbox rule on `run_command`, the Kaimon check on a Kaimon
-call, and the `deny` list of `guard-paths.json` on each path argument and each
+Antigravity table reads each tool call and answers with a decision. It runs the ten shell checks
+and the working-tree check of the sandbox rule on `run_command`, the Kaimon, web and token checks
+on a Kaimon call, and the `deny` list of `guard-paths.json` on each path argument and each
 word of a command. A glob in a word, a recursive command, a `cd`, the `Cwd` of a call and the
 `SearchPath` of a search also refuse a directory that holds a path of the list. On `run_command`
 it applies the template's Bash denies and asks, from the lists `bash_deny` and `bash_ask`, to each
