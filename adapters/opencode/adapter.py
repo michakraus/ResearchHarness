@@ -17,6 +17,10 @@ the permission block.
   the Claude Code layer's rules/, RTK.md, instructions/, hooks/ and skills/
                                    -> the same paths        (OpenCode's own copies; frontends.shared:
                                                              the guard package among them)
+  adapters/opencode/skill-sections/<skill>.md
+                                   -> skills/<skill>/SKILL.md (an "Under OpenCode" section between
+                                                             its frontmatter and its body;
+                                                             `skill_sections`)
 
 After the files, the links that an earlier install wrote to ~/.agents/skills/ are removed
 (`skill_links`): OpenCode reads that directory too.
@@ -87,10 +91,12 @@ import stat
 import tempfile
 import tomllib
 import types
+from collections.abc import Callable
 from typing import Any, cast
 from unittest import mock
 
 from harness import REPO, HarnessError, changing, frontends, frontmatter, install, jsonio, outcome, providers
+from harness import cli
 from harness import sources
 from harness import profile as profile_module
 
@@ -100,6 +106,12 @@ TEMPLATES = ["adapters/opencode/opencode.jsonc", "adapters/opencode/plugins/guar
 SOURCE = REPO / "adapters" / "opencode"
 SETTINGS = REPO / "settings" / "settings.proposal.json"
 FIXTURES = SOURCE / "fixtures"
+# Each file <skill>.md here is the "Under OpenCode" section of OpenCode's copy of
+# skills/<skill>/SKILL.md (`skill_sections`).
+SKILL_SECTIONS = SOURCE / "skill-sections"
+
+# The bytes that OPENCODE-DELTA.md may hold: it installs as AGENTS.md and loads into every session.
+DELTA_BUDGET = 5120
 
 # Narrower than the tool list can say. OpenCode's `edit` covers edit, write and patch together,
 # so an agent whose Claude body confines it to one file gets that file as a path rule.
@@ -663,6 +675,32 @@ def interpreted(text: str) -> bytes:
     return (json.dumps(listed, indent=2, ensure_ascii=False) + "\n").encode()
 
 
+def delta_budget(path: pathlib.Path) -> tuple[bool, str]:
+    """Whether the delta at `path` holds at most DELTA_BUDGET bytes, and the line that says so."""
+    size = len(path.read_bytes())
+    return size <= DELTA_BUDGET, f"{path.name} has {size:,} bytes, and its budget is {DELTA_BUDGET:,}"
+
+
+def skill_sections(
+    copies: list[tuple[str, bytes, int | None]], sections: pathlib.Path
+) -> list[tuple[str, bytes, int | None]]:
+    """`copies`, [(installed path, bytes, mode)], with the text of each file `<skill>.md` of
+    `sections` between the frontmatter and the body of skills/<skill>/SKILL.md. A section file
+    whose skill `copies` does not hold is an error: the rule it carries would load nowhere."""
+    index = {dst: i for i, (dst, _, _) in enumerate(copies)}
+    result = list(copies)
+    for path in sorted(sections.glob("*.md")):
+        dst = f"skills/{path.stem}/SKILL.md"
+        if dst not in index:
+            raise HarnessError(f"{path}: the install copies no {dst}, the skill of this section")
+        _, data, mode = copies[index[dst]]
+        if not data.startswith(b"---\n") or (end := data.find(b"\n---\n", 3)) < 0:
+            raise HarnessError(f"{dst}: no frontmatter, after which the section of {path} goes")
+        end += len(b"\n---\n")
+        result[index[dst]] = (dst, data[:end] + b"\n" + path.read_bytes() + data[end:], mode)
+    return result
+
+
 def plan(ctx: types.SimpleNamespace | argparse.Namespace):
     """OpenCode's part of `harness install`, as the docstring of this module says."""
     dest = destination()
@@ -715,9 +753,12 @@ def plan(ctx: types.SimpleNamespace | argparse.Namespace):
             "AGENTS.md from OPENCODE-DELTA.md",
         )
     )
-    # OpenCode's own copies of the Claude Code layer's rules, instructions, guard package and skills.
+    # OpenCode's own copies of the Claude Code layer's rules, instructions, guard package and skills;
+    # a skill with a file in skill-sections/ gets that section.
     claude = ctx.plans["claude"]
-    copies = [(dst, data, None) for dst, _, data in claude.rules] + claude.shared
+    copies = skill_sections(
+        [(dst, data, None) for dst, _, data in claude.rules] + claude.shared, SKILL_SECTIONS
+    )
     files += [
         (dest / dst, frontends.relocate(data, root) if dst.endswith(".md") else data, mode, dst)
         for dst, data, mode in copies
@@ -1187,6 +1228,40 @@ def selftest():
         "relocate rewrites the shared paths and leaves the others",
     )
 
+    # OPENCODE-DELTA.md loads into every session: it holds at most DELTA_BUDGET bytes. A file of
+    # exactly the budget passes, and one of a byte more fails.
+    ok, label = delta_budget(SOURCE / "OPENCODE-DELTA.md")
+    check(ok, label)
+    with tempfile.TemporaryDirectory() as tmp:
+        for size in (DELTA_BUDGET, DELTA_BUDGET + 1):
+            path = pathlib.Path(tmp) / "OPENCODE-DELTA.md"
+            path.write_bytes(b"x" * size)
+            ok, label = delta_budget(path)
+            check(
+                ok == (size == DELTA_BUDGET) and f"{size:,} bytes" in label and f"{DELTA_BUDGET:,}" in label,
+                f"a delta of {size:,} bytes {'passes' if size == DELTA_BUDGET else 'fails'}: {label}",
+            )
+
+    # A section goes after the closing `---` of the skill's frontmatter; a SKILL.md without a
+    # frontmatter that opens and closes has no place for it.
+    with tempfile.TemporaryDirectory() as tmp:
+        (pathlib.Path(tmp) / "s.md").write_bytes(b"## Under OpenCode\n")
+        for data, want in (
+            (b"---\nname: s\n---\n\n# S\n", b"---\nname: s\n---\n\n## Under OpenCode\n\n# S\n"),
+            (b"# S\n---\nname: s\n---\n", None),
+            (b"---\nname: s\n\n# S\n", None),
+        ):
+            try:
+                got = skill_sections([("skills/s/SKILL.md", data, 0o644)], pathlib.Path(tmp))
+            except HarnessError as e:
+                got = str(e)
+            check(
+                got == [("skills/s/SKILL.md", want, 0o644)]
+                if want is not None
+                else isinstance(got, str) and "no frontmatter" in got,
+                f"a section in {data!r}: {got!r}",
+            )
+
     with tempfile.TemporaryDirectory() as tmp:
         install_cases(check, pathlib.Path(tmp))
     return total, wrong
@@ -1257,6 +1332,41 @@ def install_cases(check, tmp):
     token.mkdir(parents=True)
     text, last = dry_run()
     check("auth-token does not exist" in text, "a directory at the token path is missing: " + last)
+
+    # A section file whose skill the install does not copy stops the install with exit 2, naming
+    # the file. The run has the HOME, the destinations and the profile of `dry_run`.
+    scratch = cast("pathlib.Path", tmp)
+    sections = scratch / "skill-sections"
+    sections.mkdir()
+    orphan = sections / "no-such-skill.md"
+    orphan.write_text("## Under OpenCode\n\nA rule.\n")
+    err = io.StringIO()
+    with (
+        mock.patch.dict(
+            os.environ,
+            HOME=str(scratch / "home"),
+            OPENCODE_CONFIG_DIR=str(scratch),
+            PI_CODING_AGENT_DIR=str(scratch / "omp"),
+        ),
+        mock.patch.object(frontends.adapter(NAME), "SKILL_SECTIONS", sections),
+        contextlib.redirect_stdout(io.StringIO()),
+        contextlib.redirect_stderr(err),
+    ):
+        main = cast("Callable[[list[str]], int]", cli.main)
+        code = main(
+            [
+                "--profile",
+                str(scratch / "profile.toml"),
+                "--models",
+                str(REPO / "examples" / "models.toml"),
+                "install",
+            ]
+        )
+    check(
+        code == 2 and str(orphan) in err.getvalue(),
+        f"a section file whose skill the install does not copy exits 2, naming the file: {code}, "
+        f"{err.getvalue().strip()!r}",
+    )
     token.rmdir()
     token.write_text("token\n")
     text, last = dry_run()
@@ -1394,6 +1504,57 @@ def install_cases(check, tmp):
     case(
         lambda: depth == ["2"],
         f"the rendered opencode.jsonc sets experimental.subagent_depth to 2, once: {depth}",
+    )
+
+    # OpenCode's copy of skills/build-part/SKILL.md is Claude Code's copy with skill-sections/build-part.md
+    # between its frontmatter and its body, each with OpenCode's paths. Every other file of skills/ is
+    # Claude Code's copy with OpenCode's paths, and Claude Code's and oh-my-pi's copies hold no section.
+    def relocated(data: bytes) -> bytes:
+        return frontends.relocate(data, str(base / "opencode"))
+
+    skill = (claude / "skills" / "build-part" / "SKILL.md").read_bytes()
+    end = skill.index(b"\n---\n", 3) + len(b"\n---\n")
+    section = (SOURCE / "skill-sections" / "build-part.md").read_bytes()
+    planned = (base / "opencode" / "skills" / "build-part" / "SKILL.md").read_bytes()
+    case(
+        lambda: (
+            section.startswith(b"## Under OpenCode\n")
+            and planned == relocated(skill[:end]) + b"\n" + relocated(section) + relocated(skill[end:])
+            and planned.count(b"\n## Under OpenCode\n") == 1
+        ),
+        "OpenCode's skills/build-part/SKILL.md holds one section `## Under OpenCode`, from "
+        "skill-sections/build-part.md, between Claude Code's frontmatter and its body: "
+        f"{planned[: end + 40]!r}",
+    )
+    files = sorted(p.relative_to(claude).as_posix() for p in (claude / "skills").rglob("*") if p.is_file())
+    own = sorted(
+        p.relative_to(base / "opencode").as_posix()
+        for p in (base / "opencode" / "skills").rglob("*")
+        if p.is_file()
+    )
+    others = [f for f in files if f != "skills/build-part/SKILL.md"]
+    case(
+        lambda: (
+            own == files
+            and len(others) > 1
+            and all(
+                (base / "opencode" / f).read_bytes()
+                == (relocated if f.endswith(".md") else bytes)((claude / f).read_bytes())
+                for f in others
+            )
+        ),
+        "every other file of OpenCode's skills/ is Claude Code's copy with OpenCode's paths: "
+        f"{len(others)} files",
+    )
+    # The scratch HOME has no ~/.gemini/, so Antigravity installs no copy.
+    copies = [
+        claude / "skills" / "build-part" / "SKILL.md",
+        base / "omp" / "skills" / "build-part" / "SKILL.md",
+    ]
+    case(
+        lambda: all(p.is_file() and b"## Under OpenCode" not in p.read_bytes() for p in copies),
+        "the copies of Claude Code and oh-my-pi of skills/build-part/SKILL.md hold no section: "
+        f"{[p.relative_to(base).as_posix() for p in copies]}",
     )
     # A hand-made AGENTS.md that differs from the source is replaced, not merged.
     installed.write_text("mine\n")

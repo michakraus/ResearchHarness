@@ -1249,7 +1249,8 @@ def layer_cases(check, tmp):
 
     def inproc(base, source, apply=False, templates=None):
         """`harness install` in this process, as `run` does, with `source`, when given, as the one
-        source in this repository, which mirrors ~/.claude/, the example model tables with no
+        source in this repository, which mirrors ~/.claude/, and its `skill-sections/` as OpenCode's
+        skill sections, the example model tables with no
         council, and `templates`, when given, as CLAUDE_TEMPLATES; (exit status, output)."""
         out = io.StringIO()
         args = argparse.Namespace(
@@ -1270,6 +1271,15 @@ def layer_cases(check, tmp):
                 stack.enter_context(mock.patch.object(this, "CLAUDE_SOURCES", [(source, "")]))
                 stack.enter_context(mock.patch.object(neutral, "AGENTS", source / "agents"))
                 stack.enter_context(mock.patch.object(neutral, "SKILLS", source / "skills"))
+                # OpenCode's skill sections are those of the source too: a section whose skill the
+                # install does not copy stops the install.
+                stack.enter_context(
+                    mock.patch.object(
+                        frontends.adapter("opencode"),
+                        "SKILL_SECTIONS",
+                        cast("pathlib.Path", source) / "skill-sections",
+                    )
+                )
             if templates is not None:
                 stack.enter_context(mock.patch.object(this, "CLAUDE_TEMPLATES", frozenset(templates)))
             stack.enter_context(contextlib.redirect_stdout(out))

@@ -131,7 +131,9 @@ directory must exist. The adapter writes:
   `instructions/`, `rules/`, the guard hooks in `hooks/` and the skills in `skills/`.
 
 In each text except `AGENTS.md`, a path below `~/.claude/` names the same path in OpenCode's
-directory, so OpenCode reads its own copies. The install also removes the links in
+directory, so OpenCode reads its own copies. A file `skill-sections/<skill>.md` adds an "Under
+OpenCode" section to OpenCode's copy of `skills/<skill>/SKILL.md`, between its frontmatter and its
+body. A section file whose skill the install does not copy stops the install with exit status 2. The install also removes the links in
 `~/.agents/skills/` that an earlier install wrote, because OpenCode reads that directory too.
 
 The port of an agent maps the model tier through the model tables of `models.toml`, which
@@ -193,11 +195,15 @@ It states the facts of OpenCode:
 - pass `workdir` and absolute paths, and do not `cd` inside a command;
 - there is no session scratchpad, no worktree hook and no background run;
 - the plugins `rtk.ts` and `guards.ts` take the place of the hooks;
-- `opencode --auto` removes every prompt, so do not use it to push, merge or release;
-- how to call the agents, and the council of critics of `build-part`.
+- how to call the agents.
 
 The file loads into every session, so keep it small. `opencode.jsonc` gives its budget as 5,120
-bytes.
+bytes, and a case of `harness test` fails when the file is larger. A rule that only one skill
+needs goes into that skill's copy: the installed `build-part` skill carries the rule for its
+council of critics, in its *Under OpenCode* section.
+
+`opencode --auto` approves each `ask` rule, `gh pr merge` and `gh release create` among them. Do
+not start OpenCode with `--auto` for work that pushes, merges or releases.
 
 ## `opencode/plugins/env.ts`
 
