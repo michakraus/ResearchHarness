@@ -408,11 +408,6 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   batch size, and a test at one size cannot see it. Map over `eachcol` of the batch, keep the input
   gradient (no `ignore_derivatives` on the input), and add an allocation-difference test across two
   batch sizes (B2a, the learning package)
-- an abstract field type on a struct that holds a network, where the source a port copies had a type
-  parameter: `model::Chain` instead of `model::CT` leaves every forward pass through that layer at
-  `Any`. No clause names inference, so no critic sees it and the branch verifier finds it after a
-  pass. A port keeps the source's type parameter (`ForcingLayer{…, CT, …}` at #207's `3b1775cd`),
-  and the layer's own test file asserts `@inferred` on its forward pass (B2c, the learning package)
 - a cost premise that times the build of a generated function and never calls it: the run-time
   compilation of the first call is two orders larger than the build, and it lands in the test file
   and in the CI job's `timeout-minutes` instead of in the premise. Time the first call once per
