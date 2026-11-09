@@ -134,3 +134,42 @@ nothing before `harness setup` has installed `srt` in `~/.local/bin`.
   Claude Code's own sandbox on again. More settings go in the user settings instead.
 
 `agentbox -h` and `agentbox --help` print the usage and exit 0.
+
+## The pinned srt
+
+`harness setup` installs `~/.local/bin/srt`, the `srt` that `agentbox` runs, with any frontend
+chosen, from two files of the harness:
+
+| file | what it holds |
+|:--|:--|
+| `sandbox/srt/package.json` | a private package with one dependency, `@anthropic-ai/sandbox-runtime` at exactly 0.0.81, and the override of `node-forge` to exactly 1.4.1 |
+| `sandbox/srt/package-lock.json` | the tree that npm resolves from that file: srt 0.0.81, `node-forge` 1.4.1, `zod`, `commander` and `@pondwader/socks5-server`, each with its `resolved` URL on `registry.npmjs.org` and its sha512 `integrity` |
+
+The srt package ships no lockfile of its own, so a pin of srt alone would leave its four
+dependencies to the registry on each install. `npm ci` installs exactly the tree of the lockfile,
+refuses a package whose bytes do not match its sha512, and fails on a lockfile whose dependencies
+do not match those of `package.json`; it does not compare the override with the lockfile. The
+override keeps `node-forge` at 1.4.1: srt asks for `^1.4.0`, and 1.4.0 has eleven advisories that
+1.4.1 fixes.
+
+The step copies both files into a scratch directory below `~/.local/share/research-harness/`,
+beside `srt/`, and runs `npm ci --ignore-scripts --no-audit --no-fund` there with the `npm` of the
+`PATH`, so no install script of a package runs. After npm exits 0 and has made
+`node_modules/.bin/srt`, the step moves the directory to
+`~/.local/share/research-harness/srt/0.0.81/`, links `~/.local/bin/srt` to
+`~/.local/share/research-harness/srt/0.0.81/node_modules/.bin/srt`, and removes the directories
+of other versions and the links below `srt/`. A file at `~/.local/bin/srt` is replaced by the
+link. The settings template allows no write at or above `~/.local/share/research-harness` and
+denies writes to `~/.local/bin`, so a Claude Code session can change neither the tree nor the
+link.
+
+The step fails, and writes nothing below `srt/` and nothing in `~/.local/bin`, when `npm` is not on
+the `PATH`, when `node --version` is below 22.12.0, the `engines.node` of srt 0.0.81 (`npm ci`
+only warns there), when npm exits non-zero, or when `~/.local/bin/srt` is a directory. For a
+failed npm, the line holds the cause from npm's stderr: the text of its `npm error code` line and
+its first `npm error` line of other text, such as
+`code ENOTFOUND; network request to https://registry.npmjs.org/… failed`. It removes its scratch
+directory in every case. A plan finds nothing to do, and has no such step, when
+`srt/0.0.81/package-lock.json` holds the bytes of the shipped lockfile, `node_modules/.bin/srt`
+exists, and `~/.local/bin/srt` links to it; so a change of the shipped lockfile installs again.
+The Homebrew copy of srt, where one is installed, stays as it is.

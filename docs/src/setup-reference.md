@@ -327,7 +327,7 @@ values. macOS supplies `lsof`, `launchctl` and the other
 system tools of [Dependencies](dependencies.md#harness-setup-installs).
 
 **Check.** Each command prints the version of one tool: Python 3.14 or later, Python 3.14, uv,
-Node.js 22.3 or later, RTK 1.0.1 or later, actionlint 1.7.12 or later, and fatou 0.22.0 or later.
+Node.js 22.12 or later, RTK 1.0.1 or later, actionlint 1.7.12 or later, and fatou 0.22.0 or later.
 **Without jq or RTK**, skip its line. **Without Julia code**, skip the `fatou` line.
 
 ```bash
@@ -378,8 +378,7 @@ data with jq, and without it, the status line shows no values.
 
 **Check.** The first command prints the version of each package that `apt-get` installed. Each
 command after it prints the version of one tool: Python 3.9 or later (3.12 on Ubuntu 24.04, where
-uv fetches Python 3.14 for the Python environment), Node.js 22.3 or later (or 20.16 or later in
-20.x).
+uv fetches Python 3.14 for the Python environment), Node.js 22.12 or later.
 
 ```bash
 dpkg-query -W python3 git gh nodejs npm shellcheck coreutils rsync curl jq bubblewrap socat lsof
@@ -708,6 +707,43 @@ prints `BWRAP-OK`:
 ```bash
 command -v bwrap socat
 bwrap --ro-bind / / --dev /dev --unshare-user --unshare-pid true && echo BWRAP-OK
+```
+
+## The sandbox runtime srt
+
+**What `harness setup` does.** With any frontend chosen, it installs srt 0.0.81 from
+`sandbox/srt/package.json` and `sandbox/srt/package-lock.json` of the clone: it copies both into
+a scratch directory below `~/.local/share/research-harness/`, runs
+`npm ci --ignore-scripts --no-audit --no-fund` there, moves the directory to
+`~/.local/share/research-harness/srt/0.0.81/`, and links `~/.local/bin/srt` to its
+`node_modules/.bin/srt`. It needs `npm` on the `PATH` and a `node` of 22.12 or later, and it skips
+the step when that tree of the same lockfile is linked already.
+*The pinned srt* of [The srt settings](components/sandbox.md) says what the step does in each
+case.
+
+**Why.** `agentbox` starts a frontend under `~/.local/bin/srt` with the settings files of
+`harness install`, and the lockfile fixes the version and the sha512 of srt and of each of its
+dependencies.
+
+**By hand.** These lines install the same tree and link, on macOS and on Ubuntu; they remove no
+other version, and the last line removes the scratch directory when `npm ci` fails. Where
+`~/.local/bin/srt` is a directory, remove it first: `ln -sfn` puts the link inside a directory.
+
+```bash
+d=~/.local/share/research-harness/srt
+mkdir -p "$d" ~/.local/bin
+t=$(mktemp -d "$d/../.srt-install-XXXXXX")
+cp ~/Research/Harness/sandbox/srt/package.json ~/Research/Harness/sandbox/srt/package-lock.json "$t"
+(cd "$t" && npm ci --ignore-scripts --no-audit --no-fund) \
+  && rm -rf "$d/0.0.81" && mv "$t" "$d/0.0.81" \
+  && ln -sfn "$d/0.0.81/node_modules/.bin/srt" ~/.local/bin/srt
+rm -rf "$t"
+```
+
+**Check.** The command prints the path of the program in the tree:
+
+```bash
+readlink ~/.local/bin/srt
 ```
 
 ## `harness install --apply`
