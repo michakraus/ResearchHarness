@@ -271,9 +271,10 @@ loaded that package.
 | `INFO: dependency drift: <name> <base> -> <head>` | a dependency or a tool of another version on each side | — |
 
 The last line is `Verdict: <PASS|FAIL|UNKNOWN> — <f> FAIL, <u> UNKNOWN, <i> INFO`. The exit status
-is 0 on PASS, 1 on a `FAIL:` line, 2 on bad arguments, and 3 when a side gave no verdict and no
-line failed. `--timeout` gives each side that many seconds to write its JSON, 600 by default, and
-the JET step as many again from that moment. `--no-jet` leaves out the JET step.
+is 0 on PASS, 1 on a `FAIL:` line, 2 on bad arguments, and 3 when a side, or with `--api` a key,
+gave no verdict and no line failed. `--timeout` gives each side that many seconds to write its
+JSON, 600 by default, and the JET step as many again from that moment. `--no-jet` leaves out the
+JET step.
 
 Each side also records the public API of its package. `public` holds one record per public name,
 with its `module` (the path below the root module, `""` for the root), its `name` and its `kind`
