@@ -190,19 +190,19 @@ The template names no host: its `sandbox.network.allowedDomains` is empty, and i
 
 ## `network.toml`
 
-The hosts of the network rules of Claude Code, in three arrays: `allow`, the hosts that the
-`WebFetch` tool and a sandboxed command can reach; `infrastructure`, the hosts that only a
-sandboxed command can reach; `deny`, the hosts that neither can reach, with a reason for each in
-`[deny_reasons]`. Comments group the hosts: literature, mathematics, Julia, GitHub, package
-registries.
+The hosts of the network rules of Claude Code, in four arrays: `allow`, the hosts that the
+`WebFetch` tool and a sandboxed command can reach; `fetch`, the hosts that only the `WebFetch`
+tool can reach; `infrastructure`, the hosts that only a sandboxed command can reach; `deny`, the
+hosts that neither can reach, with a reason for each in `[deny_reasons]`. Comments group the
+hosts: literature, mathematics, Julia, GitHub, package registries.
 
 `harness install`, `harness render` of the settings template and `harness settings` generate the
 `WebFetch(domain:…)` rules and the lists of `sandbox.network` from this file and from the overlay
 `network.toml` beside the profile, which `examples/network.toml` shows. A `deny` entry of either
-file wins over an `allow` or `infrastructure` entry of either file. OpenCode and oh-my-pi do not
-read the file; for Antigravity, `harness install` writes the `allow` hosts as
-`read_url(https://<host>/*)` rules. [Adapting the profile](../profile.md#the-network-overlay) gives
-the rules of each key.
+file wins over an `allow`, `fetch` or `infrastructure` entry of either file. OpenCode and oh-my-pi
+do not read the file; for Antigravity, `harness install` writes the `allow` and `fetch` hosts as
+`read_url(<host>)` rules. [Adapting the profile](../profile.md#the-network-overlay) gives the
+rules of each key.
 
 ## `profile.toml`
 

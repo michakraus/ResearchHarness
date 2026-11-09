@@ -3,14 +3,19 @@
 The settings template holds no host. `harness install`, `harness render` of the template and the
 subcommands of `harness settings` generate its network rules from two files with one schema: the
 harness list `settings/network.toml`, and the overlay `network.toml` beside the profile, which may
-be missing. Each file has the top-level arrays `allow`, `infrastructure` and `deny`, each optional,
-and an optional table `[deny_reasons]`, keyed by a `deny` entry; nothing else. An entry is a host,
-never a URL.
+be missing. Each file has the top-level arrays `allow`, `fetch`, `infrastructure` and `deny`, each
+optional, and an optional table `[deny_reasons]`, keyed by a `deny` entry; nothing else. An entry
+is a host, never a URL.
 
   * `allow` X: `WebFetch(domain:X)` after the template's `permissions.allow`, and X in
     `sandbox.network.allowedDomains`, with `*.X` when X is its own registrable domain. The proxy
     matches the host a request goes to, so a bare `nature.com` does not cover `www.nature.com`;
     a host below its registrable domain, `api.crossref.org`, is one host. An entry `*.X` exits 2.
+  * `fetch` X: `WebFetch(domain:X)` after the rules of `allow`, and nothing in `allowedDomains`:
+    the WebFetch tool reaches X, which sends a GET, and a sandboxed command does not. A frontend
+    under `agentbox` does not reach X at all, because srt takes `allowedDomains` alone. A host
+    that accepts writes and is needed only for reading goes here. An entry `*.X` exits 2, and a
+    host in `allow` of one file and `fetch` of the other gets one rule.
   * `infrastructure` X: X in `allowedDomains` only, exactly as written; `*.X` is allowed.
   * `deny` X: `WebFetch(domain:X)` after the template's `permissions.deny`, and X in
     `sandbox.network.deniedDomains`; `[deny_reasons]` is `sandbox.network.deniedDomainReasons`.
@@ -18,8 +23,8 @@ never a URL.
     matches a WebFetch rule against the host of the URL, so a rule with a port denies nothing.
     The sandbox checks `deniedDomains` before `allowedDomains`.
 
-The two files are one union, the harness list's entries first. An `allow` or `infrastructure` entry
-that a `deny` entry without a port matches — the same host, a host or a `*.` form below a `*.`
+The two files are one union, the harness list's entries first. An `allow`, `fetch` or
+`infrastructure` entry that a `deny` entry without a port matches — the same host, a host or a `*.` form below a `*.`
 entry, or any host for `*` — is left out of every generated allow list, and so is the `*.X` form of
 an `allow` host X that such an entry matches: a deny `*.X` keeps X and drops `*.X`. A `deny` entry
 with a port leaves the host on the allow lists; the sandbox refuses that port alone. With no `deny`
@@ -27,7 +32,8 @@ entry the template gets no `deniedDomains` and no `deniedDomainReasons`.
 
 Exit 2, naming the file and the key: an unknown key; a value of the wrong type; an entry that is
 not a string, is a URL, or is no host name; a port outside `deny`; `*` outside `deny`; `*.` in
-`allow`; a host in `allow` or `infrastructure` and in `deny` of the same file; a `deny_reasons` key
+`allow` or `fetch`; a host in `allow` or `infrastructure` and in `deny` of the same file; a host in
+`fetch` and in `allow` or `infrastructure` of the same file; a `deny_reasons` key
 that is no `deny` entry of either file. So does a settings template that holds a network rule of
 its own or has no `sandbox.network.allowedDomains`. The profile's loader refuses the retired key
 `extra_domain` (`profile.load`).
@@ -50,7 +56,7 @@ from . import REPO, HarnessError, jsonio
 
 LIST = REPO / "settings" / "network.toml"
 TEMPLATE = REPO / "settings" / "settings.proposal.json"
-LISTS = ("allow", "infrastructure", "deny")
+LISTS = ("allow", "fetch", "infrastructure", "deny")
 KEYS = (*LISTS, "deny_reasons")
 LABEL = r"[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?"
 HOST = re.compile(rf"(?:\*\.)?{LABEL}(?:\.{LABEL})*")
@@ -90,6 +96,10 @@ def check_entry(path, key, entry):
             f"{path}: allow entry {entry!r} is a wildcard; write {host[2:]!r}: WebFetch takes a "
             "domain, and the install adds the `*.` form to the sandbox list"
         )
+    if key == "fetch" and host.startswith("*."):
+        raise HarnessError(
+            f"{path}: fetch entry {entry!r} is a wildcard; write {host[2:]!r}: WebFetch takes a domain"
+        )
 
 
 def read(path, missing_ok):
@@ -111,7 +121,7 @@ def read(path, missing_ok):
         raise HarnessError(f"{path} is not TOML: {e}") from None
     if unknown := [k for k in data if k not in KEYS]:
         raise HarnessError(
-            f"{path}: no key {', '.join(unknown)}; the keys are allow, infrastructure, deny and "
+            f"{path}: no key {', '.join(unknown)}; the keys are allow, fetch, infrastructure, deny and "
             "[deny_reasons]"
         )
     out = {}
@@ -132,6 +142,9 @@ def read(path, missing_ok):
     for key in ("allow", "infrastructure"):
         if both := [h for h in out[key] if h in out["deny"]]:
             raise HarnessError(f"{path}: {both[0]!r} is in both {key} and deny")
+        fetch = cast("list[str]", out["fetch"])
+        if both := [h for h in fetch if h in out[key]]:
+            raise HarnessError(f"{path}: {both[0]!r} is in both fetch and {key}")
     return out
 
 
@@ -172,8 +185,11 @@ def generate(lists):
 
     allow = kept(lists["allow"])
     mirror = kept(form for h in allow for form in ([h, "*." + h] if h == registrable(h) else [h]))
+    # A host in the allow list of one file and the fetch list of the other gets one rule.
+    hosts = cast("list[str]", lists["fetch"])
+    fetch = [h for h in kept(hosts) if h not in allow]
     return (
-        [f"{WEBFETCH}{h})" for h in allow],
+        [f"{WEBFETCH}{h})" for h in allow + fetch],
         [f"{WEBFETCH}{d})" for d in lists["deny"] if ":" not in d],
         list(dict.fromkeys(kept(lists["infrastructure"]) + mirror)),
         list(lists["deny"]),
@@ -297,10 +313,11 @@ def selftest():
         allow = fetch(base, "allow")
         case(
             lambda: (
-                allow == [f"{WEBFETCH}{h})" for h in harness_list["allow"]]
+                allow == [f"{WEBFETCH}{h})" for h in harness_list["allow"] + harness_list["fetch"]]
                 and base["permissions"]["allow"] == rendered_template()["permissions"]["allow"] + allow
             ),
-            "each allow host is a WebFetch(domain:…) rule after the template's own allow rules",
+            "each allow host, then each fetch host, is a WebFetch(domain:…) rule after the template's own "
+            "allow rules",
         )
         case(
             lambda: (
@@ -400,9 +417,17 @@ def selftest():
         extra = rendered(
             'allow = ["library.example.org", "nature.com"]\ninfrastructure = ["*.mirror.example.org"]\n'
         )
+
+        def listed(key: str) -> list[str]:
+            """The entries of `key` in the harness list."""
+            return cast("list[str]", harness_list[key])
+
         case(
             lambda: (
-                fetch(extra, "allow") == allow + [f"{WEBFETCH}library.example.org)"]
+                fetch(extra, "allow")
+                == allow[: len(listed("allow"))]
+                + [f"{WEBFETCH}library.example.org)"]
+                + allow[len(listed("allow")) :]
                 and net(extra)["allowedDomains"]
                 == net(base)["allowedDomains"][: len(harness_list["infrastructure"])]
                 + ["*.mirror.example.org"]
@@ -410,6 +435,81 @@ def selftest():
                 + ["library.example.org"]
             ),
             "an overlay adds its entries after the harness list's, and an entry of both files once",
+        )
+
+        # The fetch list: a WebFetch(domain:…) rule after the allow rules, and no allowedDomains form.
+        def by_hand(deny: list[str]) -> tuple[Any, ...]:
+            return cast(
+                "tuple[Any, ...]",
+                generate(
+                    {
+                        "allow": ["a.org"],
+                        "fetch": ["f.org"],
+                        "infrastructure": [],
+                        "deny": deny,
+                        "deny_reasons": {},
+                    }
+                ),
+            )
+
+        case(
+            lambda: (
+                by_hand([])[0] == [f"{WEBFETCH}a.org)", f"{WEBFETCH}f.org)"]
+                and by_hand([])[2] == ["a.org", "*.a.org"]
+            ),
+            "a fetch host is a WebFetch(domain:…) rule after the allow rules, and neither X nor *.X in "
+            "allowedDomains",
+        )
+        case(
+            lambda: (
+                by_hand(["f.org"])[0] == [f"{WEBFETCH}a.org)"]
+                and by_hand(["f.org"])[2] == ["a.org", "*.a.org"]
+            ),
+            "a deny entry that matches a fetch host removes its WebFetch(domain:…) rule",
+        )
+
+        def fetched() -> dict[str, Any]:
+            return rendered('fetch = ["f.example.org"]\n')
+
+        case(
+            lambda: (
+                fetch(fetched(), "allow") == [*allow, f"{WEBFETCH}f.example.org)"]
+                and not [d for d in net(fetched())["allowedDomains"] if "f.example.org" in d]
+            ),
+            "an overlay fetch host is a WebFetch(domain:…) rule after every rule of the harness list, and "
+            "names no allowedDomains entry",
+        )
+        narrowed = rendered('deny = ["*.stackexchange.com"]\n')
+        case(
+            lambda: (
+                f"{WEBFETCH}math.stackexchange.com)" in allow
+                and fetch(narrowed, "allow")
+                == [r for r in allow if r != f"{WEBFETCH}math.stackexchange.com)"]
+            ),
+            "an overlay deny of a harness fetch host removes its WebFetch(domain:…) rule and no other",
+        )
+        widened = rendered('allow = ["ncatlab.org"]\n')
+        case(
+            lambda: (
+                fetch(widened, "allow").count(f"{WEBFETCH}ncatlab.org)") == 1
+                and {"ncatlab.org", "*.ncatlab.org"} <= set(net(widened)["allowedDomains"])
+            ),
+            "an overlay allow of a harness fetch host gives one WebFetch(domain:…) rule and both sandbox forms",
+        )
+        case(
+            lambda: (
+                bool(listed("fetch"))
+                and all(f"{WEBFETCH}{h})" in allow for h in listed("fetch"))
+                and not {
+                    form
+                    for h in [*listed("fetch"), "archive.org"]
+                    for form in (h, "*." + h)
+                    if form in net(base)["allowedDomains"]
+                }
+                and f"{WEBFETCH}archive.org)" not in allow
+            ),
+            "each fetch host of the harness list has its WebFetch(domain:…) rule and no allowedDomains form, "
+            "and archive.org has neither",
         )
 
         # Each exit 2 names the file and the key.
@@ -429,6 +529,20 @@ def selftest():
             ("a colon with no port number", 'deny = ["x.org:ssh"]\n', ["deny entry", "no port number"]),
             ("* in infrastructure", 'infrastructure = ["*"]\n', ["infrastructure entry", "every host"]),
             ("*. in allow", 'allow = ["*.x.org"]\n', ["allow entry", "is a wildcard", "'x.org'"]),
+            ("*. in fetch", 'fetch = ["*.f.org"]\n', ["fetch entry", "is a wildcard", "'f.org'"]),
+            ("a URL in fetch", 'fetch = ["https://f.org"]\n', ["fetch entry", "is a URL"]),
+            ("a port in fetch", 'fetch = ["f.org:443"]\n', ["fetch entry", "has a port"]),
+            ("* in fetch", 'fetch = ["*"]\n', ["fetch entry", "every host"]),
+            (
+                "a host in fetch and allow",
+                'allow = ["f.org"]\nfetch = ["f.org"]\n',
+                ["'f.org' is in both fetch and allow"],
+            ),
+            (
+                "a host in fetch and infrastructure",
+                'infrastructure = ["f.org"]\nfetch = ["f.org"]\n',
+                ["'f.org' is in both fetch and infrastructure"],
+            ),
             ("no host name", 'deny = ["x..org"]\n', ["deny entry", "is not a host name"]),
             ("a host in allow and deny", 'allow = ["x.org"]\ndeny = ["x.org"]\n', ["in both allow and deny"]),
             (
