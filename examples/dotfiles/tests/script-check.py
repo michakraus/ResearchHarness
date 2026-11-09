@@ -47,7 +47,8 @@ Checks, numbered as the section banners and the `== check N` lines of the output
      render`, then daemon-reload and enable --now; on macOS the Seatbelt profiles of kaimon and
      julia-update, each equal to `harness render sandbox/<job>.sb` and written before its plist,
      and the `ps` shim of sandbox/shims/, mode 755, before kaimon's plist; none of them on
-     linux; the plists, each equal to `harness
+     linux; on both, ~/.cache/kaimon/pocl before kaimon's plist or unit, each new directory
+     mode 700, and an existing one left as it is; the plists, each equal to `harness
      render`, bootout of a loaded job and bootstrap of each; a bootout that finishes late and a
      failed first bootstrap still load every job, and a mutant with no wait stops; the script's
      text changes with the pin and with the profile.
@@ -101,6 +102,8 @@ UNITS = [
     "claude-autocommit.timer",
 ]
 JOBS = ["kaimon", "julia-update", "claude-autocommit"]
+# The directory below HOME that POCL_CACHE_DIR of kaimon's plist and unit names.
+POCL_CACHE = ".cache/kaimon/pocl"
 # The jobs that run under a Seatbelt profile on macOS.
 SANDBOXED = ["kaimon", "julia-update"]
 GPU_PACKAGE = {"metal": "Metal", "cuda": "CUDA", "amdgpu": "AMDGPU", "none": None}
@@ -1161,6 +1164,21 @@ def check_copies(home, harness, label):
     )
 
 
+def check_pocl_cache(home, before, label, *, mode=0o700):
+    """Kaimon's PoCL cache ~/.cache/kaimon/pocl exists, written before `before`, and each of its
+    directories, ~/.cache included, has the mode `mode`."""
+    target = home / POCL_CACHE
+    dirs = (target.parent.parent, target.parent, target)
+    modes = [oct(stat.S_IMODE(d.stat().st_mode)) if d.is_dir() else None for d in dirs]
+    check(
+        target.is_dir()
+        and modes == [oct(mode)] * len(dirs)
+        and before.is_file()
+        and target.stat().st_mtime_ns < before.stat().st_mtime_ns,
+        f"{label}: ~/{POCL_CACHE} exists, modes {modes}, and is made before {before.name}",
+    )
+
+
 def test_services():
     print("\n== check 5: the services")
     checkout, pin = harness_source()
@@ -1198,6 +1216,7 @@ def services_linux(checkout, pinned):
     check(result.returncode == 0, f"linux: exit {result.returncode} {result.stderr.strip()}")
     check_copies(home, harness, "linux")
     units = home / ".config/systemd/user"
+    check_pocl_cache(home, units / "kaimon.service", "linux")
     for unit in UNITS:
         path = units / unit
         check(
@@ -1238,6 +1257,11 @@ def services_template_mac(checkout, pinned, *, loaded):
     labels = [f"{prefix}.{job}" for job in JOBS]
     if loaded:
         (home / "loaded").write_text("\n".join(labels) + "\n")
+        # A machine that has the cache already: the script leaves its directories as they are.
+        cache = home / POCL_CACHE
+        cache.mkdir(parents=True)
+        for d in (cache.parent.parent, cache.parent, cache):
+            d.chmod(0o755)
     text = rendered(SERVICES, host, "darwin", home, pinned)
     result = run_script(text, env)
     state = "loaded" if loaded else "not loaded"
@@ -1247,6 +1271,12 @@ def services_template_mac(checkout, pinned, *, loaded):
     )
     check_copies(home, harness, f"macOS, jobs {state}")
     agents = home / "Library/LaunchAgents"
+    check_pocl_cache(
+        home,
+        agents / f"{prefix}.kaimon.plist",
+        f"macOS, jobs {state}",
+        mode=0o755 if loaded else 0o700,
+    )
     for job in JOBS:
         path = agents / f"{prefix}.{job}.plist"
         check(

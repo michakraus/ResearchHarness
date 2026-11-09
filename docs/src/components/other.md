@@ -113,10 +113,11 @@ job `julia-update.plist` restarts it when its Julia release is deleted. Render t
 The `systemd --user` units in `systemd/` run the three jobs of the plists on Linux. Like the
 plists, they are templates of the profile: `harness render systemd/<name>` prints a rendered unit,
 and the harness has no subcommand that installs them. Copy each rendered unit into
-`~/.config/systemd/user/`, run `systemctl --user daemon-reload`, and enable the server and the two
-timers:
+`~/.config/systemd/user/`, run `systemctl --user daemon-reload`, create the server's PoCL cache,
+and enable the server and the two timers:
 
 ```
+(umask 077 && mkdir -p ~/.cache/kaimon/pocl)
 systemctl --user enable --now kaimon.service julia-update.timer claude-autocommit.timer
 ```
 
