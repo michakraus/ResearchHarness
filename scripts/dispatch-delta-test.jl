@@ -710,12 +710,12 @@ end
 end
 
 # The API mode. One run of a package whose head keeps its API, with a public submodule, a submodule
-# that is not public, a widened method, a method on a type of LinearAlgebra and a deprecated name;
-# one run of a package whose head removes public names, methods and a keyword; one run of a
-# package whose head changes only a comment.
+# that is not public, a widened method and operator, a method on a type of LinearAlgebra and a
+# deprecated name; one run of a package whose head removes public names, methods and a keyword;
+# one run of a package whose head changes only a comment.
 const API_KEEP_BASE = mod("DDApiKeep", """
 using LinearAlgebra: Diagonal
-export f, Sub, w, e, old
+export f, Sub, w, e, old, ⊕
 public g
 module Sub
 export s
@@ -729,10 +729,11 @@ f(x; a = 1) = x
 g(x) = x
 w(x::Int) = x
 e(x::Diagonal{Int}) = x
-old(x) = x""")
+old(x) = x
+⊕(a::Int, b::Int) = a""")
 const API_KEEP_HEAD = mod("DDApiKeep", """
 using LinearAlgebra: Diagonal
-export f, Sub, w, e
+export f, Sub, w, e, ⊕
 public g
 module Sub
 export s
@@ -747,7 +748,8 @@ g(x) = x
 w(x::Integer) = x
 e(x::Diagonal) = x
 new(x) = x
-@deprecate old(x) new(x)""")
+@deprecate old(x) new(x)
+⊕(a::Integer, b::Integer) = a""")
 const LA_DEPS = "\n[deps]\nLinearAlgebra = \"37e2e46d-f89d-539d-b4ee-838fcccc9c8e\"\n"
 const API_KEEP = fixture("DDApiKeep", ["src/DDApiKeep.jl" => API_KEEP_BASE], ["src/DDApiKeep.jl" => API_KEEP_HEAD];
     project = LA_DEPS)
@@ -774,9 +776,11 @@ const API_DROP = fixture("DDApiDrop",
     struct Old end
     p(x::Old) = x
     q(x; tol = 1, maxit = 2) = x
-    r(x; a = 1) = x""")],
+    r(x; a = 1) = x
+    export e
+    const e = 1""")],
     ["src/DDApiDrop.jl" => mod("DDApiDrop", """
-    export c, Sub, k, n, V, q, r, d
+    export c, Sub, k, n, V, q, r, d, e
     b(x) = x
     c(x) = x
     d(x) = x
@@ -794,9 +798,10 @@ const AD = dd(API_DROP, "HEAD~1", "--api")
 # the lines that the API comparison prints
 api_lines(out) = [l for l in split(out, '\n') if any(p -> startswith(l, p), ("FAIL: ", "UNKNOWN: ", "INFO: "))]
 
-const API_SAME = fixture("DDApiSame", ["src/DDApiSame.jl" => replace(API_KEEP_BASE, "DDApiKeep" => "DDApiSame")],
-    ["src/DDApiSame.jl" => replace(API_KEEP_BASE, "DDApiKeep" => "DDApiSame", "g(x) = x" => "# unchanged\ng(x) = x")];
-    project = LA_DEPS)
+# an exported name that neither side defines is no public name
+const API_SAME_BASE = replace(API_KEEP_BASE, "DDApiKeep" => "DDApiSame", "old, ⊕" => "old, ⊕, notyet")
+const API_SAME = fixture("DDApiSame", ["src/DDApiSame.jl" => API_SAME_BASE],
+    ["src/DDApiSame.jl" => replace(API_SAME_BASE, "g(x) = x" => "# unchanged\ng(x) = x")]; project = LA_DEPS)
 const AS = dd(API_SAME, "HEAD~1", "--api")
 
 @testset "the API mode runs the head after the base" begin
@@ -816,7 +821,7 @@ end
 @testset "the records hold the public names and the API methods" begin
     pub = Set((p["module"], p["name"], p["kind"]) for p in AK_BASE["public"])
     @test pub == Set([("", "f", "function"), ("", "g", "function"), ("", "Sub", "module"), ("", "w", "function"),
-        ("", "e", "function"), ("", "old", "function"), ("Sub", "s", "function")])
+        ("", "e", "function"), ("", "old", "function"), ("", "⊕", "function"), ("Sub", "s", "function")])
     ms = AK_BASE["methods"]
     api(n) = only(unique(m["api"] for m in ms if m["name"] == n))
     @test api("f") === true && api("s") === true && api("h") === false
@@ -848,8 +853,31 @@ end
     end
     end
     pb = Set((p, string(n), DD.kind(m, n)) for (p, m, n) in DD.public_bindings(PB))
-    @test pb == Set([("", "T", "type"), ("", "c", "other"), ("", "undefined_name", "other"), ("", "LinearAlgebra", "module"),
+    @test pb == Set([("", "T", "type"), ("", "c", "other"), ("", "LinearAlgebra", "module"),
         ("", "S", "module"), ("S", "s", "function"), ("", "X", "module"), ("X", "x", "function")])
+    # a method is API where its generic is the type of the value of a public name: a function, a
+    # callable object, or a type's constructor, also one whose signature has a type variable
+    @eval module PC
+    export fun, pf, P
+    struct Fun end
+    (::Fun)(x) = x
+    const fun = Fun()
+    struct PF{T} end
+    (::PF{T})(x) where {T} = x
+    const pf = PF{Int}()
+    struct Hid end
+    (::Hid)(x) = x
+    const hid = Hid()
+    struct P{T}
+        x::T
+    end
+    end
+    pcpub = DD.public_bindings(PC)
+    pcapi(f) = [DD.public_generic(DD.gtype(m), pcpub) for m in methods(f)]
+    @test pcapi(PC.fun) == [true] && pcapi(PC.pf) == [true] && pcapi(PC.hid) == [false]
+    pctors = [m for m in DD.own_methods(Set([PC])) if occursin(r"^Tuple\{Type\{P[{}]", DD.key(m.sig, PC))]
+    @test length(pctors) == 2 && any(m -> DD.gtype(m) isa UnionAll, pctors) &&
+          all(m -> DD.public_generic(DD.gtype(m), pcpub), pctors)
 end
 
 @testset "the API mode gives only API lines" begin
@@ -867,6 +895,8 @@ end
     ls = api_lines(AD.out)
     @test "FAIL: gone public name: a" in ls && "FAIL: gone public name: p" in ls
     @test "FAIL: no longer public: b" in ls
+    # a name that the head still exports and no longer defines is gone
+    @test "FAIL: gone public name: e" in ls
     @test lines(AD.out, "INFO: new public name: ") == ["INFO: new public name: d"]
     @test !any(l -> occursin(r"(: |typeof\()c\b", l), ls)
     @test AD.code == 1 && startswith(verdict(AD.out), "Verdict: FAIL — ")
@@ -903,6 +933,8 @@ end
 
 @testset "a widened method is covered" begin
     @test "INFO: covered: Tuple{typeof(w), Int64} by Tuple{typeof(w), Integer}" in lines(AK.out, "INFO: ")
+    # an operator of the root module, whose key prints its name quoted
+    @test "INFO: covered: Tuple{typeof(:⊕), Int64, Int64} by Tuple{typeof(:⊕), Integer, Integer}" in lines(AK.out, "INFO: ")
     @test isempty(lines(AK.out, "FAIL:")) && AK.code == 0
 end
 
@@ -939,12 +971,19 @@ end
     @eval module CV
     module Sub
     t(x) = x
+    cv(x) = x
     end
     # an own submodule with the name of a loaded package
     module Test
     t(x) = x
     end
     cv(x) = x
+    ⊕(a::Integer, b::Integer) = a
+    # a function whose type has a gensym name, and a function that counts its calls
+    const g = x -> x
+    wg(x::typeof(g)) = x
+    const HITS = Ref(0)
+    hit(x) = (HITS[] += 1; Int)
     end
     own = Set([CV, CV.Sub, CV.Test])
     ms = DD.own_methods(own)
@@ -958,7 +997,22 @@ end
     @test cover("Tuple{typeof(GoneSub.t), Any}")["status"] == "unknown"
     @test cover("Tuple{typeof(GoneSub.Inner.t), Any}")["status"] == "unknown"
     @test cover("Tuple{typeof(Test.t), Int64}") == Dict("status" => "covered", "by" => "Tuple{typeof(Test.t), Any}")
-    @test cover("Tuple{typeof(cv), _1} where _1<:Real") == Dict("status" => "covered", "by" => "Tuple{typeof(cv), Any}")
+    covered = Dict("status" => "covered", "by" => "Tuple{typeof(cv), Any}")
+    @test cover("Tuple{typeof(cv), _1} where _1<:Real") == covered
+    # a lower bound, in both directions, and a named tuple as a type parameter
+    @test cover("Tuple{typeof(cv), _1} where Int64<:_1<:Real") == covered
+    @test cover("Tuple{typeof(cv), _1} where Real>:_1>:Int64") == covered
+    @test cover("Tuple{typeof(cv), Val{(a = 1, b = :c)}}") == covered
+    # an operator of the root module, whose key quotes its name
+    @test cover("Tuple{typeof(:⊕), Int64, Int64}") == Dict("status" => "covered", "by" => "Tuple{typeof(:⊕), Integer, Integer}")
+    @test cover("Tuple{typeof(:⊖), Int64, Int64}")["status"] == "removed"
+    # a gensym name, also in the key of a submodule's function, gives no verdict
+    gk = DD.key(only(methods(CV.wg)).sig, CV)
+    @test occursin("var\"#", gk) && cover(gk)["status"] == "unknown"
+    for k in ("Tuple{typeof(cv), var\"##\"}", "Tuple{typeof(Sub.cv), var\"##\"}")
+        gc = cover(k)
+        @test gc["status"] == "unknown" && occursin("##", gc["error"]) && !occursin('\n', gc["error"])
+    end
     @test cover("Vector{Int64}")["status"] == "unknown"
     # an error of another kind, and a key that is no type expression, which is not evaluated
     @test cover("Tuple{typeof(cv), Base.NoSuchName}")["status"] == "unknown"
@@ -967,7 +1021,14 @@ end
     @test cover("Tuple{typeof(cv), begin global HIT = 1; Int end}")["status"] == "unknown"
     @test cover("Tuple{typeof(cv), identity(Int)}")["status"] == "unknown"
     @test cover("typeof(cv)")["status"] == "unknown"
-    @test !isdefined(CV, :HIT)
+    @test cover("Tuple{typeof(cv), hit.(1)}")["status"] == "unknown"
+    @test cover("Tuple{typeof(cv), _1} where hit(1)<:_1<:Real")["status"] == "unknown"
+    @test cover("Tuple{typeof(cv), Val{(a = hit(1),)}}")["status"] == "unknown"
+    @test cover("Tuple{typeof(cv), Val{(HIT = 1)}}")["error"] == "not a type expression"
+    @test cover("Tuple{typeof(cv), Val{(HITS[] = 1,)}}")["error"] == "not a type expression"
+    @test cover("Tuple{typeof(cv), _1} where Int64 == _1 == Real")["error"] == "not a type expression"
+    @test cover("Tuple{typeof(cv), _1} where Int64<:_1>:Real")["error"] == "not a type expression"
+    @test CV.HITS[] == 0 && !isdefined(CV, :HIT)
     # a type of another package is no cover
     @test cover("Tuple{typeof(sin), Float64}")["status"] == "removed"
     # analyse prints the unknown key, and gives no verdict without a FAIL line
@@ -1011,7 +1072,7 @@ end
     @test AS.code == 0
     h = DD.JSON.parsefile(joinpath(AS.run, "head.json"))
     @test isempty(h["cover"]["methods"]) && all(n -> n["status"] == "public", h["cover"]["names"])
-    @test length(h["cover"]["names"]) == 7
+    @test length(h["cover"]["names"]) == 8 && !any(n -> n["name"] == "notyet", h["cover"]["names"])
 end
 
 foreach(d -> rm(d; recursive = true, force = true), MADE)

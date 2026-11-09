@@ -43,16 +43,17 @@
 #   INFO: dependency drift: <name> <base version> -> <head version>
 #   Verdict: <PASS|FAIL|UNKNOWN> — <f> FAIL, <u> UNKNOWN, <i> INFO
 #
-# Each side also records its public names: those with Base.ispublic in the root module and in each
-# submodule that is a public name of its parent, recursively. A method is API where its generic is
-# a public function or type of those modules, or an external generic; its record holds its keyword
-# names. --api compares the API of the head with that of the base, typically the last release tag:
-# the base side runs first, then the head side, which reads base.json and writes into head.json its
-# cover of each base public name and of each base API method whose key it lacks. A base API method
-# is covered where an own method of the head takes its signature (`sig <: m.sig`); its key is
-# evaluated in the head's root module, with each leading qualifier that the root does not bind and
-# that names a loaded package replaced by that package. --api runs no JET, and prints these lines
-# in place of the comparison lines above; the lines of a side that gives no records stay:
+# Each side also records its public names: those with Base.ispublic that are defined in the root
+# module and in each submodule that is a public name of its parent, recursively. A method is API
+# where its generic is the value of a public name of those modules (a function, a callable object,
+# or a type's constructor), or an external generic; its record holds its keyword names. --api
+# compares the API of the head with that of the base, typically the last release tag: the base side
+# runs first, then the head side, which reads base.json and writes into head.json its cover of each
+# base public name and of each base API method whose key it lacks. A base API method is covered
+# where an own method of the head takes its signature (`sig <: m.sig`); its key is evaluated in
+# the head's root module, with each leading qualifier that the root does not bind and that names a
+# loaded package replaced by that package. --api runs no JET, and prints these lines in place of
+# the comparison lines above; the lines of a side that gives no records stay:
 #
 #   FAIL: gone public name: <module.>name            the head does not define it in that module
 #   FAIL: no longer public: <module.>name            the head defines it there, not public
@@ -60,11 +61,13 @@
 #                                                    names an own name that the head lacks
 #   FAIL: removed keyword: <function> <name>         no head method of the function takes it; a
 #                                                    keyword slurp `kw...` takes every name
-#   UNKNOWN: key: <key>: <error>                     the key does not parse or evaluate in the head
+#   UNKNOWN: key: <key>: <error>                     the key does not parse or evaluate in the head,
+#                                                    also where it names a gensym name
 #   INFO: covered: <base key> by <head key>
 #   INFO: new public name: <module.>name
 #
-# The structure of a public type, its fields, type parameters and supertype, is not compared.
+# The structure of a public type, its fields, type parameters and supertype, is not compared, and a
+# name that the head declares `public` in place of `export` stays public.
 #
 # The key of a method is its signature with the full path of each name that Base and Core do not
 # export, less the path of the package's root module, so that a `using` in the root module changes
@@ -237,15 +240,15 @@ end
 """
 Each public name of `root`, and of each submodule that is itself a public name of its parent,
 recursively, as `(path, module, name)`: `path` is the path of the module below `root`, `""` for
-`root` itself. A module's own name is left out.
+`root` itself. A public name is one with `Base.ispublic` that the module defines; a module's own
+name is left out.
 """
 function public_bindings(root)
     acc = Tuple{String, Module, Symbol}[]
     function walk(m, path)
         for n in sort!(names(m; all = true, imported = true))
-            (n === nameof(m) || !Base.ispublic(m, n)) && continue
+            (n === nameof(m) || !Base.ispublic(m, n) || !isdefined(m, n)) && continue
             push!(acc, (path, m, n))
-            isdefined(m, n) || continue
             x = getglobal(m, n)
             x isa Module && x !== m && parentmodule(x) === m && walk(x, isempty(path) ? string(n) : "$path.$n")
         end
@@ -254,23 +257,22 @@ function public_bindings(root)
     return acc
 end
 
-"The kind of the binding `n` of `m`: `module`, `type`, `function`, or `other`, which an undefined name also gets."
+"The kind of the binding `n` of `m`: `module`, `type`, `function`, or `other`."
 function kind(m, n)
-    isdefined(m, n) || return "other"
     x = getglobal(m, n)
     return x isa Module ? "module" : x isa Type ? "type" : x isa Function ? "function" : "other"
 end
 
 """
-Whether the function type `ft` of a generic is that of a public function or of a public type's
-constructor, among the bindings `pub` of `public_bindings`.
+Whether the function type `ft` of a generic is that of the value of a public name among the
+bindings `pub` of `public_bindings`: a function, a callable object, or a type's constructor.
 """
 function public_generic(ft, pub)
+    ft = Base.unwrap_unionall(ft)
     ft isa DataType || return false
     for (_, m, n) in pub
-        isdefined(m, n) || continue
         x = getglobal(m, n)
-        x isa Function && typeof(x) === ft && return true
+        typeof(x).name === ft.name && return true
         if x isa Type && ft.name === Type.body.name
             t, u = Base.unwrap_unionall(ft.parameters[1]), Base.unwrap_unionall(x)
             t isa DataType && u isa DataType && t.name === u.name && return true
@@ -284,8 +286,8 @@ One record per own method of `own_methods`. `others` holds the other methods of 
 all of them for an own generic, the intersecting ones for an external generic. The generic of a
 `Core.kwcall` method is its keyword function, and its other methods are that function's
 `Core.kwcall` methods. `generic_package` names the package of the generic's module. `api` says
-whether the generic is external or a public function or type among `pub`, and `kwargs` holds the
-method's keyword names, a slurp as `name...`.
+whether the generic is external or that of the value of a public name among `pub`, and `kwargs`
+holds the method's keyword names, a slurp as `name...`.
 """
 function method_records(ownset, root, tree, pub)
     ms = own_methods(ownset)
@@ -322,12 +324,22 @@ function ambiguities(own, ownset, root)
     end
 end
 
-const TYPE_HEADS = (:curly, :., :where, :tuple, :braces, :<:, :>:)
+const TYPE_HEADS = (:curly, :where, :tuple, :braces, :<:, :>:)
 
-"Whether `ex` holds only the parts of a printed type: names, literals, `{}`, `where`, bounds and `typeof(…)`."
-type_expr(ex) = !(ex isa Expr) ||
-                (ex.head in TYPE_HEADS || ex.head === :call && length(ex.args) == 2 && ex.args[1] === :typeof) &&
-                all(type_expr, ex.args)
+"""
+Whether `ex` holds only the parts of a printed type: names, dotted names, literals, `{}`, `where`,
+bounds, a lower and an upper bound together (`A<:T<:B`), `typeof(…)`, and the fields `a = …` of a
+named tuple.
+"""
+function type_expr(ex)
+    ex isa Expr || return true
+    h, a = ex.head, ex.args
+    h === :tuple && return all(x -> x isa Expr && x.head === :(=) && length(x.args) == 2 && x.args[1] isa Symbol ?
+                                    type_expr(x.args[2]) : type_expr(x), a)
+    return (h in TYPE_HEADS || h === :. && length(a) == 2 && a[2] isa QuoteNode ||
+            h === :call && length(a) == 2 && a[1] === :typeof ||
+            h === :comparison && length(a) == 5 && a[2] === a[4] && a[2] in (:<:, :>:)) && all(type_expr, a)
+end
 
 "Whether `ex` is the expression of a key: a type expression of a `Tuple{…}`, with or without `where`."
 function key_expr(ex)
@@ -355,9 +367,13 @@ function loaded_package(s)
     return length(ps) == 1 ? only(ps) : nothing
 end
 
-"`ex` with each leading qualifier that `root` does not bind and that names a loaded package replaced by that package."
+"""
+`ex` with each leading qualifier that `root` does not bind and that names a loaded package replaced
+by that package, and each `typeof(:op)`, the key of an operator of `root`, read as `typeof(op)`.
+"""
 function requalified(ex, root)
     ex isa Expr || return ex
+    ex.head === :call && ex.args[1] === :typeof && ex.args[2] isa QuoteNode && return Expr(:call, :typeof, ex.args[2].value)
     if ex.head === :. && ex.args[1] isa Symbol && !isdefined(root, ex.args[1])
         p = loaded_package(ex.args[1])
         p === nothing || return Expr(:., p, ex.args[2])
@@ -369,8 +385,9 @@ end
 The head's verdict on the base key `k`, among the own methods `ms` of the head: `covered`, with the
 key of an own method whose signature takes the key's (`sig <: m.sig`), else `removed`. A key that
 does not evaluate in `root` is `unknown`, with the first line of its error, except an
-`UndefVarError` of a name that is no leading qualifier of the key in an own module, which is
-`removed`. A key that is no type expression is not evaluated.
+`UndefVarError` in an own module of a name that is no leading qualifier of the key and holds no
+`#`, which is `removed`: an own name is gone. A gensym name, which holds `#`, stays `unknown`. A key
+that is no type expression is not evaluated.
 """
 function method_cover(k, root, ownset, ms)
     unknown(msg) = Dict("status" => "unknown", "error" => String(first(split(msg, '\n'))))
@@ -383,7 +400,8 @@ function method_cover(k, root, ownset, ms)
     sig = try
         Core.eval(root, requalified(ex, root))
     catch e
-        e isa UndefVarError && e.scope in ownset && !(e.var in qualifiers(ex)) && return Dict("status" => "removed")
+        e isa UndefVarError && !occursin('#', string(e.var)) && e.scope in ownset && !(e.var in qualifiers(ex)) &&
+            return Dict("status" => "removed")
         return unknown(sprint(showerror, e))
     end
     by = sort!([key(m.sig, root) for m in ms if sig <: m.sig])

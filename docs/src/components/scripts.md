@@ -277,10 +277,11 @@ the JET step as many again from that moment. `--no-jet` leaves out the JET step.
 
 Each side also records the public API of its package. `public` holds one record per public name,
 with its `module` (the path below the root module, `""` for the root), its `name` and its `kind`
-(`function`, `type`, `module` or `other`): the names with `Base.ispublic` in the root module and in
-each submodule that is itself a public name of its parent, recursively. Each method record gets
-`api`, which is true where its generic is a public function or the constructor of a public type,
-or an external generic, and `kwargs`, its keyword names, with a keyword slurp as `name...`.
+(`function`, `type`, `module` or `other`): the names with `Base.ispublic` that are defined in the
+root module and in each submodule that is itself a public name of its parent, recursively. Each
+method record gets `api`, which is true where its generic is the value of a public name (a
+function, a callable object, or a type's constructor) or an external generic, and `kwargs`, its
+keyword names, with a keyword slurp as `name...`.
 
 `--api` compares the API of the head with that of the base; the release skill `julia-release`
 runs it with the last release tag as the base. The base side runs first. The head side starts once
@@ -292,7 +293,9 @@ evaluates such a key in its root module, after it replaces each leading qualifie
 that the root module does not bind and that names a loaded package by that package. An own method
 `m` of the head covers the key where the signature is a subtype of `m.sig`; a method of another
 package, such as a fallback of Base, is no cover. An `UndefVarError` of an own name that is no
-leading qualifier of the key marks the key `removed`; any other error marks it `unknown`.
+leading qualifier of the key marks the key `removed`; any other error marks it `unknown`, as does
+an `UndefVarError` of a gensym name, which holds `#`. A key that is not a printed type is not
+evaluated, and is `unknown` too.
 `--api` runs no JET and prints no line of the default comparison:
 
 | line | means | exit |
@@ -307,13 +310,16 @@ leading qualifier of the key marks the key `removed`; any other error marks it `
 
 The lines of a side that gives no records, such as `UNKNOWN: the base does not load:`, stay as in
 the default mode. `--api` does not compare the structure of a public type: its fields, its type
-parameters and its supertype.
+parameters and its supertype. A name that the base exports and the head declares only `public`
+stays public, because `Base.ispublic` is true for both, although a caller that relies on `using`
+for that name breaks.
 
 The step `dispatch` of `gate.jl` runs it, and the agent `julia-branch-verifier` runs it for its
 point 3 on every branch.
 
 `dispatch-delta-test.jl` checks it on small packages that use the standard library only, which it
-builds with git under `tempdir()` (`julia --startup-file=no dispatch-delta-test.jl`).
+builds with git under `tempdir()` (`julia --startup-file=no dispatch-delta-test.jl`, about
+5 minutes at a load average of 10).
 
 ## `julia-methods.jl`
 
