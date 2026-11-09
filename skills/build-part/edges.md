@@ -311,6 +311,12 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   coupling's own rule assumes, and pin the multiplier count against a basis of a stated boundary
   condition rather than against "the same degree and cells" (F, review of PR #44, *Revive the
   multisymplectic package*)
+- **a device test whose pinned vendor status differs on the local stack:** `test/devices/metal_vendor.jl`
+  asserts `F_neg.info == -2` and this machine's Metal 4.1 / macOS 27.2 returned `3`, on the branch and
+  on a `git archive` of the base alike, while CI's `Metal` job passed at both heads. A device
+  assertion that fails in the full suite is measured on an exported base tree and against the head's
+  `Metal` job before it is called the part's; the round's record names it (AX and BA round 1, the
+  solver package)
 
 ## A type or an interface
 
