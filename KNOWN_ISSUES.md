@@ -780,3 +780,25 @@
   link of its text to a heading finds that heading.
 - kind: missing test
 - found: 2026-11-09, the review of the probe battery's pull request
+
+### K146 · A frontend probe past its time limit expects `holds <word>`, also where it expects the word to be missing.
+
+- location: `scripts/probe-agentbox.py:510`
+- evidence: `ask_row` writes the expectation of a timeout as `expected or f"holds {ask.word}"`
+  and does not read `ask.holds`. So an F3 that passes `--timeout` has the expectation
+  `holds READABLE` in its row, where F3 expects `lacks READABLE`. The verdict `timeout` is right;
+  only the `expected` cell is false. Read from the code, not probed.
+- kind: defect
+- found: 2026-11-09, the build of the probe battery's fixes
+
+### K147 · A line of `## Listeners` can name a frontend for a port where that frontend got another status.
+
+- location: `scripts/probe-agentbox.py:641`
+- evidence: `listener_lines` collects the ports and the frontends of one command, status and
+  verdict as two separate sets, so a line names every port of the group under every frontend of
+  the group. With `alpha` on 7001 and 56925, where `omp` gets 200 at 7001 and every other row is
+  401, `report.md` holds ``- `alpha` answers `401`, `match`: 2 ports (7001, 56925), under claude,
+  omp and agy``, and a second line ``- `alpha` answers `200`, `MISMATCH`: 1 port (7001), under
+  omp``. `report.tsv` holds the exact rows.
+- kind: defect
+- found: 2026-11-09, the review of the probe battery's fixes
