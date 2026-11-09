@@ -593,6 +593,13 @@ end
     @test !any(l -> occursin("Fixed", l), lines(FD.out, "FAIL:"))
     @test lines(FD.out, "INFO: gone abstract field: ") ==
           ["INFO: gone abstract field: DDFields.Fixed.x::Any", "INFO: gone abstract field: DDFields.Narrowed.x::Any"]
+    # the lines of each kind are sorted, whatever the order of the records
+    rf(t) = Dict("type" => t, "field" => "x", "fieldtype" => "Any")
+    ts = ["M.$c" for c in 'a':'z']
+    ls = join(DD.compare(merge(side("base"), Dict("fields" => rf.(reverse(ts)))), side("head")), '\n')
+    @test lines(ls, "INFO: gone abstract field: ") == ["INFO: gone abstract field: $t.x::Any" for t in ts]
+    ls = join(DD.compare(side("base"), merge(side("head"), Dict("fields" => rf.(reverse(ts))))), '\n')
+    @test lines(ls, "FAIL: new abstract field: ") == ["FAIL: new abstract field: $t.x::Any" for t in ts]
 end
 
 @testset "a changed abstract field type reads as new" begin
