@@ -25,10 +25,15 @@ function package(name, source)
     return dir
 end
 
+# The precompile caches of the fixture packages go to a depot of their own, which is removed with
+# the test's other temporary directories; the depots of this process follow it for everything else.
+const DEPOT = mktempdir()
+
 "Run concrete-fields.jl with `args`: the exit code, the lines of stdout and the text of stderr."
 function run_cli(args...)
     out, err = IOBuffer(), IOBuffer()
-    cmd = `$(Base.julia_cmd()) --startup-file=no $SCRIPT $(collect(args))`
+    julia = `$(Base.julia_cmd()) --startup-file=no $SCRIPT $(collect(args))`
+    cmd = addenv(julia, "JULIA_DEPOT_PATH" => join([DEPOT; DEPOT_PATH], ':'))
     proc = run(pipeline(ignorestatus(cmd); stdout = out, stderr = err))
     return proc.exitcode, filter(!isempty, split(String(take!(out)), '\n')), String(take!(err))
 end
@@ -67,6 +72,9 @@ flagged(m) = [r.type => r.field for r in concrete_field_violations(m)]
             struct S2c{T}
                 x::Union{Nothing, T}
             end
+            struct S2d
+                x::Union{Nothing, Missing}
+            end
         end)
         @test isempty(concrete_field_violations(m))
     end
@@ -85,8 +93,11 @@ flagged(m) = [r.type => r.field for r in concrete_field_violations(m)]
             struct U4
                 x::Union{Nothing, Union{Int, Float64}}
             end
+            struct U5
+                x::Union{Int, Float64}
+            end
         end)
-        @test flagged(m) == ["BadUnions.U$i" => :x for i in 1:4]
+        @test flagged(m) == ["BadUnions.U$i" => :x for i in 1:5]
     end
 
     @testset "an abstract field type is flagged" begin
@@ -106,8 +117,14 @@ flagged(m) = [r.type => r.field for r in concrete_field_violations(m)]
             struct A5{T}
                 x::AbstractVector{T}
             end
+            struct A6{T}
+                x::Ref{T}
+            end
+            struct A7{K, V}
+                x::AbstractDict{K, V}
+            end
         end)
-        @test flagged(m) == ["Abstracts.A$i" => :x for i in 1:5]
+        @test flagged(m) == ["Abstracts.A$i" => :x for i in 1:7]
     end
 
     @testset "a UnionAll field is flagged" begin
@@ -172,6 +189,21 @@ flagged(m) = [r.type => r.field for r in concrete_field_violations(m)]
             end
         end)
         @test flagged(m) == ["Values.V6" => :x]
+    end
+
+    @testset "a Vararg with no count is flagged" begin
+        m = fixture(:Unbounded, quote
+            struct T1
+                x::Tuple{Vararg{Int}}
+            end
+            struct T2{T}
+                x::Tuple{Vararg{T}}
+            end
+            struct T3
+                x::Tuple{Int, Vararg{Int}}
+            end
+        end)
+        @test flagged(m) == ["Unbounded.T$i" => :x for i in 1:3]
     end
 
     @testset "only the module's own struct types are walked" begin
@@ -240,6 +272,8 @@ flagged(m) = [r.type => r.field for r in concrete_field_violations(m)]
                 b::Real
                 a::Any
             end
+            # names(m; all = true) lists Alias before Alpha, so the walk finds Zed first
+            const Alias = Zed
             struct Alpha{T}
                 z::Vector{Any}
                 ok::T
@@ -285,6 +319,21 @@ flagged(m) = [r.type => r.field for r in concrete_field_violations(m)]
         @test !occursin("world", err)
     end
 
+    @testset "a line prints the field type with the package's own show" begin
+        dir = package("CfShow", """
+            module CfShow
+            abstract type Shape end
+            Base.show(io::IO, ::Type{Shape}) = print(io, "a Shape")
+            struct A
+                s::Shape
+            end
+            end
+            """)
+        code, lines, _ = run_cli(dir)
+        @test code == 1
+        @test lines == ["CfShow.A.s::a Shape", "Verdict: FAIL — 1 violations"]
+    end
+
     @testset "one violation fails too" begin
         dir = package("CfOne", "module CfOne\nstruct A\n    f::Function\nend\nend\n")
         code, lines, _ = run_cli(dir)
@@ -324,6 +373,15 @@ flagged(m) = [r.type => r.field for r in concrete_field_violations(m)]
         @test code == 3
         @test lines ==
               ["UNKNOWN: the package does not load: the process ended with exit code 5, signal 0"]
+        # the exit codes of a verdict, from a process that printed none
+        for (i, n) in enumerate((0, 1, 3))
+            dir = package("CfExit$i", "module CfExit$i\n__init__() = exit($n)\nend\n")
+            code, lines, _ = run_cli(dir)
+            @test code == 3
+            @test lines == [
+                "UNKNOWN: the package does not load: the process ended with exit code $n, signal 0",
+            ]
+        end
         dir = package("CfKill",
             "module CfKill\n__init__() = ccall(:kill, Cint, (Cint, Cint), getpid(), 9)\nend\n")
         code, lines, _ = run_cli(dir)

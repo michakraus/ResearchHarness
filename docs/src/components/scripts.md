@@ -369,12 +369,13 @@ julia --startup-file=no concrete-fields.jl <package>
 
 The rule is *concrete up to type variables*. A field type passes when it is a type variable, with
 any bound; a DataType that is not abstract and whose type parameters all pass; or exactly
-`Union{Nothing, X}` or `Union{Missing, X}`, where `X` is not a `Union` and passes. A type parameter
-that is not a type, such as the `2` of `Array{T, 2}` or the `3` of `Val{3}`, passes. A `Vararg`
-passes when its element type passes, whatever its count. Every other field type is flagged:
-`Function`, `Any`, an abstract type such as `AbstractVector{T}`, a bare or partly applied
-`UnionAll` such as `Matrix` or `Array{T}`, every other `Union`, and a type with a parameter that
-fails, such as `Vector{Real}` or `Dict{Symbol, Any}`.
+`Union{Nothing, X}` or `Union{Missing, X}`, where `X` is not a `Union` and passes, so
+`Union{Nothing, Missing}` passes too. A type parameter that is not a type, such as the `2` of
+`Array{T, 2}` or the `3` of `Val{3}`, passes. A `Vararg` passes when it has a count, a value or a
+type variable, and its element type passes. Every other field type is flagged: `Function`, `Any`,
+an abstract type such as `AbstractVector{T}`, a bare or partly applied `UnionAll` such as `Matrix`
+or `Array{T}`, every other `Union`, a `Vararg` with no count such as that of `Tuple{Vararg{Int}}`,
+and a type with a parameter that fails, such as `Vector{Real}` or `Dict{Symbol, Any}`.
 
 The script reads each struct type, mutable or not, whose `parentmodule` is the package's root
 module or one of its submodules, recursively, and each type once, however many names bind it. It
@@ -390,7 +391,7 @@ instantiated. It prints one line per violation,
 |:--|:--|:--|
 | `Verdict: PASS — 0 violations` | every field passes | 0 |
 | `Verdict: FAIL — <n> violations` | after the lines of the violations | 1 |
-| `UNKNOWN: the package does not load: <error>` | the import fails, and the full error goes to stderr; or the process that loads the package ends with another exit code or by a signal | 3 |
+| `UNKNOWN: the package does not load: <error>` | the import fails, and the full error goes to stderr; or the process that loads the package ends without a verdict, such as by an `exit` in the package's code or by a signal | 3 |
 
 Bad arguments, such as a directory with no `Project.toml`, print the usage line to stderr and
 exit 2. In process, `concrete_field_violations(M::Module)` returns the violations of a loaded root

@@ -6,10 +6,12 @@
 #
 # A field's type passes when it is a type variable (with any bound), a non-abstract DataType whose
 # type parameters all pass, or exactly Union{Nothing, X} or Union{Missing, X} where X is not a Union
-# and passes. A type parameter that is not a type, such as the 2 of Array{T, 2}, passes; a Vararg
-# passes when its element type passes, whatever its count. Every other field is a violation: a
-# Function, an Any, an abstract type with or without parameters, a bare or partially applied
-# UnionAll such as Matrix, any other Union, and a type with such a parameter, such as Vector{Real}.
+# and passes; so Union{Nothing, Missing} passes. A type parameter that is not a type, such as the 2
+# of Array{T, 2}, passes; a Vararg passes when it has a count, a value or a type variable, and its
+# element type passes. Every other field is a violation: a Function, an Any, an abstract type with
+# or without parameters, a bare or partially applied UnionAll such as Matrix, any other Union, a
+# Vararg with no count such as that of Tuple{Vararg{Int}}, and a type with such a parameter, such
+# as Vector{Real}.
 #
 # The structs read are those whose parentmodule is the package's root module or one of its
 # submodules, recursively: not the types that the package only binds, not the generated types
@@ -23,8 +25,9 @@
 #   Verdict: FAIL — <n> violations                     exit 1
 #   UNKNOWN: the package does not load: <error>        exit 3
 #
-# The UNKNOWN line also stands where the process that loads the package ends with another exit
-# code or by a signal; its <error> then names both. Bad arguments print the usage line to stderr
+# The process that loads the package exits with 10, 11 or 13 for the three verdicts. The UNKNOWN
+# line also stands where it ends with another exit code, such as an exit(0) of the package's own
+# code, or by a signal; its <error> then names both. Bad arguments print the usage line to stderr
 # and exit 2. In process, concrete_field_violations takes the root module that a caller has loaded.
 
 using TOML
@@ -35,12 +38,13 @@ parameter_passes(p) = p isa Union{Type, TypeVar, Core.TypeofVararg} ? field_type
 "Whether the field type `t` is concrete up to type variables."
 function field_type_passes(t)
     t isa TypeVar && return true
-    t isa Core.TypeofVararg && return field_type_passes(t.T)
+    t isa Core.TypeofVararg && return isdefined(t, :N) && field_type_passes(t.T)
     if t isa Union
         members = Base.uniontypes(t)
         length(members) == 2 || return false
-        x = filter(m -> m !== Nothing && m !== Missing, members)
-        return length(x) == 1 && field_type_passes(only(x))
+        # Nothing and Missing pass themselves, so both members are checked
+        return any(m -> m === Nothing || m === Missing, members) &&
+               all(field_type_passes, members)
     end
     t isa DataType || return false
     isabstracttype(t) && return false
@@ -117,8 +121,9 @@ function report(name::String)
     return Base.invokelatest(print_violations, M)
 end
 
-# The program of the fresh process: ARGS are this file and the package's name.
-const CHILD = "include(ARGS[1]); exit(report(ARGS[2]))"
+# The program of the fresh process: ARGS are this file and the package's name. It exits with
+# 10 + the exit code of `report`, so that a process that ends early with 0, 1 or 3 gives no verdict.
+const CHILD = "include(ARGS[1]); exit(10 + report(ARGS[2]))"
 
 function main(args)
     length(args) == 1 || (println(stderr, USAGE); return 2)
@@ -133,7 +138,7 @@ function main(args)
     end
     cmd = `$(Base.julia_cmd()) --startup-file=no --project=$pkg -e $CHILD $(@__FILE__) $name`
     proc = run(ignorestatus(cmd))
-    proc.exitcode in (0, 1, 3) && proc.termsignal == 0 && return proc.exitcode
+    proc.exitcode in (10, 11, 13) && return proc.exitcode - 10
     println("UNKNOWN: the package does not load: the process ended with exit code ",
         proc.exitcode, ", signal ", proc.termsignal)
     return 3
