@@ -142,8 +142,8 @@ GRAPHQL_MESSAGE = (
 
 FOREIGN_MESSAGE = (
     "gh api {method} {endpoint} writes a review or a comment, and the check reads no repository of "
-    "an own organisation in it: the owner is not in the `org` list of the profile, is no plain name "
-    "such as a {{owner}} placeholder, or the call names a --hostname."
+    "an own organisation in it: an owner outside the `org` list of the profile, an owner or a "
+    "repository that is no plain name, such as a {{owner}} placeholder, or a --hostname."
 )
 
 
