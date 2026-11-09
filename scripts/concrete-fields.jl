@@ -27,8 +27,10 @@
 #
 # The process that loads the package exits with 10, 11 or 13 for the three verdicts. The UNKNOWN
 # line also stands where it ends with another exit code, such as an exit(0) of the package's own
-# code, or by a signal; its <error> then names both. Bad arguments print the usage line to stderr
-# and exit 2. In process, concrete_field_violations takes the root module that a caller has loaded.
+# code, or by a signal; its <error> then names both. An exit(10), exit(11) or exit(13) of the
+# package's own code reads as a verdict, with no verdict line. Bad arguments print the usage line
+# to stderr and exit 2. In process, concrete_field_violations takes the root module that a caller
+# has loaded.
 
 using TOML
 

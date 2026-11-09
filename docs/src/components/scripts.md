@@ -393,6 +393,10 @@ instantiated. It prints one line per violation,
 | `Verdict: FAIL — <n> violations` | after the lines of the violations | 1 |
 | `UNKNOWN: the package does not load: <error>` | the import fails, and the full error goes to stderr; or the process that loads the package ends without a verdict, such as by an `exit` in the package's code or by a signal | 3 |
 
+The process that loads the package exits with 10, 11 or 13 for the three verdicts. An `exit(10)`,
+`exit(11)` or `exit(13)` in the package's own code, such as in its `__init__`, therefore reads as
+the verdict of that code, with no verdict line.
+
 Bad arguments, such as a directory with no `Project.toml`, print the usage line to stderr and
 exit 2. In process, `concrete_field_violations(M::Module)` returns the violations of a loaded root
 module as named tuples `(; type, field, fieldtype)`, sorted by the type's path and then by the
@@ -405,7 +409,7 @@ this repository calls it by name.
 
 `concrete-fields-test.jl` checks the rule and the walk on fixture modules in its own process, and
 the command line on small fixture packages that it writes under `tempdir()`
-(`julia --startup-file=no concrete-fields-test.jl`, about 10 s at a load average of 16). CI runs
+(`julia --startup-file=no concrete-fields-test.jl`, about 20 s at a load average of 21). CI runs
 it on Linux.
 
 ## `fatou-lsp.jl` and `fatou-lsp-test.jl`
