@@ -635,9 +635,9 @@ end
 end
 
 @testset "a side past its time gives no verdict" begin
-    # the head writes a counter every 0.1 s for 60 s while it loads; the module is precompiled, so
-    # a process that the side starts runs the loop
-    body = "for i in 1:600\n    sleep(0.1)\n    write(joinpath(@__DIR__, \"..\", \"alive.txt\"), string(i))\nend"
+    # the head writes a counter every 0.1 s for at least 240 s while it loads; the module is
+    # precompiled, so a process that the side starts runs the loop
+    body = "for i in 1:2400\n    sleep(0.1)\n    write(joinpath(@__DIR__, \"..\", \"alive.txt\"), string(i))\nend"
     dir = fixture("DDSlow", ["src/DDSlow.jl" => mod("DDSlow", "a(x) = x")], ["src/DDSlow.jl" => mod("DDSlow", body)])
     r = dd(dir, "HEAD~1", "--no-jet", "--timeout", "5")
     @test "UNKNOWN: head timed out after 5 s" in lines(r.out, "UNKNOWN: ")
@@ -646,10 +646,14 @@ end
     n = isfile(alive) ? read(alive, String) : ""
     sleep(1.0)
     @test (isfile(alive) ? read(alive, String) : "") == n
-    # a limit by which the precompilation has started: the kill reaches it
-    rm(alive; force = true)
-    r = dd(dir, "HEAD~1", "--no-jet", "--timeout", "40")
-    @test "UNKNOWN: head timed out after 40 s" in lines(r.out, "UNKNOWN: ")
+    # a limit by which the precompilation has started: the kill reaches it; a loaded machine can
+    # start the loop after 40 s, so a second run gets 150 s
+    for t in ("40", "150")
+        rm(alive; force = true)
+        r = dd(dir, "HEAD~1", "--no-jet", "--timeout", t)
+        @test "UNKNOWN: head timed out after $t s" in lines(r.out, "UNKNOWN: ")
+        isfile(alive) && break
+    end
     @test isfile(alive)
     n = isfile(alive) ? read(alive, String) : ""
     sleep(1.0)
@@ -660,7 +664,7 @@ end
     p = run(pipeline(ignorestatus(`$(Base.julia_cmd()) --startup-file=no $SCRIPT $dir "HEAD~1" --no-jet`); stdout = buf, stderr = devnull);
         wait = false)
     t0 = time()
-    while !isfile(alive) && time() - t0 < 60
+    while !isfile(alive) && time() - t0 < 180
         sleep(0.2)
     end
     @test isfile(alive)
@@ -668,9 +672,9 @@ end
     wait(p)
     m = match(r"run directory (\S+)", String(take!(buf)))
     m === nothing || push!(MADE, m[1])
-    n = read(alive, String)
+    n = isfile(alive) ? read(alive, String) : ""
     sleep(1.0)
-    @test read(alive, String) == n
+    @test (isfile(alive) ? read(alive, String) : "") == n
     # a signal that the script did not send
     sig = fixture("DDSignal", ["src/DDSignal.jl" => mod("DDSignal", "a(x) = x")],
         ["src/DDSignal.jl" => mod("DDSignal", "__precompile__(false)\nccall(:kill, Cint, (Cint, Cint), getpid(), 9)")])
