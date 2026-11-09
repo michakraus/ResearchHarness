@@ -932,6 +932,19 @@ def resolution_cases(check: Check, root: pathlib.Path) -> None:
             f"{got[3] if got else None}, {seen.get('PATH')!r}, {p.stderr!r}",
         )
 
+    box = Box.fresh(root, "near-names")
+    near = [box.home / "x" / "not-cmux-cli-shims", box.home / "x" / "not-cmux-cli-shims" / "A"]
+    for entry in near:
+        stub(entry / "omp")
+    for entry in near:
+        p = box.run("omp", PATH=f"{entry}:{box.home}/path:/usr/bin:/bin")
+        got = box.argv()
+        check(
+            p.returncode == 0 and got is not None and got[3] == f"{entry}/omp",
+            f"agentbox omp with {entry.relative_to(box.home)}/omp first on the PATH, an entry that only "
+            f"ends in a name like cmux-cli-shims: srt gets it: {p.returncode}, {got[3] if got else None}",
+        )
+
     box = Box.fresh(root, "working-directory")
     stub(box.home / "claude")
     p = box.run("claude", cwd=box.home)
@@ -995,7 +1008,10 @@ def cache_cases(check: Check, root: pathlib.Path) -> None:
     """The cache variables of a run: a caller's non-empty value stays, an empty one is replaced;
     with TMPDIR empty, the run directory is below /tmp."""
     for label, given in [
-        ("npm_config_cache=/c and UV_CACHE_DIR empty", {"npm_config_cache": "/c", "UV_CACHE_DIR": ""}),
+        (
+            "npm_config_cache=/c, UV_CACHE_DIR and TEXMFVAR empty",
+            {"npm_config_cache": "/c", "UV_CACHE_DIR": "", "TEXMFVAR": ""},
+        ),
         (
             "npm_config_cache empty, UV_CACHE_DIR=/u and TEXMFVAR=/t",
             {"npm_config_cache": "", "UV_CACHE_DIR": "/u", "TEXMFVAR": "/t"},
@@ -1015,7 +1031,8 @@ def cache_cases(check: Check, root: pathlib.Path) -> None:
     box = Box.fresh(root, "no-tmpdir")
     p = box.run("agy", TMPDIR="")
     seen = box.environment() if box.argv() is not None else {}
-    run = pathlib.PurePosixPath(seen.get("UV_CACHE_DIR", "/nothing")).parent
+    values = [seen[k] for k in CACHES if k in seen]
+    run = pathlib.PurePosixPath(values[0] if values else "/nothing").parent
     made = pathlib.Path(run)
     below_tmp = run.parent == FALLBACK_TMPDIR and run.name.startswith("agentbox.")
     check(
