@@ -803,7 +803,7 @@
 
 ### K146 · A frontend probe past its time limit expects `holds <word>`, also where it expects the word to be missing.
 
-- location: `scripts/probe-agentbox.py:510`
+- location: `scripts/probe-agentbox.py:533`
 - evidence: `ask_row` writes the expectation of a timeout as `expected or f"holds {ask.word}"`
   and does not read `ask.holds`. So an F3 that passes `--timeout` has the expectation
   `holds READABLE` in its row, where F3 expects `lacks READABLE`. The verdict `timeout` is right;
@@ -813,7 +813,7 @@
 
 ### K147 · A line of `## Listeners` can name a frontend for a port where that frontend got another status.
 
-- location: `scripts/probe-agentbox.py:641`
+- location: `scripts/probe-agentbox.py:668`
 - evidence: `listener_lines` collects the ports and the frontends of one command, status and
   verdict as two separate sets, so a line names every port of the group under every frontend of
   the group. With `alpha` on 7001 and 56925, where `omp` gets 200 at 7001 and every other row is
@@ -822,6 +822,17 @@
   omp``. `report.tsv` holds the exact rows.
 - kind: defect
 - found: 2026-11-09, the review of the probe battery's fixes
+
+### K152 · The detail of a failed frontend probe misses an `error:` line at the start of stderr when stdout has no final newline.
+
+- location: `scripts/probe-agentbox.py:342`
+- evidence: `error_head` splits the joined `out + err` into lines, so stderr's first line joins the
+  last line of stdout. `error_head("a\nb\nabc" + "error: bun failed\n")` gives
+  `'a b abcerror: bun failed'`, the whole text: the anchored `^\s*error:` of `ERROR_LINE` does not
+  match `abcerror:`. With a final newline on stdout it gives `'error: bun failed'`. `says` splits
+  each stream on its own; `error_head` does not.
+- kind: defect
+- found: 2026-11-10, the review of the probe battery's word rule and error head
 
 ### K148 · The same-file checks of the network lists and the deduplication of `merged` compare hosts as exact strings, while `denies` folds case.
 
