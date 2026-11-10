@@ -1,0 +1,7 @@
+id: exitcode-alone
+valid:
+  - "function c(p)\n    p.termsignal == 0 && p.exitcode == 0\nend"
+  - "function d(p)\n    success(p) || println(p.exitcode)\nend"
+invalid:
+  - "ok(p) = p.exitcode == 0"
+  - "function a(p)\n    p.termsignal == 0 || return false\nend\nfunction b(p)\n    p.exitcode == 0\nend"
