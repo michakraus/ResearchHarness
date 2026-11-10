@@ -51,13 +51,13 @@
 
 ### K22 · Under OpenCode, a verify critic carries the round-1 rule of the council.
 
-- location: `adapters/opencode/adapter.py:252-261`
+- location: `adapters/opencode/adapter.py:262-270`
 - evidence: `preamble` adds "Round 1 has three critics here, `1a`, `1b` and `1c` … your probe
   directory is `round-1a/`, `round-1b/` or `round-1c/`" to the agent that a council is keyed on.
   The council of `examples/models.toml` and the draft `models.toml` is keyed on `julia-critic`,
-  which `OPENCODE-DELTA.md` also spawns alone for a verify round, so the rendered verify critic
-  gets the round-1 rule with no condition. OpenCode is not in use; part W3 of the agent
-  configuration plan fixes it. A fix changes the preamble and the fixtures in
+  which OpenCode's copy of the `build-part` skill also spawns alone for a verify round, so the
+  rendered verify critic gets the round-1 rule with no condition. OpenCode is not in use; part W3
+  of the agent configuration plan fixes it. A fix changes the preamble and the fixtures in
   `adapters/opencode/fixtures/expected/`.
 - kind: defect
 - found: 2026-10-08
@@ -191,7 +191,7 @@
 
 ### K76 · Under OpenCode v2 an agent with `bash: deny` still has the `execute` tool, and no probe shows that a `permission` rule binds a tool called inside it.
 
-- location: `adapters/opencode/adapter.py:447`
+- location: `adapters/opencode/adapter.py:456`
 - evidence: v2 (2.0.30) gives an agent the `execute` tool of Code Mode. In a decoy probe of
   2026-10-16, agents with `bash`, `edit`, `task`, `webfetch` and `websearch` denied still had it.
   Its catalog listed 14 of Kaimon's 33 MCP tools, and `search` inside `execute` finds the rest. The
@@ -202,7 +202,7 @@
 
 ### K77 · Under OpenCode v2 no rule of the generated block stops the `read` tool on a credential file inside the session's project root.
 
-- location: `adapters/opencode/adapter.py:168`
+- location: `adapters/opencode/adapter.py:177`
 - evidence: v2 (2.0.30) binds a `read` deny only in project-relative form: an absolute or `~/`
   pattern, in an agent or in `opencode.jsonc`, did not stop the `read` tool on a decoy in decoy
   probes of 2026-10-16, and a project-relative one did. The credential denies are absolute, so
@@ -214,7 +214,7 @@
 
 ### K78 · Under OpenCode v2 a `**/` `edit` deny probably does not stop the `edit` tool on a file in the project root.
 
-- location: `adapters/opencode/adapter.py:428`
+- location: `adapters/opencode/adapter.py:437`
 - evidence: v2 (2.0.30) matches a `read` pattern against the path relative to the project root,
   with `*` crossing `/` and both ends anchored: `**/*.pem` did not stop a read of `x.pem` in the
   root, and its root form `*.pem` did, in decoy probes of 2026-10-16. `with_root_forms` adds the
@@ -328,17 +328,17 @@
 
 ### K96 · The worktree rule of the OpenCode and oh-my-pi agents fires on the bare word `isolation`.
 
-- location: `adapters/omp/adapter.py:479`
+- location: `adapters/omp/adapter.py:495`
 - evidence: `"isolation" in body` is true for any body that holds the word, so an agent that says
   "the caller spawned you without isolation" (`agents/julia-builder.md:86`) gets the worktree rule
   of its "Under OpenCode" or "Under oh-my-pi" section. The same test is at
-  `adapters/omp/adapter.py:1625` and `adapters/opencode/adapter.py:279`.
+  `adapters/omp/adapter.py:1672` and `adapters/opencode/adapter.py:289`.
 - kind: defect
 - found: #78
 
 ### K97 · The OpenCode skill rule says "Claude Code loads them for you" for a single skill.
 
-- location: `adapters/opencode/adapter.py:276`
+- location: `adapters/opencode/adapter.py:285`
 - evidence: the rule writes "Claude Code loads them for you" whatever the number of skills.
   `adapters/opencode/fixtures/expected/judge.md:23` shows it for the one skill `which-model`.
 - kind: docs
@@ -360,7 +360,7 @@
 - location: `adapters/antigravity/adapter.py:716`
 - evidence: `sections(text)` returns `{m.group(1): m.group(2).strip() for m in
   re.finditer(r"(?m)^## (\w+)\n(.*?)(?=^## |\Z)", text, re.S)}`, the same expression that
-  `adapters/omp/adapter.py:469` writes inline for `UNDER-OMP.md`.
+  `adapters/omp/adapter.py:485` writes inline for `UNDER-OMP.md`.
 - kind: dead code
 - found: #78
 

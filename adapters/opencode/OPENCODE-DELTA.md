@@ -82,11 +82,6 @@ form. Change a file with the edit tool, never with `sed -i` or `perl -pi`.
 A command that a permission rule blocks returns **the whole matching rule list**, about 6,000
 tokens. Do not probe the boundary; read `opencode.jsonc`.
 
-## `--auto` removes every prompt
-
-`opencode --auto` approves each `ask` rule — `gh pr merge`, `gh release create` and the rest. **Do not
-use it for work that pushes, merges or releases.**
-
 ## This is the one `AGENTS.md`
 
 `harness install` writes this file as `AGENTS.md` in OpenCode's configuration directory. An
@@ -100,15 +95,3 @@ the Claude Code mechanisms it uses. Its skills do not load by themselves; the se
 
 **Each agent's model is in its own frontmatter**, so a spawn passes no `model:` and names no tier.
 To `SendMessage` an agent, call `task` again with the `task_id` that its first call returned.
-
-## `build-part`: round 1 is a council of critics
-
-Where step 3 spawns two critics, spawn the council of the part's critic, `julia-critic` or
-`python-critic`, in one message: the critic as `Round: 1a`, and each of its council copies as
-`1b`, `1c`, … in the alphabetical order of their names. A council copy is a hidden agent whose
-description says "The same agent as julia-critic" or "The same agent as python-critic". Each
-critic runs on a different model. The `task` tool takes no effort, so `1a` runs at the variant of
-the critic, and each copy at its own. Everything else in step 3 holds for every critic: the round
-fails when any critic fails, its findings are the union of the reports, and you wait for all of
-them. A verify round spawns one critic alone: the council copy whose description says that it
-judges each verify round, else the critic.
