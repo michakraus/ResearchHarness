@@ -829,19 +829,20 @@ def settings_cases(check: Check, root: pathlib.Path) -> None:
 
 
 def state_cases(check: Check, root: pathlib.Path, home: pathlib.Path) -> None:
-    """The write denies of STATE_DENY_WRITE for omp, whose state is `~/d/s` and `~/s`, and for
-    antigravity, whose state lies below none of them; then, with the globs `~/g*`, `~/q?`, `~/b[x]`
-    and `~/c]` and the home directory spelled `~/` added, for omp with the state `~/dxs`, which
-    shares a prefix with `~/d` and `~/dx`, and a path below each glob as a path."""
+    """The write denies of STATE_DENY_WRITE, with `~/s` also spelled `~/s/` and `~//s`, for omp,
+    whose state is `~/d/s` and `~/s`; those of STATE_DENY_WRITE for antigravity, whose state lies
+    below none of them; then, with the globs `~/g*`, `~/q?`, `~/b[x]` and `~/c]` and the home
+    directory spelled `~/` added, for omp with the state `~/dxs`, which shares a prefix with `~/d`
+    and `~/dx`, and a path below each glob as a path."""
     full = ["/h/d", "/h/d/", "/h//d", "/h/dx", "/h/d/*", "/h/e", "/h", "/h/s"]
     for state, extra, name, want, label in [
         (
             '["~/d/s", "~/s"]',
-            [],
+            ["~/s/", "~//s"],
             "omp",
-            ["/h/dx", "/h/d/*", "/h/e", "/h", "/h/s"],
+            ["/h/dx", "/h/d/*", "/h/e", "/h", "/h/s", "/h/s/", "/h//s"],
             "drops ~/d, ~/d/ and ~//d, strictly above its state ~/d/s, and keeps ~/dx, the glob ~/d/*, "
-            "~/e, the home directory and ~/s, equal to its state ~/s",
+            "~/e, the home directory and ~/s, ~/s/ and ~//s, equal to its state ~/s",
         ),
         (
             '["~/d/s", "~/s"]',
