@@ -42,14 +42,22 @@ its file alone, and every other frontend's file still denies reads of them:
 
 | frontend | `own` |
 |:--|:--|
-| `claude` | `~/.claude.json`, `~/.claude/.credentials.json` |
+| `claude` | `~/.claude.json`, `~/.claude/.credentials.json`, `~/.config/anthropic/credentials` |
 | `opencode` | `~/.local/share/opencode/auth.json`, `~/.local/share/opencode/mcp-auth.json` |
 | `omp` | `~/.omp/agent/agent.db`, `~/.omp/agent/agent.db-wal`, `~/.omp/agent/.env` |
-| `antigravity` | none |
+| `antigravity` | `~/.gemini/jetski-standalone-oauth-token` |
 
 Claude Code writes `~/.claude.json` itself; a write deny of it would stop the whole process under
 `srt`. The cost is that a command that a frontend runs can also read and write the frontend's own
 files, because the sandbox of the whole process cannot tell the frontend from its own shell.
+
+Claude Code reads its Anthropic profile in `~/.config/anthropic/`. Before a token refresh it makes
+the lock directory `~/.config/anthropic/credentials.lock`, and the refresh rewrites a file in
+`~/.config/anthropic/credentials`. So `claude`'s `state` holds both paths, and its `own` holds the
+credentials directory, which the template denies to every other frontend. `agy` keeps its Google
+login in the login keychain, which the read limit hides; its file
+`~/.gemini/jetski-standalone-oauth-token` is in `antigravity`'s `own` and denied to every other
+frontend.
 
 OpenCode's `read_files` are its three provider tokens, `gwdg-token`, `opendesign-token` and
 `tokenharbor-token` below `~/.config/api-keys`, which its configuration reads by file. A token has
@@ -74,7 +82,7 @@ denies, compared as paths after the `~` expansion, so `~/x/`, `~//x` and `~/./x`
 | `network.deniedDomains` | the template's, or `[]` where it has none; `srt` refuses a file without the key |
 | `network.allowLocalBinding` | the template's |
 | `filesystem.allowWrite` | the template's, without each entry at or below another frontend's `state` path; then the frontend's `state`; then the real path of `$TMPDIR`, where it is set and not empty |
-| `filesystem.denyWrite` | the template's, without the frontend's `own`; then its `deny_write` |
+| `filesystem.denyWrite` | the template's, without the frontend's `own` and without each literal entry other than the home directory that lies strictly above a path of the frontend's `state`; then its `deny_write` |
 | `filesystem.denyRead` | the home directory; then the template's; then each path of `credentials.files`; without the frontend's `own`; each literal entry other than the home directory that lies strictly above a path of the frontend's `read_files` written as the entry followed by `/*`, in its place |
 | `filesystem.allowRead` | `read.allow`; then the frontend's `state`; then its `own`; then its `read_files` |
 
@@ -83,6 +91,15 @@ no entry twice, and the first occurrence keeps its place. "At or below" compares
 components: `~/.claude.json` is not below `~/.claude`. So no frontend's file allows a write to
 another frontend's state. A glob of the template, such as `~/Research/**/.git/hooks`, passes
 through after the expansion.
+
+`srt` emits the write denies after the write allows, so a write deny above a `state` path would
+refuse every write to it. A frontend's file therefore leaves out each literal write deny of the
+template that lies strictly above one of its `state` paths, compared as paths after the `~`
+expansion, so `~/x/` and `~//x` are `~/x`. The home directory and a glob stay, and so does an entry
+equal to a `state` path unless `own` names it. `srt` denies a write by default, so without the
+entry a write below it passes only where `allowWrite` names the path. In the shipped files this
+leaves the write deny `~/.config` out of `claude`'s file alone, which keeps the template's write
+deny below it, `~/.config/systemd/user`.
 
 A file below a read deny directory is read by name, through a glob. `srt` emits a literal read
 deny that lies inside a read allow after the allows, so a file allow below it never takes effect;

@@ -15,7 +15,9 @@ and its `read_files`, files below a read deny directory that it reads and does n
   network.allowLocalBinding  the template's
   filesystem.allowWrite      the template's, without each entry at or below another frontend's
                              `state` path; then the frontend's `state`; then `tmpdir`, when given
-  filesystem.denyWrite       the template's, without the frontend's `own`; then its `deny_write`
+  filesystem.denyWrite       the template's, without the frontend's `own` and without each
+                             literal entry, other than the home directory, strictly above a path
+                             of the frontend's `state`; then its `deny_write`
   filesystem.denyRead        the home directory; then the template's; then each path of
                              `credentials.files`; without the frontend's `own`; each literal
                              entry, other than the home directory, strictly above a path of the
@@ -225,7 +227,11 @@ def srt_settings(
     if not isinstance(binding, bool):
         raise HarnessError("the sandbox object's network.allowLocalBinding is not true or false")
     allow_write = [p for p in expanded(strings(sandbox, "filesystem", "allowWrite")) if not below(p, others)]
-    deny_write = [p for p in expanded(strings(sandbox, "filesystem", "denyWrite")) if p not in own]
+    deny_write = [
+        p
+        for p in expanded(strings(sandbox, "filesystem", "denyWrite"))
+        if p not in own and not above_state(p, state, home)
+    ]
     deny_read = read_globs(
         frontend,
         [
@@ -253,6 +259,21 @@ def srt_settings(
             "allowRead": unique([*expanded(policy.read.allow), *state, *own, *read_files]),
         },
     }
+
+
+def above_state(entry: str, state: Sequence[str], home: pathlib.Path) -> bool:
+    """Whether the write deny `entry`, a literal other than `home`, lies strictly above a path of
+    `state`, both after `~` expansion and compared as `PurePosixPath`s, so `~/x/` and `~//x` are
+    `~/x`. srt emits the write denies after the write allows, so such an entry would refuse every
+    write to the state path below it; srt denies a write by default, so without the entry a write
+    below it passes only where `allowWrite` names the path."""
+    top = pathlib.PurePosixPath(entry)
+    literal = not any(c in entry for c in GLOB_CHARS)
+    return (
+        literal
+        and top != pathlib.PurePosixPath(home)
+        and any(below(p, [entry]) and pathlib.PurePosixPath(p) != top for p in state)
+    )
 
 
 def read_globs(
@@ -364,11 +385,21 @@ FIXTURE_OMP = '[frontend.omp]\nstate = ["~/.omp"]\ndeny_write = []\nown = []\nre
 # The credential files that each frontend reads and writes itself, and the provider tokens that
 # OpenCode reads, as the shipped policy and template render them with the home directory /h.
 SHIPPED_OWN = {
-    "claude": ("/h/.claude.json", "/h/.claude/.credentials.json"),
+    "claude": ("/h/.claude.json", "/h/.claude/.credentials.json", "/h/.config/anthropic/credentials"),
     "opencode": ("/h/.local/share/opencode/auth.json", "/h/.local/share/opencode/mcp-auth.json"),
     "omp": ("/h/.omp/agent/agent.db", "/h/.omp/agent/agent.db-wal", "/h/.omp/agent/.env"),
-    "antigravity": (),
+    "antigravity": ("/h/.gemini/jetski-standalone-oauth-token",),
 }
+# Claude Code's Anthropic credentials directory and the lock directory that it makes before a
+# token refresh, and agy's token file, as the shipped template and policy render them with the
+# home directory /h.
+SHIPPED_ANTHROPIC = "/h/.config/anthropic/credentials"
+SHIPPED_LOCK = "/h/.config/anthropic/credentials.lock"
+SHIPPED_AGY = "/h/.gemini/jetski-standalone-oauth-token"
+# A template's write denies for the rule of the state paths: an entry above a state path in three
+# spellings, a name that shares its prefix, a glob below it, another entry, the home directory and
+# an entry equal to a state path.
+STATE_DENY_WRITE = ["~/d", "~/d/", "~//d", "~/dx", "~/d/*", "~/e", "~", "~/s"]
 SHIPPED_KEYS = "/h/.config/api-keys"
 SHIPPED_TOKENS = tuple(f"{SHIPPED_KEYS}/{n}" for n in ("gwdg-token", "opendesign-token", "tokenharbor-token"))
 
@@ -741,6 +772,7 @@ def settings_cases(check: Check, root: pathlib.Path) -> None:
         f"a read_files path ~/.config/keys, equal as a path to the read deny entry ~/.config/keys/, "
         f"exits 2: {message!r}",
     )
+    state_cases(check, root, home)
 
     plain = fixture_sandbox()
     del plain["network"]["deniedDomains"]
@@ -795,6 +827,47 @@ def settings_cases(check: Check, root: pathlib.Path) -> None:
             message is not None and word in message,
             f"a sandbox object with {label} exits 2 and names it: {message!r}",
         )
+
+
+def state_cases(check: Check, root: pathlib.Path, home: pathlib.Path) -> None:
+    """The write denies of STATE_DENY_WRITE for omp, whose state is `~/d/s` and `~/s`, and for
+    antigravity, whose state lies below none of them; then, with the glob `~/g*` and the home
+    directory spelled `~/` added, for omp with the state `~/dxs`, which shares a prefix with `~/d`
+    and `~/dx`, and `~/g*/s`, below the glob as a path."""
+    full = ["/h/d", "/h/d/", "/h//d", "/h/dx", "/h/d/*", "/h/e", "/h", "/h/s"]
+    for state, extra, name, want, label in [
+        (
+            '["~/d/s", "~/s"]',
+            [],
+            "omp",
+            ["/h/dx", "/h/d/*", "/h/e", "/h", "/h/s"],
+            "drops ~/d, ~/d/ and ~//d, strictly above its state ~/d/s, and keeps ~/dx, the glob ~/d/*, "
+            "~/e, the home directory and ~/s, equal to its state ~/s",
+        ),
+        (
+            '["~/d/s", "~/s"]',
+            [],
+            "antigravity",
+            full,
+            "keeps every write deny, as no path of its own state lies below one",
+        ),
+        (
+            '["~/dxs", "~/g*/s"]',
+            ["~/g*", "~/"],
+            "omp",
+            [*full, "/h/g*", "/h/"],
+            "with the state ~/dxs and ~/g*/s keeps every write deny: ~/d and ~/dx are prefixes of ~/dxs "
+            "and no path above it, ~/g* is a glob and ~/ is the home directory",
+        ),
+    ]:
+        path = root / "state-policy.toml"
+        path.write_text(FIXTURE_POLICY.replace(FIXTURE_OMP, FIXTURE_OMP.replace('["~/.omp"]', state), 1))
+        sandbox = fixture_sandbox()
+        sandbox["filesystem"]["denyWrite"] = [*STATE_DENY_WRITE, *extra]
+        got = cast(
+            "dict[str, list[str]]", srt_settings(name, sandbox, load_policy(path), home, "/t")["filesystem"]
+        )
+        check(got["denyWrite"] == want, f"{name}'s denyWrite {label}: {got['denyWrite']}")
 
 
 def template_cases(check: Check) -> None:
@@ -879,8 +952,42 @@ def template_cases(check: Check) -> None:
         "the template denies reads of .env files, ~/.cache/gh and Kaimon's sessions.json and writes of "
         "~/Research/**/.githooks, and allows no write of ~/.cache/claude",
     )
+    for name, s in rendered.items():
+        fs = cast("dict[str, list[str]]", s["filesystem"])
+        mine = name == "claude"
+        anthropic = (
+            "writes ~/.config/anthropic/credentials and its lock, reads the credentials and has no write "
+            "deny ~/.config"
+            if mine
+            else "neither writes ~/.config/anthropic/credentials and its lock nor reads the credentials, and "
+            "keeps the write deny ~/.config"
+        )
+        check(
+            ("/h/.config" in fs["denyWrite"]) != mine
+            and "/h/.config/systemd/user" in fs["denyWrite"]
+            and all((p in fs["allowWrite"]) == mine for p in (SHIPPED_ANTHROPIC, SHIPPED_LOCK))
+            and (SHIPPED_ANTHROPIC in fs["allowRead"]) == mine
+            and (SHIPPED_ANTHROPIC in fs["denyRead"]) != mine,
+            f"{name} {anthropic}; ~/.config/systemd/user stays a write deny: {fs['allowWrite'][-4:]}, "
+            f"{[p for p in fs['denyWrite'] if p.startswith('/h/.config')]}",
+        )
+        agy = name == "antigravity"
+        check(
+            (SHIPPED_AGY in fs["allowRead"]) == agy and (SHIPPED_AGY in fs["denyRead"]) != agy,
+            f"{name} {'reads' if agy else 'is denied reads of'} ~/.gemini/jetski-standalone-oauth-token",
+        )
+    keys = filesystem["denyRead"].index("~/.config/api-keys")
+    after = [SHIPPED_ANTHROPIC, SHIPPED_AGY]
+    check(
+        filesystem["denyRead"][keys + 1 : keys + 3] == ["~" + p[2:] for p in after]
+        and {"~" + p[2:] for p in after} <= {c["path"] for c in template["credentials"]["files"]}
+        and opencode["denyRead"][opencode["denyRead"].index(f"{SHIPPED_KEYS}/*") + 1 :][:2] == after,
+        f"the template denies reads of ~/.config/anthropic/credentials and "
+        f"~/.gemini/jetski-standalone-oauth-token after ~/.config/api-keys, and names both in "
+        f"credentials.files; opencode's file keeps them there: {filesystem['denyRead'][keys : keys + 3]}",
+    )
     literal = [p for p in opencode["denyRead"] if p.startswith(SHIPPED_KEYS)]
-    # antigravity has no own entry, and opencode's follow ~/.config/api-keys, so both put it at one index.
+    # antigravity's own entry and opencode's follow ~/.config/api-keys, so both put it at one index.
     antigravity = cast("dict[str, list[str]]", rendered["antigravity"]["filesystem"])
     check(
         literal == [f"{SHIPPED_KEYS}/*"]

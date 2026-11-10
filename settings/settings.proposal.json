@@ -873,6 +873,8 @@
         "~/.config/kaimon/config.json",
         "~/.config/kaimon/auth-token",
         "~/.config/api-keys",
+        "~/.config/anthropic/credentials",
+        "~/.gemini/jetski-standalone-oauth-token",
         "~/.config/chezmoi",
         "~/.config/gh/hosts.yml",
         "~/.config/glab-cli/config.yml",
@@ -917,6 +919,14 @@
         },
         {
           "path": "~/.config/api-keys",
+          "mode": "deny"
+        },
+        {
+          "path": "~/.config/anthropic/credentials",
+          "mode": "deny"
+        },
+        {
+          "path": "~/.gemini/jetski-standalone-oauth-token",
           "mode": "deny"
         },
         {
