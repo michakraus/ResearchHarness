@@ -846,3 +846,18 @@
   the `allowedDomains` entry `f.org` covers. No host is reached that no entry grants.
 - kind: defect
 - found: 2026-11-09, the review of the network lists' `fetch` key
+
+### K153 · No `Read` permission deny and no OpenCode guard path covers `~/.config/anthropic/credentials` or `~/.gemini/jetski-standalone-oauth-token`.
+
+- location: `settings/settings.proposal.json:388`
+- evidence: `~/.claude/.credentials.json` and the credential files of `omp` and `opencode` each
+  have a `Read(/{home}/…)` deny in the template's `permissions.deny` (lines 388-393) and an entry
+  in `adapters/opencode/plugins/guard-paths.json`.
+  The two paths are only in the template's `sandbox.filesystem.denyRead` (lines 876-877) and
+  `sandbox.credentials.files` (lines 925 and 929): `grep -n 'anthropic\|jetski'
+  settings/settings.proposal.json adapters/opencode/plugins/guard-paths.json` finds those four
+  lines and nothing else. So no permission rule and no guard path refuses a frontend's own read
+  tool, as distinct from its shell, on either path.
+- kind: found late
+- found: 2026-11-10, the review of the srt files for Claude Code's Anthropic login and `agy`'s
+  token file
