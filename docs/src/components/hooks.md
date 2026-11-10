@@ -353,10 +353,10 @@ only where no ASCII letter, digit, `_` or `-` stands right before it. A prefix a
 body, an upper-case prefix, a word such as `task-…` and a reference such as `$GH_TOKEN` pass. The
 reason names the form, and holds neither the token nor the command, so the token check's refusal
 does not show the token again. The reason tells the agent to name the token by its variable. The
-token check stands after the web check and the `gh api` check in each list of checks, and the
-guard answers the first refusal; so where one of them refuses the call first, such as the web
-check on a parameter `access_token=` or the `gh api` check on a DELETE, its reason can quote the
-token.
+token check stands first in each list of checks that holds it, before the path list too, and the
+guard answers the first refusal; so its reason answers every call in which it finds a token, also
+where another check refuses the call, such as the web check on a parameter `access_token=` or the
+`gh api` check on a DELETE.
 
 The check prevents an accident and is no boundary. A token that is encoded in another way, split
 into parts, given without its prefix, or read by a script from a file passes it, and so does a

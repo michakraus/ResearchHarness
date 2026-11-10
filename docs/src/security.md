@@ -49,6 +49,16 @@ the installed template. A later version can behave differently.
   path stays open by decision: Julia needs a writable depot. In `~/.cache` the template allows
   writes to `~/.cache/pocl` only; the `srt` settings of a frontend add its own cache, such as
   `~/.cache/claude` for `claude` and `~/.cache/opencode` for `opencode`.
+- **Under `agentbox`, a command that a frontend runs can read the frontend's own credentials.**
+  The `srt` settings of a frontend allow reads of its own credential files by name, and every
+  other frontend's settings deny them: `~/.claude.json`, `~/.claude/.credentials.json` and the
+  Anthropic profile's `~/.config/anthropic/credentials` for `claude`; `auth.json` and
+  `mcp-auth.json` in `~/.local/share/opencode` for `opencode`; `agent.db`, `agent.db-wal` and
+  `.env` in `~/.omp/agent` for `omp`; and `~/.gemini/jetski-standalone-oauth-token` for
+  `antigravity`. The sandbox of the whole process cannot tell the frontend from its own shell.
+  The `claude` settings also allow writes to `~/.config/anthropic/credentials` and to the lock
+  directory `~/.config/anthropic/credentials.lock`, which Claude Code makes before a token
+  refresh.
 - **An allowed host takes what a command sends to it.** The network allowlist names hosts, not
   methods, so a sandboxed command can send a write to any host of `allowedDomains`. The harness
   list holds no `archive.org`, because its `*.archive.org` form would cover `web.archive.org`,

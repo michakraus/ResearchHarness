@@ -131,8 +131,11 @@ directory must exist. The adapter writes:
   `instructions/`, `rules/`, the guard hooks in `hooks/` and the skills in `skills/`.
 
 In each text except `AGENTS.md`, a path below `~/.claude/` names the same path in OpenCode's
-directory, so OpenCode reads its own copies. The install also removes the links in
-`~/.agents/skills/` that an earlier install wrote, because OpenCode reads that directory too.
+directory, so OpenCode reads its own copies. A file `skill-sections/<skill>.md` adds an "Under
+OpenCode" section to OpenCode's copy of `skills/<skill>/SKILL.md`, between its frontmatter and its
+body. A section file whose skill the install does not copy stops the install with exit status 2.
+The install also removes the links in `~/.agents/skills/` that an earlier install wrote, because
+OpenCode reads that directory too.
 
 The port of an agent maps the model tier through the model tables of `models.toml`, which
 OpenCode shares with oh-my-pi, with the keys of `[opencode]` over them. It turns `tools:` and
@@ -193,11 +196,16 @@ It states the facts of OpenCode:
 - pass `workdir` and absolute paths, and do not `cd` inside a command;
 - there is no session scratchpad, no worktree hook and no background run;
 - the plugins `rtk.ts` and `guards.ts` take the place of the hooks;
-- `opencode --auto` removes every prompt, so do not use it to push, merge or release;
-- how to call the agents, and the council of critics of `build-part`.
+- how to call the agents.
 
 The file loads into every session, so keep it small. `opencode.jsonc` gives its budget as 5,120
-bytes.
+bytes, and a case of `harness test` fails when the file is larger. `OMP-DELTA.md` and
+`ANTIGRAVITY-DELTA.md` have the same budget, which their own cases hold. A rule that only one skill
+needs goes into that skill's copy: the installed `build-part` skill carries the rule for its
+council of critics, in its *Under OpenCode* section.
+
+`opencode --auto` approves each `ask` rule, `gh pr merge` and `gh release create` among them. Do
+not start OpenCode with `--auto` for work that pushes, merges or releases.
 
 ## `opencode/plugins/env.ts`
 
@@ -296,7 +304,9 @@ it is not set:
   model tables and the section of `UNDER-OMP.md`, and a copy for each seat of its council;
 - its own copies of `RTK.md`, `instructions/`, the guard hooks in `hooks/` and the skills in
   `skills/`. In each text except `AGENTS.md`, a path below `~/.claude/` names the same path in
-  oh-my-pi's directory.
+  oh-my-pi's directory. A file `skill-sections/<skill>.md` adds an "Under oh-my-pi" section to
+  oh-my-pi's copy of `skills/<skill>/SKILL.md`, between its frontmatter and its body, as for
+  OpenCode.
 
 `harness.yml` sets the approval mode `yolo` and denies the `eval` tool. It writes the Bash rules
 of the settings template as `bash.patterns`: every `deny`, then every `ask` as `prompt`, then
@@ -334,10 +344,11 @@ It states the facts of oh-my-pi:
 - the skills are oh-my-pi's copies in `~/.omp/agent/skills/`, read through `skill://<name>`;
 - each agent's model is in its frontmatter, and a council seat needs its provider's credentials;
 - the dispatcher continues an agent by starting a new one, never by a write to `agent://`, and
-  runs a command that a sub-agent returns for approval;
-- the council of critics of `build-part`.
+  runs a command that a sub-agent returns for approval.
 
-The cases check that the file is no larger than `OPENCODE-DELTA.md`.
+The file loads into every session. A case of `harness test` fails when it has more than 5,120
+bytes, the budget of `OPENCODE-DELTA.md`. The installed `build-part` skill carries the rule for its
+council of critics, in its *Under oh-my-pi* section.
 
 ## `omp/UNDER-OMP.md`
 
@@ -534,6 +545,9 @@ It states the facts of Antigravity:
   itself;
 - the skills are Antigravity's own copies in `~/.gemini/config/skills/`;
 - there is no session scratchpad.
+
+A case of `harness test` fails when the file has more than 5,120 bytes, the budget of
+`OPENCODE-DELTA.md`.
 
 ## `antigravity/UNDER-ANTIGRAVITY.md`
 

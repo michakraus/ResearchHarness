@@ -92,7 +92,10 @@ def listed(call: Call) -> Verdict:
     return Verdict("deny", found) if isinstance(found, str) else path_list.check_paths(call, found)
 
 
+# The checks of each kind of call. The token check stands first in each, before the path list too:
+# another check's reason can quote its input, and the token check's reason never shows the token.
 SHELL: tuple[Check, ...] = (
+    token_forms.check,
     listed,
     path_list.in_place,
     no_blind_stage.check,
@@ -105,8 +108,9 @@ SHELL: tuple[Check, ...] = (
     git_writes.check,
     sandbox_semantics.work_tree_check,
     web_identity.check,
-    token_forms.check,
 )
+KAIMON_CHECKS: tuple[Check, ...] = (token_forms.check, kaimon_session.check)
+WEB_CHECKS: tuple[Check, ...] = (token_forms.check, web_identity.check)
 
 
 def read(data: bytes) -> tuple[str, dict[str, JsonValue], str | None]:
@@ -149,11 +153,11 @@ def decide(data: bytes) -> Verdict:
         arguments = tuple((key, value) for key, value in tool_input.items() if isinstance(value, str))
         neutral = "kaimon." + tool.removeprefix(KAIMON)
         call = Call("mcp", neutral, (), directory, "main", arguments)
-        return strongest(check(call) for check in (kaimon_session.check, token_forms.check))
+        return strongest(check(call) for check in KAIMON_CHECKS)
     if tool in WEB_TOOLS:
         arguments = web_identity.string_arguments(tool_input)
         call = Call("mcp", WEB_TOOLS[tool], (), directory, "main", arguments)
-        return strongest(check(call) for check in (web_identity.check, token_forms.check))
+        return strongest(check(call) for check in WEB_CHECKS)
     return PASS
 
 

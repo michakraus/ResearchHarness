@@ -42,14 +42,22 @@ its file alone, and every other frontend's file still denies reads of them:
 
 | frontend | `own` |
 |:--|:--|
-| `claude` | `~/.claude.json`, `~/.claude/.credentials.json` |
+| `claude` | `~/.claude.json`, `~/.claude/.credentials.json`, `~/.config/anthropic/credentials` |
 | `opencode` | `~/.local/share/opencode/auth.json`, `~/.local/share/opencode/mcp-auth.json` |
 | `omp` | `~/.omp/agent/agent.db`, `~/.omp/agent/agent.db-wal`, `~/.omp/agent/.env` |
-| `antigravity` | none |
+| `antigravity` | `~/.gemini/jetski-standalone-oauth-token` |
 
 Claude Code writes `~/.claude.json` itself; a write deny of it would stop the whole process under
 `srt`. The cost is that a command that a frontend runs can also read and write the frontend's own
 files, because the sandbox of the whole process cannot tell the frontend from its own shell.
+
+Claude Code reads its Anthropic profile in `~/.config/anthropic/`. Before a token refresh it makes
+the lock directory `~/.config/anthropic/credentials.lock`, and the refresh rewrites a file in
+`~/.config/anthropic/credentials`. So `claude`'s `state` holds both paths, and its `own` holds the
+credentials directory, which the template denies to every other frontend. `agy` keeps its Google
+login in the login keychain, which the read limit hides; its file
+`~/.gemini/jetski-standalone-oauth-token` is in `antigravity`'s `own` and denied to every other
+frontend.
 
 OpenCode's `read_files` are its three provider tokens, `gwdg-token`, `opendesign-token` and
 `tokenharbor-token` below `~/.config/api-keys`, which its configuration reads by file. A token has
@@ -74,7 +82,7 @@ denies, compared as paths after the `~` expansion, so `~/x/`, `~//x` and `~/./x`
 | `network.deniedDomains` | the template's, or `[]` where it has none; `srt` refuses a file without the key |
 | `network.allowLocalBinding` | the template's |
 | `filesystem.allowWrite` | the template's, without each entry at or below another frontend's `state` path; then the frontend's `state`; then the real path of `$TMPDIR`, where it is set and not empty |
-| `filesystem.denyWrite` | the template's, without the frontend's `own`; then its `deny_write` |
+| `filesystem.denyWrite` | the template's, without the frontend's `own` and without each literal entry other than the home directory that lies strictly above a path of the frontend's `state`; then its `deny_write` |
 | `filesystem.denyRead` | the home directory; then the template's; then each path of `credentials.files`; without the frontend's `own`; each literal entry other than the home directory that lies strictly above a path of the frontend's `read_files` written as the entry followed by `/*`, in its place |
 | `filesystem.allowRead` | `read.allow`; then the frontend's `state`; then its `own`; then its `read_files` |
 
@@ -83,6 +91,15 @@ no entry twice, and the first occurrence keeps its place. "At or below" compares
 components: `~/.claude.json` is not below `~/.claude`. So no frontend's file allows a write to
 another frontend's state. A glob of the template, such as `~/Research/**/.git/hooks`, passes
 through after the expansion.
+
+`srt` emits the write denies after the write allows, so a write deny above a `state` path would
+refuse every write to it. A frontend's file therefore leaves out each literal write deny of the
+template that lies strictly above one of its `state` paths, compared as paths after the `~`
+expansion, so `~/x/` and `~//x` are `~/x`. The home directory and a glob stay, and so does an entry
+equal to a `state` path unless `own` names it. `srt` denies a write by default, so without the
+entry a write below it passes only where `allowWrite` names the path. In the shipped files this
+leaves the write deny `~/.config` out of `claude`'s file alone, which keeps the template's write
+deny below it, `~/.config/systemd/user`.
 
 A file below a read deny directory is read by name, through a glob. `srt` emits a literal read
 deny that lies inside a read allow after the allows, so a file allow below it never takes effect;
@@ -270,7 +287,7 @@ It runs four classes of probes for each chosen frontend:
 | class | ids | how it runs | what it asks |
 |:--|:--|:--|:--|
 | listener | `L:<port>`, `L:<port>/path` | `curl` under `srt` | does each TCP listener on `127.0.0.1`, on `::1` or on every interface answer 401, 403 or 407 |
-| read and write | R1–R8, W1–W14 | `/bin/sh -c` under `srt` | can a command read a secret, or write a hook, a launch agent, a shell start file or another frontend's state |
+| read and write | R1–R9, W1–W14 | `/bin/sh -c` under `srt` | can a command read a secret, or write a hook, a launch agent, a shell start file or another frontend's state |
 | network and process | N1–N9, X1–X8 | `/bin/sh -c` under `srt` | which hosts it reaches; can it open an app, send an Apple Event, mount, submit a launchd job, signal a process outside or start a sandbox of its own |
 | frontend | F1–F7 | the frontend under `agentbox` | does it start, do its tools run inside the sandbox, does its own file tool read outside, does it reach Kaimon, and do its own gates hold |
 
@@ -292,6 +309,18 @@ frontend's shell probes, the script removes the launchd job of X4 and unmounts t
 where either is left. The probes use a run directory `<out>/run`, with a `secret.txt`, a `.env` and
 a git repository whose remote is this repository.
 
+R4 lists `~/.config/api-keys` and expects `allowed` for `opencode`, whose file denies what lies
+below the directory by a glob and not the directory itself, and `refused` for the others. R8
+counts the frontend's own credential file, `~/.gemini/jetski-standalone-oauth-token` for `agy`,
+and expects `allowed`. R9 counts `~/.config/anthropic/credentials/default.json`, Claude Code's
+Anthropic credentials, and expects `allowed` for `claude` and `refused` for the other frontends.
+
+A frontend probe holds its word when one line of its stdout or of its stderr, each stream split
+into lines on its own, equals the word with its case once white space, then `` ` ``, `*`, `"` and
+`'`, then one trailing `.`, then those four characters again are stripped from the line's ends. A
+prompt asks for the word alone, so `**KAIMON-OK**.` holds `KAIMON-OK`, and an answer that quotes
+it in a sentence, such as `KAIMON-OK was not printed`, lacks it.
+
 Each probe gets one verdict:
 
 | verdict | meaning |
@@ -299,7 +328,7 @@ Each probe gets one verdict:
 | `match` | the result is the expected one |
 | `MISMATCH` | the result is not the expected one |
 | `absent` | the file or directory that the probe names does not exist, so the probe does not run |
-| `skipped` | the probe does not apply: R8 for `agy`, X5 with no listener on port 2828 of `127.0.0.1` or of every interface, the frontend probes with `--no-model` or with no program on the `PATH`, F6 with no plain `opencode` listening |
+| `skipped` | the probe does not apply: X5 with no listener on port 2828 of `127.0.0.1` or of every interface, the frontend probes with `--no-model` or with no program on the `PATH`, F6 with no plain `opencode` listening |
 | `timeout` | the probe ran past its limit |
 | `void` | F3, which expects a word to be missing, where F1 of the same frontend is not `match`: a frontend that never started also lacks the word, so the result proves nothing; its detail is `F1 shows no start` |
 | an observation | F5 records the exit status of `agy --sandbox`, and F7 whether `~/.omp/agent/config.yml` changed during F1–F4 of `omp`: `unchanged`, `changed`, or `absent` where the file exists neither before nor after |
@@ -308,11 +337,16 @@ The expected value is the policy's intent, not what the current files do. So a `
 finding for the policy, the settings files or the launcher, and a run of a policy with a known
 gap exits 1. A probe's output goes into the `detail` of its row on one line: whole up to 200
 characters, else its first and its last 100 characters joined by ` … `, so a failure keeps its
-cause and its last state. The script writes `report.tsv`, every row with the columns `frontend`,
-`id`, `expected`, `got`, `verdict` and `detail`, and `report.md`: the rows other than `L:` as a
-table; a section `## Listeners` with one line per command, status and verdict of the `L:` rows,
-which names the number of ports, the ports in numeric order and the frontends; the count of each
-verdict over every row in `## Counts`; and the manual steps: change the model once under
-`agentbox omp`, and, where F6 was skipped because no plain `opencode` listened, run it again with
-a plain `opencode` in another terminal. It prints the path of `report.md` last, and exits 0 when
-no probe is `MISMATCH` or `timeout`, and 1 otherwise; a `void` alone does not make it 1.
+cause and its last state. A frontend probe that is `MISMATCH` or `timeout` starts its detail at
+the first line that holds a word ending in `Error` or `Exception` directly followed by `:`, or
+that starts with `error:` after white space: a JavaScript runtime such as Bun can print the
+source lines around a throw before the error's name and message. With no such line, and on every
+other row, the detail comes from the whole output. The script writes `report.tsv`, every row with
+the columns `frontend`, `id`, `expected`, `got`, `verdict` and `detail`, and `report.md`: the rows
+other than `L:` as a table; a section `## Listeners` with one line per command, status and
+verdict of the `L:` rows, which names the number of ports, the ports in numeric order and the
+frontends; the count of each verdict over every row in `## Counts`; and the manual steps: change
+the model once under `agentbox omp`, and, where F6 was skipped because no plain `opencode`
+listened, run it again with a plain `opencode` in another terminal. It prints the path of
+`report.md` last, and exits 0 when no probe is `MISMATCH` or `timeout`, and 1 otherwise; a `void`
+alone does not make it 1.
