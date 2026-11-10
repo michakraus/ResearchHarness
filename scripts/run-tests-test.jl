@@ -6,7 +6,7 @@
 #   julia --startup-file=no run-tests-test.jl
 #
 # The selection is checked on a fixture in the form of the convention, with the changed paths
-# given directly: a sandboxed process cannot create a `.git`, so no fixture has a history.
+# given directly, so no fixture needs a history.
 
 using Test
 
