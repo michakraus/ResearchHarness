@@ -207,7 +207,8 @@ def named(call: Call, tool: str, key: str) -> Verdict:
     value = call.argument(key) or ""
     if not value.strip():
         if call.command in REQUIRED:
-            # A gate directory that cannot be listed names no session, and claims none is live.
+            # A gate directory that cannot be listed gives no sentence: no key, and no claim that
+            # none is live.
             keys = live_keys()
             live = "" if keys is None else live_sentence(keys) + " "
             return Verdict(
