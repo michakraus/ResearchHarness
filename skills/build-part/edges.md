@@ -461,6 +461,18 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   survives (S, *Collect the TikZ figures in the figure repository*)
 - a comment or a string that looks like code
 - a qualified call (`Module.f`), a macro with a module prefix, and a broadcast call (`f.(x)`)
+- a short-form definition with a return type or a `where` clause, `f(p)::Bool = …` and
+  `f(p::T) where {T} = …`: its head is not a call, so a rule that takes "an assignment whose first
+  child is a call" as the definition misses it and reads the whole file as its scope (J4a round 1,
+  *Strengthen the Julia coding layer of the harness*)
+- an order that a test sees only because a hash set happens to hold it: a mutant that drops the
+  `sorted` of two keys was caught in about one run in two. Fix the hash seed of the run under test
+  and give it enough keys that the set order differs from the sorted one (J7a round 1, *Strengthen
+  the Julia coding layer of the harness*)
+- a second read of state that the first read already holds: `gone()` listed the gate directory,
+  then listed it again for the message, so a directory that became unreadable in between gave a
+  claim the first read did not support. Compute the answer from the one read (J7a round 1,
+  *Strengthen the Julia coding layer of the harness*)
 - a line number that belongs to another file than the one read
 - one violation that prints two lines, and many violations that print one
 - a file name that follows another pattern than the one the rule names, such as `<p>_tests.jl`
@@ -682,6 +694,10 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   `systemd-analyze` reads each one as masked. Write the stubs after the steps that run the real
   program, and run the changed CI job before the finish (P2 finish, *Make the Harness enforce
   strict Python*)
+- a CI step that pipes its check into `tee`: a step with no `shell:` runs as `bash -e {0}`, without
+  pipefail, so the pipe returns the status of `tee` and a failed check passes the job. Set
+  `shell: bash`, which adds `-o pipefail`, and run the step on a mutant that fails the check (J4a
+  round 1, *Strengthen the Julia coding layer of the harness*)
 
 ## A lint cleanup
 
