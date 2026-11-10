@@ -104,6 +104,28 @@ def gate_files() -> None:
 
 gate_files()
 CLEAN["KAIMON_CACHE_DIR"] = KAIMON_CACHE
+# Three more Kaimon caches: one with no `sock/`, one with an empty `sock/`, and one whose two live
+# gates share the key of their first 8 characters, TWIN_GATE.
+NO_GATES = FIXTURE.name + "/kaimon-no-sock"
+pathlib.Path(NO_GATES).mkdir()
+EMPTY_GATES = FIXTURE.name + "/kaimon-empty"
+pathlib.Path(EMPTY_GATES, "sock").mkdir(parents=True)
+TWIN_CACHE = FIXTURE.name + "/kaimon-twins"
+TWIN_GATE = "a1b2c3d4"
+for twin in ("0001", "0002"):
+    twin_sid = f"{TWIN_GATE}-0000-5000-8000-00000000{twin}"
+    twin_file = pathlib.Path(TWIN_CACHE, "sock", f"{twin_sid}.json")
+    twin_file.parent.mkdir(parents=True, exist_ok=True)
+    twin_file.write_text(json.dumps({"session_id": twin_sid, "pid": os.getpid()}), encoding="utf-8")
+# A Kaimon cache of eight live gates, MANY_GATES, whose keys a set under the hash seed 0 does not
+# hold in sorted order, so that a refusal that lists them unsorted fails its case on every run.
+MANY_CACHE = FIXTURE.name + "/kaimon-many"
+MANY_GATES = ("0a1b2c3d", "1b2c3d4e", "2c3d4e5f", "3d4e5f60", "4e5f6071", "5f607182", "60718293", "718293a4")
+for many in MANY_GATES:
+    many_sid = f"{many}-0000-5000-8000-000000000000"
+    many_file = pathlib.Path(MANY_CACHE, "sock", f"{many_sid}.json")
+    many_file.parent.mkdir(parents=True, exist_ok=True)
+    many_file.write_text(json.dumps({"session_id": many_sid, "pid": os.getpid()}), encoding="utf-8")
 ENV = {**CLEAN, "HOME": HOME}
 # The profile of each fixture home, whose `org` list the `gh api` check reads: an own organisation
 # and an own account. A record's `profile` names another file in place of it, through
@@ -2769,6 +2791,89 @@ def command_cases():
             line=f"exp deny got {got}  [guard    ]  the reason of the winner on {command!r}: {output[:80]!r}",
         )
     token_cases(report)
+    # The Kaimon check's refusal of a missing key, like that of a dead key, names the live sessions
+    # of the fixture cache, sorted and each once, and neither the stale gate nor a gate that cannot
+    # be read; with an empty gate directory it says none is live, and with no gate directory it
+    # names no session and does not say that none is live.
+    listed = "The live sessions are " + ", ".join(f"`{key}`" for key in LIVE_GATES) + "."
+    unlisted = (STALE_GATE, *UNREAD_GATES)
+    for tool, arguments, cache, want, label in (
+        ("ex", {"e": "1 + 1"}, KAIMON_CACHE, (listed + " Pass the",), "ex without ses lists the live keys"),
+        (
+            "manage_repl",
+            {"command": "restart"},
+            KAIMON_CACHE,
+            (listed,),
+            "manage_repl without session lists the live keys",
+        ),
+        (
+            "ex",
+            {"e": "1 + 1", "ses": STALE_GATE},
+            KAIMON_CACHE,
+            (f"no live Kaimon session has the key `{STALE_GATE}`", listed),
+            "a dead key lists the live keys",
+        ),
+        ("ex", {"e": "1 + 1"}, NO_GATES, (), "ex without ses and no gate directory names no key"),
+        (
+            "ex",
+            {"e": "1 + 1"},
+            EMPTY_GATES,
+            ("No session is live.",),
+            "ex without ses and an empty gate directory says none is live",
+        ),
+        (
+            "ex",
+            {"e": "1 + 1"},
+            TWIN_CACHE,
+            (f"The live sessions are `{TWIN_GATE}`.",),
+            "ex without ses lists a key of two sessions once",
+        ),
+        (
+            "ex",
+            {"e": "1 + 1"},
+            MANY_CACHE,
+            ("The live sessions are " + ", ".join(f"`{key}`" for key in MANY_GATES) + ".",),
+            "ex without ses lists eight live keys sorted",
+        ),
+    ):
+        payload = {"tool_name": f"mcp__kaimon__{tool}", "tool_input": arguments, "cwd": CWD}
+        # The hash seed 0 fixes the order of a set of keys in the guard, so that each case gives
+        # one verdict on every run.
+        got, output = guard_run(
+            json.dumps(payload).encode("utf-8"),
+            env={**ENV, "KAIMON_CACHE_DIR": cache, "PYTHONHASHSEED": "0"},
+        )
+        shown = [key for key in unlisted if key in output and key not in arguments.values()]
+        claims = "The live sessions are" in output or "No session is live." in output
+        ok = (
+            got == "deny"
+            and all(text in output for text in want)
+            and not shown
+            and (bool(want) or not claims)
+        )
+        report(ok=ok, line=f"exp deny got {got}  [guard    ]  {label}: {output[:70]!r}")
+    # With no gate directory the check cannot tell whether a key is live, and passes the call.
+    payload = {"tool_name": "mcp__kaimon__ex", "tool_input": {"e": "1 + 1", "ses": STALE_GATE}, "cwd": CWD}
+    got, output = guard_run(json.dumps(payload).encode("utf-8"), env={**ENV, "KAIMON_CACHE_DIR": NO_GATES})
+    report(
+        ok=got == "pass",
+        line=f"exp pass got {got}  [guard    ]  a key and no gate directory: {output[:70]!r}",
+    )
+    # The refusal of a dead key names the live sessions of the one listing that found the key
+    # dead: a gate directory that cannot be listed after it does not turn into "No session is live.".
+    sys.path.insert(0, HOOKS)
+    try:
+        kaimon: Any = importlib.import_module("guard.kaimon_session")
+    finally:
+        sys.path.remove(HOOKS)
+    with mock.patch.dict(os.environ, {"KAIMON_CACHE_DIR": KAIMON_CACHE}):
+        listing = kaimon.gates()
+        with mock.patch.object(kaimon, "gates", side_effect=[listing, None]):
+            reason = kaimon.gone(STALE_GATE).reason
+    report(
+        ok=listing is not None and listed in reason and "No session is live." not in reason,
+        line=f"exp the live keys  [guard    ]  a dead key, then an unlistable gate directory: {reason[-70:]!r}",
+    )
     got, output = guard_run(b'{"tool_name":"Bash","tool_input":{"command":"ls"},"cwd":"/"}', "other")
     report(
         ok=got == "deny" and "usage" in output,

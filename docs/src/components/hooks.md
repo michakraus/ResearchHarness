@@ -391,7 +391,9 @@ directory, a file that cannot be read or holds no integer `pid`, a remote gate's
 Under WSL, Kaimon also finds the gates of the Windows side, through files in a directory that the
 check does not read, so the check refuses their keys. `manage_repl` is not checked for a live
 session, because its `shutdown` removes a session whose process has gone. A tool that no table of
-the check names passes. The messages name the rule of `skills/build-part/evidence.md`.
+the check names passes. The refusal of a missing key, like that of a dead key, names the
+live sessions, sorted and each once, or says that none is live; when the directory cannot be
+listed, it names none. The messages name the rule of `skills/build-part/evidence.md`.
 
 ### The path list and oh-my-pi's own rows
 
