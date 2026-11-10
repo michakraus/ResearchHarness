@@ -28,7 +28,9 @@ runs them.
   allows everything, each probe gets its verdict, no report holds a marker line, no appended file
   changes, no probe file stays, and the launchd job is removed; the listeners and the second route
   of an `opencode` listener, the command lines of the frontend probes, F3 void where F1 is not
-  `match`, a frontend past its time limit, and the report's files with their `## Listeners`.
+  `match`, a frontend past its time limit, and the report's files with their `## Listeners`; a
+  frontend probe's word on a line of its own of stdout or stderr, and the detail of a failed
+  frontend probe from its error line.
 """
 
 import importlib.util
@@ -60,7 +62,8 @@ PROBE = REPO / "scripts" / "probe-agentbox.py"
 # directory and its arguments, joined by \x1f, to `<name>.log` in the directory of the stubs, and
 # acts on `config.json` there:
 #   srt        "refuse": exits 1 and runs nothing; "allow": runs the command after `--`
-#   agentbox   prints `answer`; for the frontend `sleep`, F1's call first runs `sleep 60`
+#   agentbox   writes `answer` on stdout and `stderr` on stderr, each as it is; then, for the
+#              frontend `sleep`, F1's call runs `sleep 60`
 #   curl       prints its -w template with the status in `curl` of the URL's port and path
 #              (`4096/path`), else of its port, else 200 ("none" is no answer, 000 and exit 7),
 #              and 000 for the CONNECT status
@@ -87,9 +90,12 @@ if name == "srt":
         sys.exit(1)
     sys.exit(subprocess.run(args[args.index("--") + 1:]).returncode)
 if name == "agentbox":
+    sys.stdout.write(config.get("answer", ""))
+    sys.stderr.write(config.get("stderr", ""))
+    sys.stdout.flush()
+    sys.stderr.flush()
     if args[0] == config.get("sleep") and "single word OK" in " ".join(args):
         subprocess.run(["sleep", "60"])
-    print(config.get("answer", ""))
 elif name == "curl":
     url = re.search(r":(\d+)(/\S*)", args[-1])
     codes = config.get("curl", {})
@@ -144,6 +150,8 @@ PROBE_READ = (
     ".claude/.credentials.json",
     ".local/share/opencode/auth.json",
     ".omp/agent/agent.db",
+    ".gemini/jetski-standalone-oauth-token",
+    ".config/anthropic/credentials/default.json",
 )
 PROBE_APPENDED = (".claude/settings.json", ".zshrc", ".julia/config/startup.jl", ".omp/agent/config.yml")
 PROBE_DIRS = ("Research", ".claude/hooks", "Library/LaunchAgents", ".omp/agent/extensions", ".gemini")
@@ -153,9 +161,11 @@ PROBE_CREDENTIAL = {
     "claude": (".claude/.credentials.json",),
     "opencode": (".local/share/opencode/auth.json",),
     "omp": (".omp/agent/agent.db",),
+    "agy": (".gemini/jetski-standalone-oauth-token",),
 }
+PROBE_ANTHROPIC = ".config/anthropic/credentials/default.json"
 PROBE_SHELL_IDS = (
-    *(f"R{k}" for k in range(1, 9)),
+    *(f"R{k}" for k in range(1, 10)),
     *(f"W{k}" for k in range(1, 15)),
     *(f"N{k}" for k in range(1, 10)),
     *(f"X{k}" for k in range(1, 9)),
@@ -804,12 +814,11 @@ def probe_refuse_all(check: Callable[[object, str], None], tmp: pathlib.Path) ->
             if r[0] == frontend
             and r[1] in PROBE_SHELL_IDS
             and r[4] != {"refused": "match", "allowed": "MISMATCH"}[r[2]]
-            and (r[1], r[4]) not in {("R8", "skipped"), ("X5", "skipped")}
+            and (r[1], r[4]) != ("X5", "skipped")
         ]
         skipped = {r[1] for r in rows if r[0] == frontend and r[4] == "skipped"}
         check(
-            not wrong
-            and skipped == {"X5", *PROBE_MODEL_IDS[frontend], *(["R8"] if frontend == "agy" else [])},
+            not wrong and skipped == {"X5", *PROBE_MODEL_IDS[frontend]},
             f"under a refusing srt, {frontend}: refused is match, allowed is MISMATCH -> wrong {wrong}, "
             f"skipped {sorted(skipped)}",
         )
@@ -820,18 +829,24 @@ def probe_refuse_all(check: Callable[[object, str], None], tmp: pathlib.Path) ->
             if len(a) != 6 or a[:5] != ["--settings", str(settings / f"{policy}.json"), "--", "/bin/sh", "-c"]
         ]
         check(
-            len(calls) == len(PROBE_SHELL_IDS) - 1 - (frontend == "agy") and not bad,
+            len(calls) == len(PROBE_SHELL_IDS) - 1 and not bad,
             f"each srt call of {frontend} is --settings {policy}.json -- /bin/sh -c <probe> -> "
             f"{len(calls)} calls, bad {bad[:2]}",
         )
-        # W12 and W13 create in the frontend's own state and in another's; R8 reads its credential
+        # W12 and W13 create in the frontend's own state and in another's; R8 reads its credential,
+        # R9 Claude Code's Anthropic credentials
         other = ".local/share/opencode" if frontend == "omp" else ".omp"
         targets = [f"{home}/{PROBE_STATE[frontend]}/agentbox-probe-", f"{home}/{other}/agentbox-probe-"]
-        targets += [f"{home}/{c}" for c in PROBE_CREDENTIAL.get(frontend, ())]
+        targets += [f"{home}/{c}" for c in (*PROBE_CREDENTIAL[frontend], PROBE_ANTHROPIC)]
         counts = [sum(t in a[-1] for a in calls) for t in targets]
         check(
             counts == [1] * len(targets),
-            f"{frontend}: W12, W13 and R8 each name their path once -> {targets} {counts}",
+            f"{frontend}: W12, W13, R8 and R9 each name their path once -> {targets} {counts}",
+        )
+        r9 = [a[-1] for a in calls if PROBE_ANTHROPIC in a[-1]]
+        check(
+            r9 == [f"wc -c < {shlex.quote(str(home / PROBE_ANTHROPIC))}"],
+            f"{frontend}: R9 counts {PROBE_ANTHROPIC} with wc -c -> {r9}",
         )
         # N4 asks github.com past srt's proxy: curl with `--noproxy '*'`, once per frontend
         n4 = [a[-1] for a in calls if "--noproxy" in a[-1]]
@@ -846,6 +861,17 @@ def probe_refuse_all(check: Callable[[object, str], None], tmp: pathlib.Path) ->
     check(
         r2.get("claude") == "MISMATCH" and r2.get("opencode") == "match",
         f"R2 expects allowed for claude and refused for opencode -> {r2}",
+    )
+    picked = {i: {r[0]: r[4] for r in rows if r[1] == i} for i in ("R4", "R8", "R9")}
+    want = {
+        "R4": {"claude": "match", "opencode": "MISMATCH", "omp": "match", "agy": "match"},
+        "R8": dict.fromkeys(PROBE_POLICY, "MISMATCH"),
+        "R9": {"claude": "MISMATCH", "opencode": "match", "omp": "match", "agy": "match"},
+    }
+    check(
+        picked == want,
+        f"under a refusing srt, R4 is MISMATCH for opencode only, R8 for every frontend, R9 for claude "
+        f"only -> {picked}",
     )
     check(not stub_calls(home, "agentbox"), "with --no-model, agentbox gets no call")
     # no probe ran, so nothing is left to remove or unmount
@@ -892,14 +918,29 @@ def probe_allow_all(check: Callable[[object, str], None], tmp: pathlib.Path) -> 
     wrong = [
         f"{r[0]} {r[1]} {r[4]}"
         for r in rows
-        if r[1] in PROBE_SHELL_IDS
-        and r[4] != {"refused": "MISMATCH", "allowed": "match"}[r[2]]
-        and (r[0], r[1]) != ("agy", "R8")
+        if r[1] in PROBE_SHELL_IDS and r[4] != {"refused": "MISMATCH", "allowed": "match"}[r[2]]
     ]
     check(
         p.returncode == 1 and len(rows) > len(PROBE_SHELL_IDS) and not wrong,
         f"under an srt that allows all, refused is MISMATCH and allowed is match -> {p.returncode} {wrong} "
         f"{p.stderr[-300:]}",
+    )
+    picked = {i: {r[0]: (r[3], r[4]) for r in rows if r[1] == i} for i in ("R4", "R8", "R9")}
+    want = {
+        "R4": {f: ("allowed", "match" if f == "opencode" else "MISMATCH") for f in PROBE_POLICY},
+        "R8": dict.fromkeys(PROBE_POLICY, ("allowed", "match")),
+        "R9": {f: ("allowed", "match" if f == "claude" else "MISMATCH") for f in PROBE_POLICY},
+    }
+    check(
+        picked == want,
+        f"under an srt that allows all, R4 is match for opencode only, R8 for every frontend, R9 for "
+        f"claude only -> {picked}",
+    )
+    size = len(f"{PROBE_MARKER}\n")
+    counted = {(r[0], r[1]): r[5] for r in rows if r[1] in ("R8", "R9")}
+    check(
+        counted == {(f, i): str(size) for f in PROBE_POLICY for i in ("R8", "R9")},
+        f"R8 and R9 print the count of bytes of their file -> {counted}",
     )
     texts = [p.stdout] + [f.read_text() for f in (out / "report.tsv", out / "report.md") if f.exists()]
     marker = script(PROBE).MARKER.strip()
@@ -1095,7 +1136,8 @@ def probe_summary(check: Callable[[object, str], None], tmp: pathlib.Path) -> No
 def probe_model(check: Callable[[object, str], None], tmp: pathlib.Path) -> None:
     """The frontend probes call agentbox with the frontend's non-interactive form."""
     opencode = "opencode 201 u 3u IPv4 0x1 0t0 TCP 127.0.0.1:4096 (LISTEN)\n"
-    answer = "OK SR=1 AB=1 KAIMON-OK"
+    # each word on a line of its own, as a probe holds a word only on a line of its own
+    answer = "OK\nSR=1 AB=1\nKAIMON-OK\n"
     home = probe_home(
         tmp / "model", {"srt": "refuse", "lsof": "", "lsof_opencode": opencode, "answer": answer}
     )
@@ -1181,21 +1223,26 @@ def probe_timeout(check: Callable[[object, str], None], tmp: pathlib.Path) -> No
         "srt": "refuse",
         "lsof": "",
         "lsof_opencode": "",
-        "answer": "OK SR=1 AB=1",
+        "answer": "OK\nSR=1 AB=1\n",
         "sleep": "claude",
     }
     home = probe_home(tmp / "timeout", config, omit=("omp",))
-    # the targets of R1, W6 and W11 are missing: each probe is absent and runs no srt call
+    # the targets of R1, R9, W6 and W11 are missing: each probe is absent and runs no srt call
     (home / ".ssh" / "config").unlink()
+    (home / PROBE_ANTHROPIC).unlink()
     (home / ".zshrc").unlink()
     (home / ".omp" / "agent" / "extensions").rmdir()
     out = home / "out"
     p = probe_run(home, "--timeout", "2", "claude", "opencode", "omp", "--out", str(out))
     rows = {(r[0], r[1]): (r[4], r[5]) for r in probe_rows(out)}
-    absent = [rows.get(("claude", i), ("",))[0] for i in ("R1", "W6", "W11")]
-    ran = [a[-1] for _, a in stub_calls(home, "srt") if ".zshrc" in a[-1] or "/extensions/" in a[-1]]
+    absent = [rows.get(("claude", i), ("",))[0] for i in ("R1", "R9", "W6", "W11")]
+    ran = [
+        a[-1]
+        for _, a in stub_calls(home, "srt")
+        if ".zshrc" in a[-1] or "/extensions/" in a[-1] or PROBE_ANTHROPIC in a[-1]
+    ]
     check(
-        absent == ["absent"] * 3 and not ran,
+        absent == ["absent"] * 4 and not ran,
         f"a probe whose file or directory is missing is absent and does not run -> {absent} {ran}",
     )
     starts = [t for t, a in stub_calls(home, "agentbox") if a[:1] == ["claude"]]
@@ -1315,6 +1362,104 @@ def probe_units(check: Callable[[object, str], None], module: types.ModuleType) 
     )
 
 
+def probe_words(check: Callable[[object, str], None], tmp: pathlib.Path) -> None:
+    """A frontend probe holds its word where one line of its stdout or of its stderr, stripped of
+    white space, `` ` ``, `*`, `"` and `'`, one trailing `.` and those four again, is the word; the
+    detail of a MISMATCH or timeout row starts at its first error line, and every other row keeps
+    the whole text."""
+    home = probe_home(tmp / "words", {})
+    config = home.parent / "stubs" / "config.json"
+    module = script(PROBE)
+    agentbox = home / ".local" / "bin" / "agentbox"
+    research = home / "Research"
+
+    def ask(frontend: str, k: int, answer: str, stderr: str = "", *, sleep: str = "") -> tuple[str, str, str]:
+        """(got, verdict, detail) of the frontend probe ASKS[k] under the stub agentbox, which
+        writes `answer` and `stderr`; with `sleep`, F1 of that frontend runs past a 2 s limit; F2
+        of agy runs as F5, with --sandbox."""
+        config.write_text(json.dumps({"answer": answer, "stderr": stderr, "sleep": sleep}))
+        model = module.Model(agentbox, research, 2 if sleep else 60)
+        sandbox = (frontend, k) == ("agy", 1)
+        row = module.ask_row(
+            frontend, module.ASKS[k], model, "F5" if sandbox else module.ASKS[k].id, sandbox=sandbox
+        )
+        return row.got, row.verdict, row.detail
+
+    answers = [
+        ("KAIMON-OK\n", "", True),
+        ("**KAIMON-OK**.\n", "", True),
+        ("`KAIMON-OK`\n", "", True),
+        ("KAIMON-OK was not printed\n", "", False),
+        ("kaimon-ok\n", "", False),
+        ("KAIMON-OK KAIMON-OK\n", "", False),
+        ("", "", False),
+        ("", "  12 | const kaimon = connect();\n  13 | await kaimon.ping();\nKAIMON-OK\n", True),
+        ("x", "KAIMON-OK\n", True),
+        ("**KAIMON-OK.**\n", "", True),
+        ('  "KAIMON-OK"  \n', "", True),
+        ("'KAIMON-OK'\n", "", True),
+        ("Done.\nKAIMON-OK\nbye\n", "", True),
+        ("KAIMON-OK..\n", "", False),
+        ("- KAIMON-OK\n", "", False),
+    ]
+    wrong: list[tuple[str, str, str, str]] = []
+    for answer, stderr, holds in answers:
+        got, verdict, _ = ask("claude", 3, answer, stderr)
+        if (got, verdict) != (f"{'holds' if holds else 'lacks'} KAIMON-OK", "match" if holds else "MISMATCH"):
+            wrong.append((answer, stderr, got, verdict))
+    check(
+        not wrong,
+        f"F4 holds KAIMON-OK only on a line of stdout or stderr that is the word once stripped -> {wrong}",
+    )
+    source = "".join(f"{263 + k} | this.#internalFlags |= {k};\n" for k in range(40))
+    error = 'SQLiteError: Database "x" authorization denied\n'
+    frames = "".join(f"      at frame{k} (/$bunfs/root/omp:1:{k})\n" for k in range(10))
+    text = source + error + frames
+    failed = ask("omp", 0, text)
+    check(
+        failed[:2] == ("lacks OK", "MISMATCH")
+        and failed[2].startswith("SQLiteError: Database")
+        and failed[2] == module.detail(error + frames),
+        f"oh-my-pi's F1 MISMATCH row starts its detail at the SQLiteError line -> {failed}",
+    )
+    held = ask("omp", 0, "OK\n" + text)
+    check(
+        held == ("holds OK", "match", module.detail("OK\n" + text)),
+        f"a match row keeps the detail of its whole text -> {held}",
+    )
+    heads = {
+        "no error line": (source, "", module.detail(source)),
+        "the error on stderr": (source, error + frames, module.detail(error + frames)),
+        "Bun's error: line": (source + '  error: script "x" exited\n', "", 'error: script "x" exited'),
+        "an Exception": (source + "Uncaught DOMException: failed\n", "", "Uncaught DOMException: failed"),
+        "the first of two": (
+            source + "TypeError: first\nSQLiteError: second\n",
+            "",
+            "TypeError: first SQLiteError: second",
+        ),
+        "error: inside a line": (source + "no error: here\n", "", module.detail(source + "no error: here\n")),
+        "an Error without a colon": (
+            source + "TypeError at x\n",
+            "",
+            module.detail(source + "TypeError at x\n"),
+        ),
+        "a lower-case error class": (source + "typeerror: x\n", "", module.detail(source + "typeerror: x\n")),
+    }
+    got = {name: ask("omp", 0, out, err)[1:] for name, (out, err, _) in heads.items()}
+    want = {name: ("MISMATCH", d) for name, (_, _, d) in heads.items()}
+    check(got == want, f"the error head of a MISMATCH row -> {got}")
+    timed = ask("omp", 0, text, sleep="omp")
+    check(
+        timed == ("timeout", "timeout", module.detail(error + frames)),
+        f"a timeout row starts its detail at the error line -> {timed}",
+    )
+    record = ask("agy", 1, text)
+    check(
+        record == ("exit 0", "exit 0", module.detail(text)),
+        f"F5's record row keeps the detail of its whole text -> {record}",
+    )
+
+
 def probe_cases(check: Callable[[object, str], None]) -> None:
     """The cases of scripts/probe-agentbox.py, each in a scratch home of its own."""
     with tempfile.TemporaryDirectory(prefix="harness-probe-agentbox-") as name:
@@ -1329,6 +1474,7 @@ def probe_cases(check: Callable[[object, str], None]) -> None:
             probe_model,
             probe_void,
             probe_timeout,
+            probe_words,
         ):
             case(check, tmp)
 

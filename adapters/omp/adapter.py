@@ -37,7 +37,10 @@ leaves it:
                               copy of an agent for each seat of its council
   RTK.md, instructions/,      copies of the Claude Code layer's files that frontends.shared names:
   hooks/, skills/             the guard package that guards.ts runs, and the skills that oh-my-pi
-                              reads from skills/ before ~/.agents/skills/
+                              reads from skills/ before ~/.agents/skills/; a skill with a file
+                              adapters/omp/skill-sections/<skill>.md gets that file as an "Under
+                              oh-my-pi" section between its frontmatter and its body
+                              (frontends.skill_sections)
 
 Every text but AGENTS.md names oh-my-pi's copies, not Claude Code's (frontends.relocate).
 oh-my-pi auto-discovers only `.ts` and `.js` files below extensions/, so the path list there is
@@ -119,6 +122,9 @@ RESTART = "Restart oh-my-pi: its installed files changed, and a running session 
 SOURCE = REPO / "adapters" / "omp"
 SETTINGS = REPO / "settings" / "settings.proposal.json"
 GUARD_PATHS = REPO / "adapters" / "opencode" / "plugins" / "guard-paths.json"
+# Each file <skill>.md here is the "Under oh-my-pi" section of oh-my-pi's copy of
+# skills/<skill>/SKILL.md (frontends.skill_sections).
+SKILL_SECTIONS = SOURCE / "skill-sections"
 # The template's lists, in the order oh-my-pi must see them, with oh-my-pi's approval for each.
 APPROVAL = [("deny", "deny"), ("ask", "prompt"), ("allow", "allow")]
 
@@ -684,7 +690,8 @@ def plan(ctx: types.SimpleNamespace | argparse.Namespace):
         rules,
         models,
         ctx.agents,
-        ctx.plans["claude"].shared,
+        # A skill with a file in skill-sections/ gets that section.
+        frontends.skill_sections(ctx.plans["claude"].shared, SKILL_SECTIONS),
         frontends.home_form(agent),
         chains,
         own,
@@ -872,12 +879,9 @@ def omp_cases(case, fresh, run):
         f"the dry run lists AGENTS.md, from adapters/omp/OMP-DELTA.md, whose first lines import oh-my-pi's copies of "
         f"RTK.md, the core and the tree instructions: {listed.get('AGENTS.md')}",
     )
-    opencode_delta = REPO / "adapters" / "opencode" / "OPENCODE-DELTA.md"
-    case(
-        lambda: len(delta.read_bytes()) <= len(opencode_delta.read_bytes()),
-        f"adapters/omp/OMP-DELTA.md, {len(delta.read_bytes())} bytes, is no larger than OPENCODE-DELTA.md, "
-        f"{len(opencode_delta.read_bytes())} bytes",
-    )
+    # AGENTS.md loads into every session: its source holds at most frontends.DELTA_BUDGET bytes.
+    within, size_line = frontends.delta_budget(delta)
+    case(lambda: within, f"adapters/omp/{size_line}")
     # The rule sources: rules/ and the tree instructions' rules/, one rendered rule each.
     sources = sorted(
         [*(REPO / "rules" / n for n in rule_names(REPO / "rules")), tree / "rules" / "meta-repository.md"],
@@ -1064,16 +1068,19 @@ def omp_cases(case, fresh, run):
     )
     package = [name for name in names if name.startswith("hooks/guard/")]
     installed_at, source_at = cast("pathlib.Path", agent), cast("pathlib.Path", claude)
+    skill = "skills/build-part/SKILL.md"
     case(
         lambda: (
-            all(
-                (agent / s).read_bytes()
+            skill in shared
+            and all(
+                (installed_at / s).read_bytes()
                 == (
-                    frontends.relocate((claude / s).read_bytes(), str(agent))
+                    frontends.relocate((source_at / s).read_bytes(), str(installed_at))
                     if s.endswith(".md")
-                    else (claude / s).read_bytes()
+                    else (source_at / s).read_bytes()
                 )
-                for s in shared
+                for s in names
+                if s != skill
             )
             and package != []
             and all(
@@ -1082,8 +1089,24 @@ def omp_cases(case, fresh, run):
                 for name in package
             )
         ),
-        "each copy is the Claude Code layer's file, a text with its shared paths relocated, and each file of "
-        "the guard package has its mode",
+        f"each copy but {skill} is the Claude Code layer's file, a text with its shared paths relocated, and "
+        "each file of the guard package has its mode",
+    )
+    # oh-my-pi's copy of skills/build-part/SKILL.md is Claude Code's copy with
+    # skill-sections/build-part.md between its frontmatter and its body, each with oh-my-pi's paths.
+    original = (source_at / skill).read_bytes()
+    end = original.index(b"\n---\n", 3) + len(b"\n---\n")
+    section = (SOURCE / "skill-sections" / "build-part.md").read_bytes()
+    planned = (installed_at / skill).read_bytes()
+    case(
+        lambda: (
+            section.startswith(b"## Under oh-my-pi\n")
+            and planned
+            == frontends.relocate(original[:end] + b"\n" + section + original[end:], str(installed_at))
+            and planned.count(b"\n## Under oh-my-pi\n") == 1
+        ),
+        f"oh-my-pi's {skill} holds one section `## Under oh-my-pi`, from skill-sections/build-part.md, "
+        f"between Claude Code's frontmatter and its body: {planned[: end + 40]!r}",
     )
     limits = load_models(REPO / "examples" / "models.toml").context_limits
     yml = omp_config(agent / "models.yml")

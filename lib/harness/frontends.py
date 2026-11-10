@@ -82,6 +82,9 @@ SHARED_ROOTS = (
     "~/.claude/rules/",
     "~/.claude/skills/",
 )
+# The bytes that the delta of OpenCode, oh-my-pi or Antigravity may hold: each installs as that
+# frontend's global instruction file and loads into every session.
+DELTA_BUDGET = 5120
 
 
 def shared(dst: str) -> bool:
@@ -98,6 +101,33 @@ def relocate(data: bytes, root: str) -> bytes:
     for old in SHARED_ROOTS:
         data = data.replace(old.encode(), (root + old[len("~/.claude") :]).encode())
     return data
+
+
+def delta_budget(path: pathlib.Path) -> tuple[bool, str]:
+    """Whether the delta at `path` holds at most DELTA_BUDGET bytes, and the line that says so."""
+    size = len(path.read_bytes())
+    return size <= DELTA_BUDGET, f"{path.name} has {size:,} bytes, and its budget is {DELTA_BUDGET:,}"
+
+
+def skill_sections[M](
+    copies: list[tuple[str, bytes, M]], sections: pathlib.Path
+) -> list[tuple[str, bytes, M]]:
+    """`copies`, [(installed path, bytes, mode)], with the text of each file `<skill>.md` of
+    `sections` between the frontmatter and the body of skills/<skill>/SKILL.md: a frontend's own
+    section of a skill that it copies. A section file whose skill `copies` does not hold is an
+    error: the rule it carries would load nowhere."""
+    index = {dst: i for i, (dst, _, _) in enumerate(copies)}
+    result = list(copies)
+    for path in sorted(sections.glob("*.md")):
+        dst = f"skills/{path.stem}/SKILL.md"
+        if dst not in index:
+            raise HarnessError(f"{path}: the install copies no {dst}, the skill of this section")
+        _, data, mode = copies[index[dst]]
+        if not data.startswith(b"---\n") or (end := data.find(b"\n---\n", 3)) < 0:
+            raise HarnessError(f"{dst}: no frontmatter, after which the section of {path} goes")
+        end += len(b"\n---\n")
+        result[index[dst]] = (dst, data[:end] + b"\n" + path.read_bytes() + data[end:], mode)
+    return result
 
 
 def home_form(path: str | pathlib.Path) -> str:
