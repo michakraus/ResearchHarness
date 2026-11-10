@@ -64,8 +64,8 @@ julia --startup-file=no run-tests.jl <package> [--jobs <n>] [affected [<base>] |
 
 A selection runs in one fresh process through `TestEnv`. The log goes to
 `~/Research/.scratch/tests/`. A manifest that another minor version of Julia resolved stays out
-of the run: the run then uses a copy of the package. Outside the convention's layout, only `full`
-runs.
+of the run: the run then uses a copy of the package. The copy holds no `.githooks`, whose write
+the sandbox denies under `~/Research`. Outside the convention's layout, only `full` runs.
 
 The agents `julia-test-runner`, `julia-builder` and `julia-critic`, the skill `build-part` and the
 rules `julia-code` and `julia-tests` use it. `mutate.jl`, `pins.jl`, `gate.jl` and
@@ -172,9 +172,15 @@ and the commit. It refuses a directory that is not empty, so that no old file st
 It does in one call what `git archive <ref> | tar -x` does, but with no permission prompt: a
 worktree-isolated agent cannot run a pipeline that holds `git`, and `git archive -o` asks.
 
+The tree leaves out every directory and file named `.githooks`, at any depth below the package.
+The sandbox denies the write of a `.githooks` under `~/Research`, and every package tracks one, so
+the whole tree cannot be written there; no probe runs a hook. A named path inside a `.githooks` is
+refused before anything is written. `git show <ref>:<path>` prints such a file without writing it.
+
 The skill `build-part` names it for the agents `julia-builder` and `julia-critic`, and the agent
 `julia-pr-reviewer` names it for its probes. `dispatch-delta.jl` calls it for the base of a
-run. `base-tree-test.jl` checks it on the commits of this repository, in about 3 s.
+run. `base-tree-test.jl` checks it on the commits of this repository and on fixture repositories,
+in about 3 s.
 
 ## `gate.jl` and `gate-test.jl`
 
