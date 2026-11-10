@@ -67,6 +67,11 @@ jobs:
 
   ast-grep:
     runs-on: ubuntu-latest
+    # A step without a shell runs as bash -e, where a pipe returns the status of its last command.
+    # shell: bash adds pipefail, so a failed ast-grep test fails its step through the tee.
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Install ast-grep

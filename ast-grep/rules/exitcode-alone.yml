@@ -7,11 +7,22 @@ language: julia
 severity: error
 message: p.exitcode read without p.termsignal or success(p); a process killed by a signal has exitcode 0, so check termsignal too or call success(p)
 utils:
+  # The head of a short-form definition: a call, or a call under a return type or a where clause,
+  # as in f(p)::Bool or f(p::T) where {T}. Each step goes through the first child only, so a typed
+  # variable such as x::typeof(g(1)) is no head.
+  head:
+    any:
+      - kind: call_expression
+      - kind: typed_expression
+        has: { nthChild: 1, matches: head }
+      - kind: where_expression
+        has: { nthChild: 1, matches: head }
   def:
     any:
       - kind: function_definition
       - kind: assignment
-        has: { kind: call_expression, nthChild: 1 }
+        has: { nthChild: 1, matches: head }
+  # The guard: the name termsignal, or a call of success, plain or qualified as in Base.success(p).
   guard:
     has:
       stopBy: end
@@ -19,6 +30,10 @@ utils:
         - { kind: identifier, regex: '^termsignal$' }
         - kind: call_expression
           has: { kind: identifier, regex: '^success$' }
+        - kind: call_expression
+          has:
+            kind: field_expression
+            has: { kind: identifier, regex: '^success$', nthChild: { position: 1, reverse: true } }
 rule:
   pattern: µP.exitcode
   any:

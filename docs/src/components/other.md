@@ -359,10 +359,10 @@ docstring, so the fix is to move it.
 ## `rules/allocated-equality.yml`
 
 The rule `allocated-equality` finds two `@allocated` readings compared exactly:
-`@allocated(a) == @allocated(b)` or `@allocated(a) === @allocated(b)`, inside `@test` too.
-Windows quantises the figures by 16 bytes, so an exact comparison fails there. Assert the
-difference under a stated tolerance instead. A comparison of one reading with a number, or with
-`<=`, is not a hit.
+`@allocated(a) == @allocated(b)` or `@allocated(a) === @allocated(b)`, inside `@test` too. A
+reading in parentheses, such as `(@allocated a)`, counts too. Windows quantises the figures by 16
+bytes, so an exact comparison fails there. Assert the difference under a stated tolerance
+instead. A comparison of one reading with a number, or with `<=`, is not a hit.
 
 ## `rules/exitcode-alone.yml`
 
@@ -370,9 +370,10 @@ The rule `exitcode-alone` finds `p.exitcode` in a definition that neither reads 
 calls `success`. A process that a signal ends has the exit code 0 in Julia, so the exit code alone
 reads it as a success. Check `termsignal` too, or call `success(p)`.
 
-A definition is a `function … end` or a short form `f(…) = …`. The rule looks for `termsignal`
-and `success(` in the enclosing definition, and for a read at top level in the whole file. A
-`termsignal` read in another function does not count.
+A definition is a `function … end` or a short form `f(…) = …`, also with a return type or a
+`where` clause, as in `f(p)::Bool = …`. The rule looks for `termsignal` and a call of `success`,
+also as `Base.success(p)`, in the enclosing definition, and for a read at top level in the whole
+file. A `termsignal` read in another function does not count.
 
 ## `rules/line-citation-comment.yml`
 
