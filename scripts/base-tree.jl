@@ -22,7 +22,8 @@ without any `.githooks`; refuse a path with a segment `.githooks` before anythin
 function base_tree(pkg, ref, dest, paths = String[])
     for p in paths
         ".githooks" in splitpath(normpath(p)) &&
-            error("$p is inside a .githooks, which the tree leaves out; in $pkg, `git show $ref:./$(normpath(p))` prints it")
+            error("$p is inside a .githooks, which the tree leaves out; ",
+                "in $pkg, `git show $ref:./$(normpath(p))` prints it")
     end
     isdir(dest) && !isempty(readdir(dest)) && error("$dest is not empty")
     mkpath(dest)
