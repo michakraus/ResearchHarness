@@ -1,0 +1,7 @@
+id: allocated-equality
+valid:
+  - "@test @allocated(f(1)) == 0"
+  - "@test @allocated(f(1)) <= @allocated(f(2))"
+invalid:
+  - "@test @allocated(f(1)) == @allocated(f(2))"
+  - "x = @allocated(g()) === @allocated(h())"

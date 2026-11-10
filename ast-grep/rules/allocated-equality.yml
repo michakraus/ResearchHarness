@@ -1,0 +1,9 @@
+# Two allocation readings compared exactly fail on Windows, which quantises the figures by 16 bytes.
+id: allocated-equality
+language: julia
+severity: error
+message: two @allocated readings compared exactly; assert their difference under a stated tolerance
+rule:
+  any:
+    - pattern: "@allocated(µA) == @allocated(µB)"
+    - pattern: "@allocated(µA) === @allocated(µB)"
