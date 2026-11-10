@@ -1,0 +1,7 @@
+id: debug-probe
+valid:
+  - "@info \"x = $x\""
+  - "show(x)"
+invalid:
+  - "@show x"
+  - "@info \"[DEBUG-a4f2] x = $x\""
