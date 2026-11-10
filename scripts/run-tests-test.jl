@@ -540,6 +540,21 @@ end
     @test isfile(joinpath(dst, "src", "Fixture.jl"))
 end
 
+@testset "a copy holds no .githooks" begin
+    src, dst = mktempdir(), mktempdir()
+    for f in [".githooks/pre-commit", "src/deep/.githooks/y", "x/.githooks", "a.githooks/keep", "src/a.jl"]
+        mkpath(dirname(joinpath(src, f)))
+        write(joinpath(src, f), "$f\n")
+    end
+    cmd = M.copy_command(src, dst)
+    @test "--exclude=.githooks" in cmd.exec
+    run(cmd)
+    # rsync keeps the empty directory `x/`, so the files are compared, not the directories
+    @test sort!([relpath(joinpath(r, f), dst) for (r, _, fs) in walkdir(dst) for f in fs]) ==
+          ["a.githooks/keep", "src/a.jl"]
+    @test !any(((r, ds, fs),) -> ".githooks" in ds || ".githooks" in fs, walkdir(dst))
+end
+
 @testset "a manifest of another Julia is foreign" begin
     own = "julia_version = \"$VERSION\"\nmanifest_format = \"2.0\"\n"
     other = "julia_version = \"1.0.5\"\nmanifest_format = \"2.0\"\n"

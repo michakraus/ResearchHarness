@@ -9,8 +9,8 @@
 #   named      mutate.jl --warm on a copy of each <list>: the totals, and each mutant that is not CAUGHT
 #   generated  mutants.jl against <base>, then mutate.jl --warm --jobs <n> (4 by default): the totals,
 #              and the survivors grouped by line; information for the critic, not a failure
-#   dispatch   dispatch-delta.jl <package> <base>: a new ambiguity or piracy fails; added methods,
-#              new JET reports and dependency drift are information
+#   dispatch   dispatch-delta.jl <package> <base>: a new ambiguity, piracy or abstract field fails;
+#              added methods, new JET reports and dependency drift are information
 #   format     JuliaFormatter, with the package's .JuliaFormatter.toml, on the .jl files that the
 #              diff against <base> adds or changes
 #

@@ -64,8 +64,8 @@ julia --startup-file=no run-tests.jl <package> [--jobs <n>] [affected [<base>] |
 
 A selection runs in one fresh process through `TestEnv`. The log goes to
 `~/Research/.scratch/tests/`. A manifest that another minor version of Julia resolved stays out
-of the run: the run then uses a copy of the package. Outside the convention's layout, only `full`
-runs.
+of the run: the run then uses a copy of the package. The copy holds no `.githooks`, whose write
+the sandbox denies under `~/Research`. Outside the convention's layout, only `full` runs.
 
 The agents `julia-test-runner`, `julia-builder` and `julia-critic`, the skill `build-part` and the
 rules `julia-code` and `julia-tests` use it. `mutate.jl`, `pins.jl`, `gate.jl` and
@@ -172,9 +172,15 @@ and the commit. It refuses a directory that is not empty, so that no old file st
 It does in one call what `git archive <ref> | tar -x` does, but with no permission prompt: a
 worktree-isolated agent cannot run a pipeline that holds `git`, and `git archive -o` asks.
 
+The tree leaves out every directory and file named `.githooks`, at any depth below the package.
+The sandbox denies the write of a `.githooks` under `~/Research`, and every package tracks one, so
+the whole tree cannot be written there; no probe runs a hook. A named path inside a `.githooks` is
+refused before anything is written. `git show <ref>:<path>` prints such a file without writing it.
+
 The skill `build-part` names it for the agents `julia-builder` and `julia-critic`, and the agent
 `julia-pr-reviewer` names it for its probes. `dispatch-delta.jl` calls it for the base of a
-run. `base-tree-test.jl` checks it on the commits of this repository, in about 3 s.
+run. `base-tree-test.jl` checks it on the commits of this repository and on fixture repositories,
+in about 3 s.
 
 ## `gate.jl` and `gate-test.jl`
 
@@ -217,7 +223,7 @@ repository calls it by name.
 ## `dispatch-delta.jl` and `dispatch-delta-test.jl`
 
 `dispatch-delta.jl` loads the base and the head of a package side by side and compares their
-method tables, ambiguities, piracies and JET reports.
+method tables, ambiguities, piracies, abstract fields and JET reports.
 
 ```bash
 julia --startup-file=no dispatch-delta.jl <package> <base> [--timeout <s>] [--no-jet] [--api]
@@ -235,8 +241,8 @@ once (with `--api`, one after the other), as `run-tests.jl` loads a driver: `--p
 the harness environment last in `LOAD_PATH`, then `TestEnv.activate()`. Each side writes
 `<side>.json`: the package, the side, the Julia version, whether its tree held a `Manifest.toml`,
 the versions of Aqua and the dependencies, the packages that the side has loaded, its public
-names, one record per own method, and the ambiguities and piracies. Then it runs JET into
-`<side>-jet.json`. Its output goes to `<side>.log`.
+names, one record per own method, the ambiguities and piracies, and the abstract fields. Then it
+runs JET into `<side>-jet.json`. Its output goes to `<side>.log`.
 The script removes the base tree at its end and keeps the JSON files and the logs.
 
 The own methods of a side are the methods of the package's module tree and of each extension that
@@ -253,11 +259,23 @@ function's `Core.kwcall` methods. A method record names the package of its gener
 `generic_package`; a method on an external generic prints as an added method only where the base
 loaded that package.
 
+The abstract fields of a side are the fields of the struct types of the package's module tree whose
+types are not concrete up to type variables, the rule of `concrete-fields.jl`, whose
+`concrete_field_violations` the script calls on the root module. The extension modules are not
+read. The record `fields` holds one entry per field: `type`, the path of the struct from the root
+module, such as `<Pkg>.Sub.S`; `field`, its name; and `fieldtype`, its type as `show` prints it,
+so `v::AbstractVector{T}` prints as `AbstractArray{T, 1}`. All three are the key, so a branch fails
+only on a field that the base lacks; an old violation does not fail it. A field whose abstract type
+changes reads as new, as does a field whose struct moves to another module or renames a type
+variable, and its old record reads as gone. No argument exempts a field, and a line names no file,
+because Julia records no location for a type.
+
 | line | means | exit |
 |:--|:--|:--|
 | `FAIL: new own-own ambiguity: <key> \| <key>` | `Test.detect_ambiguities` finds a new pair of own methods | 1 |
 | `FAIL: new own-external ambiguity: <own key> \| <key>` | a new pair of an own and another method | 1 |
 | `FAIL: new piracy: <key> at <file>:<line>` | Aqua's piracy hunt on the package's module tree, not on `ext/`; no argument exempts a piracy | 1 |
+| `FAIL: new abstract field: <type>.<field>::<field type>` | a field of the package's module tree, not of `ext/`, whose type is not concrete up to type variables and that the base lacks | 1 |
 | `FAIL: the head does not load: <error>` | with a `log:` line; also where an extension whose triggers the test environment provides does not load | 1 |
 | `UNKNOWN: the base does not load: <error>` | with a `log:` line | 3 |
 | `UNKNOWN: <side> does not resolve: <error>` | `TestEnv.activate()` failed | 3 |
@@ -269,6 +287,7 @@ loaded that package.
 | `INFO: added method: <key> at <file>:<line>` | a new method of a generic that has a method on the base, with one `  other:` line per other method: all of an own generic, the intersecting ones of an external generic | — |
 | `INFO: new JET report: <type>: <message> in <key>` | a JET report that the base lacks | — |
 | `INFO: gone …` | a piracy, an ambiguity or a JET report that the head removes | — |
+| `INFO: gone abstract field: <type>.<field>::<field type>` | an abstract field of the base that the head lacks | — |
 | `INFO: dependency drift: <name> <base> -> <head>` | a dependency or a tool of another version on each side | — |
 
 The last line is `Verdict: <PASS|FAIL|UNKNOWN> — <f> FAIL, <u> UNKNOWN, <i> INFO`. The exit status

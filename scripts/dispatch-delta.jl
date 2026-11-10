@@ -1,5 +1,5 @@
 # The dispatch delta of a head against a base: what a branch adds to the method table, and the new
-# ambiguities and piracies, from both trees loaded side by side.
+# ambiguities, piracies and abstract fields, from both trees loaded side by side.
 #
 #   julia --startup-file=no dispatch-delta.jl <package> <base> [--timeout <s>] [--no-jet] [--api]
 #
@@ -23,6 +23,9 @@
 #   FAIL: new own-own ambiguity: <key> | <key>          both methods in own modules
 #   FAIL: new own-external ambiguity: <own> | <other>
 #   FAIL: new piracy: <key> at <file>:<line>            Aqua's piracy hunt on the module tree, not ext/
+#   FAIL: new abstract field: <type>.<field>::<field type>
+#                                                       a field of the module tree, not ext/, whose
+#                                                       type is not concrete up to type variables
 #   FAIL: the head does not load: <error>               also an extension whose triggers the test
 #                                                       environment provides and that does not load
 #   UNKNOWN: the base does not load: <error>
@@ -40,6 +43,7 @@
 #                                                       counts where the base loaded its package
 #   INFO: new JET report: <type>: <message> in <key>
 #   INFO: gone piracy | gone own-own ambiguity | gone own-external ambiguity | gone JET report: ...
+#   INFO: gone abstract field: <type>.<field>::<field type>
 #   INFO: dependency drift: <name> <base version> -> <head version>
 #   Verdict: <PASS|FAIL|UNKNOWN> — <f> FAIL, <u> UNKNOWN, <i> INFO
 #
@@ -66,7 +70,7 @@
 #   INFO: covered: <base key> by <head key>
 #   INFO: new public name: <module.>name
 #
-# The structure of a public type, its fields, type parameters and supertype, is not compared, and a
+# --api compares no structure of a public type, its fields, type parameters and supertype, and a
 # name that the head declares `public` in place of `export` stays public.
 #
 # The key of a method is its signature with the full path of each name that Base and Core do not
@@ -74,6 +78,13 @@
 # no key, with its type variables renamed _1, _2, … by position and the digits of gensym names
 # stripped. A head that only reorders the `where` list of a method therefore changes its key: a
 # finding of that method reads as new, and its old key as gone.
+#
+# Each side also records each field of the struct types of the root module and its submodules whose
+# type is not concrete up to type variables, by concrete_field_violations of concrete-fields.jl; the
+# extension modules are not read. The record of a field is the path of its struct from the root
+# module, such as <Pkg>.Sub.S, its name, and its type printed by `show`, and all three are its key:
+# a field whose abstract type changes, or whose struct moves to another module or renames a type
+# variable, reads as new, and its old record as gone.
 #
 # Exit 0: PASS. 1: a FAIL line. 2: bad arguments. 3: no verdict — a base that does not load, a side
 # that does not resolve or that timed out, or an `UNKNOWN: key` line — and no FAIL line.
@@ -86,6 +97,11 @@ end
 # appends it instead.
 module RunTests
 include(joinpath(@__DIR__, "run-tests.jl"))
+end
+
+# concrete-fields.jl defines a `USAGE` and a `main` of its own
+module ConcreteFields
+include(joinpath(@__DIR__, "concrete-fields.jl"))
 end
 
 using JSON: JSON
@@ -449,8 +465,10 @@ end
 The records of a side, written into `<rundir>/<side>.json`. Beside the keys that a reader of the
 two files uses, `manifest` says whether the side's tree held a `Manifest.toml` when the side began.
 `loaded` names each package that the side has loaded when it writes the file. `public` holds one
-record per public name of `public_bindings`. With `basejson`, the path of the base's records, the
-file also holds the head's `cover` of them.
+record per public name of `public_bindings`. `fields` holds one record per field of the root
+module's tree whose type is not concrete up to type variables, by `concrete_field_violations` of
+concrete-fields.jl, with its type printed by `show`. With `basejson`, the path of the base's
+records, the file also holds the head's `cover` of them.
 """
 function record(s, rundir, tree, name, root, tree_mods, own, aqua, manifest, basejson)
     ownset = Set(own)
@@ -464,7 +482,9 @@ function record(s, rundir, tree, name, root, tree_mods, own, aqua, manifest, bas
         "public" => [Dict("module" => p, "name" => string(n), "kind" => kind(m, n)) for (p, m, n) in pub],
         "methods" => method_records(ownset, root, tree, pub),
         "ambiguities" => ambiguities(own, ownset, root),
-        "piracies" => piracies)
+        "piracies" => piracies,
+        "fields" => [Dict("type" => r.type, "field" => string(r.field), "fieldtype" => sprint(show, r.fieldtype))
+                     for r in ConcreteFields.concrete_field_violations(root)])
     basejson === nothing || (d["cover"] = cover(JSON.parsefile(basejson), root, ownset, own_methods(ownset)))
     write_json(joinpath(rundir, "$s.json"), d)
 end
@@ -642,6 +662,13 @@ function compare(b, h)
     end
     for k in sort!(collect(setdiff(keys(bp), keys(hp))))
         push!(out, "INFO: gone piracy: $k at $(bp[k]["file"]):$(bp[k]["line"])")
+    end
+    fld(d) = Set((r["type"], r["field"], r["fieldtype"]) for r in d["fields"])
+    for (t, f, ft) in sort!(collect(setdiff(fld(h), fld(b))))
+        push!(out, "FAIL: new abstract field: $t.$f::$ft")
+    end
+    for (t, f, ft) in sort!(collect(setdiff(fld(b), fld(h))))
+        push!(out, "INFO: gone abstract field: $t.$f::$ft")
     end
     bkeys = Set(m["key"] for m in b["methods"])
     bgen = Set(generic_of(m["key"]) for m in b["methods"])

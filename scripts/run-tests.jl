@@ -80,9 +80,10 @@ end
 # `.claude/` holds the harness-made `.cc-writes`, whose `mkdir` the sandbox refuses in a copy. The
 # sandbox denies `.env` and `.env.*` too, so a copy of one leaves a temporary file that it cannot
 # remove. `--inplace` writes each file under its own name: `env.ts` has no temporary
-# `.env.ts.XXXXXX`.
+# `.env.ts.XXXXXX`. The sandbox denies every `.githooks` under ~/Research, and no run needs a hook,
+# so the unanchored exclude leaves out each directory and file of that name, at any depth.
 copy_command(pkg, copy, leave_out = String[]) =
-    `rsync -a --inplace --exclude=.git --exclude=.claude --exclude=.env '--exclude=.env.*' $(["--exclude=/$f" for f in leave_out]) $(pkg)/ $(copy)/`
+    `rsync -a --inplace --exclude=.git --exclude=.claude --exclude=.env '--exclude=.env.*' --exclude=.githooks $(["--exclude=/$f" for f in leave_out]) $(pkg)/ $(copy)/`
 
 "The test files that `runtests.jl` lists, as `Entry` values of `test-layout.jl`."
 units(pkg) = layout(pkg).entries

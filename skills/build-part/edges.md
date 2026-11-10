@@ -311,6 +311,12 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   coupling's own rule assumes, and pin the multiplier count against a basis of a stated boundary
   condition rather than against "the same degree and cells" (F, review of PR #44, *Revive the
   multisymplectic package*)
+- **a device test whose pinned vendor status differs on the local stack:** `test/devices/metal_vendor.jl`
+  asserts `F_neg.info == -2` and this machine's Metal 4.1 / macOS 27.2 returned `3`, on the branch and
+  on a `git archive` of the base alike, while CI's `Metal` job passed at both heads. A device
+  assertion that fails in the full suite is measured on an exported base tree and against the head's
+  `Metal` job before it is called the part's; the round's record names it (AX and BA round 1, the
+  solver package)
 
 ## A type or an interface
 
@@ -408,11 +414,6 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   batch size, and a test at one size cannot see it. Map over `eachcol` of the batch, keep the input
   gradient (no `ignore_derivatives` on the input), and add an allocation-difference test across two
   batch sizes (B2a, the learning package)
-- an abstract field type on a struct that holds a network, where the source a port copies had a type
-  parameter: `model::Chain` instead of `model::CT` leaves every forward pass through that layer at
-  `Any`. No clause names inference, so no critic sees it and the branch verifier finds it after a
-  pass. A port keeps the source's type parameter (`ForcingLayer{…, CT, …}` at #207's `3b1775cd`),
-  and the layer's own test file asserts `@inferred` on its forward pass (B2c, the learning package)
 - a cost premise that times the build of a generated function and never calls it: the run-time
   compilation of the first call is two orders larger than the build, and it lands in the test file
   and in the CI job's `timeout-minutes` instead of in the premise. Time the first call once per
