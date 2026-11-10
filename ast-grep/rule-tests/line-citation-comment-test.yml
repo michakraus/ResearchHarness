@@ -1,0 +1,7 @@
+id: line-citation-comment
+valid:
+  - "# the ratio is 3:1"
+  - "# from solver.jl"
+  - "msg = \"solver.jl:120\""
+invalid:
+  - "x = 1  # from solver.jl:120"
