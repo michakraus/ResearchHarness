@@ -1,6 +1,7 @@
 # A process killed by a signal has exitcode 0 in Julia, so exitcode alone reads it as a success.
-# The guard is searched in the enclosing definition (a function or a short-form f(…) = …), or in the
-# whole file for a read at top level: a termsignal read in another function does not cover this one.
+# The guard is searched in each enclosing definition (a function or a short-form f(…) = …), and in
+# the whole file: a termsignal read in another function does not cover this one. A definition that
+# holds the guard lies in a file that holds it, so the file decides only for a read at top level.
 id: exitcode-alone
 language: julia
 severity: error
@@ -17,7 +18,7 @@ utils:
       any:
         - { kind: identifier, regex: '^termsignal$' }
         - kind: call_expression
-          has: { kind: identifier, regex: '^success$', nthChild: 1 }
+          has: { kind: identifier, regex: '^success$' }
 rule:
   pattern: µP.exitcode
   any:
@@ -25,9 +26,7 @@ rule:
         stopBy: end
         matches: def
         not: { matches: guard }
-    - all:
-        - not: { inside: { stopBy: end, matches: def } }
-        - inside:
-            stopBy: end
-            kind: source_file
-            not: { matches: guard }
+    - inside:
+        stopBy: end
+        kind: source_file
+        not: { matches: guard }
