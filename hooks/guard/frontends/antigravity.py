@@ -113,7 +113,11 @@ def listed(call: Call) -> Verdict:
     return path_list.check(call, PATH_LIST)
 
 
+# The checks of each action. The token check stands first in each list that holds it, before the
+# path list too: another check's reason can quote its input, and the token check's reason never
+# shows the token.
 SHELL: tuple[Check, ...] = (
+    token_forms.check,
     listed,
     no_blind_stage.check,
     no_shell_file_write.check,
@@ -124,7 +128,6 @@ SHELL: tuple[Check, ...] = (
     git_archive_output.check,
     git_writes.check,
     web_identity.check,
-    token_forms.check,
     sandbox_semantics.work_tree_check,
 )
 CHECKS: dict[Action, tuple[Check, ...]] = {
@@ -132,7 +135,7 @@ CHECKS: dict[Action, tuple[Check, ...]] = {
     "read": (listed,),
     "write": (listed,),
     "edit": (listed,),
-    "mcp": (listed, kaimon_session.check, web_identity.check, token_forms.check),
+    "mcp": (token_forms.check, listed, kaimon_session.check, web_identity.check),
     "subagent": (listed,),
 }
 

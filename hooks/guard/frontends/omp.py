@@ -130,7 +130,11 @@ def agent_write(call: Call) -> Verdict:
     return PASS
 
 
+# The checks of each action. The token check stands first in each list that holds it, before the
+# path list too: another check's reason can quote its input, and the token check's reason never
+# shows the token.
 SHELL: tuple[Check, ...] = (
+    token_forms.check,
     listed,
     no_blind_stage.check,
     no_shell_file_write.check,
@@ -142,14 +146,13 @@ SHELL: tuple[Check, ...] = (
     git_writes.check,
     sandbox_semantics.work_tree_check,
     web_identity.check,
-    token_forms.check,
 )
 CHECKS: dict[Action, tuple[Check, ...]] = {
     "shell": SHELL,
     "read": (listed,),
     "edit": (listed,),
     "write": (agent_write, listed),
-    "mcp": (kaimon_session.check, web_identity.check, token_forms.check),
+    "mcp": (token_forms.check, kaimon_session.check, web_identity.check),
 }
 # A tool path that `read` fetches from the web.
 WEB_URL = re.compile(r"\s*https?://", re.IGNORECASE)

@@ -1586,11 +1586,12 @@ def instruction_cases(scratch):
         f"a skill's own files install beside its SKILL.md, with their modes: {own}",
     )
 
-    # The delta states Antigravity's facts, is the global file, and is no larger than OpenCode's.
-    size = len((SOURCE / "ANTIGRAVITY-DELTA.md").read_bytes())
+    # The delta states Antigravity's facts, is the global file, and holds at most
+    # frontends.DELTA_BUDGET bytes.
+    within, size_line = frontends.delta_budget(SOURCE / "ANTIGRAVITY-DELTA.md")
     case(
         lambda: (
-            size <= len((REPO / "adapters" / "opencode" / "OPENCODE-DELTA.md").read_bytes())
+            within
             and (config / "GEMINI.md").read_bytes() == (SOURCE / "ANTIGRAVITY-DELTA.md").read_bytes()
             and all(
                 s in delta
@@ -1606,8 +1607,8 @@ def instruction_cases(scratch):
                 ]
             )
         ),
-        f"ANTIGRAVITY-DELTA.md is ~/.gemini/config/GEMINI.md, states the facts of the delta, and is no larger "
-        f"than OPENCODE-DELTA.md: {size} bytes",
+        f"ANTIGRAVITY-DELTA.md is ~/.gemini/config/GEMINI.md, states the facts of the delta, and is within "
+        f"its budget: {size_line}",
     )
 
     # An installed file with no source below the paths that the layer owns is EXTRA; Antigravity's

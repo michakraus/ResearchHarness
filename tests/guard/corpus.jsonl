@@ -532,6 +532,8 @@
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "echo @@GHP_SHORT@@ @@PAT_SHORT@@ @@GLPAT_SHORT@@ @@SK_SHORT@@"}, "cwd": "@@CWD@@"}, "decision": "pass"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "echo a@@GHP@@ 1@@PAT@@ _@@GLPAT@@ -@@SK@@"}, "cwd": "@@CWD@@"}, "decision": "pass"}
 {"tool": "WebFetch", "stdin": {"tool_name": "WebFetch", "tool_input": {"url": "https://example.org/user?token=@@GHP@@", "prompt": "Who is it?"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "WebFetch", "stdin": {"tool_name": "WebFetch", "tool_input": {"url": "https://example.org/x?access_token=@@GHP@@", "prompt": "Who is it?"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "WebFetch", "stdin": {"tool_name": "WebFetch", "tool_input": {"url": "https://example.org", "prompt": "Sign in with the key @@SK@@."}, "cwd": "@@CWD@@"}, "decision": "deny"}
 {"tool": "WebSearch", "stdin": {"tool_name": "WebSearch", "tool_input": {"query": "@@GLPAT@@"}, "cwd": "@@CWD@@"}, "decision": "deny"}
 {"tool": "mcp__kaimon__ex", "stdin": {"tool_name": "mcp__kaimon__ex", "tool_input": {"e": "ENV[\"KEY\"] = \"@@SK@@\"", "ses": "a1b2c3d4"}, "cwd": "@@CWD@@"}, "decision": "deny"}
 {"tool": "mcp__kaimon__ex", "stdin": {"tool_name": "mcp__kaimon__ex", "tool_input": {"e": "ENV[\"KEY\"] = \"@@SK_SHORT@@\"", "ses": "a1b2c3d4"}, "cwd": "@@CWD@@"}, "decision": "pass"}
@@ -1309,6 +1311,7 @@
 {"frontend": "opencode", "tool": "shell", "input": {"command": "curl -H \"PRIVATE-TOKEN: @@GLPAT_SHORT@@\" https://gitlab.example.org/api/v4/user"}, "decision": "pass"}
 {"frontend": "opencode", "tool": "kaimon_ex", "input": {"e": "ENV[\"KEY\"] = \"@@SK@@\"", "ses": "a1b2c3d4"}, "decision": "deny"}
 {"frontend": "opencode", "tool": "webfetch", "input": {"url": "https://example.org/user?token=@@GHP@@", "format": "text"}, "decision": "deny"}
+{"frontend": "opencode", "tool": "webfetch", "input": {"url": "https://example.org/x?access_token=@@GHP@@", "format": "text"}, "decision": "deny"}
 {"frontend": "omp", "tool": "bash", "input": {"command": "curl -H \"PRIVATE-TOKEN: @@GLPAT@@\" https://gitlab.example.org/api/v4/user"}, "decision": "deny"}
 {"frontend": "omp", "tool": "bash", "input": {"command": "curl -H \"PRIVATE-TOKEN: @@GLPAT_SHORT@@\" https://gitlab.example.org/api/v4/user"}, "decision": "pass"}
 {"frontend": "omp", "tool": "mcp__kaimon_ex", "input": {"e": "ENV[\"KEY\"] = \"@@SK@@\"", "ses": "a1b2c3d4"}, "cwd": "@@OMPHOME@@/Research", "decision": "deny"}
