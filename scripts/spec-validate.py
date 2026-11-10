@@ -33,8 +33,9 @@ Structural rules, each an error:
 
 With `--head`, rules 1–8 and 10 hold, and then every command of §3 runs on the head, in the order
 of the file, each once, whichever scenarios name it: a failure is an error. A check writes only
-under `$OUT`: where the head is a git tree, a change of `git status --porcelain --ignored` across
-the checks is an error too.
+under `$OUT`: where the head is a git tree, a change of `git status --porcelain` across
+the checks is an error too. An ignored file does not count — `run-tests.jl` resolves a
+`Manifest.toml` into the package root, which every tree's `.gitignore` names.
 
 A `- check:` bullet that ends in `(device: <name>[, <name>…])` needs that device, such as `metal`.
 Its commands run only where `--devices` names every device the bullet needs; elsewhere each prints
@@ -272,11 +273,12 @@ def structure(spec, lines):
 
 
 def status(tree: str) -> str | None:
-    """`git status --porcelain --ignored` of a git tree, or None for any other tree and for a git
-    that runs longer than 60 s."""
+    """`git status --porcelain` of a git tree, or None for any other tree and for a git that runs
+    longer than 60 s. An ignored file is not a change: `run-tests.jl` resolves a `Manifest.toml`
+    into the package root, and every tree's `.gitignore` names it."""
     try:
         p = subprocess.run(
-            [shutil.which("git") or "git", "status", "--porcelain", "--ignored"],
+            [shutil.which("git") or "git", "status", "--porcelain"],
             cwd=tree,
             capture_output=True,
             text=True,
@@ -375,7 +377,7 @@ def main():
                 run(checks, tree, env, "check", errors, "gate", "head", devices, unmeasured)
                 after = status(tree)
                 if before != after:
-                    errors.append("gate: the checks changed `git status --porcelain --ignored` of the head")
+                    errors.append("gate: the checks changed `git status --porcelain` of the head")
             else:
                 tree = a.base
                 if a.repo:
