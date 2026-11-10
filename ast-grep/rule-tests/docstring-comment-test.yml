@@ -1,9 +1,36 @@
 id: docstring-comment
 valid:
-  - "\"\"\"\nDoc.\n\"\"\"\nf(x) = x  # note"
-  - "\"\"\"\nDoc.\n\"\"\"\nfunction f(x)\n    # note\n    x\nend"
-  - "\"one line\"\n# note\nf(x) = x"
-  - "\"one $(\"\"\"inner\"\"\") line\"\n# note\nf(x) = x"
-  - "f(x) = x\n# note\ng(x) = x"
+  - |-
+    """
+    Doc.
+    """
+    f(x) = x  # note
+  - |-
+    """
+    Doc.
+    """
+    function f(x)
+        # note
+        x
+    end
+  - |-
+    "one line"
+    # note
+    f(x) = x
+  - |-
+    "one $("""inner""") line"
+    # note
+    f(x) = x
+  - |-
+    f(x) = x
+    # note
+    g(x) = x
 invalid:
-  - "\"\"\"\n    f(x)\n\nDoc.\n\"\"\"\n# note\nf(x) = x"
+  - |-
+    """
+        f(x)
+
+    Doc.
+    """
+    # note
+    f(x) = x
