@@ -44,8 +44,11 @@ type Check = Callable[[Call], Verdict]
 # The longest command the guard reads: 1 MiB of UTF-8.
 MAX_COMMAND = 1024 * 1024
 
-# The checks of a `Bash` call, in the order of their reasons when two give one decision.
+# The checks of a `Bash` call, in the order of their reasons when two give one decision. The token
+# check stands first in each list of checks that holds it: another check's reason can quote its
+# input, and the token check's reason never shows the token.
 SHELL: tuple[Check, ...] = (
+    token_forms.check,
     no_blind_stage.check,
     no_shell_file_write.check,
     sandbox_semantics.check,
@@ -56,7 +59,6 @@ SHELL: tuple[Check, ...] = (
     git_archive_output.check,
     git_writes.check,
     web_identity.check,
-    token_forms.check,
 )
 
 # (matcher, checks): the matchers of the settings template's `PreToolUse` groups that run the guard,
@@ -64,8 +66,8 @@ SHELL: tuple[Check, ...] = (
 TABLE: tuple[tuple[re.Pattern[str], tuple[Check, ...]], ...] = (
     (re.compile(r"Bash"), SHELL),
     (re.compile(r"mcp__ccd_directory__.*|EnterWorktree|ExitWorktree"), (directory_scope.check,)),
-    (re.compile(r"mcp__kaimon__.*"), (kaimon_session.check, token_forms.check)),
-    (re.compile(r"WebFetch|WebSearch"), (web_identity.check, token_forms.check)),
+    (re.compile(r"mcp__kaimon__.*"), (token_forms.check, kaimon_session.check)),
+    (re.compile(r"WebFetch|WebSearch"), (token_forms.check, web_identity.check)),
 )
 
 # The neutral names of Claude Code's own worktree and web tools; an MCP tool's is `<server>.<tool>`.
