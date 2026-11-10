@@ -2867,6 +2867,21 @@ def command_cases():
         ok=got == "pass",
         line=f"exp pass got {got}  [guard    ]  a key and no gate directory: {output[:70]!r}",
     )
+    # The refusal of a dead key names the live sessions of the one listing that found the key
+    # dead: a gate directory that cannot be listed after it does not turn into "No session is live.".
+    sys.path.insert(0, HOOKS)
+    try:
+        kaimon: Any = importlib.import_module("guard.kaimon_session")
+    finally:
+        sys.path.remove(HOOKS)
+    with mock.patch.dict(os.environ, {"KAIMON_CACHE_DIR": KAIMON_CACHE}):
+        listing = kaimon.gates()
+        with mock.patch.object(kaimon, "gates", side_effect=[listing, None]):
+            reason = kaimon.gone(STALE_GATE).reason
+    report(
+        ok=listing is not None and listed in reason and "No session is live." not in reason,
+        line=f"exp the live keys  [guard    ]  a dead key, then an unlistable gate directory: {reason[-70:]!r}",
+    )
     got, output = guard_run(b'{"tool_name":"Bash","tool_input":{"command":"ls"},"cwd":"/"}', "other")
     report(
         ok=got == "deny" and "usage" in output,

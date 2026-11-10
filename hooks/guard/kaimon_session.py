@@ -158,13 +158,17 @@ def gates() -> dict[str, Path] | None:
     return {name.removesuffix(".json"): directory / name for name in names if name.endswith(".json")}
 
 
+def live_among(found: dict[str, Path]) -> list[str]:
+    """The key of each live session among the gate files `found`, sorted and each once. Two session
+    ids with one 8-character prefix give one key."""
+    return sorted({sid[:8] for sid, path in found.items() if runs(path)})
+
+
 def live_keys() -> list[str] | None:
     """The key of each live session, sorted and each once, or None when the gate directory cannot be
-    listed. Two session ids with one 8-character prefix give one key."""
+    listed."""
     found = gates()
-    if found is None:
-        return None
-    return sorted({sid[:8] for sid, path in found.items() if runs(path)})
+    return None if found is None else live_among(found)
 
 
 def live_sentence(keys: list[str]) -> str:
@@ -186,7 +190,7 @@ def gone(value: str) -> Verdict:
         return PASS
     if any(runs(path) is not False for sid, path in found.items() if sid.startswith(value)):
         return PASS
-    return Verdict("deny", GONE.format(value=value, live=live_sentence(live_keys() or [])))
+    return Verdict("deny", GONE.format(value=value, live=live_sentence(live_among(found))))
 
 
 def wrong_key(call: Call, tool: str, key: str | None) -> Verdict:
