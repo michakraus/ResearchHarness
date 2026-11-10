@@ -208,9 +208,10 @@ last.**
 1. **Start one session for your tree, and reuse it**: `ping` first, and pass the key of a live
    session of your tree that it lists; else `start_session(project_path = <tree>)`. The builder's tree
    is its worktree, where Revise reloads `src/` before each call. A critic's tree is a copy,
-   `rsync -a --inplace --exclude=.git --exclude=.claude --exclude=.env --exclude='.env.*' <worktree>/ <round directory>/tree/`
-   (the sandbox denies `.env` files, so a copy of one leaves a file that no one can remove;
-   `--inplace` writes `env.ts` under its own name, not as the temporary `.env.ts.XXXXXX`, which
+   `rsync -a --inplace --exclude=.git --exclude=.githooks --exclude=.claude --exclude=.env --exclude='.env.*' <worktree>/ <round directory>/tree/`
+   (the sandbox denies a write to `.githooks` under `~/Research`, so without its exclude the copy
+   fails with exit 23; the sandbox denies `.env` files, so a copy of one leaves a file that no one
+   can remove; `--inplace` writes `env.ts` under its own name, not as the temporary `.env.ts.XXXXXX`, which
    the sandbox denies too): two critics
    judge one worktree at once, and one path has one session. A timeout of `start_session` does
    not stop the start: call `ping` before you call it again. **When `start_session` times out
