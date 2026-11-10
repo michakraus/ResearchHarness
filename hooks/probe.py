@@ -117,6 +117,15 @@ for twin in ("0001", "0002"):
     twin_file = pathlib.Path(TWIN_CACHE, "sock", f"{twin_sid}.json")
     twin_file.parent.mkdir(parents=True, exist_ok=True)
     twin_file.write_text(json.dumps({"session_id": twin_sid, "pid": os.getpid()}), encoding="utf-8")
+# A Kaimon cache of eight live gates, MANY_GATES, whose keys a set under the hash seed 0 does not
+# hold in sorted order, so that a refusal that lists them unsorted fails its case on every run.
+MANY_CACHE = FIXTURE.name + "/kaimon-many"
+MANY_GATES = ("0a1b2c3d", "1b2c3d4e", "2c3d4e5f", "3d4e5f60", "4e5f6071", "5f607182", "60718293", "718293a4")
+for many in MANY_GATES:
+    many_sid = f"{many}-0000-5000-8000-000000000000"
+    many_file = pathlib.Path(MANY_CACHE, "sock", f"{many_sid}.json")
+    many_file.parent.mkdir(parents=True, exist_ok=True)
+    many_file.write_text(json.dumps({"session_id": many_sid, "pid": os.getpid()}), encoding="utf-8")
 ENV = {**CLEAN, "HOME": HOME}
 # The profile of each fixture home, whose `org` list the `gh api` check reads: an own organisation
 # and an own account. A record's `profile` names another file in place of it, through
@@ -2827,9 +2836,21 @@ def command_cases():
             (f"The live sessions are `{TWIN_GATE}`.",),
             "ex without ses lists a key of two sessions once",
         ),
+        (
+            "ex",
+            {"e": "1 + 1"},
+            MANY_CACHE,
+            ("The live sessions are " + ", ".join(f"`{key}`" for key in MANY_GATES) + ".",),
+            "ex without ses lists eight live keys sorted",
+        ),
     ):
         payload = {"tool_name": f"mcp__kaimon__{tool}", "tool_input": arguments, "cwd": CWD}
-        got, output = guard_run(json.dumps(payload).encode("utf-8"), env={**ENV, "KAIMON_CACHE_DIR": cache})
+        # The hash seed 0 fixes the order of a set of keys in the guard, so that each case gives
+        # one verdict on every run.
+        got, output = guard_run(
+            json.dumps(payload).encode("utf-8"),
+            env={**ENV, "KAIMON_CACHE_DIR": cache, "PYTHONHASHSEED": "0"},
+        )
         shown = [key for key in unlisted if key in output and key not in arguments.values()]
         claims = "The live sessions are" in output or "No session is live." in output
         ok = (
