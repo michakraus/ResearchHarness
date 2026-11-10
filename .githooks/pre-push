@@ -73,8 +73,8 @@ print(boot["interpreter"](boot["environment_path"]()))
 """
 KIT_TESTS = ("update-check", "check-check", "driver-check", "render-check", "script-check")
 SHELL = re.compile(rb"^#!(/usr)?/bin/(env )?(ba)?sh")
-# The Julia test files, and the test file that each changed path selects, the first pattern that
-# matches.
+# The Julia test files, and the test files that each changed path selects: every row that names
+# the path.
 JULIA_TESTS = (
     "scripts/gate-test.jl",
     "scripts/mutants-test.jl",
@@ -109,7 +109,15 @@ SELECTS = (
     (("githooks/pre-push", "githooks/pre-push.jl"), "githooks/pre-commit-test.jl"),
     (("scripts/fatou-lsp.jl",), "scripts/fatou-lsp-test.jl"),
     (("scripts/base-tree.jl",), "scripts/base-tree-test.jl"),
-    (("scripts/dispatch-delta.jl",), "scripts/dispatch-delta-test.jl"),
+    (
+        (
+            "scripts/dispatch-delta.jl",
+            "scripts/base-tree.jl",
+            "scripts/run-tests.jl",
+            "scripts/concrete-fields.jl",
+        ),
+        "scripts/dispatch-delta-test.jl",
+    ),
     (("scripts/julia-methods.jl",), "scripts/julia-methods-test.jl"),
     (("scripts/concrete-fields.jl",), "scripts/concrete-fields-test.jl"),
 )
@@ -504,9 +512,10 @@ def julia_selection(changed: list[str]) -> list[str]:
             selection.append(test)
 
     for path in changed:
-        chosen = next((test for paths, test in SELECTS if path in paths), None)
-        if chosen is not None:
-            select(chosen)
+        chosen = [test for paths, test in SELECTS if path in paths]
+        if chosen:
+            for test in chosen:
+                select(test)
         elif fnmatch.fnmatchcase(path, "*-test.jl"):
             if Path(path).is_file():  # a deleted test file selects nothing
                 select(path)
