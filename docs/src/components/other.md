@@ -416,7 +416,7 @@ installs the release 0.51.1 of ast-grep, with its SHA-256, and builds the parser
 `build-julia.sh`. `research-sgconfig.yml` names its paths relative to `~/Research`, so the job
 writes a configuration with the checkout's absolute paths. Then it runs `ast-grep test` and the
 scan of `rule-tests/scope/`. The job fails when a test fails, when a test names a rule that does
-not exist, or when the scan hits other files.
+not exist, or when the scan does not hit exactly `src/probe.jl` and `ext/probe.jl`.
 
 ## `.gitleaks.toml`
 
