@@ -806,6 +806,20 @@ end
     @test !any(startswith("DDForeign-"), readdir(r.run))
 end
 
+# The base tree and the head's copy both leave out `.githooks`, whose write the sandbox denies under
+# ~/Research, where the run directory is; the foreign manifest makes the run write the copy.
+@testset "a package with .githooks gets a verdict" begin
+    dir = fixture("DDHooks", [".githooks/pre-commit" => "#!/bin/sh\nexit 0\n",
+            "src/DDHooks.jl" => mod("DDHooks", "a(x) = x")], [])
+    write(joinpath(dir, "Manifest.toml"),
+        "julia_version = \"1.11.9\"\nmanifest_format = \"2.0\"\nproject_hash = \"da39a3ee5e6b4b0d3255bfef95601890afd80709\"\n\n[deps]\n")
+    r = dd(dir, "HEAD~1", "--no-jet")
+    @test r.code == 0
+    @test startswith(verdict(r.out), "Verdict: PASS — ")
+    @test only(lines(r.out, "manifest: ")) ==
+          "manifest: Manifest.toml is resolved by another Julia than $VERSION, so neither side gets one, and the head runs from a copy without it"
+end
+
 # The API mode. One run of a package whose head keeps its API, with a public submodule, a submodule
 # that is not public, a widened method and operator, a method on a type of LinearAlgebra and a
 # deprecated name; one run of a package whose head removes public names, methods and a keyword;
