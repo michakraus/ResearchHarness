@@ -104,6 +104,19 @@ def gate_files() -> None:
 
 gate_files()
 CLEAN["KAIMON_CACHE_DIR"] = KAIMON_CACHE
+# Three more Kaimon caches: one with no `sock/`, one with an empty `sock/`, and one whose two live
+# gates share the key of their first 8 characters, TWIN_GATE.
+NO_GATES = FIXTURE.name + "/kaimon-no-sock"
+pathlib.Path(NO_GATES).mkdir()
+EMPTY_GATES = FIXTURE.name + "/kaimon-empty"
+pathlib.Path(EMPTY_GATES, "sock").mkdir(parents=True)
+TWIN_CACHE = FIXTURE.name + "/kaimon-twins"
+TWIN_GATE = "a1b2c3d4"
+for twin in ("0001", "0002"):
+    twin_sid = f"{TWIN_GATE}-0000-5000-8000-00000000{twin}"
+    twin_file = pathlib.Path(TWIN_CACHE, "sock", f"{twin_sid}.json")
+    twin_file.parent.mkdir(parents=True, exist_ok=True)
+    twin_file.write_text(json.dumps({"session_id": twin_sid, "pid": os.getpid()}), encoding="utf-8")
 ENV = {**CLEAN, "HOME": HOME}
 # The profile of each fixture home, whose `org` list the `gh api` check reads: an own organisation
 # and an own account. A record's `profile` names another file in place of it, through
@@ -2776,6 +2789,62 @@ def command_cases():
         ok=got == "deny" and "`gh[pousr]_`" in output and hidden,
         line=f"exp deny, the form and no token got {got}, the token {'hidden' if hidden else 'SHOWN'}  "
         "[guard    ]  the reason of the token check",
+    )
+    # The Kaimon check's refusal of a missing key, like that of a dead key, names the live sessions
+    # of the fixture cache, sorted and each once, and neither the stale gate nor a gate that cannot
+    # be read; with an empty gate directory it says none is live, and with no gate directory it
+    # names no session and does not say that none is live.
+    listed = "The live sessions are " + ", ".join(f"`{key}`" for key in LIVE_GATES) + "."
+    unlisted = (STALE_GATE, *UNREAD_GATES)
+    for tool, arguments, cache, want, label in (
+        ("ex", {"e": "1 + 1"}, KAIMON_CACHE, (listed + " Pass the",), "ex without ses lists the live keys"),
+        (
+            "manage_repl",
+            {"command": "restart"},
+            KAIMON_CACHE,
+            (listed,),
+            "manage_repl without session lists the live keys",
+        ),
+        (
+            "ex",
+            {"e": "1 + 1", "ses": STALE_GATE},
+            KAIMON_CACHE,
+            (f"no live Kaimon session has the key `{STALE_GATE}`", listed),
+            "a dead key lists the live keys",
+        ),
+        ("ex", {"e": "1 + 1"}, NO_GATES, (), "ex without ses and no gate directory names no key"),
+        (
+            "ex",
+            {"e": "1 + 1"},
+            EMPTY_GATES,
+            ("No session is live.",),
+            "ex without ses and an empty gate directory says none is live",
+        ),
+        (
+            "ex",
+            {"e": "1 + 1"},
+            TWIN_CACHE,
+            (f"The live sessions are `{TWIN_GATE}`.",),
+            "ex without ses lists a key of two sessions once",
+        ),
+    ):
+        payload = {"tool_name": f"mcp__kaimon__{tool}", "tool_input": arguments, "cwd": CWD}
+        got, output = guard_run(json.dumps(payload).encode("utf-8"), env={**ENV, "KAIMON_CACHE_DIR": cache})
+        shown = [key for key in unlisted if key in output and key not in arguments.values()]
+        claims = "The live sessions are" in output or "No session is live." in output
+        ok = (
+            got == "deny"
+            and all(text in output for text in want)
+            and not shown
+            and (bool(want) or not claims)
+        )
+        report(ok=ok, line=f"exp deny got {got}  [guard    ]  {label}: {output[:70]!r}")
+    # With no gate directory the check cannot tell whether a key is live, and passes the call.
+    payload = {"tool_name": "mcp__kaimon__ex", "tool_input": {"e": "1 + 1", "ses": STALE_GATE}, "cwd": CWD}
+    got, output = guard_run(json.dumps(payload).encode("utf-8"), env={**ENV, "KAIMON_CACHE_DIR": NO_GATES})
+    report(
+        ok=got == "pass",
+        line=f"exp pass got {got}  [guard    ]  a key and no gate directory: {output[:70]!r}",
     )
     got, output = guard_run(b'{"tool_name":"Bash","tool_input":{"command":"ls"},"cwd":"/"}', "other")
     report(
