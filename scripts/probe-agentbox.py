@@ -47,6 +47,7 @@ import functools
 import hashlib
 import os
 import pathlib
+import re
 import secrets
 import shlex
 import shutil
@@ -61,13 +62,16 @@ FRONTENDS = ("claude", "opencode", "omp", "agy")
 # The name of each frontend's srt settings file, as `harness install` writes it.
 POLICY_NAME = {"claude": "claude", "opencode": "opencode", "omp": "omp", "agy": "antigravity"}
 SETTINGS = pathlib.PurePosixPath(".config", "research-harness", "sandbox")
-# The first state path of each frontend, and its own credential file; agy has none.
+# The first state path of each frontend, and its own credential file.
 STATE = {"claude": ".claude", "opencode": ".local/share/opencode", "omp": ".omp", "agy": ".gemini"}
 CREDENTIAL = {
     "claude": ".claude/.credentials.json",
     "opencode": ".local/share/opencode/auth.json",
     "omp": ".omp/agent/agent.db",
+    "agy": ".gemini/jetski-standalone-oauth-token",
 }
+# Claude Code's Anthropic credentials, which the policy lets only claude read.
+ANTHROPIC = pathlib.PurePosixPath(".config", "anthropic", "credentials", "default.json")
 REMOTE = "https://github.com/michakraus/ResearchHarness.git"
 MARKER = "agentbox-probe marker: a read probe prints a count of this file, never this line\n"
 KAIMON_PORT = "2828"
@@ -91,6 +95,11 @@ USAGE = (
     "the frontends are claude, opencode, omp and agy; the options are --out DIR, --timeout S and --no-model"
 )
 F6_SKIP = "start a plain opencode in another terminal"
+# The Markdown marks that a frontend wraps a one-word answer in.
+MARKS = "`*\"'"
+# A line that names an error: a word ending in Error or Exception right before `:`, as a
+# JavaScript runtime prints a thrown error, or Bun's own `error:` after white space at its start.
+ERROR_LINE = re.compile(r"(?:Error|Exception):|^\s*error:")
 
 
 class RefusedError(Exception):
@@ -154,7 +163,7 @@ class Probe:
 @dataclass(frozen=True)
 class Ask:
     """A frontend probe: the prompt, the tool that Claude Code may use, and the word that the
-    output must hold (`holds`) or lack."""
+    output must hold (`holds`) or lack, as `says` judges it."""
 
     id: str
     prompt: str
@@ -322,6 +331,22 @@ def detail(text: str) -> str:
     return f"{flat[:half]} … {flat[-half:]}"
 
 
+def says(word: str, out: str, err: str) -> bool:
+    """True when one line of `out` or of `err`, each split on its own, is `word` with its case,
+    once white space, then MARKS, then one trailing `.`, then MARKS again are stripped from its
+    ends: a prompt asks for the word alone, so a word inside a sentence is another answer."""
+    lines = [*out.splitlines(), *err.splitlines()]
+    return any(line.strip().strip(MARKS).removesuffix(".").strip(MARKS) == word for line in lines)
+
+
+def error_head(text: str) -> str:
+    """The detail of `text` from its first line that matches ERROR_LINE, or of the whole text
+    where none does: a JavaScript runtime can print the source around a throw before the error."""
+    lines = text.splitlines(keepends=True)
+    first = next((k for k, line in enumerate(lines) if ERROR_LINE.search(line)), 0)
+    return detail("".join(lines[first:]))
+
+
 def sandboxed(
     srt: pathlib.Path, settings: pathlib.Path, cwd: pathlib.Path, command: str
 ) -> tuple[int | None, str, str]:
@@ -360,27 +385,25 @@ def label(ident: str) -> str:
 def shell_probes(
     frontend: str, home: pathlib.Path, run: pathlib.Path, ident: str, kaimon: str | None
 ) -> list[Probe]:
-    """The shell probes of `frontend`, in the order R1-R8, W1-W14, N1-N9, X1-X8."""
+    """The shell probes of `frontend`, in the order R1-R9, W1-W14, N1-N9, X1-X8."""
     name = f"agentbox-probe-{ident}"
     repo = run / "repo"
     ssh = home / ".ssh"
     keys = sorted(p for p in ssh.iterdir() if p.is_file()) if ssh.is_dir() else []
-    credential = CREDENTIAL.get(frontend)
     other = ".local/share/opencode" if frontend == "omp" else ".omp"
     keyring = home / ".config" / "api-keys"
+    # OpenCode's file denies what lies below ~/.config/api-keys by a glob, so OpenCode may list it
+    listing = "allowed" if frontend == "opencode" else "refused"
     return [
         read_count("R1", "refused", keys[0] if keys else ssh / "(no file)"),
         read_count("R2", "allowed" if frontend == "claude" else "refused", home / ".claude.json"),
         read_count("R3", "refused", home / ".config" / "kaimon" / "config.json"),
-        Probe(
-            "R4", "refused", f"ls -A {q(keyring)} > /dev/null && ls -A {q(keyring)} | wc -l", target=keyring
-        ),
+        Probe("R4", listing, f"ls -A {q(keyring)} > /dev/null && ls -A {q(keyring)} | wc -l", target=keyring),
         read_count("R5", "refused", run / ".env"),
         read_count("R6", "refused", home / "Library" / "Preferences" / "com.apple.dock.plist"),
         read_count("R7", "allowed", run / "secret.txt"),
-        read_count("R8", "allowed", home / credential)
-        if credential
-        else Probe("R8", "allowed", skip="agy has no credential file of its own"),
+        read_count("R8", "allowed", home / CREDENTIAL[frontend]),
+        read_count("R9", "allowed" if frontend == "claude" else "refused", home / ANTHROPIC),
         append("W1", home / ".claude" / "settings.json"),
         create("W2", "refused", home / ".claude" / "hooks" / name),
         create("W3", "refused", repo / ".git" / "hooks" / "pre-commit"),
@@ -504,16 +527,20 @@ def ask_row(frontend: str, ask: Ask, model: Model, probe_id: str, *, sandbox: bo
     status, out, err = run_limited(
         [str(model.agentbox), frontend, *form(frontend, ask, sandbox=sandbox)], model.cwd, model.timeout
     )
-    text = detail(out + err)
     if status is None:
         expected = "record" if sandbox else ""
-        return Row(frontend, probe_id, expected or f"holds {ask.word}", "timeout", "timeout", text)
+        return Row(
+            frontend, probe_id, expected or f"holds {ask.word}", "timeout", "timeout", error_head(out + err)
+        )
     if sandbox:
-        return Row(frontend, probe_id, "record", f"exit {status}", f"exit {status}", text)
-    holds = ask.word in out + err
+        return Row(frontend, probe_id, "record", f"exit {status}", f"exit {status}", detail(out + err))
+    holds = says(ask.word, out, err)
     got = f"{'holds' if holds else 'lacks'} {ask.word}"
     expected = f"{'holds' if ask.holds else 'lacks'} {ask.word}"
-    return Row(frontend, probe_id, expected, got, "match" if holds == ask.holds else "MISMATCH", text)
+    # a failed row shows the cause, a match row the answer
+    if holds == ask.holds:
+        return Row(frontend, probe_id, expected, got, "match", detail(out + err))
+    return Row(frontend, probe_id, expected, got, "MISMATCH", error_head(out + err))
 
 
 def fingerprint(path: pathlib.Path) -> str | None:
