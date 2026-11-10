@@ -227,10 +227,13 @@ def srt_settings(
     if not isinstance(binding, bool):
         raise HarnessError("the sandbox object's network.allowLocalBinding is not true or false")
     allow_write = [p for p in expanded(strings(sandbox, "filesystem", "allowWrite")) if not below(p, others)]
+    # srt emits the write denies after the write allows, so a deny strictly above a state path
+    # would refuse every write to it; srt denies a write by default, so without the deny a write
+    # below it passes only where allowWrite names the path.
     deny_write = [
         p
         for p in expanded(strings(sandbox, "filesystem", "denyWrite"))
-        if p not in own and not above_state(p, state, home)
+        if p not in own and not strictly_above(p, state, home)
     ]
     deny_read = read_globs(
         frontend,
@@ -261,18 +264,16 @@ def srt_settings(
     }
 
 
-def above_state(entry: str, state: Sequence[str], home: pathlib.Path) -> bool:
-    """Whether the write deny `entry`, a literal other than `home`, lies strictly above a path of
-    `state`, both after `~` expansion and compared as `PurePosixPath`s, so `~/x/` and `~//x` are
-    `~/x`. srt emits the write denies after the write allows, so such an entry would refuse every
-    write to the state path below it; srt denies a write by default, so without the entry a write
-    below it passes only where `allowWrite` names the path."""
+def strictly_above(entry: str, paths: Sequence[str], home: pathlib.Path) -> bool:
+    """Whether `entry` is a literal, one without a character of GLOB_CHARS, other than `home`, that
+    lies strictly above one of `paths`, both after `~` expansion and compared as `PurePosixPath`s,
+    so `~/x/` and `~//x` are `~/x`."""
     top = pathlib.PurePosixPath(entry)
     literal = not any(c in entry for c in GLOB_CHARS)
     return (
         literal
         and top != pathlib.PurePosixPath(home)
-        and any(below(p, [entry]) and pathlib.PurePosixPath(p) != top for p in state)
+        and any(below(p, [entry]) and pathlib.PurePosixPath(p) != top for p in paths)
     )
 
 
@@ -294,13 +295,11 @@ def read_globs(
             f"the policy's frontend.{frontend}.read_files entry {equal[0]!r} is itself a read deny entry; "
             f"frontend.{frontend}.own lifts an entry"
         )
-
-    def above(entry: str) -> bool:
-        literal = not any(c in entry for c in GLOB_CHARS)
-        top = pathlib.PurePosixPath(entry)
-        return literal and top != pathlib.PurePosixPath(home) and any(below(str(p), [entry]) for p in files)
-
-    return [f"{pathlib.PurePosixPath(entry)}/*" if above(entry) else entry for entry in deny_read]
+    paths = [str(p) for p in files]
+    return [
+        f"{pathlib.PurePosixPath(entry)}/*" if strictly_above(entry, paths, home) else entry
+        for entry in deny_read
+    ]
 
 
 def real_tmpdir() -> str | None:
@@ -831,9 +830,9 @@ def settings_cases(check: Check, root: pathlib.Path) -> None:
 
 def state_cases(check: Check, root: pathlib.Path, home: pathlib.Path) -> None:
     """The write denies of STATE_DENY_WRITE for omp, whose state is `~/d/s` and `~/s`, and for
-    antigravity, whose state lies below none of them; then, with the glob `~/g*` and the home
-    directory spelled `~/` added, for omp with the state `~/dxs`, which shares a prefix with `~/d`
-    and `~/dx`, and `~/g*/s`, below the glob as a path."""
+    antigravity, whose state lies below none of them; then, with the globs `~/g*`, `~/q?`, `~/b[x]`
+    and `~/c]` and the home directory spelled `~/` added, for omp with the state `~/dxs`, which
+    shares a prefix with `~/d` and `~/dx`, and a path below each glob as a path."""
     full = ["/h/d", "/h/d/", "/h//d", "/h/dx", "/h/d/*", "/h/e", "/h", "/h/s"]
     for state, extra, name, want, label in [
         (
@@ -852,12 +851,13 @@ def state_cases(check: Check, root: pathlib.Path, home: pathlib.Path) -> None:
             "keeps every write deny, as no path of its own state lies below one",
         ),
         (
-            '["~/dxs", "~/g*/s"]',
-            ["~/g*", "~/"],
+            '["~/dxs", "~/g*/s", "~/q?/s", "~/b[x]/s", "~/c]/s"]',
+            ["~/g*", "~/q?", "~/b[x]", "~/c]", "~/"],
             "omp",
-            [*full, "/h/g*", "/h/"],
-            "with the state ~/dxs and ~/g*/s keeps every write deny: ~/d and ~/dx are prefixes of ~/dxs "
-            "and no path above it, ~/g* is a glob and ~/ is the home directory",
+            [*full, "/h/g*", "/h/q?", "/h/b[x]", "/h/c]", "/h/"],
+            "with the state ~/dxs, ~/g*/s, ~/q?/s, ~/b[x]/s and ~/c]/s keeps every write deny: ~/d and "
+            "~/dx are prefixes of ~/dxs and no path above it, ~/g*, ~/q?, ~/b[x] and ~/c] are globs and "
+            "~/ is the home directory",
         ),
     ]:
         path = root / "state-policy.toml"
