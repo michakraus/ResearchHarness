@@ -823,6 +823,17 @@
 - kind: defect
 - found: 2026-11-09, the review of the probe battery's fixes
 
+### K152 · The detail of a failed frontend probe misses an `error:` line at the start of stderr when stdout has no final newline.
+
+- location: `scripts/probe-agentbox.py:342`
+- evidence: `error_head` splits the joined `out + err` into lines, so stderr's first line joins the
+  last line of stdout. `error_head("a\nb\nabc" + "error: bun failed\n")` gives
+  `'a b abcerror: bun failed'`, the whole text: the anchored `^\s*error:` of `ERROR_LINE` does not
+  match `abcerror:`. With a final newline on stdout it gives `'error: bun failed'`. `says` splits
+  each stream on its own; `error_head` does not.
+- kind: defect
+- found: 2026-11-10, the review of the probe battery's word rule and error head
+
 ### K148 · The same-file checks of the network lists and the deduplication of `merged` compare hosts as exact strings, while `denies` folds case.
 
 - location: `lib/harness/network.py:142`

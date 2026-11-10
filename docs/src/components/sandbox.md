@@ -325,10 +325,11 @@ the first line that holds a word ending in `Error` or `Exception` directly follo
 that starts with `error:` after white space: a JavaScript runtime such as Bun can print the
 source lines around a throw before the error's name and message. With no such line, and on every
 other row, the detail comes from the whole output. The script writes `report.tsv`, every row with
-the columns `frontend`, `id`, `expected`, `got`, `verdict` and `detail`, and `report.md`: the rows other than `L:` as a
-table; a section `## Listeners` with one line per command, status and verdict of the `L:` rows,
-which names the number of ports, the ports in numeric order and the frontends; the count of each
-verdict over every row in `## Counts`; and the manual steps: change the model once under
-`agentbox omp`, and, where F6 was skipped because no plain `opencode` listened, run it again with
-a plain `opencode` in another terminal. It prints the path of `report.md` last, and exits 0 when
-no probe is `MISMATCH` or `timeout`, and 1 otherwise; a `void` alone does not make it 1.
+the columns `frontend`, `id`, `expected`, `got`, `verdict` and `detail`, and `report.md`: the rows
+other than `L:` as a table; a section `## Listeners` with one line per command, status and
+verdict of the `L:` rows, which names the number of ports, the ports in numeric order and the
+frontends; the count of each verdict over every row in `## Counts`; and the manual steps: change
+the model once under `agentbox omp`, and, where F6 was skipped because no plain `opencode`
+listened, run it again with a plain `opencode` in another terminal. It prints the path of
+`report.md` last, and exits 0 when no probe is `MISMATCH` or `timeout`, and 1 otherwise; a `void`
+alone does not make it 1.
