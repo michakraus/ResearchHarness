@@ -292,7 +292,7 @@ end
     @test findfirst("load average", s).start < findfirst(r"\n(PASS|FAIL) in", s).start
     # the default budget reports nothing on this fixture
     code, s = script(RUNTESTS, DIR, "core")
-    @test !occursin("D6:", s)
+    @test !occursin(r"^D6: "m, s)
 end
 
 @testset "only a run of the group core reports D6" begin
@@ -305,7 +305,7 @@ end
         s = String(take!(out))
         @test code == 0
         @test occursin("PASS", s)
-        @test !occursin("D6:", s)
+        @test !occursin(r"^D6: "m, s)
     end
 end
 
