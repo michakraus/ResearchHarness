@@ -99,8 +99,9 @@ Ubuntu, on the architectures `arm64` and `x86_64` of macOS and `x86_64` and `aar
 In a terminal, `setup` asks its questions. Without a profile, it copies `examples/profile.toml`
 and asks only for the keys that have no default, `memory_project`, `tree_agents`, `org`,
 `repository_roots` and `leak`; an empty answer keeps the example's value. It then asks for the
-frontends and the components, each from a numbered list, and whether this machine develops the
-harness (`develop`), y/N. It shows the plan and runs it after y/N. The plan's first step writes
+frontends and the components, each from a checkbox list, or from a numbered list where the
+checkbox list cannot run, and whether this machine develops the harness (`develop`), y/N. It
+shows the plan and runs it after y/N. The plan's first step writes
 the answers into `[setup]` of the profile. A missing `models.toml` beside the profile is copied
 from `examples/models.toml`.
 

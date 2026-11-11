@@ -9,7 +9,11 @@ A machine needs Python 3.14, uv, git, the clone and, on macOS, Homebrew before i
 `setup` creates the profile from examples/profile.toml when there is none, asking only for the
 keys of REQUIRED, the keys with no default, with the example's value as the answer to an empty
 line; a list is items separated by commas or a TOML list (`list_answer`). It asks for the
-frontends and the components from numbered lists, and for `develop`, y/N. With the component
+frontends and the components from a checkbox list in curses (`checkboxes`) where standard input
+and standard output are both a terminal (`picker_for`), else from a numbered list (`pick`), which
+is also the fallback of the checkbox list where `TERM` is unset, empty or `dumb`, where curses is
+missing or cannot set up the terminal, and where the window is too small; and for `develop`, y/N.
+With the component
 `jobs` and a profile without `claude_remote`, it then asks for that URL (`ask_remote`), an empty
 line for none. Before each question it prints the question's explanation of EXPLAINED.
 It then shows the plan and runs it after y/N; a step of that plan, after the clone of ~/.claude
@@ -83,6 +87,8 @@ import dataclasses
 import hashlib
 import http.client
 import http.server
+import importlib
+import inspect
 import io
 import json
 import os
@@ -102,7 +108,7 @@ import tomllib
 import urllib.parse
 import urllib.request
 from collections.abc import Callable, Generator, Mapping, Sequence
-from typing import IO, cast, override
+from typing import IO, Protocol, cast, override
 from unittest import mock
 
 from . import REPO, HarnessError, fmt, frontends, jobsandbox, jsonio
@@ -193,6 +199,9 @@ FATOU = "curl --proto '=https' --tlsv1.2 -sSf https://fatou.dev/install | sh"
 KAIMON = """julia -e 'using Pkg; Pkg.Apps.add("Kaimon")'"""
 
 type Ask = Callable[[str], str]
+# A list question, `pick` or `checkboxes`: (what, the names, the current names, the asker) to the
+# chosen names.
+type Picker = Callable[[str, Sequence[str], Sequence[str], Ask], tuple[str, ...]]
 # A step's action: None when it succeeds, else the text that says why it failed.
 type Action = Callable[[], str | None]
 # The action of `harness doctor`: its status, 0 or 1, or the text that says why the step failed.
@@ -1657,17 +1666,112 @@ def pick(what: str, names: Sequence[str], current: Sequence[str], ask: Ask) -> t
         print(f"  Give numbers from 1 to {len(names)}, or none.")
 
 
+@dataclasses.dataclass(frozen=True)
+class Keys:
+    """The key codes of the arrows and of Enter, and the attribute of the row under the cursor."""
+
+    up: int
+    down: int
+    enter: int
+    highlight: int
+
+
+class Screen(Protocol):
+    """The calls of a curses window that `checkbox_loop` makes."""
+
+    def getmaxyx(self) -> tuple[int, int]: ...
+    def erase(self) -> None: ...
+    def addnstr(self, y: int, x: int, text: str, n: int, attr: int, /) -> None: ...
+    def refresh(self) -> None: ...
+    def getch(self) -> int: ...
+
+
+CHECKBOX_HELP = "Up/Down move, space checks or unchecks, Enter accepts"
+# Enter arrives as the key code of Enter, as a line feed or as a carriage return.
+NEWLINES = (10, 13)
+
+
+def checkbox_loop(
+    screen: Screen, what: str, names: Sequence[str], current: Sequence[str], keys: Keys
+) -> tuple[str, ...] | None:
+    """The names that the user checks on `screen`, in the order of `names`, starting from `current`.
+
+    Each frame shows `The <what>:`, the explanation of `what` (EXPLAINED), one row per name with its
+    description, and CHECKBOX_HELP, a blank line between the parts; a row is cut at the width less
+    one column. Up and Down move the cursor and stop at the first and the last row, space checks or
+    unchecks the row under the cursor, which alone carries `keys.highlight`, and Enter accepts;
+    every other key redraws. None, before the next key is read, when the window has fewer rows than
+    the frame."""
+    checked = [name in current for name in names]
+    row = 0
+    head = [f"The {what}:", *EXPLAINED[what]]
+    while True:
+        height, width = screen.getmaxyx()
+        if height < len(head) + len(names) + 3:
+            return None
+        screen.erase()
+        for y, text in enumerate(head):
+            screen.addnstr(y, 0, text, width - 1, 0)
+        for i, name in enumerate(names):
+            text = f"[{'x' if checked[i] else ' '}] {name}: {EXPLAINED[name][0]}"
+            screen.addnstr(len(head) + 1 + i, 0, text, width - 1, keys.highlight if i == row else 0)
+        screen.addnstr(len(head) + len(names) + 2, 0, CHECKBOX_HELP, width - 1, 0)
+        screen.refresh()
+        key = screen.getch()
+        if key == keys.enter or key in NEWLINES:
+            return tuple(name for name, on in zip(names, checked, strict=True) if on)
+        if key == keys.up:
+            row = max(row - 1, 0)
+        elif key == keys.down:
+            row = min(row + 1, len(names) - 1)
+        elif key == ord(" "):
+            checked[row] = not checked[row]
+
+
+def checkboxes(what: str, names: Sequence[str], current: Sequence[str], ask: Ask) -> tuple[str, ...]:
+    """The names of `names` that the user checks in a curses window (`checkbox_loop`), printed in one
+    line after the window closes, so that the scrollback holds the choice.
+
+    The numbered list (`pick`) asks instead, with the same arguments, where `TERM` is unset, empty
+    or `dumb`, where Python has no curses, where `curses.setupterm` cannot set up the terminal, and
+    where the window has too few rows. curses is imported here, so that importing the harness loads
+    it only for this list; Ctrl-C raises KeyboardInterrupt out of `curses.wrapper`, which restores
+    the terminal."""
+    if os.environ.get("TERM", "") in ("", "dumb"):
+        return pick(what, names, current, ask)
+    try:
+        import curses  # noqa: PLC0415 -- only the checkbox list loads curses
+    except ImportError:
+        return pick(what, names, current, ask)
+    try:
+        curses.setupterm()
+    except curses.error:
+        return pick(what, names, current, ask)
+    keys = Keys(curses.KEY_UP, curses.KEY_DOWN, curses.KEY_ENTER, curses.A_REVERSE)
+    got = curses.wrapper(lambda screen: checkbox_loop(screen, what, names, current, keys))
+    if got is None:
+        return pick(what, names, current, ask)
+    print(f"The {what}: {', '.join(got) or 'none'}")
+    return got
+
+
+def picker_for(*, stdin: bool, stdout: bool) -> Picker:
+    """`checkboxes` when standard input and standard output are both a terminal, else `pick`."""
+    return checkboxes if stdin and stdout else pick
+
+
 def confirm(ask: Ask, question: str, *, default: bool = False) -> bool:
     """y or n to `question`; an empty line gives `default`."""
     answer = ask_line(ask, f"{question} [{'Y/n' if default else 'y/N'}] ").lower()
     return default if not answer else answer in ("y", "yes")
 
 
-def choose(current: profile_module.Setup, ask: Ask) -> profile_module.Setup:
-    """The `[setup]` that the user chooses, with `current` as the answer to each empty line; the
-    explanation of `develop` (EXPLAINED) comes before its question."""
-    chosen_frontends = pick("frontends", frontends.FRONTENDS, current.frontends, ask)
-    components = pick("components", profile_module.COMPONENTS, current.components, ask)
+def choose(current: profile_module.Setup, ask: Ask, *, picker: Picker = pick) -> profile_module.Setup:
+    """The `[setup]` that the user chooses, the frontends and the components from `picker`, with
+    `current` as the answer to each empty line; the explanation of `develop` (EXPLAINED) comes
+    before its question."""
+    chosen_frontends = picker("frontends", frontends.FRONTENDS, current.frontends, ask)
+    components = picker("components", profile_module.COMPONENTS, current.components, ask)
     for line in EXPLAINED["develop"]:
         print(line)
     return profile_module.Setup(
@@ -1874,9 +1978,12 @@ def loaded_from(text: str, home: pathlib.Path) -> profile_module.Profile:
             raise HarnessError(str(e).replace(str(path), "the new profile")) from None
 
 
-def setup(machine: Machine, options: Options, ask: Ask, *, terminal: bool, pins: Pins) -> int:
-    """One run of `harness setup`; see the module. After the plan ran, the status of
-    `harness doctor`, 0 or 1; 0 after the dry run, or when the answer to the plan is no."""
+def setup(  # noqa: PLR0913 -- cmd_setup and the cases pass the picker beside the asker
+    machine: Machine, options: Options, ask: Ask, *, terminal: bool, pins: Pins, picker: Picker = pick
+) -> int:
+    """One run of `harness setup`; see the module. `picker` asks for the frontends and the
+    components. After the plan ran, the status of `harness doctor`, 0 or 1; 0 after the dry run, or
+    when the answer to the plan is no."""
     if not options.yes and not terminal:
         raise HarnessError(
             "no terminal on stdin to ask the questions; `harness setup --yes` reads [setup] of the "
@@ -1899,7 +2006,7 @@ def setup(machine: Machine, options: Options, ask: Ask, *, terminal: bool, pins:
             if exists
             else new_profile(profile_module.DUMMY.read_text(encoding="utf-8"), ask)
         )
-        choice = choose(loaded_from(text, machine.home).setup, ask)
+        choice = choose(loaded_from(text, machine.home).setup, ask, picker=picker)
         text = with_setup(text, choice)
         if (
             "jobs" in choice.components
@@ -2067,7 +2174,14 @@ def cmd_setup(args: argparse.Namespace) -> int:
         profile=profile_module.location(cast("str | None", args.profile)),
         models=profile_module.models_path(args),
     )
-    return setup(machine, options, input, terminal=sys.stdin.isatty(), pins=load_pins())
+    return setup(
+        machine,
+        options,
+        input,
+        terminal=sys.stdin.isatty(),
+        pins=load_pins(),
+        picker=picker_for(stdin=sys.stdin.isatty(), stdout=sys.stdout.isatty()),
+    )
 
 
 def register(sub: fmt.Subcommands) -> None:
@@ -2969,6 +3083,327 @@ def helper_cases(case: Case, tmp: pathlib.Path) -> None:
         except HarnessError as e:
             got = str(e)
         case(f"{name} in setup/tools.toml exits 2 naming it: {got}", ok=want in got)
+
+
+class FakeScreen:
+    """A curses window for the cases: `rows` x `cols`, the keys in order, the lines of each frame
+    by row, and each write outside the window or into its last column. After `shrink[0]` keys, the
+    window has `shrink[1]` rows; the end of the keys raises EOFError."""
+
+    def __init__(
+        self, keys: Sequence[int], rows: int = 40, cols: int = 120, shrink: tuple[int, int] | None = None
+    ) -> None:
+        self.keys = list(keys)
+        self.read = 0
+        self.rows, self.cols, self.shrink = rows, cols, shrink
+        self.frames: list[dict[int, tuple[str, int]]] = []
+        self.outside: list[tuple[int, int, str, int]] = []
+
+    def getmaxyx(self) -> tuple[int, int]:
+        return self.rows, self.cols
+
+    def erase(self) -> None:
+        self.frames.append({})
+
+    def addnstr(self, y: int, x: int, text: str, n: int, attr: int, /) -> None:
+        if not self.frames or y >= self.rows or x + min(len(text), n) >= self.cols or n < 0:
+            self.outside.append((y, x, text, n))
+            return
+        self.frames[-1][y] = (text[:n], attr)
+
+    def refresh(self) -> None:
+        pass
+
+    def getch(self) -> int:
+        if not self.keys:
+            raise EOFError
+        self.read += 1
+        if self.shrink is not None and self.read == self.shrink[0]:
+            self.rows = self.shrink[1]
+        return self.keys.pop(0)
+
+
+# The key codes of ncurses, which the cases feed to `checkbox_loop` without importing curses.
+CASE_KEYS = Keys(up=259, down=258, enter=343, highlight=1 << 18)
+SPACE = ord(" ")
+
+
+def looped(
+    keys: Sequence[int],
+    current: Sequence[str] = ("claude",),
+    *,
+    rows: int = 40,
+    cols: int = 120,
+    shrink: tuple[int, int] | None = None,
+) -> tuple[tuple[str, ...] | str | None, FakeScreen]:
+    """`checkbox_loop` of the frontends on a FakeScreen: its result, or "read past the last key"."""
+    screen = FakeScreen(keys, rows, cols, shrink)
+    try:
+        got = checkbox_loop(screen, "frontends", frontends.FRONTENDS, current, CASE_KEYS)
+    except EOFError:
+        return "read past the last key", screen
+    return got, screen
+
+
+def checkbox_cases(case: Case) -> None:
+    """The loop of the checkbox list on a fake window: the first frame, the keys, the highlight, a
+    window too small or cut, a resize."""
+    up, down, enter = CASE_KEYS.up, CASE_KEYS.down, CASE_KEYS.enter
+    got, screen = looped([enter], ("omp", "claude"))
+    head = ["The frontends:", *EXPLAINED["frontends"]]
+    rows = [f"[{'x' if n in ('claude', 'omp') else ' '}] {n}: {EXPLAINED[n][0]}" for n in frontends.FRONTENDS]
+    want = dict(enumerate(head)) | {len(head) + 1 + i: r for i, r in enumerate(rows)}
+    want[len(head) + len(rows) + 2] = CHECKBOX_HELP
+    first = {y: t for y, (t, _) in screen.frames[0].items()} if screen.frames else {}
+    case(
+        f"Enter at once keeps the current values, in the order of the list, and the first frame shows "
+        f"the title, the explanation, one row per frontend and the help: {got} {first}",
+        ok=got == ("claude", "omp") and first == want and not screen.outside,
+    )
+    got, _ = looped([enter], ())
+    case(f"Enter with nothing checked returns (): {got}", ok=got == ())
+    got, _ = looped([down, SPACE, up, SPACE, enter])
+    case(
+        f"Down, space, Up, space and Enter check opencode and uncheck claude: {got}", ok=got == ("opencode",)
+    )
+    on, _ = looped([SPACE, SPACE, enter])
+    off, _ = looped([SPACE, SPACE, enter], ())
+    case(
+        f"space twice leaves a row as it was, checked or not: {on} {off}", ok=on == ("claude",) and off == ()
+    )
+    top, _ = looped([up, up, SPACE, enter])
+    bottom, _ = looped([down] * 9 + [SPACE, enter])
+    case(
+        f"the cursor stops at both ends: Up at the first row, Down at the last: {top} {bottom}",
+        ok=top == () and bottom == ("claude", "antigravity"),
+    )
+    cr, _ = looped([SPACE, 13])
+    lf, _ = looped([SPACE, 10])
+    case(f"CR and LF accept: {cr} {lf}", ok=cr == () and lf == ())
+    for other in (ord("x"), 410):  # 410 is KEY_RESIZE
+        got, screen = looped([other, enter])
+        case(
+            f"the key {other} redraws and changes nothing: {got} {len(screen.frames)} frames",
+            ok=got == ("claude",) and len(screen.frames) == len([other, enter]),
+        )
+    _, screen = looped([down, down, down, enter])
+    marked = [[(y, t, a) for y, (t, a) in frame.items() if a != 0] for frame in screen.frames]
+    case(
+        f"the highlight follows the cursor: exactly one row carries it in each frame: {marked}",
+        ok=len(marked) == len(frontends.FRONTENDS)
+        and all(
+            len(m) == 1 and m[0][1].endswith(f"] {n}: {EXPLAINED[n][0]}") and m[0][2] == CASE_KEYS.highlight
+            for m, n in zip(marked, frontends.FRONTENDS, strict=True)
+        ),
+    )
+    needed = len(head) + len(rows) + 3
+    small, screen = looped([enter], rows=3)
+    case(
+        f"a window too small returns None and reads no key: {small} {screen.read}",
+        ok=small is None and screen.read == 0 and not screen.frames,
+    )
+    short, _ = looped([enter], rows=needed - 1)
+    exact, screen = looped([enter], rows=needed)
+    case(
+        f"a window one row short of the {needed} rows returns None; one of {needed} rows shows the list: "
+        f"{short} {exact} {screen.outside}",
+        ok=short is None and exact == ("claude",) and not screen.outside,
+    )
+    got, screen = looped([SPACE, enter], shrink=(1, 3))
+    case(
+        f"a window that shrinks too small after a key returns None at the redraw: {got} {screen.read}",
+        ok=got is None and screen.read == 1,
+    )
+    cols = 30
+    got, screen = looped([enter], cols=cols)
+    widths = [len(t) for frame in screen.frames for t, _ in frame.values()]
+    case(
+        f"a row longer than the window is cut at the width less one column: {got} {widths} {screen.outside}",
+        ok=got == ("claude",) and max(widths) == cols - 1 and not screen.outside,
+    )
+
+
+class Tty:
+    """A standard stream for the cases that is a terminal or not."""
+
+    def __init__(self, *, tty: bool) -> None:
+        self.tty = tty
+
+    def isatty(self) -> bool:
+        return self.tty
+
+
+def picker_cases(case: Case, tmp: pathlib.Path, pins: Pins) -> None:
+    """Which picker runs: the default of `setup` and `choose`, `picker_for`, `cmd_setup`'s call, the
+    fallbacks of `checkboxes`, and no curses on the import of the harness."""
+    defaults = [inspect.signature(f).parameters["picker"].default for f in (setup, choose)]
+    case(f"the default picker of setup and choose is pick: {defaults}", ok=all(d is pick for d in defaults))
+    combos = {(i, o): picker_for(stdin=i, stdout=o) for i in (True, False) for o in (True, False)}
+    case(
+        f"picker_for gives checkboxes only with stdin and stdout a terminal: {combos}",
+        ok=all((f is checkboxes) == (i and o) and f in (checkboxes, pick) for (i, o), f in combos.items()),
+    )
+    lib = pathlib.Path(__file__).resolve().parent
+    code = (
+        "import importlib, pathlib, sys; "
+        f"modules = sorted(pathlib.Path({str(lib)!r}).glob('*.py')); "
+        "[importlib.import_module('harness.' + p.stem) for p in modules if p.stem != '__init__']; "
+        "print(sorted(m for m in sys.modules if m.split('.')[0] in ('curses', '_curses')))"
+    )
+    out = subprocess.run(
+        [sys.executable, "-c", code],
+        capture_output=True,
+        text=True,
+        timeout=120,
+        check=False,
+        env={**os.environ, "PYTHONPATH": str(lib.parent)},
+    )
+    case(
+        f"importing each module of lib/harness/ in a fresh process loads no curses: {out.returncode} "
+        f"{out.stdout.strip()} {out.stderr[-300:]!r}",
+        ok=out.returncode == 0 and out.stdout.strip() == "[]",
+    )
+
+    calls: list[tuple[object, bool, object]] = []
+
+    def recorded(
+        _machine: Machine, _options: Options, ask: Ask, *, terminal: bool, pins: Pins, picker: Picker
+    ) -> int:
+        del pins
+        calls.append((ask, terminal, picker))
+        return 0
+
+    args = argparse.Namespace(
+        yes=False, dry_run=True, profile=str(tmp / "picker" / "profile.toml"), models=None
+    )
+    for i, o in ((True, True), (True, False), (False, True)):
+        with (
+            mock.patch(f"{__name__}.setup", recorded),
+            mock.patch.object(sys, "stdin", Tty(tty=i)),
+            mock.patch.object(sys, "stdout", Tty(tty=o)),
+        ):
+            cmd_setup(args)
+    case(
+        f"cmd_setup passes input, the terminal of stdin and the picker of picker_for: {calls}",
+        ok=calls == [(input, True, checkboxes), (input, True, pick), (input, False, pick)],
+    )
+
+    s = scratch(tmp, "picker", MACOS_FAKES)
+    picked: list[str] = []
+
+    def picker(what: str, names: Sequence[str], current: Sequence[str], ask: Ask) -> tuple[str, ...]:
+        del names, ask
+        picked.append(what)
+        return tuple(current)
+
+    asker = Asker("", "", "n")
+    with contextlib.redirect_stdout(io.StringIO()):
+        try:
+            code = str(
+                setup(
+                    s.machine(),
+                    s.options(yes=False, dry_run=True),
+                    asker,
+                    terminal=True,
+                    pins=pins,
+                    picker=picker,
+                )
+            )
+        except HarnessError as e:
+            code = f"exit 2: {e}"
+    case(
+        f"setup asks for the frontends and the components through its picker: {code} {picked} "
+        f"{asker.questions}",
+        ok=code == "0"
+        and picked == ["frontends", "components"]
+        and not any("numbers" in q for q in asker.questions),
+    )
+
+
+def checkboxes_cases(case: Case) -> None:
+    """`checkboxes` without a terminal that curses can use, and on a fake curses window."""
+
+    def fallback(
+        term: str | None, modules: Mapping[str, object] | None = None
+    ) -> tuple[object, list[str], str]:
+        """`checkboxes` of the frontends with `term` as TERM (None: unset), `modules` over sys.modules,
+        and an asker that answers 2: the result, the questions and the output."""
+        asked = Asker("2")
+        out = io.StringIO()
+        env = {k: v for k, v in os.environ.items() if k != "TERM"} | ({} if term is None else {"TERM": term})
+        with (
+            mock.patch.dict(os.environ, env, clear=True),
+            mock.patch.dict(sys.modules, modules or {}),
+            contextlib.redirect_stdout(out),
+        ):
+            got = checkboxes("frontends", frontends.FRONTENDS, ("claude",), asked)
+        return got, asked.questions, out.getvalue()
+
+    for term in (None, "", "dumb"):
+        got, asked, printed = fallback(term)
+        case(
+            f"TERM={term!r} asks the numbered question once, with no escape: {got} {asked}",
+            ok=got == ("opencode",) and len(asked) == 1 and "numbers" in asked[0] and "\x1b" not in printed,
+        )
+    got, asked, printed = fallback("xterm-256color", {"curses": None, "_curses": None})
+    case(
+        f"a Python without curses asks the numbered question: {got} {asked}",
+        ok=got == ("opencode",) and len(asked) == 1 and "\x1b" not in printed,
+    )
+    curses_module = importlib.import_module("curses")
+    error = cast("type[Exception]", curses_module.error)
+    started: list[str] = []
+
+    def wrapper(*_: object) -> None:
+        started.append("wrapper")
+
+    with (
+        mock.patch.object(curses_module, "setupterm", side_effect=error("unknown terminal type")),
+        mock.patch.object(curses_module, "wrapper", wrapper),
+    ):
+        got, asked, printed = fallback("no-such-terminal")
+    case(
+        f"a setupterm that raises curses.error asks the numbered question and starts no curses: {got} "
+        f"{asked} {started}",
+        ok=got == ("opencode",) and len(asked) == 1 and not started,
+    )
+
+    def through(screen: FakeScreen, answers: Sequence[str] = ()) -> tuple[object, list[str], str]:
+        """`checkboxes` of the frontends with a curses whose window is `screen`."""
+        asked = Asker(*answers)
+        out = io.StringIO()
+
+        def setupterm(*_: object) -> None:
+            pass
+
+        def on_screen(loop: Callable[[FakeScreen], object]) -> object:
+            return loop(screen)
+
+        with (
+            mock.patch.object(curses_module, "setupterm", setupterm),
+            mock.patch.object(curses_module, "wrapper", on_screen),
+            mock.patch.dict(os.environ, {"TERM": "xterm-256color"}),
+            contextlib.redirect_stdout(out),
+        ):
+            got = checkboxes("frontends", frontends.FRONTENDS, ("claude", "omp"), asked)
+        return got, asked.questions, out.getvalue()
+
+    got, asked, printed = through(FakeScreen([CASE_KEYS.down, SPACE, CASE_KEYS.enter]))
+    case(
+        f"after the window closes, checkboxes prints the choice in one line: {got} {printed!r}",
+        ok=got == ("claude", "opencode", "omp")
+        and not asked
+        and printed == "The frontends: claude, opencode, omp\n",
+    )
+    got, asked, printed = through(FakeScreen([SPACE, CASE_KEYS.down, CASE_KEYS.down, SPACE, CASE_KEYS.enter]))
+    case(
+        f"an empty choice prints none: {got} {printed!r}", ok=got == () and printed == "The frontends: none\n"
+    )
+    got, asked, printed = through(FakeScreen([SPACE, CASE_KEYS.enter], shrink=(1, 3)), [""])
+    case(
+        f"a window too small asks the numbered question from the current values: {got} {asked}",
+        ok=got == ("claude", "omp") and len(asked) == 1 and asked[0].endswith("[1 3]: "),
+    )
 
 
 def dry_run_cases(case: Case, tmp: pathlib.Path, pins: Pins) -> None:
@@ -5487,6 +5922,21 @@ def pocl_cases(case: Case, tmp: pathlib.Path, pins: Pins) -> None:
         )
 
 
+def choice_cases(case: Case, tmp: pathlib.Path, pins: Pins) -> None:
+    """The questions for the frontends and the components: the loop of the checkbox list, which
+    picker runs, and `checkboxes` with and without a terminal that curses can use."""
+    checkbox_cases(case)
+    picker_cases(case, tmp, pins)
+    checkboxes_cases(case)
+
+
+def linux_bwrap_cases(case: Case, tmp: pathlib.Path, pins: Pins) -> None:
+    """The jobs under bwrap on Linux: the steps, the refusals and the text of the units and the kit."""
+    bwrap_cases(case, tmp, pins)
+    bwrap_refusal_cases(case, tmp, pins)
+    bwrap_text_cases(case)
+
+
 def selftest() -> tuple[int, int]:
     """The cases of the functions above: (number of cases, number wrong)."""
     total = wrong = 0
@@ -5510,6 +5960,7 @@ def selftest() -> tuple[int, int]:
         node_plan_cases(case, root, pins)
         step_cases(case, root, pins)
         helper_cases(case, root)
+        choice_cases(case, root, pins)
         dry_run_cases(case, root, pins)
         release_cases(case, root)
         tree_cases(case, root)
@@ -5537,8 +5988,6 @@ def selftest() -> tuple[int, int]:
         doctor_cases(case, root, pins)
         trust_cases(case, root, pins)
         sandbox_cases(case, root, pins)
-        bwrap_cases(case, root, pins)
-        bwrap_refusal_cases(case, root, pins)
-        bwrap_text_cases(case)
+        linux_bwrap_cases(case, root, pins)
         pocl_cases(case, root, pins)
     return total, wrong
