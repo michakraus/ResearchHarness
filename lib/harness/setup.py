@@ -35,9 +35,11 @@ frontend, srt from the lockfile of sandbox/srt/ (`srt_step`, `install_srt`);
 where the profile has no `claude_remote`, and on macOS with the Seatbelt profile of the Kaimon and
 julia-update jobs written into ~/.config/research-harness/sandbox/ before each one's plist
 (`jobsandbox.py`), and the `ps` shim of the Kaimon job into its `shims/` before Kaimon's plist,
-the Kaimon token with the `julia` component, which with
-the jobs waits up to TOKEN_READS s for the key of the server that they start, and
-`harness doctor`. A tool of
+and on Linux first the sandbox check of `harness doctor`, which ends the run with exit 2 and one
+line when `bwrap` cannot make a sandbox, then `jobbox`, `julia-update-server`, the `bwrap`
+arguments of both jobs and their directories and pins before the units, the Kaimon token with
+the `julia` component, which with the jobs waits up to TOKEN_READS s for the key of the server
+that they start, and `harness doctor`. A tool of
 TOOLS belongs to every machine or to one component or frontend. A tool that is installed and meets
 its minimum is skipped; a tool with no minimum is met by any version, and one whose version cannot
 be read counts as below its minimum. On macOS a missing tool that Homebrew has goes into one
@@ -153,12 +155,24 @@ NPM_LOG = "A complete log of this run can be found in:"
 DOCTOR = "harness doctor"
 JOBS = ("kaimon", "julia-update", "claude-autocommit")
 # The directory below the home directory of the Seatbelt profiles of the jobs of jobsandbox.JOBS,
-# which the plists name; no session can write below ~/.config.
+# which the plists name, and of their `bwrap` arguments, which jobbox reads; no session can write
+# below ~/.config.
 SANDBOX = ".config/research-harness/sandbox"
 # The directory below the home directory that kaimon's plist puts first on the job's PATH, and the
 # shim that the run installs there, as a path of the clone.
 SHIMS = jobsandbox.SHIMS.removeprefix("~/")
 PS_SHIM = jobsandbox.PS_SHIM.relative_to(REPO)
+# The launcher of the jobs of jobsandbox.JOBS on Linux, as a path of the clone.
+JOBBOX = jobsandbox.JOBBOX.relative_to(REPO)
+# The server phase of the julia-update job on Linux, which its unit runs outside bwrap as its
+# ExecStopPost, as a path of the clone.
+UPDATE_SERVER = jobsandbox.UPDATE_SERVER.relative_to(REPO)
+# The arguments of the sandbox check of `harness doctor`, which `bwrap` must pass before any job
+# starts under it.
+BWRAP_CHECK = ("--ro-bind", "/", "/", "--dev", "/dev", "--unshare-user", "--unshare-pid", "true")
+# The kernel setting through which AppArmor refuses user namespaces, which `bwrap` needs, on Ubuntu
+# 23.10 and later.
+APPARMOR_USERNS = "kernel.apparmor_restrict_unprivileged_userns"
 # The directory below the home directory that POCL_CACHE_DIR of kaimon's plist and unit names:
 # Kaimon's profile lets the job write below ~/.cache/kaimon and not PoCL's default ~/.cache/pocl.
 POCL_CACHE = ".cache/kaimon/pocl"
@@ -777,7 +791,12 @@ def job_steps(machine: Machine, loaded: profile_module.Profile, env: Mapping[str
     """The jobs, as the dotfiles kit's services step does them: the two copies in ~/.local/bin,
     then the launch agents or the systemd user units, rendered and loaded; on macOS each job of
     jobsandbox.JOBS has its Seatbelt profile rendered into SANDBOX before its plist, and the Kaimon
-    job has the `ps` shim installed into SHIMS, mode 755, before its profile. On both systems one
+    job has the `ps` shim installed into SHIMS, mode 755, before its profile. On Linux the sandbox
+    check of `bwrap` (`bwrap_check`) comes before every other job step, and JOBBOX and
+    UPDATE_SERVER, mode 755, the `bwrap` arguments of each job of jobsandbox.JOBS in SANDBOX and
+    the directories and files of `linux_dirs_step` come before the first unit, which starts its
+    program through JOBBOX. On both
+    systems one
     step creates POCL_CACHE, the directory of POCL_CACHE_DIR in Kaimon's plist and unit, before
     the Kaimon job is loaded. Without a `claude_remote`, no launch agent or unit of the autocommit
     job is rendered or loaded, because launchd loads every plist of ~/Library/LaunchAgents at the
@@ -789,6 +808,8 @@ def job_steps(machine: Machine, loaded: profile_module.Profile, env: Mapping[str
             "~/.claude repository, then run harness setup again"
         )
     local = machine.home / ".local" / "bin"
+    if machine.system != "Darwin":
+        result.steps.append(Step(f"bwrap {' '.join(BWRAP_CHECK)}", bwrap_check(machine)))
     for source, mode in (("launchagents/claude-autocommit", 0o755), ("scripts/julia-update.jl", 0o644)):
         target = local / pathlib.PurePath(source).name
         result.steps.append(
@@ -840,6 +861,7 @@ def job_steps(machine: Machine, loaded: profile_module.Profile, env: Mapping[str
                 )
             )
         return
+    result.steps.extend(bwrap_steps(machine, loaded, env))
     units = machine.home / ".config" / "systemd" / "user"
     for unit in (u for u in UNITS if autocommit or not u.startswith("claude-autocommit.")):
         result.steps.append(
@@ -857,6 +879,102 @@ def job_steps(machine: Machine, loaded: profile_module.Profile, env: Mapping[str
         )
     if not lingers(machine):
         result.by_hand.append('keep the jobs running after logout: sudo loginctl enable-linger "$USER"')
+
+
+def bwrap_steps(machine: Machine, loaded: profile_module.Profile, env: Mapping[str, str]) -> list[Step]:
+    """The job steps of Linux before the first unit: JOBBOX and UPDATE_SERVER into ~/.local/bin,
+    mode 755, the `bwrap` arguments of each job of jobsandbox.JOBS into SANDBOX, and the
+    directories and files of `linux_dirs_step`. The units start the jobs through jobbox, which
+    reads their arguments, and julia-update's unit runs UPDATE_SERVER after it."""
+    local = machine.home / ".local" / "bin"
+    steps = [
+        Step(
+            f"install -m 755 {machine.clone / source} {local / source.name}",
+            lambda s=machine.clone / source, t=local / source.name: copy(s, t, 0o755),
+        )
+        for source in (JOBBOX, UPDATE_SERVER)
+    ]
+    for job in jobsandbox.JOBS:
+        target = machine.home / SANDBOX / f"{job}.bwrap"
+        steps.append(
+            Step(
+                f"harness render sandbox/{job}.bwrap > {target}",
+                lambda j=job, t=target: render(machine, f"sandbox/{j}.bwrap", t, env),
+            )
+        )
+    steps.append(linux_dirs_step(machine, pathlib.Path(loaded.harness)))
+    return steps
+
+
+def bwrap_check(machine: Machine) -> Action:
+    """The action of the sandbox check of `harness doctor`: `bwrap` with BWRAP_CHECK must exit 0.
+    A bwrap that is not on the PATH, cannot start or exits otherwise raises HarnessError, so the
+    run ends with exit 2 and one line before any job changes: the jobs start under `bwrap` or not
+    at all."""
+
+    def run() -> str | None:
+        bwrap = machine.which("bwrap")
+        if bwrap is None:
+            raise HarnessError(
+                "no bwrap on the PATH, under which the Kaimon and julia-update jobs start: install "
+                f"bubblewrap, and where AppArmor refuses user namespaces, give {APPARMOR_USERNS} the "
+                "value 0 or give bwrap an AppArmor profile, then run harness setup again"
+            )
+        try:
+            p = subprocess.run(
+                [bwrap, *BWRAP_CHECK],
+                stdin=subprocess.DEVNULL,
+                capture_output=True,
+                text=True,
+                env=dict(machine.env),
+                timeout=TIMEOUT,
+                check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired) as e:
+            cause = f"cannot run {bwrap}: {e}"
+        else:
+            if p.returncode == 0:
+                return None
+            said = " ".join(p.stderr.split())
+            cause = f"exit {p.returncode}{': ' + said if said else ''}"
+        raise HarnessError(
+            f"bwrap cannot make a sandbox ({cause}), so no job starts under it: where AppArmor refuses "
+            f"user namespaces, set {APPARMOR_USERNS}=0 or give bwrap an AppArmor profile, then run "
+            "harness setup again"
+        )
+
+    return run
+
+
+def linux_dirs_step(machine: Machine, harness: pathlib.Path) -> Step:
+    """The step that creates, below the home directory, each directory of `jobsandbox.linux_dirs`
+    of the jobs that does not exist, one directory at a time, each that it creates with mode 700,
+    and then each file of `jobsandbox.linux_files` that does not exist, empty with mode 600: a
+    missing write deny or pin would stop `bwrap` at the job's start, and a missing `linux_write`
+    directory would leave its writes in the job's empty home."""
+
+    def make() -> str | None:
+        policy = jobsandbox.load(machine.clone / "sandbox" / "daemon.toml")
+        try:
+            for job in jobsandbox.JOBS:
+                dirs = jobsandbox.linux_dirs(policy, job, machine.home, harness)
+                files = jobsandbox.linux_files(policy, job, machine.home, harness)
+                above = [p for f in files for p in reversed(f.parents)]
+                for d in (*(p for t in dirs for p in (*reversed(t.parents), t)), *above):
+                    if d.is_relative_to(machine.home) and not d.exists():
+                        d.mkdir(mode=0o700)
+                for f in files:
+                    if f.is_relative_to(machine.home) and not f.exists():
+                        f.touch(mode=0o600, exist_ok=False)
+        except OSError as e:
+            return f"cannot create {e.filename}: {e.strerror}"
+        return None
+
+    return Step(
+        "mkdir each write deny, linux_write directory and pin of the jobs that is missing, each new "
+        "directory mode 700 and each new file mode 600",
+        make,
+    )
 
 
 def pocl_step(machine: Machine) -> Step:
@@ -1990,9 +2108,12 @@ LINUX_FAKES = {
     "sudo": "exit 0",
     "curl": "exit 0",
     "systemctl": "exit 0",
+    "bwrap": "exit 0",
     "julia": 'echo "julia version 1.13.0"',
     "harness": '[ "$1" = render ] && echo "rendered $2"; exit 0',
 }
+# The services script of the dotfiles kit, which does the job steps as `job_steps` does them.
+KIT_SERVICES = pathlib.PurePath("examples/dotfiles/.chezmoiscripts/run_onchange_after_50-services.sh.tmpl")
 CHANGING = (
     "brew install",
     "brew upgrade",
@@ -2098,6 +2219,9 @@ def scratch(tmp: pathlib.Path, name: str, fakes: Mapping[str, str], *, srt: bool
     (s.clone / "scripts" / "julia-update.jl").write_text("# update\n", encoding="utf-8")
     (s.clone / PS_SHIM).parent.mkdir(parents=True)
     (s.clone / PS_SHIM).write_text("#!/bin/sh\n# ps\n", encoding="utf-8")
+    (s.clone / JOBBOX).write_text("#!/bin/sh\n# jobbox\n", encoding="utf-8")
+    (s.clone / UPDATE_SERVER).write_text("#!/bin/sh\n# julia-update-server\n", encoding="utf-8")
+    shutil.copyfile(jobsandbox.POLICY, s.clone / "sandbox" / "daemon.toml")
     subprocess.run(
         [shutil.which("git") or "git", "init", "-q", str(s.clone)],
         capture_output=True,
@@ -2422,6 +2546,8 @@ def offline_pins(pins: Pins) -> Pins:
 def linux_cases(case: Case, tmp: pathlib.Path, pins: Pins) -> None:
     """The plan on Ubuntu: the apt line against the minimums, the skips, sudo and the installers."""
     s = scratch(tmp, "linux", LINUX_FAKES)
+    # Without bwrap, so that the apt line installs bubblewrap.
+    (s.bin / "bwrap").unlink()
     s.fake(
         "apt-cache",
         'case "$2" in gitleaks) echo "  Candidate: 8.16.0-2";; nodejs) echo "  Candidate: 22.22.0+dfsg-1";; '
@@ -5003,6 +5129,289 @@ def sandbox_cases(case: Case, tmp: pathlib.Path, pins: Pins) -> None:
         )
 
 
+def bwrap_cases(case: Case, tmp: pathlib.Path, pins: Pins) -> None:
+    """The jobs under bwrap on Linux: the check, jobbox, the two argument files and the directory
+    step before the first unit render, fail closed; none of them on macOS; the units start their
+    program under jobbox; and the kit's services script does the same in its Linux branch."""
+    s = scratch(tmp, "linux-bwrap", LINUX_FAKES)
+    machine = s.machine("Linux")
+    lines = shows(machine, JOBS_ONLY, s.options(), pins)
+    sandbox = s.home / SANDBOX
+    jobbox = s.home / ".local" / "bin" / "jobbox"
+
+    def index(start: str) -> int:
+        return next((i for i, line in enumerate(lines) if line.startswith(start)), -1)
+
+    server = s.home / ".local" / "bin" / UPDATE_SERVER.name
+    at = [
+        index(f"bwrap {' '.join(BWRAP_CHECK)}"),
+        index(f"install -m 755 {s.clone / JOBBOX} {jobbox}"),
+        index(f"install -m 755 {s.clone / UPDATE_SERVER} {server}"),
+        index(f"harness render sandbox/kaimon.bwrap > {sandbox / 'kaimon.bwrap'}"),
+        index(f"harness render sandbox/julia-update.bwrap > {sandbox / 'julia-update.bwrap'}"),
+        index("mkdir each write deny, linux_write directory and pin of the jobs"),
+        index("harness render systemd/"),
+    ]
+    case(
+        f"on Linux, the bwrap check, jobbox, julia-update-server, the two .bwrap files and the directories "
+        f"and pins come before the first unit render: {at}",
+        ok=-1 not in at and at == sorted(at),
+    )
+    case(
+        f"on Linux, the bwrap check is the first job step: {lines}",
+        ok=at[0] >= 0 and at[0] < index("install -m 755 ") and at[0] < index("install -m 644 "),
+    )
+    s.home.joinpath(".julia", "bin").mkdir(parents=True)
+    s.home.joinpath(".julia", "bin").chmod(0o755)
+    chosen_profile(s, JOBS_ONLY)
+    code, _ = attempt(machine, s.options(), pins=pins)
+    written = {
+        job: (sandbox / f"{job}.bwrap").read_text(encoding="utf-8")
+        if (sandbox / f"{job}.bwrap").exists()
+        else None
+        for job in jobsandbox.JOBS
+    }
+    case(
+        f"on Linux, the run writes each .bwrap file from harness render sandbox/<job>.bwrap: "
+        f"{code} {written}",
+        ok=code == "0"
+        and all(
+            text == f"rendered {s.clone / 'sandbox' / f'{job}.bwrap'}\n" for job, text in written.items()
+        ),
+    )
+    case(
+        "on Linux, the run installs the clone's jobbox with mode 755",
+        ok=jobbox.is_file()
+        and jobbox.read_bytes() == (s.clone / JOBBOX).read_bytes()
+        and oct(jobbox.stat().st_mode & 0o777) == "0o755",
+    )
+    case(
+        "on Linux, the run installs the clone's julia-update-server with mode 755",
+        ok=server.is_file()
+        and server.read_bytes() == (s.clone / UPDATE_SERVER).read_bytes()
+        and oct(server.stat().st_mode & 0o777) == "0o755",
+    )
+    made = {
+        p: oct((s.home / p).stat().st_mode & 0o777) if (s.home / p).is_dir() else None
+        for p in (
+            ".julia/config",
+            ".julia/juliaup",
+            "Research/Harness/githooks",
+            ".cache/julia-update",
+            ".cache",
+            ".julia/environments",
+            ".julia/environments/apps",
+        )
+    }
+    case(
+        f"the directory step creates each missing write deny, ~/.cache/julia-update and each directory "
+        f"pin, mode 700, and each directory above them: {made}",
+        ok=set(made.values()) == {"0o700"},
+    )
+    lock = s.home / ".julia" / "juliaup" / ".juliaup-lock"
+    case(
+        "the directory step creates juliaup's lock file, julia-update's pin, empty with mode 600",
+        ok=lock.is_file() and lock.read_bytes() == b"" and oct(lock.stat().st_mode & 0o777) == "0o600",
+    )
+    lock.write_text("held\n", encoding="utf-8")
+    lock.chmod(0o644)
+    failed = linux_dirs_step(machine, s.home / "Research" / "Harness").action()
+    case(
+        f"the directory step leaves an existing pin as it is: {failed!r}",
+        ok=failed is None
+        and lock.read_text(encoding="utf-8") == "held\n"
+        and oct(lock.stat().st_mode & 0o777) == "0o644",
+    )
+    kept = oct(s.home.joinpath(".julia", "bin").stat().st_mode & 0o777)
+    case(f"the directory step leaves an existing write deny as it is: {kept}", ok=kept == "0o755")
+    shutil.rmtree(s.home / ".cache")
+    (s.home / ".cache").write_text("", encoding="utf-8")
+    loaded = profile_module.load(s.profile, home=str(s.home))
+    step = next(
+        x
+        for x in plan(machine, JOBS_ONLY, loaded, s.options(), pins).steps
+        if x.show.startswith("mkdir each")
+    )
+    failed = step.action()
+    case(
+        f"a file at ~/.cache fails the directory step with the path: {failed!r}",
+        ok=failed is not None and failed.startswith(f"cannot create {s.home / '.cache'}"),
+    )
+    (s.home / ".cache").unlink()
+    # A harness outside the home whose write deny the job sees, because it reads $HARNESS: the step
+    # creates nothing outside the home.
+    outside = s.root / "outside-harness"
+    policy = s.clone / "sandbox" / "daemon.toml"
+    policy.write_text(
+        policy.read_text(encoding="utf-8").replace(
+            'read = [\n    "~/Research",', 'read = [\n    "$HARNESS",', 1
+        ),
+        encoding="utf-8",
+    )
+    failed = linux_dirs_step(machine, outside).action()
+    case(
+        f"the directory step creates no directory outside the home: {failed!r} {outside.exists()}",
+        ok=failed is None and not outside.exists(),
+    )
+    # julia-update writes $HARNESS, and kaimon reads a file there: julia-update's pin of that file
+    # lies outside the home too.
+    policy.write_text(
+        policy.read_text(encoding="utf-8")
+        .replace('read_files = ["/", "~/.gitconfig"]', 'read_files = ["/", "~/.gitconfig", "$HARNESS/f"]', 1)
+        .replace('write = [\n    "~/.julia",', 'write = [\n    "$HARNESS",\n    "~/.julia",', 1),
+        encoding="utf-8",
+    )
+    pinned = jobsandbox.linux_files(jobsandbox.load(policy), "julia-update", s.home, outside)
+    failed = linux_dirs_step(machine, outside).action()
+    case(
+        f"the directory step creates no pin file outside the home: {pinned} {failed!r} {outside.exists()}",
+        ok=outside / "f" in pinned and failed is None and not outside.exists(),
+    )
+    # kaimon writes ~/w, which nothing else makes, and julia-update reads a file there: the step
+    # makes ~/w for kaimon's pin of that file.
+    policy.write_text(
+        policy.read_text(encoding="utf-8")
+        .replace('write = [\n    "~/Research",', 'write = [\n    "~/w",\n    "~/Research",', 1)
+        .replace('"~/.local/bin/julia-update.jl",\n]', '"~/.local/bin/julia-update.jl",\n    "~/w/f",\n]', 1),
+        encoding="utf-8",
+    )
+    failed = linux_dirs_step(machine, outside).action()
+    made = [oct(p.stat().st_mode & 0o777) if p.exists() else None for p in (s.home / "w", s.home / "w" / "f")]
+    case(
+        f"the directory step makes the directories above a pin file that nothing else makes: "
+        f"{failed!r} {made}",
+        ok=failed is None and made == ["0o700", "0o600"],
+    )
+
+
+def bwrap_refusal_cases(case: Case, tmp: pathlib.Path, pins: Pins) -> None:
+    """A bwrap that fails the check, that cannot start or that is missing ends the run on Linux
+    with exit 2 and one line before any job step; on macOS no step runs bwrap or installs jobbox."""
+    s = scratch(tmp, "linux-bwrap-refused", LINUX_FAKES)
+    machine = s.machine("Linux")
+    sandbox = s.home / SANDBOX
+    jobbox = s.home / ".local" / "bin" / "jobbox"
+    chosen_profile(s, JOBS_ONLY)
+    for label, body in (
+        ("a bwrap that fails", "echo 'bwrap: setting up uid map: Permission denied' >&2; exit 1"),
+        ("a bwrap that cannot start", None),
+    ):
+        s.log.unlink(missing_ok=True)
+        if body is None:
+            (s.bin / "bwrap").write_text(f"#!{s.root / 'no-such-shell'}\n", encoding="utf-8")
+        else:
+            s.fake("bwrap", body)
+        code, _ = attempt(machine, s.options(), pins=pins)
+        calls = s.calls()
+        case(
+            f"{label} ends the run with exit 2 and one line naming the AppArmor setting, before any job "
+            f"step: {code!r} {[c for c in calls if not c.startswith(('apt', 'sudo'))]}",
+            ok=code.startswith("exit 2: ")
+            and "\n" not in code
+            and "kernel.apparmor_restrict_unprivileged_userns" in code
+            and not any(c.startswith(("systemctl", "harness render")) for c in calls)
+            and not jobbox.exists()
+            and not sandbox.exists(),
+        )
+    (s.bin / "bwrap").unlink()
+    code, _ = attempt(machine, s.options(), pins=pins)
+    case(
+        f"no bwrap on the PATH ends the run with exit 2 and one line that names {APPARMOR_USERNS}: {code!r}",
+        ok=code.startswith("exit 2: ")
+        and "\n" not in code
+        and "bwrap" in code
+        and APPARMOR_USERNS in code
+        and not jobbox.exists(),
+    )
+
+    mac = scratch(tmp, "macos-plain", MACOS_FAKES)
+    lines = shows(mac.machine(), JOBS_ONLY, mac.options(), pins)
+    case(
+        f"on macOS, no step runs bwrap, installs jobbox or julia-update-server or writes a .bwrap file: "
+        f"{lines}",
+        ok=bool(lines)
+        and not any(w in line for line in lines for w in ("bwrap", "jobbox", UPDATE_SERVER.name)),
+    )
+    chosen_profile(mac, JOBS_ONLY)
+    code, _ = attempt(mac.machine(), mac.options(), pins=pins)
+    case(
+        f"on macOS, the run writes no .bwrap file and no jobbox: {code}",
+        ok=code == "0"
+        and not list((mac.home / SANDBOX).glob("*.bwrap"))
+        and not (mac.home / ".local" / "bin" / "jobbox").exists(),
+    )
+
+
+def bwrap_text_cases(case: Case) -> None:
+    """The check is doctor's, the units start their program under jobbox, and the kit's services
+    script does the job steps of Linux in their order."""
+    doctor_text = (REPO / "lib" / "harness" / "doctor.py").read_text(encoding="utf-8")
+    case(
+        "the check is doctor's sandbox check",
+        ok="[bwrap, " + ", ".join(f'"{a}"' for a in BWRAP_CHECK) + "]" in doctor_text,
+    )
+    units = {
+        u: (REPO / "systemd" / u).read_text(encoding="utf-8").splitlines()
+        for u in ("kaimon.service", "julia-update.service")
+    }
+    case(
+        "kaimon.service starts kaimon under jobbox kaimon",
+        ok="ExecStart={home}/.local/bin/jobbox kaimon {home}/.julia/bin/kaimon --headless --port 2828"
+        in units["kaimon.service"],
+    )
+    case(
+        "julia-update.service starts the update phase under jobbox julia-update and the server phase "
+        "outside it",
+        ok="ExecStart={home}/.local/bin/jobbox julia-update {home}/.juliaup/bin/julia --startup-file=no "
+        "{home}/.local/bin/julia-update.jl"
+        in units["julia-update.service"]
+        and f"ExecStopPost={{home}}/.local/bin/{UPDATE_SERVER.name}" in units["julia-update.service"],
+    )
+    case(
+        "neither unit names /run/user",
+        ok=not any("/run/user" in line for text in units.values() for line in text),
+    )
+
+    kit = (REPO / KIT_SERVICES).read_text(encoding="utf-8")
+    darwin, _, linux = kit.partition("{{- else }}")
+    marks = [
+        linux.find("bwrap --ro-bind / / --dev /dev --unshare-user --unshare-pid true"),
+        linux.find("kernel.apparmor_restrict_unprivileged_userns"),
+        linux.find('install -m 755 "$HARNESS/sandbox/jobbox"'),
+        linux.find('install -m 755 "$HARNESS/scripts/julia-update-server"'),
+        linux.find('render "sandbox/$job.bwrap"'),
+        linux.find('(umask 077 && mkdir -p "$argument")'),
+        linux.find('render "systemd/$unit"'),
+    ]
+    case(
+        f"the kit's Linux branch checks bwrap, installs jobbox, renders the .bwrap files and makes the "
+        f"directories before the units: {marks}",
+        ok=-1 not in marks and marks == sorted(marks) and "exit 2" in linux[marks[0] : marks[2]],
+    )
+    case(
+        "the kit's macOS branch runs no bwrap and installs no jobbox",
+        ok="bwrap" not in darwin and "jobbox" not in darwin,
+    )
+    policy = jobsandbox.load(jobsandbox.POLICY)
+    named = [p for job in jobsandbox.JOBS for p in policy.rules(job).linux_write]
+    case(
+        f"the kit makes each linux_write directory of the rule list: {named}",
+        ok=bool(named) and all(f'"$HOME/{p.removeprefix("~/")}"' in linux for p in named),
+    )
+    home = pathlib.Path("/h")
+    files = [
+        p.relative_to(home)
+        for job in jobsandbox.JOBS
+        for p in jobsandbox.linux_files(policy, job, home, home / "Research" / "Harness")
+    ]
+    case(
+        f"the kit makes each pin of the rule list that is a file, with mode 600: {files}",
+        ok=bool(files)
+        and all(f'"$HOME/{p}"' in linux for p in files)
+        and '(umask 077 && mkdir -p "$(dirname "$lock")" && : >> "$lock")' in linux,
+    )
+
+
 def pocl_cases(case: Case, tmp: pathlib.Path, pins: Pins) -> None:
     """Kaimon's PoCL cache: the plist and the unit set POCL_CACHE_DIR below ~/.cache/kaimon, and on
     macOS and on Linux one step creates that directory, mode 700 where it creates it, before the
@@ -5128,5 +5537,8 @@ def selftest() -> tuple[int, int]:
         doctor_cases(case, root, pins)
         trust_cases(case, root, pins)
         sandbox_cases(case, root, pins)
+        bwrap_cases(case, root, pins)
+        bwrap_refusal_cases(case, root, pins)
+        bwrap_text_cases(case)
         pocl_cases(case, root, pins)
     return total, wrong

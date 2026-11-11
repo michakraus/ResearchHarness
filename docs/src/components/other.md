@@ -112,7 +112,13 @@ job `julia-update.plist` restarts it when its Julia release is deleted. Render t
 
 The `systemd --user` units in `systemd/` run the three jobs of the plists on Linux. Like the
 plists, they are templates of the profile: `harness render systemd/<name>` prints a rendered unit,
-and the harness has no subcommand that installs them. Copy each rendered unit into
+and `harness setup` installs them with what they need. `kaimon.service` and
+`julia-update.service` start their program through `~/.local/bin/jobbox` under `bwrap`, with the
+arguments of `~/.config/research-harness/sandbox/<job>.bwrap` ([`jobsandbox.py`](../harness-command.md#jobsandbox-py)).
+By hand, install `sandbox/jobbox` and `scripts/julia-update-server` into `~/.local/bin`, each
+with mode 755, write `harness render sandbox/<job>.bwrap` for `kaimon` and `julia-update` into
+`~/.config/research-harness/sandbox/`, create each write deny and each pin of the two files,
+`~/.julia/juliaup/.juliaup-lock` and `~/.cache/julia-update`, copy each rendered unit into
 `~/.config/systemd/user/`, run `systemctl --user daemon-reload`, create the server's PoCL cache,
 and enable the server and the two timers:
 
@@ -129,11 +135,14 @@ Each unit describes the same job as its plist:
 | `julia-update.service`, `julia-update.timer` | `julia-update.plist` | daily at 04:30 (`OnCalendar`), not at login |
 | `claude-autocommit.service`, `claude-autocommit.timer` | `claude-autocommit.plist` | when the timer starts (`OnActiveSec=0`), then 15 minutes after each run (`OnUnitActiveSec`) |
 
-The program and its arguments, the environment and the `PATH` are those of the plist, without
-`sandbox-exec` and the shim directory of `kaimon.plist`, which are for macOS only. Both timers
+The program and its arguments, the environment and the `PATH` are those of the plist, with
+`jobbox <job>` in place of `sandbox-exec -f <profile>`, and without the shim directory of
+`kaimon.plist`, which is for macOS only. `julia-update.service` runs
+`~/.local/bin/julia-update-server` outside `bwrap` as its `ExecStopPost`: the server check, the
+restart and the alerts of [the script](scripts.md). Both timers
 set `Persistent=true`, so a calendar start that the machine missed while it slept runs when the
 timer starts again. The units are `--user` units only. Their output goes to the journal:
-`journalctl --user -u <name>`. `julia-update.jl` restarts the server as `kaimon.service`.
+`journalctl --user -u <name>`. `julia-update-server` restarts the server as `kaimon.service`.
 
 The jobs run outside the sandbox, so their `PATH` holds no directory that a session can write.
 Each directory is one that the settings template keeps out of a session's writes, because no

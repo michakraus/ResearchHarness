@@ -78,6 +78,46 @@ for job in kaimon julia-update claude-autocommit; do
 done
 {{- else }}
 
+# The Kaimon and julia-update units start their program through jobbox under bwrap, so bwrap must
+# make a sandbox first, as `harness doctor` checks it; without one the script stops here and no
+# job changes.
+if ! bwrap --ro-bind / / --dev /dev --unshare-user --unshare-pid true; then
+    echo "chezmoi: bwrap cannot make a sandbox, so no job starts under it: where AppArmor refuses" \
+        "user namespaces, set kernel.apparmor_restrict_unprivileged_userns=0 or give bwrap an" \
+        "AppArmor profile" >&2
+    exit 2
+fi
+install -m 755 "$HARNESS/sandbox/jobbox" "$HOME/.local/bin/jobbox"
+# The server phase of julia-update, which its unit runs outside bwrap after the update phase.
+install -m 755 "$HARNESS/scripts/julia-update-server" "$HOME/.local/bin/julia-update-server"
+sandbox="$HOME/.config/research-harness/sandbox"
+mkdir -p "$sandbox"
+for job in kaimon julia-update; do
+    render "sandbox/$job.bwrap" "$sandbox/$job.bwrap"
+done
+# Each write deny and each pin of the jobs, an argument after `--ro-bind` or `--bind` below the
+# home directory, and julia-update's linux_write directory of sandbox/daemon.toml exist before
+# the jobs start, as `harness setup` makes them: bwrap stops at a write deny or a pin that is
+# missing, and skips a missing linux_write directory, whose writes then stay in the job's empty
+# home. The one pin that is a file, juliaup's lock file, is made first, empty; every other is a
+# directory. Each directory that mkdir creates has mode 700, and the file mode 600.
+lock="$HOME/.julia/juliaup/.juliaup-lock"
+[ -e "$lock" ] || (umask 077 && mkdir -p "$(dirname "$lock")" && : >> "$lock")
+for job in kaimon julia-update; do
+    previous=
+    while IFS= read -r argument; do
+        case "$previous" in
+            --ro-bind | --bind)
+                case "$argument" in
+                    "$HOME"/*) [ -e "$argument" ] || (umask 077 && mkdir -p "$argument") ;;
+                esac
+                ;;
+        esac
+        previous=$argument
+    done < "$sandbox/$job.bwrap"
+done
+(umask 077 && mkdir -p "$HOME/.cache/julia-update")
+
 units="$HOME/.config/systemd/user"
 mkdir -p "$units"
 for unit in kaimon.service julia-update.service julia-update.timer \

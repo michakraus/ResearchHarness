@@ -15,10 +15,9 @@ feature. When a feature lands, its row and its marks go in the same change.
 | **Fewer prompts under the launcher**{#fewer-prompts} | planned | [Sandboxes](safeguards/sandbox.md#planned) |
 | **The desktop apps under an outer sandbox**{#desktop-apps} | planned | [Sandboxes](safeguards/sandbox.md#planned), [The security model](safeguards/security-model.md#planned-safeguards) |
 | **The launcher on Linux**{#linux-launcher} | planned | [Sandboxes](safeguards/sandbox.md#planned), [The security model](safeguards/security-model.md#planned-safeguards) |
-| **The daemon profiles on Linux**{#daemon-profiles-linux} | work in progress | [Sandboxes](safeguards/sandbox.md#the-daemon-profiles), [The security model](safeguards/security-model.md#planned-safeguards) |
 | **Masked keys**{#masked-keys} | planned | [Sandboxes](safeguards/sandbox.md#planned), [The security model](safeguards/security-model.md#planned-safeguards) |
 | **A forge token per owner**{#token-per-owner} | planned; waits for your tokens | [Sandboxes](safeguards/sandbox.md#planned), [The security model](safeguards/security-model.md#planned-safeguards) |
-| **Kaimon without the network**{#kaimon-without-network} | planned; waits for [the daemon profiles on Linux](#daemon-profiles-linux) | [Sandboxes](safeguards/sandbox.md#planned), [The security model](safeguards/security-model.md#planned-safeguards) |
+| **Kaimon without the network**{#kaimon-without-network} | planned | [Sandboxes](safeguards/sandbox.md#planned), [The security model](safeguards/security-model.md#planned-safeguards) |
 | **A credential proxy**{#credential-proxy} | planned; optional and last | [Sandboxes](safeguards/sandbox.md#planned), [The security model](safeguards/security-model.md#planned-safeguards) |
 
 ## Static checks
