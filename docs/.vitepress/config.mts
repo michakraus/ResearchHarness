@@ -81,13 +81,39 @@ export default defineConfig({
         ]
       },
       {
+        text: 'Agentic coding',
+        items: [
+          { text: 'Challenges', link: '/agentic/challenges' },
+          { text: 'Agents and their roles', link: '/agentic/agents' },
+          { text: 'Tasks', link: '/agentic/tasks' },
+          { text: 'Specs and gates', link: '/agentic/specs-and-gates' },
+          { text: 'The builder-critic loop', link: '/agentic/loop' },
+          { text: 'Static checks', link: '/agentic/static-checks' },
+          { text: 'Tests and CI', link: '/agentic/tests-and-ci' },
+          { text: 'Mutant testing', link: '/agentic/mutants' },
+          { text: 'Edges', link: '/agentic/edges' },
+          { text: 'Review and pull requests', link: '/agentic/review' },
+          { text: 'Example: a feature in a Julia package', link: '/agentic/example' }
+        ]
+      },
+      {
+        text: 'Safeguards',
+        items: [
+          { text: 'Risks of agentic coding', link: '/safeguards/risks' },
+          { text: 'The security model', link: '/safeguards/security-model' },
+          { text: 'Permissions', link: '/safeguards/permissions' },
+          { text: 'Guard hooks', link: '/safeguards/guard-hooks' },
+          { text: 'Sandboxes', link: '/safeguards/sandbox' },
+          { text: 'Git safety', link: '/safeguards/git-safety' },
+          { text: 'Leak checks and gitleaks', link: '/safeguards/leaks' }
+        ]
+      },
+      {
         text: 'Background',
         items: [
           { text: 'Architecture', link: '/architecture' },
           { text: 'Private data across machines', link: '/private-data' },
-          { text: 'The security model', link: '/security' },
-          { text: 'Research memory', link: '/memory' },
-          { text: 'Agentic software engineering', link: '/agentic-engineering' }
+          { text: 'Research memory', link: '/memory' }
         ]
       },
       {
@@ -97,11 +123,9 @@ export default defineConfig({
           { text: 'Skills', link: '/components/skills' },
           { text: 'Commands', link: '/components/commands' },
           { text: 'Rules and instructions', link: '/components/rules' },
-          { text: 'Guard hooks', link: '/components/hooks' },
           { text: 'Git hooks and workflows', link: '/components/githooks' },
           { text: 'Scripts', link: '/components/scripts' },
           { text: 'Adapters', link: '/components/adapters' },
-          { text: 'The harness command', link: '/components/harness' },
           { text: 'The srt settings', link: '/components/sandbox' },
           { text: 'Jobs and configuration', link: '/components/other' }
         ]

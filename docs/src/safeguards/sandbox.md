@@ -1,0 +1,183 @@
+# Sandboxes
+
+A sandbox is a limit that the operating system puts on a process: the files that it can read and
+write, and the hosts that it can reach. A text check reads what a command says; a sandbox limits
+what the command does, whatever it says. So the sandbox is the one security boundary of the
+harness ([The security model](security-model.md)). This page describes the three sandboxes of the
+harness, what each one wraps, and the sandboxes that are planned.
+
+## Three sandboxes
+
+<SandboxFigure />
+
+*The sandboxes of the harness.* In a normal session, Claude Code wraps each shell command in its
+own sandbox; `git`, `gh`, `glab` and `ps` run outside it. The Kaimon server, which a session
+reaches over MCP, runs under a Seatbelt profile of its own. The launcher `agentbox` puts one
+sandbox around a whole frontend, its own process and every command that it starts.
+
+| sandbox | wraps | on | turned on by |
+|:--|:--|:--|:--|
+| [the session sandbox](#the-session-sandbox) | each shell command of a Claude Code session | macOS, Linux | the settings template; always on |
+| [the launcher `agentbox`](#the-launcher-agentbox) | a whole CLI frontend: `claude`, `opencode`, `omp` or `agy` | macOS; on Linux planned | you, by starting the frontend through `agentbox` |
+| [the daemon profiles](#the-daemon-profiles) | the Kaimon server and the `julia-update` job | macOS; on Linux work in progress | `harness setup`, in the launch agents |
+
+## The session sandbox
+
+The `sandbox` section of the settings template turns Claude Code's sandbox on for every shell
+command of a session:
+
+| key | value | effect |
+|:--|:--|:--|
+| `enabled` | `true` | each `Bash` command runs inside the sandbox |
+| `failIfUnavailable` | `true` | a session does not start when the sandbox cannot start |
+| `allowUnsandboxedCommands` | `false` | a command cannot ask to run outside the sandbox |
+| `autoAllowBashIfSandboxed` | `true` | a sandboxed command runs with no prompt; the [deny list](permissions.md#deny) still applies |
+| `excludedCommands` | `git`, `gh`, `glab`, `ps` | these run outside the sandbox |
+
+**Files.** The write allowlist holds `~/Research`, `~/.julia`, the temporary directories, the
+cache of PoCL, the directories of rtk and a few directories of `~/.claude`. The write deny list holds the installed files, the settings and the
+git hooks, and each `Edit` deny of the permission lists. The read deny list holds the files of
+keys and tokens, and each `Read` deny.
+
+**Network.** The allowlist is strict: a host that is not on it is refused. `settings/network.toml`
+lists the hosts in three groups, and the profile can add its own. A fourth key, `deny`, names a
+host that reaches neither:
+
+| group | reaches the host |
+|:--|:--|
+| `allow` | the `WebFetch` tool and a sandboxed command |
+| `fetch` | the `WebFetch` tool only: a host that accepts writes, which a session only reads |
+| `infrastructure` | a sandboxed command only, such as a package server |
+
+**Why four commands run outside it.** A sandboxed `git` cannot write `.git`, and a sandboxed `gh`
+fails its TLS check with error `-26276` on macOS. So `git`, `gh`, `glab` and `ps` are excluded. A
+command runs outside the sandbox only when every part of it starts with one of the four and no
+part redirects to or from a file. `cd <other dir> && git commit` would run inside it and fail, so
+the [sandbox check](guard-hooks.md#the-sandbox-check) refuses it before it runs. The
+permission lists and the [guard hooks](guard-hooks.md) still apply to an excluded command, and
+[Git safety](git-safety.md) describes the checks of `git` and `gh`.
+
+## The launcher `agentbox`
+
+The session sandbox wraps the shell commands of Claude Code. It does not wrap Claude Code itself,
+an MCP server that it starts, or another frontend: OpenCode and oh-my-pi have no sandbox of their
+own. The launcher `agentbox` closes this gap. It starts one frontend under `srt`, the sandbox
+runtime, so the frontend and everything that it starts run inside one sandbox:
+
+```sh
+agentbox claude
+agentbox opencode
+```
+
+`agentbox` runs
+`~/.local/bin/srt --settings ~/.config/research-harness/sandbox/<policy name>.json -- <program>`,
+where the policy name is the frontend's name, and `antigravity` for `agy`. `harness install` writes one settings file for each CLI frontend, from the
+`sandbox` section of the template and the policy file `sandbox/policy.toml`, so every frontend
+gets the same file and network lists. Each frontend gets an argument that fits the outer sandbox:
+
+| frontend | argument | why |
+|:--|:--|:--|
+| `claude` | `--settings …/claude-inner-off.json` | Claude Code's own sandbox fails inside `srt`, so the inner one is off |
+| `opencode` | `--standalone` | its server runs as its own child, inside the sandbox |
+| `omp` | `--approval-mode yolo` | no prompts; the sandbox is the boundary |
+
+The launcher sets `AGENTBOX=1` and refuses to start inside a launcher. It gives each run new cache
+directories for npm, uv and LaTeX, because the sandbox denies their caches in the home directory.
+`harness setup` installs the pinned `srt` with `npm ci --ignore-scripts`.
+
+**`agentbox` is opt-in.** A frontend that you start without it does not read its `srt` file, and
+runs as it would without the harness: Claude Code with its session sandbox, OpenCode and oh-my-pi
+with none. The probe battery `scripts/probe-agentbox.py` checks the boundary on macOS; run it from
+a plain terminal, not from a session. [The srt settings](../components/sandbox.md) describes the
+rendering, the launcher and the probe in full.
+
+**A frontend can read its own credentials.** The sandbox wraps the frontend and its shell
+together, so it cannot tell them apart. Each frontend's settings allow reads of its own credential
+files by name, and deny those of every other frontend
+([The security model](security-model.md#the-limits)).
+
+## The daemon profiles
+
+An MCP server runs outside the session's sandbox: it is a process of its own, for example one that
+launchd starts, and the code that it runs for a session does not see the session's lists. The
+permission lists control which of its tools a session can call, not what the tools do. On macOS
+the harness therefore runs the two launch agents that run Julia outside every session under a
+Seatbelt profile of their own: the Kaimon server and the `julia-update` job.
+
+The launch agent of Kaimon starts the server with
+`/usr/bin/sandbox-exec -f ~/.config/research-harness/sandbox/kaimon.sb`, a Seatbelt profile that
+`harness setup` renders from `sandbox/daemon.toml`. The profile denies every file read and
+write, then allows reads of `~/Research`, the Julia depot, juliaup, Kaimon's configuration,
+cache and logs, git's configuration, the per-user temporary and cache directories, the
+system directories, the root directory `/` itself, which dyld reads when a process starts,
+and `~/.config/research-harness/sandbox/shims`, the first directory of the job's `PATH`; and
+writes of `~/Research`, the depot, Kaimon's directories, the per-user directories and
+`/private/tmp`. It denies writes to `~/.julia/bin`, `~/.julia/config`,
+`~/.julia/juliaup`, the harness's `githooks/`, and `.git/hooks`, `.git/config` and `.githooks`
+at any depth below `~/Research`. After these denies it allows one file again, juliaup's lock
+file `~/.julia/juliaup/.juliaup-lock`, because the juliaup launcher that starts Julia opens it
+for writing at every start and exits when that fails; `juliaup.json` and the installed Julia
+versions stay unwritable. The rule allows every write to that one path, so a confined process
+can also hold the lock, which makes every juliaup command outside the profile wait, or put a
+symbolic link in the file's place, which a juliaup command outside the profile then opens for
+writing.
+
+Kaimon starts every Julia session on a pseudo-terminal, so the profile allows the
+operation `pseudo-tty` and reads, writes and ioctls of `/dev/ptmx` and of every
+`/dev/ttysNNN` (the key `pty` of the job). Seatbelt cannot tell the job's own pseudo-terminal
+from the terminal window of another program of the same user, so a confined process can open
+the `/dev/ttysNNN` of any terminal of the user and write text into it, which that terminal
+shows as output. The rule also allows a change of the device's mode, which the user owns, so it
+does not stop a read of that terminal's input either. Whether such a process can also push
+input into another terminal with the ioctl `TIOCSTI` is not checked on macOS 27. The
+`julia-update` job has `pty = false` and no such rule.
+
+Kaimon's profile denies an app or document opened through Launch Services, and a mount. It denies
+an Apple Event to another app twice: `(deny appleevent-send)`, and a deny of the Mach services
+`com.apple.coreservices.launchservicesd` and `com.apple.CoreServices.coreservicesd`. On macOS
+27.2, under the rendered profile and outside every agent sandbox,
+`osascript -e 'tell app "Finder" to get name of startup disk'` fails with error `-54`, and with
+`-600` when the profile lacks the Mach-service deny; an `AESendMessage` call that does not go
+through `osascript` also fails, with `-600`. Each rule alone stops the event before the
+Automation consent of macOS. The probe `appleevent` of `sandbox/probe-daemon.jl` sends this
+event: AppleScript answers `name` of an application from the script itself and sends no event.
+
+The profile leaves open the network, the other Mach services, which Metal needs, every write
+inside `~/Research` outside the denied repository parts, and the rename of a directory above a
+denied part, which moves the part out of the denied path. The writes inside `~/Research` include
+`~/Research/.claude/hooks`, `skills` and `settings.json`, which the session sandbox denies: through
+Kaimon's `ex`, code can write a hook that a later session runs outside every sandbox.
+
+The exec of the setuid `/bin/ps` fails under the profile, and Kaimon reads a failed
+`ps -o state= -p PID` as a dead session, so the shims directory holds a `ps` of the harness that
+answers that form with `kill -0`. It says that any process that `kill -0` can signal exists, which
+the job could already learn with `kill -0` itself, counts a zombie as alive, and counts a process
+that `kill -0` may not signal, such as one of another user, as gone. The `julia-update` job runs
+under its own profile from the same file. For every other MCP server, no profile applies.
+
+**On Linux** the units of the two jobs run unwrapped. **Work in progress:** a wrapper that runs
+each unit under `bwrap`, with the same file rules.
+
+## Planned
+
+These sandboxes are decided, and none of them runs yet:
+
+- **A guard against a session with no sandbox** (planned): a hook that refuses every tool call
+  when `~/.ssh` is readable and no sandbox is on: neither the launcher nor Claude Code's own
+  sandbox.
+- **Fewer prompts under the launcher** (planned): the permission prompts that the outer sandbox
+  makes safe go, as a settings change with probes.
+- **The desktop apps** (planned): an outer sandbox for Claude Code's Code tab and the Antigravity
+  desktop app, which `agentbox` cannot start, with the same probe battery.
+- **A Linux wrapper** (planned): the outer sandbox on Linux, tried first on one test machine, then
+  the same battery and a GPU kernel on each Linux machine.
+- **Masked keys** (planned): the API keys stay in their denied files, and the launcher gives them
+  to `srt` as masked variables; the `gh` and `glab` tokens leave the key store for masked
+  variables too.
+- **A token per owner** (planned, waits for your tokens): a fine-grained forge token for each
+  organisation, so that a command can write only where the task needs it.
+- **Kaimon without the network** (planned, waits for the daemon wrapper on Linux): the Kaimon server reaches
+  only the package servers.
+- **A credential proxy** (planned, optional and last): a proxy that writes the keys into the
+  requests for their named hosts, so that the agent sees only a stand-in. `srt` already filters
+  the network by host, so the proxy does not run by default.

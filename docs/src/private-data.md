@@ -35,7 +35,7 @@ Two checks keep the values out:
 
 The pre-push hook of the harness runs both before a push to `main`, and refuses the push on a hit.
 CI runs gitleaks on every push. CI has no profile, so it cannot search for your private strings:
-only the hook on your machine does. [The security model](security.md#the-mechanisms) gives the
+only the hook on your machine does. [Leak checks and gitleaks](safeguards/leaks.md) gives the
 limits of this gate, and [Development](development.md#the-pre-push-hook) gives the two checks in
 detail.
 

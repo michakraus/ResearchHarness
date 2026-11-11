@@ -1438,9 +1438,10 @@ def commit_cases():
             f"{'ok ' if ok else 'BAD'}  leaks: renders TEMPLATES and each adapter's TEMPLATES -> "
             f"{len(rendered)} templates, missing {sorted((set(TEMPLATES) | adapters) - rendered)}"
         )
-        # The limits that docs/src/security.md states: a leak only in a commit's author name, only in
-        # the message of an annotated tag on a listed commit, or only in a note on one, is no hit; the
-        # same leak in a listed commit's message is one, so the fixture can see it. Empty commits.
+        # The limits that docs/src/safeguards/security-model.md states: a leak only in a commit's
+        # author name, only in the message of an annotated tag on a listed commit, or only in a note
+        # on one, is no hit; the same leak in a listed commit's message is one, so the fixture can
+        # see it. Empty commits.
         git("commit", "-q", "--allow-empty", "-m", "clean", GIT_AUTHOR_NAME="the LEAK author")
         author = git("rev-parse", "HEAD")
         tagged = note(b"clean\n")

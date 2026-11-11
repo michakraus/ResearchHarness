@@ -14,7 +14,7 @@ line that the install prints after a change. The other files of an adapter are i
 configuration and extension code. `harness install --apply` copies or renders them into the
 configuration directory of the frontend.
 [The architecture](../architecture.md#the-opencode-and-oh-my-pi-adapters) describes what each
-frontend receives, and [the harness command](harness.md) describes the loader.
+frontend receives, and [the harness command](../harness-command.md#the-implementation) describes the loader.
 
 The sections follow the four frontends: Claude Code, OpenCode, oh-my-pi, then Antigravity. In each
 group, the module `adapter.py` comes first, then the files that it installs.
@@ -231,7 +231,7 @@ package in `hooks/guard/` of OpenCode's configuration directory, with `--from op
 interpreter that `guard-paths.json` beside the plugin names under `python`. It sends the event
 and the session's directory as JSON on standard input, and throws the reason of an answer that
 blocks, which refuses the call. The guard's table checks the `shell` call and every Kaimon call
-`kaimon_<tool>`, and lets every other tool pass; [Guard hooks](hooks.md)
+`kaimon_<tool>`, and lets every other tool pass; [Guard hooks](../safeguards/guard-hooks.md)
 describes each check, the path list and its list in `$OPENCODE_CONFIG_DIR`, and the refusal of an
 in-place edit such as `sed -i`.
 
