@@ -159,18 +159,18 @@ under its own profile from the same file. For every other MCP server, no profile
 `~/.local/bin/jobbox <job>`, which runs `bwrap` with the arguments that `harness setup` renders
 from the same `sandbox/daemon.toml` into `~/.config/research-harness/sandbox/<job>.bwrap`. The
 job gets new namespaces of every kind but the network (`--unshare-all --share-net`), ends with
-the unit (`--die-with-parent`), and sees a new `/proc`, a new empty `/tmp`, `/dev`, `/sys`
-read-only, the system paths of `linux_read` read-only, and an empty home. In that home only the
-job's `~/` paths are bound: Kaimon reads and writes `~/Research`, the depot and its own
+the unit (`--die-with-parent`), and sees a new `/proc`, a new empty `/tmp`, the host's `/dev`,
+`/sys` read-only, the system paths of `linux_read` read-only, and an empty home. In that home only
+the job's `~/` paths are bound: Kaimon reads and writes `~/Research`, the depot and its own
 directories, as on macOS, and the same write denies are bound read-only. `jobbox` also binds
 `.git/hooks`, `.git/config` and `.githooks` read-only in each repository that it finds at most
 four levels below `~/Research` when a job that binds `~/Research` starts. `bwrap` follows a
 symbolic link in a bind, and each job writes directories below the home that hold sources of
 the other job's binds, such as `~/.julia/environments/apps` of `julia-update` in Kaimon's
-`~/.julia`. So `jobbox` stops with exit 2, before `bwrap`, when a source of any bind below the
-home is a link, or lies below one under the entry of the home that holds it, which may itself
-be a link. A check before the mount does not hold against the other job while it runs, so each
-job binds onto itself each path from its own write path down to such a source of the other:
+`~/.julia`. So `jobbox` stops with exit 2, before `bwrap`, when a source of any bind below an
+entry of the home is a link, or lies below one under that entry, which may itself be a link. A
+check before the mount does not hold against the other job while it runs, so each job binds onto
+itself each path from its own write path down to such a source of the other:
 in its namespace that path is a mount point, which it can neither rename nor remove. A pin is a
 bind source too, so each job also pins the paths to the other job's pins that it writes and
 does not bind yet, and binds each pin before any of its write binds below it, which would

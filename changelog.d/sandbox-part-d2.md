@@ -4,8 +4,9 @@
   an empty home with only the job's paths bound, the write denies read-only, and for Kaimon the
   git hooks and configuration of each repository at most four levels below `~/Research`
   read-only. `jobbox`
-  stops with exit 2 when the source of a bind below the home is a symbolic link or lies below
-  one, because `bwrap` follows it, and each job binds onto itself the paths of the other job's
+  stops with exit 2 when the source of a bind below an entry of the home is a symbolic link or
+  lies below one under that entry, because `bwrap` follows it (the entry itself, such as
+  `~/.julia`, may be a link), and each job binds onto itself the paths of the other job's
   bind sources that it writes, so that it cannot swap them while it runs. `harness setup` and the
   kit's services script run the `bwrap` check first and stop with exit 2 when it fails, naming
   `kernel.apparmor_restrict_unprivileged_userns`. julia-update runs its server check, the restart

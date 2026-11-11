@@ -162,12 +162,13 @@ SANDBOX = ".config/research-harness/sandbox"
 # shim that the run installs there, as a path of the clone.
 SHIMS = jobsandbox.SHIMS.removeprefix("~/")
 PS_SHIM = jobsandbox.PS_SHIM.relative_to(REPO)
-# The launcher of the jobs of jobsandbox.JOBS on Linux, as a path of the clone, and the arguments of
-# the sandbox check of `harness doctor`, which `bwrap` must pass before any job starts under it.
+# The launcher of the jobs of jobsandbox.JOBS on Linux, as a path of the clone.
 JOBBOX = jobsandbox.JOBBOX.relative_to(REPO)
 # The server phase of the julia-update job on Linux, which its unit runs outside bwrap as its
 # ExecStopPost, as a path of the clone.
 UPDATE_SERVER = jobsandbox.UPDATE_SERVER.relative_to(REPO)
+# The arguments of the sandbox check of `harness doctor`, which `bwrap` must pass before any job
+# starts under it.
 BWRAP_CHECK = ("--ro-bind", "/", "/", "--dev", "/dev", "--unshare-user", "--unshare-pid", "true")
 # The kernel setting through which AppArmor refuses user namespaces, which `bwrap` needs, on Ubuntu
 # 23.10 and later.

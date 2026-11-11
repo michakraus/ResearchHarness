@@ -1,4 +1,5 @@
-# The Kaimon MCP server, the Linux twin of launchagents/kaimon.plist. Render it with
+# The Kaimon MCP server, the Linux twin of launchagents/kaimon.plist. Once jobbox and its
+# arguments file are in place (ExecStart below), render it with
 # `harness render systemd/kaimon.service` into ~/.config/systemd/user/, then
 # `systemctl --user daemon-reload`, `(umask 077 && mkdir -p ~/.cache/kaimon/pocl)` for the
 # POCL_CACHE_DIR below, and `systemctl --user enable --now kaimon.service`.

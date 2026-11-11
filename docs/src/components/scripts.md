@@ -753,11 +753,11 @@ at or below the physical home or at or below the physical target of a link direc
 which the jobs write. A home that does not resolve leaves the `PATH` empty.
 It reads the state as data, removes the file, runs step 4 and sends the alerts, and reports the
 update phase as failed when the file is missing, as after an `ExecStart` that failed before the
-update phase began. The script itself loads only the standard library of its release: its first
-lines set the load path to `@stdlib` and drop every depot outside the release, because the jobs
-write `~/.julia`. The variable `JULIA_UPDATE_SYSTEM`, `Darwin` or `Linux`, takes the place of the
-system's own name, so that the cases of `lib/harness/jobsandbox.py` run the update phase of Linux
-on macOS.
+update phase began. `julia-update.jl` itself loads only the standard library of its release: its
+first lines set the load path to `@stdlib` and drop every depot outside the release, because the
+jobs write `~/.julia`. The variable `JULIA_UPDATE_SYSTEM`, `Darwin` or `Linux`, takes the place
+of the system's own name, so that the cases of `lib/harness/jobsandbox.py` run the update phase of
+Linux on macOS.
 
 On macOS the script reads the profile key `launchd_prefix` for the label of the Kaimon job (see
 [Profile](../profile.md)); on Linux it reads no profile. A failure or a restart that is due also

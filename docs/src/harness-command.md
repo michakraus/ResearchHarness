@@ -1322,8 +1322,8 @@ directories that it writes on Linux only; `profile` leaves `linux_write` out, so
 profiles do not change. `load` refuses a Linux path that is not `/` and segments, none of them
 empty, `.` or `..`, a `linux_links` entry below the root's first level, and a `linux_write` path
 that is not below `~/`. `bwrap_args` gives the arguments of one job: `--unshare-all --share-net
---die-with-parent`, a new `/proc`, `/dev`, `/sys` read-only and a new `/tmp`; each path of
-`linux_read` read-only where it exists; each entry of `linux_links` as the host has it
+--die-with-parent`, a new `/proc`, the host's `/dev`, `/sys` read-only and a new `/tmp`; each path
+of `linux_read` read-only where it exists; each entry of `linux_links` as the host has it
 (`linux_root`), a link or a read-only directory; an empty home; then the job's `~/` and `$HARNESS`
 paths, the reads, the writes and `linux_write` with the pins (`pins`) among them, the write denies
 read-only and the files written back. A pin is a path from a write path of the job down to a bind
@@ -1341,8 +1341,9 @@ directory and pin that is missing (`linux_dirs`, `linux_files`), before the unit
 adds `--chdir` and the working directory and, for a job that binds `~/Research`, the read-only
 binds of `.git/hooks`, `.git/config` and `.githooks` of each repository at most four levels below
 `~/Research`, and runs `bwrap`; both units start their program through it. It exits 2 before
-`bwrap` when the source of a bind below the home is a symbolic link or lies below one under the
-entry of the home that holds it, because `bwrap` follows the link.
+`bwrap` when the source of a bind below an entry of the home is a symbolic link or lies below one
+under that entry, because `bwrap` follows the link; the entry itself, such as `~/.julia`, may be a
+link.
 
 Its cases load the shipped list and a broken copy of it for each refusal, render both jobs with a
 home path that holds a dot and one that holds a quote, run `harness render` through `bin/harness`
