@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // The figure of the checks between an edit and a merge, on the page Tests and CI: the pre-commit
-// hook on every commit, the part's gate on every build round, CI on the pull request, and your
+// hook on every commit, the checks of the builder-critic loop, CI on the pull request, and your
 // merge. One centre column of panels, so that no edge crosses another.
 import FigArrow from './FigArrow.vue'
 import FigCard from './FigCard.vue'
@@ -32,10 +32,10 @@ const commit = panel(0, edit.y + edit.h + ROW, WIDTH, [
   { title: 'Package load', icon: 'package', lines: ['using, in a', 'fresh process'] }
 ])
 const gate = panel(0, commit.y + PANEL_H + ROW, WIDTH, [
-  { title: 'Affected tests', icon: 'check', lines: ['the test files', 'the diff reaches'] },
-  { title: 'Named mutants', icon: 'warning', lines: ['each one caught', 'by a kept test'] },
-  { title: 'Dispatch delta', icon: 'verdict', lines: ['new ambiguities,', 'piracies, fields'] },
-  { title: 'Full suite', icon: 'agent', lines: ['julia-test-runner,', 'beside the critic'] }
+  { title: 'Affected tests', icon: 'check', lines: ['the builder, with', 'run-tests.jl'] },
+  { title: 'Named mutants', icon: 'warning', lines: ['the builder and', 'the critics'] },
+  { title: 'Full suite', icon: 'agent', lines: ['julia-test-runner,', 'beside the critic'] },
+  { title: 'Dispatch delta', icon: 'verdict', lines: ['the verifier, before', 'the pull request'] }
 ])
 const ci = panel(CX - 380, gate.y + PANEL_H + ROW, 760, [
   { title: 'Tests', icon: 'workflow', lines: ['oldest and latest', 'Julia, three systems'] },
@@ -47,8 +47,8 @@ const HEIGHT = merge.y + merge.h
 
 const BOX = {
   commit: 'Every commit: the pre-commit hook',
-  gate: 'Every build round: the part\'s gate',
-  ci: 'Every push of the branch: CI'
+  gate: 'The builder-critic loop',
+  ci: 'Every push to the pull request: CI'
 }
 const down = (from: string, to: string, y0: number, y1: number, label?: string) => ({
   from, to, label, points: [[CX, y0], [CX, y1]] as Point[], labelAt: label ? [CX, (y0 + y1) / 2] as Point : undefined
@@ -56,7 +56,7 @@ const down = (from: string, to: string, y0: number, y1: number, label?: string) 
 const ARROWS = [
   down(edit.title, BOX.commit, edit.y + edit.h, commit.y, 'git commit'),
   down(BOX.commit, BOX.gate, commit.y + PANEL_H, gate.y, 'each round'),
-  down(BOX.gate, BOX.ci, gate.y + PANEL_H, ci.y, 'git push'),
+  down(BOX.gate, BOX.ci, gate.y + PANEL_H, ci.y, 'a pull request'),
   down(BOX.ci, merge.title, ci.y + PANEL_H, merge.y, 'all green')
 ]
 </script>
@@ -67,7 +67,7 @@ const ARROWS = [
     :width="WIDTH"
     :height="HEIGHT"
     title="The checks between an edit and a merge"
-    desc="An edit of a source file meets three groups of checks before you merge it. On every commit, the pre-commit hook checks the test layout, the format with JuliaFormatter, the Unicode normal form and that the package loads. In every build round, the part's gate runs the affected tests, the named mutants and the dispatch delta, and julia-test-runner runs the full suite beside the critic. On every push of the branch, CI runs the tests on the oldest and the latest Julia on three systems, the downgrade job with the lowest compat bounds, and the doctests. You merge when the required checks pass."
+    desc="An edit of a source file meets three groups of checks before you merge it. On every commit, the pre-commit hook checks the test layout, the format with JuliaFormatter, the Unicode normal form and that the package loads. In each round of the builder-critic loop, the builder runs the affected tests with run-tests.jl, the builder and the critics run the named mutants, and julia-test-runner runs the full suite beside the critic; before the pull request, the verifier runs the dispatch delta. On every push to the pull request, CI runs the tests on the oldest and the latest Julia on three systems, the downgrade job with the lowest compat bounds, and the doctests. You merge when the required checks pass."
   >
     <FigCard v-bind="edit" accent="blue" tinted />
     <FigPanel :box="BOX.commit" :x="commit.x" :y="commit.y" :w="commit.w" :h="commit.h" :title="BOX.commit" :badge="1" accent="violet">

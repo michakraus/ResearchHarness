@@ -87,7 +87,7 @@ A gate is a command with an exit status. The loop moves on only when the gate pa
 |:--|:--|:--|:--|
 | [`spec-gate.py`](../components/scripts.md#spec-gate-py) | before a `build` part starts | the spec holds *Decided at the edges* and *Tests catch*; its files lie in one repository; a spec-delta spec passes `spec-validate.py` | `PASS` or `EXEMPT` 0; `MISSING`, `INVALID` or `SPANS` 1; `UNMEASURED` 2 |
 | [`spec-validate.py --head`](../components/scripts.md#spec-validate-py) | each critic round of a spec-delta part | every `check:` of the delta on the branch head | 0 when every check passes |
-| [`gate.jl`](../components/scripts.md#gate-jl-and-gate-test-jl) | the builder's own check of a Julia part | the affected tests, the named mutants, the generated mutants, the [dispatch delta](static-checks.md#what-a-change-adds-to-the-method-table), the format | 0 pass, 1 fail, 2 bad arguments, 3 no verdict |
+| [`gate.jl`](../components/scripts.md#gate-jl-and-gate-test-jl) | by hand, for a Julia part: no skill or agent calls it | the affected tests, the named mutants, the generated mutants, the [dispatch delta](static-checks.md#what-a-change-adds-to-the-method-table), the format | 0 pass, 1 fail, 2 bad arguments, 3 no verdict |
 | [`harness test`](../harness-command.md#test) | every round of a part in the harness itself | the whole Python suite, the hook probe and the verb sweep | 0 when every case passes |
 | the test suite | beside each critic round | the full suite of the repository, run by `julia-test-runner` | the suite's own |
 | CI | for a spec-delta part, on each pushed head | every job of the repository's workflows | the job conclusions |

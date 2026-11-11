@@ -17,8 +17,8 @@ test sees the change, so no test checks what that line does.
 
 *From a source line to a closed survivor.* A mutant changes one line of the source, and the tests
 run on a copy. A failing test catches the mutant. A mutant that survives shows a gap, and the
-builder closes it with a test that catches it, or shows that the mutant changes nothing that
-matters.
+builder closes it with a test that catches it. For a mutant that is not named, a reason why the
+change does not matter also closes it.
 
 A mutant tests the tests, not the code. A survivor is a defect of the evidence: the code can be
 right, but the suite cannot show it.
@@ -27,10 +27,10 @@ right, but the suite cannot show it.
 
 | kind | who names it | when it runs | a survivor |
 |:--|:--|:--|:--|
-| **named** | the planner, in the spec's *Tests catch*, as `MU<n>` | in every build round, by the builder, and in `gate.jl` step `named` | a blocking defect: the clause fails |
-| **own** | the builder: one per guard, branch, comparison and decided edge of its change | before the builder returns `ready for critic` | an open survivor makes the report not ready |
-| **doubted** | the critic, for a test that it does not trust | in the critic's round | a blocking defect of cause `evidence` |
-| **generated** | `mutants.jl`, one per operator node of the lines that the diff adds | where the plan's §L asks for the sweep; `gate.jl` step `generated` reports | each survivor gets a test or a reason, before round 1 |
+| **named** | the planner, in the spec's *Tests catch*, as `MU<n>` | by the builder, once, and by each critic of round 1 again; a fix round reruns the mutants that its fix touches | the clause fails, and the round is blocked |
+| **own** | the builder, and each fixer for its fix: one per guard, branch, comparison and decided edge | before the builder returns `ready for critic` | a test, or a reason in the report; an open survivor makes the report not ready |
+| **doubted** | the critic, for a test that it does not trust | in the critic's round | a blocking defect of cause `evidence`, when it is in a clause's domain |
+| **generated** | `mutants.jl`, one per operator node of the lines that the diff adds | by the dispatcher's `julia-test-runner`, before round 1, only where the plan's §L asks for the sweep | a test, or a reason in the report, before round 1 |
 
 A named mutant comes from the spec, before the code exists, so the builder cannot choose the
 mutants that its tests happen to catch. The spec names the test that must catch it:
@@ -66,13 +66,14 @@ the units that the diff against `origin/main` reaches.
 | `CAUGHT` | a unit fails |
 | `SURVIVED` | every unit passes |
 | `NO-COVERAGE` | in warm mode: the coverage lists the mutant's lines, but no unit runs them; a finding, as `SURVIVED` is |
-| `UNKNOWN` | in warm mode: the result cannot be trusted, for example a baseline that failed after the mutant |
-| `INVALID` | the mutant does not apply or does not parse |
+| `UNKNOWN` | no verdict: `run-tests.jl` itself failed; in warm mode also a baseline that failed after the mutant, a time-out, a smoke mutant that was not caught, or a sampled kill that a cold run does not catch |
+| `INVALID` | the mutant does not apply, does not parse, or adds an undefined name; it does not run |
 
-The mode `--warm` runs the list in warm worker processes, which is much faster than one cold
-process per mutant. It guards its own result: a smoke mutant that must be caught, a rerun of the
-baseline between mutants, a cold rerun of every survivor, and a cold rerun of a sample of the
-kills. The cold verdict counts. `--check` validates a list and runs nothing. The script exits 0,
+The mode `--warm` runs the list in warm worker processes, so each mutant does not pay for a new
+process and a new compilation. It guards its own result: a smoke mutant that must be caught, a
+rerun of the baseline every 20 mutants and after the last, a cold rerun of every survivor, and a
+cold rerun of a sample of 10 kills. The cold verdict counts. A list of 20 mutants or fewer runs
+every mutant cold. `--check` validates a list and runs nothing. The script exits 0,
 3 on an `UNKNOWN` or `INVALID` verdict, and 2 on a usage error.
 
 **Known issue (K74):** the warm mode is unsound for a mutant that changes a method signature. Run
@@ -100,9 +101,11 @@ exits 0 when every mutant is killed, 1 when one survives or is invalid, and 2 wh
 
 A survivor is closed in one of two ways:
 
-- **A test that catches it.** The builder adds or sharpens a test, and runs the mutant again.
-- **A reason.** The mutant changes nothing observable, for example a bound that no input reaches.
-  The builder writes the reason in the *Mutants* table of its report, and the critic judges it.
+- **A test that catches it.** The builder adds or sharpens a test, and runs the mutant again. A
+  named mutant has only this way: its survivor fails its clause.
+- **A reason**, for an own or a generated mutant only. The mutant changes nothing observable: it
+  is equivalent, it changes dead code, or it changes a message text that no clause names. The
+  builder writes the reason in the *Mutants* table of its report, and the critic judges it.
 
 The builder's report lists every mutant with its verdict. The critic reruns the named mutants and
 the mutants that it doubts. A named mutant that survives is a blocking defect, whatever the other

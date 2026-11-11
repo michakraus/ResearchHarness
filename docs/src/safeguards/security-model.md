@@ -83,10 +83,11 @@ each mechanism: [Sandboxes](sandbox.md), [Permissions](permissions.md),
   the session's write allowlist, read deny list or network allowlist. The permission lists control
   which of its tools a session can call. The launch agents of Kaimon and `julia-update` start
   their programs under a Seatbelt profile, which denies every file read and write that it does
-  not name. The profile leaves open the network and every write inside `~/Research` outside the
-  repository parts that it denies, such as `~/Research/.claude/hooks`, which the session sandbox
-  denies: through Kaimon's `ex`, code can write a hook that a later session runs outside every
-  sandbox. A confined process can also write text into any terminal of the user.
+  not name. Kaimon's profile leaves open the network and every write inside `~/Research` outside
+  the repository parts that it denies, such as `~/Research/.claude/hooks`, which the session
+  sandbox denies: through Kaimon's `ex`, code can write a hook that a later session runs outside
+  every sandbox. A process under Kaimon's profile can also write text into any terminal of the
+  user.
   [The daemon profiles](sandbox.md#the-daemon-profiles) give the rules in full. On Linux, and for
   every other MCP server, no profile applies.
 - **OpenCode and oh-my-pi have no sandbox of their own.** Started without `agentbox`, their
@@ -116,10 +117,11 @@ decide that a rule does not work.
 These safeguards are decided, and none of them runs yet. [Sandboxes](sandbox.md#planned) gives
 each sandbox item in more detail.
 
-- **A guard against a session outside the launcher** (planned): `agentbox` stops being opt-in.
+- **A guard against a session with no sandbox** (planned): a guard hook refuses every tool call
+  when `~/.ssh` is readable and no sandbox is on.
 - **The daemon profiles on Linux** (work in progress): the Kaimon server and the `julia-update`
   job under `bwrap`, with the rules of the macOS profiles.
 - **Kaimon without the network** (planned): only the package servers stay reachable.
 - **The desktop apps under an outer sandbox** (planned), and **a Linux launcher** (planned).
-- **Keys out of plaintext files** (planned), and **a forge token per owner** (planned).
-- **An egress proxy** (planned, optional and last).
+- **Masked keys** (planned), and **a forge token per owner** (planned).
+- **A credential proxy** (planned, optional and last).

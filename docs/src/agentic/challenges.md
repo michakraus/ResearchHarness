@@ -27,8 +27,8 @@ describe the answers one by one.
 <PipelineFigure />
 
 *From a task to a merge.* A task becomes a spec. A builder writes the tests and the code, and the
-gates run on its branch. A blind critic judges the branch against the spec. A FAIL goes back to a
-new builder; a PASS opens a pull request, and you merge it. A defect outside every clause of the
+gates run on its branch. Blind critics judge the branch against the spec: two in round 1, then one
+in each verify round. A FAIL goes back to a new builder; a PASS opens a pull request, and you merge it. A defect outside every clause of the
 spec, in a class that the edge catalogue does not hold, becomes a new line of the catalogue, and
 the next spec decides that edge in advance.
 

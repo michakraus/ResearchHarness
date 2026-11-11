@@ -18,7 +18,7 @@ sandbox around a whole frontend, its own process and every command that it start
 | sandbox | wraps | on | turned on by |
 |:--|:--|:--|:--|
 | [the session sandbox](#the-session-sandbox) | each shell command of a Claude Code session | macOS, Linux | the settings template; always on |
-| [the launcher `agentbox`](#the-launcher-agentbox) | a whole CLI frontend: `claude`, `opencode`, `omp` or `agy` | macOS, Linux | you, by starting the frontend through `agentbox` |
+| [the launcher `agentbox`](#the-launcher-agentbox) | a whole CLI frontend: `claude`, `opencode`, `omp` or `agy` | macOS; on Linux planned | you, by starting the frontend through `agentbox` |
 | [the daemon profiles](#the-daemon-profiles) | the Kaimon server and the `julia-update` job | macOS; on Linux work in progress | `harness setup`, in the launch agents |
 
 ## The session sandbox
@@ -34,13 +34,14 @@ command of a session:
 | `autoAllowBashIfSandboxed` | `true` | a sandboxed command runs with no prompt; the [deny list](permissions.md#deny) still applies |
 | `excludedCommands` | `git`, `gh`, `glab`, `ps` | these run outside the sandbox |
 
-**Files.** The write allowlist holds `~/Research`, `~/.julia`, the temporary directories and a few
-directories of `~/.claude`. The write deny list holds the installed files, the settings and the
+**Files.** The write allowlist holds `~/Research`, `~/.julia`, the temporary directories, the
+cache of PoCL, the directories of rtk and a few directories of `~/.claude`. The write deny list holds the installed files, the settings and the
 git hooks, and each `Edit` deny of the permission lists. The read deny list holds the files of
 keys and tokens, and each `Read` deny.
 
 **Network.** The allowlist is strict: a host that is not on it is refused. `settings/network.toml`
-lists the hosts in three groups, and the profile can add its own:
+lists the hosts in three groups, and the profile can add its own. A fourth key, `deny`, names a
+host that reaches neither:
 
 | group | reaches the host |
 |:--|:--|
@@ -51,7 +52,8 @@ lists the hosts in three groups, and the profile can add its own:
 **Why four commands run outside it.** A sandboxed `git` cannot write `.git`, and a sandboxed `gh`
 fails its TLS check with error `-26276` on macOS. So `git`, `gh`, `glab` and `ps` are excluded. A
 command runs outside the sandbox only when every part of it starts with one of the four and no
-part redirects to or from a file; `cd <dir> && git commit` runs inside it, and fails. The
+part redirects to or from a file. `cd <other dir> && git commit` would run inside it and fail, so
+the [sandbox check](guard-hooks.md#the-sandbox-check) refuses it before it runs. The
 permission lists and the [guard hooks](guard-hooks.md) still apply to an excluded command, and
 [Git safety](git-safety.md) describes the checks of `git` and `gh`.
 
@@ -67,8 +69,9 @@ agentbox claude
 agentbox opencode
 ```
 
-`agentbox` runs `~/.local/bin/srt --settings ~/.config/research-harness/sandbox/<frontend>.json`
-with the frontend. `harness install` writes one settings file for each CLI frontend, from the
+`agentbox` runs
+`~/.local/bin/srt --settings ~/.config/research-harness/sandbox/<policy name>.json -- <program>`,
+where the policy name is the frontend's name, and `antigravity` for `agy`. `harness install` writes one settings file for each CLI frontend, from the
 `sandbox` section of the template and the policy file `sandbox/policy.toml`, so every frontend
 gets the same file and network lists. Each frontend gets an argument that fits the outer sandbox:
 
@@ -159,23 +162,22 @@ each unit under `bwrap`, with the same file rules.
 
 These sandboxes are decided, and none of them runs yet:
 
-- **A guard against a session outside the launcher** (planned): a hook that refuses every tool
-  call when `~/.ssh` is readable and the sandbox is off, so that a Claude Code session started
-  outside `agentbox` cannot work.
+- **A guard against a session with no sandbox** (planned): a hook that refuses every tool call
+  when `~/.ssh` is readable and no sandbox is on: neither the launcher nor Claude Code's own
+  sandbox.
 - **Fewer prompts under the launcher** (planned): the permission prompts that the outer sandbox
   makes safe go, as a settings change with probes.
 - **The desktop apps** (planned): an outer sandbox for Claude Code's Code tab and the Antigravity
   desktop app, which `agentbox` cannot start, with the same probe battery.
 - **A Linux wrapper** (planned): the outer sandbox on Linux, tried first on one test machine, then
   the same battery and a GPU kernel on each Linux machine.
-- **Keys out of plaintext files** (planned): the tokens of the forges and the providers move into
-  the system's key store, so that no file read reaches them.
+- **Masked keys** (planned): the API keys stay in their denied files, and the launcher gives them
+  to `srt` as masked variables; the `gh` and `glab` tokens leave the key store for masked
+  variables too.
 - **A token per owner** (planned, waits for your tokens): a fine-grained forge token for each
   organisation, so that a command can write only where the task needs it.
 - **Kaimon without the network** (planned, waits for the daemon wrapper on Linux): the Kaimon server reaches
   only the package servers.
-- **An egress proxy** (planned, optional and last): a proxy as a launch agent, which lets an
-  allowed host through, refuses a denied host with a log line, refuses a loopback or private
-  address, and can write the keys into the requests for their named hosts, so that the agent sees
-  only a stand-in. The strict allowlist and the separate `fetch` group cover most of its use, so
-  it comes last.
+- **A credential proxy** (planned, optional and last): a proxy that writes the keys into the
+  requests for their named hosts, so that the agent sees only a stand-in. `srt` already filters
+  the network by host, so the proxy does not run by default.

@@ -9,8 +9,8 @@ agents of each step, and the rule of who merges.
 
 A builder that has a PASS does not open the pull request at once. It first runs
 [`julia-branch-verifier`](../components/agents.md#julia-branch-verifier) on the branch. The
-verifier finds the diff against the merge base and runs a pass of seven points on the diff only,
-for example correctness, type piracy and ambiguities with the
+verifier finds the diff against the merge base and runs a pass of numbered points on the diff
+only, for example correctness, type piracy and ambiguities with the
 [dispatch delta](static-checks.md#what-a-change-adds-to-the-method-table), type instability,
 avoidable allocations, stale comments, and history outside the `CHANGELOG.md`. It fixes what it can, and returns three things:
 
@@ -32,8 +32,9 @@ entry in the convention of the repository.
 A pull request is read on GitHub, by a reader who does not have your machine. So its text:
 
 - holds no local path, such as a path in your home directory or a task file;
-- names an issue with "relates to", never with a word that closes it on the merge, such as
-  "fixes" or "closes", unless the pull request is to close it;
+- holds no closing keyword before an issue number, such as "fixes #12" or "closes #12", unless
+  the part is to close that issue: the keyword closes the issue on the merge, even inside a
+  sentence that denies it;
 - holds the verifier's block, and the evidence of each clause.
 
 `gh pr create` needs `-R <owner>/<repo>`: the [guard](../safeguards/guard-hooks.md#the-gh-pr-create-check)
@@ -57,10 +58,12 @@ minutes must write its whole context to the cache again.
 
 ### Comments of a review bot
 
-Where a review bot such as CodeRabbit reviews the pull request, `build-part` answers each of its
-comments before the merge. A comment that names a defect goes to a fix round, like a critic's
-blocking defect. A comment that is wrong, or a matter of taste, is rejected with the reason. Each
-answer goes into the comment's thread: `fixed in <sha>` or `rejected: <reason>`.
+Where CodeRabbit reviews the pull request, `build-part` answers each of its comments before the
+merge. A comment that names a defect goes to a fix round, like a critic's blocking defect. A
+comment that is wrong, or a matter of taste, is rejected with the reason. An inline comment gets
+its answer in its thread, `fixed in <sha>` or `rejected: <reason>`; the comments of a review body
+get one comment on the pull request. A defect that CodeRabbit finds in its review of the fix goes
+to you, not to another fix round.
 
 ## Who merges
 
@@ -73,8 +76,10 @@ The harness holds the line in three places:
 
 - **The permission settings** put `gh pr merge` on the `ask` list, so every merge by an agent
   shows you a prompt ([Permissions](../safeguards/permissions.md)).
-- **The agents** of the loop and of the review never merge: the builders, the critics, the
-  verifier, the reviewer and the shepherd.
+- **The agents** of the loop never merge: the builders, the critics and the verifier. The
+  shepherd never merges either. The reviewer may merge a pull request that it reviewed, once the
+  required checks are green, only on your explicit go-ahead, and never one that the session that
+  started it opened.
 - **[`/merge-pr`](../components/commands.md#merge-pr)** is your explicit go-ahead to merge, and it
   still refuses a pull request that its session opened or pushed to. Otherwise it waits for the
   required checks, merges with `gh pr merge --merge --delete-branch`, removes the worktree and the
@@ -87,5 +92,6 @@ you have said so in that session. In most cases you merge yourself, on GitHub.
 
 The worktree of the part goes, with `git worktree remove` from the main checkout, and the local
 branch with `git branch -d`. The task file records the merge, and the part's state becomes
-`merged`. A part that waits on this one merges `main` into its own branch before its pull request
-opens ([The builder-critic loop](loop.md#several-parts-at-once)).
+`merged`. A part that waits on this one starts only now, in a worktree from the new `main`. Parts
+that only add lines to a shared `CHANGELOG.md` rebase
+([The builder-critic loop](loop.md#several-parts-at-once)).

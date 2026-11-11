@@ -46,7 +46,8 @@ not stop.
 The split decides how a risk is handled:
 
 - **A risk that comes from a mistake** gets a check of the text: a deny rule, a guard hook, a
-  leak check. The check also tells the agent what to do instead, so the next command is right.
+  leak check. A guard hook and a leak check also tell the agent what to do instead, so the next
+  command is right; a deny rule only refuses.
 - **A risk that comes from reach or from injection** needs the boundary. A text check helps, but
   only the sandbox holds against a command that the check does not read.
 

@@ -51,10 +51,10 @@ not write the same files.
   `main` that can lag. A worktree of a sub-agent gets the slug `agent-<hex>`, detached at
   `origin/HEAD`, and the agent makes its own branch.
 - **No forced removal.** The `WorktreeRemove` hook removes a worktree without `--force`, so a
-  worktree with changes stays. A forced `git worktree remove` that would lose commits or tracked
-  changes asks you ([the git write check](guard-hooks.md#the-git-write-check)).
-- **No move out of the tree.** The directory check refuses a move of the session out of the
-  research tree, and asks before a worktree is removed.
+  worktree with changes stays. A forced `git worktree remove` asks you unless nothing can be lost
+  ([the git write check](guard-hooks.md#the-git-write-check)).
+- **No silent move out of the tree.** The directory check asks before the session moves out of
+  the research tree, and before a worktree is removed.
 
 A worktree goes when its branch merges: `git worktree remove <path>` from the main checkout, then
 `git branch -d`. [The research tree](../research-tree.md#temporary-work) names the place.
@@ -66,14 +66,15 @@ state and wrong in another:
 
 | command | the check |
 |:--|:--|
-| `git worktree remove --force` | asks when the worktree holds commits that no other branch has, or tracked changes; passes otherwise |
+| `git worktree remove --force` | passes when the worktree is below `~/Research/.worktrees/`, a remote-tracking branch contains its `HEAD`, and no tracked file is changed; asks otherwise |
 | `git cherry-pick` | asks outside a worktree or a checkout of your own organisations |
 | `git push --force-with-lease` | refuses a lease push to the default branch, or one that names no branch; asks for a push to another organisation; passes a lease push of a topic branch of your own organisation |
 
 Other guards of git and `gh`:
 
 - [The rm check](guard-hooks.md#the-rm-check) asks for a `git rm` outside a worktree, and for a
-  `git merge` outside one.
+  `git rm -f` inside one too; it asks for a `git merge` outside a worktree, except a plain
+  fast-forward or `--no-edit` merge.
 - [The `gh pr create` check](guard-hooks.md#the-gh-pr-create-check) refuses a pull request that
   names no repository with `-R`, and asks for one outside your own organisations.
 - [The `gh api` check](guard-hooks.md#the-gh-api-check) refuses a DELETE, passes a review or a
@@ -81,8 +82,10 @@ Other guards of git and `gh`:
 - [The archive check](guard-hooks.md#the-archive-check) asks for a `git archive` that writes its
   file with `-o`.
 - [The sandbox check](guard-hooks.md#the-sandbox-check) refuses the forms that fail in the sandbox
-  with a misleading error: a `git` write nested in `$(…)` or after a `cd`, a `$?`, a path argument
-  to `git init`, `git clone` or `git worktree add`, and a `git init` inside a working tree.
+  with a misleading error: a `git` write nested in `$(…)` or after a `cd` to another directory, a
+  `$?`, an absolute, `~`, `$` or `..` path argument to `git init`, `git clone`,
+  `git worktree add` or `move` or `git bundle create`, and a `git init` or `git clone` inside a
+  working tree.
 
 ## Pushes
 
@@ -105,7 +108,8 @@ A push is the step where a local mistake becomes public. The checks:
 
 ## Merges
 
-A merge is an `ask` rule, so it always shows you a prompt. The rule of who merges is in
+The merge of a pull request, `gh pr merge`, is an `ask` rule, so it always shows you a prompt. A
+local `git merge` is allowed. The rule of who merges is in
 [Review and pull requests](../agentic/review.md#who-merges): no agent merges a pull request that
 its own session opened or pushed to, and `/merge-pr` refuses such a pull request too.
 

@@ -37,10 +37,13 @@ the tools that are not shell commands.
 ### Ask
 
 The `ask` list holds the steps that you decide: a merge, a release, the creation, edit or fork of
-a repository, a deletion on a remote (`git push --delete`, a tag deleted), `git revert`, the
-`git -C` forms of these, `git archive -o`, a `gh` write with `-R` outside your own organisations,
-and an edit of a skill that does not come from the harness. A prompt is a real control: you see
-the exact call, and nothing runs until you answer.
+a repository, a deletion on a remote (`git push --delete`, a push of `:<ref>`), a local tag
+deleted or moved (`git tag -d`, `-f`), `git revert`, the `git -C` forms of these,
+`git archive -o`, the `gh issue create` forms with `-R` after other arguments and the `gh`
+comments that name two repositories or a URL, and an edit of a skill that does not come from the
+harness. A `gh` write outside your own organisations matches no `allow` rule and runs outside the
+sandbox, so it asks too. A prompt is a real control: you see the exact call, and nothing runs
+until you answer.
 
 ### Deny
 
@@ -53,10 +56,11 @@ The `deny` list holds the forms that are never right in a session:
   push to `main` or `master`, `gh repo delete`, a `gh api` DELETE, and destructive system commands.
 - **Sweeps**: `git add -A`, `git commit -a`, `git commit --amend`, and the `git stash` forms that
   act on everything that changed ([Git safety](git-safety.md#staging)).
-- **Ways around a gate**: `git config --global`, `git -c core.hooksPath=…` and the other `-c` forms
-  that change a hook, a credential helper or an executable path.
+- **Ways around a gate**: `git config --global`, `git -c core.hooksPath=…`, the `-c` forms of
+  `credential`, `http`, `include` and `protocol`, and `git --exec-path`.
 - **The network outside the tools**: `curl`, `ssh` and `rtk curl`. A web read goes through the
-  `WebFetch` tool, whose hosts the template lists.
+  `WebFetch` tool, whose hosts `harness install` adds from `settings/network.toml` and the
+  profile's overlay.
 - **Self-configuration and persistence**: `claude mcp`, `launchctl` and `crontab`, which add a
   program that runs later, outside every check of the session.
 - **Secrets**: `gh auth token`, and `Read` denies on the files that hold keys and tokens.
@@ -98,7 +102,7 @@ far as that frontend's grammar can say the same:
 | frontend | gets |
 |:--|:--|
 | OpenCode | the `ask` and `deny` rules, as its permission block; `ask` first, because OpenCode takes the last match. The `allow` list is not ported: OpenCode allows by default, and the guard plugin checks the rest |
-| oh-my-pi | the `Bash` patterns and the path list `guard-paths.json`, with `approvalMode: yolo`; its guard extension refuses what the rules refuse |
+| oh-my-pi | the `Bash` rules of all three lists as `deny`, `prompt` and `allow` patterns, and the path list `guard-paths.json`, with `approvalMode: yolo`. Its guard extension refuses the paths of the `Edit` denies and of the `Edit` asks, which it cannot ask for, and runs the guard checks |
 | Antigravity | all three lists, where its grammar can state the rule |
 
 [`harness permissions`](../harness-command.md#permissions) regenerates the OpenCode block and the

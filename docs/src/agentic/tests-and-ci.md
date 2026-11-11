@@ -59,21 +59,26 @@ command under five minutes itself, and leaves the longer runs to its caller.
 <ChecksFigure />
 
 *The checks between an edit and a merge.* An edit meets three groups of checks before you merge
-it: the pre-commit hook on every commit, the part's gate in every build round, and CI on every
-push of the branch.
+it: the pre-commit hook on every commit, the checks of the builder-critic loop, and CI on every
+push to the pull request.
 
 1. **The pre-commit hook**, on every commit: the test layout, JuliaFormatter, Unicode NFC, and
    whether the package loads in a fresh process. `fatou lint` runs too, as advice only. The hook is
    the same in every package, and `harness githooks --apply` installs it
    ([`pre-commit`](../components/githooks.md#pre-commit-pre-commit-jl-and-pre-commit-test-jl)).
-2. **The part's gate**, in every build round: [`gate.jl`](specs-and-gates.md#the-steps-of-gate-jl)
-   runs the affected tests, the named mutants, the generated mutants, the dispatch delta and the
-   format, and `julia-test-runner` runs the full suite beside the critic.
-3. **CI**, on every push of the branch and on the pull request: the workflow `CI.yml` below.
+2. **The builder-critic loop**: in each round the builder runs `run-tests.jl affected` and the
+   [named mutants](mutants.md), the round-1 critics run the named mutants again, and
+   `julia-test-runner` runs the full suite beside the critic. Before the pull request, the verifier
+   runs the [dispatch delta](static-checks.md#what-a-change-adds-to-the-method-table). For a part
+   with a spec-delta spec, each round also runs the spec's checks on the head and pushes the branch
+   for CI. [`gate.jl`](specs-and-gates.md#the-steps-of-gate-jl) runs these checks of a Julia
+   package as one command, when you or an agent call it.
+3. **CI**, on every push to an open pull request, and on a push to `main` or `master`: the
+   workflow `CI.yml` below.
 
 The shared pre-push hook runs `Pkg.test` on a push to `main` or `master` only; a push of another
-branch passes at once, and CI tests it. **Known issue (K133):** the hook tests the working tree,
-not the commit that it pushes.
+branch passes at once, and CI tests it once its pull request is open. **Known issue (K133):** the
+hook tests the working tree, not the commit that it pushes.
 
 ## The CI of a package
 
@@ -86,7 +91,7 @@ matches its template:
 |:--|:--|:--|
 | `test` | the tests on Julia `min` and `1`, on Ubuntu, macOS and Windows; `pre` and `nightly` on Ubuntu | yes, except `pre` and `nightly` |
 | `downgrade` | the tests with each direct dependency at the lower bound of its `[compat]` entry | no: information only |
-| `doctest` | the doctests of the manual, where `docs/Project.toml` exists | yes |
+| `doctest` | the doctests of the docstrings and of the manual, where `docs/Project.toml` exists | yes |
 | `Documenter.yml` | the documentation build and its deploy | no |
 | `TagBot.yml`, `codecov.yml`, `dependabot.yml` | the tag of a registered release, the coverage threshold, the weekly `[compat]` proposals | no |
 

@@ -35,11 +35,11 @@ const task = centre({ title: 'A task file', icon: 'paper', lines: ['the goal and
 const spec = centre({ title: 'The spec', icon: 'rule', lines: ['Done when, edges,', 'named mutants'] }, below(task))
 const builder = centre({ title: 'A builder', icon: 'agent', lines: ['writes the tests,', 'then the code'] }, below(spec))
 const gates = panel(CX - 310, below(builder), 620, [
-  { title: 'Static checks', icon: 'code', lines: ['format, NFC,', 'dispatch delta'] },
+  { title: 'Pre-commit', icon: 'code', lines: ['format, NFC,', 'package load'] },
   { title: 'The tests', icon: 'check', lines: ['the affected tests,', 'the full suite'] },
   { title: 'Named mutants', icon: 'warning', lines: ['each one caught', 'by a kept test'] }
 ])
-const critic = centre({ title: 'A blind critic', icon: 'verdict', lines: ['reads the spec and', 'the branch only'] }, below(gates))
+const critic = centre({ title: 'Blind critics', icon: 'verdict', lines: ['two in round 1, then', 'one per verify round'] }, below(gates))
 const pr = centre({ title: 'A pull request', icon: 'pull-request', lines: ['the verifier,', 'then CI'] }, below(critic))
 const merge = centre({ title: 'You merge', icon: 'user', lines: ['when the required', 'checks pass'] }, below(pr))
 const catalogue = { title: 'Edge catalogue', icon: 'library', lines: ['one line for each', 'class found late'], x: WIDTH - 210, y: critic.y, w: 210, h: H2 }
@@ -83,7 +83,7 @@ const ARROWS: { from: string, to: string, points: Point[], label?: string, label
     :width="WIDTH"
     :height="HEIGHT"
     title="From a task to a merge"
-    desc="A task file holds the goal and the done condition. The skill plan-parts writes the spec of each part: the Done when, the decided edges and the named mutants. A builder gets the spec bundle and writes the tests, then the code. In each round the gates run: the static checks, the tests and the named mutants. When they all pass, a blind critic reads the spec and the branch only. A FAIL goes back to a new builder. A PASS opens a pull request, which the verifier and CI check, and you merge it when the required checks pass. A defect of a new class goes into the edge catalogue, which the next spec reads."
+    desc="A task file holds the goal and the done condition. The skill plan-parts writes the spec of each part: the Done when, the decided edges and the named mutants. A builder gets the spec bundle and writes the tests, then the code. In each round the gates run: the pre-commit hook with the format, the Unicode normal form and the package load, the tests and the named mutants. When they all pass, blind critics read the spec and the branch only: two in round 1, then one per verify round. A FAIL goes back to a new builder. A PASS opens a pull request, which the verifier and CI check, and you merge it when the required checks pass. A defect of a new class goes into the edge catalogue, which the next spec reads."
   >
     <FigCard v-bind="task" accent="slate" />
     <FigCard v-bind="spec" accent="violet" />

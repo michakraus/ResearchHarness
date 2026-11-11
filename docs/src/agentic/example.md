@@ -60,17 +60,16 @@ The controller SHALL return a factor in [0.2, 5.0] for every finite error estima
 - catches: MU1, the upper bound removed: `test/controller.jl`, testset "bounds"
 ```
 
-Its *Decided at the edges* gives one line per edge:
+In the spec-delta format each decided edge is a scenario of the delta, with its check. The edges
+of part A, in short:
 
-```markdown
-- an error estimate of `NaN` or `Inf`: the factor is `0.2`, the smallest step
-- an error estimate of `0.0`: the factor is `5.0`, the largest step
-- `Float32` input: the factor is a `Float32`; every constant is converted with `T(…)`
-- a subnormal error estimate: treated as `0.0`
-```
+- an error estimate of `NaN` or `Inf`: the factor is `0.2`, the smallest step;
+- an error estimate of `0.0`: the factor is `5.0`, the largest step;
+- `Float32` input: the factor is a `Float32`; every constant is converted with `T(…)`;
+- a subnormal error estimate: treated as `0.0`.
 
-Its *Tests catch* names the mutants that the tests must catch, such as MU1, the upper bound
-removed, and MU2, the `NaN` branch deleted.
+The `catches:` lines and the mutant table of the spec name the mutants that the tests must catch,
+such as MU1, the upper bound removed, and MU2, the `NaN` branch deleted.
 
 Two checks run before the build ([Specs and gates](specs-and-gates.md#the-premise-check)). A
 `reader` agent measures each fact of the spec against the code, and finds one false fact: the
@@ -78,10 +77,10 @@ integrator is in `src/integrate.jl`, not in `src/step.jl` as the first draft sai
 fixes it. Then `spec-gate.py` runs `spec-validate.py`, which runs every premise on the base commit:
 
 ```bash
-python3 ~/Research/Harness/scripts/spec-gate.py "Tasks/Add the adaptive step to Pendulum.md" A
+cd ~/Research && python3 Harness/scripts/spec-gate.py "Tasks/Add the adaptive step to Pendulum.md" A
 ```
 
-It prints `A PASS`, and planning ends.
+Its first line is `A PASS`, followed by the validator's lines, and planning ends.
 
 ## 4. Build
 
@@ -91,8 +90,8 @@ You start the loop:
 
 The skill [`build-part`](../components/skills.md#build-part) writes the spec bundle of part A and
 spawns `julia-builder` in a new worktree, `~/Research/.worktrees/Pendulum-agent-<id>`. The builder
-writes the tests first, then `step_factor`, then runs `gate.jl`, the named mutants and its own
-mutants. It returns:
+writes the tests first, then `step_factor`, then runs `run-tests.jl affected`, and the named
+mutants and its own mutants with `mutate.jl`. It returns:
 
 ```text
 Verdict: ready for critic
@@ -100,7 +99,8 @@ Mutants: MU1 CAUGHT, MU2 CAUGHT; own: 6 CAUGHT, 0 SURVIVED
 ```
 
 **Round 1.** Two `julia-critic` agents judge the branch at high effort, each blind to the other and
-to the builder, while `julia-test-runner` runs the full suite. One critic passes. The other fails
+to the builder, while `julia-test-runner` runs the full suite. Because part A has a spec in the
+spec-delta format, the round also runs the spec's checks on the head and pushes the branch for CI. One critic passes. The other fails
 the part with one blocking defect:
 
 ```text
@@ -133,8 +133,9 @@ the catalogue after the loop.
 ## 5. Decide and review
 
 While part A is in review, you answer the question of part B: the root mean square, scaled by the
-tolerance. The session writes the decision into the task file with your name and the date, and
-gives part B the tier `reviewed`, because nothing in it is open any more.
+tolerance. The session writes the decision into the task file with your name and the date, writes
+the spec of part B in the spec-delta format, sets its `sections` cell to `spec, §V, §L`, and, with
+your yes, gives it the tier `reviewed`, because nothing in it is open any more.
 
 CI runs on the pull request of part A: the tests on Julia `min` and `1` on three systems, the
 downgrade job and the doctests ([Tests and CI](tests-and-ci.md#the-ci-of-a-package)). You read the
@@ -151,7 +152,7 @@ and one `part-critic`. The critic passes the docs page at once, your session rea
 the builder opens the pull request. Part B goes the same way.
 
 When the three pull requests are merged, the done condition holds. The session writes
-`status: done` and `completed:` into the task file and moves it into `Tasks/Archive/`.
+`status: done` into the task file and moves it into `Tasks/Archive/`.
 
 ## What the example shows
 

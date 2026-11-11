@@ -19,7 +19,7 @@ const mutant = { title: 'A mutant', icon: 'edit', lines: ['max(f, 0.2): the', 'u
 const tests = { title: 'The tests', icon: 'check', lines: ['run on a copy', 'of the package'], x: WIDTH - W, y: 0, w: W, h: H2 }
 const caught = { title: 'Caught', icon: 'verdict', lines: ['a test sees', 'the change'], x: 370, y: H2 + ROW, w: W, h: H2 }
 const survived = { title: 'Survived', icon: 'warning', lines: ['no test sees', 'the change'], x: WIDTH - 200, y: H2 + ROW, w: 200, h: H2 }
-const close = { title: 'Close it', icon: 'check', lines: ['a new test,', 'or a reason'], x: WIDTH - 200, y: survived.y + H2 + ROW, w: 200, h: H2 }
+const close = { title: 'Close it', icon: 'check', lines: ['a new test; a reason', 'if it is not named'], x: WIDTH - 200, y: survived.y + H2 + ROW, w: 200, h: H2 }
 const HEIGHT = close.y + close.h
 
 const mid = (b: Box) => b.y + b.h / 2
@@ -53,7 +53,7 @@ const ARROWS: { from: string, to: string, points: Point[], label?: string, label
     :width="WIDTH"
     :height="HEIGHT"
     title="From a source line to a closed survivor"
-    desc="A source line, such as clamp(f, 0.2, 5.0) in src/step.jl, becomes a mutant: one changed line, here max(f, 0.2), with the upper bound gone. The tests run on a copy of the package. When a test fails, the mutant is caught: a test sees the change. When every test passes, the mutant survives: no test sees the change. The builder closes a survivor with a new test that catches it, or with a reason why the change does not matter."
+    desc="A source line, such as clamp(f, 0.2, 5.0) in src/step.jl, becomes a mutant: one changed line, here max(f, 0.2), with the upper bound gone. The tests run on a copy of the package. When a test fails, the mutant is caught: a test sees the change. When every test passes, the mutant survives: no test sees the change. The builder closes a survivor with a new test that catches it. For a mutant that the spec does not name, a reason why the change does not matter also closes it."
   >
     <FigCard v-bind="source" accent="slate" />
     <FigCard v-bind="mutant" accent="amber" tinted />

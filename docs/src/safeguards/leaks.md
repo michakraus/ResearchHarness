@@ -33,14 +33,15 @@ needs your approval and its own line in the changelog.
 ## `harness leaks`
 
 [`harness leaks`](../harness-command.md#leaks) searches the tracked files of the harness and their
-paths for two sets of words, each as a whole word:
+paths for two sets of words:
 
-- the strings of the profile's `leak` list;
-- the names of the research tree: each directory below each of the profile's `repository_roots`,
-  and each organisation of its `org` list.
+- the strings of the profile's `leak` list, anywhere in a line;
+- the names of the research tree, each as a whole word: each directory below each of the
+  profile's `repository_roots`, and each organisation of its `org` list.
 
 It also renders the templates with the example profile `examples/profile.toml` and searches the
-result, so a template that would write a private string into an installed file is found too. With
+result for the `leak` strings, so a template that would write a private string into an installed
+file is found too. With
 `--commits FILE`, it also searches the paths and the lines that each commit of the file adds, and
 each commit's message.
 

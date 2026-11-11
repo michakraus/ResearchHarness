@@ -130,4 +130,5 @@ says how a worktree is made and removed.
 
 Parts that touch no common file can run at the same time, each in its own worktree. The collision
 map of the plan says which parts share files; [Tasks](tasks.md#the-collision-map) describes it.
-A part that merges later merges `main` into its branch before its pull request opens.
+A part that is `blocked by` another starts only after that part merges, in a worktree from the
+new `main`. Parts that only add lines to a shared `CHANGELOG.md` resolve it by a rebase.

@@ -9,8 +9,8 @@ decides each one before the build. This page describes the catalogue and how it 
 
 ## The edge catalogue
 
-The catalogue is one file of the harness, `skills/build-part/edges.md`. It has about 260 one-line
-entries in seven sections, one for each kind of part:
+The catalogue is one file of the harness, `skills/build-part/edges.md`. It has about 260 entries,
+one bullet each, in seven sections, one for each kind of part:
 
 | kind of part | entries |
 |:--|--:|
@@ -22,8 +22,9 @@ entries in seven sections, one for each kind of part:
 | a lint cleanup | 4 |
 | a migration of tests or of text | 75 |
 
-An entry names the class of input, the mechanism of the failure, the remedy, and the part that
-found it. Two entries of the section for a numerical method:
+An entry names the class of input. Most entries also give the mechanism of the failure and the
+remedy, and a new entry names the part that found it. Two short entries of the section for a
+numerical method:
 
 ```markdown
 - a subnormal input; a result that underflows to zero; an anchor value near `floatmin`
@@ -49,7 +50,9 @@ Each role uses the catalogue:
 - **The planner** writes *Decided at the edges* from the section of the part's kind: one line per
   edge, with the answer. An edge that it cannot decide makes the part a `decision` part, which
   waits for you ([`plan-parts`](../components/skills.md#plan-parts)).
-- **The spec gate** refuses to start a `build` part whose spec has no *Decided at the edges*
+- **The spec gate** refuses a `build` part in `Packages/` or `Experiments/` whose sections lack
+  *Decided at the edges* or *Tests catch*. A spec in the spec-delta format must pass
+  `spec-validate.py` instead, and there each decided edge is a scenario of the delta
   ([Specs and gates](specs-and-gates.md#the-gates)).
 - **The critic** of round 1 probes every edge of the part's kind that the section does not decide,
   then inputs that the builder did not try.
@@ -68,9 +71,10 @@ with its reproducer, and it does not block. A verify round also records a defect
 diff as found late. A found-late defect shows an input class that the spec did not reach.
 
 After the loop, `build-part` records each class of a found-late defect that the catalogue does not
-hold, as one line in the section of the part's kind, with the part that found it. The line goes
-into the source of the catalogue in the harness, through a pull request of the harness with a
-changelog fragment `changelog.d/edges-<name>.md`. The next `harness install --apply` installs it.
+hold, as one line in the section of the part's kind, with the part that found it. `build-reviewed`
+adds each class of defect that its critic found and that the catalogue does not hold. The line
+goes into the source of the catalogue in the harness, with a changelog fragment, and the next
+`harness install --apply` installs it.
 
 ## The limits
 
