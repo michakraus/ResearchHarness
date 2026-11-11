@@ -33,7 +33,7 @@ deleted, so that the instructions do not grow and nothing says the same thing tw
 | [public API diff](#the-public-api-before-a-release) | a public name or method that goes away | the `julia-release` skill, before a release | yes: the skill stops and asks you |
 | Aqua | piracy, ambiguities, stale dependencies and other package defects | the package's quality tests, `test/quality/aqua.jl` | yes, in the tests |
 | JET | type instabilities on chosen calls | the package's quality tests, where it has a hot path | yes, in the tests |
-| [ast-grep rules](#syntax-rules) | five classes of defect from the reviews | the harness CI, on its own rule tests | planned for every commit |
+| [ast-grep rules](#syntax-rules) | five classes of defect from the reviews | pre-commit, on the staged files, as [stage 2.7](../components/githooks.md#pre-commit-pre-commit-jl-and-pre-commit-test-jl); the harness CI, on its own rule tests | yes, on a line that the commit adds |
 | ruff and basedpyright | style, lint and strict types of the harness's Python | the harness's own pre-commit and pre-push hooks, and its CI | yes |
 
 The pre-commit hook comes from the harness and is the same in every package: `harness githooks
@@ -93,24 +93,26 @@ grammar. The harness has five such rules, each with a test of positive and negat
 
 A hit on a line can be silenced with `# ast-grep-ignore: <rule-id>` on that line.
 [Jobs and configuration](../components/other.md#research-sgconfig-yml) describes the configuration.
-**Work in progress:** a pre-commit stage that runs the rules on every commit and blocks a hit on an
-added line, and deletes the prose that the rules replace. The rules run only in the harness CI so
-far.
+The pre-commit hook runs the rules on every commit, as
+[stage 2.7](../components/githooks.md#pre-commit-pre-commit-jl-and-pre-commit-test-jl). A hit on
+a line that the commit adds blocks the commit, and a hit on another line only warns. The ast-grep
+rules take the place of their prose in the rule `julia-code` and in the edge catalogue
+([A check in place of a rule](#a-check-in-place-of-a-rule)). The harness CI runs the rule tests.
 
 ## Planned checks
 
 These checks are decided or under discussion, and none of them runs yet:
 
-- **Rules of medium risk** (planned): an accumulator started from a float literal in generic code,
-  `@test_throws` with a bare type or an unanchored phrase, and a `::Base.Callable` argument with no
-  type parameter. They start as advisory, and block only after a count of their false positives
-  over the packages.
-- **Checks that load the code** (planned): helpers for groups of defects that only a loaded
-  package shows, such as an element type that a function does not keep, or a device backend that a
-  path does not support.
-- **A catalogue of defensive Julia** (planned): from the findings of the reviews, the code that
-  failed, the code that holds, and the check that would have caught it. A triple with a mechanical
-  check becomes a check.
+- **Rules of medium risk** ([planned](../planned.md#medium-risk-rules)): an accumulator started
+  from a float literal in generic code, `@test_throws` with a bare type or an unanchored phrase, and
+  a `::Base.Callable` argument with no type parameter. They start as advisory, and block only after
+  a count of their false positives over the packages.
+- **Checks that load the code** ([planned](../planned.md#checks-that-load-code)): helpers for
+  groups of defects that only a loaded package shows, such as an element type that a function does
+  not keep, or a device backend that a path does not support.
+- **A catalogue of defensive Julia** ([planned](../planned.md#defensive-julia)): from the findings
+  of the reviews, the code that failed, the code that holds, and the check that would have caught
+  it. A triple with a mechanical check becomes a check.
 - **Interface conformance** (under discussion): a test that each concrete type of a package meets
   the interface of its abstract type, so that a default method on the supertype cannot answer
   wrongly for a subtype.

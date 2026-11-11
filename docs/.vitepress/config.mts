@@ -113,7 +113,9 @@ export default defineConfig({
         items: [
           { text: 'Architecture', link: '/architecture' },
           { text: 'Private data across machines', link: '/private-data' },
-          { text: 'Research memory', link: '/memory' }
+          { text: 'Research memory', link: '/memory' },
+          { text: 'Development', link: '/development' },
+          { text: 'Planned work', link: '/planned' }
         ]
       },
       {
@@ -129,8 +131,7 @@ export default defineConfig({
           { text: 'The srt settings', link: '/components/sandbox' },
           { text: 'Jobs and configuration', link: '/components/other' }
         ]
-      },
-      { text: 'Development', link: '/development' }
+      }
     ]
   }
 })

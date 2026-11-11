@@ -284,10 +284,20 @@ the introduction and the four call graphs of `agentic/agents.md`, that no edge o
 every colour of the figures has a value for the dark theme. It finds the four walk-throughs by
 their titles, and checks each animated figure: its SVG parses as XML, it holds no script, it
 loops, it stops under `prefers-reduced-motion`, and its token and its steps keep their timing.
-It first runs the cases of `docs/scripts/figures.test.mjs` and `docs/scripts/newcomer.test.mjs`.
-Last, `docs/scripts/newcomer.mjs` checks the introductory pages for new readers, which it lists:
-the glossary of `concepts.md` has one entry for each of its terms, the first use of a term on each
-of these pages links to its entry, and none of these pages holds a `file:line`.
+It first runs the cases of `docs/scripts/figures.test.mjs`, `docs/scripts/newcomer.test.mjs` and
+`docs/scripts/planned.test.mjs`. Then `docs/scripts/newcomer.mjs` checks the introductory pages
+for new readers, which it lists: the glossary of `concepts.md` has one entry for each of its terms,
+the first use of a term on each of these pages links to its entry, and none of these pages holds a
+`file:line`.
+
+Last, `docs/scripts/planned.mjs` checks the page [Planned work](planned.md) against the other
+pages. A page marks a feature that is not finished with `(planned)`, `(planned, …)`,
+`(work in progress)`, a bold `**Planned:**` or `**Work in progress:**`, or a table cell such as
+"macOS; on Linux planned", and the word of the mark links the feature's row on `planned.md`:
+`([planned](../planned.md#masked-keys))`. A row has an explicit anchor, `{#masked-keys}`. The check
+fails when a link names no row, when a row has no link from another page, and when a mark has no
+link to its row. The plain word in a sentence, such as "a planned change", is no mark. A feature
+that lands loses its row and its marks in the same change.
 
 The figures are Vue components in `docs/.vitepress/theme/figures/`, which the build renders to
 inline SVG, so a page shows them with JavaScript off. `FigCard`, `FigPanel` and `FigArrow` draw a

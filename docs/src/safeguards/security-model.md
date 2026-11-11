@@ -117,11 +117,14 @@ decide that a rule does not work.
 These safeguards are decided, and none of them runs yet. [Sandboxes](sandbox.md#planned) gives
 each sandbox item in more detail.
 
-- **A guard against a session with no sandbox** (planned): a guard hook refuses every tool call
-  when `~/.ssh` is readable and no sandbox is on.
-- **The daemon profiles on Linux** (work in progress): the Kaimon server and the `julia-update`
-  job under `bwrap`, with the rules of the macOS profiles.
-- **Kaimon without the network** (planned): only the package servers stay reachable.
-- **The desktop apps under an outer sandbox** (planned), and **a Linux launcher** (planned).
-- **Masked keys** (planned), and **a forge token per owner** (planned).
-- **A credential proxy** (planned, optional and last).
+- **A guard against a session with no sandbox** ([planned](../planned.md#no-sandbox-guard)): a
+  guard hook refuses every tool call when `~/.ssh` is readable and no sandbox is on.
+- **The daemon profiles on Linux** ([work in progress](../planned.md#daemon-profiles-linux)): the
+  Kaimon server and the `julia-update` job under `bwrap`, with the rules of the macOS profiles.
+- **Kaimon without the network** ([planned](../planned.md#kaimon-without-network)): only the
+  package servers stay reachable.
+- **The desktop apps under an outer sandbox** ([planned](../planned.md#desktop-apps)), and
+  **a Linux launcher** ([planned](../planned.md#linux-launcher)).
+- **Masked keys** ([planned](../planned.md#masked-keys)), and **a forge token per owner**
+  ([planned](../planned.md#token-per-owner)).
+- **A credential proxy** ([planned](../planned.md#credential-proxy), optional and last).

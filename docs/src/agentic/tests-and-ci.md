@@ -117,12 +117,14 @@ three workflows:
 
 ## Planned
 
-- **A regression set for the critics** (work in progress): known defects, planted in branches, to
+- **A regression set for the critics**
+  ([work in progress](../planned.md#critic-regression-set)): known defects, planted in branches, to
   measure whether a change of a critic's prompt finds more or fewer of them.
-- **Tests of the dependents** (planned): a change of a base package runs the tests of the packages
-  that depend on it, before its release.
-- **Property-based tests** (planned): generators for the inputs of a numerical method, so that a
-  test covers a class of inputs and not only the cases that its author chose.
+- **Tests of the dependents** ([planned](../planned.md#dependent-tests)): a change of a base
+  package runs the tests of the packages that depend on it, before its release.
+- **Property-based tests** ([planned](../planned.md#property-based-tests)): generators for the
+  inputs of a numerical method, so that a test covers a class of inputs and not only the cases that
+  its author chose.
 
 **In another language.** The tiers and the order of the checks work in any language. The harness's
 Python uses `harness test` as its gate, and `ruff` and `basedpyright` as its static checks;
