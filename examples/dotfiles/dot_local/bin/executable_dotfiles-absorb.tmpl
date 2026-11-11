@@ -1,0 +1,191 @@
+{{- /* This comment, not the shebang, starts the template, so a lint of each file that starts
+       with a shebang skips it; tests/update-check.py lints the rendered script. */ -}}
+#!/bin/bash
+# dotfiles-absorb: take this host's live edits of managed files back into the chezmoi source
+# ~/.local/share/chezmoi, on a new branch, and push that branch for review. It never applies,
+# never merges, and never moves main.
+#
+# It stops without a terminal, when HEAD is not main, when main is ahead of or diverged from
+# origin/main, and when the source has a local change other than a modified tracked file. It
+# sorts each line of `chezmoi status`: a file edited live since the last apply, and unchanged in
+# the source since, is re-added; a template edited so, and a file changed live and in the source
+# (a local change of its source file included), are listed with their hunk and the command
+# `chezmoi merge` for them. It shows what it would commit and asks; on y it makes the
+# branch absorb/<host>-<UTC time>, runs `chezmoi re-add`, commits, pushes the branch, switches back
+# to main, and prints the command that opens the pull request or merge request.
+set -euo pipefail
+
+{{ template "dotfiles-update-steps.sh" . }}
+
+HOST={{ .chezmoi.hostname | shellQuote }}
+
+if [ $# -ne 0 ]; then
+    echo "usage: dotfiles-absorb" >&2
+    exit 2
+fi
+
+dotfiles_require_terminal dotfiles-absorb
+cd "$DOTFILES_SOURCE"
+git fetch origin
+
+base=$(git rev-parse HEAD)
+current=$(git symbolic-ref -q --short HEAD || true)
+if [ "$current" != main ] || ! git merge-base --is-ancestor HEAD refs/remotes/origin/main; then
+    echo "dotfiles-absorb: HEAD (${current:-detached} at ${base:0:7}) is not main at or behind origin/main; nothing is absorbed." >&2
+    exit 1
+fi
+
+# The source's own local changes may only be modified tracked files, such as the templates that a
+# `chezmoi merge` of an earlier run wrote; they are reviewed and committed with the rest.
+changes=$(git status --porcelain --untracked-files=all)
+others=$(printf '%s\n' "$changes" | grep -vE '^( M|M |MM) ' | grep -v '^$' || true)
+if [ -n "$others" ]; then
+    echo "dotfiles-absorb: $DOTFILES_SOURCE has local changes other than modified files; nothing is absorbed:" >&2
+    echo "$others" >&2
+    exit 1
+fi
+
+# sha256 <file>: the SHA-256 of <file>, or of standard input for -.
+sha256() {
+    if command -v sha256sum >/dev/null; then
+        sha256sum "$1" | cut -d' ' -f1
+    else
+        shasum -a 256 "$1" | cut -d' ' -f1
+    fi
+}
+
+# unchanged_in_source <target>: true when the render of <target> is what chezmoi last wrote to it,
+# so the source has not changed the file since the last apply.
+unchanged_in_source() {
+    local written rendered
+    written=$(chezmoi state get --bucket=entryState --key="$HOME/$1" |
+        sed -n 's/.*"contentsSHA256": *"\([0-9a-f]*\)".*/\1/p')
+    rendered=$(chezmoi cat "$HOME/$1" | sha256 -)
+    [ -n "$written" ] && [ "$written" = "$rendered" ]
+}
+
+# The lists hold one target per line, relative to the home directory. Lists, not arrays: an empty
+# array is an unbound variable under set -u in the bash 3.2 of macOS.
+plain="" templates="" both="" skipped=""
+entries=$(chezmoi status --exclude=scripts)
+while IFS= read -r line; do
+    [ -n "$line" ] || continue
+    code=${line:0:2} target=${line:3}
+    if [ "$code" != MM ] || [ ! -f "$HOME/$target" ] || [ -L "$HOME/$target" ]; then
+        skipped+="$code $target"$'\n'
+    elif ! unchanged_in_source "$target"; then
+        both+="$target"$'\n'
+    elif [[ "$(chezmoi source-path "$HOME/$target")" == *.tmpl ]]; then
+        templates+="$target"$'\n'
+    else
+        plain+="$target"$'\n'
+    fi
+done <<<"$entries"
+
+while IFS= read -r entry; do
+    [ -n "$entry" ] || continue
+    echo "dotfiles-absorb: not absorbed (chezmoi status ${entry:0:2}): ~/${entry:3}"
+done <<<"$skipped"
+
+# hunks <list>: the hunk of each target of <list> as a change of its render, live edits as +.
+hunks() {
+    local target
+    while IFS= read -r target; do
+        [ -n "$target" ] || continue
+        chezmoi diff --no-pager --reverse ${DOTFILES_COLOR:+"--color=true"} "$HOME/$target"
+    done <<<"$1"
+}
+
+# merge_list: each template and each file changed on both sides, with its hunk and the command
+# that merges it into the source.
+merge_list() {
+    local target
+    while IFS= read -r target; do
+        [ -n "$target" ] || continue
+        echo "dotfiles-absorb: the template of ~/$target is not re-added; merge it with: chezmoi merge ~/$target"
+        hunks "$target"
+    done <<<"$templates"
+    while IFS= read -r target; do
+        [ -n "$target" ] || continue
+        echo "dotfiles-absorb: ~/$target changed live and in the source since the last apply; merge it with: chezmoi merge ~/$target"
+        hunks "$target"
+    done <<<"$both"
+}
+
+stop="nothing is absorbed. Run dotfiles absorb again and read the review to its end."
+if [ -n "$templates$both" ]; then
+    dotfiles_review dotfiles-absorb "$stop" merge_list
+fi
+
+if [ -z "$plain" ] && [ -z "$changes" ]; then
+    echo "dotfiles-absorb: nothing to re-add and no local change in the source; nothing is absorbed."
+    exit 0
+fi
+
+# commit_review: what the commit will hold, the live edits of the files to re-add and the local
+# changes of the source.
+commit_review() {
+    hunks "$plain"
+    git diff ${DOTFILES_COLOR:+"--color=always"} HEAD
+}
+
+branch="absorb/$HOST-$(date -u +%Y%m%d-%H%M%S)"
+dotfiles_review dotfiles-absorb "$stop" commit_review
+if ! dotfiles_confirm "dotfiles-absorb: commit this on the new branch $branch and push it?"; then
+    echo "dotfiles-absorb: nothing absorbed, nothing pushed."
+    exit 0
+fi
+
+# absorb: on the new branch, re-add the files to re-add and commit every change of the source,
+# unsigned: only the signed merge of dotfiles merge counts on main.
+absorb() {
+    local target targets=()
+    git switch --quiet -c "$branch" || return 1
+    while IFS= read -r target; do
+        [ -n "$target" ] || continue
+        targets+=("$HOME/$target")
+    done <<<"$plain"
+    if [ ${#targets[@]} -gt 0 ]; then
+        chezmoi re-add "${targets[@]}" || return 1
+    fi
+    git add --all || return 1
+    git commit --quiet --no-gpg-sign -m "Absorb the live edits of $HOST" \
+        -m "$(git diff --cached --name-status HEAD)" || return 1
+}
+if ! absorb; then
+    echo "dotfiles-absorb: the re-add or the commit on $branch failed; the source is at $(git symbolic-ref -q --short HEAD || git rev-parse --short HEAD), and nothing is pushed:" >&2
+    git status --short >&2
+    exit 1
+fi
+commit=$(git rev-parse --short HEAD)
+pushed=1
+git push origin "refs/heads/$branch" || pushed=""
+git switch --quiet main
+
+if [ -z "$pushed" ]; then
+    echo "dotfiles-absorb: the push of $branch was refused; the commit $commit stays on the local branch $branch, and HEAD is main. Push it with: git -C $DOTFILES_SOURCE push origin $branch" >&2
+    exit 1
+fi
+# The commit is on the remote; the local branch would only pile up over the runs.
+git branch --quiet -D "$branch"
+
+# The host and the path of the origin, read as the driver reads them for dotfiles merge. The URL
+# is the configured one: `git remote get-url` would expand an insteadOf rewrite.
+project=$(git config --get remote.origin.url)
+case $project in
+    *://*) rest=${project#*://} host=${rest%%/*} path=${rest#*/} ;;
+    *) host=${project%%:*} path=${project#*:} ;;
+esac
+host=${host##*@} host=${host%%:*}
+host=$(printf '%s' "$host" | tr '[:upper:]' '[:lower:]')
+while [ "${path%/}" != "$path" ]; do path=${path%/}; done
+while [ "${path#/}" != "$path" ]; do path=${path#/}; done
+path=${path%.git}
+
+echo "dotfiles-absorb: the commit $commit is pushed as the branch $branch; main is unchanged at $(git rev-parse --short HEAD)."
+echo "dotfiles-absorb: until the request is merged, chezmoi diff and dotfiles update show these edits reverted: answer n to apply."
+if [ "$host" = github.com ]; then
+    echo "dotfiles-absorb: open the pull request with: gh pr create -R github.com/$path --base main --head $branch --fill"
+else
+    echo "dotfiles-absorb: open the merge request with: glab mr create -R $project --target-branch main --source-branch $branch --fill"
+fi
