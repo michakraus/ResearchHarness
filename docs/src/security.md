@@ -133,8 +133,9 @@ the installed template. A later version can behave differently.
   `~/Research` is a link, or lies below one. Neither job sees `/run/user/<uid>`, so neither
   reaches the session bus or the user's service manager; `julia-update` therefore runs its server
   check, the restart of the server and its alerts in a second phase, `julia-update.jl --server`,
-  outside `bwrap`, after the update phase. That phase loads only the standard library of its
-  release: the script sets the load path to `@stdlib` and drops every depot outside the release.
+  outside `bwrap`, after the update phase. The server phase loads only the standard library of
+  its release: the script sets the load path to `@stdlib` and drops every depot outside the
+  release.
   `harness setup` and the services script of the dotfiles kit first run the sandbox check of
   `harness doctor` and stop with exit 2 when `bwrap` cannot make a sandbox, which names the
   AppArmor setting `kernel.apparmor_restrict_unprivileged_userns`; no job then starts unconfined.
