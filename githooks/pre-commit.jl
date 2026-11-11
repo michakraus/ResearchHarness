@@ -321,12 +321,19 @@ Rename detection pairs two paths only when both are in the pathspec, so `old` go
 `file`, and a pure rename adds no line. `-M` asks for the detection whatever `diff.renames`
 says. The other options keep the repository's configuration from changing the hunks: an
 external diff program, a textconv driver, a `-diff` attribute and `diff.interHunkContext`. The
-paths are literal, so a name such as `a[b].jl` matches no other file.
+paths are literal, so a name such as `a[b].jl` matches no other file. The diff runs without
+`GIT_DIFF_OPTS`, which sets the context of each hunk, and without `GIT_ICASE_PATHSPECS` and
+`GIT_GLOB_PATHSPECS`, with which git refuses literal paths; every other variable, such as
+`GIT_DIR` and `GIT_INDEX_FILE`, stays.
 """
 function added_lines(file, old)
     paths = old === nothing ? [file] : [file, old]
     options = `--no-color --no-ext-diff --no-textconv --text --inter-hunk-context=0 -M`
-    diff = read(`git --literal-pathspecs diff --cached -U0 $options -- $paths`, String)
+    cmd = `git --literal-pathspecs diff --cached -U0 $options -- $paths`
+    diff = read(
+        addenv(cmd, "GIT_DIFF_OPTS" => nothing, "GIT_ICASE_PATHSPECS" => nothing,
+            "GIT_GLOB_PATHSPECS" => nothing),
+        String)
     return map(eachmatch(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@"m, diff)) do m
         c = parse(Int, m[1])
         return c:(c + (m[2] === nothing ? 1 : parse(Int, m[2])) - 1)

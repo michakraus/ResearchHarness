@@ -213,6 +213,21 @@ function second_commit(before, after; extra = [SGCONFIG])
     return code, out * err
 end
 
+"""
+A fixture whose staged change adds the lines 4 and 8 of `src/Fixture.jl`, around an old `@show x`
+on line 6 that the first commit holds. Returns the repository and its environment.
+"""
+function two_hunks()
+    before = replace(CLEAN, "    return" => "    a = 1\n    @show x\n    b = 2\n    return")
+    after = replace(before, "    a = 1\n" => "    c = 3\n    a = 1\n",
+                    "    b = 2\n" => "    b = 2\n    d = 4\n")
+    repo, env = fixture(before; extra = [SGCONFIG])
+    run(setenv(`git -C $repo commit -q -m base`, env))
+    write(joinpath(repo, "src", "Fixture.jl"), after)
+    run(setenv(`git -C $repo add src/Fixture.jl`, env))
+    return repo, env
+end
+
 "A directory with one executable `name` that holds `script`."
 function bindir(name, script)
     d = mktempdir()
@@ -643,6 +658,28 @@ end
         @test code == 0
         @test occursin("ast-grep: 1 hit(s) on lines this commit does not add — advisory", out * err)
         @test occursin("    src/Fixture.jl:6: debug-probe: ", out * err)
+    end
+
+    # The variable sets the context of every hunk, which -U0 alone does not override.
+    @testset "GIT_DIFF_OPTS does not join two hunks around an old hit" begin
+        repo, env = two_hunks()
+        env["GIT_DIFF_OPTS"] = "--unified=3"
+        code, out, err = capture(`bash $HOOK`, repo, env)
+        @test code == 0
+        @test occursin("ast-grep: 1 hit(s) on lines this commit does not add — advisory", out * err)
+        @test occursin("    src/Fixture.jl:6: debug-probe: ", out * err)
+        @test !occursin("ast-grep: FAILED", out * err)
+    end
+
+    # git refuses --literal-pathspecs beside any other global pathspec setting.
+    @testset "GIT_ICASE_PATHSPECS does not stop the stage" begin
+        repo, env = two_hunks()
+        env["GIT_ICASE_PATHSPECS"] = "1"
+        code, out, err = capture(`bash $HOOK`, repo, env)
+        @test code == 0
+        @test occursin("ast-grep: 1 hit(s) on lines this commit does not add — advisory", out * err)
+        @test occursin("    src/Fixture.jl:6: debug-probe: ", out * err)
+        @test !occursin("ProcessFailedException", out * err)
     end
 
     # As a glob, the path src/a[b].jl also matches src/ab.jl, whose second line the commit adds.
@@ -1237,6 +1274,16 @@ end
         ok, out = ast_grep(["x.jl"]; path = stubbed("exit 0\n"))
         @test ok
         @test occursin("ast-grep: skipped — ast-grep applied no rule to the staged files", out)
+    end
+
+    # Under this variable the hook's list of staged `*.jl` files holds no file below src/, so
+    # only a direct call reaches `added_lines` with it.
+    @testset "added_lines ignores GIT_GLOB_PATHSPECS" begin
+        repo, env = two_hunks()
+        lines = withenv(env..., "GIT_GLOB_PATHSPECS" => "1") do
+            cd(() -> Base.invokelatest(hook.added_lines, "src/Fixture.jl", nothing), repo)
+        end
+        @test lines == [4:4, 8:8]
     end
 
     # `format` with no style uses JuliaFormatter's default style: githooks/ has no
