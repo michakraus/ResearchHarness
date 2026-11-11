@@ -2900,9 +2900,10 @@ def command_cases():
     except (ImportError, OSError, ValueError, LookupError, TypeError) as e:
         report(ok=False, line=f"exp render got {type(e).__name__}  [guard    ]  {e}")
         return total, wrong
+    note = shlex.join([sys.executable, FIXTURE.name + "/missing-home/.claude/hooks/kaimon-note.py"])
     report(
-        ok=commands == ["rtk hook claude", guard],
-        line=f"exp rtk and guard got {commands}  [guard    ]  the rendered Bash group",
+        ok=commands == ["rtk hook claude", guard, note],
+        line=f"exp rtk, guard and kaimon-note got {commands}  [guard    ]  the rendered Bash group",
     )
     # Claude Code runs the rendered hook command through a shell, the payload on stdin. The guard's path
     # is missing below the fixture's home, and then the interpreter is too, which exits 127 without the
