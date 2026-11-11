@@ -593,15 +593,15 @@
   unformatted edit on top is refused, and an unformatted staged version with a formatted edit on
   top passes. `ast_grep` scans the files on disk and takes the added lines from the index, so in
   a partly staged file a line can move between the two: with `@show x` staged as an added line 4
-  and two unstaged comment lines above it, the stage reads the hit on line 6 as advisory and the
-  commit passes, and an unstaged hit can block a commit. A fix checks a copy of the index, for
-  example from `git checkout-index` into a temporary directory, for every stage. A cheaper
-  mitigation refuses a commit in which a staged `.jl` file is partly staged, that is, one that
-  `git diff --name-only` also lists with changes that are not staged; it leaves the symlink case
-  below. The shell hook that `pre-commit.jl` replaced read the working tree the same way. A `.jl`
-  file that becomes a symlink to a file that is not tracked passes the formatting and load stages
-  on that file, and a fresh checkout has the symlink without its target, so the package can fail
-  to load there.
+  of a file under `src/` and two unstaged comment lines above it, the stage reads the hit on line
+  6 as advisory and the commit passes, and an unstaged hit can block a commit. A fix checks a copy
+  of the index, for example from `git checkout-index` into a temporary directory, for every stage.
+  A cheaper mitigation refuses a commit in which a staged `.jl` file is partly staged, that is,
+  one that `git diff --name-only` also lists with changes that are not staged; it leaves the
+  symlink case below. The shell hook that `pre-commit.jl` replaced read the working tree the same
+  way. A `.jl` file that becomes a symlink to a file that is not tracked passes the formatting and
+  load stages on that file, and a fresh checkout has the symlink without its target, so the
+  package can fail to load there.
 - kind: defect
 - found: 2026-10-31, a review of the hook rollout's pull requests
 
@@ -623,10 +623,12 @@
 - location: `githooks/pre-commit.jl:72`
 - evidence: `run_boxed` reads the whole output of the lint stage and of the load test into one
   string, `read(out, String)`, and the stdout and the stderr of the ast-grep stage into two, and
-  its limit is one of time only: 60 s for `fatou lint` and `ast-grep`, and 600 s for the load. A program that prints without end within the limit fills the hook's memory before
-  the limit stops it. A fix reads the stream in blocks and keeps the first part only, for example
-  the first megabyte, which the stages print from anyway: the lint stage prints its lines, and the
-  load test at most 20 of them.
+  its limit is one of time only: 60 s for `fatou lint` and `ast-grep`, and 600 s for the load. A
+  program that prints without end within the limit fills the hook's memory before the limit stops
+  it. A fix reads the stream in blocks and keeps the first part only, for example the first
+  megabyte, which the stages print from anyway: the lint stage prints its lines, and the load test
+  at most 20 of them. The ast-grep stage reads each line of its stdout as one JSON object and
+  skips itself on a line that does not parse, so a cut inside a line skips the stage.
 - kind: defect
 - found: 2026-11-02, a review of the hook rollout's pull requests
 
