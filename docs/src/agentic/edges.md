@@ -78,9 +78,10 @@ goes into the source of the catalogue in the harness, with a changelog fragment,
 
 ## The limits
 
-- **The catalogue only grows.** No rule removes an entry yet. **Planned:** an entry goes when a
-  deterministic check catches its class, or when it duplicates another entry. A class that a
-  [static check](static-checks.md) catches no longer needs a line that the planner reads.
+- **The catalogue only grows.** No rule removes an entry yet.
+  **[Planned](../planned.md#edge-removal):** an entry goes when a deterministic check catches its
+  class, or when it duplicates another entry. A class that a [static check](static-checks.md)
+  catches no longer needs a line that the planner reads.
 - **An entry names a class, not a test.** The planner still decides what the code does at the edge,
   and the builder still writes the test.
 - **The catalogue is written for the packages of one tree.** Its entries name packages by their

@@ -292,7 +292,7 @@ end
     @test findfirst("load average", s).start < findfirst(r"\n(PASS|FAIL) in", s).start
     # the default budget reports nothing on this fixture
     code, s = script(RUNTESTS, DIR, "core")
-    @test !occursin("D6:", s)
+    @test !occursin(r"^D6: "m, s)
 end
 
 @testset "only a run of the group core reports D6" begin
@@ -305,7 +305,7 @@ end
         s = String(take!(out))
         @test code == 0
         @test occursin("PASS", s)
-        @test !occursin("D6:", s)
+        @test !occursin(r"^D6: "m, s)
     end
 end
 
@@ -485,7 +485,8 @@ end
     code = run(pipeline(ignorestatus(cmd); stdout = out, stderr = out)).exitcode
     s = String(take!(out))
     @test code == 0
-    @test !occursin("D6:", s)
+    # a verdict starts its line; the first line starts with the random name of the package
+    @test !occursin(r"^D6: "m, s)
     @test count(why, s) == 1
     # a named run with --jobs reads no D6 either, and has nothing to explain
     out = IOBuffer()
@@ -494,7 +495,7 @@ end
     code = run(pipeline(ignorestatus(cmd); stdout = out, stderr = out)).exitcode
     s = String(take!(out))
     @test code == 0
-    @test !occursin("D6", s)
+    @test !occursin(r"^(No )?D6"m, s)
 end
 
 @testset "full with --jobs runs the files of Pkg.test() in workers" begin

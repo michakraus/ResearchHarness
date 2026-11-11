@@ -18,12 +18,14 @@ import { fileURLToPath } from 'node:url'
 export const TERMS = [
   'coding agent', 'frontend', 'session', 'context', 'tool call', 'permission prompt', 'sandbox',
   'instruction file', 'rule', 'skill', 'agent', 'sub-agent', 'hook', 'tier', 'effort', 'profile',
-  'research tree', 'tree instructions', 'install', 'drift'
+  'research tree', 'tree instructions', 'install', 'drift', 'worktree', 'spec', 'mutant', 'critic',
+  'edge'
 ]
 /** The newcomer pages, below docs/src/. */
 export const NEWCOMER = [
   'concepts.md', 'dependencies.md', 'setup-macos.md', 'setup-linux.md', 'setup-reference.md',
-  'tutorial.md', 'daily-use.md', 'profile.md', 'research-tree.md'
+  'tutorial.md', 'daily-use.md', 'profile.md', 'research-tree.md', 'agentic/challenges.md',
+  'safeguards/risks.md'
 ]
 /** The page of the glossary, and the anchor of a term's entry on it. */
 export const GLOSSARY = 'concepts.md'
@@ -64,10 +66,11 @@ export function prose(text, glossaryPage = false) {
 /** The line of the offset `i` in `text`, from 1. */
 const lineAt = (text, i) => text.slice(0, i).split('\n').length
 
-/** Whether the link target `href` on `page` names the glossary entry of `term`. */
+/** Whether the link target `href` on `page` names the glossary entry of `term`. The path of the
+ * glossary page is relative to the directory of `page`: `../concepts.md` on `agentic/loop.md`. */
 function linksEntry(page, href, term) {
-  const target = page === GLOSSARY ? `#${anchor(term)}` : `${GLOSSARY}#${anchor(term)}`
-  return href.replace(/^\.\//, '') === target
+  const file = page === GLOSSARY ? '' : path.posix.relative(path.posix.dirname(page), GLOSSARY)
+  return href.replace(/^\.\//, '') === `${file}#${anchor(term)}`
 }
 
 /** The problems of the first uses of the terms on the page `page` with the Markdown `text`. */

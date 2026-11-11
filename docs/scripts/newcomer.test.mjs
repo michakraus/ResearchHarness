@@ -7,15 +7,23 @@ import { NEWCOMER, TERMS, entryProblems, fileLineProblems, firstUseProblems } fr
 const G = 'concepts.md'
 const uses = (page, text) => firstUseProblems(page, text, page === G)
 
-test('the set of terms is the nineteen terms of clause 2 and the research tree', () => {
-  assert.equal(TERMS.length, 20)
-  assert.equal(new Set(TERMS).size, 20)
+test('the set of terms is the nineteen terms of clause 2, the research tree and five loop terms', () => {
+  assert.equal(TERMS.length, 25)
+  assert.equal(new Set(TERMS).size, 25)
   assert.ok(TERMS.includes('research tree'))
+  for (const t of ['worktree', 'spec', 'mutant', 'critic', 'edge']) assert.ok(TERMS.includes(t))
+  // On the newcomer pages, "part" is the plain word: it has an entry, but it is not a term.
+  assert.ok(!TERMS.includes('part'))
 })
 
 test('both setup pages, for macOS and for Linux, are newcomer pages', () => {
   assert.ok(NEWCOMER.includes('setup-macos.md'))
   assert.ok(NEWCOMER.includes('setup-linux.md'))
+})
+
+test('the entry pages of Agentic coding and of Safeguards are newcomer pages', () => {
+  assert.ok(NEWCOMER.includes('agentic/challenges.md'))
+  assert.ok(NEWCOMER.includes('safeguards/risks.md'))
 })
 
 test('an unlinked first use names the page, the line and the term', () => {
@@ -65,6 +73,18 @@ test('a page other than the glossary page links the entry through concepts.md, w
   assert.deepEqual(uses('tutorial.md', 'The [sandbox](./concepts.md#sandbox) limits it.\n'), [])
   // `#sandbox` on another page is a link to another target: its text does not count.
   assert.deepEqual(uses('tutorial.md', 'The [sandbox](#sandbox) limits it.\nThe sandbox.\n'), ['tutorial.md:2: the first use of "sandbox" has no link to its glossary entry'])
+  // `../concepts.md` on a top-level page is a link to another target.
+  assert.deepEqual(uses('tutorial.md', 'The [sandbox](../concepts.md#sandbox) limits it.\nThe sandbox.\n'), ['tutorial.md:2: the first use of "sandbox" has no link to its glossary entry'])
+})
+
+test('a page in a subdirectory links the entry through ../concepts.md, with or without ./', () => {
+  assert.deepEqual(uses('agentic/challenges.md', 'The [sandbox](../concepts.md#sandbox) limits it.\n'), [])
+  assert.deepEqual(uses('agentic/challenges.md', 'The [sandbox](./../concepts.md#sandbox) limits it.\n'), [])
+  // The top-level form names a page agentic/concepts.md: its text does not count.
+  assert.deepEqual(uses('agentic/challenges.md', 'The [sandbox](concepts.md#sandbox) limits it.\nThe sandbox.\n'),
+    ['agentic/challenges.md:2: the first use of "sandbox" has no link to its glossary entry'])
+  assert.deepEqual(uses('safeguards/risks.md', 'The [sandbox](#sandbox) limits it.\nThe sandbox.\n'),
+    ['safeguards/risks.md:2: the first use of "sandbox" has no link to its glossary entry'])
 })
 
 test('each term has one entry: a missing entry and a second entry are named', () => {

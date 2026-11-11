@@ -17,6 +17,9 @@ of your profile. This page describes both checks, where they run, and what they 
 
 gitleaks knows the shapes of secrets, but not your private names. `harness leaks` knows your names,
 but not the shapes of secrets. Each check covers what the other cannot.
+[Private data across machines](../private-data.md#keep-private-data-out-of-the-repository) says
+how the sources of the harness keep these values out: a source names a key of the profile, and
+your profile holds the value.
 
 ## gitleaks
 

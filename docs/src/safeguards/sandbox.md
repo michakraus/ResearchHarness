@@ -18,7 +18,7 @@ sandbox around a whole frontend, its own process and every command that it start
 | sandbox | wraps | on | turned on by |
 |:--|:--|:--|:--|
 | [the session sandbox](#the-session-sandbox) | each shell command of a Claude Code session | macOS, Linux | the settings template; always on |
-| [the launcher `agentbox`](#the-launcher-agentbox) | a whole CLI frontend: `claude`, `opencode`, `omp` or `agy` | macOS; on Linux planned | you, by starting the frontend through `agentbox` |
+| [the launcher `agentbox`](#the-launcher-agentbox) | a whole CLI frontend: `claude`, `opencode`, `omp` or `agy` | macOS; on Linux [planned](../planned.md#linux-launcher) | you, by starting the frontend through `agentbox` |
 | [the daemon profiles](#the-daemon-profiles) | the Kaimon server and the `julia-update` job | macOS, Linux | `harness setup`, in the launch agents and the `systemd --user` units |
 
 ## The session sandbox
@@ -204,21 +204,24 @@ abstract-socket gaps, is planned.
 
 These sandboxes are decided, and none of them runs yet:
 
-- **A guard against a session with no sandbox** (planned): a hook that refuses every tool call
-  when `~/.ssh` is readable and no sandbox is on: neither the launcher nor Claude Code's own
-  sandbox.
-- **Fewer prompts under the launcher** (planned): the permission prompts that the outer sandbox
-  makes safe go, as a settings change with probes.
-- **The desktop apps** (planned): an outer sandbox for Claude Code's Code tab and the Antigravity
-  desktop app, which `agentbox` cannot start, with the same probe battery.
-- **A Linux wrapper** (planned): the outer sandbox on Linux, tried first on one test machine, then
-  the same battery and a GPU kernel on each Linux machine.
-- **Masked keys** (planned): the API keys stay in their denied files, and the launcher gives them
-  to `srt` as masked variables; the `gh` and `glab` tokens leave the key store for masked
-  variables too.
-- **A token per owner** (planned, waits for your tokens): a fine-grained forge token for each
-  organisation, so that a command can write only where the task needs it.
-- **Kaimon without the network** (planned): the Kaimon server reaches only the package servers.
-- **A credential proxy** (planned, optional and last): a proxy that writes the keys into the
-  requests for their named hosts, so that the agent sees only a stand-in. `srt` already filters
-  the network by host, so the proxy does not run by default.
+- **A guard against a session with no sandbox** ([planned](../planned.md#no-sandbox-guard)): a
+  hook that refuses every tool call when `~/.ssh` is readable and no sandbox is on: neither the
+  launcher nor Claude Code's own sandbox.
+- **Fewer prompts under the launcher** ([planned](../planned.md#fewer-prompts)): the permission
+  prompts that the outer sandbox makes safe go, as a settings change with probes.
+- **The desktop apps** ([planned](../planned.md#desktop-apps)): an outer sandbox for Claude Code's
+  Code tab and the Antigravity desktop app, which `agentbox` cannot start, with the same probe
+  battery.
+- **A Linux wrapper** ([planned](../planned.md#linux-launcher)): the outer sandbox on Linux, tried
+  first on one test machine, then the same battery and a GPU kernel on each Linux machine.
+- **Masked keys** ([planned](../planned.md#masked-keys)): the API keys stay in their denied files,
+  and the launcher gives them to `srt` as masked variables; the `gh` and `glab` tokens leave the
+  key store for masked variables too.
+- **A token per owner** ([planned](../planned.md#token-per-owner), waits for your tokens): a
+  fine-grained forge token for each organisation, so that a command can write only where the task
+  needs it.
+- **Kaimon without the network** ([planned](../planned.md#kaimon-without-network)): the Kaimon
+  server reaches only the package servers.
+- **A credential proxy** ([planned](../planned.md#credential-proxy), optional and last): a proxy
+  that writes the keys into the requests for their named hosts, so that the agent sees only a
+  stand-in. `srt` already filters the network by host, so the proxy does not run by default.

@@ -43,10 +43,10 @@ const MENU = [
   'agentic/edges.md', 'agentic/review.md', 'agentic/example.md',
   'safeguards/risks.md', 'safeguards/security-model.md', 'safeguards/permissions.md',
   'safeguards/guard-hooks.md', 'safeguards/sandbox.md', 'safeguards/git-safety.md', 'safeguards/leaks.md',
-  'architecture.md', 'private-data.md', 'memory.md',
+  'architecture.md', 'private-data.md', 'memory.md', 'development.md', 'planned.md',
   'components/agents.md', 'components/skills.md', 'components/commands.md',
   'components/rules.md', 'components/githooks.md', 'components/scripts.md',
-  'components/adapters.md', 'components/sandbox.md', 'components/other.md', 'development.md'
+  'components/adapters.md', 'components/sandbox.md', 'components/other.md'
 ]
 
 // The start of the sidebar: Home, then the group Getting started in this order.
