@@ -43,12 +43,16 @@ Checks, numbered as the section banners and the `== check N` lines of the output
      [compat] or in a comment counts as missing); nightly, release, lts and 1.13.1 get none; with
      every package present no Pkg.add runs; the Kaimon app is installed; a failing julia stops
      the run at its channel and names it; a minimum that is not X.Y fails the render.
-  5. The services: the copies in ~/.local/bin; on linux the five units, each equal to `harness
-     render`, then daemon-reload and enable --now; on macOS the Seatbelt profiles of kaimon and
-     julia-update, each equal to `harness render sandbox/<job>.sb` and written before its plist,
-     and the `ps` shim of sandbox/shims/, mode 755, before kaimon's plist; none of them on
-     linux; on both, ~/.cache/kaimon/pocl before kaimon's plist or unit, each new directory
-     mode 700, and an existing one left as it is; the plists, each equal to `harness
+  5. The services: the copies in ~/.local/bin; on linux the bwrap check, jobbox (755) and the
+     arguments of kaimon and julia-update, each equal to `harness render sandbox/<job>.bwrap`,
+     before the units, each write deny of the jobs and ~/.cache/julia-update, then the five
+     units, each equal to `harness render`, then daemon-reload and enable --now; a bwrap that
+     fails the check stops the run with exit 2 and the AppArmor setting before any of them; on
+     macOS the Seatbelt profiles of kaimon and julia-update, each equal to
+     `harness render sandbox/<job>.sb` and written before its plist, and the `ps` shim of
+     sandbox/shims/, mode 755, before kaimon's plist; none of them on linux, and no bwrap check,
+     jobbox or .bwrap file on macOS; on both, ~/.cache/kaimon/pocl before kaimon's plist or
+     unit, each new directory mode 700, and an existing one left as it is; the plists, each equal to `harness
      render`, bootout of a loaded job and bootstrap of each; a bootout that finishes late and a
      failed first bootstrap still load every job, and a mutant with no wait stops; the script's
      text changes with the pin and with the profile.
@@ -104,8 +108,10 @@ UNITS = [
 JOBS = ["kaimon", "julia-update", "claude-autocommit"]
 # The directory below HOME that POCL_CACHE_DIR of kaimon's plist and unit names.
 POCL_CACHE = ".cache/kaimon/pocl"
-# The jobs that run under a Seatbelt profile on macOS.
+# The jobs that run under a Seatbelt profile on macOS and under bwrap on Linux.
 SANDBOXED = ["kaimon", "julia-update"]
+# The arguments of the bwrap check that the services script runs on Linux before any job.
+BWRAP_CHECK = "--ro-bind / / --dev /dev --unshare-user --unshare-pid true"
 GPU_PACKAGE = {"metal": "Metal", "cuda": "CUDA", "amdgpu": "AMDGPU", "none": None}
 
 failures = []
@@ -251,7 +257,7 @@ esac
 
 def logging_stubs(bindir):
     """Stubs for every program that must not reach the machine: each logs to $HOME/<name>.log."""
-    for name in ("launchctl", "systemctl", "chsh", "curl", "sudo"):
+    for name in ("launchctl", "systemctl", "bwrap", "chsh", "curl", "sudo"):
         exit_code = 1 if name in ("chsh", "curl", "sudo") else 0
         body = f'echo "$*" >> "$HOME/{name}.log"\n'
         if name == "launchctl":
@@ -1241,9 +1247,57 @@ def services_linux(checkout, pinned):
         not log_lines(home, "launchctl") and not (home / "Library").exists(),
         "linux: no launchctl, no ~/Library",
     )
+    sandbox = home / ".config/research-harness/sandbox"
     check(
-        not (home / ".config/research-harness/sandbox").exists(),
-        "linux: no Seatbelt profile",
+        log_lines(home, "bwrap") == [BWRAP_CHECK],
+        f"linux: the bwrap check runs once: {log_lines(home, 'bwrap')}",
+    )
+    jobbox = home / ".local/bin/jobbox"
+    check(
+        jobbox.is_file()
+        and jobbox.read_bytes() == (harness / "sandbox/jobbox").read_bytes()
+        and stat.S_IMODE(jobbox.stat().st_mode) == 0o755
+        and jobbox.stat().st_mtime_ns < (units / "kaimon.service").stat().st_mtime_ns,
+        "linux: jobbox (755) in ~/.local/bin equals the pinned harness's and is written before the units",
+    )
+    for job in SANDBOXED:
+        path = sandbox / f"{job}.bwrap"
+        check(
+            path.is_file()
+            and path.read_text() == harness_render(env, harness, f"sandbox/{job}.bwrap")
+            and path.stat().st_mtime_ns < (units / "kaimon.service").stat().st_mtime_ns,
+            f"linux: {job}.bwrap equals `harness render sandbox/{job}.bwrap` and is written before the units",
+        )
+    check(
+        sorted(p.name for p in sandbox.iterdir()) == sorted(f"{job}.bwrap" for job in SANDBOXED),
+        "linux: no Seatbelt profile and no shim",
+    )
+    denies = [
+        home / p for p in (".julia/bin", ".julia/config", ".julia/juliaup", "Research/Harness/githooks")
+    ]
+    cache = home / ".cache/julia-update"
+    check(
+        all(d.is_dir() for d in denies) and cache.is_dir() and stat.S_IMODE(cache.stat().st_mode) == 0o700,
+        "linux: each write deny of the jobs and ~/.cache/julia-update (700) exist",
+    )
+    services_linux_refused(checkout, pinned)
+
+
+def services_linux_refused(checkout, pinned):
+    """Check 5 on Linux with a bwrap that cannot make a sandbox: exit 2 and the AppArmor setting,
+    before jobbox, the arguments and the units."""
+    pin = pinned["harness_commit"]
+    home, env, _ = services_home(LINUX_HOST, "linux", checkout, pin, pinned)
+    stub(home / ".test-bin", "bwrap", 'echo "bwrap: setting up uid map: Permission denied" >&2\nexit 1')
+    result = run_script(rendered(SERVICES, LINUX_HOST, "linux", home, pinned), env)
+    check(
+        result.returncode == 2
+        and "kernel.apparmor_restrict_unprivileged_userns" in result.stderr
+        and not (home / ".local/bin/jobbox").exists()
+        and not (home / ".config/research-harness/sandbox").exists()
+        and not (home / ".config/systemd/user").exists()
+        and not log_lines(home, "systemctl"),
+        f"linux, bwrap refused: exit {result.returncode} with the AppArmor setting, no job changes",
     )
 
 
@@ -1296,7 +1350,11 @@ def services_template_mac(checkout, pinned, *, loaded):
         )
     check(
         sorted(p.name for p in sandbox.iterdir()) == sorted([*(f"{job}.sb" for job in SANDBOXED), "shims"]),
-        "macOS: no profile for the autocommit job",
+        "macOS: no profile for the autocommit job, and no .bwrap file",
+    )
+    check(
+        not log_lines(home, "bwrap") and not (home / ".local/bin/jobbox").exists(),
+        "macOS: no bwrap check and no jobbox",
     )
     shim = sandbox / "shims/ps"
     kaimon_plist = agents / f"{prefix}.kaimon.plist"

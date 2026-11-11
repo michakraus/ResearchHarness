@@ -25,6 +25,15 @@
 # read — is in one branch on the system below. The tools are found on the PATH, which the job's
 # plist or unit fixes to directories that no session can write.
 #
+# On macOS one run does the four steps. On Linux the unit runs the script twice. Its `ExecStart`
+# runs steps 1 to 3, the update phase, under `bwrap`, where no other process, no service manager
+# and no session bus is in sight; that phase writes its failures and the Kaimon versions before
+# and after the update into STATE. Its `ExecStopPost` runs `julia-update.jl --server` outside
+# `bwrap`: the server phase reads STATE, runs step 4 and sends the alerts. A server phase with no
+# STATE reports the update phase as failed. JULIA_UPDATE_SYSTEM, `Darwin` or `Linux`, takes the
+# place of the system's own name, so that the cases of lib/harness/jobsandbox.py run the Linux
+# phases on macOS.
+#
 # The app environment at ~/.julia/environments/apps/Kaimon is a derived artefact: every upgrade
 # regenerates its Project.toml from Kaimon's own, so nothing added there survives. Tools reach
 # JuliaFormatter and Aqua through a session, whose load path carries @v#.#.
@@ -46,10 +55,13 @@ const APP = joinpath(homedir(), ".julia", "environments", "apps", "Kaimon")
 const HARNESS_ENV = get(ENV, "RESEARCH_HARNESS_JULIA",
                         joinpath(homedir(), ".local", "share", "research-harness", "julia"))
 const KAIMON_PORT = 2828
+# The file of the update phase on Linux, which the server phase reads.
+const STATE = joinpath(homedir(), ".cache", "julia-update", "last-run.toml")
+const SYSTEM = get(ENV, "JULIA_UPDATE_SYSTEM", string(Sys.KERNEL))
 
 # The system's own parts, in this one branch: the service manager, the restart of the Kaimon
 # server and the line that names it, the log, the notifier, and how the server's binary is read.
-if Sys.isapple()
+if SYSTEM == "Darwin"
     # The Kaimon job's label is `<launchd_prefix>.kaimon`, from the private profile, as in
     # launchagents/kaimon.plist.
     const PROFILE = get(ENV, "RESEARCH_HARNESS_PROFILE",
@@ -73,7 +85,7 @@ if Sys.isapple()
         comm = readchomp(ignorestatus(`$ps -o comm= -p $pid`))
         return isempty(comm) ? :ended : comm
     end
-elseif Sys.islinux()
+elseif SYSTEM == "Linux"
     const SERVICE_MANAGER = "systemd"
     const RESTART_HINT = "systemctl --user restart kaimon.service"
     const LOG = "journalctl --user -u julia-update.service"
@@ -96,7 +108,7 @@ elseif Sys.islinux()
         return chopsuffix(exe, " (deleted)")
     end
 else
-    error("julia-update.jl runs on macOS and Linux, not on $(Sys.KERNEL)")
+    error("julia-update.jl runs on macOS and Linux, not on $SYSTEM")
 end
 
 """
@@ -163,8 +175,10 @@ function alert(message)
     return nothing
 end
 
-function main()
-    println("=== julia-update ", Dates.format(now(), "yyyy-mm-dd HH:MM:SS"), " ===")
+"""
+Steps 1 to 3: the failures, and the Kaimon versions before and after the update.
+"""
+function update_phase()
     failures = String[]
 
     step("juliaup update", `$JULIAUP update`) || push!(failures, "juliaup update")
@@ -192,7 +206,15 @@ function main()
     if !step("using Kaimon", setenv(loads, merge(ENV, Dict("JULIA_LOAD_PATH" => APP))))
         push!(failures, "Kaimon $after does not load; reinstall with Pkg.Apps.add(\"Kaimon\")")
     end
+    return failures, before, string(after)
+end
 
+"""
+Step 4 and the alerts, after the update phase's `failures` and the Kaimon versions `before` and
+`after` it: 1 when a step failed, else 0.
+"""
+function server_phase(failures, before, after)
+    failures = copy(failures)
     println("--- server check")
     server = server_julia()
     due = String[]
@@ -239,4 +261,34 @@ function main()
     return 0
 end
 
-exit(main())
+"""
+The update phase on Linux: STATE of an earlier run removed first, so that a run that ends in an
+error leaves none, then steps 1 to 3, then STATE written. 1 when a step failed, else 0.
+"""
+function update_only()
+    rm(STATE; force = true)
+    failures, before, after = update_phase()
+    mkpath(dirname(STATE))
+    open(STATE, "w") do io
+        TOML.print(io, Dict("failures" => failures, "before" => before, "after" => after))
+    end
+    isempty(failures) || println("FAILED: ", join(failures, "; "))
+    return isempty(failures) ? 0 : 1
+end
+
+"""The server phase on Linux, after the update phase's STATE."""
+function server_only()
+    if !isfile(STATE)
+        return server_phase(["the update phase, which wrote no $STATE"], "", "")
+    end
+    state = TOML.parsefile(STATE)
+    return server_phase(Vector{String}(state["failures"]), state["before"], state["after"])
+end
+
+function main(args)
+    println("=== julia-update ", Dates.format(now(), "yyyy-mm-dd HH:MM:SS"), " ===")
+    SYSTEM == "Linux" || return server_phase(update_phase()...)
+    return "--server" in args ? server_only() : update_only()
+end
+
+exit(main(ARGS))

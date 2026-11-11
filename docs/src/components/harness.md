@@ -328,7 +328,8 @@ first the clone of the profile's `claude_remote` into `~/.claude` with the jobs 
 the directories that `install` needs, the Homebrew lines on macOS, or the apt line and the pinned
 releases of `setup/tools.toml` (`load_pins`) on Ubuntu, the vendor installers,
 `harness install --apply`, `core.hooksPath`, `harness trust --apply`, the jobs (on macOS with
-the Seatbelt profiles of [`jobsandbox.py`](#jobsandbox-py)), the Kaimon token
+the Seatbelt profiles of [`jobsandbox.py`](#jobsandbox-py), on Linux after the `bwrap` check with
+`jobbox` and the arguments of `bwrap`), the Kaimon token
 and `harness doctor`, and one `export PATH=…` line by hand for the directories that the starting
 `PATH` lacks (`missing_path`); `install`, `trust`, `render` and `doctor` each run in a child
 process of `bin/harness`. `TOOLS` names each tool, the component or frontend that needs it, and
@@ -345,9 +346,11 @@ repository. They also hold the minimums of
 
 ## `jobsandbox.py`
 
-The Seatbelt profiles of the launch agents of Kaimon and `julia-update` on macOS. The module has
-no subcommand of its own: `harness render sandbox/<job>.sb` prints the profile of `kaimon` or
-`julia-update`. `load` reads the rule list `sandbox/daemon.toml` into a frozen dataclass and
+The Seatbelt profiles of the launch agents of Kaimon and `julia-update` on macOS, and the
+arguments of `bwrap` for their `systemd --user` units on Linux. The module has no subcommand of
+its own: `harness render sandbox/<job>.sb` prints the profile of `kaimon` or `julia-update`, and
+`harness render sandbox/<job>.bwrap` prints `bwrap_args` of the job, one argument per line.
+`load` reads the rule list `sandbox/daemon.toml` into a frozen dataclass and
 refuses a missing job or key, an unknown key, a path that is neither one of the tokens
 `$DARWIN_USER_TEMP_DIR`, `$DARWIN_USER_CACHE_DIR` and `$HARNESS` alone nor `~`, nothing or a
 token followed by `/`, a path with an empty, `.` or `..` segment, the root `/` anywhere but in
@@ -383,6 +386,27 @@ exec of the setuid `/bin/ps` fails under a Seatbelt profile, and Kaimon reads a 
 succeeds and exits 1 otherwise, exits 1 with no output for `-o rss=,%cpu= -p PID`, and exits 2
 with one line on stderr for any other form or a PID that is not digits.
 
+On Linux the same rule list holds two top-level keys, `linux_read`, the system paths that both
+jobs read, and `linux_links`, the root entries such as `/bin` and `/lib` that are a link into
+`/usr` on one Linux and a directory on another, and each job a key `linux_write`, the `~/`
+directories that it writes on Linux only; `profile` leaves `linux_write` out, so the Seatbelt
+profiles do not change. `load` refuses a Linux path that is not `/` and segments, none of them
+empty, `.` or `..`, a `linux_links` entry below the root's first level, and a `linux_write` path
+that is not below `~/`. `bwrap_args` gives the arguments of one job: `--unshare-all --share-net
+--die-with-parent`, a new `/proc`, `/dev`, `/sys` read-only and a new `/tmp`; each path of
+`linux_read` read-only where it exists; each entry of `linux_links` as the host has it
+(`linux_root`), a link or a read-only directory; an empty home; then the job's `~/` and `$HARNESS`
+paths, the reads, the writes and `linux_write`, the write denies read-only and the files written
+back. An absolute path, the `$DARWIN` tokens, `~/Library` and `pty` are macOS's and give no
+argument, a write deny that no read or write path of the job holds is left out, and an argument
+with a newline raises `HarnessError`. `harness setup` and the services script of the dotfiles kit
+check `bwrap` first, install `sandbox/jobbox` into `~/.local/bin`, write each render into
+`~/.config/research-harness/sandbox/<job>.bwrap` and create each write deny and `linux_write`
+directory that is missing (`linux_dirs`), before the units. `jobbox <job> <program> [args…]`, a
+POSIX `sh` script, reads that file one argument per line, adds `--chdir` and the working directory
+and the read-only binds of `.git/hooks`, `.git/config` and `.githooks` of each repository at most
+four levels below `~/Research`, and runs `bwrap`; both units start their program through it.
+
 Its cases load the shipped list and a broken copy of it for each refusal, render both jobs with a
 home path that holds a dot and one that holds a quote, run `harness render` through `bin/harness`
 with a `getconf` stub, run the shim on each form, start `/bin/sh -c true` under each job's
@@ -398,8 +422,15 @@ The probe file's constant `OPEN_GAPS` names the negative probes that the profile
 which report `:allowed` under it: none, and the cases check that value, that the file's header
 comment expects no exception class of an open gap and `:ProcessFailedException` of `appleevent`,
 and that the default command of `appleevent` asks the Finder for `name of startup disk`, which
-only an Apple Event answers.
-[The security model](../security.md) says what the profile allows and what it leaves open.
+only an Apple Event answers. On Linux `run_all` runs the probe set of Linux, with `systemd_run`
+and `session_bus` in place of `lsopen`, `appleevent`, `metal` and `read_documents`. The cases also
+check the order and the edges of `bwrap_args` and `linux_root`, run `jobbox` with a stub `bwrap`
+that writes its arguments, render `sandbox/<job>.bwrap` through `bin/harness`, and run
+`scripts/julia-update.jl` as on Linux with stubs of juliaup, `lsof`, `systemctl` and
+`notify-send`: the update phase calls none of the last three, and the server phase reads its
+state. No case starts the real `bwrap`.
+[The security model](../security.md) says what the profile and the arguments allow and what they
+leave open.
 
 ## `dotfiles_kit.py`
 

@@ -29,6 +29,18 @@
 deny_operations = ["lsopen", "appleevent-send", "file-mount", "file-unmount"]
 deny_services = ["com.apple.coreservices.launchservicesd", "com.apple.CoreServices.coreservicesd"]
 
+# Linux: `harness render sandbox/<job>.bwrap` turns the rules of one job into the arguments of
+# `bwrap`, one per line, which `jobbox` reads when the job's unit starts it. The job gets new
+# namespaces but the network, a new /proc and /tmp, /dev and /sys, the system paths below, and an
+# empty home in which only the job's `~/` and `$HARNESS` paths are bound: an absolute path, the
+# root `/` and the `$DARWIN` tokens of the tables below are macOS's, and `pty` has no argument.
+# `linux_read` holds the system paths bound read-only where they exist; /run/systemd/resolve
+# holds the resolver's files, which /etc/resolv.conf links to on Ubuntu. `linux_links` holds the
+# root entries that are a link into /usr on one Linux and a directory on another: each is made a
+# link or bound read-only as the host has it.
+linux_read = ["/usr", "/etc", "/opt", "/run/systemd/resolve"]
+linux_links = ["/bin", "/sbin", "/lib", "/lib64", "/lib32"]
+
 # The Kaimon server and every session it runs for an agent: the research tree, the Julia depot and
 # juliaup, its own configuration, cache and logs, git's configuration, and the system. Pkg unpacks
 # in /private/tmp, and /etc/localtime resolves below /private/var/db/timezone. The job reads the
@@ -82,6 +94,9 @@ deny_write = ["~/.julia/bin", "~/.julia/config", "~/.julia/juliaup", "$HARNESS/g
 # opens its lock file for writing at every start and exits when that fails; juliaup.json and the
 # installed Julia versions stay unwritable.
 allow_write_files = ["~/.julia/juliaup/.juliaup-lock"]
+# The directories that the job writes on Linux only, each a `~/` path; the Seatbelt profile leaves
+# them out.
+linux_write = []
 # Kaimon starts every Julia session on a pseudo-terminal, with forkpty(3).
 pty = true
 
@@ -128,4 +143,7 @@ write = [
 write_files = ["/dev/null", "/dev/tty", "/dev/dtracehelper"]
 deny_write = ["~/.julia/config", "$HARNESS/githooks"]
 allow_write_files = []
+# On Linux the update phase runs under `bwrap` and writes its failures and Kaimon's versions into
+# this directory, where the server phase, outside `bwrap`, reads them.
+linux_write = ["~/.cache/julia-update"]
 pty = false

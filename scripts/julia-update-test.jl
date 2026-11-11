@@ -135,16 +135,24 @@ function start_server(fx::Fixture)
     return run(`$binary -e 'sleep 600'`; wait = false), binary
 end
 
-"Run the script; return the exit code, its output and the call log's lines."
-function run_script(fx::Fixture, extra::Pair...)
+"""
+Run the script as its job does; return the exit code, its output and the call log's lines. On
+Linux the unit runs it twice, the update phase and then the server phase with `--server`, so the
+case does too: the code is the larger of the two, and the output is both in order. `args` runs
+one call with those arguments instead.
+"""
+function run_script(fx::Fixture, extra::Pair...; args = LINUX ? [[], ["--server"]] : [[]])
     env = Dict("HOME" => fx.home, "PATH" => fx.stubs, "STUB_LOG" => fx.log,
                "STUB_BINDIR" => fx.bindir, "RESEARCH_HARNESS_JULIA" => fx.harness)
     for (k, v) in extra
         env[k] = v
     end
     out = IOBuffer()
-    cmd = setenv(`$(Base.julia_cmd()) --startup-file=no $SCRIPT`, env)
-    code = run(pipeline(ignorestatus(cmd); stdout = out, stderr = out)).exitcode
+    code = 0
+    for a in args
+        cmd = setenv(`$(Base.julia_cmd()) --startup-file=no $SCRIPT $a`, env)
+        code = max(code, run(pipeline(ignorestatus(cmd); stdout = out, stderr = out)).exitcode)
+    end
     return code, String(take!(out)), readlines(fx.log)
 end
 
@@ -156,11 +164,12 @@ the name `julia`, never the server's path.
 comm(binary) = LINUX ? first(basename(binary), 15) : binary
 
 "Run the script against a live server; `prepare(binary)` acts on its binary first."
-function with_server(prepare, fx::Fixture, extra::Pair...)
+function with_server(prepare, fx::Fixture, extra::Pair...; kwargs...)
     proc, binary = start_server(fx)
     try
         prepare(binary)
-        result = run_script(fx, "STUB_PID" => string(getpid(proc)), "STUB_COMM" => comm(binary), extra...)
+        result = run_script(fx, "STUB_PID" => string(getpid(proc)), "STUB_COMM" => comm(binary), extra...;
+                            kwargs...)
         # On Linux a server that died reads as "ended before its binary was read", which some cases
         # accept. macOS kills a process whose binary file is removed, but there the ps stub stands
         # for the process, so its death changes nothing.
@@ -296,6 +305,22 @@ end
         @test occursin("FAILED: cannot restart the server", out)
         @test length(alerts(calls)) == 1
         @test !occursin("Stacktrace", out)
+    end
+
+    # The update phase runs under bwrap, where no service manager, no other process and no
+    # session bus is in sight.
+    LINUX && @testset "the update phase alone (Linux): no lsof, service manager or notifier" begin
+        fx = fixture()
+        code, out, calls = with_server(rm, fx, "STUB_FAIL" => "+1.12"; args = [[]])
+        @test code == 1
+        @test "juliaup update" in calls
+        @test !any(l -> startswith(l, "lsof ") || startswith(l, NOTIFIER * " "), calls)
+        @test restarts(calls) == 0 && others(calls) == 0
+        @test isfile(joinpath(fx.home, ".cache", "julia-update", "last-run.toml"))
+        code, out, calls = run_script(fx; args = [["--server"]])
+        @test code == 1
+        @test occursin("FAILED: Pkg.update() in @v1.12", out)
+        @test length(alerts(calls)) == 1
     end
 
     @testset "no notifier on the PATH: the log line only, no error" begin

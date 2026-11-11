@@ -81,7 +81,7 @@ import subprocess
 import sys
 import tempfile
 import tomllib
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from typing import cast
 
 from . import REPO, HarnessError
@@ -89,12 +89,36 @@ from .fsutil import Case
 
 POLICY = REPO / "sandbox" / "daemon.toml"
 PROBES = REPO / "sandbox" / "probe-daemon.jl"
+JOBBOX = REPO / "sandbox" / "jobbox"
+UPDATE_SCRIPT = REPO / "scripts" / "julia-update.jl"
 JOBS = ("kaimon", "julia-update")
 # The path-list keys of a job's table, its boolean key, and the keys of the rule list's top level.
-JOB_KEYS = ("read", "read_files", "write", "write_files", "deny_write", "allow_write_files")
+JOB_KEYS = ("read", "read_files", "write", "write_files", "deny_write", "allow_write_files", "linux_write")
 PTY_KEY = "pty"
-TOP_KEYS = ("deny_operations", "deny_services", "job")
+TOP_KEYS = ("deny_operations", "deny_services", "linux_read", "linux_links", "job")
 TOKENS = ("$DARWIN_USER_TEMP_DIR", "$DARWIN_USER_CACHE_DIR", "$HARNESS")
+# The first arguments of `bwrap` for every job: new namespaces of every kind but the network, the
+# end of the job with its unit, a new /proc, the host's devices, /sys read-only, and a new tmpfs
+# at JOB_TMP, the job's own /tmp, which hides the sockets and files of the host's /tmp.
+JOB_TMP = str(pathlib.PurePosixPath("/") / "tmp")
+BWRAP_START = (
+    "--unshare-all",
+    "--share-net",
+    "--die-with-parent",
+    "--proc",
+    "/proc",
+    "--dev-bind",
+    "/dev",
+    "/dev",
+    "--ro-bind",
+    "/sys",
+    "/sys",
+    "--tmpfs",
+    JOB_TMP,
+)
+# The per-user library of macOS, which a rule path names for the logs of a launch agent: on Linux
+# it and every path below it are left out.
+MACOS_LIBRARY = "~/Library"
 # The directories at the root of macOS that are symlinks into /private: a rule names the real path.
 LINKS = ("etc", "tmp", "var")
 # A denied operation of SBPL: lower-case words joined by `-`, with `*` for a family.
@@ -135,18 +159,22 @@ class JobRules:
     write_files: tuple[str, ...]
     deny_write: tuple[str, ...]
     allow_write_files: tuple[str, ...]
+    linux_write: tuple[str, ...]
     pty: bool
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
 class DaemonPolicy:
-    """The rule list of `daemon.toml`: the rules of each job of JOBS, and the operations and Mach
-    services that both deny."""
+    """The rule list of `daemon.toml`: the rules of each job of JOBS, the operations and Mach
+    services that both deny, and on Linux the system paths that both read and the root entries
+    that are a link on one Linux and a directory on another."""
 
     kaimon: JobRules
     julia_update: JobRules
     deny_operations: tuple[str, ...]
     deny_services: tuple[str, ...]
+    linux_read: tuple[str, ...]
+    linux_links: tuple[str, ...]
 
     def rules(self, job: str) -> JobRules:
         """The rules of `job`; HarnessError for a job that is not one of JOBS."""
@@ -164,6 +192,15 @@ class UserDirs:
 
     temp: str
     cache: str
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class LinuxRoot:
+    """The host's entries of `linux_links`: `(path, target)` for each that is a symbolic link, and
+    the path of each that is a directory."""
+
+    links: tuple[tuple[str, str], ...]
+    dirs: tuple[str, ...]
 
 
 def strings(value: object, key: str, path: pathlib.Path) -> tuple[str, ...]:
@@ -220,12 +257,30 @@ def job_rules(table: object, job: str, path: pathlib.Path) -> JobRules:
         if key not in entries:
             raise HarnessError(f"{path}: no key `{where}`")
         lists[key] = tuple(checked_path(p, where, path) for p in strings(entries[key], where, path))
+    for p in lists["linux_write"]:
+        if not p.startswith("~/"):
+            raise HarnessError(f"{path}: `job.{job}.linux_write` holds {p!r}, which is not a path below ~/")
     if PTY_KEY not in entries:
         raise HarnessError(f"{path}: no key `job.{job}.{PTY_KEY}`")
     pty = entries[PTY_KEY]
     if not isinstance(pty, bool):
         raise HarnessError(f"{path}: `job.{job}.{PTY_KEY}` is not true or false")
     return JobRules(**lists, pty=pty)
+
+
+def linux_paths(value: object, key: str, path: pathlib.Path) -> tuple[str, ...]:
+    """The system paths of the top-level key `key`, when each is `/` and one or more segments,
+    none of them empty, `.` or `..`, and, in `linux_links`, a single segment."""
+    paths = strings(value, key, path)
+    for p in paths:
+        segments = p[1:].split("/")
+        if not p.startswith("/") or any(s in {"", ".", ".."} for s in segments):
+            raise HarnessError(
+                f"{path}: `{key}` holds {p!r}, which is not / and segments, none of them empty, `.` or `..`"
+            )
+        if key == "linux_links" and len(segments) > 1:
+            raise HarnessError(f"{path}: `{key}` holds {p!r}, which is not an entry of the root /")
+    return paths
 
 
 def load(path: pathlib.Path) -> DaemonPolicy:
@@ -238,12 +293,14 @@ def load(path: pathlib.Path) -> DaemonPolicy:
         raise HarnessError(f"{path}: not UTF-8 at byte {e.start}") from None
     except tomllib.TOMLDecodeError as e:
         raise HarnessError(f"{path}: {e}") from None
-    for key in data:
-        if key not in TOP_KEYS:
-            raise HarnessError(f"{path}: unknown key `{key}`")
     for key in TOP_KEYS:
         if key not in data:
             raise HarnessError(f"{path}: no key `{key}`")
+    linux_read = linux_paths(data["linux_read"], "linux_read", path)
+    linux_links = linux_paths(data["linux_links"], "linux_links", path)
+    for key in data:
+        if key not in TOP_KEYS:
+            raise HarnessError(f"{path}: unknown key `{key}`")
     jobs = data["job"]
     if not isinstance(jobs, dict):
         raise HarnessError(f"{path}: `job` is not a table")
@@ -259,6 +316,8 @@ def load(path: pathlib.Path) -> DaemonPolicy:
         julia_update=job_rules(tables["julia-update"], "julia-update", path),
         deny_operations=operations(data["deny_operations"], path),
         deny_services=strings(data["deny_services"], "deny_services", path),
+        linux_read=linux_read,
+        linux_links=linux_links,
     )
 
 
@@ -346,9 +405,96 @@ def profile(
     return "\n".join(lines) + "\n"
 
 
+def home_path(p: str, home: pathlib.Path, harness: pathlib.Path) -> pathlib.Path | None:
+    """The rule path `p` on Linux: a `~/` path below `home`, `$HARNESS` and a path below it below
+    `harness`, and None for every other path, which is macOS's, as is ~/Library and every path
+    below it."""
+    if p == MACOS_LIBRARY or p.startswith(MACOS_LIBRARY + "/"):
+        return None
+    if p.startswith("~/"):
+        return home / p[2:]
+    if p == "$HARNESS" or p.startswith("$HARNESS/"):
+        return pathlib.Path(str(harness) + p[len("$HARNESS") :])
+    return None
+
+
+def linux_lists(
+    rules: JobRules, home: pathlib.Path, harness: pathlib.Path
+) -> tuple[list[pathlib.Path], list[pathlib.Path], list[pathlib.Path], list[pathlib.Path]]:
+    """The Linux paths of a job, in the order of the binds: what it reads, what it writes, its
+    write denies and the files it writes back inside them. A write deny is left out when it lies
+    at or below no read path and no write path, because the job cannot see it."""
+
+    def linux(*keys: tuple[str, ...]) -> list[pathlib.Path]:
+        return [q for ps in keys for p in ps if (q := home_path(p, home, harness)) is not None]
+
+    reads = linux(rules.read, rules.read_files)
+    writes = linux(rules.write, rules.write_files, rules.linux_write)
+    seen = linux(rules.read, rules.write, rules.linux_write)
+    denies = [d for d in linux(rules.deny_write) if any(d.is_relative_to(v) for v in seen)]
+    return reads, writes, denies, linux(rules.allow_write_files)
+
+
+def linux_dirs(
+    policy: DaemonPolicy, job: str, home: pathlib.Path, harness: pathlib.Path
+) -> list[pathlib.Path]:
+    """The directories that must exist before `job` starts under `bwrap`: each write deny of its
+    arguments, which `--ro-bind` binds and which the job could create were it missing, and each
+    `linux_write` path, which `--bind-try` skips when it is missing."""
+    rules = policy.rules(job)
+    _, _, denies, _ = linux_lists(rules, home, harness)
+    return denies + [q for p in rules.linux_write if (q := home_path(p, home, harness)) is not None]
+
+
+def bwrap_args(
+    policy: DaemonPolicy, job: str, home: pathlib.Path, root: LinuxRoot, harness: pathlib.Path | None = None
+) -> tuple[str, ...]:
+    """The static arguments of `bwrap` for `job`, as the module docstring says. `harness` is the
+    profile's `harness`, `home/Research/Harness` without it. HarnessError for an argument that
+    holds a newline, because `jobbox` reads one argument per line."""
+    rules = policy.rules(job)
+    reads, writes, denies, back = linux_lists(rules, home, harness or home / "Research" / "Harness")
+
+    def bind(flag: str, paths: Sequence[pathlib.Path | str]) -> list[str]:
+        return [x for p in paths for x in (flag, str(p), str(p))]
+
+    args = [
+        *BWRAP_START,
+        *bind("--ro-bind-try", policy.linux_read),
+        *(x for path, target in root.links for x in ("--symlink", target, path)),
+        *bind("--ro-bind", root.dirs),
+        "--tmpfs",
+        str(home),
+        *bind("--ro-bind-try", reads),
+        *bind("--bind-try", writes),
+        *bind("--ro-bind", denies),
+        *bind("--bind-try", back),
+    ]
+    for a in args:
+        if "\n" in a:
+            raise HarnessError(f"the bwrap argument {a!r} of {job} holds a newline")
+    return tuple(args)
+
+
+def linux_root(policy: DaemonPolicy, base: pathlib.Path = pathlib.Path("/")) -> LinuxRoot:
+    """The host's entries of `linux_links`, read below `base`, the root `/` by default: a symbolic
+    link gives `(path, target)`, a directory its path, and anything else, such as a missing entry,
+    nothing."""
+    links: list[tuple[str, str]] = []
+    dirs: list[str] = []
+    for p in policy.linux_links:
+        entry = base / p[1:]
+        if entry.is_symlink():
+            links.append((p, str(entry.readlink())))
+        elif entry.is_dir():
+            dirs.append(p)
+    return LinuxRoot(tuple(links), tuple(dirs))
+
+
 def job_of(template: pathlib.Path) -> str | None:
-    """The job of a template `sandbox/<job>.sb`, else None."""
-    return template.stem if template.parent.name == "sandbox" and template.suffix == ".sb" else None
+    """The job of a template `sandbox/<job>.sb` or `sandbox/<job>.bwrap`, else None."""
+    suffixes = (".sb", ".bwrap")
+    return template.stem if template.parent.name == "sandbox" and template.suffix in suffixes else None
 
 
 def getconf(name: str) -> str:
@@ -377,12 +523,16 @@ def getconf(name: str) -> str:
 
 
 def render(template: pathlib.Path, home: pathlib.Path, harness: pathlib.Path) -> str:
-    """The profile of the job of `template`, a path `sandbox/<job>.sb`, from the rule list beside it."""
+    """The profile of the job of `template`, a path `sandbox/<job>.sb`, or the arguments of `bwrap`
+    of the job of a path `sandbox/<job>.bwrap`, one per line, from the rule list beside it."""
     job = job_of(template)
     if job is None or job not in JOBS:
         raise HarnessError(f"{template}: no job {job!r}; the jobs are {', '.join(JOBS)}")
+    policy = load(template.parent / "daemon.toml")
+    if template.suffix == ".bwrap":
+        return "".join(a + "\n" for a in bwrap_args(policy, job, home, linux_root(policy), harness))
     dirs = UserDirs(getconf("DARWIN_USER_TEMP_DIR"), getconf("DARWIN_USER_CACHE_DIR"))
-    return profile(load(template.parent / "daemon.toml"), job, home, dirs, harness)
+    return profile(policy, job, home, dirs, harness)
 
 
 # ------------------------------------------------------------------------------ the cases ----
@@ -712,6 +862,432 @@ def path_cases(case: Case, f: pathlib.Path) -> None:
         )
 
 
+def linux_list_cases(case: Case, policy: DaemonPolicy) -> None:
+    """The shipped rule list holds the decided Linux keys, and the Seatbelt profiles leave out
+    `linux_write`."""
+    case(
+        f"linux_read holds the decided system paths: {policy.linux_read}",
+        ok=policy.linux_read == ("/usr", "/etc", "/opt", "/run/systemd/resolve"),
+    )
+    case(
+        f"linux_links holds the decided root entries: {policy.linux_links}",
+        ok=policy.linux_links == ("/bin", "/sbin", "/lib", "/lib64", "/lib32"),
+    )
+    case(
+        f"julia-update writes ~/.cache/julia-update on Linux only, and kaimon nothing more: "
+        f"{policy.julia_update.linux_write} {policy.kaimon.linux_write}",
+        ok=policy.julia_update.linux_write == ("~/.cache/julia-update",) and policy.kaimon.linux_write == (),
+    )
+    case(
+        "no Seatbelt profile names ~/.cache/julia-update",
+        ok=not any(".cache/julia-update" in profile(policy, job, HOME, DIRS) for job in JOBS),
+    )
+
+
+def linux_bad_cases(case: Case, root: pathlib.Path) -> None:
+    """Each broken Linux key raises HarnessError, in one line that names the key or the path."""
+    text = POLICY.read_text(encoding="utf-8")
+    reads, links = 'linux_read = ["/usr"', 'linux_links = ["/bin"'
+    update_write = 'linux_write = ["~/.cache/julia-update"]'
+    variants = [
+        ("a list without linux_read", re.sub(r"^linux_read = .*\n", "", text, flags=re.M), "linux_read"),
+        ("a list without linux_links", re.sub(r"^linux_links = .*\n", "", text, flags=re.M), "linux_links"),
+        (
+            "a linux_read that is a string",
+            text.replace(reads, 'linux_read = "/usr"\nx = ["/usr"', 1),
+            "linux_read",
+        ),
+        ("a linux_read with a number", text.replace(reads, "linux_read = [1", 1), "linux_read"),
+        ("a relative linux_read path", text.replace(reads, 'linux_read = ["usr"', 1), "'usr'"),
+        ("a linux_read path with ..", text.replace(reads, 'linux_read = ["/usr/../etc"', 1), "'/usr/../etc'"),
+        ("a linux_read path with .", text.replace(reads, 'linux_read = ["/usr/."', 1), "'/usr/.'"),
+        ("a linux_read path with //", text.replace(reads, 'linux_read = ["//usr"', 1), "'//usr'"),
+        ("a linux_read path with a final /", text.replace(reads, 'linux_read = ["/usr/"', 1), "'/usr/'"),
+        ("the root / in linux_read", text.replace(reads, 'linux_read = ["/"', 1), "'/'"),
+        ("a home path in linux_read", text.replace(reads, 'linux_read = ["~/usr"', 1), "'~/usr'"),
+        ("a linux_links entry below /", text.replace(links, 'linux_links = ["/usr/bin"', 1), "'/usr/bin'"),
+        ("a relative linux_links entry", text.replace(links, 'linux_links = ["bin"', 1), "'bin'"),
+        ("a linux_links entry with ..", text.replace(links, 'linux_links = ["/.."', 1), "'/..'"),
+        ("the root / in linux_links", text.replace(links, 'linux_links = ["/"', 1), "'/'"),
+        (
+            "a list without job.julia-update.linux_write",
+            text.replace(update_write + "\n", "", 1),
+            "job.julia-update.linux_write",
+        ),
+        ("a linux_write path /var/x", text.replace(update_write, 'linux_write = ["/var/x"]', 1), "'/var/x'"),
+        ("a linux_write path /opt/x", text.replace(update_write, 'linux_write = ["/opt/x"]', 1), "'/opt/x'"),
+        (
+            "a linux_write path $HARNESS/x",
+            text.replace(update_write, 'linux_write = ["$HARNESS/x"]', 1),
+            "'$HARNESS/x'",
+        ),
+        (
+            "a linux_write path ~/a/../b",
+            text.replace(update_write, 'linux_write = ["~/a/../b"]', 1),
+            "'~/a/../b'",
+        ),
+        (
+            "a linux_write that is a string",
+            text.replace(update_write, 'linux_write = "~/x"', 1),
+            "linux_write",
+        ),
+    ]
+    f = root / "daemon.toml"
+    for label, body, named in variants:
+        f.write_text(body, encoding="utf-8")
+        try:
+            load(f)
+        except HarnessError as e:
+            case(
+                f"{label} raises HarnessError naming {named}: {e}",
+                ok=body != text and named in str(e) and "\n" not in str(e),
+            )
+            continue
+        case(f"{label} raises HarnessError, but the list loads", ok=False)
+
+
+# The host root of the bwrap cases: two root entries that are links into /usr, one directory.
+ROOT = LinuxRoot((("/bin", "usr/bin"), ("/lib", "usr/lib")), ("/lib64",))
+# The arguments that every job's list starts with, joined by spaces, as the decision of the
+# namespaces and the system mounts writes them, and their number.
+BWRAP_HEAD = (
+    "--unshare-all --share-net --die-with-parent --proc /proc --dev-bind /dev /dev --ro-bind /sys /sys "
+    "--tmpfs /tmp"
+)
+HEAD = BWRAP_HEAD.count(" ") + 1
+
+
+def triple(args: tuple[str, ...], flag: str, path: str, target: str | None = None) -> int:
+    """The index of `flag path path` in `args`, `--symlink target path` with a target; -1
+    without one."""
+    want = (flag, target, path) if target is not None else (flag, path, path)
+    return next((i for i in range(len(args) - 2) if args[i : i + 3] == want), -1)
+
+
+def binds(args: tuple[str, ...], flag: str) -> list[str]:
+    """The source of each `flag source target` of `args`, in order."""
+    return [args[i + 1] for i in range(len(args) - 2) if args[i] == flag]
+
+
+def bwrap_cases(case: Case, policy: DaemonPolicy) -> None:
+    """The arguments of kaimon: their order, and what is left out."""
+    a = bwrap_args(policy, "kaimon", HOME, ROOT)
+    case(
+        f"kaimon's arguments start with the namespaces and the system mounts: {a[:HEAD]}",
+        ok=" ".join(a[:HEAD]) == BWRAP_HEAD,
+    )
+    home = next((i for i in range(HEAD, len(a) - 1) if a[i : i + 2] == ("--tmpfs", "/h/a.b")), -1)
+    system = [
+        triple(a, "--ro-bind-try", "/usr"),
+        triple(a, "--ro-bind-try", "/etc"),
+        triple(a, "--ro-bind-try", "/opt"),
+        triple(a, "--ro-bind-try", "/run/systemd/resolve"),
+        triple(a, "--symlink", "/bin", "usr/bin"),
+        triple(a, "--symlink", "/lib", "usr/lib"),
+        triple(a, "--ro-bind", "/lib64"),
+        home,
+    ]
+    case(
+        f"the linux_read binds, the links, the root directories, then the home tmpfs, in order: {system}",
+        ok=-1 not in system and system == sorted(system) and system[0] == HEAD,
+    )
+    reads = [triple(a, "--ro-bind-try", f"/h/a.b/{p}") for p in ("Research", ".julia", ".gitconfig")]
+    writes = [triple(a, "--bind-try", f"/h/a.b/{p}") for p in ("Research", ".julia", ".config/kaimon")]
+    denies = [
+        triple(a, "--ro-bind", f"/h/a.b/{p}")
+        for p in (".julia/bin", ".julia/config", ".julia/juliaup", "Research/Harness/githooks")
+    ]
+    lock = triple(a, "--bind-try", "/h/a.b/.julia/juliaup/.juliaup-lock")
+    case(
+        f"after the home: the read binds, the write binds, the write denies, the file written back: "
+        f"{reads} {writes} {denies} {lock}",
+        ok=-1 not in (*reads, *writes, *denies, lock)
+        and home < min(reads)
+        and max(reads) < min(writes)
+        and max(writes) < min(denies)
+        and max(denies) < lock,
+    )
+    after = a[min(denies) :]
+    case(
+        f"no write bind follows the first write deny but the file written back: {binds(after, '--bind-try')}",
+        ok=binds(after, "--bind-try") == ["/h/a.b/.julia/juliaup/.juliaup-lock"],
+    )
+    text = "\n".join(a)
+    for word in ("/System", "/Library", "/private", "/opt/homebrew", "$DARWIN", "~", "$HARNESS", "/run/user"):
+        case(f"no argument of kaimon names {word}", ok=word not in text)
+    case(
+        "kaimon's arguments hold no --unshare-net, no --dev /dev and no ~/.cache/julia-update",
+        ok="--unshare-net" not in a and triple(a, "--dev", "/dev") < 0 and ".cache/julia-update" not in text,
+    )
+    case(
+        "every argument but the flags and the link targets is an absolute path",
+        ok=all(x.startswith("/") for x in a if not x.startswith("--") and x not in ("usr/bin", "usr/lib")),
+    )
+    case("two calls give the same arguments", ok=a == bwrap_args(load(POLICY), "kaimon", HOME, ROOT))
+
+
+def bwrap_update_cases(case: Case, policy: DaemonPolicy) -> None:
+    """The arguments of julia-update, and of a harness outside ~/Research."""
+    a = bwrap_args(policy, "kaimon", HOME, ROOT)
+    u = bwrap_args(policy, "julia-update", HOME, ROOT)
+    u_text = "\n".join(u)
+    case(
+        "julia-update binds ~/.juliaup, ~/.julia/juliaup and ~/.cache/julia-update for writing",
+        ok=all(
+            triple(u, "--bind-try", f"/h/a.b/{p}") > 0
+            for p in (".juliaup", ".julia/juliaup", ".cache/julia-update")
+        ),
+    )
+    cache = triple(u, "--bind-try", "/h/a.b/.cache/julia-update")
+    u_writes = [triple(u, "--bind-try", f"/h/a.b/{p}") for p in (".julia", ".juliaup", ".julia/bin")]
+    u_denies = [triple(u, "--ro-bind", f"/h/a.b/{p}") for p in (".julia/config",)]
+    case(
+        f"julia-update's linux_write bind follows its write binds and precedes its write denies: "
+        f"{u_writes} {cache} {u_denies}",
+        ok=-1 not in (*u_writes, cache, *u_denies) and max(u_writes) < cache < min(u_denies),
+    )
+    case(
+        "julia-update reads its installed script and the profile",
+        ok=triple(u, "--ro-bind-try", "/h/a.b/.local/bin/julia-update.jl") > 0
+        and triple(u, "--ro-bind-try", "/h/a.b/.config/research-harness/profile.toml") > 0,
+    )
+    case(
+        "julia-update denies no write of ~/.julia/juliaup and binds nothing of ~/Research",
+        ok=triple(u, "--ro-bind", "/h/a.b/.julia/juliaup") < 0 and "/h/a.b/Research" not in u_text,
+    )
+    case(
+        "julia-update's arguments are not kaimon's",
+        ok=u != a and "/h/a.b/.config/kaimon" not in u_text,
+    )
+
+    other = bwrap_args(policy, "kaimon", HOME, ROOT, pathlib.Path("/opt/harness"))
+    case(
+        "a harness outside ~/Research is in no argument: its write deny is invisible to the job",
+        ok=not any("/opt/harness" in x for x in other),
+    )
+    case(
+        "the default harness is ~/Research/Harness, whose githooks is a write deny",
+        ok=triple(a, "--ro-bind", "/h/a.b/Research/Harness/githooks") > 0,
+    )
+
+
+def bwrap_edge_cases(case: Case, policy: DaemonPolicy) -> None:
+    """The edges of the input of `bwrap_args`: which write deny stays, which path is macOS's, `pty`,
+    an empty root and an argument with a newline."""
+    a = bwrap_args(policy, "kaimon", HOME, ROOT)
+
+    def rules(**given: tuple[str, ...]) -> DaemonPolicy:
+        empty: dict[str, tuple[str, ...]] = dict.fromkeys(JOB_KEYS, ())
+        return dataclasses.replace(policy, kaimon=JobRules(**(empty | given), pty=True))
+
+    for label, given, deny, kept in (
+        ("below a write path", {"write": ("~/x",), "deny_write": ("~/x/y",)}, "/h/a.b/x/y", True),
+        ("at a read path", {"read": ("~/x",), "deny_write": ("~/x",)}, "/h/a.b/x", True),
+        ("below a read file", {"read_files": ("~/x",), "deny_write": ("~/x/y",)}, "/h/a.b/x/y", False),
+        ("beside a read path", {"read": ("~/x",), "deny_write": ("~/xy",)}, "/h/a.b/xy", False),
+        ("above a write path", {"write": ("~/x/y",), "deny_write": ("~/x",)}, "/h/a.b/x", False),
+        ("below a linux_write path", {"linux_write": ("~/x",), "deny_write": ("~/x/y",)}, "/h/a.b/x/y", True),
+        ("below a macOS path", {"read": ("/usr",), "deny_write": ("~/usr/x",)}, "/h/a.b/usr/x", False),
+        (
+            "below $HARNESS",
+            {"read": ("$HARNESS",), "deny_write": ("$HARNESS/g",)},
+            "/h/a.b/Research/Harness/g",
+            True,
+        ),
+    ):
+        got = bwrap_args(rules(**given), "kaimon", HOME, ROOT)
+        case(
+            f"a write deny {label} is {'kept' if kept else 'left out'}: {got[HEAD:]}",
+            ok=(triple(got, "--ro-bind", deny) > 0) == kept,
+        )
+    plain = rules(read=("$HARNESS", "/usr", "$DARWIN_USER_TEMP_DIR"), write=("$DARWIN_USER_CACHE_DIR",))
+    got = bwrap_args(plain, "kaimon", HOME, ROOT)
+    case(
+        f"$HARNESS alone is the harness path, and the absolute paths and the tokens are left out: "
+        f"{got[HEAD:]}",
+        ok=triple(got, "--ro-bind-try", "/h/a.b/Research/Harness") > 0
+        and triple(got, "--ro-bind-try", "/usr") == HEAD
+        and binds(got, "--ro-bind-try").count("/usr") == 1
+        and "$DARWIN" not in "\n".join(got),
+    )
+    lib = bwrap_args(rules(read=("~/Library", "~/Library/Logs/x", "~/Libraryx")), "kaimon", HOME, ROOT)
+    case(
+        f"~/Library and every path below it are macOS's and left out, a sibling is kept: {lib[HEAD:]}",
+        ok=binds(lib, "--ro-bind-try")[-1:] == ["/h/a.b/Libraryx"]
+        and not any(x.startswith("/h/a.b/Library/") or x == "/h/a.b/Library" for x in lib),
+    )
+    no_pty = dataclasses.replace(policy, kaimon=dataclasses.replace(policy.kaimon, pty=False))
+    case("pty gives no argument", ok=bwrap_args(no_pty, "kaimon", HOME, ROOT) == a)
+    case(
+        "an empty LinuxRoot gives no link and no root bind, and the home tmpfs follows linux_read",
+        ok=bwrap_args(policy, "kaimon", HOME, LinuxRoot((), ()))[HEAD + 3 * len(policy.linux_read) :][:2]
+        == ("--tmpfs", "/h/a.b"),
+    )
+    for label, f in (
+        ("a home with a newline", lambda: bwrap_args(policy, "kaimon", pathlib.Path("/h/a\nb"), ROOT)),
+        (
+            "a harness with a newline",
+            lambda: bwrap_args(policy, "kaimon", HOME, ROOT, pathlib.Path("/h/a.b/Research/H\nx")),
+        ),
+        ("a rule path with a newline", lambda: bwrap_args(rules(read=("~/a\nb",)), "kaimon", HOME, ROOT)),
+        (
+            "a link target with a newline",
+            lambda: bwrap_args(policy, "kaimon", HOME, LinuxRoot((("/bin", "a\nb"),), ())),
+        ),
+        ("a job that is not one of JOBS", lambda: bwrap_args(policy, "claude-autocommit", HOME, ROOT)),
+    ):
+        case(f"{label} raises HarnessError", ok=raises(f))
+
+
+def linux_root_cases(case: Case, root: pathlib.Path, policy: DaemonPolicy) -> None:
+    """`linux_root` reads each entry of `linux_links` below a root: a link gives its target, a
+    directory its path, and anything else, a missing entry or a file, nothing."""
+    base = root / "host"
+    (base / "usr" / "bin").mkdir(parents=True)
+    (base / "lib64").mkdir()
+    (base / "bin").symlink_to("usr/bin")
+    (base / "lib").symlink_to("/usr/lib")
+    (base / "lib32").write_text("", encoding="utf-8")
+    got = linux_root(policy, base)
+    case(
+        f"a link gives its target, a directory its path, a missing entry and a file nothing: {got}",
+        ok=got == LinuxRoot((("/bin", "usr/bin"), ("/lib", "/usr/lib")), ("/lib64",)),
+    )
+    host = linux_root(policy)
+    case(
+        f"this host's root gives only entries of linux_links: {host}",
+        ok={p for p, _ in host.links} | set(host.dirs) <= set(policy.linux_links),
+    )
+
+
+def jobbox_cases(case: Case, root: pathlib.Path) -> None:
+    """`sandbox/jobbox` with a stub `bwrap` on the PATH that writes its arguments, one per line,
+    into a file: the arguments of the job's file, `--chdir` and the working directory, the three
+    binds of each repository at most four levels below ~/Research, `--`, then the program and its
+    arguments; and each refusal exits 2 with one line on stderr and never starts the stub."""
+    home = root / "home"
+    research = home / "Research"
+    for d in ("A/.git/hooks", "B/C/.git", "D/E/F/G/.git/hooks", "H/I/J/K/L/.git/hooks", "M/.git/x/.git"):
+        (research / d).mkdir(parents=True)
+    (research / "B" / "C" / ".git" / "config").write_text("", encoding="utf-8")
+    # A worktree's .git is a file, which the search does not take.
+    (research / "N").mkdir()
+    (research / "N" / ".git").write_text("gitdir: /x\n", encoding="utf-8")
+    sandbox = home / ".config" / "research-harness" / "sandbox"
+    sandbox.mkdir(parents=True)
+    lines = ["--unshare-all", "--tmpfs", str(home), "--ro-bind-try", "/a b", "/a b"]
+    (sandbox / "kaimon.bwrap").write_text("".join(x + "\n" for x in lines), encoding="utf-8")
+    stubs = root / "stubs"
+    stubs.mkdir()
+    out = root / "bwrap.out"
+    (stubs / "bwrap").write_text(f"#!/bin/sh\nprintf '%s\\n' \"$@\" > '{out}'\n", encoding="utf-8")
+    (stubs / "bwrap").chmod(0o755)
+    env = {"HOME": str(home), "PATH": f"{stubs}{os.pathsep}/usr/bin{os.pathsep}/bin"}
+
+    def jobbox(*args: str, cwd: pathlib.Path = research) -> subprocess.CompletedProcess[str]:
+        out.unlink(missing_ok=True)
+        return subprocess.run(
+            ["/bin/sh", str(JOBBOX), *args],
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            env=env,
+            cwd=cwd,
+            timeout=TIMEOUT,
+            check=False,
+        )
+
+    p = jobbox("kaimon", "/bin/true", "x")
+    got = out.read_text(encoding="utf-8").splitlines() if out.exists() else []
+    repos = [research / r for r in ("A", "B/C", "D/E/F/G", "M")]
+    want_binds = {
+        (flag, f"{r}/{part}", f"{r}/{part}")
+        for r in repos
+        for part in REPOSITORY_PARTS
+        for flag in ("--ro-bind-try",)
+    }
+    n = len(lines)
+    middle = got[n + 2 : -3] if len(got) >= n + 5 else []
+    found = {tuple(middle[i : i + 3]) for i in range(0, len(middle), 3)}
+    case(
+        f"jobbox runs bwrap with the file's lines, --chdir {research}, the binds, -- and the program: "
+        f"exit {p.returncode} {p.stderr.strip()!r} {got}",
+        ok=p.returncode == 0
+        and got[:n] == lines
+        and got[n : n + 2] == ["--chdir", str(research)]
+        and got[-3:] == ["--", "/bin/true", "x"]
+        and len(middle) == 3 * len(found),
+    )
+    case(
+        f"the binds are the three repository parts of A, B/C, D/E/F/G and M, each once: {sorted(found)}",
+        ok=found == want_binds,
+    )
+    case(
+        "no bind of H/I/J/K/L, five levels below ~/Research, of M's nested .git, or of N's .git file",
+        ok=not any("/H/" in x or "/x/.git" in x or "/N/" in x for x in got),
+    )
+    p = jobbox("kaimon", "/bin/true", cwd=home)
+    got = out.read_text(encoding="utf-8").splitlines() if out.exists() else []
+    case(
+        f"--chdir names the working directory of the start: {got[n : n + 2]}",
+        ok=p.returncode == 0 and got[n : n + 2] == ["--chdir", str(home)] and got[-2:] == ["--", "/bin/true"],
+    )
+    for label, args in (
+        ("another job", ("claude-autocommit", "/bin/true")),
+        ("a job and no program", ("kaimon",)),
+        ("no argument", ()),
+        ("a job whose file is missing", ("julia-update", "/bin/true")),
+    ):
+        p = jobbox(*args)
+        case(
+            f"{label} exits 2 with one line on stderr and starts no bwrap: exit {p.returncode} {p.stderr!r}",
+            ok=p.returncode == FAILED
+            and p.stdout == ""
+            and len(p.stderr.splitlines()) == 1
+            and p.stderr.startswith("jobbox: ")
+            and not out.exists(),
+        )
+    shutil.rmtree(research)
+    research.mkdir()
+    p = jobbox("kaimon", "/bin/true")
+    got = out.read_text(encoding="utf-8").splitlines() if out.exists() else []
+    case(
+        f"a ~/Research with no repository adds no bind: {got}",
+        ok=p.returncode == 0 and got == [*lines, "--chdir", str(research), "--", "/bin/true"],
+    )
+    research.rmdir()
+    p = jobbox("kaimon", "/bin/true", cwd=home)
+    got = out.read_text(encoding="utf-8").splitlines() if out.exists() else []
+    case(
+        f"a home without ~/Research adds no bind and prints nothing: {got} {p.stderr!r}",
+        ok=p.returncode == 0 and p.stderr == "" and got == [*lines, "--chdir", str(home), "--", "/bin/true"],
+    )
+
+
+def jobbox_text_cases(case: Case) -> None:
+    """`sandbox/jobbox` is an executable POSIX `sh` script that names no /run/user and passes
+    shellcheck; without shellcheck on the PATH, a skip line for that check."""
+    text = JOBBOX.read_text(encoding="utf-8")
+    case(
+        "jobbox is a POSIX sh script that names no /run/user",
+        ok=text.startswith("#!/bin/sh\n") and "/run/user" not in text,
+    )
+    case("jobbox is executable", ok=os.access(JOBBOX, os.X_OK))
+    shellcheck = shutil.which("shellcheck")
+    if shellcheck is None:
+        print("skip  jobsandbox: no shellcheck on the PATH; sandbox/jobbox is not checked")
+        return
+    p = subprocess.run(
+        [shellcheck, str(JOBBOX)],
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        text=True,
+        timeout=TIMEOUT,
+        check=False,
+    )
+    case(f"shellcheck passes sandbox/jobbox: {p.stdout.strip()[-300:]!r}", ok=p.returncode == 0)
+
+
 def profile_cases(case: Case, policy: DaemonPolicy) -> None:
     """The profiles of both jobs, the escapes, the tokens and an empty list."""
     text = profile(policy, "kaimon", HOME, DIRS)
@@ -745,7 +1321,9 @@ def profile_cases(case: Case, policy: DaemonPolicy) -> None:
     )
     apart = dataclasses.replace(
         policy,
-        kaimon=JobRules(("$DARWIN_USER_CACHE_DIR",), (), ("$DARWIN_USER_TEMP_DIR",), (), (), (), pty=False),
+        kaimon=JobRules(
+            ("$DARWIN_USER_CACHE_DIR",), (), ("$DARWIN_USER_TEMP_DIR",), (), (), (), (), pty=False
+        ),
     )
     split = profile(apart, "kaimon", HOME, DIRS)
     w, r = rule_block(split, "(allow file-write*\n"), rule_block(split, "(allow file-read*\n")
@@ -864,7 +1442,9 @@ def profile_cases(case: Case, policy: DaemonPolicy) -> None:
         "a job that is not one of JOBS raises HarnessError",
         ok=raises(lambda: profile(policy, "claude-autocommit", HOME, DIRS)),
     )
-    empty = dataclasses.replace(policy, kaimon=JobRules((), (), (), (), (), (), pty=False), deny_services=())
+    empty = dataclasses.replace(
+        policy, kaimon=JobRules((), (), (), (), (), (), (), pty=False), deny_services=()
+    )
     bare = profile(empty, "kaimon", HOME, DIRS)
     case(
         "an empty list leaves its block out, never a block with no filter",
@@ -895,7 +1475,7 @@ def pty_profile_cases(case: Case, policy: DaemonPolicy) -> None:
         "julia-update's profile holds no pty rule",
         ok=not any(t in update for t in ("pseudo-tty", "/dev/ptmx", "ttys", "file-ioctl")),
     )
-    bare = dataclasses.replace(policy, kaimon=JobRules((), (), (), (), (), (), pty=True))
+    bare = dataclasses.replace(policy, kaimon=JobRules((), (), (), (), (), (), (), pty=True))
     renders = [
         profile(policy, "kaimon", pathlib.Path('/h/q"x\\y'), DIRS),
         profile(
@@ -1007,11 +1587,70 @@ def render_cases(case: Case, root: pathlib.Path, policy: DaemonPolicy) -> None:
             ok=one_line(p) and "getconf" in p.stderr,
         )
     case(
-        "job_of reads sandbox/<job>.sb and nothing else",
+        "job_of reads sandbox/<job>.sb and sandbox/<job>.bwrap and nothing else",
         ok=job_of(pathlib.Path("x/sandbox/kaimon.sb")) == "kaimon"
+        and job_of(pathlib.Path("x/sandbox/julia-update.bwrap")) == "julia-update"
         and job_of(pathlib.Path("x/launchagents/kaimon.plist")) is None
         and job_of(pathlib.Path("x/sandbox/daemon.toml")) is None
-        and job_of(pathlib.Path("x/other/kaimon.sb")) is None,
+        and job_of(pathlib.Path("x/sandbox/kaimon.txt")) is None
+        and job_of(pathlib.Path("x/other/kaimon.sb")) is None
+        and job_of(pathlib.Path("x/other/kaimon.bwrap")) is None,
+    )
+    bwrap_render_cases(case, root, harness, one_line)
+
+
+def bwrap_render_cases(
+    case: Case,
+    root: pathlib.Path,
+    harness: Callable[[pathlib.Path, pathlib.Path], subprocess.CompletedProcess[str]],
+    one_line: Callable[[subprocess.CompletedProcess[str]], bool],
+) -> None:
+    """`harness render sandbox/<job>.bwrap` through bin/harness, with no getconf on the PATH: the
+    arguments of `bwrap_args` with the profile's home and harness and this host's root, one per
+    line; the refusals with exit 2 and one line."""
+    prof = root / "profile.toml"
+    policy = load(POLICY)
+    for job in JOBS:
+        template = REPO / "sandbox" / f"{job}.bwrap"
+        first, second = harness(template, prof), harness(template, prof)
+        want = "".join(x + "\n" for x in bwrap_args(policy, job, HOME, linux_root(policy)))
+        case(
+            f"harness render sandbox/{job}.bwrap prints its arguments one per line, without getconf: "
+            f"exit {first.returncode} {first.stderr.strip()}",
+            ok=first.returncode == 0 and first.stdout == want and first.stderr == "",
+        )
+        case(f"two renders of sandbox/{job}.bwrap give the same bytes", ok=first.stdout == second.stdout)
+    outside = root / "outside.toml"
+    moved = harness(REPO / "sandbox" / "kaimon.bwrap", outside)
+    case(
+        f"harness render of kaimon.bwrap takes the profile's harness /opt/harness: exit {moved.returncode}",
+        ok=moved.returncode == 0
+        and moved.stdout
+        == "".join(
+            x + "\n"
+            for x in bwrap_args(policy, "kaimon", HOME, linux_root(policy), pathlib.Path("/opt/harness"))
+        ),
+    )
+    other = harness(REPO / "sandbox" / "claude-autocommit.bwrap", prof)
+    case(
+        f"another job name ends the .bwrap render with exit 2 and one line: {other.stderr.strip()!r}",
+        ok=one_line(other),
+    )
+    latin = root / "latin" / "sandbox"
+    p = harness(latin / "kaimon.bwrap", prof)
+    case(
+        f"a rule list that load refuses ends the .bwrap render with exit 2 and one line: "
+        f"{p.stderr.strip()!r}",
+        ok=one_line(p) and "daemon.toml" in p.stderr,
+    )
+    newline = root / "newline.toml"
+    newline.write_text(
+        prof.read_text(encoding="utf-8").replace(f'home = "{HOME}"', 'home = "/h/a\\nb"', 1), encoding="utf-8"
+    )
+    p = harness(REPO / "sandbox" / "kaimon.bwrap", newline)
+    case(
+        f"a home with a newline ends the .bwrap render with exit 2 and one line: {p.stderr.strip()!r}",
+        ok=one_line(p),
     )
 
 
@@ -1258,9 +1897,10 @@ include(ARGS[1])
 P = ProbeDaemon
 home = ARGS[2]
 fake(ok) = () -> (m = Module(:FakeMetal); Core.eval(m, :(functional() = $ok)); m)
-stand_ins = (:metal, :lsopen, :appleevent)
+stand_ins = (:metal, :lsopen, :appleevent, :systemd_run, :session_bus)
+every = unique((P.probe_names(false)..., P.probe_names(true)...))
 results = [
-    [name => getfield(P, name)(home) for name in (P.POSITIVE..., P.NEGATIVE...) if !(name in stand_ins)];
+    [name => getfield(P, name)(home) for name in every if !(name in stand_ins)];
     :metal => P.metal(home; module_of = fake(true));
     :metal_false => P.metal(home; module_of = fake(false));
     :metal_missing => P.metal(home; module_of = () -> error("no Metal"));
@@ -1268,6 +1908,10 @@ results = [
     :lsopen_refused => P.lsopen(home; command = `false`);
     :appleevent => P.appleevent(home; command = `true`);
     :appleevent_refused => P.appleevent(home; command = `false`);
+    :systemd_run => P.systemd_run(home; command = `true`);
+    :systemd_run_refused => P.systemd_run(home; command = `false`);
+    :session_bus => P.session_bus(home; command = `true`);
+    :session_bus_refused => P.session_bus(home; command = `false`);
     :read_ssh_missing => P.read_ssh(joinpath(home, "none"));
     :write_julia_config_missing => P.write_julia_config(joinpath(home, "none"));
 ]
@@ -1277,8 +1921,20 @@ end
 exception(r) = isdefined(Base, r) && getfield(Base, r) isa Type && getfield(Base, r) <: Exception
 println("classes ", all(r -> r === :allowed || r === :NotFunctional || exception(r), last.(results)))
 println("open_gaps ", P.OPEN_GAPS == ())
-println("gaps_negative ", all(in(P.NEGATIVE), P.OPEN_GAPS))
+println("gaps_negative ", all(g -> g in P.NEGATIVE || g in P.LINUX_NEGATIVE, P.OPEN_GAPS))
+println("macos_set ", join(P.probe_names(false), ","))
+println("linux_set ", join(P.probe_names(true), ","))
+println("default_set ", P.probe_names() == P.probe_names(Sys.islinux()))
 """
+# The probes of `run_all` on macOS and on Linux, the positive ones first.
+MACOS_PROBES = (
+    "read_research,write_research,write_tempdir,list_packages,metal,read_ssh,read_claude_json,"
+    "read_documents,read_gh_hosts,write_zshrc,write_git_hooks,write_julia_config,lsopen,appleevent"
+)
+LINUX_PROBES = (
+    "read_research,write_research,write_tempdir,list_packages,read_ssh,read_claude_json,read_gh_hosts,"
+    "write_zshrc,write_git_hooks,write_julia_config,systemd_run,session_bus"
+)
 
 
 # The tuple of open gaps in sandbox/probe-daemon.jl, and one probe name inside it.
@@ -1380,16 +2036,27 @@ def probe_cases(case: Case, root: pathlib.Path) -> None:
         "write_julia_config",
         "lsopen",
         "appleevent",
+        "systemd_run",
+        "session_bus",
     ]
     case(
         f"with no profile, every probe returns :allowed: {got}",
         ok=all(got.get(n) == "allowed" for n in allowed),
+    )
+    case(
+        f"run_all runs the base set on macOS and the Linux set on Linux, and the system's set by "
+        f"default: {got.get('macos_set')} {got.get('linux_set')}",
+        ok=got.get("macos_set") == MACOS_PROBES
+        and got.get("linux_set") == LINUX_PROBES
+        and got.get("default_set") == "true",
     )
     refused = {
         "metal_false": "NotFunctional",
         "metal_missing": "ErrorException",
         "lsopen_refused": "ProcessFailedException",
         "appleevent_refused": "ProcessFailedException",
+        "systemd_run_refused": "ProcessFailedException",
+        "session_bus_refused": "ProcessFailedException",
         "read_ssh_missing": "IOError",
         "write_julia_config_missing": "SystemError",
     }
@@ -1413,6 +2080,117 @@ def probe_cases(case: Case, root: pathlib.Path) -> None:
     )
 
 
+def update_cases(case: Case, root: pathlib.Path) -> None:
+    """scripts/julia-update.jl as on Linux, against a scratch home with stubs of juliaup, the
+    juliaup launcher, lsof, systemctl and notify-send that log their calls: the update phase calls
+    none of the last three and writes its state into ~/.cache/julia-update/; the server phase,
+    `--server`, reads it, checks the server and alerts. Without `julia` on the PATH they print a
+    skip line."""
+    julia = shutil.which("julia")
+    if julia is None:
+        print("skip  jobsandbox: no julia on the PATH; the cases of scripts/julia-update.jl do not run")
+        return
+    # The Julia binary itself: the juliaup launcher reads its configuration below the real home.
+    binary = subprocess.run(
+        [julia, "--startup-file=no", "-e", "print(joinpath(Sys.BINDIR, Base.julia_exename()))"],
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        text=True,
+        timeout=JULIA_TIMEOUT,
+        check=False,
+    ).stdout
+    home, stubs, log = root / "update-home", root / "update-stubs", root / "update.log"
+    for d in (".juliaup/bin", ".julia/juliaup", ".julia/environments/apps/Kaimon"):
+        (home / d).mkdir(parents=True)
+    stubs.mkdir()
+    (home / ".julia" / "juliaup" / "juliaup.json").write_text('{"InstalledChannels": {}}\n', encoding="utf-8")
+    project = home / ".julia" / "environments" / "apps" / "Kaimon" / "Project.toml"
+    project.write_text('version = "1.0.0"\n', encoding="utf-8")
+
+    def stub(path: pathlib.Path, body: str) -> None:
+        path.write_text(f'#!/bin/sh\necho "{path.name} $*" >> "{log}"\n{body}\n', encoding="utf-8")
+        path.chmod(0o755)
+
+    stub(home / ".juliaup" / "bin" / "julia", "exit 0")
+    for name in ("lsof", "systemctl", "notify-send"):
+        stub(stubs / name, "exit 0")
+    state = home / ".cache" / "julia-update" / "last-run.toml"
+    depot = root / "update-depot"
+    depot.mkdir()
+    env = {
+        "HOME": str(home),
+        "PATH": f"{stubs}{os.pathsep}/usr/bin{os.pathsep}/bin",
+        "JULIA_UPDATE_SYSTEM": "Linux",
+        "RESEARCH_HARNESS_JULIA": str(home / "none"),
+        "JULIA_DEPOT_PATH": f"{depot}{os.pathsep}",
+        "JULIA_PKG_OFFLINE": "true",
+    }
+
+    def update(*args: str) -> tuple[subprocess.CompletedProcess[str], list[str]]:
+        log.unlink(missing_ok=True)
+        p = subprocess.run(
+            [binary, "--startup-file=no", str(UPDATE_SCRIPT), *args],
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            env=env,
+            timeout=JULIA_TIMEOUT,
+            check=False,
+        )
+        calls = log.read_text(encoding="utf-8").splitlines() if log.exists() else []
+        return p, [c.split(" ", 1)[0] for c in calls]
+
+    system = ("lsof", "systemctl", "notify-send")
+    stub(home / ".juliaup" / "bin" / "juliaup", "exit 1")
+    p, calls = update()
+    held = state.read_text(encoding="utf-8") if state.is_file() else ""
+    case(
+        f"the update phase with a failed step exits 1, calls no lsof, systemctl or notify-send, and "
+        f"writes the failure into its state: exit {p.returncode} {calls} {held!r} "
+        f"{p.stderr.strip()[-300:]!r}",
+        ok=p.returncode == 1
+        and "juliaup" in calls
+        and not any(c in system for c in calls)
+        and "juliaup update" in held,
+    )
+    p, calls = update("--server")
+    case(
+        f"the server phase reads the failure, checks the server with lsof and alerts with notify-send: "
+        f"exit {p.returncode} {calls} {p.stdout.strip()[-300:]!r}",
+        ok=p.returncode == 1 and "lsof" in calls and "notify-send" in calls and "systemctl" not in calls,
+    )
+    stub(home / ".juliaup" / "bin" / "juliaup", "exit 0")
+    p, calls = update()
+    first = (p.returncode, calls)
+    p, calls = update("--server")
+    case(
+        f"after an update phase with no failure, the server phase exits 0 and alerts nothing: "
+        f"{first} exit {p.returncode} {calls} {p.stdout.strip()[-300:]!r}",
+        ok=first[0] == 0
+        and not any(c in system for c in first[1])
+        and p.returncode == 0
+        and calls == ["lsof"],
+    )
+    project.unlink()
+    p, calls = update()
+    case(
+        f"an update phase that ends in an error leaves no state of an earlier run: "
+        f"exit {p.returncode} {calls}",
+        ok=p.returncode != 0 and not state.exists() and not any(c in system for c in calls),
+    )
+    p, calls = update("--server")
+    case(
+        f"the server phase without the update phase's state reports a failure and alerts: "
+        f"exit {p.returncode} {calls} {p.stdout.strip()[-300:]!r}",
+        ok=p.returncode == 1 and "notify-send" in calls,
+    )
+    text = UPDATE_SCRIPT.read_text(encoding="utf-8")
+    case(
+        "on macOS the script restarts the server with launchctl kickstart -k",
+        ok="kickstart -k gui/" in text,
+    )
+
+
 def selftest() -> tuple[int, int]:
     """The cases of the module docstring: (number of cases, number wrong)."""
     total = wrong = 0
@@ -1426,8 +2204,18 @@ def selftest() -> tuple[int, int]:
     with tempfile.TemporaryDirectory(prefix="harness-jobsandbox-") as tmp:
         root = pathlib.Path(tmp).resolve()
         list_cases(case, policy)
+        linux_list_cases(case, policy)
         (root / "bad").mkdir()
         bad_cases(case, root / "bad")
+        linux_bad_cases(case, root / "bad")
+        bwrap_cases(case, policy)
+        bwrap_update_cases(case, policy)
+        bwrap_edge_cases(case, policy)
+        linux_root_cases(case, root, policy)
+        (root / "jobbox").mkdir()
+        jobbox_cases(case, root / "jobbox")
+        jobbox_text_cases(case)
+        update_cases(case, root)
         profile_cases(case, policy)
         pty_profile_cases(case, policy)
         shim_cases(case)

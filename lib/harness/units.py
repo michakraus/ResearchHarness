@@ -6,9 +6,12 @@ templates of the profile. JOBS pairs them. `harness test` renders each with
 
 - the units hold only the sections and keys of SERVICE_KEYS and TIMER_KEYS, each key but
   `Environment` once, and no continued line: anything else could change the job unseen;
-- `ExecStart`, split as a shell splits it, equals `ProgramArguments`, after the three elements
-  `/usr/bin/sandbox-exec -f <profile>` where the plist starts with them, and `WorkingDirectory`
-  equals the plist's;
+- `ExecStart`, split as a shell splits it, equals `ProgramArguments`, after the two elements
+  `{home}/.local/bin/jobbox <job>` of the unit and the three elements
+  `/usr/bin/sandbox-exec -f <profile>` of the plist: the unit starts its program under `jobbox`
+  and its own job exactly where the plist starts it under `sandbox-exec`. An `ExecStopPost`,
+  where the unit has one, is the program of `ExecStart` without `jobbox`, and `--server`; and
+  `WorkingDirectory` equals the plist's;
 - the `Environment=` entries equal `EnvironmentVariables`, so the `PATH` is the same, after the
   shim directory `jobsandbox.SHIMS` where a plist that starts with `/usr/bin/sandbox-exec -f`
   puts it first on its `PATH`: macOS only, and checked as a `PATH` element is below;
@@ -75,6 +78,7 @@ SERVICE_KEYS = {
     "Service": {
         "Type",
         "ExecStart",
+        "ExecStopPost",
         "WorkingDirectory",
         "Restart",
         "RestartSec",
@@ -240,19 +244,47 @@ def without_shims(
     ]
 
 
+def program_problems(start: str, post: str | None, program: list[str], job: str, home: str) -> list[str]:
+    """What differs between the `ExecStart` line `start` and the `ExecStopPost` line `post` of the
+    unit of `job` and the `ProgramArguments` `program` of its plist: the unit starts its program
+    under `{home}/.local/bin/jobbox <job>` exactly where the plist starts it under SEATBELT, the
+    two programs are equal, and `post`, where it is set, is the program and `--server`."""
+    problems: list[str] = []
+    args = shlex.split(start)
+    confined = program[:2] == SEATBELT
+    jobbox = [f"{home}/.local/bin/jobbox", job]
+    if confined != (args[:2] == jobbox):
+        problems.append(
+            f"ExecStart {args} {'does not start' if confined else 'starts'} with {jobbox}, and "
+            f"ProgramArguments {'starts' if confined else 'does not start'} with {SEATBELT}"
+        )
+    started = args[2:] if args[:2] == jobbox else args
+    if started != (program[3:] if confined else program):
+        problems.append(f"ExecStart {args} is not ProgramArguments {program}")
+    if post is not None and shlex.split(post) != [*started, "--server"]:
+        problems.append(f"ExecStopPost {post} is not the program of ExecStart {started} and --server")
+    return problems
+
+
 def job_problems(service, timer, plist, filesystem, home):
     """What differs between a rendered unit (and timer) and its rendered plist, and the PATH
     directories that a session can write. A section, a key or a repeated key that the check does
-    not read is a problem too, so that nothing it ignores can change the job."""
+    not read is a problem too, so that nothing it ignores can change the job. The job is the last
+    part of the plist's `Label`, `<launchd_prefix>.<job>`."""
     problems = key_problems(service, "the service", SERVICE_KEYS)
     if timer is not None:
         problems += key_problems(timer, "the timer", TIMER_KEYS)
     if problems:
         return problems
-    args = shlex.split(one(service, "Service", "ExecStart") or "")
     program = cast("list[str]", plist["ProgramArguments"])
-    if args != (program[3:] if program[:2] == SEATBELT else program):
-        problems.append(f"ExecStart {args} is not ProgramArguments {plist['ProgramArguments']}")
+    unit = cast("dict[str, list[tuple[str, str]]]", service)
+    started = program_problems(
+        cast("str | None", one(unit, "Service", "ExecStart")) or "",
+        cast("str | None", one(unit, "Service", "ExecStopPost")),
+        program,
+        cast("str", plist["Label"]).rsplit(".", 1)[-1],
+        cast("str", home),
+    )
     if one(service, "Service", "WorkingDirectory") != plist.get("WorkingDirectory"):
         problems.append(
             f"WorkingDirectory {one(service, 'Service', 'WorkingDirectory')} is not "
@@ -303,7 +335,7 @@ def job_problems(service, timer, plist, filesystem, home):
             f"PATH holds {d!r}, which a session can write or this check cannot place"
             for d in path_problems(env["PATH"], filesystem, home)
         ]
-    return cast("list[str]", problems) + shim_problems
+    return started + cast("list[str]", problems) + shim_problems
 
 
 def render(path: str, data: profile.Profile) -> str:
@@ -546,6 +578,32 @@ def selftest():
         (
             "another working directory in kaimon.service",
             [("systemd/kaimon.service", f"WorkingDirectory={home}/Research", f"WorkingDirectory={home}")],
+        ),
+        (
+            "kaimon.service without jobbox, while its plist keeps sandbox-exec",
+            [("systemd/kaimon.service", f"ExecStart={home}/.local/bin/jobbox kaimon ", "ExecStart=")],
+        ),
+        (
+            "kaimon.service started under the jobbox of julia-update",
+            [
+                (
+                    "systemd/kaimon.service",
+                    f"{home}/.local/bin/jobbox kaimon ",
+                    f"{home}/.local/bin/jobbox julia-update ",
+                )
+            ],
+        ),
+        (
+            "an ExecStopPost of julia-update.service without --server",
+            [(update_service, "julia-update.jl --server\n", "julia-update.jl\n")],
+        ),
+        (
+            "an ExecStopPost of julia-update.service under jobbox",
+            [(update_service, "ExecStopPost=", f"ExecStopPost={home}/.local/bin/jobbox julia-update ")],
+        ),
+        (
+            "kaimon.plist without sandbox-exec, while its unit keeps jobbox",
+            [("launchagents/kaimon.plist", "<string>/usr/bin/sandbox-exec</string>\n", "")],
         ),
     ]
     for label, edits in mutants:

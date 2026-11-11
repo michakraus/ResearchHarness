@@ -9,7 +9,11 @@ Description=Kaimon MCP server on port 2828
 
 [Service]
 Type=simple
-ExecStart={home}/.julia/bin/kaimon --headless --port 2828
+# jobbox starts the server under bwrap with the arguments of
+# ~/.config/research-harness/sandbox/kaimon.bwrap, which `harness setup` writes with jobbox before
+# it starts the job; sandbox/jobbox documents the rest. A failed start of bwrap is in
+# `journalctl --user -u kaimon.service`.
+ExecStart={home}/.local/bin/jobbox kaimon {home}/.julia/bin/kaimon --headless --port 2828
 # LOAD-BEARING. Kaimon reads its tool policy from .kaimon/tools.json in its working directory.
 # Started anywhere else, it ignores the policy and offers every default tool.
 WorkingDirectory={home}/Research

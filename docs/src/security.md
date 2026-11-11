@@ -117,8 +117,30 @@ the installed template. A later version can behave differently.
   signal exists, which the job could already learn with `kill -0` itself, counts a zombie as
   alive, and counts a process that `kill -0` may not signal, such as one of another user, as
   gone. The `julia-update`
-  job runs under its own profile from the same file. On Linux, and for every other MCP server,
-  no profile applies.
+  job runs under its own profile from the same file. For every other MCP server no profile
+  applies.
+- **On Linux, Kaimon and `julia-update` run under `bwrap`.** Each unit starts its program with
+  `~/.local/bin/jobbox <job>`, which runs `bwrap` with the arguments that `harness setup` renders
+  from the same `sandbox/daemon.toml` into `~/.config/research-harness/sandbox/<job>.bwrap`. The
+  job gets new namespaces of every kind but the network (`--unshare-all --share-net`), ends with
+  the unit (`--die-with-parent`), and sees a new `/proc`, a new empty `/tmp`, `/dev`, `/sys`
+  read-only, the system paths of `linux_read` read-only, and an empty home. In that home only the
+  job's `~/` paths are bound: Kaimon reads and writes `~/Research`, the depot and its own
+  directories, as on macOS, and the same write denies are bound read-only. `jobbox` also binds
+  `.git/hooks`, `.git/config` and `.githooks` read-only in each repository that it finds at most
+  four levels below `~/Research` when the job starts. Neither job sees `/run/user/<uid>`, so
+  neither reaches the session bus or the user's service manager; `julia-update` therefore runs
+  its server check, the restart of the server and its alerts in a second phase,
+  `julia-update.jl --server`, outside `bwrap`, after the update phase. `harness setup` and the
+  services script of the dotfiles kit first run the sandbox check of `harness doctor` and stop
+  with exit 2 when `bwrap` cannot make a sandbox, which names the AppArmor setting
+  `kernel.apparmor_restrict_unprivileged_userns`; no job then starts unconfined. The arguments
+  leave open the network, every abstract Unix socket of the host's network namespace, such as an
+  X server's `@/tmp/.X11-unix/X0`, through which a client can type into any window of the user,
+  every write inside `~/Research` outside the bound repository parts, the parts of a repository
+  cloned after the job's start, a `.githooks` that did not exist at the start, and the `.git` file
+  of a worktree, which the job can point at a git directory with hooks of its own. A network
+  namespace of its own for each job, which would close the last two, is planned.
 - **OpenCode and oh-my-pi have no sandbox.** Their permission blocks and guard extensions check
   text, as the deny list and the hooks do. Antigravity runs commands in its terminal sandbox in the
   CLI and the desktop app, and its guard hook sets `BypassSandbox` on each command and checks paths

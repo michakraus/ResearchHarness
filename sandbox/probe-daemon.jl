@@ -1,20 +1,29 @@
-# The probes of the Kaimon server under its Seatbelt profile, sandbox/daemon.toml rendered by
-# `harness render sandbox/kaimon.sb`. A session runs them through Kaimon's `ex` after
-# `harness setup` has written the profile and the server has restarted under it:
+# The probes of the Kaimon server under its sandbox, sandbox/daemon.toml rendered by
+# `harness render sandbox/kaimon.sb` on macOS and `harness render sandbox/kaimon.bwrap` on Linux.
+# A session runs them through Kaimon's `ex` after `harness setup` has written the profile or the
+# arguments and the server has restarted under them:
 #
 #     include(joinpath(homedir(), "Research", "Harness", "sandbox", "probe-daemon.jl"))
 #     ProbeDaemon.run_all()
 #
-# Each probe returns `:allowed`, or the name of the exception class that the attempt raised, as a
-# Symbol: never a file's content. `run_all` returns one `name => result` pair per probe, the
-# positive probes first. The profile is at work when every positive probe gives `:allowed`, `metal`
-# included, and every negative probe gives the name of an exception class: `:SystemError` or an
-# `IOError` class, `lsopen` and `appleevent` `:ProcessFailedException`. A write probe deletes what
-# it created; the probe of ~/.zshrc opens the file to append and writes nothing.
+# On Linux a person can run them from a terminal under the job's `bwrap`, too:
 #
-# `OPEN_GAPS` names the negative probes that the profile does not stop, which report `:allowed`
-# under the real profile: none. The event of `appleevent` is `name of startup disk` of the Finder,
-# because AppleScript answers `name` of an application from the script itself and sends no event.
+#     ~/.local/bin/jobbox kaimon ~/.juliaup/bin/julia --startup-file=no -e 'include(joinpath(homedir(),
+#         "Research", "Harness", "sandbox", "probe-daemon.jl")); display(ProbeDaemon.run_all())'
+#
+# Each probe returns `:allowed`, or the name of the exception class that the attempt raised, as a
+# Symbol: never a file's content. `run_all` returns one `name => result` pair per probe of this
+# system (`probe_names`), the positive probes first. The sandbox is at work when every positive
+# probe gives `:allowed`, `metal` included on macOS, and every negative probe gives the name of an
+# exception class: `:SystemError` or an `IOError` class; on macOS `lsopen` and
+# `appleevent` `:ProcessFailedException`; on Linux, where the job sees no /run/user/<uid>,
+# `systemd_run` and `session_bus` `:ProcessFailedException`. A write probe deletes what it
+# created; the probe of ~/.zshrc opens the file to append and writes nothing.
+#
+# `OPEN_GAPS` names the negative probes that the sandbox does not stop, which report `:allowed`
+# under it: none on macOS; on Linux, none recorded. The event of `appleevent` is
+# `name of startup disk` of the Finder, because AppleScript answers `name` of an application from
+# the script itself and sends no event.
 #
 # Each probe takes the home directory as its argument, so that `harness test` runs every probe
 # against a scratch tree (lib/harness/jobsandbox.py).
@@ -99,6 +108,14 @@ lsopen(home = homedir(); command = `open -a TextEdit`) = attempt(() -> run(comma
 function appleevent(home = homedir(); command = `osascript -e 'tell app "Finder" to get name of startup disk'`)
     return attempt(() -> run(pipeline(command; stdout = devnull)))
 end
+"""A transient unit of the user's service manager, which would run outside `bwrap`."""
+function systemd_run(home = homedir(); command = `systemd-run --user --quiet true`)
+    return attempt(() -> run(pipeline(command; stdout = devnull, stderr = devnull)))
+end
+"""The user's session bus, through which a program reaches the desktop and the service manager."""
+function session_bus(home = homedir(); command = `busctl --user list`)
+    return attempt(() -> run(pipeline(command; stdout = devnull, stderr = devnull)))
+end
 
 const POSITIVE = (:read_research, :write_research, :write_tempdir, :list_packages, :metal)
 const NEGATIVE = (
@@ -112,9 +129,23 @@ const NEGATIVE = (
     :lsopen,
     :appleevent,
 )
+const LINUX_POSITIVE = (:read_research, :write_research, :write_tempdir, :list_packages)
+const LINUX_NEGATIVE = (
+    :read_ssh,
+    :read_claude_json,
+    :read_gh_hosts,
+    :write_zshrc,
+    :write_git_hooks,
+    :write_julia_config,
+    :systemd_run,
+    :session_bus,
+)
 const OPEN_GAPS = ()
 
-"""Every probe with `home`, the positive ones first: one `name => result` pair each."""
-run_all(home = homedir()) = [name => getfield(ProbeDaemon, name)(home) for name in (POSITIVE..., NEGATIVE...)]
+"""The probes of `run_all` on Linux, with `linux`, else on macOS, the positive ones first."""
+probe_names(linux = Sys.islinux()) = linux ? (LINUX_POSITIVE..., LINUX_NEGATIVE...) : (POSITIVE..., NEGATIVE...)
+
+"""Every probe of this system with `home`, the positive ones first: one `name => result` pair each."""
+run_all(home = homedir()) = [name => getfield(ProbeDaemon, name)(home) for name in probe_names()]
 
 end

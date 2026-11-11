@@ -1,0 +1,68 @@
+#!/bin/sh
+# jobbox <job> <program> [arguments ...]: run the program of the Kaimon or julia-update job under
+# bwrap on Linux. systemd/kaimon.service and systemd/julia-update.service start their program
+# through it, from its installed copy in ~/.local/bin, which no session and no job writes.
+#
+# The static arguments of the job are the lines of
+# ~/.config/research-harness/sandbox/<job>.bwrap, one argument per line, which `harness setup`
+# writes with `harness render sandbox/<job>.bwrap` (lib/harness/jobsandbox.py). To them jobbox
+# adds `--chdir` and the working directory of the start, because Kaimon reads its tool policy from
+# .kaimon/tools.json there, and for each repository R at most four levels below ~/Research, itself
+# included, one
+# whose R/.git is a directory, the read-only binds of R/.git/hooks, R/.git/config and R/.githooks
+# that exist: the job writes ~/Research, and these name programs that the next git command runs.
+# A repository cloned after the start, a .githooks made after it, and a worktree, whose .git is a
+# file, get no bind.
+#
+# A job that is not kaimon or julia-update, a missing arguments file and fewer than two arguments
+# exit 2 with one line on stderr, before any bwrap. jobbox imports nothing of the harness: the
+# harness's library lies below ~/Research, which the Kaimon job writes.
+set -eu
+
+fail() {
+    printf 'jobbox: %s\n' "$1" >&2
+    exit 2
+}
+
+[ "$#" -ge 2 ] || fail "usage: jobbox <job> <program> [arguments ...]"
+job=$1
+shift
+case "$job" in
+    kaimon | julia-update) ;;
+    *) fail "no job '$job'; the jobs are kaimon and julia-update" ;;
+esac
+file="$HOME/.config/research-harness/sandbox/$job.bwrap"
+[ -f "$file" ] || fail "no arguments file $file; run harness setup"
+
+# The program and its arguments are "$@"; each new argument goes after them, and the loop at the
+# end moves them behind `--`.
+count=$#
+while IFS= read -r line || [ -n "$line" ]; do
+    set -- "$@" "$line"
+done <"$file"
+set -- "$@" --chdir "$PWD"
+
+# A .git directory at most five levels below ~/Research is a repository at most four levels below
+# it. find does not descend into a .git, and stays quiet about a directory it cannot read.
+research="$HOME/Research"
+repositories=$(find "$research" -maxdepth 5 -name .git -type d -prune -print 2>/dev/null || true)
+while IFS= read -r git; do
+    case "$git" in
+        "$research"/.git | "$research"/*/.git) ;;
+        *) continue ;;
+    esac
+    repository=${git%/.git}
+    for part in .git/hooks .git/config .githooks; do
+        set -- "$@" --ro-bind-try "$repository/$part" "$repository/$part"
+    done
+done <<EOF
+$repositories
+EOF
+
+set -- "$@" --
+while [ "$count" -gt 0 ]; do
+    set -- "$@" "$1"
+    shift
+    count=$((count - 1))
+done
+exec bwrap "$@"
