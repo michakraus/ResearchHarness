@@ -70,9 +70,9 @@ refuses, or that the parser of the running Julia does not read as that one name,
 keyword `end`, refuses the commit with one line, and no load test runs. The lint stage, the
 ast-grep stage and the load test run in a process group of their own: when the limit runs out,
 the hook sends the group SIGTERM, and SIGKILL 5 s later, waits at most 6 s after the SIGTERM on
-the monotonic clock, and does not wait for the output of a process that left the group. When you interrupt
-the hook, it kills that group on its way out. A commit with no staged `.jl` path and no change
-below `test/` passes with no check.
+the monotonic clock, and does not wait for the output of a process that left the group. When
+you interrupt the hook, it kills that group on its way out. A commit with no staged `.jl` path
+and no change below `test/` passes with no check.
 `git commit --no-verify` skips the hook.
 
 Stage 2.7 runs `ast-grep scan --custom-languages allow` once over the staged `.jl` files, from the
