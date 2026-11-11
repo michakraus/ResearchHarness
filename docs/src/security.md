@@ -138,18 +138,18 @@ the installed template. A later version can behave differently.
   in its namespace that path is a mount point, which it can neither rename nor remove. A pin is a
   bind source too, so each job also pins the paths to the other job's pins that it writes and
   does not bind yet, and binds each pin before any of its write binds below it, which would
-  otherwise cover it. Kaimon pins `~/.julia/environments`
-  and `~/.julia/environments/apps`, and `julia-update` pins Kaimon's pin `~/.julia/environments`
-  and juliaup's lock file. Neither job sees `/run/user/<uid>`, so neither reaches the session bus
-  or the user's service manager; `julia-update` therefore runs its server check, the restart of
-  the server and its alerts in a second phase, `~/.local/bin/julia-update-server`, a POSIX `sh`
-  script outside `bwrap`, after the update phase. It runs no Julia and no program of a `PATH`
-  entry whose physical path lies at or below the physical home, or below the target of a link
-  directly in the home, and reads the update phase's state as data. Kaimon writes the depot whose
-  packages the update phase loads, so the two jobs are one trust domain: what `julia-update`
-  writes, `~/.juliaup`, `~/.julia/bin`, `~/.julia/juliaup` and the harness's Julia environment,
-  Kaimon's code can write at the next run of the update phase, Kaimon's own write denies of
-  `~/.julia/bin` and `~/.julia/juliaup` included.
+  otherwise cover it. Kaimon pins `~/.julia/environments` and `~/.julia/environments/apps`, and
+  `julia-update` pins Kaimon's pin `~/.julia/environments` and juliaup's lock file. Neither job
+  sees `/run/user/<uid>`, so neither reaches the session bus or the user's service manager;
+  `julia-update` therefore runs its server check, the restart of the server and its alerts in a
+  second phase, `~/.local/bin/julia-update-server`, a POSIX `sh` script outside `bwrap`, after
+  the update phase. It runs no Julia and no program of a `PATH` entry whose physical path lies at
+  or below the physical home, or below the target of a link directly in the home, and reads the
+  update phase's state as data. Kaimon writes the depot whose packages the update phase loads, so
+  the two jobs are one trust domain: what `julia-update` writes, `~/.juliaup`, `~/.julia/bin`,
+  `~/.julia/juliaup` and the harness's Julia environment, Kaimon's code can write at the next run
+  of the update phase, Kaimon's own write denies of `~/.julia/bin` and `~/.julia/juliaup`
+  included.
   `harness setup` and the services script of the dotfiles kit first run the sandbox check of
   `harness doctor` and stop with exit 2 when `bwrap` cannot make a sandbox, which names the
   AppArmor setting `kernel.apparmor_restrict_unprivileged_userns`; no job then starts unconfined.

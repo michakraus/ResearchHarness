@@ -52,21 +52,21 @@ makes new namespaces of every kind but the network, ends the job with its unit, 
 `--symlink` of its target for a link and `--ro-bind` for a directory; `--tmpfs` of the home; then
 `--ro-bind-try` of each read path and read file, `--bind-try` of each write path, write file and
 `linux_write` path with `--bind` of each pin (`pins`) among them (`writable`), `--ro-bind` of
-each write deny, and `--bind-try` of each file written back. Of the job's lists it takes only a `~/` path, `~`
-becoming `home`, and `$HARNESS` and a path below it, `$HARNESS` becoming the profile's `harness`:
-an absolute path, the root `/`, the `$DARWIN` tokens, MACOS_LIBRARY and every path below it are
-macOS's, and `pty` gives no argument. A write deny that lies at or below no read path, write path
-or `linux_write` path of the job is left out, because the job cannot see it. A pin is a path from
-a write path of the job down to a bind source of the other job of JOBS, its pins included, which
-is no effective mount point of the job yet (a bind destination that no later bind covers): bound
-onto itself it is a mount point in the job's namespace, which the job cannot rename or remove
-while the other job's `bwrap` mounts it, and a pin below a write deny of the job raises
-HarnessError. The pins of the two jobs are computed against each other until no new pin appears,
-and each pin is bound after the last write bind at or above it and before the first one after
-that below it, so that no later bind covers it. `linux_dirs` names the write denies that are left
-in, the `linux_write` paths and the pins that are directories, and `linux_files` the pins that
-are files, which must exist before the job starts. An argument that holds a newline raises
-HarnessError, because `jobbox` reads one argument per line.
+each write deny, and `--bind-try` of each file written back. Of the job's lists it takes only a
+`~/` path, `~` becoming `home`, and `$HARNESS` and a path below it, `$HARNESS` becoming the
+profile's `harness`: an absolute path, the root `/`, the `$DARWIN` tokens, MACOS_LIBRARY and
+every path below it are macOS's, and `pty` gives no argument. A write deny that lies at or below
+no read path, write path or `linux_write` path of the job is left out, because the job cannot see
+it. A pin is a path from a write path of the job down to a bind source of the other job of JOBS,
+its pins included, which is no effective mount point of the job yet (a bind destination that no
+later bind covers): bound onto itself it is a mount point in the job's namespace, which the job
+cannot rename or remove while the other job's `bwrap` mounts it, and a pin below a write deny of
+the job raises HarnessError. The pins of the two jobs are computed against each other until no
+new pin appears, and each pin is bound after the last write bind at or above it and before the
+first one after that below it, so that no later bind covers it. `linux_dirs` names the write
+denies that are left in, the `linux_write` paths and the pins that are directories, and
+`linux_files` the pins that are files, which must exist before the job starts. An argument that
+holds a newline raises HarnessError, because `jobbox` reads one argument per line.
 
 `harness render` of a template `sandbox/<job>.sb` or `sandbox/<job>.bwrap` (`job_of`), a file
 that does not exist, prints `render` of that job; a `.bwrap` template prints `bwrap_args` with the
@@ -2845,10 +2845,12 @@ def server_path_cases(case: Case, root: pathlib.Path) -> None:
     anchored_link.symlink_to(anchored)
     # A dangling link directly in the home, which is no anchor.
     (real / "dangling").symlink_to(root / "server-path-none")
-    for d in (real / ".juliaup" / "bin", outside / "bin"):
+    for d in (real / ".juliaup" / "bin", outside / "bin", real, outside):
         (d / "lsof").write_text(f"#!/bin/sh\ntouch '{marker}'\n", encoding="utf-8")
         (d / "lsof").chmod(0o755)
     for label, home, entry, cwd in (
+        ("an entry equal to the home", str(real), str(real), root),
+        ("an entry equal to the target of a link directly in the home", str(anchored), str(outside), root),
         ("the home with a trailing /", f"{real}/", f"{real}/.juliaup/bin", root),
         ("an entry spelled through a link to the home", str(real), f"{linked}/.juliaup/bin", root),
         ("the home a link, the entry its real path", str(linked), f"{real}/.juliaup/bin", root),

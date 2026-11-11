@@ -861,3 +861,19 @@
 - kind: found late
 - found: 2026-11-10, the review of the srt files for Claude Code's Anthropic login and `agy`'s
   token file
+
+### K155 · A `--bind-try` or `--ro-bind-try` destination counts as an effective mount point of a job even when its source is missing on the host.
+
+- location: `lib/harness/jobsandbox.py:519`
+- evidence: `job_pins` skips each path that `effective([*reads, *writes, *denies, *back])` holds,
+  and the read paths, write paths and files written back are bound with `--bind-try` or
+  `--ro-bind-try`. Where the source of such a bind is missing, `bwrap` makes no mount, so the path
+  is no mount point in the job's namespace, and the other job can put a link there between this
+  job's `jobbox` check and its mount. On the shipped list each such path is a write deny or a pin
+  of one of the jobs, which `harness setup` creates (`linux_dirs`, `linux_files`): a probe of
+  `sandbox/daemon.toml` with the home `/h/a.b` finds
+  `~/.julia/bin`, `~/.julia/juliaup`, `~/.julia/environments/apps` and juliaup's lock file. A
+  list that E5f extends can add a `-try` destination that setup does not create. A fix counts a
+  `-try` destination only where setup creates it.
+- kind: defect
+- found: 2026-11-11, the verify-4 critic of part D2
