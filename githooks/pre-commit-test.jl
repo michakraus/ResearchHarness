@@ -611,18 +611,97 @@ end
         @test occursin("ast-grep: 1 hit(s) on lines this commit does not add — advisory", out)
     end
 
+    # Each setting makes `git diff` print no hunk header for the file, or other lines than the
+    # staged ones, so a new hit would read as advisory.
+    @testset "a diff.external, a textconv driver or a -diff attribute does not hide an added hit" begin
+        conv = bindir("conv", "#!/bin/sh\necho converted\n")
+        external = bindir("external", "#!/bin/sh\necho changed\n")
+        for (config, attributes) in ((["diff.external", joinpath(external, "external")], nothing),
+                                     (["diff.jl.textconv", joinpath(conv, "conv")], "*.jl diff=jl\n"),
+                                     (nothing, "*.jl -diff\n"))
+            extra = attributes === nothing ? [SGCONFIG] : [SGCONFIG, ".gitattributes" => attributes]
+            repo, env = fixture(PROBE; extra)
+            config === nothing || run(setenv(`git -C $repo config $config`, env))
+            code, out, err = capture(`bash $HOOK`, repo, env)
+            @test code == 1
+            @test occursin("ast-grep: FAILED", out * err)
+            @test occursin("    src/Fixture.jl:4: debug-probe: ", out * err)
+        end
+    end
+
+    # The commit adds lines 4 and 8; the old hit lies on line 6, between the two hunks.
+    @testset "diff.interHunkContext does not join two hunks around an old hit" begin
+        before = replace(CLEAN, "    return" => "    a = 1\n    @show x\n    b = 2\n    return")
+        after = replace(before, "    a = 1\n" => "    c = 3\n    a = 1\n",
+                        "    b = 2\n" => "    b = 2\n    d = 4\n")
+        repo, env = fixture(before; extra = [SGCONFIG])
+        run(setenv(`git -C $repo config diff.interHunkContext 5`, env))
+        run(setenv(`git -C $repo commit -q -m base`, env))
+        write(joinpath(repo, "src", "Fixture.jl"), after)
+        run(setenv(`git -C $repo add src/Fixture.jl`, env))
+        code, out, err = capture(`bash $HOOK`, repo, env)
+        @test code == 0
+        @test occursin("ast-grep: 1 hit(s) on lines this commit does not add — advisory", out * err)
+        @test occursin("    src/Fixture.jl:6: debug-probe: ", out * err)
+    end
+
+    # As a glob, the path src/a[b].jl also matches src/ab.jl, whose second line the commit adds.
+    @testset "the added lines of a path with glob characters are its own" begin
+        old = "function f(x)\n    @show x\n    return x\nend\n"
+        repo, env = fixture(CLEAN; extra = [SGCONFIG, "src/a[b].jl" => old, "src/ab.jl" => "g(x) = x\n"])
+        run(setenv(`git -C $repo commit -q -m base`, env))
+        write(joinpath(repo, "src", "a[b].jl"), old * "\nh(x) = x\n")
+        write(joinpath(repo, "src", "ab.jl"), "y = 1\nz = 2\ng(x) = x\n")
+        run(setenv(`git -C $repo add -- src/a\[b\].jl src/ab.jl`, env))
+        code, out, err = capture(`bash $HOOK`, repo, env)
+        @test code == 0
+        @test occursin("ast-grep: 1 hit(s) on lines this commit does not add — advisory", out * err)
+        @test occursin("    src/a[b].jl:2: debug-probe: ", out * err)
+    end
+
     # tree-sitter-julia marks the adjoint of a float literal with an exponent ERROR, which the rule
     # `parse-error` reports at severity info; Julia parses it.
     @testset "a parse-error hit is not printed" begin
         source = "module Fixture\n\nconst SCALE = 1e-3'\n\nend\n"
         repo, env = fixture(source; extra = [SGCONFIG])
-        _, scan, _ = capture(`ast-grep scan --custom-languages allow --json=stream -- src/Fixture.jl`, repo, env)
+        # `read` gives the scan no stdin: ast-grep ends at once, and a write to its stdin, as
+        # `capture` makes, can then fail with a broken pipe.
+        scan = read(ignorestatus(setenv(`ast-grep scan --custom-languages allow --json=stream -- src/Fixture.jl`, env; dir = repo)), String)
         @test occursin("\"ruleId\":\"parse-error\"", scan)
         code, out, err = capture(`bash $HOOK`, repo, env)
         @test code == 0
         @test occursin("ast-grep: clean", out * err)
         @test !occursin("parse-error", out * err)
         @test occursin("loads: ok", out * err)
+    end
+
+    # A rule with no `severity` key gives hits of severity hint.
+    @testset "a hit of severity warning or hint is advisory on any line" begin
+        rules = ["fixture-rules/warning.yml" => """
+                     id: fixture-warning
+                     language: julia
+                     severity: warning
+                     message: a warn_me call
+                     rule:
+                       pattern: warn_me(\$A)
+                     """,
+                 "fixture-rules/hint.yml" => """
+                     id: fixture-hint
+                     language: julia
+                     message: a hint_me call
+                     rule:
+                       pattern: hint_me(\$A)
+                     """]
+        config = "sgconfig.yml" => replace(last(SGCONFIG), "ruleDirs: [$(repr(RULES))]" =>
+                                                               "ruleDirs: [$(repr(RULES)), fixture-rules]")
+        source = replace(CLEAN, "    return" => "    warn_me(x)\n    hint_me(x)\n    return")
+        code, out = run_hook(source; extra = [config; rules])
+        @test code == 0
+        @test occursin("ast-grep: 2 hit(s) of severity warning or hint — advisory", out)
+        @test occursin("    src/Fixture.jl:4: fixture-warning: a warn_me call", out)
+        @test occursin("    src/Fixture.jl:5: fixture-hint: a hint_me call", out)
+        @test !occursin("ast-grep: FAILED", out)
+        @test !occursin("ast-grep: clean", out)
     end
 
     @testset "a silenced hit passes" begin
@@ -1074,6 +1153,16 @@ end
         end
         @test ok
         @test out == "\e[0;32mast-grep: clean\e[0m\n"
+    end
+
+    # A program of its own, whose `harness_package` this test replaces.
+    @testset "the ast-grep stage passes on an interrupt while JSON loads" begin
+        box = Module(:InterruptedProgram)
+        Base.include(box, PROGRAM)
+        Core.eval(box, :(harness_package(name) = throw(InterruptException())))
+        @test_throws InterruptException withenv("PATH" => stubbed(applied * "echo '{}'\nexit 1\n")) do
+            redirect_stdout(() -> Base.invokelatest(box.ast_grep, ["x.jl"]), devnull)
+        end
     end
 
     # The child holds the stderr after `sh` ends, and not the stdout.

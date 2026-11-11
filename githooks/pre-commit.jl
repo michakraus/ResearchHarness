@@ -319,11 +319,14 @@ line, and one with `,0` adds none.
 
 Rename detection pairs two paths only when both are in the pathspec, so `old` goes in beside
 `file`, and a pure rename adds no line. `-M` asks for the detection whatever `diff.renames`
-says.
+says. The other options keep the repository's configuration from changing the hunks: an
+external diff program, a textconv driver, a `-diff` attribute and `diff.interHunkContext`. The
+paths are literal, so a name such as `a[b].jl` matches no other file.
 """
 function added_lines(file, old)
     paths = old === nothing ? [file] : [file, old]
-    diff = read(`git diff --cached -U0 --no-color -M -- $paths`, String)
+    options = `--no-color --no-ext-diff --no-textconv --text --inter-hunk-context=0 -M`
+    diff = read(`git --literal-pathspecs diff --cached -U0 $options -- $paths`, String)
     return map(eachmatch(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@"m, diff)) do m
         c = parse(Int, m[1])
         return c:(c + (m[2] === nothing ? 1 : parse(Int, m[2])) - 1)
@@ -354,8 +357,10 @@ Stage 2.7. `ast-grep scan` runs, once over the staged files, the rules of the `s
 that it finds in the repository's root or a directory above it, such as
 `~/Research/sgconfig.yml`. A hit of severity `error` blocks when a line of its range is one that
 the commit adds, and is advisory otherwise, so the hits that a file already holds do not block
-an unrelated commit. A hit of another severity, such as the `info` of the rule `parse-error`, is
-not printed. `# ast-grep-ignore: <rule-id>` at the end of the hit's line or on the line above
+an unrelated commit. A hit of severity `warning` or `hint` never blocks: it is printed as
+advisory, after the hits of severity `error`. A hit of severity `info`, such as one of the rule
+`parse-error`, is not printed. `ast-grep: clean` means no hit of severity `error`, `warning` or
+`hint`. `# ast-grep-ignore: <rule-id>` at the end of the hit's line or on the line above
 silences a hit: ast-grep drops it.
 
 Julia is a custom language of ast-grep, whose parser is a native library, and ast-grep loads it
@@ -399,11 +404,13 @@ function ast_grep(files; seconds = 60)
     JSON = try
         harness_package("JSON")
     catch e
+        e isa InterruptException && rethrow()
         return skip("JSON does not load: " * first(split(sprint(showerror, e), '\n')))
     end
     hits = [Base.invokelatest(hit, JSON, l) for l in lines]
     any(isnothing, hits) && return skip("its output is not one JSON object per line")
     found = filter(h -> h.severity == "error", hits)
+    others = filter(h -> h.severity in ("warning", "hint"), hits)
     olds = renamed()
     added = Dict{String, Vector{UnitRange{Int}}}()
     function adds(h)
@@ -421,7 +428,11 @@ function ast_grep(files; seconds = 60)
         println("$(YELLOW)ast-grep: $(length(advisory)) hit(s) on lines this commit does not add — advisory$(NC)")
         println(report(advisory))
     end
-    isempty(found) && println("$(GREEN)ast-grep: clean$(NC)")
+    if !isempty(others)
+        println("$(YELLOW)ast-grep: $(length(others)) hit(s) of severity warning or hint — advisory$(NC)")
+        println(report(others))
+    end
+    isempty(found) && isempty(others) && println("$(GREEN)ast-grep: clean$(NC)")
     return isempty(blocking)
 end
 

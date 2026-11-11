@@ -83,8 +83,13 @@ commit when a line of the hit is one that the commit adds: the stage prints
 `ast-grep: FAILED` and one line per hit, `<file>:<line>: <rule-id>: <message>`. A hit of severity
 `error` on lines that the commit does not add only warns, so the hits that a file already holds do
 not block an unrelated commit; a pure rename adds no line. The stage takes the added lines from
-the hunks of `git diff --cached -U0 -M`, and scans the working tree. A hit of another severity,
-such as the `info` of `parse-error`, is not printed. To silence one hit, write
+the hunks of `git diff --cached -U0 -M`, with literal paths and with options that keep an
+external diff program, a textconv driver, a `-diff` attribute and `diff.interHunkContext` from
+changing the hunks, and scans the working tree. A hit of severity `warning` or `hint` never
+blocks: after the hits of severity `error`, the stage prints
+`ast-grep: <n> hit(s) of severity warning or hint — advisory` and one line per hit. A hit of
+severity `info`, such as one of `parse-error`, is not printed. The stage prints `ast-grep: clean`
+when no hit has severity `error`, `warning` or `hint`. To silence one hit, write
 `# ast-grep-ignore: <rule-id>` at the end of its line or on the line above. Without `ast-grep` on
 the `PATH`, with an `ast-grep` that cannot start, without an `sgconfig.yml`, with a configuration
 that applies no rule to the staged files, on an exit code other than 0 and 1, on an output that
@@ -112,8 +117,11 @@ that fails, and the findings of `fatou`, give their lines, and the staged paths 
 after `--`; a commit of one `.jl` file starts `julia` from the `PATH` once; an interrupted commit
 stops its load test. For the ast-grep stage, a hit on a line that a commit adds, also on the last
 line of a hunk or inside a hit that spans lines, is refused with its line; a hit on lines that a
-commit does not add, also after a rename or a deletion, warns; a `parse-error` hit and a silenced
-hit are not printed; and each case of a skip gives its one line. Each fixture of the stage holds
+commit does not add, also after a rename or a deletion, warns; the added lines do not change
+with an external diff program, a textconv driver, a `-diff` attribute, `diff.interHunkContext`
+or glob characters in a path; a hit of severity `warning` or `hint` warns on an added line; a
+`parse-error` hit and a silenced hit are not printed; an interrupt while JSON loads is no
+skip; and each case of a skip gives its one line. Each fixture of the stage holds
 an `sgconfig.yml` that names the rules of the tree under test and the parser by absolute path:
 `ast-grep/julia.dylib` of the tree where it exists, as in CI, else the one of the research
 tree's `Harness/`. It checks the time limits of the lint stage and the load test, also for a
