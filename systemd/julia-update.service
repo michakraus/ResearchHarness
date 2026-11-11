@@ -8,8 +8,15 @@ Description=Update Julia and the Kaimon server
 [Service]
 Type=oneshot
 # The juliaup launcher, not a release path, and the installed copy of the script, which a session
-# cannot write: ~/.local/bin is deny-write, and this job runs outside the sandbox.
-ExecStart={home}/.juliaup/bin/julia --startup-file=no {home}/.local/bin/julia-update.jl
+# cannot write: ~/.local/bin is deny-write for a session. ExecStart runs the update phase under
+# bwrap through jobbox, with the arguments of ~/.config/research-harness/sandbox/julia-update.bwrap;
+# ExecStopPost runs the server phase outside it, after the update phase, whether that failed or
+# not: the server check, the restart and the alerts need the server's process, the service
+# manager and the session bus, which the update phase does not see. The server phase is the
+# installed copy of scripts/julia-update-server, a POSIX sh script that runs no Julia and no
+# program of a directory below the home, which the jobs write.
+ExecStart={home}/.local/bin/jobbox julia-update {home}/.juliaup/bin/julia --startup-file=no {home}/.local/bin/julia-update.jl
+ExecStopPost={home}/.local/bin/julia-update-server
 # Deprioritised: a Pkg resolve that competes with an interactive Julia session is worse than a
 # late one.
 Nice=5

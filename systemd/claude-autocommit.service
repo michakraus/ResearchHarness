@@ -3,7 +3,7 @@
 # section of its own. Its output goes to the journal.
 
 [Unit]
-Description=Commit the plans and memories of ~/.claude
+Description=Commit the memories of ~/.claude
 
 [Service]
 Type=oneshot

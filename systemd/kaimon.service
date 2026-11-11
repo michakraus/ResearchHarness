@@ -1,15 +1,21 @@
-# The Kaimon MCP server, the Linux twin of launchagents/kaimon.plist. Render it with
+# The Kaimon MCP server, the Linux twin of launchagents/kaimon.plist. Once jobbox and its
+# arguments file are in place (ExecStart below), render it with
 # `harness render systemd/kaimon.service` into ~/.config/systemd/user/, then
 # `systemctl --user daemon-reload`, `(umask 077 && mkdir -p ~/.cache/kaimon/pocl)` for the
 # POCL_CACHE_DIR below, and `systemctl --user enable --now kaimon.service`.
-# julia-update.jl restarts it by this name when the server's Julia release is deleted.
+# julia-update-server, the server phase of julia-update.service, restarts it by this name when
+# the server's Julia release is deleted.
 
 [Unit]
 Description=Kaimon MCP server on port 2828
 
 [Service]
 Type=simple
-ExecStart={home}/.julia/bin/kaimon --headless --port 2828
+# jobbox starts the server under bwrap with the arguments of
+# ~/.config/research-harness/sandbox/kaimon.bwrap, which `harness setup` writes with jobbox before
+# it starts the job; sandbox/jobbox documents the rest. A failed start of bwrap is in
+# `journalctl --user -u kaimon.service`.
+ExecStart={home}/.local/bin/jobbox kaimon {home}/.julia/bin/kaimon --headless --port 2828
 # LOAD-BEARING. Kaimon reads its tool policy from .kaimon/tools.json in its working directory.
 # Started anywhere else, it ignores the policy and offers every default tool.
 WorkingDirectory={home}/Research

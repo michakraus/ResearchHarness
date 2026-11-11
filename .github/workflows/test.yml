@@ -111,7 +111,7 @@ jobs:
             python3 bin/harness --profile examples/profile.toml render "$f" > "$units/$(basename "$f")"
             echo "rendered $f"
           done
-          for program in .julia/bin/kaimon .juliaup/bin/julia .local/share/research-harness/python/bin/python .local/bin/claude-autocommit; do
+          for program in .local/bin/jobbox .local/bin/julia-update-server .julia/bin/kaimon .juliaup/bin/julia .local/share/research-harness/python/bin/python .local/bin/claude-autocommit; do
             mkdir -p "$HOME/$(dirname "$program")"
             rm -f "$HOME/$program"
             printf '#!/bin/sh\nexit 0\n' > "$HOME/$program"
@@ -119,8 +119,8 @@ jobs:
           done
           systemd-analyze --version | head -n 1
           systemd-analyze verify --user "$units"/*
-          # The canary: without the program that kaimon.service starts, verify must fail.
-          rm "$HOME/.julia/bin/kaimon"
+          # The canary: without jobbox, which kaimon.service starts, verify must fail.
+          rm "$HOME/.local/bin/jobbox"
           if systemd-analyze verify --user "$units/kaimon.service"; then
             echo "canary: systemd-analyze verify passed a unit whose ExecStart does not exist"
             exit 1

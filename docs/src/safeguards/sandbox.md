@@ -19,7 +19,7 @@ sandbox around a whole frontend, its own process and every command that it start
 |:--|:--|:--|:--|
 | [the session sandbox](#the-session-sandbox) | each shell command of a Claude Code session | macOS, Linux | the settings template; always on |
 | [the launcher `agentbox`](#the-launcher-agentbox) | a whole CLI frontend: `claude`, `opencode`, `omp` or `agy` | macOS; on Linux [planned](../planned.md#linux-launcher) | you, by starting the frontend through `agentbox` |
-| [the daemon profiles](#the-daemon-profiles) | the Kaimon server and the `julia-update` job | macOS; on Linux [work in progress](../planned.md#daemon-profiles-linux) | `harness setup`, in the launch agents |
+| [the daemon profiles](#the-daemon-profiles) | the Kaimon server and the `julia-update` job | macOS, Linux | `harness setup`, in the launch agents and the `systemd --user` units |
 
 ## The session sandbox
 
@@ -155,9 +155,50 @@ the job could already learn with `kill -0` itself, counts a zombie as alive, and
 that `kill -0` may not signal, such as one of another user, as gone. The `julia-update` job runs
 under its own profile from the same file. For every other MCP server, no profile applies.
 
-**On Linux** the units of the two jobs run unwrapped.
-**[Work in progress](../planned.md#daemon-profiles-linux):** a wrapper that runs each unit under
-`bwrap`, with the same file rules.
+**On Linux, Kaimon and `julia-update` run under `bwrap`.** Each unit starts its program with
+`~/.local/bin/jobbox <job>`, which runs `bwrap` with the arguments that `harness setup` renders
+from the same `sandbox/daemon.toml` into `~/.config/research-harness/sandbox/<job>.bwrap`. The
+job gets new namespaces of every kind but the network (`--unshare-all --share-net`), ends with
+the unit (`--die-with-parent`), and sees a new `/proc`, a new empty `/tmp`, the host's `/dev`,
+`/sys` read-only, the system paths of `linux_read` read-only, and an empty home. In that home only
+the job's `~/` paths are bound: Kaimon reads and writes `~/Research`, the depot and its own
+directories, as on macOS, and the same write denies are bound read-only. `jobbox` also binds
+`.git/hooks`, `.git/config` and `.githooks` read-only in each repository that it finds at most
+four levels below `~/Research` when a job that binds `~/Research` starts. `bwrap` follows a
+symbolic link in a bind, and each job writes directories below the home that hold sources of
+the other job's binds, such as `~/.julia/environments/apps` of `julia-update` in Kaimon's
+`~/.julia`. So `jobbox` stops with exit 2, before `bwrap`, when a source of any bind below an
+entry of the home is a link, or lies below one under that entry, which may itself be a link. A
+check before the mount does not hold against the other job while it runs, so each job binds onto
+itself each path from its own write path down to such a source of the other:
+in its namespace that path is a mount point, which it can neither rename nor remove. A pin is a
+bind source too, so each job also pins the paths to the other job's pins that it writes and
+does not bind yet, and binds each pin before any of its write binds below it, which would
+otherwise cover it. Kaimon pins `~/.julia/environments` and `~/.julia/environments/apps`, and
+`julia-update` pins Kaimon's pin `~/.julia/environments` and juliaup's lock file. Neither job
+sees `/run/user/<uid>`, so neither reaches the session bus or the user's service manager;
+`julia-update` therefore runs its server check, the restart of the server and its alerts in a
+second phase, `~/.local/bin/julia-update-server`, a POSIX `sh` script outside `bwrap`, after
+the update phase. It runs no Julia and no program of a `PATH` entry whose physical path lies at
+or below the physical home, or at or below the target of a link directly in the home, and reads
+the update phase's state as data. Kaimon writes the depot whose packages the update phase loads,
+so the two jobs are one trust domain: what `julia-update` writes, `~/.juliaup`, `~/.julia/bin`,
+`~/.julia/juliaup` and the harness's Julia environment, Kaimon's code can write at the next run
+of the update phase, Kaimon's own write denies of `~/.julia/bin` and `~/.julia/juliaup`
+included.
+
+`harness setup` and the services script of the dotfiles kit first run the sandbox check of
+`harness doctor` and stop with exit 2 when `bwrap` cannot make a sandbox, which names the
+AppArmor setting `kernel.apparmor_restrict_unprivileged_userns`; no job then starts unconfined.
+The arguments leave open the network, every abstract Unix socket of the host's network
+namespace, such as an X server's `@/tmp/.X11-unix/X0`, through which a client can type into any
+window of the user, the host's terminals in `/dev/pts`, which `--dev-bind /dev /dev` shows the
+job (not measured on Linux), every write inside `~/Research` outside the bound repository parts,
+the parts of a repository cloned after the job's start, a `.githooks` that did not exist at the
+start, the `.git` file of a worktree, which the job can point at a git directory with hooks of
+its own, and the hooks and the configuration of a submodule in `.git/modules/<name>`, which get
+no bind. A network namespace of its own for each job, which would close the network and
+abstract-socket gaps, is planned.
 
 ## Planned
 
@@ -179,8 +220,8 @@ These sandboxes are decided, and none of them runs yet:
 - **A token per owner** ([planned](../planned.md#token-per-owner), waits for your tokens): a
   fine-grained forge token for each organisation, so that a command can write only where the task
   needs it.
-- **Kaimon without the network** ([planned](../planned.md#kaimon-without-network), waits for the
-  daemon wrapper on Linux): the Kaimon server reaches only the package servers.
+- **Kaimon without the network** ([planned](../planned.md#kaimon-without-network)): the Kaimon
+  server reaches only the package servers.
 - **A credential proxy** ([planned](../planned.md#credential-proxy), optional and last): a proxy
   that writes the keys into the requests for their named hosts, so that the agent sees only a
   stand-in. `srt` already filters the network by host, so the proxy does not run by default.

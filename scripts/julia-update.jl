@@ -20,10 +20,19 @@
 #    session, which have lost nothing that a restart could keep. Any other reason for a restart —
 #    a new Kaimon version, a new default release — is reported and left to a person.
 #
-# The job runs on macOS under launchd and on Linux under `systemd --user`. What differs between the
-# two — the service manager, the restart, the notifier, the log and how the server's binary is
-# read — is in one branch on the system below. The tools are found on the PATH, which the job's
-# plist or unit fixes to directories that no session can write.
+# The job runs on macOS under launchd and on Linux under `systemd --user`. On macOS one run does
+# the four steps; the service manager, the restart, the notifier, the log and how the server's
+# binary is read are in the branch on the system below. The tools are found on the PATH, which the
+# job's plist or unit fixes to directories that no session can write.
+#
+# On Linux the script is the update phase, steps 1 to 3, which the unit's `ExecStart` runs under
+# `bwrap`, where no other process, no service manager and no session bus is in sight. It writes
+# its failures, the Kaimon versions before and after the update and the Sys.BINDIR of the default
+# release into STATE, one `key=value` per line. The unit's `ExecStopPost` then runs
+# `julia-update-server`, a POSIX `sh` script outside `bwrap`, which reads STATE as data, runs
+# step 4 and sends the alerts; it runs no Julia, because the jobs write the depots and the
+# releases. JULIA_UPDATE_SYSTEM, `Darwin` or `Linux`, takes the place of the system's own name, so
+# that the cases of lib/harness/jobsandbox.py run the Linux phase on macOS.
 #
 # The app environment at ~/.julia/environments/apps/Kaimon is a derived artefact: every upgrade
 # regenerates its Project.toml from Kaimon's own, so nothing added there survives. Tools reach
@@ -34,6 +43,16 @@
 # only a bare shim call reads it.
 #
 # A failure or a due restart also sends a desktop notification, because nobody reads the log.
+#
+# The script itself loads the standard library of its own release only: the load path is
+# `@stdlib`, and the depot path keeps only the release's own depots, below `dirname(Sys.BINDIR)`.
+# The jobs write `~/.julia`, so a package of the default environment `@v#.#` or of a depot there
+# would otherwise run in the script's own process. Each step that runs Julia does so in a
+# subprocess, which reads the load path and the depot path of its own environment.
+
+empty!(LOAD_PATH)
+push!(LOAD_PATH, "@stdlib")
+filter!(d -> startswith(d, dirname(Sys.BINDIR) * '/'), DEPOT_PATH)
 
 using Dates
 using TOML
@@ -46,10 +65,14 @@ const APP = joinpath(homedir(), ".julia", "environments", "apps", "Kaimon")
 const HARNESS_ENV = get(ENV, "RESEARCH_HARNESS_JULIA",
                         joinpath(homedir(), ".local", "share", "research-harness", "julia"))
 const KAIMON_PORT = 2828
+# The file of the update phase on Linux, which julia-update-server reads.
+const STATE = joinpath(homedir(), ".cache", "julia-update", "state")
+const SYSTEM = get(ENV, "JULIA_UPDATE_SYSTEM", string(Sys.KERNEL))
 
-# The system's own parts, in this one branch: the service manager, the restart of the Kaimon
-# server and the line that names it, the log, the notifier, and how the server's binary is read.
-if Sys.isapple()
+# The system's own parts of macOS, in this one branch: the service manager, the restart of the
+# Kaimon server and the line that names it, the log, the notifier, and how the server's binary is
+# read. On Linux julia-update-server holds them.
+if SYSTEM == "Darwin"
     # The Kaimon job's label is `<launchd_prefix>.kaimon`, from the private profile, as in
     # launchagents/kaimon.plist.
     const PROFILE = get(ENV, "RESEARCH_HARNESS_PROFILE",
@@ -73,30 +96,8 @@ if Sys.isapple()
         comm = readchomp(ignorestatus(`$ps -o comm= -p $pid`))
         return isempty(comm) ? :ended : comm
     end
-elseif Sys.islinux()
-    const SERVICE_MANAGER = "systemd"
-    const RESTART_HINT = "systemctl --user restart kaimon.service"
-    const LOG = "journalctl --user -u julia-update.service"
-    const NOTIFIER = "notify-send"
-    const MANAGER = "systemctl"
-    restart_cmd(manager) = `$manager --user restart kaimon.service`
-    notify_cmd(notifier, message) = `$notifier julia-update $message`
-    """
-    The binary of process `pid` from `/proc/<pid>/exe`, or `:ended` when the process has ended.
-    `ps -o comm=` prints only a 15-character name on Linux. The link of a deleted binary ends in
-    ` (deleted)`, which is removed, so a binary written again at the same path exists.
-    """
-    function binary_of(pid)
-        exe = try
-            readlink("/proc/$pid/exe")
-        catch e
-            e isa Base.IOError || rethrow()
-            return :ended
-        end
-        return chopsuffix(exe, " (deleted)")
-    end
-else
-    error("julia-update.jl runs on macOS and Linux, not on $(Sys.KERNEL)")
+elseif SYSTEM != "Linux"
+    error("julia-update.jl runs on macOS and Linux, not on $SYSTEM")
 end
 
 """
@@ -146,8 +147,11 @@ function server_julia()
     return binary_of(first(pids))
 end
 
+"""The Sys.BINDIR of the release that the launcher resolves for the default channel."""
+default_bindir() = readchomp(`$JULIA --startup-file=no -e 'print(Sys.BINDIR)'`)
+
 """The Julia binary that the launcher resolves for the default channel."""
-default_julia() = joinpath(readchomp(`$JULIA --startup-file=no -e 'print(Sys.BINDIR)'`), "julia")
+default_julia() = joinpath(default_bindir(), "julia")
 
 """
 Show a desktop notification, or only a log line when the notifier is not on the PATH.
@@ -163,8 +167,10 @@ function alert(message)
     return nothing
 end
 
-function main()
-    println("=== julia-update ", Dates.format(now(), "yyyy-mm-dd HH:MM:SS"), " ===")
+"""
+Steps 1 to 3: the failures, and the Kaimon versions before and after the update.
+"""
+function update_phase()
     failures = String[]
 
     step("juliaup update", `$JULIAUP update`) || push!(failures, "juliaup update")
@@ -192,7 +198,15 @@ function main()
     if !step("using Kaimon", setenv(loads, merge(ENV, Dict("JULIA_LOAD_PATH" => APP))))
         push!(failures, "Kaimon $after does not load; reinstall with Pkg.Apps.add(\"Kaimon\")")
     end
+    return failures, before, string(after)
+end
 
+"""
+Step 4 and the alerts, after the update phase's `failures` and the Kaimon versions `before` and
+`after` it: 1 when a step failed, else 0.
+"""
+function server_phase(failures, before, after)
+    failures = copy(failures)
     println("--- server check")
     server = server_julia()
     due = String[]
@@ -237,6 +251,40 @@ function main()
         return 1
     end
     return 0
+end
+
+"`value` as one line of STATE, each line break a space: julia-update-server reads a value per line."
+one_line(value) = replace(string(value), r"[\r\n]" => " ")
+
+"""
+The update phase on Linux: STATE of an earlier run removed first, so that a run that ends in an
+error leaves none, then steps 1 to 3, then STATE written whole, through a new file that is then
+renamed, with `before`, `after`, `bindir` and a `failure` per failed step. A launcher that does
+not print the default release's Sys.BINDIR gives an empty `bindir` and a failure of its own. 1
+when a step failed, else 0.
+"""
+function update_only()
+    rm(STATE; force = true)
+    failures, before, after = update_phase()
+    bindir = try
+        default_bindir()
+    catch e
+        e isa ProcessFailedException || rethrow()
+        push!(failures, "the Sys.BINDIR of the default release, which $JULIA did not print")
+        ""
+    end
+    lines = ["before=$(one_line(before))", "after=$(one_line(after))", "bindir=$(one_line(bindir))",
+             ("failure=$(one_line(f))" for f in failures)...]
+    mkpath(dirname(STATE))
+    write(STATE * ".new", join(lines, "\n") * "\n")
+    mv(STATE * ".new", STATE; force = true)
+    isempty(failures) || println("FAILED: ", join(failures, "; "))
+    return isempty(failures) ? 0 : 1
+end
+
+function main()
+    println("=== julia-update ", Dates.format(now(), "yyyy-mm-dd HH:MM:SS"), " ===")
+    return SYSTEM == "Linux" ? update_only() : server_phase(update_phase()...)
 end
 
 exit(main())
