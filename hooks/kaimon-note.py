@@ -8,15 +8,16 @@ and lets the call run: some probes have a reason to run fresh, such as a base, a
 environment. It holds no state between calls, so every matching call gets the note.
 
 A simple command of the call is a probe when its program, read after the environment assignments,
-is `julia` (a path whose last part is `julia` too) and it runs code: with `-e`, `-E`, `--eval`,
-`-p` or `--print` (also as `--eval=<code>` and with the code attached to a short option), with a
-first argument that ends in `.jl`, or, with neither, with its standard input from a pipe or a
-redirection (also with the script `-`). A command whose program is another one, such as `time`,
-`env` or `timeout`, is no probe. Nor is a command whose options hold a `+<version>`, `--version`
-or `-v` or a module (`-m`), whose script path holds `/Harness/` or `.githooks/`, whose script's
-name is `runtests.jl` or `make.jl` or ends in `-test.jl`, or whose code names `Pkg.` or a timing
-(TIMING). The code of a command that reads its standard input is the whole text of the call. One
-probe among the simple commands is enough for the note.
+is `julia` (a path whose last part is `julia` too) and it runs code: with `-e`, `-E`, `--eval` or
+`--print` (also as `--eval=<code>` and with the code attached to a short option), with a first
+argument that ends in `.jl`, or, with neither, with its standard input from a pipe or a redirection
+(also with the script `-`). The value of `-p` or `--procs` is a number of worker processes, not
+code. A command whose program is another one, such as `time`, `env` or `timeout`, is no probe. Nor
+is a command whose options hold a `+<version>`, `--version` or `-v` or a module (`-m`), whose
+script path holds `/Harness/` or `.githooks/`, whose script's name is `runtests.jl` or `make.jl` or
+ends in `-test.jl`, or whose code names `Pkg.` or a timing (TIMING). The code of a command that
+reads its standard input is the whole text of the call. One probe among the simple commands is
+enough for the note.
 
 The hook reads the command only, as Claude Code sends it: it opens no script. It removes the body
 of each here-document before it splits the command with the guard's `lex`, so the lines of a body
@@ -42,7 +43,7 @@ from guard.kaimon_session import live_keys, live_sentence
 from guard.shell import SEPARATORS, lex
 
 # The options of `julia` whose value is code to run.
-CODE = frozenset({"-e", "-E", "-p", "--eval", "--print"})
+CODE = frozenset({"-e", "-E", "--eval", "--print"})
 # The other long options of `julia` that take the next word as their value.
 VALUED = frozenset(
     {"--sysimage", "--home", "--load", "--threads", "--procs", "--machine-file", "--cpu-target"}
