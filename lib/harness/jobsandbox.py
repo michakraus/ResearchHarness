@@ -2820,8 +2820,8 @@ def server_cases(case: Case, root: pathlib.Path) -> None:
 
 def server_path_cases(case: Case, root: pathlib.Path) -> None:
     """scripts/julia-update-server compares each PATH entry by its physical path: it runs no lsof
-    that lies at or below the physical home, or below the physical target of a symbolic link
-    directly in the home, however the home and the entry are spelled, and it keeps the stub
+    that lies at or below the physical home, or at or below the physical target of a symbolic
+    link directly in the home, however the home and the entry are spelled, and it keeps the stub
     directory outside the home, whose lsof it runs. A home that does not resolve, and the home
     `/`, leave the PATH empty."""
     log, marker = root / "server-path.log", root / "server-path-marker"

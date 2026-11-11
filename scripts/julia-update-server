@@ -7,13 +7,13 @@
 #
 # It runs no code that a job writes. Both jobs write below the home directory, so the PATH is the
 # physical path of each absolute entry of the unit's PATH that resolves, without each one at or
-# below the physical home, such as ~/.juliaup/bin, or below the physical target of a link directly
-# in the home, however the home and the entry are spelled. The update phase writes its state into ~/.cache/julia-update/state, one
-# `key=value` per line: `before` and `after`, the Kaimon versions before and after the update,
-# `bindir`, the Sys.BINDIR of the default release, and a `failure` per failed step. This script
-# reads the four keys as data, runs no value and no path of the file, and removes the file after
-# it reads it: a later run whose update phase never started then finds no file, which it reports
-# as a failure of the update phase.
+# below the physical home, such as ~/.juliaup/bin, or at or below the physical target of a link
+# directly in the home, however the home and the entry are spelled. The update phase writes its
+# state into ~/.cache/julia-update/state, one `key=value` per line: `before` and `after`, the
+# Kaimon versions before and after the update, `bindir`, the Sys.BINDIR of the default release,
+# and a `failure` per failed step. This script reads the four keys as data, runs no value and no
+# path of the file, and removes the file after it reads it: a later run whose update phase never
+# started then finds no file, which it reports as a failure of the update phase.
 #
 # The server is the process that listens on port 2828, as lsof finds it; its binary is the link
 # /proc/<pid>/exe, without its " (deleted)" suffix. A server whose binary no longer exists is
