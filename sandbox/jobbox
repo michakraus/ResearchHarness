@@ -41,7 +41,10 @@ esac
 file="$HOME/.config/research-harness/sandbox/$job.bwrap"
 [ -f "$file" ] || fail "no arguments file $file; run harness setup"
 
-research="$HOME/Research"
+# ~/Research as a logical path with no trailing / and no . segment of HOME, as the arguments file
+# spells it, so that its paths compare with it.
+research=$(cd "$HOME" 2>/dev/null && pwd -L) || research=$HOME
+research="${research%/}/Research"
 # The physical path of ~/Research, empty when it does not exist.
 physical=$(cd -P "$research" 2>/dev/null && pwd -P) || physical=""
 

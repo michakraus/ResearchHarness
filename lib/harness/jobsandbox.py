@@ -1330,22 +1330,22 @@ def jobbox_link_cases(case: Case, root: pathlib.Path) -> None:
         (sandbox / "kaimon.bwrap").write_text("".join(x + "\n" for x in lines), encoding="utf-8")
         return home
 
-    def jobbox(home: pathlib.Path) -> tuple[subprocess.CompletedProcess[str], list[str]]:
+    def jobbox(home: pathlib.Path, given: str = "") -> tuple[subprocess.CompletedProcess[str], list[str]]:
         out.unlink(missing_ok=True)
         p = subprocess.run(
             ["/bin/sh", str(JOBBOX), "kaimon", "/bin/true"],
             stdin=subprocess.DEVNULL,
             capture_output=True,
             text=True,
-            env={"HOME": str(home), "PATH": f"{stubs}{os.pathsep}/usr/bin{os.pathsep}/bin"},
+            env={"HOME": given or str(home), "PATH": f"{stubs}{os.pathsep}/usr/bin{os.pathsep}/bin"},
             cwd=home,
             timeout=TIMEOUT,
             check=False,
         )
         return p, out.read_text(encoding="utf-8").splitlines() if out.exists() else []
 
-    def refused(label: str, home: pathlib.Path, path: pathlib.Path) -> None:
-        p, got = jobbox(home)
+    def refused(label: str, home: pathlib.Path, path: pathlib.Path, given: str = "") -> None:
+        p, got = jobbox(home, given)
         case(
             f"{label} exits 2 with one line that names it and starts no bwrap: "
             f"exit {p.returncode} {p.stderr!r} {got}",
@@ -1376,7 +1376,15 @@ def jobbox_link_cases(case: Case, root: pathlib.Path) -> None:
     home = home_of("linked-harness", ["--ro-bind", str(githooks), str(githooks)])
     (home / "Research" / "X" / "githooks").mkdir(parents=True)
     (home / "Research" / "Harness").symlink_to(home / "Research" / "X")
-    refused("a static --ro-bind source below a ~/Research/Harness that is a link", home, githooks)
+    # The home as HOME names it, and with a trailing / or a . segment, as the arguments file never
+    # spells it.
+    for given in (str(home), f"{home}/", f"{home}/."):
+        refused(
+            f"with HOME {given!r}, a static --ro-bind source below a ~/Research/Harness that is a link",
+            home,
+            githooks,
+            given,
+        )
     home = root / "linked-try"
     linked = home / "Research" / "Y"
     home = home_of("linked-try", ["--ro-bind-try", str(linked), str(linked)])
