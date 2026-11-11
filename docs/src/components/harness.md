@@ -396,18 +396,22 @@ that is not below `~/`. `bwrap_args` gives the arguments of one job: `--unshare-
 --die-with-parent`, a new `/proc`, `/dev`, `/sys` read-only and a new `/tmp`; each path of
 `linux_read` read-only where it exists; each entry of `linux_links` as the host has it
 (`linux_root`), a link or a read-only directory; an empty home; then the job's `~/` and `$HARNESS`
-paths, the reads, the writes and `linux_write`, the write denies read-only and the files written
-back. An absolute path, the `$DARWIN` tokens, `~/Library` and `pty` are macOS's and give no
-argument, a write deny that no read or write path of the job holds is left out, and an argument
-with a newline raises `HarnessError`. `harness setup` and the services script of the dotfiles kit
-check `bwrap` first, install `sandbox/jobbox` into `~/.local/bin`, write each render into
-`~/.config/research-harness/sandbox/<job>.bwrap` and create each write deny and `linux_write`
-directory that is missing (`linux_dirs`), before the units. `jobbox <job> <program> [args…]`, a
-POSIX `sh` script, reads that file one argument per line, adds `--chdir` and the working directory
-and the read-only binds of `.git/hooks`, `.git/config` and `.githooks` of each repository at most
-four levels below `~/Research`, and runs `bwrap`; both units start their program through it. It
-exits 2 before `bwrap` when a source of a read-only bind below `~/Research` is a symbolic link or
-lies below one, because `bwrap` follows the link.
+paths, the reads, the writes and `linux_write`, the pins (`pins`) with `--bind`, the write denies
+read-only and the files written back. A pin is a path from a write path of the job down to a bind
+source of the other job, which the job binds onto itself so that it cannot rename or remove it
+while it runs; a pin below the job's own write deny raises `HarnessError`. An absolute path, the
+`$DARWIN` tokens, `~/Library` and `pty` are macOS's and give no argument, a write deny that no
+read or write path of the job holds is left out, and an argument with a newline raises
+`HarnessError`. `harness setup` and the services script of the dotfiles kit check `bwrap` first,
+install `sandbox/jobbox` and `scripts/julia-update-server` into `~/.local/bin`, write each render
+into `~/.config/research-harness/sandbox/<job>.bwrap` and create each write deny, `linux_write`
+directory and pin that is missing (`linux_dirs`, `linux_files`), before the units.
+`jobbox <job> <program> [args…]`, a POSIX `sh` script, reads that file one argument per line,
+adds `--chdir` and the working directory and, for a job that binds `~/Research`, the read-only
+binds of `.git/hooks`, `.git/config` and `.githooks` of each repository at most four levels below
+`~/Research`, and runs `bwrap`; both units start their program through it. It exits 2 before
+`bwrap` when the source of a bind below the home is a symbolic link or lies below one under the
+entry of the home that holds it, because `bwrap` follows the link.
 
 Its cases load the shipped list and a broken copy of it for each refusal, render both jobs with a
 home path that holds a dot and one that holds a quote, run `harness render` through `bin/harness`
@@ -428,9 +432,9 @@ only an Apple Event answers. On Linux `run_all` runs the probe set of Linux, wit
 and `session_bus` in place of `lsopen`, `appleevent`, `metal` and `read_documents`. The cases also
 check the order and the edges of `bwrap_args` and `linux_root`, run `jobbox` with a stub `bwrap`
 that writes its arguments, render `sandbox/<job>.bwrap` through `bin/harness`, and run
-`scripts/julia-update.jl` as on Linux with stubs of juliaup, `lsof`, `systemctl` and
-`notify-send`: the update phase calls none of the last three, and the server phase reads its
-state. No case starts the real `bwrap`.
+`scripts/julia-update.jl` as on Linux and `scripts/julia-update-server` with stubs of juliaup,
+`lsof`, `readlink`, `systemctl` and `notify-send`: the update phase calls none of the last four,
+and the server phase reads its state as data. No case starts the real `bwrap`.
 [The security model](../security.md) says what the profile and the arguments allow and what they
 leave open.
 

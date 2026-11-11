@@ -9,9 +9,10 @@ templates of the profile. JOBS pairs them. `harness test` renders each with
 - `ExecStart`, split as a shell splits it, equals `ProgramArguments`, after the two elements
   `{home}/.local/bin/jobbox <job>` of the unit and the three elements
   `/usr/bin/sandbox-exec -f <profile>` of the plist: the unit starts its program under `jobbox`
-  and its own job exactly where the plist starts it under `sandbox-exec`. An `ExecStopPost`,
-  where the unit has one, is the program of `ExecStart` without `jobbox`, and `--server`; and
-  `WorkingDirectory` equals the plist's;
+  and its own job exactly where the plist starts it under `sandbox-exec`. The unit of a job of
+  SERVER_PHASES has the `ExecStopPost` `{home}/.local/bin/<program>` of its program there, alone
+  and outside `jobbox`, and no other unit has an `ExecStopPost`; and `WorkingDirectory` equals the
+  plist's;
 - the `Environment=` entries equal `EnvironmentVariables`, so the `PATH` is the same, after the
   shim directory `jobsandbox.SHIMS` where a plist that starts with `/usr/bin/sandbox-exec -f`
   puts it first on its `PATH`: macOS only, and checked as a `PATH` element is below;
@@ -64,6 +65,9 @@ JOBS = [
 # The start of a plist's ProgramArguments that runs its program under a Seatbelt profile, the
 # third element: macOS only, so ExecStart is compared with what follows the profile.
 SEATBELT = ["/usr/bin/sandbox-exec", "-f"]
+# The program in ~/.local/bin that the unit of a job runs as its `ExecStopPost`, outside `jobbox`:
+# the server phase of julia-update on Linux, which its plist has no part for.
+SERVER_PHASES = {"julia-update": "julia-update-server"}
 # The directories that no session can write and that a job's PATH may hold beyond the denied ones.
 SYSTEM_DIRS = ("/usr/bin", "/bin", "/usr/sbin", "/sbin", "/usr/local/bin", "/opt/homebrew/bin")
 # The directories below which macOS puts a session's $TMPDIR, which the live sandbox lets the session
@@ -248,7 +252,8 @@ def program_problems(start: str, post: str | None, program: list[str], job: str,
     """What differs between the `ExecStart` line `start` and the `ExecStopPost` line `post` of the
     unit of `job` and the `ProgramArguments` `program` of its plist: the unit starts its program
     under `{home}/.local/bin/jobbox <job>` exactly where the plist starts it under SEATBELT, the
-    two programs are equal, and `post`, where it is set, is the program and `--server`."""
+    two programs are equal, and `post` is `{home}/.local/bin/<program>` alone for a job of
+    SERVER_PHASES and missing for any other job."""
     problems: list[str] = []
     args = shlex.split(start)
     confined = program[:2] == SEATBELT
@@ -261,8 +266,10 @@ def program_problems(start: str, post: str | None, program: list[str], job: str,
     started = args[2:] if args[:2] == jobbox else args
     if started != (program[3:] if confined else program):
         problems.append(f"ExecStart {args} is not ProgramArguments {program}")
-    if post is not None and shlex.split(post) != [*started, "--server"]:
-        problems.append(f"ExecStopPost {post} is not the program of ExecStart {started} and --server")
+    server = SERVER_PHASES.get(job)
+    expected = None if server is None else [f"{home}/.local/bin/{server}"]
+    if (None if post is None else shlex.split(post)) != expected:
+        problems.append(f"ExecStopPost {post} is not {expected}, the server phase of the job {job}")
     return problems
 
 
@@ -594,12 +601,37 @@ def selftest():
             ],
         ),
         (
-            "an ExecStopPost of julia-update.service without --server",
-            [(update_service, "julia-update.jl --server\n", "julia-update.jl\n")],
+            "an ExecStopPost of julia-update.service that runs the Julia script outside bwrap",
+            [
+                (
+                    update_service,
+                    f"ExecStopPost={home}/.local/bin/julia-update-server\n",
+                    f"ExecStopPost={home}/.juliaup/bin/julia --startup-file=no "
+                    f"{home}/.local/bin/julia-update.jl --server\n",
+                )
+            ],
         ),
         (
             "an ExecStopPost of julia-update.service under jobbox",
             [(update_service, "ExecStopPost=", f"ExecStopPost={home}/.local/bin/jobbox julia-update ")],
+        ),
+        (
+            "an ExecStopPost of julia-update.service with an argument",
+            [(update_service, "julia-update-server\n", "julia-update-server --x\n")],
+        ),
+        (
+            "julia-update.service without ExecStopPost",
+            [(update_service, f"ExecStopPost={home}/.local/bin/julia-update-server\n", "")],
+        ),
+        (
+            "an ExecStopPost in kaimon.service",
+            [
+                (
+                    "systemd/kaimon.service",
+                    "Restart=always\n",
+                    f"Restart=always\nExecStopPost={home}/.local/bin/x\n",
+                )
+            ],
         ),
         (
             "kaimon.plist without sandbox-exec, while its unit keeps jobbox",

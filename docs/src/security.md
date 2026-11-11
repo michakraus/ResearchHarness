@@ -128,14 +128,24 @@ the installed template. A later version can behave differently.
   job's `~/` paths are bound: Kaimon reads and writes `~/Research`, the depot and its own
   directories, as on macOS, and the same write denies are bound read-only. `jobbox` also binds
   `.git/hooks`, `.git/config` and `.githooks` read-only in each repository that it finds at most
-  four levels below `~/Research` when the job starts. `bwrap` follows a symbolic link in a bind,
-  so `jobbox` stops with exit 2, before `bwrap`, when a source of a read-only bind below
-  `~/Research` is a link, or lies below one. Neither job sees `/run/user/<uid>`, so neither
-  reaches the session bus or the user's service manager; `julia-update` therefore runs its server
-  check, the restart of the server and its alerts in a second phase, `julia-update.jl --server`,
-  outside `bwrap`, after the update phase. The server phase loads only the standard library of
-  its release: the script sets the load path to `@stdlib` and drops every depot outside the
-  release.
+  four levels below `~/Research` when a job that binds `~/Research` starts. `bwrap` follows a
+  symbolic link in a bind, and each job writes directories below the home that hold sources of
+  the other job's binds, such as `~/.julia/environments/apps` of `julia-update` in Kaimon's
+  `~/.julia`. So `jobbox` stops with exit 2, before `bwrap`, when a source of any bind below the
+  home is a link, or lies below one under the entry of the home that holds it, which may itself
+  be a link. A check before the mount does not hold against the other job while it runs, so each
+  job binds onto itself each path from its own write path down to such a source of the other:
+  in its namespace that path is a mount point, which it can neither rename nor remove. Kaimon
+  pins `~/.julia/environments` and `~/.julia/environments/apps`, and `julia-update` pins
+  juliaup's lock file. Neither job sees `/run/user/<uid>`, so neither reaches the session bus or
+  the user's service manager; `julia-update` therefore runs its server check, the restart of the
+  server and its alerts in a second phase, `~/.local/bin/julia-update-server`, a POSIX `sh`
+  script outside `bwrap`, after the update phase. It runs no Julia and no program of a `PATH`
+  entry below the home, and reads the update phase's state as data. Kaimon writes the depot whose
+  packages the update phase loads, so the two jobs are one trust domain: what `julia-update`
+  writes, `~/.juliaup`, `~/.julia/bin`, `~/.julia/juliaup` and the harness's Julia environment,
+  Kaimon's code can write at the next run of the update phase, Kaimon's own write denies of
+  `~/.julia/bin` and `~/.julia/juliaup` included.
   `harness setup` and the services script of the dotfiles kit first run the sandbox check of
   `harness doctor` and stop with exit 2 when `bwrap` cannot make a sandbox, which names the
   AppArmor setting `kernel.apparmor_restrict_unprivileged_userns`; no job then starts unconfined.
@@ -146,11 +156,12 @@ the installed template. A later version can behave differently.
   the parts of a repository cloned after the job's start, a `.githooks` that did not exist at the
   start, the `.git` file of a worktree, which the job can point at a git directory with hooks of
   its own, and the hooks and the configuration of a submodule in `.git/modules/<name>`, which get
-  no bind. The update phase writes `~/.juliaup` and `~/.julia/juliaup`, so it can replace the
-  julia that the server phase runs outside `bwrap`: the unit's `{home}/.juliaup/bin/julia`, the
-  launcher through which the server phase starts Julia, and the first entry of the unit's `PATH`;
-  Kaimon writes none of them. A network namespace of its own for each job, which would close the
-  network and abstract-socket gaps, is planned.
+  no bind. `julia-update` does not pin Kaimon's pins in turn: while an update phase runs, which
+  can run code that Kaimon wrote and has no time limit, and Kaimon restarts, a link that the
+  update phase puts in place of `~/.julia/environments` between `jobbox`'s check and the mount
+  binds what the link names, writable, in Kaimon's namespace. A network
+  namespace of its own for each job, which would close the network and abstract-socket gaps, is
+  planned.
 - **OpenCode and oh-my-pi have no sandbox.** Their permission blocks and guard extensions check
   text, as the deny list and the hooks do. Antigravity runs commands in its terminal sandbox in the
   CLI and the desktop app, and its guard hook sets `BypassSandbox` on each command and checks paths

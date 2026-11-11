@@ -1,0 +1,132 @@
+#!/bin/sh
+# julia-update-server: the server phase of the julia-update job on Linux, step 4 of
+# scripts/julia-update.jl and its alerts. systemd/julia-update.service runs it from its installed
+# copy in ~/.local/bin as its ExecStopPost, outside bwrap, after the update phase, whether that
+# failed or not: the server check, the restart and the alerts need the server's process, the
+# service manager and the session bus, which the update phase under bwrap does not see.
+#
+# It runs no code that a job writes. Both jobs write below the home directory, so the PATH is the
+# unit's without every entry below the home, such as ~/.juliaup/bin, and without an empty or a
+# relative entry. The update phase writes its state into ~/.cache/julia-update/state, one
+# `key=value` per line: `before` and `after`, the Kaimon versions before and after the update,
+# `bindir`, the Sys.BINDIR of the default release, and a `failure` per failed step. This script
+# reads the four keys as data, runs no value and no path of the file, and removes the file after
+# it reads it, so that a later run whose update phase never started reports the update phase as
+# failed, as it reports a missing file.
+#
+# The server is the process that listens on port 2828, as lsof finds it; its binary is the link
+# /proc/<pid>/exe, without its " (deleted)" suffix. A server whose binary no longer exists is
+# restarted with `systemctl --user restart kaimon.service`: it cannot start a session and never
+# recovers. A server of another Kaimon version or of a release that is not the default is reported
+# as a restart that is due. A due restart and each failure also send a notification with
+# notify-send. The script exits 1 when a step of either phase failed, else 0.
+set -u
+
+PORT=2828
+RESTART_HINT="systemctl --user restart kaimon.service"
+LOG="journalctl --user -u julia-update.service"
+
+path=
+rest="$PATH:"
+while [ -n "$rest" ]; do
+    entry=${rest%%:*}
+    rest=${rest#*:}
+    case "$entry" in
+        "$HOME" | "$HOME"/* | "" | [!/]*) ;;
+        *) path=${path:+$path:}$entry ;;
+    esac
+done
+PATH=$path
+export PATH
+
+count=0
+failed=
+failure() {
+    count=$((count + 1))
+    failed=${failed:+$failed; }$1
+}
+
+# alert MESSAGE: a desktop notification, or only a log line without notify-send on the PATH.
+alert() {
+    if command -v notify-send >/dev/null 2>&1; then
+        notify-send julia-update "$1" || true
+    else
+        printf 'No notify-send on the PATH, so no notification: %s\n' "$1"
+    fi
+}
+
+echo "=== julia-update, the server phase ==="
+state="$HOME/.cache/julia-update/state"
+before=
+after=
+bindir=
+if [ -f "$state" ]; then
+    while IFS= read -r line || [ -n "$line" ]; do
+        case "$line" in
+            before=*) before=${line#before=} ;;
+            after=*) after=${line#after=} ;;
+            bindir=*) bindir=${line#bindir=} ;;
+            failure=*) failure "${line#failure=}" ;;
+        esac
+    done <"$state"
+    rm -f "$state"
+else
+    failure "the update phase, which wrote no $state"
+fi
+
+echo "--- server check"
+due=
+missing=
+for tool in lsof readlink; do
+    command -v "$tool" >/dev/null 2>&1 || missing=${missing:-$tool}
+done
+if [ -n "$missing" ]; then
+    printf 'FAILED: cannot read the server, because no %s is on the PATH.\n' "$missing"
+    failure "cannot read the server"
+else
+    pids=$(lsof -nP -iTCP:"$PORT" -sTCP:LISTEN -t 2>/dev/null || true)
+    pid=${pids%%[!0-9]*}
+    if [ -z "$pid" ]; then
+        echo "No process listens on port $PORT; systemd restarts the server."
+    elif ! exe=$(readlink "/proc/$pid/exe" 2>/dev/null); then
+        echo "The process on port $PORT ended before its binary was read; systemd restarts the server."
+    else
+        server=${exe% (deleted)}
+        if [ ! -f "$server" ]; then
+            printf 'The server ran from %s, which juliaup deleted.\n' "$server"
+            if ! command -v systemctl >/dev/null 2>&1; then
+                echo "FAILED: cannot restart the server, because no systemctl is on the PATH."
+                failure "restart of the server"
+            else
+                echo "--- restart the server"
+                if systemctl --user restart kaimon.service 2>&1; then
+                    echo "RESTARTED: the server."
+                else
+                    echo "FAILED: restart the server"
+                    failure "restart of the server"
+                fi
+            fi
+        else
+            [ "$before" = "$after" ] || due="Kaimon $before -> $after; the server runs $before"
+            if [ -n "$bindir" ] && [ "$server" != "$bindir/julia" ]; then
+                due="${due:+$due; }the server runs $server, not the default release"
+            fi
+        fi
+    fi
+fi
+
+if [ -z "$due" ]; then
+    printf 'Kaimon %s. No restart due.\n' "$after"
+else
+    printf 'RESTART DUE: %s. Run: %s — it stops every live session. A new Kaimon version can %s\n' \
+        "$due" "$RESTART_HINT" \
+        "advertise tools that ~/Research/.kaimon/tools.json has never seen, so read the tool list after the restart."
+    alert "Kaimon restart due"
+fi
+
+if [ "$count" -gt 0 ]; then
+    printf 'FAILED: %s\n' "$failed"
+    alert "$count step(s) failed; see $LOG"
+    exit 1
+fi
+exit 0

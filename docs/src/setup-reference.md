@@ -1116,16 +1116,19 @@ prints `BWRAP-OK`. Without that line, stop here: the two jobs do not start, and
 bwrap --ro-bind / / --dev /dev --unshare-user --unshare-pid true && echo BWRAP-OK
 ```
 
-These commands install `jobbox`, render the `bwrap` arguments of the server and the update job
-into `~/.config/research-harness/sandbox/`, which `jobbox` reads, and create each directory that
-the arguments bind read-only below your home, and the update job's `~/.cache/julia-update`, each
-new directory with mode 700:
+These commands install `jobbox` and the update job's server phase `julia-update-server`, render
+the `bwrap` arguments of the server and the update job into
+`~/.config/research-harness/sandbox/`, which `jobbox` reads, and create juliaup's lock file, each
+directory that the arguments bind with `--ro-bind` or `--bind` below your home, and the update
+job's `~/.cache/julia-update`, each new directory with mode 700 and the file with mode 600:
 
 ```bash
 mkdir -p ~/.local/bin ~/.config/research-harness/sandbox
 install -m 755 ~/Research/Harness/sandbox/jobbox ~/.local/bin/jobbox
+install -m 755 ~/Research/Harness/scripts/julia-update-server ~/.local/bin/julia-update-server
 for j in kaimon julia-update; do harness render ~/Research/Harness/sandbox/"$j".bwrap > ~/.config/research-harness/sandbox/"$j".bwrap; done
-for j in kaimon julia-update; do prev=; while IFS= read -r a; do if [ "$prev" = --ro-bind ]; then case "$a" in "$HOME"/*) (umask 077 && mkdir -p "$a") ;; esac; fi; prev=$a; done < ~/.config/research-harness/sandbox/"$j".bwrap; done
+[ -e ~/.julia/juliaup/.juliaup-lock ] || (umask 077 && mkdir -p ~/.julia/juliaup && : >> ~/.julia/juliaup/.juliaup-lock)
+for j in kaimon julia-update; do prev=; while IFS= read -r a; do case "$prev" in --ro-bind | --bind) case "$a" in "$HOME"/*) [ -e "$a" ] || (umask 077 && mkdir -p "$a") ;; esac ;; esac; prev=$a; done < ~/.config/research-harness/sandbox/"$j".bwrap; done
 (umask 077 && mkdir -p ~/.cache/julia-update)
 ```
 

@@ -134,10 +134,11 @@ The plan holds these steps, in this order:
    job's profile the `ps` shim `sandbox/shims/ps`, mode 755, into that directory's `shims/`; on
    Linux, first the sandbox check of `harness doctor`, which ends the run with exit 2 and one line
    that names `kernel.apparmor_restrict_unprivileged_userns` when `bwrap` cannot make a sandbox,
-   then before the units `sandbox/jobbox`, mode 755, into `~/.local/bin`, the `bwrap` arguments
-   of the Kaimon and julia-update jobs, rendered with `harness render sandbox/<job>.bwrap` into
-   `~/.config/research-harness/sandbox/`, and each write deny of those arguments and
-   `~/.cache/julia-update` that is missing, mode 700; on both systems, `~/.cache/kaimon/pocl`, the directory of the Kaimon job's `POCL_CACHE_DIR`,
+   then before the units `sandbox/jobbox` and `scripts/julia-update-server`, mode 755, into
+   `~/.local/bin`, the `bwrap` arguments of the Kaimon and julia-update jobs, rendered with
+   `harness render sandbox/<job>.bwrap` into `~/.config/research-harness/sandbox/`, and each
+   write deny and pin of those arguments and `~/.cache/julia-update` that is missing, each new
+   directory with mode 700 and the pin juliaup's lock file empty with mode 600; on both systems, `~/.cache/kaimon/pocl`, the directory of the Kaimon job's `POCL_CACHE_DIR`,
    created before that job is loaded, each new directory with mode 700;
 10. with the component `julia`, the Kaimon token `~/.config/kaimon/auth-token`, mode 600, from
     the first key of `~/.config/kaimon/config.json` when that file exists and the token does not;

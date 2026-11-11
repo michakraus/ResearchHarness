@@ -43,9 +43,10 @@ Checks, numbered as the section banners and the `== check N` lines of the output
      [compat] or in a comment counts as missing); nightly, release, lts and 1.13.1 get none; with
      every package present no Pkg.add runs; the Kaimon app is installed; a failing julia stops
      the run at its channel and names it; a minimum that is not X.Y fails the render.
-  5. The services: the copies in ~/.local/bin; on linux the bwrap check, jobbox (755) and the
-     arguments of kaimon and julia-update, each equal to `harness render sandbox/<job>.bwrap`,
-     before the units, each write deny of the jobs and ~/.cache/julia-update, then the five
+  5. The services: the copies in ~/.local/bin; on linux the bwrap check, jobbox and
+     julia-update-server (755) and the arguments of kaimon and julia-update, each equal to
+     `harness render sandbox/<job>.bwrap`, before the units, each write deny of the jobs,
+     ~/.cache/julia-update and each pin, the directories 700 and juliaup's lock file 600, then the five
      units, each equal to `harness render`, then daemon-reload and enable --now; a bwrap that
      fails the check stops the run with exit 2 and the AppArmor setting before any of them; on
      macOS the Seatbelt profiles of kaimon and julia-update, each equal to
@@ -1260,6 +1261,15 @@ def services_linux(checkout, pinned):
         and jobbox.stat().st_mtime_ns < (units / "kaimon.service").stat().st_mtime_ns,
         "linux: jobbox (755) in ~/.local/bin equals the pinned harness's and is written before the units",
     )
+    server = home / ".local/bin/julia-update-server"
+    check(
+        server.is_file()
+        and server.read_bytes() == (harness / "scripts/julia-update-server").read_bytes()
+        and stat.S_IMODE(server.stat().st_mode) == 0o755
+        and server.stat().st_mtime_ns < (units / "kaimon.service").stat().st_mtime_ns,
+        "linux: julia-update-server (755) in ~/.local/bin equals the pinned harness's and is written "
+        "before the units",
+    )
     for job in SANDBOXED:
         path = sandbox / f"{job}.bwrap"
         check(
@@ -1279,6 +1289,15 @@ def services_linux(checkout, pinned):
     check(
         all(d.is_dir() for d in denies) and cache.is_dir() and stat.S_IMODE(cache.stat().st_mode) == 0o700,
         "linux: each write deny of the jobs and ~/.cache/julia-update (700) exist",
+    )
+    pins = [home / p for p in (".julia/environments", ".julia/environments/apps")]
+    lock = home / ".julia/juliaup/.juliaup-lock"
+    check(
+        all(p.is_dir() and stat.S_IMODE(p.stat().st_mode) == 0o700 for p in pins)
+        and lock.is_file()
+        and lock.read_bytes() == b""
+        and stat.S_IMODE(lock.stat().st_mode) == 0o600,
+        "linux: each pin of the jobs exists: the directories (700) and juliaup's lock file (600, empty)",
     )
     services_linux_refused(checkout, pinned)
 

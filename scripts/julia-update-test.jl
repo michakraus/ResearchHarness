@@ -4,9 +4,11 @@
 #
 #   julia --startup-file=no scripts/julia-update-test.jl
 #
-# Each case runs the script in a subprocess, on Linux twice as the unit does, the update phase and
-# then the server phase with `--server`, on a fixture HOME under mktempdir(), with an
-# environment of its own and a PATH that holds only a stub directory. The fixture HOME has a stub
+# Each case runs the script in a subprocess, on Linux as the unit does: the script, the update
+# phase, then julia-update-server, the server phase, with `/bin/sh`. Each runs on a fixture HOME
+# under mktempdir(), with an environment of its own and a PATH that holds only a stub directory,
+# which on Linux also holds `readlink` and `rm`, each a wrapper of the system's own, for the server
+# phase. The fixture HOME has a stub
 # juliaup and a stub julia launcher in ~/.juliaup/bin, a juliaup.json with two `X.Y` channels, the
 # Kaimon app's Project.toml and a profile. The stub directory has lsof, ps, both service managers
 # (launchctl, systemctl) and both notifiers (osascript, notify-send). Every stub appends its name
@@ -20,6 +22,7 @@
 using Test
 
 const SCRIPT = joinpath(@__DIR__, "julia-update.jl")
+const SERVER = joinpath(@__DIR__, "julia-update-server")
 const LINUX = Sys.islinux()
 Sys.isapple() || LINUX || error("julia-update-test.jl runs on macOS and Linux, not on $(Sys.KERNEL)")
 
@@ -92,6 +95,13 @@ function fixture()
             exit 0
             """)
     end
+    # The server phase on Linux reads the server's binary with readlink and removes the update
+    # phase's state with rm, which a PATH of the stub directory alone does not hold.
+    if LINUX
+        for tool in ("readlink", "rm")
+            stub(joinpath(stubs, tool), "exec $(Sys.which(tool)) \"\$@\"\n")
+        end
+    end
     stub(joinpath(stubs, "osascript"), LOG_LINE * "exit 0\n")
     stub(joinpath(stubs, "notify-send"), LOG_LINE * "exit 0\n")
     # `ps -o comm= -p <pid>` prints a live process's full path on macOS, its 15-character name on
@@ -138,11 +148,11 @@ end
 
 """
 Run the script as its job does; return the exit code, its output and the call log's lines. On
-Linux the unit runs it twice, the update phase and then the server phase with `--server`, so the
-case does too: the code is the larger of the two, and the output is both in order. `args` runs
-one call with those arguments instead.
+Linux the unit runs the update phase, the script, and then the server phase,
+julia-update-server, so the case does too: the code is the larger of the two, and the output is
+both in order. `phases` runs only those of `:update` and `:server`.
 """
-function run_script(fx::Fixture, extra::Pair...; args = LINUX ? [[], ["--server"]] : [[]])
+function run_script(fx::Fixture, extra::Pair...; phases = LINUX ? (:update, :server) : (:update,))
     env = Dict("HOME" => fx.home, "PATH" => fx.stubs, "STUB_LOG" => fx.log,
                "STUB_BINDIR" => fx.bindir, "RESEARCH_HARNESS_JULIA" => fx.harness)
     for (k, v) in extra
@@ -150,9 +160,10 @@ function run_script(fx::Fixture, extra::Pair...; args = LINUX ? [[], ["--server"
     end
     out = IOBuffer()
     code = 0
-    for a in args
-        cmd = setenv(`$(Base.julia_cmd()) --startup-file=no $SCRIPT $a`, env)
-        code = max(code, run(pipeline(ignorestatus(cmd); stdout = out, stderr = out)).exitcode)
+    for phase in phases
+        cmd = phase === :server ? `/bin/sh $SERVER` : `$(Base.julia_cmd()) --startup-file=no $SCRIPT`
+        code = max(code,
+                   run(pipeline(ignorestatus(setenv(cmd, env)); stdout = out, stderr = out)).exitcode)
     end
     return code, String(take!(out)), readlines(fx.log)
 end
@@ -312,13 +323,13 @@ end
     # session bus is in sight.
     LINUX && @testset "the update phase alone (Linux): no lsof, service manager or notifier" begin
         fx = fixture()
-        code, out, calls = with_server(rm, fx, "STUB_FAIL" => "+1.12"; args = [[]])
+        code, out, calls = with_server(rm, fx, "STUB_FAIL" => "+1.12"; phases = (:update,))
         @test code == 1
         @test "juliaup update" in calls
         @test !any(l -> startswith(l, "lsof ") || startswith(l, NOTIFIER * " "), calls)
         @test restarts(calls) == 0 && others(calls) == 0
-        @test isfile(joinpath(fx.home, ".cache", "julia-update", "last-run.toml"))
-        code, out, calls = run_script(fx; args = [["--server"]])
+        @test isfile(joinpath(fx.home, ".cache", "julia-update", "state"))
+        code, out, calls = run_script(fx; phases = (:server,))
         @test code == 1
         @test occursin("FAILED: Pkg.update() in @v1.12", out)
         @test length(alerts(calls)) == 1

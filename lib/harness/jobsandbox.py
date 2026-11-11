@@ -51,14 +51,19 @@ makes new namespaces of every kind but the network, ends the job with its unit, 
 `linux_read`; for each entry of `linux_links` as the host has it (`LinuxRoot`, `linux_root`)
 `--symlink` of its target for a link and `--ro-bind` for a directory; `--tmpfs` of the home; then
 `--ro-bind-try` of each read path and read file, `--bind-try` of each write path, write file and
-`linux_write` path, `--ro-bind` of each write deny, and `--bind-try` of each file written back.
-Of the job's lists it takes only a `~/` path, `~` becoming `home`, and `$HARNESS` and a path below
-it, `$HARNESS` becoming the profile's `harness`: an absolute path, the root `/`, the `$DARWIN`
-tokens, MACOS_LIBRARY and every path below it are macOS's, and `pty` gives no argument. A write
-deny that lies at or below no read path, write path or `linux_write` path of the job is left out,
-because the job cannot see it; `linux_dirs` names the write denies that are left in and the
-`linux_write` paths, the directories that must exist before the job starts. An argument that holds
-a newline raises HarnessError, because `jobbox` reads one argument per line.
+`linux_write` path, `--bind` of each pin (`pins`), `--ro-bind` of each write deny, and
+`--bind-try` of each file written back. Of the job's lists it takes only a `~/` path, `~`
+becoming `home`, and `$HARNESS` and a path below it, `$HARNESS` becoming the profile's `harness`:
+an absolute path, the root `/`, the `$DARWIN` tokens, MACOS_LIBRARY and every path below it are
+macOS's, and `pty` gives no argument. A write deny that lies at or below no read path, write path
+or `linux_write` path of the job is left out, because the job cannot see it. A pin is a path from
+a write path of the job down to a bind source of the other job of JOBS, which is no bind of the
+job yet: bound onto itself it is a mount point in the job's namespace, which the job cannot
+rename or remove while the other job's `bwrap` mounts it, and a pin below a write deny of the job
+raises HarnessError. `linux_dirs` names the write denies that are left in, the `linux_write`
+paths and the pins that are directories, and `linux_files` the pins that are files, which must
+exist before the job starts. An argument that holds a newline raises HarnessError, because
+`jobbox` reads one argument per line.
 
 `harness render` of a template `sandbox/<job>.sb` or `sandbox/<job>.bwrap` (`job_of`), a file
 that does not exist, prints `render` of that job; a `.bwrap` template prints `bwrap_args` with the
@@ -73,19 +78,22 @@ services script of the dotfiles kit write each `.sb` render into
 before kaimon's profile they install PS_SHIM into SHIMS, which kaimon's profile reads and its plist
 puts first on the job's PATH: the exec of the setuid /bin/ps fails under a Seatbelt profile, and
 Kaimon reads a failed `ps -o state= -p PID` as a dead session. On Linux both, after the sandbox
-check of `harness doctor`, install JOBBOX into ~/.local/bin, write each `.bwrap` render into
-`~/.config/research-harness/sandbox/<job>.bwrap` and create the directories of `linux_dirs`
-before they render the units, which start each job's program through `jobbox`.
+check of `harness doctor`, install JOBBOX and UPDATE_SERVER into ~/.local/bin, write each
+`.bwrap` render into `~/.config/research-harness/sandbox/<job>.bwrap` and create the directories
+of `linux_dirs` and the files of `linux_files` before they render the units, which start each
+job's program through `jobbox`, and julia-update's unit runs UPDATE_SERVER after it.
 
 The cases on Linux's side check `load` of the Linux keys and its refusals, the order and the edges
-of `bwrap_args`, `linux_root` on a scratch root, the render of `sandbox/<job>.bwrap` through
-bin/harness with no `getconf` on the PATH, JOBBOX with a stub `bwrap` that writes its arguments,
-its refusals, among them a bind source below a symbolic link, and shellcheck, and
-scripts/julia-update.jl run as on Linux (JULIA_UPDATE_SYSTEM) with stubs of juliaup, the juliaup
-launcher, `lsof`, `systemctl` and `notify-send`: the update phase calls none of the last three,
-and the server phase, `--server`, reads and removes its state and loads no package that a depot's
-default environment names. No case starts the real `bwrap`. Without `julia` on the PATH the
-cases of the script print a skip line, and without `shellcheck` its check of JOBBOX does.
+of `bwrap_args` and its pins, `linux_root` on a scratch root, the render of `sandbox/<job>.bwrap`
+through bin/harness with no `getconf` on the PATH, JOBBOX with a stub `bwrap` that writes its
+arguments, its refusals, among them a bind source below the home that is a symbolic link or lies
+below one, and shellcheck; UPDATE_SERVER with stubs of `lsof`, `readlink`, `systemctl` and
+`notify-send`, against a state that holds a command substitution and a PATH that holds a
+directory below the home, and shellcheck; and scripts/julia-update.jl run as on Linux
+(JULIA_UPDATE_SYSTEM) with stubs of juliaup and the juliaup launcher: the update phase calls none
+of the four, writes its state one value per line, and loads no package that a depot's default
+environment names. No case starts the real `bwrap`. Without `julia` on the PATH the cases of the
+script print a skip line, and without `shellcheck` its checks of JOBBOX and UPDATE_SERVER do.
 
 The cases run PS_SHIM on each form that it accepts and on forms that it refuses, then start
 `/bin/sh -c true` under the profile of each job, rendered with this user's home and `getconf`
@@ -131,6 +139,7 @@ POLICY = REPO / "sandbox" / "daemon.toml"
 PROBES = REPO / "sandbox" / "probe-daemon.jl"
 JOBBOX = REPO / "sandbox" / "jobbox"
 UPDATE_SCRIPT = REPO / "scripts" / "julia-update.jl"
+UPDATE_SERVER = REPO / "scripts" / "julia-update-server"
 JOBS = ("kaimon", "julia-update")
 # The path-list keys of a job's table, its boolean key, and the keys of the rule list's top level.
 JOB_KEYS = ("read", "read_files", "write", "write_files", "deny_write", "allow_write_files", "linux_write")
@@ -477,15 +486,63 @@ def linux_lists(
     return reads, writes, denies, linux(rules.allow_write_files)
 
 
+def pins(
+    policy: DaemonPolicy, job: str, home: pathlib.Path, harness: pathlib.Path
+) -> list[tuple[pathlib.Path, bool]]:
+    """The pins of `job`, each with whether it is a file: for each bind source S of the other job
+    of JOBS that lies strictly below a write path W of `job`, each path from W's child down to S
+    that is no bind destination of `job` yet, in that order. `job` binds each pin onto itself, so
+    that in its namespace the pin is a mount point, which it can neither rename nor remove, and
+    the other job's bind does not follow a link that `job` put there. HarnessError for a pin at or
+    below a write deny of `job`."""
+    rules = policy.rules(job)
+    reads, writes, denies, back = linux_lists(rules, home, harness)
+    other = policy.rules(next(j for j in JOBS if j != job))
+    sources = [p for ps in linux_lists(other, home, harness) for p in ps]
+    files = {
+        q
+        for p in (*other.read_files, *other.write_files, *other.allow_write_files)
+        if (q := home_path(p, home, harness)) is not None
+    }
+    bound = {*reads, *writes, *denies, *back}
+    found: list[tuple[pathlib.Path, bool]] = []
+    for s in sources:
+        for w in writes:
+            if s == w or not s.is_relative_to(w):
+                continue
+            parts = s.relative_to(w).parts
+            for i in range(1, len(parts) + 1):
+                p = w.joinpath(*parts[:i])
+                if p in bound or any(p == q for q, _ in found):
+                    continue
+                for d in denies:
+                    if p.is_relative_to(d):
+                        raise HarnessError(f"the pin {p} of {job} lies below its write deny {d}")
+                found.append((p, p == s and s in files))
+    return found
+
+
 def linux_dirs(
     policy: DaemonPolicy, job: str, home: pathlib.Path, harness: pathlib.Path
 ) -> list[pathlib.Path]:
     """The directories that must exist before `job` starts under `bwrap`: each write deny of its
-    arguments, which `--ro-bind` binds and which the job could create were it missing, and each
-    `linux_write` path, which `--bind-try` skips when it is missing."""
+    arguments, which `--ro-bind` binds and which the job could create were it missing, each
+    `linux_write` path, which `--bind-try` skips when it is missing, and each pin that is a
+    directory, which `--bind` binds."""
     rules = policy.rules(job)
     _, _, denies, _ = linux_lists(rules, home, harness)
-    return denies + [q for p in rules.linux_write if (q := home_path(p, home, harness)) is not None]
+    return (
+        denies
+        + [q for p in rules.linux_write if (q := home_path(p, home, harness)) is not None]
+        + [p for p, file in pins(policy, job, home, harness) if not file]
+    )
+
+
+def linux_files(
+    policy: DaemonPolicy, job: str, home: pathlib.Path, harness: pathlib.Path
+) -> list[pathlib.Path]:
+    """The files that must exist before `job` starts under `bwrap`: each pin that is a file."""
+    return [p for p, file in pins(policy, job, home, harness) if file]
 
 
 def bwrap_args(
@@ -495,7 +552,8 @@ def bwrap_args(
     profile's `harness`, `home/Research/Harness` without it. HarnessError for an argument that
     holds a newline, because `jobbox` reads one argument per line."""
     rules = policy.rules(job)
-    reads, writes, denies, back = linux_lists(rules, home, harness or home / "Research" / "Harness")
+    harness = harness or home / "Research" / "Harness"
+    reads, writes, denies, back = linux_lists(rules, home, harness)
 
     def bind(flag: str, paths: Sequence[pathlib.Path | str]) -> list[str]:
         return [x for p in paths for x in (flag, str(p), str(p))]
@@ -509,6 +567,7 @@ def bwrap_args(
         str(home),
         *bind("--ro-bind-try", reads),
         *bind("--bind-try", writes),
+        *bind("--bind", [p for p, _ in pins(policy, job, home, harness)]),
         *bind("--ro-bind", denies),
         *bind("--bind-try", back),
     ]
@@ -614,6 +673,15 @@ def raises(f: Callable[[], object]) -> bool:
     except HarnessError:
         return True
     return False
+
+
+def message(f: Callable[[], object]) -> str:
+    """The message of the HarnessError that `f()` raises; "" when it raises none."""
+    try:
+        f()
+    except HarnessError as e:
+        return str(e)
+    return ""
 
 
 def list_cases(case: Case, policy: DaemonPolicy) -> None:
@@ -1113,6 +1181,71 @@ def bwrap_update_cases(case: Case, policy: DaemonPolicy) -> None:
     )
 
 
+def bwrap_pin_cases(case: Case, policy: DaemonPolicy) -> None:
+    """The pins: each path from a write path of one job down to a bind source of the other, bound
+    with `--bind` in the writer's arguments after its write binds and before its write denies; the
+    directories and files that setup makes for them; and a pin below the writer's own write deny,
+    which raises HarnessError."""
+    a = bwrap_args(policy, "kaimon", HOME, ROOT)
+    u = bwrap_args(policy, "julia-update", HOME, ROOT)
+    environments, apps = "/h/a.b/.julia/environments", "/h/a.b/.julia/environments/apps"
+    lock = "/h/a.b/.julia/juliaup/.juliaup-lock"
+    case(
+        f"kaimon pins ~/.julia/environments and ~/.julia/environments/apps, julia-update's write bind "
+        f"below kaimon's ~/.julia, and nothing else: {binds(a, '--bind')}",
+        ok=binds(a, "--bind") == [environments, apps],
+    )
+    at = [
+        triple(a, "--bind-try", "/h/a.b/.julia"),
+        triple(a, "--bind", environments),
+        triple(a, "--bind", apps),
+        triple(a, "--ro-bind", "/h/a.b/.julia/bin"),
+    ]
+    case(
+        f"kaimon's pins follow its write binds and precede its write denies, the parent first: {at}",
+        ok=-1 not in at
+        and at == sorted(at)
+        and max(triple(a, "--bind-try", f"/h/a.b/{p}") for p in ("Research", ".config/kaimon")) < at[1],
+    )
+    case(
+        f"julia-update pins juliaup's lock file, kaimon's file written back below its ~/.julia/juliaup, "
+        f"and nothing else: {binds(u, '--bind')}",
+        ok=binds(u, "--bind") == [lock],
+    )
+    at = [
+        triple(u, "--bind-try", "/h/a.b/.cache/julia-update"),
+        triple(u, "--bind", lock),
+        triple(u, "--ro-bind", "/h/a.b/.julia/config"),
+    ]
+    case(
+        f"julia-update's pin follows its write binds and precedes its write deny: {at}",
+        ok=-1 not in at and at == sorted(at),
+    )
+    harness = HOME / "Research" / "Harness"
+    case(
+        "setup makes kaimon's two pins as directories and julia-update's pin as a file",
+        ok=[str(p) for p in linux_dirs(policy, "kaimon", HOME, harness)][-2:] == [environments, apps]
+        and [str(p) for p in linux_files(policy, "kaimon", HOME, harness)] == []
+        and [str(p) for p in linux_files(policy, "julia-update", HOME, harness)] == [lock]
+        and lock not in [str(p) for p in linux_dirs(policy, "julia-update", HOME, harness)],
+    )
+    empty: dict[str, tuple[str, ...]] = dict.fromkeys(JOB_KEYS, ())
+    below = dataclasses.replace(
+        policy,
+        kaimon=JobRules(**(empty | {"write": ("~/x",), "deny_write": ("~/x/d",)}), pty=False),
+        julia_update=JobRules(**(empty | {"read": ("~/x/d/s",)}), pty=False),
+    )
+    case(
+        "a pin below the pinning job's own write deny raises HarnessError that names it",
+        ok=raises(lambda: bwrap_args(below, "kaimon", HOME, ROOT))
+        and "/h/a.b/x/d/s" in message(lambda: bwrap_args(below, "kaimon", HOME, ROOT)),
+    )
+    case(
+        "the job whose bind source lies below the other's write deny needs no pin and raises nothing",
+        ok=binds(bwrap_args(below, "julia-update", HOME, ROOT), "--bind") == [],
+    )
+
+
 def bwrap_edge_cases(case: Case, policy: DaemonPolicy) -> None:
     """The edges of the input of `bwrap_args`: which write deny stays, which path is macOS's, `pty`,
     an empty root and an argument with a newline."""
@@ -1217,7 +1350,17 @@ def jobbox_cases(case: Case, root: pathlib.Path) -> None:
     (research / "N" / ".git").write_text("gitdir: /x\n", encoding="utf-8")
     sandbox = home / ".config" / "research-harness" / "sandbox"
     sandbox.mkdir(parents=True)
-    lines = ["--unshare-all", "--tmpfs", str(home), "--ro-bind-try", "/a b", "/a b"]
+    lines = [
+        "--unshare-all",
+        "--tmpfs",
+        str(home),
+        "--ro-bind-try",
+        "/a b",
+        "/a b",
+        "--bind-try",
+        str(research),
+        str(research),
+    ]
     (sandbox / "kaimon.bwrap").write_text("".join(x + "\n" for x in lines), encoding="utf-8")
     # A file for a job that is not one of JOBS, so that the job's name alone refuses it.
     (sandbox / "claude-autocommit.bwrap").write_text("--unshare-all\n", encoding="utf-8")
@@ -1308,32 +1451,57 @@ def jobbox_cases(case: Case, root: pathlib.Path) -> None:
     )
 
 
-def jobbox_link_cases(case: Case, root: pathlib.Path) -> None:
-    """`sandbox/jobbox` against a stub `bwrap`, with symbolic links among the sources of its
-    read-only binds below ~/Research: a repository part that is a link, a dangling one too, and a
-    static source below a linked directory each exit 2 with one line on stderr that names the
-    path, and never start the stub; a ~/Research that is itself a link keeps its binds on the
-    logical paths."""
-    stubs = root / "stubs"
-    stubs.mkdir()
-    out = root / "bwrap.out"
-    (stubs / "bwrap").write_text(f"#!/bin/sh\nprintf '%s\\n' \"$@\" > '{out}'\n", encoding="utf-8")
-    (stubs / "bwrap").chmod(0o755)
-    outside = root / "outside"
-    (outside / "hooks").mkdir(parents=True)
-    (outside / "netrc").write_text("", encoding="utf-8")
+@dataclasses.dataclass(frozen=True, slots=True)
+class JobboxRoot:
+    """A scratch root for the link cases of JOBBOX: a stub `bwrap` in `stubs/` that writes its
+    arguments into `bwrap.out`, a directory and a file in `outside/` for the links to name, and a
+    scratch home per case."""
 
-    def home_of(name: str, lines: Sequence[str] = ("--unshare-all",)) -> pathlib.Path:
-        home = root / name
+    case: Case
+    root: pathlib.Path
+
+    @property
+    def out(self) -> pathlib.Path:
+        return self.root / "bwrap.out"
+
+    @property
+    def outside(self) -> pathlib.Path:
+        return self.root / "outside"
+
+    def make(self) -> None:
+        """The stub `bwrap` and the targets outside every home."""
+        stubs = self.root / "stubs"
+        stubs.mkdir()
+        (stubs / "bwrap").write_text(f"#!/bin/sh\nprintf '%s\\n' \"$@\" > '{self.out}'\n", encoding="utf-8")
+        (stubs / "bwrap").chmod(0o755)
+        (self.outside / "hooks").mkdir(parents=True)
+        (self.outside / "netrc").write_text("", encoding="utf-8")
+
+    def home_of(self, name: str, lines: Sequence[str] = (), job: str = "kaimon") -> pathlib.Path:
+        """A scratch home whose arguments file of `job` holds `lines`; without them, a bind of
+        ~/Research."""
+        home = self.root / name
         sandbox = home / ".config" / "research-harness" / "sandbox"
         sandbox.mkdir(parents=True)
-        (sandbox / "kaimon.bwrap").write_text("".join(x + "\n" for x in lines), encoding="utf-8")
+        research = str(home / "Research")
+        given = [*lines] or ["--unshare-all", "--bind-try", research, research]
+        (sandbox / f"{job}.bwrap").write_text("".join(x + "\n" for x in given), encoding="utf-8")
         return home
 
-    def jobbox(home: pathlib.Path, given: str = "") -> tuple[subprocess.CompletedProcess[str], list[str]]:
-        out.unlink(missing_ok=True)
+    def rendered(self, name: str, job: str) -> pathlib.Path:
+        """A scratch home whose arguments file of `job` is `bwrap_args` of the shipped list."""
+        home = self.root / name
+        return self.home_of(name, bwrap_args(load(POLICY), job, home, LinuxRoot((), ())), job)
+
+    def run(
+        self, home: pathlib.Path, given: str = "", job: str = "kaimon"
+    ) -> tuple[subprocess.CompletedProcess[str], list[str]]:
+        """`jobbox <job> /bin/true` with HOME `given`, else `home`: the process and the stub's
+        arguments."""
+        self.out.unlink(missing_ok=True)
+        stubs = self.root / "stubs"
         p = subprocess.run(
-            ["/bin/sh", str(JOBBOX), "kaimon", "/bin/true"],
+            ["/bin/sh", str(JOBBOX), job, "/bin/true"],
             stdin=subprocess.DEVNULL,
             capture_output=True,
             text=True,
@@ -1342,19 +1510,32 @@ def jobbox_link_cases(case: Case, root: pathlib.Path) -> None:
             timeout=TIMEOUT,
             check=False,
         )
-        return p, out.read_text(encoding="utf-8").splitlines() if out.exists() else []
+        return p, self.out.read_text(encoding="utf-8").splitlines() if self.out.exists() else []
 
-    def refused(label: str, home: pathlib.Path, path: pathlib.Path, given: str = "") -> None:
-        p, got = jobbox(home, given)
-        case(
+    def refused(
+        self, label: str, home: pathlib.Path, path: pathlib.Path, given: str = "", job: str = "kaimon"
+    ) -> None:
+        """The case that the run exits 2 with one line that names `path` and starts no stub."""
+        p, got = self.run(home, given, job)
+        self.case(
             f"{label} exits 2 with one line that names it and starts no bwrap: "
             f"exit {p.returncode} {p.stderr!r} {got}",
             ok=p.returncode == FAILED
             and len(p.stderr.splitlines()) == 1
             and p.stderr.startswith("jobbox: ")
             and str(path) in p.stderr
-            and not out.exists(),
+            and not self.out.exists(),
         )
+
+
+def jobbox_link_cases(case: Case, box: JobboxRoot) -> None:
+    """`sandbox/jobbox` against a stub `bwrap`, with symbolic links among the sources of its
+    read-only binds below ~/Research: a repository part that is a link, a dangling one too, and a
+    static source below a linked directory each exit 2 with one line on stderr that names the
+    path, and never start the stub; a ~/Research that is itself a link keeps its binds on the
+    logical paths."""
+    root, outside = box.root, box.outside
+    home_of, jobbox, refused = box.home_of, box.run, box.refused
 
     # A repository R and one of its parts, a link to `target`.
     for label, repository, part, target in (
@@ -1393,7 +1574,10 @@ def jobbox_link_cases(case: Case, root: pathlib.Path) -> None:
     refused("a static --ro-bind-try source that is a link", home, linked)
     home = root / "linked-research"
     githooks = home / "Research" / "Harness" / "githooks"
-    home = home_of("linked-research", ["--ro-bind", str(githooks), str(githooks)])
+    research = str(home / "Research")
+    home = home_of(
+        "linked-research", ["--ro-bind", str(githooks), str(githooks), "--bind-try", research, research]
+    )
     real = root / "real-research"
     (real / "A" / ".git" / "hooks").mkdir(parents=True)
     (real / "Harness" / "githooks").mkdir(parents=True)
@@ -1407,6 +1591,70 @@ def jobbox_link_cases(case: Case, root: pathlib.Path) -> None:
         and triple(tuple(got), "--ro-bind-try", hooks) >= 0
         and triple(tuple(got), "--ro-bind", str(githooks)) == 0
         and not any(x.startswith(str(real)) for x in got),
+    )
+
+
+def jobbox_home_cases(case: Case, box: JobboxRoot) -> None:
+    """`sandbox/jobbox` against a stub `bwrap`, with the shipped arguments of each job: a source
+    of a writable bind or of a file below the home that is a link, or that lies below a link under
+    its anchor, exits 2 with one line that names it; an anchor such as ~/.julia that is itself a
+    link passes with the logical paths; and a job that binds no ~/Research gets no repository
+    part."""
+    root, outside = box.root, box.outside
+    rendered, jobbox, refused = box.rendered, box.run, box.refused
+    # The sources of the rendered arguments below the home, writable binds and files too: each
+    # directory below the home that one job writes holds a source of the other's binds.
+    home = rendered("linked-apps", "julia-update")
+    (home / ".julia" / "environments").mkdir(parents=True)
+    (home / ".julia" / "environments" / "apps").symlink_to(outside / "hooks")
+    refused(
+        "julia-update's --bind-try ~/.julia/environments/apps that is a link",
+        home,
+        home / ".julia" / "environments" / "apps",
+        job="julia-update",
+    )
+    home = rendered("linked-lock", "kaimon")
+    (home / ".julia" / "juliaup").mkdir(parents=True)
+    (home / ".julia" / "juliaup" / ".juliaup-lock").symlink_to(outside / "netrc")
+    refused(
+        "kaimon's --bind-try ~/.julia/juliaup/.juliaup-lock that is a link to a file",
+        home,
+        home / ".julia" / "juliaup" / ".juliaup-lock",
+    )
+    home = rendered("linked-environments", "julia-update")
+    (outside / "environments" / "apps").mkdir(parents=True)
+    (home / ".julia").mkdir()
+    (home / ".julia" / "environments").symlink_to(outside / "environments")
+    refused(
+        "julia-update's ~/.julia/environments/apps, a real directory below a linked ~/.julia/environments",
+        home,
+        home / ".julia" / "environments" / "apps",
+        job="julia-update",
+    )
+    home = rendered("linked-depot", "julia-update")
+    depot = root / "real-depot"
+    for d in ("environments/apps", "juliaup", "bin", "config"):
+        (depot / d).mkdir(parents=True)
+    (depot / "juliaup" / ".juliaup-lock").write_text("", encoding="utf-8")
+    (home / ".julia").symlink_to(depot)
+    p, got = jobbox(home, job="julia-update")
+    case(
+        f"a ~/.julia that is itself a link passes, and the binds keep the logical paths: "
+        f"exit {p.returncode} {p.stderr!r} {got}",
+        ok=p.returncode == 0
+        and triple(tuple(got), "--bind-try", str(home / ".julia" / "environments" / "apps")) >= 0
+        and triple(tuple(got), "--bind", str(home / ".julia" / "juliaup" / ".juliaup-lock")) >= 0
+        and not any(x.startswith(str(depot)) for x in got),
+    )
+    # julia-update binds nothing of ~/Research, so jobbox adds no repository part to it: kaimon
+    # writes ~/Research while julia-update starts, and could swap a part for a link after the
+    # check.
+    home = rendered("update-research", "julia-update")
+    (home / "Research" / "A" / ".git" / "hooks").mkdir(parents=True)
+    p, got = jobbox(home, job="julia-update")
+    case(
+        f"a job that binds no ~/Research gets no bind of a repository part: exit {p.returncode} {got}",
+        ok=p.returncode == 0 and got != [] and not any("/Research" in x for x in got),
     )
 
 
@@ -2226,12 +2474,172 @@ def probe_cases(case: Case, root: pathlib.Path) -> None:
     )
 
 
+def server_cases(case: Case, root: pathlib.Path) -> None:
+    """scripts/julia-update-server against a scratch home with stubs of lsof, readlink, systemctl
+    and notify-send that log their calls: it reads the update phase's state as data and removes
+    it, reports a missing state, restarts a server whose binary is gone, reports a restart that is
+    due, and runs no program of a PATH entry below the home."""
+    home, stubs, log = root / "server-home", root / "server-stubs", root / "server.log"
+    bindir = root / "server-release" / "bin"
+    for d in (home / ".cache" / "julia-update", home / ".juliaup" / "bin", stubs, bindir):
+        d.mkdir(parents=True)
+    (bindir / "julia").write_text("", encoding="utf-8")
+    state, marker = home / ".cache" / "julia-update" / "state", root / "server-marker"
+
+    def stub(path: pathlib.Path, body: str) -> None:
+        path.write_text(f'#!/bin/sh\necho "{path.name} $*" >> "{log}"\n{body}\n', encoding="utf-8")
+        path.chmod(0o755)
+
+    stub(stubs / "lsof", '[ -z "$STUB_PID" ] || printf \'%s\\n\' "$STUB_PID"')
+    stub(stubs / "readlink", '[ -n "$STUB_EXE" ] || exit 1\nprintf \'%s\\n\' "$STUB_EXE"')
+    stub(stubs / "systemctl", '[ -z "$STUB_RESTART_FAILS" ] || exit 1')
+    stub(stubs / "notify-send", "exit 0")
+    # A systemctl in a directory that the jobs write, first on the PATH that the unit gives.
+    planted = home / ".juliaup" / "bin" / "systemctl"
+    planted.write_text(f"#!/bin/sh\ntouch '{marker}'\n", encoding="utf-8")
+    planted.chmod(0o755)
+    # The stub directory without lsof, and an rm, because its PATH holds no system directory.
+    bare = root / "server-bare"
+    bare.mkdir()
+    for name in ("readlink", "systemctl", "notify-send"):
+        shutil.copy(stubs / name, bare / name)
+    (bare / "rm").write_text('#!/bin/sh\nexec /bin/rm "$@"\n', encoding="utf-8")
+    (bare / "rm").chmod(0o755)
+    good = f"before=1.0.0\nafter=1.0.0\nbindir={bindir}\n"
+    gone = f"{root}/server-gone/bin/julia (deleted)"
+
+    def server(text: str | None, **extra: str) -> tuple[subprocess.CompletedProcess[str], list[str]]:
+        log.unlink(missing_ok=True)
+        if text is not None:
+            state.write_text(text, encoding="utf-8")
+        env = {"HOME": str(home), "PATH": f"{stubs}{os.pathsep}/usr/bin{os.pathsep}/bin"} | extra
+        p = subprocess.run(
+            ["/bin/sh", str(UPDATE_SERVER)],
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            env=env,
+            timeout=TIMEOUT,
+            check=False,
+        )
+        return p, log.read_text(encoding="utf-8").splitlines() if log.exists() else []
+
+    def names(calls: list[str]) -> list[str]:
+        return [c.split(" ", 1)[0] for c in calls]
+
+    p, calls = server(good)
+    case(
+        f"with no process on the port the server phase exits 0, calls only lsof and removes the state: "
+        f"exit {p.returncode} {calls} {p.stdout.strip()[-200:]!r}",
+        ok=p.returncode == 0 and names(calls) == ["lsof"] and not state.exists(),
+    )
+    p, calls = server(None)
+    case(
+        f"without the state the server phase reports the update phase as failed and alerts: "
+        f"exit {p.returncode} {calls}",
+        ok=p.returncode == 1 and "notify-send" in names(calls) and "wrote no" in p.stdout,
+    )
+    p, calls = server(good + "failure=juliaup update\nfailure=Kaimon update\n")
+    case(
+        f"each failure of the state is reported, counted in the alert, and exits 1: "
+        f"exit {p.returncode} {calls}",
+        ok=p.returncode == 1
+        and "FAILED: juliaup update; Kaimon update" in p.stdout
+        and any(c.startswith("notify-send julia-update 2 step(s) failed") for c in calls),
+    )
+    p, calls = server(good, STUB_PID="4242", STUB_EXE=gone)
+    case(
+        f"a server whose binary is deleted is restarted with systemctl: exit {p.returncode} {calls} "
+        f"{p.stdout.strip()[-200:]!r}",
+        ok=p.returncode == 0
+        and "readlink /proc/4242/exe" in calls
+        and "systemctl --user restart kaimon.service" in calls
+        and "RESTARTED" in p.stdout
+        and "notify-send" not in names(calls),
+    )
+    p, calls = server(good, STUB_PID="4242", STUB_EXE=gone, STUB_RESTART_FAILS="1")
+    case(
+        f"a restart that fails is a failure with an alert: exit {p.returncode} {calls}",
+        ok=p.returncode == 1 and "notify-send" in names(calls),
+    )
+    for label, text, exe, due in (
+        ("the default release", good, f"{bindir}/julia", False),
+        ("the default release, deleted and written again", good, f"{bindir}/julia (deleted)", False),
+        ("another release", good.replace(str(bindir), f"{root}/other"), f"{bindir}/julia", True),
+        ("an older Kaimon", good.replace("after=1.0.0", "after=1.1.0"), f"{bindir}/julia", True),
+    ):
+        p, calls = server(text, STUB_PID="4242", STUB_EXE=exe)
+        case(
+            f"a server that runs {label} is not restarted, and a restart is {'due' if due else 'not due'}: "
+            f"exit {p.returncode} {calls} {p.stdout.strip()[-200:]!r}",
+            ok=p.returncode == 0
+            and "systemctl" not in names(calls)
+            and ("RESTART DUE" in p.stdout) == due
+            and ("notify-send" in names(calls)) == due,
+        )
+    p, calls = server(good, PATH=str(bare))
+    case(
+        f"no lsof on the PATH is a failure, never no server: exit {p.returncode} {calls}",
+        ok=p.returncode == 1
+        and "cannot read the server" in p.stdout
+        and "No process listens" not in p.stdout,
+    )
+    touch = f"$(touch {marker})"
+    injected = "".join(
+        f"{key}={value}\n"
+        for key in ("before", "after", "bindir", "failure")
+        for value in (touch, f"`touch {marker}`")
+    )
+    p, calls = server(injected, STUB_PID="4242", STUB_EXE=f"{bindir}/julia")
+    case(
+        f"the state is data: a value that holds a command substitution runs nothing: "
+        f"exit {p.returncode} {marker.exists()} {p.stdout.strip()[-300:]!r}",
+        ok=not marker.exists() and touch in p.stdout and not state.exists(),
+    )
+    p, calls = server(
+        good,
+        STUB_PID="4242",
+        STUB_EXE=gone,
+        PATH=os.pathsep.join(
+            [str(home / ".juliaup" / "bin"), f"{home}/", "", ".", str(stubs), "/usr/bin", "/bin"]
+        ),
+    )
+    case(
+        f"the server phase runs no program of a PATH entry below the home, empty or relative: "
+        f"exit {p.returncode} {marker.exists()} {calls}",
+        ok=not marker.exists() and "systemctl --user restart kaimon.service" in calls,
+    )
+
+
+def server_text_cases(case: Case) -> None:
+    """scripts/julia-update-server is an executable POSIX `sh` script with no `eval` that passes
+    shellcheck; without shellcheck on the PATH, a skip line for that check."""
+    text = UPDATE_SERVER.read_text(encoding="utf-8")
+    case(
+        "julia-update-server is an executable POSIX sh script that names no eval",
+        ok=text.startswith("#!/bin/sh\n") and os.access(UPDATE_SERVER, os.X_OK) and "eval" not in text,
+    )
+    shellcheck = shutil.which("shellcheck")
+    if shellcheck is None:
+        print("skip  jobsandbox: no shellcheck on the PATH; scripts/julia-update-server is not checked")
+        return
+    p = subprocess.run(
+        [shellcheck, str(UPDATE_SERVER)],
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        text=True,
+        timeout=TIMEOUT,
+        check=False,
+    )
+    case(f"shellcheck passes scripts/julia-update-server: {p.stdout.strip()[-300:]!r}", ok=p.returncode == 0)
+
+
 def update_cases(case: Case, root: pathlib.Path) -> None:
-    """scripts/julia-update.jl as on Linux, against a scratch home with stubs of juliaup, the
-    juliaup launcher, lsof, systemctl and notify-send that log their calls: the update phase calls
-    none of the last three and writes its state into ~/.cache/julia-update/; the server phase,
-    `--server`, reads it, checks the server and alerts. Without `julia` on the PATH they print a
-    skip line."""
+    """scripts/julia-update.jl as on Linux, the update phase, then scripts/julia-update-server, the
+    server phase, against a scratch home with stubs of juliaup, the juliaup launcher, lsof,
+    readlink, systemctl and notify-send that log their calls: the update phase calls none of the
+    last four and writes its state into ~/.cache/julia-update/, one value per line; the server
+    phase reads it. Without `julia` on the PATH they print a skip line."""
     julia = shutil.which("julia")
     if julia is None:
         print("skip  jobsandbox: no julia on the PATH; the cases of scripts/julia-update.jl do not run")
@@ -2262,10 +2670,12 @@ def update_cases(case: Case, root: pathlib.Path) -> None:
         path.write_text(f'#!/bin/sh\necho "{path.name} $*" >> "{log}"\n{body}\n', encoding="utf-8")
         path.chmod(0o755)
 
-    stub(home / ".juliaup" / "bin" / "julia", "exit 0")
-    for name in ("lsof", "systemctl", "notify-send"):
+    # The launcher prints the BINDIR of the default release when asked for it.
+    bindir = root / "update-release" / "bin"
+    stub(home / ".juliaup" / "bin" / "julia", f"case \"$*\" in *Sys.BINDIR*) printf '%s' '{bindir}' ;; esac")
+    for name in ("lsof", "readlink", "systemctl", "notify-send"):
         stub(stubs / name, "exit 0")
-    state = home / ".cache" / "julia-update" / "last-run.toml"
+    state = home / ".cache" / "julia-update" / "state"
     depot = root / "update-depot"
     depot.mkdir()
     env = {
@@ -2277,10 +2687,10 @@ def update_cases(case: Case, root: pathlib.Path) -> None:
         "JULIA_PKG_OFFLINE": "true",
     }
 
-    def update(*args: str) -> tuple[subprocess.CompletedProcess[str], list[str]]:
+    def update(*, server: bool = False) -> tuple[subprocess.CompletedProcess[str], list[str]]:
         log.unlink(missing_ok=True)
         p = subprocess.run(
-            [binary, "--startup-file=no", str(UPDATE_SCRIPT), *args],
+            ["/bin/sh", str(UPDATE_SERVER)] if server else [binary, "--startup-file=no", str(UPDATE_SCRIPT)],
             stdin=subprocess.DEVNULL,
             capture_output=True,
             text=True,
@@ -2291,50 +2701,58 @@ def update_cases(case: Case, root: pathlib.Path) -> None:
         calls = log.read_text(encoding="utf-8").splitlines() if log.exists() else []
         return p, [c.split(" ", 1)[0] for c in calls]
 
-    system = ("lsof", "systemctl", "notify-send")
+    system = ("lsof", "readlink", "systemctl", "notify-send")
     stub(home / ".juliaup" / "bin" / "juliaup", "exit 1")
     p, calls = update()
-    held = state.read_text(encoding="utf-8") if state.is_file() else ""
+    held = state.read_text(encoding="utf-8").splitlines() if state.is_file() else []
     case(
-        f"the update phase with a failed step exits 1, calls no lsof, systemctl or notify-send, and "
-        f"writes the failure into its state: exit {p.returncode} {calls} {held!r} "
-        f"{p.stderr.strip()[-300:]!r}",
+        f"the update phase with a failed step exits 1, calls no lsof, readlink, systemctl or notify-send, "
+        f"and writes the failure, the versions and the default BINDIR into its state: exit {p.returncode} "
+        f"{calls} {held!r} {p.stderr.strip()[-300:]!r}",
         ok=p.returncode == 1
         and "juliaup" in calls
         and not any(c in system for c in calls)
-        and "juliaup update" in held,
+        and held == ["before=1.0.0", "after=1.0.0", f"bindir={bindir}", "failure=juliaup update"],
     )
-    p, calls = update("--server")
+    p, calls = update(server=True)
     case(
         f"the server phase reads the failure, checks the server with lsof and alerts with notify-send: "
         f"exit {p.returncode} {calls} {p.stdout.strip()[-300:]!r}",
-        ok=p.returncode == 1 and "lsof" in calls and "notify-send" in calls and "systemctl" not in calls,
+        ok=p.returncode == 1
+        and "lsof" in calls
+        and "notify-send" in calls
+        and "systemctl" not in calls
+        and "FAILED: juliaup update" in p.stdout,
     )
     stub(home / ".juliaup" / "bin" / "juliaup", "exit 0")
     p, calls = update()
     first = (p.returncode, calls)
-    p, calls = update("--server")
+    p, calls = update(server=True)
     case(
         f"after an update phase with no failure, the server phase exits 0 and alerts nothing: "
         f"{first} exit {p.returncode} {calls} {p.stdout.strip()[-300:]!r}",
         ok=first[0] == 0
         and not any(c in system for c in first[1])
         and p.returncode == 0
-        and calls == ["lsof"],
+        and calls == ["lsof"]
+        and not state.exists(),
     )
-    gone = not state.exists()
-    p, calls = update("--server")
+    project.write_text('version = "1.0.0\\nbindir=/x\\nfailure=y"\n', encoding="utf-8")
+    p, calls = update()
+    held = state.read_text(encoding="utf-8").splitlines() if state.is_file() else []
     case(
-        f"the server phase removes the state it read, so a second one alone reports a failure and "
-        f"alerts: {gone} exit {p.returncode} {calls}",
-        ok=gone and p.returncode == 1 and "notify-send" in calls,
+        f"a version with line breaks stays one line of the state: exit {p.returncode} {held!r}",
+        ok=p.returncode == 0
+        and [h.split("=", 1)[0] for h in held] == ["before", "after", "bindir"]
+        and held[2] == f"bindir={bindir}",
     )
+    project.write_text('version = "1.0.0"\n', encoding="utf-8")
     marker = planted_dates(root, minor, (depot, home / ".julia"))
-    p, calls = update("--server")
+    p, calls = update()
     case(
-        f"the server phase loads no package of a depot's default environment: exit {p.returncode} {calls} "
+        f"the update phase loads no package of a depot's default environment: exit {p.returncode} {calls} "
         f"{p.stderr.strip()[-300:]!r}",
-        ok=not marker.exists() and "lsof" in calls,
+        ok=not marker.exists() and p.returncode == 0,
     )
     project.unlink()
     p, calls = update()
@@ -2343,16 +2761,11 @@ def update_cases(case: Case, root: pathlib.Path) -> None:
         f"exit {p.returncode} {calls}",
         ok=p.returncode != 0 and not state.exists() and not any(c in system for c in calls),
     )
-    p, calls = update("--server")
+    p, calls = update(server=True)
     case(
         f"the server phase without the update phase's state reports a failure and alerts: "
         f"exit {p.returncode} {calls} {p.stdout.strip()[-300:]!r}",
         ok=p.returncode == 1 and "notify-send" in calls,
-    )
-    text = UPDATE_SCRIPT.read_text(encoding="utf-8")
-    case(
-        "on macOS the script restarts the server with launchctl kickstart -k",
-        ok="kickstart -k gui/" in text,
     )
 
 
@@ -2379,8 +2792,13 @@ def planted_dates(root: pathlib.Path, minor: str, depots: Sequence[pathlib.Path]
 
 
 def update_text_cases(case: Case) -> None:
-    """scripts/julia-update.jl resets the load path and the depot path before its first `using`."""
+    """scripts/julia-update.jl resets the load path and the depot path before its first `using`,
+    and restarts the server on macOS with `launchctl kickstart -k`."""
     text = UPDATE_SCRIPT.read_text(encoding="utf-8")
+    case(
+        "on macOS the script restarts the server with launchctl kickstart -k",
+        ok="kickstart -k gui/" in text,
+    )
     first_using = text.find("\nusing ")
     resets = [
         text.find(r)
@@ -2416,13 +2834,19 @@ def selftest() -> tuple[int, int]:
         linux_bad_cases(case, root / "bad")
         bwrap_cases(case, policy)
         bwrap_update_cases(case, policy)
+        bwrap_pin_cases(case, policy)
         bwrap_edge_cases(case, policy)
         linux_root_cases(case, root, policy)
         (root / "jobbox").mkdir()
         jobbox_cases(case, root / "jobbox")
         (root / "jobbox-links").mkdir()
-        jobbox_link_cases(case, root / "jobbox-links")
+        box = JobboxRoot(case, root / "jobbox-links")
+        box.make()
+        jobbox_link_cases(case, box)
+        jobbox_home_cases(case, box)
         jobbox_text_cases(case)
+        server_cases(case, root)
+        server_text_cases(case)
         update_cases(case, root)
         update_text_cases(case)
         profile_cases(case, policy)

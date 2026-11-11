@@ -111,7 +111,7 @@ jobs:
             python3 bin/harness --profile examples/profile.toml render "$f" > "$units/$(basename "$f")"
             echo "rendered $f"
           done
-          for program in .local/bin/jobbox .julia/bin/kaimon .juliaup/bin/julia .local/share/research-harness/python/bin/python .local/bin/claude-autocommit; do
+          for program in .local/bin/jobbox .local/bin/julia-update-server .julia/bin/kaimon .juliaup/bin/julia .local/share/research-harness/python/bin/python .local/bin/claude-autocommit; do
             mkdir -p "$HOME/$(dirname "$program")"
             rm -f "$HOME/$program"
             printf '#!/bin/sh\nexit 0\n' > "$HOME/$program"

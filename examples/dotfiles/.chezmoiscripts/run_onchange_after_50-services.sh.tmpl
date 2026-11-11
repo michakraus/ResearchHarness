@@ -88,24 +88,31 @@ if ! bwrap --ro-bind / / --dev /dev --unshare-user --unshare-pid true; then
     exit 2
 fi
 install -m 755 "$HARNESS/sandbox/jobbox" "$HOME/.local/bin/jobbox"
+# The server phase of julia-update, which its unit runs outside bwrap after the update phase.
+install -m 755 "$HARNESS/scripts/julia-update-server" "$HOME/.local/bin/julia-update-server"
 sandbox="$HOME/.config/research-harness/sandbox"
 mkdir -p "$sandbox"
 for job in kaimon julia-update; do
     render "sandbox/$job.bwrap" "$sandbox/$job.bwrap"
 done
-# Each write deny of the jobs, an argument after `--ro-bind` below the home directory, and
-# julia-update's linux_write directory of sandbox/daemon.toml exist before the jobs start, as
-# `harness setup` makes them: bwrap stops at a write deny that is missing, and skips a missing
-# linux_write directory, whose writes then stay in the job's empty home. Each directory that
-# mkdir creates has mode 700.
+# Each write deny and each pin of the jobs, an argument after `--ro-bind` or `--bind` below the
+# home directory, and julia-update's linux_write directory of sandbox/daemon.toml exist before
+# the jobs start, as `harness setup` makes them: bwrap stops at a write deny or a pin that is
+# missing, and skips a missing linux_write directory, whose writes then stay in the job's empty
+# home. The one pin that is a file, juliaup's lock file, is made first, empty; every other is a
+# directory. Each directory that mkdir creates has mode 700, and the file mode 600.
+lock="$HOME/.julia/juliaup/.juliaup-lock"
+[ -e "$lock" ] || (umask 077 && mkdir -p "$(dirname "$lock")" && : >> "$lock")
 for job in kaimon julia-update; do
     previous=
     while IFS= read -r argument; do
-        if [ "$previous" = --ro-bind ]; then
-            case "$argument" in
-                "$HOME"/*) (umask 077 && mkdir -p "$argument") ;;
-            esac
-        fi
+        case "$previous" in
+            --ro-bind | --bind)
+                case "$argument" in
+                    "$HOME"/*) [ -e "$argument" ] || (umask 077 && mkdir -p "$argument") ;;
+                esac
+                ;;
+        esac
         previous=$argument
     done < "$sandbox/$job.bwrap"
 done

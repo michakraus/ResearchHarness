@@ -711,7 +711,7 @@ By default it writes its report below `~/Research/.scratch/agentbox-probes/`, wh
 reads it. No skill or agent calls it. *The probe battery* of [The srt settings](sandbox.md)
 describes the probes, the verdicts and the report.
 
-## `julia-update.jl` and `julia-update-test.jl`
+## `julia-update.jl`, `julia-update-server` and `julia-update-test.jl`
 
 `julia-update.jl` keeps the Julia installation, the default environments and the Kaimon MCP
 server current. It runs four steps in order:
@@ -740,27 +740,30 @@ places:
 | the binary of the Kaimon server | `ps -o comm=` of the process that `lsof` finds on port 2828 | the link `/proc/<pid>/exe` of that process, without its ` (deleted)` suffix |
 | the restart of the server | `launchctl kickstart -k gui/<uid>/<launchd_prefix>.kaimon` | `systemctl --user restart kaimon.service` |
 | the notification, and the log that it names | `osascript`; `~/Library/Logs/julia-update/` | `notify-send`; `journalctl --user -u julia-update.service` |
-| the runs | one run of the four steps | two runs: steps 1 to 3 under `bwrap`, then `--server`, step 4 and the alerts, outside it |
+| the runs | one run of the four steps | `julia-update.jl` runs steps 1 to 3 under `bwrap`, then `julia-update-server` step 4 and the alerts, outside it |
 
-On Linux the unit's `ExecStart` runs steps 1 to 3, the update phase, under `bwrap` through
-`jobbox`, where the job sees no other process, no service manager and no session bus. That phase
-writes its failures and the Kaimon versions before and after the update into
-`~/.cache/julia-update/last-run.toml`. The unit's `ExecStopPost` then runs
-`julia-update.jl --server` outside `bwrap`: the server phase reads that file and removes it, runs
-step 4 and sends the alerts, and reports the update phase as failed when the file is missing, as
-after an `ExecStart` that failed before the update phase began. The script loads only the standard
-library of its release: its first lines set the load path to `@stdlib` and drop every depot
-outside the release, because the jobs write `~/.julia`. The variable
-`JULIA_UPDATE_SYSTEM`, `Darwin` or `Linux`, takes the place of the system's own name, so that the
-cases of `lib/harness/jobsandbox.py` run the two phases of Linux on macOS.
+On Linux the unit's `ExecStart` runs `julia-update.jl`, steps 1 to 3, the update phase, under
+`bwrap` through `jobbox`, where the job sees no other process, no service manager and no session
+bus. That phase writes its failures, the Kaimon versions before and after the update and the
+`Sys.BINDIR` of the default release into `~/.cache/julia-update/state`, one `key=value` per line.
+The unit's `ExecStopPost` then runs the installed copy of `julia-update-server` outside `bwrap`,
+a POSIX `sh` script that runs no Julia, because the jobs write the depot and the releases. Its
+`PATH` is the unit's without every entry below the home and without an empty or relative entry.
+It reads the state as data, removes the file, runs step 4 and sends the alerts, and reports the
+update phase as failed when the file is missing, as after an `ExecStart` that failed before the
+update phase began. The script itself loads only the standard library of its release: its first
+lines set the load path to `@stdlib` and drop every depot outside the release, because the jobs
+write `~/.julia`. The variable `JULIA_UPDATE_SYSTEM`, `Darwin` or `Linux`, takes the place of the
+system's own name, so that the cases of `lib/harness/jobsandbox.py` run the update phase of Linux
+on macOS.
 
 On macOS the script reads the profile key `launchd_prefix` for the label of the Kaimon job (see
 [Profile](../profile.md)); on Linux it reads no profile. A failure or a restart that is due also
 shows a notification. Without the notifier on the `PATH`, the log line is the only report. When
 no `lsof` is on the `PATH`, the server check fails and the job restarts nothing. A restart that
 fails is a failure, with its output in the log, and so is a restart with no service manager on
-the `PATH`. The script exits with status 1 when a step fails.
+the `PATH`. The script, and on Linux the server phase, exits with status 1 when a step fails.
 
 `julia-update-test.jl` runs the script on a fixture home with stubs of every tool it calls, on the
-system it runs on (`julia --startup-file=no julia-update-test.jl`); on Linux each case runs the two
-phases in turn, as the unit does. CI runs it on Linux.
+system it runs on (`julia --startup-file=no julia-update-test.jl`); on Linux each case runs the
+update phase and then `julia-update-server`, as the unit does. CI runs it on Linux.

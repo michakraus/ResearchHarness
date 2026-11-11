@@ -7,19 +7,25 @@
 # ~/.config/research-harness/sandbox/<job>.bwrap, one argument per line, which `harness setup`
 # writes with `harness render sandbox/<job>.bwrap` (lib/harness/jobsandbox.py). To them jobbox
 # adds `--chdir` and the working directory of the start, because Kaimon reads its tool policy from
-# .kaimon/tools.json there, and for each repository R at most four levels below ~/Research,
-# ~/Research itself included, whose R/.git is a directory, the read-only binds of R/.git/hooks,
-# R/.git/config and R/.githooks that exist: the job writes ~/Research, and these name programs
-# that the next git command runs.
+# .kaimon/tools.json there, and, for a job whose arguments bind ~/Research, for each repository R
+# at most four levels below ~/Research, ~/Research itself included, whose R/.git is a directory,
+# the read-only binds of R/.git/hooks, R/.git/config and R/.githooks that exist: the job writes
+# ~/Research, and these name programs that the next git command runs. A job that does not bind
+# ~/Research gets none: it does not see them, and the Kaimon job, which writes ~/Research while
+# the other starts, could swap a part for a link after jobbox checks it.
 # A repository cloned after the start, a .githooks made after it, a worktree, whose .git is a
 # file, and a submodule's git directory, R/.git/modules/<name>, get no bind.
 #
-# bwrap follows a symbolic link in the source of a bind and in its destination, so a link that the
-# job made below ~/Research would bind what it names. jobbox therefore refuses every source of a
-# read-only bind below ~/Research, of the arguments file and of the repository parts, that is a
-# symbolic link, a dangling one too, or whose physical path is not the physical ~/Research and the
-# same rest. ~/Research itself may be a link: it is resolved once, searched through the link, and
-# the binds keep the paths below $HOME/Research.
+# bwrap follows a symbolic link in the source of a bind and in its destination, and each job
+# writes directories below the home that hold the sources of the other job's binds. jobbox
+# therefore refuses every source below the home, of the arguments file and of the repository
+# parts, of a --bind, --bind-try, --ro-bind or --ro-bind-try that is a symbolic link, a dangling
+# one too, or whose physical path is not the physical path of its anchor and the same rest. The
+# anchor of a source is the entry of the home that it lies below, such as ~/.julia or ~/Research;
+# it may be a link, which is resolved once, and the binds keep the paths below the home. A check
+# before the mount does not hold against a job that runs: the arguments bind each directory of
+# the other job's sources that the job writes onto itself (the pins of jobsandbox.py), so that the
+# job cannot rename or remove it while it runs.
 #
 # A job that is not kaimon or julia-update, a missing arguments file, fewer than two arguments and
 # a refused bind source exit 2 with one line on stderr, before any bwrap. jobbox imports nothing of
@@ -41,41 +47,47 @@ esac
 file="$HOME/.config/research-harness/sandbox/$job.bwrap"
 [ -f "$file" ] || fail "no arguments file $file; run harness setup"
 
-# ~/Research as a logical path with no trailing / and no . segment of HOME, as the arguments file
+# The home as a logical path with no trailing / and no . segment of HOME, as the arguments file
 # spells it, so that its paths compare with it.
-research=$(cd "$HOME" 2>/dev/null && pwd -L) || research=$HOME
-research="${research%/}/Research"
-# The physical path of ~/Research, empty when it does not exist.
-physical=$(cd -P "$research" 2>/dev/null && pwd -P) || physical=""
+home=$(cd "$HOME" 2>/dev/null && pwd -L) || home=$HOME
+home=${home%/}
+research="$home/Research"
 
-# checked <path>: refuse a bind source below ~/Research that is a symbolic link, or that exists and
-# whose physical path is not the physical ~/Research and the same rest, because a directory on its
-# way is a link.
+# checked <path>: refuse a bind source below an anchor of the home that is a symbolic link, or
+# that exists and whose physical path is not the anchor's physical path and the same rest,
+# because a directory on its way is a link.
 checked() {
     case "$1" in
-        "$research"/*) ;;
+        "$home"/*/*) ;;
         *) return 0 ;;
     esac
     [ ! -L "$1" ] || fail "the bind source $1 is a symbolic link"
     [ -e "$1" ] || return 0
+    rest=${1#"$home"/}
+    anchor="$home/${rest%%/*}"
+    anchored=$(cd -P "$anchor" 2>/dev/null && pwd -P) || anchored=""
     if [ -d "$1" ]; then
         real=$(cd -P "$1" 2>/dev/null && pwd -P) || real=""
     else
         real=$(cd -P "$(dirname "$1")" 2>/dev/null && pwd -P) || real=""
         real="$real/$(basename "$1")"
     fi
-    [ "$real" = "$physical${1#"$research"}" ] ||
-        fail "the bind source $1 has the physical path '$real', not the one below ~/Research"
+    [ "$real" = "$anchored/${rest#*/}" ] ||
+        fail "the bind source $1 has the physical path '$real', not the one below $anchor"
 }
 
 # The program and its arguments are "$@"; each new argument goes after them, and the loop at the
 # end moves them behind `--`.
 count=$#
 source=no
+sees=no
 while IFS= read -r line || [ -n "$line" ]; do
-    [ "$source" = no ] || checked "$line"
+    if [ "$source" = yes ]; then
+        checked "$line"
+        [ "$line" != "$research" ] || sees=yes
+    fi
     case "$line" in
-        --ro-bind | --ro-bind-try) source=yes ;;
+        --bind | --bind-try | --ro-bind | --ro-bind-try) source=yes ;;
         *) source=no ;;
     esac
     set -- "$@" "$line"
@@ -85,7 +97,10 @@ set -- "$@" --chdir "$PWD"
 # A .git directory at most five levels below ~/Research is a repository at most four levels below
 # it. find follows ~/Research itself when it is a link (-H), and no link below it; it does not
 # descend into a .git, and stays quiet about a directory it cannot read.
-repositories=$(find -H "$research" -maxdepth 5 -name .git -type d -prune -print 2>/dev/null || true)
+repositories=
+if [ "$sees" = yes ]; then
+    repositories=$(find -H "$research" -maxdepth 5 -name .git -type d -prune -print 2>/dev/null || true)
+fi
 while IFS= read -r git; do
     case "$git" in
         "$research"/.git | "$research"/*/.git) ;;
