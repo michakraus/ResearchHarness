@@ -11,8 +11,8 @@
 # `key=value` per line: `before` and `after`, the Kaimon versions before and after the update,
 # `bindir`, the Sys.BINDIR of the default release, and a `failure` per failed step. This script
 # reads the four keys as data, runs no value and no path of the file, and removes the file after
-# it reads it, so that a later run whose update phase never started reports the update phase as
-# failed, as it reports a missing file.
+# it reads it: a later run whose update phase never started then finds no file, which it reports
+# as a failure of the update phase.
 #
 # The server is the process that listens on port 2828, as lsof finds it; its binary is the link
 # /proc/<pid>/exe, without its " (deleted)" suffix. A server whose binary no longer exists is

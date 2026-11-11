@@ -1,8 +1,9 @@
 - **On Linux, the Kaimon and julia-update units start their program under `bwrap` through
   `~/.local/bin/jobbox`.** The arguments come from the same `sandbox/daemon.toml` as the macOS
   Seatbelt profiles, through `harness render sandbox/<job>.bwrap`: new namespaces but the network,
-  an empty home with only the job's paths bound, the write denies read-only, and the git hooks and
-  configuration of each repository at most four levels below `~/Research` read-only. `jobbox`
+  an empty home with only the job's paths bound, the write denies read-only, and for Kaimon the
+  git hooks and configuration of each repository at most four levels below `~/Research`
+  read-only. `jobbox`
   stops with exit 2 when the source of a bind below the home is a symbolic link or lies below
   one, because `bwrap` follows it, and each job binds onto itself the paths of the other job's
   bind sources that it writes, so that it cannot swap them while it runs. `harness setup` and the

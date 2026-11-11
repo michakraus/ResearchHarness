@@ -1244,6 +1244,16 @@ def bwrap_pin_cases(case: Case, policy: DaemonPolicy) -> None:
         "the job whose bind source lies below the other's write deny needs no pin and raises nothing",
         ok=binds(bwrap_args(below, "julia-update", HOME, ROOT), "--bind") == [],
     )
+    deep = dataclasses.replace(
+        policy,
+        kaimon=JobRules(**(empty | {"write": ("~/x",)}), pty=False),
+        julia_update=JobRules(**(empty | {"read_files": ("~/x/y/f",)}), pty=False),
+    )
+    made = (linux_dirs(deep, "kaimon", HOME, harness), linux_files(deep, "kaimon", HOME, harness))
+    case(
+        f"a pin above a file source is a directory, and the file source a file: {made}",
+        ok=made == ([HOME / "x" / "y"], [HOME / "x" / "y" / "f"]),
+    )
 
 
 def bwrap_edge_cases(case: Case, policy: DaemonPolicy) -> None:

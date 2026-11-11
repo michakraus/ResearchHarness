@@ -156,12 +156,11 @@ the installed template. A later version can behave differently.
   the parts of a repository cloned after the job's start, a `.githooks` that did not exist at the
   start, the `.git` file of a worktree, which the job can point at a git directory with hooks of
   its own, and the hooks and the configuration of a submodule in `.git/modules/<name>`, which get
-  no bind. `julia-update` does not pin Kaimon's pins in turn: while an update phase runs, which
-  can run code that Kaimon wrote and has no time limit, and Kaimon restarts, a link that the
-  update phase puts in place of `~/.julia/environments` between `jobbox`'s check and the mount
-  binds what the link names, writable, in Kaimon's namespace. A network
-  namespace of its own for each job, which would close the network and abstract-socket gaps, is
-  planned.
+  no bind. `julia-update` does not pin Kaimon's pins in turn: when Kaimon restarts while an update
+  phase runs, which can run code that Kaimon wrote, a link that the update phase puts in place of
+  `~/.julia/environments` between `jobbox`'s check and the mount binds what the link names,
+  writable, in Kaimon's namespace. A network namespace of its own for each job, which would close
+  the network and abstract-socket gaps, is planned.
 - **OpenCode and oh-my-pi have no sandbox.** Their permission blocks and guard extensions check
   text, as the deny list and the hooks do. Antigravity runs commands in its terminal sandbox in the
   CLI and the desktop app, and its guard hook sets `BypassSandbox` on each command and checks paths

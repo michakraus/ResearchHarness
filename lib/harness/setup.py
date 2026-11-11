@@ -5252,6 +5252,35 @@ def bwrap_cases(case: Case, tmp: pathlib.Path, pins: Pins) -> None:
         f"the directory step creates no directory outside the home: {failed!r} {outside.exists()}",
         ok=failed is None and not outside.exists(),
     )
+    # julia-update writes $HARNESS, and kaimon reads a file there: julia-update's pin of that file
+    # lies outside the home too.
+    policy.write_text(
+        policy.read_text(encoding="utf-8")
+        .replace('read_files = ["/", "~/.gitconfig"]', 'read_files = ["/", "~/.gitconfig", "$HARNESS/f"]', 1)
+        .replace('write = [\n    "~/.julia",', 'write = [\n    "$HARNESS",\n    "~/.julia",', 1),
+        encoding="utf-8",
+    )
+    pinned = jobsandbox.linux_files(jobsandbox.load(policy), "julia-update", s.home, outside)
+    failed = linux_dirs_step(machine, outside).action()
+    case(
+        f"the directory step creates no pin file outside the home: {pinned} {failed!r} {outside.exists()}",
+        ok=outside / "f" in pinned and failed is None and not outside.exists(),
+    )
+    # kaimon writes ~/w, which nothing else makes, and julia-update reads a file there: the step
+    # makes ~/w for kaimon's pin of that file.
+    policy.write_text(
+        policy.read_text(encoding="utf-8")
+        .replace('write = [\n    "~/Research",', 'write = [\n    "~/w",\n    "~/Research",', 1)
+        .replace('"~/.local/bin/julia-update.jl",\n]', '"~/.local/bin/julia-update.jl",\n    "~/w/f",\n]', 1),
+        encoding="utf-8",
+    )
+    failed = linux_dirs_step(machine, outside).action()
+    made = [oct(p.stat().st_mode & 0o777) if p.exists() else None for p in (s.home / "w", s.home / "w" / "f")]
+    case(
+        f"the directory step makes the directories above a pin file that nothing else makes: "
+        f"{failed!r} {made}",
+        ok=failed is None and made == ["0o700", "0o600"],
+    )
 
 
 def bwrap_refusal_cases(case: Case, tmp: pathlib.Path, pins: Pins) -> None:

@@ -23,9 +23,9 @@
 # one too, or whose physical path is not the physical path of its anchor and the same rest. The
 # anchor of a source is the entry of the home that it lies below, such as ~/.julia or ~/Research;
 # it may be a link, which is resolved once, and the binds keep the paths below the home. A check
-# before the mount does not hold against a job that runs: the arguments bind each directory of
-# the other job's sources that the job writes onto itself (the pins of jobsandbox.py), so that the
-# job cannot rename or remove it while it runs.
+# before the mount does not hold against a job that runs: the arguments of each job bind onto
+# itself each path that it writes on the way to a source of the other job's binds (the pins of
+# jobsandbox.py), so that it cannot rename or remove that path while it runs.
 #
 # A job that is not kaimon or julia-update, a missing arguments file, fewer than two arguments and
 # a refused bind source exit 2 with one line on stderr, before any bwrap. jobbox imports nothing of
