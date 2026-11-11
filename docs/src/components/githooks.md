@@ -85,8 +85,9 @@ commit when a line of the hit is one that the commit adds: the stage prints
 not block an unrelated commit; a pure rename adds no line. The stage takes the added lines from
 the hunks of `git diff --cached -U0 -M`, with literal paths and with options that keep an
 external diff program, a textconv driver, a `-diff` attribute and `diff.interHunkContext` from
-changing the hunks, and scans the working tree. A hit of severity `warning` or `hint` never
-blocks: after the hits of severity `error`, the stage prints
+changing the hunks, and it scans the working tree. The diff runs without the variables
+`GIT_DIFF_OPTS`, `GIT_ICASE_PATHSPECS` and `GIT_GLOB_PATHSPECS`. A hit of severity `warning` or
+`hint` never blocks: after the hits of severity `error`, the stage prints
 `ast-grep: <n> hit(s) of severity warning or hint — advisory` and one line per hit. A hit of
 severity `info`, such as one of `parse-error`, is not printed. The stage prints `ast-grep: clean`
 when no hit has severity `error`, `warning` or `hint`. To silence one hit, write
@@ -118,17 +119,18 @@ after `--`; a commit of one `.jl` file starts `julia` from the `PATH` once; an i
 stops its load test. For the ast-grep stage, a hit on a line that a commit adds, also on the last
 line of a hunk or inside a hit that spans lines, is refused with its line; a hit on lines that a
 commit does not add, also after a rename or a deletion, warns; the added lines do not change
-with an external diff program, a textconv driver, a `-diff` attribute, `diff.interHunkContext`
-or glob characters in a path; a hit of severity `warning` or `hint` warns on an added line; a
-`parse-error` hit and a silenced hit are not printed; an interrupt while JSON loads is no
-skip; and each case of a skip gives its one line. Each fixture of the stage holds
-an `sgconfig.yml` that names the rules of the tree under test and the parser by absolute path:
-`ast-grep/julia.dylib` of the tree where it exists, as in CI, else the one of the research
-tree's `Harness/`. It checks the time limits of the lint stage and the load test, also for a
-child that holds the output and for a process that leaves the group, that the time box sends no
-SIGKILL after it returns, and that `pre-commit.jl` and `pre-push.jl` are in SciML style. For
-`pre-push` it checks each case of the gate and the suite, the interrupt with a group that
-outlives its SIGKILL, and the headline of an error. CI runs it on Linux.
+with an external diff program, a textconv driver, a `-diff` attribute, `diff.interHunkContext`,
+`GIT_DIFF_OPTS`, `GIT_ICASE_PATHSPECS`, `GIT_GLOB_PATHSPECS` or glob characters in a path; a
+hit of severity `warning` or `hint` warns on an added line; a `parse-error` hit and a silenced
+hit are not printed; an interrupt while JSON loads is no skip; and each case of a skip gives its
+one line. Each fixture of the stage holds an `sgconfig.yml` that names the rules of the tree
+under test and the parser by absolute path: `ast-grep/julia.dylib` of the tree where it exists,
+as in CI, else the one of the research tree's `Harness/`. It checks the time limits of the lint
+stage and the load test, also for a child that holds the output and for a process that leaves
+the group, that the time box sends no SIGKILL after it returns, and that `pre-commit.jl` and
+`pre-push.jl` are in SciML style. For `pre-push` it checks each case of the gate and the suite,
+the interrupt with a group that outlives its SIGKILL, and the headline of an error. CI runs it on
+Linux.
 
 ## `pre-push` and `pre-push.jl`
 

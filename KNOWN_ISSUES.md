@@ -861,3 +861,17 @@
 - kind: found late
 - found: 2026-11-10, the review of the srt files for Claude Code's Anthropic login and `agy`'s
   token file
+
+### K154 · With `GIT_GLOB_PATHSPECS=1`, the Julia packages' pre-commit hook lists only the staged `.jl` files at the repository's root.
+
+- location: `githooks/pre-commit.jl:525`
+- evidence: `main` takes the staged files from `staged("--diff-filter=ACMRT", "--", "*.jl")`.
+  Under `GIT_GLOB_PATHSPECS=1`, git reads `*.jl` as a glob in which `*` matches no `/`: with
+  `src/Fixture.jl` and `top.jl` staged, `git diff --cached --name-only --diff-filter=ACMRT --
+  '*.jl'` prints both by default and only `top.jl` with the variable. So no stage checks a file
+  below `src/`, and a commit that adds an `@show` to `src/Fixture.jl` passes with exit 0 and no
+  `ast-grep` line. The launcher `githooks/pre-commit` lists the files with the same pathspec, at
+  line 13. A fix runs both listings without the variable, as `added_lines` runs its diff.
+- kind: defect
+- found: 2026-11-11, the arbitrator's diagnosis of the second critic round of the pre-commit
+  ast-grep stage

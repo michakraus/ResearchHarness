@@ -6,7 +6,8 @@
   already holds do not block an unrelated commit, and a pure rename adds no line. A hit of
   severity `warning` or `hint` only warns, on any line. The `info` hits of `parse-error` are not
   printed, and `# ast-grep-ignore: <rule-id>` silences one hit. The added lines do not change
-  with the repository's diff configuration or with glob characters in a path. Without `ast-grep`
+  with the repository's diff configuration, with `GIT_DIFF_OPTS`, `GIT_ICASE_PATHSPECS` or
+  `GIT_GLOB_PATHSPECS`, or with glob characters in a path. Without `ast-grep`
   on the `PATH`, without an `sgconfig.yml`, with a configuration that applies no rule, on an exit
   code other than 0 and 1, on an output that is not one JSON object per line, without a JSON
   package that loads, or after the limit of 60 s, the stage prints one
