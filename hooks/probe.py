@@ -3100,11 +3100,12 @@ MORE_PROBES = (
     "julia +1.12 -e 1;(julia -e 'f(1)')",
     "A=1 B=2 julia -e 'f(1)'",
     "julia --threads 4 probe.jl",
-    "julia -- -probe.jl",
+    "julia -- -v.jl",
     "echo 'f(1)' | julia -",
     "julia - foo-test.jl < probe.jl",
     "cat <<-EOF\n\tit's\n\tEOF\njulia -e 'f(1)'",
     "cat <<A <<B\nx\nA\nit's\nB\njulia -e 'f(1)'",
+    "cat <<'EOF'\nit's\nEOF\njulia -e 'f(1)'",
     "cat <<\"EOF\"\nit's\nEOF\njulia -e 'f(1)'",
     "cat <<\\EOF\nit's\nEOF\njulia -e 'f(1)'",
     "cat <<< 'x'\njulia -e 'f(1)'",
@@ -3137,6 +3138,7 @@ MORE_LEFT_ALONE = (
     "julia --eval='using Pkg; Pkg.status()'",
     "julia -e'using Pkg; Pkg.status()'",
     "julia -e '@time f()'",
+    "julia -e '@btime f()'",
     "julia -e '@benchmark f()'",
     "julia -e '@ballocated f()'",
     "julia -e '@elapsed f()'",
@@ -3151,13 +3153,14 @@ def note_payload(command: object) -> str:
 
 def note_answer(data: bytes, cache: str = KAIMON_CACHE) -> tuple[str, str]:
     """('note', its text), ('silent', '') for exit 0 with no output, or what else `kaimon-note.py`
-    did on the payload bytes `data` with the Kaimon cache `cache`."""
+    did on the payload bytes `data` with the Kaimon cache `cache`. The hook reads its input as
+    strict UTF-8, as under a UTF-8 locale, so a byte that is no UTF-8 raises in its read."""
     try:
         proc = subprocess.run(
             [sys.executable, KAIMON_NOTE],
             input=data,
             capture_output=True,
-            env={**ENV, "KAIMON_CACHE_DIR": cache},
+            env={**ENV, "KAIMON_CACHE_DIR": cache, "PYTHONIOENCODING": "utf-8"},
             timeout=TIMEOUT,
             check=False,
         )
