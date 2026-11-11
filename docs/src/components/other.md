@@ -306,7 +306,8 @@ directory, so the file applies to every repository of the tree.
 
 Julia is not a language that ast-grep knows. The file registers `julia` as a custom language for
 `.jl` files, with the parser library `Harness/ast-grep/julia.dylib`, which `build-julia.sh` builds.
-It also names `Harness/ast-grep/rules` as the directory of the rules. The paths are relative to
+It also names `Harness/ast-grep/rules` as the directory of the rules and
+`Harness/ast-grep/rule-tests` as the directory of the rule tests. The paths are relative to
 `~/Research`, so the checkout must be at `~/Research/Harness`.
 
 ## `build-julia.sh`
@@ -330,6 +331,93 @@ code: a node of the kind `ERROR`. Its severity is `info`.
 The rule tells you where a search with a pattern can miss code, because the syntax tree there is
 not correct. `research-sgconfig.yml` names `ast-grep/rules/` as the directory of the rules, so
 ast-grep uses the rule in every repository of the tree.
+
+## The rules of severity error
+
+The five rules in the sections below have the severity `error`. Each one finds a defect in Julia
+code that a pattern over the syntax tree decides with a low risk of a false hit. The message of
+each rule names the fix. To silence one hit, write the comment `# ast-grep-ignore: <rule-id>` at
+the end of the line or on the line above. Two rules match a comment, and for them this works only
+in part: `docstring-comment` cannot be silenced, and `line-citation-comment` is silenced only from
+the line above.
+
+## `rules/docstring-comment.yml`
+
+The rule `docstring-comment` finds a `#` comment directly after the closing `"""` of a docstring,
+before its definition. Such a comment detaches the docstring: the definition has no docstring,
+and each `@ref` to it fails. Move the comment above the docstring or into the definition.
+
+The rule matches a comment that is the next sibling of a triple-quoted string. It does not match
+a comment after a one-line `"…"` string, because a plain string statement has the same shape. It
+also does not match a comment inside the definition, or a comment at the end of the definition's
+line.
+
+The rule cannot be silenced. A comment `# ast-grep-ignore: docstring-comment` after the docstring
+is itself a hit, at the end of the `"""` line too. A comment in this place always detaches the
+docstring, so the fix is to move it.
+
+## `rules/allocated-equality.yml`
+
+The rule `allocated-equality` finds two `@allocated` readings compared exactly:
+`@allocated(a) == @allocated(b)` or `@allocated(a) === @allocated(b)`, inside `@test` too. A
+reading in parentheses, such as `(@allocated a)`, counts too. Windows quantises the figures by 16
+bytes, so an exact comparison fails there. Assert the difference under a stated tolerance
+instead. A comparison of one reading with a number, or with `<=`, is not a hit.
+
+## `rules/exitcode-alone.yml`
+
+The rule `exitcode-alone` finds `p.exitcode` in a definition that neither reads `termsignal` nor
+calls `success`. A process that a signal ends has the exit code 0 in Julia, so the exit code alone
+reads it as a success. Check `termsignal` too, or call `success(p)`.
+
+A definition is a `function … end` or a short form `f(…) = …`, also with a return type or a
+`where` clause, as in `f(p)::Bool = …`. The rule looks for `termsignal` and a call of `success`,
+also as `Base.success(p)`, in the enclosing definition, and for a read at top level in the whole
+file. A `termsignal` read in another function does not count.
+
+## `rules/line-citation-comment.yml`
+
+The rule `line-citation-comment` finds a comment that holds a file name ending in `.jl`, a colon
+and digits, such as `solver.jl:120`. The next edit that changes the line count of that file makes
+the citation false. Name the function instead. A ratio such as `3:1`, a file name without a
+line, and the same text in a string are not hits.
+
+A comment `# ast-grep-ignore: line-citation-comment` at the end of the line is part of the same
+comment, so it does not silence the hit. Write it on the line above.
+
+## `rules/debug-probe.yml`
+
+The rule `debug-probe` finds a temporary probe in a file under `src/` or `ext/`: an `@show` call,
+`Base.@show` too, or a string that holds `[DEBUG-`. Remove the probe before the commit. Tests,
+scripts and docs may print, so the rule has the `files:` globs `**/src/**/*.jl` and
+`**/ext/**/*.jl`.
+
+## The rule tests
+
+The directory `rule-tests/` holds the rule tests of ast-grep: one file `<rule-id>-test.yml` for
+each rule of severity `error`. Each
+file holds `valid` snippets, which the rule must not match, and `invalid` snippets, which it must
+match. `ast-grep test` runs them:
+
+```bash
+ast-grep test -c ~/Research/sgconfig.yml --custom-languages allow --skip-snapshot-tests
+```
+
+Without `--custom-languages allow`, ast-grep ignores the language `julia`, and each test that
+expects no hit passes. A snippet has no path, so a rule test cannot test the `files:` globs of
+`debug-probe`. The directory `rule-tests/scope/` holds the file `probe.jl`, with one `@show x`,
+under `src/`, `ext/`, `test/` and `scripts/`. A scan of `scope/` with `debug-probe` must hit
+exactly `src/probe.jl` and `ext/probe.jl`.
+
+### The `ast-grep` job of CI
+
+The job `ast-grep` of the workflow `julia.yml` runs the rule tests. The path filter of the
+workflow names `ast-grep/**`, so a change of a rule or a rule test alone starts it. The job
+installs the release 0.51.1 of ast-grep, with its SHA-256, and builds the parser with
+`build-julia.sh`. `research-sgconfig.yml` names its paths relative to `~/Research`, so the job
+writes a configuration with the checkout's absolute paths. Then it runs `ast-grep test` and the
+scan of `rule-tests/scope/`. The job fails when a test fails, when a test names a rule that does
+not exist, or when the scan does not hit exactly `src/probe.jl` and `ext/probe.jl`.
 
 ## `.gitleaks.toml`
 

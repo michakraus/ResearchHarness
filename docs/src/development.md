@@ -250,9 +250,9 @@ same lines; `changelog.d/README.md` gives the form. The job fails when the branc
 below `lib/`, `hooks/`, `adapters/`, `bin/`, `scripts/`, `githooks/`, `agents/`, `skills/` or
 `rules/` and adds no fragment. At a release, `harness changelog --apply` joins the fragments into
 `## Unreleased`.
-`.github/workflows/julia.yml` runs the twelve Julia test files on Julia 1.13 when a
-`.jl` file, `Project.toml`, `githooks/pre-commit`, `githooks/pre-push` or the workflow itself
-changes.
+`.github/workflows/julia.yml` runs the twelve Julia test files on Julia 1.13, and the rule tests
+of ast-grep in its job `ast-grep`, when a `.jl` file, `Project.toml`, `githooks/pre-commit`,
+`githooks/pre-push`, a file below `ast-grep/` or the workflow itself changes.
 `.github/workflows/docs.yml` builds the documentation site with VitePress when a file under
 `docs/`, `agents/`, `skills/`, `examples/models.toml` or the workflow itself changes.
 VitePress fails the build on a broken local link. On a push to `main`, the workflow also deploys

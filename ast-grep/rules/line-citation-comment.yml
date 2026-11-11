@@ -1,0 +1,8 @@
+# A line number in a comment goes stale with the next edit that changes the file's line count.
+id: line-citation-comment
+language: julia
+severity: error
+message: a comment cites a line of a .jl file, which the next edit of that file makes stale; name the function instead
+rule:
+  any: [ { kind: line_comment }, { kind: block_comment } ]
+  regex: '[A-Za-z0-9_.-]+\.jl:[0-9]+'

@@ -1,0 +1,36 @@
+id: docstring-comment
+valid:
+  - |-
+    """
+    Doc.
+    """
+    f(x) = x  # note
+  - |-
+    """
+    Doc.
+    """
+    function f(x)
+        # note
+        x
+    end
+  - |-
+    "one line"
+    # note
+    f(x) = x
+  - |-
+    "one $("""inner""") line"
+    # note
+    f(x) = x
+  - |-
+    f(x) = x
+    # note
+    g(x) = x
+invalid:
+  - |-
+    """
+        f(x)
+
+    Doc.
+    """
+    # note
+    f(x) = x

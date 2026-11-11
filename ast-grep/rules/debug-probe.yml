@@ -1,0 +1,21 @@
+# A temporary probe left in package source: an @show call (Base.@show too), or a string tagged
+# [DEBUG-…]. Tests, scripts and docs may print, so the rule applies to files under src/ and ext/
+# only.
+id: debug-probe
+language: julia
+severity: error
+message: a debug probe (@show, or a [DEBUG-…] tag) is left in source; remove it before the commit
+files:
+  - "**/src/**/*.jl"
+  - "**/ext/**/*.jl"
+rule:
+  any:
+    - kind: macrocall_expression
+      has: { kind: macro_identifier, regex: '^@show$' }
+    # Base.@show x: the macro name sits in a field_expression.
+    - kind: macrocall_expression
+      has:
+        kind: field_expression
+        has: { kind: macro_identifier, regex: '^@show$' }
+    - kind: string_literal
+      regex: '\[DEBUG-'

@@ -1,0 +1,19 @@
+id: exitcode-alone
+valid:
+  - "function c(p)\n    p.termsignal == 0 && p.exitcode == 0\nend"
+  - "function d(p)\n    success(p) || println(p.exitcode)\nend"
+  - "p.termsignal == 0 || error()\nx = string(p.exitcode)"
+  - "function d(p)\n    Base.success(p) || println(p.exitcode)\nend"
+  - "function a(p)\n    p.termsignal == 0\nend\nx::Int = p.exitcode"
+  - "function a(p)\n    p.termsignal == 0\nend\nx::typeof(g(1)) = p.exitcode"
+invalid:
+  - "function a(p)\n    p.termsignal == 0\nend\nok(p)::Bool = p.exitcode == 0"
+  - "function a(p)\n    p.termsignal == 0\nend\nok(p::T) where {T} = p.exitcode == 0"
+  - "function a(p)\n    p.termsignal == 0\nend\nok(p::T)::Bool where {T} = p.exitcode == 0"
+  - "function h(p)\n    Base.unsuccess(p) && success.f(p) && p.exitcode == 0\nend"
+  - "ok(p) = p.exitcode == 0"
+  - "function a(p)\n    p.termsignal == 0 || return false\nend\nfunction b(p)\n    p.exitcode == 0\nend"
+  - "p.termsignal == 0 || error()\nok(p) = p.exitcode == 0"
+  - "p = run(cmd; wait = false)\nwait(p)\np.exitcode == 0"
+  - "function e(p, mytermsignal, termsignals)\n    unsuccess(p) && successes(p) && p.exitcode == 0\nend"
+  - "function g(p)\n    f(success)\n    p.exitcode == 0\nend"

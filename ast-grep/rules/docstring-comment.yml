@@ -1,0 +1,12 @@
+# A comment between a docstring and its definition detaches the docstring: the binding is left
+# undocumented, and every @ref to it fails. The comment is the next sibling of a triple-quoted
+# string; a one-line "…" string is left alone, because a plain string statement has that shape.
+id: docstring-comment
+language: julia
+severity: error
+message: a comment between a docstring and its definition detaches the docstring; move the comment above the docstring or into the definition
+rule:
+  kind: line_comment
+  follows:
+    kind: string_literal
+    regex: '^"""'

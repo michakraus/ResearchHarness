@@ -1,0 +1,10 @@
+id: debug-probe
+valid:
+  - "@info \"x = $x\""
+  - "show(x)"
+  - "@showprogress for i in 1:3\nend"
+  - "# a probe is tagged [DEBUG-a4f2]"
+invalid:
+  - "@show x"
+  - "Base.@show x"
+  - "@info \"[DEBUG-a4f2] x = $x\""
