@@ -37,9 +37,10 @@ Without `julia` on the `PATH`, any other commit is refused with
 | 1 | JuliaFormatter 2.14 or later, with the `.JuliaFormatter.toml` of the repository | blocks |
 | 2 | `fatou lint`, with a limit of 60 s | warns only |
 | 2.5 | each file is in Unicode NFC | blocks |
+| 2.7 | the rules of `ast-grep`, with a limit of 60 s | blocks on a line that the commit adds, warns on any other line |
 | 3 | `using <package>` loads, with a limit of 600 s, for a repository with a package | blocks |
 
-Stages 1 to 2.5 run on the staged `.jl` files only, a renamed file under its new name and a file
+Stages 1 to 2.7 run on the staged `.jl` files only, a renamed file under its new name and a file
 that became a symlink too; a path with non-ASCII characters is read as it is, not in git's quoted
 form. A staged `.jl` path that is not a file, such as a symlink to a missing file or to a
 directory, is refused with one line that names it, before any stage runs. Stage 3 runs when a
@@ -66,13 +67,37 @@ a `name` with no `uuid`, the hook prints one line that no load test runs, which 
 `Project.toml` that does not parse refuses the commit with one line that holds the first two
 lines of the error, the message and its location. A package name that `Base.isidentifier`
 refuses, or that the parser of the running Julia does not read as that one name, such as the
-keyword `end`, refuses the commit with one line, and no load test runs. The lint stage and the
-load test run in a process group of their own: when the limit runs out, the hook sends the
-group SIGTERM, and SIGKILL 5 s later, waits at most 6 s after the SIGTERM on the monotonic
-clock, and does not wait for the output of a process that left the group. When you interrupt
-the hook, it kills that group on its way out. A commit with no staged `.jl` path and no change
-below `test/` passes with no check.
+keyword `end`, refuses the commit with one line, and no load test runs. The lint stage, the
+ast-grep stage and the load test run in a process group of their own: when the limit runs out,
+the hook sends the group SIGTERM, and SIGKILL 5 s later, waits at most 6 s after the SIGTERM on
+the monotonic clock, and does not wait for the output of a process that left the group. When
+you interrupt the hook, it kills that group on its way out. A commit with no staged `.jl` path
+and no change below `test/` passes with no check.
 `git commit --no-verify` skips the hook.
+
+Stage 2.7 runs `ast-grep scan --custom-languages allow` once over the staged `.jl` files, from the
+root of the repository. ast-grep uses the `sgconfig.yml` that it finds there or in a directory
+above it, such as `~/Research/sgconfig.yml`, a copy of
+[`research-sgconfig.yml`](other.md#research-sgconfig-yml). A hit of severity `error` refuses the
+commit when a line of the hit is one that the commit adds: the stage prints
+`ast-grep: FAILED` and one line per hit, `<file>:<line>: <rule-id>: <message>`. A hit of severity
+`error` on lines that the commit does not add only warns, so the hits that a file already holds do
+not block an unrelated commit; a pure rename adds no line. The stage takes the added lines from
+the hunks of `git diff --cached -U0 -M`, with literal paths and with options that keep an
+external diff program, a textconv driver, a `-diff` attribute and `diff.interHunkContext` from
+changing the hunks, and it scans the working tree. The diff runs without the variables
+`GIT_DIFF_OPTS`, `GIT_ICASE_PATHSPECS` and `GIT_GLOB_PATHSPECS`. A hit of severity `warning` or
+`hint` never blocks: after the hits of severity `error`, the stage prints
+`ast-grep: <n> hit(s) of severity warning or hint — advisory` and one line per hit. A hit of
+severity `info`, such as one of `parse-error`, is not printed. The stage prints `ast-grep: clean`
+when no hit has severity `error`, `warning` or `hint`. To silence one hit, write
+`# ast-grep-ignore: <rule-id>` at the end of its line or on the line above. Without `ast-grep` on
+the `PATH`, with an `ast-grep` that cannot start, without an `sgconfig.yml`, with a configuration
+that applies no rule to the staged files, on an exit code other than 0 and 1, on an output that
+is not one JSON object per line, without a JSON package that loads, or when the limit runs out,
+the stage prints one line that starts `ast-grep: skipped —` and names the reason, and the commit
+passes. ast-grep and its parser are installed on each machine, and a machine without them must
+still commit. The stage reads the JSON output with JSON from the harness's Julia environment.
 
 `pre-commit-test.jl` runs both hooks, unchanged, in fixture package repositories
 (`julia --startup-file=no pre-commit-test.jl`). For `pre-commit`: a formatted file, also under a
@@ -91,11 +116,21 @@ with no `.jl` file and no `test/` path passes; without `julia`, any other commit
 that became a symlink too, is refused; a missing `fatou`, a `fatou` that cannot start, a `fatou`
 that fails, and the findings of `fatou`, give their lines, and the staged paths reach `fatou`
 after `--`; a commit of one `.jl` file starts `julia` from the `PATH` once; an interrupted commit
-stops its load test. It checks the time limits of the lint stage and the load test, also for a
-child that holds the output and for a process that leaves the group, that the time box sends no
-SIGKILL after it returns, and that `pre-commit.jl` and `pre-push.jl` are in SciML style. For
-`pre-push` it checks each case of the gate and the suite, the interrupt with a group that
-outlives its SIGKILL, and the headline of an error. CI runs it on Linux.
+stops its load test. For the ast-grep stage, a hit on a line that a commit adds, also on the last
+line of a hunk or inside a hit that spans lines, is refused with its line; a hit on lines that a
+commit does not add, also after a rename or a deletion, warns; the added lines do not change
+with an external diff program, a textconv driver, a `-diff` attribute, `diff.interHunkContext`,
+`GIT_DIFF_OPTS`, `GIT_ICASE_PATHSPECS`, `GIT_GLOB_PATHSPECS` or glob characters in a path; a
+hit of severity `warning` or `hint` warns on an added line; a `parse-error` hit and a silenced
+hit are not printed; an interrupt while JSON loads is no skip; and each case of a skip gives its
+one line. Each fixture of the stage holds an `sgconfig.yml` that names the rules of the tree
+under test and the parser by absolute path: `ast-grep/julia.dylib` of the tree where it exists,
+as in CI, else the one of the research tree's `Harness/`. It checks the time limits of the lint
+stage and the load test, also for a child that holds the output and for a process that leaves
+the group, that the time box sends no SIGKILL after it returns, and that `pre-commit.jl` and
+`pre-push.jl` are in SciML style. For `pre-push` it checks each case of the gate and the suite,
+the interrupt with a group that outlives its SIGKILL, and the headline of an error. CI runs it on
+Linux.
 
 ## `pre-push` and `pre-push.jl`
 
