@@ -75,10 +75,10 @@ runs a reviewed commit, not the newest one.
 [The `dotfiles` command](dotfiles-command.md#the-update-path) gives the update path, and
 [Start a private copy](dotfiles-command.md#start-a-private-copy) the steps.
 
-### The memory and the plans
+### The memory
 
 `~/.claude` is a git repository with a private remote. The job `claude-autocommit` commits the
-plans and the memories of `~/.claude` every 15 minutes, and pushes them to the branch of
+memories of `~/.claude` every 15 minutes, and pushes them to the branch of
 `autocommit_branch`. That branch is `main` on the template host, and `memory/<short host name>` on
 each other machine. So no two machines push to one branch, and the memory of the template host is
 the memory that the others start from.

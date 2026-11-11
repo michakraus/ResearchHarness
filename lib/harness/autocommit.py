@@ -1,7 +1,7 @@
 """The cases of `launchagents/claude-autocommit` on the system that runs them, macOS or Linux.
 
 Each case builds a fixture HOME in a temporary directory, with a `.claude` repository on `main`
-that holds one plan and one memory index, committed and pushed to a bare remote, and a
+that holds one memory index, committed and pushed to a bare remote, and a
 `settings.json`. It runs the script on this interpreter with HOME, TMPDIR, the git identity and
 XDG_STATE_HOME set in the child's environment, and git reading no global or system
 configuration, so no case reaches the real `~/.claude`. A file that a case settles gets an mtime
@@ -64,10 +64,9 @@ class Fixture:
         }
         self.git_in(home, "init", "-q", "--bare", "-b", "main", str(self.remote))
         self.git_in(home, "init", "-q", "-b", "main", str(self.repo))
-        self.write("plans/first.md", "a plan\n")
         self.write(f"{MEMORY}/MEMORY.md", "- [one](one.md)\n")
         (self.repo / "settings.json").write_text("{}\n", encoding="utf-8")
-        self.git("add", "plans", str(MEMORY), "settings.json")
+        self.git("add", str(MEMORY), "settings.json")
         self.git("commit", "-q", "-m", "initial")
         self.git("remote", "add", "origin", str(self.remote))
         self.git("push", "-q", "origin", "main")
@@ -127,7 +126,7 @@ def julia_cases(case: Case, tmp: pathlib.Path) -> None:
     case(
         "a settled memory is committed and pushed; a staged file outside stays staged",
         ok=p.returncode == 0
-        and "committed 0 plan(s), 1 memory file(s)" in p.stdout
+        and "committed 1 memory file(s)" in p.stdout
         and f.git("show", "--name-only", "--format=", "HEAD").split() == [f"{MEMORY}/one.md"]
         and f.remote_git("rev-parse", "main") == f.git("rev-parse", "HEAD")
         and f.git("diff", "--cached", "--name-only") == "settings.json",
@@ -181,29 +180,32 @@ def julia_cases(case: Case, tmp: pathlib.Path) -> None:
 def more_cases(case: Case, tmp: pathlib.Path) -> None:
     """The cases beyond the Julia test's: the classes of change, the refusals, the dry run, the
     locks and the push."""
-    f = Fixture(tmp / "untracked-plan")
-    f.write("plans/second.md", "a second plan\n")
+    f = Fixture(tmp / "untracked-memory")
+    f.write(f"{MEMORY}/two.md", "a second fact\n")
+    f.write("plans/second.md", "a plan\n")
     p = f.run("--no-push")
     message = f.git("log", "-1", "--format=%B").splitlines()
     case(
-        "an untracked plan is committed, and the commit message names its path",
+        "an untracked memory is committed, the commit message names its path, and a plan is left alone",
         ok=p.returncode == 0
-        and f.git("show", "--name-status", "--format=", "HEAD").split() == ["A", "plans/second.md"]
-        and message[0].startswith("chore(auto): 1 plan(s), 0 memory file(s) — ")
-        and message[-1] == "plans/second.md",
+        and f.git("show", "--name-status", "--format=", "HEAD").split() == ["A", f"{MEMORY}/two.md"]
+        and message[0].startswith("chore(auto): 1 memory file(s) — ")
+        and message[-1] == f"{MEMORY}/two.md"
+        and f.git("status", "--porcelain", "--", "plans") == "?? plans/",
     )
 
     f = Fixture(tmp / "deferred")
     f.write(f"{MEMORY}/one.md", "one fact\n", settled=False)
     f.write(f"{MEMORY}/MEMORY.md", "- [one](one.md)\n- [two](two.md)\n")
-    f.write("plans/first.md", "a plan, changed\n")
+    f.write("projects/-other/memory/a.md", "a fact\n")
     p = f.run("--no-push")
     case(
-        "a memory that is still settling defers itself and its directory's MEMORY.md; the plan is committed",
+        "a memory that is still settling defers itself and its directory's MEMORY.md; a settled memory "
+        "of another project is committed",
         ok=p.returncode == 0
         and f"deferring {MEMORY}/MEMORY.md — a memory in the same directory is still settling" in p.stdout
-        and "committed 1 plan(s), 0 memory file(s), 2 deferred" in p.stdout
-        and f.git("show", "--name-only", "--format=", "HEAD").split() == ["plans/first.md"],
+        and "committed 1 memory file(s), 2 deferred" in p.stdout
+        and f.git("show", "--name-only", "--format=", "HEAD").split() == ["projects/-other/memory/a.md"],
     )
 
     f = Fixture(tmp / "dry-run")
@@ -213,7 +215,7 @@ def more_cases(case: Case, tmp: pathlib.Path) -> None:
     case(
         "the dry run names what it would commit and push, takes no lock and writes nothing",
         ok=p.returncode == 0
-        and "would commit 0 plan(s) and 1 memory file(s); 0 deferred, 0 deletion(s)" in p.stdout
+        and "would commit 1 memory file(s); 0 deferred, 0 deletion(s)" in p.stdout
         and f"  {MEMORY}/one.md" in p.stdout.splitlines()
         and "would then: git push origin main:refs/heads/memory/test" in p.stdout
         and f.git("rev-parse", "HEAD") == head
@@ -222,13 +224,13 @@ def more_cases(case: Case, tmp: pathlib.Path) -> None:
     )
 
     f = Fixture(tmp / "rename")
-    f.git("mv", "plans/first.md", "plans/renamed.md")
+    f.git("mv", f"{MEMORY}/MEMORY.md", f"{MEMORY}/renamed.md")
     p = f.run()
     case(
         "a rename exits 1 with one ERROR line and commits nothing",
         ok=p.returncode == 1
         and p.stderr.splitlines()[-1].endswith(
-            "ERROR: rename under plans/ or memory/ (plans/renamed.md) — commit it by hand"
+            f"ERROR: rename under memory/ ({MEMORY}/renamed.md) — commit it by hand"
         )
         and len(p.stderr.splitlines()) == 1
         and f.git("rev-list", "--count", "HEAD") == "1",
@@ -236,7 +238,7 @@ def more_cases(case: Case, tmp: pathlib.Path) -> None:
 
     for cap, code in (("1", 0), ("0", 1)):
         f = Fixture(tmp / f"deletion-{cap}")
-        (f.repo / "plans" / "first.md").unlink()
+        (f.repo / MEMORY / "MEMORY.md").unlink()
         p = f.run("--no-push", extra={"CLAUDE_AUTOCOMMIT_MAX_DELETIONS": cap})
         case(
             f"one deletion with a cap of {cap} exits {code}",
@@ -244,8 +246,7 @@ def more_cases(case: Case, tmp: pathlib.Path) -> None:
             and (f.git("rev-list", "--count", "HEAD") == "2") == (code == 0)
             and (
                 code == 0
-                or "ERROR: 1 deletions under plans/ or memory/ exceeds the cap of 0 — commit by hand"
-                in p.stderr
+                or "ERROR: 1 deletions under memory/ exceeds the cap of 0 — commit by hand" in p.stderr
             ),
         )
 
@@ -301,7 +302,7 @@ def repository_cases(case: Case, tmp: pathlib.Path) -> None:
             ok=p.returncode == 1
             and p.stderr.endswith(
                 "ERROR: pathspec matches no tracked file — refusing to run (git behaviour changed, or "
-                "this is a fresh repository with no plans and no memories yet)\n"
+                "this is a fresh repository with no memories yet)\n"
             ),
         )
     for label, directory in (
@@ -372,7 +373,7 @@ def edge_cases(case: Case, tmp: pathlib.Path) -> None:
                 "fatal: no ls-files",
                 1,
                 "ERROR: pathspec matches no tracked file — refusing to run (git behaviour changed, or "
-                "this is a fresh repository with no plans and no memories yet)",
+                "this is a fresh repository with no memories yet)",
             ),
             ("status", "fatal: no status", 1, "ERROR: git status failed (rc=128): fatal: no status"),
             ("add", "fatal: no add", 1, f"ERROR: git add failed for {MEMORY}/one.md (rc=128): fatal: no add"),
@@ -419,12 +420,12 @@ def edge_cases(case: Case, tmp: pathlib.Path) -> None:
         ("CLAUDE_AUTOCOMMIT_PUSH=0", (), {"CLAUDE_AUTOCOMMIT_PUSH": "0"}),
     ):
         before = f.remote_git("rev-parse", "main")
-        f.write(f"plans/{label}.md", "a plan\n")
+        f.write(f"{MEMORY}/{label}.md", "a fact\n")
         p = f.run(*args, extra=extra)
         case(
             f"{label} commits and does not push",
             ok=p.returncode == 0
-            and f.git("show", "--name-only", "--format=", "HEAD") == f"plans/{label}.md"
+            and f.git("show", "--name-only", "--format=", "HEAD") == f"{MEMORY}/{label}.md"
             and f.remote_git("rev-parse", "main") == before,
         )
 
@@ -562,17 +563,21 @@ def undecodable_case(case: Case, tmp: pathlib.Path) -> None:
             check=False,
             timeout=TIMEOUT,
         )
-        for status in ("?? plans/\\377.md\\0", "R  plans/\\377.md\\0plans/first.md\\0")
+        for status in (f"?? {MEMORY}/\\377.md\\0", f"R  {MEMORY}/\\377.md\\0{MEMORY}/MEMORY.md\\0")
     ]
     case(
         "a path that is not UTF-8 is printed as its bytes by the dry run, which exits 0",
-        ok=runs[0].returncode == 0 and b"\n  plans/\xff.md\n" in runs[0].stdout and runs[0].stderr == b"",
+        ok=runs[0].returncode == 0
+        and f"\n  {MEMORY}/".encode() + b"\xff.md\n" in runs[0].stdout
+        and runs[0].stderr == b"",
     )
     case(
         "a rename to a path that is not UTF-8 exits 1 with an ERROR line that holds its bytes",
         ok=runs[1].returncode == 1
         and runs[1].stderr.endswith(
-            b"ERROR: rename under plans/ or memory/ (plans/\xff.md) " + "— commit it by hand\n".encode()
+            f"ERROR: rename under memory/ ({MEMORY}/".encode()
+            + b"\xff.md) "
+            + "— commit it by hand\n".encode()
         ),
     )
 

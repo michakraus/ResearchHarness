@@ -3,7 +3,7 @@
 # `systemctl --user enable --now claude-autocommit.timer`.
 
 [Unit]
-Description=Commit the plans and memories of ~/.claude every 15 minutes
+Description=Commit the memories of ~/.claude every 15 minutes
 
 [Timer]
 OnActiveSec=0
