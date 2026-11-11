@@ -21,8 +21,9 @@ probe among the simple commands is enough for the note.
 The hook reads the command only, as Claude Code sends it: it opens no script. It removes the body
 of each here-document before it splits the command with the guard's `lex`, so the lines of a body
 are no commands. **It never blocks.** Every payload exits 0. A payload it cannot read (no JSON, no
-`tool_input`, no string `command`, a tool other than `Bash`) and a command with an open quote give
-no output: the guard, which runs beside it, refuses such a payload.
+`tool_input`, no string `command`, a tool other than `Bash`) gives no output: the guard, which runs
+beside it, refuses a `Bash` payload that it cannot read. A command with an open quote gives no
+output either, since the shell does not run it.
 
 Test it without installing:
 
@@ -42,22 +43,9 @@ from guard.shell import SEPARATORS, lex
 
 # The options of `julia` whose value is code to run.
 CODE = frozenset({"-e", "-E", "-p", "--eval", "--print"})
-# The other options of `julia` that take the next word as their value.
+# The other long options of `julia` that take the next word as their value.
 VALUED = frozenset(
-    {
-        "-J",
-        "--sysimage",
-        "-H",
-        "--home",
-        "-L",
-        "--load",
-        "-t",
-        "--threads",
-        "--procs",
-        "--machine-file",
-        "-C",
-        "--cpu-target",
-    }
+    {"--sysimage", "--home", "--load", "--threads", "--procs", "--machine-file", "--cpu-target"}
 )
 # The short options of `julia` that take a value, attached or in the next word.
 SHORT_VALUED = frozenset("eEpJHLtCm")

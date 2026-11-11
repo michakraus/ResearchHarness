@@ -3078,7 +3078,6 @@ LEFT_ALONE = (
     "julia -e 'using BenchmarkTools; @btime f()'",
     "julia -e '@allocated f()'",
     "time julia x.jl",
-    "echo julia -e 1",
 )
 MORE_PROBES = (
     "julia --eval='f(1)'",
@@ -3118,6 +3117,7 @@ MORE_LEFT_ALONE = (
     "julia -qv",
     "/usr/bin/time -l julia -e 'f(1)'",
     "julia -m Foo",
+    "julia -m Foo x.jl",
     "julia --module Foo -e 1",
     "julia --project=. <<'EOF'\nusing Pkg; Pkg.test()\nEOF",
     "cat <<EOF > x.sh\njulia -e 'f(1)'\nEOF",
@@ -3130,6 +3130,7 @@ MORE_LEFT_ALONE = (
     "timeout 60 julia -e 1",
     "cat probe.jl",
     "echo -e 'f(1)'",
+    "echo julia -e 1",
     "grep -rn 'julia -e 1' src",
     "julia --version -e 1",
     "julia -v probe.jl",
