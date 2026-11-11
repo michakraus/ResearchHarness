@@ -1977,22 +1977,24 @@ def layer_cases(check, tmp):
     )
 
     # The guard runs on the Bash, directory, Kaimon and web matchers, with `|| exit 2` as the shell's operator,
-    # so that a guard that cannot start blocks the call; the Bash group runs `rtk hook claude` and the
-    # guard and nothing else; the Edit matcher runs edit-scope.py and not the guard.
+    # so that a guard that cannot start blocks the call; the Bash group runs `rtk hook claude`, the
+    # guard and kaimon-note.py and nothing else; the Edit matcher runs edit-scope.py and not the guard.
     groups = settings_template(dataclasses.replace(profile, home=spaced), home / "network.toml", python)[
         "hooks"
     ]
     guard = f"{shlex.quote(python)} {shlex.quote(spaced + '/.claude/hooks/guard')} --from claude || exit 2"
+    note = f"{shlex.quote(python)} {shlex.quote(spaced + '/.claude/hooks/kaimon-note.py')}"
     by_matcher = {g.get("matcher"): [h["command"] for h in g["hooks"]] for g in groups["PreToolUse"]}
     case(
         lambda: (
-            by_matcher.get("Bash") == ["rtk hook claude", guard]
+            by_matcher.get("Bash") == ["rtk hook claude", guard, note]
             and by_matcher.get("mcp__ccd_directory__.*|EnterWorktree|ExitWorktree") == [guard]
             and by_matcher.get("mcp__kaimon__.*") == [guard]
             and by_matcher.get("WebFetch|WebSearch") == [guard]
             and sum(c == guard for c in rendered) == 4
         ),
-        f"the Bash group runs rtk hook claude and the guard, and the directory, Kaimon and web groups the guard, "
+        f"the Bash group runs rtk hook claude, the guard and kaimon-note.py, and the directory, Kaimon and web "
+        f"groups the guard, "
         f"rendered as {guard!r} with the operator unquoted: {by_matcher}",
     )
     edit_matcher = "Edit|Write|MultiEdit|NotebookEdit"

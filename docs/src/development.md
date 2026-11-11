@@ -11,9 +11,9 @@ usage error. `harness test --list` prints the part names. The parts are:
    `doctor` run as five groups, `doctor:minimum`, `doctor:linux`, `doctor:darwin`, `doctor:exit`
    and `doctor:process`.
 2. The hook probe, `hooks/probe.py`, which runs every Python hook with the same interpreter on a
-   fixture `HOME`. Its seven groups run as the parts `probe:commands`, `probe:payloads`,
-   `probe:manifest`, `probe:drift`, `probe:omp`, `probe:opencode` and `probe:antigravity`, each on
-   a fixture of its own.
+   fixture `HOME`. Its eight groups run as the parts `probe:commands`, `probe:payloads`,
+   `probe:manifest`, `probe:drift`, `probe:omp`, `probe:opencode`, `probe:antigravity` and
+   `probe:kaimon-note`, each on a fixture of its own.
 3. The contract sweep, `sweep`, from `lib/harness/sweep.py`, which runs the dry run of every
    subcommand except `format`, `ci-protection`, `skill-triggers`, `doctor`, `changelog` and
    `mutate` on a fixture `HOME` and research tree. The cases of `skill-triggers` run its dry run
