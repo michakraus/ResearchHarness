@@ -119,6 +119,16 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   that file. A `zsh -c` reads `.zshenv` and not `.zshrc`, so a shim that `.zshrc` puts in front
   is not the `julia` of a frontend whose Bash does not read `.zshrc`. Check `command -v <name>`
   in each frontend's own shell (M1, *Sandbox the agent frontends*)
+- a table of a program's options that knows only the `=` form of a valued option: `julia` reads
+  `--startup-file no -e 1` as `--startup-file=no`, so a reader that takes `no` for the script
+  misses the probe. Run the program on each option with its value in the next word, and give the
+  table a case of that form for each member (J7b round 1, *Strengthen the Julia coding layer of
+  the harness*)
+- a reader of shell commands that takes the first word after a separator for the program: a
+  reserved word such as `then`, `do`, `!` or `{` leaves the next word the command name, so
+  `for f in a b; do julia -e …; done` hides its `julia`. Skip the reserved words before the program
+  and read a group `( … )` or `{ …; }` with the input of the command that holds it (J7b round 1,
+  *Strengthen the Julia coding layer of the harness*)
 - a file that an installer copies into another repository, where that repository's own gate reads
   it: a hook program that is not in the style of the packages' formatter makes the installed
   pre-commit hook refuse the commit of its own files. Run the target's gate on the installed copy
