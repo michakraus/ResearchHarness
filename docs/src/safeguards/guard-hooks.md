@@ -510,11 +510,11 @@ session pays them once. Claude Code runs the hook on `PreToolUse` for `Bash`, in
 Claude Code sends it, and a refusal of the guard wins over the note.
 
 A simple command of the call is a probe when its program, after the environment assignments, is
-`julia` and it runs code: with `-e`, `-E`, `--eval`, `-p` or `--print`, with a first argument that
-ends in `.jl`, or with code on its standard input from a pipe or a redirection. The note names
-`mcp__kaimon__ex`, `ping` and `start_session`, and the keys of the live Kaimon sessions, which the
-Kaimon check reads from the same gate directory. It has three lines, and every matching call gets
-it.
+`julia` and it runs code: with `-e`, `-E`, `--eval` or `--print`, with a first argument that ends
+in `.jl`, or with code on its standard input from a pipe or a redirection. The value of `-p` or
+`--procs` is a number of worker processes, not code. The note names `mcp__kaimon__ex`, `ping` and
+`start_session`, and the keys of the live Kaimon sessions, which the Kaimon check reads from the
+same gate directory. It has three lines, and every matching call gets it.
 
 The hook only adds a note: it refuses no call and asks nothing, so a probe that has a reason to
 run fresh, on a base, a head or a scratch environment, runs as it is. It leaves alone a call that
