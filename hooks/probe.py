@@ -3059,6 +3059,202 @@ def payload_cases():
     return total, wrong
 
 
+# `kaimon-note.py` adds a note to a Bash call that runs a Julia probe and lets every call run. A
+# case gives it a list of payloads, each with the Kaimon cache of its environment, and expects
+# each to get the note or no output; one wrong payload makes the case wrong.
+KAIMON_NOTE = HOOKS + "kaimon-note.py"
+NOTED = ("mcp__kaimon__ex", "`ping`", "`start_session")
+LEFT_ALONE = (
+    "grep -rn julia src",
+    'echo "julia -e 1"',
+    "julia +1.12 -e 1",
+    "julia --version",
+    "julia --startup-file=no ~/Research/Harness/scripts/run-tests.jl . affected",
+    "julia --project=. .githooks/test-layout.jl",
+    "julia test/runtests.jl",
+    "julia docs/make.jl",
+    "julia scripts/foo-test.jl",
+    "julia -e 'using Pkg; Pkg.test()'",
+    "julia -e 'using BenchmarkTools; @btime f()'",
+    "julia -e '@allocated f()'",
+    "time julia x.jl",
+    "echo julia -e 1",
+)
+MORE_PROBES = (
+    "julia --eval='f(1)'",
+    "julia -e'f(1)'",
+    "julia -qe 'f(1)'",
+    "julia -E 'f(1)'",
+    "julia --print 'f(1)'",
+    "julia -p 'f(1)'",
+    "julia -t 4 probe.jl",
+    "julia --project test/probe.jl",
+    "julia -e 'f(1)' test/runtests.jl",
+    "~/.juliaup/bin/julia -e 'f(1)'",
+    "julia --project=. <<'EOF'\nusing Foo\nprintln(\"it's\")\nEOF",
+    "julia --project=. < probe.jl",
+    "echo 'f(1)' | julia --project=.",
+    "julia --project=. <<< 'f(1)'",
+    "(cd x; julia -e 'f(1)') 2>&1",
+    "julia -e 'f(1)' > out.txt",
+    "julia 2>err.txt -e 'f(1)'",
+    "julia +1.12 -e 1;(julia -e 'f(1)')",
+    "A=1 B=2 julia -e 'f(1)'",
+    "julia --threads 4 probe.jl",
+    "julia -- -probe.jl",
+    "echo 'f(1)' | julia -",
+    "julia - foo-test.jl < probe.jl",
+    "cat <<-EOF\n\tit's\n\tEOF\njulia -e 'f(1)'",
+    "cat <<A <<B\nx\nA\nit's\nB\njulia -e 'f(1)'",
+    "cat <<\"EOF\"\nit's\nEOF\njulia -e 'f(1)'",
+    "cat <<\\EOF\nit's\nEOF\njulia -e 'f(1)'",
+    "cat <<< 'x'\njulia -e 'f(1)'",
+)
+MORE_LEFT_ALONE = (
+    "julia",
+    "julia --project=.",
+    "julia x.sh",
+    "julia -v",
+    "julia -qv",
+    "/usr/bin/time -l julia -e 'f(1)'",
+    "julia -m Foo",
+    "julia --module Foo -e 1",
+    "julia --project=. <<'EOF'\nusing Pkg; Pkg.test()\nEOF",
+    "cat <<EOF > x.sh\njulia -e 'f(1)'\nEOF",
+    "echo 'using BenchmarkTools' | julia",
+    "julia -e 'f(1",
+    "julia -L setup.jl --sysimage img.so -- test/runtests.jl",
+    "julia +release probe.jl",
+    "julia --version=1 -e 1",
+    "env julia -e 1",
+    "timeout 60 julia -e 1",
+    "cat probe.jl",
+    "echo -e 'f(1)'",
+    "grep -rn 'julia -e 1' src",
+    "julia --version -e 1",
+    "julia -v probe.jl",
+    "julia --eval='using Pkg; Pkg.status()'",
+    "julia -e'using Pkg; Pkg.status()'",
+    "julia -e '@time f()'",
+    "julia -e '@benchmark f()'",
+    "julia -e '@ballocated f()'",
+    "julia -e '@elapsed f()'",
+)
+NOT_BASH = json.dumps({"tool_name": "Read", "tool_input": {"command": "julia -e 1", "file_path": "/x"}})
+
+
+def note_payload(command: object) -> str:
+    """The payload of a Bash call whose `tool_input.command` is `command`."""
+    return json.dumps({"tool_name": "Bash", "tool_input": {"command": command}})
+
+
+def note_answer(data: bytes, cache: str = KAIMON_CACHE) -> tuple[str, str]:
+    """('note', its text), ('silent', '') for exit 0 with no output, or what else `kaimon-note.py`
+    did on the payload bytes `data` with the Kaimon cache `cache`."""
+    try:
+        proc = subprocess.run(
+            [sys.executable, KAIMON_NOTE],
+            input=data,
+            capture_output=True,
+            env={**ENV, "KAIMON_CACHE_DIR": cache},
+            timeout=TIMEOUT,
+            check=False,
+        )
+    except subprocess.TimeoutExpired:
+        return "timeout", ""
+    failed = f"exit {proc.returncode}" if proc.returncode else "stderr" if proc.stderr else ""
+    if failed or not proc.stdout.strip():
+        return failed or "silent", ""
+    try:
+        out = json_value(proc.stdout.decode("utf-8"), "the output")["hookSpecificOutput"]
+        text = out["additionalContext"]
+    except UnicodeDecodeError, ValueError, KeyError, TypeError:
+        return "unreadable output", ""
+    if out["hookEventName"] != "PreToolUse" or not isinstance(text, str):
+        return "other output", ""
+    return "note", text
+
+
+def note_wrong(data: bytes, keys: tuple[str, ...] | None, cache: str = KAIMON_CACHE) -> str | None:
+    """What is wrong with the hook's answer to `data` with the Kaimon cache `cache`, or None: with
+    `keys` None, exit 0 and no output; else a note of at most three lines that names NOTED and the
+    keys `keys` in sorted order, and no other gate of the fixture."""
+    got, text = note_answer(data, cache)
+    if keys is None:
+        return None if got == "silent" else got
+    if got != "note":
+        return got
+    listed = "The live sessions are " + ", ".join(f"`{key}`" for key in keys) + "." if keys else ""
+    other = [g for g in (*LIVE_GATES, STALE_GATE, *UNREAD_GATES) if g not in keys and g in text]
+    if text.count("\n") > 2 or not all(n in text for n in NOTED) or listed not in text or other:
+        return f"note {text!r}"
+    return None
+
+
+def kaimon_note_cases():
+    """The cases of `kaimon-note.py`: (number of cases, number wrong)."""
+    probe = ("julia --startup-file=no --project=. -e 'using Foo; Foo.f(1)'",)
+
+    def payloads(commands: tuple[str, ...]) -> list[bytes]:
+        return [note_payload(command).encode("utf-8") for command in commands]
+
+    cases: list[tuple[str, list[bytes], tuple[str, ...] | None, str]] = [
+        ("a -e probe gets the note", payloads(probe), LIVE_GATES, KAIMON_CACHE),
+        (
+            "a probe file after cd and an assignment gets the note",
+            payloads(("cd /x && JULIA_NUM_THREADS=2 julia --project=env probe.jl",)),
+            LIVE_GATES,
+            KAIMON_CACHE,
+        ),
+        ("the calls left alone get no note", payloads(LEFT_ALONE), None, KAIMON_CACHE),
+        (
+            "a mixed call gets the note",
+            payloads(("julia +1.12 -e 1 && julia -e 'f(1)'",)),
+            LIVE_GATES,
+            KAIMON_CACHE,
+        ),
+        (
+            "an unreadable payload passes in silence",
+            [
+                b"not json",
+                b"{}",
+                b'{"tool_name": "Bash", "tool_input": {}}',
+                b'{"tool_name": "Bash", "tool_input": "julia -e 1"}',
+                NOT_BASH.encode("utf-8"),
+                note_payload(7).encode("utf-8"),
+                json.dumps({"tool_input": {"command": probe[0]}}).encode("utf-8"),
+                b"",
+                b"[1]",
+                b"\xff",
+            ],
+            None,
+            KAIMON_CACHE,
+        ),
+        ("a note with no gate directory names no key", payloads(probe), (), NO_GATES),
+        ("a note with an empty gate directory names no key", payloads(probe), (), EMPTY_GATES),
+        ("more probe forms get the note", payloads(MORE_PROBES), LIVE_GATES, KAIMON_CACHE),
+        ("more calls left alone get no note", payloads(MORE_LEFT_ALONE), None, KAIMON_CACHE),
+    ]
+    wrong = 0
+    for label, data, keys, cache in cases:
+        bad = [(d, w) for d in data if (w := note_wrong(d, keys, cache)) is not None]
+        wrong += bool(bad)
+        mark = "BAD" if bad else "ok "
+        got = "; ".join(f"{d[:80]!r}: {w}" for d, w in bad) or "as expected"
+        print(f"{mark} {label}  [kaimon-no]  {got}")
+    # A gate directory with no gate says that no session is live; one that cannot be listed says
+    # nothing of the sessions.
+    for label, cache, expected in (
+        ("an empty gate directory is named as one", EMPTY_GATES, True),
+        ("no gate directory gives no claim of the sessions", NO_GATES, False),
+    ):
+        _, text = note_answer(note_payload(probe[0]).encode("utf-8"), cache)
+        right = bool(text) and ("No session is live." in text) == expected
+        wrong += not right
+        print(f"{'ok ' if right else 'BAD'} {label}  [kaimon-no]  {text[:60]!r}")
+    return len(cases) + 2, wrong
+
+
 # The groups of cases, in the order of a run of every group; each returns (number of cases, number
 # wrong). `harness test` runs each group as the part `probe:<group>`.
 GROUPS = {
@@ -3069,6 +3265,7 @@ GROUPS = {
     "omp": omp_cases,
     "opencode": oc_cases,
     "antigravity": agy_cases,
+    "kaimon-note": kaimon_note_cases,
 }
 
 
