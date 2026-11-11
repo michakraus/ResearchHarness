@@ -8,8 +8,11 @@
   `~/.omp/agent/config.yml`. `write_path` unwraps once, and the guard checks
   `[~/.omp/agent/config.yml]` as a relative path, which no rule matches. The same holds for
   `[[~/.claude/hooks/gh-api-writes.py#1A2B]#1A2B]`. The user decided to land the guard with this
-  gap: oh-my-pi is not used before the sandbox launcher exists, and the launcher's profile then
-  checks the real path.
+  gap, for oh-my-pi under the sandbox launcher. The launcher `sandbox/agentbox` runs the whole
+  oh-my-pi process under srt, so its `write` tool too. The srt file of oh-my-pi denies writes to
+  `~/.omp/agent/config.yml` (`sandbox/policy.toml:64`) and allows none below `~/.claude/hooks`;
+  the probes W10 and W2 of `scripts/probe-agentbox.py` try the two places. The launcher is
+  opt-in: an oh-my-pi started without it has only the guard, and the gap is open there.
 - kind: defect
 - found: 2026-10-06
 
@@ -861,3 +864,34 @@
 - kind: found late
 - found: 2026-11-10, the review of the srt files for Claude Code's Anthropic login and `agy`'s
   token file
+
+### K155 · The docstring of `git_writes.py` and *Guard hooks* say that the settings template holds no rule for the lease push, but the template allows one form and denies three.
+
+- location: `hooks/guard/git_writes.py:58`
+- evidence: the docstring (lines 58-60) says "a hook's `allow` does not lift a matching `ask` or
+  `deny` rule, so the template holds no rule for these forms and the check answers both ways";
+  `docs/src/safeguards/guard-hooks.md:287-289` says the same of the settings. The template's
+  `permissions.allow` holds `Bash(git push --force-with-lease=* origin HEAD:refs/heads/*)`
+  (`settings/settings.proposal.json:21`), and its `deny` holds `Bash(git push --force-with-lease)`
+  (line 288) and the same lease form for `main*` and `master*` (lines 298-299). The denies agree
+  with the check, which refuses a lease push to a default branch or to no branch. The allow rule
+  matches the `HEAD:refs/heads/<branch>` form whatever `origin` is, where the check asks for an
+  `origin` outside the own organisations. Whether Claude Code then asks, because the hook asks,
+  or runs the push, because the rule allows it, is not measured here. Either the docstring and
+  the page name the four rules, or the template drops the allow rule.
+- kind: docs
+- found: 2026-11-11, PR #241 (the docs restructure)
+
+### K156 · `julia-branch-verifier` names a "seven-point pass" but defines six points, numbered 1 and 3–7.
+
+- location: `agents/julia-branch-verifier.md:5`
+- evidence: the description (line 5) says "Runs the seven-point pass", and the output shape
+  (line 171) says "Scope: full seven points". The table of points (lines 92-97) has the rows
+  **1 · correctness, quality, concision**, **3 · type piracy and ambiguities**, **4 · type
+  instability**, **5 · avoidable allocations**, **6 · stale comments, present tense** and
+  **7 · history only in `CHANGELOG.md`**; no point 2 is defined anywhere in the file.
+  `docs/src/components/agents.md:197` repeats "seven-point pass". A fix says six, or renumbers
+  the points 1–6; a renumbering also changes "points 1,3,6,7 only" of the output shape
+  (line 171) and every "point 3" and "point 4" of the file.
+- kind: docs
+- found: 2026-11-11, PR #241 (the docs restructure)
