@@ -29,10 +29,10 @@
 # runs steps 1 to 3, the update phase, under `bwrap`, where no other process, no service manager
 # and no session bus is in sight; that phase writes its failures and the Kaimon versions before
 # and after the update into STATE. Its `ExecStopPost` runs `julia-update.jl --server` outside
-# `bwrap`: the server phase reads STATE, runs step 4 and sends the alerts. A server phase with no
-# STATE reports the update phase as failed. JULIA_UPDATE_SYSTEM, `Darwin` or `Linux`, takes the
-# place of the system's own name, so that the cases of lib/harness/jobsandbox.py run the Linux
-# phases on macOS.
+# `bwrap`: the server phase reads and removes STATE, runs step 4 and sends the alerts. A server
+# phase with no STATE reports the update phase as failed. JULIA_UPDATE_SYSTEM, `Darwin` or
+# `Linux`, takes the place of the system's own name, so that the cases of
+# lib/harness/jobsandbox.py run the Linux phases on macOS.
 #
 # The app environment at ~/.julia/environments/apps/Kaimon is a derived artefact: every upgrade
 # regenerates its Project.toml from Kaimon's own, so nothing added there survives. Tools reach
@@ -43,6 +43,16 @@
 # only a bare shim call reads it.
 #
 # A failure or a due restart also sends a desktop notification, because nobody reads the log.
+#
+# The script loads the standard library of its own release only: the load path is `@stdlib`, and
+# the depot path keeps only the release's own depots, below `dirname(Sys.BINDIR)`. The jobs write
+# `~/.julia`, so a package of the default environment `@v#.#` or of a depot there would otherwise
+# run in the server phase, outside `bwrap`. Each step that runs Julia does so in a subprocess,
+# which reads the load path and the depot path of its own environment.
+
+empty!(LOAD_PATH)
+push!(LOAD_PATH, "@stdlib")
+filter!(d -> startswith(d, dirname(Sys.BINDIR) * '/'), DEPOT_PATH)
 
 using Dates
 using TOML
@@ -276,12 +286,18 @@ function update_only()
     return isempty(failures) ? 0 : 1
 end
 
-"""The server phase on Linux, after the update phase's STATE."""
+"""
+The server phase on Linux, after the update phase's STATE. STATE is read and removed before the
+server check, so that a later server phase whose update phase never ran, because `jobbox` or
+`bwrap` failed before it, reports the update phase as failed and not the result of this run.
+"""
 function server_only()
     if !isfile(STATE)
         return server_phase(["the update phase, which wrote no $STATE"], "", "")
     end
-    state = TOML.parsefile(STATE)
+    text = read(STATE, String)
+    rm(STATE)
+    state = TOML.parse(text)
     return server_phase(Vector{String}(state["failures"]), state["before"], state["after"])
 end
 

@@ -128,19 +128,28 @@ the installed template. A later version can behave differently.
   job's `~/` paths are bound: Kaimon reads and writes `~/Research`, the depot and its own
   directories, as on macOS, and the same write denies are bound read-only. `jobbox` also binds
   `.git/hooks`, `.git/config` and `.githooks` read-only in each repository that it finds at most
-  four levels below `~/Research` when the job starts. Neither job sees `/run/user/<uid>`, so
-  neither reaches the session bus or the user's service manager; `julia-update` therefore runs
-  its server check, the restart of the server and its alerts in a second phase,
-  `julia-update.jl --server`, outside `bwrap`, after the update phase. `harness setup` and the
-  services script of the dotfiles kit first run the sandbox check of `harness doctor` and stop
-  with exit 2 when `bwrap` cannot make a sandbox, which names the AppArmor setting
-  `kernel.apparmor_restrict_unprivileged_userns`; no job then starts unconfined. The arguments
-  leave open the network, every abstract Unix socket of the host's network namespace, such as an
-  X server's `@/tmp/.X11-unix/X0`, through which a client can type into any window of the user,
-  every write inside `~/Research` outside the bound repository parts, the parts of a repository
-  cloned after the job's start, a `.githooks` that did not exist at the start, and the `.git` file
-  of a worktree, which the job can point at a git directory with hooks of its own. A network
-  namespace of its own for each job, which would close the last two, is planned.
+  four levels below `~/Research` when the job starts. `bwrap` follows a symbolic link in a bind,
+  so `jobbox` stops with exit 2, before `bwrap`, when a source of a read-only bind below
+  `~/Research` is a link, or lies below one. Neither job sees `/run/user/<uid>`, so neither
+  reaches the session bus or the user's service manager; `julia-update` therefore runs its server
+  check, the restart of the server and its alerts in a second phase, `julia-update.jl --server`,
+  outside `bwrap`, after the update phase. That phase loads only the standard library of its
+  release: the script sets the load path to `@stdlib` and drops every depot outside the release.
+  `harness setup` and the services script of the dotfiles kit first run the sandbox check of
+  `harness doctor` and stop with exit 2 when `bwrap` cannot make a sandbox, which names the
+  AppArmor setting `kernel.apparmor_restrict_unprivileged_userns`; no job then starts unconfined.
+  The arguments leave open the network, every abstract Unix socket of the host's network
+  namespace, such as an X server's `@/tmp/.X11-unix/X0`, through which a client can type into any
+  window of the user, the host's terminals in `/dev/pts`, which `--dev-bind /dev /dev` shows the
+  job (not measured on Linux), every write inside `~/Research` outside the bound repository parts,
+  the parts of a repository cloned after the job's start, a `.githooks` that did not exist at the
+  start, the `.git` file of a worktree, which the job can point at a git directory with hooks of
+  its own, and the hooks and the configuration of a submodule in `.git/modules/<name>`, which get
+  no bind. The update phase writes `~/.juliaup` and `~/.julia/juliaup`, so it can replace the
+  julia that the server phase runs outside `bwrap`: the unit's `{home}/.juliaup/bin/julia`, the
+  launcher through which the server phase starts Julia, and the first entry of the unit's `PATH`;
+  Kaimon writes none of them. A network namespace of its own for each job, which would close the
+  network and abstract-socket gaps, is planned.
 - **OpenCode and oh-my-pi have no sandbox.** Their permission blocks and guard extensions check
   text, as the deny list and the hooks do. Antigravity runs commands in its terminal sandbox in the
   CLI and the desktop app, and its guard hook sets `BypassSandbox` on each command and checks paths

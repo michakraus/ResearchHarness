@@ -80,11 +80,12 @@ before they render the units, which start each job's program through `jobbox`.
 The cases on Linux's side check `load` of the Linux keys and its refusals, the order and the edges
 of `bwrap_args`, `linux_root` on a scratch root, the render of `sandbox/<job>.bwrap` through
 bin/harness with no `getconf` on the PATH, JOBBOX with a stub `bwrap` that writes its arguments,
-its refusals and shellcheck, and scripts/julia-update.jl run as on Linux (JULIA_UPDATE_SYSTEM)
-with stubs of juliaup, the juliaup launcher, `lsof`, `systemctl` and `notify-send`: the update
-phase calls none of the last three, and the server phase, `--server`, reads its state. No case
-starts the real `bwrap`. Without `julia` on the PATH the cases of the script print a skip line, and
-without `shellcheck` its check of JOBBOX does.
+its refusals, among them a bind source below a symbolic link, and shellcheck, and
+scripts/julia-update.jl run as on Linux (JULIA_UPDATE_SYSTEM) with stubs of juliaup, the juliaup
+launcher, `lsof`, `systemctl` and `notify-send`: the update phase calls none of the last three,
+and the server phase, `--server`, reads and removes its state and loads no package that a depot's
+default environment names. No case starts the real `bwrap`. Without `julia` on the PATH the
+cases of the script print a skip line, and without `shellcheck` its check of JOBBOX does.
 
 The cases run PS_SHIM on each form that it accepts and on forms that it refuses, then start
 `/bin/sh -c true` under the profile of each job, rendered with this user's home and `getconf`
@@ -139,7 +140,7 @@ TOKENS = ("$DARWIN_USER_TEMP_DIR", "$DARWIN_USER_CACHE_DIR", "$HARNESS")
 # The first arguments of `bwrap` for every job: new namespaces of every kind but the network, the
 # end of the job with its unit, a new /proc, the host's devices, /sys read-only, and a new tmpfs
 # at JOB_TMP, the job's own /tmp, which hides the sockets and files of the host's /tmp.
-JOB_TMP = str(pathlib.PurePosixPath("/") / "tmp")
+JOB_TMP = "/tmp"  # noqa: S108 -- the mount point of the job's own tmpfs, not a file in the host's /tmp
 BWRAP_START = (
     "--unshare-all",
     "--share-net",
@@ -452,8 +453,10 @@ def home_path(p: str, home: pathlib.Path, harness: pathlib.Path) -> pathlib.Path
         return None
     if p.startswith("~/"):
         return home / p[2:]
-    if p == "$HARNESS" or p.startswith("$HARNESS/"):
-        return pathlib.Path(str(harness) + p[len("$HARNESS") :])
+    if p == "$HARNESS":
+        return harness
+    if p.startswith("$HARNESS/"):
+        return harness / p[len("$HARNESS/") :]
     return None
 
 
@@ -1305,6 +1308,100 @@ def jobbox_cases(case: Case, root: pathlib.Path) -> None:
     )
 
 
+def jobbox_link_cases(case: Case, root: pathlib.Path) -> None:
+    """`sandbox/jobbox` against a stub `bwrap`, with symbolic links among the sources of its
+    read-only binds below ~/Research: a repository part that is a link, a dangling one too, and a
+    static source below a linked directory each exit 2 with one line on stderr that names the
+    path, and never start the stub; a ~/Research that is itself a link keeps its binds on the
+    logical paths."""
+    stubs = root / "stubs"
+    stubs.mkdir()
+    out = root / "bwrap.out"
+    (stubs / "bwrap").write_text(f"#!/bin/sh\nprintf '%s\\n' \"$@\" > '{out}'\n", encoding="utf-8")
+    (stubs / "bwrap").chmod(0o755)
+    outside = root / "outside"
+    (outside / "hooks").mkdir(parents=True)
+    (outside / "netrc").write_text("", encoding="utf-8")
+
+    def home_of(name: str, lines: Sequence[str] = ("--unshare-all",)) -> pathlib.Path:
+        home = root / name
+        sandbox = home / ".config" / "research-harness" / "sandbox"
+        sandbox.mkdir(parents=True)
+        (sandbox / "kaimon.bwrap").write_text("".join(x + "\n" for x in lines), encoding="utf-8")
+        return home
+
+    def jobbox(home: pathlib.Path) -> tuple[subprocess.CompletedProcess[str], list[str]]:
+        out.unlink(missing_ok=True)
+        p = subprocess.run(
+            ["/bin/sh", str(JOBBOX), "kaimon", "/bin/true"],
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            env={"HOME": str(home), "PATH": f"{stubs}{os.pathsep}/usr/bin{os.pathsep}/bin"},
+            cwd=home,
+            timeout=TIMEOUT,
+            check=False,
+        )
+        return p, out.read_text(encoding="utf-8").splitlines() if out.exists() else []
+
+    def refused(label: str, home: pathlib.Path, path: pathlib.Path) -> None:
+        p, got = jobbox(home)
+        case(
+            f"{label} exits 2 with one line that names it and starts no bwrap: "
+            f"exit {p.returncode} {p.stderr!r} {got}",
+            ok=p.returncode == FAILED
+            and len(p.stderr.splitlines()) == 1
+            and p.stderr.startswith("jobbox: ")
+            and str(path) in p.stderr
+            and not out.exists(),
+        )
+
+    # A repository R and one of its parts, a link to `target`.
+    for label, repository, part, target in (
+        (
+            "a .git/hooks that is a link to a directory outside ~/Research",
+            "A",
+            ".git/hooks",
+            outside / "hooks",
+        ),
+        ("a .git/config that is a link to a file", "B", ".git/config", outside / "netrc"),
+        ("a .githooks that is a dangling link", "C", ".githooks", outside / "none"),
+    ):
+        home = home_of(f"linked-{repository}")
+        (home / "Research" / repository / ".git").mkdir(parents=True)
+        (home / "Research" / repository / part).symlink_to(target)
+        refused(label, home, home / "Research" / repository / part)
+    home = root / "linked-harness"
+    githooks = home / "Research" / "Harness" / "githooks"
+    home = home_of("linked-harness", ["--ro-bind", str(githooks), str(githooks)])
+    (home / "Research" / "X" / "githooks").mkdir(parents=True)
+    (home / "Research" / "Harness").symlink_to(home / "Research" / "X")
+    refused("a static --ro-bind source below a ~/Research/Harness that is a link", home, githooks)
+    home = root / "linked-try"
+    linked = home / "Research" / "Y"
+    home = home_of("linked-try", ["--ro-bind-try", str(linked), str(linked)])
+    (home / "Research").mkdir()
+    linked.symlink_to(outside / "hooks")
+    refused("a static --ro-bind-try source that is a link", home, linked)
+    home = root / "linked-research"
+    githooks = home / "Research" / "Harness" / "githooks"
+    home = home_of("linked-research", ["--ro-bind", str(githooks), str(githooks)])
+    real = root / "real-research"
+    (real / "A" / ".git" / "hooks").mkdir(parents=True)
+    (real / "Harness" / "githooks").mkdir(parents=True)
+    (home / "Research").symlink_to(real)
+    p, got = jobbox(home)
+    hooks = str(home / "Research" / "A" / ".git" / "hooks")
+    case(
+        f"a ~/Research that is a link is searched, and its binds keep the logical paths: "
+        f"exit {p.returncode} {p.stderr!r} {got}",
+        ok=p.returncode == 0
+        and triple(tuple(got), "--ro-bind-try", hooks) >= 0
+        and triple(tuple(got), "--ro-bind", str(githooks)) == 0
+        and not any(x.startswith(str(real)) for x in got),
+    )
+
+
 def jobbox_text_cases(case: Case) -> None:
     """`sandbox/jobbox` is an executable POSIX `sh` script that names no /run/user and passes
     shellcheck; without shellcheck on the PATH, a skip line for that check."""
@@ -2132,14 +2229,19 @@ def update_cases(case: Case, root: pathlib.Path) -> None:
         print("skip  jobsandbox: no julia on the PATH; the cases of scripts/julia-update.jl do not run")
         return
     # The Julia binary itself: the juliaup launcher reads its configuration below the real home.
-    binary = subprocess.run(
-        [julia, "--startup-file=no", "-e", "print(joinpath(Sys.BINDIR, Base.julia_exename()))"],
+    binary, minor = subprocess.run(
+        [
+            julia,
+            "--startup-file=no",
+            "-e",
+            r'print(joinpath(Sys.BINDIR, Base.julia_exename()), "\n", VERSION.major, ".", VERSION.minor)',
+        ],
         stdin=subprocess.DEVNULL,
         capture_output=True,
         text=True,
         timeout=JULIA_TIMEOUT,
         check=False,
-    ).stdout
+    ).stdout.split("\n")
     home, stubs, log = root / "update-home", root / "update-stubs", root / "update.log"
     for d in (".juliaup/bin", ".julia/juliaup", ".julia/environments/apps/Kaimon"):
         (home / d).mkdir(parents=True)
@@ -2212,6 +2314,20 @@ def update_cases(case: Case, root: pathlib.Path) -> None:
         and p.returncode == 0
         and calls == ["lsof"],
     )
+    gone = not state.exists()
+    p, calls = update("--server")
+    case(
+        f"the server phase removes the state it read, so a second one alone reports a failure and "
+        f"alerts: {gone} exit {p.returncode} {calls}",
+        ok=gone and p.returncode == 1 and "notify-send" in calls,
+    )
+    marker = planted_dates(root, minor, (depot, home / ".julia"))
+    p, calls = update("--server")
+    case(
+        f"the server phase loads no package of a depot's default environment: exit {p.returncode} {calls} "
+        f"{p.stderr.strip()[-300:]!r}",
+        ok=not marker.exists() and "lsof" in calls,
+    )
     project.unlink()
     p, calls = update()
     case(
@@ -2229,6 +2345,47 @@ def update_cases(case: Case, root: pathlib.Path) -> None:
     case(
         "on macOS the script restarts the server with launchctl kickstart -k",
         ok="kickstart -k gui/" in text,
+    )
+
+
+def planted_dates(root: pathlib.Path, minor: str, depots: Sequence[pathlib.Path]) -> pathlib.Path:
+    """A package named Dates with a UUID of its own, in the default environment `v<minor>` of each
+    of `depots`, which the jobs write; it writes the returned marker when it loads."""
+    marker = root / "update-planted"
+    planted = root / "update-planted-Dates"
+    (planted / "src").mkdir(parents=True)
+    uuid = "00000000-0000-0000-0000-00000000d00d"
+    (planted / "Project.toml").write_text(f'name = "Dates"\nuuid = "{uuid}"\n', encoding="utf-8")
+    (planted / "src" / "Dates.jl").write_text(
+        f'module Dates\nwrite({quoted(str(marker))}, "ran")\nend\n', encoding="utf-8"
+    )
+    for d in depots:
+        environment = d / "environments" / f"v{minor}"
+        environment.mkdir(parents=True, exist_ok=True)
+        (environment / "Project.toml").write_text(f'[deps]\nDates = "{uuid}"\n', encoding="utf-8")
+        (environment / "Manifest.toml").write_text(
+            f'manifest_format = "2.0"\n\n[[deps.Dates]]\nuuid = "{uuid}"\npath = {quoted(str(planted))}\n',
+            encoding="utf-8",
+        )
+    return marker
+
+
+def update_text_cases(case: Case) -> None:
+    """scripts/julia-update.jl resets the load path and the depot path before its first `using`."""
+    text = UPDATE_SCRIPT.read_text(encoding="utf-8")
+    first_using = text.find("\nusing ")
+    resets = [
+        text.find(r)
+        for r in (
+            "\nempty!(LOAD_PATH)\n",
+            '\npush!(LOAD_PATH, "@stdlib")\n',
+            "\nfilter!(d -> startswith(d, dirname(Sys.BINDIR) * '/'), DEPOT_PATH)\n",
+        )
+    ]
+    case(
+        f"the script resets LOAD_PATH to @stdlib and cuts DEPOT_PATH before its first using: "
+        f"{resets} {first_using}",
+        ok=first_using > 0 and all(0 <= r < first_using for r in resets),
     )
 
 
@@ -2255,8 +2412,11 @@ def selftest() -> tuple[int, int]:
         linux_root_cases(case, root, policy)
         (root / "jobbox").mkdir()
         jobbox_cases(case, root / "jobbox")
+        (root / "jobbox-links").mkdir()
+        jobbox_link_cases(case, root / "jobbox-links")
         jobbox_text_cases(case)
         update_cases(case, root)
+        update_text_cases(case)
         profile_cases(case, policy)
         pty_profile_cases(case, policy)
         shim_cases(case)

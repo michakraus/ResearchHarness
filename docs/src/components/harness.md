@@ -405,7 +405,9 @@ check `bwrap` first, install `sandbox/jobbox` into `~/.local/bin`, write each re
 directory that is missing (`linux_dirs`), before the units. `jobbox <job> <program> [args…]`, a
 POSIX `sh` script, reads that file one argument per line, adds `--chdir` and the working directory
 and the read-only binds of `.git/hooks`, `.git/config` and `.githooks` of each repository at most
-four levels below `~/Research`, and runs `bwrap`; both units start their program through it.
+four levels below `~/Research`, and runs `bwrap`; both units start their program through it. It
+exits 2 before `bwrap` when a source of a read-only bind below `~/Research` is a symbolic link or
+lies below one, because `bwrap` follows the link.
 
 Its cases load the shipped list and a broken copy of it for each refusal, render both jobs with a
 home path that holds a dot and one that holds a quote, run `harness render` through `bin/harness`

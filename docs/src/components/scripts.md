@@ -746,8 +746,11 @@ On Linux the unit's `ExecStart` runs steps 1 to 3, the update phase, under `bwra
 `jobbox`, where the job sees no other process, no service manager and no session bus. That phase
 writes its failures and the Kaimon versions before and after the update into
 `~/.cache/julia-update/last-run.toml`. The unit's `ExecStopPost` then runs
-`julia-update.jl --server` outside `bwrap`: the server phase reads that file, runs step 4 and sends
-the alerts, and reports the update phase as failed when the file is missing. The variable
+`julia-update.jl --server` outside `bwrap`: the server phase reads that file and removes it, runs
+step 4 and sends the alerts, and reports the update phase as failed when the file is missing, as
+after an `ExecStart` that failed before the update phase began. The script loads only the standard
+library of its release: its first lines set the load path to `@stdlib` and drop every depot
+outside the release, because the jobs write `~/.julia`. The variable
 `JULIA_UPDATE_SYSTEM`, `Darwin` or `Linux`, takes the place of the system's own name, so that the
 cases of `lib/harness/jobsandbox.py` run the two phases of Linux on macOS.
 

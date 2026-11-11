@@ -902,7 +902,11 @@ def bwrap_check(machine: Machine) -> Action:
     def run() -> str | None:
         bwrap = machine.which("bwrap")
         if bwrap is None:
-            raise HarnessError("no bwrap on the PATH, under which the Kaimon and julia-update jobs start")
+            raise HarnessError(
+                "no bwrap on the PATH, under which the Kaimon and julia-update jobs start: install "
+                f"bubblewrap, and where AppArmor refuses user namespaces, give {APPARMOR_USERNS} the "
+                "value 0 or give bwrap an AppArmor profile, then run harness setup again"
+            )
         try:
             p = subprocess.run(
                 [bwrap, *BWRAP_CHECK],
@@ -5237,8 +5241,12 @@ def bwrap_refusal_cases(case: Case, tmp: pathlib.Path, pins: Pins) -> None:
     (s.bin / "bwrap").unlink()
     code, _ = attempt(machine, s.options(), pins=pins)
     case(
-        f"no bwrap on the PATH ends the run with exit 2 and one line: {code!r}",
-        ok=code.startswith("exit 2: ") and "\n" not in code and "bwrap" in code and not jobbox.exists(),
+        f"no bwrap on the PATH ends the run with exit 2 and one line that names {APPARMOR_USERNS}: {code!r}",
+        ok=code.startswith("exit 2: ")
+        and "\n" not in code
+        and "bwrap" in code
+        and APPARMOR_USERNS in code
+        and not jobbox.exists(),
     )
 
     mac = scratch(tmp, "macos-plain", MACOS_FAKES)

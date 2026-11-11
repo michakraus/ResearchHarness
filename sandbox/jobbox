@@ -11,12 +11,19 @@
 # ~/Research itself included, whose R/.git is a directory, the read-only binds of R/.git/hooks,
 # R/.git/config and R/.githooks that exist: the job writes ~/Research, and these name programs
 # that the next git command runs.
-# A repository cloned after the start, a .githooks made after it, and a worktree, whose .git is a
-# file, get no bind.
+# A repository cloned after the start, a .githooks made after it, a worktree, whose .git is a
+# file, and a submodule's git directory, R/.git/modules/<name>, get no bind.
 #
-# A job that is not kaimon or julia-update, a missing arguments file and fewer than two arguments
-# exit 2 with one line on stderr, before any bwrap. jobbox imports nothing of the harness: the
-# harness's library lies below ~/Research, which the Kaimon job writes.
+# bwrap follows a symbolic link in the source of a bind and in its destination, so a link that the
+# job made below ~/Research would bind what it names. jobbox therefore refuses every source of a
+# read-only bind below ~/Research, of the arguments file and of the repository parts, that is a
+# symbolic link, a dangling one too, or whose physical path is not the physical ~/Research and the
+# same rest. ~/Research itself may be a link: it is resolved once, searched through the link, and
+# the binds keep the paths below $HOME/Research.
+#
+# A job that is not kaimon or julia-update, a missing arguments file, fewer than two arguments and
+# a refused bind source exit 2 with one line on stderr, before any bwrap. jobbox imports nothing of
+# the harness: the harness's library lies below ~/Research, which the Kaimon job writes.
 set -eu
 
 fail() {
@@ -34,18 +41,48 @@ esac
 file="$HOME/.config/research-harness/sandbox/$job.bwrap"
 [ -f "$file" ] || fail "no arguments file $file; run harness setup"
 
+research="$HOME/Research"
+# The physical path of ~/Research, empty when it does not exist.
+physical=$(cd -P "$research" 2>/dev/null && pwd -P) || physical=""
+
+# checked <path>: refuse a bind source below ~/Research that is a symbolic link, or that exists and
+# whose physical path is not the physical ~/Research and the same rest, because a directory on its
+# way is a link.
+checked() {
+    case "$1" in
+        "$research"/*) ;;
+        *) return 0 ;;
+    esac
+    [ ! -L "$1" ] || fail "the bind source $1 is a symbolic link"
+    [ -e "$1" ] || return 0
+    if [ -d "$1" ]; then
+        real=$(cd -P "$1" 2>/dev/null && pwd -P) || real=""
+    else
+        real=$(cd -P "$(dirname "$1")" 2>/dev/null && pwd -P) || real=""
+        real="$real/$(basename "$1")"
+    fi
+    [ "$real" = "$physical${1#"$research"}" ] ||
+        fail "the bind source $1 has the physical path '$real', not the one below ~/Research"
+}
+
 # The program and its arguments are "$@"; each new argument goes after them, and the loop at the
 # end moves them behind `--`.
 count=$#
+source=no
 while IFS= read -r line || [ -n "$line" ]; do
+    [ "$source" = no ] || checked "$line"
+    case "$line" in
+        --ro-bind | --ro-bind-try) source=yes ;;
+        *) source=no ;;
+    esac
     set -- "$@" "$line"
 done <"$file"
 set -- "$@" --chdir "$PWD"
 
 # A .git directory at most five levels below ~/Research is a repository at most four levels below
-# it. find does not descend into a .git, and stays quiet about a directory it cannot read.
-research="$HOME/Research"
-repositories=$(find "$research" -maxdepth 5 -name .git -type d -prune -print 2>/dev/null || true)
+# it. find follows ~/Research itself when it is a link (-H), and no link below it; it does not
+# descend into a .git, and stays quiet about a directory it cannot read.
+repositories=$(find -H "$research" -maxdepth 5 -name .git -type d -prune -print 2>/dev/null || true)
 while IFS= read -r git; do
     case "$git" in
         "$research"/.git | "$research"/*/.git) ;;
@@ -53,6 +90,7 @@ while IFS= read -r git; do
     esac
     repository=${git%/.git}
     for part in .git/hooks .git/config .githooks; do
+        checked "$repository/$part"
         set -- "$@" --ro-bind-try "$repository/$part" "$repository/$part"
     done
 done <<EOF
