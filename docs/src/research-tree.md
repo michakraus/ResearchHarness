@@ -22,8 +22,8 @@ then the commands that work on the whole tree. In the example, the tree is `~/Re
 - **The directory says what kind of work it is.** A rule, an
   [instruction file](concepts.md#instruction-file) or a [skill](concepts.md#skill) can apply to
   one directory only, so a session in the papers does not load the rules of the packages.
-- **Temporary work has fixed places.** A worktree and a log go to directories that the guard
-  [hooks](concepts.md#hook) know, not into a repository.
+- **Temporary work has fixed places.** A [worktree](concepts.md#worktree) and a log go to
+  directories that the guard [hooks](concepts.md#hook) know, not into a repository.
 
 ## An example layout
 

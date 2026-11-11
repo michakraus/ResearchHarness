@@ -175,8 +175,8 @@ of your session. The harness gives the sub-agents three kinds of jobs:
 - **A bounded diagnosis**, such as a package that does not load: the sub-agent reports the cause.
 
 Some work goes to two agents that check each other. In the builder-critic loop of the skill
-`build-part`, one agent builds a change and a second agent judges it. The critic has not seen how
-the builder worked, so it reads the result with fresh eyes.
+`build-part`, one agent builds a change and a second agent judges it. The [critic](#critic) has
+not seen how the builder worked, so it reads the result with fresh eyes.
 
 An agent names a tier, `large`, `medium` or `small`, and the model tables choose the model of
 each tier. An agent with no tier runs on the model of its caller. A larger model is better at
@@ -291,3 +291,43 @@ configuration directory of each frontend. `harness install` shows what it would 
 
 The state in which an installed copy is behind its source, because the source changed after the
 last install. A hook at the start of each Claude Code or Antigravity session warns about it.
+
+### Part
+
+One pull request of a plan: one branch, one worktree and one spec. The skill `plan-parts` splits
+a task into parts and writes the spec of each part. [The builder-critic loop](agentic/loop.md)
+takes a part from its spec to a pull request.
+
+### Spec
+
+The text that a builder builds a part to, and that a critic judges the part against. It is written
+before the build, and it holds the clauses of *Done when*, each one checkable by a command, the
+decided edges and the named mutants. [Specs and gates](agentic/specs-and-gates.md) describes it.
+
+### Worktree
+
+A second checkout of a repository on its own branch. Each part is built in its own worktree, so
+the main checkout stays on `main` and two parts can be built at the same time. A hook makes each
+worktree from `origin/HEAD` at one place of the research tree, as
+[Git safety](safeguards/git-safety.md#worktrees) describes.
+
+### Critic
+
+An agent that judges a built part against its spec and returns PASS or FAIL with the defects. It
+edits nothing and never sees the builder's report, so it reads the code with fresh eyes.
+[The builder-critic loop](agentic/loop.md#why-a-blind-critic) says why each round has a new
+critic.
+
+### Mutant
+
+A small, deliberate change of the source, for example a `<` that becomes `<=`. The tests run on a
+changed copy, and a test that fails catches the mutant. When every test passes, the mutant
+survives: no test checks what that line does. [Mutant testing](agentic/mutants.md) describes the
+kinds of mutants and the tools that run them.
+
+### Edge
+
+An input at the border of what a part does, for example a `NaN`, an empty list or a path with a
+space. A spec decides what the code does at each edge, because a critic probes every edge that the
+spec leaves open. [Edges](agentic/edges.md) describes the catalogue of the edges that critics
+found.

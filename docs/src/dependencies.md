@@ -48,7 +48,7 @@ its sha256 first, as [uv](#uv) says.
 |:--|:--|:--|
 | Python | ≥ 3.14, `requires-python` in `pyproject.toml`, in the Python environment, for which uv fetches it; `bin/harness` itself starts on 3.9 or later | needed by every machine: runs the `harness` command, the guard hooks and the pre-push hook |
 | uv | tested with 0.13.5, the release that `bin/harness` fetches on Linux | needed by every machine: makes the Python environment that the `harness` command runs on, from `uv.lock` |
-| git | tested with 2.54.0 | needed by every machine: reads and pushes the repositories of the tree, makes the worktrees of Claude Code, and clones the pushed commit for the pre-push hook |
+| git | tested with 2.54.0 | needed by every machine: reads and pushes the repositories of the tree, makes the [worktrees](concepts.md#worktree) of Claude Code, and clones the pushed commit for the pre-push hook |
 
 ## `harness setup` installs
 
@@ -73,7 +73,7 @@ installed and meets its minimum is not installed again.
 | JET | 0.13, `[compat]` in `Project.toml` | needed by the component `julia`: finds the errors that type inference sees on each side, in `dispatch-delta.jl` |
 | JSON | ≥ 1.10, `[compat]` in `Project.toml` | needed by the component `julia`: writes the reports of the test gate and the mutation tests |
 | JuliaFormatter | ≥ 2.14, `[compat]` in `Project.toml` | needed by the component `julia`: formats Julia code, in `harness format`, the installed pre-commit hook and the test gate |
-| JuliaSyntax | ≥ 1.0.2, `[compat]` in `Project.toml` | needed by the component `julia`: parses Julia code to make the mutants of a mutation test |
+| JuliaSyntax | ≥ 1.0.2, `[compat]` in `Project.toml` | needed by the component `julia`: parses Julia code to make the [mutants](concepts.md#mutant) of a mutation test |
 | TestEnv | ≥ 1.103.7, `[compat]` in `Project.toml` | needed by the component `julia`: runs the tests of a package in its test environment, for the test runner and the mutation tests |
 | YAML | ≥ 0.4.17, `[compat]` in `Project.toml` | needed by the component `julia`: reads the CI workflows |
 | fatou | ≥ 0.22.0, the CI pin in `.github/workflows/julia.yml` | needed by the component `julia`: lints the staged Julia files before a commit, and rejects a mutant that uses an undefined name |
