@@ -2,9 +2,9 @@ name: julia
 
 on:
   push:
-    paths: ['**.jl', 'Project.toml', 'githooks/pre-commit', 'githooks/pre-push', '.github/workflows/julia.yml']
+    paths: ['**.jl', 'Project.toml', 'githooks/pre-commit', 'githooks/pre-push', 'ast-grep/**', '.github/workflows/julia.yml']
   pull_request:
-    paths: ['**.jl', 'Project.toml', 'githooks/pre-commit', 'githooks/pre-push', '.github/workflows/julia.yml']
+    paths: ['**.jl', 'Project.toml', 'githooks/pre-commit', 'githooks/pre-push', 'ast-grep/**', '.github/workflows/julia.yml']
 
 permissions:
   contents: read
@@ -60,7 +60,82 @@ jobs:
           tar -xzf fatou.tar.gz -C "$RUNNER_TEMP/fatou" ./fatou
           rm fatou.tar.gz
           echo "$RUNNER_TEMP/fatou" >> "$GITHUB_PATH"
+      # The ast-grep stage of the pre-commit hook needs ast-grep on the PATH and the Julia parser,
+      # which build-julia.sh writes beside the rules, where pre-commit-test.jl looks first.
+      - name: Install ast-grep
+        if: matrix.file == 'githooks/pre-commit-test.jl'
+        env:
+          VERSION: 0.51.1
+          SHA256: 42514f77ae0c8a25d7d32154d31d3e7e16f3ab894f8ce76ce417de234ee49157
+        run: |
+          curl -sSfL --retry 6 -o ast-grep.zip \
+            "https://github.com/ast-grep/ast-grep/releases/download/${VERSION}/app-x86_64-unknown-linux-gnu.zip"
+          echo "${SHA256}  ast-grep.zip" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/ast-grep"
+          unzip -q ast-grep.zip ast-grep -d "$RUNNER_TEMP/ast-grep"
+          rm ast-grep.zip
+          echo "$RUNNER_TEMP/ast-grep" >> "$GITHUB_PATH"
+      - name: Build the Julia parser
+        if: matrix.file == 'githooks/pre-commit-test.jl'
+        run: ast-grep/build-julia.sh
       - name: julia ${{ matrix.file }}
         run: julia --startup-file=no "$FILE"
         env:
           FILE: ${{ matrix.file }}
+
+  ast-grep:
+    runs-on: ubuntu-latest
+    # A step without a shell runs as bash -e, where a pipe returns the status of its last command.
+    # shell: bash adds pipefail, so a failed ast-grep test fails its step through the tee.
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install ast-grep
+        env:
+          VERSION: 0.51.1
+          SHA256: 42514f77ae0c8a25d7d32154d31d3e7e16f3ab894f8ce76ce417de234ee49157
+        run: |
+          curl -sSfL --retry 6 -o ast-grep.zip \
+            "https://github.com/ast-grep/ast-grep/releases/download/${VERSION}/app-x86_64-unknown-linux-gnu.zip"
+          echo "${SHA256}  ast-grep.zip" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/ast-grep"
+          unzip -q ast-grep.zip ast-grep -d "$RUNNER_TEMP/ast-grep"
+          rm ast-grep.zip
+          echo "$RUNNER_TEMP/ast-grep" >> "$GITHUB_PATH"
+      - name: Build the Julia parser
+        run: ast-grep/build-julia.sh
+      # research-sgconfig.yml names its paths relative to ~/Research, so the job writes a config
+      # with the checkout's absolute paths. Without --custom-languages allow, ast-grep ignores
+      # julia and every test that expects no hit passes.
+      - name: Write the config
+        run: |
+          cat > "$RUNNER_TEMP/sgconfig.yml" <<EOF
+          ruleDirs: [$PWD/ast-grep/rules]
+          testConfigs:
+            - testDir: $PWD/ast-grep/rule-tests
+          customLanguages:
+            julia:
+              libraryPath: $PWD/ast-grep/julia.dylib
+              extensions: [jl]
+              expandoChar: µ
+          EOF
+      # ast-grep test reports a test whose rule ID matches no rule as "Configuration not found"
+      # and still exits 0, so the step fails on that line too.
+      - name: ast-grep test
+        run: |
+          ast-grep test -c "$RUNNER_TEMP/sgconfig.yml" --custom-languages allow --skip-snapshot-tests \
+            | tee "$RUNNER_TEMP/test.txt"
+          ! grep -q 'Configuration not found' "$RUNNER_TEMP/test.txt"
+      # A rule test's snippets have no path, so ast-grep test cannot test the files: globs of
+      # debug-probe. The scan of rule-tests/scope/ must hit exactly the files under src/ and ext/.
+      # The scan exits 1 on its expected hits, so the step compares the files it reports instead.
+      - name: Scope of debug-probe
+        working-directory: ast-grep/rule-tests/scope
+        run: |
+          ast-grep scan -c "$RUNNER_TEMP/sgconfig.yml" --custom-languages allow --filter debug-probe \
+            --json=stream . > "$RUNNER_TEMP/scope.json" || true
+          hits=$(sed -n 's/.*"file":"\([^"]*\)".*/\1/p' "$RUNNER_TEMP/scope.json" | sed 's|^\./||' | sort -u | tr '\n' ' ')
+          echo "hits: $hits"
+          test "$hits" = "ext/probe.jl src/probe.jl "

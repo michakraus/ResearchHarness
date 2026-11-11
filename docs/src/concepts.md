@@ -154,9 +154,10 @@ before the call refuse it, ask you, or let it run. A shell command then runs ins
    command. It limits the files that a command can write and the hosts that it can reach,
    whatever the command text is. It is the only security boundary of the four. It does not wrap
    the edit tools of the frontend, which the permission settings control. OpenCode and oh-my-pi have
-   no sandbox; Antigravity has a terminal sandbox, and its guard hook sets each command's mode.
+   no sandbox of their own; the launcher `agentbox` runs any of them inside one.
 
-[The security model](security.md) describes what each layer stops and what it does not.
+[The security model](safeguards/security-model.md) describes what each layer stops and what it
+does not, and [Risks of agentic coding](safeguards/risks.md) names the risk that each one answers.
 
 **In another language.** The four layers do not depend on the language. A hook that refuses a
 command shape is a short program in any language; the guard hooks of the harness are Python.
@@ -180,8 +181,8 @@ the builder worked, so it reads the result with fresh eyes.
 An agent names a tier, `large`, `medium` or `small`, and the model tables choose the model of
 each tier. An agent with no tier runs on the model of its caller. A larger model is better at
 hard work and costs more. An agent can also name an [effort](#effort): how long the model thinks
-before it answers. [Agentic software engineering](agentic-engineering.md) shows which agents start
-which, with their models and efforts.
+before it answers. [Agents and their roles](agentic/agents.md) shows which agents start which,
+with their models and efforts, and [Challenges](agentic/challenges.md) says why the work is split.
 
 **In another language.** The agents that run tests, review a pull request or diagnose a load
 error are for Julia. The same division applies to any language: a sub-agent that runs the test

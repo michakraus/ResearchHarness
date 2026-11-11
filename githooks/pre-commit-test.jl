@@ -86,6 +86,49 @@ const PROJECT = """
     version = "0.1.0"
     """
 
+# Formatted and loads; `CLEAN` has no ast-grep hit, and `PROBE` holds `@show x` on line 4, a hit
+# of the rule `debug-probe`.
+const CLEAN = """
+    module Fixture
+
+    function double(x)
+        return 2x
+    end
+
+    end
+    """
+
+const PROBE = """
+    module Fixture
+
+    function double(x)
+        @show x
+        return 2x
+    end
+
+    end
+    """
+
+# The ast-grep rules of the tree under test, and the parser that ast-grep/build-julia.sh builds:
+# beside the rules where CI builds it, else in the Harness checkout of the research tree.
+const RULES = joinpath(dirname(@__DIR__), "ast-grep", "rules")
+const PARSER = let built = joinpath(dirname(@__DIR__), "ast-grep", "julia.dylib")
+    isfile(built) ? built :
+    joinpath(get(ENV, "RESEARCH_ROOT", joinpath(homedir(), "Research")), "Harness", "ast-grep",
+             "julia.dylib")
+end
+
+# A fixture lies under mktempdir(), where no sgconfig.yml of the research tree is above it, so a
+# fixture that the ast-grep stage checks holds this one at its root, with absolute paths.
+const SGCONFIG = "sgconfig.yml" => """
+    ruleDirs: [$(repr(RULES))]
+    customLanguages:
+      julia:
+        libraryPath: $(repr(PARSER))
+        extensions: [jl]
+        expandoChar: µ
+    """
+
 function environment(home)
     env = Dict("HOME" => home, "PATH" => ENV["PATH"], "TMPDIR" => tempdir(),
                "GIT_CONFIG_GLOBAL" => "/dev/null", "GIT_CONFIG_NOSYSTEM" => "1",
@@ -156,6 +199,35 @@ function run_hook(source; extra = Pair{String,String}[], path = nothing, project
     return code, out * err
 end
 
+"""
+Run the pre-commit hook on the second commit of a fixture: the first commit holds
+`src/Fixture.jl` with `before` and the files of `extra`, and the second stages `src/Fixture.jl`
+with `after`. Returns the hook's exit code and its stdout and stderr in one string.
+"""
+function second_commit(before, after; extra = [SGCONFIG])
+    repo, env = fixture(before; extra)
+    run(setenv(`git -C $repo commit -q -m base`, env))
+    write(joinpath(repo, "src", "Fixture.jl"), after)
+    run(setenv(`git -C $repo add src/Fixture.jl`, env))
+    code, out, err = capture(`bash $HOOK`, repo, env)
+    return code, out * err
+end
+
+"""
+A fixture whose staged change adds the lines 4 and 8 of `src/Fixture.jl`, around an old `@show x`
+on line 6 that the first commit holds. Returns the repository and its environment.
+"""
+function two_hunks()
+    before = replace(CLEAN, "    return" => "    a = 1\n    @show x\n    b = 2\n    return")
+    after = replace(before, "    a = 1\n" => "    c = 3\n    a = 1\n",
+                    "    b = 2\n" => "    b = 2\n    d = 4\n")
+    repo, env = fixture(before; extra = [SGCONFIG])
+    run(setenv(`git -C $repo commit -q -m base`, env))
+    write(joinpath(repo, "src", "Fixture.jl"), after)
+    run(setenv(`git -C $repo add src/Fixture.jl`, env))
+    return repo, env
+end
+
 "A directory with one executable `name` that holds `script`."
 function bindir(name, script)
     d = mktempdir()
@@ -212,9 +284,10 @@ end
 
 # One testset holds the four below, so a failure in one of them does not stop the file before
 # the others run: the outer one reports every failure, and throws, at the end of the file. The
-# four keep the indentation of top-level testsets.
-@testset "the hooks" begin
-@testset "pre-commit" begin
+# four keep the indentation of top-level testsets. `verbose` lists the testsets inside a testset
+# in the summary, one level deep, so a log of a passing run names each testset of pre-commit.jl.
+@testset "the hooks" verbose = true begin
+@testset "pre-commit" verbose = true begin
     @testset "a formatted file that loads passes" begin
         code, out = run_hook(FORMATTED)
         @test code == 0
@@ -505,6 +578,233 @@ end
         @test occursin("loads: ok", out)
     end
 
+    @testset "a new file with an ast-grep hit is refused" begin
+        code, out = run_hook(PROBE; extra = [SGCONFIG])
+        @test code == 1
+        @test occursin("ast-grep: FAILED", out)
+        @test occursin("    src/Fixture.jl:4: debug-probe: a debug probe", out)
+        @test occursin("formatting: ok", out)
+        @test occursin("loads: ok", out)
+    end
+
+    @testset "a line that adds a hit is refused" begin
+        code, out = second_commit(CLEAN, PROBE)
+        @test code == 1
+        @test occursin("ast-grep: FAILED", out)
+        @test occursin("    src/Fixture.jl:4: debug-probe: ", out)
+    end
+
+    @testset "a hit on a line the commit does not add warns" begin
+        code, out = second_commit(PROBE, replace(PROBE, r"end\n$" => "triple(x) = 3x\n\nend\n"))
+        @test code == 0
+        @test occursin("ast-grep: 1 hit(s) on lines this commit does not add — advisory", out)
+        @test occursin("    src/Fixture.jl:4: debug-probe: ", out)
+        @test !occursin("ast-grep: FAILED", out)
+    end
+
+    # The commit adds lines 4 to 6, and the hit is on line 6.
+    @testset "a hit on the last line of a hunk is refused" begin
+        code, out = second_commit(CLEAN, replace(CLEAN, "    return" => "    y = x\n    z = y\n    @show z\n    return"))
+        @test code == 1
+        @test occursin("ast-grep: FAILED", out)
+        @test occursin("    src/Fixture.jl:6: debug-probe: ", out)
+    end
+
+    # The hit spans lines 4 to 6, and the commit changes line 5 only.
+    @testset "a hit whose range holds an added line is refused" begin
+        wide = replace(CLEAN, "    return" => "    @show begin\n        x\n    end\n    return")
+        code, out = second_commit(wide, replace(wide, "        x\n" => "        2x\n"))
+        @test code == 1
+        @test occursin("    src/Fixture.jl:4: debug-probe: ", out)
+    end
+
+    # The hunk of a deletion, `+c,0`, adds no line, and its `c` is the line of the old hit.
+    @testset "a commit that deletes the line below an old hit passes" begin
+        before = replace(PROBE, "    return" => "    y = x\n    return")
+        code, out = second_commit(before, PROBE)
+        @test code == 0
+        @test occursin("ast-grep: 1 hit(s) on lines this commit does not add — advisory", out)
+    end
+
+    # Each setting makes `git diff` print no hunk header for the file, or other lines than the
+    # staged ones, so a new hit would read as advisory.
+    @testset "a diff.external, a textconv driver or a -diff attribute does not hide an added hit" begin
+        conv = bindir("conv", "#!/bin/sh\necho converted\n")
+        external = bindir("external", "#!/bin/sh\necho changed\n")
+        for (config, attributes) in ((["diff.external", joinpath(external, "external")], nothing),
+                                     (["diff.jl.textconv", joinpath(conv, "conv")], "*.jl diff=jl\n"),
+                                     (nothing, "*.jl -diff\n"))
+            extra = attributes === nothing ? [SGCONFIG] : [SGCONFIG, ".gitattributes" => attributes]
+            repo, env = fixture(PROBE; extra)
+            config === nothing || run(setenv(`git -C $repo config $config`, env))
+            code, out, err = capture(`bash $HOOK`, repo, env)
+            @test code == 1
+            @test occursin("ast-grep: FAILED", out * err)
+            @test occursin("    src/Fixture.jl:4: debug-probe: ", out * err)
+        end
+    end
+
+    # The commit adds lines 4 and 8; the old hit lies on line 6, between the two hunks.
+    @testset "diff.interHunkContext does not join two hunks around an old hit" begin
+        before = replace(CLEAN, "    return" => "    a = 1\n    @show x\n    b = 2\n    return")
+        after = replace(before, "    a = 1\n" => "    c = 3\n    a = 1\n",
+                        "    b = 2\n" => "    b = 2\n    d = 4\n")
+        repo, env = fixture(before; extra = [SGCONFIG])
+        run(setenv(`git -C $repo config diff.interHunkContext 5`, env))
+        run(setenv(`git -C $repo commit -q -m base`, env))
+        write(joinpath(repo, "src", "Fixture.jl"), after)
+        run(setenv(`git -C $repo add src/Fixture.jl`, env))
+        code, out, err = capture(`bash $HOOK`, repo, env)
+        @test code == 0
+        @test occursin("ast-grep: 1 hit(s) on lines this commit does not add — advisory", out * err)
+        @test occursin("    src/Fixture.jl:6: debug-probe: ", out * err)
+    end
+
+    # The variable sets the context of every hunk, which -U0 alone does not override.
+    @testset "GIT_DIFF_OPTS does not join two hunks around an old hit" begin
+        repo, env = two_hunks()
+        env["GIT_DIFF_OPTS"] = "--unified=3"
+        code, out, err = capture(`bash $HOOK`, repo, env)
+        @test code == 0
+        @test occursin("ast-grep: 1 hit(s) on lines this commit does not add — advisory", out * err)
+        @test occursin("    src/Fixture.jl:6: debug-probe: ", out * err)
+        @test !occursin("ast-grep: FAILED", out * err)
+    end
+
+    # git refuses --literal-pathspecs beside any other global pathspec setting.
+    @testset "GIT_ICASE_PATHSPECS does not stop the stage" begin
+        repo, env = two_hunks()
+        env["GIT_ICASE_PATHSPECS"] = "1"
+        code, out, err = capture(`bash $HOOK`, repo, env)
+        @test code == 0
+        @test occursin("ast-grep: 1 hit(s) on lines this commit does not add — advisory", out * err)
+        @test occursin("    src/Fixture.jl:6: debug-probe: ", out * err)
+        @test !occursin("ProcessFailedException", out * err)
+    end
+
+    # As a glob, the path src/a[b].jl also matches src/ab.jl, whose second line the commit adds.
+    @testset "the added lines of a path with glob characters are its own" begin
+        old = "function f(x)\n    @show x\n    return x\nend\n"
+        repo, env = fixture(CLEAN; extra = [SGCONFIG, "src/a[b].jl" => old, "src/ab.jl" => "g(x) = x\n"])
+        run(setenv(`git -C $repo commit -q -m base`, env))
+        write(joinpath(repo, "src", "a[b].jl"), old * "\nh(x) = x\n")
+        write(joinpath(repo, "src", "ab.jl"), "y = 1\nz = 2\ng(x) = x\n")
+        run(setenv(`git -C $repo add -- src/a\[b\].jl src/ab.jl`, env))
+        code, out, err = capture(`bash $HOOK`, repo, env)
+        @test code == 0
+        @test occursin("ast-grep: 1 hit(s) on lines this commit does not add — advisory", out * err)
+        @test occursin("    src/a[b].jl:2: debug-probe: ", out * err)
+    end
+
+    # tree-sitter-julia marks the adjoint of a float literal with an exponent ERROR, which the rule
+    # `parse-error` reports at severity info; Julia parses it.
+    @testset "a parse-error hit is not printed" begin
+        source = "module Fixture\n\nconst SCALE = 1e-3'\n\nend\n"
+        repo, env = fixture(source; extra = [SGCONFIG])
+        # `read` gives the scan no stdin: ast-grep ends at once, and a write to its stdin, as
+        # `capture` makes, can then fail with a broken pipe.
+        scan = read(ignorestatus(setenv(`ast-grep scan --custom-languages allow --json=stream -- src/Fixture.jl`, env; dir = repo)), String)
+        @test occursin("\"ruleId\":\"parse-error\"", scan)
+        code, out, err = capture(`bash $HOOK`, repo, env)
+        @test code == 0
+        @test occursin("ast-grep: clean", out * err)
+        @test !occursin("parse-error", out * err)
+        @test occursin("loads: ok", out * err)
+    end
+
+    # A rule with no `severity` key gives hits of severity hint.
+    @testset "a hit of severity warning or hint is advisory on any line" begin
+        rules = ["fixture-rules/warning.yml" => """
+                     id: fixture-warning
+                     language: julia
+                     severity: warning
+                     message: a warn_me call
+                     rule:
+                       pattern: warn_me(\$A)
+                     """,
+                 "fixture-rules/hint.yml" => """
+                     id: fixture-hint
+                     language: julia
+                     message: a hint_me call
+                     rule:
+                       pattern: hint_me(\$A)
+                     """]
+        config = "sgconfig.yml" => replace(last(SGCONFIG), "ruleDirs: [$(repr(RULES))]" =>
+                                                               "ruleDirs: [$(repr(RULES)), fixture-rules]")
+        source = replace(CLEAN, "    return" => "    warn_me(x)\n    hint_me(x)\n    return")
+        code, out = run_hook(source; extra = [config; rules])
+        @test code == 0
+        @test occursin("ast-grep: 2 hit(s) of severity warning or hint — advisory", out)
+        @test occursin("    src/Fixture.jl:4: fixture-warning: a warn_me call", out)
+        @test occursin("    src/Fixture.jl:5: fixture-hint: a hint_me call", out)
+        @test !occursin("ast-grep: FAILED", out)
+        @test !occursin("ast-grep: clean", out)
+    end
+
+    @testset "a silenced hit passes" begin
+        for silenced in ("    @show x  # ast-grep-ignore: debug-probe",
+                         "    # ast-grep-ignore: debug-probe\n    @show x")
+            code, out = run_hook(replace(PROBE, "    @show x" => silenced); extra = [SGCONFIG])
+            @test code == 0
+            @test occursin("ast-grep: clean", out)
+        end
+    end
+
+    @testset "without ast-grep on the PATH, the stage is skipped with one line" begin
+        code, out = run_hook(CLEAN; extra = [SGCONFIG], path = without("ast-grep"))
+        @test code == 0
+        @test count("ast-grep: skipped — ast-grep is not on the PATH", out) == 1
+        @test count(l -> occursin("ast-grep", l), split(out, '\n')) == 1
+    end
+
+    @testset "an ast-grep that fails is skipped with its exit code" begin
+        stub = bindir("ast-grep", "#!/bin/sh\necho boom >&2\nexit 2\n")
+        code, out = run_hook(CLEAN; extra = [SGCONFIG], path = stub * ":" * Sys.BINDIR * ":" * ENV["PATH"])
+        @test code == 0
+        @test occursin("ast-grep: skipped — ast-grep exited with status 2: boom", out)
+        @test count("ast-grep:", out) == 1
+    end
+
+    # ast-grep looks for sgconfig.yml in each parent directory, so one above the fixture would
+    # answer in its place.
+    @testset "without an sgconfig.yml, the stage is skipped with one line" begin
+        repo, env = fixture(PROBE)
+        dirs = [repo]
+        while dirname(last(dirs)) != last(dirs)
+            push!(dirs, dirname(last(dirs)))
+        end
+        @test !any(d -> isfile(joinpath(d, "sgconfig.yml")), dirs)
+        code, out, err = capture(`bash $HOOK`, repo, env)
+        @test code == 0
+        @test count("ast-grep: skipped — ", out * err) == 1
+        @test occursin("ast-grep: skipped — no sgconfig.yml", out * err)
+    end
+
+    # With diff.renames off, only the stage's own -M finds the rename. The file with the hit is
+    # not the package's module file, so the load test passes.
+    @testset "a renamed file with an old hit passes" begin
+        repo, env = fixture(CLEAN; extra = [SGCONFIG, "src/probe.jl" => "function probe(x)\n    @show x\n    return x\nend\n"])
+        run(setenv(`git -C $repo config diff.renames false`, env))
+        run(setenv(`git -C $repo commit -q -m base`, env))
+        run(setenv(`git -C $repo mv src/probe.jl src/moved.jl`, env))
+        code, out, err = capture(`bash $HOOK`, repo, env)
+        @test code == 0
+        @test occursin("ast-grep: 1 hit(s) on lines this commit does not add — advisory", out * err)
+        @test occursin("    src/moved.jl:2: debug-probe: ", out * err)
+    end
+
+    # git lists the changed file and the renamed one by status; only the rename has an old path.
+    @testset "a renamed file beside a changed file passes" begin
+        repo, env = fixture(CLEAN; extra = [SGCONFIG, "src/probe.jl" => "function probe(x)\n    @show x\n    return x\nend\n"])
+        run(setenv(`git -C $repo commit -q -m base`, env))
+        write(joinpath(repo, "src", "Fixture.jl"), replace(CLEAN, r"end\n$" => "triple(x) = 3x\n\nend\n"))
+        run(setenv(`git -C $repo add src/Fixture.jl`, env))
+        run(setenv(`git -C $repo mv src/probe.jl src/moved.jl`, env))
+        code, out, err = capture(`bash $HOOK`, repo, env)
+        @test code == 0
+        @test occursin("    src/moved.jl:2: debug-probe: ", out * err)
+    end
+
     # The wrapper comes before Sys.BINDIR and starts the real julia by its absolute path, so it
     # counts the starts by the name `julia` and not itself. A child that the program starts with
     # Base.julia_cmd(), and its precompile workers, start by an absolute path and are not counted.
@@ -693,7 +993,7 @@ end
 
 # Functions of the programs, called in this process: each program runs only as a program file,
 # so an include defines its functions and runs nothing.
-@testset "functions of pre-commit.jl" begin
+@testset "functions of pre-commit.jl" verbose = true begin
     hook = Module(:PreCommitProgram)
     Base.include(hook, PROGRAM)
     run_boxed(cmd, seconds) = Base.invokelatest(hook.run_boxed, cmd, seconds)
@@ -846,6 +1146,144 @@ end
             @test timedwait(() -> !alive(child), 5.0) === :ok
             alive(child) && ccall(:kill, Cint, (Cint, Cint), child, 9)
         end
+    end
+
+    # Runs the ast-grep stage in this process with `path` as the PATH, and returns its verdict and
+    # what it printed. A stub that must give a run that checked a file prints `applied`, the
+    # `--inspect entity` line of a file that one rule checks.
+    function ast_grep(files; path = ENV["PATH"], kwargs...)
+        mktemp() do file, io
+            ok = withenv("PATH" => path) do
+                redirect_stdout(() -> Base.invokelatest(hook.ast_grep, files; kwargs...), io)
+            end
+            flush(io)
+            ok, read(file, String)
+        end
+    end
+    stubbed(script) = bindir("ast-grep", "#!/bin/sh\n" * script) * ":" * ENV["PATH"]
+    applied = "echo 'sg: entity|file|x.jl: language=julia,appliedRuleCount=1' >&2\n"
+
+    # No environment of the load path holds JSON.
+    @testset "the ast-grep stage skips a run whose output JSON cannot read" begin
+        saved = copy(LOAD_PATH)
+        ok, out = try
+            empty!(LOAD_PATH)
+            push!(LOAD_PATH, "@stdlib")
+            withenv("RESEARCH_HARNESS_JULIA" => mktempdir()) do
+                ast_grep(["x.jl"]; path = stubbed(applied * "echo '{}'\nexit 1\n"))
+            end
+        finally
+            append!(empty!(LOAD_PATH), saved)
+        end
+        @test ok
+        @test occursin("ast-grep: skipped — JSON does not load: ", out)
+        @test count('\n', out) == 1
+        # A run with no hit needs no JSON.
+        ok, out = try
+            empty!(LOAD_PATH)
+            push!(LOAD_PATH, "@stdlib")
+            withenv("RESEARCH_HARNESS_JULIA" => mktempdir()) do
+                ast_grep(["x.jl"]; path = stubbed(applied * "exit 0\n"))
+            end
+        finally
+            append!(empty!(LOAD_PATH), saved)
+        end
+        @test ok
+        @test out == "\e[0;32mast-grep: clean\e[0m\n"
+    end
+
+    # A program of its own, whose `harness_package` this test replaces.
+    @testset "the ast-grep stage passes on an interrupt while JSON loads" begin
+        box = Module(:InterruptedProgram)
+        Base.include(box, PROGRAM)
+        Core.eval(box, :(harness_package(name) = throw(InterruptException())))
+        @test_throws InterruptException withenv("PATH" => stubbed(applied * "echo '{}'\nexit 1\n")) do
+            redirect_stdout(() -> Base.invokelatest(box.ast_grep, ["x.jl"]), devnull)
+        end
+    end
+
+    # The child holds the stderr after `sh` ends, and not the stdout.
+    @testset "the time box with apart streams returns when a child holds the stderr" begin
+        task = @async Base.invokelatest(hook.run_boxed, `sh -c "sleep 120 >/dev/null & echo out"`, 1;
+                                        apart = true)
+        @test timedwait(() -> istaskdone(task), 30.0) === :ok
+        @test istaskdone(task) && fetch(task) == (nothing, "", "")
+    end
+
+    @testset "the time box with apart streams keeps them apart" begin
+        @test Base.invokelatest(hook.run_boxed, `sh -c 'echo out; echo err >&2; exit 3'`, 30;
+                                apart = true) == (3, "out\n", "err\n")
+    end
+
+    # ast-grep prints its --inspect lines before the error, which the skip line names.
+    @testset "the ast-grep stage names the error of a rule that does not parse" begin
+        dir = mktempdir()
+        mkpath(joinpath(dir, "rules"))
+        write(joinpath(dir, "rules", "bad.yml"), "id: bad\nlanguage: nolanguage\nrule:\n  kind: x\n")
+        write(joinpath(dir, "sgconfig.yml"), "ruleDirs: [rules]\n")
+        write(joinpath(dir, "x.jl"), "x = 1\n")
+        ok, out = cd(() -> ast_grep(["x.jl"]), dir)
+        @test ok
+        @test occursin(r"ast-grep: skipped — ast-grep exited with status \d+: Error: Cannot parse rule", out)
+    end
+
+    @testset "the ast-grep stage skips a run that times out" begin
+        ok, out = ast_grep(["x.jl"]; path = stubbed("sleep 30\n"), seconds = 1)
+        @test ok
+        @test out == "\e[0;33mast-grep: skipped — ast-grep timed out after 1s\e[0m\n"
+    end
+
+    @testset "the ast-grep stage skips an ast-grep that cannot start" begin
+        stub = bindir("ast-grep", "#!/nonexistent/interpreter\n")
+        ok, out = ast_grep(["x.jl"]; path = stub * ":" * without("ast-grep"))
+        @test ok
+        @test out == "\e[0;33mast-grep: skipped — ast-grep could not start\e[0m\n"
+    end
+
+    @testset "the ast-grep stage skips a failure with no message on its exit code alone" begin
+        ok, out = ast_grep(["x.jl"]; path = stubbed("exit 5\n"))
+        @test ok
+        @test out == "\e[0;33mast-grep: skipped — ast-grep exited with status 5\e[0m\n"
+    end
+
+    @testset "the ast-grep stage skips an output that is not one JSON object per line" begin
+        for line in ("not json", "[1]", "{\"file\":\"x.jl\"}")
+            ok, out = ast_grep(["x.jl"]; path = stubbed(applied * "echo '$line'\nexit 1\n"))
+            @test ok
+            @test out == "\e[0;33mast-grep: skipped — its output is not one JSON object per line\e[0m\n"
+        end
+    end
+
+    # A config whose rule directory is empty, and one whose only rule is for Python: ast-grep
+    # exits 0 with no hit for both, as for a clean file. So does a run that prints nothing.
+    @testset "the ast-grep stage skips a run that applies no rule" begin
+        python = "id: py-print\nlanguage: python\nseverity: error\nmessage: print\nrule:\n  pattern: print(\$A)\n"
+        for (config, rules) in (("customLanguages:\n  julia:\n    libraryPath: $(repr(PARSER))\n    extensions: [jl]\n", []),
+                                ("", ["print.yml" => python]))
+            dir = mktempdir()
+            mkpath(joinpath(dir, "rules"))
+            for (name, text) in rules
+                write(joinpath(dir, "rules", name), text)
+            end
+            write(joinpath(dir, "sgconfig.yml"), "ruleDirs: [rules]\n" * config)
+            write(joinpath(dir, "x.jl"), "@show x\n")
+            ok, out = cd(() -> ast_grep(["x.jl"]), dir)
+            @test ok
+            @test occursin("ast-grep: skipped — ast-grep applied no rule to the staged files", out)
+        end
+        ok, out = ast_grep(["x.jl"]; path = stubbed("exit 0\n"))
+        @test ok
+        @test occursin("ast-grep: skipped — ast-grep applied no rule to the staged files", out)
+    end
+
+    # Under this variable the hook's list of staged `*.jl` files holds no file below src/, so
+    # only a direct call reaches `added_lines` with it.
+    @testset "added_lines ignores GIT_GLOB_PATHSPECS" begin
+        repo, env = two_hunks()
+        lines = withenv(env..., "GIT_GLOB_PATHSPECS" => "1") do
+            cd(() -> Base.invokelatest(hook.added_lines, "src/Fixture.jl", nothing), repo)
+        end
+        @test lines == [4:4, 8:8]
     end
 
     # `format` with no style uses JuliaFormatter's default style: githooks/ has no

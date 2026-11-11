@@ -25,9 +25,9 @@ features:
     details: A private profile holds every value that names a person, an institution or a machine. A leak check keeps these values out of the repository. Signed dotfiles and git carry them to each machine.
     link: /private-data
   - icon: sandbox
-    title: Sandbox and safety in layers
-    details: The Claude Code sandbox limits the files that a shell command can write and the hosts that it can reach. Permission settings and guard hooks stop common mistakes before a call runs.
-    link: /security
+    title: Safeguards in layers
+    details: An OS sandbox limits the files that a command can write and the hosts that it can reach. Permission settings, guard hooks, git checks and leak checks stop common mistakes before a call runs or a push leaves.
+    link: /safeguards/risks
   - icon: tree
     title: A directory tree for research work
     details: The research tree is one directory for the packages, experiments, papers, notes and literature, each in its own repository. The harness clones and syncs them, and gives each directory its own rules.
@@ -37,9 +37,9 @@ features:
     details: A session starts with an empty context. Instruction files, task files, a knowledge base and project memory carry what earlier sessions learned into the next one.
     link: /memory
   - icon: workflow
-    title: Agentic software engineering
-    details: A plan splits a change into parts with checkable criteria. A builder writes each part, and a critic that has not seen its reasoning judges it. Sub-agents run the long tests and reviews.
-    link: /agentic-engineering
+    title: Agentic coding
+    details: A plan splits a change into parts with checkable criteria and named mutants. A builder writes each part, and a critic that has not seen its reasoning judges it. Each edge that a critic finds goes into a catalogue for the next plan.
+    link: /agentic/challenges
 ---
 
 The tools of the harness are for Julia, but most of its ideas apply to any language.

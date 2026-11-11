@@ -81,7 +81,7 @@ fails, it stops with the status of that command.
 `~/.local/share/chezmoi`, and, after `y`, the files that chezmoi applies.
 
 **Where to run it:** in your own terminal, on every host. A session has no terminal for the
-question, and the [sandbox](security.md) does not let it write the source.
+question, and the [sandbox](safeguards/sandbox.md) does not let it write the source.
 
 ### `dotfiles check`
 

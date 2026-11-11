@@ -250,9 +250,9 @@ same lines; `changelog.d/README.md` gives the form. The job fails when the branc
 below `lib/`, `hooks/`, `adapters/`, `bin/`, `scripts/`, `githooks/`, `agents/`, `skills/` or
 `rules/` and adds no fragment. At a release, `harness changelog --apply` joins the fragments into
 `## Unreleased`.
-`.github/workflows/julia.yml` runs the twelve Julia test files on Julia 1.13 when a
-`.jl` file, `Project.toml`, `githooks/pre-commit`, `githooks/pre-push` or the workflow itself
-changes.
+`.github/workflows/julia.yml` runs the twelve Julia test files on Julia 1.13, and the rule tests
+of ast-grep in its job `ast-grep`, when a `.jl` file, `Project.toml`, `githooks/pre-commit`,
+`githooks/pre-push`, a file below `ast-grep/` or the workflow itself changes.
 `.github/workflows/docs.yml` builds the documentation site with VitePress when a file under
 `docs/`, `agents/`, `skills/`, `examples/models.toml` or the workflow itself changes.
 VitePress fails the build on a broken local link. On a push to `main`, the workflow also deploys
@@ -278,9 +278,9 @@ the build; link to the file on GitHub instead. Link to a section of another page
 heading's anchor: `[text](setup-reference.md#harness-install-apply)`. An anchor is the heading
 in lower case, with each run of spaces and punctuation as one `-`. VitePress does not check an
 anchor, but `npm run docs:check` does. It also checks that every page of the menu is in the
-sidebar, that each page has the table rows of its source, that the home page has its two
-figures, the introduction its three and the page `agentic-engineering` its four call graphs, that
-no edge of a figure crosses another edge or passes through a box that is not its end, and that
+sidebar, that each page has the table rows of its source, that each page of its list has its
+figures by their titles and no other page has one, such as the two of the home page, the three of
+the introduction and the four call graphs of `agentic/agents.md`, that no edge of a figure crosses another edge or passes through a box that is not its end, and that
 every colour of the figures has a value for the dark theme. It finds the four walk-throughs by
 their titles, and checks each animated figure: its SVG parses as XML, it holds no script, it
 loops, it stops under `prefers-reduced-motion`, and its token and its steps keep their timing.
@@ -295,9 +295,17 @@ card with an icon, a group panel with a header band, and a right-angled arrow. T
 from the npm package `lucide`, and the build inlines them. Every colour, the font, the corner radii
 and the line widths are custom properties in `docs/.vitepress/theme/figures.css`, with a value for
 the light and the dark theme; a component names no colour itself. The overview and the flow figure
-of the home page, and the two figures of the introduction, have a fixed layout in their components.
+of the home page, the two figures of the introduction, the figures of the pages Challenges, Tests
+and CI, Mutant testing and Edges, and the figure of the page Sandboxes have a fixed layout in their
+components: `PipelineFigure`, `ChecksFigure`, `MutantFigure`, `EdgesFigure` and `SandboxFigure`.
+`docs/.vitepress/theme/index.ts` registers each component, and `FIGURES` of
+`docs/scripts/check-site.mjs` names the page and the title of each figure.
 
-The call graphs of `agentic-engineering.md` are generated. A block with the info string
+The pages of the sections Agentic coding, in `docs/src/agentic/`, and Safeguards, in
+`docs/src/safeguards/`, explain the ideas and point to the component pages for the details. The
+page Guard hooks is a component page too, for the hooks.
+
+The call graphs of `agentic/agents.md` are generated. A block with the info string
 `calls <caller>`, or `calls` for every edge, holds the graph's `title:` and `desc:`, and the build
 draws the graph there. `docs/.vitepress/theme/figures/calls.data.ts` reads
 `docs/figures/calls.toml`, the frontmatter of `agents/` and `skills/`, and `examples/models.toml`
@@ -312,8 +320,10 @@ its model and effort from the same sources as the call graphs.
 writes its animation as CSS in the figure. `harness test` checks each data file: each agent and
 skill exists, and each cited line exists.
 
-The pages in `docs/src/components/` describe each component: one page for each kind, and one
-level-2 section for each component, whose heading names it in backticks. `lib/harness/docs.py`
+The pages in `docs/src/components/`, `docs/src/safeguards/guard-hooks.md` and
+`docs/src/harness-command.md` describe each component: one page for each kind, and one level-2
+section for each component, whose heading names it in backticks; `harness-command.md` holds its
+modules as level-3 headings of its section *The implementation*. `lib/harness/docs.py`
 says which files are the components of each page. Its cases in `harness test` fail when a
 component has no heading, when a heading names something that is no component of its page, and
 when a tool of the tables of `dependencies.md` has no heading on that page, or a heading there

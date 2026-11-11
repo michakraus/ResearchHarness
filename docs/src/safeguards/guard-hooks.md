@@ -1,5 +1,13 @@
 # Guard hooks
 
+A permission rule matches the text of a tool call against a pattern. Some mistakes need more than
+a pattern: the parsed command, the working directory, the state of a worktree, or the form of a
+token. A guard hook is a program that reads the tool call before it runs and answers with code. It
+refuses the call with a reason that tells the agent what to do instead, asks you, or lets the
+call run. So a guard catches a mistake and also teaches the next command. Like the permission
+lists, a guard prevents accidents and is no boundary ([The security model](security-model.md)).
+[Git safety](git-safety.md) groups the guards of `git` and `gh` by the step of the work.
+
 A hook is a program that the frontend runs at a fixed event, for example before a tool call or
 at the start of a session. The frontend sends the event as JSON on standard input. A `PreToolUse`
 hook runs before a tool call and can refuse it: exit status 2 refuses the call and shows the hook's
@@ -32,7 +40,7 @@ guard's command ends in `|| exit 2`, so a guard that cannot start refuses the ca
 reads a handler that prints nothing as a block.
 
 The hooks prevent accidents. They are not a security boundary: each one reads the text of a
-command. [The security model](../security.md) says what they stop and what they do not stop. The
+command. [The security model](security-model.md) says what they stop and what they do not stop. The
 page groups the hooks: first the guard package and its checks, then `edit-scope.py`, then
 `worktree.py` and the session hooks, and last the probe.
 
@@ -44,7 +52,7 @@ runs it as a `PreToolUse` hook on the matchers `Bash`,
 with the command `<python> ~/.claude/hooks/guard --from claude || exit 2`. The `Bash` matcher runs
 `rtk hook claude` first, then the guard. Antigravity runs its copy as a `PreToolUse` hook on every
 tool call, with the command `<python> ~/.gemini/config/hooks/guard --from antigravity`;
-[the adapters page](adapters.md) describes its answers. The plugins of oh-my-pi and OpenCode run
+[the adapters page](../components/adapters.md) describes its answers. The plugins of oh-my-pi and OpenCode run
 `<python> <their directory>/../hooks/guard --from omp` or `--from opencode` on every tool call,
 with the interpreter that `guard-paths.json` beside them names under `python`; they send the event
 as JSON and apply the answer `{"block": …, "reason": …}`.
@@ -391,7 +399,9 @@ directory, a file that cannot be read or holds no integer `pid`, a remote gate's
 Under WSL, Kaimon also finds the gates of the Windows side, through files in a directory that the
 check does not read, so the check refuses their keys. `manage_repl` is not checked for a live
 session, because its `shutdown` removes a session whose process has gone. A tool that no table of
-the check names passes. The messages name the rule of `skills/build-part/evidence.md`.
+the check names passes. The refusal of a missing key, like that of a dead key, names the
+live sessions, sorted and each once, or says that none is live; when the directory cannot be
+listed, it names none. The messages name the rule of `skills/build-part/evidence.md`.
 
 ### The path list and oh-my-pi's own rows
 

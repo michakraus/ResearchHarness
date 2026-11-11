@@ -819,7 +819,7 @@ sections after the line of the file, for example:
 +++ settings/settings.proposal.json
 ```
 
-Read this diff before each `--apply`. [security.md](security.md) describes what the settings
+Read this diff before each `--apply`. [The security model](safeguards/security-model.md) describes what the settings
 stop, and how to check a change of them. The installed settings refuse an edit of
 `~/.claude/settings.json` from a session, so you run the install yourself, in your own terminal.
 The install reads the file when it makes its plan, so do not change the model of a running

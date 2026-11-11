@@ -6,7 +6,8 @@ silently, so a key under the other name, such as `session` on `ex` or `ses` on `
 the call in the session that Kaimon picks: the one the agent is bound to, else the only connected
 one, which under a builder-critic loop can be another agent's. The check refuses such a key and
 names the tool's own. It also refuses an `ex` without `ses` and a `manage_repl` without `session`,
-the two calls that run code in a session or stop it. A tool that no table names passes.
+the two calls that run code in a session or stop it, and names the live sessions in that refusal,
+as in the refusal of a dead key. A tool that no table names passes.
 
 A key that is given must name a live session. A session's gate writes `<cache>/sock/<session
 id>.json`, which holds its process id as `pid`, and its key is the first 8 characters of the
@@ -96,7 +97,7 @@ EXAMPLES = {
 
 MISSING = """Refused: `{tool}` without `{key}`.
 
-Pass the session key on every call: `{example}`. `start_session` returns the key, and `ping`
+{live}Pass the session key on every call: `{example}`. `start_session` returns the key, and `ping`
 lists the sessions. Without it, the call runs in the session that Kaimon picks, which can be
 another agent's. The rule is in `skills/build-part/evidence.md`, *A warm session for probes*:
 one session for your tree, `ses` on every `ex`, and a shutdown with `session` before you return.
@@ -146,26 +147,50 @@ def runs(metadata: Path) -> bool | None:
     return True
 
 
+def gates() -> dict[str, Path] | None:
+    """The gate file of each session id in the gate directory, or None when the directory cannot be
+    listed."""
+    directory = gate_directory()
+    try:
+        names = paths.entries(str(directory))
+    except OSError:
+        return None
+    return {name.removesuffix(".json"): directory / name for name in names if name.endswith(".json")}
+
+
+def live_among(found: dict[str, Path]) -> list[str]:
+    """The key of each live session among the gate files `found`, sorted and each once. Two session
+    ids with one 8-character prefix give one key."""
+    return sorted({sid[:8] for sid, path in found.items() if runs(path)})
+
+
+def live_keys() -> list[str] | None:
+    """The key of each live session, sorted and each once, or None when the gate directory cannot be
+    listed."""
+    found = gates()
+    return None if found is None else live_among(found)
+
+
+def live_sentence(keys: list[str]) -> str:
+    """The sentence of the refusals that names the live sessions `keys`."""
+    return (
+        "The live sessions are " + ", ".join(f"`{key}`" for key in keys) + "."
+        if keys
+        else "No session is live."
+    )
+
+
 def gone(value: str) -> Verdict:
     """A refusal when no live gate has the key `value`; `PASS` when one has, or when the check
     cannot tell."""
     if value.startswith("tcp-"):
         return PASS
-    directory = gate_directory()
-    try:
-        names = paths.entries(str(directory))
-    except OSError:
+    found = gates()
+    if found is None:
         return PASS
-    found = {name.removesuffix(".json"): directory / name for name in names if name.endswith(".json")}
     if any(runs(path) is not False for sid, path in found.items() if sid.startswith(value)):
         return PASS
-    live = [sid[:8] for sid, path in found.items() if runs(path)]
-    listed = (
-        "The live sessions are " + ", ".join(f"`{key}`" for key in live) + "."
-        if live
-        else "No session is live."
-    )
-    return Verdict("deny", GONE.format(value=value, live=listed))
+    return Verdict("deny", GONE.format(value=value, live=live_sentence(live_among(found))))
 
 
 def wrong_key(call: Call, tool: str, key: str | None) -> Verdict:
@@ -186,7 +211,13 @@ def named(call: Call, tool: str, key: str) -> Verdict:
     value = call.argument(key) or ""
     if not value.strip():
         if call.command in REQUIRED:
-            return Verdict("deny", MISSING.format(tool=tool, key=key, example=EXAMPLES[call.command]))
+            # A gate directory that cannot be listed gives no sentence: no key, and no claim that
+            # none is live.
+            keys = live_keys()
+            live = "" if keys is None else live_sentence(keys) + " "
+            return Verdict(
+                "deny", MISSING.format(tool=tool, key=key, example=EXAMPLES[call.command], live=live)
+            )
         return PASS
     return PASS if call.command == "kaimon.manage_repl" else gone(value)
 

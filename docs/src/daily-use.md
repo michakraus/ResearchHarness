@@ -55,7 +55,7 @@ git revert <commit>
 harness install --apply
 ```
 
-[security.md](security.md#check-a-change-of-the-settings) says how to check the result.
+[The security model](safeguards/security-model.md#check-a-change-of-the-settings) says how to check the result.
 
 ## The drift warning at session start
 

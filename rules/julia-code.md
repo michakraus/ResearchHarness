@@ -48,7 +48,7 @@ prediction that would kill it. Generating one at a time anchors the whole invest
 first plausible idea.
 
 **Tag every temporary probe** — `@info "[DEBUG-a4f2] …"`, one prefix per investigation — so the
-cleanup is a single grep. An untagged `@show` survives the commit.
+cleanup is a single grep.
 
 **A check that cannot fail is not a check.** A test whose expected value is recomputed the way the
 code computes it passes by construction. Take the expected value from elsewhere: a closed form, a
@@ -122,8 +122,7 @@ relative convergence test never ends on a rank-deficient matrix: test against th
 as LAPACK's `gesvj` does. Both fail silently.
 
 **An edit that changes a file's line count falsifies every `file:line` citation of it.** Run
-`grep -rn 'name\.jl:' CHANGELOG.md test/ Tasks/` and re-measure each hit in the same commit. In a
-new comment, name the function, not the line.
+`grep -rn 'name\.jl:' CHANGELOG.md test/ Tasks/` and re-measure each hit in the same commit.
 
 **Kaimon.** `ex` takes the session as `ses = …` and shows its return value only with `q = false`;
 `manage_repl` takes `session = …`. `ex` drops an unknown parameter silently and answers

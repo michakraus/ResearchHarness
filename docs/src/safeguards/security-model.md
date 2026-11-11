@@ -1,13 +1,19 @@
 # The security model
 
 The harness gives an agent session several layers of control. Only one of them is a security
-boundary: the Claude Code sandbox. The other layers prevent accidents. They stop common mistakes
+boundary: the OS sandbox. The other layers prevent accidents. They stop common mistakes
 and tell the session what to do instead, but a session that tries to get past them can do
-so.
+so. [Risks of agentic coding](risks.md) says which risk each layer answers.
 
 `harness install` writes the sandbox, the permission lists and the hooks from the settings
 template `settings/settings.proposal.json` into `~/.claude/settings.json`.
-[setup-reference.md](setup-reference.md#claude-code) gives the steps.
+[The setup reference](../setup-reference.md#claude-code) gives the steps.
+
+<ControlFigure />
+
+*The layers of control around one tool call.* The instructions guide the agent. Before a tool call
+runs, the guard hooks and the permission settings check it, and refuse it, ask you, or let it run.
+A shell command then runs inside the sandbox.
 
 <WalkThrough name="tool-call" />
 
@@ -19,7 +25,10 @@ sandbox.
 ## The mechanisms
 
 Each row states the behaviour of the Claude Code version in the last column, in a session with
-the installed template. A later version can behave differently.
+the installed template. A later version can behave differently. A page of this section describes
+each mechanism: [Sandboxes](sandbox.md), [Permissions](permissions.md),
+[Guard hooks](guard-hooks.md), [Git safety](git-safety.md) and
+[Leak checks and gitleaks](leaks.md).
 
 | mechanism | what it stops | what it does not stop | Claude Code version |
 |:--|:--|:--|:--|
@@ -72,98 +81,20 @@ the installed template. A later version can behave differently.
   own.** The sandbox wraps the shell commands of a session. An MCP server is a process of its own,
   for example a server that launchd starts, and the code that it runs for a session does not see
   the session's write allowlist, read deny list or network allowlist. The permission lists control
-  which of its tools a session can call. The launch agent of Kaimon starts the server with
-  `/usr/bin/sandbox-exec -f ~/.config/research-harness/sandbox/kaimon.sb`, a Seatbelt profile that
-  `harness setup` renders from `sandbox/daemon.toml`. The profile denies every file read and
-  write, then allows reads of `~/Research`, the Julia depot, juliaup, Kaimon's configuration,
-  cache and logs, git's configuration, the per-user temporary and cache directories, the
-  system directories, the root directory `/` itself, which dyld reads when a process starts,
-  and `~/.config/research-harness/sandbox/shims`, the first directory of the job's `PATH`; and
-  writes of `~/Research`, the depot, Kaimon's directories, the per-user directories and
-  `/private/tmp`. It denies writes to `~/.julia/bin`, `~/.julia/config`,
-  `~/.julia/juliaup`, the harness's `githooks/`, and `.git/hooks`, `.git/config` and `.githooks`
-  at any depth below `~/Research`. After these denies it allows one file again, juliaup's lock
-  file `~/.julia/juliaup/.juliaup-lock`, because the juliaup launcher that starts Julia opens it
-  for writing at every start and exits when that fails; `juliaup.json` and the installed Julia
-  versions stay unwritable. The rule allows every write to that one path, so a confined process
-  can also hold the lock, which makes every juliaup command outside the profile wait, or put a
-  symbolic link in the file's place, which a juliaup command outside the profile then opens for
-  writing. Kaimon starts every Julia session on a pseudo-terminal, so the profile allows the
-  operation `pseudo-tty` and reads, writes and ioctls of `/dev/ptmx` and of every
-  `/dev/ttysNNN` (the key `pty` of the job). Seatbelt cannot tell the job's own pseudo-terminal
-  from the terminal window of another program of the same user, so a confined process can open
-  the `/dev/ttysNNN` of any terminal of the user and write text into it, which that terminal
-  shows as output. The rule also allows a change of the device's mode, which the user owns, so it
-  does not stop a read of that terminal's input either. Whether such a process can also push
-  input into another terminal with the ioctl `TIOCSTI` is not checked on macOS 27. The
-  `julia-update` job has `pty = false` and no such rule. Kaimon's profile denies an app or
-  document opened through Launch Services, and a mount. It denies an Apple Event to another app
-  twice: `(deny appleevent-send)`, and a deny of the Mach services
-  `com.apple.coreservices.launchservicesd` and `com.apple.CoreServices.coreservicesd`. On macOS
-  27.2, under the rendered profile and outside every agent sandbox,
-  `osascript -e 'tell app "Finder" to get name of startup disk'` fails with error `-54`, and with
-  `-600` when the profile lacks the Mach-service deny; an `AESendMessage` call that does not go
-  through `osascript` also fails, with `-600`. Each rule alone stops the event before the
-  Automation consent of macOS. The probe `appleevent` of `sandbox/probe-daemon.jl` sends this
-  event: AppleScript answers `name` of an application from the script itself and sends no event.
-  The profile leaves open the
-  network, the other Mach services, which Metal needs, every write inside `~/Research` outside the denied repository parts, and the rename of a
-  directory above a denied part, which moves the part out of the denied path. The writes inside
-  `~/Research` include `~/Research/.claude/hooks`, `skills` and `settings.json`, which the session
+  which of its tools a session can call. The launch agents of Kaimon and `julia-update` start
+  their programs under a Seatbelt profile, which denies every file read and write that it does
+  not name. Kaimon's profile leaves open the network and every write inside `~/Research` outside
+  the repository parts that it denies, such as `~/Research/.claude/hooks`, which the session
   sandbox denies: through Kaimon's `ex`, code can write a hook that a later session runs outside
-  every sandbox. The exec of the setuid `/bin/ps` fails under the profile, and Kaimon reads a
-  failed `ps -o state= -p PID` as a dead session, so the shims directory holds a `ps` of the
-  harness that answers that form with `kill -0`. It says that any process that `kill -0` can
-  signal exists, which the job could already learn with `kill -0` itself, counts a zombie as
-  alive, and counts a process that `kill -0` may not signal, such as one of another user, as
-  gone. The `julia-update`
-  job runs under its own profile from the same file. For every other MCP server no profile
-  applies.
-- **On Linux, Kaimon and `julia-update` run under `bwrap`.** Each unit starts its program with
-  `~/.local/bin/jobbox <job>`, which runs `bwrap` with the arguments that `harness setup` renders
-  from the same `sandbox/daemon.toml` into `~/.config/research-harness/sandbox/<job>.bwrap`. The
-  job gets new namespaces of every kind but the network (`--unshare-all --share-net`), ends with
-  the unit (`--die-with-parent`), and sees a new `/proc`, a new empty `/tmp`, `/dev`, `/sys`
-  read-only, the system paths of `linux_read` read-only, and an empty home. In that home only the
-  job's `~/` paths are bound: Kaimon reads and writes `~/Research`, the depot and its own
-  directories, as on macOS, and the same write denies are bound read-only. `jobbox` also binds
-  `.git/hooks`, `.git/config` and `.githooks` read-only in each repository that it finds at most
-  four levels below `~/Research` when a job that binds `~/Research` starts. `bwrap` follows a
-  symbolic link in a bind, and each job writes directories below the home that hold sources of
-  the other job's binds, such as `~/.julia/environments/apps` of `julia-update` in Kaimon's
-  `~/.julia`. So `jobbox` stops with exit 2, before `bwrap`, when a source of any bind below the
-  home is a link, or lies below one under the entry of the home that holds it, which may itself
-  be a link. A check before the mount does not hold against the other job while it runs, so each
-  job binds onto itself each path from its own write path down to such a source of the other:
-  in its namespace that path is a mount point, which it can neither rename nor remove. A pin is a
-  bind source too, so each job also pins the paths to the other job's pins that it writes and
-  does not bind yet, and binds each pin before any of its write binds below it, which would
-  otherwise cover it. Kaimon pins `~/.julia/environments` and `~/.julia/environments/apps`, and
-  `julia-update` pins Kaimon's pin `~/.julia/environments` and juliaup's lock file. Neither job
-  sees `/run/user/<uid>`, so neither reaches the session bus or the user's service manager;
-  `julia-update` therefore runs its server check, the restart of the server and its alerts in a
-  second phase, `~/.local/bin/julia-update-server`, a POSIX `sh` script outside `bwrap`, after
-  the update phase. It runs no Julia and no program of a `PATH` entry whose physical path lies at
-  or below the physical home, or at or below the target of a link directly in the home, and reads
-  the update phase's state as data. Kaimon writes the depot whose packages the update phase loads,
-  so the two jobs are one trust domain: what `julia-update` writes, `~/.juliaup`, `~/.julia/bin`,
-  `~/.julia/juliaup` and the harness's Julia environment, Kaimon's code can write at the next run
-  of the update phase, Kaimon's own write denies of `~/.julia/bin` and `~/.julia/juliaup`
-  included.
-  `harness setup` and the services script of the dotfiles kit first run the sandbox check of
-  `harness doctor` and stop with exit 2 when `bwrap` cannot make a sandbox, which names the
-  AppArmor setting `kernel.apparmor_restrict_unprivileged_userns`; no job then starts unconfined.
-  The arguments leave open the network, every abstract Unix socket of the host's network
-  namespace, such as an X server's `@/tmp/.X11-unix/X0`, through which a client can type into any
-  window of the user, the host's terminals in `/dev/pts`, which `--dev-bind /dev /dev` shows the
-  job (not measured on Linux), every write inside `~/Research` outside the bound repository parts,
-  the parts of a repository cloned after the job's start, a `.githooks` that did not exist at the
-  start, the `.git` file of a worktree, which the job can point at a git directory with hooks of
-  its own, and the hooks and the configuration of a submodule in `.git/modules/<name>`, which get
-  no bind. A network namespace of its own for each job, which would close the network and
-  abstract-socket gaps, is planned.
-- **OpenCode and oh-my-pi have no sandbox.** Their permission blocks and guard extensions check
-  text, as the deny list and the hooks do. Antigravity runs commands in its terminal sandbox in the
+  every sandbox. A process under Kaimon's profile can also write text into any terminal of the
+  user.
+  [The daemon profiles](sandbox.md#the-daemon-profiles) give the rules in full. On Linux, `jobbox`
+  starts Kaimon and `julia-update` under [`bwrap`](sandbox.md#the-daemon-profiles), with
+  arguments from the same rule list. For every other MCP server, no profile applies.
+- **OpenCode and oh-my-pi have no sandbox of their own.** Started without `agentbox`, their
+  permission blocks and guard extensions check text, as the deny list and the hooks do. Started
+  through [`agentbox`](sandbox.md#the-launcher-agentbox), each runs with every command that it
+  starts inside the sandbox of `srt`. Antigravity runs commands in its terminal sandbox in the
   CLI and the desktop app, and its guard hook sets `BypassSandbox` on each command and checks paths
   and command segments.
 - **A session cannot edit the settings.** The template denies an edit of
@@ -182,7 +113,14 @@ that the rule must stop, and a call that it must let through. One result can mis
 result that lets a call through is the more dangerous one. Repeat the exact call before you
 decide that a rule does not work.
 
-## The outer sandbox
+## Planned safeguards
 
-An outer sandbox, one OS boundary around every frontend, is planned. This page gives no steps for
-it yet.
+These safeguards are decided, and none of them runs yet. [Sandboxes](sandbox.md#planned) gives
+each sandbox item in more detail.
+
+- **A guard against a session with no sandbox** (planned): a guard hook refuses every tool call
+  when `~/.ssh` is readable and no sandbox is on.
+- **Kaimon without the network** (planned): only the package servers stay reachable.
+- **The desktop apps under an outer sandbox** (planned), and **a Linux launcher** (planned).
+- **Masked keys** (planned), and **a forge token per owner** (planned).
+- **A credential proxy** (planned, optional and last).

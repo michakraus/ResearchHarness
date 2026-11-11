@@ -134,7 +134,7 @@ passes. A log redirect there, `> ~/Research/.scratch/<task>/run.log 2>&1`, passe
 The agent reads the message and makes the edit with its edit tool, which asks you first, as in
 step 3. A refusal is a normal event: it stops a common mistake and tells the agent what to do in
 its place. A guard hook prevents accidents; it is not a security boundary.
-[Guard hooks](components/hooks.md) describes each hook.
+[Guard hooks](safeguards/guard-hooks.md) describes each hook.
 
 **When it does not happen.** The core instructions also tell the agent not to edit a file through
 the shell, so the agent can use its edit tool at once and never try `sed`. That is the first layer
@@ -281,6 +281,7 @@ a rule of the harness goes into its source in the checkout in the same way.
 - [The research tree](research-tree.md): the layout of the
   [research tree](concepts.md#research-tree), and the subcommands for all its repositories.
 - [Introduction](concepts.md): the ideas behind each step of this tutorial.
-- [The security model](security.md): what each layer of control stops, and what it does not.
-- [Agentic software engineering](agentic-engineering.md): how agents plan, build and judge a
-  change, and which agents start which sub-agents.
+- [The security model](safeguards/security-model.md): what each layer of control stops, and what
+  it does not.
+- [Challenges](agentic/challenges.md): how agents plan, build and judge a change, and
+  [Agents and their roles](agentic/agents.md): which agents start which sub-agents.

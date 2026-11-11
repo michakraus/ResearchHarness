@@ -1,0 +1,20 @@
+# Two allocation readings compared exactly fail on Windows, which quantises the figures by 16 bytes.
+id: allocated-equality
+language: julia
+severity: error
+message: two @allocated readings compared exactly; assert their difference under a stated tolerance
+utils:
+  # One reading: @allocated(a) or @allocated a, or parentheses whose value, the last expression in
+  # them, is a reading.
+  reading:
+    any:
+      - kind: macrocall_expression
+        has: { kind: macro_identifier, regex: '^@allocated$' }
+      - kind: parenthesized_expression
+        has: { nthChild: { position: 1, reverse: true }, matches: reading }
+rule:
+  kind: binary_expression
+  all:
+    - has: { nthChild: 1, matches: reading }
+    - has: { nthChild: 2, kind: operator, regex: '^===?$' }
+    - has: { nthChild: 3, matches: reading }

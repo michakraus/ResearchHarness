@@ -8,8 +8,11 @@
   `~/.omp/agent/config.yml`. `write_path` unwraps once, and the guard checks
   `[~/.omp/agent/config.yml]` as a relative path, which no rule matches. The same holds for
   `[[~/.claude/hooks/gh-api-writes.py#1A2B]#1A2B]`. The user decided to land the guard with this
-  gap: oh-my-pi is not used before the sandbox launcher exists, and the launcher's profile then
-  checks the real path.
+  gap, for oh-my-pi under the sandbox launcher. The launcher `sandbox/agentbox` runs the whole
+  oh-my-pi process under srt, so its `write` tool too. The srt file of oh-my-pi denies writes to
+  `~/.omp/agent/config.yml` (`sandbox/policy.toml:64`) and allows none below `~/.claude/hooks`;
+  the probes W10 and W2 of `scripts/probe-agentbox.py` try the two places. The launcher is
+  opt-in: an oh-my-pi started without it has only the guard, and the gap is open there.
 - kind: defect
 - found: 2026-10-06
 
@@ -587,23 +590,27 @@
 
 ### K128 · The stages of the Julia packages' pre-commit hook read the working tree, not the staged content.
 
-- location: `githooks/pre-commit.jl:168`
+- location: `githooks/pre-commit.jl:180`
 - evidence: `formatting`, `nfc`, `test_layout` and `load` read the files on disk. A file that is
   staged and then edited again is judged on its later text: a formatted staged version with an
   unformatted edit on top is refused, and an unformatted staged version with a formatted edit on
-  top passes. A fix checks a copy of the index, for example from `git checkout-index` into a
-  temporary directory, for every stage. A cheaper mitigation refuses a commit in which a staged
-  `.jl` file is partly staged, that is, one that `git diff --name-only` also lists with changes
-  that are not staged; it leaves the symlink case below. The shell hook that `pre-commit.jl`
-  replaced read the working tree the same way. A `.jl` file that becomes a symlink to a file that
-  is not tracked passes the formatting and load stages on that file, and a fresh checkout has the
-  symlink without its target, so the package can fail to load there.
+  top passes. `ast_grep` scans the files on disk and takes the added lines from the index, so in
+  a partly staged file a line can move between the two: with `@show x` staged as an added line 4
+  of a file under `src/` and two unstaged comment lines above it, the stage reads the hit on line
+  6 as advisory and the commit passes, and an unstaged hit can block a commit. A fix checks a copy
+  of the index, for example from `git checkout-index` into a temporary directory, for every stage.
+  A cheaper mitigation refuses a commit in which a staged `.jl` file is partly staged, that is,
+  one that `git diff --name-only` also lists with changes that are not staged; it leaves the
+  symlink case below. The shell hook that `pre-commit.jl` replaced read the working tree the same
+  way. A `.jl` file that becomes a symlink to a file that is not tracked passes the formatting and
+  load stages on that file, and a fresh checkout has the symlink without its target, so the
+  package can fail to load there.
 - kind: defect
 - found: 2026-10-31, a review of the hook rollout's pull requests
 
 ### K130 · The formatting stage of the Julia packages' pre-commit hook has no time limit.
 
-- location: `githooks/pre-commit.jl:148`
+- location: `githooks/pre-commit.jl:154`
 - evidence: `formatted` calls JuliaFormatter's `format` in the hook's own process, one staged
   file at a time, with no limit. The lint stage and the load test run in `run_boxed`, with a
   limit of 60 s and 600 s; a staged file on which `format` does not end holds the commit until
@@ -616,19 +623,21 @@
 
 ### K131 · The time box of the Julia packages' pre-commit hook does not cap the output that it captures.
 
-- location: `githooks/pre-commit.jl:68`
+- location: `githooks/pre-commit.jl:72`
 - evidence: `run_boxed` reads the whole output of the lint stage and of the load test into one
-  string, `read(out, String)`, and its limit is one of time only: 60 s for `fatou lint` and 600 s
-  for the load. A program that prints without end within the limit fills the hook's memory before
-  the limit stops it. A fix reads the stream in blocks and keeps the first part only, for example
-  the first megabyte, which the stages print from anyway: the lint stage prints its lines, and the
-  load test at most 20 of them.
+  string, `read(out, String)`, and the stdout and the stderr of the ast-grep stage into two, and
+  its limit is one of time only: 60 s for `fatou lint` and `ast-grep`, and 600 s for the load. A
+  program that prints without end within the limit fills the hook's memory before the limit stops
+  it. A fix reads the stream in blocks and keeps the first part only, for example the first
+  megabyte, which the stages print from anyway: the lint stage prints its lines, and the load test
+  at most 20 of them. The ast-grep stage reads each line of its stdout as one JSON object and
+  skips itself on a line that does not parse, so a cut inside a line skips the stage.
 - kind: defect
 - found: 2026-11-02, a review of the hook rollout's pull requests
 
 ### K132 · The time box of the Julia packages' pre-commit hook has no bound for a process in uninterruptible I/O.
 
-- location: `githooks/pre-commit.jl:77`
+- location: `githooks/pre-commit.jl:82`
 - evidence: `run_boxed` sends the group SIGTERM at the limit and SIGKILL 5 s later, and waits
   for the program with `wait(p)`, which has no limit of its own. A process in uninterruptible
   I/O, such as a read from a network file system that does not answer, does not end on SIGKILL
@@ -665,7 +674,7 @@
 
 ### K135 · The Julia packages' pre-commit and pre-push hooks can signal a freed group ID.
 
-- location: `githooks/pre-commit.jl:81`
+- location: `githooks/pre-commit.jl:86`
 - evidence: `run_boxed` closes its `stop` timer after the program and the output reader end. A
   timer that fires before `close` still runs its callback: Julia's `_trywait`
   (`base/asyncevent.jl:164` on 1.13.3) returns `true` for a timer that is set, also when it is
@@ -674,7 +683,7 @@
   another group, and starts a SIGKILL timer that nothing closes. A probe of 300 runs, each with
   the limit at the program's end time, found no late signal, so the race is not seen to happen.
   The SIGKILL timers have the same race: `close(killer[])` of `run_boxed`
-  (`githooks/pre-commit.jl:86`) and `close(killer)` of `run_suite` in `pre-push`
+  (`githooks/pre-commit.jl:91`) and `close(killer)` of `run_suite` in `pre-push`
   (`githooks/pre-push.jl:124`) do not stop a callback that is already queued, so its SIGKILL can
   reach the group ID after the box or the wait has ended. The wait of `run_suite` also checks the
   group with `group_alive`, by default `kill(-group, 0)` (`githooks/pre-push.jl:117`), and its
@@ -862,7 +871,57 @@
 - found: 2026-11-10, the review of the srt files for Claude Code's Anthropic login and `agy`'s
   token file
 
-### K155 · A `--bind-try` or `--ro-bind-try` destination counts as an effective mount point of a job even when its source is missing on the host.
+### K154 · With `GIT_GLOB_PATHSPECS=1`, `GIT_LITERAL_PATHSPECS=1` or `GIT_NOGLOB_PATHSPECS=1`, the Julia packages' pre-commit hook lists no staged `.jl` file below the repository's root.
+
+- location: `githooks/pre-commit.jl:525`
+- evidence: `main` takes the staged files from `staged("--diff-filter=ACMRT", "--", "*.jl")`.
+  Under `GIT_GLOB_PATHSPECS=1`, git reads `*.jl` as a glob in which `*` matches no `/`: with
+  `src/Fixture.jl` and `top.jl` staged, `git diff --cached --name-only --diff-filter=ACMRT --
+  '*.jl'` prints both by default and only `top.jl` with the variable. Under
+  `GIT_LITERAL_PATHSPECS=1`, git reads `*.jl` as a literal path: with `src/Fixture.jl` staged,
+  the listing is empty. So no stage checks a file below `src/`, and a commit that adds an `@show`
+  to `src/Fixture.jl` passes with exit 0 and no `ast-grep` line, under either variable. Under
+  `GIT_NOGLOB_PATHSPECS=1`, git reads `*.jl` as a literal path too: with `src/Fixture.jl` and
+  `top.jl` staged, the listing is empty. The launcher `githooks/pre-commit` lists the files with
+  the same pathspec, at line 13. A fix runs both listings without `GIT_GLOB_PATHSPECS`,
+  `GIT_LITERAL_PATHSPECS` and `GIT_NOGLOB_PATHSPECS`, as `added_lines` runs its diff without the
+  variables that change its hunks.
+- kind: defect
+- found: 2026-11-11, the arbitrator's diagnosis of the second critic round of the pre-commit
+  ast-grep stage
+
+### K155 · The docstring of `git_writes.py` and *Guard hooks* say that the settings template holds no rule for the lease push, but the template allows one form and denies three.
+
+- location: `hooks/guard/git_writes.py:58`
+- evidence: the docstring (lines 58-60) says "a hook's `allow` does not lift a matching `ask` or
+  `deny` rule, so the template holds no rule for these forms and the check answers both ways";
+  `docs/src/safeguards/guard-hooks.md:287-289` says the same of the settings. The template's
+  `permissions.allow` holds `Bash(git push --force-with-lease=* origin HEAD:refs/heads/*)`
+  (`settings/settings.proposal.json:21`), and its `deny` holds `Bash(git push --force-with-lease)`
+  (line 288) and the same lease form for `main*` and `master*` (lines 298-299). The denies agree
+  with the check, which refuses a lease push to a default branch or to no branch. The allow rule
+  matches the `HEAD:refs/heads/<branch>` form whatever `origin` is, where the check asks for an
+  `origin` outside the own organisations. Whether Claude Code then asks, because the hook asks,
+  or runs the push, because the rule allows it, is not measured here. Either the docstring and
+  the page name the four rules, or the template drops the allow rule.
+- kind: docs
+- found: 2026-11-11, PR #241 (the docs restructure)
+
+### K156 · `julia-branch-verifier` names a "seven-point pass" but defines six points, numbered 1 and 3–7.
+
+- location: `agents/julia-branch-verifier.md:5`
+- evidence: the description (line 5) says "Runs the seven-point pass", and the output shape
+  (line 171) says "Scope: full seven points". The table of points (lines 92-97) has the rows
+  **1 · correctness, quality, concision**, **3 · type piracy and ambiguities**, **4 · type
+  instability**, **5 · avoidable allocations**, **6 · stale comments, present tense** and
+  **7 · history only in `CHANGELOG.md`**; no point 2 is defined anywhere in the file.
+  `docs/src/components/agents.md:197` repeats "seven-point pass". A fix says six, or renumbers
+  the points 1–6; a renumbering also changes "points 1,3,6,7 only" of the output shape
+  (line 171) and every "point 3" and "point 4" of the file.
+- kind: docs
+- found: 2026-11-11, PR #241 (the docs restructure)
+
+### K157 · A `--bind-try` or `--ro-bind-try` destination counts as an effective mount point of a job even when its source is missing on the host.
 
 - location: `lib/harness/jobsandbox.py:519`
 - evidence: `job_pins` skips each path that `effective([*reads, *writes, *denies, *back])` holds,
