@@ -7,10 +7,10 @@
 # ~/.config/research-harness/sandbox/<job>.bwrap, one argument per line, which `harness setup`
 # writes with `harness render sandbox/<job>.bwrap` (lib/harness/jobsandbox.py). To them jobbox
 # adds `--chdir` and the working directory of the start, because Kaimon reads its tool policy from
-# .kaimon/tools.json there, and for each repository R at most four levels below ~/Research, itself
-# included, one
-# whose R/.git is a directory, the read-only binds of R/.git/hooks, R/.git/config and R/.githooks
-# that exist: the job writes ~/Research, and these name programs that the next git command runs.
+# .kaimon/tools.json there, and for each repository R at most four levels below ~/Research,
+# ~/Research itself included, whose R/.git is a directory, the read-only binds of R/.git/hooks,
+# R/.git/config and R/.githooks that exist: the job writes ~/Research, and these name programs
+# that the next git command runs.
 # A repository cloned after the start, a .githooks made after it, and a worktree, whose .git is a
 # file, get no bind.
 #

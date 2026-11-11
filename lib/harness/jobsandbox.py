@@ -1,17 +1,24 @@
-"""The Seatbelt profiles of the launch agents `kaimon` and `julia-update` on macOS.
+"""The Seatbelt profiles of the launch agents `kaimon` and `julia-update` on macOS, and the
+arguments of `bwrap` for their `systemd --user` units on Linux.
 
-    harness render sandbox/kaimon.sb        # print the profile of the Kaimon server
-    harness render sandbox/julia-update.sb  # print the profile of the update job
-    harness test jobsandbox                 # the cases below
+    harness render sandbox/kaimon.sb           # print the profile of the Kaimon server
+    harness render sandbox/julia-update.sb     # print the profile of the update job
+    harness render sandbox/kaimon.bwrap        # print the bwrap arguments of the Kaimon server
+    harness render sandbox/julia-update.bwrap  # print the bwrap arguments of the update job
+    harness test jobsandbox                    # the cases below
 
 `sandbox/daemon.toml` holds the rules of both jobs. `load` reads it into a `DaemonPolicy`, a frozen
-dataclass: once for both jobs the denied operations and the denied Mach services, and for each job
-of JOBS, in a table `[job.<name>]`, its read paths, read files, write paths, write files, write
-denies, the files that it writes back inside a write deny, and `pty`, whether it uses
-pseudo-terminals (`JobRules`). Each key is required, `pty` is true or false, each other value is a
-list of strings, and a path is a token of TOKENS alone, or a start, `~`, nothing or a token, and
-then `/` and one or more segments, none of them empty, `.` or `..`, so no `//` and no final `/`;
-a read file can also be the root `/` alone, which dyld reads when a process starts.
+dataclass: once for both jobs the denied operations and the denied Mach services, on Linux the
+system paths that both read (`linux_read`) and the root entries that are a link on one Linux and a
+directory on another (`linux_links`), and for each job of JOBS, in a table `[job.<name>]`, its read
+paths, read files, write paths, write files, write denies, the files that it writes back inside a
+write deny, the directories that it writes on Linux only (`linux_write`), and `pty`, whether it
+uses pseudo-terminals (`JobRules`). Each key is required, `pty` is true or false, each other value
+is a list of strings, and a path is a token of TOKENS alone, or a start, `~`, nothing or a token,
+and then `/` and one or more segments, none of them empty, `.` or `..`, so no `//` and no final
+`/`; a read file can also be the root `/` alone, which dyld reads when a process starts. A
+`linux_write` path starts with `~/`. A path of `linux_read` and `linux_links` is `/` and one or
+more such segments, and one of `linux_links` has one segment only.
 A system path is in its real form: a path at or below `/etc`, `/tmp` or `/var`, in any case of
 letters, is refused, because Seatbelt matches a path after it resolves the symlink
 `/etc -> private/etc`, and a file system that ignores case reads `/ETC` as `/etc`. A denied
@@ -36,17 +43,48 @@ list is empty is left out, because a block with no filter matches every path. `~
 `$HARNESS` the profile's `harness`, and each `getconf` token its value (`UserDirs`) without a final
 `/`, with a leading `/var/` written as `/private/var/`. Every path and regex is an ordinary SBPL
 string, with `"` and `\\` escaped, and a regex escapes the metacharacters of the home path.
+`profile` reads no Linux key.
 
-`harness render` of a template `sandbox/<job>.sb` (`job_of`), a file that does not exist, prints
-`render` of that job: `profile` with the rule list `daemon.toml` beside the template, the profile's
+`bwrap_args` gives the static arguments of `bwrap` for one job, in this order: BWRAP_START, which
+makes new namespaces of every kind but the network, ends the job with its unit, and mounts a new
+/proc, the host's /dev, /sys read-only and a new /tmp; `--ro-bind-try` of each path of
+`linux_read`; for each entry of `linux_links` as the host has it (`LinuxRoot`, `linux_root`)
+`--symlink` of its target for a link and `--ro-bind` for a directory; `--tmpfs` of the home; then
+`--ro-bind-try` of each read path and read file, `--bind-try` of each write path, write file and
+`linux_write` path, `--ro-bind` of each write deny, and `--bind-try` of each file written back.
+Of the job's lists it takes only a `~/` path, `~` becoming `home`, and `$HARNESS` and a path below
+it, `$HARNESS` becoming the profile's `harness`: an absolute path, the root `/`, the `$DARWIN`
+tokens, MACOS_LIBRARY and every path below it are macOS's, and `pty` gives no argument. A write
+deny that lies at or below no read path, write path or `linux_write` path of the job is left out,
+because the job cannot see it; `linux_dirs` names the write denies that are left in and the
+`linux_write` paths, the directories that must exist before the job starts. An argument that holds
+a newline raises HarnessError, because `jobbox` reads one argument per line.
+
+`harness render` of a template `sandbox/<job>.sb` or `sandbox/<job>.bwrap` (`job_of`), a file
+that does not exist, prints `render` of that job; a `.bwrap` template prints `bwrap_args` with the
+profile's `home` and `harness` and `linux_root` of this host, one argument per line, and a `.sb`
+template prints `profile` with the rule list `daemon.toml` beside the template, the profile's
 `home` and `harness`, and the values of `getconf DARWIN_USER_TEMP_DIR` and
 `getconf DARWIN_USER_CACHE_DIR`. A `getconf` that is not on the PATH, fails, or prints other than
-one absolute path, a rule list that `load` refuses, and a job that is not one of JOBS, end it with
-exit 2 and one line. `harness setup` on macOS and the services script of the dotfiles kit write
-each render into `~/.config/research-harness/sandbox/<job>.sb` before they render and load the
-job's plist, and before kaimon's profile they install PS_SHIM into SHIMS, which kaimon's profile
-reads and its plist puts first on the job's PATH: the exec of the setuid /bin/ps fails under a
-Seatbelt profile, and Kaimon reads a failed `ps -o state= -p PID` as a dead session.
+one absolute path, a rule list that `load` refuses, a job that is not one of JOBS, and a `bwrap`
+argument with a newline, end it with exit 2 and one line. `harness setup` on macOS and the
+services script of the dotfiles kit write each `.sb` render into
+`~/.config/research-harness/sandbox/<job>.sb` before they render and load the job's plist, and
+before kaimon's profile they install PS_SHIM into SHIMS, which kaimon's profile reads and its plist
+puts first on the job's PATH: the exec of the setuid /bin/ps fails under a Seatbelt profile, and
+Kaimon reads a failed `ps -o state= -p PID` as a dead session. On Linux both, after the sandbox
+check of `harness doctor`, install JOBBOX into ~/.local/bin, write each `.bwrap` render into
+`~/.config/research-harness/sandbox/<job>.bwrap` and create the directories of `linux_dirs`
+before they render the units, which start each job's program through `jobbox`.
+
+The cases on Linux's side check `load` of the Linux keys and its refusals, the order and the edges
+of `bwrap_args`, `linux_root` on a scratch root, the render of `sandbox/<job>.bwrap` through
+bin/harness with no `getconf` on the PATH, JOBBOX with a stub `bwrap` that writes its arguments,
+its refusals and shellcheck, and scripts/julia-update.jl run as on Linux (JULIA_UPDATE_SYSTEM)
+with stubs of juliaup, the juliaup launcher, `lsof`, `systemctl` and `notify-send`: the update
+phase calls none of the last three, and the server phase, `--server`, reads its state. No case
+starts the real `bwrap`. Without `julia` on the PATH the cases of the script print a skip line, and
+without `shellcheck` its check of JOBBOX does.
 
 The cases run PS_SHIM on each form that it accepts and on forms that it refuses, then start
 `/bin/sh -c true` under the profile of each job, rendered with this user's home and `getconf`
@@ -62,8 +100,9 @@ for the pty runs, without the launcher a skip line for its run, and for a shim t
 path that kaimon's profile reads, a skip line for its run.
 
 `sandbox/probe-daemon.jl` holds the probes that a session runs through Kaimon's `ex` once the
-server runs under its profile; the cases below run each probe against a scratch tree, where no
-profile applies, and check the form of its result. Without `julia` on the PATH they print a skip
+server runs under its profile or its `bwrap`; the cases below run each probe of both systems'
+sets against a scratch tree, where no sandbox applies, and check the form of its result and the
+two sets of `run_all`. Without `julia` on the PATH they print a skip
 line. `OPEN_GAPS` of the probe file names the negative probes that the profile does not stop, which
 report `:allowed` under it: none. The cases check that value, that the file's header comment names
 `OPEN_GAPS` and each open gap and expects no exception class of one, that it expects

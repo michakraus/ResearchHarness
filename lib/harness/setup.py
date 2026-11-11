@@ -35,7 +35,9 @@ frontend, srt from the lockfile of sandbox/srt/ (`srt_step`, `install_srt`);
 where the profile has no `claude_remote`, and on macOS with the Seatbelt profile of the Kaimon and
 julia-update jobs written into ~/.config/research-harness/sandbox/ before each one's plist
 (`jobsandbox.py`), and the `ps` shim of the Kaimon job into its `shims/` before Kaimon's plist,
-the Kaimon token with the `julia` component, which with
+and on Linux first the sandbox check of `harness doctor`, which ends the run with exit 2 and one
+line when `bwrap` cannot make a sandbox, then `jobbox`, the `bwrap` arguments of both jobs and
+their directories before the units, the Kaimon token with the `julia` component, which with
 the jobs waits up to TOKEN_READS s for the key of the server that they start, and
 `harness doctor`. A tool of
 TOOLS belongs to every machine or to one component or frontend. A tool that is installed and meets
@@ -153,7 +155,8 @@ NPM_LOG = "A complete log of this run can be found in:"
 DOCTOR = "harness doctor"
 JOBS = ("kaimon", "julia-update", "claude-autocommit")
 # The directory below the home directory of the Seatbelt profiles of the jobs of jobsandbox.JOBS,
-# which the plists name; no session can write below ~/.config.
+# which the plists name, and of their `bwrap` arguments, which jobbox reads; no session can write
+# below ~/.config.
 SANDBOX = ".config/research-harness/sandbox"
 # The directory below the home directory that kaimon's plist puts first on the job's PATH, and the
 # shim that the run installs there, as a path of the clone.
@@ -784,7 +787,11 @@ def job_steps(machine: Machine, loaded: profile_module.Profile, env: Mapping[str
     """The jobs, as the dotfiles kit's services step does them: the two copies in ~/.local/bin,
     then the launch agents or the systemd user units, rendered and loaded; on macOS each job of
     jobsandbox.JOBS has its Seatbelt profile rendered into SANDBOX before its plist, and the Kaimon
-    job has the `ps` shim installed into SHIMS, mode 755, before its profile. On both systems one
+    job has the `ps` shim installed into SHIMS, mode 755, before its profile. On Linux the sandbox
+    check of `bwrap` (`bwrap_check`) comes before every other job step, and JOBBOX, mode 755, the
+    `bwrap` arguments of each job of jobsandbox.JOBS in SANDBOX and the directories of
+    `linux_dirs_step` come before the first unit, which starts its program through JOBBOX. On both
+    systems one
     step creates POCL_CACHE, the directory of POCL_CACHE_DIR in Kaimon's plist and unit, before
     the Kaimon job is loaded. Without a `claude_remote`, no launch agent or unit of the autocommit
     job is rendered or loaded, because launchd loads every plist of ~/Library/LaunchAgents at the

@@ -1107,6 +1107,28 @@ launchctl list "$p".julia-update >/dev/null && echo LOADED
 
 ### Linux
 
+The units of the server and the update job start their program through `~/.local/bin/jobbox`
+under `bwrap`. This command checks that `bwrap` makes a sandbox, as `harness doctor` does, and
+prints `BWRAP-OK`. Without that line, stop here: the two jobs do not start, and
+[the sandbox of Claude Code](#the-sandbox-of-claude-code) says where the cause is.
+
+```bash
+bwrap --ro-bind / / --dev /dev --unshare-user --unshare-pid true && echo BWRAP-OK
+```
+
+These commands install `jobbox`, render the `bwrap` arguments of the server and the update job
+into `~/.config/research-harness/sandbox/`, which `jobbox` reads, and create each directory that
+the arguments bind read-only below your home, and the update job's `~/.cache/julia-update`, each
+new directory with mode 700:
+
+```bash
+mkdir -p ~/.local/bin ~/.config/research-harness/sandbox
+install -m 755 ~/Research/Harness/sandbox/jobbox ~/.local/bin/jobbox
+for j in kaimon julia-update; do harness render ~/Research/Harness/sandbox/"$j".bwrap > ~/.config/research-harness/sandbox/"$j".bwrap; done
+for j in kaimon julia-update; do prev=; while IFS= read -r a; do if [ "$prev" = --ro-bind ]; then case "$a" in "$HOME"/*) (umask 077 && mkdir -p "$a") ;; esac; fi; prev=$a; done < ~/.config/research-harness/sandbox/"$j".bwrap; done
+(umask 077 && mkdir -p ~/.cache/julia-update)
+```
+
 These commands create the server's PoCL kernel cache `~/.cache/kaimon/pocl`, which its
 `POCL_CACHE_DIR` names, each new directory with mode 700, and render each unit with the profile
 into `~/.config/systemd/user/`:

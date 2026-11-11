@@ -4,7 +4,8 @@
 #
 #   julia --startup-file=no scripts/julia-update-test.jl
 #
-# Each case runs the script in a subprocess on a fixture HOME under mktempdir(), with an
+# Each case runs the script in a subprocess, on Linux twice as the unit does, the update phase and
+# then the server phase with `--server`, on a fixture HOME under mktempdir(), with an
 # environment of its own and a PATH that holds only a stub directory. The fixture HOME has a stub
 # juliaup and a stub julia launcher in ~/.juliaup/bin, a juliaup.json with two `X.Y` channels, the
 # Kaimon app's Project.toml and a profile. The stub directory has lsof, ps, both service managers

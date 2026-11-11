@@ -33,7 +33,8 @@ deny_services = ["com.apple.coreservices.launchservicesd", "com.apple.CoreServic
 # `bwrap`, one per line, which `jobbox` reads when the job's unit starts it. The job gets new
 # namespaces but the network, a new /proc and /tmp, /dev and /sys, the system paths below, and an
 # empty home in which only the job's `~/` and `$HARNESS` paths are bound: an absolute path, the
-# root `/` and the `$DARWIN` tokens of the tables below are macOS's, and `pty` has no argument.
+# root `/`, the `$DARWIN` tokens and ~/Library with every path below it, in the tables below, are
+# macOS's, and `pty` has no argument.
 # `linux_read` holds the system paths bound read-only where they exist; /run/systemd/resolve
 # holds the resolver's files, which /etc/resolv.conf links to on Ubuntu. `linux_links` holds the
 # root entries that are a link into /usr on one Linux and a directory on another: each is made a
