@@ -3061,8 +3061,8 @@ def payload_cases():
 
 
 # `kaimon-note.py` adds a note to a Bash call that runs a Julia probe and lets every call run. A
-# case gives it a list of payloads, each with the Kaimon cache of its environment, and expects
-# each to get the note or no output; one wrong payload makes the case wrong.
+# case gives it a list of payloads, with one Kaimon cache in its environment, and expects each to
+# get the note or no output; one wrong payload makes the case wrong.
 KAIMON_NOTE = HOOKS + "kaimon-note.py"
 NOTED = ("mcp__kaimon__ex", "`ping`", "`start_session")
 LEFT_ALONE = (
