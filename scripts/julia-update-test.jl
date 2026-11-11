@@ -161,9 +161,10 @@ function run_script(fx::Fixture, extra::Pair...; phases = LINUX ? (:update, :ser
     out = IOBuffer()
     code = 0
     for phase in phases
-        cmd = phase === :server ? `/bin/sh $SERVER` : `$(Base.julia_cmd()) --startup-file=no $SCRIPT`
-        code = max(code,
-                   run(pipeline(ignorestatus(setenv(cmd, env)); stdout = out, stderr = out)).exitcode)
+        cmd = phase === :server ? `/bin/sh $SERVER` :
+              `$(Base.julia_cmd()) --startup-file=no $SCRIPT`
+        proc = run(pipeline(ignorestatus(setenv(cmd, env)); stdout = out, stderr = out))
+        code = max(code, proc.exitcode)
     end
     return code, String(take!(out)), readlines(fx.log)
 end

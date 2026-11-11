@@ -253,7 +253,7 @@ function server_phase(failures, before, after)
     return 0
 end
 
-"`value` as one line of STATE: each line break a space, because julia-update-server reads one value per line."
+"`value` as one line of STATE, each line break a space: julia-update-server reads a value per line."
 one_line(value) = replace(string(value), r"[\r\n]" => " ")
 
 """
