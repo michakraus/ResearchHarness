@@ -23,27 +23,26 @@ Three sources produce almost every risk:
 
 ## The risks
 
-| risk | an example | the safeguard |
-|:--|:--|:--|
-| **Data loss** | a recursive `rm` outside the work directory; `git reset --hard`; a forced [worktree](../concepts.md#worktree) removal with commits that no branch holds | [guard hooks](guard-hooks.md#the-rm-check), [deny rules](permissions.md#deny), [git safety](git-safety.md) |
-| **A sweep of other work** | `git add -A` or `git commit -a` in a tree where another session works | [the staging check](guard-hooks.md#the-staging-check), [git safety](git-safety.md#staging) |
-| **An irreversible outward step** | a merge, a release, a forced push, a deleted repository | [ask and deny rules](permissions.md), [git safety](git-safety.md#pushes) |
-| **A secret leaves the machine** | a token in a commit, a home path in a public file, a key sent to a host | [the sandbox](sandbox.md), [leak checks](leaks.md), [the token check](guard-hooks.md#the-token-check) |
-| **A private string in a public repository** | the name of a private project in a tracked file of the harness | [leak checks](leaks.md) |
-| **A change of the coding agent's own [rules](../concepts.md#rule)** | the coding agent edits its settings, a [hook](../concepts.md#hook) or an installed [skill](../concepts.md#skill), so that the next session runs with fewer checks | [deny rules](permissions.md#deny), [the drift warning](security-model.md#the-mechanisms) |
-| **Persistence** | a `launchd` job, a cron job or an MCP server that the coding agent adds and that runs later outside every check | [deny rules](permissions.md#deny) |
-| **A wrong host** | a command that sends data to a host that the task does not need | [the sandbox's network allowlist](sandbox.md#the-session-sandbox) |
-| **Prompt injection** | an instruction inside a fetched page that tells the coding agent to run a command | the instructions treat content as data; the [sandbox](sandbox.md) limits what an obeyed instruction can reach |
+| risk | an example | the safeguard | kind |
+|:--|:--|:--|:--|
+| **Data loss** | a recursive `rm` outside the work directory; `git reset --hard`; a forced [worktree](../concepts.md#worktree) removal with commits that no branch holds | [guard hooks](guard-hooks.md#the-rm-check), [deny rules](permissions.md#deny), [git safety](git-safety.md) | accident prevention |
+| **A sweep of other work** | `git add -A` or `git commit -a` in a tree where another session works | [the staging check](guard-hooks.md#the-staging-check), [git safety](git-safety.md#staging) | accident prevention |
+| **An irreversible outward step** | a merge, a release, a forced push, a deleted repository | [ask and deny rules](permissions.md), [git safety](git-safety.md#pushes) | accident prevention |
+| **A secret leaves the machine** | a token in a commit, a home path in a public file, a key sent to a host | [the sandbox](sandbox.md), [leak checks](leaks.md), [the token check](guard-hooks.md#the-token-check) | a boundary: the [sandbox](../concepts.md#sandbox); accident prevention: the leak checks and the token check |
+| **A private string in a public repository** | the name of a private project in a tracked file of the harness | [leak checks](leaks.md) | accident prevention |
+| **A change of the coding agent's own [rules](../concepts.md#rule)** | the coding agent edits its settings, a [hook](../concepts.md#hook) or an installed [skill](../concepts.md#skill), so that the next session runs with fewer checks | [deny rules](permissions.md#deny), [the drift warning](security-model.md#the-mechanisms) | a boundary for a sandboxed shell command: each `Edit` deny is also in the sandbox's write deny list; accident prevention: the [drift](../concepts.md#drift) warning |
+| **Persistence** | a `launchd` job, a cron job or an MCP server that the coding agent adds and that runs later outside every check | [deny rules](permissions.md#deny) | accident prevention |
+| **A wrong host** | a command that sends data to a host that the task does not need | [the sandbox's network allowlist](sandbox.md#the-session-sandbox) | a boundary |
+| **Prompt injection** | an instruction inside a fetched page that tells the coding agent to run a command | the instructions treat content as data; the [sandbox](sandbox.md) limits what an obeyed instruction can reach | a boundary: the sandbox; the instructions are no check |
 
 ## Accident prevention and a boundary
 
 Most safeguards of the harness read the text of a command and stop the forms that are mistakes.
 They prevent accidents. A session that tries to get past them can do so, because a command can
 hide inside a string argument that no text pattern sees. One safeguard is a boundary: the OS
-[sandbox](../concepts.md#sandbox), which limits what a command can read, write and reach, whatever
-its text says.
+sandbox, which limits what a command can read, write and reach, whatever its text says.
 [The security model](security-model.md) states this split, and what each mechanism stops and does
-not stop.
+not stop. The column *kind* of the table above gives the kind of each safeguard of a risk.
 
 The split decides how a risk is handled:
 
