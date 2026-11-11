@@ -328,5 +328,6 @@ kinds of mutants and the tools that run them.
 ### Edge
 
 An input at the border of what a part does, for example a `NaN`, an empty list or a path with a
-space. A spec decides what the code does at each edge, because a critic finds an open edge as a
-blocking defect. [Edges](agentic/edges.md) describes the catalogue of the edges that critics found.
+space. A spec decides what the code does at each edge, because a critic probes every edge that the
+spec leaves open. [Edges](agentic/edges.md) describes the catalogue of the edges that critics
+found.
