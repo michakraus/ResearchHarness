@@ -65,9 +65,12 @@ that have no default: `memory_project`, `tree_agents`, `org`, `repository_roots`
 Before each question it says what the key holds and whether the answer is the same on every
 machine, as the table of [The questions of harness setup](profile.md#the-questions-of-harness-setup)
 gives it. An empty answer keeps the example's value; a list takes items separated by commas or a
-TOML list, and replaces the example's list. Then it asks for the frontends and the components, each
-from a numbered list, and whether this machine develops the harness. With the component `jobs`
-and a profile without `claude_remote`, it asks for the URL of your `~/.claude` repository; an
+TOML list, and replaces the example's list. Then it asks for the frontends and the components, and
+whether this machine develops the harness. In a terminal, the frontends and the components are a
+checkbox list: the arrow keys move, space checks or unchecks a name, and Enter accepts. Without a
+terminal on both standard input and standard output, with `TERM` unset or `dumb`, without curses,
+or in a window too small for the list, it asks from a numbered list instead. With the component
+`jobs` and a profile without `claude_remote`, it asks for the URL of your `~/.claude` repository; an
 empty answer means no autocommit job. It writes the answers into the profile, shows its plan, and
 runs the plan after y/N: `git clone` of `claude_remote` into a `~/.claude` that is missing or
 empty, first, before an installer can write below `~/.claude`; the directories, the Homebrew

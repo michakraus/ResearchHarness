@@ -135,9 +135,15 @@ holds and whether the answer is the same on every machine that shares the tree, 
 [The questions of harness setup](profile.md#the-questions-of-harness-setup) gives it. An empty
 answer keeps the example's value. A list takes items separated by commas or a TOML list, and
 replaces the example's list; an item with a bracket or a quote is refused, and the question comes
-again. It then asks for the frontends and the components, each from a numbered list with one
-description per name, and whether this machine develops the harness (`develop`), y/N: only a
-machine that changes the harness's own code needs it. With the component `jobs` and a profile
+again. It then asks for the frontends and the components, each from a list with one description
+per name, and whether this machine develops the harness (`develop`), y/N: only a machine that
+changes the harness's own code needs it. When standard input and standard output are both a
+terminal, each list is a checkbox list that starts at the current choice: the up and down arrow
+keys move the cursor, space checks or unchecks the name under it, and Enter accepts. After the list
+closes, one line names the choice. Otherwise, and where `TERM` is unset, empty or `dumb`, where
+Python has no curses or curses cannot set up the terminal, and where the window has too few rows
+for the list, it asks from a numbered list: numbers separated by spaces, `none`, or an empty line
+that keeps the current choice. With the component `jobs` and a profile
 without the key `claude_remote`, it then asks for the URL of your `~/.claude` repository, which
 starts with `https://` or `git@`, after its explanation; an empty answer means no autocommit job,
 as [The jobs](#the-jobs) says. The first step of its plan, after the clone of `~/.claude` alone,

@@ -102,8 +102,11 @@ which quotes the message.
 
 Without a profile, `harness setup` asks for each required key; in a terminal, it then asks for the
 frontends, the components and `develop`, also with a profile, and with the component `jobs` for
-`claude_remote` where the profile has none. Before each question it prints what the answer is, and
-whether the answer is the same on every machine that shares the research tree:
+`claude_remote` where the profile has none. In a terminal, the frontends and the components are a
+checkbox list, with the arrow keys, space and Enter; without a terminal on both standard input and
+output, or where the terminal cannot show the list, they are a numbered list. Before each question
+it prints what the answer is, and whether the answer is the same on every machine that shares the
+research tree:
 
 | question | what it is | across machines |
 |:--|:--|:--|
