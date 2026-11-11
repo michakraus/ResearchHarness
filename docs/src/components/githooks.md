@@ -78,7 +78,7 @@ and no change below `test/` passes with no check.
 Stage 2.7 runs `ast-grep scan --custom-languages allow` once over the staged `.jl` files, from the
 root of the repository. ast-grep uses the `sgconfig.yml` that it finds there or in a directory
 above it, such as `~/Research/sgconfig.yml`, a copy of
-[`research-sgconfig.yml`](other.md#research-sgconfigyml). A hit of severity `error` refuses the
+[`research-sgconfig.yml`](other.md#research-sgconfig-yml). A hit of severity `error` refuses the
 commit when a line of the hit is one that the commit adds: the stage prints
 `ast-grep: FAILED` and one line per hit, `<file>:<line>: <rule-id>: <message>`. A hit of severity
 `error` on lines that the commit does not add only warns, so the hits that a file already holds do
