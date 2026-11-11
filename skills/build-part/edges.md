@@ -158,6 +158,27 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
 - **a number argument checked with `str.isdigit`:** it accepts every Unicode digit, and `int` reads
   them, so `--timeout ٣` runs with 3. Check `isascii()` as well, and give the refusals a case with
   a non-ASCII digit (E4 round 1, *Sandbox the agent frontends*)
+- **a deny added to a sandbox's file list and not to the frontends' own read-tool denies:** a
+  frontend's read tool runs outside the shell sandbox, so it still reads the file. Add the path to
+  each frontend's read deny too, such as `Read(…)` in the settings and OpenCode's
+  `guard-paths.json`, with a case per frontend (E5g round 1b, *Sandbox the agent frontends*)
+- **a path rule tested only in the spelling that the code compares:** `~/s/` and `~//s` name the
+  path `~/s`, and a case with only `~/s` does not tell a string compare from a compare of the
+  normalised path, so a mutant that keeps the spelling survives. Give the rule a case in each
+  spelling (E5g verify 2, *Sandbox the agent frontends*)
+- **a link check on the bind sources of one kind, or below one tree:** `bwrap` follows a symbolic
+  link in every bind source, so a check of the read-only binds below `~/Research` misses a
+  writable bind below `~/.julia` that another job can replace with a link. Check the source of
+  every bind flag below every tree that a job writes, and give each flag a case (D2 verify 2,
+  *Sandbox the agent frontends*)
+- **a mount point that pins a path against a live writer, computed from the other job's sources
+  only:** a pin is a bind source too, so the other job must pin it as well, and a later bind of a
+  parent path covers an earlier pin. Compute the pins of both jobs to a fixed point, count a path
+  as pinned only while no later bind in the same namespace covers it, and test the closure on a
+  list with nested write paths in both jobs (D2 verify 3, *Sandbox the agent frontends*)
+- **a rule "at or below a path" tested only strictly below it:** a mutant that drops the equality
+  arm survives. Give the rule a case for the path itself, for each path it names (D2 verify 4,
+  *Sandbox the agent frontends*)
 
 ## A numerical method
 
