@@ -8,8 +8,10 @@
 //   check of dead links does not test;
 // - the home page, whose home layout has no doc footer, has its own edit link;
 // - each page has as many table rows as its Markdown source;
-// - the home page has its two figures, the introduction its three and the page
-//   agentic-engineering its four call graphs, each found by its <title> and with a <desc>;
+// - each page of FIGURES has its figures, and no other page has one: the home page its two, the
+//   introduction its three, agentic/agents its four call graphs, agentic/loop its two
+//   walk-throughs, and the figures of the pages of Agentic coding and Safeguards, each found by its
+//   <title> and with a <desc>;
 // - in every figure of the site, no edge crosses another edge or passes through a box that is
 //   not its end (scripts/figures.mjs), and no figure loads a file from another host;
 // - in every figure, each label of an edge is on its own edge, no other edge passes through it,
@@ -143,12 +145,16 @@ for (const [page, text] of built) {
 const FIGURES = {
   'index.md': ['The research tree, the components and the frontends', 'From the sources to the frontends'],
   'concepts.md': ['The research tree, the components and the frontends', 'The harness, the profile and the tree instructions', 'The layers of control around one tool call'],
-  'agentic-engineering.md': [
-    'The calls of build-part', 'From a task to a pull request with build-part',
-    'The calls of build-reviewed', 'From a task to a pull request with build-reviewed',
-    'The calls of julia-pr-shepherd', 'Every spawn'
+  'agentic/challenges.md': ['From a task to a merge'],
+  'agentic/agents.md': [
+    'The calls of build-part', 'The calls of build-reviewed', 'The calls of julia-pr-shepherd', 'Every spawn'
   ],
-  'security.md': ['One tool call through the layers of control'],
+  'agentic/loop.md': ['From a task to a pull request with build-part', 'From a task to a pull request with build-reviewed'],
+  'agentic/tests-and-ci.md': ['The checks between an edit and a merge'],
+  'agentic/mutants.md': ['From a source line to a closed survivor'],
+  'agentic/edges.md': ['How the edge catalogue grows'],
+  'safeguards/security-model.md': ['The layers of control around one tool call', 'One tool call through the layers of control'],
+  'safeguards/sandbox.md': ['The sandboxes of the harness'],
   'daily-use.md': ['From an edit to the drift check']
 }
 // The animated walk-throughs, by their <title>. Every figure with a <style>, a @keyframes or a SMIL
@@ -284,8 +290,10 @@ const colourIn = (line) => {
   }
   return null
 }
+// A directory there, such as the .claude/ that Claude Code makes beside a file that it writes, holds
+// no figure source.
 for (const dir of [path.join(DOCS, '.vitepress', 'theme', 'figures'), path.join(DOCS, 'figures')]) {
-  for (const file of readdirSync(dir)) {
+  for (const file of readdirSync(dir, { withFileTypes: true }).filter((e) => e.isFile()).map((e) => e.name)) {
     const lines = readFileSync(path.join(dir, file), 'utf8').split('\n')
     for (const [i, line] of lines.entries()) {
       const colour = colourIn(line)

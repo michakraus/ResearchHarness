@@ -30,12 +30,14 @@ shows how the install turns the sources into the configuration of each frontend.
   the repository holds none. `harness leaks` and gitleaks keep these values and secrets out of the
   repository. A signed private copy of the dotfiles kit carries the profile to each machine, and
   git carries the memory and the tree instructions.
-- **[Sandbox and safety in layers.](docs/src/security.md)** One settings template gives the
+- **[Safeguards in layers.](docs/src/safeguards/risks.md)** One settings template gives the
   permission and sandbox settings, and the network hosts that Claude Code's sandbox can reach. The
-  sandbox limits the files that a shell command can write and the hosts that it can reach. Guard
-  hooks refuse unsafe shell commands before they run, such as a file edit through `sed -i` or a
-  `git add -A`. A hook at session start warns when the installed configuration is behind its
-  sources.
+  sandbox limits the files that a shell command can write and the hosts that it can reach, and the
+  launcher `agentbox` puts one sandbox around a whole frontend. Guard hooks refuse unsafe shell
+  commands before they run, such as a file edit through `sed -i` or a `git add -A`. Worktrees, git
+  checks and leak checks protect the work of one session from another and keep private strings
+  out of a public repository. A hook at session start warns when the installed configuration is
+  behind its sources.
 - **[A directory tree for research work.](docs/src/research-tree.md)** The research tree is one
   directory for the packages, experiments, papers, notes and literature, each in its own
   repository. `harness clone` and `harness repos` clone and sync them, `harness githooks` and
@@ -45,12 +47,14 @@ shows how the install turns the sources into the configuration of each frontend.
   files, task files, a knowledge base and project memory carry what earlier sessions learned into
   the next one, and `harness wiki-lint` finds the notes that a later change made false. This
   feature is in development.
-- **[Agentic software engineering.](docs/src/agentic-engineering.md)** A plan is split into parts,
-  and each part becomes one pull request. A builder writes the tests and the code of a part. A
-  critic that has not seen the builder's reasoning judges it against the part's acceptance
-  criteria, and checks the tests with mutants: altered copies of the code that a good test must
-  catch. Sub-agents run the long test runs, the reviews and the literature searches in their own
-  contexts, so the context of your session stays free for the main work.
+- **[Agentic coding.](docs/src/agentic/challenges.md)** A plan is split into parts, and each part
+  becomes one pull request. A builder writes the tests and the code of a part. A critic that has
+  not seen the builder's reasoning judges it against the part's acceptance criteria, and checks the
+  tests with mutants: altered copies of the code that a good test must catch. Each edge case that
+  a critic finds goes into a catalogue that the next plan reads. Sub-agents run the long test
+  runs, the reviews and the literature searches in their own contexts, so the context of your
+  session stays free for the main work. [An example](docs/src/agentic/example.md) follows one
+  feature of a Julia package from the plan to the merge.
 - **Tools for Julia packages and papers.** Agents run the tests, measure allocations and timings,
   find why a package does not load, and review and fix pull requests. Kaimon gives an agent a live
   Julia session. For papers, agents search the literature, check the claims of a manuscript with

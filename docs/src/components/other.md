@@ -82,7 +82,7 @@ A launch agent that runs the Kaimon MCP server. Kaimon gives an agent a Julia se
 for Julia code. The job starts at login, and launchd restarts it when it exits. It runs
 `~/.julia/bin/kaimon --headless --port 2828` under the Seatbelt profile
 `~/.config/research-harness/sandbox/kaimon.sb`, with `/usr/bin/sandbox-exec -f`; `harness setup`
-renders the profile from `sandbox/daemon.toml` ([`jobsandbox.py`](harness.md#jobsandbox-py)).
+renders the profile from `sandbox/daemon.toml` ([`jobsandbox.py`](../harness-command.md#jobsandbox-py)).
 The first directory of its `PATH`, `~/.config/research-harness/sandbox/shims`, holds the `ps` that
 `harness setup` installs from `sandbox/shims/`: the exec of the setuid `/bin/ps` fails under the
 profile, and the shim answers Kaimon's check of a session's process with `kill -0`.
@@ -141,7 +141,7 @@ Each directory is one that the settings template keeps out of a session's writes
 `/usr/sbin`, `/sbin`, `/usr/local/bin` and `/opt/homebrew/bin`. No directory is at or below
 `$TMPDIR` (also its real path), `/var/folders` or `/private/var/folders`, which the live sandbox
 lets a session write. `harness test` renders each unit and its plist with the example profile and
-checks all of this, through `units.py` of [the harness command](harness.md). CI renders each
+checks all of this, through `units.py` of [the harness command](../harness-command.md#units-py). CI renders each
 unit on `ubuntu-latest` and runs `systemd-analyze verify --user` on it. `harness leaks` renders
 them with the example profile.
 
@@ -188,7 +188,7 @@ keys of `settings.json`. These components read it:
 - `harness leaks` renders it with the example profile.
 
 Edit the template, never the installed `settings.json`, and commit it when you install it.
-[Typical use](../daily-use.md) gives the steps. [The security model](../security.md) says which of
+[Typical use](../daily-use.md) gives the steps. [The security model](../safeguards/security-model.md) says which of
 its mechanisms is a boundary and which only prevents accidents.
 
 The template names no host: its `sandbox.network.allowedDomains` is empty, and it has no
