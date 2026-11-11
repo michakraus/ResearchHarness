@@ -75,11 +75,14 @@ Checks:
       with `chezmoi merge` and not re-added; a source change not applied is not absorbed; no
       `chezmoi apply` runs and no live file changes. On n, an empty line or the end of input
       nothing is pushed and the source is as before. With no live edit, or only a template's, it
-      asks nothing and exits 0. A template merged into the source by hand is committed, and an
-      origin on github.com (an insteadOf rewrite to the scratch remote) gets the gh command. It
-      stops without a terminal (before the fetch), on an argument (exit 2), on a detached HEAD,
-      on a local commit ahead of origin/main and on an untracked file; a refused push leaves the
-      local branch, named, and HEAD on main.
+      asks nothing and exits 0, and a live symlink is not absorbed. A template merged into the
+      source by hand is committed, unsigned under commit.gpgsign = true, and an origin on
+      github.com (an insteadOf rewrite to the scratch remote) gets the gh command. It stops
+      without a terminal (before the fetch), on an argument (exit 2), on a detached HEAD, on a
+      main ahead of and one diverged from origin/main, on an untracked, a deleted, a staged
+      deleted, an added and a renamed file, on a review quit early (the line), and on a chezmoi
+      diff that fails (its status), each before the question; a main behind origin/main is
+      allowed, and a refused push leaves the local branch, named, and HEAD on main.
 """
 
 import json
@@ -1348,6 +1351,18 @@ def absorb_answers():
         code == 0 and "nothing is absorbed" in out and "[y/N]" not in out,
         f"absorb, no live edit: exit {code}, 0, no question",
     )
+    # A live symlink in place of a managed file is not a regular file: not absorbed.
+    target = w.root / "elsewhere"
+    target.write_text("both live\n")
+    (w.home / ".both").unlink()
+    (w.home / ".both").symlink_to(target)
+    code, out = w.run("dotfiles-absorb", answers="y\n")
+    check(
+        code == 0 and "not absorbed (chezmoi status MM): ~/.both" in out and "[y/N]" not in out,
+        f"absorb, a live symlink: exit {code}, 0, not absorbed, no question",
+    )
+    (w.home / ".both").unlink()
+    (w.home / ".both").write_text("both\n")
     (w.home / ".tmpl").write_text("host live\n")
     code, out = w.run("dotfiles-absorb", answers="y\n")
     check(
@@ -1357,10 +1372,11 @@ def absorb_answers():
     source_kept(w, "absorb, a template's live edit only", base)
 
     # The template merged by hand, as chezmoi merge writes it, and an origin on github.com that
-    # git rewrites to the scratch remote.
+    # git rewrites to the scratch remote. The gitconfig asks to sign every commit, with no key:
+    # the commit of dotfiles-absorb passes only unsigned.
     (w.source / "dot_tmpl.tmpl").write_text("host live\n")
     with (w.home / ".gitconfig").open("a") as handle:
-        handle.write(f'[url "{w.remote}"]\n\tinsteadOf = {GITHUB}\n')
+        handle.write(f'[url "{w.remote}"]\n\tinsteadOf = {GITHUB}\n[commit]\n\tgpgsign = true\n')
     must(["git", "remote", "set-url", "origin", GITHUB], w.env, w.source)
     code, out = w.run("dotfiles-absorb", answers="y\n")
     branches = remote_absorbs(w)
@@ -1385,6 +1401,16 @@ def absorb_edges():
     w = absorb_world("absorb-edges")
     (w.home / ".plain").write_text("plain live\n")
 
+    # main ahead of origin/main, which has not moved.
+    first = w.head()
+    w.commit("local", cwd=w.source)
+    code, out = w.run("dotfiles-absorb", answers="y\n")
+    check(
+        code == 1 and "is not main at or behind origin/main" in out and "[y/N]" not in out,
+        f"absorb, main ahead of origin/main: exit {code}, 1, no question",
+    )
+    must(["git", "reset", "-q", "--hard", first], w.env, w.source)
+
     w.commit("later", key="listed")
     w.push()
     before = w.origin_main()
@@ -1397,25 +1423,33 @@ def absorb_edges():
     check(code == 2 and "usage:" in out, f"absorb with an argument: exit {code}, 2")
 
     base = w.head()
+
+    def git(*args):
+        return lambda: must(["git", *args], w.env, w.source)
+
+    def restore():
+        must(["git", "reset", "-q", "--hard", base], w.env, w.source)
+        must(["git", "clean", "-q", "-f"], w.env, w.source)
+
+    other = "local changes other than modified files"
     for label, setup, undo, text in (
+        ("a detached HEAD", git("switch", "-q", "--detach"), git("switch", "-q", "main"), "is not main"),
         (
-            "a detached HEAD",
-            lambda: must(["git", "switch", "-q", "--detach"], w.env, w.source),
-            lambda: must(["git", "switch", "-q", "main"], w.env, w.source),
-            "is not main",
-        ),
-        (
-            "a local commit",
+            "a main diverged from origin/main",
             lambda: w.commit("local", cwd=w.source),
-            lambda: must(["git", "reset", "-q", "--hard", base], w.env, w.source),
+            restore,
             "is not main at or behind origin/main",
         ),
+        ("an untracked file", lambda: (w.source / "stray").write_text("stray\n"), restore, other),
+        ("a deleted file", (w.source / "dot_zshrc").unlink, restore, other),
+        ("a staged deletion", git("rm", "-q", "dot_zshrc"), restore, other),
         (
-            "an untracked file",
-            lambda: (w.source / "stray").write_text("stray\n"),
-            (w.source / "stray").unlink,
-            "local changes other than modified files",
+            "an added file",
+            lambda: ((w.source / "dot_added").write_text("added\n"), git("add", "dot_added")()),
+            restore,
+            other,
         ),
+        ("a renamed file", git("mv", "dot_zshrc", "dot_zshrc_renamed"), restore, other),
     ):
         setup()
         code, out = w.run("dotfiles-absorb", answers="y\n")
@@ -1425,6 +1459,24 @@ def absorb_edges():
         )
         undo()
     source_kept(w, "absorb, after the stops", base)
+
+    # A review quit early, in the hunks of the files to re-add, and a chezmoi diff that fails:
+    # each stops before the question.
+    (w.home / ".plain").write_text("".join(f"live line {n}\n" for n in range(20_000)))
+    use_pager(w, "quit-pager", QUIT_PAGER)
+    code, out = w.run("dotfiles-absorb", answers="y\n")
+    check(
+        code == 1 and "you quit the review early; nothing is absorbed" in out and "[y/N]" not in out,
+        f"absorb, a review quit early: exit {code}, 1, the line, no question",
+    )
+    del w.env["GIT_PAGER"]
+    stub = (w.bindir / "chezmoi").read_text()
+    (w.bindir / "chezmoi").write_text(stub.replace("exec ", '[ "$1" = diff ] && exit 3\nexec ', 1))
+    code, out = w.run("dotfiles-absorb", answers="y\n")
+    check(code == 3 and "[y/N]" not in out, f"absorb, a chezmoi diff that fails: exit {code}, 3, no question")
+    (w.bindir / "chezmoi").write_text(stub)
+    (w.home / ".plain").write_text("plain live\n")
+    source_kept(w, "absorb, after the reviews", base)
 
     # HEAD is behind origin/main (the commit "later" is fetched, not merged): allowed. The remote
     # refuses the push.
