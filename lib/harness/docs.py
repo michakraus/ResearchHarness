@@ -1,19 +1,21 @@
 """The coverage of the component pages of the documentation site.
 
-Component pages. Each page of `docs/src/components/` describes one kind of component. After the
-title and the introduction, the page has one level-2 section per component, and the heading
-names it in backticks: "## `advisor`", or "## `gate.jl` and `gate-test.jl`" for a script and its
-test. KINDS says which tracked files are the components of each page and how each is named.
-`harness test` checks both directions: every component has a heading on its page, and every name
-in backticks in a level-2 heading is a component of that page. So a removed component leaves no
-stale section.
+Component pages. Each page of `docs/src/components/` describes one kind of component, and so do
+`docs/src/safeguards/guard-hooks.md`, for the hooks, and `docs/src/harness-command.md`, for the
+modules of the command. After the title and the introduction, the page has one level-2 section per
+component, and the heading names it in backticks: "## `advisor`", or "## `gate.jl` and
+`gate-test.jl`" for a script and its test. A page of SECTIONS holds its components in one level-2
+section instead, one level-3 heading each, because its other headings name subcommands. KINDS
+says which tracked files are the components of each page and how each is named. `harness test`
+checks both directions: every component has a heading on its page, and every name in backticks in
+a component heading is a component of that page. So a removed component leaves no stale section.
 
 Dependencies. `harness test` checks that `docs/src/dependencies.md` has two tables, under the
 level-2 headings of TABLES, with the columns `tool`, `minimum` and `used for`. Below them, one
 level-3 heading per description names its tools, "Python" or "JSON, YAML and TestEnv". Every
 tool of the tables is named by a heading, and every name in a heading is a tool of the tables.
 
-Call graphs. The call graphs of `docs/src/agentic-engineering.md` are drawn from
+Call graphs. The call graphs of `docs/src/agentic/agents.md` are drawn from
 `docs/figures/calls.toml`, one `[[call]]` entry per place where a caller starts a callee:
 `caller`, `callee`, `at` (the `file:line` of the instruction that starts it), and optionally
 `effort`, where the caller sets one other than the callee's own, and `label`, the text on the
@@ -54,7 +56,9 @@ from typing import Any, cast
 from . import REPO, HarnessError
 from .frontmatter import parse_file
 
-PAGES = REPO / "docs" / "src" / "components"
+PAGES = REPO / "docs" / "src"
+# {page: the level-2 section whose level-3 headings name the page's components}.
+SECTIONS = {"harness-command.md": "The implementation"}
 DEPENDENCIES = REPO / "docs" / "src" / "dependencies.md"
 CALLS = REPO / "docs" / "figures" / "calls.toml"
 # The data of each animated walk-through, and the kinds of its boxes: you, a skill, an agent, a
@@ -144,30 +148,30 @@ def whole(name):
 # and `name` turns a matching path into the component's name. In a pattern, `*` matches within one
 # path segment.
 KINDS = [
-    ("agents.md", "agents/*.md", stem),
-    ("skills.md", "skills/*/SKILL.md", parent),
-    ("commands.md", "commands/*.md", stem),
-    ("rules.md", "rules/*.md", stem),
-    ("rules.md", "instructions/*.md", stem),
-    ("hooks.md", "hooks/*", base),
-    ("githooks.md", "githooks/*", base),
-    ("githooks.md", "githooks/workflows/*", under("githooks")),
-    ("scripts.md", "scripts/*", base),
-    ("adapters.md", "adapters/*/*", under("adapters")),
-    ("adapters.md", "adapters/opencode/plugins/*", under("adapters")),
-    ("harness.md", "bin/harness", base),
-    ("harness.md", "lib/harness/*.py", base),
-    ("other.md", "launchagents/*", base),
-    ("other.md", "systemd/*", base),
-    ("other.md", "agent-workflows/*.js", base),
-    ("other.md", "ast-grep/*.*", under("ast-grep")),
-    ("other.md", "ast-grep/rules/*", under("ast-grep")),
-    ("other.md", "settings/*", base),
-    ("other.md", "examples/*", base),
-    ("other.md", "fatou.toml", base),
-    ("other.md", ".gitleaks.toml", base),
-    ("other.md", "Project.toml", base),
-    ("other.md", "tests/skill-triggers/*.toml", whole("tests/skill-triggers")),
+    ("components/agents.md", "agents/*.md", stem),
+    ("components/skills.md", "skills/*/SKILL.md", parent),
+    ("components/commands.md", "commands/*.md", stem),
+    ("components/rules.md", "rules/*.md", stem),
+    ("components/rules.md", "instructions/*.md", stem),
+    ("safeguards/guard-hooks.md", "hooks/*", base),
+    ("components/githooks.md", "githooks/*", base),
+    ("components/githooks.md", "githooks/workflows/*", under("githooks")),
+    ("components/scripts.md", "scripts/*", base),
+    ("components/adapters.md", "adapters/*/*", under("adapters")),
+    ("components/adapters.md", "adapters/opencode/plugins/*", under("adapters")),
+    ("harness-command.md", "bin/harness", base),
+    ("harness-command.md", "lib/harness/*.py", base),
+    ("components/other.md", "launchagents/*", base),
+    ("components/other.md", "systemd/*", base),
+    ("components/other.md", "agent-workflows/*.js", base),
+    ("components/other.md", "ast-grep/*.*", under("ast-grep")),
+    ("components/other.md", "ast-grep/rules/*", under("ast-grep")),
+    ("components/other.md", "settings/*", base),
+    ("components/other.md", "examples/*", base),
+    ("components/other.md", "fatou.toml", base),
+    ("components/other.md", ".gitleaks.toml", base),
+    ("components/other.md", "Project.toml", base),
+    ("components/other.md", "tests/skill-triggers/*.toml", whole("tests/skill-triggers")),
 ]
 
 # A file of a matching pattern that is no component of its own: a directory's ignore file.
@@ -188,15 +192,39 @@ def components(tracked):
     return pages
 
 
-def headings(text, level):
+def headings(text: str, level: int) -> list[str]:
     """The text of each heading of exactly `level` in Markdown `text`, outside code fences."""
-    found, fenced = [], False
+    found: list[str] = []
+    fenced = False
     for line in text.splitlines():
         if line.startswith("```"):
             fenced = not fenced
         elif not fenced and line.startswith("#" * level + " "):
             found.append(line[level + 1 :])
     return found
+
+
+def section(text: str, title: str) -> str:
+    """The lines of Markdown `text` below the level-2 heading `title`, up to the next level-2
+    heading outside code fences; empty when `text` has no such heading."""
+    found: list[str] = []
+    fenced, inside = False, False
+    for line in text.splitlines():
+        if line.startswith("```"):
+            fenced = not fenced
+        elif not fenced and line.startswith("## "):
+            inside = line[3:] == title
+            continue
+        if inside:
+            found.append(line)
+    return "\n".join(found)
+
+
+def component_headings(page: str, text: str) -> list[str]:
+    """The headings of the page `page` that name its components: the level-2 headings, or on a page
+    of SECTIONS the level-3 headings of its section."""
+    title = SECTIONS.get(page)
+    return headings(text, 2) if title is None else headings(section(text, title), 3)
 
 
 def named(text):
@@ -454,18 +482,33 @@ def selftest():
         "headings skip code fences and other levels",
     )
     check(named("`a` and `b`") == {"a", "b"}, "named reads each name in backticks")
+    page_text = "# P\n## `x`\n## Mod\n### `a.py`\n```\n## No\n```\n### `b.py`\n## `y`\n### `c.py`\n"
+    check(
+        section(page_text, "Mod") == "### `a.py`\n```\n## No\n```\n### `b.py`",
+        "section ends at the next level-2 heading outside a code fence",
+    )
+    check(section(page_text, "None") == "", "section is empty for a missing heading")
+    check(
+        component_headings("harness-command.md", page_text.replace("## Mod", "## The implementation"))
+        == ["`a.py`", "`b.py`"],
+        "a page of SECTIONS names its components in the level-3 headings of its section only",
+    )
+    check(
+        component_headings("components/x.md", page_text) == ["`x`", "Mod", "`y`"],
+        "another page names its components in its level-2 headings",
+    )
 
     for page, names in sorted(components(tracked()).items()):
-        f = PAGES / page
+        f = PAGES / cast(str, page)
         if not f.is_file():
-            check(False, f"components/{page} exists")
+            check(False, f"{page} exists")
             continue
-        heads = headings(f.read_text(), 2)
+        heads = component_headings(cast(str, page), f.read_text())
         inside = set().union(*map(named, heads)) if heads else set()
         for name in sorted(names):
-            check(name in inside, f"components/{page} has a heading for {name!r}")
+            check(name in inside, f"{page} has a heading for {name!r}")
         for name in sorted(inside - names):
-            check(False, f"components/{page}: {name!r} in a heading is no component of the page")
+            check(False, f"{page}: {name!r} in a heading is no component of the page")
 
     # The code spans of research-tree.md that have the shape of a component's name: on fixed inputs,
     # then on the page of this checkout, each is a component of some page.
