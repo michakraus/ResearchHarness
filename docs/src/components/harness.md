@@ -396,12 +396,14 @@ that is not below `~/`. `bwrap_args` gives the arguments of one job: `--unshare-
 --die-with-parent`, a new `/proc`, `/dev`, `/sys` read-only and a new `/tmp`; each path of
 `linux_read` read-only where it exists; each entry of `linux_links` as the host has it
 (`linux_root`), a link or a read-only directory; an empty home; then the job's `~/` and `$HARNESS`
-paths, the reads, the writes and `linux_write`, the pins (`pins`) with `--bind`, the write denies
+paths, the reads, the writes and `linux_write` with the pins (`pins`) among them, the write denies
 read-only and the files written back. A pin is a path from a write path of the job down to a bind
-source of the other job, which the job binds onto itself so that it cannot rename or remove it
-while it runs; a pin below the job's own write deny raises `HarnessError`. An absolute path, the
-`$DARWIN` tokens, `~/Library` and `pty` are macOS's and give no argument, a write deny that no
-read or write path of the job holds is left out, and an argument with a newline raises
+source of the other job, its pins included, that is no effective mount point of the job yet. The
+job binds it onto itself with `--bind`, before any of its write binds below it, so that it cannot
+rename or remove it while it runs; a pin below the job's own write deny raises `HarnessError`.
+The pins of the two jobs are computed against each other until no new pin appears. An absolute
+path, the `$DARWIN` tokens, `~/Library` and `pty` are macOS's and give no argument, a write deny
+that no read or write path of the job holds is left out, and an argument with a newline raises
 `HarnessError`. `harness setup` and the services script of the dotfiles kit check `bwrap` first,
 install `sandbox/jobbox` and `scripts/julia-update-server` into `~/.local/bin`, write each render
 into `~/.config/research-harness/sandbox/<job>.bwrap` and create each write deny, `linux_write`

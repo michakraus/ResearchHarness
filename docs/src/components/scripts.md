@@ -748,7 +748,9 @@ bus. That phase writes its failures, the Kaimon versions before and after the up
 `Sys.BINDIR` of the default release into `~/.cache/julia-update/state`, one `key=value` per line.
 The unit's `ExecStopPost` then runs the installed copy of `julia-update-server` outside `bwrap`,
 a POSIX `sh` script that runs no Julia, because the jobs write the depot and the releases. Its
-`PATH` is the unit's without every entry below the home and without an empty or relative entry.
+`PATH` is the physical path of each absolute entry of the unit's that resolves, without each one
+at or below the physical home or below the physical target of a link directly in the home, which
+the jobs write. A home that does not resolve leaves the `PATH` empty.
 It reads the state as data, removes the file, runs step 4 and sends the alerts, and reports the
 update phase as failed when the file is missing, as after an `ExecStart` that failed before the
 update phase began. The script itself loads only the standard library of its release: its first

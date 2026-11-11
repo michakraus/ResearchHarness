@@ -51,19 +51,22 @@ makes new namespaces of every kind but the network, ends the job with its unit, 
 `linux_read`; for each entry of `linux_links` as the host has it (`LinuxRoot`, `linux_root`)
 `--symlink` of its target for a link and `--ro-bind` for a directory; `--tmpfs` of the home; then
 `--ro-bind-try` of each read path and read file, `--bind-try` of each write path, write file and
-`linux_write` path, `--bind` of each pin (`pins`), `--ro-bind` of each write deny, and
-`--bind-try` of each file written back. Of the job's lists it takes only a `~/` path, `~`
+`linux_write` path with `--bind` of each pin (`pins`) among them (`writable`), `--ro-bind` of
+each write deny, and `--bind-try` of each file written back. Of the job's lists it takes only a `~/` path, `~`
 becoming `home`, and `$HARNESS` and a path below it, `$HARNESS` becoming the profile's `harness`:
 an absolute path, the root `/`, the `$DARWIN` tokens, MACOS_LIBRARY and every path below it are
 macOS's, and `pty` gives no argument. A write deny that lies at or below no read path, write path
 or `linux_write` path of the job is left out, because the job cannot see it. A pin is a path from
-a write path of the job down to a bind source of the other job of JOBS, which is no bind of the
-job yet: bound onto itself it is a mount point in the job's namespace, which the job cannot
-rename or remove while the other job's `bwrap` mounts it, and a pin below a write deny of the job
-raises HarnessError. `linux_dirs` names the write denies that are left in, the `linux_write`
-paths and the pins that are directories, and `linux_files` the pins that are files, which must
-exist before the job starts. An argument that holds a newline raises HarnessError, because
-`jobbox` reads one argument per line.
+a write path of the job down to a bind source of the other job of JOBS, its pins included, which
+is no effective mount point of the job yet (a bind destination that no later bind covers): bound
+onto itself it is a mount point in the job's namespace, which the job cannot rename or remove
+while the other job's `bwrap` mounts it, and a pin below a write deny of the job raises
+HarnessError. The pins of the two jobs are computed against each other until no new pin appears,
+and each pin is bound after the last write bind at or above it and before the first one after
+that below it, so that no later bind covers it. `linux_dirs` names the write denies that are left
+in, the `linux_write` paths and the pins that are directories, and `linux_files` the pins that
+are files, which must exist before the job starts. An argument that holds a newline raises
+HarnessError, because `jobbox` reads one argument per line.
 
 `harness render` of a template `sandbox/<job>.sb` or `sandbox/<job>.bwrap` (`job_of`), a file
 that does not exist, prints `render` of that job; a `.bwrap` template prints `bwrap_args` with the
@@ -486,26 +489,36 @@ def linux_lists(
     return reads, writes, denies, linux(rules.allow_write_files)
 
 
-def pins(
-    policy: DaemonPolicy, job: str, home: pathlib.Path, harness: pathlib.Path
-) -> list[tuple[pathlib.Path, bool]]:
-    """The pins of `job`, each with whether it is a file: for each bind source S of the other job
-    of JOBS that lies strictly below a write path W of `job`, each path from W's child down to S
-    that is no bind destination of `job` yet, in that order. `job` binds each pin onto itself, so
-    that in its namespace the pin is a mount point, which it can neither rename nor remove, and
-    the other job's bind does not follow a link that `job` put there. HarnessError for a pin at or
-    below a write deny of `job`."""
+def effective(paths: Sequence[pathlib.Path]) -> set[pathlib.Path]:
+    """The effective mount points of binds with the destinations `paths`, in their order: each
+    destination that no later bind covers at a strict ancestor."""
+    return {p for i, p in enumerate(paths) if not any(p != q and p.is_relative_to(q) for q in paths[i + 1 :])}
+
+
+def job_pins(
+    policy: DaemonPolicy,
+    job: str,
+    home: pathlib.Path,
+    harness: pathlib.Path,
+    theirs: Sequence[tuple[pathlib.Path, bool]],
+) -> tuple[list[tuple[pathlib.Path, bool]], list[str]]:
+    """The pins of `job` against the other job's bind sources and its pins `theirs`, each with
+    whether it is a file: for each such source S that lies strictly below a write path W of `job`,
+    each path from W's child down to S that is no effective mount point of `job`'s binds, in that
+    order. Then the refusals: one message for each such path at or below a write deny of `job`,
+    which cannot be a pin."""
     rules = policy.rules(job)
     reads, writes, denies, back = linux_lists(rules, home, harness)
     other = policy.rules(next(j for j in JOBS if j != job))
-    sources = [p for ps in linux_lists(other, home, harness) for p in ps]
     files = {
         q
         for p in (*other.read_files, *other.write_files, *other.allow_write_files)
         if (q := home_path(p, home, harness)) is not None
-    }
-    bound = {*reads, *writes, *denies, *back}
+    } | {p for p, file in theirs if file}
+    sources = [p for ps in linux_lists(other, home, harness) for p in ps] + [p for p, _ in theirs]
+    bound = effective([*reads, *writes, *denies, *back])
     found: list[tuple[pathlib.Path, bool]] = []
+    refused: list[str] = []
     for s in sources:
         for w in writes:
             if s == w or not s.is_relative_to(w):
@@ -515,11 +528,31 @@ def pins(
                 p = w.joinpath(*parts[:i])
                 if p in bound or any(p == q for q, _ in found):
                     continue
-                for d in denies:
-                    if p.is_relative_to(d):
-                        raise HarnessError(f"the pin {p} of {job} lies below its write deny {d}")
+                below = [d for d in denies if p.is_relative_to(d)]
+                if below:
+                    refused.append(f"the pin {p} of {job} lies below its write deny {below[0]}")
+                    continue
                 found.append((p, p == s and s in files))
-    return found
+    return found, refused
+
+
+def pins(
+    policy: DaemonPolicy, job: str, home: pathlib.Path, harness: pathlib.Path
+) -> list[tuple[pathlib.Path, bool]]:
+    """The pins of `job`, each with whether it is a file. A pin is a path that the other job of
+    JOBS binds, or that lies on the way to such a bind, in a tree that `job` writes. `job` binds
+    each pin onto itself, so that in its namespace the pin is a mount point, which it can neither
+    rename nor remove, and the other job's bind does not follow a link that `job` put there. A pin
+    is a bind source too, so the pins of both jobs are computed against each other until no new
+    pin appears. HarnessError for a pin at or below a write deny of `job`."""
+    found: dict[str, list[tuple[pathlib.Path, bool]]] = {j: [] for j in JOBS}
+    while True:
+        new = {j: job_pins(policy, j, home, harness, found[next(o for o in JOBS if o != j)]) for j in JOBS}
+        if all(new[j][0] == found[j] for j in JOBS):
+            if new[job][1]:
+                raise HarnessError(new[job][1][0])
+            return found[job]
+        found = {j: new[j][0] for j in JOBS}
 
 
 def linux_dirs(
@@ -545,6 +578,24 @@ def linux_files(
     return [p for p, file in pins(policy, job, home, harness) if file]
 
 
+def writable(
+    writes: Sequence[pathlib.Path], pinned: Sequence[pathlib.Path]
+) -> list[tuple[str, pathlib.Path]]:
+    """The writable binds of a job, each with its flag: `--bind-try` for each of `writes`, in
+    their order, and `--bind` for each pin of `pinned`, in its order, after the last bind at or
+    above the pin and before the first bind after that one that lies strictly below the pin: no
+    later bind covers the pin, and the pin covers no bind that the binds before it leave open."""
+    group: list[tuple[str, pathlib.Path]] = [("--bind-try", p) for p in writes]
+    for pin in pinned:
+        lo = max((i + 1 for i, (_, q) in enumerate(group) if pin.is_relative_to(q)), default=0)
+        at = next(
+            (i for i in range(lo, len(group)) if group[i][1] != pin and group[i][1].is_relative_to(pin)),
+            len(group),
+        )
+        group.insert(at, ("--bind", pin))
+    return group
+
+
 def bwrap_args(
     policy: DaemonPolicy, job: str, home: pathlib.Path, root: LinuxRoot, harness: pathlib.Path | None = None
 ) -> tuple[str, ...]:
@@ -566,8 +617,11 @@ def bwrap_args(
         "--tmpfs",
         str(home),
         *bind("--ro-bind-try", reads),
-        *bind("--bind-try", writes),
-        *bind("--bind", [p for p, _ in pins(policy, job, home, harness)]),
+        *(
+            x
+            for flag, p in writable(writes, [p for p, _ in pins(policy, job, home, harness)])
+            for x in bind(flag, [p])
+        ),
         *bind("--ro-bind", denies),
         *bind("--bind-try", back),
     ]
@@ -1079,6 +1133,43 @@ def binds(args: tuple[str, ...], flag: str) -> list[str]:
     return [args[i + 1] for i in range(len(args) - 2) if args[i] == flag]
 
 
+def unpinned(policy: DaemonPolicy) -> list[str]:
+    """Each path that the closure of the pins leaves open: for each bind source S of one job's
+    arguments, the pins included, and each write bind W of the other job strictly above S, each
+    path from W's child down to S that is no effective mount point of the other job, that is the
+    destination of a bind that no later bind of its arguments covers at a strict ancestor."""
+    flags = ("--bind", "--bind-try", "--ro-bind", "--ro-bind-try")
+    args = {job: bwrap_args(policy, job, HOME, LinuxRoot((), ())) for job in JOBS}
+    mounts = {
+        job: [
+            (a[i], pathlib.Path(a[i + 1]))
+            for i in range(len(a) - 2)
+            if a[i] in flags and a[i + 1] == a[i + 2]
+        ]
+        for job, a in args.items()
+    }
+    found: list[str] = []
+    for job, other in zip(JOBS, reversed(JOBS), strict=True):
+        theirs = mounts[other]
+        effective = {
+            p
+            for i, (_, p) in enumerate(theirs)
+            if not any(p != q and p.is_relative_to(q) for _, q in theirs[i + 1 :])
+        }
+        writes = [p for flag, p in theirs if flag in ("--bind", "--bind-try")]
+        for _, s in mounts[job]:
+            for w in writes:
+                if s == w or not s.is_relative_to(w):
+                    continue
+                parts = s.relative_to(w).parts
+                found += [
+                    f"{other} {p} (for {job}'s {s})"
+                    for i in range(1, len(parts) + 1)
+                    if (p := w.joinpath(*parts[:i])) not in effective
+                ]
+    return found
+
+
 def bwrap_cases(case: Case, policy: DaemonPolicy) -> None:
     """The arguments of kaimon: their order, and what is left out."""
     a = bwrap_args(policy, "kaimon", HOME, ROOT)
@@ -1182,10 +1273,12 @@ def bwrap_update_cases(case: Case, policy: DaemonPolicy) -> None:
 
 
 def bwrap_pin_cases(case: Case, policy: DaemonPolicy) -> None:
-    """The pins: each path from a write path of one job down to a bind source of the other, bound
-    with `--bind` in the writer's arguments after its write binds and before its write denies; the
-    directories and files that setup makes for them; and a pin below the writer's own write deny,
-    which raises HarnessError."""
+    """The pins: each path from a write path of one job down to a bind source of the other, its
+    pins included, bound with `--bind` in the writer's arguments after its write bind at or above
+    the pin, before its write binds below the pin and before its write denies; the closure of the
+    pins on the shipped list and on lists with nested write paths; the directories and files that
+    setup makes for them; and a pin below the writer's own write deny, which raises
+    HarnessError."""
     a = bwrap_args(policy, "kaimon", HOME, ROOT)
     u = bwrap_args(policy, "julia-update", HOME, ROOT)
     environments, apps = "/h/a.b/.julia/environments", "/h/a.b/.julia/environments/apps"
@@ -1208,9 +1301,20 @@ def bwrap_pin_cases(case: Case, policy: DaemonPolicy) -> None:
         and max(triple(a, "--bind-try", f"/h/a.b/{p}") for p in ("Research", ".config/kaimon")) < at[1],
     )
     case(
-        f"julia-update pins juliaup's lock file, kaimon's file written back below its ~/.julia/juliaup, "
-        f"and nothing else: {binds(u, '--bind')}",
-        ok=binds(u, "--bind") == [lock],
+        f"julia-update pins kaimon's pin ~/.julia/environments, below its ~/.julia, and juliaup's lock "
+        f"file, kaimon's file written back below its ~/.julia/juliaup, and nothing else: "
+        f"{binds(u, '--bind')}",
+        ok=binds(u, "--bind") == [environments, lock],
+    )
+    at = [
+        triple(u, "--bind-try", "/h/a.b/.julia"),
+        triple(u, "--bind", environments),
+        triple(u, "--bind-try", apps),
+    ]
+    case(
+        f"julia-update's pin ~/.julia/environments follows its write bind ~/.julia and precedes its "
+        f"write bind below it, ~/.julia/environments/apps: {at}",
+        ok=-1 not in at and at == sorted(at),
     )
     at = [
         triple(u, "--bind-try", "/h/a.b/.cache/julia-update"),
@@ -1218,22 +1322,78 @@ def bwrap_pin_cases(case: Case, policy: DaemonPolicy) -> None:
         triple(u, "--ro-bind", "/h/a.b/.julia/config"),
     ]
     case(
-        f"julia-update's pin follows its write binds and precedes its write deny: {at}",
+        f"julia-update's pin of the lock file follows its write binds and precedes its write deny: {at}",
         ok=-1 not in at and at == sorted(at),
     )
     harness = HOME / "Research" / "Harness"
     case(
-        "setup makes kaimon's two pins as directories and julia-update's pin as a file",
+        "setup makes kaimon's two pins and julia-update's ~/.julia/environments as directories and "
+        "julia-update's lock file pin as a file",
         ok=[str(p) for p in linux_dirs(policy, "kaimon", HOME, harness)][-2:] == [environments, apps]
         and [str(p) for p in linux_files(policy, "kaimon", HOME, harness)] == []
+        and [str(p) for p in linux_dirs(policy, "julia-update", HOME, harness)][-1:] == [environments]
         and [str(p) for p in linux_files(policy, "julia-update", HOME, harness)] == [lock]
         and lock not in [str(p) for p in linux_dirs(policy, "julia-update", HOME, harness)],
     )
+    case(
+        f"the shipped list leaves no path of the pins' closure open: {unpinned(policy)}",
+        ok=not unpinned(policy),
+    )
     empty: dict[str, tuple[str, ...]] = dict.fromkeys(JOB_KEYS, ())
+    # Nested write paths in both jobs: kaimon writes ~/a and ~/a/b/c and reads ~/r/x below its later
+    # write ~/r; julia-update writes ~/r and ~/a/b/c/d and reads ~/a/q/z. Kaimon's ~/r/x needs a pin in
+    # julia-update, and that pin one in kaimon, whose read ~/r/x its write ~/r covers.
+    nested = dataclasses.replace(
+        policy,
+        kaimon=JobRules(**(empty | {"read": ("~/r/x",), "write": ("~/a", "~/a/b/c", "~/r")}), pty=False),
+        julia_update=JobRules(**(empty | {"read": ("~/a/q/z",), "write": ("~/r", "~/a/b/c/d")}), pty=False),
+    )
+    case(
+        f"a list with nested write paths in both jobs leaves no path of the pins' closure open: "
+        f"{unpinned(nested)}",
+        ok=not unpinned(nested),
+    )
+    # Kaimon's write ~/a/b/c precedes its write ~/a, which covers it: each pin follows ~/a.
+    late = dataclasses.replace(
+        policy,
+        kaimon=JobRules(**(empty | {"write": ("~/a/b/c", "~/a")}), pty=False),
+        julia_update=JobRules(**(empty | {"read": ("~/a/b/c/d",)}), pty=False),
+    )
+    case(
+        f"a write path that precedes a write path above it leaves no path of the pins' closure open: "
+        f"{unpinned(late)}",
+        ok=not unpinned(late),
+    )
+    # Kaimon reads the file ~/t/f, which its write ~/t covers, and julia-update writes ~/t: each job
+    # pins the file, kaimon because julia-update's pin is a bind source of its own.
+    filed = dataclasses.replace(
+        policy,
+        kaimon=JobRules(**(empty | {"read_files": ("~/t/f",), "write": ("~/t",)}), pty=False),
+        julia_update=JobRules(**(empty | {"write": ("~/t",)}), pty=False),
+    )
+    made = {
+        job: (linux_dirs(filed, job, HOME, harness), linux_files(filed, job, HOME, harness)) for job in JOBS
+    }
+    case(
+        f"a pin of the other job's pin that is a file is a file: {made}",
+        ok=all(made[job] == ([], [HOME / "t" / "f"]) for job in JOBS),
+    )
+    covered = dataclasses.replace(
+        policy,
+        kaimon=JobRules(**(empty | {"read": ("~/t/x",), "write": ("~/t",)}), pty=False),
+        julia_update=JobRules(**(empty | {"read": ("~/t/x/s",)}), pty=False),
+    )
+    got = binds(bwrap_args(covered, "kaimon", HOME, ROOT), "--bind")
+    case(
+        f"a read destination that a later write bind covers counts as no mount point: kaimon reads ~/t/x "
+        f"and writes ~/t, julia-update reads ~/t/x/s, and kaimon pins both: {got}",
+        ok=got == ["/h/a.b/t/x", "/h/a.b/t/x/s"],
+    )
     below = dataclasses.replace(
         policy,
         kaimon=JobRules(**(empty | {"write": ("~/x",), "deny_write": ("~/x/d",)}), pty=False),
-        julia_update=JobRules(**(empty | {"read": ("~/x/d/s",)}), pty=False),
+        # julia-update also writes ~/x/d: the pin that kaimon cannot make gives julia-update no pin.
+        julia_update=JobRules(**(empty | {"read": ("~/x/d/s",), "write": ("~/x/d",)}), pty=False),
     )
     case(
         "a pin below the pinning job's own write deny raises HarnessError that names it",
@@ -1636,9 +1796,9 @@ def jobbox_home_cases(case: Case, box: JobboxRoot) -> None:
     (home / ".julia").mkdir()
     (home / ".julia" / "environments").symlink_to(outside / "environments")
     refused(
-        "julia-update's ~/.julia/environments/apps, a real directory below a linked ~/.julia/environments",
+        "julia-update's pin ~/.julia/environments that is a link, with a real directory apps below it",
         home,
-        home / ".julia" / "environments" / "apps",
+        home / ".julia" / "environments",
         job="julia-update",
     )
     # A read file, not itself a link, below a linked directory of the home.
@@ -2643,6 +2803,8 @@ def server_cases(case: Case, root: pathlib.Path) -> None:
                 str(bare.parent),
                 "",
                 ".",
+                # An entry that does not exist: dropped, never kept as an empty entry.
+                str(root / "server-none"),
                 str(stubs),
                 "/usr/bin",
                 "/bin",
@@ -2654,6 +2816,85 @@ def server_cases(case: Case, root: pathlib.Path) -> None:
         f"exit {p.returncode} {marker.exists()} {calls}",
         ok=not marker.exists() and "systemctl --user restart kaimon.service" in calls,
     )
+
+
+def server_path_cases(case: Case, root: pathlib.Path) -> None:
+    """scripts/julia-update-server compares each PATH entry by its physical path: it runs no lsof
+    that lies at or below the physical home, or below the physical target of a symbolic link
+    directly in the home, however the home and the entry are spelled, and it keeps the stub
+    directory outside the home, whose lsof it runs. A home that does not resolve, and the home
+    `/`, leave the PATH empty."""
+    log, marker = root / "server-path.log", root / "server-path-marker"
+    stubs = root / "server-path-stubs"
+    stubs.mkdir()
+    (stubs / "lsof").write_text(f'#!/bin/sh\necho "lsof $*" >> "{log}"\n', encoding="utf-8")
+    (stubs / "lsof").chmod(0o755)
+    good = "before=1.0.0\nafter=1.0.0\nbindir=\n"
+    real = root / "server-path-home"
+    linked = root / "server-path-link"
+    linked.symlink_to(real)
+    # A home whose ~/.juliaup is a link to a directory outside the home, and a link to that home.
+    anchored = root / "server-anchor-home"
+    outside = root / "server-anchor-juliaup"
+    anchored_link = root / "server-anchor-link"
+    for h in (real, anchored):
+        (h / ".cache" / "julia-update").mkdir(parents=True)
+    (real / ".juliaup" / "bin").mkdir(parents=True)
+    (outside / "bin").mkdir(parents=True)
+    (anchored / ".juliaup").symlink_to(outside)
+    anchored_link.symlink_to(anchored)
+    # A dangling link directly in the home, which is no anchor.
+    (real / "dangling").symlink_to(root / "server-path-none")
+    for d in (real / ".juliaup" / "bin", outside / "bin"):
+        (d / "lsof").write_text(f"#!/bin/sh\ntouch '{marker}'\n", encoding="utf-8")
+        (d / "lsof").chmod(0o755)
+    for label, home, entry, cwd in (
+        ("the home with a trailing /", f"{real}/", f"{real}/.juliaup/bin", root),
+        ("an entry spelled through a link to the home", str(real), f"{linked}/.juliaup/bin", root),
+        ("the home a link, the entry its real path", str(linked), f"{real}/.juliaup/bin", root),
+        (
+            "an entry below a link of the home to a directory outside it, spelled through a link to the home",
+            str(anchored),
+            f"{anchored_link}/.juliaup/bin",
+            root,
+        ),
+        ("a relative entry, run in a directory outside the home", str(real), ".", outside / "bin"),
+    ):
+        log.unlink(missing_ok=True)
+        marker.unlink(missing_ok=True)
+        pathlib.Path(home, ".cache", "julia-update", "state").write_text(good, encoding="utf-8")
+        p = subprocess.run(
+            ["/bin/sh", str(UPDATE_SERVER)],
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            env={"HOME": home, "PATH": os.pathsep.join([entry, str(stubs), "/usr/bin", "/bin"])},
+            cwd=cwd,
+            timeout=TIMEOUT,
+            check=False,
+        )
+        calls = log.read_text(encoding="utf-8").splitlines() if log.exists() else []
+        case(
+            f"{label}: the server phase runs no lsof of that entry, and runs the stub's lsof outside the "
+            f"home: exit {p.returncode} {marker.exists()} {calls} {p.stdout.strip()[-200:]!r}",
+            ok=not marker.exists() and [c.split(" ", 1)[0] for c in calls] == ["lsof"],
+        )
+    for label, home in (("a home that does not resolve", str(root / "server-no-home")), ("the home /", "/")):
+        log.unlink(missing_ok=True)
+        p = subprocess.run(
+            ["/bin/sh", str(UPDATE_SERVER)],
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            env={"HOME": home, "PATH": os.pathsep.join([str(stubs), "/usr/bin", "/bin"])},
+            timeout=TIMEOUT,
+            check=False,
+        )
+        case(
+            f"{label} leaves the PATH empty: the server phase cannot read the server, a failure: "
+            f"exit {p.returncode} {log.exists()} {p.stdout.strip()[-200:]!r}",
+            ok=p.returncode == 1 and "cannot read the server" in p.stdout and not log.exists(),
+        )
 
 
 def server_text_cases(case: Case) -> None:
@@ -2704,9 +2945,11 @@ def update_cases(case: Case, root: pathlib.Path) -> None:
         check=False,
     ).stdout.split("\n")
     home, stubs, log = root / "update-home", root / "update-stubs", root / "update.log"
+    depot = root / "update-depot"
     for d in (".juliaup/bin", ".julia/juliaup", ".julia/environments/apps/Kaimon"):
         (home / d).mkdir(parents=True)
-    stubs.mkdir()
+    for d in (stubs, depot):
+        d.mkdir()
     (home / ".julia" / "juliaup" / "juliaup.json").write_text('{"InstalledChannels": {}}\n', encoding="utf-8")
     project = home / ".julia" / "environments" / "apps" / "Kaimon" / "Project.toml"
     project.write_text('version = "1.0.0"\n', encoding="utf-8")
@@ -2721,8 +2964,6 @@ def update_cases(case: Case, root: pathlib.Path) -> None:
     for name in ("lsof", "readlink", "systemctl", "notify-send"):
         stub(stubs / name, "exit 0")
     state = home / ".cache" / "julia-update" / "state"
-    depot = root / "update-depot"
-    depot.mkdir()
     env = {
         "HOME": str(home),
         "PATH": f"{stubs}{os.pathsep}/usr/bin{os.pathsep}/bin",
@@ -2782,6 +3023,7 @@ def update_cases(case: Case, root: pathlib.Path) -> None:
         and calls == ["lsof"]
         and not state.exists(),
     )
+    update_bindir_case(case, update, home, bindir)
     project.write_text('version = "1.0.0\\nbindir=/x\\nfailure=y"\n', encoding="utf-8")
     p, calls = update()
     held = state.read_text(encoding="utf-8").splitlines() if state.is_file() else []
@@ -2811,6 +3053,33 @@ def update_cases(case: Case, root: pathlib.Path) -> None:
         f"the server phase without the update phase's state reports a failure and alerts: "
         f"exit {p.returncode} {calls} {p.stdout.strip()[-300:]!r}",
         ok=p.returncode == 1 and "notify-send" in calls,
+    )
+
+
+def update_bindir_case(
+    case: Case,
+    update: Callable[..., tuple[subprocess.CompletedProcess[str], list[str]]],
+    home: pathlib.Path,
+    bindir: pathlib.Path,
+) -> None:
+    """The update phase with a juliaup launcher at ~/.juliaup/bin/julia that fails when asked for
+    the default release's Sys.BINDIR: the state holds an empty `bindir` and a failure, which the
+    server phase names. The launcher prints `bindir` again after the case."""
+    launcher, state = home / ".juliaup" / "bin" / "julia", home / ".cache" / "julia-update" / "state"
+    launcher.write_text('#!/bin/sh\ncase "$*" in *Sys.BINDIR*) exit 1 ;; esac\n', encoding="utf-8")
+    _ = update()
+    held = state.read_text(encoding="utf-8").splitlines() if state.is_file() else []
+    p, _ = update(server=True)
+    case(
+        f"a launcher that fails to print the default BINDIR is a failure of the state, which the server "
+        f"phase names: {held!r} exit {p.returncode} {p.stdout.strip()[-300:]!r}",
+        ok=held[:3] == ["before=1.0.0", "after=1.0.0", "bindir="]
+        and any(h.startswith("failure=") and "Sys.BINDIR" in h for h in held)
+        and p.returncode == 1
+        and "Sys.BINDIR" in p.stdout,
+    )
+    launcher.write_text(
+        f"#!/bin/sh\ncase \"$*\" in *Sys.BINDIR*) printf '%s' '{bindir}' ;; esac\n", encoding="utf-8"
     )
 
 
@@ -2891,6 +3160,7 @@ def selftest() -> tuple[int, int]:
         jobbox_home_cases(case, box)
         jobbox_text_cases(case)
         server_cases(case, root)
+        server_path_cases(case, root)
         server_text_cases(case)
         update_cases(case, root)
         update_text_cases(case)

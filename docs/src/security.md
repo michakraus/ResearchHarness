@@ -135,13 +135,17 @@ the installed template. A later version can behave differently.
   home is a link, or lies below one under the entry of the home that holds it, which may itself
   be a link. A check before the mount does not hold against the other job while it runs, so each
   job binds onto itself each path from its own write path down to such a source of the other:
-  in its namespace that path is a mount point, which it can neither rename nor remove. Kaimon
-  pins `~/.julia/environments` and `~/.julia/environments/apps`, and `julia-update` pins
-  juliaup's lock file. Neither job sees `/run/user/<uid>`, so neither reaches the session bus or
-  the user's service manager; `julia-update` therefore runs its server check, the restart of the
-  server and its alerts in a second phase, `~/.local/bin/julia-update-server`, a POSIX `sh`
+  in its namespace that path is a mount point, which it can neither rename nor remove. A pin is a
+  bind source too, so each job also pins the paths to the other job's pins that it writes and
+  does not bind yet, and binds each pin before any of its write binds below it, which would
+  otherwise cover it. Kaimon pins `~/.julia/environments`
+  and `~/.julia/environments/apps`, and `julia-update` pins Kaimon's pin `~/.julia/environments`
+  and juliaup's lock file. Neither job sees `/run/user/<uid>`, so neither reaches the session bus
+  or the user's service manager; `julia-update` therefore runs its server check, the restart of
+  the server and its alerts in a second phase, `~/.local/bin/julia-update-server`, a POSIX `sh`
   script outside `bwrap`, after the update phase. It runs no Julia and no program of a `PATH`
-  entry below the home, and reads the update phase's state as data. Kaimon writes the depot whose
+  entry whose physical path lies at or below the physical home, or below the target of a link
+  directly in the home, and reads the update phase's state as data. Kaimon writes the depot whose
   packages the update phase loads, so the two jobs are one trust domain: what `julia-update`
   writes, `~/.juliaup`, `~/.julia/bin`, `~/.julia/juliaup` and the harness's Julia environment,
   Kaimon's code can write at the next run of the update phase, Kaimon's own write denies of
@@ -156,11 +160,8 @@ the installed template. A later version can behave differently.
   the parts of a repository cloned after the job's start, a `.githooks` that did not exist at the
   start, the `.git` file of a worktree, which the job can point at a git directory with hooks of
   its own, and the hooks and the configuration of a submodule in `.git/modules/<name>`, which get
-  no bind. `julia-update` does not pin Kaimon's pins in turn: when Kaimon restarts while an update
-  phase runs, which can run code that Kaimon wrote, a link that the update phase puts in place of
-  `~/.julia/environments` between `jobbox`'s check and the mount binds what the link names,
-  writable, in Kaimon's namespace. A network namespace of its own for each job, which would close
-  the network and abstract-socket gaps, is planned.
+  no bind. A network namespace of its own for each job, which would close the network and
+  abstract-socket gaps, is planned.
 - **OpenCode and oh-my-pi have no sandbox.** Their permission blocks and guard extensions check
   text, as the deny list and the hooks do. Antigravity runs commands in its terminal sandbox in the
   CLI and the desktop app, and its guard hook sets `BypassSandbox` on each command and checks paths

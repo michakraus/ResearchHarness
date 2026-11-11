@@ -259,14 +259,21 @@ one_line(value) = replace(string(value), r"[\r\n]" => " ")
 """
 The update phase on Linux: STATE of an earlier run removed first, so that a run that ends in an
 error leaves none, then steps 1 to 3, then STATE written whole, through a new file that is then
-renamed, with `before`, `after`, `bindir` and a `failure` per failed step. 1 when a step failed,
-else 0.
+renamed, with `before`, `after`, `bindir` and a `failure` per failed step. A launcher that does
+not print the default release's Sys.BINDIR gives an empty `bindir` and a failure of its own. 1
+when a step failed, else 0.
 """
 function update_only()
     rm(STATE; force = true)
     failures, before, after = update_phase()
-    bindir = default_bindir()
-    lines =["before=$(one_line(before))", "after=$(one_line(after))", "bindir=$(one_line(bindir))",
+    bindir = try
+        default_bindir()
+    catch e
+        e isa ProcessFailedException || rethrow()
+        push!(failures, "the Sys.BINDIR of the default release, which $JULIA did not print")
+        ""
+    end
+    lines = ["before=$(one_line(before))", "after=$(one_line(after))", "bindir=$(one_line(bindir))",
              ("failure=$(one_line(f))" for f in failures)...]
     mkpath(dirname(STATE))
     write(STATE * ".new", join(lines, "\n") * "\n")

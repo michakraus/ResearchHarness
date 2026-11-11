@@ -6,8 +6,9 @@
 # service manager and the session bus, which the update phase under bwrap does not see.
 #
 # It runs no code that a job writes. Both jobs write below the home directory, so the PATH is the
-# unit's without every entry below the home, such as ~/.juliaup/bin, and without an empty or a
-# relative entry. The update phase writes its state into ~/.cache/julia-update/state, one
+# physical path of each absolute entry of the unit's PATH that resolves, without each one at or
+# below the physical home, such as ~/.juliaup/bin, or below the physical target of a link directly
+# in the home, however the home and the entry are spelled. The update phase writes its state into ~/.cache/julia-update/state, one
 # `key=value` per line: `before` and `after`, the Kaimon versions before and after the update,
 # `bindir`, the Sys.BINDIR of the default release, and a `failure` per failed step. This script
 # reads the four keys as data, runs no value and no path of the file, and removes the file after
@@ -26,16 +27,43 @@ PORT=2828
 RESTART_HINT="systemctl --user restart kaimon.service"
 LOG="journalctl --user -u julia-update.service"
 
-path=
-rest="$PATH:"
-while [ -n "$rest" ]; do
-    entry=${rest%%:*}
-    rest=${rest#*:}
-    case "$entry" in
-        "$HOME" | "$HOME"/* | "" | [!/]*) ;;
-        *) path=${path:+$path:}$entry ;;
+# within P D: whether the physical path P is the directory D or lies below it; every path lies
+# below /.
+within() {
+    case "$1" in
+        "$2" | "$2"/*) return 0 ;;
     esac
-done
+    [ "$2" = / ]
+}
+
+# jobs_write P: whether the physical path P lies at or below the physical home, or the physical
+# target of a symbolic link directly in the home, such as a linked ~/.juliaup: the jobs write
+# below each of them.
+jobs_write() {
+    within "$1" "$home" && return 0
+    for link in "$HOME"/* "$HOME"/.[!.]* "$HOME"/..?*; do
+        [ -L "$link" ] || continue
+        target=$(cd -P -- "$link" 2>/dev/null && pwd -P) || continue
+        within "$1" "$target" && return 0
+    done
+    return 1
+}
+
+# Each absolute entry of the unit's PATH that resolves, as its physical path, unless the jobs write
+# it. A home that does not resolve leaves the PATH empty.
+path=
+if home=$(cd -P -- "$HOME" 2>/dev/null && pwd -P); then
+    rest="$PATH:"
+    while [ -n "$rest" ]; do
+        entry=${rest%%:*}
+        rest=${rest#*:}
+        case "$entry" in
+            "" | [!/]*) continue ;;
+        esac
+        physical=$(cd -P -- "$entry" 2>/dev/null && pwd -P) || continue
+        jobs_write "$physical" || path=${path:+$path:}$physical
+    done
+fi
 PATH=$path
 export PATH
 
