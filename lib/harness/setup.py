@@ -5922,6 +5922,21 @@ def pocl_cases(case: Case, tmp: pathlib.Path, pins: Pins) -> None:
         )
 
 
+def choice_cases(case: Case, tmp: pathlib.Path, pins: Pins) -> None:
+    """The questions for the frontends and the components: the loop of the checkbox list, which
+    picker runs, and `checkboxes` with and without a terminal that curses can use."""
+    checkbox_cases(case)
+    picker_cases(case, tmp, pins)
+    checkboxes_cases(case)
+
+
+def linux_bwrap_cases(case: Case, tmp: pathlib.Path, pins: Pins) -> None:
+    """The jobs under bwrap on Linux: the steps, the refusals and the text of the units and the kit."""
+    bwrap_cases(case, tmp, pins)
+    bwrap_refusal_cases(case, tmp, pins)
+    bwrap_text_cases(case)
+
+
 def selftest() -> tuple[int, int]:
     """The cases of the functions above: (number of cases, number wrong)."""
     total = wrong = 0
@@ -5945,9 +5960,7 @@ def selftest() -> tuple[int, int]:
         node_plan_cases(case, root, pins)
         step_cases(case, root, pins)
         helper_cases(case, root)
-        checkbox_cases(case)
-        picker_cases(case, root, pins)
-        checkboxes_cases(case)
+        choice_cases(case, root, pins)
         dry_run_cases(case, root, pins)
         release_cases(case, root)
         tree_cases(case, root)
@@ -5975,8 +5988,6 @@ def selftest() -> tuple[int, int]:
         doctor_cases(case, root, pins)
         trust_cases(case, root, pins)
         sandbox_cases(case, root, pins)
-        bwrap_cases(case, root, pins)
-        bwrap_refusal_cases(case, root, pins)
-        bwrap_text_cases(case)
+        linux_bwrap_cases(case, root, pins)
         pocl_cases(case, root, pins)
     return total, wrong
