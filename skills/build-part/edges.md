@@ -222,8 +222,6 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   `SingularException` (G8, the verifier after verify 6)
 - a value check weakened from `==` to `rtol`, which leaves alive a mutant of an input such as the
   norm; keep a direct check of that quantity (G8, verify 5)
-- an exact `==` between non-zero `@allocated` readings that reach `inv` or `exp`, whose allocation
-  differs by 16–48 B between calls on Windows (G8, the verifier after verify 6 and verify 7)
 - a `Float32` precision row whose fixture builds its scale as a `Float64` literal: the input is
   promoted, so the row measures the other precision, and every figure taken from it describes the
   promoted path — the check 3 ratios quoted in a CHANGELOG named a `Float64` input under a
@@ -399,12 +397,11 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   by their position in a `NamedTuple` gives a different result for the same values in another
   order, where the parent read them by name. Read the fields by their names, and test a parameter
   set whose fields are reordered (M5, the learning package)
-- a comment or a definition between a docstring and its definition: a `#` line after the closing
-  `"""` detaches the documentation, and a definition there, such as a `@noinline` throw helper,
-  takes the docstring, which then documents the helper. Either way every `@ref` to the name turns
-  into an unresolved reference, and `makedocs` fails. Put the comment inside the definition and the
-  helper above the docstring, and run the reference check even for a change that reads as prose
-  only, with no `@ref` (M5, the learning package; A5, *Rewrite the reduced basis packages*)
+- a definition between a docstring and its definition, such as a `@noinline` throw helper: it
+  takes the docstring, which then documents the helper, and every `@ref` to the name turns into
+  an unresolved reference, so `makedocs` fails. Put the helper above the docstring, and run the
+  reference check even for a change that reads as prose only, with no `@ref` (M5, the learning
+  package; A5, *Rewrite the reduced basis packages*)
 - a rename of a field that one type carries and another keeps: an item names one architecture, and
   a second type of the same family keeps the old field name, so the family is now named two ways.
   Grep the family for the old name, and record the one the item does not name (M5, the learning
@@ -671,10 +668,6 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   program that ends at once is reaped in between, and `getpid` throws `ESRCH`. It failed 2 runs in
   300 on macOS and three cases on the Linux runner. Read the PID straight after `run`, and test a
   program that ends at once in a loop (P5 CI, *Make the Harness enforce strict Python*)
-- an exit status read from a Julia `Process` as `p.exitcode` alone: for a child that a signal
-  ends — an abort, a segfault, an OOM kill — `exitcode` is 0 and `termsignal` holds the signal, so
-  a crash reads as a clean exit. Read `termsignal` first, or use `success(p)`, and test a child
-  that aborts (J8a round 1, *Strengthen the Julia coding layer of the harness*)
 - a message read from another tool's error text by a marker, tested only on the marker's shortest
   form: JuliaSyntax marks a one-character span `└ ── reason` and a wider one `└────┘ ── reason`,
   so a split at the first `──` keeps part of the marker. Test each form the tool prints, and split

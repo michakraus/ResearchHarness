@@ -60,6 +60,24 @@ jobs:
           tar -xzf fatou.tar.gz -C "$RUNNER_TEMP/fatou" ./fatou
           rm fatou.tar.gz
           echo "$RUNNER_TEMP/fatou" >> "$GITHUB_PATH"
+      # The ast-grep stage of the pre-commit hook needs ast-grep on the PATH and the Julia parser,
+      # which build-julia.sh writes beside the rules, where pre-commit-test.jl looks first.
+      - name: Install ast-grep
+        if: matrix.file == 'githooks/pre-commit-test.jl'
+        env:
+          VERSION: 0.51.1
+          SHA256: 42514f77ae0c8a25d7d32154d31d3e7e16f3ab894f8ce76ce417de234ee49157
+        run: |
+          curl -sSfL --retry 6 -o ast-grep.zip \
+            "https://github.com/ast-grep/ast-grep/releases/download/${VERSION}/app-x86_64-unknown-linux-gnu.zip"
+          echo "${SHA256}  ast-grep.zip" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/ast-grep"
+          unzip -q ast-grep.zip ast-grep -d "$RUNNER_TEMP/ast-grep"
+          rm ast-grep.zip
+          echo "$RUNNER_TEMP/ast-grep" >> "$GITHUB_PATH"
+      - name: Build the Julia parser
+        if: matrix.file == 'githooks/pre-commit-test.jl'
+        run: ast-grep/build-julia.sh
       - name: julia ${{ matrix.file }}
         run: julia --startup-file=no "$FILE"
         env:
