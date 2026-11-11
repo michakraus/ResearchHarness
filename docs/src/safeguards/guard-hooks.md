@@ -501,6 +501,38 @@ code path exits with status 0, also when the hook cannot read the input or write
 echo '{"tool_name":"Bash","tool_input":{"command":"ls"}}' | LOG=$TMPDIR/p.jsonl ./prompt-log.py
 ```
 
+## `kaimon-note.py`
+
+This hook adds a note to a `Bash` call that runs a Julia probe in a fresh `julia` process. Such a
+probe pays the start of the process and the load of its packages on every call; a warm Kaimon
+session pays them once. Claude Code runs the hook on `PreToolUse` for `Bash`, in one entry with
+`rtk hook claude` and the guard. It runs the three in parallel, so the hook reads the command as
+Claude Code sends it, and a refusal of the guard wins over the note.
+
+A simple command of the call is a probe when its program, after the environment assignments, is
+`julia` and it runs code: with `-e`, `-E`, `--eval`, `-p` or `--print`, with a first argument that
+ends in `.jl`, or with code on its standard input from a pipe or a redirection. The note names
+`mcp__kaimon__ex`, `ping` and `start_session`, and the keys of the live Kaimon sessions, which the
+Kaimon check reads from the same gate directory. It has three lines, and every matching call gets
+it.
+
+The hook only adds a note: it refuses no call and asks nothing, so a probe that has a reason to
+run fresh, on a base, a head or a scratch environment, runs as it is. It leaves alone a call that
+names `julia` only as an argument or in a string, and a `julia` command with a `+<version>`,
+`--version` or `-v`, a script of the harness or of `.githooks/`, a `runtests.jl`, a `make.jl` or a
+script whose name ends in `-test.jl`, code that names `Pkg.` or a timing such as `@time` or
+`@btime`, and a command whose program is another one, such as `time`. It reads the command only
+and opens no script. It exits with status 0 for each input, and prints nothing when it cannot read
+the input. Test it:
+
+```bash
+echo '{"tool_name":"Bash","tool_input":{"command":"julia -e 1"}}' | ./kaimon-note.py
+```
+
+The install gives this hook to Claude Code only. OpenCode, oh-my-pi and Antigravity show no such
+note: their guard answers a call with a decision and a reason only, and has no channel for text
+on a call that runs.
+
 ## `context-handoff.py`
 
 This hook tells a main session that its context has passed 400k tokens, and that the session hands
@@ -535,7 +567,7 @@ OpenCode do not read the context size.
 ## `probe.py`
 
 This script holds the test cases of the hooks and runs them. Its `GROUPS` split the cases into
-seven groups, and `harness test` runs each group as the part `probe:<group>`, so the probe needs
+eight groups, and `harness test` runs each group as the part `probe:<group>`, so the probe needs
 no run of its own; [Development](../development.md#tests) describes the run.
 
 A case is a hook, an input and the expected result. The probe runs each case in its own
