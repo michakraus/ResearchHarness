@@ -1177,6 +1177,8 @@ def jobbox_cases(case: Case, root: pathlib.Path) -> None:
     sandbox.mkdir(parents=True)
     lines = ["--unshare-all", "--tmpfs", str(home), "--ro-bind-try", "/a b", "/a b"]
     (sandbox / "kaimon.bwrap").write_text("".join(x + "\n" for x in lines), encoding="utf-8")
+    # A file for a job that is not one of JOBS, so that the job's name alone refuses it.
+    (sandbox / "claude-autocommit.bwrap").write_text("--unshare-all\n", encoding="utf-8")
     stubs = root / "stubs"
     stubs.mkdir()
     out = root / "bwrap.out"

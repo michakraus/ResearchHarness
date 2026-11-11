@@ -5181,6 +5181,21 @@ def bwrap_cases(case: Case, tmp: pathlib.Path, pins: Pins) -> None:
         ok=failed is not None and failed.startswith(f"cannot create {s.home / '.cache'}"),
     )
     (s.home / ".cache").unlink()
+    # A harness outside the home whose write deny the job sees, because it reads $HARNESS: the step
+    # creates nothing outside the home.
+    outside = s.root / "outside-harness"
+    policy = s.clone / "sandbox" / "daemon.toml"
+    policy.write_text(
+        policy.read_text(encoding="utf-8").replace(
+            'read = [\n    "~/Research",', 'read = [\n    "$HARNESS",', 1
+        ),
+        encoding="utf-8",
+    )
+    failed = linux_dirs_step(machine, outside).action()
+    case(
+        f"the directory step creates no directory outside the home: {failed!r} {outside.exists()}",
+        ok=failed is None and not outside.exists(),
+    )
 
 
 def bwrap_refusal_cases(case: Case, tmp: pathlib.Path, pins: Pins) -> None:
