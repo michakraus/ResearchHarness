@@ -53,6 +53,7 @@ KIT_TARGETS = [
     ".local/bin/dotfiles",
     ".local/bin/dotfiles-update",
     ".local/bin/dotfiles-check",
+    ".local/bin/dotfiles-absorb",
 ]
 MERGE_SCRIPT = ".local/bin/dotfiles-merge"
 SK_PROVIDER = "SSH_SK_PROVIDER"

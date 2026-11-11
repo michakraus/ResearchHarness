@@ -18,6 +18,7 @@
 ".chezmoitemplates/gitconfig-signing" = "code"
 ".chezmoitemplates/host" = "code"
 "dot_local/bin/executable_dotfiles" = "code"
+"dot_local/bin/executable_dotfiles-absorb.tmpl" = "code"
 "dot_local/bin/executable_dotfiles-check.tmpl" = "code"
 "dot_local/bin/executable_dotfiles-merge.tmpl" = "code"
 "dot_local/bin/executable_dotfiles-update.tmpl" = "code"

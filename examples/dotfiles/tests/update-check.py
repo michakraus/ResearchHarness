@@ -35,7 +35,7 @@ Checks:
   The decided edges: a fetch that fails, HEAD equal to origin/main, and a missing, empty or
   comment-only allowed_signers (the guard's message, and no commit's). And a remote main that
   moves to an unsigned commit right after the fetch: the checked commit is merged.
-  9. bash -n and shellcheck -S warning pass on both scripts, rendered for every host that
+  9. bash -n and shellcheck -S warning pass on the three scripts, rendered for every host that
      receives them.
   11. dotfiles-merge <branch>: it stops without a terminal, with local changes (a modified and an
       untracked file), and when HEAD is not main at origin/main (main moved on the remote, a local
@@ -47,8 +47,9 @@ Checks:
       (stops before the question), a branch main contains (exit 0), a conflict (merge aborted), a
       signing key that does not exist and one that allowed_signers does not list (no merge commit
       stays), and a refused push (the local merge stays, named, and nothing is applied).
-  12. `chezmoi diff` and `chezmoi apply` are called once in the source, in the shared template,
-      and both scripts include it.
+  12. `chezmoi diff` and `chezmoi apply` are called once in the source outside dotfiles-absorb,
+      in the shared template, and both scripts include it; dotfiles-absorb calls no
+      `chezmoi apply`.
   13. dotfiles-merge reads the signing key and SSH_SK_PROVIDER from the host data: with an empty
       signing_key, or a host entry without one (rendered from a copy of the source whose
       machines.toml lacks the line), it stops before the fetch with one line that names
@@ -67,6 +68,21 @@ Checks:
       and exit 1 with no apply. A pager that reads to the end reaches the question; a `chezmoi
       diff` that fails stops dotfiles-update with its own status and no such line. A mutant that
       drops the line, and one that turns the stop into a pass, fail each case of the cut review.
+  17. dotfiles-absorb, with the real chezmoi behind the logging stub and a source applied in the
+      scratch HOME: a live edit of a plain file is re-added and committed on a new branch
+      absorb/<host>-<time> that is pushed, unsigned, with HEAD back on main and the remote's main
+      unchanged; a live edit of a template, and a file changed live and in the source, are listed
+      with `chezmoi merge` and not re-added; a source change not applied is not absorbed; no
+      `chezmoi apply` runs and no live file changes. On n, an empty line or the end of input
+      nothing is pushed and the source is as before. With no live edit, or only a template's, it
+      asks nothing and exits 0, and a live symlink is not absorbed. A template merged into the
+      source by hand is committed, unsigned under commit.gpgsign = true, and an origin on
+      github.com (an insteadOf rewrite to the scratch remote) gets the gh command. It stops
+      without a terminal (before the fetch), on an argument (exit 2), on a detached HEAD, on a
+      main ahead of and one diverged from origin/main, on an untracked, a deleted, a staged
+      deleted, an added and a renamed file, on a review quit early (the line), and on a chezmoi
+      diff that fails (its status), each before the question; a main behind origin/main is
+      allowed, and a refused push leaves the local branch, named, and HEAD on main.
 """
 
 import json
@@ -82,6 +98,7 @@ import tomllib
 SOURCE = pathlib.Path(__file__).resolve().parent.parent
 UPDATE = SOURCE / "dot_local" / "bin" / "executable_dotfiles-update.tmpl"
 MERGE = SOURCE / "dot_local" / "bin" / "executable_dotfiles-merge.tmpl"
+ABSORB = SOURCE / "dot_local" / "bin" / "executable_dotfiles-absorb.tmpl"
 SHARED = SOURCE / ".chezmoitemplates" / "dotfiles-update-steps.sh"
 SIGNING = SOURCE / ".chezmoitemplates" / "gitconfig-signing"
 SHARED_INCLUDE = '{{ template "dotfiles-update-steps.sh" . }}'
@@ -1188,6 +1205,303 @@ def clause_16():
     )
 
 
+# ---------------------------------------------------------------- dotfiles-absorb ----
+
+ABSORB_FILES = {
+    "dot_plain": "plain\n",
+    "dot_tmpl.tmpl": "host {{ .chezmoi.hostname }}\n",
+    "dot_both": "both\n",
+    "dot_unapplied": "unapplied\n",
+}
+GITHUB = "https://github.com/owner/dotfiles.git"
+
+
+def absorb_world(name):
+    """A world whose chezmoi stub logs each call and runs the real chezmoi, with ABSORB_FILES in
+    the source and applied to the scratch HOME, and an empty log."""
+    w = World(name)
+    real = shutil.which("chezmoi")
+    (w.bindir / "chezmoi").write_text(f'#!/bin/sh\necho "$*" >> "{w.log}"\nexec "{real}" "$@"\n')
+    w.commit("the managed files", key="listed", files=ABSORB_FILES)
+    w.push()
+    w.sync()
+    must(["chezmoi", "--no-tty", "apply"], w.env, w.home)
+    w.log.unlink(missing_ok=True)
+    return w
+
+
+def remote_absorbs(w):
+    """The absorb/ branches of the remote."""
+    refs = must(
+        ["git", "--git-dir", str(w.remote), "for-each-ref", "--format=%(refname)", "refs/heads/absorb/"],
+        w.env,
+    )
+    return refs.split()
+
+
+def local_absorbs(w):
+    """The absorb/ branches of the source."""
+    return must(["git", "for-each-ref", "--format=%(refname)", "refs/heads/absorb/"], w.env, w.source).split()
+
+
+def at_remote(w, rev):
+    """The text of `rev` in the remote, without its last newline."""
+    return must(["git", "--git-dir", str(w.remote), "show", rev], w.env)
+
+
+def source_kept(w, label, base):
+    """The source is main at `base`, with no local change and no absorb/ branch."""
+    branch = must(["git", "symbolic-ref", "--short", "HEAD"], w.env, w.source)
+    changes = must(["git", "status", "--porcelain", "--untracked-files=all"], w.env, w.source)
+    check(
+        branch == "main" and w.head() == base and changes == "" and local_absorbs(w) == [],
+        f"{label}: the source is main at {base[:7]}, clean, with no absorb/ branch "
+        f"({branch} {w.head()[:7]}, {changes!r}, {local_absorbs(w)})",
+    )
+
+
+def clause_17():
+    print("\n== 17: dotfiles-absorb")
+    w = absorb_world("c17")
+    w.commit(
+        "source changes",
+        key="listed",
+        files={"dot_both": "both source\n", "dot_unapplied": "unapplied source\n"},
+    )
+    w.push()
+    w.sync()
+    base = w.head()
+    (w.home / ".plain").write_text("plain live\n")
+    (w.home / ".tmpl").write_text("host live\n")
+    (w.home / ".both").write_text("both live\n")
+    live = {name: (w.home / name).read_text() for name in (".plain", ".tmpl", ".both", ".unapplied")}
+    code, out = w.run("dotfiles-absorb", answers="y\n")
+    branches = remote_absorbs(w)
+    check(code == 0, f"absorb: exit {code}, 0")
+    check(
+        len(branches) == 1 and branches[0].startswith(f"refs/heads/absorb/{TEMPLATE_HOST}-"),
+        f"absorb: one branch absorb/{TEMPLATE_HOST}-<time> on the remote: {branches}",
+    )
+    if len(branches) == 1:
+        ref = branches[0]
+        trees = {path: at_remote(w, f"{ref}:{path}") for path in ABSORB_FILES}
+        check(
+            trees["dot_plain"] == "plain live",
+            f"absorb: the plain file's live edit is on the branch: {trees}",
+        )
+        check(
+            trees["dot_tmpl.tmpl"] == "host {{ .chezmoi.hostname }}"
+            and trees["dot_both"] == "both source"
+            and trees["dot_unapplied"] == "unapplied source",
+            f"absorb: the template, the file changed on both sides and the change not applied stay: {trees}",
+        )
+        parent = must(["git", "--git-dir", str(w.remote), "rev-parse", f"{ref}^"], w.env)
+        verdict = must(["git", "--git-dir", str(w.remote), "log", "-1", "--format=%G?", ref], w.env)
+        check(
+            parent == base and verdict == "N",
+            f"absorb: one unsigned commit on {base[:7]} ({parent[:7]}, {verdict})",
+        )
+        check(ref.removeprefix("refs/heads/") in out, "absorb: the output names the branch")
+    check(w.remote_main() == base, "absorb: the remote's main is unchanged")
+    source_kept(w, "absorb", base)
+    absorb_output(w, out, live)
+
+
+def absorb_output(w, out, live):
+    """The lines of clause 17's run, no chezmoi apply, and the live files unchanged."""
+    for line in (
+        "merge it with: chezmoi merge ~/.tmpl",
+        "merge it with: chezmoi merge ~/.both",
+        "not absorbed (chezmoi status  M): ~/.unapplied",
+        f"glab mr create -R {w.remote} --target-branch main --source-branch absorb/",
+    ):
+        check(line in out, f"absorb: the output has {line!r}")
+    check("apply" not in w.calls(), f"absorb: no chezmoi apply ({w.calls()})")
+    check(
+        all((w.home / name).read_text() == text for name, text in live.items()),
+        "absorb: no live file changes",
+    )
+
+
+def absorb_answers():
+    print("\n== 17: dotfiles-absorb, the answers and the runs with no question")
+    w = absorb_world("c17-no")
+    base = w.head()
+    (w.home / ".plain").write_text("plain live\n")
+    for answers, label in (("n\n", "n"), ("\n", "an empty line"), (EOF, "the end of input")):
+        code, out = w.run("dotfiles-absorb", answers=answers)
+        check(
+            code == 0
+            and "[y/N]" in out
+            and "nothing absorbed, nothing pushed" in out
+            and remote_absorbs(w) == [],
+            f"absorb, {label}: exit {code}, 0, after the question, and nothing pushed",
+        )
+        source_kept(w, f"absorb, {label}", base)
+        check(
+            at_remote(w, f"{base}:dot_plain") == "plain"
+            and (w.source / "dot_plain").read_text() == "plain\n",
+            f"absorb, {label}: the source file is unchanged",
+        )
+
+    w = absorb_world("c17-nothing")
+    base = w.head()
+    code, out = w.run("dotfiles-absorb", answers="y\n")
+    check(
+        code == 0 and "nothing is absorbed" in out and "[y/N]" not in out,
+        f"absorb, no live edit: exit {code}, 0, no question",
+    )
+    # A live symlink in place of a managed file is not a regular file: not absorbed.
+    target = w.root / "elsewhere"
+    target.write_text("both live\n")
+    (w.home / ".both").unlink()
+    (w.home / ".both").symlink_to(target)
+    code, out = w.run("dotfiles-absorb", answers="y\n")
+    check(
+        code == 0 and "not absorbed (chezmoi status MM): ~/.both" in out and "[y/N]" not in out,
+        f"absorb, a live symlink: exit {code}, 0, not absorbed, no question",
+    )
+    (w.home / ".both").unlink()
+    (w.home / ".both").write_text("both\n")
+    (w.home / ".tmpl").write_text("host live\n")
+    code, out = w.run("dotfiles-absorb", answers="y\n")
+    check(
+        code == 0 and "chezmoi merge ~/.tmpl" in out and "[y/N]" not in out and remote_absorbs(w) == [],
+        f"absorb, a template's live edit only: exit {code}, 0, listed, no question, nothing pushed",
+    )
+    source_kept(w, "absorb, a template's live edit only", base)
+
+    # The template merged by hand, as chezmoi merge writes it, and an origin on github.com that
+    # git rewrites to the scratch remote. The gitconfig asks to sign every commit, with no key:
+    # the commit of dotfiles-absorb passes only unsigned.
+    (w.source / "dot_tmpl.tmpl").write_text("host live\n")
+    with (w.home / ".gitconfig").open("a") as handle:
+        handle.write(f'[url "{w.remote}"]\n\tinsteadOf = {GITHUB}\n[commit]\n\tgpgsign = true\n')
+    must(["git", "remote", "set-url", "origin", GITHUB], w.env, w.source)
+    code, out = w.run("dotfiles-absorb", answers="y\n")
+    branches = remote_absorbs(w)
+    check(
+        code == 0 and len(branches) == 1, f"absorb, a merged template: exit {code}, 0, one branch {branches}"
+    )
+    if len(branches) == 1:
+        check(
+            at_remote(w, f"{branches[0]}:dot_tmpl.tmpl") == "host live",
+            "absorb, a merged template: the source's change is committed",
+        )
+    line = "gh pr create -R github.com/owner/dotfiles --base main --head absorb/"
+    check(
+        line in out and "~/.tmpl" not in out,
+        f"absorb, a merged template: the output has {line!r}, no ~/.tmpl",
+    )
+    source_kept(w, "absorb, a merged template", base)
+
+
+def absorb_edges():
+    print("\n== 17: dotfiles-absorb, the stops")
+    w = absorb_world("absorb-edges")
+    (w.home / ".plain").write_text("plain live\n")
+
+    # main ahead of origin/main, which has not moved.
+    first = w.head()
+    w.commit("local", cwd=w.source)
+    code, out = w.run("dotfiles-absorb", answers="y\n")
+    check(
+        code == 1 and "is not main at or behind origin/main" in out and "[y/N]" not in out,
+        f"absorb, main ahead of origin/main: exit {code}, 1, no question",
+    )
+    must(["git", "reset", "-q", "--hard", first], w.env, w.source)
+
+    w.commit("later", key="listed")
+    w.push()
+    before = w.origin_main()
+    code, out = w.run("dotfiles-absorb", answers="y\n", terminal=False)
+    check(
+        code == 1 and "not a terminal" in out and w.origin_main() == before and remote_absorbs(w) == [],
+        f"absorb without a terminal: exit {code}, 1, before the fetch, nothing pushed",
+    )
+    code, out = w.run("dotfiles-absorb", "x")
+    check(code == 2 and "usage:" in out, f"absorb with an argument: exit {code}, 2")
+
+    base = w.head()
+
+    def git(*args):
+        return lambda: must(["git", *args], w.env, w.source)
+
+    def restore():
+        must(["git", "reset", "-q", "--hard", base], w.env, w.source)
+        must(["git", "clean", "-q", "-f"], w.env, w.source)
+
+    other = "local changes other than modified files"
+    for label, setup, undo, text in (
+        ("a detached HEAD", git("switch", "-q", "--detach"), git("switch", "-q", "main"), "is not main"),
+        (
+            "a main diverged from origin/main",
+            lambda: w.commit("local", cwd=w.source),
+            restore,
+            "is not main at or behind origin/main",
+        ),
+        ("an untracked file", lambda: (w.source / "stray").write_text("stray\n"), restore, other),
+        ("a deleted file", (w.source / "dot_zshrc").unlink, restore, other),
+        ("a staged deletion", git("rm", "-q", "dot_zshrc"), restore, other),
+        (
+            "an added file",
+            lambda: ((w.source / "dot_added").write_text("added\n"), git("add", "dot_added")()),
+            restore,
+            other,
+        ),
+        ("a renamed file", git("mv", "dot_zshrc", "dot_zshrc_renamed"), restore, other),
+    ):
+        setup()
+        code, out = w.run("dotfiles-absorb", answers="y\n")
+        check(
+            code == 1 and text in out and remote_absorbs(w) == [] and "[y/N]" not in out,
+            f"absorb, {label}: exit {code}, 1, {text!r}, no question, nothing pushed",
+        )
+        undo()
+    source_kept(w, "absorb, after the stops", base)
+
+    # A review quit early, in the hunks of the files to re-add, and a chezmoi diff that fails:
+    # each stops before the question.
+    (w.home / ".plain").write_text("".join(f"live line {n}\n" for n in range(20_000)))
+    use_pager(w, "quit-pager", QUIT_PAGER)
+    code, out = w.run("dotfiles-absorb", answers="y\n")
+    check(
+        code == 1 and "you quit the review early; nothing is absorbed" in out and "[y/N]" not in out,
+        f"absorb, a review quit early: exit {code}, 1, the line, no question",
+    )
+    del w.env["GIT_PAGER"]
+    stub = (w.bindir / "chezmoi").read_text()
+    (w.bindir / "chezmoi").write_text(stub.replace("exec ", '[ "$1" = diff ] && exit 3\nexec ', 1))
+    code, out = w.run("dotfiles-absorb", answers="y\n")
+    check(code == 3 and "[y/N]" not in out, f"absorb, a chezmoi diff that fails: exit {code}, 3, no question")
+    (w.bindir / "chezmoi").write_text(stub)
+    (w.home / ".plain").write_text("plain live\n")
+    source_kept(w, "absorb, after the reviews", base)
+
+    # HEAD is behind origin/main (the commit "later" is fetched, not merged): allowed. The remote
+    # refuses the push.
+    hook = w.remote / "hooks" / "pre-receive"
+    hook.write_text("#!/bin/sh\nexit 1\n")
+    hook.chmod(0o755)
+    code, out = w.run("dotfiles-absorb", answers="y\n")
+    local = local_absorbs(w)
+    check(
+        code == 1 and "was refused" in out and remote_absorbs(w) == [] and len(local) == 1,
+        f"absorb, a refused push: exit {code}, 1, the branch stays local {local}",
+    )
+    if len(local) == 1:
+        parent = must(["git", "rev-parse", f"{local[0]}^"], w.env, w.source)
+        check(
+            local[0].removeprefix("refs/heads/") in out and parent == base,
+            f"absorb, a refused push: the output names the branch, on HEAD {base[:7]} ({parent[:7]})",
+        )
+    branch = must(["git", "symbolic-ref", "--short", "HEAD"], w.env, w.source)
+    changes = must(["git", "status", "--porcelain"], w.env, w.source)
+    check(
+        branch == "main" and w.head() == base and changes == "", "absorb, a refused push: HEAD is main, clean"
+    )
+
+
 # ---------------------------------------------------------------- static checks ----
 
 
@@ -1201,7 +1515,11 @@ def receivers(name):
 def clause_9():
     print("\n== 9: bash -n and shellcheck")
     env = dict(os.environ)
-    for name, template in (("dotfiles-update", UPDATE), ("dotfiles-merge", MERGE)):
+    for name, template in (
+        ("dotfiles-update", UPDATE),
+        ("dotfiles-merge", MERGE),
+        ("dotfiles-absorb", ABSORB),
+    ):
         for host in receivers(name):
             path = scratch("lint") / name
             path.write_text(render(template, host))
@@ -1227,14 +1545,22 @@ def clause_9():
 def clause_12():
     print("\n== 12: one code path")
     calls = {"diff": [], "apply": []}
+    absorb_applies = []
     for path in SOURCE.rglob("*"):
         rel = path.relative_to(SOURCE)
         if not path.is_file() or rel.parts[0] in (".git", ".claude", "tests") or rel.name == "README.md":
             continue
         for number, line in enumerate(path.read_text(errors="replace").splitlines(), 1):
+            if path == ABSORB:
+                # dotfiles-absorb shows the hunks of single files with chezmoi diff, and applies
+                # nothing: no line that is not a comment names chezmoi apply.
+                if not line.lstrip().startswith("#") and re.search(r"\bchezmoi\s+apply\b", line):
+                    absorb_applies.append(f"{rel}:{number}")
+                continue
             match = re.match(r"\s*(?:if\s+)?(?:!\s*)?chezmoi\s+(diff|apply)\b", line)
             if match:
                 calls[match.group(1)].append(f"{rel}:{number}")
+    check(absorb_applies == [], f"dotfiles-absorb calls no chezmoi apply: {absorb_applies}")
     for verb, where in calls.items():
         check(
             len(where) == 1 and where[0].startswith(".chezmoitemplates/dotfiles-update-steps.sh"),
@@ -1268,6 +1594,7 @@ def main():
         try:
             SCRIPTS["dotfiles-update"] = render(UPDATE, TEMPLATE_HOST)
             SCRIPTS["dotfiles-merge"] = render(MERGE, TEMPLATE_HOST, signing_data(str(KEYS["listed"])))
+            SCRIPTS["dotfiles-absorb"] = render(ABSORB, TEMPLATE_HOST)
         except (OSError, RuntimeError) as error:
             print(f"update-check: the scripts do not render: {error}")
             return 1
@@ -1289,6 +1616,9 @@ def main():
             clause_14,
             clause_15,
             clause_16,
+            clause_17,
+            absorb_answers,
+            absorb_edges,
         ):
             try:
                 case()

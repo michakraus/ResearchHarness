@@ -5,6 +5,7 @@
 #   dotfiles update                    dotfiles-update, on every host
 #   dotfiles check [--full]            dotfiles-check, on every host
 #   dotfiles merge <number | branch>   dotfiles-merge, on the template host only
+#   dotfiles absorb                    dotfiles-absorb, on every host
 #
 # A merge argument of digits only is a pull request or merge request of the source's origin: gh
 # names its branch for an origin on github.com, glab for any other host, and it must be open.
@@ -15,7 +16,7 @@ DOTFILES_SOURCE="$HOME/.local/share/chezmoi"
 here=$(cd "$(dirname "$0")" && pwd)
 
 usage() {
-    echo "usage: dotfiles update | dotfiles check [--full] | dotfiles merge <pull or merge request number | branch>" >&2
+    echo "usage: dotfiles update | dotfiles check [--full] | dotfiles merge <pull or merge request number | branch> | dotfiles absorb" >&2
     exit 2
 }
 
@@ -25,6 +26,10 @@ shift
 case "$subcommand" in
     update | check)
         exec "$here/dotfiles-$subcommand" "$@"
+        ;;
+    absorb)
+        [ $# -eq 0 ] || usage
+        exec "$here/dotfiles-absorb"
         ;;
     merge)
         if [ $# -ne 1 ] || [ -z "$1" ]; then
@@ -68,7 +73,7 @@ case "$subcommand" in
         exec "$here/dotfiles-merge" "$branch"
         ;;
     -h | --help)
-        sed -n '2,11p' "$0" | cut -c3-
+        sed -n '2,12p' "$0" | cut -c3-
         ;;
     *)
         usage

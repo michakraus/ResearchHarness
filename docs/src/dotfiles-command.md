@@ -22,6 +22,7 @@ steps.
 dotfiles update
 dotfiles check [--full]
 dotfiles merge <number | branch>
+dotfiles absorb
 dotfiles --help
 ```
 
@@ -36,10 +37,11 @@ questions:
 | [`update`](#dotfiles-update) | `dotfiles-update` | every host |
 | [`check`](#dotfiles-check) | `dotfiles-check` | every host |
 | [`merge`](#dotfiles-merge) | `dotfiles-merge` | the template host only |
+| [`absorb`](#dotfiles-absorb) | `dotfiles-absorb` | every host |
 
-`dotfiles --help` prints the three subcommands and where each one runs. No subcommand, a
-subcommand that is not in the list, or a `merge` without exactly one argument prints the usage
-line and exits 2.
+`dotfiles --help` prints the four subcommands and where each one runs. No subcommand, a
+subcommand that is not in the list, a `merge` without exactly one argument, or an `absorb` with an
+argument prints the usage line and exits 2.
 
 The *template host* is the one machine that signs: the key `template_host` of
 `.chezmoidata/machines.toml` names it. Only it receives `dotfiles-merge` and git's
@@ -171,6 +173,60 @@ request or the merge request. A signing key in hardware asks for a touch: touch 
 dotfiles merge 12              # pull request or merge request 12 of the origin
 dotfiles merge kit-update      # the branch kit-update
 ```
+
+### `dotfiles absorb`
+
+```text
+dotfiles absorb
+```
+
+Takes this host's live edits of managed files back into the source, on a new branch, for review.
+It never applies, never merges, and never moves `main`.
+
+It stops when standard input is not a terminal. Then it runs `git fetch`, and stops when `HEAD`
+is not `main`, when `main` is ahead of `origin/main` or has diverged from it, and when the source
+has a local change other than a modified tracked file. A `main` behind `origin/main` is allowed:
+the branch starts at `HEAD`.
+
+It sorts each line of `chezmoi status --exclude=scripts`:
+
+| the file | what `dotfiles absorb` does |
+|:--|:--|
+| edited live since the last apply, and unchanged in the source since | re-adds it with `chezmoi re-add` |
+| a template, edited live so | prints its hunk and `chezmoi merge ~/<target>`, and does not re-add it |
+| changed live and in the source since the last apply | prints its hunk and `chezmoi merge ~/<target>`, and does not re-add it |
+| any other line, such as a source change not applied | prints it as not absorbed |
+
+The test for "unchanged in the source" compares the SHA-256 of the render with the
+`contentsSHA256` that chezmoi stored when it last wrote the file. A hunk is a `chezmoi diff
+--reverse`: the live edit shows as `+` lines.
+
+With nothing to re-add and no local change in the source, it says that nothing is absorbed and
+exits 0. Otherwise it shows the hunks of the files to re-add and `git diff HEAD` of the source,
+and asks `y/N`. On `y`, it makes the branch `absorb/<host>-<UTC yyyymmdd-HHMMSS>` from `HEAD`,
+re-adds the files, commits every change of the source there, unsigned, pushes the branch, switches
+back to `main`, deletes the local branch, and prints the command that opens the request: `gh pr
+create` for an `origin` on `github.com`, `glab mr create` for any other host. The commit is
+unsigned because only the signed merge of `dotfiles merge` counts on `main`.
+
+To take a template's edit too, answer `n`, run `chezmoi merge ~/<target>` for each template that
+it lists, and run `dotfiles absorb` again. Until the request is merged and applied, `chezmoi diff`
+and `dotfiles update` show the absorbed edits reverted: answer `n` to the question of `dotfiles
+update` until then.
+
+Each part of [the review](#the-review) must be read to its end. When you quit the pager early, it
+stops before the question, and nothing is absorbed.
+
+**Exit status:** 0 when nothing is absorbed, when the answer is not `y`, and after the push; 1
+when a stop above applies, when the re-add or the commit fails, when the push is refused, and when
+you quit the review early; 2 on a usage error. A refused push leaves the commit on the local
+branch, names it with the command that pushes it, and leaves `HEAD` on `main`.
+
+**Reads:** the live files, the source, and chezmoi's persistent state. **Writes:** a branch of the
+source and of its `origin`; never a live file.
+
+**Where to run it:** in your own terminal, on the host whose files you edited, then merge the
+request on the template host with `dotfiles merge`.
 
 ## The review
 
@@ -359,7 +415,7 @@ harness checkout at that commit: it lists each code file that changed. Until you
 | file | what it is |
 |:--|:--|
 | `~/.local/bin/dotfiles` | the driver |
-| `~/.local/bin/dotfiles-update`, `dotfiles-check` | the scripts of every host |
+| `~/.local/bin/dotfiles-update`, `dotfiles-check`, `dotfiles-absorb` | the scripts of every host |
 | `~/.local/bin/dotfiles-merge` | the merge script, on the template host only |
 | `~/.local/share/chezmoi` | the applied source, which `chezmoi init` clones, and only `dotfiles update` and `dotfiles merge` move |
 | `~/.config/git/allowed_signers` | the keys whose signatures count, as applied |

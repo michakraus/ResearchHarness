@@ -5,10 +5,10 @@ directory:
     python3 tests/driver-check.py
 
 Each case copies the driver into a scratch bin directory under $TMPDIR beside stubs of
-dotfiles-update, dotfiles-check and dotfiles-merge, which print their name and arguments, and puts
-stubs of gh and glab first on the PATH. Each stub logs its arguments and answers with the state
-and source branch in $GH_ANSWER or $GLAB_ANSWER, and exits 1 when its answer is empty, as gh and
-glab do for a number they cannot read. A scratch HOME holds a git repository at
+dotfiles-update, dotfiles-check, dotfiles-merge and dotfiles-absorb, which print their name and
+arguments, and puts stubs of gh and glab first on the PATH. Each stub logs its arguments and
+answers with the state and source branch in $GH_ANSWER or $GLAB_ANSWER, and exits 1 when its
+answer is empty, as gh and glab do for a number they cannot read. A scratch HOME holds a git repository at
 ~/.local/share/chezmoi whose origin each case sets: an origin on github.com asks gh, any other
 host asks glab. It also runs `bash -n` and `shellcheck -S warning` on the driver. It exits 0 when
 every check passes.
@@ -59,7 +59,7 @@ class Scratch:
             d.mkdir()
         shutil.copy(DRIVER, self.bin_dir / "dotfiles")
         (self.bin_dir / "dotfiles").chmod(0o755)
-        for name in ("dotfiles-update", "dotfiles-check", "dotfiles-merge"):
+        for name in ("dotfiles-update", "dotfiles-check", "dotfiles-merge", "dotfiles-absorb"):
             executable(self.bin_dir / name, f'#!/bin/bash\necho "{name} $*"\n')
         executable(self.stubs / "glab", answering("glab", "GLAB_ANSWER"))
         executable(self.stubs / "gh", answering("gh", "GH_ANSWER"))
@@ -107,6 +107,8 @@ def subcommand_cases(s):
     """update, check and merge with a branch name, and merge with a number on another host."""
     p = s.run("update")
     check(p.returncode == 0 and p.stdout == "dotfiles-update \n", "update runs dotfiles-update")
+    p = s.run("absorb")
+    check(p.returncode == 0 and p.stdout == "dotfiles-absorb \n", "absorb runs dotfiles-absorb")
     p = s.run("check", "--full")
     check(p.stdout == "dotfiles-check --full\n", "check passes its arguments to dotfiles-check")
     p = s.run("merge", "topic-branch")
@@ -186,7 +188,7 @@ def usage_cases(s):
         and lines[-1] == "Any other argument is a branch name.",
         "--help prints the whole comment at the head of the driver, and nothing more",
     )
-    for args in ([], ["merge"], ["merge", ""], ["merge", "a", "b"], ["apply"]):
+    for args in ([], ["merge"], ["merge", ""], ["merge", "a", "b"], ["absorb", "x"], ["apply"]):
         p = s.run(*args)
         check(
             p.returncode == 2 and p.stderr.startswith("usage:"),
