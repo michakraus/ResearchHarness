@@ -76,6 +76,6 @@ text that a later change made false:
 
 ## Across machines
 
-The job `claude-autocommit` commits the project memory and the plans of `~/.claude`, and pushes
-them to a branch of each machine. The instruction files and the records are in git repositories.
+The job `claude-autocommit` commits the project memory of `~/.claude`, and pushes it to a branch
+of each machine. The instruction files and the records are in git repositories.
 [Private data across machines](private-data.md#synchronise-across-machines) describes both.

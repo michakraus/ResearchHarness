@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""claude-autocommit: commit ~/.claude's plan files and project memories on a timer.
+"""claude-autocommit: commit ~/.claude's project memories on a timer.
 
     canonical copy   ~/Research/Harness/launchagents/claude-autocommit
     installed copy   ~/.local/bin/claude-autocommit        (edit here, then reinstall)
@@ -7,14 +7,13 @@
                      each rendered with the profile, on the interpreter of the harness's Python
                      environment
 
-WHY THE SCOPE IS TWO DIRECTORIES
+WHY THE SCOPE IS THE MEMORY DIRECTORIES
 
 An automatic commit is a sweep, and ~/.claude is the tree where sweeps are most dangerous: several
-sessions write to it at once. So this stages explicit paths and covers only the two kinds of
-tracked content that nobody will ever want a hand-written message for: a plan file is one
-session's by-product with a generated name, and a memory file is one self-describing fact.
-settings.json, CLAUDE.md, RTK.md, agents/, skills/, hooks/, CHANGELOG.md and plugins/*.json are
-authored, each carries a changelog round, and this job never touches them.
+sessions write to it at once. So this stages explicit paths and covers only the one kind of
+tracked content that nobody will ever want a hand-written message for: a memory file is one
+self-describing fact. CHANGELOG.md, .gitignore and plugins/*.json are committed by hand, and this
+job never touches them.
 
 It commits with an explicit pathspec, so anything another session has left *staged* stays staged
 and uncommitted. That is the whole safety property; do not "simplify" it into a bare `git commit`.
@@ -43,7 +42,7 @@ from typing import NoReturn
 USAGE = """\
 usage: claude-autocommit [--dry-run] [--no-push] [--help]
 
-Commits ~/.claude/plans/ and ~/.claude/projects/*/memory/ and pushes the local main to
+Commits ~/.claude/projects/*/memory/ and pushes the local main to
 origin's $CLAUDE_AUTOCOMMIT_BRANCH, main by default. Nothing else in ~/.claude is touched.
 
   --dry-run   report what would be committed; take no lock and write nothing
@@ -59,7 +58,7 @@ environment
 LOCK_STALE_MIN = 30
 # A git pathspec is matched against each *file* path, so `projects/*/memory` would match nothing at
 # all and read as "nothing to commit"; the trailing /* is what makes it match the memory files.
-SPEC = ("plans", "projects/*/memory/*")
+SPEC = ("projects/*/memory/*",)
 # The seconds that one git command may take, so that a hung remote cannot hold the lock forever.
 GIT_TIMEOUT = 600
 # The output of a git command that failed because another process holds the index.
@@ -199,9 +198,9 @@ def classify(status: bytes, quiesce_min: int) -> tuple[list[str], int, int]:
     n_defer = n_del = 0
     for record in (os.fsdecode(r) for r in status.split(b"\0") if r):
         xy, path = record[:2], record[3:]
-        # A rename has two records, and a renamed plan or memory is not this job's to guess about.
+        # A rename has two records, and a renamed memory is not this job's to guess about.
         if "R" in xy:
-            die(f"rename under plans/ or memory/ ({path}) — commit it by hand")
+            die(f"rename under memory/ ({path}) — commit it by hand")
         if "D" in xy:
             n_del += 1
             paths.append(path)
@@ -245,7 +244,7 @@ def changes(repo: str, quiesce_min: int) -> tuple[list[str], int, int]:
     if tracked.returncode != 0 or not tracked.stdout.strip():
         die(
             "pathspec matches no tracked file — refusing to run (git behaviour changed, or this is a "
-            "fresh repository with no plans and no memories yet)"
+            "fresh repository with no memories yet)"
         )
     # A failed status is *unknown*, never "nothing to commit". NUL-separated, so that a path with a
     # space or a non-ASCII name survives.
@@ -269,15 +268,10 @@ def run(*, dry: bool, no_push: bool) -> int:
         return 0
     # A mass deletion is far more likely to be a tool misbehaving than an intention.
     if n_del > max_deletions:
-        die(f"{n_del} deletions under plans/ or memory/ exceeds the cap of {max_deletions} — commit by hand")
-    n_plans = sum(p.startswith("plans/") for p in paths)
-    n_mem = sum("/memory/" in p for p in paths)
-    counts = f"{n_plans} plan(s), {n_mem} memory file(s)"
+        die(f"{n_del} deletions under memory/ exceeds the cap of {max_deletions} — commit by hand")
+    counts = f"{len(paths)} memory file(s)"
     if dry:
-        say(
-            f"would commit {n_plans} plan(s) and {n_mem} memory file(s); "
-            f"{n_defer} deferred, {n_del} deletion(s)"
-        )
+        say(f"would commit {counts}; {n_defer} deferred, {n_del} deletion(s)")
         for p in paths:
             print(f"  {p}", flush=True)
         if push:
@@ -308,7 +302,7 @@ def commit(paths: Sequence[str], counts: str) -> bool:
             die(f"git add failed for {p} (rc={added.returncode}): {added.stdout.rstrip()}")
     message = (
         f"chore(auto): {counts} — {time.strftime('%Y-%m-%d %H:%M')}\n\n"
-        f"Committed by claude-autocommit on {socket.gethostname().split('.')[0]}. Scope is plans/ and\n"
+        f"Committed by claude-autocommit on {socket.gethostname().split('.')[0]}. Scope is\n"
         "projects/*/memory/ only; everything else in ~/.claude is authored and\n"
         "committed by hand.\n\n" + "".join(f"{p}\n" for p in paths)
     )

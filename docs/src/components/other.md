@@ -25,8 +25,8 @@ schedule, at login, or as a server that it keeps alive. Each job is a plist file
 profile key `launchd_prefix`, and their paths hold `{home}`. The harness has no subcommand that
 installs them. `harness render launchagents/<name>` prints the rendered plist.
 
-`claude-autocommit` is a Python program that commits the plan files and the project memories of
-`~/.claude/`, which must be a git repository. It commits `plans/` and `projects/*/memory/` only, and
+`claude-autocommit` is a Python program that commits the project memories of `~/.claude/`, which
+must be a git repository. It commits `projects/*/memory/` only, and
 pushes the local `main` to the branch of `origin` that `CLAUDE_AUTOCOMMIT_BRANCH` names, `main`
 when the variable is unset. The plist and the unit set it from the profile key
 `autocommit_branch`: `main` on the template host, and a branch of its own on each other machine.
