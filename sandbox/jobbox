@@ -18,14 +18,14 @@
 #
 # bwrap follows a symbolic link in the source of a bind and in its destination, and each job
 # writes directories below the home that hold the sources of the other job's binds. jobbox
-# therefore refuses every source below the home, of the arguments file and of the repository
-# parts, of a --bind, --bind-try, --ro-bind or --ro-bind-try that is a symbolic link, a dangling
-# one too, or whose physical path is not the physical path of its anchor and the same rest. The
-# anchor of a source is the entry of the home that it lies below, such as ~/.julia or ~/Research;
-# it may be a link, which is resolved once, and the binds keep the paths below the home. A check
-# before the mount does not hold against a job that runs: the arguments of each job bind onto
-# itself each path that it writes on the way to a source of the other job's binds (the pins of
-# jobsandbox.py), so that it cannot rename or remove that path while it runs.
+# therefore refuses every source below an entry of the home, of the arguments file and of the
+# repository parts, of a --bind, --bind-try, --ro-bind or --ro-bind-try that is a symbolic link, a
+# dangling one too, or whose physical path is not the physical path of its anchor and the same
+# rest. The anchor of a source is the entry of the home that it lies below, such as ~/.julia or
+# ~/Research; it may be a link, which is resolved once, and the binds keep the paths below the
+# home. A check before the mount does not hold against a job that runs: the arguments of each job
+# bind onto itself each path that it writes on the way to a source of the other job's binds (the
+# pins of jobsandbox.py), so that it cannot rename or remove that path while it runs.
 #
 # A job that is not kaimon or julia-update, a missing arguments file, fewer than two arguments and
 # a refused bind source exit 2 with one line on stderr, before any bwrap. jobbox imports nothing of

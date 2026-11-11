@@ -142,7 +142,7 @@ The program and its arguments, the environment and the `PATH` are those of the p
 restart and the alerts of [the script](scripts.md). Both timers
 set `Persistent=true`, so a calendar start that the machine missed while it slept runs when the
 timer starts again. The units are `--user` units only. Their output goes to the journal:
-`journalctl --user -u <name>`. `julia-update.jl` restarts the server as `kaimon.service`.
+`journalctl --user -u <name>`. `julia-update-server` restarts the server as `kaimon.service`.
 
 The jobs run outside the sandbox, so their `PATH` holds no directory that a session can write.
 Each directory is one that the settings template keeps out of a session's writes, because no
