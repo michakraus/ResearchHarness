@@ -265,14 +265,8 @@ else 0.
 function update_only()
     rm(STATE; force = true)
     failures, before, after = update_phase()
-    bindir = try
-        default_bindir()
-    catch e
-        e isa ProcessFailedException || rethrow()
-        push!(failures, "the default release, whose Sys.BINDIR the launcher does not print")
-        ""
-    end
-    lines = ["before=$(one_line(before))", "after=$(one_line(after))", "bindir=$(one_line(bindir))",
+    bindir = default_bindir()
+    lines =["before=$(one_line(before))", "after=$(one_line(after))", "bindir=$(one_line(bindir))",
              ("failure=$(one_line(f))" for f in failures)...]
     mkpath(dirname(STATE))
     write(STATE * ".new", join(lines, "\n") * "\n")

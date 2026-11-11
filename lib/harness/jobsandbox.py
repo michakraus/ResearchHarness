@@ -1631,6 +1631,21 @@ def jobbox_home_cases(case: Case, box: JobboxRoot) -> None:
         home / ".julia" / "environments" / "apps",
         job="julia-update",
     )
+    # A read file, not itself a link, below a linked directory of the home.
+    home = root / "linked-config"
+    real = root / "real-config"
+    (real / "sandbox").mkdir(parents=True)
+    (real / "profile.toml").write_text("", encoding="utf-8")
+    (home / ".config").mkdir(parents=True)
+    (home / ".config" / "research-harness").symlink_to(real)
+    args = bwrap_args(load(POLICY), "julia-update", home, LinuxRoot((), ()))
+    (real / "sandbox" / "julia-update.bwrap").write_text("".join(a + "\n" for a in args), encoding="utf-8")
+    refused(
+        "julia-update's read file ~/.config/research-harness/profile.toml below a linked directory",
+        home,
+        home / ".config" / "research-harness" / "profile.toml",
+        job="julia-update",
+    )
     home = rendered("linked-depot", "julia-update")
     depot = root / "real-depot"
     for d in ("environments/apps", "juliaup", "bin", "config"):
@@ -2519,6 +2534,8 @@ def server_cases(case: Case, root: pathlib.Path) -> None:
             capture_output=True,
             text=True,
             env=env,
+            # The directory of the planted systemctl, which an empty or relative PATH entry names.
+            cwd=planted.parent,
             timeout=TIMEOUT,
             check=False,
         )
@@ -2566,6 +2583,13 @@ def server_cases(case: Case, root: pathlib.Path) -> None:
         ("the default release", good, f"{bindir}/julia", False),
         ("the default release, deleted and written again", good, f"{bindir}/julia (deleted)", False),
         ("another release", good.replace(str(bindir), f"{root}/other"), f"{bindir}/julia", True),
+        # A state with an empty bindir: no default release to compare the server with.
+        (
+            "a release, with no default known",
+            good.replace(f"bindir={bindir}", "bindir="),
+            f"{bindir}/julia",
+            False,
+        ),
         ("an older Kaimon", good.replace("after=1.0.0", "after=1.1.0"), f"{bindir}/julia", True),
     ):
         p, calls = server(text, STUB_PID="4242", STUB_EXE=exe)
@@ -2600,8 +2624,19 @@ def server_cases(case: Case, root: pathlib.Path) -> None:
         good,
         STUB_PID="4242",
         STUB_EXE=gone,
+        # An empty entry names the working directory only after a kept entry, here the scratch root,
+        # which holds no systemctl.
         PATH=os.pathsep.join(
-            [str(home / ".juliaup" / "bin"), f"{home}/", "", ".", str(stubs), "/usr/bin", "/bin"]
+            [
+                str(home / ".juliaup" / "bin"),
+                f"{home}/",
+                str(bare.parent),
+                "",
+                ".",
+                str(stubs),
+                "/usr/bin",
+                "/bin",
+            ]
         ),
     )
     case(
