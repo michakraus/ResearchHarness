@@ -7,17 +7,19 @@ warm Kaimon session pays once. The hook adds a note to the model's context as `a
 and lets the call run: some probes have a reason to run fresh, such as a base, a head or a scratch
 environment. It holds no state between calls, so every matching call gets the note.
 
-A simple command of the call is a probe when its program, read after the environment assignments,
-is `julia` (a path whose last part is `julia` too) and it runs code: with `-e`, `-E`, `--eval` or
-`--print` (also as `--eval=<code>` and with the code attached to a short option), with a first
-argument that ends in `.jl`, or, with neither, with its standard input from a pipe or a redirection
-(also with the script `-`). The value of `-p` or `--procs` is a number of worker processes, not
-code. A command whose program is another one, such as `time`, `env` or `timeout`, is no probe. Nor
-is a command whose options hold a `+<version>`, `--version` or `-v` or a module (`-m`), whose
-script path holds `/Harness/` or `.githooks/`, whose script's name is `runtests.jl` or `make.jl` or
-ends in `-test.jl`, or whose code names `Pkg.` or a timing (TIMING). The code of a command that
-reads its standard input is the whole text of the call. One probe among the simple commands is
-enough for the note.
+A simple command of the call is a probe when its program, read after the reserved words such as
+`then`, `do` and `!` and after the environment assignments, is `julia` (a path whose last part is
+`julia` too) and it runs code: with `-e`, `-E`, `--eval` or `--print` (also as `--eval=<code>` and
+with the code attached to a short option), with a first argument that ends in `.jl`, or, with
+neither, with its standard input from a pipe or a redirection (also with the script `-`), or from
+one into a group `( … )` or `{ …; }` that holds it. The value of an option, such as the `no` of
+`--startup-file no` or the number of `-p` or `--procs`, is no script and no code. A command whose
+program is another one, such as `time`, `env` or `timeout`, is no probe. Nor is a command whose
+options hold a `+<version>`, `--version` or `-v` or a module (`-m`), whose script path holds
+`/Harness/` or `.githooks/`, whose script's name is `runtests.jl` or `make.jl` or ends in
+`-test.jl`, or whose code names `Pkg.` or a timing (TIMING). The code of a command that reads its
+standard input is the whole text of the call. One probe among the simple commands is enough for
+the note.
 
 The hook reads the command only, as Claude Code sends it: it opens no script. It removes the body
 of each here-document before it splits the command with the guard's `lex`, so the lines of a body
@@ -44,15 +46,63 @@ from guard.shell import SEPARATORS, lex
 
 # The options of `julia` whose value is code to run.
 CODE = frozenset({"-e", "-E", "--eval", "--print"})
-# The other long options of `julia` that take the next word as their value.
+# The other long options of `julia` that take the next word as their value when they have no `=`,
+# as julia 1.13 reads them: `julia --startup-file no -e 1` runs `1`. `--project`, `--code-coverage`,
+# `--track-allocation`, `--optimize`, `--min-optlevel`, `--debug-info`, `--trim`, `--trace-eval`
+# and `--worker` take a value only after `=`.
 VALUED = frozenset(
-    {"--sysimage", "--home", "--load", "--threads", "--procs", "--machine-file", "--cpu-target"}
+    {
+        "--sysimage",
+        "--home",
+        "--load",
+        "--threads",
+        "--procs",
+        "--machine-file",
+        "--cpu-target",
+        "--banner",
+        "--startup-file",
+        "--handle-signals",
+        "--sysimage-native-code",
+        "--compiled-modules",
+        "--pkgimages",
+        "--gcthreads",
+        "--color",
+        "--history-file",
+        "--depwarn",
+        "--warn-overwrite",
+        "--warn-scope",
+        "--inline",
+        "--check-bounds",
+        "--math-mode",
+        "--heap-size-hint",
+        "--hard-heap-limit",
+        "--heap-target-increment",
+        "--compile",
+        "--compress-sysimage",
+        "--output-incremental",
+        "--timeout-for-safepoint-straggler",
+        "--trace-compile",
+        "--trace-dispatch",
+        "--task-metrics",
+        "--permalloc-pkgimg",
+        "--output-o",
+        "--output-ji",
+        "--output-bc",
+        "--output-unopt-bc",
+        "--output-asm",
+        "--bug-report",
+        "--bind-to",
+    }
 )
 # The short options of `julia` that take a value, attached or in the next word.
-SHORT_VALUED = frozenset("eEpJHLtCm")
-# The short options of `julia` that take no value. Any other letter ends the reading of a cluster,
-# as `-O3` and `-g2` end it with their attached value.
+SHORT_VALUED = frozenset("eEpJHLtCmOg")
+# The short options of `julia` that take no value. Any other letter ends the reading of a cluster.
 SHORT_FLAGS = frozenset("vhiq")
+# The reserved words that can stand before the name of a command and leave it the command name.
+# `{` opens a group and `}` closes one. `time` is none of them: a `julia` after it gets no note.
+RESERVED = frozenset({"!", "if", "then", "elif", "else", "while", "until", "do"})
+# The parentheses of an operator, each alone, and the runs of its other characters.
+PIECE = re.compile(r"[()]|[^()]+")
 # The texts of code that times or benchmarks, which a fresh process measures as intended.
 TIMING = ("@time", "@btime", "@benchmark", "@allocated", "@ballocated", "@elapsed", "BenchmarkTools")
 # The texts of a script path, and the ends of a script's name, that mark a harness or test script.
@@ -89,32 +139,108 @@ def without_heredocs(text: str) -> str:
     return "\n".join(kept)
 
 
+@dataclass
+class Group:
+    """An open group, `( … )`, `$( … )`, `<( … )` or `{ …; }`: the word that closes it, the words and
+    the input of the command around it, the index of its first command, and whether its commands
+    read a pipe."""
+
+    closer: str
+    words: list[str]
+    fed: bool
+    pipe: bool
+    start: int
+    piped: bool
+
+
+@dataclass
+class Reader:
+    """The simple commands read so far, each with whether its standard input comes from a pipe or a
+    redirection, and the state of the command being read: whether its input comes from a pipe or a
+    redirection (`fed`), and from a pipe (`pipe`)."""
+
+    found: list[tuple[list[str], bool]] = field(default_factory=list[tuple[list[str], bool]])
+    words: list[str] = field(default_factory=list[str])
+    fed: bool = False
+    pipe: bool = False
+    target: bool = False
+    groups: list[Group] = field(default_factory=list[Group])
+    # The index of the first command of the group that closed last in this command: a `<` after
+    # the group feeds every command in it.
+    closed: int | None = None
+
+    def end(self) -> None:
+        """End the command being read; it reads the pipe of each group that it is in."""
+        if self.words:
+            self.found.append((self.words, self.fed or (bool(self.groups) and self.groups[-1].piped)))
+        self.words = []
+
+    def open(self, closer: str) -> None:
+        """Open a group that `closer` closes. Its commands read the pipe into the command that holds
+        it, and the one into each group around it; a redirection of that command after the group
+        feeds them too."""
+        piped = self.pipe or (bool(self.groups) and self.groups[-1].piped)
+        self.groups.append(Group(closer, self.words, self.fed, self.pipe, len(self.found), piped))
+        self.words, self.fed, self.pipe, self.target, self.closed = [], False, False, False, None
+
+    def close(self) -> None:
+        """Close the innermost group, and go on with the command around it."""
+        self.end()
+        group = self.groups.pop()
+        self.words, self.fed, self.pipe = group.words, group.fed, group.pipe
+        self.target, self.closed = False, group.start
+
+    def word(self, text: str) -> None:
+        """Read the word `text`. A reserved word, `{` and `}` are such only before the first word of
+        a command, and a `}` only in a group that `{` opens."""
+        if self.target:
+            self.target = False
+        elif self.words:
+            self.words.append(text)
+        elif text == "{":
+            self.open("}")
+        elif text == "}" and self.groups and self.groups[-1].closer == "}":
+            self.close()
+        elif text not in RESERVED:
+            self.words.append(text)
+
+    def operator(self, piece: str) -> None:
+        """Read the piece `piece` of an operator: a parenthesis, or a run of other characters. A `)`
+        that closes no `(` ends a pattern of `case`, and the command after it starts."""
+        if piece == "(":
+            self.open(")")
+        elif piece == ")" and self.groups and self.groups[-1].closer == ")":
+            self.close()
+        elif piece == ")":
+            self.end()
+        elif set(piece) <= SEPARATORS:
+            self.end()
+            self.fed = self.pipe = piece in ("|", "|&")
+            self.closed = None
+        elif "<" in piece or ">" in piece:
+            self.target = True
+            if "<" in piece:
+                self.fed = True
+                if self.closed is not None:
+                    self.found[self.closed :] = [(words, True) for words, _ in self.found[self.closed :]]
+
+
 def commands(text: str) -> list[tuple[list[str], bool]] | None:
-    """The simple commands of `text`: the words of each, without the targets of its redirections,
-    and whether its standard input comes from a pipe or a redirection; None when a quote is open."""
+    """The simple commands of `text`: the words of each, without the reserved words before it and
+    the targets of its redirections, and whether its standard input comes from a pipe or a
+    redirection, also one into a group that holds it; None when a quote is open."""
     tokens = lex(without_heredocs(text))
     if tokens is None:
         return None
-    found: list[tuple[list[str], bool]] = []
-    words: list[str] = []
-    fed = target = False
+    reader = Reader()
     for kind, token in tokens:
         if kind == "word":
-            if not target:
-                words.append(token)
-            target = False
-            continue
-        bare = token.replace("(", "").replace(")", "")
-        if bare and set(bare) <= SEPARATORS:
-            if words:
-                found.append((words, fed))
-            words, fed = [], bare in ("|", "|&")
-        elif "<" in bare or ">" in bare:
-            target = True
-            fed = fed or "<" in bare
-    if words:
-        found.append((words, fed))
-    return found
+            reader.word(token)
+        else:
+            for found in PIECE.finditer(token):
+                reader.operator(found.group())
+    reader.end()
+    return reader.found
 
 
 @dataclass

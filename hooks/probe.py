@@ -3150,6 +3150,105 @@ MORE_LEFT_ALONE = (
     "julia -e '@ballocated f()'",
     "julia -e '@elapsed f()'",
 )
+# Each option of `julia` that takes the next word as its value, with a value of its own form: the
+# value in the next word is no script, so the code or the script after it is read. No value ends in
+# `.jl`, so that the value read as a script gives no note.
+SPACED_VALUES = (
+    ("--sysimage", "img.so"),
+    ("--home", "/x"),
+    ("--load", "setup"),
+    ("--threads", "4"),
+    ("--procs", "2"),
+    ("--machine-file", "hosts"),
+    ("--cpu-target", "native"),
+    ("--banner", "no"),
+    ("--startup-file", "no"),
+    ("--handle-signals", "yes"),
+    ("--sysimage-native-code", "yes"),
+    ("--compiled-modules", "no"),
+    ("--pkgimages", "no"),
+    ("--gcthreads", "2"),
+    ("--color", "yes"),
+    ("--history-file", "no"),
+    ("--depwarn", "no"),
+    ("--warn-overwrite", "no"),
+    ("--warn-scope", "yes"),
+    ("--inline", "yes"),
+    ("--check-bounds", "yes"),
+    ("--math-mode", "ieee"),
+    ("--heap-size-hint", "1G"),
+    ("--hard-heap-limit", "8G"),
+    ("--heap-target-increment", "1G"),
+    ("--compile", "yes"),
+    ("--compress-sysimage", "no"),
+    ("--output-incremental", "no"),
+    ("--timeout-for-safepoint-straggler", "60"),
+    ("--trace-compile", "stderr"),
+    ("--trace-dispatch", "stderr"),
+    ("--task-metrics", "no"),
+    ("--permalloc-pkgimg", "no"),
+    ("--output-o", "x.o"),
+    ("--output-ji", "x.ji"),
+    ("--output-bc", "x.bc"),
+    ("--output-unopt-bc", "x.bc"),
+    ("--output-asm", "x.s"),
+    ("--bug-report", "rr"),
+    ("--bind-to", "127.0.0.1"),
+    ("-O", "3"),
+    ("-g", "2"),
+)
+SPACED_PROBES = tuple(
+    command
+    for option, value in SPACED_VALUES
+    for command in (f"julia {option} {value} -e 'f(1)'", f"julia {option} {value} probe.jl")
+)
+# A simple command after a reserved word or a pattern of `case`, in a group, or in a group that
+# reads a pipe or a file.
+RESERVED_PROBES = (
+    "if true; then julia -e 'f(1)'; fi",
+    "if julia -e 'f(1)'; then :; fi",
+    "if false; then :; elif julia -e 'f(1)'; then :; fi",
+    "if false; then :; else julia -e 'f(1)'; fi",
+    "for f in a b; do julia -e 'f(1)'; done",
+    "while julia -e 'f(1)'; do :; done",
+    "until julia -e 'f(1)'; do :; done",
+    "! julia -e 'f(1)'",
+    "! A=1 julia -e 'f(1)'",
+    "{ julia -e 'f(1)'; }",
+    "! { julia -e 'f(1)'; }",
+    "then { cd x; julia probe.jl; }",
+    "echo 'f(1)' | (cd x; julia)",
+    "echo 'f(1)' | { cd x; julia; }",
+    "echo 'f(1)' | (cd x; (julia))",
+    "{ cd x; julia; } < probe.jl",
+    "(cd x; julia) 2>err.txt < probe.jl",
+    "diff <(julia -e 'f(1)') x",
+    "echo 'f(1)' | cat <(julia)",
+    "echo 'f(1)' |(cd x; julia)",
+    "case a in a) julia -e 'f(1)';; esac",
+    "echo 'f(1)' | { case a in a) julia;; esac; }",
+    "{ case a in a) julia;; esac; } < probe.jl",
+)
+# Calls that hold no probe when groups, reserved words and option values are read: a `julia` with
+# no code and no `.jl` script that reads no pipe and no file, one after `time`, or a `julia` word
+# that is no command name.
+RESERVED_LEFT_ALONE = (
+    "{ time julia x.jl; }",
+    "! time julia x.jl",
+    "echo then julia -e 1",
+    "{julia -e 1;}",
+    "(cd x; julia)",
+    "{ cd x; julia; }",
+    "echo 'f(1)' | (cd x); julia",
+    "(echo 'f(1)') | cat; julia",
+    "cat <(echo x) julia -e 1",
+    "x=$(julia) && julia",
+    "(cd x; julia); cat < probe.jl",
+    "cat < probe.jl <(julia)",
+    "julia --startup-file no",
+    "julia --color yes x.sh",
+    "julia -O 3",
+)
 NOT_BASH = json.dumps({"tool_name": "Read", "tool_input": {"command": "julia -e 1", "file_path": "/x"}})
 
 
@@ -3245,6 +3344,24 @@ def kaimon_note_cases():
         ("a note with an empty gate directory names no key", payloads(probe), (), EMPTY_GATES),
         ("more probe forms get the note", payloads(MORE_PROBES), LIVE_GATES, KAIMON_CACHE),
         ("more calls left alone get no note", payloads(MORE_LEFT_ALONE), None, KAIMON_CACHE),
+        (
+            "a probe with an option value in the next word gets the note",
+            payloads(SPACED_PROBES),
+            LIVE_GATES,
+            KAIMON_CACHE,
+        ),
+        (
+            "a probe after a reserved word or in a group gets the note",
+            payloads(RESERVED_PROBES),
+            LIVE_GATES,
+            KAIMON_CACHE,
+        ),
+        (
+            "a group or a reserved word gives no note of its own",
+            payloads(RESERVED_LEFT_ALONE),
+            None,
+            KAIMON_CACHE,
+        ),
     ]
     wrong = 0
     for label, data, keys, cache in cases:

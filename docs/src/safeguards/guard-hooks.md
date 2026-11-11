@@ -509,10 +509,12 @@ session pays them once. Claude Code runs the hook on `PreToolUse` for `Bash`, in
 `rtk hook claude` and the guard. It runs the three in parallel, so the hook reads the command as
 Claude Code sends it, and a refusal of the guard wins over the note.
 
-A simple command of the call is a probe when its program, after the environment assignments, is
-`julia` and it runs code: with `-e`, `-E`, `--eval` or `--print`, with a first argument that ends
-in `.jl`, or with code on its standard input from a pipe or a redirection. The value of `-p` or
-`--procs` is a number of worker processes, not code. The note names `mcp__kaimon__ex`, `ping` and
+A simple command of the call is a probe when its program, after the reserved words such as `then`,
+`do` and `!` and after the environment assignments, is `julia` and it runs code: with `-e`, `-E`,
+`--eval` or `--print`, with a first argument that ends in `.jl`, or with code on its standard
+input from a pipe or a redirection, also one into a group `( … )` or `{ …; }` that holds it. The
+value of an option, such as the `no` of `--startup-file no` or the number of `-p` or `--procs`, is
+no script and no code. The note names `mcp__kaimon__ex`, `ping` and
 `start_session`, and the keys of the live Kaimon sessions, which the Kaimon check reads from the
 same gate directory. It has three lines, and every matching call gets it.
 
