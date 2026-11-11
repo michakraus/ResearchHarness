@@ -84,6 +84,19 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   an SSH one, and `log.showSignature = true` puts text before the format. Pin the backend and the
   options on the call (`-c gpg.openpgp.program=false`, `--no-show-signature`), and test each
   backend the host can hold (E1 round 1, *Synchronise the machines with chezmoi*)
+- a `git` call whose output a check parses, with its options pinned but not its environment:
+  `GIT_DIFF_OPTS=--unified=3` overrides `-U0`, and a global `--literal-pathspecs` makes `git` exit
+  128 when `GIT_ICASE_PATHSPECS` or `GIT_GLOB_PATHSPECS` is set. Remove from the call's
+  environment the variables that override or conflict with its options, keep `GIT_DIR` and
+  `GIT_INDEX_FILE`, and test each variable of git(1)'s *Git Diffs* section and each
+  `GIT_*_PATHSPECS` variable (J4b finish, *Strengthen the Julia coding layer of the harness*)
+- a file path passed to `git` as a pathspec: `git` reads it as a glob, so `src/[a].jl` also matches
+  `src/a.jl`. Pass `--literal-pathspecs`, or `:(literal)` on each path (J4b round 1, same task)
+- a test that runs a fast program with an `IOBuffer` on its stdin: the program can exit before
+  Julia's writer task runs, and `run` throws `EPIPE` at random, more often under load. Give the
+  child `devnull`, for example through `read(cmd, String)` (J4b round 1, same task)
+- a catch-all `catch` around a load whose failure the step reads as a skip: it also turns an
+  `InterruptException` into the skip. Rethrow it (J4b round 1, same task)
 - a matcher fix that tries every start and rebuilds the text for each start: the cost grows with
   the square of the word count, and a long line passes a hook's timeout, so a legitimate command
   fails or a padded line gets through. Build the text once and place each literal part with one
