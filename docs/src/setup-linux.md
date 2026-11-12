@@ -8,7 +8,8 @@ with its [install](concepts.md#install).
 and how to do it by hand. [setup-macos.md](setup-macos.md) is the page for macOS.
 
 `harness setup` runs on Ubuntu 26.04 and 24.04, on `x86_64` and `aarch64` (64-bit Arm). The steps
-are checked on Ubuntu 26.04; on Ubuntu 24.04, no step is checked yet. They use
+are checked on Ubuntu 26.04; on Ubuntu 24.04, `harness setup` and the check are checked on
+`aarch64`. They use
 `~/Research/Harness` as the path of the checkout.
 [Introduction](concepts.md) explains the terms that this page uses, and the glossary there has an
 entry for each.
