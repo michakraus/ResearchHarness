@@ -32,7 +32,8 @@ allow = [
 #   deny_write  write denies after the template's
 #   own         the template's deny entries that the frontend itself reads and writes, its own
 #               credential files by name; its file leaves them out of `denyWrite` and `denyRead`
-#               and adds them to `allowRead`
+#               and adds them to `allowRead`. An entry can also be a file that the frontend reads
+#               only, such as Kaimon's token, which a write deny above it keeps read-only
 #   read_files  files below a read deny directory that the frontend reads and does not write; its
 #               file adds them to `allowRead` and writes the directory as the glob `<directory>/*`,
 #               which a file allow pierces in srt
@@ -58,7 +59,11 @@ network = []
 [frontend.opencode]
 state = ["~/.local/share/opencode", "~/.local/state/opencode", "~/.cache/opencode"]
 deny_write = []
-own = ["~/.local/share/opencode/auth.json", "~/.local/share/opencode/mcp-auth.json"]
+own = [
+    "~/.local/share/opencode/auth.json",
+    "~/.local/share/opencode/mcp-auth.json",
+    "~/.config/kaimon/auth-token",
+]
 read_files = [
     "~/.config/api-keys/gwdg-token",
     "~/.config/api-keys/opendesign-token",
@@ -69,7 +74,12 @@ network = []
 [frontend.omp]
 state = ["~/.omp"]
 deny_write = ["~/.omp/agent/config.yml", "~/.omp/agent/extensions"]
-own = ["~/.omp/agent/agent.db", "~/.omp/agent/agent.db-wal", "~/.omp/agent/.env"]
+own = [
+    "~/.omp/agent/agent.db",
+    "~/.omp/agent/agent.db-wal",
+    "~/.omp/agent/.env",
+    "~/.config/kaimon/auth-token",
+]
 read_files = []
 network = []
 

@@ -106,7 +106,13 @@ through the proxy needs one.
 **A frontend can read its own credentials.** The sandbox wraps the frontend and its shell
 together, so it cannot tell them apart. Each frontend's settings allow reads of its own credential
 files by name, and deny those of every other frontend
-([The security model](security-model.md#the-limits)).
+([The security model](security-model.md#the-limits)). OpenCode and oh-my-pi also read Kaimon's
+token `~/.config/kaimon/auth-token`, the bearer with which they reach Kaimon, and cannot write
+it. So a command that either frontend runs can read the token too, reach Kaimon, and run Julia
+through Kaimon's `ex` under [Kaimon's profile](#the-daemon-profiles), which allows no outbound
+connection but to the loopback address and to Kaimon's own sockets. The files of Claude Code and Antigravity deny reads of the token: each
+keeps Kaimon's bearer in its own configuration, `~/.claude.json` and
+`~/.gemini/config/mcp_config.json`, which the frontend and its commands can read.
 
 **A frontend can use every terminal of the user.** A frontend's terminal user interface puts its
 terminal, a `/dev/ttysNNN`, in raw mode, and of the terminal devices `srt` allows an ioctl only
