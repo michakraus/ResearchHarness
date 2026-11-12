@@ -728,7 +728,6 @@ JULIA_PACKAGES = dict.fromkeys(
     [
         "Adapt",
         "Aqua",
-        "Cthulhu",
         "DocumenterTools",
         "ExplicitImports",
         "JET",
@@ -742,6 +741,7 @@ JULIA_PACKAGES = dict.fromkeys(
     ],
     "1.10",
 )
+JULIA_PACKAGES["Cthulhu"] = "1.12"
 JULIA_PACKAGES["KaimonGate"] = "1.12"
 UUID = '"00000000-0000-0000-0000-000000000000"'
 PKG_ADD = re.compile(r"^julia \+(\S+) --startup-file=no -e using Pkg; Pkg\.add\((.*)\)$")
@@ -907,7 +907,7 @@ def test_julia():
     print("\n== check 4: Julia")
     five, hosts, odd, extra = julia_hosts()
 
-    # Empty environments: 1.10 and 1.11 get the 13 packages of minimum 1.10, 1.12 and 1.13 the
+    # Empty environments: 1.10 and 1.11 get the 12 packages of minimum 1.10, 1.12 and 1.13 the
     # 14, each with the GPU package; nightly nothing.
     for host, entry in hosts.items():
         package = GPU_PACKAGE[entry["gpu"]]
@@ -916,8 +916,8 @@ def test_julia():
         adds = check_julia_run(f"{host}, empty environments", result, home, JuliaWant(five, "1.13", package))
         gpu = 1 if package else 0
         check(
-            [len(adds.get(c, [[]])[0]) for c in five] == [13 + gpu, 13 + gpu, 14 + gpu, 14 + gpu, 0],
-            f"{host}: 1.10, 1.11, 1.12, 1.13, nightly get {13 + gpu}, {13 + gpu}, {14 + gpu}, "
+            [len(adds.get(c, [[]])[0]) for c in five] == [12 + gpu, 12 + gpu, 14 + gpu, 14 + gpu, 0],
+            f"{host}: 1.10, 1.11, 1.12, 1.13, nightly get {12 + gpu}, {12 + gpu}, {14 + gpu}, "
             f"{14 + gpu}, 0 packages",
         )
         check(
