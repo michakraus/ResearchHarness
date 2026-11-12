@@ -2458,7 +2458,8 @@ def start_cases(case: Case, root: pathlib.Path, policy: DaemonPolicy) -> None:
     """A process starts under the profile of each job, rendered with this user's home and `getconf`
     directories: `/bin/sh -c true` under `sandbox-exec -f` exits 0, and so do the pty runs of
     `pty_cases`, the shim runs of `shim_start_cases` and the juliaup launcher under kaimon's
-    profile, the launcher in the environment of the launch agent. Without `sandbox-exec`, without
+    profile, the launcher in the environment of the launch agent; the connects of `connect_cases`
+    run under the profiles of both jobs. Without `sandbox-exec`, without
     `getconf`, or where `sandbox-exec` cannot apply even the profile `(allow default)`, as inside
     another Seatbelt sandbox, they print a skip line; without the launcher, a skip line for its
     run."""

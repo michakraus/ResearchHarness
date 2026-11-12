@@ -923,7 +923,7 @@
 
 ### K157 · A `--bind-try` or `--ro-bind-try` destination counts as an effective mount point of a job even when its source is missing on the host.
 
-- location: `lib/harness/jobsandbox.py:519`
+- location: `lib/harness/jobsandbox.py:583`
 - evidence: `job_pins` skips each path that `effective([*reads, *writes, *denies, *back])` holds,
   and the read paths, write paths and files written back are bound with `--bind-try` or
   `--ro-bind-try`. Where the source of such a bind is missing, `bwrap` makes no mount, so the path

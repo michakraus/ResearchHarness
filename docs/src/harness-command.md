@@ -1308,9 +1308,10 @@ the same user, so [the security model](safeguards/security-model.md) states what
 The required key `network` of each job is `"loopback"` for Kaimon and `"open"` for `julia-update`,
 and `unix_sockets` holds the paths below which a loopback job connects to a Unix socket:
 `~/.cache/kaimon` for Kaimon; `load` refuses a socket path of an open job, and a `network` that
-is another value. A loopback job's profile ends, after the Mach-service deny, with `(deny network-outbound)`, an allow
-of a connect to the loopback addresses, and an allow of a connect to a Unix socket below each
-path of `unix_sockets`; an open job's profile holds no rule of the network. The render
+is another value. A loopback job's profile ends, after the Mach-service deny, with
+`(deny network-outbound)`, an allow of a connect to the loopback addresses, and an allow of a
+connect to a Unix socket below each path of `unix_sockets`; an open job's profile holds no rule
+of the network. The render
 takes `home` and `harness` from the profile and the two per-user directories from `getconf`; a
 `getconf` that fails exits 2. `harness setup` writes each render into
 `~/.config/research-harness/sandbox/` before it renders and loads the job's plist, and both plists
