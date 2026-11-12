@@ -20,8 +20,10 @@
 # and `resolve_name` `:DNSError`; on Linux, where the job sees no /run/user/<uid>, `systemd_run`
 # and `session_bus` `:ProcessFailedException`. A write probe deletes what it created; the probe of
 # ~/.zshrc opens the file to append and writes nothing. `connect_loopback` connects to Kaimon's
-# own port, 127.0.0.1:2828, and `connect_remote` to 1.1.1.1:443, an address that answers, so a
-# profile that lets it through gives `:allowed` and not a timeout.
+# own port, 127.0.0.1:2828, given as a string, so that `Sockets.getaddrinfo` reads the address
+# before the connect, as HTTP.jl does for Kaimon's clients of Qdrant and Ollama; a libc that cannot
+# read it without the resolver gives `:DNSError`. `connect_remote` connects to 1.1.1.1:443, an
+# address that answers, so a profile that lets it through gives `:allowed` and not a timeout.
 #
 # `OPEN_GAPS` names the negative probes that the sandbox does not stop, which report `:allowed`
 # under it: none on macOS; on Linux, none recorded. The event of `appleevent` is
@@ -94,7 +96,7 @@ end
 connect_tcp(address, port) = close(Sockets.connect(address, port))
 
 """A TCP connection to Kaimon's own port on the loopback address."""
-connect_loopback(home = homedir(); address = ip"127.0.0.1", port = 2828) = attempt(() -> connect_tcp(address, port))
+connect_loopback(home = homedir(); address = "127.0.0.1", port = 2828) = attempt(() -> connect_tcp(address, port))
 """Pkg starts offline: `JULIA_PKG_OFFLINE` is `true`, which the plist of the server sets."""
 pkg_offline(home = homedir()) = attempt(() -> ENV["JULIA_PKG_OFFLINE"] == "true" || error("JULIA_PKG_OFFLINE is not true"))
 

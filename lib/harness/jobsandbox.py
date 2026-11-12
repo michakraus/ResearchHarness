@@ -2857,7 +2857,7 @@ GAP_NAME = re.compile(r":(\w+)")
 # The definitions of the network probes with their default targets, each a line of the probe file:
 # the cases run each probe against stubs, so only these lines say what a session's run reaches.
 NETWORK_DEFAULTS = (
-    'connect_loopback(home = homedir(); address = ip"127.0.0.1", port = 2828) = '
+    'connect_loopback(home = homedir(); address = "127.0.0.1", port = 2828) = '
     "attempt(() -> connect_tcp(address, port))",
     'connect_remote(home = homedir(); address = ip"1.1.1.1", port = 443) = '
     "attempt(() -> connect_tcp(address, port))",
