@@ -6,7 +6,7 @@
 [julia_packages]
 Adapt = "1.10"
 Aqua = "1.10"
-Cthulhu = "1.10"
+Cthulhu = "1.12"
 DocumenterTools = "1.10"
 ExplicitImports = "1.10"
 JET = "1.10"

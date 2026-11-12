@@ -1,0 +1,1 @@
+- **The dotfiles kit installs Cthulhu only on Julia 1.12 and later.** Julia 1.10 failed to precompile Cthulhu on one machine, and the hosts drop 1.10 and 1.11, so the minimum channel of Cthulhu in `julia.toml` rises from 1.10 to 1.12; the 1.10 and 1.11 channels keep the other 12 packages.
