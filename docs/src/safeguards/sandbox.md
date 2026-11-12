@@ -142,9 +142,32 @@ through `osascript` also fails, with `-600`. Each rule alone stops the event bef
 Automation consent of macOS. The probe `appleevent` of `sandbox/probe-daemon.jl` sends this
 event: AppleScript answers `name` of an application from the script itself and sends no event.
 
-The profile leaves open the network, the other Mach services, which Metal needs, every write
-inside `~/Research` outside the denied repository parts, and the rename of a directory above a
-denied part, which moves the part out of the denied path. The writes inside `~/Research` include
+Kaimon's profile ends with three rules on outbound traffic (the keys `network = "loopback"` and
+`unix_sockets` of the job), after the Mach-service deny, because Seatbelt applies the last rule
+that matches: `(deny network-outbound)`; `(allow network-outbound (remote ip "localhost:*"))`,
+a connect to `127.0.0.1` and `::1` on any port, where Kaimon answers MCP; and an allow of a
+connect to a Unix socket below `~/.cache/kaimon`, where Kaimon's gate keeps the ZMQ sockets
+between the server and its sessions. Seatbelt filters by address and port, not by host name, so
+no rule can allow the package servers alone. Kaimon's launch agent therefore sets
+`JULIA_PKG_OFFLINE=true`, which every session inherits: Pkg updates no registry and resolves
+against the installed versions alone, so a `Pkg.add` or an `instantiate` that needs a download
+fails, and so does an artifact download. A session's own `julia`, which the session sandbox lets
+reach the package servers, or the `julia-update` job downloads the package. The deny also refuses
+the connect of every other Unix socket, among them the resolver's `/var/run/mDNSResponder`, so
+code that runs through Kaimon is meant to resolve no host name; the probe `resolve_name` of
+`sandbox/probe-daemon.jl` tries one. A client that connects to `::ffff:127.0.0.1`, the IPv4
+loopback address in its IPv6 form, is refused.
+
+The rules cover outbound traffic only. Inbound connections and binds stay open: a listener that a
+session binds to every interface accepts connections from the network. `julia-update` keeps the
+network (`network = "open"`), because it downloads juliaup's releases and the packages. Kaimon
+writes the depot whose packages `julia-update`'s `Pkg.update()` precompiles and loads with the
+network open, so on macOS too the two jobs are one trust domain: code that a session plants in the
+depot through Kaimon's `ex` reaches the network at the next update.
+
+The profile leaves open the other Mach services, which Metal needs, every write inside
+`~/Research` outside the denied repository parts, and the rename of a directory above a denied
+part, which moves the part out of the denied path. The writes inside `~/Research` include
 `~/Research/.claude/hooks`, `skills` and `settings.json`, which the session sandbox denies: through
 Kaimon's `ex`, code can write a hook that a later session runs outside every sandbox.
 
@@ -220,8 +243,8 @@ These sandboxes are decided, and none of them runs yet:
 - **A token per owner** ([planned](../planned.md#token-per-owner), waits for your tokens): a
   fine-grained forge token for each organisation, so that a command can write only where the task
   needs it.
-- **Kaimon without the network** ([planned](../planned.md#kaimon-without-network)): the Kaimon
-  server reaches only the package servers.
+- **Kaimon without the network on Linux** ([planned](../planned.md#kaimon-without-network)): the
+  Kaimon server under `bwrap` reaches only the loopback addresses and its own sockets, as on macOS.
 - **A credential proxy** ([planned](../planned.md#credential-proxy), optional and last): a proxy
   that writes the keys into the requests for their named hosts, so that the agent sees only a
   stand-in. `srt` already filters the network by host, so the proxy does not run by default.

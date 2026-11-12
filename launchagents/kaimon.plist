@@ -78,7 +78,13 @@
          POCL_CACHE_DIR gives the PoCL of a Julia session its own kernel cache, which the profile
          lets the job write: it denies PoCL's default ~/.cache/pocl, which a sandboxed command may
          write, so no command can put a compiled kernel where Kaimon loads and runs it.
-         `harness setup` creates the directory before it loads the job. -->
+         `harness setup` creates the directory before it loads the job.
+
+         JULIA_PKG_OFFLINE=true starts Pkg offline in the server and in every session, which
+         inherits the server's environment: the profile allows outbound connections to the
+         loopback addresses and Kaimon's own sockets only, so no package server is reachable.
+         Pkg then updates no registry and resolves against the installed versions alone. A
+         session's own `julia` or the julia-update job downloads a package that is missing. -->
     <key>EnvironmentVariables</key>
     <dict>
         <key>JULIA_APPS_JULIA_CMD</key>
@@ -91,6 +97,8 @@
         <string>240</string>
         <key>POCL_CACHE_DIR</key>
         <string>{home}/.cache/kaimon/pocl</string>
+        <key>JULIA_PKG_OFFLINE</key>
+        <string>true</string>
     </dict>
 </dict>
 </plist>

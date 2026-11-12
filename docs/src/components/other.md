@@ -103,6 +103,10 @@ Kaimon's profile lets the job write below `~/.cache/kaimon` and not PoCL's defau
 `~/.cache/pocl`, which a sandboxed command may write: so Kaimon has a cache of its own, and no
 command can put a compiled kernel where Kaimon loads and runs it. `harness setup` creates the
 directory before it loads the job, each directory that it creates with mode 700.
+`JULIA_PKG_OFFLINE=true` starts Pkg offline in the server and in every session: the profile lets
+the job connect only to the loopback addresses and to Kaimon's own sockets below `~/.cache/kaimon`
+([The daemon profiles](../safeguards/sandbox.md#the-daemon-profiles)), so a session's own `julia`
+or the update job installs a package that the depot lacks.
 
 OpenCode, oh-my-pi and Antigravity connect to this server at `http://127.0.0.1:2828/`. The update
 job `julia-update.plist` restarts it when its Julia release is deleted. Render the plist with

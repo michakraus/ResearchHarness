@@ -1304,7 +1304,13 @@ profile holds `(allow pseudo-tty)` and one rule that allows reads, writes and io
 `/dev/ptmx` and of every path that the regex `^/dev/ttys[0-9]+$` matches, after the write allows
 and before every write deny; both paths are constants of the module, and the rule list names no
 device. Seatbelt cannot tell a pseudo-terminal of the job from a terminal of another program of
-the same user, so [the security model](safeguards/security-model.md) states what this leaves open. The render
+the same user, so [the security model](safeguards/security-model.md) states what this leaves open.
+The required key `network` of each job is `"loopback"` for Kaimon and `"open"` for `julia-update`,
+and `unix_sockets` holds the paths below which a loopback job connects to a Unix socket:
+`~/.cache/kaimon` for Kaimon; `load` refuses a socket path of an open job, and a `network` that
+is another value. A loopback job's profile ends, after the Mach-service deny, with `(deny network-outbound)`, an allow
+of a connect to the loopback addresses, and an allow of a connect to a Unix socket below each
+path of `unix_sockets`; an open job's profile holds no rule of the network. The render
 takes `home` and `harness` from the profile and the two per-user directories from `getconf`; a
 `getconf` that fails exits 2. `harness setup` writes each render into
 `~/.config/research-harness/sandbox/` before it renders and loads the job's plist, and both plists
@@ -1332,7 +1338,8 @@ source of the other job, its pins included, that is no effective mount point of 
 job binds it onto itself with `--bind`, before any of its write binds below it, so that it cannot
 rename or remove it while it runs; a pin below the job's own write deny raises `HarnessError`.
 The pins of the two jobs are computed against each other until no new pin appears. An absolute
-path, the `$DARWIN` tokens, `~/Library` and `pty` are macOS's and give no argument, a write deny
+path, the `$DARWIN` tokens, `~/Library`, `pty`, `network` and `unix_sockets` are macOS's and give
+no argument, so both jobs keep the network on Linux, a write deny
 that no read or write path of the job holds is left out, and an argument with a newline raises
 `HarnessError`. `harness setup` and the services script of the dotfiles kit check `bwrap` first,
 install `sandbox/jobbox` and `scripts/julia-update-server` into `~/.local/bin`, write each render
@@ -1578,7 +1585,8 @@ each unit and its plist in `launchagents/` with `examples/profile.toml`. Then it
 describe one job: the program and its arguments, after the `sandbox-exec -f <profile>` that the
 plist starts with on macOS, the working directory, the environment and its `PATH`, after the
 shim directory `~/.config/research-harness/sandbox/shims` that such a plist may put first on its
-`PATH`, the timer's triggers, the start at login, and `Restart=always` where the plist has
+`PATH` and after the pair `JULIA_PKG_OFFLINE=true`, which such a plist alone may set, the timer's
+triggers, the start at login, and `Restart=always` where the plist has
 `KeepAlive`. A section, a key or a repeated key that the check does not read is a problem. A
 continued line is a problem too. Every element of the `PATH` must be an absolute directory that
 the settings template keeps out of a session's writes, or a system directory; the shim directory
