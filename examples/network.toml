@@ -1,7 +1,8 @@
 # An overlay of the network lists of the Claude Code settings: copy it to network.toml beside the
 # profile. It has the keys of settings/network.toml, each optional, and adds its entries to that
-# file's. An entry is a host, not a URL. A deny entry wins over an allow, fetch or infrastructure
-# entry of either file. Without this file, the lists of settings/network.toml apply alone.
+# file's; the frontend tables at its end are the overlay's alone. An entry is a host, not a URL.
+# A deny entry wins over an allow, fetch or infrastructure entry of either file. Without this
+# file, the lists of settings/network.toml apply alone.
 
 # Hosts that the WebFetch tool and a sandboxed command can reach, such as the institution's
 # library resolver. Write the host; the install adds `*.X` for a registrable domain.
@@ -17,3 +18,10 @@ deny = ["tracker.example.net"]
 # names, keyed by the exact entry.
 [deny_reasons]
 "tracker.example.net" = "This host is blocked on this machine; do not retry it."
+
+# Hosts that one frontend reaches under agentbox, added to its srt settings file alone, such as
+# the API host of a model provider. An entry is `host` or `host:port`; `*.X` reaches every host
+# below X. These tables change no setting of Claude Code. The frontends are claude, opencode, omp
+# and antigravity.
+[frontend.opencode]
+network = ["api.example.org"]

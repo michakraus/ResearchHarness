@@ -1648,11 +1648,14 @@ The network rules of the Claude Code settings. The module has no subcommand. It 
 rendered settings template the `WebFetch(domain:…)` rules of `permissions.allow` and
 `permissions.deny` and the lists `allowedDomains`, `deniedDomains` and `deniedDomainReasons` of
 `sandbox.network`. A `deny` entry removes each `allow`, `fetch` and `infrastructure` host that it
-matches. `install`, `render` of the settings template and `settings` call it. The module exits
-with status 2 in three cases: a file breaks the schema, the template holds a host of its own, or
-an `allowedDomains` entry covers a `fetch` host. Its cases check each rule, each of these exits,
-and that an overlay changes no file of OpenCode or oh-my-pi. The profile's loader refuses the
-retired profile key `extra_domain`.
+matches. `install`, `render` of the settings template and `settings` call it. It also reads the
+overlay's `[frontend.<name>]` tables, the hosts that one frontend's `srt` file adds, and holds
+their grammar (`frontend_entries`), which `sandbox.py` uses for the policy file too; `generate`
+and `apply` do not read the tables. The module exits with status 2 in four cases: a file breaks
+the schema, the harness list holds a frontend table, the template holds a host of its own, or an
+`allowedDomains` entry covers a `fetch` host. Its cases check each rule, each of these exits,
+and that an overlay, also one with frontend tables, changes no file of OpenCode or oh-my-pi. The
+profile's loader refuses the retired profile key `extra_domain`.
 [Adapting the profile](profile.md#the-network-overlay) describes the keys.
 
 ### `sandbox.py`
@@ -1662,9 +1665,12 @@ The `srt` settings of the CLI frontends. The module has no subcommand. It reads
 object of the rendered Claude Code settings and the policy (`srt_settings`). `install` writes one
 file per chosen frontend below `~/.config/research-harness/sandbox/`, Claude Code's override there
 when `claude` is chosen, and the launcher `sandbox/agentbox` at `~/.local/bin/agentbox`
-(`plan_files`). The module exits with status 2 on a policy file that breaks its schema. Its cases
+(`plan_files`). Each frontend's `allowedDomains` adds its `network` of the policy and of the
+overlay's frontend table to the template's. The module exits with status 2 on a policy file that
+breaks its schema, and on a frontend's `network` entry that covers a `fetch` host. Its cases
 check the shipped policy, each refusal, each rendering rule on a fixture and on the settings
-template, and the launcher on scratch homes with a stub `srt` (`agentbox_cases`). Its
+template, the frontend hosts of `plan_files` with overlays (`plan_network_cases`), and the
+launcher on scratch homes with a stub `srt` (`agentbox_cases`). Its
 `install_file_cases`, which the cases of `install.py` run, check the install on scratch homes.
 [The srt settings](components/sandbox.md) describes the files.
 

@@ -34,6 +34,7 @@ files from both.
 | `frontend.<name>.deny_write` | write denies that the frontend adds to the template's |
 | `frontend.<name>.own` | the template's deny entries that the frontend reads and writes itself: its own credential files, by name |
 | `frontend.<name>.read_files` | files below a read deny directory that the frontend reads and does not write |
+| `frontend.<name>.network` | hosts that the frontend itself reaches, which its file adds to the template's `allowedDomains` |
 
 The read limit denies reads of the whole home directory and allows the paths of `read.allow`
 again. A path that the template denies stays hidden inside an allowed path: in `srt` a deny inside
@@ -65,9 +66,17 @@ no deny entry of its own, so `own` cannot lift it; and `~/.config` is a write de
 stays read-only. No other frontend has a `read_files` entry. oh-my-pi adds the write denies
 `~/.omp/agent/config.yml` and `~/.omp/agent/extensions`.
 
+`antigravity`'s `network` is `oauth2.googleapis.com`, where `agy` exchanges its login token; the
+other three frontends have an empty `network`. An entry is `host` or `host:port`: `host` is
+`localhost`, a name of two or more labels, or `*.` before such a name, and `port` is 1 to 65535
+with no leading zero. Each form is one that `srt` takes in `allowedDomains`, so no entry makes
+`srt` refuse the file. The user's own hosts for a frontend go in a `[frontend.<name>]` table of the
+overlay `network.toml` beside the profile ([The profile](../profile.md)), not in this file.
+
 `harness install` exits with status 2 on a policy file with an unknown key, a missing key or
-frontend, a value that is not a list of strings, a path that does not start with `~/`, or a path
-with a `..` segment, which could leave the home directory. The message names the key or the path.
+frontend, a value that is not a list of strings, a path that does not start with `~/`, a path
+with a `..` segment, which could leave the home directory, or a `network` entry of another form.
+The message names the key or the path.
 It also exits with status 2 on a `read_files` path that is itself an entry of the frontend's read
 denies, compared as paths after the `~` expansion, so `~/x/`, `~//x` and `~/./x` are `~/x`, and
 `~/` is the home directory; such a file goes in `own`.
@@ -79,7 +88,7 @@ and no other:
 
 | key | value |
 |:--|:--|
-| `network.allowedDomains` | the template's, in order |
+| `network.allowedDomains` | the template's, in order; then the frontend's `network` of the policy; then that of the overlay's `[frontend.<name>]` table; without each entry of the policy or the overlay whose host, its `:port` cut off, an entry of `deniedDomains` without a port matches |
 | `network.deniedDomains` | the template's, or `[]` where it has none; `srt` refuses a file without the key |
 | `network.allowLocalBinding` | the template's |
 | `filesystem.allowWrite` | the template's, without each entry at or below another frontend's `state` path; then the frontend's `state`; then the real path of `$TMPDIR`, where it is set and not empty |
@@ -115,6 +124,12 @@ names in `~/.config/api-keys` and read no other file there. An entry that holds 
 converted. The `own` files join `allowRead` for the same reason: oh-my-pi's `~/.omp/agent/.env`
 lies below the template's glob `~/**/.env`, and only a file allow lifts it there.
 
+A frontend's `network` entries reach its own file alone. A deny entry without a port matches a
+host as it does in the network lists (`lib/harness/network.py`), case folded: the same host, any
+host for `*`, and a host or `*.` form below `*.X`. A deny entry with a port leaves the entry in
+place, and `srt`, which checks `deniedDomains` first, refuses that port alone. An entry that the
+template's list already holds stays once, at the template's place.
+
 The template's `excludedCommands` is not carried: under `srt` the whole process is inside the
 sandbox, so no command can run outside it. The masked credentials of `srt` are not used.
 
@@ -128,7 +143,11 @@ no restart line. A frontend that `[setup]` does not choose gets no file, and wit
 chosen the install renders no file. The install does not change what it writes to
 `~/.claude/settings.json`. Because it renders the template with the network overlay for every
 chosen frontend, a broken overlay stops the install with status 2 also when `claude` is not
-chosen, for example an `allow` entry that is a URL.
+chosen, for example an `allow` entry that is a URL. It also exits with status 2 on a `network`
+entry of any frontend, chosen or not, once one is chosen, from the policy or the overlay, whose
+host matches a `fetch` host of the network lists as a deny entry would, because a command of that
+frontend would reach the host; a `fetch` host that a `deny` entry without a port removes is no
+conflict. The message names the frontend's key, the entry and the host.
 
 With at least one frontend chosen, the install also copies the launcher `sandbox/agentbox` to
 `~/.local/bin/agentbox` with mode 755, a directory that a session cannot write. With `claude`
