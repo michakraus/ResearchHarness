@@ -232,6 +232,12 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   the reference must be taken in `BigFloat` at a small step. Measure the reference's own error over
   the seeds before a tolerance is claimed (E verify 2, *Extend the Lagrangian network package with
   the methods of the literature*)
+- a reference solved by the same method from the same start as one of the variants it measures:
+  the variant runs through the reference's iterates, and where the step that meets the variant's
+  tolerance also meets the reference's, both stop at one iterate and that row's error is exactly
+  `0.0`, an identity that a table reads as agreement. Measure the row at a second size, where the
+  reference takes more steps, before the table or a comment states it, and write the note beside
+  the table (BB, *Design the solver package*: `0.0` at `n = 256`, `6.3e-11` at `n = 64`)
 - a scale by the largest absolute entry, tested only on vectors whose largest entry is positive:
   `maximum(u)` in place of `maximum(abs, u)` survives, because it drops every point whose largest
   entry is 0 and whose other entry is negative. Add that point to the case set (E verify 3, the
