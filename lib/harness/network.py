@@ -22,11 +22,11 @@ an optional table `[frontend]`; nothing else. An entry is a host, never a URL.
     matches a WebFetch rule against the host of the URL, so a rule with a port denies nothing.
     The sandbox checks `deniedDomains` before `allowedDomains`.
   * `[frontend.<name>]`, `<name>` a frontend of `frontends.FRONTENDS`, with the one optional key
-    `network`: hosts that srt adds to `allowedDomains` of that frontend's settings file alone, after
-    the frontend's `network` of sandbox/policy.toml (`sandbox.plan_files`). An entry is `host` or
-    `host:port`: `host` is `localhost`, a name of two or more labels, or `*.` before such a name;
-    `port` is 1 to 65535, with no leading zero (`frontend_entries`). Every form is one that srt
-    takes, and `*.X` reaches every host below X. A `deny` entry without a port of either file
+    `network`: hosts that the install adds to `allowedDomains` of that frontend's srt settings file
+    alone, after the frontend's `network` of sandbox/policy.toml (`sandbox.plan_files`). An entry is
+    `host` or `host:port`: `host` is `localhost`, a name of two or more labels, or `*.` before such
+    a name; `port` is 1 to 65535, with no leading zero (`frontend_entries`). Every form is one that
+    srt takes, and `*.X` reaches every host below X. A `deny` entry without a port of either file
     removes an entry whose host it matches; an entry whose host matches, as a `deny` entry would, a
     `fetch` host that `generate` keeps exits 2 in `sandbox.plan_files` once the install chooses
     any frontend. `generate` and `apply` do not read the table, so it changes no Claude Code
