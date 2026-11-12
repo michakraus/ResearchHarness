@@ -211,7 +211,8 @@ providers into `providers.toml`.
 The settings template names no host. `settings/network.toml` holds the hosts of the harness, and
 the overlay `network.toml` beside the profile adds your own, such as the library resolver of your
 institution. The overlay is optional. `examples/network.toml` shows it. Both files have the same
-keys, and each key is optional in the overlay.
+keys, and each key is optional in the overlay; the overlay alone can also hold
+[frontend tables](#frontend-tables).
 
 | key | what it holds | what the install writes |
 |:--|:--|:--|
@@ -249,3 +250,38 @@ the overlay's `allow`.
 
 OpenCode and oh-my-pi have no network allowlist. For Antigravity, `harness install` writes each
 `allow` and `fetch` host as `read_url(<host>)`.
+
+### Frontend tables
+
+A table `[frontend.<name>]` of the overlay, where `<name>` is `claude`, `opencode`, `omp` or
+`antigravity`, adds hosts to that frontend's `srt` settings file alone, the file that
+[`agentbox`](safeguards/sandbox.md#the-launcher-agentbox) starts the frontend with. Its one key,
+`network`, is optional and lists the hosts, such as the API host of a model provider that only
+this frontend uses:
+
+```toml
+[frontend.opencode]
+network = ["*.api.example.org", "chat.example.org"]
+```
+
+The file adds them to `allowedDomains` after the template's list and after the frontend's
+`network` of `sandbox/policy.toml` ([The srt settings](components/sandbox.md#the-policy-file)),
+each once. An entry is `host` or `host:port`: `host` is `localhost`, a name of two or more labels,
+or `*.` before such a name, which reaches every host below it; `port` is 1 to 65535, with no
+leading zero. A `deny` entry without a port of either file removes an entry whose host it
+matches. The tables change no setting of Claude Code; the harness list `settings/network.toml`
+holds none.
+
+These cases stop `install`, `render` of the settings template and `settings` with exit status 2,
+and the message names the file and the key:
+
+- a frontend name that is not one of the four, such as `[frontend.cursor]`;
+- a key other than `network` in a frontend table, or a `frontend` or `network` of the wrong type;
+- an entry of another form: `*`, `*.X` with a one-label `X`, a name of one label other than
+  `localhost`, a URL, a path, an IPv6 address, a port 0, a port with a leading zero or a port
+  above 65535;
+- an entry that is also an entry of `deny` in the same file;
+- a frontend table in `settings/network.toml`.
+
+`install` also stops with exit status 2 on an entry of a chosen frontend whose host matches a
+`fetch` host as a `deny` entry would, because a command of that frontend would reach the host.

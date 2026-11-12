@@ -6,11 +6,16 @@ settings and from sandbox/policy.toml.
 template's `sandbox` section stays the source of the shared lists; the policy file holds only what
 `srt` adds: the read limit's `allow` list, and per frontend its `state` paths, its extra
 `deny_write` paths, its `own` paths, the template's deny entries that it reads and writes itself,
-and its `read_files`, files below a read deny directory that it reads and does not write.
+its `read_files`, files below a read deny directory that it reads and does not write, and its
+`network`, the hosts that it reaches itself, in the grammar of `network.frontend_entries`. The
+overlay `network.toml` beside the profile adds the user's hosts to a frontend's `network` in a
+`[frontend.<name>]` table (`network.py`).
 
 `srt_settings` gives one frontend's object, as docs/src/components/sandbox.md describes:
 
-  network.allowedDomains     the template's, in order
+  network.allowedDomains     the template's, in order; then the frontend's `network`; without
+                             each entry of `network` whose host, its `:port` cut off, an entry
+                             of `deniedDomains` without a port matches (`network.denies`)
   network.deniedDomains      the template's, or [] where it has none: srt refuses a file without it
   network.allowLocalBinding  the template's
   filesystem.allowWrite      the template's, without each entry at or below another frontend's
@@ -33,6 +38,11 @@ that is itself an entry of `denyRead`, compared as a path, exits 2. srt lets a f
 a glob read deny, and not a literal one inside a read allow; it reads `D/**` as the literal `D`,
 so the glob is `D/*`. A glob entry, one that holds `*`, `?`, `[` or `]`, stays as it is.
 
+`plan_files` gives `srt_settings` each frontend's `network` as the policy's list followed by the
+overlay's `[frontend.<name>]` table, and exits 2 on an entry of a chosen frontend, of either
+source, whose host matches a `fetch` host of the network lists by `network.denies`, because a
+command of that frontend would reach the host.
+
 With at least one frontend chosen, `plan_files` also plans the launcher sandbox/agentbox at
 `~/.local/bin/agentbox`, mode 755, which starts a frontend under `srt` with its file, and, with
 `claude` chosen, Claude Code's override `claude-inner-off.json` in the same directory as the
@@ -53,11 +63,11 @@ import tempfile
 import tomllib
 import types
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import FrozenInstanceError, dataclass
+from dataclasses import FrozenInstanceError, dataclass, replace
 from typing import Any, cast
 from unittest import mock
 
-from . import REPO, HarnessError, frontends, install_cases, jsonio
+from . import REPO, HarnessError, frontends, install_cases, jsonio, network
 from . import profile as profile_module
 
 POLICY = REPO / "sandbox" / "policy.toml"
@@ -86,12 +96,13 @@ class ReadPolicy:
 
 @dataclass(frozen=True)
 class FrontendPolicy:
-    """One frontend's paths of the policy file."""
+    """One frontend's paths and hosts of the policy file."""
 
     state: tuple[str, ...]
     deny_write: tuple[str, ...]
     own: tuple[str, ...]
     read_files: tuple[str, ...]
+    network: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -105,7 +116,8 @@ class Policy:
 def load_policy(path: pathlib.Path) -> Policy:
     """The policy file at `path`. Exits 2, naming the key or the path, on a file that cannot be
     read or is not TOML, an unknown key, a missing key or frontend, a value that is not a list of
-    strings, a path that does not start with `~/`, and a path with a `..` segment."""
+    strings, a path that does not start with `~/`, a path with a `..` segment, and a `network`
+    entry outside the grammar of `network.frontend_entries`."""
     try:
         text = path.read_bytes().decode("utf-8")
     except OSError as e:
@@ -119,12 +131,18 @@ def load_policy(path: pathlib.Path) -> Policy:
     top = table(path, "", data, ("read", "frontend"))
     read = table(path, "read.", top["read"], ("allow",))
     named = table(path, "frontend.", top["frontend"], frontends.FRONTENDS)
-    tables = {name: table(path, f"frontend.{name}.", named[name], LISTS) for name in frontends.FRONTENDS}
+    tables = {
+        name: table(path, f"frontend.{name}.", named[name], (*LISTS, "network"))
+        for name in frontends.FRONTENDS
+    }
     return Policy(
         read=ReadPolicy(allow=paths(path, "read.allow", read["allow"])),
         frontends=types.MappingProxyType(
             {
-                name: FrontendPolicy(*(paths(path, f"frontend.{name}.{key}", t[key]) for key in LISTS))
+                name: FrontendPolicy(
+                    *(paths(path, f"frontend.{name}.{key}", t[key]) for key in LISTS),
+                    network=network.frontend_entries(path, f"frontend.{name}.network", t["network"]),
+                )
                 for name, t in tables.items()
             }
         ),
@@ -251,10 +269,13 @@ def srt_settings(
         mine.read_files,
         home,
     )
+    denied = strings(sandbox, "network", "deniedDomains", default=[])
+    whole = [d for d in denied if ":" not in d]
+    hosts = [e for e in mine.network if not any(network.denies(d, bare(e)) for d in whole)]
     return {
         "network": {
-            "allowedDomains": unique(strings(sandbox, "network", "allowedDomains")),
-            "deniedDomains": unique(strings(sandbox, "network", "deniedDomains", default=[])),
+            "allowedDomains": unique([*strings(sandbox, "network", "allowedDomains"), *hosts]),
+            "deniedDomains": unique(denied),
             "allowLocalBinding": binding,
         },
         "filesystem": {
@@ -267,6 +288,11 @@ def srt_settings(
         # allows only with this key.
         "allowPty": True,
     }
+
+
+def bare(entry: str) -> str:
+    """The host of the frontend `network` entry `entry`, its `:port` cut off."""
+    return entry.rpartition(":")[0] or entry
 
 
 def strictly_above(entry: str, paths: Sequence[str], home: pathlib.Path) -> bool:
@@ -323,16 +349,36 @@ def plan_files(
     """The files of `harness install` for the frontends of `chosen`: [(destination, bytes, mode,
     label)]. First, in the order of FRONTENDS, each `srt_settings` of the frontend on the `sandbox`
     object of the Claude Code settings that `profile` and the network overlay `overlay` render,
-    as JSON indented by 2, the keys in the order built, with a final newline, and mode None. Then,
-    where `chosen` holds claude, Claude Code's override INNER_OFF, mode None; then the launcher
+    with each frontend's `network` of the policy followed by its table of the overlay; exits 2 on
+    such an entry of a chosen frontend that reaches a `fetch` host. Each file is JSON indented by
+    2, the keys in the order built, with a final newline, and mode None. Then, where `chosen`
+    holds claude, Claude Code's override INNER_OFF, mode None; then the launcher
     sandbox/agentbox at ~/.local/bin/agentbox, mode 755. With no frontend chosen it plans nothing,
     so an overlay that the install does not read stops nothing."""
     names = [name for name in frontends.FRONTENDS if name in chosen]
     if not names:
         return []
-    policy = load_policy(POLICY)
+    shipped = load_policy(POLICY)
     claude: Any = frontends.adapter("claude")
     sandbox = cast("dict[str, object]", claude.settings_template(profile, overlay)["sandbox"])
+    lists = network.merged(overlay)
+    tables = cast("dict[str, tuple[str, ...]]", lists["frontend"])
+    policy = Policy(
+        read=shipped.read,
+        frontends=types.MappingProxyType(
+            {
+                name: replace(f, network=(*f.network, *tables.get(name, ())))
+                for name, f in shipped.frontends.items()
+            }
+        ),
+    )
+    for name in names:
+        for entry in policy.frontends[name].network:
+            if reached := [h for h in cast("list[str]", lists["fetch"]) if network.denies(bare(entry), h)]:
+                raise HarnessError(
+                    f"frontend.{name}.network entry {entry!r} reaches the fetch host {reached[0]!r}, which "
+                    f"no sandboxed command may reach; remove one of them"
+                )
     files: list[tuple[pathlib.Path, bytes, int | None, str]] = [
         (
             home / DIRECTORY / f"{name}.json",
@@ -365,27 +411,31 @@ state = ["~/.claude", "~/.claude.json", "~/.cache/claude"]
 deny_write = []
 own = ["~/.claude.json"]
 read_files = []
+network = []
 
 [frontend.opencode]
 state = ["~/.local/share/opencode"]
 deny_write = ["~/.local/share/opencode/x"]
 own = ["~/.local/share/opencode/auth.json"]
 read_files = ["~/.config/keys/a", "~/.config/keys/b", "~/.local/x/f", "~/.box*/k"]
+network = []
 
 [frontend.omp]
 state = ["~/.omp"]
 deny_write = []
 own = []
 read_files = []
+network = []
 
 [frontend.antigravity]
 state = ["~/.gemini"]
 deny_write = []
 own = []
 read_files = []
+network = []
 """
-# The fixture's table of omp, which the refusals of `read_files` change.
-FIXTURE_OMP = '[frontend.omp]\nstate = ["~/.omp"]\ndeny_write = []\nown = []\nread_files = []\n'
+# The fixture's table of omp, which the refusals of `read_files` and `network` change.
+FIXTURE_OMP = '[frontend.omp]\nstate = ["~/.omp"]\ndeny_write = []\nown = []\nread_files = []\nnetwork = []\n'
 # The credential files that each frontend reads and writes itself, and the provider tokens that
 # OpenCode reads, as the shipped policy and template render them with the home directory /h.
 SHIPPED_OWN = {
@@ -469,6 +519,7 @@ def selftest() -> tuple[int, int]:
         policy_cases(check, root)
         settings_cases(check, root)
         template_cases(check)
+        plan_network_cases(check, root / "plan")
         agentbox_cases(check, root / "agentbox")
     return n, wrong
 
@@ -511,6 +562,12 @@ def policy_cases(check: Check, root: pathlib.Path) -> None:
         },
         f"sandbox/policy.toml: opencode reads its three provider tokens, no other frontend a file: "
         f"{read_files}",
+    )
+    hosts = {name: f.network for name, f in policy.frontends.items()}
+    check(
+        hosts == {"claude": (), "opencode": (), "omp": (), "antigravity": ("oauth2.googleapis.com",)},
+        f"sandbox/policy.toml: antigravity's network is its login host, every other frontend's empty: "
+        f"{hosts}",
     )
 
     def refuses(change: Callable[[], object], error: type[Exception]) -> bool:
@@ -599,6 +656,26 @@ def policy_cases(check: Check, root: pathlib.Path) -> None:
             "a number in read_files",
             text.replace(FIXTURE_OMP, FIXTURE_OMP.replace("read_files = []", "read_files = [1]"), 1),
             ["frontend.omp.read_files is not a list of strings"],
+        ),
+        (
+            "no network in [frontend.omp]",
+            text.replace(FIXTURE_OMP, FIXTURE_OMP.replace("network = []\n", ""), 1),
+            ["no frontend.omp.network"],
+        ),
+        *(
+            (
+                f"a network {value}",
+                text.replace(FIXTURE_OMP, FIXTURE_OMP.replace("network = []", f"network = {value}"), 1),
+                ["frontend.omp.network", *words],
+            )
+            for value, words in [
+                ('["*"]', ["'*'"]),
+                ('["*.org"]', ["'*.org'"]),
+                ('["https://x.example.org"]', ["'https://x.example.org'"]),
+                ('["x.example.org:08080"]', ["'x.example.org:08080'"]),
+                ('"x.example.org"', ["not an array"]),
+                ("[1]", ["not a string"]),
+            ]
         ),
     ]:
         path = root / "policy.toml"
@@ -784,6 +861,7 @@ def settings_cases(check: Check, root: pathlib.Path) -> None:
         f"exits 2: {message!r}",
     )
     state_cases(check, root, home)
+    network_cases(check, root, home)
 
     plain = fixture_sandbox()
     del plain["network"]["deniedDomains"]
@@ -881,6 +959,178 @@ def state_cases(check: Check, root: pathlib.Path, home: pathlib.Path) -> None:
             "dict[str, list[str]]", srt_settings(name, sandbox, load_policy(path), home, "/t")["filesystem"]
         )
         check(got["denyWrite"] == want, f"{name}'s denyWrite {label}: {got['denyWrite']}")
+
+
+def network_cases(check: Check, root: pathlib.Path, home: pathlib.Path) -> None:
+    """The `allowedDomains` of `srt_settings` with a frontend `network` on the fixture: the
+    template's list, then the frontend's entries, each once at its first place, without each entry
+    whose host a deny entry without a port matches, case folded; another frontend's file keeps the
+    template's list alone."""
+    path = root / "network-policy.toml"
+    hosts = ["n.org", "a.org", "x.org:8443", "*.y.org", "w.y.org", "keep.z.org", "n.org", "Up.Q.org"]
+    # The network key of opencode's table, the last one before omp's.
+    before, after = FIXTURE_POLICY.split("[frontend.omp]")
+    path.write_text(
+        f"{before.removesuffix('network = []\n\n')}network = {json.dumps(hosts)}\n\n[frontend.omp]{after}"
+    )
+    policy = load_policy(path)
+    sandbox = fixture_sandbox()
+    sandbox["network"]["deniedDomains"] = ["x.org", "x.org", "*.y.org", "keep.z.org:22", "*.q.org"]
+    got = {name: srt_settings(name, sandbox, policy, home, "/t")["network"] for name in frontends.FRONTENDS}
+    domains = {name: cast("dict[str, list[str]]", n)["allowedDomains"] for name, n in got.items()}
+    check(
+        policy.frontends["opencode"].network == tuple(hosts)
+        and domains["opencode"] == ["b.org", "a.org", "n.org", "keep.z.org"],
+        f"opencode's allowedDomains: the template's, then its network, each once; a deny x.org removes "
+        f"x.org:8443, *.y.org removes *.y.org and w.y.org, *.q.org removes Up.Q.org, keep.z.org:22 "
+        f"removes nothing: {domains['opencode']}",
+    )
+    check(
+        all(domains[name] == ["b.org", "a.org"] for name in ("claude", "omp", "antigravity")),
+        f"a frontend with an empty network has the template's allowedDomains alone: {domains}",
+    )
+    sandbox["network"]["deniedDomains"] = ["*"]
+    everything = srt_settings("opencode", sandbox, policy, home, "/t")["network"]
+    check(
+        cast("dict[str, list[str]]", everything)["allowedDomains"] == ["b.org", "a.org"],
+        f"a deny * removes every frontend entry and leaves the template's: {everything}",
+    )
+
+
+def plan_network_cases(check: Check, root: pathlib.Path) -> None:
+    """The `allowedDomains` of each frontend's file as `plan_files` plans it with the dummy profile,
+    the shipped policy and an overlay with frontend tables, deny entries or fetch hosts; and each
+    exit 2 of an overlay's frontend table or of an entry that reaches a fetch host."""
+    profile = profile_module.load(profile_module.DUMMY)
+    home = pathlib.Path("/h")
+    claude: Any = frontends.adapter("claude")
+    count = 0
+    root.mkdir()
+
+    def overlay(text: str | None) -> pathlib.Path:
+        nonlocal count
+        count += 1
+        path = root / f"overlay-{count}" / "network.toml"
+        path.parent.mkdir()
+        if text is not None:
+            path.write_text(text)
+        return path
+
+    def files(text: str | None) -> dict[str, dict[str, Any]]:
+        planned = plan_files(profile, overlay(text), frontends.FRONTENDS, home, "/t")
+        return {
+            dest.name.removesuffix(".json"): cast("dict[str, Any]", jsonio.loads(data.decode(), where=label))
+            for dest, data, _, label in planned
+            if dest.parent.name == DIRECTORY.name and dest.name != INNER_OFF_NAME
+        }
+
+    def domains(text: str | None) -> dict[str, list[str]]:
+        return {name: obj["network"]["allowedDomains"] for name, obj in files(text).items()}
+
+    template = cast(
+        "list[str]", claude.settings_template(profile, overlay(None))["sandbox"]["network"]["allowedDomains"]
+    )
+    shipped = domains(None)
+    check(
+        all(shipped[name] == template for name in ("claude", "opencode", "omp"))
+        and shipped["antigravity"] == [*template, "oauth2.googleapis.com"],
+        f"with no overlay, antigravity's file adds oauth2.googleapis.com to the template's allowedDomains, "
+        f"every other file has the template's: { {name: d[len(template) :] for name, d in shipped.items()} }",
+    )
+    tables = (
+        '[frontend.opencode]\nnetwork = ["*.example.org", "chat.example.net", "127.0.0.1:8080", '
+        '"chat.example.net", "localhost:8080"]\n'
+        '[frontend.omp]\nnetwork = ["*.example.org"]\n'
+        "[frontend.claude]\nnetwork = []\n"
+    )
+    tabled = domains(tables)
+    check(
+        tabled
+        == {
+            "claude": template,
+            "opencode": [*template, "*.example.org", "chat.example.net", "127.0.0.1:8080", "localhost:8080"],
+            "omp": [*template, "*.example.org"],
+            "antigravity": [*template, "oauth2.googleapis.com"],
+        },
+        f"an overlay's frontend table reaches that frontend's file alone, after the policy's list, each "
+        f"entry once: { {name: d[len(template) :] for name, d in tabled.items()} }",
+    )
+    again = domains(f'[frontend.omp]\nnetwork = ["{template[0]}", "z.example.org"]\n')["omp"]
+    check(
+        again == [*template, "z.example.org"],
+        f"a frontend entry that the template holds stays once, at the template's place: "
+        f"{again[len(template) :]}",
+    )
+
+    after = domains('[frontend.antigravity]\nnetwork = ["a.example.org"]\n')["antigravity"]
+    check(
+        after == [*template, "oauth2.googleapis.com", "a.example.org"],
+        f"an overlay's entries follow the policy's in that frontend's file: {after[len(template) :]}",
+    )
+
+    def without_domains(obj: dict[str, Any]) -> dict[str, Any]:
+        return {**obj, "network": {k: v for k, v in obj["network"].items() if k != "allowedDomains"}}
+
+    plain, changed = files(None), files(tables)
+    check(
+        all(without_domains(plain[name]) == without_domains(changed[name]) for name in frontends.FRONTENDS),
+        "an overlay's frontend tables change no key of a file other than allowedDomains",
+    )
+    denied = domains(
+        'deny = ["*.example.net", "oauth2.googleapis.com", "keep.example.com:22"]\n'
+        '[frontend.opencode]\nnetwork = ["chat.example.net:8443", "keep.example.com", "a.example.org"]\n'
+    )
+    check(
+        denied["opencode"] == [*template, "keep.example.com", "a.example.org"]
+        and denied["antigravity"] == template,
+        f"an overlay deny without a port removes a frontend entry of the overlay and of the policy by its "
+        f"host, and one with a port removes none: {denied['opencode'][len(template) :]}, "
+        f"{denied['antigravity'][len(template) :]}",
+    )
+    for label, text, words in [
+        (
+            "an overlay frontend entry *.example.org above an overlay fetch host",
+            'fetch = ["w.example.org"]\n[frontend.omp]\nnetwork = ["*.example.org"]\n',
+            ["frontend.omp.network", "'*.example.org'", "'w.example.org'"],
+        ),
+        (
+            "an overlay frontend entry with a port on an overlay fetch host",
+            'fetch = ["w.example.org"]\n[frontend.omp]\nnetwork = ["W.example.org:8443"]\n',
+            ["frontend.omp.network", "'W.example.org:8443'", "'w.example.org'"],
+        ),
+        (
+            "the policy's entry oauth2.googleapis.com on an overlay fetch host",
+            'fetch = ["oauth2.googleapis.com"]\n',
+            ["frontend.antigravity.network", "'oauth2.googleapis.com'"],
+        ),
+        (
+            "an unknown frontend cursor",
+            '[frontend.cursor]\nnetwork = ["x.example.org"]\n',
+            ["frontend.cursor"],
+        ),
+    ]:
+        message = refused(lambda text=text: files(text))
+        check(
+            message is not None and all(w in message for w in words),
+            f"plan_files with {label} exits 2 and names it: {message!r}",
+        )
+    message = refused(
+        lambda: files('fetch = ["w.example.org"]\n[frontend.omp]\nnetwork = ["v.example.org"]\n')
+    )
+    check(message is None, f"a frontend entry beside a fetch host that it does not cover plans: {message!r}")
+    message = refused(
+        lambda: plan_files(profile, overlay('fetch = ["oauth2.googleapis.com"]\n'), ("claude",), home, "/t")
+    )
+    check(
+        message is None,
+        f"an entry of a frontend that the install does not choose is no conflict with a fetch host: "
+        f"{message!r}",
+    )
+    message = refused(lambda: claude.settings_template(profile, overlay("[frontend.cursor]\nnetwork = []\n")))
+    check(
+        message is not None and "frontend.cursor" in message,
+        f"the Claude Code settings refuse an overlay with an unknown frontend too: {message!r}",
+    )
 
 
 def template_cases(check: Check) -> None:

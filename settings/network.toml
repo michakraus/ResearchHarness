@@ -22,6 +22,9 @@
 #
 # An overlay with the same keys, `network.toml` beside the profile, adds its entries. A `deny`
 # entry of either file removes each `allow`, `fetch` and `infrastructure` host that it matches.
+# The overlay alone may also hold `[frontend.<name>]` tables, whose `network` hosts reach that
+# frontend's srt settings file and no Claude Code setting; this file holds none, and a frontend's
+# own hosts go in sandbox/policy.toml.
 # Each entry is a host, not a URL. The sandbox refuses a host that no list names, with no prompt
 # (`strictAllowlist`); a WebFetch of it matches no rule and asks in the default permission mode.
 

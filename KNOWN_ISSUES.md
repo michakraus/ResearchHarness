@@ -10,7 +10,7 @@
   `[[~/.claude/hooks/gh-api-writes.py#1A2B]#1A2B]`. The user decided to land the guard with this
   gap, for oh-my-pi under the sandbox launcher. The launcher `sandbox/agentbox` runs the whole
   oh-my-pi process under srt, so its `write` tool too. The srt file of oh-my-pi denies writes to
-  `~/.omp/agent/config.yml` (`sandbox/policy.toml:64`) and allows none below `~/.claude/hooks`;
+  `~/.omp/agent/config.yml` (`sandbox/policy.toml:71`) and allows none below `~/.claude/hooks`;
   the probes W10 and W2 of `scripts/probe-agentbox.py` try the two places. The launcher is
   opt-in: an oh-my-pi started without it has only the guard, and the gap is open there.
 - kind: defect
@@ -695,7 +695,7 @@
 
 ### K137 · `srt_settings` raises a bare `KeyError` for a frontend that the policy does not name.
 
-- location: `lib/harness/sandbox.py:220`
+- location: `lib/harness/sandbox.py:243`
 - evidence: `policy.frontends[frontend]` has no guard, so `srt_settings("codex", …)` ends with
   `KeyError: 'codex'`, not with a `HarnessError`. Every caller passes a name of `FRONTENDS`, and
   `load_policy` requires a table for each of them, so no command reaches it.
@@ -845,10 +845,10 @@
 
 ### K148 · The same-file checks of the network lists and the deduplication of `merged` compare hosts as exact strings, while `denies` folds case.
 
-- location: `lib/harness/network.py:142`
+- location: `lib/harness/network.py:209`
 - evidence: `read` refuses a host in `allow` and `deny` of one file, and a host in `fetch` and
-  `allow`, only when both entries are the same string (lines 142 and 146), and `merged` drops an
-  entry of the overlay only when the harness list holds the same string (line 159). `denies`
+  `allow`, only when both entries are the same string (lines 209 and 216), and `merged` drops an
+  entry of the overlay only when the harness list holds the same string (line 235). `denies`
   matches without regard to case. So an overlay `allow = ["GitHub.com"]` gives the two rules
   `WebFetch(domain:github.com)` and `WebFetch(domain:GitHub.com)`, and `allow = ["f.org"]` with
   `fetch = ["F.org"]` in one file passes `read`; `generate` then refuses it as a `fetch` host that
@@ -936,3 +936,19 @@
   `-try` destination only where setup creates it.
 - kind: defect
 - found: 2026-11-11, the verify-4 critic of part D2
+
+### K158 · `check_entry` takes `deny` and `infrastructure` entries that srt 0.0.81 refuses, so one such entry makes every frontend's srt settings file invalid.
+
+- location: `lib/harness/network.py:98`
+- evidence: `check_entry` takes a port with a leading zero and a host of one label: `check_entry`
+  passes `deny` entries `x.org:08080` and `intranet` and `infrastructure` entries `intranet` and
+  `*.org`. srt's schema (`sandbox-config.js`, `domainPortPatternSchema` for `allowedDomains`,
+  `deniedDomainPatternSchema` for `deniedDomains`) takes a port only as `[1-9][0-9]{0,4}` and a
+  name only with a dot, other than `localhost`, and a `*.X` only where `X` has two labels or more
+  (`domain-pattern.js`). The entries reach `allowedDomains` and `deniedDomains` of every
+  frontend's file through the template, so srt's schema refuses the file; no session has run
+  srt on such a file. No list of the harness holds
+  such an entry; an overlay can. The frontend entries of `frontend_entries` have the closed
+  grammar.
+- kind: defect
+- found: 2026-11-12, the planning of part E5k

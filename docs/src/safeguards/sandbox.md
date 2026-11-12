@@ -73,7 +73,8 @@ agentbox opencode
 `~/.local/bin/srt --settings ~/.config/research-harness/sandbox/<policy name>.json -- <program>`,
 where the policy name is the frontend's name, and `antigravity` for `agy`. `harness install` writes one settings file for each CLI frontend, from the
 `sandbox` section of the template and the policy file `sandbox/policy.toml`, so every frontend
-gets the same file and network lists. Each frontend gets an argument that fits the outer sandbox:
+shares the template's file lists and network lists. Each frontend gets an argument that fits the
+outer sandbox:
 
 | frontend | argument | why |
 |:--|:--|:--|
@@ -90,6 +91,17 @@ runs as it would without the harness: Claude Code with its session sandbox, Open
 with none. The probe battery `scripts/probe-agentbox.py` checks the boundary on macOS; run it from
 a plain terminal, not from a session. [The srt settings](../components/sandbox.md) describes the
 rendering, the launcher and the probe in full.
+
+**Each frontend adds its own hosts.** A frontend's file adds the hosts of its `network` list in
+the policy file, and those of a `[frontend.<name>]` table of the overlay `network.toml`, to the
+template's `allowedDomains`; no other frontend's file gets them. `agy`'s login host
+`oauth2.googleapis.com` is in `antigravity`'s list. An entry `*.X` reaches every host below `X`,
+the hosts of other tenants of a shared domain included, so a cloud provider's `*.X` also reaches
+every other customer's endpoint below it. `srt` sets `NO_PROXY` for `localhost`, `127.0.0.1` and
+`::1`, and its macOS profile allows outbound connections to `localhost` where
+`allowLocalBinding` is true, as the template sets it. So a client that honours `NO_PROXY` reaches
+a server on the loopback address with no entry; only a client that sends a loopback request
+through the proxy needs one.
 
 **A frontend can read its own credentials.** The sandbox wraps the frontend and its shell
 together, so it cannot tell them apart. Each frontend's settings allow reads of its own credential
