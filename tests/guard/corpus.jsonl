@@ -663,6 +663,18 @@
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git push --force-with-lease origin HEAD:refs/heads/feature"}, "cwd": "@@R@@/Packages/Mapped"}, "decision": "allow"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git push --force-with-lease origin refs/heads/main"}, "cwd": "@@R@@/Packages/Own"}, "decision": "deny"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git push --force-with-lease origin feature --force-if-includes"}, "cwd": "@@R@@/Packages/Own"}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git push origin :topic"}, "cwd": "@@CWD@@"}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git push origin +:topic"}, "cwd": "@@CWD@@"}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git push origin feature :refs/heads/topic"}, "cwd": "@@CWD@@"}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git push origin :"}, "cwd": "@@CWD@@"}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git -C repo push origin :topic"}, "cwd": "@@CWD@@"}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "/usr/bin/git push -u origin :topic"}, "cwd": "@@CWD@@"}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git fetch && git push origin :topic"}, "cwd": "@@CWD@@"}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "sh -c 'git push origin :topic'"}, "cwd": "@@CWD@@"}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git push origin HEAD:refs/heads/topic"}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git push origin feature:topic"}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git push -o :x origin feature"}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git log --format=:%h push"}, "cwd": "@@CWD@@"}, "decision": "pass"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git push origin --force-with-lease feature"}, "cwd": "@@R@@/Packages/Own"}, "decision": "ask"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git push --force-w origin feature"}, "cwd": "@@R@@/Packages/Own"}, "decision": "ask"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git push --force-with-lease upstream feature"}, "cwd": "@@R@@/Packages/Own"}, "decision": "ask"}

@@ -64,8 +64,8 @@ Antigravity, oh-my-pi and OpenCode also run the path-list check `path_list.py`, 
 frontend's `guard-paths.json`; Antigravity's table runs the lift check `sandbox_lift.py` on a shell
 call that it does not deny, which lifts a command out of the sandbox only where the line matches a
 closed grammar and Claude Code's sandbox rule lifts it. One module per check reads that call: the
-staging, write, sandbox, `gh api`, `gh pr create`, `gh` watcher, rm, archive, git write, web,
-token, Kaimon and directory checks below. Each check gives `deny`, `ask`, `allow` or `pass` with a reason. The
+staging, write, sandbox, `gh api`, `gh pr create`, `gh` watcher, rm, archive, git write, push
+deletion, web, token, Kaimon and directory checks below. Each check gives `deny`, `ask`, `allow` or `pass` with a reason. The
 guard answers the first of `deny`, `ask`, `allow` and `pass` that a check gives, with that check's
 reason, in the form of the frontend: for Claude Code exit 2 with the reason on standard error for
 `deny`, a JSON decision for `ask` and `allow`, and no output for `pass`. A tool that the table does
@@ -320,6 +320,20 @@ plain `--force` push gets no decision from the check; the `deny` rules of the se
 The check reads the state with `git` in the working directory of the call, with `core.fsmonitor`
 off. When `git` fails or cannot run, the call asks. The own organisations are the `org` list of the
 profile, as the `gh api` check reads it.
+
+### The push deletion check
+
+`git_push_delete.py` asks before a `git push` whose refspec has an empty source, on each shell
+call of every frontend. A refspec `:<ref>`, also `+:<ref>`, deletes `<ref>` on the remote, and a
+lone `:` pushes every matching branch. The check finds each `git` call of each part of the
+command, after the global options of `git` such as `-C`, also behind another command as in
+`find -exec` and inside the script of `sh -c`, `bash -c` or `eval`. It reads each argument after
+the remote that is neither an option nor the value of one, as the git write check does. A command
+that holds `push` and that the check cannot read gets `ask`.
+
+A permission rule cannot state this in Claude Code without a warning at each start: the rule needs
+a literal `:` and then a wildcard, and Claude Code reports every `:*` that is not at the end of a
+rule. The `ask` rules of the settings keep `--delete`, `-d` and `--prune`.
 
 ### The web check
 
