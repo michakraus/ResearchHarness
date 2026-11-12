@@ -1138,9 +1138,13 @@ def agentbox_cases(check: Check, root: pathlib.Path) -> None:
     that names its cause; and the usage."""
     script = REPO / "sandbox" / "agentbox"
     mode = stat.S_IMODE(script.stat().st_mode) if script.is_file() else None
+    # Git stores only the execute bit, so the checkout's write bits follow its umask; the install
+    # sets LAUNCHER_MODE on the copy it writes.
+    executable = stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH
     check(
-        mode == LAUNCHER_MODE,
-        f"sandbox/agentbox is a file of mode 755: {'no file' if mode is None else f'{mode:o}'}",
+        mode is not None and mode & executable == executable and not mode & stat.S_IWOTH,
+        f"sandbox/agentbox is a file executable by all and writable by no other: "
+        f"{'no file' if mode is None else f'{mode:o}'}",
     )
     if mode is None:
         return

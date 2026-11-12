@@ -1,0 +1,1 @@
+- **Two cases of `harness test` pass under umask `002`.** The case of an unreadable `settings.json` restores the mode that its snapshot holds, and the case of `sandbox/agentbox` checks the execute bits and no world-write, which a checkout gives under any umask, instead of mode `755`.
