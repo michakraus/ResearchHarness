@@ -24,6 +24,8 @@ and its `read_files`, files below a read deny directory that it reads and does n
                              frontend's `read_files` written as the entry followed by `/*`
   filesystem.allowRead       the policy's `read.allow`; then the frontend's `state`; then its
                              `own`; then its `read_files`
+  allowPty                   true, for every frontend: srt then allows pseudo-terminals, which a
+                             frontend's terminal user interface needs (macOS only)
 
 Every `~` and `~/` prefix becomes the home directory, a list holds no entry twice, and the first
 occurrence keeps its place. "At or below" compares whole path components. A `read_files` path
@@ -261,6 +263,9 @@ def srt_settings(
             "denyRead": unique(deny_read),
             "allowRead": unique([*expanded(policy.read.allow), *state, *own, *read_files]),
         },
+        # A frontend's terminal user interface enters raw mode on its /dev/ttysNNN, which srt
+        # allows only with this key.
+        "allowPty": True,
     }
 
 
@@ -634,7 +639,14 @@ def settings_cases(check: Check, root: pathlib.Path) -> None:
     before = copy.deepcopy(sandbox)
     claude = srt_settings("claude", sandbox, policy, home, "/t")
     check(sandbox == before, "srt_settings leaves its sandbox object as it is")
-    check(list(claude) == ["network", "filesystem"], f"the keys are network and filesystem: {list(claude)}")
+    for name in frontends.FRONTENDS:
+        check(
+            list(got := srt_settings(name, sandbox, policy, home, "/t"))
+            == ["network", "filesystem", "allowPty"]
+            and got["allowPty"] is True,
+            f"{name}'s keys are network, filesystem and allowPty, and allowPty is true: "
+            f"{list(got)}, {got.get('allowPty')!r}",
+        )
     check(
         claude["network"]
         == {"allowedDomains": ["b.org", "a.org"], "deniedDomains": ["x.org"], "allowLocalBinding": True},
