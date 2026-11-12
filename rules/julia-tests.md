@@ -1,6 +1,6 @@
 ---
 paths: ["**/test/**/*.jl"]
-description: The one layout of a Julia repository's tests — groups, runtests.jl, Aqua marks, compat entries — and how its check and runner are called.
+description: The one layout of a Julia repository's tests — groups, runtests.jl, Aqua marks, compat entries — what a numerical or property test asserts, and how its check and runner are called.
 ---
 
 # Test files in a Julia repository
@@ -76,6 +76,15 @@ Every repository here lays out its tests in one form. `Harness/scripts/test-layo
   sits above the residue and can hide an `N×2n` temporary.
 - **Assert that the iterate changes after one step.** A test that checks only types or convergence
   flags misses an iterate that never moves.
+- **A property of a search states what its status claims, against a reference the test computes
+  itself.** A `SUCCESS` of a minimising search is a minimum, not only a decrease: a stationary
+  point with a decrease below the anchor can be a maximum. A `STALLED` or a failure is checked
+  against a decrease that a fine grid or a closed form finds, so a status that hides a reachable
+  decrease fails the test. A property that accepts every non-error status checks nothing.
+- **A property test reports one counterexample per check.** Supposition shrinks the first failure
+  it finds, so a dismissed counterexample hides every other failure of the same check. After you
+  judge a counterexample a false alarm, filter its class out of the generator, or out of the
+  property, and run the check again; only a clean rerun clears the property.
 - **Reproduce a 1.12 `min` failure with `julia +1.12`**: run `julia +1.12 --startup-file=no
   run-tests.jl <worktree> <test file>` or `julia +1.12 --project=. <test file>`.
 
