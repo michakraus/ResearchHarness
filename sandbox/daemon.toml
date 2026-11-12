@@ -17,7 +17,7 @@
 # among them the resolver's /var/run/mDNSResponder, which a name lookup connects to. A connect to
 # 127.0.0.1 written as ::ffff:127.0.0.1 is refused too. The rules are on outbound traffic only: a
 # listener of the job on every interface accepts a connection from the network. `unix_sockets` is
-# a list of paths as above, and empty for a job with "open". On Linux both keys give no argument
+# a list of paths as below, and empty for a job with "open". On Linux both keys give no argument
 # of `bwrap`, and the job keeps the network.
 #
 # A path is one of the tokens $DARWIN_USER_TEMP_DIR, $DARWIN_USER_CACHE_DIR (the values of

@@ -162,8 +162,8 @@ The rules cover outbound traffic only. Inbound connections and binds stay open: 
 session binds to every interface accepts connections from the network. `julia-update` keeps the
 network (`network = "open"`), because it downloads juliaup's releases and the packages. Kaimon
 writes the depot whose packages `julia-update`'s `Pkg.update()` precompiles and loads with the
-network open, so on macOS too the two jobs are one trust domain: code that a session plants in the
-depot through Kaimon's `ex` reaches the network at the next update.
+network open, so the two jobs are one trust domain: code that a session plants in the depot
+through Kaimon's `ex` reaches the network at the next update.
 
 The profile leaves open the other Mach services, which Metal needs, every write inside
 `~/Research` outside the denied repository parts, and the rename of a directory above a denied
