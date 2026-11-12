@@ -2464,7 +2464,7 @@ def layer_cases(check, tmp):
             live.chmod(0)
         code, text = run(base, "--apply")
         if label.startswith("unreadable"):
-            live.chmod(0o644)
+            live.chmod(before[str(live)][0])
         lines = text.strip().splitlines()
         case(
             lambda: (
