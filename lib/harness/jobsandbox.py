@@ -12,21 +12,25 @@ dataclass: once for both jobs the denied operations and the denied Mach services
 system paths that both read (`linux_read`) and the root entries that are a link on one Linux and a
 directory on another (`linux_links`), and for each job of JOBS, in a table `[job.<name>]`, its read
 paths, read files, write paths, write files, write denies, the files that it writes back inside a
-write deny, the directories that it writes on Linux only (`linux_write`), and `pty`, whether it
-uses pseudo-terminals (`JobRules`). Each key is required, `pty` is true or false, each other value
-is a list of strings, and a path is a token of TOKENS alone, or a start, `~`, nothing or a token,
-and then `/` and one or more segments, none of them empty, `.` or `..`, so no `//` and no final
-`/`; a read file can also be the root `/` alone, which dyld reads when a process starts. A
-`linux_write` path starts with `~/`. A path of `linux_read` and `linux_links` is `/` and one or
-more such segments, and one of `linux_links` has one segment only.
+write deny, the directories that it writes on Linux only (`linux_write`), the paths below which it
+connects to a Unix socket (`unix_sockets`), `pty`, whether it uses pseudo-terminals, and
+`network`, one of NETWORKS (`JobRules`). Each key is required, `pty` is true or false, `network`
+is the string "open" or "loopback", and a job with "open" has no `unix_sockets`, because it
+reaches every socket. Each other value is a list of strings, and a path is a token of TOKENS
+alone, or a start, `~`, nothing or a token, and then `/` and one or more segments, none of them
+empty, `.` or `..`, so no `//` and no final `/`; a read file can also be the root `/` alone,
+which dyld reads when a process starts. A `linux_write` path starts with `~/`. A path of
+`linux_read` and `linux_links` is `/` and one or more such segments, and one of `linux_links` has
+one segment only.
 A system path is in its real form: a path at or below `/etc`, `/tmp` or `/var`, in any case of
 letters, is refused, because Seatbelt matches a path after it resolves the symlink
 `/etc -> private/etc`, and a file system that ignores case reads `/ETC` as `/etc`. A denied
 operation is lower-case words joined by `-`, with `*` (OPERATION), because the renderer writes it
 into the profile as it is. A file that is not UTF-8 or not TOML, a missing job or key, an unknown
 key or job, a relative path, a path with such a segment, a path in its link form, another operation,
-a `pty` that is not a boolean and another value that is not a list of strings raise HarnessError,
-which names the key or the path.
+a `pty` that is not a boolean, a `network` that is not one of NETWORKS, a socket path of a job with
+"open" and another value that is not a list of strings raise HarnessError, which names the key or
+the path.
 
 `profile` renders the profile of one job as SBPL text, in this order: `(version 1)`,
 `(allow default)`, `(deny file-read* file-write*)`, `(allow file-read-metadata)`, one
@@ -37,12 +41,18 @@ the `literal` PTY_MASTER and the `regex` PTY_SLAVES, both fixed in this module, 
 `(deny file-write* …)` with a `subpath` per write deny and a `regex` per repository part of
 REPOSITORY_PARTS at any depth below ~/Research, one `(allow file-write* …)` with a `literal` per
 file written back, one `(deny <operation>)` per denied operation, and one `(deny mach-lookup …)`
-with a `global-name` per denied service. Seatbelt applies the last rule that matches, so the write
-denies follow the write allows, and the files written back follow the write denies. A block whose
-list is empty is left out, because a block with no filter matches every path. `~` becomes `home`,
-`$HARNESS` the profile's `harness`, and each `getconf` token its value (`UserDirs`) without a final
-`/`, with a leading `/var/` written as `/private/var/`. Every path and regex is an ordinary SBPL
-string, with `"` and `\\` escaped, and a regex escapes the metacharacters of the home path.
+with a `global-name` per denied service; and last, for a job with `network = "loopback"`, the
+three rules of `network_rules`: `(deny network-outbound)`,
+`(allow network-outbound (remote ip "localhost:*"))`, which allows a connect to 127.0.0.1 and
+::1, and one `(allow network-outbound …)` with a `(remote unix-socket (subpath …))` per socket
+path, the forms of srt. A job with "open" gets no rule of the network. Seatbelt applies the last
+rule that matches, so the write denies follow the write allows, the files written back follow the
+write denies, and the network allows follow the network deny and every other rule. A block whose
+list is empty is left out, because a block with no filter matches every path, or every connect.
+`~` becomes `home`, `$HARNESS` the profile's `harness`, and each `getconf` token its value
+(`UserDirs`) without a final `/`, with a leading `/var/` written as `/private/var/`, in a socket
+path as in a file rule. Every path and regex is an ordinary SBPL string, with `"` and `\\` escaped,
+and a regex escapes the metacharacters of the home path.
 `profile` reads no Linux key.
 
 `bwrap_args` gives the static arguments of `bwrap` for one job, in this order: BWRAP_START, which
@@ -55,18 +65,19 @@ makes new namespaces of every kind but the network, ends the job with its unit, 
 each write deny, and `--bind-try` of each file written back. Of the job's lists it takes only a
 `~/` path, `~` becoming `home`, and `$HARNESS` and a path below it, `$HARNESS` becoming the
 profile's `harness`: an absolute path, the root `/`, the `$DARWIN` tokens, MACOS_LIBRARY and
-every path below it are macOS's, and `pty` gives no argument. A write deny that lies at or below
-no read path, write path or `linux_write` path of the job is left out, because the job cannot see
-it. A pin is a path from a write path of the job down to a bind source of the other job of JOBS,
-its pins included, which is no effective mount point of the job yet (a bind destination that no
-later bind covers): bound onto itself it is a mount point in the job's namespace, which the job
-cannot rename or remove while the other job's `bwrap` mounts it, and a pin below a write deny of
-the job raises HarnessError. The pins of the two jobs are computed against each other until no
-new pin appears, and each pin is bound after the last write bind at or above it and before the
-first one after that below it, so that no later bind covers it. `linux_dirs` names the write
-denies that are left in, the `linux_write` paths and the pins that are directories, and
-`linux_files` the pins that are files, which must exist before the job starts. An argument that
-holds a newline raises HarnessError, because `jobbox` reads one argument per line.
+every path below it are macOS's, and `pty`, `network` and `unix_sockets` give no argument, so the
+job keeps the network. A write deny that lies at or below no read path, write path or
+`linux_write` path of the job is left out, because the job cannot see it. A pin is a path from a
+write path of the job down to a bind source of the other job of JOBS, its pins included, which is
+no effective mount point of the job yet (a bind destination that no later bind covers): bound onto
+itself it is a mount point in the job's namespace, which the job cannot rename or remove while the
+other job's `bwrap` mounts it, and a pin below a write deny of the job raises HarnessError. The
+pins of the two jobs are computed against each other until no new pin appears, and each pin is
+bound after the last write bind at or above it and before the first one after that below it, so
+that no later bind covers it. `linux_dirs` names the write denies that are left in, the
+`linux_write` paths and the pins that are directories, and `linux_files` the pins that are files,
+which must exist before the job starts. An argument that holds a newline raises HarnessError,
+because `jobbox` reads one argument per line.
 
 `harness render` of a template `sandbox/<job>.sb` or `sandbox/<job>.bwrap` (`job_of`), a file
 that does not exist, prints `render` of that job; a `.bwrap` template prints `bwrap_args` with the
@@ -105,21 +116,30 @@ pair and forking `/bin/sh -c true` on a pseudo-terminal, as Kaimon starts a
 session, and the juliaup launcher `~/.juliaup/bin/julia --startup-file=no -e 'exit(0)'`, which
 opens juliaup's lock file for writing at every start, and expect exit 0 from each; and
 `ps -o state= -p $$` under kaimon's profile with the PATH of kaimon's plist, which must print `S`
-from the repository's shim and from the installed one. Without `/usr/bin/sandbox-exec` or
-`getconf`, or where `sandbox-exec` cannot apply even `(allow default)`, as inside another Seatbelt
-sandbox, they print a skip line; where this Python cannot start under kaimon's profile, a skip line
-for the pty runs, without the launcher a skip line for its run, and for a shim that is not at a
-path that kaimon's profile reads, a skip line for its run.
+from the repository's shim and from the installed one; and the connects of `connect_cases`: under
+kaimon's profile one to a TCP listener of the case on 127.0.0.1 succeeds and one to UNREACHABLE
+fails with EPERM, under kaimon's rules with a scratch socket path below $DARWIN_USER_TEMP_DIR one
+to a Unix socket below it succeeds and one to a socket beside it fails with EPERM, and under
+julia-update's profile the connect to UNREACHABLE fails with no EPERM. No case connects to another
+address or resolves a host name. Without `/usr/bin/sandbox-exec` or `getconf`, or where
+`sandbox-exec` cannot apply even `(allow default)`, as inside another Seatbelt sandbox, they print
+a skip line; where this Python cannot start under kaimon's profile, a skip line for the pty runs
+and for its connects, where it cannot start under julia-update's, a skip line for that connect,
+without the launcher a skip line for its run, and for a shim that is not at a path that kaimon's
+profile reads, a skip line for its run.
 
 `sandbox/probe-daemon.jl` holds the probes that a session runs through Kaimon's `ex` once the
 server runs under its profile or its `bwrap`; the cases below run each probe of both systems'
-sets against a scratch tree, where no sandbox applies, and check the form of its result and the
-two sets of `run_all`. Without `julia` on the PATH they print a skip
-line. `OPEN_GAPS` of the probe file names the negative probes that the profile does not stop, which
+sets against a scratch tree, where no sandbox applies, the network probes against a listener and
+two resolver stubs of the case on loopback and never against their default targets, and check
+the form of its result and the two sets of `run_all`. Without `julia` on the PATH they print a
+skip line. `OPEN_GAPS` of the probe file names the negative probes that the profile does not stop, which
 report `:allowed` under it: none. The cases check that value, that the file's header comment names
 `OPEN_GAPS` and each open gap and expects no exception class of one, that it expects
-`:ProcessFailedException` of `appleevent` and names its event, `name of startup disk`, and that
-the default command of `appleevent` asks the Finder for `name of startup disk`: AppleScript
+`:ProcessFailedException` of `appleevent` and names its event, `name of startup disk`, that it
+expects an `IOError` class of `connect_remote` and `:DNSError` of `resolve_name`, that the
+network probes default to 127.0.0.1:2828, 1.1.1.1:443 and julialang.org (NETWORK_DEFAULTS), and
+that the default command of `appleevent` asks the Finder for `name of startup disk`: AppleScript
 answers `get name` of an application from the script itself and sends no Apple Event.
 """
 
@@ -128,6 +148,7 @@ import os
 import pathlib
 import re
 import shutil
+import socket
 import subprocess
 import sys
 import tempfile
@@ -144,9 +165,21 @@ JOBBOX = REPO / "sandbox" / "jobbox"
 UPDATE_SCRIPT = REPO / "scripts" / "julia-update.jl"
 UPDATE_SERVER = REPO / "scripts" / "julia-update-server"
 JOBS = ("kaimon", "julia-update")
-# The path-list keys of a job's table, its boolean key, and the keys of the rule list's top level.
-JOB_KEYS = ("read", "read_files", "write", "write_files", "deny_write", "allow_write_files", "linux_write")
+# The path-list keys of a job's table, its boolean key, its network key and the values of that key,
+# and the keys of the rule list's top level.
+JOB_KEYS = (
+    "read",
+    "read_files",
+    "write",
+    "write_files",
+    "deny_write",
+    "allow_write_files",
+    "linux_write",
+    "unix_sockets",
+)
 PTY_KEY = "pty"
+NETWORK_KEY = "network"
+NETWORKS = ("open", "loopback")
 TOP_KEYS = ("deny_operations", "deny_services", "linux_read", "linux_links", "job")
 TOKENS = ("$DARWIN_USER_TEMP_DIR", "$DARWIN_USER_CACHE_DIR", "$HARNESS")
 # The first arguments of `bwrap` for every job: new namespaces of every kind but the network, the
@@ -202,8 +235,9 @@ TIMEOUT, JULIA_TIMEOUT = 60, 600
 
 @dataclasses.dataclass(frozen=True, slots=True)
 class JobRules:
-    """The file rules of one job, each path as `daemon.toml` writes it, and whether the job uses
-    pseudo-terminals."""
+    """The file rules of one job, each path as `daemon.toml` writes it, the paths below which it
+    connects to a Unix socket, whether it uses pseudo-terminals, and its network, one of
+    NETWORKS."""
 
     read: tuple[str, ...]
     read_files: tuple[str, ...]
@@ -212,7 +246,9 @@ class JobRules:
     deny_write: tuple[str, ...]
     allow_write_files: tuple[str, ...]
     linux_write: tuple[str, ...]
+    unix_sockets: tuple[str, ...]
     pty: bool
+    network: str
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -301,7 +337,7 @@ def job_rules(table: object, job: str, path: pathlib.Path) -> JobRules:
         raise HarnessError(f"{path}: `job.{job}` is not a table")
     entries = cast("dict[str, object]", table)
     for key in entries:
-        if key not in (*JOB_KEYS, PTY_KEY):
+        if key not in (*JOB_KEYS, PTY_KEY, NETWORK_KEY):
             raise HarnessError(f"{path}: unknown key `job.{job}.{key}`")
     lists: dict[str, tuple[str, ...]] = {}
     for key in JOB_KEYS:
@@ -317,7 +353,19 @@ def job_rules(table: object, job: str, path: pathlib.Path) -> JobRules:
     pty = entries[PTY_KEY]
     if not isinstance(pty, bool):
         raise HarnessError(f"{path}: `job.{job}.{PTY_KEY}` is not true or false")
-    return JobRules(**lists, pty=pty)
+    if NETWORK_KEY not in entries:
+        raise HarnessError(f"{path}: no key `job.{job}.{NETWORK_KEY}`")
+    network = entries[NETWORK_KEY]
+    if not isinstance(network, str) or network not in NETWORKS:
+        raise HarnessError(
+            f"{path}: `job.{job}.{NETWORK_KEY}` is {network!r}, not one of {', '.join(map(repr, NETWORKS))}"
+        )
+    if network == "open" and lists["unix_sockets"]:
+        raise HarnessError(
+            f"{path}: `job.{job}.unix_sockets` holds {list(lists['unix_sockets'])}, but the job's "
+            f"network is 'open', which reaches every socket"
+        )
+    return JobRules(**lists, pty=pty, network=network)
 
 
 def linux_paths(value: object, key: str, path: pathlib.Path) -> tuple[str, ...]:
@@ -412,6 +460,17 @@ def pty_rules() -> list[str]:
     return ["(allow pseudo-tty)", *block("allow file-read* file-write* file-ioctl", filters)]
 
 
+def network_rules(sockets: list[str]) -> list[str]:
+    """The lines of the three rules of a job with `network = "loopback"`, as srt writes them: the
+    deny of all outbound traffic, the allow of the loopback addresses, and one allow with a filter
+    of `sockets` per socket path, left out for none."""
+    return [
+        "(deny network-outbound)",
+        '(allow network-outbound (remote ip "localhost:*"))',
+        *block("allow network-outbound", sockets),
+    ]
+
+
 def profile(
     policy: DaemonPolicy, job: str, home: pathlib.Path, dirs: UserDirs, harness: pathlib.Path | None = None
 ) -> str:
@@ -453,6 +512,11 @@ def profile(
         *block("allow file-write*", filters((), rules.allow_write_files)),
         *(f"(deny {operation})" for operation in policy.deny_operations),
         *block("deny mach-lookup", [f"(global-name {quoted(s)})" for s in policy.deny_services]),
+        *(
+            network_rules([f"(remote unix-socket (subpath {quoted(real(p))}))" for p in rules.unix_sockets])
+            if rules.network == "loopback"
+            else []
+        ),
     ]
     return "\n".join(lines) + "\n"
 
@@ -702,6 +766,13 @@ PTY_ALLOW = (
     "(allow pseudo-tty)\n"
     '(allow file-read* file-write* file-ioctl\n    (literal "/dev/ptmx")\n    (regex "^/dev/ttys[0-9]+$"))\n'
 )
+# The last lines of kaimon's profile, rendered with HOME: the network rules of a loopback job.
+NETWORK_TAIL = [
+    "(deny network-outbound)",
+    '(allow network-outbound (remote ip "localhost:*"))',
+    "(allow network-outbound",
+    '    (remote unix-socket (subpath "/h/a.b/.cache/kaimon")))',
+]
 # A regex filter of a profile, `(regex "…")`, and an escape of an SBPL string.
 REGEX_FILTER = re.compile(r'\(regex "((?:[^"\\]|\\.)*)"\)')
 SBPL_ESCAPE = re.compile(r"\\(.)")
@@ -781,6 +852,12 @@ def list_cases(case: Case, policy: DaemonPolicy) -> None:
         ok=k.allow_write_files == ("~/.julia/juliaup/.juliaup-lock",) and u.allow_write_files == (),
     )
     case(f"kaimon uses pseudo-terminals and julia-update does not: {k.pty} {u.pty}", ok=k.pty and not u.pty)
+    case(
+        f"kaimon reaches loopback and the Unix sockets below ~/.cache/kaimon, and julia-update the "
+        f"network: {k.network} {k.unix_sockets} {u.network} {u.unix_sockets}",
+        ok=(k.network, k.unix_sockets, u.network, u.unix_sockets)
+        == ("loopback", ("~/.cache/kaimon",), "open", ()),
+    )
 
     def near(p: str) -> bool:
         return p == SHIMS or SHIMS.startswith(p + "/") or p.startswith(SHIMS + "/")
@@ -813,6 +890,59 @@ def list_cases(case: Case, policy: DaemonPolicy) -> None:
         and policy.deny_services
         == ("com.apple.coreservices.launchservicesd", "com.apple.CoreServices.coreservicesd"),
     )
+
+
+def network_variants(text: str) -> list[tuple[str, str, str]]:
+    """The broken network keys of the rule list `text`: (label, the broken text, what the message
+    names)."""
+    loopback, sockets = 'network = "loopback"', 'unix_sockets = ["~/.cache/kaimon"]'
+    return [
+        ("an unknown network", text.replace(loopback, 'network = "closed"', 1), "job.kaimon.network"),
+        ("a network in capitals", text.replace(loopback, 'network = "Loopback"', 1), "job.kaimon.network"),
+        ("a network that is a boolean", text.replace(loopback, "network = true", 1), "job.kaimon.network"),
+        (
+            "a network that is a list",
+            text.replace(loopback, 'network = ["loopback"]', 1),
+            "job.kaimon.network",
+        ),
+        ("kaimon without network", text.replace(loopback + "\n", "", 1), "no key `job.kaimon.network`"),
+        (
+            "julia-update without network",
+            text.replace('network = "open"\n', "", 1),
+            "no key `job.julia-update.network`",
+        ),
+        (
+            "kaimon without unix_sockets",
+            text.replace(sockets + "\n", "", 1),
+            "no key `job.kaimon.unix_sockets`",
+        ),
+        (
+            "unix_sockets that are a string",
+            text.replace(sockets, 'unix_sockets = "~/.cache/kaimon"', 1),
+            "job.kaimon.unix_sockets",
+        ),
+        (
+            "unix_sockets with a number",
+            text.replace(sockets, "unix_sockets = [1]", 1),
+            "job.kaimon.unix_sockets",
+        ),
+        ("a relative socket path", text.replace(sockets, 'unix_sockets = ["cache"]', 1), "'cache'"),
+        (
+            "a socket path with ..",
+            text.replace(sockets, 'unix_sockets = ["~/.cache/../.ssh"]', 1),
+            "'~/.cache/../.ssh'",
+        ),
+        (
+            "a socket path in its link form",
+            text.replace(sockets, 'unix_sockets = ["/var/run"]', 1),
+            "'/var/run'",
+        ),
+        (
+            "a socket path of a job with the network open",
+            text.replace("unix_sockets = []", 'unix_sockets = ["~/.cache/kaimon"]', 1),
+            "job.julia-update.unix_sockets",
+        ),
+    ]
 
 
 def bad_cases(case: Case, root: pathlib.Path) -> None:
@@ -936,6 +1066,7 @@ def bad_cases(case: Case, root: pathlib.Path) -> None:
             "deny_operations",
         ),
         ("an empty operation", text.replace('"lsopen"', '""', 1), "deny_operations"),
+        *network_variants(text),
     ]
     f = root / "daemon.toml"
     for label, body, named in [*variants, ("a list that is not UTF-8", None, "daemon.toml")]:
@@ -1345,8 +1476,12 @@ def bwrap_pin_cases(case: Case, policy: DaemonPolicy) -> None:
     # julia-update, and that pin one in kaimon, whose read ~/r/x its write ~/r covers.
     nested = dataclasses.replace(
         policy,
-        kaimon=JobRules(**(empty | {"read": ("~/r/x",), "write": ("~/a", "~/a/b/c", "~/r")}), pty=False),
-        julia_update=JobRules(**(empty | {"read": ("~/a/q/z",), "write": ("~/r", "~/a/b/c/d")}), pty=False),
+        kaimon=JobRules(
+            **(empty | {"read": ("~/r/x",), "write": ("~/a", "~/a/b/c", "~/r")}), pty=False, network="open"
+        ),
+        julia_update=JobRules(
+            **(empty | {"read": ("~/a/q/z",), "write": ("~/r", "~/a/b/c/d")}), pty=False, network="open"
+        ),
     )
     case(
         f"a list with nested write paths in both jobs leaves no path of the pins' closure open: "
@@ -1356,8 +1491,8 @@ def bwrap_pin_cases(case: Case, policy: DaemonPolicy) -> None:
     # Kaimon's write ~/a/b/c precedes its write ~/a, which covers it: each pin follows ~/a.
     late = dataclasses.replace(
         policy,
-        kaimon=JobRules(**(empty | {"write": ("~/a/b/c", "~/a")}), pty=False),
-        julia_update=JobRules(**(empty | {"read": ("~/a/b/c/d",)}), pty=False),
+        kaimon=JobRules(**(empty | {"write": ("~/a/b/c", "~/a")}), pty=False, network="open"),
+        julia_update=JobRules(**(empty | {"read": ("~/a/b/c/d",)}), pty=False, network="open"),
     )
     case(
         f"a write path that precedes a write path above it leaves no path of the pins' closure open: "
@@ -1368,8 +1503,8 @@ def bwrap_pin_cases(case: Case, policy: DaemonPolicy) -> None:
     # pins the file, kaimon because julia-update's pin is a bind source of its own.
     filed = dataclasses.replace(
         policy,
-        kaimon=JobRules(**(empty | {"read_files": ("~/t/f",), "write": ("~/t",)}), pty=False),
-        julia_update=JobRules(**(empty | {"write": ("~/t",)}), pty=False),
+        kaimon=JobRules(**(empty | {"read_files": ("~/t/f",), "write": ("~/t",)}), pty=False, network="open"),
+        julia_update=JobRules(**(empty | {"write": ("~/t",)}), pty=False, network="open"),
     )
     made = {
         job: (linux_dirs(filed, job, HOME, harness), linux_files(filed, job, HOME, harness)) for job in JOBS
@@ -1380,8 +1515,8 @@ def bwrap_pin_cases(case: Case, policy: DaemonPolicy) -> None:
     )
     covered = dataclasses.replace(
         policy,
-        kaimon=JobRules(**(empty | {"read": ("~/t/x",), "write": ("~/t",)}), pty=False),
-        julia_update=JobRules(**(empty | {"read": ("~/t/x/s",)}), pty=False),
+        kaimon=JobRules(**(empty | {"read": ("~/t/x",), "write": ("~/t",)}), pty=False, network="open"),
+        julia_update=JobRules(**(empty | {"read": ("~/t/x/s",)}), pty=False, network="open"),
     )
     got = binds(bwrap_args(covered, "kaimon", HOME, ROOT), "--bind")
     case(
@@ -1391,9 +1526,11 @@ def bwrap_pin_cases(case: Case, policy: DaemonPolicy) -> None:
     )
     below = dataclasses.replace(
         policy,
-        kaimon=JobRules(**(empty | {"write": ("~/x",), "deny_write": ("~/x/d",)}), pty=False),
+        kaimon=JobRules(**(empty | {"write": ("~/x",), "deny_write": ("~/x/d",)}), pty=False, network="open"),
         # julia-update also writes ~/x/d: the pin that kaimon cannot make gives julia-update no pin.
-        julia_update=JobRules(**(empty | {"read": ("~/x/d/s",), "write": ("~/x/d",)}), pty=False),
+        julia_update=JobRules(
+            **(empty | {"read": ("~/x/d/s",), "write": ("~/x/d",)}), pty=False, network="open"
+        ),
     )
     case(
         "a pin below the pinning job's own write deny raises HarnessError that names it",
@@ -1406,8 +1543,8 @@ def bwrap_pin_cases(case: Case, policy: DaemonPolicy) -> None:
     )
     deep = dataclasses.replace(
         policy,
-        kaimon=JobRules(**(empty | {"write": ("~/x",)}), pty=False),
-        julia_update=JobRules(**(empty | {"read_files": ("~/x/y/f",)}), pty=False),
+        kaimon=JobRules(**(empty | {"write": ("~/x",)}), pty=False, network="open"),
+        julia_update=JobRules(**(empty | {"read_files": ("~/x/y/f",)}), pty=False, network="open"),
     )
     made = (linux_dirs(deep, "kaimon", HOME, harness), linux_files(deep, "kaimon", HOME, harness))
     case(
@@ -1423,7 +1560,7 @@ def bwrap_edge_cases(case: Case, policy: DaemonPolicy) -> None:
 
     def rules(**given: tuple[str, ...]) -> DaemonPolicy:
         empty: dict[str, tuple[str, ...]] = dict.fromkeys(JOB_KEYS, ())
-        return dataclasses.replace(policy, kaimon=JobRules(**(empty | given), pty=True))
+        return dataclasses.replace(policy, kaimon=JobRules(**(empty | given), pty=True, network="open"))
 
     for label, given, deny, kept in (
         ("below a write path", {"write": ("~/x",), "deny_write": ("~/x/y",)}, "/h/a.b/x/y", True),
@@ -1901,7 +2038,16 @@ def profile_cases(case: Case, policy: DaemonPolicy) -> None:
     apart = dataclasses.replace(
         policy,
         kaimon=JobRules(
-            ("$DARWIN_USER_CACHE_DIR",), (), ("$DARWIN_USER_TEMP_DIR",), (), (), (), (), pty=False
+            ("$DARWIN_USER_CACHE_DIR",),
+            (),
+            ("$DARWIN_USER_TEMP_DIR",),
+            (),
+            (),
+            (),
+            (),
+            (),
+            pty=False,
+            network="open",
         ),
     )
     split = profile(apart, "kaimon", HOME, DIRS)
@@ -1957,9 +2103,9 @@ def profile_cases(case: Case, policy: DaemonPolicy) -> None:
     case("the depot's juliaup is a write deny of kaimon", ok='(subpath "/h/a.b/.julia/juliaup")' in denies)
     after = text[text.index("(deny file-write*\n") :]
     case(
-        f"after kaimon's write denies, the one allow is juliaup's lock file, so juliaup.json and the "
-        f"installed Julia versions stay unwritable: {after.count('(allow')} allow(s)",
-        ok=after.count("(allow") == 1
+        f"after kaimon's write denies, the one file allow is juliaup's lock file, so juliaup.json and "
+        f"the installed Julia versions stay unwritable: {after.count('(allow file')} allow(s)",
+        ok=after.count("(allow file") == 1
         and rule_block(after, "(allow file-write*\n") == LOCK_ALLOW
         and text.index(LOCK_ALLOW) > text.index("(deny file-write*\n"),
     )
@@ -2022,7 +2168,7 @@ def profile_cases(case: Case, policy: DaemonPolicy) -> None:
         ok=raises(lambda: profile(policy, "claude-autocommit", HOME, DIRS)),
     )
     empty = dataclasses.replace(
-        policy, kaimon=JobRules((), (), (), (), (), (), (), pty=False), deny_services=()
+        policy, kaimon=JobRules((), (), (), (), (), (), (), (), pty=False, network="open"), deny_services=()
     )
     bare = profile(empty, "kaimon", HOME, DIRS)
     case(
@@ -2033,6 +2179,79 @@ def profile_cases(case: Case, policy: DaemonPolicy) -> None:
         and "(deny file-write*\n" in bare,
     )
     case("two renders give the same bytes", ok=text == profile(load(POLICY), "kaimon", HOME, DIRS))
+
+
+def network_profile_cases(case: Case, policy: DaemonPolicy) -> None:
+    """The network rules: kaimon's profile ends with them, after the Mach-service deny;
+    julia-update's names no network; an empty socket list leaves its block out; a socket path is
+    written as the file rules write theirs; and the network keys give no `bwrap` argument."""
+    text = profile(policy, "kaimon", HOME, DIRS)
+    lines = text.rstrip("\n").split("\n")
+    case(
+        f"kaimon's profile ends with the deny of outbound traffic, the loopback allow and the socket "
+        f"allow: {lines[-4:]}",
+        ok=lines[-4:] == NETWORK_TAIL,
+    )
+    case(
+        "kaimon's profile names the network in the three rules alone",
+        ok=sum("network" in line for line in lines) == len(NETWORK_TAIL) - 1,
+    )
+    order = [text.find(h + "\n") for h in ("(deny mach-lookup", *NETWORK_TAIL)]
+    case(
+        f"the network rules follow the Mach-service deny, the deny before the allows: {order}",
+        ok=-1 not in order and order == sorted(set(order)),
+    )
+    update = profile(policy, "julia-update", HOME, DIRS)
+    case(
+        "julia-update's profile names no network and no Unix socket",
+        ok="network" not in update and "unix-socket" not in update,
+    )
+    k = policy.kaimon
+    bare = profile(
+        dataclasses.replace(policy, kaimon=dataclasses.replace(k, unix_sockets=())), "kaimon", HOME, DIRS
+    )
+    case(
+        "a loopback job with no socket path gets the deny and the loopback allow, and no socket block",
+        ok=bare.rstrip("\n").split("\n")[-2:] == NETWORK_TAIL[:2]
+        and "unix-socket" not in bare
+        and bare.count("(allow network-outbound") == 1,
+    )
+    token = dataclasses.replace(
+        policy, kaimon=dataclasses.replace(k, unix_sockets=("$DARWIN_USER_TEMP_DIR/k", "/private/s"))
+    )
+    t = profile(token, "kaimon", HOME, DIRS)
+    case(
+        "a socket path is a subpath of the socket block, a token as its value, one filter per line",
+        ok=t.endswith(
+            '(allow network-outbound\n    (remote unix-socket (subpath "/private/var/folders/xy/T/k"))\n'
+            '    (remote unix-socket (subpath "/private/s")))\n'
+        ),
+    )
+    quote = profile(policy, "kaimon", pathlib.Path('/h/q"x\\y'), DIRS)
+    case(
+        "a quote and a backslash of the home path are escaped in the socket rule",
+        ok=r'(remote unix-socket (subpath "/h/q\"x\\y/.cache/kaimon")))' in quote,
+    )
+    opened = dataclasses.replace(policy, kaimon=dataclasses.replace(k, network="open"))
+    case(
+        "the switch alone decides: kaimon with the network open gets no network rule",
+        ok="network" not in profile(opened, "kaimon", HOME, DIRS),
+    )
+    closed = dataclasses.replace(
+        policy, julia_update=dataclasses.replace(policy.julia_update, network="loopback")
+    )
+    case(
+        "julia-update with loopback gets the deny and the loopback allow last",
+        ok=profile(closed, "julia-update", HOME, DIRS).rstrip("\n").split("\n")[-2:] == NETWORK_TAIL[:2],
+    )
+    plain = dataclasses.replace(policy, kaimon=dataclasses.replace(k, network="open", unix_sockets=()))
+    case(
+        "kaimon's bwrap arguments are those of the same rules with the network open and no socket path",
+        ok=all(
+            bwrap_args(policy, "kaimon", HOME, r) == bwrap_args(plain, "kaimon", HOME, r)
+            for r in (ROOT, LinuxRoot((), ()))
+        ),
+    )
 
 
 def pty_profile_cases(case: Case, policy: DaemonPolicy) -> None:
@@ -2054,7 +2273,9 @@ def pty_profile_cases(case: Case, policy: DaemonPolicy) -> None:
         "julia-update's profile holds no pty rule",
         ok=not any(t in update for t in ("pseudo-tty", "/dev/ptmx", "ttys", "file-ioctl")),
     )
-    bare = dataclasses.replace(policy, kaimon=JobRules((), (), (), (), (), (), (), pty=True))
+    bare = dataclasses.replace(
+        policy, kaimon=JobRules((), (), (), (), (), (), (), (), pty=True, network="open")
+    )
     renders = [
         profile(policy, "kaimon", pathlib.Path('/h/q"x\\y'), DIRS),
         profile(
@@ -2237,7 +2458,8 @@ def start_cases(case: Case, root: pathlib.Path, policy: DaemonPolicy) -> None:
     """A process starts under the profile of each job, rendered with this user's home and `getconf`
     directories: `/bin/sh -c true` under `sandbox-exec -f` exits 0, and so do the pty runs of
     `pty_cases`, the shim runs of `shim_start_cases` and the juliaup launcher under kaimon's
-    profile, the launcher in the environment of the launch agent. Without `sandbox-exec`, without
+    profile, the launcher in the environment of the launch agent; the connects of `connect_cases`
+    run under the profiles of both jobs. Without `sandbox-exec`, without
     `getconf`, or where `sandbox-exec` cannot apply even the profile `(allow default)`, as inside
     another Seatbelt sandbox, they print a skip line; without the launcher, a skip line for its
     run."""
@@ -2270,6 +2492,7 @@ def start_cases(case: Case, root: pathlib.Path, policy: DaemonPolicy) -> None:
         )
     pty_cases(case, root / "kaimon.sb")
     shim_start_cases(case, root / "kaimon.sb", home, dirs)
+    connect_cases(case, root, policy, home, dirs)
     launcher = home / ".juliaup" / "bin" / "julia"
     if not launcher.is_file():
         print(f"skip  jobsandbox: no juliaup launcher {launcher}; it does not start under kaimon's profile")
@@ -2315,6 +2538,93 @@ def pty_cases(case: Case, sb: pathlib.Path) -> None:
             f"{p.stderr.strip()[-300:]!r}",
             ok=p.returncode == 0,
         )
+
+
+def connect_cases(
+    case: Case, root: pathlib.Path, policy: DaemonPolicy, home: pathlib.Path, dirs: UserDirs
+) -> None:
+    """Under the profiles at `root/<job>.sb`, this Python, by its resolved path and isolated from
+    its environment, runs CONNECT: under kaimon's, a connect to a TCP listener of this case on
+    127.0.0.1 succeeds and one to UNREACHABLE fails with EPERM; under kaimon's rules with a scratch
+    directory below $DARWIN_USER_TEMP_DIR as their one socket path, a connect to a Unix socket of
+    this case in that directory succeeds and one to a socket in a sibling directory fails with
+    EPERM; under julia-update's, the connect to UNREACHABLE fails with another error than EPERM, or
+    times out. Where that Python cannot start under a profile, a skip line for its runs."""
+    python = str(pathlib.Path(sys.executable).resolve())
+
+    def connect(sb: pathlib.Path, *target: str) -> str:
+        p = sandboxed(sb, [python, "-I", "-c", CONNECT, *target])
+        return p.stdout.strip() if p.returncode == 0 else f"exit {p.returncode} {p.stderr.strip()[-300:]!r}"
+
+    def starts(job: str, sb: pathlib.Path) -> bool:
+        p = sandboxed(sb, [python, "-I", "-c", "pass"])
+        if p.returncode != 0:
+            print(
+                f"skip  jobsandbox: {python} does not start under the profile of {job}, exit "
+                f"{p.returncode} {p.stderr.strip()[-300:]!r}; its connect cases do not run"
+            )
+        return p.returncode == 0
+
+    far = (UNREACHABLE[0], str(UNREACHABLE[1]))
+    kaimon, update = root / "kaimon.sb", root / "julia-update.sb"
+    if starts("kaimon", kaimon):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
+            listener.bind(("127.0.0.1", 0))
+            listener.listen()
+            port = str(listener.getsockname()[1])
+            got = connect(kaimon, "tcp", "127.0.0.1", port)
+        case(f"a connect to 127.0.0.1:{port} succeeds under kaimon's profile: {got}", ok=got == "connected")
+        got = connect(kaimon, "tcp", *far)
+        case(
+            f"a connect to {':'.join(far)} fails with EPERM under kaimon's profile: {got}", ok=got == "EPERM"
+        )
+        scratch = pathlib.Path(tempfile.mkdtemp(prefix="hj-", dir=dirs.temp))
+        try:
+            rule = "$DARWIN_USER_TEMP_DIR/" + (scratch / "in").relative_to(dirs.temp).as_posix()
+            rules = dataclasses.replace(policy.kaimon, unix_sockets=(rule,))
+            sb = root / "sockets.sb"
+            sb.write_text(
+                profile(dataclasses.replace(policy, kaimon=rules), "kaimon", home, dirs), encoding="utf-8"
+            )
+            for name, want in (("in", "connected"), ("out", "EPERM")):
+                (scratch / name).mkdir()
+                with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as listener:
+                    listener.bind(str(scratch / name / "s"))
+                    listener.listen()
+                    got = connect(sb, "unix", str(scratch / name / "s"))
+                case(
+                    f"a connect to a Unix socket {'below' if name == 'in' else 'beside'} the socket path "
+                    f"{rule} gives {want} under kaimon's rules: {got}",
+                    ok=got == want,
+                )
+        finally:
+            shutil.rmtree(scratch)
+    if starts("julia-update", update):
+        got = connect(update, "tcp", *far)
+        case(
+            f"a connect to {':'.join(far)} under julia-update's profile is not refused by the profile: {got}",
+            ok=got != "EPERM" and not got.startswith("exit "),
+        )
+
+
+# The address of `connect_cases` that no packet reaches: TEST-NET-1 of RFC 5737, port 9 (discard).
+UNREACHABLE = ("192.0.2.1", 9)
+# The connect of `connect_cases`, run under a profile with the arguments `tcp HOST PORT` or
+# `unix PATH`: it prints `connected`, the errno name of the failure, or `timeout` after 5 s.
+CONNECT = """
+import errno, socket, sys
+tcp = sys.argv[1] == "tcp"
+with socket.socket(socket.AF_INET if tcp else socket.AF_UNIX, socket.SOCK_STREAM) as s:
+    s.settimeout(5)
+    try:
+        s.connect((sys.argv[2], int(sys.argv[3])) if tcp else sys.argv[2])
+    except TimeoutError:
+        print("timeout")
+    except OSError as e:
+        print(errno.errorcode.get(e.errno or 0, f"errno {e.errno}"))
+    else:
+        print("connected")
+"""
 
 
 def plist_path(home: pathlib.Path) -> str:
@@ -2468,15 +2778,29 @@ def sandboxed(
 
 
 # The probe run of the cases: the probe file is ARGS[1] and the scratch home ARGS[2]. Metal, `open`
-# and `osascript` are stand-ins. One line `name result` per probe, then `classes true` when every
-# result is `:allowed`, `:NotFunctional` or the name of an exception class of Base, `open_gaps true`
+# and `osascript` are stand-ins, and so are a TCP listener of the run on 127.0.0.1, a port of
+# 127.0.0.1 that it closed, and two resolvers, one that answers 127.0.0.1 and one that throws
+# DNSError, for the network probes, which never reach their default targets. One line
+# `name result` per probe, then `classes true` when every result is `:allowed`, `:NotFunctional` or
+# the name of an exception class of Base or Sockets, `open_gaps true`
 # when OPEN_GAPS is `()`, and `gaps_negative true` when each open gap is a negative probe.
 PROBE_RUN = """
+using Sockets
 include(ARGS[1])
 P = ProbeDaemon
 home = ARGS[2]
 fake(ok) = () -> (m = Module(:FakeMetal); Core.eval(m, :(functional() = $ok)); m)
-stand_ins = (:metal, :lsopen, :appleevent, :systemd_run, :session_bus)
+listener = listen(ip"127.0.0.1", 0)
+port = Int(getsockname(listener)[2])
+gone = listen(ip"127.0.0.1", 0)
+closed = Int(getsockname(gone)[2])
+close(gone)
+loopback(host) = ip"127.0.0.1"
+no_name(host) = throw(Sockets.DNSError(host, Int32(-3008)))
+stand_ins = (
+    :metal, :lsopen, :appleevent, :systemd_run, :session_bus,
+    :connect_loopback, :connect_remote, :resolve_name,
+)
 every = unique((P.probe_names(false)..., P.probe_names(true)...))
 results = [
     [name => getfield(P, name)(home) for name in every if !(name in stand_ins)];
@@ -2493,11 +2817,21 @@ results = [
     :session_bus_refused => P.session_bus(home; command = `false`);
     :read_ssh_missing => P.read_ssh(joinpath(home, "none"));
     :write_julia_config_missing => P.write_julia_config(joinpath(home, "none"));
+    :connect_loopback => P.connect_loopback(home; port);
+    :connect_loopback_refused => P.connect_loopback(home; port = closed);
+    :connect_remote => P.connect_remote(home; address = ip"127.0.0.1", port);
+    :connect_remote_refused => P.connect_remote(home; address = ip"127.0.0.1", port = closed);
+    :resolve_name => P.resolve_name(home; resolver = loopback);
+    :resolve_name_refused => P.resolve_name(home; resolver = no_name);
+    :pkg_offline_unset => withenv(() -> P.pkg_offline(home), "JULIA_PKG_OFFLINE" => nothing);
+    :pkg_offline_false => withenv(() -> P.pkg_offline(home), "JULIA_PKG_OFFLINE" => "false");
 ]
+close(listener)
 for (name, r) in results
     println(name, " ", r isa Symbol ? r : "not-a-symbol")
 end
-exception(r) = isdefined(Base, r) && getfield(Base, r) isa Type && getfield(Base, r) <: Exception
+exception(M, r) = isdefined(M, r) && getfield(M, r) isa Type && getfield(M, r) <: Exception
+exception(r) = exception(Base, r) || exception(Sockets, r)
 println("classes ", all(r -> r === :allowed || r === :NotFunctional || exception(r), last.(results)))
 println("open_gaps ", P.OPEN_GAPS == ())
 println("gaps_negative ", all(g -> g in P.NEGATIVE || g in P.LINUX_NEGATIVE, P.OPEN_GAPS))
@@ -2507,8 +2841,9 @@ println("default_set ", P.probe_names() == P.probe_names(Sys.islinux()))
 """
 # The probes of `run_all` on macOS and on Linux, the positive ones first.
 MACOS_PROBES = (
-    "read_research,write_research,write_tempdir,list_packages,metal,read_ssh,read_claude_json,"
-    "read_documents,read_gh_hosts,write_zshrc,write_git_hooks,write_julia_config,lsopen,appleevent"
+    "read_research,write_research,write_tempdir,list_packages,metal,connect_loopback,pkg_offline,"
+    "read_ssh,read_claude_json,read_documents,read_gh_hosts,write_zshrc,write_git_hooks,"
+    "write_julia_config,lsopen,appleevent,connect_remote,resolve_name"
 )
 LINUX_PROBES = (
     "read_research,write_research,write_tempdir,list_packages,read_ssh,read_claude_json,read_gh_hosts,"
@@ -2519,6 +2854,17 @@ LINUX_PROBES = (
 # The tuple of open gaps in sandbox/probe-daemon.jl, and one probe name inside it.
 OPEN_GAPS_LINE = re.compile(r"^const OPEN_GAPS = \(([^)]*)\)$", re.MULTILINE)
 GAP_NAME = re.compile(r":(\w+)")
+# The definitions of the network probes with their default targets, each a line of the probe file:
+# the cases run each probe against stubs, so only these lines say what a session's run reaches.
+NETWORK_DEFAULTS = (
+    'connect_loopback(home = homedir(); address = "127.0.0.1", port = 2828) = '
+    "attempt(() -> connect_tcp(address, port))",
+    'connect_remote(home = homedir(); address = ip"1.1.1.1", port = 443) = '
+    "attempt(() -> connect_tcp(address, port))",
+    'resolve_name(home = homedir(); host = "julialang.org", resolver = Sockets.getaddrinfo) = '
+    "attempt(() -> resolver(host))",
+    "connect_tcp(address, port) = close(Sockets.connect(address, port))",
+)
 # The default command of the probe `appleevent`, between its backticks.
 APPLEEVENT_COMMAND = re.compile(
     r"^function appleevent\(home = homedir\(\); command = `([^`]*)`\)$", re.MULTILINE
@@ -2527,9 +2873,12 @@ APPLEEVENT_COMMAND = re.compile(
 
 def probe_text_cases(case: Case) -> None:
     """The header comment of sandbox/probe-daemon.jl names `OPEN_GAPS` and each open gap, expects
-    no exception class of an open gap and `:ProcessFailedException` of `appleevent`, and names
-    its event, `name of startup disk`; the default command of `appleevent` asks the Finder for
-    `name of startup disk`, which only an Apple Event answers."""
+    no exception class of an open gap, `:ProcessFailedException` of `appleevent`, an `IOError`
+    class of `connect_remote` and `:DNSError` of `resolve_name`, and names the event of
+    `appleevent`, `name of startup disk`; the network probes default to Kaimon's port
+    127.0.0.1:2828, to 1.1.1.1:443 and to a lookup of julialang.org through `getaddrinfo`; the
+    default command of `appleevent` asks the Finder for `name of startup disk`, which only an
+    Apple Event answers."""
     text = PROBES.read_text(encoding="utf-8")
     header = text.split("\nmodule ProbeDaemon\n", 1)[0]
     found = OPEN_GAPS_LINE.search(text)
@@ -2546,6 +2895,16 @@ def probe_text_cases(case: Case) -> None:
     case(
         "the probe file's header expects :ProcessFailedException of appleevent and names its event",
         ok="`appleevent` `:ProcessFailedException`" in header and "`name of startup disk`" in header,
+    )
+    case(
+        "the probe file's header expects an IOError class of connect_remote and :DNSError of resolve_name",
+        ok="`connect_remote` an `IOError` class" in header and "`resolve_name` `:DNSError`" in header,
+    )
+    missing = [d for d in NETWORK_DEFAULTS if d not in text.split("\n")]
+    case(
+        f"the network probes default to 127.0.0.1:2828, 1.1.1.1:443 and julialang.org through "
+        f"getaddrinfo: missing {missing}",
+        ok=not missing,
     )
     command = APPLEEVENT_COMMAND.search(text)
     case(
@@ -2617,6 +2976,10 @@ def probe_cases(case: Case, root: pathlib.Path) -> None:
         "appleevent",
         "systemd_run",
         "session_bus",
+        "connect_loopback",
+        "pkg_offline",
+        "connect_remote",
+        "resolve_name",
     ]
     case(
         f"with no profile, every probe returns :allowed: {got}",
@@ -2638,6 +3001,11 @@ def probe_cases(case: Case, root: pathlib.Path) -> None:
         "session_bus_refused": "ProcessFailedException",
         "read_ssh_missing": "IOError",
         "write_julia_config_missing": "SystemError",
+        "connect_loopback_refused": "IOError",
+        "connect_remote_refused": "IOError",
+        "resolve_name_refused": "DNSError",
+        "pkg_offline_unset": "KeyError",
+        "pkg_offline_false": "ErrorException",
     }
     case(
         f"a refused probe returns the name of its exception class: {got}",
@@ -3168,6 +3536,7 @@ def selftest() -> tuple[int, int]:
         update_text_cases(case)
         profile_cases(case, policy)
         pty_profile_cases(case, policy)
+        network_profile_cases(case, policy)
         shim_cases(case)
         (root / "render").mkdir()
         render_cases(case, root / "render", policy)

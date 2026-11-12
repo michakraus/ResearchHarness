@@ -1304,9 +1304,15 @@ profile holds `(allow pseudo-tty)` and one rule that allows reads, writes and io
 `/dev/ptmx` and of every path that the regex `^/dev/ttys[0-9]+$` matches, after the write allows
 and before every write deny; both paths are constants of the module, and the rule list names no
 device. Seatbelt cannot tell a pseudo-terminal of the job from a terminal of another program of
-the same user, so [the security model](safeguards/security-model.md) states what this leaves open. The render
-takes `home` and `harness` from the profile and the two per-user directories from `getconf`; a
-`getconf` that fails exits 2. `harness setup` writes each render into
+the same user, so [the security model](safeguards/security-model.md) states what this leaves open.
+The required key `network` of each job is `"loopback"` for Kaimon and `"open"` for `julia-update`,
+and `unix_sockets` holds the paths below which a loopback job connects to a Unix socket:
+`~/.cache/kaimon` for Kaimon; `load` refuses a socket path of an open job, and a `network` that
+is another value. A loopback job's profile ends, after the Mach-service deny, with
+`(deny network-outbound)`, an allow of a connect to the loopback addresses, and an allow of a
+connect to a Unix socket below each path of `unix_sockets`; an open job's profile holds no rule
+of the network. The render takes `home` and `harness` from the profile and the two per-user
+directories from `getconf`; a `getconf` that fails exits 2. `harness setup` writes each render into
 `~/.config/research-harness/sandbox/` before it renders and loads the job's plist, and both plists
 start their program with `/usr/bin/sandbox-exec -f` and that file. Before Kaimon's profile it
 installs `sandbox/shims/ps` into the directory `SHIMS`, `~/.config/research-harness/sandbox/shims`,
@@ -1332,8 +1338,9 @@ source of the other job, its pins included, that is no effective mount point of 
 job binds it onto itself with `--bind`, before any of its write binds below it, so that it cannot
 rename or remove it while it runs; a pin below the job's own write deny raises `HarnessError`.
 The pins of the two jobs are computed against each other until no new pin appears. An absolute
-path, the `$DARWIN` tokens, `~/Library` and `pty` are macOS's and give no argument, a write deny
-that no read or write path of the job holds is left out, and an argument with a newline raises
+path, the `$DARWIN` tokens, `~/Library`, `pty`, `network` and `unix_sockets` are macOS's and
+give no argument, so both jobs keep the network on Linux, a write deny that no read or write
+path of the job holds is left out, and an argument with a newline raises
 `HarnessError`. `harness setup` and the services script of the dotfiles kit check `bwrap` first,
 install `sandbox/jobbox` and `scripts/julia-update-server` into `~/.local/bin`, write each render
 into `~/.config/research-harness/sandbox/<job>.bwrap` and create each write deny, `linux_write`
@@ -1357,17 +1364,27 @@ runs the cases, the juliaup launcher with `julia --startup-file=no -e 'exit(0)'`
 where that cannot run, as inside another Seatbelt sandbox, and run
 every probe of `sandbox/probe-daemon.jl`, the probes that a session runs through Kaimon's `ex`
 after the server restarts under its profile, against a scratch home, when `julia` is on the `PATH`.
+Where `sandbox-exec` applies a profile, under Kaimon's profile a connect to a TCP listener of the
+case on `127.0.0.1` succeeds and one to `192.0.2.1` port 9 fails with `EPERM`; under Kaimon's
+rules with a scratch socket path below `$DARWIN_USER_TEMP_DIR`, a connect to a Unix socket below
+it succeeds and one beside it fails with `EPERM`; under the profile of `julia-update` the connect
+to `192.0.2.1` gives no `EPERM`. No case connects to another address or resolves a host name,
+and the network probes of the probe file run against a listener and two resolver stubs of the
+case on loopback.
 The probe file's constant `OPEN_GAPS` names the negative probes that the profile does not stop,
 which report `:allowed` under it: none, and the cases check that value, that the file's header
 comment expects no exception class of an open gap and `:ProcessFailedException` of `appleevent`,
-and that the default command of `appleevent` asks the Finder for `name of startup disk`, which
-only an Apple Event answers. On Linux `run_all` runs the probe set of Linux, with `systemd_run`
-and `session_bus` in place of `lsopen`, `appleevent`, `metal` and `read_documents`. The cases also
-check the order and the edges of `bwrap_args` and `linux_root`, run `jobbox` with a stub `bwrap`
-that writes its arguments, render `sandbox/<job>.bwrap` through `bin/harness`, and run
-`scripts/julia-update.jl` as on Linux and `scripts/julia-update-server` with stubs of juliaup,
-`lsof`, `readlink`, `systemctl` and `notify-send`: the update phase calls none of the last four,
-and the server phase reads its state as data. No case starts the real `bwrap`.
+an `IOError` class of `connect_remote` and `:DNSError` of `resolve_name`, that the network probes
+default to `127.0.0.1:2828`, `1.1.1.1:443` and `julialang.org`, and that the default command of
+`appleevent` asks the Finder for `name of startup disk`, which only an Apple Event answers. On
+Linux `run_all` runs the probe set of Linux, with `systemd_run` and `session_bus` in place of
+`lsopen`, `appleevent`, `metal` and `read_documents`, and with none of `connect_loopback`,
+`pkg_offline`, `connect_remote` and `resolve_name`. The cases also check the order and the edges
+of `bwrap_args` and `linux_root`, run `jobbox` with a stub `bwrap` that writes its arguments,
+render `sandbox/<job>.bwrap` through `bin/harness`, and run `scripts/julia-update.jl` as on Linux
+and `scripts/julia-update-server` with stubs of juliaup, `lsof`, `readlink`, `systemctl` and
+`notify-send`: the update phase calls none of the last four, and the server phase reads its state
+as data. No case starts the real `bwrap`.
 [The daemon profiles](safeguards/sandbox.md#the-daemon-profiles) say what the profile and the
 arguments allow and what they leave open.
 
@@ -1578,7 +1595,8 @@ each unit and its plist in `launchagents/` with `examples/profile.toml`. Then it
 describe one job: the program and its arguments, after the `sandbox-exec -f <profile>` that the
 plist starts with on macOS, the working directory, the environment and its `PATH`, after the
 shim directory `~/.config/research-harness/sandbox/shims` that such a plist may put first on its
-`PATH`, the timer's triggers, the start at login, and `Restart=always` where the plist has
+`PATH` and after the pair `JULIA_PKG_OFFLINE=true`, which such a plist alone may set,
+the timer's triggers, the start at login, and `Restart=always` where the plist has
 `KeepAlive`. A section, a key or a repeated key that the check does not read is a problem. A
 continued line is a problem too. Every element of the `PATH` must be an absolute directory that
 the settings template keeps out of a session's writes, or a system directory; the shim directory

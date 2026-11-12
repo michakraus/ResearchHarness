@@ -4,10 +4,21 @@
 # lib/harness/jobsandbox.py documents the render.
 #
 # The profile denies every file read and write, then allows what the lists below name; every other
-# class of operation stays allowed, the network and the Mach and IOKit services of Metal too. Then
-# it denies the writes of `deny_write`, the repository parts .git/hooks, .git/config and .githooks
-# at any depth below ~/Research; then it allows the writes of `allow_write_files`; then it denies
-# the operations of `deny_operations` and the Mach services of `deny_services`.
+# class of operation stays allowed, the Mach and IOKit services of Metal too. Then it denies the
+# writes of `deny_write`, the repository parts .git/hooks, .git/config and .githooks at any depth
+# below ~/Research; then it allows the writes of `allow_write_files`; then it denies the
+# operations of `deny_operations` and the Mach services of `deny_services`.
+#
+# `network`, "open" or "loopback", says what the job reaches. "open" adds no rule: the job reaches
+# every host. "loopback" adds three rules last: a deny of all outbound traffic, the allow of a
+# connect to the loopback addresses 127.0.0.1 and ::1, and one allow of a connect to a Unix socket
+# below a path of `unix_sockets`. Seatbelt filters by address and port, not by host name, so no
+# rule can allow a package server; the deny also refuses the connect of every other Unix socket,
+# among them the resolver's /var/run/mDNSResponder, which a name lookup connects to. A connect to
+# 127.0.0.1 written as ::ffff:127.0.0.1 is refused too. The rules are on outbound traffic only: a
+# listener of the job on every interface accepts a connection from the network. `unix_sockets` is
+# a list of paths as below, and empty for a job with "open". On Linux both keys give no argument
+# of `bwrap`, and the job keeps the network.
 #
 # A path is one of the tokens $DARWIN_USER_TEMP_DIR, $DARWIN_USER_CACHE_DIR (the values of
 # `getconf` of the same name) and $HARNESS (the profile's `harness`) alone, or `~`, nothing or a
@@ -100,6 +111,11 @@ allow_write_files = ["~/.julia/juliaup/.juliaup-lock"]
 linux_write = []
 # Kaimon starts every Julia session on a pseudo-terminal, with forkpty(3).
 pty = true
+# Kaimon answers MCP on 127.0.0.1:2828 and talks to each session over ZMQ on Unix sockets in
+# ~/.cache/kaimon/sock. Its plist sets JULIA_PKG_OFFLINE=true, so Pkg in a session installs
+# nothing that is not in the depot; a session's own `julia` or the julia-update job downloads it.
+network = "loopback"
+unix_sockets = ["~/.cache/kaimon"]
 
 # The daily update: juliaup's releases and juliaup.json, the default environments, the Kaimon app
 # and its shim in ~/.julia/bin, and the harness's Julia environment. It reads the profile for
@@ -148,3 +164,6 @@ allow_write_files = []
 # this directory, where the server phase, outside `bwrap`, reads them.
 linux_write = ["~/.cache/julia-update"]
 pty = false
+# The update downloads juliaup's releases and the packages from their servers.
+network = "open"
+unix_sockets = []

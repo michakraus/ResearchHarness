@@ -83,14 +83,21 @@ each mechanism: [Sandboxes](sandbox.md), [Permissions](permissions.md),
   the session's write allowlist, read deny list or network allowlist. The permission lists control
   which of its tools a session can call. The launch agents of Kaimon and `julia-update` start
   their programs under a Seatbelt profile, which denies every file read and write that it does
-  not name. Kaimon's profile leaves open the network and every write inside `~/Research` outside
-  the repository parts that it denies, such as `~/Research/.claude/hooks`, which the session
-  sandbox denies: through Kaimon's `ex`, code can write a hook that a later session runs outside
-  every sandbox. A process under Kaimon's profile can also write text into any terminal of the
-  user.
+  not name. Kaimon's profile allows outbound connections only to the loopback addresses and to
+  Kaimon's own Unix sockets below `~/.cache/kaimon`, and its launch agent sets
+  `JULIA_PKG_OFFLINE=true`, so Pkg in a session downloads nothing: a session's own `julia` or the
+  `julia-update` job downloads the packages. The profile refuses the connect to the resolver's
+  socket, so code under it is meant to resolve no host name, and it refuses a client that connects
+  to `::ffff:127.0.0.1`. Inbound connections and binds stay open, and `julia-update` keeps the
+  network and loads the depot that Kaimon writes, so code that a session plants there reaches the
+  network at the next update. The profile leaves open every write inside `~/Research` outside the
+  repository parts that it denies, such as `~/Research/.claude/hooks`, which the session sandbox
+  denies: through Kaimon's `ex`, code can write a hook that a later session runs outside every
+  sandbox. A process under Kaimon's profile can also write text into any terminal of the user.
   [The daemon profiles](sandbox.md#the-daemon-profiles) give the rules in full. On Linux, `jobbox`
   starts Kaimon and `julia-update` under [`bwrap`](sandbox.md#the-daemon-profiles), with
-  arguments from the same rule list. For every other MCP server, no profile applies.
+  arguments from the same rule list, and both keep the network. For every other MCP server, no
+  profile applies.
 - **OpenCode and oh-my-pi have no sandbox of their own.** Started without `agentbox`, their
   permission blocks and guard extensions check text, as the deny list and the hooks do. Started
   through [`agentbox`](sandbox.md#the-launcher-agentbox), each runs with every command that it
@@ -120,8 +127,8 @@ each sandbox item in more detail.
 
 - **A guard against a session with no sandbox** ([planned](../planned.md#no-sandbox-guard)): a
   guard hook refuses every tool call when `~/.ssh` is readable and no sandbox is on.
-- **Kaimon without the network** ([planned](../planned.md#kaimon-without-network)): only the
-  package servers stay reachable.
+- **Kaimon without the network on Linux** ([planned](../planned.md#kaimon-without-network)):
+  only the loopback addresses and Kaimon's own sockets stay reachable, as on macOS.
 - **The desktop apps under an outer sandbox** ([planned](../planned.md#desktop-apps)), and
   **a Linux launcher** ([planned](../planned.md#linux-launcher)).
 - **Masked keys** ([planned](../planned.md#masked-keys)), and **a forge token per owner**

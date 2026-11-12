@@ -14,11 +14,16 @@
 # Each probe returns `:allowed`, or the name of the exception class that the attempt raised, as a
 # Symbol: never a file's content. `run_all` returns one `name => result` pair per probe of this
 # system (`probe_names`), the positive probes first. The sandbox is at work when every positive
-# probe gives `:allowed`, `metal` included on macOS, and every negative probe gives the name of an
-# exception class: `:SystemError` or an `IOError` class; on macOS `lsopen` and
-# `appleevent` `:ProcessFailedException`; on Linux, where the job sees no /run/user/<uid>,
-# `systemd_run` and `session_bus` `:ProcessFailedException`. A write probe deletes what it
-# created; the probe of ~/.zshrc opens the file to append and writes nothing.
+# probe gives `:allowed`, `metal`, `connect_loopback` and `pkg_offline` included on macOS, and
+# every negative probe gives the name of an exception class: `:SystemError` or an `IOError` class;
+# on macOS `lsopen` and `appleevent` `:ProcessFailedException`, `connect_remote` an `IOError` class
+# and `resolve_name` `:DNSError`; on Linux, where the job sees no /run/user/<uid>, `systemd_run`
+# and `session_bus` `:ProcessFailedException`. A write probe deletes what it created; the probe of
+# ~/.zshrc opens the file to append and writes nothing. `connect_loopback` connects to Kaimon's
+# own port, 127.0.0.1:2828, given as a string, so that `Sockets.getaddrinfo` reads the address
+# before the connect, as HTTP.jl does for Kaimon's clients of Qdrant and Ollama; a libc that cannot
+# read it without the resolver gives `:DNSError`. `connect_remote` connects to 1.1.1.1:443, an
+# address that answers, so a profile that lets it through gives `:allowed` and not a timeout.
 #
 # `OPEN_GAPS` names the negative probes that the sandbox does not stop, which report `:allowed`
 # under it: none on macOS; on Linux, none recorded. The event of `appleevent` is
@@ -28,6 +33,8 @@
 # Each probe takes the home directory as its argument, so that `harness test` runs every probe
 # against a scratch tree (lib/harness/jobsandbox.py).
 module ProbeDaemon
+
+using Sockets: Sockets, @ip_str
 
 # The UUID of Metal.jl in the General registry.
 const METAL = Base.PkgId(Base.UUID("dde4c033-4e86-420c-a63e-0dd931031962"), "Metal")
@@ -85,6 +92,14 @@ function metal(home = homedir(); module_of = () -> Base.require(METAL))
     end
 end
 
+"""A TCP connection to `address` on `port`, closed at once."""
+connect_tcp(address, port) = close(Sockets.connect(address, port))
+
+"""A TCP connection to Kaimon's own port on the loopback address."""
+connect_loopback(home = homedir(); address = "127.0.0.1", port = 2828) = attempt(() -> connect_tcp(address, port))
+"""Pkg starts offline: `JULIA_PKG_OFFLINE` is `true`, which the plist of the server sets."""
+pkg_offline(home = homedir()) = attempt(() -> ENV["JULIA_PKG_OFFLINE"] == "true" || error("JULIA_PKG_OFFLINE is not true"))
+
 # ----------------------------------------------------------------------- negative probes ----
 
 function read_ssh(home = homedir())
@@ -116,8 +131,12 @@ end
 function session_bus(home = homedir(); command = `busctl --user list`)
     return attempt(() -> run(pipeline(command; stdout = devnull, stderr = devnull)))
 end
+"""A TCP connection to an address on the network that answers."""
+connect_remote(home = homedir(); address = ip"1.1.1.1", port = 443) = attempt(() -> connect_tcp(address, port))
+"""A name lookup of a package host through the system's resolver."""
+resolve_name(home = homedir(); host = "julialang.org", resolver = Sockets.getaddrinfo) = attempt(() -> resolver(host))
 
-const POSITIVE = (:read_research, :write_research, :write_tempdir, :list_packages, :metal)
+const POSITIVE = (:read_research, :write_research, :write_tempdir, :list_packages, :metal, :connect_loopback, :pkg_offline)
 const NEGATIVE = (
     :read_ssh,
     :read_claude_json,
@@ -128,6 +147,8 @@ const NEGATIVE = (
     :write_julia_config,
     :lsopen,
     :appleevent,
+    :connect_remote,
+    :resolve_name,
 )
 const LINUX_POSITIVE = (:read_research, :write_research, :write_tempdir, :list_packages)
 const LINUX_NEGATIVE = (

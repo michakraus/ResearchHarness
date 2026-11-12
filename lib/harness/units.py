@@ -15,7 +15,10 @@ templates of the profile. JOBS pairs them. `harness test` renders each with
   plist's;
 - the `Environment=` entries equal `EnvironmentVariables`, so the `PATH` is the same, after the
   shim directory `jobsandbox.SHIMS` where a plist that starts with `/usr/bin/sandbox-exec -f`
-  puts it first on its `PATH`: macOS only, and checked as a `PATH` element is below;
+  puts it first on its `PATH`: macOS only, and checked as a `PATH` element is below; and after
+  the pair OFFLINE, `JULIA_PKG_OFFLINE=true`, in such a plist alone: its Seatbelt profile can
+  close the network, and the Linux unit keeps it. Any other value of the variable, and the
+  variable in another plist, is a difference;
 - the timer's triggers are exactly those the plist implies: `OnCalendar` for
   `StartCalendarInterval`, `OnUnitActiveSec` for `StartInterval`, and `OnActiveSec=0` for
   `RunAtLoad`; a job with no schedule has no timer, and starts at login
@@ -65,6 +68,10 @@ JOBS = [
 # The start of a plist's ProgramArguments that runs its program under a Seatbelt profile, the
 # third element: macOS only, so ExecStart is compared with what follows the profile.
 SEATBELT = ["/usr/bin/sandbox-exec", "-f"]
+# The one pair of EnvironmentVariables that a plist under SEATBELT sets and its unit does not:
+# Kaimon's Seatbelt profile allows no package server, so Pkg starts offline there, and the Linux
+# unit keeps the network.
+OFFLINE = ("JULIA_PKG_OFFLINE", "true")
 # The program in ~/.local/bin that the unit of a job runs as its `ExecStopPost`, outside `jobbox`:
 # the server phase of julia-update on Linux, which its plist has no part for.
 SERVER_PHASES = {"julia-update": "julia-update-server"}
@@ -248,6 +255,15 @@ def without_shims(
     ]
 
 
+def without_offline(program: list[str], variables: dict[str, str]) -> dict[str, str]:
+    """A plist's EnvironmentVariables `variables` without the pair OFFLINE, where the plist's
+    `program` starts with SEATBELT and the variable has that value; else `variables`."""
+    name, value = OFFLINE
+    if program[:2] != SEATBELT or variables.get(name) != value:
+        return variables
+    return {k: v for k, v in variables.items() if k != name}
+
+
 def program_problems(start: str, post: str | None, program: list[str], job: str, home: str) -> list[str]:
     """What differs between the `ExecStart` line `start` and the `ExecStopPost` line `post` of the
     unit of `job` and the `ProgramArguments` `program` of its plist: the unit starts its program
@@ -301,6 +317,7 @@ def job_problems(service, timer, plist, filesystem, home):
     penv, shim_problems = without_shims(
         program, cast("dict[str, str]", penv), cast("dict[str, list[str]]", filesystem), cast("str", home)
     )
+    penv = without_offline(program, penv)
     if env != penv:
         problems.append(f"Environment {env} is not EnvironmentVariables {penv}")
     keep = plist.get("KeepAlive", False)
@@ -409,6 +426,14 @@ def selftest():
     dummy = profile.load(profile.DUMMY, home=profile.DUMMY_HOME)
     for service, problems in check_jobs(dummy).items():
         check(not problems, f"{service} describes the job of its plist -> {problems}")
+    kaimon_env = cast(
+        "dict[str, str]",
+        plistlib.loads(render("launchagents/kaimon.plist", dummy).encode())["EnvironmentVariables"],
+    )
+    check(
+        kaimon_env.get(OFFLINE[0]) == OFFLINE[1],
+        f"kaimon.plist starts Pkg offline -> {OFFLINE[0]}={kaimon_env.get(OFFLINE[0])}",
+    )
 
     # The plist and the unit of claude-autocommit start the interpreter that bin/harness names by
     # default for the dummy's home, with the installed copy as its argument.
@@ -450,6 +475,9 @@ def selftest():
     shims = expand(jobsandbox.SHIMS, home)
     autocommit_timer, update_timer = "systemd/claude-autocommit.timer", "systemd/julia-update.timer"
     update_service = "systemd/julia-update.service"
+    offline = "<key>JULIA_PKG_OFFLINE</key>\n        <string>true</string>"
+    offline_false = offline.replace("<string>true</string>", "<string>false</string>")
+    git_prompt = "<key>GIT_TERMINAL_PROMPT</key>"
     mutants = [
         ("kaimon.service without Restart=always", [("systemd/kaimon.service", "Restart=always\n", "")]),
         (
@@ -636,6 +664,35 @@ def selftest():
         (
             "kaimon.plist without sandbox-exec, while its unit keeps jobbox",
             [("launchagents/kaimon.plist", "<string>/usr/bin/sandbox-exec</string>\n", "")],
+        ),
+        ("JULIA_PKG_OFFLINE false in kaimon.plist", [("launchagents/kaimon.plist", offline, offline_false)]),
+        (
+            "JULIA_PKG_OFFLINE true in kaimon.plist without sandbox-exec, and its unit without jobbox",
+            [
+                ("launchagents/kaimon.plist", "<string>/usr/bin/sandbox-exec</string>\n", ""),
+                ("launchagents/kaimon.plist", "<string>-f</string>\n", ""),
+                (
+                    "launchagents/kaimon.plist",
+                    f"<string>{home}/.config/research-harness/sandbox/kaimon.sb</string>\n",
+                    "",
+                ),
+                ("launchagents/kaimon.plist", f"<string>{shims}:", "<string>"),
+                ("systemd/kaimon.service", f"ExecStart={home}/.local/bin/jobbox kaimon ", "ExecStart="),
+            ],
+        ),
+        (
+            "JULIA_PKG_OFFLINE true in claude-autocommit.plist, which no sandbox-exec starts",
+            [("launchagents/claude-autocommit.plist", git_prompt, f"{offline}\n        {git_prompt}")],
+        ),
+        (
+            "JULIA_PKG_OFFLINE true in kaimon.service too",
+            [
+                (
+                    "systemd/kaimon.service",
+                    "Environment=KAIMON_QDRANT_MANAGED=off\n",
+                    "Environment=KAIMON_QDRANT_MANAGED=off\nEnvironment=JULIA_PKG_OFFLINE=true\n",
+                )
+            ],
         ),
     ]
     for label, edits in mutants:
