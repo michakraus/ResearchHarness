@@ -96,6 +96,15 @@ together, so it cannot tell them apart. Each frontend's settings allow reads of 
 files by name, and deny those of every other frontend
 ([The security model](security-model.md#the-limits)).
 
+**A frontend can use every terminal of the user.** A frontend's terminal user interface puts its
+terminal, a `/dev/ttysNNN`, in raw mode, and of the terminal devices `srt` allows an ioctl only
+on `/dev/tty` by default. Each frontend's settings file therefore holds `"allowPty": true`, and
+`srt` then allows the operation `pseudo-tty` and reads, writes and ioctls of `/dev/ptmx` and of
+every `/dev/ttysNNN`. The sandbox cannot tell the frontend's own terminal from the terminal
+window of another program of the same user, so a sandboxed command can read from and write to
+every terminal of the user, as under [the daemon profile of Kaimon](#the-daemon-profiles). The
+key acts on macOS only.
+
 ## The daemon profiles
 
 An MCP server runs outside the session's sandbox: it is a process of its own, for example one that

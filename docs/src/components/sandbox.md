@@ -74,7 +74,8 @@ denies, compared as paths after the `~` expansion, so `~/x/`, `~//x` and `~/./x`
 
 ## The rendering rules
 
-`srt_settings` gives one frontend's object, with the keys `network` and `filesystem` and no other:
+`srt_settings` gives one frontend's object, with the keys `network`, `filesystem` and `allowPty`
+and no other:
 
 | key | value |
 |:--|:--|
@@ -85,6 +86,7 @@ denies, compared as paths after the `~` expansion, so `~/x/`, `~//x` and `~/./x`
 | `filesystem.denyWrite` | the template's, without the frontend's `own` and without each literal entry other than the home directory that lies strictly above a path of the frontend's `state`; then its `deny_write` |
 | `filesystem.denyRead` | the home directory; then the template's; then each path of `credentials.files`; without the frontend's `own`; each literal entry other than the home directory that lies strictly above a path of the frontend's `read_files` written as the entry followed by `/*`, in its place |
 | `filesystem.allowRead` | `read.allow`; then the frontend's `state`; then its `own`; then its `read_files` |
+| `allowPty` | `true`, for every frontend; `srt` then allows pseudo-terminals, which the frontend's terminal user interface needs, on macOS only ([The launcher `agentbox`](../safeguards/sandbox.md#the-launcher-agentbox)) |
 
 Each `~` and `~/` prefix becomes the home directory, so the files hold absolute paths. A list holds
 no entry twice, and the first occurrence keeps its place. "At or below" compares whole path
