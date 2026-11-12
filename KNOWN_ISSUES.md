@@ -845,10 +845,10 @@
 
 ### K148 · The same-file checks of the network lists and the deduplication of `merged` compare hosts as exact strings, while `denies` folds case.
 
-- location: `lib/harness/network.py:209`
+- location: `lib/harness/network.py:223`
 - evidence: `read` refuses a host in `allow` and `deny` of one file, and a host in `fetch` and
-  `allow`, only when both entries are the same string (lines 209 and 216), and `merged` drops an
-  entry of the overlay only when the harness list holds the same string (line 235). `denies`
+  `allow`, only when both entries are the same string (lines 223 and 227), and `merged` drops an
+  entry of the overlay only when the harness list holds the same string (line 246). `denies`
   matches without regard to case. So an overlay `allow = ["GitHub.com"]` gives the two rules
   `WebFetch(domain:github.com)` and `WebFetch(domain:GitHub.com)`, and `allow = ["f.org"]` with
   `fetch = ["F.org"]` in one file passes `read`; `generate` then refuses it as a `fetch` host that
@@ -939,7 +939,7 @@
 
 ### K158 · `check_entry` takes `deny` and `infrastructure` entries that srt 0.0.81 refuses, so one such entry makes every frontend's srt settings file invalid.
 
-- location: `lib/harness/network.py:98`
+- location: `lib/harness/network.py:105`
 - evidence: `check_entry` takes a port with a leading zero and a host of one label: `check_entry`
   passes `deny` entries `x.org:08080` and `intranet` and `infrastructure` entries `intranet` and
   `*.org`. srt's schema (`sandbox-config.js`, `domainPortPatternSchema` for `allowedDomains`,
@@ -947,8 +947,7 @@
   name only with a dot, other than `localhost`, and a `*.X` only where `X` has two labels or more
   (`domain-pattern.js`). The entries reach `allowedDomains` and `deniedDomains` of every
   frontend's file through the template, so srt's schema refuses the file; no session has run
-  srt on such a file. No list of the harness holds
-  such an entry; an overlay can. The frontend entries of `frontend_entries` have the closed
-  grammar.
+  srt on such a file. No list of the harness holds such an entry; an overlay can. The frontend
+  entries of `frontend_entries` have the closed grammar.
 - kind: defect
 - found: 2026-11-12, the planning of part E5k

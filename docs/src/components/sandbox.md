@@ -144,9 +144,10 @@ chosen the install renders no file. The install does not change what it writes t
 `~/.claude/settings.json`. Because it renders the template with the network overlay for every
 chosen frontend, a broken overlay stops the install with status 2 also when `claude` is not
 chosen, for example an `allow` entry that is a URL. It also exits with status 2 on a `network`
-entry of a chosen frontend, from the policy or the overlay, whose host matches a `fetch` host of
-the network lists as a deny entry would, because a command of that frontend would reach the host;
-the message names the frontend's key, the entry and the host.
+entry of any frontend, chosen or not, once one is chosen, from the policy or the overlay, whose
+host matches a `fetch` host of the network lists as a deny entry would, because a command of that
+frontend would reach the host; a `fetch` host that a `deny` entry without a port removes is no
+conflict. The message names the frontend's key, the entry and the host.
 
 With at least one frontend chosen, the install also copies the launcher `sandbox/agentbox` to
 `~/.local/bin/agentbox` with mode 755, a directory that a session cannot write. With `claude`

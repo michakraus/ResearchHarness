@@ -39,9 +39,9 @@ a glob read deny, and not a literal one inside a read allow; it reads `D/**` as 
 so the glob is `D/*`. A glob entry, one that holds `*`, `?`, `[` or `]`, stays as it is.
 
 `plan_files` gives `srt_settings` each frontend's `network` as the policy's list followed by the
-overlay's `[frontend.<name>]` table, and exits 2 on an entry of a chosen frontend, of either
-source, whose host matches a `fetch` host of the network lists by `network.denies`, because a
-command of that frontend would reach the host.
+overlay's `[frontend.<name>]` table, and exits 2 on an entry of any frontend, of either source,
+whose host matches by `network.denies` a `fetch` host that no `deny` entry without a port
+removes, because a command of that frontend would reach the host.
 
 With at least one frontend chosen, `plan_files` also plans the launcher sandbox/agentbox at
 `~/.local/bin/agentbox`, mode 755, which starts a frontend under `srt` with its file, and, with
@@ -271,7 +271,7 @@ def srt_settings(
     )
     denied = strings(sandbox, "network", "deniedDomains", default=[])
     whole = [d for d in denied if ":" not in d]
-    hosts = [e for e in mine.network if not any(network.denies(d, bare(e)) for d in whole)]
+    hosts = [e for e in mine.network if not any(network.denies(d, network.split_port(e)[0]) for d in whole)]
     return {
         "network": {
             "allowedDomains": unique([*strings(sandbox, "network", "allowedDomains"), *hosts]),
@@ -288,11 +288,6 @@ def srt_settings(
         # allows only with this key.
         "allowPty": True,
     }
-
-
-def bare(entry: str) -> str:
-    """The host of the frontend `network` entry `entry`, its `:port` cut off."""
-    return entry.rpartition(":")[0] or entry
 
 
 def strictly_above(entry: str, paths: Sequence[str], home: pathlib.Path) -> bool:
@@ -350,11 +345,11 @@ def plan_files(
     label)]. First, in the order of FRONTENDS, each `srt_settings` of the frontend on the `sandbox`
     object of the Claude Code settings that `profile` and the network overlay `overlay` render,
     with each frontend's `network` of the policy followed by its table of the overlay; exits 2 on
-    such an entry of a chosen frontend that reaches a `fetch` host. Each file is JSON indented by
-    2, the keys in the order built, with a final newline, and mode None. Then, where `chosen`
-    holds claude, Claude Code's override INNER_OFF, mode None; then the launcher
-    sandbox/agentbox at ~/.local/bin/agentbox, mode 755. With no frontend chosen it plans nothing,
-    so an overlay that the install does not read stops nothing."""
+    such an entry of any frontend that reaches a `fetch` host that no `deny` entry without a port
+    removes. Each file is JSON indented by 2, the keys in the order built, with a final newline,
+    and mode None. Then, where `chosen` holds claude, Claude Code's override INNER_OFF, mode None;
+    then the launcher sandbox/agentbox at ~/.local/bin/agentbox, mode 755. With no frontend chosen
+    it plans nothing, so an overlay that the install does not read stops nothing."""
     names = [name for name in frontends.FRONTENDS if name in chosen]
     if not names:
         return []
@@ -363,8 +358,8 @@ def plan_files(
     sandbox = cast("dict[str, object]", claude.settings_template(profile, overlay)["sandbox"])
     lists = network.merged(overlay)
     tables = cast("dict[str, tuple[str, ...]]", lists["frontend"])
-    policy = Policy(
-        read=shipped.read,
+    policy = replace(
+        shipped,
         frontends=types.MappingProxyType(
             {
                 name: replace(f, network=(*f.network, *tables.get(name, ())))
@@ -372,9 +367,12 @@ def plan_files(
             }
         ),
     )
-    for name in names:
-        for entry in policy.frontends[name].network:
-            if reached := [h for h in cast("list[str]", lists["fetch"]) if network.denies(bare(entry), h)]:
+    # The fetch hosts that `network.generate` keeps: a deny entry without a port removes the rest.
+    whole = [d for d in cast("list[str]", lists["deny"]) if ":" not in d]
+    fetch = [h for h in cast("list[str]", lists["fetch"]) if not any(network.denies(d, h) for d in whole)]
+    for name, mine in policy.frontends.items():
+        for entry in mine.network:
+            if reached := [h for h in fetch if network.denies(network.split_port(entry)[0], h)]:
                 raise HarnessError(
                     f"frontend.{name}.network entry {entry!r} reaches the fetch host {reached[0]!r}, which "
                     f"no sandboxed command may reach; remove one of them"
@@ -1099,6 +1097,12 @@ def plan_network_cases(check: Check, root: pathlib.Path) -> None:
             ["frontend.omp.network", "'W.example.org:8443'", "'w.example.org'"],
         ),
         (
+            "a fetch host that only a deny entry with a port names, below a frontend entry",
+            'deny = ["w.example.org:22"]\nfetch = ["w.example.org"]\n'
+            '[frontend.omp]\nnetwork = ["*.example.org"]\n',
+            ["frontend.omp.network", "'*.example.org'", "'w.example.org'"],
+        ),
+        (
             "the policy's entry oauth2.googleapis.com on an overlay fetch host",
             'fetch = ["oauth2.googleapis.com"]\n',
             ["frontend.antigravity.network", "'oauth2.googleapis.com'"],
@@ -1122,10 +1126,30 @@ def plan_network_cases(check: Check, root: pathlib.Path) -> None:
         lambda: plan_files(profile, overlay('fetch = ["oauth2.googleapis.com"]\n'), ("claude",), home, "/t")
     )
     check(
-        message is None,
-        f"an entry of a frontend that the install does not choose is no conflict with a fetch host: "
+        message is not None
+        and all(w in message for w in ["frontend.antigravity.network", "'oauth2.googleapis.com'"]),
+        f"an entry of a frontend that the install does not choose reaches a fetch host and exits 2 too: "
         f"{message!r}",
     )
+    for label, text, want in [
+        (
+            "a fetch host that a deny removes below a frontend entry",
+            'deny = ["*.w.example.org"]\nfetch = ["a.w.example.org"]\n'
+            '[frontend.omp]\nnetwork = ["*.example.org"]\n',
+            [*template, "*.example.org"],
+        ),
+        (
+            "a deny that removes a fetch host and the frontend entry on it",
+            'deny = ["*.example.org"]\nfetch = ["w.example.org"]\n'
+            '[frontend.omp]\nnetwork = ["w.example.org:8443"]\n',
+            template,
+        ),
+    ]:
+        try:
+            got: list[str] | str = domains(text)["omp"]
+        except HarnessError as e:
+            got = str(e)
+        check(got == want, f"plan_files with {label} plans omp's list {want[len(template) :]}: {got!r}")
     message = refused(lambda: claude.settings_template(profile, overlay("[frontend.cursor]\nnetwork = []\n")))
     check(
         message is not None and "frontend.cursor" in message,

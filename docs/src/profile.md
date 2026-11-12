@@ -280,8 +280,9 @@ and the message names the file and the key:
 - an entry of another form: `*`, `*.X` with a one-label `X`, a name of one label other than
   `localhost`, a URL, a path, an IPv6 address, a port 0, a port with a leading zero or a port
   above 65535;
-- an entry that is also an entry of `deny` in the same file;
+- an entry, or its host, that is also an entry of `deny` in the same file;
 - a frontend table in `settings/network.toml`.
 
-`install` also stops with exit status 2 on an entry of a chosen frontend whose host matches a
-`fetch` host as a `deny` entry would, because a command of that frontend would reach the host.
+With any frontend chosen, `install` also stops with exit status 2 on an entry of any frontend
+whose host matches a `fetch` host as a `deny` entry would, because a command of that frontend would
+reach the host. A `fetch` host that a `deny` entry without a port removes is no conflict.

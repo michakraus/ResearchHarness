@@ -27,10 +27,11 @@ an optional table `[frontend]`; nothing else. An entry is a host, never a URL.
     `host:port`: `host` is `localhost`, a name of two or more labels, or `*.` before such a name;
     `port` is 1 to 65535, with no leading zero (`frontend_entries`). Every form is one that srt
     takes, and `*.X` reaches every host below X. A `deny` entry without a port of either file
-    removes an entry whose host it matches; an entry whose host matches a `fetch` host as a `deny`
-    entry would exits 2 in `sandbox.plan_files`. `generate` and `apply` do not read the table, so
-    it changes no Claude Code setting. The harness list has no frontend table: a frontend's own
-    hosts go in sandbox/policy.toml.
+    removes an entry whose host it matches; an entry whose host matches, as a `deny` entry would, a
+    `fetch` host that `generate` keeps exits 2 in `sandbox.plan_files` once the install chooses
+    any frontend. `generate` and `apply` do not read the table, so it changes no Claude Code
+    setting. The harness list has no frontend table: a frontend's own hosts go in
+    sandbox/policy.toml.
 
 The two files are one union, the harness list's entries first. An `allow`, `fetch` or
 `infrastructure` entry that a `deny` entry without a port matches — the same host, a host or a `*.`
@@ -45,12 +46,13 @@ not a string, is a URL, or is no host name; a port outside `deny`; `*` outside `
 a host in `fetch` and in `allow` or `infrastructure` of the same file; a `deny_reasons` key that is
 no `deny` entry of either file; a `frontend` that is not a table, a frontend that is not of
 `frontends.FRONTENDS`, a key of its table other than `network`, a `network` that is not an array,
-an entry outside the grammar above, an entry of a frontend table that is also an entry of `deny`
-of the same file; a table `[frontend.<name>]` in the harness list. So does a settings template
-that holds a network rule of its own or has no `sandbox.network.allowedDomains`. Exit 2, naming the host and the entry: a `fetch` host
-that an entry of the generated `allowedDomains` matches as a `deny` entry would, case folded — the
-same host, or a `*.` entry or mirror form above it, from either file — because a sandboxed command
-would reach it. The profile's loader refuses the retired key `extra_domain` (`profile.load`).
+an entry outside the grammar above, an entry of a frontend table, or its host, that is also an
+entry of `deny` of the same file, compared as written; a table `[frontend.<name>]` in the harness
+list. So does a settings template that holds a network rule of its own or has no
+`sandbox.network.allowedDomains`. Exit 2, naming the host and the entry: a `fetch` host that an
+entry of the generated `allowedDomains` matches as a `deny` entry would, case folded — the same
+host, or a `*.` entry or mirror form above it, from either file — because a sandboxed command would
+reach it. The profile's loader refuses the retired key `extra_domain` (`profile.load`).
 
 The other frontends read the template, not these lists, except for the overlay's `[frontend]`
 tables, which reach the frontend's srt settings file alone.
@@ -65,7 +67,7 @@ import subprocess
 import sys
 import tempfile
 import tomllib
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Sequence
 from typing import Any, cast
 from unittest import mock
 
@@ -95,13 +97,18 @@ def registrable(host):
     return ".".join(labels[-n:]) if len(labels) >= n else host
 
 
+def split_port(entry: str) -> tuple[str, str, str]:
+    """(host, ":", port) of `entry`, split at its last colon; (entry, "", "") without a colon."""
+    return entry.rpartition(":") if ":" in entry else (entry, "", "")
+
+
 def check_entry(path, key, entry):
     """Exit 2, naming `path` and `key`, unless `entry` is a host that `key` takes."""
     if not isinstance(entry, str):
         raise HarnessError(f"{path}: {key} holds {entry!r}, which is not a string")
     if re.search(r"://|[/?#@\s]", entry):
         raise HarnessError(f"{path}: {key} entry {entry!r} is a URL; write its host alone")
-    host, colon, port = entry.rpartition(":") if ":" in entry else (entry, "", "")
+    host, colon, port = split_port(entry)
     if colon and key != "deny":
         raise HarnessError(f"{path}: {key} entry {entry!r} has a port; only a deny entry takes one")
     if colon and not (port.isdigit() and 0 < int(port) < 65536):
@@ -131,7 +138,7 @@ def frontend_entries(path: str | pathlib.Path, key: str, value: object) -> tuple
     for entry in entries:
         if not isinstance(entry, str):
             raise HarnessError(f"{path}: {key} holds {entry!r}, which is not a string")
-        host, colon, port = entry.rpartition(":") if ":" in entry else (entry, "", "")
+        host, colon, port = split_port(entry)
         if not FRONTEND_HOST.fullmatch(host) or (
             colon and not (FRONTEND_PORT.fullmatch(port) and int(port) <= MAX_PORT)
         ):
@@ -142,10 +149,14 @@ def frontend_entries(path: str | pathlib.Path, key: str, value: object) -> tuple
     return tuple(cast("list[str]", entries))
 
 
-def frontend_tables(path: str | pathlib.Path, value: object) -> dict[str, tuple[str, ...]]:
+def frontend_tables(
+    path: str | pathlib.Path, value: object, deny: Sequence[str]
+) -> dict[str, tuple[str, ...]]:
     """`value`, the table `frontend` of the network list at `path`, as {frontend: its entries};
     exits 2, naming `path` and the key, unless each key is a name of `frontends.FRONTENDS` whose
-    value is a table with no key but the optional `network` (`frontend_entries`)."""
+    value is a table with no key but the optional `network` (`frontend_entries`). Exits 2 too on
+    an entry, or its host with the `:port` cut off, that is also an entry of `deny`, the file's
+    own deny list, compared as written."""
     if not isinstance(value, dict):
         raise HarnessError(f"{path}: frontend is not a table")
     tables = cast("dict[str, object]", value)
@@ -163,6 +174,8 @@ def frontend_tables(path: str | pathlib.Path, value: object) -> dict[str, tuple[
                 f"{path}: no key frontend.{name}.{unknown[0]}; the key is frontend.{name}.network"
             )
         out[name] = frontend_entries(path, f"frontend.{name}.network", keys.get("network", []))
+        if both := [d for e in out[name] for d in (e, split_port(e)[0]) if d in deny]:
+            raise HarnessError(f"{path}: {both[0]!r} is in both frontend.{name}.network and deny")
     return out
 
 
@@ -203,14 +216,12 @@ def read(path, missing_ok):
         if not isinstance(reason, str) or not reason.strip():
             raise HarnessError(f"{path}: deny_reasons.{json.dumps(entry)} is not a non-empty string")
     out["deny_reasons"] = reasons
-    tables = frontend_tables(cast("str | pathlib.Path", path), data.get("frontend", {}))
-    out["frontend"] = tables
+    out["frontend"] = frontend_tables(
+        cast("str | pathlib.Path", path), data.get("frontend", {}), cast("list[str]", out["deny"])
+    )
     for key in ("allow", "fetch", "infrastructure"):
         if both := [h for h in out[key] if h in out["deny"]]:
             raise HarnessError(f"{path}: {both[0]!r} is in both {key} and deny")
-    for name, hosts in tables.items():
-        if both := [h for h in hosts if h in out["deny"]]:
-            raise HarnessError(f"{path}: {both[0]!r} is in both frontend.{name}.network and deny")
     fetch = cast("list[str]", out["fetch"])
     for key in ("allow", "infrastructure"):
         if both := [h for h in fetch if h in out[key]]:
@@ -665,7 +676,12 @@ def selftest():
                 ),
                 f"an overlay with {label} exits 2 and names the file and the key: {message!r}",
             )
-        frontend_cases(cast("Callable[[Callable[[], object], str], None]", case), rendered, base, tmp)
+        frontend_cases(
+            cast("Callable[[Callable[[], object], str], None]", case),
+            cast("Callable[[Callable[[], object]], str | None]", refused),
+            cast("Callable[[str, str], pathlib.Path]", overlay),
+            rendered,
+        )
         for label, edit in [
             ("a WebFetch(domain:…) rule", lambda c: c["permissions"]["allow"].append(f"{WEBFETCH}x.org)")),
             ("an allowedDomains entry", lambda c: net(c)["allowedDomains"].append("x.org")),
@@ -780,11 +796,14 @@ def selftest():
             f"`harness install --apply` writes the same OpenCode and oh-my-pi files with an overlay deny: "
             f"{plain[0]}, {changed[0]}, {len(plain[2])} files, {scratch.tail(plain[1] + changed[1])}",
         )
-        tabled = install(FRONTEND_OVERLAY)
         case(
-            lambda: plain[0] == 0 and tabled[0] == 0 and plain[2] and plain[2] == tabled[2],
-            f"`harness install --apply` writes the same OpenCode and oh-my-pi files with frontend tables: "
-            f"{tabled[0]}, {tabled[1].strip()[-200:]!r}",
+            lambda: (
+                plain[0] == 0
+                and (tabled := install(FRONTEND_OVERLAY))[0] == 0
+                and plain[2]
+                and plain[2] == tabled[2]
+            ),
+            "`harness install --apply` writes the same OpenCode and oh-my-pi files with frontend tables",
         )
         case(
             lambda: (
@@ -807,25 +826,26 @@ FRONTEND_OVERLAY = (
 
 def frontend_cases(
     case: Callable[[Callable[[], object], str], None],
+    refused: Callable[[Callable[[], object]], str | None],
+    overlay: Callable[[str, str], pathlib.Path],
     rendered: Callable[[str], dict[str, Any]],
-    base: dict[str, Any],
-    tmp: pathlib.Path,
 ) -> None:
     """The table `frontend` of the overlay: the Claude Code settings that it leaves as they are,
     the tables that `merged` returns, each form of the grammar that it takes, and each exit 2 with
-    the file and the key; and a frontend table in the harness list, which exits 2."""
-
-    def refused(call: Callable[[], object]) -> str | None:
-        try:
-            call()
-        except HarnessError as e:
-            return str(e)
-        return None
+    the file and the key; and a frontend table in the harness list, which exits 2. `overlay` and
+    `rendered` write their file in one scratch directory, `rendered` as network.toml."""
+    base = rendered("")
+    tmp = overlay("", "network.toml").parent
 
     def written(text: str) -> pathlib.Path:
-        path = tmp / "frontend.toml"
-        path.write_text(text)
-        return path
+        return overlay(text, "frontend.toml")
+
+    def names(text: str, words: list[str]) -> bool:
+        """Whether the overlay `text` exits 2 with a message that names the file and `words`."""
+        message = refused(lambda: rendered(text))
+        return (
+            message is not None and str(tmp / "network.toml") in message and all(w in message for w in words)
+        )
 
     case(
         lambda: rendered(FRONTEND_OVERLAY) == base,
@@ -904,15 +924,20 @@ def frontend_cases(
             'deny = ["x.example.org"]\n[frontend.omp]\nnetwork = ["x.example.org"]\n',
             ["'x.example.org'", "frontend.omp.network", "deny"],
         ),
+        (
+            "the host of a frontend entry with a port in deny",
+            'deny = ["x.example.org"]\n[frontend.omp]\nnetwork = ["x.example.org:8443"]\n',
+            ["'x.example.org'", "frontend.omp.network", "deny"],
+        ),
+        (
+            "a frontend entry with a port in deny as written",
+            'deny = ["a.example.org:8443"]\n[frontend.omp]\nnetwork = ["a.example.org:8443"]\n',
+            ["'a.example.org:8443'", "frontend.omp.network", "deny"],
+        ),
     ]:
-        message = refused(lambda text=text: rendered(text))
         case(
-            lambda message=message, words=words: (
-                message is not None
-                and str(tmp / "network.toml") in message
-                and all(w in message for w in words)
-            ),
-            f"an overlay with {label} exits 2 and names the file and the key: {message!r}",
+            lambda text=text, words=words: names(text, words),
+            f"an overlay with {label} exits 2 and names the file and {words}",
         )
     case(
         lambda: (
