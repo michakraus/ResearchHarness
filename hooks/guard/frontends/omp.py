@@ -47,6 +47,7 @@ from guard import (
     gh_pr_create,
     gh_watch_interval,
     git_archive_output,
+    git_push_delete,
     git_writes,
     kaimon_session,
     no_blind_stage,
@@ -144,6 +145,7 @@ SHELL: tuple[Check, ...] = (
     rm_scope.check,
     git_archive_output.check,
     git_writes.check,
+    git_push_delete.check,
     sandbox_semantics.work_tree_check,
     web_identity.check,
 )

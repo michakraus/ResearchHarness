@@ -37,7 +37,8 @@ the tools that are not shell commands.
 ### Ask
 
 The `ask` list holds the steps that you decide: a merge, a release, the creation, edit or fork of
-a repository, a deletion on a remote (`git push --delete`, a push of `:<ref>`), a local tag
+a repository, a deletion on a remote (`git push --delete`; the guard asks before a push of
+`:<ref>`), a local tag
 deleted or moved (`git tag -d`, `-f`), `git revert`, the `git -C` forms of these,
 `git archive -o`, the `gh issue create` forms with `-R` after other arguments and the `gh`
 comments that name two repositories or a URL, and an edit of a skill that does not come from the
