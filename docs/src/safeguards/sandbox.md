@@ -124,6 +124,14 @@ window of another program of the same user, so a sandboxed command can read from
 every terminal of the user, as under [the daemon profile of Kaimon](#the-daemon-profiles). The
 key acts on macOS only.
 
+**oh-my-pi can reach the macOS spell service.** `srt`'s profile allows a fixed list of Mach
+services, such as the font and logging services. oh-my-pi's typo detection asks the spell service
+`mul-xpc (Apple)_OpenStep` for each word of the prompt, so `omp`'s settings file adds that one
+service in `allowMachLookup`, from the key `mach_lookup` of the policy file. A command that
+oh-my-pi runs can reach it too: the service receives the words that it is sent and can write
+learned words to `~/Library/Spelling`, outside the sandbox. The files of the other three
+frontends add no service.
+
 ## The daemon profiles
 
 An MCP server runs outside the session's sandbox: it is a process of its own, for example one that

@@ -8,8 +8,9 @@ template's `sandbox` section stays the source of the shared lists; the policy fi
 `deny_write` paths, its `own` paths, the template's deny entries that it reads and writes itself
 or, under a write deny that keeps them read-only, reads only, its `read_files`, files below a
 read deny directory that it reads and does not write, and its `network`, the hosts that it
-reaches itself, in the grammar of `network.frontend_entries`. The overlay `network.toml` beside
-the profile adds the user's hosts to a frontend's `network` in a `[frontend.<name>]` table
+reaches itself, in the grammar of `network.frontend_entries`, and its `mach_lookup`, the macOS
+services that it looks up itself, each by its exact name. The overlay `network.toml` beside the
+profile adds the user's hosts to a frontend's `network` in a `[frontend.<name>]` table
 (`network.py`).
 
 `srt_settings` gives one frontend's object, as docs/src/components/sandbox.md describes:
@@ -19,7 +20,8 @@ the profile adds the user's hosts to a frontend's `network` in a `[frontend.<nam
                              of `deniedDomains` without a port matches (`network.denies`)
   network.deniedDomains      the template's, or [] where it has none: srt refuses a file without it
   network.allowLocalBinding  the template's
-  filesystem.allowWrite      the template's, without each entry at or below another frontend's
+  network.allowMachLookup    the frontend's `mach_lookup`; no such key where it is empty
+  filesystem.allowWrite     the template's, without each entry at or below another frontend's
                              `state` path; then the frontend's `state`; then `tmpdir`, when given
   filesystem.denyWrite       the template's, without the frontend's `own` and without each
                              literal entry, other than the home directory, strictly above a path
@@ -97,13 +99,14 @@ class ReadPolicy:
 
 @dataclass(frozen=True)
 class FrontendPolicy:
-    """One frontend's paths and hosts of the policy file."""
+    """One frontend's paths, hosts and macOS services of the policy file."""
 
     state: tuple[str, ...]
     deny_write: tuple[str, ...]
     own: tuple[str, ...]
     read_files: tuple[str, ...]
     network: tuple[str, ...]
+    mach_lookup: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -117,8 +120,9 @@ class Policy:
 def load_policy(path: pathlib.Path) -> Policy:
     """The policy file at `path`. Exits 2, naming the key or the path, on a file that cannot be
     read or is not TOML, an unknown key, a missing key or frontend, a value that is not a list of
-    strings, a path that does not start with `~/`, a path with a `..` segment, and a `network`
-    entry outside the grammar of `network.frontend_entries`."""
+    strings, a path that does not start with `~/`, a path with a `..` segment, a `network`
+    entry outside the grammar of `network.frontend_entries`, and a `mach_lookup` entry that
+    `services` refuses."""
     try:
         text = path.read_bytes().decode("utf-8")
     except OSError as e:
@@ -133,7 +137,7 @@ def load_policy(path: pathlib.Path) -> Policy:
     read = table(path, "read.", top["read"], ("allow",))
     named = table(path, "frontend.", top["frontend"], frontends.FRONTENDS)
     tables = {
-        name: table(path, f"frontend.{name}.", named[name], (*LISTS, "network"))
+        name: table(path, f"frontend.{name}.", named[name], (*LISTS, "network", "mach_lookup"))
         for name in frontends.FRONTENDS
     }
     return Policy(
@@ -143,6 +147,7 @@ def load_policy(path: pathlib.Path) -> Policy:
                 name: FrontendPolicy(
                     *(paths(path, f"frontend.{name}.{key}", t[key]) for key in LISTS),
                     network=network.frontend_entries(path, f"frontend.{name}.network", t["network"]),
+                    mach_lookup=services(path, f"frontend.{name}.mach_lookup", t["mach_lookup"]),
                 )
                 for name, t in tables.items()
             }
@@ -176,6 +181,18 @@ def paths(path: pathlib.Path, key: str, value: object) -> tuple[str, ...]:
         raise HarnessError(f"{path}: {key} entry {wrong[0]!r} does not start with ~/")
     if wrong := [p for p in entries if ".." in p.split("/")]:
         raise HarnessError(f"{path}: {key} entry {wrong[0]!r} holds a .. segment")
+    return tuple(entries)
+
+
+def services(path: pathlib.Path, key: str, value: object) -> tuple[str, ...]:
+    """`value`, the list `key` of the policy file at `path`, as a tuple; exits 2 unless it is a
+    list of strings that are each a whole service name: not empty, without `*`, which srt reads at
+    the end as a prefix of names, and without a character that is not printable."""
+    if not isinstance(value, list) or not all(isinstance(v, str) for v in cast("list[object]", value)):
+        raise HarnessError(f"{path}: {key} is not a list of strings")
+    entries = cast("list[str]", value)
+    if wrong := [s for s in entries if not s or "*" in s or not s.isprintable()]:
+        raise HarnessError(f"{path}: {key} entry {wrong[0]!r} is not one whole service name")
     return tuple(entries)
 
 
@@ -278,6 +295,7 @@ def srt_settings(
             "allowedDomains": unique([*strings(sandbox, "network", "allowedDomains"), *hosts]),
             "deniedDomains": unique(denied),
             "allowLocalBinding": binding,
+            **({"allowMachLookup": unique(list(mine.mach_lookup))} if mine.mach_lookup else {}),
         },
         "filesystem": {
             "allowWrite": unique([*allow_write, *state, *([tmpdir] if tmpdir is not None else [])]),
@@ -411,6 +429,7 @@ deny_write = []
 own = ["~/.claude.json"]
 read_files = []
 network = []
+mach_lookup = []
 
 [frontend.opencode]
 state = ["~/.local/share/opencode"]
@@ -418,6 +437,7 @@ deny_write = ["~/.local/share/opencode/x"]
 own = ["~/.local/share/opencode/auth.json"]
 read_files = ["~/.config/keys/a", "~/.config/keys/b", "~/.local/x/f", "~/.box*/k"]
 network = []
+mach_lookup = []
 
 [frontend.omp]
 state = ["~/.omp"]
@@ -425,6 +445,7 @@ deny_write = []
 own = []
 read_files = []
 network = []
+mach_lookup = ["s (A)_B", "t", "s (A)_B"]
 
 [frontend.antigravity]
 state = ["~/.gemini"]
@@ -432,9 +453,16 @@ deny_write = []
 own = []
 read_files = []
 network = []
+mach_lookup = []
 """
-# The fixture's table of omp, which the refusals of `read_files` and `network` change.
-FIXTURE_OMP = '[frontend.omp]\nstate = ["~/.omp"]\ndeny_write = []\nown = []\nread_files = []\nnetwork = []\n'
+# The fixture's table of omp, which the refusals of `read_files`, `network` and `mach_lookup`
+# change.
+FIXTURE_OMP = (
+    '[frontend.omp]\nstate = ["~/.omp"]\ndeny_write = []\nown = []\nread_files = []\nnetwork = []\n'
+    'mach_lookup = ["s (A)_B", "t", "s (A)_B"]\n'
+)
+# The service of oh-my-pi's typo detection, which the shipped policy allows to omp alone.
+SHIPPED_SPELL = "mul-xpc (Apple)_OpenStep"
 # The credential files that each frontend reads itself, as the shipped policy and template render
 # them with the home directory /h. Kaimon's token is shared: OpenCode and oh-my-pi read it to reach
 # Kaimon, and the write deny ~/.config above it keeps it read-only.
@@ -524,6 +552,7 @@ def selftest() -> tuple[int, int]:
         policy_cases(check, root)
         settings_cases(check, root)
         template_cases(check)
+        mach_lookup_cases(check, root)
         plan_network_cases(check, root / "plan")
         agentbox_cases(check, root / "agentbox")
     return n, wrong
@@ -573,6 +602,11 @@ def policy_cases(check: Check, root: pathlib.Path) -> None:
         hosts == {"claude": (), "opencode": (), "omp": (), "antigravity": ("oauth2.googleapis.com",)},
         f"sandbox/policy.toml: antigravity's network is its login host, every other frontend's empty: "
         f"{hosts}",
+    )
+    services_of = {name: f.mach_lookup for name, f in policy.frontends.items()}
+    check(
+        services_of == {"claude": (), "opencode": (), "omp": (SHIPPED_SPELL,), "antigravity": ()},
+        f"sandbox/policy.toml: omp looks up the spell service, no other frontend a service: {services_of}",
     )
 
     def refuses(change: Callable[[], object], error: type[Exception]) -> bool:
@@ -682,6 +716,36 @@ def policy_cases(check: Check, root: pathlib.Path) -> None:
                 ("[1]", ["not a string"]),
             ]
         ),
+        (
+            "no mach_lookup in [frontend.omp]",
+            text.replace(
+                FIXTURE_OMP, FIXTURE_OMP.replace('mach_lookup = ["s (A)_B", "t", "s (A)_B"]\n', ""), 1
+            ),
+            ["no frontend.omp.mach_lookup"],
+        ),
+        *(
+            (
+                f"a mach_lookup {value}",
+                text.replace(
+                    FIXTURE_OMP,
+                    FIXTURE_OMP.replace(
+                        'mach_lookup = ["s (A)_B", "t", "s (A)_B"]', f"mach_lookup = {value}"
+                    ),
+                    1,
+                ),
+                ["frontend.omp.mach_lookup", *words],
+            )
+            for value, words in [
+                ('["*"]', ["'*'", "one whole service name"]),
+                ('["com.apple.*"]', ["'com.apple.*'", "one whole service name"]),
+                ('["a*b"]', ["'a*b'", "one whole service name"]),
+                ('[""]', ["''", "one whole service name"]),
+                ('["a\\nb"]', ["'a\\nb'", "one whole service name"]),
+                ('["a\\u007fb"]', ["'a\\x7fb'", "one whole service name"]),
+                ('"s"', ["not a list of strings"]),
+                ("[1]", ["not a list of strings"]),
+            ]
+        ),
     ]:
         path = root / "policy.toml"
         path.write_text(body)
@@ -708,6 +772,48 @@ def policy_cases(check: Check, root: pathlib.Path) -> None:
     check(
         message is None and load_policy(dots).read.allow[0] == "~/Research..old",
         f"a name that holds .. but is no .. segment loads: {message!r}",
+    )
+
+
+def mach_lookup_cases(check: Check, root: pathlib.Path) -> None:
+    """`network.allowMachLookup`: the fixture's omp gets its `mach_lookup` in order, each once, and
+    a frontend with none gets no key; the shipped policy and template give omp the spell service
+    alone."""
+    path = root / "mach-lookup-policy.toml"
+    path.write_text(FIXTURE_POLICY)
+    policy = load_policy(path)
+    home = pathlib.Path("/h")
+    fixture = {
+        name: srt_settings(name, fixture_sandbox(), policy, home, "/t") for name in frontends.FRONTENDS
+    }
+    check(
+        fixture["omp"]["network"]
+        == {
+            "allowedDomains": ["b.org", "a.org"],
+            "deniedDomains": ["x.org"],
+            "allowLocalBinding": True,
+            "allowMachLookup": ["s (A)_B", "t"],
+        }
+        and all(
+            "allowMachLookup" not in cast("dict[str, object]", s["network"])
+            for n, s in fixture.items()
+            if n != "omp"
+        ),
+        f"omp's network ends with its mach_lookup as allowMachLookup, in order, each once; no other "
+        f"frontend's network has the key: {fixture['omp']['network']}",
+    )
+    template = cast("dict[str, Any]", jsonio.load(REPO / "settings" / "settings.proposal.json"))["sandbox"]
+    shipped = load_policy(POLICY)
+    looked_up = {
+        name: cast("dict[str, object]", srt_settings(name, template, shipped, home, "/t")["network"]).get(
+            "allowMachLookup"
+        )
+        for name in frontends.FRONTENDS
+    }
+    check(
+        looked_up == {"claude": None, "opencode": None, "omp": [SHIPPED_SPELL], "antigravity": None},
+        f"omp's file allows the lookup of the spell service alone, no other frontend's file a service: "
+        f"{looked_up}",
     )
 
 
@@ -874,7 +980,12 @@ def settings_cases(check: Check, root: pathlib.Path) -> None:
     no_denied = srt_settings("omp", plain, policy, home, None)
     check(
         no_denied["network"]
-        == {"allowedDomains": ["b.org", "a.org"], "deniedDomains": [], "allowLocalBinding": False},
+        == {
+            "allowedDomains": ["b.org", "a.org"],
+            "deniedDomains": [],
+            "allowLocalBinding": False,
+            "allowMachLookup": ["s (A)_B", "t"],
+        },
         f"a template with no deniedDomains gives [], and allowLocalBinding false stays false: "
         f"{no_denied['network']}",
     )
@@ -973,10 +1084,11 @@ def network_cases(check: Check, root: pathlib.Path, home: pathlib.Path) -> None:
     template's list alone."""
     path = root / "network-policy.toml"
     hosts = ["n.org", "a.org", "x.org:8443", "*.y.org", "w.y.org", "keep.z.org", "n.org", "Up.Q.org"]
-    # The network key of opencode's table, the last one before omp's.
+    # The network key of opencode's table, the last but one before omp's.
     before, after = FIXTURE_POLICY.split("[frontend.omp]")
+    tail = "network = []\nmach_lookup = []\n\n"
     path.write_text(
-        f"{before.removesuffix('network = []\n\n')}network = {json.dumps(hosts)}\n\n[frontend.omp]{after}"
+        f"{before.removesuffix(tail)}network = {json.dumps(hosts)}\nmach_lookup = []\n\n[frontend.omp]{after}"
     )
     policy = load_policy(path)
     sandbox = fixture_sandbox()
