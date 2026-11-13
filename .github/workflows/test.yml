@@ -347,19 +347,11 @@ jobs:
         run: ruff check --no-cache .
       - name: basedpyright
         run: basedpyright
-      # bin/harness runs on the environment that RESEARCH_HARNESS_PYTHON names; first its stamp with
-      # the dev group, as bin/harness's own `sync` writes it.
+      # bin/harness runs on the environment that RESEARCH_HARNESS_PYTHON names.
       - name: harness test strict, with the real pre-commit case
         env:
           RESEARCH_HARNESS_PYTHON: ${{ runner.temp }}/env
         run: |
-          python -c '
-          import sys
-          boot = {"__name__": "harness_boot", "__file__": "bin/harness"}
-          exec(compile(open("bin/harness").read(), "bin/harness", "exec"), boot)
-          with open(sys.argv[1] + "/" + boot["STAMP"], "w") as f:
-              f.write(boot["stamp_text"](True))
-          ' "$RESEARCH_HARNESS_PYTHON"
           set -o pipefail
           python bin/harness test strict | tee "$RUNNER_TEMP/strict.log"
           if grep -E '^skip  strict: the real pre-commit case' "$RUNNER_TEMP/strict.log"; then
