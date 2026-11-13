@@ -445,6 +445,7 @@ def origin_cases(check: Check) -> None:
         ("/srv/git/o/A.jl", None),
         ("https://github.com/o", None),
         ("https://github.com/o/A.jl/tree", None),
+        ("https://github.com/o/A.jl//", None),
         ("", None),
         ("github.com/o/A.jl", None),
         ("github.com/o/A.jl.git", None),
