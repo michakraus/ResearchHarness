@@ -34,9 +34,9 @@
 # credential helper answers, and removes the caller's GITLAB_ACCESS_TOKEN and OAUTH_TOKEN, which
 # glab would read as a token. When the token store ~/.config/research-harness/forge holds exactly
 # one host directory other than github.com, holding exactly one store file, whose first line is
-# https://<user>:<token>@<host>, <host> the directory's name and <user> and <token> free of % and
-# spaces, it exports GITLAB_HOST as <host> and GITLAB_TOKEN as <token>; glab sends that token only
-# to that host.
+# https://<user>:<token>@<host>, <host> the directory's name and <user> and <token> not empty and
+# free of % and white space, it exports GITLAB_HOST as <host> and GITLAB_TOKEN as <token>; glab
+# sends that token only to that host.
 # Otherwise it removes the caller's GITLAB_TOKEN, writes one line on stderr that names the store,
 # and starts the program all the same.
 #
@@ -152,10 +152,10 @@ caches() {
 # gitlab: print "<host> <token>" of the one store file in the token store's one host directory
 # other than github.com, or nothing where there is no such directory, more than one, such a
 # directory holds no store file or more than one, or the file's first line is not
-# https://<user>:<token>@<host> with <host> the directory's name and <user> and <token> free of %
-# and spaces: git would decode a %, and glab would not. sed's own error on a file that it cannot
-# read goes nowhere, so that stderr holds the one line of forge. Run it in a command substitution:
-# it assigns its own variables, which then stay in the subshell.
+# https://<user>:<token>@<host> with <host> the directory's name and <user> and <token> not empty
+# and free of % and white space: git would decode a %, and glab would not. sed's own error on a
+# file that it cannot read goes nowhere, so that stderr holds the one line of forge. Run it in a
+# command substitution: it assigns its own variables, which then stay in the subshell.
 gitlab() {
     found=
     for dir in "$HOME/.config/research-harness/forge"/*/; do
@@ -176,7 +176,7 @@ gitlab() {
     [ -n "$file" ] || return 0
     host=${found%/}
     host=${host##*/}
-    line=$(sed -n '1s|^https://[^:/@% ]*:\([^:/@% ][^:/@% ]*\)@\([^/@ ]*\)$|\2 \1|p' "$file" 2>/dev/null)
+    line=$(sed -n '1s|^https://[^:/@%[:space:]][^:/@%[:space:]]*:\([^:/@%[:space:]][^:/@%[:space:]]*\)@\([^/@[:space:]]*\)$|\2 \1|p' "$file" 2>/dev/null)
     case $line in
     "$host "?*) printf '%s\n' "$line" ;;
     esac

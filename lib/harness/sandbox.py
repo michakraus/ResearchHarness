@@ -2000,6 +2000,11 @@ def forge_cases(check: Check, root: pathlib.Path) -> None:
             line(f"https://oauth2:{BOX_TOKEN}@gitlab.x.org\n"),
         ),
         ("a GitLab store file whose token holds a %", line(f"https://oauth2:{BOX_TOKEN}%41@{BOX_GITLAB}\n")),
+        ("a GitLab store file whose line has no user", line(f"https://:{BOX_TOKEN}@{BOX_GITLAB}\n")),
+        (
+            "a GitLab store file whose token holds a tab",
+            line(f"https://oauth2:{BOX_TOKEN}\tx@{BOX_GITLAB}\n"),
+        ),
         (
             "a GitLab store file whose line ends in CR LF",
             line(f"https://oauth2:{BOX_TOKEN}@{BOX_GITLAB}\r\n"),

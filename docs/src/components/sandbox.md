@@ -327,7 +327,9 @@ list `guard-paths.json`, which oh-my-pi and Antigravity also render, holds its p
 **The gh wrapper** `~/.local/bin/gh` ([`gh-token.py`](scripts.md#gh-token-py)) finds the
 repository's owner, reads the owner's store file, else `default.store`, and runs the real gh with
 `GH_TOKEN` set and `GITHUB_TOKEN` removed. With no token, or for a host other than `github.com`,
-it removes both and sets `GH_CONFIG_DIR` to an empty directory, so gh reads no stored login.
+it removes both and sets `GH_CONFIG_DIR` to an empty directory, so gh reads no stored login. It
+refuses a command, and runs nothing, where an argument that gh may read as `-R`, but that the
+wrapper cannot read as `-R` with certainty, names another owner or host.
 
 **glab and gh under `agentbox`.** The launcher exports `GIT_TERMINAL_PROMPT=0`, and
 `GLAB_CONFIG_DIR` and `GH_CONFIG_DIR`, the empty directories `glab` and `gh` of the run directory,
@@ -335,8 +337,9 @@ in place of the caller's: glab and gh then read no stored login, and do not fail
 configuration files, which srt denies. It removes the caller's `GITLAB_ACCESS_TOKEN` and
 `OAUTH_TOKEN`. Where the store holds exactly one host directory other than `github.com/`, with
 exactly one store file whose first line is `https://<user>:<token>@<host>`, `<host>` the
-directory's name and no `%` or space in the user and the token, it exports `GITLAB_HOST` as the directory's name and
-`GITLAB_TOKEN` as the token; glab sends that token only to that host. Otherwise it removes the
+directory's name, and the user and the token not empty and free of `%` and white space, it exports
+`GITLAB_HOST` as the directory's name and `GITLAB_TOKEN` as the token; glab sends that token only
+to that host. Otherwise it removes the
 caller's `GITLAB_TOKEN`, prints one line on stderr that names the store, and starts the frontend.
 
 **Your steps**, after the merge and before `harness install --apply`:

@@ -14,10 +14,20 @@ finds the owner of the repository that the command acts on, in this order:
    `gh pr view <argument>`, where it does not start with `-`: a URL names its host and its first
    path segment, and, for the group `repo` only, `OWNER/REPO` and `HOST/OWNER/REPO` name an owner
    (elsewhere `OWNER/x` can be a branch);
-2. the value of the last `-R` or `--repo` before a `--` (`OWNER/REPO`, `HOST/OWNER/REPO` or a URL,
-   also as `--repo=…`, `-R…`, `-R=…`, or the last flag of a cluster such as `-nR`);
+2. the value of the last `-R` or `--repo` before a `--` whose reading is certain (`OWNER/REPO`,
+   `HOST/OWNER/REPO` or a URL): `-R V` and `--repo V`, where a bare `-R` or `--repo` is always the
+   flag, and `-RV`, `-R=V` and `--repo=V`, where the argument before is not a flag without `=`;
 3. GH_REPO;
 4. the owner of the remote `origin` of the working directory.
+
+The wrapper does not know which of gh's flags take a value, so it does not read `-R` from any other
+argument that gh may read as `-R`: `-RV`, `-R=V` or `--repo=V` after a flag without `=` (the value
+of `-b` in `-b -RV`), a cluster of letters with an `R` after its first letter (`-nR V`, `-nRV`, or
+`-tRelease`, the title `Release`), and every form after the first `--`. Where the command's own
+argument names no owner and such an argument after the last certain `-R` names a repository of
+another host or owner than the one the wrapper finds, compared without case, it refuses. Such an
+argument whose value names no repository, as `elease` of `-tRelease`, counts for nothing: gh
+would refuse that value as `-R`'s.
 
 It reads the token store `~/.config/research-harness/forge/github.com/`: the file `<owner>.store`,
 the name compared without case, as GitHub compares it, else `default.store`; each file holds the
@@ -28,15 +38,17 @@ bytes are not this script's, so that a second copy of the wrapper is skipped too
 gh's status, 128 and the signal's number where a signal ends gh; a Ctrl-C goes to gh, and the
 wrapper waits for it.
 
-A host other than github.com gets no token: in `--hostname` (any command, before a `--`), in a
-non-empty GH_HOST, in the command's own argument, in `-R` or in GH_REPO; an `origin` of another
-host names no owner. With no token, it removes GH_TOKEN and GITHUB_TOKEN and sets GH_CONFIG_DIR to
-a new empty directory, so that gh reads no stored login either, and removes that directory when gh
-ends. With a token, the caller's GH_CONFIG_DIR stays.
+A host other than github.com gets no token: in `--hostname` (any command, any argument, also after
+a `--`), in a non-empty GH_HOST, in the command's own argument, in `-R` or in GH_REPO; an `origin`
+of another host names no owner. With no token, it removes GH_TOKEN and GITHUB_TOKEN and sets
+GH_CONFIG_DIR to a new empty directory, so that gh reads no stored login either, and removes that
+directory when gh ends. With a token, the caller's GH_CONFIG_DIR stays. A host other than
+github.com in `--hostname` or GH_HOST comes first: then the wrapper reads no owner and refuses
+nothing.
 
-It exits 2 with one line on stderr, and runs nothing, on a store file that it cannot read or whose
-line holds no password, and when the PATH holds no gh but this script. The standard library only,
-and Python 3.9 or later, the python3 of macOS.
+It exits 2 with one line on stderr, and runs nothing, on the refusal above, on a store file that it
+cannot read or whose line holds no password, and when the PATH holds no gh but this script. The
+standard library only, and Python 3.9 or later, the python3 of macOS.
 """
 
 from __future__ import annotations
@@ -50,6 +62,7 @@ import subprocess
 import sys
 import tempfile
 import urllib.parse
+from dataclasses import dataclass
 
 STORE = pathlib.Path(".config", "research-harness", "forge", "github.com")
 GITHUB = "github.com"
@@ -72,29 +85,52 @@ class RefusedError(Exception):
     """A refusal of the wrapper: one line on stderr, exit status 2."""
 
 
-def values(args: list[str], name: str, short: str | None = None) -> list[str]:
-    """The values of the flag `--<name>`, and of `-<short>` where given, in `args` before a `--`,
-    in order: `--name V`, `--name=V`, `-sV`, `-s=V`, `-s V`, and `-s` as the last flag of a
-    cluster of letters, such as `-ns V`."""
-    found: list[str] = []
+@dataclass(frozen=True)
+class Reading:
+    """A value that gh may read as the repository of `-R`: the argument at `index` that carries it,
+    as `shown` on stderr, and whether the reading is certain."""
+
+    index: int
+    shown: str
+    value: str
+    certain: bool
+
+
+def takes_next(arg: str) -> bool:
+    """Whether `arg` is a flag token without `=`, which may take the next argument as its value."""
+    return arg.startswith("-") and len(arg) > 1 and "=" not in arg
+
+
+def readings(args: list[str]) -> list[Reading]:
+    """Every value in `args` that gh may read as `-R`'s, in order. Certain, before the first `--`:
+    `-R V` and `--repo V`, where a bare `-R` or `--repo` is always the flag and V is its value
+    only, and `-RV`, `-R=V` and `--repo=V`, where the argument before is not a flag token without
+    `=`. Uncertain: those attached forms after such a flag token; each `R` of a short cluster
+    that has only letters before it, at least one, with the rest of the argument, less one
+    leading `=`, as the value, or the next argument where `R` is last; and every form after the
+    first `--`."""
+    found: list[Reading] = []
+    after_dashes = False
     i = 0
-    while i < len(args) and args[i] != "--":
+    while i < len(args):
         arg = args[i]
-        at = (
-            arg.find(short, 1)
-            if short is not None and arg.startswith("-") and not arg.startswith("--")
-            else -1
-        )
-        # `-<short>` stands alone, or after other flags' letters only.
-        flagged = at > 0 and (at == 1 or arg[1:at].isalpha())
-        if arg == f"--{name}" or (flagged and at == len(arg) - 1):
+        if arg == "--":
+            after_dashes = True
+        elif arg in ("-R", "--repo"):
             if i + 1 < len(args):
-                found.append(args[i + 1])
+                found.append(Reading(i, f"{arg} {args[i + 1]}", args[i + 1], not after_dashes))
             i += 1
-        elif arg.startswith(f"--{name}="):
-            found.append(arg.removeprefix(f"--{name}="))
-        elif flagged:
-            found.append(arg[at + 1 :].removeprefix("="))
+        elif arg.startswith(("-R", "--repo=")):
+            value = arg.removeprefix("--repo=") if arg.startswith("--") else arg[2:].removeprefix("=")
+            certain = not after_dashes and not (i > 0 and takes_next(args[i - 1]))
+            found.append(Reading(i, arg, value, certain))
+        elif arg.startswith("-") and not arg.startswith("--"):
+            for at in range(2, len(arg)):
+                if arg[at] == "R" and arg[1:at].isalpha():
+                    if at < len(arg) - 1:
+                        found.append(Reading(i, arg, arg[at + 1 :].removeprefix("="), certain=False))
+                    elif i + 1 < len(args):
+                        found.append(Reading(i, f"{arg} {args[i + 1]}", args[i + 1], certain=False))
         i += 1
     return found
 
@@ -155,21 +191,47 @@ def origin() -> tuple[str, str] | None:
     return location(p.stdout.strip()) if p.returncode == 0 else None
 
 
+def lower(found: tuple[str, str] | None) -> tuple[str, str] | None:
+    """The host and owner `found`, the owner in lower case, as GitHub compares it; `location`
+    gives the host in lower case already."""
+    return None if found is None else (found[0], found[1].lower())
+
+
 def owner(args: list[str], env: dict[str, str]) -> tuple[str, str] | None:
-    """The host and owner that the command acts on, in the order of the docstring, or None."""
+    """The host and owner that the command acts on, in the order of the docstring, or None.
+    Raises RefusedError where an uncertain reading of `-R` after the last certain one names
+    another host or owner."""
     if found := argument(args):
         return found
-    for value in (*values(args, "repo", "R")[-1:], env.get("GH_REPO") or None):
+    every = readings(args)
+    certain = [r for r in every if r.certain]
+    last = certain[-1].index if certain else -1
+    found = None
+    for value in (*(r.value for r in certain[-1:]), env.get("GH_REPO") or None):
         if value is not None and (found := location(value)):
-            return found
-    found = origin()
-    return found if found is not None and found[0] == GITHUB else None
+            break
+    if found is None:
+        found = origin()
+        found = found if found is not None and found[0] == GITHUB else None
+    # Every reading after the last certain one is uncertain. gh would refuse a value that names no
+    # repository as -R's, so such a reading counts for nothing.
+    for r in every:
+        named = location(r.value)
+        if r.index > last and named is not None and lower(named) != lower(found):
+            mine = f"chooses the token by {'/'.join(found)}" if found is not None else "finds no owner"
+            raise RefusedError(
+                f"{r.shown} may name the repository of {'/'.join(named)}, while this wrapper {mine}; "
+                "give the repository as -R OWNER/REPO, a flag of its own before any --"
+            )
+    return found
 
 
 def other_host(args: list[str], env: dict[str, str]) -> bool:
-    """Whether `--hostname` before a `--`, or a non-empty GH_HOST, names a host other than
-    github.com."""
-    hosts = [*values(args, "hostname"), *([env["GH_HOST"]] if env.get("GH_HOST") else [])]
+    """Whether `--hostname V` or `--hostname=V` in any argument, `--` included, or a non-empty
+    GH_HOST names a host other than github.com."""
+    hosts = [args[i + 1] for i in range(len(args) - 1) if args[i] == "--hostname"]
+    hosts += [a.removeprefix("--hostname=") for a in args if a.startswith("--hostname=")]
+    hosts += [env["GH_HOST"]] if env.get("GH_HOST") else []
     return any(h.lower() != GITHUB for h in hosts)
 
 

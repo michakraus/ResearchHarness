@@ -1639,9 +1639,10 @@ class GhHome:
 def gh_token_owner_cases(check: Callable[[object, str], None], tmp: pathlib.Path) -> None:
     """The owner of scripts/gh-token.py: the endpoint of `gh api`, a placeholder there naming none,
     the argument of `gh repo …` and a URL as a command's argument, each before `-R` and GH_REPO;
-    `-R` and `--repo` in each form, the last one counting; GH_REPO; the remote `origin`; each
-    compared without case, and the default outside a repository; every argument reaches the stub
-    unchanged, and GITHUB_TOKEN never."""
+    `-R` and `--repo` in each certain form, the last one counting, and a flag's value that gh may
+    read as `-R` passing where it names no repository or the same owner; GH_REPO; the remote
+    `origin`; each compared without case, and the default outside a repository; every argument
+    reaches the stub unchanged, and GITHUB_TOKEN never."""
     tokens = {name: f"T-{name}-{secrets.token_hex(4)}" for name in ("example-b", "Example-C", "default")}
     home = GhHome.fresh(tmp / "owners", tokens)
     repo = home.repository("https", "https://github.com/Example-C/repo.git")
@@ -1702,8 +1703,6 @@ def gh_token_owner_cases(check: Callable[[object, str], None], tmp: pathlib.Path
             "gh repo with -ROWNER/REPO at the argument's place",
         ),
         (["pr", "view", "1", "-R=Example-B/repo"], {}, repo, b, "-R=OWNER/REPO"),
-        (["pr", "view", "1", "-nR", "Example-B/repo"], {}, repo, b, "-nR OWNER/REPO, a cluster"),
-        (["pr", "view", "1", "-nRExample-B/repo"], {}, repo, b, "-nROWNER/REPO, a cluster"),
         (
             ["pr", "create", "-b", "-Rfoo/bar", "-R", "Example-B/repo"],
             {},
@@ -1712,6 +1711,41 @@ def gh_token_owner_cases(check: Callable[[object, str], None], tmp: pathlib.Path
             "a flag's value that starts with -R, then -R: the last",
         ),
         (["pr", "view", "1", "-R", "Example-C/r", "-R", "Example-B/repo"], {}, None, b, "two -R: the last"),
+        (["issue", "create", "-R", "Example-B/repo", "-tRelease"], {}, repo, b, "-R, then -tRelease"),
+        (["pr", "create", "-R", "Example-B/repo", "-bReview"], {}, repo, b, "-R, then -bReview"),
+        (["issue", "create", "--repo", "Example-B/repo", "-tRelease"], {}, repo, b, "--repo, then -tRelease"),
+        (["pr", "merge", "3", "--squash", "-R", "Example-B/repo"], {}, repo, b, "-R after a flag --squash"),
+        (
+            ["issue", "create", "-R", "Example-B/repo", "-b", "-Rexample-b/repo"],
+            {},
+            repo,
+            b,
+            "-R, then a flag's value -R… of the same owner in another case",
+        ),
+        (
+            ["issue", "create", "-R", "Example-B/repo", "-nR=Example-B/repo"],
+            {},
+            repo,
+            b,
+            "-R, then a cluster -nR=… of the same owner",
+        ),
+        (["pr", "view", "-nR"], {}, None, default, "a cluster -nR with no value: the default"),
+        (
+            ["pr", "view", "1", "--repo=Example-C/r", "-RExample-B/repo"],
+            {},
+            repo,
+            b,
+            "-R… after --repo=…, a flag with =: the last",
+        ),
+        (["issue", "create", "-F", "-", "-RExample-B/repo"], {}, repo, b, "-R… after the argument -"),
+        (["-RExample-B/repo", "pr", "list", "-w"], {}, repo, b, "-R… as the first argument"),
+        (
+            ["api", "repos/{owner}/{repo}/contents", "--input", "repos/x"],
+            {},
+            repo,
+            c,
+            "gh api repos/{owner}/..., then an argument repos/…: origin's owner",
+        ),
         (
             ["pr", "view", "1", "-R", "-RExample-B/repo"],
             {},
@@ -1736,7 +1770,6 @@ def gh_token_owner_cases(check: Callable[[object, str], None], tmp: pathlib.Path
         (["pr", "view", "1", "-RExample-B/repo"], {}, repo, b, "-ROWNER/REPO"),
         (["pr", "view", "1", "-R", "https://github.com/Example-B/repo"], {}, repo, b, "-R a URL"),
         (["pr", "view", "1", "-R", "GitHub.com/Example-B/repo"], {}, repo, b, "-R HOST/OWNER/REPO, capitals"),
-        (["api", "user", "--", "-R", "Example-B/repo"], {}, None, default, "-R after --: the default"),
         (["pr", "view", "-R"], {}, None, default, "-R with no value: the default"),
         (["pr", "list"], {}, repo, c, "origin's owner where nothing else names one"),
         (["pr", "list"], {}, ssh, c, "an origin git@github.com:OWNER/REPO"),
@@ -1761,6 +1794,52 @@ def gh_token_owner_cases(check: Callable[[object, str], None], tmp: pathlib.Path
             f"arguments unchanged: {seen.status}, {seen.runs}, "
             f"{[k for k, v in tokens.items() if v == seen.token]}, {seen.github_token}, {seen.args}, "
             f"{seen.stderr.strip()!r}",
+        )
+
+
+def gh_token_refusal_cases(check: Callable[[object, str], None], tmp: pathlib.Path) -> None:
+    """scripts/gh-token.py refuses, with exit 2, one line on stderr that names the argument, and no
+    run of gh, where an argument that gh may read as `-R` after the last certain `-R` names another
+    repository's owner or host than the one whose token it would give."""
+    tokens = {name: f"T-{name}-{secrets.token_hex(4)}" for name in ("example-b", "Example-C", "default")}
+    home = GhHome.fresh(tmp / "refusals", tokens)
+    repo = home.repository("https", "https://github.com/Example-C/repo.git")
+    for args, cwd, named, label in [
+        (["issue", "create", "-R", "Example-B/repo", "-bRfoo/bar"], repo, "-bRfoo/bar", "a cluster -bR…"),
+        (
+            ["issue", "create", "-R", "Example-B/repo", "-tRelease/notes"],
+            repo,
+            "-tRelease/notes",
+            "a cluster -tR… that reads as OWNER/REPO",
+        ),
+        (["browse", "-nR", "Example-B/repo"], repo, "-nR", "a cluster -nR, then OWNER/REPO"),
+        (["pr", "view", "1", "-nRExample-B/repo"], repo, "-nRExample-B/repo", "a cluster -nROWNER/REPO"),
+        (["issue", "create", "-b", "-RExample-B/repo"], repo, "-RExample-B/repo", "-ROWNER/REPO after -b"),
+        (["issue", "list", "-S", "--", "-R", "Example-B/repo"], repo, "-R", "-R after --"),
+        (["api", "user", "--", "--repo=Example-B/repo"], None, "--repo=Example-B/repo", "--repo= after --"),
+        (
+            ["issue", "list", "--", "x", "-RExample-B/repo"],
+            repo,
+            "-RExample-B/repo",
+            "-ROWNER/REPO after --, after an argument that is no flag",
+        ),
+        (["-nR", "Example-B/repo", "pr", "list"], repo, "-nR", "a cluster -nR as the first argument"),
+        (
+            ["issue", "create", "-R", "Example-B/repo", "-b", "-Rghe.example.org/Example-B/repo"],
+            repo,
+            "-Rghe.example.org/Example-B/repo",
+            "a flag's value -R… of another host",
+        ),
+    ]:
+        seen = home.run(*args, cwd=cwd)
+        check(
+            seen.status == GH_REFUSED
+            and seen.runs == 0
+            and seen.stderr.count("\n") == 1
+            and seen.stderr.endswith("\n")
+            and named in seen.stderr,
+            f"gh-token.py, {label}: exit 2, one line on stderr that names {named}, and no gh: "
+            f"{seen.status}, {seen.runs}, {seen.stderr!r}",
         )
 
 
@@ -1790,6 +1869,7 @@ def gh_token_no_token_cases(check: Callable[[object, str], None], tmp: pathlib.P
         (other, ["api", "--hostname", "x.ghe.com", "repos/example-a/r"], {}, "--hostname of another host"),
         (other, ["api", "--hostname=X.GHE.com", "user"], {}, "--hostname= of another host"),
         (other, ["api", "user"], {"GH_HOST": "x.ghe.com"}, "GH_HOST of another host"),
+        (other, ["issue", "create", "-b", "--", "--hostname", "x.ghe.com"], {}, "--hostname after --"),
     ]:
         given = {"GITHUB_TOKEN": token, "GH_TOKEN": token, "GH_CONFIG_DIR": str(caller), **extra}
         seen = at.run(*args, variables=given)
@@ -1911,6 +1991,7 @@ def gh_token_cases(check: Callable[[object, str], None]) -> None:
     with tempfile.TemporaryDirectory(prefix="harness-gh-token-") as name:
         tmp = pathlib.Path(name)
         gh_token_owner_cases(check, tmp)
+        gh_token_refusal_cases(check, tmp)
         gh_token_no_token_cases(check, tmp)
         gh_token_path_cases(check, tmp)
         gh_token_status_cases(check, tmp)
