@@ -29,15 +29,18 @@ a temporary directory. No subcommand of its own; `githooks.selftest` runs them.
   and names neither file.
 - githooks/workflows/Dependents.yml: its trigger, concurrency group, permissions, jobs and matrix,
   the actions of its `uses:` lines, a second checkout of the dependent for the run against the
-  default branch, and `persist-credentials: false` on every checkout; `actionlint` passes on it,
-  where it is on the PATH.
+  default branch, a setup step and a test step against the head and against the default branch
+  with their conditions and their order, the four outcomes that the row step passes, and
+  `persist-credentials: false` on every checkout; `actionlint` passes on it, where it is on the
+  PATH.
 - githooks/workflows/dependents.jl, where `julia` is on the PATH: `excluded` on a head inside the
   dependent's `[compat]` entry, outside it, against an entry with two specifiers, and with no
   entry; `excluded` refuses a base or a dependent Project.toml that is not TOML, a base version
-  that is no version number and a `[compat]` entry that is no version specifier; `row` on the four
-  rows, with the summary it appends and its exit status, and on two combinations that are none of
-  them; `list` on a file of two dependents, on a missing file, on a file that is not TOML and on
-  two entries that the JSON of the matrix cannot hold.
+  that is no version number and a `[compat]` entry that is no version specifier; `row` on the five
+  rows, with the summary it appends and its exit status, on eight combinations that are none of
+  them and on the two outcomes of a run without a setup step; `list` on a file of two dependents,
+  on a missing file, on a file that is not TOML and on two entries that the JSON of the matrix
+  cannot hold.
 - githooks/workflows/dependents.jl, where `julia` is on the PATH and the harness's Julia
   environment holds a Project.toml: JuliaFormatter's SciML style finds it formatted, as the
   pre-commit hook of a base checks its installed copy.
@@ -611,7 +614,7 @@ def yaml_cases(check: Check) -> None:
         f"-> {sorted(uses)}, {versions}",
     )
     by_id = {str(s.get("id")): s for s in steps if "id" in s}
-    projects = [str(by_id.get(name, {}).get("run", "")).split()[2:3] for name in ("head", "main")]
+    projects = [str(by_id.get(name, {}).get("run", "")).split()[2:3] for name in ("head_setup", "main_setup")]
     paths = [
         str(cast("dict[str, object]", s.get("with") or {}).get("path"))
         for s in steps
@@ -625,7 +628,7 @@ def yaml_cases(check: Check) -> None:
         ),
         len(steps),
     )
-    main = next((i for i, s in enumerate(steps) if s.get("id") == "main"), -1)
+    main = next((i for i, s in enumerate(steps) if s.get("id") == "main_setup"), -1)
     check(
         projects == [["--project=dependent"], ["--project=dependent-main"]]
         and paths == ["dependent", "dependent-main"]
@@ -634,6 +637,7 @@ def yaml_cases(check: Check) -> None:
         f"not the one that the run against the head resolved -> projects {projects}, checkouts {paths}, "
         f"steps {fresh} and {main}",
     )
+    step_cases(check, steps)
     keeps = [
         (name, i)
         for name, job in jobs.items()
@@ -653,6 +657,73 @@ def yaml_cases(check: Check) -> None:
     p = run([actionlint, str(DEPENDENTS_YML)])
     check(
         p.returncode == 0, f"actionlint passes on Dependents.yml -> {p.returncode} {p.stdout.strip()[-300:]}"
+    )
+
+
+def step_cases(check: Check, steps: list[dict[str, object]]) -> None:
+    """The setup and test steps of the test job of Dependents.yml, their conditions and their
+    order, and the four outcomes that the row step passes to dependents.jl."""
+    failed = "steps.head_setup.outcome == 'failure' || steps.head_test.outcome == 'failure'"
+    # id or checkout path: the condition, and the Pkg call, project and path of its julia run.
+    want: dict[str, tuple[str, str]] = {
+        "head_setup": ("steps.compat.outputs.excluded == 'false'", 'develop dependent abspath("base")'),
+        "head_test": ("steps.head_setup.outcome == 'success'", "test dependent"),
+        "main": (failed, ""),
+        "dependent-main": (failed, ""),
+        "main_setup": (failed, 'develop dependent-main abspath("main")'),
+        "main_test": ("steps.main_setup.outcome == 'success'", "test dependent-main"),
+    }
+
+    def key(s: dict[str, object]) -> str:
+        return str(s.get("id") or cast("dict[str, object]", s.get("with") or {}).get("path"))
+
+    def call(s: dict[str, object]) -> str:
+        """The Pkg call of a julia run, its project, and the path it develops."""
+        run = str(s.get("run", ""))
+        if not run:
+            return ""
+        project = next((w.removeprefix("--project=") for w in run.split() if w.startswith("--project=")), "?")
+        calls = [c for c in ("develop", "test") if f"Pkg.{c}(" in run]
+        path = run.partition("Pkg.develop(path = ")[2].partition(")")[0] + ")" if "develop" in calls else ""
+        return " ".join([*calls, project, *([path] if path else [])])
+
+    got = {
+        key(s): (str(s.get("if")), call(s), s.get("continue-on-error") is True)
+        for s in steps
+        if key(s) in want
+    }
+    expected = {k: (cond, run, bool(run)) for k, (cond, run) in want.items()}
+    check(
+        got == expected,
+        f"a setup step and a test step against the head and against the default branch, each with "
+        f"continue-on-error; a test step only after its setup succeeded; the default branch only "
+        f"after a failed head setup or head test -> {got}",
+    )
+    order = [key(s) for s in steps if key(s) in want]
+    check(
+        order == ["head_setup", "head_test", "main", "dependent-main", "main_setup", "main_test"],
+        f"the steps run in the order head setup, head test, the two checkouts, main setup, main test "
+        f"-> {order}",
+    )
+    none: dict[str, object] = {}
+    row = next((s for s in steps if "dependents.jl row" in str(s.get("run", ""))), none)
+    env = cast("dict[str, object]", row.get("env") or {})
+    check(
+        row.get("if") == "always()"
+        and env
+        == {
+            "NAME": "${{ matrix.dependent.name }}",
+            "EXCLUDED": "${{ steps.compat.outputs.excluded }}",
+            "HEAD_SETUP": "${{ steps.head_setup.outcome }}",
+            "HEAD_TEST": "${{ steps.head_test.outcome }}",
+            "MAIN_SETUP": "${{ steps.main_setup.outcome }}",
+            "MAIN_TEST": "${{ steps.main_test.outcome }}",
+        }
+        and str(row.get("run", "")).endswith(
+            'row "$NAME" "$EXCLUDED" "$HEAD_SETUP" "$HEAD_TEST" "$MAIN_SETUP" "$MAIN_TEST"'
+        ),
+        f"the row step always runs and passes the compat result and the four outcomes -> "
+        f"{row.get('if')}, {env}, {row.get('run')}",
     )
 
 
@@ -718,31 +789,55 @@ def script_cases(check: Check, tmp: pathlib.Path, julia: str) -> None:
             f"excluded refuses {label} with one line that names it -> {p.returncode}, "
             f"{p.stderr.strip()[-300:]!r}",
         )
-    for excluded, head, main, want, status in (
-        ("false", "success", "", "green", 0),
-        ("false", "failure", "success", "regression", 1),
-        ("false", "failure", "failure", "known red", 0),
-        ("true", "", "", "excluded", 0),
+    both = "inconclusive: the setup failed against the head and the default branch"
+    default = "inconclusive: the setup failed against the default branch"
+    # excluded, head setup, head test, main setup, main test; "" and "skipped" are a step that did
+    # not run, as GitHub reports it.
+    for outcomes, want, status in (
+        (("true", "", "", "", ""), "excluded", 0),
+        (("true", "success", "failure", "failure", "skipped"), "excluded", 0),
+        (("false", "success", "success", "", ""), "green", 0),
+        (("false", "success", "success", "skipped", "skipped"), "green", 0),
+        (("false", "failure", "skipped", "success", "success"), "regression", 1),
+        (("false", "failure", "", "success", "failure"), "regression", 1),
+        (("false", "success", "failure", "success", "success"), "regression", 1),
+        (("false", "success", "failure", "success", "failure"), "known red", 0),
+        (("false", "failure", "skipped", "failure", "skipped"), both, 1),
+        (("false", "failure", "", "failure", ""), both, 1),
+        (("false", "success", "failure", "failure", "skipped"), default, 1),
     ):
-        summary = tmp / f"summary-{want}"
-        p = julia_script(julia, "row", "Dep", excluded, head, main, env={"GITHUB_STEP_SUMMARY": str(summary)})
+        summary = tmp / f"summary-{'-'.join(o or '0' for o in outcomes)}"
+        p = julia_script(julia, "row", "Dep", *outcomes, env={"GITHUB_STEP_SUMMARY": str(summary)})
         text = summary.read_text() if summary.is_file() else ""
         check(
             p.returncode == status
             and p.stdout.splitlines() == [f"| Dep | {want} |"]
             and text == f"| dependent | result |\n|:--|:--|\n| Dep | {want} |\n",
-            f"row: excluded {excluded}, head {head or '-'}, main {main or '-'} is {want}, exit {status} -> "
-            f"{p.returncode}, {p.stdout.strip()!r}, {text!r}",
+            f"row: excluded, head setup, head test, main setup, main test {outcomes} is {want!r}, "
+            f"exit {status} -> {p.returncode}, {p.stdout.strip()!r}, {text!r} {p.stderr.strip()[-200:]}",
         )
-    for excluded, head, label in (
-        ("false", "cancelled", "a head outcome that is neither success nor failure"),
-        ("", "", "an empty excluded, as after a failed compat step"),
+    for outcomes, label in (
+        (("false", "cancelled", "", "", ""), "a head setup outcome that is neither success nor failure"),
+        (("", "", "", "", ""), "an empty excluded, as after a failed compat step"),
+        (("yes", "success", "success", "", ""), "an excluded that is neither true nor false"),
+        (("false", "success", "failure", "failure", "success"), "a main test after a failed main setup"),
+        (("false", "success", "failure", "success", "skipped"), "a main test skipped after its setup"),
+        (("false", "success", "success", "success", "success"), "a default-branch run after a green head"),
+        (("false", "failure", "success", "success", "success"), "a head test after a failed head setup"),
+        (("false", "cancelled", "failure", "success", "success"), "a head test after a cancelled setup"),
     ):
-        p = julia_script(julia, "row", "Dep", excluded, head, "")
+        p = julia_script(julia, "row", "Dep", *outcomes)
         check(
             p.returncode == REFUSED and "Dep" in p.stderr and not p.stdout.strip(),
-            f"row: {label} exits 2 -> {p.returncode}, {p.stderr.strip()[-200:]!r}",
+            f"row: {label} {outcomes} exits 2 -> {p.returncode}, {p.stdout.strip()!r}, "
+            f"{p.stderr.strip()[-200:]!r}",
         )
+    p = julia_script(julia, "row", "Dep", "false", "failure", "success")
+    check(
+        p.returncode == REFUSED and "usage" in p.stderr and not p.stdout.strip(),
+        f"row with a head and a main outcome alone exits 2 with the usage -> {p.returncode}, "
+        f"{p.stderr.strip()[-200:]!r}",
+    )
     listing = tmp / "dependents.toml"
     listing.write_text(EXPECTED)
     output = tmp / "list-output"

@@ -951,17 +951,3 @@
   entries of `frontend_entries` have the closed grammar.
 - kind: defect
 - found: 2026-11-12, the planning of part E5k
-
-### K159 · A setup failure of a test step of `Dependents.yml` reads as a test failure in `row()`.
-
-- location: `githooks/workflows/Dependents.yml:91`
-- evidence: each test step (lines 87-91 and 109-113) runs `Pkg.develop` and `Pkg.test` in one
-  `julia -e` with `continue-on-error: true`, so its outcome is `failure` both when the tests fail
-  and when the setup fails: the registry, a download or the resolution. `row()` of
-  `githooks/workflows/dependents.jl:110` reads only the two outcomes. A failed setup on the run
-  against the default branch gives *known red* and can hide a regression of the head; a failed
-  setup on the run against the head, with a green default branch, gives *regression*. The fix,
-  decided for later: `Pkg.develop` in its own step for each run, `Pkg.test` only after it
-  succeeds, and an `inconclusive` outcome in `row()`.
-- kind: defect
-- found: 2026-11-13, a CodeRabbit review of a pull request on a base package (comment 4567391241)

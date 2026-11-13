@@ -1286,7 +1286,7 @@ The cases run these commands:
 - The settings of `Dependents.yml`, read with the YAML reader of `wikilint.py`, and `actionlint` on
   it where `actionlint` is on the `PATH`.
 - `dependents.jl`, where `julia` is on the `PATH`: `excluded` on fixture `Project.toml` pairs,
-  `row` on the four rows, `list`, and their refusals.
+  `row` on the five rows, `list`, and their refusals.
 - The format of `dependents.jl`: JuliaFormatter's SciML style, which the pre-commit hook of a base
   checks on the installed copy.
 - `verify-workflows.jl`, where `julia` is on the `PATH`: a clean fixture, each of its four
