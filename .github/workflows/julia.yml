@@ -152,3 +152,18 @@ jobs:
           echo "hits: $hits"
           test "$hits" = "test/throws.jl "
           ! grep -v '"severity":"error"' "$RUNNER_TEMP/scope-throws.json"
+      # The two catch rules must hit exactly the files under src/, ext/ and test/, each with its
+      # own severity: catch-binds-type-name blocks a commit, catch-variable-unused only warns.
+      - name: Scope of the catch rules
+        working-directory: ast-grep/rule-tests/scope
+        run: |
+          for pair in catch-binds-type-name:error catch-variable-unused:warning; do
+            rule=${pair%%:*}
+            severity=${pair##*:}
+            ast-grep scan -c "$RUNNER_TEMP/sgconfig.yml" --custom-languages allow --filter "^$rule\$" \
+              --json=stream . > "$RUNNER_TEMP/scope-$rule.json" || true
+            hits=$(sed -n 's/.*"file":"\([^"]*\)".*/\1/p' "$RUNNER_TEMP/scope-$rule.json" | sed 's|^\./||' | sort -u | tr '\n' ' ')
+            echo "$rule hits: $hits"
+            test "$hits" = "ext/catch.jl src/catch.jl test/catch.jl "
+            if grep -v "\"severity\":\"$severity\"" "$RUNNER_TEMP/scope-$rule.json"; then exit 1; fi
+          done

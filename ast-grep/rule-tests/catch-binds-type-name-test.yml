@@ -1,0 +1,18 @@
+id: catch-binds-type-name
+valid:
+  - "try\n    f()\ncatch e\n    e isa MethodError || rethrow()\n    nothing\nend"
+  - "try\n    f()\ncatch E\n    showerror(stderr, E)\nend"
+  - "try\n    f()\ncatch E\n    nothing\nend"
+  - "try\n    f()\ncatch err\n    @warn \"failed\" exception = err\nend"
+  - "try\n    f()\ncatch e\n    nothing\nend"
+  - "try\n    f()\ncatch ErrorCount\n    nothing\nend"
+  - "try\n    f()\ncatch MethodErrorFlag\n    nothing\nend"
+  - "try\n    f()\ncatch lastArgError\n    nothing\nend"
+  - "try\n    f()\ncatch\n    MethodError\nend"
+  - "try\n    f()\ncatch e\n    e isa ArgumentError ? 0 : rethrow()\nend"
+invalid:
+  - "try\n    f()\ncatch MethodError\n    nothing\nend"
+  - "try\n    f()\ncatch ArgumentError\n    return false\nend"
+  - "try\n    f()\ncatch InterruptException\n    cleanup()\n    rethrow()\nend"
+  - "x = try f() catch DomainError; 0.0 end"
+  - "try\n    f()\ncatch Float64Error\nend"

@@ -1,0 +1,29 @@
+# A catch that names the exception and then ignores it: the body neither rethrows, nor tests
+# `e isa …`, nor passes e on (to @warn, showerror, a logger, a returned value, a stored field).
+# Any reference to the variable in the body counts as passing it on; a call of rethrow or throw
+# counts as rethrowing. An empty catch is no hit. A variable that catch-binds-type-name matches is
+# left to that rule, so the two rules never hit one clause.
+id: catch-variable-unused
+language: julia
+severity: warning
+message: "the caught exception is never used, tested or rethrown; test e isa <Type> and rethrow the rest"
+files:
+  - "**/src/**/*.jl"
+  - "**/ext/**/*.jl"
+  - "**/test/**/*.jl"
+rule:
+  kind: catch_clause
+  all:
+    - has:
+        kind: identifier
+        pattern: $E
+        not: { regex: '^[A-Z][A-Za-z0-9]*(Error|Exception)$' }
+    - has:
+        kind: block
+        all:
+          - not: { has: { pattern: $E, stopBy: end } }
+          - not:
+              has:
+                kind: call_expression
+                stopBy: end
+                has: { nthChild: 1, kind: identifier, regex: '^(rethrow|throw)$' }

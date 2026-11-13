@@ -347,7 +347,7 @@ ast-grep uses the rule in every repository of the tree.
 
 ## The rules of severity error
 
-The six rules in the sections below have the severity `error`. Each one finds a defect in Julia
+The seven rules in the sections below have the severity `error`. Each one finds a defect in Julia
 code that a pattern over the syntax tree decides. The message of
 each rule names the fix. To silence one hit, write the comment `# ast-grep-ignore: <rule-id>` at
 the end of the line or on the line above. Two rules match a comment, and for them this works only
@@ -418,9 +418,22 @@ one, such as `LinearAlgebra.SingularException`. A lower-case name is a variable 
 pattern, and is not a hit; nor is a string, a pattern or an exception value such as
 `ArgumentError("bad")`. The rule has the `files:` glob `**/test/**/*.jl`.
 
+## `rules/catch-binds-type-name.yml`
+
+The rule `catch-binds-type-name` finds a `catch` whose exception variable is a capitalised name
+that ends in `Error` or `Exception`, such as `catch MethodError`. Julia reads the name after
+`catch` on the same line as the exception variable, so the clause binds a variable named
+`MethodError` and catches every exception. Write `catch e`, test `e isa MethodError`, and rethrow
+the rest.
+
+A lower-case name, such as `catch err`, and a short capital name, such as `catch E`, are not hits;
+nor is a name that only holds the suffix, such as `MethodErrorFlag`, or a type name on the line
+after `catch`. The rule has the `files:` globs `**/src/**/*.jl`, `**/ext/**/*.jl` and
+`**/test/**/*.jl`.
+
 ## The rules of severity warning
 
-The two rules in the sections below have the severity `warning`. The pre-commit stage of ast-grep
+The three rules in the sections below have the severity `warning`. The pre-commit stage of ast-grep
 prints each of their hits as advisory and never blocks a commit on it. The comment
 `# ast-grep-ignore: <rule-id>` silences a hit as it does for a rule of severity `error`.
 
@@ -451,6 +464,19 @@ not update in place. The rule looks inside a `function … end` only, so it does
 short-form definition or code at top level. It has the `files:` globs `**/src/**/*.jl` and
 `**/ext/**/*.jl`.
 
+## `rules/catch-variable-unused.yml`
+
+The rule `catch-variable-unused` finds a `catch e` whose body never names `e` and calls neither
+`rethrow` nor `throw`. Such a clause turns every exception, an `InterruptException` or a
+`MethodError` from a bug too, into the result of its body. Test `e isa <Type>` and rethrow the
+rest.
+
+Any use of the variable in the body, such as `@warn "failed" exception = e` or a returned `e`,
+makes it no hit, and so does a call of `rethrow` or `throw`. An empty `catch e` and a `catch`
+with no variable are not hits. A variable that `catch-binds-type-name` matches is left to that
+rule, so the two rules never hit one clause. The rule has the `files:` globs `**/src/**/*.jl`,
+`**/ext/**/*.jl` and `**/test/**/*.jl`.
+
 ## The rule tests
 
 The directory `rule-tests/` holds the rule tests of ast-grep: one file `<rule-id>-test.yml` for
@@ -464,11 +490,15 @@ ast-grep test -c ~/Research/sgconfig.yml --custom-languages allow --skip-snapsho
 
 Without `--custom-languages allow`, ast-grep ignores the language `julia`, and each test that
 expects no hit passes. A snippet has no path, so a rule test cannot test the `files:` globs of
-`debug-probe` and `test-throws-bare-type`. The directory `rule-tests/scope/` holds the file
-`probe.jl`, with one `@show x`, and the file `throws.jl`, with one
-`@test_throws ArgumentError f(1)`, under `src/`, `ext/`, `test/` and `scripts/`. A scan of
-`scope/` with `debug-probe` must hit exactly `src/probe.jl` and `ext/probe.jl`. A scan with
-`test-throws-bare-type` must hit exactly `test/throws.jl`, with the severity `error`.
+`debug-probe`, `test-throws-bare-type` and the two catch rules. The directory `rule-tests/scope/`
+holds the file `probe.jl`, with one `@show x`, the file `throws.jl`, with one
+`@test_throws ArgumentError f(1)`, and the file `catch.jl`, with one `catch MethodError` and one
+`catch e` with an unused `e`, under `src/`, `ext/`, `test/` and `scripts/`. A scan of `scope/`
+with `debug-probe` must hit exactly `src/probe.jl` and `ext/probe.jl`. A scan with
+`test-throws-bare-type` must hit exactly `test/throws.jl`, with the severity `error`. A scan with
+`catch-binds-type-name` must hit exactly the three files `catch.jl` under `src/`, `ext/` and
+`test/`, with the severity `error`, and a scan with `catch-variable-unused` the same three files,
+with the severity `warning`.
 
 ### The `ast-grep` job of CI
 
@@ -477,9 +507,10 @@ workflow names `ast-grep/**`, so a change of a rule or a rule test alone starts 
 installs the release 0.51.1 of ast-grep, with its SHA-256, and builds the parser with
 `build-julia.sh`. `research-sgconfig.yml` names its paths relative to `~/Research`, so the job
 writes a configuration with the checkout's absolute paths. Then it runs `ast-grep test` and the
-two scans of `rule-tests/scope/`. The job fails when a test fails, when a test names a rule that
+four scans of `rule-tests/scope/`. The job fails when a test fails, when a test names a rule that
 does not exist, when a scan does not hit exactly the files that the section above names, or when
-a hit of `test-throws-bare-type` does not have the severity `error`.
+a hit of `test-throws-bare-type`, `catch-binds-type-name` or `catch-variable-unused` does not
+have the severity that the section above names.
 
 ## `.gitleaks.toml`
 
