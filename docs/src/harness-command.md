@@ -1929,7 +1929,12 @@ past its timeout, and checks exit 2 and one line that names the program. The oth
 `basedpyright` in a scratch Python environment and a second pair on the `PATH`: a clean commit, a
 staged file that each check refuses, a staged file that the formatter would change, which stays
 as it was in the work tree and the index, a violation that is not staged, and an environment
-without one tool or both. [Development](development.md#the-strict-profile) describes the
+without one tool or both. Where the harness's Python environment holds `basedpyright` and
+`pyyaml`, three cases run the hook with those real tools on a fixture with one baselined error: the
+error with its baseline commits, the error fixed with the old baseline is refused with `went down`,
+and the baseline written again commits. Elsewhere one `skip` line stands for them. Three more cases
+run on every environment and check that line on an environment without `basedpyright`, one without
+`yaml` and one that does not exist. [Development](development.md#the-strict-profile) describes the
 profile.
 
 ### `docs.py`
