@@ -400,7 +400,9 @@ names. Such a repository keeps its own file: its documentation is a pipeline of 
 it needs an extra step. The doctests do not run here; the `doctest` job of `CI.yml` runs them. It
 runs on the same events as `CI.yml`, on Ubuntu with Julia `1`. The checkout does not keep the
 token: the deploy pushes from a new repository of its own, with `DOCUMENTER_KEY` or
-`GITHUB_TOKEN`.
+`GITHUB_TOKEN`. A private repository names `devbranch` in its `deploydocs` call: without it,
+Documenter reads the default branch with `git remote show origin`, which needs the token there,
+and falls back to `master`.
 
 ## `workflows/TagBot.yml`
 
